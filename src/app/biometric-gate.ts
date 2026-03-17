@@ -11,10 +11,10 @@ const UNLOCK_SCAN_SETTLE_MS = 720;
 const UNLOCK_PANEL_SETTLE_MS = 420;
 const UNLOCK_SEAL_BREAK_MS = 240;
 const UNLOCK_PANEL_WITHDRAW_MS = 760;
-const UNLOCK_DOOR_OPEN_MS = 1680;
+const UNLOCK_DOOR_OPEN_MS = 1820;
 const UNLOCK_EXIT_FADE_MS = 320;
 const UNLOCK_SOUND_SEAL_TRANSIENT_MS = 180;
-const UNLOCK_SOUND_DOOR_SWELL_MS = 1480;
+const UNLOCK_SOUND_DOOR_SWELL_MS = 1640;
 const AUTH_REASON = 'Unlock World Monitor';
 
 function sleep(ms: number): Promise<void> {
@@ -1019,8 +1019,8 @@ function playUnlockSound(): void {
 
   const master = ctx.createGain();
   master.gain.setValueAtTime(0.0001, now);
-  master.gain.exponentialRampToValueAtTime(0.34, now + 0.06);
-  master.gain.exponentialRampToValueAtTime(0.22, now + 0.52);
+  master.gain.exponentialRampToValueAtTime(0.4, now + 0.06);
+  master.gain.exponentialRampToValueAtTime(0.26, now + 0.56);
   master.gain.exponentialRampToValueAtTime(
     0.0001,
     now + (UNLOCK_SOUND_DOOR_SWELL_MS + 520) / 1000,
@@ -1113,9 +1113,9 @@ function playUnlockSound(): void {
   const doorRumbleGain = ctx.createGain();
   const doorRumblePanner = ctx.createStereoPanner();
   doorRumbleGain.gain.setValueAtTime(0.0001, now + 0.08);
-  doorRumbleGain.gain.exponentialRampToValueAtTime(0.07, now + 0.28);
+  doorRumbleGain.gain.exponentialRampToValueAtTime(0.09, now + 0.28);
   doorRumbleGain.gain.exponentialRampToValueAtTime(
-    0.028,
+    0.036,
     now + (UNLOCK_SOUND_DOOR_SWELL_MS - 260) / 1000,
   );
   doorRumbleGain.gain.exponentialRampToValueAtTime(
@@ -1157,9 +1157,9 @@ function playUnlockSound(): void {
   const hydraulicNoiseGain = ctx.createGain();
   const hydraulicNoisePanner = ctx.createStereoPanner();
   hydraulicNoiseGain.gain.setValueAtTime(0.0001, now + 0.08);
-  hydraulicNoiseGain.gain.exponentialRampToValueAtTime(0.038, now + 0.18);
+  hydraulicNoiseGain.gain.exponentialRampToValueAtTime(0.048, now + 0.18);
   hydraulicNoiseGain.gain.exponentialRampToValueAtTime(
-    0.022,
+    0.028,
     now + (UNLOCK_SOUND_DOOR_SWELL_MS - 180) / 1000,
   );
   hydraulicNoiseGain.gain.exponentialRampToValueAtTime(
@@ -1186,7 +1186,7 @@ function playUnlockSound(): void {
   const servoGain = ctx.createGain();
   const servoPanner = ctx.createStereoPanner();
   servoGain.gain.setValueAtTime(0.0001, now + 0.1);
-  servoGain.gain.exponentialRampToValueAtTime(0.036, now + 0.22);
+  servoGain.gain.exponentialRampToValueAtTime(0.044, now + 0.22);
   servoGain.gain.exponentialRampToValueAtTime(0.0001, now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000);
   servoPanner.pan.setValueAtTime(-0.22, now + 0.1);
   servoPanner.pan.linearRampToValueAtTime(0.2, now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000);
@@ -1206,10 +1206,10 @@ function playUnlockSound(): void {
   const hydraulicPulseGain = ctx.createGain();
   const hydraulicPulsePanner = ctx.createStereoPanner();
   hydraulicPulseGain.gain.setValueAtTime(0.0001, now + 0.08);
-  hydraulicPulseGain.gain.linearRampToValueAtTime(0.02, now + 0.24);
-  hydraulicPulseGain.gain.linearRampToValueAtTime(0.01, now + 0.52);
-  hydraulicPulseGain.gain.linearRampToValueAtTime(0.018, now + 0.86);
-  hydraulicPulseGain.gain.linearRampToValueAtTime(0.008, now + 1.18);
+  hydraulicPulseGain.gain.linearRampToValueAtTime(0.026, now + 0.24);
+  hydraulicPulseGain.gain.linearRampToValueAtTime(0.013, now + 0.56);
+  hydraulicPulseGain.gain.linearRampToValueAtTime(0.022, now + 0.94);
+  hydraulicPulseGain.gain.linearRampToValueAtTime(0.01, now + 1.34);
   hydraulicPulseGain.gain.exponentialRampToValueAtTime(
     0.0001,
     now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000,

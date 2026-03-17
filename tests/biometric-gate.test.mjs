@@ -148,7 +148,7 @@ describe('desktop biometric bootstrap', () => {
     );
     assert.match(
       gateSrc,
-      /UNLOCK_DOOR_OPEN_MS\s*=\s*1680/,
+      /UNLOCK_DOOR_OPEN_MS\s*=\s*1820/,
       'unlock doors should open on a slower, premium cadence instead of snapping away too fast',
     );
     assert.match(
@@ -178,7 +178,7 @@ describe('desktop biometric bootstrap', () => {
     );
     assert.match(
       gateSrc,
-      /UNLOCK_SOUND_DOOR_SWELL_MS\s*=\s*1480/,
+      /UNLOCK_SOUND_DOOR_SWELL_MS\s*=\s*1640/,
       'unlock sound should sustain through the slower door travel instead of ending too early',
     );
     assert.match(
@@ -200,6 +200,16 @@ describe('desktop biometric bootstrap', () => {
       gateSrc,
       /hydraulicPulseOsc/,
       'unlock sound should include a pulsing hydraulic/mechanical actuator tone',
+    );
+    assert.match(
+      gateSrc,
+      /doorRumbleGain\.gain\.exponentialRampToValueAtTime\(0\.09, now \+ 0\.28\)/,
+      'unlock sound should push more low-end mass into the door movement',
+    );
+    assert.match(
+      gateSrc,
+      /hydraulicNoiseGain\.gain\.exponentialRampToValueAtTime\(0\.048, now \+ 0\.18\)/,
+      'unlock sound should make the hydraulic release audibly larger',
     );
     assert.match(
       gateSrc,
