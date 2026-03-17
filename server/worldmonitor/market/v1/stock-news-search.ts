@@ -5,7 +5,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 
-export type StockNewsSearchProviderId = 'tavily' | 'brave' | 'serpapi' | 'google-news-rss';
+export type StockNewsSearchProviderId = 'exa' | 'brave' | 'serpapi' | 'google-news-rss';
 
 type StockNewsSearchResult = {
   provider: StockNewsSearchProviderId;
@@ -14,7 +14,7 @@ type StockNewsSearchResult = {
 
 type SearchProviderDefinition = {
   id: Exclude<StockNewsSearchProviderId, 'google-news-rss'>;
-  envKey: 'TAVILY_API_KEYS' | 'BRAVE_API_KEYS' | 'SERPAPI_API_KEYS';
+  envKey: 'EXA_API_KEYS' | 'BRAVE_API_KEYS' | 'SERPAPI_API_KEYS';
   search: (query: string, maxResults: number, days: number, apiKey: string) => Promise<StockAnalysisHeadline[]>;
 };
 
@@ -164,39 +164,38 @@ function recordProviderError(providerId: string, apiKey: string): void {
   state.errors.set(apiKey, (state.errors.get(apiKey) || 0) + 1);
 }
 
-async function searchWithTavily(query: string, maxResults: number, days: number, apiKey: string): Promise<StockAnalysisHeadline[]> {
-  const response = await fetch('https://api.tavily.com/search', {
+async function searchWithExa(query: string, maxResults: number, days: number, apiKey: string): Promise<StockAnalysisHeadline[]> {
+  const startDate = new Date(Date.now() - days * 86_400_000).toISOString();
+  const response = await fetch('https://api.exa.ai/search', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'x-api-key': apiKey,
       'User-Agent': CHROME_UA,
     },
     body: JSON.stringify({
-      api_key: apiKey,
       query,
-      topic: 'news',
-      search_depth: 'advanced',
-      max_results: Math.min(maxResults, 10),
-      include_answer: false,
-      include_raw_content: false,
-      days,
+      numResults: Math.min(maxResults, 10),
+      type: 'news',
+      useAutoprompt: false,
+      startPublishedDate: startDate,
     }),
     signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
 
   if (!response.ok) {
-    throw new Error(`Tavily HTTP ${response.status}`);
+    throw new Error(`Exa HTTP ${response.status}`);
   }
 
   const payload = await response.json() as {
-    results?: Array<{ title?: string; url?: string; content?: string; published_date?: string; source?: string }>;
+    results?: Array<{ title?: string; url?: string; publishedDate?: string; author?: string }>;
   };
   return dedupeHeadlines(
     (payload.results || []).map(item => ({
       title: String(item.title || '').trim(),
-      source: String(item.source || '').trim() || extractDomain(String(item.url || '')),
+      source: extractDomain(String(item.url || '')),
       link: String(item.url || '').trim(),
-      publishedAt: parsePublishedAt(item.published_date),
+      publishedAt: parsePublishedAt(item.publishedDate),
     })),
     maxResults,
   );
@@ -283,7 +282,7 @@ async function searchWithSerpApi(query: string, maxResults: number, days: number
 
 async function searchViaProviders(query: string, maxResults: number, days: number): Promise<StockNewsSearchResult | null> {
   const providers: SearchProviderDefinition[] = [
-    { id: 'tavily', envKey: 'TAVILY_API_KEYS', search: searchWithTavily },
+    { id: 'exa', envKey: 'EXA_API_KEYS', search: searchWithExa },
     { id: 'brave', envKey: 'BRAVE_API_KEYS', search: searchWithBrave },
     { id: 'serpapi', envKey: 'SERPAPI_API_KEYS', search: searchWithSerpApi },
   ];

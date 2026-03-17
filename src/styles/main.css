@@ -19255,7 +19255,6 @@ body.has-breaking-alert .panels-grid {
 
 .wm-widget-shell {
   position: relative;
-  min-height: 100%;
   border: 1px solid color-mix(in srgb, var(--widget-accent, var(--accent)) 26%, var(--border));
   border-radius: 14px;
   background:

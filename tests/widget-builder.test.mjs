@@ -120,8 +120,8 @@ describe('widget-agent relay — security', () => {
     const entries = [...setBody.matchAll(/['"]([^'"]+)['"]/g)].map(m => m[1]);
     for (const entry of entries) {
       assert.ok(
-        entry.startsWith('/rpc/'),
-        `Non-RPC endpoint in WIDGET_ALLOWED_ENDPOINTS: "${entry}" — must start with /rpc/`,
+        entry.startsWith('/api/'),
+        `Non-API endpoint in WIDGET_ALLOWED_ENDPOINTS: "${entry}" — must start with /api/`,
       );
     }
   });
@@ -995,7 +995,7 @@ describe('PRO widget — relay auth and configuration', () => {
   it('PRO system prompt allows cdn.jsdelivr.net for Chart.js', () => {
     // Use lastIndexOf to find the constant definition
     const promptIdx = relay.lastIndexOf('WIDGET_PRO_SYSTEM_PROMPT');
-    const promptRegion = relay.slice(promptIdx, promptIdx + 2000);
+    const promptRegion = relay.slice(promptIdx, promptIdx + 3500);
     assert.ok(
       promptRegion.includes('cdn.jsdelivr.net') || promptRegion.includes('chart.js') || promptRegion.includes('Chart.js'),
       'PRO system prompt must mention cdn.jsdelivr.net/Chart.js as allowed CDN',

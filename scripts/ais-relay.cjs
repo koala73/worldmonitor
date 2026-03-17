@@ -7463,19 +7463,20 @@ const server = http.createServer(async (req, res) => {
 // ─── Widget Agent ────────────────────────────────────────────────────────────
 
 const WIDGET_ALLOWED_ENDPOINTS = new Set([
-  '/rpc/worldmonitor.economic.v1.EconomicService/GetIndicators',
-  '/rpc/worldmonitor.trade.v1.TradeService/GetCustomsRevenue',
-  '/rpc/worldmonitor.trade.v1.TradeService/GetTradeRestrictions',
-  '/rpc/worldmonitor.trade.v1.TradeService/GetTariffTrends',
-  '/rpc/worldmonitor.trade.v1.TradeService/GetTradeFlows',
-  '/rpc/worldmonitor.trade.v1.TradeService/GetTradeBarriers',
-  '/rpc/worldmonitor.markets.v1.MarketsService/GetQuotes',
-  '/rpc/worldmonitor.markets.v1.MarketsService/GetSectors',
-  '/rpc/worldmonitor.markets.v1.MarketsService/GetCommodities',
-  '/rpc/worldmonitor.markets.v1.MarketsService/GetCryptoQuotes',
-  '/rpc/worldmonitor.aviation.v1.AviationService/GetFlightDelays',
-  '/rpc/worldmonitor.cii.v1.CiiService/GetCiiScores',
-  '/rpc/worldmonitor.ucdp.v1.UcdpService/GetEvents',
+  '/api/economic/v1/list-world-bank-indicators',
+  '/api/economic/v1/get-macro-signals',
+  '/api/trade/v1/get-customs-revenue',
+  '/api/trade/v1/get-trade-restrictions',
+  '/api/trade/v1/get-tariff-trends',
+  '/api/trade/v1/get-trade-flows',
+  '/api/trade/v1/get-trade-barriers',
+  '/api/market/v1/list-market-quotes',
+  '/api/market/v1/get-sector-summary',
+  '/api/market/v1/list-commodity-quotes',
+  '/api/market/v1/list-crypto-quotes',
+  '/api/aviation/v1/list-airport-delays',
+  '/api/intelligence/v1/get-risk-scores',
+  '/api/conflict/v1/list-ucdp-events',
 ]);
 
 const WIDGET_FETCH_TOOL = {
@@ -7484,7 +7485,7 @@ const WIDGET_FETCH_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
-      endpoint: { type: 'string', description: 'Approved API endpoint path (e.g. /rpc/worldmonitor.markets.v1.MarketsService/GetQuotes)' },
+      endpoint: { type: 'string', description: 'Approved API endpoint path (e.g. /api/market/v1/list-crypto-quotes)' },
       params: { type: 'object', description: 'Query parameters as key-value string pairs', additionalProperties: { type: 'string' } },
     },
     required: ['endpoint'],
@@ -7493,20 +7494,27 @@ const WIDGET_FETCH_TOOL = {
 
 const WIDGET_SYSTEM_PROMPT = `You are a WorldMonitor widget builder. Your job is to fetch live data and generate a display-only HTML widget using the WorldMonitor design system.
 
-## Available data (use fetch_worldmonitor_data tool)
-- /rpc/worldmonitor.markets.v1.MarketsService/GetQuotes — market quotes (stocks, indices)
-- /rpc/worldmonitor.markets.v1.MarketsService/GetCommodities — commodity prices
-- /rpc/worldmonitor.markets.v1.MarketsService/GetCryptoQuotes — crypto prices
-- /rpc/worldmonitor.markets.v1.MarketsService/GetSectors — sector performance
-- /rpc/worldmonitor.economic.v1.EconomicService/GetIndicators — economic indicators (GDP, inflation, etc.)
-- /rpc/worldmonitor.trade.v1.TradeService/GetCustomsRevenue — US customs/tariff revenue by month
-- /rpc/worldmonitor.trade.v1.TradeService/GetTradeRestrictions — WTO trade restrictions
-- /rpc/worldmonitor.trade.v1.TradeService/GetTariffTrends — tariff rate history
-- /rpc/worldmonitor.trade.v1.TradeService/GetTradeFlows — import/export flows
-- /rpc/worldmonitor.trade.v1.TradeService/GetTradeBarriers — SPS/TBT barriers
-- /rpc/worldmonitor.aviation.v1.AviationService/GetFlightDelays — international flight delays
-- /rpc/worldmonitor.cii.v1.CiiService/GetCiiScores — country instability scores
-- /rpc/worldmonitor.ucdp.v1.UcdpService/GetEvents — conflict events
+## Available data tools
+
+### fetch_worldmonitor_data — WorldMonitor structured data (preferred for these topics)
+- /api/market/v1/list-market-quotes — market quotes (stocks, indices)
+- /api/market/v1/list-commodity-quotes — commodity prices (oil, gold, silver, etc.)
+- /api/market/v1/list-crypto-quotes — crypto prices
+- /api/market/v1/get-sector-summary — sector performance
+- /api/economic/v1/list-world-bank-indicators — economic indicators (GDP, inflation, unemployment, etc.)
+- /api/economic/v1/get-macro-signals — macro signals (policy rates, yields, CPI trend)
+- /api/trade/v1/get-customs-revenue — US customs/tariff revenue by month
+- /api/trade/v1/get-trade-restrictions — WTO trade restrictions
+- /api/trade/v1/get-tariff-trends — tariff rate history
+- /api/trade/v1/get-trade-flows — import/export flows
+- /api/trade/v1/get-trade-barriers — SPS/TBT barriers
+- /api/aviation/v1/list-airport-delays — international flight delays by airport/region
+- /api/intelligence/v1/get-risk-scores — country instability/risk scores
+- /api/conflict/v1/list-ucdp-events — conflict events (UCDP data)
+
+### search_web — Live internet search for ANY topic (use when topic not covered above)
+Use search_web for: breaking news, weather, sports, elections, specific events, company news, scientific reports, geopolitical updates, sanctions, disasters, or any real-time topic.
+Results include: title, url, snippet, publishedDate. Embed this data directly into the widget HTML.
 
 ## Design system CSS classes
 Use ONLY these classes (no inline styles except var() references):
@@ -7536,16 +7544,92 @@ Use var(--widget-accent, var(--accent)) for themed highlights.
 4. No interactive elements (no buttons, no tabs, no inputs).
 5. Tables use class="trade-tariffs-table". Lists use class="trade-restrictions-list".
 6. Always include a source footer: <div class="economic-footer"><span class="economic-source">Source: WorldMonitor</span></div>
-7. If no data available: <div class="economic-empty">No data available</div>
-8. The dashboard already provides the outer widget shell. Generate only the inner widget body markup.
+7. If tool returns no data or an error: use <div class="economic-empty">No live data available</div> — NEVER write prose explanations.
+8. If tool response contains "<!DOCTYPE" or "<html": it is an error — treat as no data and use the empty state HTML.
+9. The dashboard already provides the outer widget shell. Generate only the inner widget body markup.
+10. CRITICAL: Your response MUST always be HTML inside <!-- widget-html --> markers. NEVER respond with plain text, markdown, or explanations outside the HTML markers.
 
 For modify requests: make targeted changes to improve the widget as requested.`;
+
+const WIDGET_SEARCH_TOOL = {
+  name: 'search_web',
+  description: 'Search the web for current news, live data, or any topic not covered by WorldMonitor RPCs. Returns up to 8 results with title, URL, snippet, and publish date. Use this for topics like breaking news, weather, specific events, prices not in RPC catalog, etc.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Search query — be specific for better results' },
+    },
+    required: ['query'],
+  },
+};
 
 const WIDGET_MAX_HTML = 50_000;
 const WIDGET_PRO_MAX_HTML = 80_000;
 const WIDGET_AGENT_KEY = (process.env.WIDGET_AGENT_KEY || '').trim();
 const PRO_WIDGET_KEY = (process.env.PRO_WIDGET_KEY || '').trim();
 const WIDGET_ANTHROPIC_KEY = (process.env.ANTHROPIC_API_KEY || '').trim();
+const WIDGET_EXA_KEY = (process.env.EXA_API_KEYS || '').split(/[\n,]+/).map(k => k.trim()).filter(Boolean)[0] || '';
+const WIDGET_BRAVE_KEY = (process.env.BRAVE_API_KEYS || '').split(/[\n,]+/).map(k => k.trim()).filter(Boolean)[0] || '';
+
+async function performWidgetWebSearch(query) {
+  if (WIDGET_EXA_KEY) {
+    try {
+      const res = await fetch('https://api.exa.ai/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': WIDGET_EXA_KEY },
+        body: JSON.stringify({
+          query,
+          numResults: 8,
+          type: 'auto',
+          useAutoprompt: true,
+          contents: { text: { maxCharacters: 400 } },
+        }),
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        const results = (payload.results || []).map(r => ({
+          title: r.title || '',
+          url: r.url || '',
+          snippet: (r.text || '').slice(0, 400).trim(),
+          publishedDate: r.publishedDate || '',
+        })).filter(r => r.title && r.url);
+        if (results.length > 0) return { source: 'exa', results };
+      }
+    } catch (err) {
+      console.warn('[widget-search] Exa failed:', err.message);
+    }
+  }
+
+  if (WIDGET_BRAVE_KEY) {
+    try {
+      const url = new URL('https://api.search.brave.com/res/v1/web/search');
+      url.searchParams.set('q', query);
+      url.searchParams.set('count', '8');
+      url.searchParams.set('freshness', 'pw');
+      url.searchParams.set('search_lang', 'en');
+      url.searchParams.set('safesearch', 'moderate');
+      const res = await fetch(url.toString(), {
+        headers: { Accept: 'application/json', 'X-Subscription-Token': WIDGET_BRAVE_KEY },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        const results = (payload.web?.results || []).map(r => ({
+          title: r.title || '',
+          url: r.url || '',
+          snippet: (r.description || '').slice(0, 400).trim(),
+          publishedDate: r.age || '',
+        })).filter(r => r.title && r.url);
+        if (results.length > 0) return { source: 'brave', results };
+      }
+    } catch (err) {
+      console.warn('[widget-search] Brave failed:', err.message);
+    }
+  }
+
+  return null;
+}
 const WIDGET_RATE_LIMIT = 10;
 const PRO_WIDGET_RATE_LIMIT = 20;
 const WIDGET_RATE_WINDOW_MS = 60 * 60 * 1000;
@@ -7744,7 +7828,7 @@ async function handleWidgetAgentRequest(req, res) {
         model,
         max_tokens: maxTokens,
         system: systemPrompt,
-        tools: [WIDGET_FETCH_TOOL],
+        tools: [WIDGET_FETCH_TOOL, WIDGET_SEARCH_TOOL],
         messages,
       });
 
@@ -7764,7 +7848,25 @@ async function handleWidgetAgentRequest(req, res) {
       if (response.stop_reason === 'tool_use') {
         const toolResults = [];
         for (const block of response.content) {
-          if (block.type !== 'tool_use' || block.name !== 'fetch_worldmonitor_data') continue;
+          if (block.type !== 'tool_use') continue;
+
+          if (block.name === 'search_web') {
+            const { query = '' } = block.input;
+            sendWidgetSSE(res, 'tool_call', { endpoint: `search:${String(query).slice(0, 80)}` });
+            try {
+              const searchResult = await performWidgetWebSearch(String(query));
+              if (searchResult) {
+                toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(searchResult.results).slice(0, 20_000) });
+              } else {
+                toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'No search results available. No search provider configured.' });
+              }
+            } catch (err) {
+              toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Search failed: ${err.message}` });
+            }
+            continue;
+          }
+
+          if (block.name !== 'fetch_worldmonitor_data') continue;
           const { endpoint, params = {} } = block.input;
           sendWidgetSSE(res, 'tool_call', { endpoint });
 
@@ -7783,7 +7885,12 @@ async function handleWidgetAgentRequest(req, res) {
               signal: AbortSignal.timeout(15_000),
             });
             const data = await dataRes.text();
-            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: data.slice(0, 20_000) });
+            const trimmed = data.trimStart();
+            if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+              toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Error: endpoint returned HTML instead of JSON. No data available.' });
+            } else {
+              toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: data.slice(0, 20_000) });
+            }
           } catch (err) {
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Fetch failed: ${err.message}` });
           }
@@ -7806,20 +7913,27 @@ async function handleWidgetAgentRequest(req, res) {
 
 const WIDGET_PRO_SYSTEM_PROMPT = `You are a WorldMonitor PRO widget builder. Your job is to fetch live data and generate an interactive HTML widget body with inline JavaScript.
 
-## Available data (use fetch_worldmonitor_data tool)
-- /rpc/worldmonitor.markets.v1.MarketsService/GetQuotes — market quotes (stocks, indices)
-- /rpc/worldmonitor.markets.v1.MarketsService/GetCommodities — commodity prices
-- /rpc/worldmonitor.markets.v1.MarketsService/GetCryptoQuotes — crypto prices
-- /rpc/worldmonitor.markets.v1.MarketsService/GetSectors — sector performance
-- /rpc/worldmonitor.economic.v1.EconomicService/GetIndicators — economic indicators (GDP, inflation, etc.)
-- /rpc/worldmonitor.trade.v1.TradeService/GetCustomsRevenue — US customs/tariff revenue by month
-- /rpc/worldmonitor.trade.v1.TradeService/GetTradeRestrictions — WTO trade restrictions
-- /rpc/worldmonitor.trade.v1.TradeService/GetTariffTrends — tariff rate history
-- /rpc/worldmonitor.trade.v1.TradeService/GetTradeFlows — import/export flows
-- /rpc/worldmonitor.trade.v1.TradeService/GetTradeBarriers — SPS/TBT barriers
-- /rpc/worldmonitor.aviation.v1.AviationService/GetFlightDelays — international flight delays
-- /rpc/worldmonitor.cii.v1.CiiService/GetCiiScores — country instability scores
-- /rpc/worldmonitor.ucdp.v1.UcdpService/GetEvents — conflict events
+## Available data tools
+
+### fetch_worldmonitor_data — WorldMonitor structured data (preferred for these topics)
+- /api/market/v1/list-market-quotes — market quotes (stocks, indices)
+- /api/market/v1/list-commodity-quotes — commodity prices (oil, gold, silver, etc.)
+- /api/market/v1/list-crypto-quotes — crypto prices
+- /api/market/v1/get-sector-summary — sector performance
+- /api/economic/v1/list-world-bank-indicators — economic indicators (GDP, inflation, unemployment, etc.)
+- /api/economic/v1/get-macro-signals — macro signals (policy rates, yields, CPI trend)
+- /api/trade/v1/get-customs-revenue — US customs/tariff revenue by month
+- /api/trade/v1/get-trade-restrictions — WTO trade restrictions
+- /api/trade/v1/get-tariff-trends — tariff rate history
+- /api/trade/v1/get-trade-flows — import/export flows
+- /api/trade/v1/get-trade-barriers — SPS/TBT barriers
+- /api/aviation/v1/list-airport-delays — international flight delays by airport/region
+- /api/intelligence/v1/get-risk-scores — country instability/risk scores
+- /api/conflict/v1/list-ucdp-events — conflict events (UCDP data)
+
+### search_web — Live internet search for ANY topic (use when topic not covered above)
+Use search_web for: breaking news, weather, sports, elections, specific events, company news, scientific reports, geopolitical updates, sanctions, disasters, or any real-time topic.
+Results include: title, url, snippet, publishedDate. Embed as const DATA = [...] in your inline script.
 
 ## Output: body content + inline scripts ONLY
 Generate ONLY the <body> content — NO <!DOCTYPE>, NO <html>, NO <head> wrappers. The client provides the page skeleton with dark theme CSS and a strict CSP already in place.
