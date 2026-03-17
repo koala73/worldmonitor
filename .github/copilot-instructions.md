@@ -173,6 +173,7 @@ Anthropic Claude (`ANTHROPIC_API_KEY`) is a secondary cloud provider used for th
 ## Security Guidelines
 
 - **Never commit secrets** — use `.env.local` or Vercel/GitHub environment variables
+- This repository is a user-owned repo on GitHub, so GitHub's non-provider patterns and validity checks are unavailable here. The compensating control is the repo-owned secret scan gate in local hooks and CI; keep it enabled and green.
 - **SSRF protection** — always use `sanitizeUrl()` from `src/utils` when handling user-supplied URLs
 - **XSS protection** — always call `DOMPurify.sanitize()` before injecting HTML into the DOM
 - **Rate limiting** — API routes use Upstash Redis (`@upstash/ratelimit`) for per-IP limits

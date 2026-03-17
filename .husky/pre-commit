@@ -4,6 +4,9 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 echo "Running TypeScript typecheck (all configs)..."
 npm run typecheck:all || exit 1
 
+echo "Running staged secret scan..."
+npm run secrets:scan:staged || exit 1
+
 CHANGED_FILES="$(git diff --cached --name-only)"
 
 if echo "$CHANGED_FILES" | grep -q "^package-lock\\.json$"; then
