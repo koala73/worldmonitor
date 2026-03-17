@@ -132,7 +132,7 @@ function injectStyles(): void {
   const s = document.createElement('style');
   s.id = 'vault-intro-css';
   s.textContent = `
-    @keyframes vi-fadein   { from{opacity:0} to{opacity:1} }
+    @keyframes vi-fadein   { from{opacity:0;transform:scale(1.04)} to{opacity:1;transform:scale(1)} }
     @keyframes vi-scan     { 0%,100%{opacity:.35;stroke-width:1.5px} 50%{opacity:.9;stroke-width:2px} }
     @keyframes vi-glow     { 0%,100%{opacity:0} 50%{opacity:.55} }
     @keyframes vi-scanerr  { 0%,100%{opacity:.5;stroke-width:1.5px} 50%{opacity:1;stroke-width:2px} }
@@ -163,7 +163,7 @@ function buildDoor(): DoorParts {
 
   const svg = svgEl<SVGSVGElement>('svg');
   attr(svg, { viewBox: `0 0 ${V} ${V}`, width: V, height: V });
-  svg.style.cssText = 'width:min(440px,72vmin);height:min(440px,72vmin);overflow:visible;display:block;';
+  svg.style.cssText = 'width:min(520px,78vmin);height:min(520px,78vmin);overflow:visible;display:block;';
 
   // ── Defs ──────────────────────────────────────────────────────────────────
   const defs = svgEl('defs');
@@ -375,7 +375,7 @@ function buildDoor(): DoorParts {
   // ── Status text (below fingerprint) ──────────────────────────────────────
   const statusText = svgEl<SVGTextElement>('text');
   attr(statusText, {
-    x: C, y: C + 58,
+    x: C, y: C + 68,
     'text-anchor': 'middle',
     'font-family': '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
     'font-size': '11', 'font-weight': '500', 'letter-spacing': '0.18em',
@@ -387,13 +387,13 @@ function buildDoor(): DoorParts {
   // ── Logo text (etched into door, above scanner) ───────────────────────────
   const logoText = svgEl<SVGTextElement>('text');
   attr(logoText, {
-    x: C, y: C - 110,
+    x: C, y: C - 125,
     'text-anchor': 'middle',
     'font-family': '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
     'font-size': '11', 'font-weight': '700', 'letter-spacing': '0.3em',
     fill: 'rgba(180,200,224,0.28)',
   });
-  logoText.textContent = 'WORLD MONITOR';
+  logoText.textContent = 'WORLD  MONITOR';
   svg.appendChild(logoText);
 
   // ── Status LED (bottom of door face) ─────────────────────────────────────
@@ -431,7 +431,7 @@ function buildOverlay(): OverlayRefs {
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     font-family:"SF Pro Display",-apple-system,BlinkMacSystemFont,sans-serif;
     overflow:hidden;
-    animation:vi-fadein .5s ease both;
+    animation:vi-fadein 1.1s cubic-bezier(0.16,1,0.3,1) both;
   `;
 
   // Quit link — very subtle, bottom of screen
@@ -457,25 +457,29 @@ function buildOverlay(): OverlayRefs {
 // ── Scanner state ──────────────────────────────────────────────────────────────
 
 function setScannerIdle(p: DoorParts): void {
-  p.scannerRing.style.animation = 'vi-scan 2.8s ease-in-out infinite';
-  p.scannerGlow.style.animation = 'vi-glow 2.8s ease-in-out infinite';
-  p.scannerRing.setAttribute('stroke', '#1e6ab8');
-  p.scannerGlow.setAttribute('stroke', '#1a5a9e');
-  p.padFill.setAttribute('fill', 'url(#vi-sg)');
-  for (const fp of p.fpPaths) fp.setAttribute('stroke', '#3080b8');
-  p.statusText.setAttribute('fill', 'rgba(100,148,200,0.7)');
-  p.statusText.textContent = 'TAP TO AUTHENTICATE';
-  p.scannerBtn.style.cursor = 'pointer';
-  p.scannerBtn.addEventListener('mouseenter', () => {
-    p.scannerRing.setAttribute('stroke', '#3898e8');
-    p.scannerGlow.setAttribute('stroke', '#2878cc');
-    for (const fp of p.fpPaths) fp.setAttribute('stroke', '#4a9ad8');
-  }, { once: false });
-  p.scannerBtn.addEventListener('mouseleave', () => {
+  const setIdleColors = () => {
     p.scannerRing.setAttribute('stroke', '#1e6ab8');
     p.scannerGlow.setAttribute('stroke', '#1a5a9e');
     for (const fp of p.fpPaths) fp.setAttribute('stroke', '#3080b8');
-  }, { once: false });
+  };
+
+  p.scannerRing.style.animation = 'vi-scan 2.8s ease-in-out infinite';
+  p.scannerGlow.style.animation = 'vi-glow 2.8s ease-in-out infinite';
+  setIdleColors();
+  p.padFill.setAttribute('fill', 'url(#vi-sg)');
+  p.statusText.setAttribute('fill', 'rgba(100,148,200,0.7)');
+  p.statusText.textContent = 'TAP TO AUTHENTICATE';
+  p.scannerBtn.style.cursor = 'pointer';
+  p.scannerBtn.onmouseenter = () => {
+    if (p.statusText.textContent !== 'TAP TO AUTHENTICATE') return;
+    p.scannerRing.setAttribute('stroke', '#3898e8');
+    p.scannerGlow.setAttribute('stroke', '#2878cc');
+    for (const fp of p.fpPaths) fp.setAttribute('stroke', '#4a9ad8');
+  };
+  p.scannerBtn.onmouseleave = () => {
+    if (p.statusText.textContent !== 'TAP TO AUTHENTICATE') return;
+    setIdleColors();
+  };
 }
 
 function setScannerScanning(p: DoorParts): void {
@@ -516,33 +520,33 @@ function setScannerSuccess(p: DoorParts): void {
 
 async function playOpenSequence(p: DoorParts & { overlay: HTMLDivElement }): Promise<void> {
   setScannerSuccess(p);
-  await sleep(280);
+  await sleep(500);
 
   const ctx = newCtx();
   if (ctx) {
     playBoltRetracts(ctx);
-    setTimeout(() => playDoorOpen(ctx), 440);
+    setTimeout(() => playDoorOpen(ctx), 520);
   }
 
-  // Retract bolts
+  // Retract bolts — staggered, unhurried
   p.boltPins.forEach((pin, i) => {
-    pin.style.animation = `vi-bolt .26s ease-in ${i * 0.055}s both`;
+    pin.style.animation = `vi-bolt .34s ease-in ${i * 0.08}s both`;
   });
-  await sleep(540);
+  await sleep(900);
 
-  // Door swings open on Y axis (hinged on right)
+  // Door swings open — slow, heavy, deliberate
   p.svg.style.cssText += `
-    transition: transform 1.9s cubic-bezier(0.4,0,0.15,1), opacity 1.7s ease;
+    transition: transform 2.4s cubic-bezier(0.4,0,0.12,1), opacity 2.0s ease 0.3s;
     transform-origin: right center;
-    transform: perspective(900px) rotateY(-90deg);
+    transform: perspective(1100px) rotateY(-90deg);
     opacity: 0;
   `;
-  await sleep(420);
+  await sleep(600);
 
-  // Fade background
-  p.overlay.style.transition = 'opacity 1.5s ease';
+  // Background fades after door starts moving
+  p.overlay.style.transition = 'opacity 1.8s ease';
   p.overlay.style.opacity = '0';
-  await sleep(1600);
+  await sleep(2000);
 }
 
 // ── Biometric flow ─────────────────────────────────────────────────────────────
