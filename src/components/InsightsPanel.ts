@@ -441,8 +441,7 @@ export class InsightsPanel extends Panel {
   private renderWorldBrief(brief: string): string {
     const title = SITE_VARIANT === 'tech' ? '🚀 TECH BRIEF' : '🌍 WORLD BRIEF';
     // Parse structured brief sections
-    const sections = brief.split(/
-(?=SITUATION OVERVIEW|KEY DEVELOPMENTS|THREAT ASSESSMENT|WATCH NEXT)/);
+    const sections = brief.split(/\n(?=SITUATION OVERVIEW|KEY DEVELOPMENTS|THREAT ASSESSMENT|WATCH NEXT)/);
     if (sections.length <= 1) {
       // Fallback: plain text rendering for unstructured responses
       return `
@@ -460,8 +459,7 @@ export class InsightsPanel extends Panel {
         const body = trimmed.replace(/^SITUATION OVERVIEW\s*/,'').replace(/^\[|\]$/g,'').trim();
         html += `<div class="insights-brief-overview">${escapeHtml(body)}</div>`;
       } else if (trimmed.startsWith('KEY DEVELOPMENTS')) {
-        const lines = trimmed.replace(/^KEY DEVELOPMENTS\s*/,'').split('
-').filter(l => l.trim());
+        const lines = trimmed.replace(/^KEY DEVELOPMENTS\s*/,'').split('\n').filter(l => l.trim());
         const items = lines.map(l => {
           const text = l.replace(/^[-*•]\s*/,'').trim();
           if (!text || text.startsWith('[')) return '';
@@ -477,12 +475,12 @@ export class InsightsPanel extends Panel {
       } else if (trimmed.startsWith('THREAT ASSESSMENT')) {
         const body = trimmed.replace(/^THREAT ASSESSMENT:?\s*/,'').trim();
         const levelMatch = body.match(/^(NORMAL|ELEVATED|HIGH|CRITICAL)/i);
-        const level = levelMatch ? levelMatch[1].toUpperCase() : '';
+        const level = levelMatch?.[1]?.toUpperCase() ?? '';
         const detail = body.replace(/^(NORMAL|ELEVATED|HIGH|CRITICAL)[\s:—-]*/i,'').trim();
         const levelClass = level === 'CRITICAL' ? 'threat-critical' : level === 'HIGH' ? 'threat-high' : level === 'ELEVATED' ? 'threat-elevated' : 'threat-normal';
         html += `<div class="insights-brief-threat"><span class="insights-threat-badge ${levelClass}">${level || 'THREAT'}</span><span class="insights-threat-detail">${escapeHtml(detail)}</span></div>`;
       } else if (trimmed.startsWith('WATCH NEXT')) {
-        const body = trimmed.replace(/^WATCH NEXT[\s\d-HhRr:]*:?\s*/i,'').trim();
+        const body = trimmed.replace(/^WATCH NEXT[\s\d\-HhRr:]*:?\s*/i,'').trim();
         html += `<div class="insights-brief-watch"><span class="insights-watch-label">WATCH</span>${escapeHtml(body)}</div>`;
       }
     }
