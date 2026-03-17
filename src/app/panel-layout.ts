@@ -1,4 +1,3 @@
-import { SITE_VARIANT } from '@/config/variant';
 
 import type { AppContext, AppModule } from '@/app/app-context';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
@@ -70,7 +69,6 @@ import type { CustomWidgetSpec } from '@/services/widget-store';
 
 // Brand names based on variant
 const BRAND_NAME = SITE_VARIANT === 'ireland' ? 'IRISHTECH DAILY' : 'WORLD MONITOR';
-const BRAND_SHORT = SITE_VARIANT === 'ireland' ? 'IrishTech' : 'Monitor';
 const BRAND_LOGO = SITE_VARIANT === 'ireland' ? 'IRISHTECH' : 'MONITOR';
 
 export interface PanelLayoutCallbacks {
