@@ -2431,6 +2431,13 @@ function resolveForecastLlmProviders(options = {}) {
   return providers.length > 0 ? providers : FORECAST_LLM_PROVIDERS;
 }
 
+function summarizeForecastLlmOptions(options = {}) {
+  return {
+    providerOrder: Array.isArray(options.providerOrder) ? options.providerOrder : [],
+    modelOverrides: options.modelOverrides || {},
+  };
+}
+
 const SCENARIO_SYSTEM_PROMPT = `You are a senior geopolitical intelligence analyst writing scenario briefs.
 
 RULES:
@@ -2549,7 +2556,10 @@ function validateScenarios(scenarios, predictions) {
   });
 }
 
-async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
+async function callForecastLLM(stage, systemPrompt, userPrompt, options = {}) {
+  const resolvedOptions = summarizeForecastLlmOptions(options);
+  console.log(`  [LLM:${stage}] providerOrder=${resolvedOptions.providerOrder.join(',')} modelOverrides=${JSON.stringify(resolvedOptions.modelOverrides)}`);
+
   for (const provider of resolveForecastLlmProviders(options)) {
     const apiKey = process.env[provider.envKey];
     if (!apiKey) continue;
@@ -2573,12 +2583,22 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
         }),
         signal: AbortSignal.timeout(provider.timeout),
       });
-      if (!resp.ok) { console.warn(`  [LLM] ${provider.name}: HTTP ${resp.status}`); continue; }
+      if (!resp.ok) {
+        console.warn(`  [LLM:${stage}] ${provider.name} HTTP ${resp.status}`);
+        continue;
+      }
       const json = await resp.json();
       const text = json.choices?.[0]?.message?.content?.trim();
-      if (!text || text.length < 20) continue;
-      return { text, model: json.model || provider.model, provider: provider.name };
-    } catch (err) { console.warn(`  [LLM] ${provider.name}: ${err.message}`); }
+      if (!text || text.length < 20) {
+        console.warn(`  [LLM:${stage}] ${provider.name} returned empty/short output`);
+        continue;
+      }
+      const model = json.model || provider.model;
+      console.log(`  [LLM:${stage}] ${provider.name} success model=${model}`);
+      return { text, model, provider: provider.name };
+    } catch (err) {
+      console.warn(`  [LLM:${stage}] ${provider.name} ${(err).message}`);
+    }
   }
   return null;
 }
@@ -2782,7 +2802,7 @@ async function enrichScenariosWithLLM(predictions) {
       console.log(JSON.stringify({ event: 'llm_combined', cached: true, count: cached.items.length, hash }));
     } else {
       const t0 = Date.now();
-      const result = await callForecastLLM(COMBINED_SYSTEM_PROMPT, buildUserPrompt(topWithPerspectives), combinedLlmOptions);
+      const result = await callForecastLLM('combined', COMBINED_SYSTEM_PROMPT, buildUserPrompt(topWithPerspectives), combinedLlmOptions);
       if (result) {
         const raw = parseLLMScenarios(result.text);
         const validScenarios = validateScenarios(raw, topWithPerspectives);
@@ -2835,7 +2855,7 @@ async function enrichScenariosWithLLM(predictions) {
 
         if (items.length > 0) await redisSet(url, token, cacheKey, { items }, 3600);
       } else {
-        console.warn('  [LLM] Combined call failed');
+        console.warn('  [LLM:combined] call failed');
       }
     }
   }
@@ -2870,7 +2890,7 @@ async function enrichScenariosWithLLM(predictions) {
       console.log(JSON.stringify({ event: 'llm_scenario', cached: true, count: cached.scenarios.length, hash }));
     } else {
       const t0 = Date.now();
-      const result = await callForecastLLM(SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly), scenarioLlmOptions);
+      const result = await callForecastLLM('scenario', SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly), scenarioLlmOptions);
       if (result) {
         const raw = parseLLMScenarios(result.text);
         const valid = validateScenarios(raw, scenarioOnly);
@@ -2926,6 +2946,8 @@ async function enrichScenariosWithLLM(predictions) {
           }
           await redisSet(url, token, cacheKey, { scenarios }, 3600);
         }
+      } else {
+        console.warn('  [LLM:scenario] call failed');
       }
     }
   }
