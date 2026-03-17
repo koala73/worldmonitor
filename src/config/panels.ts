@@ -32,6 +32,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   commodities: { name: 'Commodities', enabled: true, priority: 1 },
   markets: { name: 'Markets', enabled: true, priority: 1 },
   economic: { name: 'Economic Indicators', enabled: true, priority: 1 },
+  'economic-stress': { name: 'Economic Stress', enabled: true, priority: 2 },
   'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1 },
   finance: { name: 'Financial', enabled: true, priority: 1 },
@@ -44,6 +45,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'satellite-fires': { name: 'Fires', enabled: true, priority: 2 },
   earthquakes: { name: 'Earthquakes', enabled: true, priority: 2 },
   'cyber-threats': { name: 'Cyber Threats', enabled: true, priority: 2 },
+  'comms-health': { name: 'Communications Health', enabled: true, priority: 2 },
   'alert-center': { name: 'Alert Center', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
@@ -635,7 +637,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'markets', 'economic', 'trade-policy', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
+    panelKeys: ['commodities', 'markets', 'economic', 'economic-stress', 'trade-policy', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
     variants: ['full'],
   },
   topical: {
@@ -645,7 +647,17 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
-    panelKeys: ['monitors', 'satellite-fires', 'earthquakes', 'cyber-threats', 'ucdp-events', 'airstrikes', 'displacement', 'climate', 'population-exposure', 'security-advisories', 'oref-sirens', 'disease-outbreaks', 'space-weather', 'air-quality', 'gdacs-alerts', 'volcano-alerts', 'nws-alerts', 'radiation-decay', 'resource-inventory'],
+    panelKeys: ['monitors', 'cyber-threats', 'comms-health', 'ucdp-events', 'airstrikes', 'displacement', 'security-advisories', 'oref-sirens', 'space-weather', 'population-exposure'],
+    variants: ['full'],
+  },
+  hazards: {
+    labelKey: 'header.panelCatHazards',
+    panelKeys: ['satellite-fires', 'earthquakes', 'gdacs-alerts', 'volcano-alerts', 'nws-alerts', 'tsunami-alerts', 'tropical-cyclones', 'climate'],
+    variants: ['full'],
+  },
+  healthEnv: {
+    labelKey: 'header.panelCatHealthEnv',
+    panelKeys: ['disease-outbreaks', 'air-quality', 'food-insecurity', 'radiation-decay', 'resource-inventory'],
     variants: ['full'],
   },
 

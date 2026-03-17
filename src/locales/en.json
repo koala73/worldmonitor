@@ -144,7 +144,9 @@
     "panelCatCentralBanks": "Central Banks & Econ",
     "panelCatDeals": "Deals & Institutional",
     "panelCatGulfMena": "Gulf & MENA",
-    "panelCatTradePolicy": "Trade Policy"
+    "panelCatTradePolicy": "Trade Policy",
+    "panelCatHazards": "Hazards",
+    "panelCatHealthEnv": "Health & Environment"
   },
   "panels": {
     "liveNews": "Live News",
