@@ -11,6 +11,7 @@ const repoRoot = path.resolve(scriptDir, '..');
 const packageJsonPath = path.join(repoRoot, 'package.json');
 const tauriConfPath = path.join(repoRoot, 'src-tauri', 'tauri.conf.json');
 const cargoTomlPath = path.join(repoRoot, 'src-tauri', 'Cargo.toml');
+const infoPlistPath = path.join(repoRoot, 'src-tauri', 'Info.plist');
 
 function updateCargoPackageVersion(cargoToml, targetVersion) {
   const packageSectionRegex = /\[package\][\s\S]*?(?=\n\[|$)/;
@@ -54,12 +55,20 @@ async function main() {
   const cargoToml = await readFile(cargoTomlPath, 'utf8');
   const cargoUpdate = updateCargoPackageVersion(cargoToml, targetVersion);
 
+  const infoPlist = await readFile(infoPlistPath, 'utf8');
+  const infoPlistVersionMatch = infoPlist.match(/<key>CFBundleGetInfoString<\/key>\s*<string>World Monitor ([^<]+)<\/string>/);
+  const infoPlistCurrentVersion = infoPlistVersionMatch ? infoPlistVersionMatch[1] : null;
+  const infoPlistChanged = infoPlistCurrentVersion !== targetVersion;
+
   const mismatches = [];
   if (tauriChanged) {
     mismatches.push(`src-tauri/tauri.conf.json (${tauriCurrentVersion} -> ${targetVersion})`);
   }
   if (cargoUpdate.changed) {
     mismatches.push(`src-tauri/Cargo.toml (${cargoUpdate.currentVersion} -> ${targetVersion})`);
+  }
+  if (infoPlistChanged) {
+    mismatches.push(`src-tauri/Info.plist CFBundleGetInfoString (${infoPlistCurrentVersion ?? 'unknown'} -> ${targetVersion})`);
   }
 
   if (CHECK_ONLY) {
@@ -70,11 +79,11 @@ async function main() {
       }
       process.exit(1);
     }
-    console.log(`[version:check] OK. package.json, tauri.conf.json, and Cargo.toml are all ${targetVersion}.`);
+    console.log(`[version:check] OK. package.json, tauri.conf.json, Cargo.toml, and Info.plist are all ${targetVersion}.`);
     return;
   }
 
-  if (!tauriChanged && !cargoUpdate.changed) {
+  if (!tauriChanged && !cargoUpdate.changed && !infoPlistChanged) {
     console.log(`[version:sync] No changes needed. All files already at ${targetVersion}.`);
     return;
   }
@@ -86,6 +95,14 @@ async function main() {
 
   if (cargoUpdate.changed) {
     await writeFile(cargoTomlPath, cargoUpdate.updatedToml, 'utf8');
+  }
+
+  if (infoPlistChanged) {
+    const updatedPlist = infoPlist.replace(
+      /(<key>CFBundleGetInfoString<\/key>\s*<string>)World Monitor [^<]+(<\/string>)/,
+      `$1World Monitor ${targetVersion}$2`,
+    );
+    await writeFile(infoPlistPath, updatedPlist, 'utf8');
   }
 
   console.log(`[version:sync] Synced desktop versions to ${targetVersion}.`);

@@ -82,7 +82,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'livenow-fox', name: 'LiveNOW from FOX', handle: '@LiveNOWfromFOX', fallbackVideoId: 'QaftgYkG-ek' },
   { id: 'fox-news', name: 'Fox News', handle: '@FoxNews', fallbackVideoId: 'QaftgYkG-ek', useFallbackOnly: true },
   { id: 'newsmax', name: 'Newsmax', handle: '@NEWSMAX', fallbackVideoId: 'S-lFBzloL2Y', useFallbackOnly: true },
-  { id: 'abc-news', name: 'ABC News', handle: '@ABCNews' },
+  { id: 'abc-news', name: 'ABC News', handle: '@ABCNews', fallbackVideoId: 'mD7t1mTtAss' },
   { id: 'cbs-news', name: 'CBS News', handle: '@CBSNews', fallbackVideoId: 'R9L8sDK8iEc' },
   { id: 'nbc-news', name: 'NBC News', handle: '@NBCNews', fallbackVideoId: 'yMr0neQhu6c' },
   { id: 'cbc-news', name: 'CBC News', handle: '@CBCNews', fallbackVideoId: 'jxP_h3V-Dv8' },
@@ -95,7 +95,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'ntv-turkey', name: 'NTV', handle: '@NTV', fallbackVideoId: 'pqq5c6k70kk' },
   { id: 'cnn-turk', name: 'CNN TURK', handle: '@cnnturk', fallbackVideoId: 'lsY4GFoj_xY' },
   { id: 'tv-rain', name: 'TV Rain', handle: '@tvrain' },
-  { id: 'rt', name: 'RT', handle: '' },
+  { id: 'rt', name: 'RT', handle: '', fallbackVideoId: 'GZm0UuozlpA', useFallbackOnly: true },
   { id: 'tvp-info', name: 'TVP Info', handle: '@tvpinfo', fallbackVideoId: '3jKb-uThfrg' },
   { id: 'telewizja-republika', name: 'Telewizja Republika', handle: '@Telewizja_Republika', fallbackVideoId: 'dzntyCTgJMQ' },
   // Latin America & Portuguese
@@ -114,7 +114,7 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'ann-news', name: 'ANN News', handle: '@ANNnewsCH' },
   { id: 'ntv-news', name: 'NTV News (Japan)', handle: '@ntv_news' },
   { id: 'cti-news', name: 'CTI News (Taiwan)', handle: '@中天新聞CtiNews' },
-  { id: 'wion', name: 'WION', handle: '@WION' },
+  { id: 'wion', name: 'WION', handle: '@WION', fallbackVideoId: 'LqMPBFXTCJM' },
   { id: 'cna-asia', name: 'CNA (NewsAsia)', handle: '@channelnewsasia', fallbackVideoId: 'XWq5kBlakcQ' },
   { id: 'nhk-world', name: 'NHK World Japan', handle: '@NHKWORLDJAPAN' },
   // Middle East

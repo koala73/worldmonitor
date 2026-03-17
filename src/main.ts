@@ -169,6 +169,79 @@ import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chun
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
+const DESKTOP_BOOTSTRAP_TIMEOUT_MS = 2200;
+const DESKTOP_BOOTSTRAP_POLL_MS = 50;
+const FORCE_DESKTOP_GATE = import.meta.env.VITE_DESKTOP_RUNTIME === '1';
+
+type DesktopRuntimeSnapshot = {
+  detected: boolean;
+  forcedDesktopBuild: boolean;
+  hasTauriGlobals: boolean;
+  userAgent: string;
+  protocol: string;
+  host: string;
+};
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getDesktopRuntimeSnapshot(): DesktopRuntimeSnapshot {
+  const tauriWindow = window as typeof window & {
+    __TAURI__?: unknown;
+    __TAURI_INTERNALS__?: unknown;
+  };
+
+  return {
+    detected: isDesktopRuntime(),
+    forcedDesktopBuild: FORCE_DESKTOP_GATE,
+    hasTauriGlobals: '__TAURI__' in tauriWindow || '__TAURI_INTERNALS__' in tauriWindow,
+    userAgent: window.navigator?.userAgent ?? '',
+    protocol: window.location?.protocol ?? '',
+    host: window.location?.host ?? '',
+  };
+}
+
+async function waitForDesktopRuntimeSnapshot(): Promise<DesktopRuntimeSnapshot> {
+  let snapshot = getDesktopRuntimeSnapshot();
+  if (!snapshot.forcedDesktopBuild || snapshot.detected) {
+    return snapshot;
+  }
+
+  const deadline = Date.now() + DESKTOP_BOOTSTRAP_TIMEOUT_MS;
+  while (!snapshot.detected && Date.now() < deadline) {
+    await sleep(DESKTOP_BOOTSTRAP_POLL_MS);
+    snapshot = getDesktopRuntimeSnapshot();
+  }
+
+  return snapshot;
+}
+
+function showDesktopRuntimeDebugNotice(snapshot: DesktopRuntimeSnapshot): void {
+  const existing = document.getElementById('desktop-runtime-debug-notice');
+  if (existing) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'desktop-runtime-debug-notice';
+  banner.textContent = `Desktop build skipped biometric gate because Tauri runtime never appeared. protocol=${snapshot.protocol || 'unknown'} host=${snapshot.host || 'unknown'} tauriGlobals=${snapshot.hasTauriGlobals ? 'yes' : 'no'}`;
+  Object.assign(banner.style, {
+    position: 'fixed',
+    top: '16px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: '10000',
+    maxWidth: 'min(960px, calc(100vw - 32px))',
+    padding: '14px 18px',
+    borderRadius: '14px',
+    border: '1px solid rgba(255, 204, 102, 0.45)',
+    background: 'rgba(28, 15, 8, 0.92)',
+    boxShadow: '0 18px 48px rgba(0, 0, 0, 0.35)',
+    color: '#fff2d6',
+    font: '600 13px/1.45 "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif',
+    letterSpacing: '0.01em',
+  } as CSSStyleDeclaration);
+  document.body.appendChild(banner);
+}
 
 // Initialize Vercel Analytics
 inject();
@@ -192,7 +265,7 @@ loadDesktopSecrets().then(async () => {
 applyStoredTheme();
 
 // Mark body with macOS-native class so CSS design system activates on desktop
-if (isDesktopRuntime()) {
+if (isDesktopRuntime() || FORCE_DESKTOP_GATE) {
   document.body.classList.add('is-desktop-macos');
 }
 
@@ -229,7 +302,13 @@ if (urlParams.get('settings') === '1') {
   );
 } else {
   const boot = async () => {
-    if (isDesktopRuntime()) {
+    const desktopRuntime = await waitForDesktopRuntimeSnapshot();
+
+    if (desktopRuntime.forcedDesktopBuild && !desktopRuntime.detected) {
+      showDesktopRuntimeDebugNotice(desktopRuntime);
+    }
+
+    if (desktopRuntime.detected || desktopRuntime.forcedDesktopBuild) {
       const { ensureBiometricUnlock } = await import('./app/biometric-gate');
       const unlocked = await ensureBiometricUnlock();
       if (!unlocked) return;

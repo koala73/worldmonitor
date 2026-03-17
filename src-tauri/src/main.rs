@@ -195,6 +195,54 @@ struct DesktopRuntimeInfo {
     os: String,
     arch: String,
     local_api_port: Option<u16>,
+    username: Option<String>,
+    display_name: Option<String>,
+}
+
+fn humanize_user_name(value: &str) -> Option<String> {
+    let mut parts = Vec::new();
+    for raw in value.split(|c: char| c == '.' || c == '_' || c == '-' || c.is_whitespace()) {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut chars = trimmed.chars();
+        if let Some(first) = chars.next() {
+            let first_upper = first.to_uppercase().collect::<String>();
+            let rest = chars.as_str().to_lowercase();
+            parts.push(format!("{first_upper}{rest}"));
+        }
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" "))
+    }
+}
+
+fn resolve_runtime_user_name() -> Option<String> {
+    env::var("USER")
+        .ok()
+        .or_else(|| env::var("USERNAME").ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn resolve_runtime_display_name(username: Option<&String>) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = Command::new("id").arg("-F").output() {
+            if output.status.success() {
+                let display_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !display_name.is_empty() {
+                    return Some(display_name);
+                }
+            }
+        }
+    }
+
+    username.and_then(|value| humanize_user_name(value))
 }
 
 fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
@@ -237,10 +285,14 @@ fn get_local_api_token(webview: Webview, state: tauri::State<'_, LocalApiState>)
 #[tauri::command]
 fn get_desktop_runtime_info(state: tauri::State<'_, LocalApiState>) -> DesktopRuntimeInfo {
     let port = state.port.lock().ok().and_then(|g| *g);
+    let username = resolve_runtime_user_name();
+    let display_name = resolve_runtime_display_name(username.as_ref());
     DesktopRuntimeInfo {
         os: env::consts::OS.to_string(),
         arch: env::consts::ARCH.to_string(),
         local_api_port: port,
+        username,
+        display_name,
     }
 }
 

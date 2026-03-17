@@ -11,7 +11,7 @@ export function findMissingPackageLockVersions(lockfile) {
   const failures = [];
 
   for (const [packagePath, metadata] of Object.entries(lockfile.packages ?? {})) {
-    if (packagePath === '' || metadata?.link === true) {
+    if (packagePath === '' || metadata?.link === true || metadata?.optional === true) {
       continue;
     }
 

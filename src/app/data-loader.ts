@@ -78,6 +78,8 @@ import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
+import { getTopActiveGeoHubs } from '@/services/geo-activity';
+import { getTopActiveHubs } from '@/services/tech-activity';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
@@ -140,6 +142,8 @@ import { NWSAlertsPanel } from '@/components/NWSAlertsPanel';
 import { CommsHealthPanel } from '@/components/CommsHealthPanel';
 import { EconomicStressPanel } from '@/components/EconomicStressPanel';
 import { GivingPanel } from '@/components';
+import { GeoHubsPanel } from '@/components/GeoHubsPanel';
+import { TechHubsPanel } from '@/components/TechHubsPanel';
 import { fetchProgressData } from '@/services/progress-data';
 import { fetchConservationWins } from '@/services/conservation-data';
 import { fetchRenewableEnergyData, fetchEnergyCapacity } from '@/services/renewable-energy-data';
@@ -831,6 +835,18 @@ export class DataLoaderManager implements AppModule {
         }));
       if (geoLocated.length > 0) {
         this.ctx.map?.setNewsLocations(geoLocated);
+      }
+
+      if (SITE_VARIANT === 'tech') {
+        const techActivities = getTopActiveHubs(this.ctx.latestClusters);
+        this.ctx.map?.setTechActivity(techActivities);
+        (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)?.setActivities(techActivities);
+      }
+
+      if (SITE_VARIANT === 'full') {
+        const geoActivities = getTopActiveGeoHubs(this.ctx.latestClusters);
+        this.ctx.map?.setGeoActivity(geoActivities);
+        (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)?.setActivities(geoActivities);
       }
     } catch (error) {
       console.error('[App] Clustering failed, clusters unchanged:', error);

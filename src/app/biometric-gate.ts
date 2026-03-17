@@ -17,6 +17,22 @@ const UNLOCK_SOUND_SEAL_TRANSIENT_MS = 180;
 const UNLOCK_SOUND_DOOR_SWELL_MS = 1480;
 const AUTH_REASON = 'Unlock World Monitor';
 
+type DesktopRuntimeInfo = {
+  os: string;
+  arch: string;
+  local_api_port?: number | null;
+  username?: string | null;
+  display_name?: string | null;
+};
+
+type BiometricIdentity = {
+  displayName: string;
+  location: string;
+  planet: string;
+  country: string;
+  flag: string;
+};
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -74,7 +90,98 @@ async function waitForInteractiveWindow(): Promise<boolean> {
   return true;
 }
 
-function ensureOverlay(): {
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function humanizeUserName(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const cleaned = normalizeWhitespace(value.replace(/[._-]+/g, ' '));
+  if (!cleaned) return null;
+  return cleaned
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function resolveCountryCodeFromLocale(): string | null {
+  const localeCandidates = [
+    window.navigator?.language,
+    ...(window.navigator?.languages ?? []),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  for (const candidate of localeCandidates) {
+    try {
+      const locale = new Intl.Locale(candidate).maximize();
+      const region = locale.region?.toUpperCase();
+      if (region && /^[A-Z]{2}$/.test(region)) return region;
+    } catch {
+      // Ignore locale parsing failures and keep looking.
+    }
+  }
+
+  return null;
+}
+
+function resolveCountryName(countryCode: string | null): string {
+  if (!countryCode) return 'Unknown';
+  try {
+    const displayNames = new Intl.DisplayNames(undefined, { type: 'region' });
+    return displayNames.of(countryCode) ?? countryCode;
+  } catch {
+    return countryCode;
+  }
+}
+
+function countryCodeToFlag(countryCode: string | null): string {
+  if (!countryCode || !/^[A-Z]{2}$/.test(countryCode)) return '';
+  return String.fromCodePoint(...[...countryCode].map((char) => 127397 + char.charCodeAt(0)));
+}
+
+function resolveLocationLabel(): string {
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timeZoneParts = timeZone.split('/');
+    const lastSegment = timeZoneParts[timeZoneParts.length - 1]?.replace(/_/g, ' ');
+    const label = normalizeWhitespace(lastSegment ?? '');
+    if (label) return label;
+  } catch {
+    // Fall back to a broader location if timezone introspection fails.
+  }
+
+  return 'Local Timezone';
+}
+
+async function resolveBiometricIdentity(): Promise<BiometricIdentity> {
+  let displayName = 'Local User';
+
+  if (hasTauriInvokeBridge()) {
+    try {
+      const runtimeInfo = await invokeTauri<DesktopRuntimeInfo>('get_desktop_runtime_info');
+      displayName =
+        humanizeUserName(runtimeInfo.display_name)
+        ?? humanizeUserName(runtimeInfo.username)
+        ?? displayName;
+    } catch {
+      // Fall back to browser-derived identity if the desktop bridge is not ready yet.
+    }
+  }
+
+  const countryCode = resolveCountryCodeFromLocale();
+  const country = resolveCountryName(countryCode);
+  const flag = countryCodeToFlag(countryCode);
+
+  return {
+    displayName,
+    location: resolveLocationLabel(),
+    planet: 'Earth',
+    country,
+    flag,
+  };
+}
+
+function ensureOverlay(biometricIdentity: BiometricIdentity): {
   container: HTMLDivElement;
   stage: HTMLDivElement;
   portalGlow: HTMLDivElement;
@@ -721,15 +828,16 @@ function ensureOverlay(): {
   const telemetry = document.createElement('div');
   Object.assign(telemetry.style, {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: '10px',
     margin: '0 0 18px',
   } as CSSStyleDeclaration);
 
   const telemetryLabels = [
-    ['BAY', 'A-12'],
-    ['SEAL', 'LOCKED'],
-    ['AUTH', 'BIOMETRIC'],
+    ['USER', biometricIdentity.displayName],
+    ['LOCATION', biometricIdentity.location],
+    ['PLANET', biometricIdentity.planet],
+    ['COUNTRY', `${biometricIdentity.flag} ${biometricIdentity.country}`.trim()],
   ] as const;
   telemetryLabels.forEach(([label, value]) => {
     const item = document.createElement('div');
@@ -764,7 +872,7 @@ function ensureOverlay(): {
   });
 
   const statusPill = document.createElement('div');
-  statusPill.textContent = 'SECURE AIRLOCK';
+  statusPill.textContent = 'LOCAL PROFILE';
   Object.assign(statusPill.style, {
     display: 'inline-flex',
     alignItems: 'center',
@@ -792,7 +900,7 @@ function ensureOverlay(): {
   } as CSSStyleDeclaration);
 
   const message = document.createElement('p');
-  message.textContent = 'Touch ID or your device passcode unlocks the command deck.';
+  message.textContent = 'Touch ID or your device passcode unlocks World Monitor.';
   Object.assign(message.style, {
     margin: '0 0 22px',
     lineHeight: '1.55',
@@ -1269,7 +1377,8 @@ async function playUnlockCelebration(overlay: OverlayElements): Promise<void> {
 }
 
 export async function ensureBiometricUnlock(): Promise<boolean> {
-  const overlay = ensureOverlay();
+  const biometricIdentity = await resolveBiometricIdentity();
+  const overlay = ensureOverlay(biometricIdentity);
   const { message, button, quit } = overlay;
 
   const updateMessage = (text: string) => { message.textContent = text; };
@@ -1296,7 +1405,7 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
       inFlight = (async () => {
         setBusy(true);
         if (manual) {
-          updateMessage('Authenticating with the shipboard lock...');
+          updateMessage('Authenticating with your device security...');
         }
 
         try {
@@ -1330,12 +1439,12 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
       window.close();
     };
 
-    button.onclick = () => {
+      button.onclick = () => {
       void tryAuth(true);
     };
 
     void (async () => {
-      updateMessage('Preparing secure airlock...');
+      updateMessage('Preparing secure unlock...');
       const windowReady = await waitForInteractiveWindow();
       if (!windowReady) {
         updateMessage('Click Authenticate to unlock World Monitor.');

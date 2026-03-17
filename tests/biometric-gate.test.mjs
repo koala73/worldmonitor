@@ -11,8 +11,36 @@ describe('desktop biometric bootstrap', () => {
   it('uses desktop runtime detection for the unlock gate', () => {
     assert.match(
       mainSrc,
-      /if \(isDesktopRuntime\(\)\) \{/,
-      'desktop unlock should follow the shared runtime detector instead of raw window globals',
+      /const desktopRuntime = await waitForDesktopRuntimeSnapshot\(\)/,
+      'desktop unlock should wait for runtime bootstrap before deciding whether to show the gate',
+    );
+    assert.match(
+      mainSrc,
+      /if \(desktopRuntime\.detected \|\| desktopRuntime\.forcedDesktopBuild\) \{/,
+      'desktop-built bundles should still show the unlock gate even if runtime globals are late',
+    );
+    assert.match(
+      mainSrc,
+      /const FORCE_DESKTOP_GATE = import\.meta\.env\.VITE_DESKTOP_RUNTIME === '1';/,
+      'desktop builds should carry an explicit gate-forcing signal',
+    );
+  });
+
+  it('shows a visible runtime warning if a desktop build never detects Tauri', () => {
+    assert.match(
+      mainSrc,
+      /function showDesktopRuntimeDebugNotice\(/,
+      'startup should surface a visible runtime warning when a desktop build misses Tauri detection',
+    );
+    assert.match(
+      mainSrc,
+      /desktop-runtime-debug-notice/,
+      'runtime warning should have a stable DOM id so regressions are easy to spot',
+    );
+    assert.match(
+      mainSrc,
+      /Desktop build skipped biometric gate because Tauri runtime never appeared\./,
+      'runtime warning copy should explain exactly why the biometric gate was skipped',
     );
   });
 
@@ -26,6 +54,39 @@ describe('desktop biometric bootstrap', () => {
       gateSrc,
       /invokeTauri<|await invokeTauri\(/,
       'biometric gate should invoke the plugin through the shared tauri bridge',
+    );
+  });
+
+  it('renders real user context instead of placeholder bay telemetry', () => {
+    assert.doesNotMatch(
+      gateSrc,
+      /\['BAY', 'A-12'\]/,
+      'biometric telemetry should not show placeholder bay identifiers',
+    );
+    assert.match(
+      gateSrc,
+      /async function resolveBiometricIdentity\(/,
+      'biometric gate should resolve a real identity payload for the user',
+    );
+    assert.match(
+      gateSrc,
+      /\['USER', biometricIdentity\.displayName\]/,
+      'biometric telemetry should show the user name',
+    );
+    assert.match(
+      gateSrc,
+      /\['LOCATION', biometricIdentity\.location\]/,
+      'biometric telemetry should show the user location',
+    );
+    assert.match(
+      gateSrc,
+      /\['PLANET', biometricIdentity\.planet\]/,
+      'biometric telemetry should show the planet',
+    );
+    assert.match(
+      gateSrc,
+      /\['COUNTRY', `\$\{biometricIdentity\.flag\} \$\{biometricIdentity\.country\}`\.trim\(\)\]/,
+      'biometric telemetry should show the country with its flag',
     );
   });
 

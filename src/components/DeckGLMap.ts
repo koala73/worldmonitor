@@ -93,6 +93,7 @@ import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { SpeciesRecovery } from '@/services/conservation-data';
+import type { GeoHubActivity } from '@/services/geo-activity';
 import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { FeatureCollection, Geometry } from 'geojson';
 import {
@@ -106,6 +107,7 @@ import {
 import { isLowPowerMode } from '@/services/low-power';
 import type { AirstrikeEvent } from '@/services/airstrikes';
 import type { S2UndergroundEvent } from '@/services/s2-underground';
+import type { TechHubActivity } from '@/services/tech-activity';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -4270,6 +4272,14 @@ export class DeckGLMap {
 
     this.syncPulseAnimation(now);
   }
+
+  public setTechActivity(_activities: TechHubActivity[]): void {}
+
+  public setOnTechHubClick(_handler: (hub: TechHubActivity) => void): void {}
+
+  public setGeoActivity(_activities: GeoHubActivity[]): void {}
+
+  public setOnGeoHubClick(_handler: (hub: GeoHubActivity) => void): void {}
 
   public setPositiveEvents(events: PositiveGeoEvent[]): void {
     this.positiveEvents = events;

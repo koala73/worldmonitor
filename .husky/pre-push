@@ -1,3 +1,6 @@
+#!/usr/bin/env sh
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
 echo "Running type check..."
 npm run typecheck || exit 1
 

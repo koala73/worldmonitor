@@ -1,10 +1,11 @@
 {
   "name": "worldmonitor-macos",
   "private": true,
-  "version": "2.6.0",
+  "version": "2.7.1",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
+    "prepare": "node scripts/install-git-hooks.mjs",
     "lint:md": "markdownlint-cli2 '**/*.md' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**'",
     "lockfile:check": "node scripts/check-package-lock.mjs",
     "version:sync": "node scripts/sync-desktop-version.mjs",
@@ -23,6 +24,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
     "typecheck:all": "tsc --noEmit && tsc --noEmit -p tsconfig.api.json",
+    "research:eval": "bash scripts/research-eval.sh",
+    "research:eval:rotation": "bash scripts/research-eval.sh rotation",
     "tauri": "tauri",
     "preview": "vite preview",
     "test:e2e:full": "cross-env VITE_VARIANT=full playwright test",

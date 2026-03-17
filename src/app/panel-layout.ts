@@ -61,6 +61,9 @@ import { HeroSpotlightPanel } from '@/components/HeroSpotlightPanel';
 import { GoodThingsDigestPanel } from '@/components/GoodThingsDigestPanel';
 import { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
 import { RenewableEnergyPanel } from '@/components/RenewableEnergyPanel';
+import { GeoHubsPanel } from '@/components/GeoHubsPanel';
+import { TechHubsPanel } from '@/components/TechHubsPanel';
+import { RegulationPanel } from '@/components/RegulationPanel';
 import { GivingPanel } from '@/components';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
 import { debounce, saveToStorage } from '@/utils';
@@ -80,6 +83,8 @@ import { trackCriticalBannerAction } from '@/services/analytics';
 import { initMode, setMode, alertFamily, getMode, toggleGhostMode, type AppMode } from '@/services/mode-manager';
 import { isLowPowerMode, setLowPowerMode } from '@/services/low-power';
 import { tryInvokeTauri } from '@/services/tauri-bridge';
+import type { GeoHubActivity } from '@/services/geo-activity';
+import type { TechHubActivity } from '@/services/tech-activity';
 
 export interface PanelLayoutCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -157,6 +162,9 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.container.innerHTML = this.buildDesktopLayout();
     } else {
       this.ctx.container.innerHTML = this.buildWebLayout();
+    }
+    if (this.ctx.isDesktopApp) {
+      document.title = `World Monitor v${__APP_VERSION__}`;
     }
     this.createPanels();
   }
@@ -326,7 +334,7 @@ export class PanelLayoutManager implements AppModule {
               </svg>
             </button>
             <span class="mac-toolbar-title" data-tauri-drag-region>
-              ${SITE_VARIANT === 'tech' ? 'Tech Monitor' : SITE_VARIANT === 'finance' ? 'Finance Monitor' : SITE_VARIANT === 'happy' ? 'Good News' : 'World Monitor'}
+              ${SITE_VARIANT === 'tech' ? 'Tech Monitor' : SITE_VARIANT === 'finance' ? 'Finance Monitor' : SITE_VARIANT === 'happy' ? 'Good News' : 'World Monitor'}<span class="mac-toolbar-version">v${__APP_VERSION__}${BETA_MODE ? ' β' : ''}</span>
             </span>
             <div class="mac-toolbar-status">
               <span class="status-dot"></span>
@@ -677,6 +685,10 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.panels['supply-chain'] = supplyChainPanel;
     }
 
+    if (SITE_VARIANT === 'tech') {
+      this.ctx.panels.regulation = new RegulationPanel('regulation');
+    }
+
     const africaPanel = new NewsPanel('africa', t('panels.africa'));
     this.attachRelatedAssetHandlers(africaPanel);
     this.ctx.newsPanels['africa'] = africaPanel;
@@ -700,7 +712,11 @@ export class PanelLayoutManager implements AppModule {
     for (const key of Object.keys(FEEDS)) {
       if (this.ctx.newsPanels[key]) continue;
       if (!Array.isArray((FEEDS as Record<string, unknown>)[key])) continue;
-      const panelKey = this.ctx.panels[key] && !this.ctx.newsPanels[key] ? `${key}-news` : key;
+      const altPanelKey = `${key}-news`;
+      const panelKey = this.ctx.panels[key] && !this.ctx.newsPanels[key]
+        ? (altPanelKey in DEFAULT_PANELS ? altPanelKey : '')
+        : key;
+      if (!panelKey) continue;
       if (this.ctx.panels[panelKey]) continue;
       const panelConfig = DEFAULT_PANELS[panelKey] ?? DEFAULT_PANELS[key];
       const label = panelConfig?.name ?? key.charAt(0).toUpperCase() + key.slice(1);
@@ -711,8 +727,18 @@ export class PanelLayoutManager implements AppModule {
     }
 
     if (SITE_VARIANT === 'full') {
+      const focusGeoHub = (hub: GeoHubActivity) => {
+        this.ctx.map?.setCenter(hub.lat, hub.lon, 4);
+        this.ctx.map?.flashLocation(hub.lat, hub.lon, 3000);
+      };
+
       const gdeltIntelPanel = new GdeltIntelPanel();
       this.ctx.panels['gdelt-intel'] = gdeltIntelPanel;
+
+      const geoHubsPanel = new GeoHubsPanel();
+      geoHubsPanel.setOnHubClick(focusGeoHub);
+      this.ctx.map?.setOnGeoHubClick(focusGeoHub);
+      this.ctx.panels['geo-hubs'] = geoHubsPanel;
 
       const ciiPanel = new CIIPanel();
       ciiPanel.setShareStoryHandler((code, name) => {
@@ -833,6 +859,16 @@ export class PanelLayoutManager implements AppModule {
 
       const liveWebcamsPanel = new LiveWebcamsPanel();
       this.ctx.panels['live-webcams'] = liveWebcamsPanel;
+
+      const focusTechHub = (hub: TechHubActivity) => {
+        this.ctx.map?.setCenter(hub.lat, hub.lon, 4);
+        this.ctx.map?.flashLocation(hub.lat, hub.lon, 3000);
+      };
+
+      const techHubsPanel = new TechHubsPanel();
+      techHubsPanel.setOnHubClick(focusTechHub);
+      this.ctx.map?.setOnTechHubClick(focusTechHub);
+      this.ctx.panels['tech-hubs'] = techHubsPanel;
 
       this.ctx.panels['events'] = new TechEventsPanel('events');
 

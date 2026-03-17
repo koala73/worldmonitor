@@ -5,16 +5,16 @@ import { SITE_VARIANT } from './variant';
 // ============================================
 // FULL VARIANT (Geopolitical)
 // ============================================
-// Panel order matters! First panels appear at top of grid.
-// Desired order: live-news, AI Insights, AI Strategic Posture, cii, strategic-risk, then rest
+// Panel order matters. Lead with AI overview panels before raw feeds.
 const FULL_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Global Map', enabled: true, priority: 1 },
-  'live-news': { name: 'Live News', enabled: true, priority: 1 },
-  'live-webcams': { name: 'Live Webcams', enabled: true, priority: 1 },
   insights: { name: 'AI Insights', enabled: true, priority: 1 },
   'strategic-posture': { name: 'AI Strategic Posture', enabled: true, priority: 1 },
-  cii: { name: 'Country Instability', enabled: true, priority: 1 },
   'strategic-risk': { name: 'Strategic Risk Overview', enabled: true, priority: 1 },
+  cii: { name: 'Country Instability', enabled: true, priority: 1 },
+  'geo-hubs': { name: 'Geopolitical Hubs', enabled: true, priority: 1 },
+  'live-news': { name: 'Live News', enabled: true, priority: 1 },
+  'live-webcams': { name: 'Live Webcams', enabled: true, priority: 1 },
   intel: { name: 'Intel Feed', enabled: true, priority: 1 },
   'gdelt-intel': { name: 'Live Intelligence', enabled: true, priority: 1 },
   cascade: { name: 'Infrastructure Cascade', enabled: true, priority: 1 },
@@ -182,19 +182,21 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
 // ============================================
 const TECH_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Global Tech Map', enabled: true, priority: 1 },
+  insights: { name: 'AI Insights', enabled: true, priority: 1 },
+  regulation: { name: 'AI Regulation Dashboard', enabled: true, priority: 1 },
+  'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 1 },
+  ai: { name: 'AI/ML News', enabled: true, priority: 1 },
+  'tech-hubs': { name: 'Hot Tech Hubs', enabled: true, priority: 1 },
+  tech: { name: 'Technology', enabled: true, priority: 1 },
+  policy: { name: 'AI Policy & Regulation', enabled: true, priority: 1 },
   'live-news': { name: 'Tech Headlines', enabled: true, priority: 1 },
   'live-webcams': { name: 'Live Webcams', enabled: true, priority: 2 },
-  insights: { name: 'AI Insights', enabled: true, priority: 1 },
-  ai: { name: 'AI/ML News', enabled: true, priority: 1 },
-  tech: { name: 'Technology', enabled: true, priority: 1 },
   startups: { name: 'Startups & VC', enabled: true, priority: 1 },
   vcblogs: { name: 'VC Insights & Essays', enabled: true, priority: 1 },
   regionalStartups: { name: 'Global Startup News', enabled: true, priority: 1 },
   unicorns: { name: 'Unicorn Tracker', enabled: true, priority: 1 },
   accelerators: { name: 'Accelerators & Demo Days', enabled: true, priority: 1 },
   security: { name: 'Cybersecurity', enabled: true, priority: 1 },
-  policy: { name: 'AI Policy & Regulation', enabled: true, priority: 1 },
-  regulation: { name: 'AI Regulation Dashboard', enabled: true, priority: 1 },
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 1 },
   markets: { name: 'Tech Stocks', enabled: true, priority: 2 },
   finance: { name: 'Financial News', enabled: true, priority: 2 },
@@ -210,7 +212,6 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   events: { name: 'Tech Events', enabled: true, priority: 1 },
   'service-status': { name: 'Service Status', enabled: true, priority: 2 },
   economic: { name: 'Economic Indicators', enabled: true, priority: 2 },
-  'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
@@ -621,13 +622,13 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // All variants — essential panels
   core: {
     labelKey: 'header.panelCatCore',
-    panelKeys: ['map', 'live-news', 'live-webcams', 'insights', 'strategic-posture'],
+    panelKeys: ['map', 'insights', 'strategic-posture', 'live-news', 'live-webcams'],
   },
 
   // Full (geopolitical) variant
   intelligence: {
     labelKey: 'header.panelCatIntelligence',
-    panelKeys: ['alert-center', 'cii', 'strategic-risk', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel'],
+    panelKeys: ['alert-center', 'strategic-risk', 'cii', 'geo-hubs', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel'],
     variants: ['full'],
   },
   regionalNews: {
@@ -654,7 +655,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // Tech variant
   techAi: {
     labelKey: 'header.panelCatTechAi',
-    panelKeys: ['ai', 'tech', 'hardware', 'cloud', 'dev', 'github', 'producthunt', 'events', 'service-status', 'tech-readiness'],
+    panelKeys: ['tech-readiness', 'ai', 'tech-hubs', 'tech', 'hardware', 'cloud', 'dev', 'github', 'producthunt', 'events', 'service-status'],
     variants: ['tech'],
   },
   startupsVc: {
@@ -664,7 +665,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   securityPolicy: {
     labelKey: 'header.panelCatSecurityPolicy',
-    panelKeys: ['security', 'policy', 'regulation'],
+    panelKeys: ['regulation', 'policy', 'security'],
     variants: ['tech'],
   },
   techMarkets: {

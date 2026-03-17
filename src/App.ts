@@ -42,6 +42,10 @@ import { EventHandlerManager } from '@/app/event-handlers';
 import { resolveUserRegion } from '@/utils/user-location';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
+const AI_OVERVIEW_PRIORITY_PANELS: Record<string, string[]> = {
+  full: ['insights', 'strategic-posture', 'strategic-risk', 'cii', 'geo-hubs'],
+  tech: ['insights', 'regulation', 'tech-readiness', 'ai', 'tech-hubs', 'tech', 'policy'],
+};
 
 export type { CountryBriefSignals } from '@/app/app-context';
 
@@ -133,27 +137,25 @@ export class App {
         localStorage.setItem(PANEL_ORDER_MIGRATION_KEY, 'done');
       }
 
-      // Tech variant migration: move insights to top (after live-news)
-      if (currentVariant === 'tech') {
-        const TECH_INSIGHTS_MIGRATION_KEY = 'worldmonitor-tech-insights-top-v1';
-        if (!localStorage.getItem(TECH_INSIGHTS_MIGRATION_KEY)) {
-          const savedOrder = localStorage.getItem(PANEL_ORDER_KEY);
-          if (savedOrder) {
-            try {
-              const order: string[] = JSON.parse(savedOrder);
-              const filtered = order.filter(k => k !== 'insights' && k !== 'live-news');
-              const newOrder: string[] = [];
-              if (order.includes('live-news')) newOrder.push('live-news');
-              if (order.includes('insights')) newOrder.push('insights');
-              newOrder.push(...filtered);
-              localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(newOrder));
-              console.log('[App] Tech variant: Migrated insights panel to top');
-            } catch {
-              // Invalid saved order, will use defaults
-            }
+      const aiOverviewPriorityPanels = AI_OVERVIEW_PRIORITY_PANELS[currentVariant] ?? [];
+      const AI_OVERVIEW_MIGRATION_KEY = 'worldmonitor-ai-overview-top-v2.7.1';
+      if (aiOverviewPriorityPanels.length > 0 && !localStorage.getItem(AI_OVERVIEW_MIGRATION_KEY)) {
+        const savedOrder = localStorage.getItem(PANEL_ORDER_KEY);
+        if (savedOrder) {
+          try {
+            const order: string[] = JSON.parse(savedOrder);
+            const filtered = order.filter(k => !aiOverviewPriorityPanels.includes(k));
+            const newOrder = [
+              ...aiOverviewPriorityPanels.filter(panelKey => order.includes(panelKey)),
+              ...filtered,
+            ];
+            localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(newOrder));
+            console.log(`[App] ${currentVariant} variant: moved AI overview panels to top`);
+          } catch {
+            // Invalid saved order, will use defaults
           }
-          localStorage.setItem(TECH_INSIGHTS_MIGRATION_KEY, 'done');
         }
+        localStorage.setItem(AI_OVERVIEW_MIGRATION_KEY, 'done');
       }
     }
 

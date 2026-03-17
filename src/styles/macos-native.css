@@ -656,8 +656,9 @@ body.is-desktop-macos[data-app-mode="ghost"] .mac-mode-section {
 .mac-sidebar-version {
   margin-left: auto;
   font-size: 11px;
-  color: var(--mac-tertiary-label);
+  color: var(--mac-secondary-label);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 /* ── Sidebar collapse ───────────────────────────────────────── */
@@ -847,6 +848,18 @@ body.is-desktop-macos[data-theme="light"] .mac-content-toolbar {
   font-weight: 600;
   color: var(--mac-label);
   letter-spacing: -0.01em;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.mac-toolbar-version {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--mac-secondary-label);
+  letter-spacing: 0.02em;
+  -webkit-app-region: no-drag;
+  font-variant-numeric: tabular-nums;
 }
 
 .mac-toolbar-status {

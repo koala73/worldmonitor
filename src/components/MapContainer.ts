@@ -39,6 +39,8 @@ import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { AirstrikeEvent } from '@/services/airstrikes';
 import type { S2UndergroundEvent } from '@/services/s2-underground';
+import type { GeoHubActivity } from '@/services/geo-activity';
+import type { TechHubActivity } from '@/services/tech-activity';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -380,6 +382,38 @@ export class MapContainer {
       this.deckGLMap?.setNewsLocations(data);
     } else {
       this.svgMap?.setNewsLocations(data);
+    }
+  }
+
+  public setTechActivity(activities: TechHubActivity[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setTechActivity(activities);
+    } else {
+      this.svgMap?.setTechActivity(activities);
+    }
+  }
+
+  public setOnTechHubClick(handler: (hub: TechHubActivity) => void): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setOnTechHubClick(handler);
+    } else {
+      this.svgMap?.setOnTechHubClick(handler);
+    }
+  }
+
+  public setGeoActivity(activities: GeoHubActivity[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setGeoActivity(activities);
+    } else {
+      this.svgMap?.setGeoActivity(activities);
+    }
+  }
+
+  public setOnGeoHubClick(handler: (hub: GeoHubActivity) => void): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setOnGeoHubClick(handler);
+    } else {
+      this.svgMap?.setOnGeoHubClick(handler);
     }
   }
 

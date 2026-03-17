@@ -40,3 +40,4 @@ scripts/data/dedup-dropped-pairs.json
 scripts/data/gpsjam-latest.json
 .claude.local.md
 .superpowers/
+research/runs/
