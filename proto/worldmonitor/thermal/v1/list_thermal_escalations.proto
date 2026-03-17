@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package worldmonitor.thermal.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/thermal/v1/thermal_escalation_cluster.proto";
+
+message ListThermalEscalationsRequest {
+  int32 max_items = 1 [(sebuf.http.query) = { name: "max_items" }];
+}
+
+message ThermalEscalationSummary {
+  int32 cluster_count = 1;
+  int32 elevated_count = 2;
+  int32 spike_count = 3;
+  int32 persistent_count = 4;
+  int32 conflict_adjacent_count = 5;
+  int32 high_relevance_count = 6;
+}
+
+message ListThermalEscalationsResponse {
+  string fetched_at = 1;
+  int32 observation_window_hours = 2;
+  string source_version = 3;
+  repeated ThermalEscalationCluster clusters = 4;
+  ThermalEscalationSummary summary = 5;
+}
