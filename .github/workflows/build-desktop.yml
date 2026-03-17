@@ -296,7 +296,7 @@ jobs:
           node --input-type=module -e "import fs from 'node:fs'; import path from 'node:path'; const manifest = JSON.parse(fs.readFileSync('release-dist/manifest.json', 'utf8')); for (const asset of manifest.assets) { fs.copyFileSync(asset.path, path.join('release-dist/assets', asset.name)); }"
 
       - name: Upload release bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-bundle-${{ matrix.label }}
           path: |
@@ -306,7 +306,7 @@ jobs:
 
       - name: Upload smoke test screenshot
         if: contains(matrix.platform, 'ubuntu')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: linux-smoke-test-screenshot-${{ matrix.label }}
           path: screenshot.png
@@ -354,7 +354,7 @@ jobs:
           node-version: '22'
 
       - name: Download release bundles
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: downloaded-bundles
           pattern: release-bundle-*
