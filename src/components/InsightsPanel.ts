@@ -288,7 +288,7 @@ export class InsightsPanel extends Panel {
       // Step 1: Filter and rank stories by composite importance score
       this.setProgress(1, totalSteps, t('components.insights.rankingStories'));
 
-      const importantClusters = this.selectTopStories(clusters, 8);
+      const importantClusters = this.selectTopStories(clusters, 12);
 
       // Run parallel multi-perspective analysis in background
       // This analyzes ALL clusters, not just the keyword-filtered ones
@@ -349,7 +349,7 @@ export class InsightsPanel extends Panel {
       }
 
       // Cap titles sent to AI at 5 to reduce entity conflation in small models
-      const titles = importantClusters.slice(0, 5).map(c => c.primaryTitle);
+      const titles = importantClusters.slice(0, 8).map(c => c.primaryTitle);
 
       // Step 2: Analyze sentiment (browser-based, fast)
       this.setProgress(2, totalSteps, t('components.insights.analyzingSentiment'));
@@ -439,12 +439,55 @@ export class InsightsPanel extends Panel {
   }
 
   private renderWorldBrief(brief: string): string {
-    return `
-      <div class="insights-brief">
-        <div class="insights-section-title">${SITE_VARIANT === 'tech' ? '🚀 TECH BRIEF' : '🌍 WORLD BRIEF'}</div>
-        <div class="insights-brief-text">${escapeHtml(brief)}</div>
-      </div>
-    `;
+    const title = SITE_VARIANT === 'tech' ? '🚀 TECH BRIEF' : '🌍 WORLD BRIEF';
+    // Parse structured brief sections
+    const sections = brief.split(/
+(?=SITUATION OVERVIEW|KEY DEVELOPMENTS|THREAT ASSESSMENT|WATCH NEXT)/);
+    if (sections.length <= 1) {
+      // Fallback: plain text rendering for unstructured responses
+      return `
+        <div class="insights-brief">
+          <div class="insights-section-title">${title}</div>
+          <div class="insights-brief-text">${escapeHtml(brief)}</div>
+        </div>
+      `;
+    }
+    let html = `<div class="insights-brief"><div class="insights-section-title">${title}</div>`;
+    for (const section of sections) {
+      const trimmed = section.trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith('SITUATION OVERVIEW')) {
+        const body = trimmed.replace(/^SITUATION OVERVIEW\s*/,'').replace(/^\[|\]$/g,'').trim();
+        html += `<div class="insights-brief-overview">${escapeHtml(body)}</div>`;
+      } else if (trimmed.startsWith('KEY DEVELOPMENTS')) {
+        const lines = trimmed.replace(/^KEY DEVELOPMENTS\s*/,'').split('
+').filter(l => l.trim());
+        const items = lines.map(l => {
+          const text = l.replace(/^[-*•]\s*/,'').trim();
+          if (!text || text.startsWith('[')) return '';
+          const colonIdx = text.indexOf(':');
+          if (colonIdx > 0 && colonIdx < 40) {
+            const actor = escapeHtml(text.slice(0, colonIdx));
+            const detail = escapeHtml(text.slice(colonIdx + 1).trim());
+            return `<div class="insights-brief-item"><span class="insights-brief-actor">${actor}</span><span class="insights-brief-detail">${detail}</span></div>`;
+          }
+          return `<div class="insights-brief-item">${escapeHtml(text)}</div>`;
+        }).filter(Boolean).join('');
+        if (items) html += `<div class="insights-brief-developments">${items}</div>`;
+      } else if (trimmed.startsWith('THREAT ASSESSMENT')) {
+        const body = trimmed.replace(/^THREAT ASSESSMENT:?\s*/,'').trim();
+        const levelMatch = body.match(/^(NORMAL|ELEVATED|HIGH|CRITICAL)/i);
+        const level = levelMatch ? levelMatch[1].toUpperCase() : '';
+        const detail = body.replace(/^(NORMAL|ELEVATED|HIGH|CRITICAL)[\s:—-]*/i,'').trim();
+        const levelClass = level === 'CRITICAL' ? 'threat-critical' : level === 'HIGH' ? 'threat-high' : level === 'ELEVATED' ? 'threat-elevated' : 'threat-normal';
+        html += `<div class="insights-brief-threat"><span class="insights-threat-badge ${levelClass}">${level || 'THREAT'}</span><span class="insights-threat-detail">${escapeHtml(detail)}</span></div>`;
+      } else if (trimmed.startsWith('WATCH NEXT')) {
+        const body = trimmed.replace(/^WATCH NEXT[\s\d-HhRr:]*:?\s*/i,'').trim();
+        html += `<div class="insights-brief-watch"><span class="insights-watch-label">WATCH</span>${escapeHtml(body)}</div>`;
+      }
+    }
+    html += '</div>';
+    return html;
   }
 
   private renderBreakingStories(
