@@ -1,0 +1,15 @@
+name: Actionlint
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Run actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.8

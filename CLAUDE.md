@@ -11,6 +11,7 @@
 npm run desktop:build:full   # full production build
 npm run typecheck:all        # type-check both tsconfig.json + tsconfig.api.json (must stay at zero errors)
 npm run dev                  # vite dev server (web only, no Tauri)
+npm run release:prepare -- --bump patch --push   # only supported release path
 ```
 Install built app: copy `src-tauri/target/release/bundle/macos/World Monitor.app` to `~/Applications/World Monitor.app`.
 
@@ -32,6 +33,23 @@ If a second clone is found, DELETE it. Do not merge from it without explicit use
 - `crystal-ball` — alternate, do not use unless asked
 
 Always commit with: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
+
+## Release Management
+- Desktop publishing is **tag-driven**, not `main`-push-driven. Never treat `git push macos main` as a release.
+- The only supported release flow is `npm run release:prepare -- --bump patch|minor|major --push` or `--version X.Y.Z --push`.
+- `release:prepare` must run from a clean `main` worktree. It bumps `package.json`, syncs `package-lock.json`, `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, and `Info.plist`, runs `version:check` and `typecheck:all`, commits, creates annotated release tags, and optionally pushes.
+- Release tags are:
+  - `vX.Y.Z` for `full`
+  - `vX.Y.Z-tech` for `tech`
+  - `vX.Y.Z-finance` for `finance`
+- `Build Desktop App` publishes only from `v*` tags. `workflow_dispatch` is build-only and must not be used as a substitute for a release.
+- Release artifacts are verified by manifest. The workflow generates per-platform manifests, uploads a consolidated `release-manifest.json`, and re-downloads the uploaded assets to verify filenames and checksums.
+- The app’s Settings view exposes build identity. Use it to confirm version, variant, release tag, commit SHA, and build timestamp when debugging mismatched installs.
+- GitHub release governance expectations:
+  - `main` must keep passing `release-integrity`, `typecheck`, and CodeQL before merge
+  - desktop publish job runs in the `release` environment
+  - release tags must be treated as immutable once created
+- If GitHub policy and local repo files drift, fix the policy gap as well; do not only patch the repo.
 
 ## Architecture
 ```

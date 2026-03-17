@@ -1,0 +1,4 @@
+/.github/workflows/ @bradleybond512
+/scripts/release-*.mjs @bradleybond512
+/scripts/sync-desktop-version*.mjs @bradleybond512
+/CLAUDE.md @bradleybond512
