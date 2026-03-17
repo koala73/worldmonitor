@@ -3,9 +3,9 @@ import { hasTauriInvokeBridge, invokeTauri } from '../services/tauri-bridge';
 const INVOKE_CMD_AUTHENTICATE = 'plugin:biometry|authenticate';
 const BRIDGE_READY_TIMEOUT_MS = 2500;
 const BRIDGE_READY_POLL_MS = 50;
-const WINDOW_READY_TIMEOUT_MS = 4000;
+const WINDOW_READY_TIMEOUT_MS = 1200;
 const WINDOW_READY_POLL_MS = 100;
-const AUTO_PROMPT_DELAY_MS = 450;
+const AUTO_PROMPT_DELAY_MS = 80;
 const MIN_OVERLAY_VISIBLE_MS = 900;
 const UNLOCK_SCAN_SETTLE_MS = 720;
 const UNLOCK_PANEL_SETTLE_MS = 420;
@@ -28,6 +28,7 @@ type OverlayElements = {
   message: HTMLParagraphElement;
   button: HTMLButtonElement;
   quit: HTMLButtonElement;
+  buttons: HTMLDivElement;
   panel: HTMLDivElement;
   title: HTMLHeadingElement;
   statusPill: HTMLDivElement;
@@ -59,40 +60,53 @@ async function invokePlugin<T = unknown>(
   return invokeTauri<T>(cmd, payload);
 }
 
-async function waitForInteractiveWindow(): Promise<boolean> {
-  const deadline = Date.now() + WINDOW_READY_TIMEOUT_MS;
-  while (document.visibilityState !== 'visible' || !document.hasFocus()) {
-    if (Date.now() >= deadline) {
-      return false;
-    }
-    await sleep(WINDOW_READY_POLL_MS);
-  }
-
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => resolve());
-  });
-  return true;
+function isInteractiveWindow(): boolean {
+  return document.visibilityState === 'visible' && document.hasFocus();
 }
 
-function ensureOverlay(): {
-  container: HTMLDivElement;
-  stage: HTMLDivElement;
-  portalGlow: HTMLDivElement;
-  message: HTMLParagraphElement;
-  button: HTMLButtonElement;
-  quit: HTMLButtonElement;
-  panel: HTMLDivElement;
-  title: HTMLHeadingElement;
-  statusPill: HTMLDivElement;
-  biometricHero: HTMLDivElement;
-  biometricCaption: HTMLDivElement;
-  scanLine: HTMLDivElement;
-  leftDoor: HTMLDivElement;
-  rightDoor: HTMLDivElement;
-  centerBeam: HTMLDivElement;
-  visibleAt: number;
-  releasePresentation: () => void;
-} {
+async function waitForInteractiveWindow(): Promise<boolean> {
+  if (isInteractiveWindow()) {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+    return true;
+  }
+
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    let pollId = 0;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      window.clearInterval(pollId);
+      window.removeEventListener('focus', finish);
+      document.removeEventListener('visibilitychange', finish);
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      resolve(false);
+    }, WINDOW_READY_TIMEOUT_MS);
+
+    const finish = () => {
+      if (!isInteractiveWindow()) return;
+      cleanup();
+      requestAnimationFrame(() => resolve(true));
+    };
+
+    window.addEventListener('focus', finish);
+    document.addEventListener('visibilitychange', finish);
+    pollId = window.setInterval(() => {
+      if (settled || !isInteractiveWindow()) return;
+      finish();
+    }, WINDOW_READY_POLL_MS);
+
+    finish();
+  });
+}
+
+function ensureOverlay(): OverlayElements {
   const existing = document.getElementById('biometry-gate');
   if (existing) existing.remove();
 
@@ -854,7 +868,7 @@ function ensureOverlay(): {
   } as CSSStyleDeclaration);
 
   const title = document.createElement('h2');
-  title.textContent = 'Authenticate to Enter';
+  title.textContent = 'Unlocking World Monitor';
   Object.assign(title.style, {
     margin: '0 0 12px',
     fontSize: '28px',
@@ -864,7 +878,7 @@ function ensureOverlay(): {
   } as CSSStyleDeclaration);
 
   const message = document.createElement('p');
-  message.textContent = 'Touch ID or your device passcode unlocks the command deck.';
+  message.textContent = 'Use Touch ID or your device passcode in the system prompt.';
   Object.assign(message.style, {
     margin: '0 0 22px',
     lineHeight: '1.55',
@@ -873,7 +887,7 @@ function ensureOverlay(): {
 
   const buttons = document.createElement('div');
   Object.assign(buttons.style, {
-    display: 'flex',
+    display: 'none',
     gap: '12px',
     justifyContent: 'flex-end',
     alignItems: 'center',
@@ -971,6 +985,7 @@ function ensureOverlay(): {
     message,
     button,
     quit,
+    buttons,
     panel,
     title,
     statusPill,
@@ -1345,23 +1360,55 @@ async function playUnlockCelebration(overlay: OverlayElements): Promise<void> {
 
 export async function ensureBiometricUnlock(): Promise<boolean> {
   const overlay = ensureOverlay();
-  const { message, button, quit } = overlay;
+  const { message, button, quit, buttons, title } = overlay;
 
   const updateMessage = (text: string) => { message.textContent = text; };
+  let fallbackActionsVisible = false;
   const setBusy = (busy: boolean) => {
     button.disabled = busy;
-    button.textContent = busy ? 'Authenticating…' : 'Authenticate';
+    button.textContent = busy ? 'Authenticating…' : fallbackActionsVisible ? 'Try Again' : 'Authenticate';
+  };
+  const showFallbackActions = () => {
+    fallbackActionsVisible = true;
+    buttons.style.display = 'flex';
+    title.textContent = 'Authenticate to Continue';
+    button.textContent = 'Try Again';
   };
 
   return new Promise<boolean>((resolve) => {
     let settled = false;
     let inFlight: Promise<boolean> | null = null;
+    let autoResumeArmed = false;
 
     const settle = (value: boolean) => {
       if (settled) return;
       settled = true;
+      disarmAutoResume();
       overlay.releasePresentation();
       resolve(value);
+    };
+
+    const disarmAutoResume = () => {
+      if (!autoResumeArmed) return;
+      autoResumeArmed = false;
+      window.removeEventListener('focus', resumeAutoAuth);
+      document.removeEventListener('visibilitychange', resumeAutoAuth);
+    };
+
+    const resumeAutoAuth = () => {
+      if (settled || inFlight || !isInteractiveWindow()) return;
+      disarmAutoResume();
+      updateMessage('Preparing Touch ID...');
+      void sleep(AUTO_PROMPT_DELAY_MS).then(() => {
+        void tryAuth(false);
+      });
+    };
+
+    const armAutoResume = () => {
+      if (autoResumeArmed) return;
+      autoResumeArmed = true;
+      window.addEventListener('focus', resumeAutoAuth);
+      document.addEventListener('visibilitychange', resumeAutoAuth);
     };
 
     const tryAuth = async (manual: boolean): Promise<boolean> => {
@@ -1369,6 +1416,7 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
       if (inFlight) return inFlight;
 
       inFlight = (async () => {
+        disarmAutoResume();
         setBusy(true);
         if (manual) {
           updateMessage('Authenticating with the shipboard lock...');
@@ -1385,10 +1433,11 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
           settle(true);
           return true;
         } catch (err) {
+          showFallbackActions();
           updateMessage(
             err instanceof Error
               ? err.message
-              : 'Authentication failed. Click Authenticate to try again.',
+              : 'Authentication failed. Try Again to continue.',
           );
           setBusy(false);
           return false;
@@ -1410,15 +1459,15 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
     };
 
     void (async () => {
-      updateMessage('Preparing secure airlock...');
+      updateMessage('Preparing Touch ID...');
       const windowReady = await waitForInteractiveWindow();
       if (!windowReady) {
-        updateMessage('Click Authenticate to unlock World Monitor.');
+        updateMessage('Bring World Monitor to the front. Authentication will start automatically.');
+        armAutoResume();
         return;
       }
 
-      await sleep(AUTO_PROMPT_DELAY_MS);
-      await tryAuth(false);
+      resumeAutoAuth();
     })();
   });
 }

@@ -42,7 +42,7 @@ describe('desktop biometric bootstrap', () => {
     );
   });
 
-  it('waits for an interactive window and leaves a manual retry path if auto-prompting cannot start', () => {
+  it('waits for an interactive window before prompting and keeps retry controls hidden on the happy path', () => {
     assert.match(
       gateSrc,
       /async function waitForInteractiveWindow\(/,
@@ -55,13 +55,51 @@ describe('desktop biometric bootstrap', () => {
     );
     assert.match(
       gateSrc,
-      /Click Authenticate to unlock World Monitor\./,
-      'unlock overlay should preserve a visible manual retry path',
+      /display:\s*'none'/,
+      'retry controls should stay hidden until the automatic biometric prompt needs fallback UI',
     );
     assert.match(
       gateSrc,
-      /AUTO_PROMPT_DELAY_MS\s*=\s*450/,
-      'unlock overlay should stay visible briefly before auto-auth starts',
+      /AUTO_PROMPT_DELAY_MS\s*=\s*80/,
+      'unlock overlay should move into biometric auth almost immediately once the window is interactive',
+    );
+  });
+
+  it('auto-resumes authentication as soon as the window becomes interactive again', () => {
+    assert.match(
+      gateSrc,
+      /window\.addEventListener\('focus',/,
+      'unlock flow should resume automatically when the desktop window regains focus',
+    );
+    assert.match(
+      gateSrc,
+      /document\.addEventListener\('visibilitychange',/,
+      'unlock flow should resume automatically when the document becomes visible again',
+    );
+    assert.match(
+      gateSrc,
+      /Authentication will start automatically\./,
+      'fallback copy should tell the user auth will auto-resume instead of requiring manual recovery only',
+    );
+    assert.match(
+      gateSrc,
+      /showFallbackActions\(/,
+      'manual retry controls should be a fallback path, not the default entry flow',
+    );
+    assert.match(
+      gateSrc,
+      /button\.textContent = 'Try Again'/,
+      'fallback controls should present retry language instead of a primary authenticate click on startup',
+    );
+    assert.match(
+      gateSrc,
+      /AUTO_PROMPT_DELAY_MS\s*=\s*80/,
+      'pre-auth delay should be tightened so the biometric prompt feels immediate',
+    );
+    assert.match(
+      gateSrc,
+      /WINDOW_READY_TIMEOUT_MS\s*=\s*1200/,
+      'startup should fail over to auto-resume quickly instead of stalling for several seconds',
     );
   });
 
