@@ -444,6 +444,34 @@ export class UnifiedSettings {
     }
     html += `</select>`;
 
+    html += `<div class="ai-flow-section-label">Build Identity</div>`;
+    html += `
+      <div class="ai-flow-toggle-row">
+        <div class="ai-flow-toggle-label-wrap">
+          <div class="ai-flow-toggle-label">Version</div>
+          <div class="ai-flow-toggle-desc">v${escapeHtml(__APP_VERSION__)} • ${escapeHtml(__BUILD_VARIANT__)}</div>
+        </div>
+      </div>
+      <div class="ai-flow-toggle-row">
+        <div class="ai-flow-toggle-label-wrap">
+          <div class="ai-flow-toggle-label">Release tag</div>
+          <div class="ai-flow-toggle-desc">${escapeHtml(__BUILD_TAG__)}</div>
+        </div>
+      </div>
+      <div class="ai-flow-toggle-row">
+        <div class="ai-flow-toggle-label-wrap">
+          <div class="ai-flow-toggle-label">Commit</div>
+          <div class="ai-flow-toggle-desc">${escapeHtml(__BUILD_COMMIT_SHA__.slice(0, 12))}</div>
+        </div>
+      </div>
+      <div class="ai-flow-toggle-row">
+        <div class="ai-flow-toggle-label-wrap">
+          <div class="ai-flow-toggle-label">Build timestamp</div>
+          <div class="ai-flow-toggle-desc">${escapeHtml(__BUILD_TIMESTAMP__)}</div>
+        </div>
+      </div>
+    `;
+
     // AI status footer (web-only)
     if (!this.config.isDesktopApp) {
       html += `<div class="ai-flow-popup-footer"><span class="ai-flow-status-dot" id="usStatusDot"></span><span class="ai-flow-status-text" id="usStatusText"></span></div>`;
