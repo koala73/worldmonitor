@@ -29,6 +29,11 @@ const ENRICHMENT_MIN_READINESS = 0.34;
 const ENRICHMENT_PRIORITY_DOMAINS = ['market', 'military'];
 const CYBER_MIN_THREATS_PER_COUNTRY = 5;
 const CYBER_MAX_FORECASTS = 12;
+const CYBER_SCORE_TYPE_MULTIPLIER = 1.5;    // bonus per distinct threat type
+const CYBER_SCORE_CRITICAL_MULTIPLIER = 0.75; // bonus per critical-class threat
+const CYBER_PROB_MAX = 0.72;                // probability ceiling for cyber forecasts
+const CYBER_PROB_VOLUME_WEIGHT = 0.5;       // weight of volume in probability formula
+const CYBER_PROB_TYPE_WEIGHT = 0.15;        // weight of type diversity in probability formula
 const MAX_MILITARY_SURGE_AGE_MS = 3 * 60 * 60 * 1000;
 const MAX_MILITARY_BUNDLE_DRIFT_MS = 5 * 60 * 1000;
 
@@ -890,8 +895,8 @@ function detectCyberScenarios(inputs) {
     if (items.length < CYBER_MIN_THREATS_PER_COUNTRY) continue;
     const types = new Set(items.map(t => t.type || t.category || 'unknown'));
     const criticalCount = items.filter((t) => /ransomware|wiper|ddos|intrusion|exploit|botnet|malware/i.test(`${t.type || ''} ${t.category || ''}`)).length;
-    const score = items.length + (types.size * 1.5) + (criticalCount * 0.75);
-    const probability = Math.min(0.72, (normalize(items.length, 4, 50) * 0.5) + (normalize(types.size, 1, 6) * 0.15));
+    const score = items.length + (types.size * CYBER_SCORE_TYPE_MULTIPLIER) + (criticalCount * CYBER_SCORE_CRITICAL_MULTIPLIER);
+    const probability = Math.min(CYBER_PROB_MAX, (normalize(items.length, 4, 50) * CYBER_PROB_VOLUME_WEIGHT) + (normalize(types.size, 1, 6) * CYBER_PROB_TYPE_WEIGHT));
     candidates.push({
       country,
       items,
@@ -2335,8 +2340,9 @@ function computeAnalysisPriority(pred) {
   const evidenceBonus = readiness.evidenceScore * 0.02;
   const corroborationBonus = hasNewsCorroboration ? 0.018 : 0;
   const calibrationBonus = pred.calibration ? 0.012 : 0;
-  const quietDomainBonus = ENRICHMENT_PRIORITY_DOMAINS.includes(pred.domain) && readiness.overall >= 0.45 ? 0.012 : 0;
+  const priorityDomainBonus = ENRICHMENT_PRIORITY_DOMAINS.includes(pred.domain) && readiness.overall >= 0.45 ? 0.012 : 0;
   const trendBonus = pred.trend === 'rising' ? 0.015 : pred.trend === 'falling' ? -0.005 : 0;
+  // penalties
   const lowGroundingPenalty = readiness.groundingScore < 0.2 ? 0.02 : 0;
   const lowEvidencePenalty = readiness.evidenceScore < 0.25 ? 0.015 : 0;
   const coveragePenalty = counterEvidenceTypes.has('coverage_gap') ? 0.015 : 0;
@@ -2348,7 +2354,7 @@ function computeAnalysisPriority(pred) {
     evidenceBonus +
     corroborationBonus +
     calibrationBonus +
-    quietDomainBonus +
+    priorityDomainBonus +
     trendBonus -
     lowGroundingPenalty -
     lowEvidencePenalty -
@@ -2359,15 +2365,17 @@ function computeAnalysisPriority(pred) {
 }
 
 function rankForecastsForAnalysis(predictions) {
+  const priorities = new Map(predictions.map(p => [p, computeAnalysisPriority(p)]));
   predictions.sort((a, b) => {
-    const delta = computeAnalysisPriority(b) - computeAnalysisPriority(a);
+    const delta = priorities.get(b) - priorities.get(a);
     if (Math.abs(delta) > 1e-6) return delta;
     return (b.probability * b.confidence) - (a.probability * a.confidence);
   });
 }
 
 function filterPublishedForecasts(predictions, minProbability = PUBLISH_MIN_PROBABILITY) {
-  return predictions.filter((pred) => {
+  let weakFallbackCount = 0;
+  const result = predictions.filter((pred) => {
     if ((pred?.probability || 0) <= minProbability) return false;
     const narrativeSource = pred?.traceMeta?.narrativeSource || 'fallback';
     if (narrativeSource !== 'fallback') return true;
@@ -2382,8 +2390,13 @@ function filterPublishedForecasts(predictions, minProbability = PUBLISH_MIN_PROB
       counterEvidenceTypes.has('coverage_gap') &&
       counterEvidenceTypes.has('confidence')
     );
+    if (weakFallback) weakFallbackCount++;
     return !weakFallback;
   });
+  if (weakFallbackCount > 0) {
+    console.log(`  [filterPublished] Suppressed ${weakFallbackCount} weak fallback forecast(s)`);
+  }
+  return result;
 }
 
 function selectForecastsForEnrichment(predictions, options = {}) {
@@ -2820,6 +2833,7 @@ function buildFallbackPerspectives(pred) {
 }
 
 function populateFallbackNarratives(predictions) {
+  let fallbackCount = 0;
   for (const pred of predictions) {
     if (!pred.caseFile) buildForecastCase(pred);
     if (!pred.caseFile.baseCase) pred.caseFile.baseCase = buildFallbackBaseCase(pred);
@@ -2841,7 +2855,11 @@ function populateFallbackNarratives(predictions) {
         llmModel: '',
         branchSource: 'deterministic',
       });
+      fallbackCount++;
     }
+  }
+  if (fallbackCount > 0) {
+    console.log(`  [fallbackNarratives] Applied fallback narratives to ${fallbackCount} forecast(s)`);
   }
 }
 

@@ -155,8 +155,17 @@ export default async function handler(req) {
   const missing = [];
   for (let i = 0; i < names.length; i++) {
     const val = cached.get(keys[i]);
-    if (val !== undefined) data[names[i]] = val;
-    else missing.push(names[i]);
+    if (val !== undefined) {
+      // Strip seed-internal metadata not intended for API clients
+      if (names[i] === 'forecasts' && val != null && 'enrichmentMeta' in val) {
+        const { enrichmentMeta: _stripped, ...rest } = val;
+        data[names[i]] = rest;
+      } else {
+        data[names[i]] = val;
+      }
+    } else {
+      missing.push(names[i]);
+    }
   }
 
   const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
