@@ -504,7 +504,7 @@ function parseProxyAuth() {
   };
 }
 
-function proxyFetchJson(url, { headers = {}, timeout = 15000 } = {}) {
+function proxyFetchJson(url, { headers = {}, timeout = 15000, method = 'GET', body = null } = {}) {
   const parsed = new URL(url);
   const proxy = parseProxyAuth();
   if (!proxy) return Promise.reject(new Error('No proxy config'));
@@ -529,12 +529,16 @@ function proxyFetchJson(url, { headers = {}, timeout = 15000 } = {}) {
         return reject(new Error(`CONNECT ${res.statusCode}`));
       }
       const tlsSocket = tls.connect({ socket, servername: parsed.hostname }, () => {
+        const requestHeaders = { ...headers, 'Accept': 'application/json', 'User-Agent': CHROME_UA };
+        if (body != null && !Object.keys(requestHeaders).some((k) => k.toLowerCase() === 'content-length')) {
+          requestHeaders['Content-Length'] = Buffer.byteLength(body);
+        }
         const req = https.request({
           socket: tlsSocket,
           hostname: parsed.hostname,
           path: parsed.pathname + parsed.search,
-          method: 'GET',
-          headers: { ...headers, 'Accept': 'application/json', 'User-Agent': CHROME_UA },
+          method,
+          headers: requestHeaders,
           timeout,
         }, (resp) => {
           let data = '';
@@ -550,6 +554,7 @@ function proxyFetchJson(url, { headers = {}, timeout = 15000 } = {}) {
         });
         req.on('error', (e) => { clearTimeout(timer); reject(e); });
         req.on('timeout', () => { req.destroy(); clearTimeout(timer); reject(new Error('TIMEOUT')); });
+        if (body != null) req.write(body);
         req.end();
       });
       tlsSocket.on('error', (e) => { clearTimeout(timer); reject(e); });
@@ -563,55 +568,237 @@ function proxyFetchJson(url, { headers = {}, timeout = 15000 } = {}) {
 // ── Data Sources ───────────────────────────────────────────
 const OPENSKY_BASE = 'https://opensky-network.org/api';
 const WINGBITS_BASE = 'https://customer-api.wingbits.com/v1/flights';
+const OPENSKY_TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
+const OPENSKY_AUTH_COOLDOWN_MS = 60_000;
+const OPENSKY_AUTH_RETRY_DELAYS = [0, 2_000, 5_000];
+let openskyToken = null;
+let openskyTokenExpiry = 0;
+let openskyTokenPromise = null;
+let openskyAuthCooldownUntil = 0;
 
-async function fetchOpenSkyAuthenticated(region) {
-  const username = process.env.OPENSKY_USERNAME;
-  const password = process.env.OPENSKY_PASSWORD;
-  if (!username || !password) return null;
+function clearOpenSkyToken() {
+  openskyToken = null;
+  openskyTokenExpiry = 0;
+}
 
-  const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
-  const url = `${OPENSKY_BASE}/states/all?${params}`;
+function isOpenSkyUnauthorizedError(error) {
+  return /HTTP 401\b/i.test(String(error?.message || error || ''));
+}
 
-  if (PROXY_ENABLED) {
-    const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
-    const data = await proxyFetchJson(url, {
-      headers: { Authorization: authHeader },
-    });
-    return data.states || [];
-  }
+function getOpenSkyAuthStatus() {
+  if (!process.env.OPENSKY_CLIENT_ID || !process.env.OPENSKY_CLIENT_SECRET) return 'not_configured';
+  if (Date.now() < openskyAuthCooldownUntil) return 'cooldown';
+  return 'pending';
+}
 
-  const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+async function fetchJsonDirect(url, { headers = {}, method = 'GET', body = null, timeout = 15_000 } = {}) {
   const resp = await fetch(url, {
-    headers: { Authorization: authHeader, 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
+    method,
+    headers: { ...headers, 'User-Agent': CHROME_UA, Accept: 'application/json' },
+    body,
+    signal: AbortSignal.timeout(timeout),
   });
   if (!resp.ok) {
-    const body = await resp.text().catch(() => '');
-    throw new Error(`OpenSky auth HTTP ${resp.status}: ${body.substring(0, 200)}`);
+    const bodyText = await resp.text().catch(() => '');
+    throw new Error(`HTTP ${resp.status}: ${bodyText.substring(0, 200)}`);
   }
-  const data = await resp.json();
-  return data.states || [];
+  return resp.json();
+}
+
+async function getOpenSkyToken() {
+  const clientId = process.env.OPENSKY_CLIENT_ID;
+  const clientSecret = process.env.OPENSKY_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  if (openskyToken && Date.now() < openskyTokenExpiry - 60_000) {
+    return openskyToken;
+  }
+  if (Date.now() < openskyAuthCooldownUntil) {
+    return null;
+  }
+  if (openskyTokenPromise) return openskyTokenPromise;
+
+  openskyTokenPromise = (async () => {
+    let lastError = null;
+
+    for (let attempt = 0; attempt < OPENSKY_AUTH_RETRY_DELAYS.length; attempt += 1) {
+      const delay = OPENSKY_AUTH_RETRY_DELAYS[attempt];
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+
+      const postData = `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`;
+      const headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': CHROME_UA,
+      };
+
+      try {
+        let data;
+        try {
+          data = await fetchJsonDirect(OPENSKY_TOKEN_URL, {
+            method: 'POST',
+            headers,
+            body: postData,
+          });
+        } catch (directError) {
+          if (!PROXY_ENABLED) throw directError;
+          try {
+            data = await proxyFetchJson(OPENSKY_TOKEN_URL, {
+              method: 'POST',
+              headers,
+              body: postData,
+              timeout: 15_000,
+            });
+          } catch (proxyError) {
+            throw new Error(`direct=${redactProxy(directError.message)} | proxy=${redactProxy(proxyError.message)}`);
+          }
+        }
+
+        if (!data?.access_token) {
+          throw new Error('OpenSky token response missing access_token');
+        }
+        openskyToken = data.access_token;
+        openskyTokenExpiry = Date.now() + (Number(data.expires_in) || 1800) * 1000;
+        openskyAuthCooldownUntil = 0;
+        return openskyToken;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    clearOpenSkyToken();
+    openskyAuthCooldownUntil = Date.now() + OPENSKY_AUTH_COOLDOWN_MS;
+    throw lastError || new Error('OpenSky token acquisition failed');
+  })();
+
+  try {
+    return await openskyTokenPromise;
+  } finally {
+    openskyTokenPromise = null;
+  }
+}
+
+async function fetchOpenSkyAuthenticated(region) {
+  const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}&extended=1`;
+  const url = `${OPENSKY_BASE}/states/all?${params}`;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const token = await getOpenSkyToken();
+    if (!token) return { states: null, status: getOpenSkyAuthStatus() };
+    const headers = { Authorization: `Bearer ${token}` };
+
+    try {
+      let data;
+      try {
+        data = await fetchJsonDirect(url, { headers });
+        return { states: data.states || [], status: `success:direct` };
+      } catch (directError) {
+        if (isOpenSkyUnauthorizedError(directError)) {
+          clearOpenSkyToken();
+          if (attempt === 0) continue;
+        }
+        if (!PROXY_ENABLED) throw directError;
+        try {
+          data = await proxyFetchJson(url, { headers });
+          return { states: data.states || [], status: `success:proxy` };
+        } catch (proxyError) {
+          if (isOpenSkyUnauthorizedError(proxyError)) {
+            clearOpenSkyToken();
+            if (attempt === 0) continue;
+          }
+          throw new Error(`direct=${redactProxy(directError.message)} | proxy=${redactProxy(proxyError.message)}`);
+        }
+      }
+    } catch (error) {
+      return { states: null, status: `error:${redactProxy(error.message)}` };
+    }
+  }
+
+  return { states: null, status: getOpenSkyAuthStatus() };
 }
 
 async function fetchOpenSkyAnonymous(region) {
   const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
   const url = `${OPENSKY_BASE}/states/all?${params}`;
 
-  if (PROXY_ENABLED) {
-    const data = await proxyFetchJson(url);
-    return data.states || [];
+  try {
+    const data = await fetchJsonDirect(url);
+    return { states: data.states || [], status: 'success:direct' };
+  } catch (directError) {
+    if (!PROXY_ENABLED) {
+      throw new Error(`error:${redactProxy(directError.message)}`);
+    }
+    try {
+      const data = await proxyFetchJson(url);
+      return { states: data.states || [], status: 'success:proxy' };
+    } catch (proxyError) {
+      throw new Error(`error:direct=${redactProxy(directError.message)} | proxy=${redactProxy(proxyError.message)}`);
+    }
+  }
+}
+
+async function fetchOpenSkyRegion(region, { source, fetchSources, seenIds, allStates }) {
+  let states = null;
+  const regionSource = {
+    name: region.name,
+    authStatus: getOpenSkyAuthStatus(),
+    anonStatus: 'not_needed',
+    statesSeen: 0,
+    statesAdded: 0,
+  };
+
+  try {
+    const authResult = await fetchOpenSkyAuthenticated(region);
+    states = authResult?.states || null;
+    regionSource.authStatus = authResult?.status || regionSource.authStatus;
+    if (states && states.length > 0) {
+      if (source.value === 'none') source.value = 'opensky-auth';
+      fetchSources.openSkyAuthSuccess = true;
+      regionSource.statesSeen = states.length;
+      console.log(`  [OpenSky Auth] ${region.name}: ${states.length} states`);
+    } else if (regionSource.authStatus.startsWith('success:')) {
+      fetchSources.openSkyAuthSuccess = true;
+      regionSource.authStatus = regionSource.authStatus.replace('success:', 'empty:');
+    }
+  } catch (e) {
+    regionSource.authStatus = `error:${redactProxy(e.message)}`;
+    console.warn(`  [OpenSky Auth] ${region.name}: ${redactProxy(e.message)}`);
   }
 
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => '');
-    throw new Error(`OpenSky anon HTTP ${resp.status}: ${body.substring(0, 200)}`);
+  if (!states || states.length === 0) {
+    try {
+      const anonResult = await fetchOpenSkyAnonymous(region);
+      states = anonResult?.states || null;
+      regionSource.anonStatus = anonResult?.status || regionSource.anonStatus;
+      if (states && states.length > 0) {
+        if (source.value === 'none') source.value = 'opensky-anon';
+        fetchSources.openSkyAnonFallbackUsed = true;
+        regionSource.statesSeen = states.length;
+        console.log(`  [OpenSky Anon] ${region.name}: ${states.length} states`);
+      } else if (regionSource.anonStatus.startsWith('success:')) {
+        regionSource.anonStatus = regionSource.anonStatus.replace('success:', 'empty:');
+      }
+    } catch (e) {
+      regionSource.anonStatus = `error:${redactProxy(e.message)}`;
+      console.warn(`  [OpenSky Anon] ${region.name}: ${redactProxy(e.message)}`);
+    }
   }
-  const data = await resp.json();
-  return data.states || [];
+
+  if (states) {
+    let added = 0;
+    for (const state of states) {
+      const icao24 = state[0];
+      if (seenIds.has(icao24)) continue;
+      seenIds.add(icao24);
+      allStates.push(state);
+      added++;
+    }
+    regionSource.statesAdded = added;
+    if (added > 0) console.log(`  [OpenSky] +${added} new from ${region.name} (total: ${allStates.length})`);
+  }
+
+  fetchSources.regions.push(regionSource);
 }
 
 async function fetchWingbits() {
@@ -698,7 +885,16 @@ async function fetchWingbits() {
 async function fetchAllStates() {
   const seenIds = new Set();
   const allStates = [];
-  let source = 'none';
+  const source = { value: 'none' };
+  const oauthConfigured = Boolean(process.env.OPENSKY_CLIENT_ID && process.env.OPENSKY_CLIENT_SECRET);
+  const fetchSources = {
+    wingbitsUsed: false,
+    oauthConfigured,
+    proxyEnabled: PROXY_ENABLED,
+    openSkyAuthSuccess: false,
+    openSkyAnonFallbackUsed: false,
+    regions: [],
+  };
 
   // Tier 1: Wingbits — no proxy needed, fast, reliable
   try {
@@ -710,54 +906,19 @@ async function fetchAllStates() {
       allStates.push(state);
     }
     if (wbStates.length > 0) {
-      source = 'wingbits';
+      source.value = 'wingbits';
+      fetchSources.wingbitsUsed = true;
       console.log(`  [Wingbits] ${wbStates.length} unique aircraft loaded`);
     }
   } catch (e) {
     console.warn(`  [Wingbits] ${e.message}`);
   }
 
-  // Tier 2: OpenSky (auth via proxy) — supplements with aircraft Wingbits may miss
   for (const region of QUERY_REGIONS) {
-    let states = null;
-
-    try {
-      states = await fetchOpenSkyAuthenticated(region);
-      if (states && states.length > 0) {
-        if (source === 'none') source = 'opensky-auth';
-        console.log(`  [OpenSky Auth] ${region.name}: ${states.length} states`);
-      }
-    } catch (e) {
-      console.warn(`  [OpenSky Auth] ${region.name}: ${redactProxy(e.message)}`);
-    }
-
-    // Tier 3: OpenSky anonymous (via proxy) — last resort
-    if (!states || states.length === 0) {
-      try {
-        states = await fetchOpenSkyAnonymous(region);
-        if (states && states.length > 0) {
-          if (source === 'none') source = 'opensky-anon';
-          console.log(`  [OpenSky Anon] ${region.name}: ${states.length} states`);
-        }
-      } catch (e) {
-        console.warn(`  [OpenSky Anon] ${region.name}: ${redactProxy(e.message)}`);
-      }
-    }
-
-    if (states) {
-      let added = 0;
-      for (const state of states) {
-        const icao24 = state[0];
-        if (seenIds.has(icao24)) continue;
-        seenIds.add(icao24);
-        allStates.push(state);
-        added++;
-      }
-      if (added > 0) console.log(`  [OpenSky] +${added} new from ${region.name} (total: ${allStates.length})`);
-    }
+    await fetchOpenSkyRegion(region, { source, fetchSources, seenIds, allStates });
   }
 
-  return { allStates, source };
+  return { allStates, source: source.value, fetchSources };
 }
 
 // ── Filter & Build Military Flights ────────────────────────
@@ -1118,16 +1279,23 @@ async function main() {
     process.exit(0);
   }
 
-  let allStates, source, flights, byType, classificationAudit;
+  let allStates, source, flights, byType, classificationAudit, fetchSources;
   try {
     console.log('  Fetching from all sources...');
-    ({ allStates, source } = await fetchAllStates());
+    ({ allStates, source, fetchSources } = await fetchAllStates());
     console.log(`  Raw states: ${allStates.length} (source: ${source})`);
 
     ({ flights, byType, audit: classificationAudit } = filterMilitaryFlights(allStates));
+    classificationAudit.fetchSources = fetchSources;
     console.log(`  Military: ${flights.length} (${Object.entries(byType).map(([t, n]) => `${t}:${n}`).join(', ')})`);
     if (classificationAudit) {
       console.log(`  [Audit] unknownRate=${classificationAudit.unknownTypeRate} hexOnly=${classificationAudit.hexOnlyAdmissions} rejected=${classificationAudit.rejectedFlights}`);
+      console.log(
+        `  [Source] wingbits=${fetchSources.wingbitsUsed ? 'yes' : 'no'} oauthConfigured=${fetchSources.oauthConfigured ? 'yes' : 'no'} authSuccess=${fetchSources.openSkyAuthSuccess ? 'yes' : 'no'} anonFallback=${fetchSources.openSkyAnonFallbackUsed ? 'yes' : 'no'}`,
+      );
+      console.log(
+        `  [Source] regions=${fetchSources.regions.map((region) => `${region.name}:auth=${region.authStatus},anon=${region.anonStatus},seen=${region.statesSeen},added=${region.statesAdded}`).join(' | ')}`,
+      );
       console.log(
         `  [Audit] waterfall raw=${classificationAudit.stageWaterfall.rawStates} pos=${classificationAudit.stageWaterfall.positionEligible} candidate=${classificationAudit.stageWaterfall.candidateStates} admitted=${classificationAudit.stageWaterfall.admittedFlights} typed=${classificationAudit.stageWaterfall.typedFlights}`,
       );
@@ -1141,7 +1309,7 @@ async function main() {
   } catch (err) {
     await releaseLock('military:flights', runId);
     console.error(`  FETCH FAILED: ${err.message || err}`);
-    await extendExistingTtl([LIVE_KEY], LIVE_TTL);
+    await extendExistingTtl([LIVE_KEY, 'seed-meta:military:flights'], LIVE_TTL);
     await extendExistingTtl([STALE_KEY, THEATER_POSTURE_STALE_KEY, MILITARY_SURGES_STALE_KEY, MILITARY_FORECAST_INPUTS_STALE_KEY, MILITARY_CLASSIFICATION_AUDIT_STALE_KEY], STALE_TTL);
     await extendExistingTtl([THEATER_POSTURE_LIVE_KEY, MILITARY_FORECAST_INPUTS_LIVE_KEY, MILITARY_CLASSIFICATION_AUDIT_LIVE_KEY], THEATER_POSTURE_LIVE_TTL);
     await extendExistingTtl([THEATER_POSTURE_BACKUP_KEY], THEATER_POSTURE_BACKUP_TTL);

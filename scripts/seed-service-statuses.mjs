@@ -38,7 +38,7 @@ async function warmPing() {
     data = await resp.json();
   } catch (err) {
     console.error(`  FETCH FAILED: ${err.message || err}`);
-    await extendExistingTtl([CANONICAL_KEY], 7200);
+    await extendExistingTtl([CANONICAL_KEY, 'seed-meta:infra:service-statuses'], 7200);
     console.log(`\n=== Failed gracefully (${Math.round(Date.now() - startMs)}ms) ===`);
     process.exit(0);
   }

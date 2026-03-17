@@ -21,6 +21,11 @@ const TRACE_RUNS_KEY = 'forecast:trace:runs:v1';
 const TRACE_RUNS_MAX = 50;
 const TRACE_REDIS_TTL_SECONDS = 60 * 24 * 60 * 60;
 const PUBLISH_MIN_PROBABILITY = 0;
+const PANEL_MIN_PROBABILITY = 0.1;
+const ENRICHMENT_COMBINED_MAX = 3;
+const ENRICHMENT_SCENARIO_MAX = 3;
+const ENRICHMENT_MAX_PER_DOMAIN = 2;
+const ENRICHMENT_MIN_READINESS = 0.34;
 const MAX_MILITARY_SURGE_AGE_MS = 3 * 60 * 60 * 1000;
 const MAX_MILITARY_BUNDLE_DRIFT_MS = 5 * 60 * 1000;
 
@@ -106,6 +111,16 @@ const TEXT_STOPWORDS = new Set([
   'infrastructure', 'cyber', 'active', 'armed', 'instability', 'escalation',
   'disruption', 'concentration',
 ]);
+
+const FORECAST_DOMAINS = [
+  'conflict',
+  'market',
+  'supply_chain',
+  'political',
+  'military',
+  'cyber',
+  'infrastructure',
+];
 
 function getRedisCredentials() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -1951,11 +1966,106 @@ function buildForecastTraceRecord(pred, rank) {
   };
 }
 
+function summarizeTypeCounts(items) {
+  const counts = new Map();
+  for (const item of items) {
+    if (!item) continue;
+    counts.set(item, (counts.get(item) || 0) + 1);
+  }
+  return Object.fromEntries(
+    [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  );
+}
+
+function pickTopCountEntries(countMap, limit = 5) {
+  return Object.entries(countMap)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([type, count]) => ({ type, count }));
+}
+
+function summarizeForecastPopulation(predictions) {
+  const domainCounts = Object.fromEntries(FORECAST_DOMAINS.map(domain => [domain, 0]));
+  const highlightedDomainCounts = Object.fromEntries(FORECAST_DOMAINS.map(domain => [domain, 0]));
+
+  for (const pred of predictions) {
+    domainCounts[pred.domain] = (domainCounts[pred.domain] || 0) + 1;
+    if ((pred.probability || 0) >= PANEL_MIN_PROBABILITY) {
+      highlightedDomainCounts[pred.domain] = (highlightedDomainCounts[pred.domain] || 0) + 1;
+    }
+  }
+
+  return {
+    forecastCount: predictions.length,
+    domainCounts,
+    highlightedDomainCounts,
+    quietDomains: FORECAST_DOMAINS.filter(domain => (domainCounts[domain] || 0) === 0),
+  };
+}
+
+function summarizeForecastTraceQuality(predictions, tracedPredictions) {
+  const fullRun = summarizeForecastPopulation(predictions);
+  const traced = summarizeForecastPopulation(tracedPredictions);
+
+  const narrativeSourceCounts = summarizeTypeCounts(
+    tracedPredictions.map(item => item.traceMeta?.narrativeSource || 'fallback')
+  );
+
+  const promotionSignalCounts = summarizeTypeCounts(
+    tracedPredictions.flatMap(item => (item.signals || []).slice(0, 3).map(signal => signal.type))
+  );
+
+  const suppressionSignalCounts = summarizeTypeCounts(
+    tracedPredictions.flatMap(item => (item.caseFile?.counterEvidence || []).map(counter => counter.type))
+  );
+
+  const readinessValues = tracedPredictions.map(item => item.readiness?.overall || 0);
+  const avgReadiness = readinessValues.length
+    ? +(readinessValues.reduce((sum, value) => sum + value, 0) / readinessValues.length).toFixed(3)
+    : 0;
+  const avgProbability = tracedPredictions.length
+    ? +(tracedPredictions.reduce((sum, item) => sum + (item.probability || 0), 0) / tracedPredictions.length).toFixed(3)
+    : 0;
+  const avgConfidence = tracedPredictions.length
+    ? +(tracedPredictions.reduce((sum, item) => sum + (item.confidence || 0), 0) / tracedPredictions.length).toFixed(3)
+    : 0;
+
+  const fallbackCount = narrativeSourceCounts.fallback || 0;
+  const llmCombinedCount =
+    (narrativeSourceCounts.llm_combined || 0) +
+    (narrativeSourceCounts.llm_combined_cache || 0);
+  const llmScenarioCount =
+    (narrativeSourceCounts.llm_scenario || 0) +
+    (narrativeSourceCounts.llm_scenario_cache || 0);
+  const enrichedCount = tracedPredictions.length - fallbackCount;
+
+  return {
+    fullRun,
+    traced: {
+      ...traced,
+      narrativeSourceCounts,
+      fallbackCount,
+      fallbackRate: tracedPredictions.length ? +(fallbackCount / tracedPredictions.length).toFixed(3) : 0,
+      enrichedCount,
+      enrichedRate: tracedPredictions.length ? +(enrichedCount / tracedPredictions.length).toFixed(3) : 0,
+      llmCombinedCount,
+      llmScenarioCount,
+      avgReadiness,
+      avgProbability,
+      avgConfidence,
+      topPromotionSignals: pickTopCountEntries(promotionSignalCounts, 5),
+      topSuppressionSignals: pickTopCountEntries(suppressionSignalCounts, 5),
+    },
+  };
+}
+
 function buildForecastTraceArtifacts(data, context = {}, config = {}) {
   const generatedAt = data?.generatedAt || Date.now();
   const predictions = Array.isArray(data?.predictions) ? data.predictions : [];
   const maxForecasts = config.maxForecasts || getTraceMaxForecasts(predictions.length);
   const tracedPredictions = predictions.slice(0, maxForecasts).map((pred, index) => buildForecastTraceRecord(pred, index + 1));
+  const quality = summarizeForecastTraceQuality(predictions, tracedPredictions);
   const prefix = buildTraceRunPrefix(
     context.runId || `run_${generatedAt}`,
     generatedAt,
@@ -1988,6 +2098,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     generatedAtIso: manifest.generatedAtIso,
     forecastCount: manifest.forecastCount,
     tracedForecastCount: manifest.tracedForecastCount,
+    quality,
     topForecasts: tracedPredictions.map(item => ({
       rank: item.rank,
       id: item.id,
@@ -2063,6 +2174,7 @@ async function writeForecastTraceArtifacts(data, context = {}) {
     summaryKey: artifacts.summaryKey,
     forecastCount: artifacts.manifest.forecastCount,
     tracedForecastCount: artifacts.manifest.tracedForecastCount,
+    quality: artifacts.summary.quality,
   };
   await writeForecastTracePointer(pointer);
   return pointer;
@@ -2193,9 +2305,13 @@ function scoreForecastReadiness(pred) {
 function computeAnalysisPriority(pred) {
   const readiness = scoreForecastReadiness(pred);
   const baseScore = (pred.probability || 0) * (pred.confidence || 0);
-  const readinessMultiplier = 0.85 + (readiness.overall * 0.35);
+  const readinessMultiplier = 0.78 + (readiness.overall * 0.5);
+  const groundingBonus = readiness.groundingScore * 0.025;
+  const evidenceBonus = readiness.evidenceScore * 0.02;
   const trendBonus = pred.trend === 'rising' ? 0.015 : pred.trend === 'falling' ? -0.005 : 0;
-  return +((baseScore * readinessMultiplier) + trendBonus).toFixed(6);
+  const lowGroundingPenalty = readiness.groundingScore < 0.2 ? 0.02 : 0;
+  const lowEvidencePenalty = readiness.evidenceScore < 0.25 ? 0.015 : 0;
+  return +((baseScore * readinessMultiplier) + groundingBonus + evidenceBonus + trendBonus - lowGroundingPenalty - lowEvidencePenalty).toFixed(6);
 }
 
 function rankForecastsForAnalysis(predictions) {
@@ -2208,6 +2324,53 @@ function rankForecastsForAnalysis(predictions) {
 
 function filterPublishedForecasts(predictions, minProbability = PUBLISH_MIN_PROBABILITY) {
   return predictions.filter(pred => (pred?.probability || 0) > minProbability);
+}
+
+function selectForecastsForEnrichment(predictions, options = {}) {
+  const maxCombined = options.maxCombined ?? ENRICHMENT_COMBINED_MAX;
+  const maxScenario = options.maxScenario ?? ENRICHMENT_SCENARIO_MAX;
+  const maxPerDomain = options.maxPerDomain ?? ENRICHMENT_MAX_PER_DOMAIN;
+  const minReadiness = options.minReadiness ?? ENRICHMENT_MIN_READINESS;
+  const maxTotal = maxCombined + maxScenario;
+
+  const ranked = predictions
+    .map((pred, index) => ({
+      pred,
+      index,
+      readiness: scoreForecastReadiness(pred),
+      analysisPriority: computeAnalysisPriority(pred),
+    }))
+    .filter(item => item.readiness.overall >= minReadiness)
+    .sort((a, b) => {
+      if (b.analysisPriority !== a.analysisPriority) return b.analysisPriority - a.analysisPriority;
+      return (b.pred.probability * b.pred.confidence) - (a.pred.probability * a.pred.confidence);
+    });
+
+  const selected = [];
+  const selectedDomains = new Map();
+
+  for (const item of ranked) {
+    if (selected.length >= maxTotal) break;
+    const currentCount = selectedDomains.get(item.pred.domain) || 0;
+    if (currentCount >= maxPerDomain) continue;
+    selected.push(item);
+    selectedDomains.set(item.pred.domain, currentCount + 1);
+  }
+
+  if (selected.length < maxTotal) {
+    const seen = new Set(selected.map(item => item.pred.id));
+    for (const item of ranked) {
+      if (selected.length >= maxTotal) break;
+      if (seen.has(item.pred.id)) continue;
+      selected.push(item);
+      seen.add(item.pred.id);
+    }
+  }
+
+  return {
+    combined: selected.slice(0, maxCombined).map(item => item.pred),
+    scenarioOnly: selected.slice(maxCombined, maxCombined + maxScenario).map(item => item.pred),
+  };
 }
 
 // ── Phase 2: LLM Scenario Enrichment ───────────────────────
@@ -2528,10 +2691,11 @@ function populateFallbackNarratives(predictions) {
 async function enrichScenariosWithLLM(predictions) {
   if (predictions.length === 0) return;
   const { url, token } = getRedisCredentials();
+  const enrichmentTargets = selectForecastsForEnrichment(predictions);
 
-  // Phase 3: Top-2 get combined scenario + perspectives
-  const topWithPerspectives = predictions.slice(0, 2);
-  const scenarioOnly = predictions.slice(2, 4);
+  // Higher-quality top forecasts get richer scenario + perspective treatment.
+  const topWithPerspectives = enrichmentTargets.combined;
+  const scenarioOnly = enrichmentTargets.scenarioOnly;
 
   // Call 1: Combined scenario + perspectives for top-2
   if (topWithPerspectives.length > 0) {
@@ -2860,6 +3024,7 @@ export {
   computeAnalysisPriority,
   rankForecastsForAnalysis,
   filterPublishedForecasts,
+  selectForecastsForEnrichment,
   buildFallbackScenario,
   buildFallbackBaseCase,
   buildFallbackEscalatoryCase,

@@ -322,7 +322,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     console.error(`  FETCH FAILED: ${err.message || err}${cause}`);
 
     const ttl = ttlSeconds || 600;
-    const keys = [canonicalKey];
+    const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
     if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
     await extendExistingTtl(keys, ttl);
 
@@ -335,7 +335,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const publishResult = await atomicPublish(canonicalKey, data, validateFn, ttlSeconds);
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
-      const keys = [canonicalKey];
+      const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
       if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
       await extendExistingTtl(keys, ttlSeconds || 600);
       console.log(`  SKIPPED: validation failed (empty data) — extended existing cache TTL`);

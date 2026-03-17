@@ -274,7 +274,7 @@ async function main() {
   } catch (err) {
     await releaseLock('aviation:delays', runId);
     console.error(`  FETCH FAILED: ${err.message || err}`);
-    await extendExistingTtl([FAA_CACHE_KEY, NOTAM_CACHE_KEY], CACHE_TTL);
+    await extendExistingTtl([FAA_CACHE_KEY, NOTAM_CACHE_KEY, 'seed-meta:aviation:delays'], CACHE_TTL);
     console.log(`\n=== Failed gracefully (${Math.round(Date.now() - startMs)}ms) ===`);
     process.exit(0);
   }
