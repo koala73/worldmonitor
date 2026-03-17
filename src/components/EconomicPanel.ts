@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import type { FredSeries, OilAnalytics, BisData } from '@/services/economic';
 import { t } from '@/services/i18n';
 import type { SpendingSummary } from '@/services/usa-spending';
-import { getChangeClass, formatChange, formatOilValue, getTrendIndicator, getTrendColor } from '@/services/economic';
+import { getChangeClass, formatChange, formatFredValue, formatOilValue, getTrendIndicator, getTrendColor } from '@/services/economic';
 import { formatAwardAmount, getAwardTypeIcon } from '@/services/usa-spending';
 import { escapeHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -140,6 +140,7 @@ export class EconomicPanel extends Panel {
       <div class="economic-indicators">
         ${this.fredData.map(series => {
       const changeClass = getChangeClass(series.change);
+      const valueStr = formatFredValue(series.value, series.unit);
       const changeStr = formatChange(series.change, series.unit);
       const arrow = series.change !== null
         ? (series.change > 0 ? '▲' : series.change < 0 ? '▼' : '–')
@@ -152,7 +153,7 @@ export class EconomicPanel extends Panel {
                 <span class="indicator-id">${escapeHtml(series.id)}</span>
               </div>
               <div class="indicator-value">
-                <span class="value">${escapeHtml(String(series.value !== null ? series.value : 'N/A'))}${escapeHtml(series.unit)}</span>
+                <span class="value">${escapeHtml(valueStr)}</span>
                 <span class="change ${escapeHtml(changeClass)}">${escapeHtml(arrow)} ${escapeHtml(changeStr)}</span>
               </div>
               <div class="indicator-date">${escapeHtml(series.date)}</div>
