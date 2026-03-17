@@ -36,3 +36,5 @@
 
 - Prefer fail-closed behavior. If signing, verification, packaging, or install checks fail, stop the sync instead of falling back to a weaker path.
 - Keep `~/Applications/World Monitor.app` as the canonical install target.
+- This repository is a user-owned repo on GitHub, so GitHub's non-provider patterns and validity-check features are not available here.
+- Compensate with the repo-owned secret scan gate instead: local hooks and CI must stay enabled, and agent-authored changes must keep `npm run secrets:scan` green before merge or push.

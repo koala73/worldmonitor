@@ -7,6 +7,8 @@
   "scripts": {
     "prepare": "node scripts/install-git-hooks.mjs",
     "lint:md": "markdownlint-cli2 '**/*.md' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**'",
+    "secrets:scan": "node scripts/secret-scan.mjs",
+    "secrets:scan:staged": "node scripts/secret-scan.mjs --staged",
     "lockfile:check": "node scripts/check-package-lock.mjs",
     "version:sync": "node scripts/sync-desktop-version.mjs",
     "version:check": "node scripts/sync-desktop-version.mjs --check",
