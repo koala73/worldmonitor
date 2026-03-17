@@ -104,6 +104,23 @@ export type { GoalTemplate, TaskSpec } from './planner/decomposer';
 export { AgentRuntime } from './runtime/agent';
 export type { AgentConfig } from './runtime/agent';
 
+// Status & HUD
+export {
+  captureStatus,
+  renderTerminalHUD,
+  renderStatusLine,
+  renderFindingsFeed,
+  renderFocalPoints,
+  renderBrief,
+  severityClass,
+  phaseClass,
+  domainClass,
+} from './runtime/status';
+export type { StatusSnapshot } from './runtime/status';
+
+// Diagnostics
+export { runDiagnostics } from './diagnostics';
+
 // Bridge (App.ts integration)
 export {
   initAgent,

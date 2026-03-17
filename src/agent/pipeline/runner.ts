@@ -5,8 +5,6 @@
 
 import type {
   Signal,
-  EncodedSignal,
-  CollapsedSignal,
   PipelineContext,
   IntelligenceBrief,
   CollapseRule,
@@ -260,7 +258,7 @@ export class PipelineRunner {
       recs.push(`HIGH: Monitor ${highFindings.length} high-severity finding(s) for escalation`);
     }
     if (synthesis.focalPoints.length > 0) {
-      const top = synthesis.focalPoints[0];
+      const top = synthesis.focalPoints[0]!;
       recs.push(`WATCH: ${top.entity} shows highest convergence (${top.activeDomains.length} domains active)`);
     }
     if (synthesis.findings.length === 0) {

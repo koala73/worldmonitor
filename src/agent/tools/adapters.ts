@@ -3,10 +3,16 @@
  *
  * Each adapter wraps an existing service's fetch function, converts output
  * into canonical Signal format, and registers itself as a tool.
+ *
+ * Client instantiation pattern matches existing codebase:
+ *   new XxxServiceClient('', { fetch: (...args) => globalThis.fetch(...args) })
  */
 
 import type { Signal, Severity } from '../types';
 import { registerTool, createSignal } from './registry';
+
+/** Standard client constructor options matching the codebase pattern */
+const CLIENT_OPTS = { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) };
 
 // ============================================================================
 // ADAPTER: News/RSS → Signal
@@ -22,25 +28,29 @@ registerTool({
   concurrency: 2,
   timeout: 30_000,
   async execute(input) {
-    // Lazy import to avoid circular dependency at module load
-    const { fetchAndCluster } = await import('@/services/rss');
-    const clusters = await fetchAndCluster();
+    const { fetchCategoryFeeds } = await import('@/services/rss');
+    const { FEEDS } = await import('@/config/feeds');
+    const feeds = Object.values(FEEDS).flat();
+    const items = await fetchCategoryFeeds(feeds);
     const maxItems = (input.maxItems as number) ?? 100;
 
-    return clusters.slice(0, maxItems).map(cluster =>
+    return items.slice(0, maxItems).map((item, idx) =>
       createSignal('news', {
-        sourceId: cluster.id,
-        severity: clusterSeverity(cluster.sourceCount, cluster.isAlert),
+        sourceId: `rss-${idx}-${item.link?.slice(-20) ?? Date.now()}`,
+        severity: clusterSeverity(item.tier ?? 3, item.isAlert),
         regions: [],
-        timestamp: cluster.firstSeen.getTime(),
+        timestamp: item.pubDate.getTime(),
+        geo: item.lat != null && item.lon != null
+          ? { lat: item.lat, lon: item.lon }
+          : undefined,
         payload: {
-          title: cluster.primaryTitle,
-          source: cluster.primarySource,
-          link: cluster.primaryLink,
-          sourceCount: cluster.sourceCount,
-          isAlert: cluster.isAlert,
+          title: item.title,
+          source: item.source,
+          link: item.link,
+          isAlert: item.isAlert,
+          tier: item.tier,
         },
-        confidence: Math.min(1, cluster.sourceCount / 5),
+        confidence: item.tier === 1 ? 0.95 : item.tier === 2 ? 0.8 : 0.6,
         tags: ['news', 'rss'],
         provenance: 'tool:news.rss',
       })
@@ -57,28 +67,29 @@ registerTool({
   name: 'ACLED Conflict Events',
   description: 'Fetches armed conflict events from ACLED',
   domains: ['conflict'],
-  inputSchema: { type: 'object', properties: { region: { type: 'string' } } },
+  inputSchema: { type: 'object', properties: { country: { type: 'string' } } },
   outputDomain: 'conflict',
   concurrency: 1,
   timeout: 20_000,
-  async execute() {
+  async execute(input) {
     const { ConflictServiceClient } = await import(
       '@/generated/client/worldmonitor/conflict/v1/service_client'
     );
-    const client = new ConflictServiceClient();
-    const resp = await client.listAcledEvents({});
+    const client = new ConflictServiceClient('', CLIENT_OPTS);
+    const country = (input.country as string) || 'global';
+    const resp = await client.listAcledEvents({ country });
     return (resp.events ?? []).map(evt =>
       createSignal('conflict', {
-        sourceId: `acled-${evt.eventId ?? evt.notes?.slice(0, 20)}`,
-        severity: acledSeverity(evt.eventType ?? '', evt.fatalities ?? 0),
-        regions: evt.iso3 ? [evt.iso3.slice(0, 2).toUpperCase()] : [],
-        timestamp: evt.eventDate ? new Date(evt.eventDate).getTime() : Date.now(),
-        geo: evt.latitude && evt.longitude
-          ? { lat: evt.latitude, lon: evt.longitude }
+        sourceId: `acled-${evt.id}`,
+        severity: acledSeverity(evt.eventType, evt.fatalities),
+        regions: evt.country ? [evt.country.slice(0, 2).toUpperCase()] : [],
+        timestamp: evt.occurredAt || Date.now(),
+        geo: evt.location
+          ? { lat: evt.location.latitude, lon: evt.location.longitude }
           : undefined,
         payload: evt,
         confidence: 0.9,
-        tags: ['conflict', 'acled', evt.eventType ?? ''],
+        tags: ['conflict', 'acled', evt.eventType],
         provenance: 'tool:conflict.acled',
       })
     );
@@ -102,20 +113,23 @@ registerTool({
     const { MilitaryServiceClient } = await import(
       '@/generated/client/worldmonitor/military/v1/service_client'
     );
-    const client = new MilitaryServiceClient();
-    const resp = await client.listMilitaryFlights({});
+    const client = new MilitaryServiceClient('', CLIENT_OPTS);
+    const resp = await client.listMilitaryFlights({
+      operator: 'MILITARY_OPERATOR_UNSPECIFIED',
+      aircraftType: 'MILITARY_AIRCRAFT_TYPE_UNSPECIFIED',
+    });
     return (resp.flights ?? []).map(flight =>
       createSignal('military', {
-        sourceId: `mil-${flight.icao24 ?? flight.callsign}`,
+        sourceId: `mil-${flight.hexCode || flight.callsign}`,
         severity: 'medium',
-        regions: flight.originCountry ? [flight.originCountry] : [],
+        regions: flight.operatorCountry ? [flight.operatorCountry] : [],
         timestamp: Date.now(),
-        geo: flight.latitude && flight.longitude
-          ? { lat: flight.latitude, lon: flight.longitude }
+        geo: flight.location
+          ? { lat: flight.location.latitude, lon: flight.location.longitude }
           : undefined,
         payload: flight,
         confidence: 0.85,
-        tags: ['military', 'aviation', flight.callsign ?? ''],
+        tags: ['military', 'aviation', flight.callsign],
         provenance: 'tool:military.flights',
       })
     );
@@ -139,17 +153,24 @@ registerTool({
     const { CyberServiceClient } = await import(
       '@/generated/client/worldmonitor/cyber/v1/service_client'
     );
-    const client = new CyberServiceClient();
-    const resp = await client.listCyberThreats({});
+    const client = new CyberServiceClient('', CLIENT_OPTS);
+    const resp = await client.listCyberThreats({
+      type: 'CYBER_THREAT_TYPE_UNSPECIFIED',
+      source: 'CYBER_THREAT_SOURCE_UNSPECIFIED',
+      minSeverity: 'CRITICALITY_LEVEL_UNSPECIFIED',
+    });
     return (resp.threats ?? []).map(threat =>
       createSignal('cyber', {
         sourceId: `cyber-${threat.id}`,
-        severity: mapCyberSeverity(threat.severity ?? ''),
-        regions: [],
-        timestamp: threat.publishedAt ? new Date(threat.publishedAt).getTime() : Date.now(),
+        severity: mapCriticalityLevel(threat.severity),
+        regions: threat.country ? [threat.country] : [],
+        timestamp: threat.firstSeenAt || Date.now(),
+        geo: threat.location
+          ? { lat: threat.location.latitude, lon: threat.location.longitude }
+          : undefined,
         payload: threat,
         confidence: 0.8,
-        tags: ['cyber', threat.type ?? ''],
+        tags: ['cyber', threat.type],
         provenance: 'tool:cyber.threats',
       })
     );
@@ -173,20 +194,20 @@ registerTool({
     const { SeismologyServiceClient } = await import(
       '@/generated/client/worldmonitor/seismology/v1/service_client'
     );
-    const client = new SeismologyServiceClient();
-    const resp = await client.listEarthquakes({});
+    const client = new SeismologyServiceClient('', CLIENT_OPTS);
+    const resp = await client.listEarthquakes({ minMagnitude: 3.0 });
     return (resp.earthquakes ?? []).map(eq =>
       createSignal('seismology', {
         sourceId: `eq-${eq.id}`,
-        severity: earthquakeSeverity(eq.magnitude ?? 0),
+        severity: earthquakeSeverity(eq.magnitude),
         regions: [],
-        timestamp: eq.time ? new Date(eq.time).getTime() : Date.now(),
-        geo: eq.latitude && eq.longitude
-          ? { lat: eq.latitude, lon: eq.longitude }
+        timestamp: eq.occurredAt || Date.now(),
+        geo: eq.location
+          ? { lat: eq.location.latitude, lon: eq.location.longitude }
           : undefined,
         payload: eq,
         confidence: 0.95,
-        tags: ['earthquake', `mag${Math.floor(eq.magnitude ?? 0)}`],
+        tags: ['earthquake', `mag${Math.floor(eq.magnitude)}`],
         provenance: 'tool:seismology.earthquakes',
       })
     );
@@ -200,7 +221,7 @@ registerTool({
 registerTool({
   id: 'economic.macro',
   name: 'Macro Economic Signals',
-  description: 'Fetches FRED indicators and energy prices',
+  description: 'Fetches FRED indicators and macro signal composite',
   domains: ['economic'],
   inputSchema: { type: 'object' },
   outputDomain: 'economic',
@@ -210,20 +231,33 @@ registerTool({
     const { EconomicServiceClient } = await import(
       '@/generated/client/worldmonitor/economic/v1/service_client'
     );
-    const client = new EconomicServiceClient();
+    const client = new EconomicServiceClient('', CLIENT_OPTS);
     const resp = await client.getMacroSignals({});
-    return (resp.signals ?? []).map(sig =>
-      createSignal('economic', {
-        sourceId: `macro-${sig.id}`,
-        severity: sig.direction === 'bearish' ? 'high' : sig.direction === 'bullish' ? 'low' : 'medium',
+
+    // The response is a composite — verdict, bullishCount, totalCount
+    const signals: Signal[] = [];
+    if (!resp.unavailable) {
+      const verdictSeverity: Severity = resp.verdict === 'CASH' ? 'high'
+        : resp.verdict === 'CAUTIOUS' ? 'medium'
+        : 'low';
+
+      signals.push(createSignal('economic', {
+        sourceId: `macro-verdict-${resp.timestamp}`,
+        severity: verdictSeverity,
         regions: ['US'],
         timestamp: Date.now(),
-        payload: sig,
-        confidence: sig.confidence ?? 0.7,
-        tags: ['economic', 'macro', sig.category ?? ''],
+        payload: {
+          verdict: resp.verdict,
+          bullishCount: resp.bullishCount,
+          totalCount: resp.totalCount,
+          signals: resp.signals,
+        },
+        confidence: 0.85,
+        tags: ['economic', 'macro', resp.verdict?.toLowerCase() ?? ''],
         provenance: 'tool:economic.macro',
-      })
-    );
+      }));
+    }
+    return signals;
   },
 });
 
@@ -236,25 +270,29 @@ registerTool({
   name: 'Infrastructure Outage Monitor',
   description: 'Fetches internet outages and service disruptions',
   domains: ['infrastructure'],
-  inputSchema: { type: 'object' },
+  inputSchema: { type: 'object', properties: { country: { type: 'string' } } },
   outputDomain: 'infrastructure',
   concurrency: 1,
   timeout: 15_000,
-  async execute() {
+  async execute(input) {
     const { InfrastructureServiceClient } = await import(
       '@/generated/client/worldmonitor/infrastructure/v1/service_client'
     );
-    const client = new InfrastructureServiceClient();
-    const resp = await client.listInternetOutages({});
+    const client = new InfrastructureServiceClient('', CLIENT_OPTS);
+    const country = (input.country as string) || 'global';
+    const resp = await client.listInternetOutages({ country });
     return (resp.outages ?? []).map(outage =>
       createSignal('infrastructure', {
-        sourceId: `outage-${outage.asn ?? outage.name}`,
-        severity: outage.severity === 'major' ? 'high' : 'medium',
-        regions: outage.countryCode ? [outage.countryCode] : [],
-        timestamp: outage.startedAt ? new Date(outage.startedAt).getTime() : Date.now(),
+        sourceId: `outage-${outage.id}`,
+        severity: mapOutageSeverity(outage.severity),
+        regions: outage.country ? [outage.country] : [],
+        timestamp: outage.detectedAt || Date.now(),
+        geo: outage.location
+          ? { lat: outage.location.latitude, lon: outage.location.longitude }
+          : undefined,
         payload: outage,
         confidence: 0.85,
-        tags: ['infrastructure', 'outage'],
+        tags: ['infrastructure', 'outage', outage.outageType],
         provenance: 'tool:infrastructure.outages',
       })
     );
@@ -270,28 +308,32 @@ registerTool({
   name: 'Social Unrest Tracker',
   description: 'Fetches protest and unrest events',
   domains: ['unrest'],
-  inputSchema: { type: 'object' },
+  inputSchema: { type: 'object', properties: { country: { type: 'string' } } },
   outputDomain: 'unrest',
   concurrency: 1,
   timeout: 15_000,
-  async execute() {
+  async execute(input) {
     const { UnrestServiceClient } = await import(
       '@/generated/client/worldmonitor/unrest/v1/service_client'
     );
-    const client = new UnrestServiceClient();
-    const resp = await client.listUnrestEvents({});
+    const client = new UnrestServiceClient('', CLIENT_OPTS);
+    const country = (input.country as string) || 'global';
+    const resp = await client.listUnrestEvents({
+      country,
+      minSeverity: 'SEVERITY_LEVEL_UNSPECIFIED',
+    });
     return (resp.events ?? []).map(evt =>
       createSignal('unrest', {
-        sourceId: `unrest-${evt.id ?? evt.title?.slice(0, 20)}`,
-        severity: evt.fatalities && evt.fatalities > 0 ? 'high' : 'medium',
-        regions: evt.countryCode ? [evt.countryCode] : [],
-        timestamp: evt.date ? new Date(evt.date).getTime() : Date.now(),
-        geo: evt.latitude && evt.longitude
-          ? { lat: evt.latitude, lon: evt.longitude }
+        sourceId: `unrest-${evt.id}`,
+        severity: evt.fatalities > 0 ? 'high' : 'medium',
+        regions: evt.country ? [evt.country] : [],
+        timestamp: evt.occurredAt || Date.now(),
+        geo: evt.location
+          ? { lat: evt.location.latitude, lon: evt.location.longitude }
           : undefined,
         payload: evt,
         confidence: 0.8,
-        tags: ['unrest', evt.eventType ?? ''],
+        tags: ['unrest', evt.eventType],
         provenance: 'tool:unrest.events',
       })
     );
@@ -315,8 +357,9 @@ registerTool({
     const { IntelligenceServiceClient } = await import(
       '@/generated/client/worldmonitor/intelligence/v1/service_client'
     );
-    const client = new IntelligenceServiceClient();
-    const resp = await client.getRiskScores({ region: input.region as string });
+    const client = new IntelligenceServiceClient('', CLIENT_OPTS);
+    const region = (input.region as string) || 'global';
+    const resp = await client.getRiskScores({ region });
 
     const signals: Signal[] = [];
 
@@ -341,11 +384,10 @@ registerTool({
 // SEVERITY HELPERS
 // ============================================================================
 
-function clusterSeverity(sourceCount: number, isAlert: boolean): Severity {
+function clusterSeverity(tier: number, isAlert: boolean): Severity {
   if (isAlert) return 'high';
-  if (sourceCount >= 10) return 'high';
-  if (sourceCount >= 5) return 'medium';
-  if (sourceCount >= 2) return 'low';
+  if (tier === 1) return 'medium';
+  if (tier === 2) return 'low';
   return 'info';
 }
 
@@ -357,11 +399,17 @@ function acledSeverity(eventType: string, fatalities: number): Severity {
   return 'low';
 }
 
-function mapCyberSeverity(s: string): Severity {
-  const lower = s.toLowerCase();
-  if (lower === 'critical') return 'critical';
-  if (lower === 'high') return 'high';
-  if (lower === 'medium') return 'medium';
+function mapCriticalityLevel(s: string): Severity {
+  if (s === 'CRITICALITY_LEVEL_CRITICAL') return 'critical';
+  if (s === 'CRITICALITY_LEVEL_HIGH') return 'high';
+  if (s === 'CRITICALITY_LEVEL_MEDIUM') return 'medium';
+  return 'low';
+}
+
+function mapOutageSeverity(s: string): Severity {
+  if (s === 'OUTAGE_SEVERITY_TOTAL') return 'critical';
+  if (s === 'OUTAGE_SEVERITY_MAJOR') return 'high';
+  if (s === 'OUTAGE_SEVERITY_PARTIAL') return 'medium';
   return 'low';
 }
 

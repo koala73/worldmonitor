@@ -12,7 +12,6 @@ import type {
   CollapsedSignal,
   Severity,
   SignalDomain,
-  PipelineContext,
   StageResult,
 } from '../types';
 import { PipelineStage } from '../types';
@@ -264,10 +263,6 @@ function geoDistance(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function regionsOverlap(a: string[], b: string[]): boolean {
-  return a.some(r => b.includes(r));
-}
-
 function geoProximity(
   a: EncodedSignal,
   b: EncodedSignal,
@@ -408,7 +403,7 @@ function getMaxSeverity(severities: Severity[]): Severity {
     const idx = SEVERITY_ORDER.indexOf(s);
     if (idx > max) max = idx;
   }
-  return SEVERITY_ORDER[max];
+  return SEVERITY_ORDER[max] ?? 'info';
 }
 
 // ============================================================================

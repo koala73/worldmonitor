@@ -12,7 +12,6 @@ import type {
   TaskPriority,
   TaskStatus,
   Observation,
-  CollapsedSignal,
 } from '../types';
 import { agentBus } from '../bus/event-bus';
 
@@ -141,7 +140,7 @@ export class GoalDecomposer {
     if (!template) throw new Error(`Unknown goal template: ${templateId}`);
 
     const goalId = `goal-${++goalCounter}-${Date.now()}`;
-    const tasks: Task[] = template.taskSpecs.map((spec, idx) => {
+    const tasks: Task[] = template.taskSpecs.map((spec) => {
       const taskId = `task-${++taskCounter}`;
       const toolInput = overrides?.toolInputOverrides?.[spec.toolId]
         ? { ...spec.toolInput, ...overrides.toolInputOverrides[spec.toolId] }
@@ -244,7 +243,8 @@ export class GoalDecomposer {
 
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => a.score - b.score);
-    return { goal: candidates[0].goal, task: candidates[0].task };
+    const best = candidates[0]!;
+    return { goal: best.goal, task: best.task };
   }
 
   /**

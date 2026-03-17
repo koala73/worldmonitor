@@ -11,11 +11,7 @@
  */
 
 import type {
-  Signal,
   IntelligenceBrief,
-  CollapsedSignal,
-  Severity,
-  SignalDomain,
   AgentState,
 } from './types';
 import { AgentRuntime, type AgentConfig } from './runtime/agent';
@@ -97,7 +93,7 @@ export function onBriefUpdate(handler: (brief: IntelligenceBrief) => void): () =
 export function onPhaseChange(handler: (phase: string) => void): () => void {
   const phases = ['agent:observe', 'agent:plan', 'agent:act', 'agent:reflect'] as const;
   const unsubs = phases.map(phase =>
-    agentBus.on(phase, () => handler(phase.split(':')[1]))
+    agentBus.on(phase, () => handler(phase.split(':')[1]!))
   );
   const unsub = () => unsubs.forEach(u => u());
   bridgeListeners.push(unsub);

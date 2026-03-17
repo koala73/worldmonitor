@@ -129,7 +129,7 @@ registerTool({
     const { MarketServiceClient } = await import(
       '@/generated/client/worldmonitor/market/v1/service_client'
     );
-    const client = new MarketServiceClient();
+    const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
 
     const sectorFilter = input.sectors as string[] | undefined;
     const sectors = sectorFilter
@@ -144,7 +144,9 @@ registerTool({
     // Also fetch SPY as benchmark
     const benchResp = await client.listMarketQuotes({ symbols: ['SPY'] });
     const spyQuote = (benchResp.quotes ?? [])[0];
-    const spyChange = spyQuote?.changePercent ?? 0;
+    const spyChange = spyQuote && spyQuote.price > 0
+      ? (spyQuote.change / spyQuote.price) * 100
+      : 0;
 
     const signals: Signal[] = [];
 
@@ -152,7 +154,8 @@ registerTool({
       const quote = quotes.find(q => q.symbol === sector.etf);
       if (!quote) continue;
 
-      const changePercent = quote.changePercent ?? 0;
+      // MarketQuote has `change` (absolute) and `price` — derive percent
+      const changePercent = quote.price > 0 ? (quote.change / quote.price) * 100 : 0;
       const relativeStrength = changePercent - spyChange;
 
       // Detect rotation signals
@@ -179,7 +182,7 @@ registerTool({
           change: quote.change,
           changePercent,
           relativeStrength,
-          volume: quote.volume,
+          sparkline: quote.sparkline,
           topHoldings: sector.topHoldings,
           keywords: sector.keywords,
         },
@@ -233,10 +236,10 @@ function sectorSignalSeverity(changePercent: number, relativeStrength: number): 
   return 'info';
 }
 
-function avgChange(quotes: Array<{ symbol?: string; changePercent?: number }>, symbols: string[]): number {
-  const matching = quotes.filter(q => q.symbol && symbols.includes(q.symbol));
+function avgChange(quotes: Array<{ symbol: string; price: number; change: number }>, symbols: string[]): number {
+  const matching = quotes.filter(q => symbols.includes(q.symbol));
   if (matching.length === 0) return 0;
-  return matching.reduce((sum, q) => sum + (q.changePercent ?? 0), 0) / matching.length;
+  return matching.reduce((sum, q) => sum + (q.price > 0 ? (q.change / q.price) * 100 : 0), 0) / matching.length;
 }
 
 /**

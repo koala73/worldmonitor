@@ -15,7 +15,6 @@
 
 import {
   type Invariant,
-  type InvariantCheckContext,
   type InvariantViolation,
   type InvariantSeverity,
   PipelineStage,
@@ -162,7 +161,7 @@ const T003_MonotonicIngestion: Invariant = {
   stages: [PipelineStage.INGEST],
   check: (ctx) => {
     for (let i = 1; i < ctx.signals.length; i++) {
-      if (ctx.signals[i].ingestedAt < ctx.signals[i - 1].ingestedAt) {
+      if (ctx.signals[i]!.ingestedAt < ctx.signals[i - 1]!.ingestedAt) {
         return violation('T-003', 'info', 'Ingestion timestamps are not monotonically increasing', {
           indexA: i - 1,
           indexB: i,

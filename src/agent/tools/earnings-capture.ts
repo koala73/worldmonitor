@@ -73,7 +73,6 @@ registerTool({
   timeout: 45_000,
   async execute(input) {
     const lookbackDays = (input.lookbackDays as number) ?? 14;
-    const lookforwardDays = (input.lookforwardDays as number) ?? 7;
     const sectorFilter = input.sector as string | undefined;
     const symbolFilter = input.symbols as string[] | undefined;
 
@@ -95,14 +94,12 @@ registerTool({
     const signals: Signal[] = [];
 
     // Use GDELT + news to find earnings-related headlines
-    const { NewsServiceClient } = await import(
-      '@/generated/client/worldmonitor/news/v1/service_client'
-    );
     const { IntelligenceServiceClient } = await import(
       '@/generated/client/worldmonitor/intelligence/v1/service_client'
     );
+    const clientOpts = { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) };
 
-    const intelClient = new IntelligenceServiceClient();
+    const intelClient = new IntelligenceServiceClient('', clientOpts);
 
     // Search for earnings-related news across all target symbols
     const earningsQueries = buildEarningsQueries(targetSymbols, sectorFilter);
@@ -116,18 +113,18 @@ registerTool({
         });
 
         for (const article of gdeltResp.articles ?? []) {
-          const earningsData = parseEarningsFromHeadline(article.title ?? '', targetSymbols);
+          const earningsData = parseEarningsFromHeadline(article.title, targetSymbols);
           if (!earningsData) continue;
 
           const sector = findSectorForSymbol(earningsData.symbol);
           const severity = earningsSeverity(earningsData);
 
           signals.push(createSignal('economic', {
-            sourceId: `earnings-${earningsData.symbol}-${article.url?.slice(-20) ?? Date.now()}`,
+            sourceId: `earnings-${earningsData.symbol}-${article.url.slice(-20)}`,
             severity,
             regions: ['US'],
-            timestamp: article.publishedAt
-              ? new Date(article.publishedAt).getTime()
+            timestamp: article.date
+              ? new Date(article.date).getTime()
               : Date.now(),
             payload: {
               type: 'earnings_event',
@@ -140,7 +137,7 @@ registerTool({
               surprise: earningsData.surprise,
               guidance: earningsData.guidance,
               sentiment: earningsData.sentiment,
-              toneScore: article.toneScore,
+              tone: article.tone,
             },
             confidence: earningsData.confidence,
             tags: [

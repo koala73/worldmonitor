@@ -12,13 +12,12 @@ import type {
   Observation,
   Reflection,
   Signal,
-  CollapsedSignal,
   IntelligenceBrief,
   TaskResult,
 } from '../types';
 import { PipelineRunner, type PipelineRunResult } from '../pipeline/runner';
 import { MemoryStore } from '../memory/store';
-import { GoalDecomposer, GOAL_TEMPLATES } from '../planner/decomposer';
+import { GoalDecomposer } from '../planner/decomposer';
 import { executeTool } from '../tools/registry';
 import { agentBus } from '../bus/event-bus';
 import type { IngestInput } from '../pipeline/stages';
