@@ -303,6 +303,8 @@ function buildProgramPressure(entries) {
 }
 
 async function fetchSource(source) {
+  console.log(`  Fetching OFAC ${source.label}...`);
+  const t0 = Date.now();
   const response = await fetch(source.url, {
     headers: { 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(OFAC_TIMEOUT_MS),
@@ -311,15 +313,19 @@ async function fetchSource(source) {
     throw new Error(`OFAC ${source.label} HTTP ${response.status}`);
   }
   const xml = await response.text();
+  console.log(`  ${source.label}: ${(xml.length / 1024).toFixed(0)}KB downloaded (${Date.now() - t0}ms)`);
   const parsed = XML_PARSER.parse(xml)?.Sanctions;
   if (!parsed) throw new Error(`OFAC ${source.label} parse returned no Sanctions root`);
-  return buildEntriesForDocument(parsed, source.label);
+  const result = buildEntriesForDocument(parsed, source.label);
+  console.log(`  ${source.label}: ${result.entries.length} entries parsed`);
+  return result;
 }
 
 async function fetchSanctionsPressure() {
   const previousState = await verifySeedKey(STATE_KEY).catch(() => null);
   const previousIds = new Set(Array.isArray(previousState?.entryIds) ? previousState.entryIds.map((id) => String(id)) : []);
   const hasPrevious = previousIds.size > 0;
+  console.log(`  Previous state: ${hasPrevious ? `${previousIds.size} known IDs` : 'none (first run or expired)'}`);
 
   // Sequential fetch to halve peak heap: SDN (~10MB) then Consolidated (~20MB).
   // Combined parallel parse can approach 150MB, tight against the 512MB limit.
@@ -341,6 +347,7 @@ async function fetchSanctionsPressure() {
   const newEntryCount = hasPrevious ? entries.filter((entry) => entry.isNew).length : 0;
   const vesselCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL').length;
   const aircraftCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
+  console.log(`  Merged: ${totalCount} total (${results[0]?.entries.length ?? 0} SDN + ${results[1]?.entries.length ?? 0} consolidated), ${newEntryCount} new, ${vesselCount} vessels, ${aircraftCount} aircraft`);
 
   return {
     fetchedAt: String(Date.now()),
