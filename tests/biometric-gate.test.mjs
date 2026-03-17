@@ -103,6 +103,24 @@ describe('desktop biometric bootstrap', () => {
     );
   });
 
+  it('keeps auto-retrying while the Tauri bridge is still booting', () => {
+    assert.match(
+      gateSrc,
+      /Preparing secure unlock\. Authentication will start automatically\./,
+      'bridge bootstrap failures should stay in an auto-retry state instead of requiring a manual click',
+    );
+    assert.match(
+      gateSrc,
+      /hasTauriInvokeBridge\(\)/,
+      'fallback recovery should explicitly watch for the shared Tauri bridge becoming available',
+    );
+    assert.match(
+      gateSrc,
+      /window\.setInterval\(/,
+      'fallback recovery should poll for bridge readiness so auth can resume without a focus change',
+    );
+  });
+
   it('uses a minimal fallback screen instead of a second theatrical auth window', () => {
     assert.match(
       gateSrc,

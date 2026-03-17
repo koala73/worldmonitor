@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
-import os from 'node:os';
+import nodeOs from 'node:os';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
@@ -14,27 +14,32 @@ const getArg = (name) => {
 
 const hasFlag = (name) => args.includes(`--${name}`);
 
-const os = getArg('os');
+const targetOs = getArg('os');
 const variant = getArg('variant') ?? 'full';
 const sign = hasFlag('sign');
 const skipNodeRuntime = hasFlag('skip-node-runtime');
 const showHelp = hasFlag('help') || hasFlag('h');
+const variantProductName = {
+  full: 'World Monitor',
+  tech: 'Tech Monitor',
+  finance: 'Finance Monitor',
+}[variant];
 
 const validOs = new Set(['macos', 'windows', 'linux']);
 const validVariants = new Set(['full', 'tech', 'finance']);
 
 if (showHelp) {
-  console.log('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech> [--sign] [--skip-node-runtime]');
+  console.log('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--sign] [--skip-node-runtime]');
   process.exit(0);
 }
 
-if (!validOs.has(os)) {
-  console.error('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech> [--sign] [--skip-node-runtime]');
+if (!validOs.has(targetOs)) {
+  console.error('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--sign] [--skip-node-runtime]');
   process.exit(1);
 }
 
 if (!validVariants.has(variant)) {
-  console.error('Invalid variant. Use --variant full or --variant tech.');
+  console.error('Invalid variant. Use --variant full, tech, or finance.');
   process.exit(1);
 }
 
@@ -49,7 +54,7 @@ if ((syncVersionsResult.status ?? 1) !== 0) {
   process.exit(syncVersionsResult.status ?? 1);
 }
 
-const bundles = os === 'macos' ? 'app' : os === 'linux' ? 'appimage' : 'nsis,msi';
+const bundles = targetOs === 'macos' ? sign ? 'app,dmg' : 'app' : targetOs === 'linux' ? 'appimage' : 'nsis,msi';
 const env = {
   ...process.env,
   VITE_VARIANT: variant,
@@ -73,9 +78,9 @@ if (variant === 'tech') {
 
 const resolveNodeTarget = () => {
   if (env.NODE_TARGET) return env.NODE_TARGET;
-  if (os === 'windows') return 'x86_64-pc-windows-msvc';
-  if (os === 'linux') return 'x86_64-unknown-linux-gnu';
-  if (os === 'macos') {
+  if (targetOs === 'windows') return 'x86_64-pc-windows-msvc';
+  if (targetOs === 'linux') return 'x86_64-unknown-linux-gnu';
+  if (targetOs === 'macos') {
     if (process.arch === 'arm64') return 'aarch64-apple-darwin';
     if (process.arch === 'x64') return 'x86_64-apple-darwin';
   }
@@ -83,7 +88,7 @@ const resolveNodeTarget = () => {
 };
 
 if (sign) {
-  if (os === 'macos') {
+  if (targetOs === 'macos') {
     const hasIdentity = Boolean(env.TAURI_BUNDLE_MACOS_SIGNING_IDENTITY || env.APPLE_SIGNING_IDENTITY);
     const hasProvider = Boolean(env.TAURI_BUNDLE_MACOS_PROVIDER_SHORT_NAME);
     if (!hasIdentity || !hasProvider) {
@@ -94,7 +99,7 @@ if (sign) {
     }
   }
 
-  if (os === 'windows') {
+  if (targetOs === 'windows') {
     const hasThumbprint = Boolean(env.TAURI_BUNDLE_WINDOWS_CERTIFICATE_THUMBPRINT);
     const hasPfx = Boolean(env.TAURI_BUNDLE_WINDOWS_CERTIFICATE && env.TAURI_BUNDLE_WINDOWS_CERTIFICATE_PASSWORD);
     if (!hasThumbprint && !hasPfx) {
@@ -110,7 +115,7 @@ if (!skipNodeRuntime) {
   const nodeTarget = resolveNodeTarget();
   if (!nodeTarget) {
     console.error(
-      `Unable to infer Node runtime target for OS=${os} ARCH=${process.arch}. Set NODE_TARGET explicitly or pass --skip-node-runtime.`
+      `Unable to infer Node runtime target for OS=${targetOs} ARCH=${process.arch}. Set NODE_TARGET explicitly or pass --skip-node-runtime.`
     );
     process.exit(1);
   }
@@ -134,7 +139,7 @@ if (!skipNodeRuntime) {
   }
 }
 
-console.log(`[desktop-package] OS=${os} VARIANT=${variant} BUNDLES=${bundles} SIGN=${sign ? 'on' : 'off'}`);
+console.log(`[desktop-package] OS=${targetOs} VARIANT=${variant} BUNDLES=${bundles} SIGN=${sign ? 'on' : 'off'}`);
 
 const result = spawnSync(tauriBin, cliArgs, {
   env,
@@ -174,32 +179,37 @@ const runCapture = (command, args, options = {}) =>
     ...options,
   });
 
-const verifyMacAppBundle = (appPath) => {
-  const result = runCapture('codesign', ['--verify', '--deep', '--strict', appPath]);
+const verifyMacCodeSignature = (artifactPath, label, args = ['--verify', '--deep', '--strict']) => {
+  const result = runCapture('codesign', [...args, artifactPath]);
   if ((result.status ?? 1) !== 0) {
-    const error = new Error((result.stderr || result.stdout || '').trim() || 'codesign verification failed');
+    const error = new Error(
+      (result.stderr || result.stdout || '').trim() || `${label} codesign verification failed`
+    );
     error.result = result;
     throw error;
   }
 };
 
-if (os === 'macos') {
+if (targetOs === 'macos') {
   const bundleRoot = path.join('src-tauri', 'target', 'release', 'bundle');
   const appDir = path.join(bundleRoot, 'macos');
   const dmgDir = path.join(bundleRoot, 'dmg');
-  const appName = readdirSync(appDir).find((entry) => entry.endsWith('.app'));
-  if (!appName) {
-    console.error(`[desktop-package] No .app bundle found in ${appDir}`);
+  const appName = `${variantProductName}.app`;
+  const appPath = path.join(appDir, appName);
+  if (!existsSync(appPath)) {
+    const discoveredApps = readdirSync(appDir).filter((entry) => entry.endsWith('.app'));
+    console.error(
+      `[desktop-package] Expected ${appName} in ${appDir}, found: ${discoveredApps.join(', ') || '(none)'}`
+    );
     process.exit(1);
   }
 
-  const appPath = path.join(appDir, appName);
   const bundleVersion = env.npm_package_version;
   const archSuffix = process.arch === 'arm64' ? 'aarch64' : process.arch;
-  const dmgPath = path.join(dmgDir, `${appName.replace(/\.app$/, '')}_${bundleVersion}_${archSuffix}.dmg`);
+  const dmgPath = path.join(dmgDir, `${variantProductName}_${bundleVersion}_${archSuffix}.dmg`);
 
   try {
-    verifyMacAppBundle(appPath);
+    verifyMacCodeSignature(appPath, 'App bundle');
   } catch (error) {
     if (sign) {
       console.error(`[desktop-package] Signed app bundle failed verification: ${error.message}`);
@@ -208,17 +218,25 @@ if (os === 'macos') {
 
     console.log('[desktop-package] Re-signing macOS app bundle with ad-hoc signature for local packaging');
     run('codesign', ['--force', '--deep', '--sign', '-', appPath]);
-    verifyMacAppBundle(appPath);
+    verifyMacCodeSignature(appPath, 'App bundle');
   }
 
-  mkdirSync(dmgDir, { recursive: true });
-  rmSync(dmgPath, { force: true });
-  run('hdiutil', ['create', '-volname', appName.replace(/\.app$/, ''), '-srcfolder', appPath, '-ov', '-format', 'UDZO', dmgPath]);
+  if (sign) {
+    if (!existsSync(dmgPath)) {
+      console.error(`[desktop-package] Expected signed DMG output at ${dmgPath}`);
+      process.exit(1);
+    }
+    verifyMacCodeSignature(dmgPath, 'DMG artifact', ['--verify', '--strict']);
+  } else {
+    mkdirSync(dmgDir, { recursive: true });
+    rmSync(dmgPath, { force: true });
+    run('hdiutil', ['create', '-volname', variantProductName, '-srcfolder', appPath, '-ov', '-format', 'UDZO', dmgPath]);
+  }
 
-  const mountPoint = mkdtempSync(path.join(os.tmpdir(), 'desktop-package-dmg-'));
+  const mountPoint = mkdtempSync(path.join(nodeOs.tmpdir(), 'desktop-package-dmg-'));
   try {
     run('hdiutil', ['attach', dmgPath, '-mountpoint', mountPoint, '-nobrowse', '-readonly', '-quiet']);
-    verifyMacAppBundle(path.join(mountPoint, appName));
+    verifyMacCodeSignature(path.join(mountPoint, appName), 'Mounted app bundle');
   } finally {
     const detach = runCapture('hdiutil', ['detach', mountPoint, '-quiet']);
     if ((detach.status ?? 1) !== 0) {

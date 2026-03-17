@@ -3,6 +3,7 @@ import { hasTauriInvokeBridge, invokeTauri } from '../services/tauri-bridge';
 const INVOKE_CMD_AUTHENTICATE = 'plugin:biometry|authenticate';
 const BRIDGE_READY_TIMEOUT_MS = 2500;
 const BRIDGE_READY_POLL_MS = 50;
+const BRIDGE_BOOTSTRAP_POLL_MS = 150;
 const WINDOW_READY_TIMEOUT_MS = 1200;
 const WINDOW_READY_POLL_MS = 100;
 const AUTO_PROMPT_DELAY_MS = 80;
@@ -210,6 +211,7 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
     let settled = false;
     let inFlight: Promise<boolean> | null = null;
     let autoResumeArmed = false;
+    let bridgePollId = 0;
     let fallbackOverlay: FallbackOverlay | null = null;
 
     const cleanupFallback = () => {
@@ -218,6 +220,10 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
     };
 
     const disarmAutoResume = () => {
+      if (bridgePollId) {
+        window.clearInterval(bridgePollId);
+        bridgePollId = 0;
+      }
       if (!autoResumeArmed) return;
       autoResumeArmed = false;
       window.removeEventListener('focus', resumeAutoAuth);
@@ -232,7 +238,7 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
       resolve(value);
     };
 
-    const showRetryState = (text: string) => {
+    const ensureFallbackControls = (text: string) => {
       if (!fallbackOverlay) {
         fallbackOverlay = showFallbackOverlay(text);
         fallbackOverlay.quit.onclick = () => {
@@ -245,12 +251,27 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
         };
       }
       fallbackOverlay.message.textContent = text;
-      fallbackOverlay.retry.disabled = false;
-      fallbackOverlay.retry.textContent = 'Try Again';
+      return fallbackOverlay;
+    };
+
+    const showRetryState = (text: string) => {
+      const overlay = ensureFallbackControls(text);
+      overlay.retry.disabled = false;
+      overlay.retry.textContent = 'Try Again';
+    };
+
+    const showAutoResumeState = (text: string) => {
+      const overlay = ensureFallbackControls(text);
+      overlay.retry.disabled = true;
+      overlay.retry.textContent = 'Authenticating…';
     };
 
     const resumeAutoAuth = () => {
       if (settled || inFlight || !isInteractiveWindow()) return;
+      if (!hasTauriInvokeBridge()) {
+        showAutoResumeState('Preparing secure unlock. Authentication will start automatically.');
+        return;
+      }
       disarmAutoResume();
       if (fallbackOverlay) {
         fallbackOverlay.message.textContent = 'Preparing Touch ID...';
@@ -258,15 +279,23 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
         fallbackOverlay.retry.textContent = 'Authenticating…';
       }
       void sleep(AUTO_PROMPT_DELAY_MS).then(() => {
+        if (settled || inFlight || !isInteractiveWindow()) return;
         void tryAuth(false);
       });
     };
 
-    const armAutoResume = () => {
-      if (autoResumeArmed) return;
-      autoResumeArmed = true;
-      window.addEventListener('focus', resumeAutoAuth);
-      document.addEventListener('visibilitychange', resumeAutoAuth);
+    const armAutoResume = (waitForBridge = false) => {
+      if (!autoResumeArmed) {
+        autoResumeArmed = true;
+        window.addEventListener('focus', resumeAutoAuth);
+        document.addEventListener('visibilitychange', resumeAutoAuth);
+      }
+      if (waitForBridge && !bridgePollId) {
+        bridgePollId = window.setInterval(() => {
+          if (settled || inFlight || !hasTauriInvokeBridge() || !isInteractiveWindow()) return;
+          resumeAutoAuth();
+        }, BRIDGE_BOOTSTRAP_POLL_MS);
+      }
     };
 
     const tryAuth = async (manual: boolean): Promise<boolean> => {
@@ -294,6 +323,11 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
           const text = err instanceof Error && err.message
             ? err.message
             : 'Touch ID did not complete. Try Again or quit.';
+          if (text.includes('Tauri invoke bridge not ready')) {
+            showAutoResumeState('Preparing secure unlock. Authentication will start automatically.');
+            armAutoResume(true);
+            return false;
+          }
           showRetryState(text.includes('Touch ID did not complete.') ? text : `Touch ID did not complete. ${text}`);
           armAutoResume();
           return false;
@@ -308,8 +342,8 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
     void (async () => {
       const windowReady = await waitForInteractiveWindow();
       if (!windowReady) {
-        showRetryState('Bring World Monitor to the front. Authentication will start automatically.');
-        armAutoResume();
+        showAutoResumeState('Bring World Monitor to the front. Authentication will start automatically.');
+        armAutoResume(true);
         return;
       }
       await sleep(AUTO_PROMPT_DELAY_MS);

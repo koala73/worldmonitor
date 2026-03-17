@@ -170,190 +170,276 @@ function buildDoor(): DoorParts {
   // ── Defs ──────────────────────────────────────────────────────────────────
   const defs = svgEl('defs');
 
-  // Door body gradient — bright upper-left corner, dark lower-right
+  // Neutral gunmetal door body — single light source upper-left, no blue tint
   const dg = svgEl<SVGRadialGradientElement>('radialGradient');
-  attr(dg, { id: 'vi-dg', cx: '34%', cy: '30%', r: '70%' });
-  for (const [off, col] of [['0%','#2e3a4e'],['38%','#1a2232'],['75%','#111826'],['100%','#0c1018']] as const) {
+  attr(dg, { id: 'vi-dg', cx: '32%', cy: '28%', r: '75%' });
+  for (const [off, col] of [
+    ['0%','#484e58'],['22%','#32363e'],['55%','#1e2026'],['100%','#111316'],
+  ] as const) {
     const s = svgEl<SVGStopElement>('stop'); attr(s, { offset: off, 'stop-color': col }); dg.appendChild(s);
   }
 
-  // Frame gradient — darker than door
+  // Frame — darker, separate material
   const fg = svgEl<SVGRadialGradientElement>('radialGradient');
-  attr(fg, { id: 'vi-fg', cx: '38%', cy: '33%', r: '66%' });
-  for (const [off, col] of [['0%','#1e2430'],['100%','#080b10']] as const) {
+  attr(fg, { id: 'vi-fg', cx: '35%', cy: '30%', r: '70%' });
+  for (const [off, col] of [['0%','#1c1e22'],['100%','#09090b']] as const) {
     const s = svgEl<SVGStopElement>('stop'); attr(s, { offset: off, 'stop-color': col }); fg.appendChild(s);
   }
 
-  // Scanner pad gradient — near-black with faint deep-blue center
+  // Scanner pad — near-black hardened glass
   const sg = svgEl<SVGRadialGradientElement>('radialGradient');
-  attr(sg, { id: 'vi-sg', cx: '42%', cy: '38%', r: '60%' });
-  for (const [off, col] of [['0%','#0e1824'],['60%','#080d14'],['100%','#050810']] as const) {
+  attr(sg, { id: 'vi-sg', cx: '40%', cy: '35%', r: '65%' });
+  for (const [off, col] of [['0%','#0d0f13'],['55%','#080a0d'],['100%','#050608']] as const) {
     const s = svgEl<SVGStopElement>('stop'); attr(s, { offset: off, 'stop-color': col }); sg.appendChild(s);
   }
 
-  // Drop shadow for the whole door
+  // Bolt pin — cylindrical linear gradient, lit from left
+  const bg = svgEl<SVGLinearGradientElement>('linearGradient');
+  attr(bg, { id: 'vi-bg', x1: '0%', y1: '0%', x2: '100%', y2: '0%' });
+  for (const [off, col] of [
+    ['0%','#606670'],['20%','#484e58'],['55%','#2c2f36'],['100%','#18191e'],
+  ] as const) {
+    const s = svgEl<SVGStopElement>('stop'); attr(s, { offset: off, 'stop-color': col }); bg.appendChild(s);
+  }
+
+  // Drop shadow
   const shadow = svgEl<SVGFilterElement>('filter');
-  attr(shadow, { id: 'vi-shadow', x: '-20%', y: '-20%', width: '140%', height: '140%' });
+  attr(shadow, { id: 'vi-shadow', x: '-22%', y: '-22%', width: '144%', height: '144%' });
   const ds = svgEl('feDropShadow');
-  attr(ds, { dx: '0', dy: '12', stdDeviation: '28', 'flood-color': '#000', 'flood-opacity': '0.85' });
+  attr(ds, { dx: '0', dy: '18', stdDeviation: '36', 'flood-color': '#000', 'flood-opacity': '0.95' });
   shadow.appendChild(ds);
 
-  // Scanner glow filter
+  // Scanner glow bloom
   const gf = svgEl<SVGFilterElement>('filter');
   attr(gf, { id: 'vi-glow', x: '-60%', y: '-60%', width: '220%', height: '220%' });
-  const gb = svgEl('feGaussianBlur');
-  attr(gb, { stdDeviation: '5', result: 'blur' });
+  const gb = svgEl('feGaussianBlur'); attr(gb, { stdDeviation: '7', result: 'blur' });
   const gm = svgEl('feMerge');
-  const gm1 = svgEl('feMergeNode'); attr(gm1, { in: 'blur' });
-  const gm2 = svgEl('feMergeNode'); attr(gm2, { in: 'SourceGraphic' });
-  gm.appendChild(gm1); gm.appendChild(gm2);
+  [{ in: 'blur' }, { in: 'SourceGraphic' }].forEach(a => {
+    const n = svgEl('feMergeNode'); attr(n, a); gm.appendChild(n);
+  });
   gf.appendChild(gb); gf.appendChild(gm);
 
-  // Clip path for door body
-  const cp = svgEl('clipPath'); attr(cp, { id: 'vi-clip' });
-  const cpc = svgEl<SVGCircleElement>('circle'); attr(cpc, { cx: C, cy: C, r: 197 }); cp.appendChild(cpc);
+  // Brushed metal grain — low Y frequency = horizontal brushed steel look
+  const grain = svgEl<SVGFilterElement>('filter');
+  attr(grain, { id: 'vi-grain', 'color-interpolation-filters': 'sRGB' });
+  const turb = svgEl('feTurbulence');
+  attr(turb, { type: 'fractalNoise', baseFrequency: '0.72 0.011', numOctaves: '4', seed: '9', result: 'noise' });
+  const desat = svgEl('feColorMatrix');
+  attr(desat, { type: 'saturate', values: '0', in: 'noise', result: 'gray' });
+  const grainBlend = svgEl('feBlend');
+  attr(grainBlend, { in: 'SourceGraphic', in2: 'gray', mode: 'overlay', result: 'blended' });
+  const grainComp = svgEl('feComposite');
+  attr(grainComp, { in: 'blended', in2: 'SourceGraphic', operator: 'in' });
+  grain.appendChild(turb); grain.appendChild(desat); grain.appendChild(grainBlend); grain.appendChild(grainComp);
 
-  defs.appendChild(dg); defs.appendChild(fg); defs.appendChild(sg);
-  defs.appendChild(shadow); defs.appendChild(gf); defs.appendChild(cp);
+  // Soft AO blur — applied to dark shapes at recesses
+  const ao = svgEl<SVGFilterElement>('filter');
+  attr(ao, { id: 'vi-ao', x: '-40%', y: '-40%', width: '180%', height: '180%' });
+  const aob = svgEl('feGaussianBlur'); attr(aob, { stdDeviation: '5' });
+  ao.appendChild(aob);
+
+  // Glass specular blur
+  const specGlow = svgEl<SVGFilterElement>('filter');
+  attr(specGlow, { id: 'vi-specglow', x: '-50%', y: '-50%', width: '200%', height: '200%' });
+  const sgb = svgEl('feGaussianBlur'); attr(sgb, { stdDeviation: '5' });
+  specGlow.appendChild(sgb);
+
+  defs.appendChild(dg); defs.appendChild(fg); defs.appendChild(sg); defs.appendChild(bg);
+  defs.appendChild(shadow); defs.appendChild(gf); defs.appendChild(grain);
+  defs.appendChild(ao); defs.appendChild(specGlow);
   svg.appendChild(defs);
 
-  // ── Outer atmosphere (drop shadow ring) ───────────────────────────────────
-  const shadowRing = svgEl<SVGCircleElement>('circle');
-  attr(shadowRing, { cx: C, cy: C, r: 248, fill: 'url(#vi-fg)', filter: 'url(#vi-shadow)' });
-  svg.appendChild(shadowRing);
+  // ── Cast shadow ────────────────────────────────────────────────────────────
+  const shadowDisk = svgEl<SVGCircleElement>('circle');
+  attr(shadowDisk, { cx: C, cy: C + 10, r: 252, fill: '#000', filter: 'url(#vi-shadow)', opacity: '0.8' });
+  svg.appendChild(shadowDisk);
 
   // ── Frame ring ────────────────────────────────────────────────────────────
   const frame = svgEl<SVGCircleElement>('circle');
-  attr(frame, { cx: C, cy: C, r: 246, fill: 'url(#vi-fg)', stroke: '#0a0d14', 'stroke-width': 3 });
+  attr(frame, { cx: C, cy: C, r: 249, fill: 'url(#vi-fg)' });
   svg.appendChild(frame);
 
-  // Frame outer edge highlight (upper-left arc)
-  const frameHL = svgEl<SVGCircleElement>('circle');
-  attr(frameHL, { cx: C, cy: C, r: 244, fill: 'none', stroke: 'rgba(255,255,255,0.04)', 'stroke-width': 2 });
-  svg.appendChild(frameHL);
+  // Frame grain overlay
+  const frameGrain = svgEl<SVGCircleElement>('circle');
+  attr(frameGrain, { cx: C, cy: C, r: 249, fill: 'rgba(160,165,175,0.06)', filter: 'url(#vi-grain)' });
+  svg.appendChild(frameGrain);
 
-  // Frame inner bevel shadow
-  const frameInnerShadow = svgEl<SVGCircleElement>('circle');
-  attr(frameInnerShadow, { cx: C, cy: C + 4, r: 202, fill: 'none', stroke: 'rgba(0,0,0,0.7)', 'stroke-width': 8 });
-  svg.appendChild(frameInnerShadow);
+  // Frame outer bevel — lighter upper-left edge
+  const frameBevelHL = svgEl<SVGCircleElement>('circle');
+  attr(frameBevelHL, { cx: C, cy: C, r: 248, fill: 'none', stroke: 'rgba(255,255,255,0.08)', 'stroke-width': 2 });
+  svg.appendChild(frameBevelHL);
+  const frameBevelSh = svgEl<SVGCircleElement>('circle');
+  attr(frameBevelSh, { cx: C + 2, cy: C + 2, r: 248, fill: 'none', stroke: 'rgba(0,0,0,0.55)', 'stroke-width': 2.5 });
+  svg.appendChild(frameBevelSh);
+
+  // Frame inner AO — deep shadow where frame meets door
+  const frameInnerAO = svgEl<SVGCircleElement>('circle');
+  attr(frameInnerAO, { cx: C, cy: C + 4, r: 207, fill: 'none',
+    stroke: 'rgba(0,0,0,1)', 'stroke-width': 16, filter: 'url(#vi-ao)' });
+  svg.appendChild(frameInnerAO);
+
+  // Frame/door gap (machined seam)
+  const seam = svgEl<SVGCircleElement>('circle');
+  attr(seam, { cx: C, cy: C, r: 204, fill: 'none', stroke: '#030304', 'stroke-width': 3 });
+  svg.appendChild(seam);
 
   // ── 8 locking bolt mechanisms ─────────────────────────────────────────────
   const boltPins: SVGGElement[] = [];
   for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * 360;
     const g = svgEl<SVGGElement>('g');
-    g.setAttribute('transform', `rotate(${angle} ${C} ${C})`);
+    g.setAttribute('transform', `rotate(${i * 45} ${C} ${C})`);
 
-    // Bolt housing recess
+    // Housing socket — deep dark recess
     const housing = svgEl<SVGRectElement>('rect');
-    attr(housing, { x: C - 9, y: 6, width: 18, height: 38, rx: 5,
-      fill: '#0a0d12', stroke: '#181e2a', 'stroke-width': 1.5 });
+    attr(housing, { x: C - 10, y: 4, width: 20, height: 48, rx: 5, fill: '#07080a', stroke: '#0e0f12', 'stroke-width': 1 });
+    // Housing AO shadow
+    const housingAO = svgEl<SVGRectElement>('rect');
+    attr(housingAO, { x: C - 9, y: 5, width: 18, height: 14, rx: 4,
+      fill: 'rgba(0,0,0,0.9)', filter: 'url(#vi-ao)' });
 
-    // Bolt pin
+    // Bolt pin — cylindrical gradient
     const pinG = svgEl<SVGGElement>('g');
     const pin = svgEl<SVGRectElement>('rect');
-    attr(pin, { x: C - 7, y: 9, width: 14, height: 28, rx: 4,
-      fill: 'url(#vi-dg)', stroke: '#3a4e62', 'stroke-width': 1 });
-    // Pin highlight
-    const pinHL = svgEl<SVGRectElement>('rect');
-    attr(pinHL, { x: C - 6, y: 10, width: 4, height: 24, rx: 2,
-      fill: 'rgba(255,255,255,0.13)' });
-    // Pin shadow
-    const pinSh = svgEl<SVGRectElement>('rect');
-    attr(pinSh, { x: C + 1, y: 10, width: 3, height: 24, rx: 2,
-      fill: 'rgba(0,0,0,0.35)' });
-    pinG.appendChild(pin); pinG.appendChild(pinHL); pinG.appendChild(pinSh);
-    g.appendChild(housing); g.appendChild(pinG);
+    attr(pin, { x: C - 8, y: 8, width: 16, height: 34, rx: 4, fill: 'url(#vi-bg)' });
+    // Top face bright rim — catches top light
+    const pinTopHL = svgEl<SVGRectElement>('rect');
+    attr(pinTopHL, { x: C - 7, y: 8, width: 14, height: 3.5, rx: 1.75, fill: 'rgba(255,255,255,0.4)' });
+    // Left edge catchlight
+    const pinLeftHL = svgEl<SVGRectElement>('rect');
+    attr(pinLeftHL, { x: C - 8, y: 10, width: 2.5, height: 28, rx: 1.25, fill: 'rgba(255,255,255,0.22)' });
+    // Grain on pin
+    const pinGrain = svgEl<SVGRectElement>('rect');
+    attr(pinGrain, { x: C - 8, y: 8, width: 16, height: 34, rx: 4,
+      fill: 'rgba(200,205,215,0.07)', filter: 'url(#vi-grain)' });
+
+    pinG.appendChild(pin); pinG.appendChild(pinTopHL);
+    pinG.appendChild(pinLeftHL); pinG.appendChild(pinGrain);
+    g.appendChild(housing); g.appendChild(housingAO); g.appendChild(pinG);
     svg.appendChild(g);
     boltPins.push(pinG);
   }
 
   // ── Door body ─────────────────────────────────────────────────────────────
   const door = svgEl<SVGCircleElement>('circle');
-  attr(door, { cx: C, cy: C, r: 200, fill: 'url(#vi-dg)', stroke: '#1c2438', 'stroke-width': 3 });
+  attr(door, { cx: C, cy: C, r: 201, fill: 'url(#vi-dg)' });
   svg.appendChild(door);
 
-  // Specular highlight — off-center bright patch (upper-left)
-  const specHL = svgEl<SVGEllipseElement>('ellipse');
-  attr(specHL, { cx: C - 55, cy: C - 60, rx: 90, ry: 70,
-    fill: 'rgba(255,255,255,0.028)' });
-  svg.appendChild(specHL);
+  // Beveled door edge — upper-left lighter, lower-right darker
+  const doorBevelHL = svgEl<SVGCircleElement>('circle');
+  attr(doorBevelHL, { cx: C, cy: C, r: 200, fill: 'none', stroke: 'rgba(255,255,255,0.13)', 'stroke-width': 5 });
+  svg.appendChild(doorBevelHL);
+  const doorBevelSh = svgEl<SVGCircleElement>('circle');
+  attr(doorBevelSh, { cx: C + 3, cy: C + 3, r: 199, fill: 'none', stroke: 'rgba(0,0,0,0.7)', 'stroke-width': 5 });
+  svg.appendChild(doorBevelSh);
 
-  // Door face: outer panel ring (shallow groove at r≈170)
-  const outerPanel = svgEl<SVGCircleElement>('circle');
-  attr(outerPanel, { cx: C, cy: C + 1.5, r: 172, fill: 'none',
-    stroke: '#0c1018', 'stroke-width': 6 });
-  svg.appendChild(outerPanel);
-  const outerPanelHL = svgEl<SVGCircleElement>('circle');
-  attr(outerPanelHL, { cx: C, cy: C - 1, r: 171, fill: 'none',
-    stroke: 'rgba(255,255,255,0.045)', 'stroke-width': 1.5 });
-  svg.appendChild(outerPanelHL);
+  // Brushed metal grain — horizontal grain = brushed steel finish
+  const doorGrain = svgEl<SVGCircleElement>('circle');
+  attr(doorGrain, { cx: C, cy: C, r: 198, fill: 'rgba(190,195,205,0.09)', filter: 'url(#vi-grain)' });
+  svg.appendChild(doorGrain);
 
-  // Inner panel ring (groove at r≈128)
-  const innerPanel = svgEl<SVGCircleElement>('circle');
-  attr(innerPanel, { cx: C, cy: C + 1, r: 128, fill: 'none',
-    stroke: '#0c1018', 'stroke-width': 5 });
-  svg.appendChild(innerPanel);
-  const innerPanelHL = svgEl<SVGCircleElement>('circle');
-  attr(innerPanelHL, { cx: C, cy: C - 1, r: 127, fill: 'none',
-    stroke: 'rgba(255,255,255,0.04)', 'stroke-width': 1.5 });
-  svg.appendChild(innerPanelHL);
+  // Sharp specular — single light source, tight hotspot upper-left
+  const specWide = svgEl<SVGEllipseElement>('ellipse');
+  attr(specWide, { cx: C - 60, cy: C - 65, rx: 80, ry: 58, fill: 'rgba(255,255,255,0.042)' });
+  svg.appendChild(specWide);
+  const specHot = svgEl<SVGEllipseElement>('ellipse');
+  attr(specHot, { cx: C - 72, cy: C - 76, rx: 30, ry: 21, fill: 'rgba(255,255,255,0.075)' });
+  svg.appendChild(specHot);
 
-  // 4 reinforcement rivets at panel groove
-  for (const angle of [45, 135, 225, 315]) {
+  // ── Outer machined groove ─────────────────────────────────────────────────
+  const outerGrooveAO = svgEl<SVGCircleElement>('circle');
+  attr(outerGrooveAO, { cx: C, cy: C + 3, r: 172, fill: 'none',
+    stroke: 'rgba(0,0,0,0.9)', 'stroke-width': 16, filter: 'url(#vi-ao)' });
+  svg.appendChild(outerGrooveAO);
+  const outerGroove = svgEl<SVGCircleElement>('circle');
+  attr(outerGroove, { cx: C, cy: C, r: 172, fill: 'none', stroke: '#060608', 'stroke-width': 9 });
+  svg.appendChild(outerGroove);
+  const outerGrooveHL = svgEl<SVGCircleElement>('circle');
+  attr(outerGrooveHL, { cx: C - 1, cy: C - 1, r: 177, fill: 'none',
+    stroke: 'rgba(255,255,255,0.1)', 'stroke-width': 1.5 });
+  svg.appendChild(outerGrooveHL);
+
+  // ── Inner machined groove ─────────────────────────────────────────────────
+  const innerGrooveAO = svgEl<SVGCircleElement>('circle');
+  attr(innerGrooveAO, { cx: C, cy: C + 3, r: 126, fill: 'none',
+    stroke: 'rgba(0,0,0,0.85)', 'stroke-width': 14, filter: 'url(#vi-ao)' });
+  svg.appendChild(innerGrooveAO);
+  const innerGroove = svgEl<SVGCircleElement>('circle');
+  attr(innerGroove, { cx: C, cy: C, r: 126, fill: 'none', stroke: '#060608', 'stroke-width': 7 });
+  svg.appendChild(innerGroove);
+  const innerGrooveHL = svgEl<SVGCircleElement>('circle');
+  attr(innerGrooveHL, { cx: C - 1, cy: C - 1, r: 130, fill: 'none',
+    stroke: 'rgba(255,255,255,0.08)', 'stroke-width': 1.5 });
+  svg.appendChild(innerGrooveHL);
+
+  // ── 8 machined rivets between grooves ────────────────────────────────────
+  for (const angle of [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5]) {
     const rad = angle * Math.PI / 180;
     const rx = C + Math.cos(rad) * 149;
     const ry = C + Math.sin(rad) * 149;
+    const rvAO = svgEl<SVGCircleElement>('circle');
+    attr(rvAO, { cx: rx, cy: ry, r: 9, fill: 'rgba(0,0,0,0.8)', filter: 'url(#vi-ao)' });
+    svg.appendChild(rvAO);
     const rv = svgEl<SVGCircleElement>('circle');
-    attr(rv, { cx: rx, cy: ry, r: 5.5, fill: '#141c28', stroke: '#222e40', 'stroke-width': 1 });
+    attr(rv, { cx: rx, cy: ry, r: 6.5, fill: 'url(#vi-fg)', stroke: '#0e0f12', 'stroke-width': 1 });
     svg.appendChild(rv);
     const rvHL = svgEl<SVGCircleElement>('circle');
-    attr(rvHL, { cx: rx - 1.5, cy: ry - 1.5, r: 1.8, fill: 'rgba(255,255,255,0.18)' });
+    attr(rvHL, { cx: rx - 2.2, cy: ry - 2.2, r: 2.4, fill: 'rgba(255,255,255,0.32)' });
     svg.appendChild(rvHL);
+    const rvCenter = svgEl<SVGCircleElement>('circle');
+    attr(rvCenter, { cx: rx, cy: ry, r: 2, fill: '#0e0f12' });
+    svg.appendChild(rvCenter);
   }
 
-  // ── Scanner housing (recessed) ────────────────────────────────────────────
+  // ── Scanner housing — deeply recessed ────────────────────────────────────
+  const scanDeepAO = svgEl<SVGCircleElement>('circle');
+  attr(scanDeepAO, { cx: C, cy: C + 5, r: 96, fill: 'none',
+    stroke: 'rgba(0,0,0,1)', 'stroke-width': 22, filter: 'url(#vi-ao)' });
+  svg.appendChild(scanDeepAO);
+
   const scanHousing = svgEl<SVGCircleElement>('circle');
-  attr(scanHousing, { cx: C, cy: C, r: 88, fill: '#070a10', stroke: '#0f1520', 'stroke-width': 3 });
+  attr(scanHousing, { cx: C, cy: C, r: 93, fill: '#050608', stroke: '#0a0b0d', 'stroke-width': 2 });
   svg.appendChild(scanHousing);
 
-  // Housing inner bevel shadow (depth illusion)
-  const housingBevel = svgEl<SVGCircleElement>('circle');
-  attr(housingBevel, { cx: C, cy: C + 3, r: 85, fill: 'none',
-    stroke: 'rgba(0,0,0,0.7)', 'stroke-width': 6 });
-  svg.appendChild(housingBevel);
+  // Housing bevel — lit upper-left edge
+  const scanHousingHL = svgEl<SVGCircleElement>('circle');
+  attr(scanHousingHL, { cx: C - 1, cy: C - 1, r: 92, fill: 'none',
+    stroke: 'rgba(255,255,255,0.14)', 'stroke-width': 1.5 });
+  svg.appendChild(scanHousingHL);
+  const scanHousingSh = svgEl<SVGCircleElement>('circle');
+  attr(scanHousingSh, { cx: C + 1, cy: C + 1, r: 92, fill: 'none',
+    stroke: 'rgba(0,0,0,0.6)', 'stroke-width': 1.5 });
+  svg.appendChild(scanHousingSh);
 
-  // Scanner pad (dark glass surface)
+  // ── Scanner pad — dark glass ──────────────────────────────────────────────
   const padFill = svgEl<SVGCircleElement>('circle');
-  attr(padFill, { cx: C, cy: C, r: 78, fill: 'url(#vi-sg)' });
+  attr(padFill, { cx: C, cy: C, r: 83, fill: 'url(#vi-sg)' });
   svg.appendChild(padFill);
 
-  // Scanner pad gloss — subtle top-arc sheen
-  const padGloss = svgEl<SVGEllipseElement>('ellipse');
-  attr(padGloss, { cx: C, cy: C - 22, rx: 46, ry: 26,
-    fill: 'rgba(255,255,255,0.025)' });
-  svg.appendChild(padGloss);
+  // Glass reflection — sharp specular off dark glass surface
+  const glassSpec = svgEl<SVGEllipseElement>('ellipse');
+  attr(glassSpec, { cx: C - 18, cy: C - 28, rx: 34, ry: 22,
+    fill: 'rgba(255,255,255,0.12)', filter: 'url(#vi-specglow)' });
+  svg.appendChild(glassSpec);
+  const glassSpecTight = svgEl<SVGEllipseElement>('ellipse');
+  attr(glassSpecTight, { cx: C - 22, cy: C - 33, rx: 14, ry: 8, fill: 'rgba(255,255,255,0.16)' });
+  svg.appendChild(glassSpecTight);
 
-  // Scanner glow halo (behind ring, animated opacity)
+  // ── Scanner LED ring ──────────────────────────────────────────────────────
   const scannerGlow = svgEl<SVGCircleElement>('circle');
-  attr(scannerGlow, { cx: C, cy: C, r: 80, fill: 'none',
-    stroke: '#1a5a9e', 'stroke-width': 10 });
+  attr(scannerGlow, { cx: C, cy: C, r: 85, fill: 'none', stroke: '#1a70f0', 'stroke-width': 14 });
   scannerGlow.style.cssText = 'filter:url(#vi-glow);animation:vi-glow 2.8s ease-in-out infinite;';
   svg.appendChild(scannerGlow);
 
-  // Scanner ring (clean crisp ring, animated)
   const scannerRing = svgEl<SVGCircleElement>('circle');
-  attr(scannerRing, { cx: C, cy: C, r: 79, fill: 'none',
-    stroke: '#1e6ab8', 'stroke-width': 1.5 });
+  attr(scannerRing, { cx: C, cy: C, r: 84, fill: 'none', stroke: '#2a82f8', 'stroke-width': 1.5 });
   scannerRing.style.animation = 'vi-scan 2.8s ease-in-out infinite';
   svg.appendChild(scannerRing);
 
-  // ── Fingerprint ridges (detailed) ─────────────────────────────────────────
+  // ── Fingerprint ridges ────────────────────────────────────────────────────
   const fpG = svgEl<SVGGElement>('g');
   fpG.setAttribute('transform', `translate(${C - 24}, ${C - 28})`);
-  fpG.setAttribute('opacity', '0.6');
-
-  const fpDefs: string[] = [
+  fpG.setAttribute('opacity', '0.5');
+  const fpDefs = [
     'M 24 3 C 12 3 3 12 3 24 C 3 36 8 44 16 48',
     'M 24 7 C 14 7 7 14 7 24 C 7 34 12 41 22 44',
     'M 24 11 C 17 11 11 17 11 24 C 11 31 15 37 24 39',
@@ -368,50 +454,47 @@ function buildDoor(): DoorParts {
   const fpPaths: SVGPathElement[] = [];
   for (const d of fpDefs) {
     const p = svgEl<SVGPathElement>('path');
-    attr(p, { d, stroke: '#3080b8', 'stroke-width': '1.3', fill: 'none', 'stroke-linecap': 'round' });
-    fpG.appendChild(p);
-    fpPaths.push(p);
+    attr(p, { d, stroke: '#2272c0', 'stroke-width': '1.2', fill: 'none', 'stroke-linecap': 'round' });
+    fpG.appendChild(p); fpPaths.push(p);
   }
   svg.appendChild(fpG);
 
-  // ── Status text (below fingerprint) ──────────────────────────────────────
+  // ── Status text ────────────────────────────────────────────────────────────
   const statusText = svgEl<SVGTextElement>('text');
   attr(statusText, {
-    x: C, y: C + 68,
+    x: C, y: C + 70,
     'text-anchor': 'middle',
     'font-family': '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
-    'font-size': '11', 'font-weight': '500', 'letter-spacing': '0.18em',
-    fill: 'rgba(100,148,200,0.7)',
+    'font-size': '10', 'font-weight': '500', 'letter-spacing': '0.2em',
+    fill: 'rgba(150,165,185,0.6)',
   });
   statusText.textContent = 'BIOMETRIC SCAN READY';
   svg.appendChild(statusText);
 
-  // ── Logo text (etched into door, above scanner) ───────────────────────────
+  // ── Logo — etched into steel, barely visible ──────────────────────────────
   const logoText = svgEl<SVGTextElement>('text');
   attr(logoText, {
-    x: C, y: C - 125,
+    x: C, y: C - 128,
     'text-anchor': 'middle',
     'font-family': '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
-    'font-size': '11', 'font-weight': '700', 'letter-spacing': '0.3em',
-    fill: 'rgba(180,200,224,0.28)',
+    'font-size': '10', 'font-weight': '700', 'letter-spacing': '0.36em',
+    fill: 'rgba(155,163,175,0.2)',
   });
   logoText.textContent = 'WORLD  MONITOR';
   svg.appendChild(logoText);
 
-  // ── Status LED (bottom of door face) ─────────────────────────────────────
-  const lockedLed = svgEl<SVGCircleElement>('circle');
-  attr(lockedLed, { cx: C, cy: C + 155, r: 4,
-    fill: '#9e1c1c', stroke: '#5a0e0e', 'stroke-width': 1 });
-  lockedLed.style.animation = 'vi-ledblink 2.2s ease-in-out infinite';
-  // Glow behind LED
+  // ── Status LED ─────────────────────────────────────────────────────────────
   const ledGlow = svgEl<SVGCircleElement>('circle');
-  attr(ledGlow, { cx: C, cy: C + 155, r: 7, fill: 'rgba(158,28,28,0.22)' });
+  attr(ledGlow, { cx: C, cy: C + 160, r: 9, fill: 'rgba(200,28,28,0.16)', filter: 'url(#vi-ao)' });
   svg.appendChild(ledGlow);
+  const lockedLed = svgEl<SVGCircleElement>('circle');
+  attr(lockedLed, { cx: C, cy: C + 160, r: 3.5, fill: '#cc2020', stroke: '#6a0e0e', 'stroke-width': 1 });
+  lockedLed.style.animation = 'vi-ledblink 2.2s ease-in-out infinite';
   svg.appendChild(lockedLed);
 
-  // Transparent hit target over scanner — makes it a tap button
+  // ── Tap target ─────────────────────────────────────────────────────────────
   const scannerBtn = svgEl<SVGCircleElement>('circle');
-  attr(scannerBtn, { cx: C, cy: C, r: 90, fill: 'transparent' });
+  attr(scannerBtn, { cx: C, cy: C, r: 93, fill: 'transparent' });
   scannerBtn.style.cursor = 'pointer';
   svg.appendChild(scannerBtn);
 
