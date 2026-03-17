@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { SUPPORTED_RELEASE_VARIANTS, buildReleaseTag } from './release-metadata.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -47,7 +48,7 @@ function parseArgs(argv) {
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  if (!['full', 'tech', 'finance'].includes(options.variant)) {
+  if (!SUPPORTED_RELEASE_VARIANTS.includes(options.variant)) {
     throw new Error(`Unsupported variant for release doctor: ${options.variant}`);
   }
 
@@ -85,12 +86,6 @@ export function parseCargoLockVersion(cargoLock, packageName) {
     throw new Error(`Could not find ${packageName} package version in src-tauri/Cargo.lock`);
   }
   return versionMatch[1];
-}
-
-function buildTargetTag(version, variant) {
-  if (variant === 'tech') return `v${version}-tech`;
-  if (variant === 'finance') return `v${version}-finance`;
-  return `v${version}`;
 }
 
 export function findVersionMismatches(versionsByFile) {
@@ -176,7 +171,7 @@ function normalizeRepoSlug(remoteUrl) {
   throw new Error(`Unsupported origin remote URL: ${remoteUrl}`);
 }
 
-async function readVersionFiles() {
+export async function readVersionFiles() {
   const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
   const packageLock = JSON.parse(await readFile(packageLockPath, 'utf8'));
   const tauriConf = JSON.parse(await readFile(tauriConfPath, 'utf8'));
@@ -214,7 +209,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const versionsByFile = await readVersionFiles();
   const targetVersion = versionsByFile['package.json'];
-  const targetTag = buildTargetTag(targetVersion, options.variant);
+  const targetTag = buildReleaseTag(targetVersion, options.variant);
 
   const issues = [
     ...findVersionMismatches(versionsByFile),

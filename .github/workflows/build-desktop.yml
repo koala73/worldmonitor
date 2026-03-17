@@ -4,18 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       variant:
-        description: 'App variant'
+        description: 'Build-only variant'
         required: true
         default: 'full'
         type: choice
         options:
           - full
           - tech
-      draft:
-        description: 'Create as draft release'
-        required: false
-        default: true
-        type: boolean
+          - finance
   push:
     tags:
       - 'v*'
@@ -28,9 +24,42 @@ env:
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 jobs:
+  release-context:
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.context.outputs.publish }}
+      variant: ${{ steps.context.outputs.variant }}
+      version: ${{ steps.context.outputs.version }}
+      tag: ${{ steps.context.outputs.tag }}
+      release_name: ${{ steps.context.outputs.releaseName }}
+      product_name: ${{ steps.context.outputs.productName }}
+      commit_sha: ${{ steps.context.outputs.commitSha }}
+      short_sha: ${{ steps.context.outputs.shortSha }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: '22'
+
+      - name: Resolve release context
+        id: context
+        shell: bash
+        run: |
+          node scripts/release-context.mjs \
+            --event "${{ github.event_name }}" \
+            --ref "${{ github.ref_name }}" \
+            --variant "${{ github.event.inputs.variant }}" \
+            --sha "${{ github.sha }}" \
+            --github-output "$GITHUB_OUTPUT"
+
   build-tauri:
+    needs: release-context
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -92,6 +121,7 @@ jobs:
 
       - name: Install Linux system dependencies
         if: contains(matrix.platform, 'ubuntu')
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -134,162 +164,70 @@ jobs:
             ls -lh src-tauri/sidecar/node/node
           fi
 
-      # ── Detect whether Apple signing secrets are configured ──
       - name: Check Apple signing secrets
         if: contains(matrix.platform, 'macos')
         id: apple-signing
         shell: bash
         run: |
           if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ] && [ -n "${{ secrets.KEYCHAIN_PASSWORD }}" ]; then
-            echo "available=true" >> $GITHUB_OUTPUT
-            echo "Apple signing secrets detected"
+            echo "available=true" >> "$GITHUB_OUTPUT"
           else
-            echo "available=false" >> $GITHUB_OUTPUT
-            echo "No Apple signing secrets — building unsigned"
+            echo "available=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── macOS Code Signing (only when secrets are valid) ──
       - name: Import Apple Developer Certificate
         if: contains(matrix.platform, 'macos') && steps.apple-signing.outputs.available == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        shell: bash
         run: |
           printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
-          CERT_SIZE=$(wc -c < certificate.p12 | tr -d ' ')
-          if [ "$CERT_SIZE" -lt 100 ]; then
-            echo "::warning::Certificate file too small ($CERT_SIZE bytes) — likely invalid. Skipping signing."
-            echo "SKIP_SIGNING=true" >> $GITHUB_ENV
-            exit 0
-          fi
-
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -u build.keychain
           security import certificate.p12 -k build.keychain \
-            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign || {
-            echo "::warning::Certificate import failed — building unsigned"
-            echo "SKIP_SIGNING=true" >> $GITHUB_ENV
-            exit 0
-          }
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" build.keychain
-
-          CERT_INFO=$(security find-identity -v -p codesigning build.keychain \
-            | grep "Developer ID Application" || true)
-          if [ -n "$CERT_INFO" ]; then
-            CERT_ID=$(echo "$CERT_INFO" | head -1 | awk -F'"' '{print $2}')
-            echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
-            echo "Certificate imported: $CERT_ID"
-          else
-            echo "::warning::No Developer ID certificate found in keychain — building unsigned"
-            echo "SKIP_SIGNING=true" >> $GITHUB_ENV
+          CERT_ID=$(security find-identity -v -p codesigning build.keychain | awk -F'"' '/Developer ID Application/ { print $2; exit }')
+          if [ -z "$CERT_ID" ]; then
+            echo "::error::No Developer ID Application certificate found in keychain."
+            exit 1
           fi
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
 
-      # ── Determine variant ──
-      - name: Set build variant
+      - name: Resolve Tauri build arguments
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "BUILD_VARIANT=${{ github.event.inputs.variant }}" >> $GITHUB_ENV
-          else
-            echo "BUILD_VARIANT=full" >> $GITHUB_ENV
-          fi
+          case "${{ needs.release-context.outputs.variant }}" in
+            full) EXTRA_ARGS="" ;;
+            tech) EXTRA_ARGS="--config src-tauri/tauri.tech.conf.json" ;;
+            finance) EXTRA_ARGS="--config src-tauri/tauri.finance.conf.json" ;;
+            *) echo "::error::Unsupported variant"; exit 1 ;;
+          esac
+          echo "TAURI_BUILD_ARGS=${EXTRA_ARGS} ${{ matrix.args }}" >> "$GITHUB_ENV"
 
-      # ── Build with tauri-action ──
-      # Signed builds: only when Apple signing secrets are valid and imported
-      # Unsigned builds: fallback when no signing (Windows always uses this path)
-
-      # ── Build: Full variant (signed) ──
-      - name: Build Tauri app (full, signed)
-        if: env.BUILD_VARIANT == 'full' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
+      - name: Build Tauri app
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_VARIANT: full
+          VITE_VARIANT: ${{ needs.release-context.outputs.variant }}
           VITE_DESKTOP_RUNTIME: '1'
+          WM_BUILD_VARIANT: ${{ needs.release-context.outputs.variant }}
+          WM_BUILD_TAG: ${{ needs.release-context.outputs.tag }}
+          WM_BUILD_COMMIT_SHA: ${{ needs.release-context.outputs.commit_sha }}
+          WM_BUILD_TIMESTAMP: ${{ github.run_id }}-${{ github.run_attempt }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          tagName: v__VERSION__
-          releaseName: 'World Monitor v__VERSION__'
-          releaseBody: 'See changelog below.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
-          prerelease: false
-          args: ${{ matrix.args }}
-          retryAttempts: 1
-
-      # ── Build: Full variant (unsigned — no Apple certs) ──
-      - name: Build Tauri app (full, unsigned)
-        if: env.BUILD_VARIANT == 'full' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_VARIANT: full
-          VITE_DESKTOP_RUNTIME: '1'
-          CONVEX_URL: ${{ secrets.CONVEX_URL }}
-        with:
-          tagName: v__VERSION__
-          releaseName: 'World Monitor v__VERSION__'
-          releaseBody: 'See changelog below.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
-          prerelease: false
-          args: ${{ matrix.args }}
-          retryAttempts: 1
-
-      # ── Build: Tech variant (signed) ──
-      - name: Build Tauri app (tech, signed)
-        if: env.BUILD_VARIANT == 'tech' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_VARIANT: tech
-          VITE_DESKTOP_RUNTIME: '1'
-          CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          tagName: v__VERSION__-tech
-          releaseName: 'Tech Monitor v__VERSION__'
-          releaseBody: 'See changelog below.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
-          prerelease: false
-          tauriScript: npx tauri
-          args: --config src-tauri/tauri.tech.conf.json ${{ matrix.args }}
-          retryAttempts: 1
-
-      # ── Build: Tech variant (unsigned — no Apple certs) ──
-      - name: Build Tauri app (tech, unsigned)
-        if: env.BUILD_VARIANT == 'tech' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_VARIANT: tech
-          VITE_DESKTOP_RUNTIME: '1'
-          CONVEX_URL: ${{ secrets.CONVEX_URL }}
-        with:
-          tagName: v__VERSION__-tech
-          releaseName: 'Tech Monitor v__VERSION__'
-          releaseBody: 'See changelog below.'
-          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
-          prerelease: false
-          tauriScript: npx tauri
-          args: --config src-tauri/tauri.tech.conf.json ${{ matrix.args }}
-          retryAttempts: 1
+        run: npm exec tauri build -- $TAURI_BUILD_ARGS
 
       - name: Verify signed macOS bundle + embedded runtime
-        if: contains(matrix.platform, 'macos') && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
+        if: contains(matrix.platform, 'macos') && steps.apple-signing.outputs.available == 'true'
         shell: bash
         run: |
           APP_PATH=$(find src-tauri/target -type d -path '*/bundle/macos/*.app' | head -1)
@@ -305,6 +243,17 @@ jobs:
           fi
           echo "Verified signed app bundle and embedded Node runtime: $NODE_PATH"
 
+      - name: Verify Windows installer artifacts
+        if: contains(matrix.platform, 'windows')
+        shell: bash
+        run: |
+          MSI=$(find src-tauri/target -path '*/bundle/msi/*.msi' | head -1)
+          NSIS=$(find src-tauri/target -path '*/bundle/nsis/*.exe' | head -1)
+          if [ -z "$MSI" ] && [ -z "$NSIS" ]; then
+            echo "::error::No Windows installer artifacts found after build."
+            exit 1
+          fi
+
       - name: Smoke-test AppImage (Linux)
         if: contains(matrix.platform, 'ubuntu')
         shell: bash
@@ -316,25 +265,44 @@ jobs:
             exit 1
           fi
           chmod +x "$APPIMAGE"
-          # Start Xvfb with known display number
           Xvfb :99 -screen 0 1440x900x24 &
           export DISPLAY=:99
           sleep 2
-          # Launch AppImage under virtual framebuffer
           "$APPIMAGE" --no-sandbox &
           APP_PID=$!
-          # Wait for app to render
           sleep 15
-          # Screenshot the virtual display
           import -window root screenshot.png || true
-          # Verify app is still running (didn't crash)
           if kill -0 $APP_PID 2>/dev/null; then
-            echo "✅ AppImage launched successfully"
             kill $APP_PID || true
           else
             echo "❌ AppImage crashed during startup"
             exit 1
           fi
+
+      - name: Collect release manifest
+        shell: bash
+        run: |
+          mkdir -p release-dist/assets
+          node scripts/release-manifest.mjs \
+            --mode collect \
+            --target-root src-tauri/target \
+            --version "${{ needs.release-context.outputs.version }}" \
+            --variant "${{ needs.release-context.outputs.variant }}" \
+            --tag "${{ needs.release-context.outputs.tag }}" \
+            --commit-sha "${{ needs.release-context.outputs.commit_sha }}" \
+            --platform "${{ matrix.label }}" \
+            --generated-at "${{ github.run_id }}-${{ github.run_attempt }}" \
+            --output release-dist/manifest.json
+          node --input-type=module -e "import fs from 'node:fs'; import path from 'node:path'; const manifest = JSON.parse(fs.readFileSync('release-dist/manifest.json', 'utf8')); for (const asset of manifest.assets) { fs.copyFileSync(asset.path, path.join('release-dist/assets', asset.name)); }"
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle-${{ matrix.label }}
+          path: |
+            release-dist/assets
+            release-dist/manifest.json
+          if-no-files-found: error
 
       - name: Upload smoke test screenshot
         if: contains(matrix.platform, 'ubuntu')
@@ -365,10 +333,11 @@ jobs:
           SECONDS=$((ELAPSED % 60))
           echo "Build duration for ${{ matrix.label }}: ${MINUTES}m ${SECONDS}s"
 
-  # ── Update release notes with changelog after all builds complete ──
-  update-release-notes:
-    needs: build-tauri
-    if: always() && contains(needs.build-tauri.result, 'success')
+  publish-release:
+    needs:
+      - release-context
+      - build-tauri
+    if: needs.release-context.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -377,29 +346,80 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: '22'
+
+      - name: Download release bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-bundles
+          pattern: release-bundle-*
+          merge-multiple: false
+
+      - name: Build consolidated release manifest
+        shell: bash
+        run: |
+          node scripts/release-manifest.mjs \
+            --mode combine \
+            --manifests-dir downloaded-bundles \
+            --output release-manifest.json
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ needs.release-context.outputs.tag }}"
+          TITLE="${{ needs.release-context.outputs.release_name }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TITLE"
+          else
+            gh release create "$TAG" --title "$TITLE" --notes "See changelog below." --verify-tag
+          fi
+
+      - name: Upload release assets and manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ needs.release-context.outputs.tag }}"
+          mapfile -t ASSET_FILES < <(find downloaded-bundles -type f -path '*/assets/*' | sort)
+          gh release upload "$TAG" "${ASSET_FILES[@]}" release-manifest.json --clobber
+
+      - name: Verify uploaded release payload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ needs.release-context.outputs.tag }}"
+          mkdir -p downloaded-release
+          gh release download "$TAG" --dir downloaded-release
+          node scripts/release-manifest.mjs \
+            --mode verify \
+            --output release-manifest.json \
+            --download-dir downloaded-release
+
       - name: Generate and update release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
-          TAG="v${VERSION}"
-          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
-
+          TAG="${{ needs.release-context.outputs.tag }}"
+          VARIANT="${{ needs.release-context.outputs.variant }}"
+          PREV_TAG=$(node --input-type=module -e "import { execSync } from 'node:child_process'; const tag = process.env.TAG; const variant = process.env.VARIANT; const tags = execSync('git tag --sort=-version:refname', { encoding: 'utf8' }).trim().split('\n').filter(Boolean); const matcher = variant === 'full' ? /^v\\d+\\.\\d+\\.\\d+$/ : new RegExp(`^v\\\\d+\\\\.\\\\d+\\\\.\\\\d+-${variant}$`); const prev = tags.find((candidate) => candidate !== tag && matcher.test(candidate)) || ''; process.stdout.write(prev);")
           if [ -z "$PREV_TAG" ]; then
             COMMITS="Initial release"
           else
             COMMITS=$(git log "${PREV_TAG}..${TAG}" --oneline --no-merges | sed 's/^[a-f0-9]*//' | sed 's/^ /- /')
           fi
-
           BODY=$(cat <<NOTES
           ## What's Changed
 
           ${COMMITS}
 
-          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-initial}...${TAG}
+          Release manifest includes commit `${{ needs.release-context.outputs.short_sha }}` and checksums for every uploaded artifact.
           NOTES
           )
-
           gh release edit "$TAG" --notes "$BODY"
-          echo "Updated release notes for $TAG"

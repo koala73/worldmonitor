@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   parsePrePushLines,
+  resolveReleaseVariant,
   shouldGuardReleasePush,
   summarizeDirtyWorktree,
 } from '../scripts/release-push-guard.mjs';
@@ -29,7 +30,7 @@ refs/heads/feature ghi789 refs/heads/feature 00000000000000000000000000000000000
   ]);
 });
 
-test('shouldGuardReleasePush only enforces for pushes to macos main', () => {
+test('shouldGuardReleasePush enforces for pushes to macos main and release tags', () => {
   assert.equal(
     shouldGuardReleasePush('macos', [
       {
@@ -57,6 +58,18 @@ test('shouldGuardReleasePush only enforces for pushes to macos main', () => {
   assert.equal(
     shouldGuardReleasePush('macos', [
       {
+        localRef: 'refs/tags/v2.7.2-finance',
+        localSha: 'abc123',
+        remoteRef: 'refs/tags/v2.7.2-finance',
+        remoteSha: '0000000000000000000000000000000000000000',
+      },
+    ]),
+    true,
+  );
+
+  assert.equal(
+    shouldGuardReleasePush('macos', [
+      {
         localRef: 'refs/heads/feature',
         localSha: 'abc123',
         remoteRef: 'refs/heads/feature',
@@ -64,6 +77,20 @@ test('shouldGuardReleasePush only enforces for pushes to macos main', () => {
       },
     ]),
     false,
+  );
+});
+
+test('resolveReleaseVariant derives the pushed release variant from tag refs', () => {
+  assert.equal(
+    resolveReleaseVariant([
+      {
+        localRef: 'refs/tags/v2.7.2-tech',
+        localSha: 'abc123',
+        remoteRef: 'refs/tags/v2.7.2-tech',
+        remoteSha: '0000000000000000000000000000000000000000',
+      },
+    ]),
+    'tech',
   );
 });
 

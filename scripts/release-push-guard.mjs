@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { parseReleaseRef } from './release-metadata.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -20,7 +20,7 @@ export function parsePrePushLines(stdinText) {
 
 export function shouldGuardReleasePush(remoteName, pushes) {
   if (remoteName !== 'macos') return false;
-  return pushes.some((push) => push.remoteRef === 'refs/heads/main');
+  return pushes.some((push) => push.remoteRef === 'refs/heads/main' || push.remoteRef.startsWith('refs/tags/v'));
 }
 
 export function summarizeDirtyWorktree(statusLines) {
@@ -67,11 +67,11 @@ function runCommand(command, args) {
   return result.stdout.trim();
 }
 
-async function resolveVariant() {
-  const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
-  const script = packageJson.scripts?.['desktop:build:full'] ?? '';
-  if (script.includes('--variant finance')) return 'finance';
-  if (script.includes('--variant tech')) return 'tech';
+export function resolveReleaseVariant(pushes) {
+  const tagPush = pushes.find((push) => push.remoteRef.startsWith('refs/tags/v'));
+  if (tagPush) {
+    return parseReleaseRef(tagPush.remoteRef).variant;
+  }
   return 'full';
 }
 
@@ -93,12 +93,12 @@ async function main() {
   const dirtyStatus = runCommand('git', ['status', '--short']);
   if (dirtyStatus) {
     const summary = summarizeDirtyWorktree(dirtyStatus.split('\n').filter(Boolean));
-    console.error('[release-push-guard] Blocked push to macos/main because the worktree is dirty.');
+    console.error('[release-push-guard] Blocked release push to macos because the worktree is dirty.');
     console.error(`[release-push-guard] Commit or stash local changes first: ${summary}`);
     process.exit(1);
   }
 
-  const variant = await resolveVariant();
+  const variant = resolveReleaseVariant(pushes);
   const releaseDoctor = spawnSync(
     process.execPath,
     ['scripts/release-doctor.mjs', '--remote', options.remote, '--variant', variant],
