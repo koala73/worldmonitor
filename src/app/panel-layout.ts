@@ -514,10 +514,10 @@ export class PanelLayoutManager implements AppModule {
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
     const preferGlobe = loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe';
     
-    // Ireland variant: zoom to Ireland by default
+    // Ireland variant: zoom to Ireland by default (more zoomed out for context)
     const isIreland = SITE_VARIANT === 'ireland';
-    const defaultZoom = isIreland ? (this.ctx.isMobile ? 4.0 : 5.0) : (this.ctx.isMobile ? 2.5 : 1.0);
-    const defaultPan = isIreland ? { x: 20, y: 120 } : { x: 0, y: 0 };
+    const defaultZoom = isIreland ? (this.ctx.isMobile ? 4.5 : 5.5) : (this.ctx.isMobile ? 2.5 : 1.0);
+    const defaultPan = isIreland ? { x: 0, y: 0 } : { x: 0, y: 0 };
     const defaultView = isIreland ? 'eu' : (this.ctx.isMobile ? this.ctx.resolvedLocation : 'global');
     
     this.ctx.map = new MapContainer(mapContainer, {
