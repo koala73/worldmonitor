@@ -3115,7 +3115,9 @@ async function seedCiiWarmPing() {
     const data = await resp.json();
     const count = data?.ciiScores?.length || 0;
     console.log(`[CII] Warm-ping OK: ${count} scores`);
-    await upstashSet('seed-meta:intelligence:risk-scores', { fetchedAt: Date.now(), recordCount: count }, 604800);
+    if (count > 0) {
+      await upstashSet('seed-meta:intelligence:risk-scores', { fetchedAt: Date.now(), recordCount: count }, 604800);
+    }
   } catch (e) {
     console.warn('[CII] Warm-ping error:', e?.message || e);
   }
