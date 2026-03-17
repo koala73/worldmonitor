@@ -1,0 +1,124 @@
+name: Cleanup stale AI agent branches
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9am UTC
+  workflow_dispatch:       # Also runnable manually
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    name: Close stale PRs and delete merged branches
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Close stale open PRs (no activity in 30 days)
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const agentPrefixes = ['claude/', 'codex/', 'copilot/', 'feat/', 'fix/', 'ui/', 'chore/', 'perf/', 'docs/'];
+            const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            let closed = 0;
+            for (const pr of prs) {
+              const isAgentBranch = agentPrefixes.some(p => pr.head.ref.startsWith(p));
+              if (!isAgentBranch) continue;
+
+              const updatedAt = new Date(pr.updated_at);
+              if (updatedAt < cutoff) {
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  state: 'closed'
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  body: `⏱️ Auto-closed: no activity for 30+ days. Reopen if this work is still relevant.`
+                });
+                console.log(`Closed stale PR #${pr.number}: ${pr.title}`);
+                closed++;
+              }
+            }
+            console.log(`Closed ${closed} stale PRs.`);
+
+      - name: Delete merged remote branches
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const agentPrefixes = ['claude/', 'codex/', 'copilot/', 'feat/', 'fix/', 'ui/', 'chore/', 'perf/', 'docs/'];
+
+            const { data: branches } = await github.rest.repos.listBranches({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            let deleted = 0;
+            for (const branch of branches) {
+              const isAgentBranch = agentPrefixes.some(p => branch.name.startsWith(p));
+              if (!isAgentBranch) continue;
+
+              // Check if this branch has an open PR
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branch.name}`,
+                state: 'open'
+              });
+              if (prs.length > 0) continue; // Skip if open PR exists
+
+              // Check if branch is fully merged into main
+              try {
+                await github.rest.repos.compareCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  base: branch.name,
+                  head: 'main'
+                });
+                // If we get here, main is ahead of or equal to branch — it's merged
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${branch.name}`
+                });
+                console.log(`Deleted merged branch: ${branch.name}`);
+                deleted++;
+              } catch (e) {
+                // Branch has commits not in main — keep it
+                console.log(`Keeping unmerged branch: ${branch.name}`);
+              }
+            }
+            console.log(`Deleted ${deleted} merged branches.`);
+
+      - name: Report summary
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: branches } = await github.rest.repos.listBranches({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            const agentPrefixes = ['claude/', 'codex/', 'copilot/', 'feat/', 'fix/', 'ui/', 'chore/', 'perf/', 'docs/'];
+            const remaining = branches.filter(b => agentPrefixes.some(p => b.name.startsWith(p)));
+            console.log(`Remaining agent branches after cleanup: ${remaining.length}`);
+            remaining.forEach(b => console.log(` - ${b.name}`));
