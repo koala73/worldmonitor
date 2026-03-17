@@ -1,4 +1,4 @@
-import LZString from 'lz-string';
+import * as LZString from 'lz-string';
 import type { MapLayers } from '@/types';
 import type { MapView, TimeRange } from '@/components/Map';
 

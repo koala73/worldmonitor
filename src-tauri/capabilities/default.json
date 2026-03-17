@@ -5,6 +5,7 @@
   "windows": ["main", "settings", "live-channels"],
   "permissions": [
     "core:default",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "biometry:default"
   ]
 }
