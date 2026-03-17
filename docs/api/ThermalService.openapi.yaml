@@ -1,0 +1,226 @@
+openapi: 3.1.0
+info:
+    title: ThermalService API
+    version: 1.0.0
+paths:
+    /api/thermal/v1/list-thermal-escalations:
+        get:
+            tags:
+                - ThermalService
+            summary: ListThermalEscalations
+            operationId: ListThermalEscalations
+            parameters:
+                - name: max_items
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListThermalEscalationsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListThermalEscalationsRequest:
+            type: object
+            properties:
+                maxItems:
+                    type: integer
+                    format: int32
+        ListThermalEscalationsResponse:
+            type: object
+            properties:
+                fetchedAt:
+                    type: string
+                observationWindowHours:
+                    type: integer
+                    format: int32
+                sourceVersion:
+                    type: string
+                clusters:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ThermalEscalationCluster'
+                summary:
+                    $ref: '#/components/schemas/ThermalEscalationSummary'
+        ThermalEscalationCluster:
+            type: object
+            properties:
+                id:
+                    type: string
+                centroid:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                countryCode:
+                    type: string
+                countryName:
+                    type: string
+                regionLabel:
+                    type: string
+                firstDetectedAt:
+                    type: string
+                lastDetectedAt:
+                    type: string
+                observationCount:
+                    type: integer
+                    format: int32
+                uniqueSourceCount:
+                    type: integer
+                    format: int32
+                maxBrightness:
+                    type: number
+                    format: double
+                avgBrightness:
+                    type: number
+                    format: double
+                maxFrp:
+                    type: number
+                    format: double
+                totalFrp:
+                    type: number
+                    format: double
+                nightDetectionShare:
+                    type: number
+                    format: double
+                baselineExpectedCount:
+                    type: number
+                    format: double
+                baselineExpectedFrp:
+                    type: number
+                    format: double
+                countDelta:
+                    type: number
+                    format: double
+                frpDelta:
+                    type: number
+                    format: double
+                zScore:
+                    type: number
+                    format: double
+                persistenceHours:
+                    type: number
+                    format: double
+                status:
+                    type: string
+                    enum:
+                        - THERMAL_STATUS_UNSPECIFIED
+                        - THERMAL_STATUS_NORMAL
+                        - THERMAL_STATUS_ELEVATED
+                        - THERMAL_STATUS_SPIKE
+                        - THERMAL_STATUS_PERSISTENT
+                context:
+                    type: string
+                    enum:
+                        - THERMAL_CONTEXT_UNSPECIFIED
+                        - THERMAL_CONTEXT_WILDLAND
+                        - THERMAL_CONTEXT_URBAN_EDGE
+                        - THERMAL_CONTEXT_INDUSTRIAL
+                        - THERMAL_CONTEXT_ENERGY_ADJACENT
+                        - THERMAL_CONTEXT_CONFLICT_ADJACENT
+                        - THERMAL_CONTEXT_LOGISTICS_ADJACENT
+                        - THERMAL_CONTEXT_MIXED
+                confidence:
+                    type: string
+                    enum:
+                        - THERMAL_CONFIDENCE_UNSPECIFIED
+                        - THERMAL_CONFIDENCE_LOW
+                        - THERMAL_CONFIDENCE_MEDIUM
+                        - THERMAL_CONFIDENCE_HIGH
+                strategicRelevance:
+                    type: string
+                    enum:
+                        - THERMAL_RELEVANCE_UNSPECIFIED
+                        - THERMAL_RELEVANCE_LOW
+                        - THERMAL_RELEVANCE_MEDIUM
+                        - THERMAL_RELEVANCE_HIGH
+                nearbyAssets:
+                    type: array
+                    items:
+                        type: string
+                narrativeFlags:
+                    type: array
+                    items:
+                        type: string
+        GeoCoordinates:
+            type: object
+            properties:
+                latitude:
+                    type: number
+                    maximum: 90
+                    minimum: -90
+                    format: double
+                    description: Latitude in decimal degrees (-90 to 90).
+                longitude:
+                    type: number
+                    maximum: 180
+                    minimum: -180
+                    format: double
+                    description: Longitude in decimal degrees (-180 to 180).
+            description: GeoCoordinates represents a geographic location using WGS84 coordinates.
+        ThermalEscalationSummary:
+            type: object
+            properties:
+                clusterCount:
+                    type: integer
+                    format: int32
+                elevatedCount:
+                    type: integer
+                    format: int32
+                spikeCount:
+                    type: integer
+                    format: int32
+                persistentCount:
+                    type: integer
+                    format: int32
+                conflictAdjacentCount:
+                    type: integer
+                    format: int32
+                highRelevanceCount:
+                    type: integer
+                    format: int32

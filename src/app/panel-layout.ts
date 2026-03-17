@@ -14,6 +14,7 @@ import {
   PredictionPanel,
   MonitorPanel,
   EconomicPanel,
+  EnergyComplexPanel,
   GdeltIntelPanel,
   LiveNewsPanel,
   LiveWebcamsPanel,
@@ -539,6 +540,7 @@ export class PanelLayoutManager implements AppModule {
     });
 
     this.createPanel('commodities', () => new CommoditiesPanel());
+    this.createPanel('energy-complex', () => new EnergyComplexPanel());
     this.createPanel('polymarket', () => new PredictionPanel());
 
     this.createNewsPanel('gov', 'panels.gov');

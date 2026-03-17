@@ -51,6 +51,7 @@ const SEED_DOMAINS = {
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
   'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 45 },
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
+  'thermal:escalation':       { key: 'seed-meta:thermal:escalation',       intervalMin: 180 },
 };
 
 async function getMetaBatch(keys) {

@@ -72,6 +72,7 @@ const STANDALONE_KEYS = {
   corridorrisk:          'supply_chain:corridorrisk:v1',
   chokepointTransits:    'supply_chain:chokepoint_transits:v1',
   transitSummaries:      'supply_chain:transit-summaries:v1',
+  thermalEscalation:     'thermal:escalation:v1',
 };
 
 const SEED_META = {
@@ -133,6 +134,7 @@ const SEED_META = {
   customsRevenue:      { key: 'seed-meta:trade:customs-revenue',              maxStaleMin: 1440 },
   sanctionsPressure:   { key: 'seed-meta:sanctions:pressure',                 maxStaleMin: 720 },
   radiationWatch:      { key: 'seed-meta:radiation:observations',             maxStaleMin: 30 },
+  thermalEscalation:   { key: 'seed-meta:thermal:escalation',                 maxStaleMin: 240 },
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

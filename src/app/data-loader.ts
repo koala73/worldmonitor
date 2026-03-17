@@ -96,6 +96,7 @@ import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchU
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
+import { fetchThermalEscalations } from '@/services/thermal-escalation';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
@@ -123,6 +124,7 @@ import {
   CIIPanel,
   StrategicPosturePanel,
   EconomicPanel,
+  EnergyComplexPanel,
   TechReadinessPanel,
   UcdpEventsPanel,
   TradePolicyPanel,
@@ -361,7 +363,7 @@ export class DataLoaderManager implements AppModule {
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
     if (SITE_VARIANT !== 'happy') {
-      if (shouldLoadAny(['markets', 'heatmap', 'commodities', 'crypto'])) {
+      if (shouldLoadAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex'])) {
         tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
       }
       if (SITE_VARIANT === 'finance' && getSecretState('WORLDMONITOR_API_KEY').present && shouldLoad('stock-analysis')) {
@@ -379,9 +381,11 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
       if (shouldLoad('economic')) {
         tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
-        tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
         tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
         tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
+      }
+      if (shouldLoad('energy-complex')) {
+        tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
       }
 
       // Trade policy data (FULL and FINANCE only)
@@ -484,6 +488,9 @@ export class DataLoaderManager implements AppModule {
 
     if (SITE_VARIANT !== 'happy') {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
+    }
+    if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
+      tasks.push({ name: 'thermalEscalation', task: runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
     }
 
     // Stagger startup: run tasks in small batches to avoid hammering upstreams
@@ -1248,14 +1255,20 @@ export class DataLoaderManager implements AppModule {
       }
 
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
+      const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
       const mapCommodity = (c: MarketData) => ({ display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
+      const energySymbols = new Set(['CL=F', 'BZ=F', 'NG=F']);
+      const filterCommodityTape = (data: MarketData[]) => data.filter((item) => item.symbol !== '^VIX' && !energySymbols.has(item.symbol));
+      const filterEnergyTape = (data: MarketData[]) => data.filter((item) => energySymbols.has(item.symbol));
 
-      if (commoditiesPanel) {
+      if (commoditiesPanel || energyPanel) {
         // Hydrate commodities from bootstrap (same pattern as sectors/markets)
         const hydratedCommodities = getHydratedData('commodityQuotes') as ListMarketQuotesResponse | undefined;
-        let commoditiesLoaded = stocksResult.rateLimited && stocksResult.data.length === 0;
+        const skipFetch = stocksResult.rateLimited && stocksResult.data.length === 0;
+        let metalsLoaded = skipFetch;
+        let energyLoaded = skipFetch;
 
-        if (!commoditiesLoaded && hydratedCommodities?.quotes?.length) {
+        if (!(metalsLoaded && energyLoaded) && hydratedCommodities?.quotes?.length) {
           const symbolMetaMap = new Map(COMMODITIES.map((s) => [s.symbol, s]));
           const data = hydratedCommodities.quotes.map((q) => ({
             symbol: q.symbol,
@@ -1265,27 +1278,41 @@ export class DataLoaderManager implements AppModule {
             change: q.change ?? null,
             sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
           }));
-          const mapped = data.map(mapCommodity);
-          if (mapped.some(d => d.price !== null)) {
-            commoditiesPanel.renderCommodities(mapped);
-            commoditiesLoaded = true;
+          const commodityMapped = filterCommodityTape(data).map(mapCommodity);
+          const energyMapped = filterEnergyTape(data);
+          if (commoditiesPanel && commodityMapped.some(d => d.price !== null)) {
+            commoditiesPanel.renderCommodities(commodityMapped);
+            metalsLoaded = true;
+          }
+          if (energyMapped.some(d => d.price !== null)) {
+            energyPanel?.updateTape(energyMapped);
+            energyLoaded = true;
           }
         }
 
-        for (let attempt = 0; attempt < 1 && !commoditiesLoaded; attempt++) {
+        for (let attempt = 0; attempt < 1 && (!metalsLoaded || !energyLoaded); attempt++) {
           const commoditiesResult = await fetchMultipleStocks(COMMODITIES, {
-            onBatch: (partial) => commoditiesPanel.renderCommodities(partial.map(mapCommodity)),
+            onBatch: (partial) => {
+              const commodityMapped = filterCommodityTape(partial).map(mapCommodity);
+              const energyMapped = filterEnergyTape(partial);
+              if (commoditiesPanel) commoditiesPanel.renderCommodities(commodityMapped);
+              energyPanel?.updateTape(energyMapped);
+            },
             useCommodityBreaker: true,
           });
-          const mapped = commoditiesResult.data.map(mapCommodity);
-          if (mapped.some(d => d.price !== null)) {
-            commoditiesPanel.renderCommodities(mapped);
-            commoditiesLoaded = true;
+          const commodityMapped = filterCommodityTape(commoditiesResult.data).map(mapCommodity);
+          const energyMapped = filterEnergyTape(commoditiesResult.data);
+          if (commoditiesPanel && commodityMapped.some(d => d.price !== null)) {
+            commoditiesPanel.renderCommodities(commodityMapped);
+            metalsLoaded = true;
+          }
+          if (energyMapped.some(d => d.price !== null)) {
+            energyPanel?.updateTape(energyMapped);
+            energyLoaded = true;
           }
         }
-        if (!commoditiesLoaded) {
-          commoditiesPanel.renderCommodities([]);
-        }
+        if (!metalsLoaded) commoditiesPanel?.renderCommodities([]);
+        if (!energyLoaded) energyPanel?.updateTape([]);
       }
     } catch {
       this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
@@ -2250,10 +2277,10 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadOilAnalytics(): Promise<void> {
-    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+    const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
     try {
       const data = await fetchOilAnalytics();
-      economicPanel?.updateOil(data);
+      energyPanel?.updateAnalytics(data);
       const hasData = !!(data.wtiPrice || data.brentPrice || data.usProduction || data.usInventory);
       this.ctx.statusPanel?.updateApi('EIA', { status: hasData ? 'ok' : 'error' });
       if (hasData) {
@@ -2728,6 +2755,16 @@ export class DataLoaderManager implements AppModule {
       this.callPanel('telegram-intel', 'setData', {
         source: 'telegram', enabled: false, count: 0, updatedAt: null, items: [],
       });
+    }
+  }
+
+  async loadThermalEscalations(): Promise<void> {
+    try {
+      const result = await fetchThermalEscalations();
+      this.callPanel('thermal-escalation', 'setData', result);
+      dataFreshness.recordUpdate('thermal-escalation' as DataSourceId, result.clusters.length);
+    } catch (error) {
+      console.error('[App] Thermal escalation fetch failed:', error);
     }
   }
 }

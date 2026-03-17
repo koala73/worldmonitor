@@ -8493,6 +8493,119 @@ a.prediction-link:hover {
   background: var(--border);
 }
 
+.macro-pressure-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--overlay-subtle);
+}
+
+.macro-pressure-stress {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.macro-pressure-watch {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.macro-pressure-steady {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.macro-pressure-label,
+.energy-section-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.macro-pressure-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.macro-pressure-detail {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.macro-summary-grid,
+.energy-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: 8px;
+}
+
+.macro-summary-card,
+.energy-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.macro-summary-head,
+.energy-summary-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.macro-summary-value,
+.energy-summary-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.macro-summary-change,
+.energy-summary-change {
+  font-size: 11px;
+}
+
+.macro-summary-change.positive,
+.energy-summary-change.positive {
+  color: var(--green);
+}
+
+.macro-summary-change.negative,
+.energy-summary-change.negative {
+  color: var(--red);
+}
+
+.macro-summary-change.neutral,
+.energy-summary-change.neutral {
+  color: var(--text-dim);
+}
+
+.energy-unit {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.energy-complex-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px;
+}
+
+.energy-tape-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .economic-indicator {
   background: var(--surface);
   padding: 8px 12px;
@@ -8897,6 +9010,17 @@ a.prediction-link:hover {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
+}
+
+.economic-content-macro {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-content:has(.energy-complex-content) {
+  display: flex;
+  flex-direction: column;
 }
 
 /* regulation-tabs: now uses shared .panel-tabs / .panel-tab */
