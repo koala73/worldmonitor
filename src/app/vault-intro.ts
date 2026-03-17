@@ -1,6 +1,7 @@
 // Single-window biometric vault door.
 // Calls the Tauri biometric plugin directly — no secondary overlay, one fingerprint prompt.
 // Door surface rendered via Canvas 2D for photorealistic brushed steel.
+// Opening sequence: full 3D vault scene choreography with concrete room environment.
 
 import { hasTauriInvokeBridge, invokeTauri } from '../services/tauri-bridge';
 
@@ -174,31 +175,248 @@ function injectStyles(): void {
   s.id = 'vault-intro-css';
   s.textContent = `
     @keyframes vi-fadein   { from{opacity:0;transform:scale(1.04)} to{opacity:1;transform:scale(1)} }
-    @keyframes vi-scan     { 0%,100%{opacity:.35;stroke-width:1.5px} 50%{opacity:.9;stroke-width:2px} }
-    @keyframes vi-warmup   { 0%,100%{opacity:.6;stroke-width:1.8px} 50%{opacity:1;stroke-width:2.5px} }
-    @keyframes vi-glow     { 0%,100%{opacity:0} 50%{opacity:.55} }
-    @keyframes vi-glowwarm { 0%,100%{opacity:.3} 50%{opacity:.85} }
+    @keyframes vi-scan     { 0%,100%{opacity:.28;stroke-width:1px}  50%{opacity:.75;stroke-width:1.6px} }
+    @keyframes vi-warmup   { 0%,100%{opacity:.5;stroke-width:1.4px} 50%{opacity:.9;stroke-width:2px} }
+    @keyframes vi-glow     { 0%,100%{opacity:0} 50%{opacity:.40} }
+    @keyframes vi-glowwarm { 0%,100%{opacity:.2} 50%{opacity:.65} }
     @keyframes vi-scanerr  { 0%,100%{opacity:.5;stroke-width:1.5px} 50%{opacity:1;stroke-width:2px} }
     @keyframes vi-shake    { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-4px)} 40%{transform:translateX(4px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(3px)} }
-    @keyframes vi-bolt     { 0%{transform:translateY(0);opacity:1} 100%{transform:translateY(22px);opacity:0} }
+    @keyframes vi-bolt-retract {
+      0%   { transform:translateY(0)     scaleX(1);    opacity:1   }
+      30%  { transform:translateY(-7px)  scaleX(0.88); opacity:0.9 }
+      100% { transform:translateY(-32px) scaleX(0.55); opacity:0   }
+    }
+    @keyframes vi-seal-jitter {
+      0%   { transform:translateX(0)    }
+      16%  { transform:translateX(-3px) }
+      33%  { transform:translateX(5px)  }
+      50%  { transform:translateX(-4px) }
+      66%  { transform:translateX(3px)  }
+      82%  { transform:translateX(-1px) }
+      100% { transform:translateX(0)    }
+    }
     @keyframes vi-ledblink { 0%,100%{opacity:1} 50%{opacity:.2} }
   `;
   document.head.appendChild(s);
 }
 
+// ── Vault room environment ─────────────────────────────────────────────────────
+// Draws a photorealistic concrete vault anteroom with overhead lighting,
+// perspective floor, and the static steel door frame/jamb.
+
+function drawVaultRoom(canvas: HTMLCanvasElement): void {
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const VW  = window.innerWidth;
+  const VH  = window.innerHeight;
+  canvas.width  = VW * DPR;
+  canvas.height = VH * DPR;
+  canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+  const c = canvas.getContext('2d')!;
+  c.scale(DPR, DPR);
+  const cx = VW / 2, cy = VH / 2;
+
+  // ── Base: deep near-black concrete ────────────────────────────────────────
+  c.fillStyle = '#07090c';
+  c.fillRect(0, 0, VW, VH);
+
+  // ── Concrete wall texture — dense horizontal micro-grain ──────────────────
+  const rW = lcg(3);
+  for (let i = 0; i < 600; i++) {
+    const y  = rW() * VH;
+    const bv = 0.35 + rW() * 1.3;
+    const a  = 0.004 + rW() * 0.016;
+    c.strokeStyle = `rgba(${50 * bv | 0},${54 * bv | 0},${60 * bv | 0},${a})`;
+    c.lineWidth   = 0.12 + rW() * 0.7;
+    c.beginPath(); c.moveTo(0, y); c.lineTo(VW, y); c.stroke();
+  }
+  // Subtle larger-scale concrete aggregate variation
+  const rA = lcg(7);
+  for (let i = 0; i < 120; i++) {
+    const x  = rA() * VW;
+    const y  = rA() * VH;
+    const r  = 1.5 + rA() * 5;
+    const a  = 0.008 + rA() * 0.018;
+    c.fillStyle = `rgba(${40 + (rA() * 25) | 0},${43 + (rA() * 25) | 0},${50 + (rA() * 25) | 0},${a})`;
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+  }
+
+  // ── Overhead fluorescent strip — harsh industrial light ────────────────────
+  {
+    const g = c.createRadialGradient(cx, -VH * 0.08, 0, cx, VH * 0.38, Math.min(VW, VH) * 0.78);
+    g.addColorStop(0,    'rgba(185,200,225,0.22)');
+    g.addColorStop(0.22, 'rgba(100,120,155,0.08)');
+    g.addColorStop(0.65, 'rgba(0,0,0,0)');
+    c.fillStyle = g; c.fillRect(0, 0, VW, VH);
+  }
+  // Fluorescent tube fixture at ceiling
+  const tubeW = VW * 0.10;
+  const tx = cx - tubeW / 2;
+  {
+    const g = c.createLinearGradient(0, 0, 0, 32);
+    g.addColorStop(0, 'rgba(225,235,255,0.90)');
+    g.addColorStop(1, 'rgba(225,235,255,0)');
+    c.fillStyle = g; c.fillRect(tx - 12, 0, tubeW + 24, 32);
+  }
+  c.fillStyle = 'rgba(240,248,255,0.95)';
+  c.fillRect(tx, 1, tubeW, 3);
+  // Fixture housing shadow
+  c.fillStyle = 'rgba(0,0,0,0.45)';
+  c.fillRect(tx - 4, 0, tubeW + 8, 1);
+
+  // ── Floor break with perspective concrete tiles ────────────────────────────
+  const floorY = cy + Math.min(VW, VH) * 0.37;
+
+  // Floor fill
+  {
+    const g = c.createLinearGradient(0, floorY, 0, VH);
+    g.addColorStop(0,    'rgba(20,23,28,0)');
+    g.addColorStop(0.05, 'rgba(14,16,20,0.95)');
+    g.addColorStop(1,    '#0b0d11');
+    c.fillStyle = g; c.fillRect(0, floorY, VW, VH - floorY);
+  }
+  // Floor/wall seam — blurred shadow + specular
+  c.save();
+  c.filter = 'blur(4px)';
+  c.fillStyle = 'rgba(0,0,0,0.85)';
+  c.fillRect(0, floorY - 5, VW, 14);
+  c.restore();
+  c.strokeStyle = 'rgba(50,55,65,0.28)';
+  c.lineWidth = 0.8;
+  c.beginPath(); c.moveTo(0, floorY - 1); c.lineTo(VW, floorY - 1); c.stroke();
+
+  // Tile horizontal joints (perspective foreshortening)
+  for (let t = 1; t <= 7; t++) {
+    const p  = t / 7;
+    const fy = floorY + (VH - floorY) * (1 - Math.pow(1 - p, 2.6));
+    c.strokeStyle = `rgba(25,28,35,${0.04 + p * 0.06})`;
+    c.lineWidth = 0.7;
+    c.beginPath(); c.moveTo(0, fy); c.lineTo(VW, fy); c.stroke();
+  }
+  // Tile vertical joints (converge to vanishing point)
+  for (let v = 0; v <= 9; v++) {
+    const px = (v / 9) * VW;
+    c.strokeStyle = 'rgba(22,25,32,0.045)';
+    c.lineWidth = 0.5;
+    c.beginPath(); c.moveTo(cx, floorY); c.lineTo(px, VH); c.stroke();
+  }
+
+  // ── Edge vignettes — side walls and ceiling ────────────────────────────────
+  const addVignette = (x0: number, y0: number, x1: number, y1: number, c0: string, c1: string) => {
+    const g = c.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, c0); g.addColorStop(1, c1);
+    c.fillStyle = g;
+    c.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+  };
+  addVignette(0, 0, VW * 0.22, 0, 'rgba(0,0,0,0.72)', 'rgba(0,0,0,0)');
+  addVignette(VW, 0, VW * 0.78, 0, 'rgba(0,0,0,0.72)', 'rgba(0,0,0,0)');
+  addVignette(0, 0, 0, VH * 0.15, 'rgba(0,0,0,0.60)', 'rgba(0,0,0,0)');
+
+  // ── Vault recess — deep AO shadow around the circular opening ─────────────
+  // Computes from the door CSS logical size
+  const doorSize  = Math.min(520, VW * 0.78, VH * 0.78);
+  const frameROut = (249 / 500) * doorSize * 0.5;
+  const frameRIn  = (204 / 500) * doorSize * 0.5;
+
+  for (let pass = 0; pass < 6; pass++) {
+    c.save();
+    c.filter    = `blur(${48 + pass * 36}px)`;
+    c.strokeStyle = `rgba(0,0,0,${0.26 + pass * 0.10})`;
+    c.lineWidth = doorSize * (0.085 + pass * 0.014);
+    c.beginPath(); c.arc(cx, cy + VH * 0.007, frameROut + pass * 3, 0, Math.PI * 2); c.stroke();
+    c.restore();
+  }
+
+  // ── Static vault frame — thick machined steel jamb ─────────────────────────
+  // This ring stays perfectly still as the door swings open, giving the door
+  // a fixed context: it is mounted in 12-inch thick reinforced concrete.
+
+  // Deep contact shadow behind the frame ring
+  c.save();
+  c.filter    = 'blur(20px)';
+  c.strokeStyle = 'rgba(0,0,0,0.98)';
+  c.lineWidth = (frameROut - frameRIn) * 0.7;
+  c.beginPath(); c.arc(cx, cy + 8, (frameROut + frameRIn) / 2, 0, Math.PI * 2); c.stroke();
+  c.restore();
+
+  // Frame ring body
+  c.save();
+  c.beginPath();
+  c.arc(cx, cy, frameROut + 3, 0, Math.PI * 2);
+  c.arc(cx, cy, frameRIn  - 2, 0, Math.PI * 2, true);
+  c.clip('evenodd');
+
+  {
+    const g = c.createRadialGradient(
+      cx - frameROut * 0.30, cy - frameROut * 0.24, 0,
+      cx + 6, cy + 8, frameROut * 1.06,
+    );
+    g.addColorStop(0,    '#1d2028');
+    g.addColorStop(0.45, '#0f1115');
+    g.addColorStop(1,    '#040507');
+    c.fillStyle = g;
+    c.fillRect(cx - frameROut - 5, cy - frameROut - 5, (frameROut + 5) * 2, (frameROut + 5) * 2);
+  }
+
+  // Frame brushed grain
+  const rFr = lcg(11);
+  for (let i = 0; i < 240; i++) {
+    const y   = cy - frameROut - 4 + rFr() * (frameROut + 4) * 2;
+    const bv  = 0.45 + rFr() * 0.9;
+    const a   = 0.004 + rFr() * 0.016;
+    c.strokeStyle = `rgba(${30 * bv | 0},${32 * bv | 0},${38 * bv | 0},${a})`;
+    c.lineWidth   = 0.15 + rFr() * 0.5;
+    c.beginPath(); c.moveTo(cx - frameROut - 5, y); c.lineTo(cx + frameROut + 5, y); c.stroke();
+  }
+
+  // Frame bevel lines — directional light from upper-left
+  c.strokeStyle = 'rgba(255,255,255,0.06)';
+  c.lineWidth   = 1.5;
+  c.beginPath(); c.arc(cx - 1, cy - 1, frameROut + 1, 0, Math.PI * 2); c.stroke();
+  c.strokeStyle = 'rgba(0,0,0,0.50)';
+  c.lineWidth   = 2;
+  c.beginPath(); c.arc(cx + 1.5, cy + 1.5, frameROut + 1, 0, Math.PI * 2); c.stroke();
+
+  // Inner seam — machined transition to door recess
+  c.strokeStyle = '#020304';
+  c.lineWidth   = 4;
+  c.beginPath(); c.arc(cx, cy, frameRIn - 1, 0, Math.PI * 2); c.stroke();
+  c.strokeStyle = 'rgba(255,255,255,0.05)';
+  c.lineWidth   = 1;
+  c.beginPath(); c.arc(cx - 0.5, cy - 0.5, frameRIn - 2, 0, Math.PI * 2); c.stroke();
+
+  c.restore();
+
+  // Frame upper-left specular catch
+  {
+    const g = c.createRadialGradient(
+      cx - frameROut * 0.58, cy - frameROut * 0.42, 0,
+      cx - frameROut * 0.58, cy - frameROut * 0.42, frameROut * 0.52,
+    );
+    g.addColorStop(0, 'rgba(255,255,255,0.026)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.save();
+    c.beginPath();
+    c.arc(cx, cy, frameROut + 3, 0, Math.PI * 2);
+    c.arc(cx, cy, frameRIn - 2, 0, Math.PI * 2, true);
+    c.clip('evenodd');
+    c.fillStyle = g;
+    c.fillRect(cx - frameROut - 5, cy - frameROut - 5, (frameROut + 5) * 2, (frameROut + 5) * 2);
+    c.restore();
+  }
+}
+
 // ── Canvas door surface ────────────────────────────────────────────────────────
 
 function drawDoorCanvas(canvas: HTMLCanvasElement): void {
-  const L = 500; // logical size
-  const SCALE = 2; // render 2× for HiDPI
+  const L = 500;
+  const SCALE = 2;
   canvas.width = L * SCALE;
   canvas.height = L * SCALE;
   canvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:block;';
   const ctx = canvas.getContext('2d')!;
   ctx.scale(SCALE, SCALE);
-  const C = L / 2; // 250
+  const C = L / 2;
 
-  // Horizontal brushed grain — hundreds of semi-transparent micro-strokes
   const grain = (
     count: number, x0: number, x1: number, y0: number, y1: number,
     rng: () => number, base: [number, number, number],
@@ -213,7 +431,6 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
     }
   };
 
-  // Rounded rect path helper
   const rrect = (x: number, y: number, w: number, h: number, r: number) => {
     ctx.moveTo(x + r, y);
     ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
@@ -223,64 +440,30 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
     ctx.closePath();
   };
 
-  const rF = lcg(11);  // frame
-  const rD = lcg(22);  // door face
-  const rSc = lcg(77); // character scratches
+  const rD  = lcg(22);
+  const rSc = lcg(77);
 
-  // ── 1. Cast shadow ────────────────────────────────────────────────────────
+  // 1. Cast shadow
   ctx.save();
   ctx.filter = 'blur(40px)';
   ctx.fillStyle = 'rgba(0,0,0,0.92)';
   ctx.beginPath(); ctx.ellipse(C, C + 24, 236, 215, 0, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 
-  // ── 2. Frame ring ─────────────────────────────────────────────────────────
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(C, C, 249, 0, Math.PI * 2);
-  ctx.arc(C, C, 204, 0, Math.PI * 2, true);
-  ctx.clip('evenodd');
+  // 2. Frame ring — omitted from door canvas; now drawn as static room element
+  // (we still clip/mask to leave the frame area undrawn on the door itself)
 
-  {
-    const g = ctx.createRadialGradient(C - 74, C - 64, 0, C + 10, C + 15, 256);
-    g.addColorStop(0, '#1a1c22'); g.addColorStop(0.55, '#0f1013'); g.addColorStop(1, '#040506');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, L, L);
-  }
-  grain(220, 0, L, C - 249, C + 249, rF, [30, 32, 38]);
-
-  // Subtle specular on frame — upper-left only
-  {
-    const g = ctx.createRadialGradient(C - 145, C - 105, 0, C - 145, C - 105, 145);
-    g.addColorStop(0, 'rgba(255,255,255,0.030)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, L, L);
-  }
-
-  // Inner AO — shadow at door/frame interface
-  ctx.save();
-  ctx.filter = 'blur(11px)';
-  ctx.strokeStyle = 'rgba(0,0,0,1)'; ctx.lineWidth = 22;
-  ctx.beginPath(); ctx.arc(C, C + 4, 207, 0, Math.PI * 2); ctx.stroke();
-  ctx.restore();
-
-  // Frame bevels
-  ctx.strokeStyle = 'rgba(255,255,255,0.090)'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(C, C, 248, 0, Math.PI * 2); ctx.stroke();
-  ctx.strokeStyle = 'rgba(0,0,0,0.60)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(C + 2, C + 2, 248, 0, Math.PI * 2); ctx.stroke();
-  ctx.restore();
-
-  // ── 3. Machined seam ───────────────────────────────────────────────────────
+  // 3. Machined seam
   ctx.strokeStyle = '#020203'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.arc(C, C, 204, 0, Math.PI * 2); ctx.stroke();
 
-  // ── 4. Bolt housings (sockets — pins are SVG overlay) ─────────────────────
+  // 4. Bolt housings
   for (let i = 0; i < 8; i++) {
     ctx.save();
     ctx.translate(C, C); ctx.rotate(i * Math.PI / 4); ctx.translate(-C, -C);
     ctx.beginPath(); rrect(C - 10, 4, 20, 48, 5);
     ctx.fillStyle = '#030405'; ctx.fill();
     ctx.strokeStyle = '#0b0c0f'; ctx.lineWidth = 1; ctx.stroke();
-    // Deep top shadow — bolt end vanishes into dark
     ctx.save();
     ctx.filter = 'blur(5px)';
     ctx.fillStyle = 'rgba(0,0,0,1)'; ctx.fillRect(C - 9, 4, 18, 18);
@@ -288,11 +471,10 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
     ctx.restore();
   }
 
-  // ── 5. Door face ──────────────────────────────────────────────────────────
+  // 5. Door face
   ctx.save();
   ctx.beginPath(); ctx.arc(C, C, 201, 0, Math.PI * 2); ctx.clip();
 
-  // Base: strongly directional gradient — lit upper-left, deep shadow lower-right
   {
     const g = ctx.createRadialGradient(C - 72, C - 60, 0, C + 22, C + 28, 232);
     g.addColorStop(0,    '#575f6c');
@@ -303,10 +485,8 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
     ctx.fillStyle = g; ctx.fillRect(0, 0, L, L);
   }
 
-  // Dense brushed steel grain — the core of the realism
   grain(660, 0, L, C - 201, C + 201, rD, [190, 197, 205]);
 
-  // Surface character: longer heavier scratches from manufacturing / use
   for (let j = 0; j < 9; j++) {
     const y = C - 170 + rSc() * 340;
     const alpha = 0.018 + rSc() * 0.038;
@@ -318,7 +498,6 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
     ctx.stroke();
   }
 
-  // Wide soft specular — screen blend gives a natural, non-painted look
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
   {
@@ -328,7 +507,6 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, L, L);
   }
-  // Tight hotspot — sharp point light reflection
   {
     const g = ctx.createRadialGradient(C - 82, C - 86, 0, C - 82, C - 86, 40);
     g.addColorStop(0, 'rgba(255,255,255,0.115)');
@@ -338,21 +516,19 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
   }
   ctx.restore();
 
-  // Door edge bevels
   ctx.strokeStyle = 'rgba(255,255,255,0.145)'; ctx.lineWidth = 5;
   ctx.beginPath(); ctx.arc(C, C, 199, 0, Math.PI * 2); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.74)'; ctx.lineWidth = 5;
   ctx.beginPath(); ctx.arc(C + 3, C + 3, 197, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
 
-  // ── 6. Outer machined groove ──────────────────────────────────────────────
+  // 6. Outer machined groove
   ctx.save(); ctx.filter = 'blur(8px)';
   ctx.strokeStyle = 'rgba(0,0,0,0.88)'; ctx.lineWidth = 20;
   ctx.beginPath(); ctx.arc(C, C + 4, 172, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
   ctx.strokeStyle = '#030406'; ctx.lineWidth = 9;
   ctx.beginPath(); ctx.arc(C, C, 172, 0, Math.PI * 2); ctx.stroke();
-  // Lit inner wall (upper-left) — linear gradient approximates directional lighting
   {
     const g = ctx.createLinearGradient(0, 0, L, L);
     g.addColorStop(0, 'rgba(255,255,255,0.10)'); g.addColorStop(0.5, 'rgba(255,255,255,0.035)'); g.addColorStop(1, 'rgba(255,255,255,0)');
@@ -362,7 +538,7 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
   ctx.strokeStyle = 'rgba(0,0,0,0.58)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(C + 1, C + 1, 167, 0, Math.PI * 2); ctx.stroke();
 
-  // ── 7. Inner machined groove ──────────────────────────────────────────────
+  // 7. Inner machined groove
   ctx.save(); ctx.filter = 'blur(7px)';
   ctx.strokeStyle = 'rgba(0,0,0,0.82)'; ctx.lineWidth = 16;
   ctx.beginPath(); ctx.arc(C, C + 3, 126, 0, Math.PI * 2); ctx.stroke();
@@ -378,19 +554,17 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
   ctx.strokeStyle = 'rgba(0,0,0,0.52)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(C + 1, C + 1, 122, 0, Math.PI * 2); ctx.stroke();
 
-  // ── 8. Machined rivets ────────────────────────────────────────────────────
+  // 8. Machined rivets
   for (const deg of [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5]) {
     const rad = deg * Math.PI / 180;
     const rx = C + Math.cos(rad) * 149;
     const ry = C + Math.sin(rad) * 149;
 
-    // Contact shadow
     ctx.save(); ctx.filter = 'blur(5px)';
     ctx.fillStyle = 'rgba(0,0,0,0.72)';
     ctx.beginPath(); ctx.arc(rx, ry, 10, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    // Body — dark machined hemisphere
     {
       const g = ctx.createRadialGradient(rx - 2, ry - 2.5, 0, rx, ry, 6.5);
       g.addColorStop(0, '#222429'); g.addColorStop(1, '#090a0e');
@@ -400,7 +574,6 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
     ctx.strokeStyle = '#0c0d11'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(rx, ry, 6.5, 0, Math.PI * 2); ctx.stroke();
 
-    // Hemisphere specular highlight — Phong from upper-left
     ctx.save(); ctx.beginPath(); ctx.arc(rx, ry, 6.5, 0, Math.PI * 2); ctx.clip();
     {
       const g = ctx.createRadialGradient(rx - 2.6, ry - 2.9, 0, rx, ry, 7);
@@ -411,39 +584,31 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
     }
     ctx.restore();
 
-    // Center dimple
     ctx.fillStyle = '#0d0e12';
     ctx.beginPath(); ctx.arc(rx, ry, 2, 0, Math.PI * 2); ctx.fill();
   }
 
-  // ── 9. Scanner housing — deeply recessed ──────────────────────────────────
-  // Strong AO around the recess
+  // 9. Scanner housing — deeply recessed
   ctx.save(); ctx.filter = 'blur(14px)';
   ctx.strokeStyle = 'rgba(0,0,0,1)'; ctx.lineWidth = 30;
   ctx.beginPath(); ctx.arc(C, C + 6, 95, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
-  // Housing fill
   ctx.fillStyle = '#030405';
   ctx.beginPath(); ctx.arc(C, C, 93, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#090a0c'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(C, C, 93, 0, Math.PI * 2); ctx.stroke();
-  // Housing bevel
   ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(C - 1, C - 1, 92, 0, Math.PI * 2); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.62)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(C + 1, C + 1, 92, 0, Math.PI * 2); ctx.stroke();
 
-  // ── 10. Scanner glass pad ─────────────────────────────────────────────────
+  // 10. Scanner glass pad
   ctx.save(); ctx.beginPath(); ctx.arc(C, C, 83, 0, Math.PI * 2); ctx.clip();
-
-  // Near-black hardened glass — very slight blue-tint in the light areas
   {
     const g = ctx.createRadialGradient(C - 22, C - 27, 0, C + 12, C + 15, 90);
     g.addColorStop(0, '#0d1015'); g.addColorStop(0.5, '#07090d'); g.addColorStop(1, '#030508');
     ctx.fillStyle = g; ctx.fillRect(C - 86, C - 86, 172, 172);
   }
-
-  // Wide glass reflection — diffuse bounce of the overhead light
   {
     const g = ctx.createRadialGradient(C - 18, C - 29, 0, C - 18, C - 29, 42);
     g.addColorStop(0, 'rgba(255,255,255,0.115)');
@@ -451,7 +616,6 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g; ctx.fillRect(C - 65, C - 76, 88, 66);
   }
-  // Tight sharp specular on glass
   {
     const g = ctx.createRadialGradient(C - 26, C - 37, 0, C - 24, C - 35, 16);
     g.addColorStop(0, 'rgba(255,255,255,0.22)');
@@ -461,7 +625,7 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
   }
   ctx.restore();
 
-  // ── 11. Logo — micro-etched into steel ────────────────────────────────────
+  // 11. Logo — micro-etched
   ctx.save();
   ctx.font = '700 9.5px "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -473,8 +637,8 @@ function drawDoorCanvas(canvas: HTMLCanvasElement): void {
 // ── SVG door ───────────────────────────────────────────────────────────────────
 
 type DoorParts = {
-  root: HTMLDivElement;    // Container: canvas + SVG overlay
-  svg: SVGSVGElement;      // Transparent SVG overlay for animated elements
+  root: HTMLDivElement;
+  svg: SVGSVGElement;
   scannerRing: SVGCircleElement;
   scannerGlow: SVGCircleElement;
   padFill: SVGCircleElement;
@@ -489,21 +653,17 @@ function buildDoor(): DoorParts {
   const V = 500;
   const C = 250;
 
-  // Container — canvas + SVG overlay stack
   const root = document.createElement('div');
   root.style.cssText = 'position:relative;width:min(520px,78vmin);height:min(520px,78vmin);flex-shrink:0;';
 
-  // ── Canvas: photorealistic static surface ─────────────────────────────────
   const canvas = document.createElement('canvas');
   drawDoorCanvas(canvas);
   root.appendChild(canvas);
 
-  // ── SVG overlay: animated / interactive elements only ─────────────────────
   const svg = svgEl<SVGSVGElement>('svg');
   attr(svg, { viewBox: `0 0 ${V} ${V}` });
   svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;overflow:visible;pointer-events:none;';
 
-  // Minimal defs: bolt gradient, scanner bloom, pin grain
   const defs = svgEl('defs');
 
   const bg = svgEl<SVGLinearGradientElement>('linearGradient');
@@ -514,9 +674,10 @@ function buildDoor(): DoorParts {
     const s = svgEl<SVGStopElement>('stop'); attr(s, { offset: off, 'stop-color': col }); bg.appendChild(s);
   }
 
+  // Tighter, more realistic glow — not a neon ring
   const gf = svgEl<SVGFilterElement>('filter');
-  attr(gf, { id: 'vi-glow', x: '-60%', y: '-60%', width: '220%', height: '220%' });
-  const gb = svgEl('feGaussianBlur'); attr(gb, { stdDeviation: '7', result: 'blur' });
+  attr(gf, { id: 'vi-glow', x: '-50%', y: '-50%', width: '200%', height: '200%' });
+  const gb = svgEl('feGaussianBlur'); attr(gb, { stdDeviation: '5', result: 'blur' });
   const gm = svgEl('feMerge');
   [{ in: 'blur' }, { in: 'SourceGraphic' }].forEach(a => { const n = svgEl('feMergeNode'); attr(n, a); gm.appendChild(n); });
   gf.appendChild(gb); gf.appendChild(gm);
@@ -536,7 +697,7 @@ function buildDoor(): DoorParts {
   defs.appendChild(bg); defs.appendChild(gf); defs.appendChild(grainF);
   svg.appendChild(defs);
 
-  // ── Bolt pins (animated on retraction) ───────────────────────────────────
+  // Bolt pins
   const boltPins: SVGGElement[] = [];
   for (let i = 0; i < 8; i++) {
     const g = svgEl<SVGGElement>('g');
@@ -557,26 +718,26 @@ function buildDoor(): DoorParts {
     boltPins.push(pinG);
   }
 
-  // ── Scanner glow (animated) ───────────────────────────────────────────────
+  // Scanner indicator — deep crimson infrared ring (locked state)
+  // Reduced stroke-width and less aggressive glow for realism
   const scannerGlow = svgEl<SVGCircleElement>('circle');
-  attr(scannerGlow, { cx: C, cy: C, r: 85, fill: 'none', stroke: '#1a70f0', 'stroke-width': 14 });
+  attr(scannerGlow, { cx: C, cy: C, r: 85, fill: 'none', stroke: '#6b0e0e', 'stroke-width': 7 });
   scannerGlow.style.cssText = 'filter:url(#vi-glow);animation:vi-glow 2.8s ease-in-out infinite;';
   svg.appendChild(scannerGlow);
 
   const scannerRing = svgEl<SVGCircleElement>('circle');
-  attr(scannerRing, { cx: C, cy: C, r: 84, fill: 'none', stroke: '#2a82f8', 'stroke-width': 1.5 });
+  attr(scannerRing, { cx: C, cy: C, r: 84, fill: 'none', stroke: '#9b1c1c', 'stroke-width': 1.2 });
   scannerRing.style.animation = 'vi-scan 2.8s ease-in-out infinite';
   svg.appendChild(scannerRing);
 
-  // ── Scanner pad fill — transparent by default, canvas glass shows through ──
   const padFill = svgEl<SVGCircleElement>('circle');
   attr(padFill, { cx: C, cy: C, r: 83, fill: 'transparent' });
   svg.appendChild(padFill);
 
-  // ── Fingerprint ridges ────────────────────────────────────────────────────
+  // Fingerprint ridges — dark crimson, locked
   const fpG = svgEl<SVGGElement>('g');
   fpG.setAttribute('transform', `translate(${C - 24}, ${C - 28})`);
-  fpG.setAttribute('opacity', '0.5');
+  fpG.setAttribute('opacity', '0.45');
   const fpDefs = [
     'M 24 3 C 12 3 3 12 3 24 C 3 36 8 44 16 48',
     'M 24 7 C 14 7 7 14 7 24 C 7 34 12 41 22 44',
@@ -592,24 +753,23 @@ function buildDoor(): DoorParts {
   const fpPaths: SVGPathElement[] = [];
   for (const d of fpDefs) {
     const p = svgEl<SVGPathElement>('path');
-    attr(p, { d, stroke: '#2272c0', 'stroke-width': '1.2', fill: 'none', 'stroke-linecap': 'round' });
+    attr(p, { d, stroke: '#8b2222', 'stroke-width': '1.2', fill: 'none', 'stroke-linecap': 'round' });
     fpG.appendChild(p); fpPaths.push(p);
   }
   svg.appendChild(fpG);
 
-  // ── Status text ───────────────────────────────────────────────────────────
   const statusText = svgEl<SVGTextElement>('text');
   attr(statusText, {
     x: C, y: C + 70,
     'text-anchor': 'middle',
     'font-family': '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
     'font-size': '10', 'font-weight': '500', 'letter-spacing': '0.2em',
-    fill: 'rgba(150,165,185,0.6)',
+    fill: 'rgba(180,80,80,0.6)',
   });
   statusText.textContent = 'BIOMETRIC SCAN READY';
   svg.appendChild(statusText);
 
-  // ── Status LED ────────────────────────────────────────────────────────────
+  // Status LED — red blinking (locked)
   const ledGlow = svgEl<SVGCircleElement>('circle');
   attr(ledGlow, { cx: C, cy: C + 160, r: 9, fill: 'rgba(200,28,28,0.16)' });
   svg.appendChild(ledGlow);
@@ -618,7 +778,6 @@ function buildDoor(): DoorParts {
   lockedLed.style.animation = 'vi-ledblink 2.2s ease-in-out infinite';
   svg.appendChild(lockedLed);
 
-  // ── Tap target ────────────────────────────────────────────────────────────
   const scannerBtn = svgEl<SVGCircleElement>('circle');
   attr(scannerBtn, { cx: C, cy: C, r: 93, fill: 'transparent' });
   scannerBtn.style.cssText = 'cursor:pointer;pointer-events:all;';
@@ -630,7 +789,11 @@ function buildDoor(): DoorParts {
 
 // ── Overlay ────────────────────────────────────────────────────────────────────
 
-type OverlayRefs = DoorParts & { overlay: HTMLDivElement };
+type OverlayRefs = DoorParts & {
+  overlay: HTMLDivElement;
+  scene: HTMLDivElement;
+  interior: HTMLDivElement;
+};
 
 function buildOverlay(): OverlayRefs {
   injectStyles();
@@ -638,13 +801,57 @@ function buildOverlay(): OverlayRefs {
   const overlay = document.createElement('div');
   overlay.style.cssText = `
     position:fixed;inset:0;
-    background:radial-gradient(ellipse at 50% 44%, #0f1318 0%, #06080b 65%);
+    background:#07090c;
     z-index:9999;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     font-family:"SF Pro Display",-apple-system,BlinkMacSystemFont,sans-serif;
     overflow:hidden;
     animation:vi-fadein 1.1s cubic-bezier(0.16,1,0.3,1) both;
   `;
+
+  // Vault room environment canvas — concrete walls, overhead light, static frame
+  const roomCanvas = document.createElement('canvas');
+  drawVaultRoom(roomCanvas);
+  overlay.appendChild(roomCanvas);
+
+  // Scene container — 3D perspective parent for the rotating door
+  const scene = document.createElement('div');
+  scene.style.cssText = `
+    position:relative;
+    width:min(520px,78vmin);
+    height:min(520px,78vmin);
+    flex-shrink:0;
+    perspective:1400px;
+  `;
+
+  // Interior vault light — warm amber, revealed as door swings open
+  const interior = document.createElement('div');
+  interior.style.cssText = `
+    position:absolute;
+    top:0;left:0;right:0;bottom:0;
+    border-radius:50%;
+    background:radial-gradient(circle at 42% 38%,
+      rgba(255,238,200,1.0) 0%,
+      rgba(250,215,148,0.88) 12%,
+      rgba(220,172,88,0.66) 28%,
+      rgba(168,118,42,0.36) 48%,
+      rgba(95,60,15,0.10)   65%,
+      rgba(0,0,0,0)         78%
+    );
+    opacity:0;
+    pointer-events:none;
+    z-index:0;
+  `;
+
+  const parts = buildDoor();
+  parts.root.style.cssText = `
+    position:absolute;
+    top:0;left:0;right:0;bottom:0;
+    z-index:1;
+  `;
+
+  scene.appendChild(interior);
+  scene.appendChild(parts.root);
 
   const quit = document.createElement('button');
   quit.textContent = 'Quit';
@@ -658,11 +865,10 @@ function buildOverlay(): OverlayRefs {
   quit.addEventListener('mouseenter', () => { quit.style.color = 'rgba(180,200,220,0.65)'; });
   quit.addEventListener('mouseleave', () => { quit.style.color = 'rgba(120,140,160,0.35)'; });
 
-  const parts = buildDoor();
-  overlay.appendChild(parts.root);
+  overlay.appendChild(scene);
   overlay.appendChild(quit);
 
-  return { ...parts, overlay };
+  return { ...parts, overlay, scene, interior };
 }
 
 // ── Scanner states ─────────────────────────────────────────────────────────────
@@ -674,11 +880,11 @@ function setScannerIdle(p: DoorParts): void {
   p.scannerGlow.style.transition = '';
   p.scannerRing.style.opacity = '';
   p.scannerRing.style.strokeWidth = '';
-  p.scannerRing.setAttribute('stroke', '#1e6ab8');
-  p.scannerGlow.setAttribute('stroke', '#1a5a9e');
-  for (const fp of p.fpPaths) fp.setAttribute('stroke', '#3080b8');
+  p.scannerRing.setAttribute('stroke', '#8b1818');
+  p.scannerGlow.setAttribute('stroke', '#5c0c0c');
+  for (const fp of p.fpPaths) fp.setAttribute('stroke', '#7a2020');
   p.padFill.setAttribute('fill', 'transparent');
-  p.statusText.setAttribute('fill', 'rgba(100,148,200,0.7)');
+  p.statusText.setAttribute('fill', 'rgba(170,70,70,0.7)');
   p.statusText.textContent = 'TAP TO RETRY';
   p.scannerBtn.style.cursor = 'pointer';
   p.scannerBtn.onmouseenter = null;
@@ -688,28 +894,26 @@ function setScannerIdle(p: DoorParts): void {
 function setScannerWarmup(p: DoorParts): void {
   p.scannerRing.style.animation = 'vi-warmup 0.85s ease-in-out infinite';
   p.scannerGlow.style.animation = 'vi-glowwarm 0.85s ease-in-out infinite';
-  p.scannerRing.setAttribute('stroke', '#2a88e0');
-  p.scannerGlow.setAttribute('stroke', '#2272c8');
+  p.scannerRing.setAttribute('stroke', '#c02828');
+  p.scannerGlow.setAttribute('stroke', '#8f1515');
   p.padFill.setAttribute('fill', 'transparent');
-  p.statusText.setAttribute('fill', 'rgba(130,175,230,0.85)');
+  p.statusText.setAttribute('fill', 'rgba(210,90,90,0.85)');
   p.statusText.textContent = 'SCANNING…';
 }
 
-// Full-stop peak state — animations halt, scanner holds at max brightness.
-// Touch ID fires from this still moment so the system dialog doesn't feel like an interruption.
 function setScannerPeak(p: DoorParts): void {
   p.scannerRing.style.transition = 'stroke-width 0.25s ease, opacity 0.25s ease';
   p.scannerGlow.style.transition = 'opacity 0.25s ease';
   p.scannerRing.style.animation = 'none';
   p.scannerGlow.style.animation = 'none';
   p.scannerRing.style.opacity = '1';
-  p.scannerRing.style.strokeWidth = '2.5px';
-  p.scannerGlow.style.opacity = '0.72';
-  p.scannerRing.setAttribute('stroke', '#4aa8ff');
-  p.scannerGlow.setAttribute('stroke', '#2a88e8');
-  for (const fp of p.fpPaths) fp.setAttribute('stroke', '#4aa8d0');
+  p.scannerRing.style.strokeWidth = '2px';
+  p.scannerGlow.style.opacity = '0.60';
+  p.scannerRing.setAttribute('stroke', '#e03030');
+  p.scannerGlow.setAttribute('stroke', '#b81c1c');
+  for (const fp of p.fpPaths) fp.setAttribute('stroke', '#cc4040');
   p.padFill.setAttribute('fill', 'transparent');
-  p.statusText.setAttribute('fill', 'rgba(160,200,255,0.95)');
+  p.statusText.setAttribute('fill', 'rgba(240,130,130,0.95)');
   p.statusText.textContent = 'PLACE FINGER ON SENSOR';
 }
 
@@ -751,11 +955,11 @@ function setScannerSuccess(p: DoorParts): void {
 // ── Open animation ─────────────────────────────────────────────────────────────
 
 async function playOpenSequence(
-  p: DoorParts & { overlay: HTMLDivElement },
+  p: OverlayRefs,
   appReady?: Promise<void>,
 ): Promise<void> {
   setScannerSuccess(p);
-  await sleep(500);
+  await sleep(400);
 
   const ctx = newCtx();
   if (ctx) {
@@ -764,39 +968,54 @@ async function playOpenSequence(
   }
 
   p.boltPins.forEach((pin, i) => {
-    pin.style.animation = `vi-bolt .34s ease-in ${i * 0.08}s both`;
+    pin.style.animation = `vi-bolt-retract .32s cubic-bezier(0.5,0,1,0.8) ${i * 0.06}s both`;
   });
-  await sleep(900);
+  await sleep(840);
 
-  // Wait for app panels to be ready (or give up after 3s)
   if (appReady) {
     p.statusText.textContent = 'INITIALIZING…';
     p.statusText.setAttribute('fill', 'rgba(40,200,100,0.55)');
-    await Promise.race([appReady, sleep(3000)]);
+    await Promise.race([appReady, sleep(2500)]);
     p.statusText.textContent = 'READY';
-    await sleep(180);
+    await sleep(200);
   }
 
+  // Pressure seal releases — micro-jitter before the door mass starts moving
+  p.scene.style.animation = 'vi-seal-jitter .34s ease both';
   if (ctx) playDoorOpen(ctx);
+  await sleep(380);
+  p.scene.style.animation = '';
+  await sleep(80);
 
-  // Door swings open — slow, heavy, deliberate
+  // Interior vault light floods through the opening
+  Object.assign(p.interior.style, {
+    transition: 'opacity 2.2s ease 0.15s',
+    opacity: '1',
+  });
+
+  // Door swings on left hinges — right edge comes toward viewer (opens outward)
+  // Perspective from scene parent gives correct foreshortening against the static frame
   Object.assign(p.root.style, {
-    transition: 'transform 2.4s cubic-bezier(0.4,0,0.12,1), opacity 2.0s ease 0.3s',
-    transformOrigin: 'right center',
-    transform: 'perspective(1100px) rotateY(-90deg)',
+    transition: 'transform 3.2s cubic-bezier(0.45, 0, 0.25, 1)',
+    transformOrigin: 'left center',
+    transform: 'rotateY(82deg)',
+  });
+  await sleep(900);
+
+  // Camera dollies forward into the opening while overlay fades
+  p.overlay.style.animation = 'none';
+  Object.assign(p.overlay.style, {
+    transition: 'transform 3.0s cubic-bezier(0.2,0,0.4,1), opacity 2.0s ease 0.1s',
+    transform: 'scale(1.06)',
     opacity: '0',
   });
-  await sleep(600);
-
-  p.overlay.style.transition = 'opacity 1.8s ease';
-  p.overlay.style.opacity = '0';
-  await sleep(2000);
+  await sleep(2200);
 }
 
 // ── Biometric flow ─────────────────────────────────────────────────────────────
 
 async function runBiometricFlow(
-  refs: DoorParts & { overlay: HTMLDivElement },
+  refs: OverlayRefs,
   onQuit: () => void,
   appReady?: Promise<void>,
 ): Promise<boolean> {
@@ -827,7 +1046,6 @@ async function runBiometricFlow(
       if (settled) return;
     }
 
-    // Peak lock — animations halt so Touch ID dialog appears against a still screen
     setScannerPeak(refs);
     await sleep(600);
     if (settled) return;
