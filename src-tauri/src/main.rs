@@ -210,7 +210,7 @@ fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
 
 fn generate_local_token() -> String {
     let mut buf = [0u8; 32];
-    getrandom::getrandom(&mut buf).expect("OS CSPRNG unavailable");
+    getrandom::fill(&mut buf).expect("OS CSPRNG unavailable");
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
