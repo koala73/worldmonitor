@@ -66,7 +66,8 @@
     "desktop:package:macos:finance:sign": "node scripts/desktop-package.mjs --os macos --variant finance --sign",
     "desktop:package:windows:full:sign": "node scripts/desktop-package.mjs --os windows --variant full --sign",
     "desktop:package:windows:tech:sign": "node scripts/desktop-package.mjs --os windows --variant tech --sign",
-    "desktop:package": "node scripts/desktop-package.mjs"
+    "desktop:package": "node scripts/desktop-package.mjs",
+    "postdesktop:build:full": "node scripts/local-install.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

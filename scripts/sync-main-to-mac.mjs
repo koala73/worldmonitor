@@ -295,6 +295,29 @@ async function main() {
       return;
     }
 
+    // If a local build is installed that is NOT an ancestor of macos/main HEAD,
+    // the installed version is ahead of (or diverged from) main — skip to avoid
+    // overwriting a newer local build with an older remote build.
+    if (state?.localBuildSha && state.localBuildSha !== targetSha) {
+      const mergeBase = spawnSync(
+        'git',
+        ['merge-base', '--is-ancestor', state.localBuildSha, targetSha],
+        { cwd: options.repoDir },
+      );
+      if (mergeBase.status !== 0) {
+        await writeJson(options.statusFile, {
+          phase: 'idle',
+          checkedAt: new Date().toISOString(),
+          targetSha,
+          localBuildSha: state.localBuildSha,
+          skippedReason: 'local-build-ahead',
+          requiredChecks,
+        });
+        console.log(`[sync-main-to-mac] Local build ${state.localBuildSha.slice(0, 8)} is ahead of main — skipping install`);
+        return;
+      }
+    }
+
     await writeJson(options.statusFile, {
       phase: 'building',
       startedAt,
