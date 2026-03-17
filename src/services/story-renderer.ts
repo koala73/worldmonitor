@@ -25,6 +25,7 @@ function humanizeSignalType(type: string): string {
     naval_vessel: 'Naval Vessels',
     ais_gap: 'AIS Gaps',
     satellite_fire: 'Satellite Fires',
+    radiation_anomaly: 'Radiation Anomalies',
   };
   return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }

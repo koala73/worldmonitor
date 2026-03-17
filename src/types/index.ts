@@ -30,6 +30,7 @@ export type DataSourceId =
   | 'supply_chain'
   | 'security_advisories'
   | 'gpsjam'
+  | 'radiation'
   | 'treasury_revenue';
 
 // AppContext lives in src/app/app-context.ts because it references

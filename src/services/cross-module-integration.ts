@@ -1,5 +1,6 @@
 import { getLocationName, type GeoConvergenceAlert } from './geo-convergence';
 import type { CountryScore } from './country-instability';
+import { getLatestRadiationWatch, type RadiationObservation } from './radiation';
 import type { CascadeResult, CascadeImpactLevel } from '@/types';
 import { calculateCII, isInLearningMode } from './country-instability';
 import { getCountryNameByCode } from './country-geometry';
@@ -7,7 +8,7 @@ import { t } from '@/services/i18n';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 
 export type AlertPriority = 'critical' | 'high' | 'medium' | 'low';
-export type AlertType = 'convergence' | 'cii_spike' | 'cascade' | 'composite';
+export type AlertType = 'convergence' | 'cii_spike' | 'cascade' | 'radiation' | 'composite';
 
 export interface UnifiedAlert {
   id: string;
@@ -19,6 +20,7 @@ export interface UnifiedAlert {
     convergence?: GeoConvergenceAlert;
     ciiChange?: CIIChangeAlert;
     cascade?: CascadeAlert;
+    radiation?: RadiationAlert;
   };
   location?: { lat: number; lon: number };
   countries: string[];
@@ -41,6 +43,21 @@ export interface CascadeAlert {
   sourceType: string;
   countriesAffected: number;
   highestImpact: CascadeImpactLevel;
+}
+
+export interface RadiationAlert {
+  siteId: string;
+  siteName: string;
+  country: string;
+  value: number;
+  unit: string;
+  baselineValue: number;
+  delta: number;
+  zScore: number;
+  severity: 'elevated' | 'spike';
+  anomalyCount: number;
+  elevatedCount: number;
+  spikeCount: number;
 }
 
 export interface StrategicRiskOverview {
@@ -106,6 +123,12 @@ function getPriorityFromConvergence(score: number, typeCount: number): AlertPrio
   if (typeCount >= 3 || score >= 70) return 'high';
   if (score >= 50) return 'medium';
   return 'low';
+}
+
+function getPriorityFromRadiation(observation: RadiationObservation, spikeCount: number): AlertPriority {
+  if (observation.severity === 'spike' || spikeCount > 1) return 'critical';
+  if (observation.zScore >= 2.5 || observation.delta >= 10) return 'high';
+  return 'medium';
 }
 
 function buildConvergenceAlert(convergence: GeoConvergenceAlert, alertId: string): UnifiedAlert {
@@ -194,6 +217,62 @@ export function createCascadeAlert(cascade: CascadeResult): UnifiedAlert | null 
   };
 
   return addAndMergeAlert(alert);
+}
+
+function getRadiationRank(observation: RadiationObservation): number {
+  const severityRank = observation.severity === 'spike' ? 2 : observation.severity === 'elevated' ? 1 : 0;
+  return severityRank * 1000 + observation.zScore * 100 + observation.delta;
+}
+
+function createRadiationAlert(): UnifiedAlert | null {
+  const watch = getLatestRadiationWatch();
+  if (!watch || watch.summary.anomalyCount === 0) {
+    for (let i = alerts.length - 1; i >= 0; i--) {
+      if (alerts[i]?.type === 'radiation') alerts.splice(i, 1);
+    }
+    return null;
+  }
+
+  const anomalies = watch.observations.filter(o => o.severity !== 'normal');
+  if (anomalies.length === 0) return null;
+
+  const strongest = [...anomalies].sort((a, b) => getRadiationRank(b) - getRadiationRank(a))[0];
+  if (!strongest) return null;
+
+  const countries = strongest.country ? [strongest.country] : getCountriesNearLocation(strongest.lat, strongest.lon);
+  const radiation: RadiationAlert = {
+    siteId: strongest.id,
+    siteName: strongest.location,
+    country: strongest.country,
+    value: strongest.value,
+    unit: strongest.unit,
+    baselineValue: strongest.baselineValue,
+    delta: strongest.delta,
+    zScore: strongest.zScore,
+    severity: strongest.severity === 'spike' ? 'spike' : 'elevated',
+    anomalyCount: watch.summary.anomalyCount,
+    elevatedCount: watch.summary.elevatedCount,
+    spikeCount: watch.summary.spikeCount,
+  };
+
+  const title = strongest.severity === 'spike'
+    ? `Radiation spike detected at ${strongest.location}`
+    : `Elevated radiation detected at ${strongest.location}`;
+  const summary = watch.summary.spikeCount > 0
+    ? `${watch.summary.spikeCount} spike and ${watch.summary.elevatedCount} elevated reading${watch.summary.anomalyCount === 1 ? '' : 's'} detected. Highest site is ${strongest.location} (${strongest.value.toFixed(1)} ${strongest.unit}, +${strongest.delta.toFixed(1)} vs baseline).`
+    : `${watch.summary.elevatedCount} elevated radiation reading${watch.summary.elevatedCount === 1 ? '' : 's'} detected. Highest site is ${strongest.location} (${strongest.value.toFixed(1)} ${strongest.unit}, +${strongest.delta.toFixed(1)} vs baseline).`;
+
+  return addAndMergeAlert({
+    id: 'radiation-watch',
+    type: 'radiation',
+    priority: getPriorityFromRadiation(strongest, watch.summary.spikeCount),
+    title,
+    summary,
+    components: { radiation },
+    location: { lat: strongest.lat, lon: strongest.lon },
+    countries,
+    timestamp: strongest.observedAt,
+  });
 }
 
 function shouldMergeAlerts(a: UnifiedAlert, b: UnifiedAlert): boolean {
@@ -406,6 +485,7 @@ function updateAlerts(convergenceAlerts: GeoConvergenceAlert[]): void {
 
   // Check for CII changes (alerts are added internally via addAndMergeAlert)
   checkCIIChanges();
+  createRadiationAlert();
 
   // Sort by timestamp (newest first) and limit to 100
   alerts.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
@@ -426,6 +506,10 @@ export function calculateStrategicRiskOverview(
   updateAlerts(convergenceAlerts);
 
   const ciiRiskScore = calculateCIIRiskScore(ciiScores);
+  const radiationWatch = getLatestRadiationWatch();
+  const radiationScore = radiationWatch
+    ? Math.min(12, radiationWatch.summary.spikeCount * 8 + radiationWatch.summary.elevatedCount * 3)
+    : 0;
 
   // Weights for composite score
   const convergenceWeight = 0.3;  // Geo convergence of multiple event types
@@ -455,7 +539,8 @@ export function calculateStrategicRiskOverview(
     ciiRiskScore * ciiWeight +
     infraScore * infraWeight +
     theaterBoost +
-    breakingBoost
+    breakingBoost +
+    radiationScore
   ));
 
   const trend = determineTrend(composite);
@@ -470,7 +555,7 @@ export function calculateStrategicRiskOverview(
     infrastructureIncidents: countInfrastructureIncidents(),
     compositeScore: composite,
     trend,
-    topRisks: identifyTopRisks(convergenceAlerts, ciiScores),
+    topRisks: identifyTopRisks(convergenceAlerts, ciiScores, radiationWatch?.observations ?? []),
     topConvergenceZones: convergenceAlerts
       .slice(0, 3)
       .map(a => ({ cellId: a.cellId, lat: a.lat, lon: a.lon, score: a.score })),
@@ -526,7 +611,8 @@ function countInfrastructureIncidents(): number {
 
 function identifyTopRisks(
   convergence: GeoConvergenceAlert[],
-  cii: CountryScore[]
+  cii: CountryScore[],
+  radiation: RadiationObservation[]
 ): string[] {
   const risks: string[] = [];
 
@@ -534,6 +620,14 @@ function identifyTopRisks(
   if (top) {
     const location = getLocationName(top.lat, top.lon);
     risks.push(`Convergence: ${location} (score: ${top.score})`);
+  }
+
+  const strongestRadiation = radiation
+    .filter(observation => observation.severity !== 'normal')
+    .sort((a, b) => getRadiationRank(b) - getRadiationRank(a))[0];
+  if (strongestRadiation) {
+    const status = strongestRadiation.severity === 'spike' ? 'Radiation spike' : 'Elevated radiation';
+    risks.push(`${status}: ${strongestRadiation.location} (+${strongestRadiation.delta.toFixed(1)} ${strongestRadiation.unit})`);
   }
 
   const critical = cii.filter(s => s.level === 'critical' || s.level === 'high');

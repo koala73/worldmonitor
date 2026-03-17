@@ -691,6 +691,14 @@ export class PanelLayoutManager implements AppModule {
       }),
     );
 
+    this.lazyPanel('radiation-watch', () =>
+      import('@/components/RadiationWatchPanel').then(m => {
+        const p = new m.RadiationWatchPanel();
+        p.setLocationClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
+        return p;
+      }),
+    );
+
     const _wmKeyPresent = getSecretState('WORLDMONITOR_API_KEY').present;
     const _lockPanels = this.ctx.isDesktopApp && !_wmKeyPresent;
 

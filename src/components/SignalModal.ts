@@ -135,6 +135,7 @@ export class SignalModal {
       cii_spike: '📊',
       convergence: '🌍',
       cascade: '⚡',
+      radiation: '☢️',
       composite: '🔗',
     };
 
@@ -201,6 +202,32 @@ export class SignalModal {
         <div class="signal-context-item">
           <span class="context-label">${t('modals.signal.impactLevel')}</span>
           <span class="context-value">${escapeHtml(cascade.highestImpact)}</span>
+        </div>
+      `;
+    }
+
+    if (alert.components.radiation) {
+      const radiation = alert.components.radiation;
+      detailsHtml += `
+        <div class="signal-context-item">
+          <span class="context-label">Station</span>
+          <span class="context-value">${escapeHtml(radiation.siteName)}</span>
+        </div>
+        <div class="signal-context-item">
+          <span class="context-label">Reading</span>
+          <span class="context-value">${radiation.value.toFixed(1)} ${escapeHtml(radiation.unit)}</span>
+        </div>
+        <div class="signal-context-item">
+          <span class="context-label">Baseline</span>
+          <span class="context-value">${radiation.baselineValue.toFixed(1)} ${escapeHtml(radiation.unit)}</span>
+        </div>
+        <div class="signal-context-item">
+          <span class="context-label">Delta / z-score</span>
+          <span class="context-value">+${radiation.delta.toFixed(1)} / ${radiation.zScore.toFixed(2)}</span>
+        </div>
+        <div class="signal-context-item">
+          <span class="context-label">Anomalies in batch</span>
+          <span class="context-value">${radiation.anomalyCount} total (${radiation.spikeCount} spike, ${radiation.elevatedCount} elevated)</span>
         </div>
       `;
     }

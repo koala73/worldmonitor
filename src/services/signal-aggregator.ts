@@ -11,6 +11,7 @@ import type {
   SocialUnrestEvent,
   AisDisruptionEvent,
 } from '@/types';
+import type { RadiationObservation } from './radiation';
 import { getCountryAtCoordinates, getCountryNameByCode, nameToCountryCode, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
 
 export type SignalType =
@@ -20,6 +21,7 @@ export type SignalType =
   | 'protest'
   | 'ais_disruption'
   | 'satellite_fire'        // NASA FIRMS thermal anomalies
+  | 'radiation_anomaly'     // Radiation readings meaningfully above local baseline
   | 'temporal_anomaly'      // Baseline deviation alerts
   | 'active_strike'         // Iran attack / military conflict events
 
@@ -263,6 +265,27 @@ class SignalAggregator {
     this.pruneOld();
   }
 
+  ingestRadiationObservations(observations: RadiationObservation[]): void {
+    this.clearSignalType('radiation_anomaly');
+
+    for (const observation of observations) {
+      if (observation.severity === 'normal') continue;
+      const code = normalizeCountryCode(observation.country) || this.coordsToCountry(observation.lat, observation.lon);
+
+      this.signals.push({
+        type: 'radiation_anomaly',
+        country: code,
+        countryName: getCountryName(code),
+        lat: observation.lat,
+        lon: observation.lon,
+        severity: observation.severity === 'spike' ? 'high' : 'medium',
+        title: `${observation.severity === 'spike' ? 'Radiation spike' : 'Elevated radiation'} at ${observation.location} (${observation.delta >= 0 ? '+' : ''}${observation.delta.toFixed(1)} ${observation.unit} vs baseline)`,
+        timestamp: observation.observedAt,
+      });
+    }
+    this.pruneOld();
+  }
+
 
 
 
@@ -479,6 +502,7 @@ class SignalAggregator {
           protest: 'civil unrest',
           ais_disruption: 'shipping anomalies',
           satellite_fire: 'thermal anomalies',
+          radiation_anomaly: 'radiation anomalies',
           temporal_anomaly: 'baseline anomalies',
           active_strike: 'active strikes',
         };
@@ -535,6 +559,7 @@ class SignalAggregator {
       protest: 0,
       ais_disruption: 0,
       satellite_fire: 0,
+      radiation_anomaly: 0,
       temporal_anomaly: 0,
       active_strike: 0,
     };
@@ -563,4 +588,3 @@ class SignalAggregator {
 }
 
 export const signalAggregator = new SignalAggregator();
-

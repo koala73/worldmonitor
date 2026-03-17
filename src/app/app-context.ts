@@ -1,6 +1,7 @@
 import type { InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryFlightCluster, MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, PanelConfig, MapLayers, NewsItem, MarketData, ClusteredEvent, CyberThreat, Monitor } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { IranEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
+import type { RadiationWatchResult } from '@/services/radiation';
 import type { SecurityAdvisory } from '@/services/security-advisories';
 import type { Earthquake } from '@/services/earthquakes';
 
@@ -17,6 +18,7 @@ export interface IntelligenceCache {
   iranEvents?: IranEvent[];
   orefAlerts?: { alertCount: number; historyCount24h: number };
   advisories?: SecurityAdvisory[];
+  radiation?: RadiationWatchResult;
   imageryScenes?: Array<{ id: string; satellite: string; datetime: string; resolutionM: number; mode: string; geometryGeojson: string; previewUrl: string; assetUrl: string }>;
 }
 
