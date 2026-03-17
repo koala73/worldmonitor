@@ -154,6 +154,7 @@ type DoorParts = {
   statusText: SVGTextElement;
   boltPins: SVGGElement[];
   lockedLed: SVGCircleElement;
+  scannerBtn: SVGCircleElement;
 };
 
 function buildDoor(): DoorParts {
@@ -380,7 +381,7 @@ function buildDoor(): DoorParts {
     'font-size': '11', 'font-weight': '500', 'letter-spacing': '0.18em',
     fill: 'rgba(100,148,200,0.7)',
   });
-  statusText.textContent = 'PLACE FINGER TO UNLOCK';
+  statusText.textContent = 'TAP TO AUTHENTICATE';
   svg.appendChild(statusText);
 
   // ── Logo text (etched into door, above scanner) ───────────────────────────
@@ -406,7 +407,13 @@ function buildDoor(): DoorParts {
   svg.appendChild(ledGlow);
   svg.appendChild(lockedLed);
 
-  return { svg, scannerRing, scannerGlow, padFill, fpPaths, statusText, boltPins, lockedLed };
+  // Transparent hit target over scanner — makes it a tap button
+  const scannerBtn = svgEl<SVGCircleElement>('circle');
+  attr(scannerBtn, { cx: C, cy: C, r: 90, fill: 'transparent' });
+  scannerBtn.style.cursor = 'pointer';
+  svg.appendChild(scannerBtn);
+
+  return { svg, scannerRing, scannerGlow, padFill, fpPaths, statusText, boltPins, lockedLed, scannerBtn };
 }
 
 // ── Overlay ────────────────────────────────────────────────────────────────────
@@ -457,7 +464,18 @@ function setScannerIdle(p: DoorParts): void {
   p.padFill.setAttribute('fill', 'url(#vi-sg)');
   for (const fp of p.fpPaths) fp.setAttribute('stroke', '#3080b8');
   p.statusText.setAttribute('fill', 'rgba(100,148,200,0.7)');
-  p.statusText.textContent = 'PLACE FINGER TO UNLOCK';
+  p.statusText.textContent = 'TAP TO AUTHENTICATE';
+  p.scannerBtn.style.cursor = 'pointer';
+  p.scannerBtn.addEventListener('mouseenter', () => {
+    p.scannerRing.setAttribute('stroke', '#3898e8');
+    p.scannerGlow.setAttribute('stroke', '#2878cc');
+    for (const fp of p.fpPaths) fp.setAttribute('stroke', '#4a9ad8');
+  }, { once: false });
+  p.scannerBtn.addEventListener('mouseleave', () => {
+    p.scannerRing.setAttribute('stroke', '#1e6ab8');
+    p.scannerGlow.setAttribute('stroke', '#1a5a9e');
+    for (const fp of p.fpPaths) fp.setAttribute('stroke', '#3080b8');
+  }, { once: false });
 }
 
 function setScannerScanning(p: DoorParts): void {
@@ -536,6 +554,7 @@ async function runBiometricFlow(
   const quitBtn = refs.overlay.querySelector('button')!;
 
   let settled = false;
+  let inFlight = false;
   let resolveFlow!: (v: boolean) => void;
   const result = new Promise<boolean>(res => { resolveFlow = res; });
 
@@ -547,9 +566,11 @@ async function runBiometricFlow(
   });
 
   const tryAuth = async () => {
-    if (settled) return;
+    if (settled || inFlight) return;
+    inFlight = true;
+
     const ready = await waitForBridge();
-    if (!ready || settled) return;
+    if (!ready || settled) { inFlight = false; return; }
 
     setScannerScanning(refs);
     try {
@@ -560,26 +581,17 @@ async function runBiometricFlow(
       resolveFlow(true);
     } catch (err) {
       if (settled) return;
+      inFlight = false;
       const msg = err instanceof Error ? err.message : '';
-      const text = msg.includes('cancel') || msg.includes('Cancel')
-        ? 'TAP TO TRY AGAIN'
-        : 'AUTHENTICATION FAILED — TAP TO RETRY';
+      const text = msg.toLowerCase().includes('cancel') ? 'CANCELLED — TAP TO TRY AGAIN' : 'TRY AGAIN';
       setScannerError(refs, text);
-      // Make scanner clickable for retry
-      refs.svg.style.cursor = 'pointer';
-      const retryHandler = () => {
-        refs.svg.style.cursor = '';
-        refs.svg.removeEventListener('click', retryHandler);
-        setScannerIdle(refs);
-        void tryAuth();
-      };
-      refs.svg.addEventListener('click', retryHandler);
+      // Re-arm the tap handler after the shake settles
+      setTimeout(() => { if (!settled) setScannerIdle(refs); }, 1200);
     }
   };
 
-  // Slight delay so the vault door fade-in completes before Touch ID fires
-  await sleep(600);
-  void tryAuth();
+  // Scanner tap triggers Touch ID — user initiates, no auto-popup surprise
+  refs.scannerBtn.addEventListener('click', () => void tryAuth());
 
   return result;
 }
