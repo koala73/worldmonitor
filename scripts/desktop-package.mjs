@@ -17,6 +17,7 @@ const hasFlag = (name) => args.includes(`--${name}`);
 const targetOs = getArg('os');
 const variant = getArg('variant') ?? 'full';
 const sign = hasFlag('sign');
+const appOnly = hasFlag('app-only');
 const skipNodeRuntime = hasFlag('skip-node-runtime');
 const showHelp = hasFlag('help') || hasFlag('h');
 const variantProductName = {
@@ -29,17 +30,27 @@ const validOs = new Set(['macos', 'windows', 'linux']);
 const validVariants = new Set(['full', 'tech', 'finance']);
 
 if (showHelp) {
-  console.log('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--sign] [--skip-node-runtime]');
+  console.log('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--sign] [--app-only] [--skip-node-runtime]');
   process.exit(0);
 }
 
 if (!validOs.has(targetOs)) {
-  console.error('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--sign] [--skip-node-runtime]');
+  console.error('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--sign] [--app-only] [--skip-node-runtime]');
   process.exit(1);
 }
 
 if (!validVariants.has(variant)) {
   console.error('Invalid variant. Use --variant full, tech, or finance.');
+  process.exit(1);
+}
+
+if (appOnly && targetOs !== 'macos') {
+  console.error('--app-only is only supported for macOS packaging.');
+  process.exit(1);
+}
+
+if (appOnly && sign) {
+  console.error('--app-only cannot be combined with --sign.');
   process.exit(1);
 }
 
@@ -219,6 +230,10 @@ if (targetOs === 'macos') {
     console.log('[desktop-package] Re-signing macOS app bundle with ad-hoc signature for local packaging');
     run('codesign', ['--force', '--deep', '--sign', '-', appPath]);
     verifyMacCodeSignature(appPath, 'App bundle');
+  }
+
+  if (appOnly) {
+    process.exit(0);
   }
 
   if (sign) {

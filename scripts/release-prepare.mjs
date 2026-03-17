@@ -151,7 +151,7 @@ async function main() {
     'src-tauri/Cargo.lock',
     'src-tauri/Info.plist',
   ]);
-  runCommand('git', ['commit', '-m', `Prepare ${nextVersion} release`, '-m', 'Co-Authored-By: Codex Sonnet 4.6 <noreply@anthropic.com>']);
+  runCommand('git', ['commit', '-m', `Prepare ${nextVersion} release`, '-m', 'Co-Authored-By: Codex GPT-5.4 <noreply@openai.com>']);
 
   for (const tag of tags) {
     const tagArgs = options.signTags

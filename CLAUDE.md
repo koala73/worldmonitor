@@ -1,24 +1,29 @@
 # World Monitor — Claude Code Context
 
 ## Project Overview
+
 - **App name**: World Monitor (do NOT call this "Crystal Ball" — that is a separate project)
 - **Bundle ID**: `com.bradleybond.worldmonitor`
 - **Fork of**: `koala73/worldmonitor` by Elie Habib (AGPL-3.0)
 - **Stack**: Tauri 2 + TypeScript + Vite + DeckGL + Node.js sidecar (port 46123)
 
 ## Commands
+
 ```bash
 npm run desktop:build:full   # full production build
 npm run typecheck:all        # type-check both tsconfig.json + tsconfig.api.json (must stay at zero errors)
 npm run dev                  # vite dev server (web only, no Tauri)
+npm run release:prepare -- --bump patch --push   # only supported release path
 ```
 Install built app: copy `src-tauri/target/release/bundle/macos/World Monitor.app` to `~/Applications/World Monitor.app`.
 
 ## CANONICAL REPO — SINGLE SOURCE OF TRUTH (MANDATE)
+
 There is exactly ONE place to develop this app:
 ```
 ~/developer/worldmonitor
 ```
+
 - **Never** build, commit, or make changes in any other clone (e.g. `~/Documents/GitHub/worldmonitor-macos/` or the old iCloud clone)
 - **Never** install to `/Applications` from any other build directory
 - Always install from: `src-tauri/target/release/bundle/macos/World Monitor.app` in this directory
@@ -27,13 +32,38 @@ There is exactly ONE place to develop this app:
 If a second clone is found, DELETE it. Do not merge from it without explicit user instruction.
 
 ## Git Remotes
+
 - `upstream` — Elie's repo, **fetch only** (push URL = `no_push`)
 - `macos` — `bradleybond512/worldmonitor-macos` — **always push here**
 - `crystal-ball` — alternate, do not use unless asked
 
 Always commit with: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 
+## Release Management
+
+- Desktop publishing is **tag-driven**, not `main`-push-driven. Never treat `git push macos main` as a release.
+- The only supported release flow is `npm run release:prepare -- --bump patch|minor|major --push` or `--version X.Y.Z --push`.
+- `release:prepare` must run from a clean `main` worktree. It bumps `package.json`, syncs `package-lock.json`, `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, and `Info.plist`, runs `version:check` and `typecheck:all`, commits, creates annotated release tags, and optionally pushes.
+- Release tags are:
+  - `vX.Y.Z` for `full`
+  - `vX.Y.Z-tech` for `tech`
+  - `vX.Y.Z-finance` for `finance`
+- `Build Desktop App` publishes only from `v*` tags. `workflow_dispatch` is build-only and must not be used as a substitute for a release.
+- Release artifacts are verified by manifest. The workflow generates per-platform manifests, uploads a consolidated `release-manifest.json`, and re-downloads the uploaded assets to verify filenames and checksums.
+- The app’s Settings view exposes build identity. Use it to confirm version, variant, release tag, commit SHA, and build timestamp when debugging mismatched installs.
+- Agent branches (`claude/*`, `codex/*`, `copilot/*`) must use GitHub auto-merge after required checks pass. Never call the direct PR merge API to bypass the gate stack.
+- `main` to local Mac sync is handled by a local LaunchAgent installed with `npm run main-sync:setup`.
+- The sync agent uses a dedicated clean clone at `~/.worldmonitor-main-sync/repo`, verifies that GitHub required checks for `main` are green, then reruns `lockfile:check`, `npm ci`, `version:check`, `typecheck:all`, `build`, and `desktop:build:app:full` before installing with `node scripts/install-built-app.mjs --relaunch`.
+- Inspect `~/.worldmonitor-main-sync/status.json` and `~/.worldmonitor-main-sync/logs/` when the Mac install lags behind `main`.
+- If `scripts/sync-main-to-mac.mjs` or `scripts/setup-main-sync-agent.mjs` changes, rerun `npm run main-sync:setup`.
+- GitHub release governance expectations:
+  - `main` must keep passing `release-integrity`, `typecheck`, and CodeQL before merge
+  - desktop publish job runs in the `release` environment
+  - release tags must be treated as immutable once created
+- If GitHub policy and local repo files drift, fix the policy gap as well; do not only patch the repo.
+
 ## Architecture
+
 ```
 src/                        # TypeScript frontend (Vite)
   app/
@@ -64,6 +94,7 @@ src-tauri/
 ```
 
 ## App Modes (`src/services/mode-manager.ts`)
+
 | Mode | Trigger |
 |------|---------|
 | Peace | default |
@@ -75,24 +106,28 @@ src-tauri/
 Ghost Mode: polling ×5, analytics suppressed, notifications suppressed, dark crimson sidebar, 👻 title.
 
 ## Tauri 2 / WKWebView Gotchas
+
 - **Window drag**: CSS `-webkit-app-region: drag` does NOT work — use JS `mousedown` → `tryInvokeTauri('plugin:window|start_dragging')`. Requires `core:window:allow-start-dragging` in `capabilities/default.json` (not in `core:default`).
 - **Local iframes**: Always `http://127.0.0.1:{port}`, never `localhost` — CSP only allows `127.0.0.1`, WKWebView treats them as distinct origins. Use `getApiBaseUrl()` from `runtime.ts`.
 - **YouTube sidecar**: `origin` in playerVars must match actual page URL (`http://127.0.0.1:{port}`).
 - **Devtools**: Use `--features devtools` flag during dev (NOT in default features — removed from production builds). e.g. `cargo tauri dev --features devtools` → Safari > Develop > World Monitor.
 
 ## Legacy Internal Identifiers (do not change)
+
 - `localStorage` keys stay `worldmonitor-*` (changing breaks existing user data)
 - IndexedDB stays `worldmonitor_db`
 - `KEYRING_SERVICE = "world-monitor"` (changing breaks keychain entries)
 - `worldmonitor.app` domain refs kept (upstream cloud services)
 
 ## Settings / API Keys
+
 - API keys entered via gear icon → API Keys tab (not in `FULL_PANELS`)
 - `radiation-decay` and `resource-inventory` default `enabled: false`, priority 3
 - `cyberThreats: true` in `FULL_MAP_LAYERS`, `VITE_ENABLE_CYBER_LAYER=true` in `.env.local`
 - `SUPPORTED_SECRET_KEYS` in `main.rs` = 25 keys (THREATFOX_API_KEY is #25)
 
 ## Known Issues
+
 - **Sector Heatmap**: Yahoo Finance blocked → needs Finnhub API key
 - **Fires panel**: Needs `NASA_FIRMS_API_KEY`
 - **Stablecoins**: "The string did not match the expected pattern" — WKWebView URL handling

@@ -24,6 +24,11 @@ test('macOS desktop packaging signs and verifies the app bundle before creating 
     'desktop:build:finance should use the desktop packaging script instead of raw tauri build',
   );
   assert.match(
+    packageJson.scripts['desktop:build:app:full'],
+    /scripts\/desktop-package\.mjs --os macos --variant full --app-only/,
+    'desktop:build:app:full should build only the local app bundle for install sync',
+  );
+  assert.match(
     desktopPackageScript,
     /codesign["']?,?\s*\[[^\]]*--force[^\]]*--deep[^\]]*--sign[^\]]*-/s,
     'macOS packaging should ad-hoc sign the generated app bundle when developer signing is unavailable',
@@ -47,6 +52,16 @@ test('macOS desktop packaging signs and verifies the app bundle before creating 
     desktopPackageScript,
     /const bundles = targetOs === 'macos' \? sign \? 'app,dmg' : 'app'/,
     'macOS packaging should preserve Tauri dmg bundling when signing is requested',
+  );
+  assert.match(
+    desktopPackageScript,
+    /const appOnly = hasFlag\('app-only'\);/,
+    'desktop packaging should support an app-only mode for local install sync',
+  );
+  assert.match(
+    desktopPackageScript,
+    /if \(appOnly\) \{\s*process\.exit\(0\);\s*\}/,
+    'desktop packaging should allow app verification to succeed without forcing dmg creation',
   );
   assert.match(
     desktopPackageScript,

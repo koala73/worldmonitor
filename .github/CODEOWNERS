@@ -1,0 +1,9 @@
+/.github/workflows/ @bradleybond512
+/scripts/release-*.mjs @bradleybond512
+/scripts/sync-desktop-version*.mjs @bradleybond512
+/scripts/install-built-app.mjs @bradleybond512
+/scripts/sync-main-to-mac.mjs @bradleybond512
+/scripts/setup-main-sync-agent.mjs @bradleybond512
+/AGENTS.md @bradleybond512
+/CLAUDE.md @bradleybond512
+/.github/copilot-instructions.md @bradleybond512

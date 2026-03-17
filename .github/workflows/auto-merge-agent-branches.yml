@@ -33,10 +33,13 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           COMMITS=$(git log origin/main..HEAD --oneline --no-merges | head -20)
           FILE_COUNT=$(git diff --name-only origin/main...HEAD | wc -l | tr -d ' ')
-          TITLE=$(echo "$BRANCH" | sed 's|.*/||' | sed 's/-/ /g')
-          echo "title=auto: $TITLE" >> $GITHUB_OUTPUT
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
+          TITLE=${BRANCH##*/}
+          TITLE=${TITLE//-/ }
+          {
+            echo "title=auto: $TITLE"
+            echo "branch=$BRANCH"
+            echo "file_count=$FILE_COUNT"
+          } >> "$GITHUB_OUTPUT"
           cat > /tmp/pr-body.md << PREOF
           ## Auto-generated PR from \`$BRANCH\`
 
@@ -129,7 +132,7 @@ jobs:
             }
 
   auto-merge:
-    name: Auto-merge when checks pass
+    name: Enable GitHub auto-merge
     needs: auto-pr
     runs-on: ubuntu-latest
     if: startsWith(github.ref_name, 'claude/') || startsWith(github.ref_name, 'codex/') || startsWith(github.ref_name, 'copilot/')
@@ -151,13 +154,23 @@ jobs:
               state: 'open'
             });
             if (prs.length > 0) {
-              await github.rest.pulls.merge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prs[0].number,
-                merge_method: 'squash',
-                commit_title: `merge(${branch}): auto-merge AI agent branch`,
-                commit_message: `Auto-merged from ${branch} after checks passed.`
+              const pr = prs[0];
+              await github.graphql(`
+                mutation EnableAutoMerge($pullRequestId: ID!) {
+                  enablePullRequestAutoMerge(input: {
+                    pullRequestId: $pullRequestId,
+                    mergeMethod: SQUASH
+                  }) {
+                    pullRequest {
+                      number
+                      autoMergeRequest {
+                        enabledAt
+                      }
+                    }
+                  }
+                }
+              `, {
+                pullRequestId: pr.node_id
               });
-              console.log(`Auto-merged PR #${prs[0].number}`);
+              console.log(`Enabled GitHub auto-merge for PR #${pr.number}`);
             }

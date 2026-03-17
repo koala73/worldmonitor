@@ -224,7 +224,13 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm exec tauri build -- $TAURI_BUILD_ARGS
+        run: |
+          if [ -n "${TAURI_BUILD_ARGS}" ]; then
+            read -r -a tauri_args <<< "${TAURI_BUILD_ARGS}"
+            npm exec tauri build -- "${tauri_args[@]}"
+          else
+            npm exec tauri build
+          fi
 
       - name: Verify signed macOS bundle + embedded runtime
         if: contains(matrix.platform, 'macos') && steps.apple-signing.outputs.available == 'true'
@@ -296,7 +302,7 @@ jobs:
           node --input-type=module -e "import fs from 'node:fs'; import path from 'node:path'; const manifest = JSON.parse(fs.readFileSync('release-dist/manifest.json', 'utf8')); for (const asset of manifest.assets) { fs.copyFileSync(asset.path, path.join('release-dist/assets', asset.name)); }"
 
       - name: Upload release bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-bundle-${{ matrix.label }}
           path: |
@@ -306,7 +312,7 @@ jobs:
 
       - name: Upload smoke test screenshot
         if: contains(matrix.platform, 'ubuntu')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: linux-smoke-test-screenshot-${{ matrix.label }}
           path: screenshot.png
@@ -341,6 +347,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    environment:
+      name: release
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -352,7 +360,7 @@ jobs:
           node-version: '22'
 
       - name: Download release bundles
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: downloaded-bundles
           pattern: release-bundle-*
@@ -404,11 +412,12 @@ jobs:
       - name: Generate and update release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-context.outputs.tag }}
+          VARIANT: ${{ needs.release-context.outputs.variant }}
+          SHORT_SHA: ${{ needs.release-context.outputs.short_sha }}
         shell: bash
         run: |
-          TAG="${{ needs.release-context.outputs.tag }}"
-          VARIANT="${{ needs.release-context.outputs.variant }}"
-          PREV_TAG=$(node --input-type=module -e "import { execSync } from 'node:child_process'; const tag = process.env.TAG; const variant = process.env.VARIANT; const tags = execSync('git tag --sort=-version:refname', { encoding: 'utf8' }).trim().split('\n').filter(Boolean); const matcher = variant === 'full' ? /^v\\d+\\.\\d+\\.\\d+$/ : new RegExp(`^v\\\\d+\\\\.\\\\d+\\\\.\\\\d+-${variant}$`); const prev = tags.find((candidate) => candidate !== tag && matcher.test(candidate)) || ''; process.stdout.write(prev);")
+          PREV_TAG=$(node --input-type=module -e "import { execSync } from 'node:child_process'; const tag = process.env.TAG; const variant = process.env.VARIANT; const tags = execSync('git tag --sort=-version:refname', { encoding: 'utf8' }).trim().split('\\n').filter(Boolean); const matcher = variant === 'full' ? /^v\\d+\\.\\d+\\.\\d+$/ : new RegExp('^v\\\\d+\\\\.\\\\d+\\\\.\\\\d+-' + variant + '$'); const previous = tags.find((candidate) => candidate !== tag && matcher.test(candidate)) || ''; process.stdout.write(previous);")
           if [ -z "$PREV_TAG" ]; then
             COMMITS="Initial release"
           else
@@ -419,7 +428,7 @@ jobs:
 
           ${COMMITS}
 
-          Release manifest includes commit `${{ needs.release-context.outputs.short_sha }}` and checksums for every uploaded artifact.
+          Release manifest includes commit ${SHORT_SHA} and checksums for every uploaded artifact.
           NOTES
           )
           gh release edit "$TAG" --notes "$BODY"

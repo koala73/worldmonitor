@@ -22,8 +22,8 @@ test('desktop build workflow is tag-driven and publishes only after artifact ver
   );
   assert.match(
     workflow,
-    /Build Tauri app[\s\S]*npm exec tauri build -- \$TAURI_BUILD_ARGS/,
-    'desktop build workflow should build artifacts directly before publishing them',
+    /Build Tauri app[\s\S]*read -r -a tauri_args <<< "\$\{TAURI_BUILD_ARGS\}"[\s\S]*npm exec tauri build -- "\$\{tauri_args\[@\]\}"/,
+    'desktop build workflow should build artifacts directly before publishing them with shell-safe argument handling',
   );
   assert.doesNotMatch(
     workflow,
