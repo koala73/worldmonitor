@@ -3698,15 +3698,17 @@ async function seedWorldBank() {
       if (priorMeta && typeof priorMeta.recordCount === 'number' && priorMeta.recordCount > 0) {
         if (rankings.length < priorMeta.recordCount * 0.5) {
           console.warn(`[WB] Rankings dropped >50%: ${rankings.length} vs prior ${priorMeta.recordCount} — extending TTLs instead of overwriting`);
-          try {
-            await upstashExpire(WB_BOOTSTRAP_KEY, WB_TTL_SECONDS);
-            await upstashExpire(`seed-meta:${WB_BOOTSTRAP_KEY}`, WB_TTL_SECONDS + 3600);
-            await upstashExpire(WB_PROGRESS_KEY, WB_TTL_SECONDS);
-            await upstashExpire(`seed-meta:${WB_PROGRESS_KEY}`, WB_TTL_SECONDS + 3600);
-            await upstashExpire(WB_RENEWABLE_KEY, WB_TTL_SECONDS);
-            await upstashExpire(`seed-meta:${WB_RENEWABLE_KEY}`, WB_TTL_SECONDS + 3600);
-            console.log('[WB] TTLs extended. Exiting without overwriting.');
-          } catch (ttlErr) { console.warn(`[WB] TTL extension failed: ${ttlErr?.message}`); }
+          const results = await Promise.all([
+            upstashExpire(WB_BOOTSTRAP_KEY, WB_TTL_SECONDS),
+            upstashExpire(`seed-meta:${WB_BOOTSTRAP_KEY}`, WB_TTL_SECONDS + 3600),
+            upstashExpire(WB_PROGRESS_KEY, WB_TTL_SECONDS),
+            upstashExpire(`seed-meta:${WB_PROGRESS_KEY}`, WB_TTL_SECONDS + 3600),
+            upstashExpire(WB_RENEWABLE_KEY, WB_TTL_SECONDS),
+            upstashExpire(`seed-meta:${WB_RENEWABLE_KEY}`, WB_TTL_SECONDS + 3600),
+          ]);
+          const ok = results.filter(Boolean).length;
+          if (ok === results.length) console.log('[WB] TTLs extended. Exiting without overwriting.');
+          else console.warn(`[WB] TTL extension partial: ${ok}/${results.length} succeeded`);
           return;
         }
       }
