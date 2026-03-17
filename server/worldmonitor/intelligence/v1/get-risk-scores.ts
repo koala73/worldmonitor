@@ -20,12 +20,14 @@ const BASELINE_RISK: Record<string, number> = {
   US: 5, RU: 35, CN: 25, UA: 50, IR: 40, IL: 45, TW: 30, KP: 45,
   SA: 20, TR: 25, PL: 10, DE: 5, FR: 10, GB: 5, IN: 20, PK: 35,
   SY: 50, YE: 50, MM: 45, VE: 40, CU: 45, MX: 35, BR: 15, AE: 10,
+  KR: 15, IQ: 40, AF: 45, LB: 40, EG: 20, JP: 5, QA: 10,
 };
 
 const EVENT_MULTIPLIER: Record<string, number> = {
   US: 0.3, RU: 2.0, CN: 2.5, UA: 0.8, IR: 2.0, IL: 0.7, TW: 1.5, KP: 3.0,
   SA: 2.0, TR: 1.2, PL: 0.8, DE: 0.5, FR: 0.6, GB: 0.5, IN: 0.8, PK: 1.5,
   SY: 0.7, YE: 0.7, MM: 1.8, VE: 1.8, CU: 2.0, MX: 1.0, BR: 0.6, AE: 1.5,
+  KR: 0.8, IQ: 1.2, AF: 0.8, LB: 1.5, EG: 1.0, JP: 0.5, QA: 0.8,
 };
 
 const COUNTRY_KEYWORDS: Record<string, string[]> = {
@@ -53,6 +55,13 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   MX: ['mexico', 'mexican', 'sheinbaum', 'cartel', 'sinaloa'],
   BR: ['brazil', 'brasilia', 'lula'],
   AE: ['uae', 'emirates', 'dubai', 'abu dhabi', 'united arab emirates'],
+  KR: ['south korea', 'korean peninsula', 'seoul', 'yoon'],
+  IQ: ['iraq', 'iraqi', 'baghdad', 'kurdistan', 'mosul', 'basra'],
+  AF: ['afghanistan', 'afghan', 'kabul', 'taliban', 'kandahar'],
+  LB: ['lebanon', 'lebanese', 'beirut', 'hezbollah', 'nasrallah'],
+  EG: ['egypt', 'egyptian', 'cairo', 'suez', 'sisi'],
+  JP: ['japan', 'japanese', 'tokyo', 'okinawa', 'kishida'],
+  QA: ['qatar', 'qatari', 'doha', 'al jazeera'],
 };
 
 const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
@@ -80,19 +89,26 @@ const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: num
   MX: { minLat: 14.5, maxLat: 32.7, minLon: -118.4, maxLon: -86.7 },
   BR: { minLat: -33.7, maxLat: 5.3, minLon: -73.9, maxLon: -34.8 },
   AE: { minLat: 22.6, maxLat: 26.1, minLon: 51.6, maxLon: 56.4 },
+  KR: { minLat: 33.1, maxLat: 38.6, minLon: 125.1, maxLon: 131.9 },
+  IQ: { minLat: 29.1, maxLat: 37.4, minLon: 38.8, maxLon: 48.6 },
+  AF: { minLat: 29.4, maxLat: 38.5, minLon: 60.5, maxLon: 75.0 },
+  LB: { minLat: 33.1, maxLat: 34.7, minLon: 35.1, maxLon: 36.6 },
+  EG: { minLat: 22.0, maxLat: 31.7, minLon: 24.7, maxLon: 36.9 },
+  JP: { minLat: 24.4, maxLat: 45.5, minLon: 122.9, maxLon: 153.0 },
+  QA: { minLat: 24.5, maxLat: 26.2, minLon: 50.7, maxLon: 51.7 },
 };
 
 const ZONE_COUNTRY_MAP: Record<string, string[]> = {
   'North America': ['US'], 'Europe': ['DE', 'FR', 'GB', 'PL', 'TR', 'UA'],
-  'East Asia': ['CN', 'TW', 'KP'], 'South Asia': ['IN', 'PK', 'MM'],
-  'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE'], 'Russia': ['RU'],
-  'Latin America': ['VE', 'CU', 'MX', 'BR'],
+  'East Asia': ['CN', 'TW', 'KP', 'KR', 'JP'], 'South Asia': ['IN', 'PK', 'MM', 'AF'],
+  'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE', 'IQ', 'LB', 'QA'], 'Russia': ['RU'],
+  'Latin America': ['VE', 'CU', 'MX', 'BR'], 'North Africa': ['EG'],
 };
 
 const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
   UA: 'do-not-travel', SY: 'do-not-travel', YE: 'do-not-travel', MM: 'do-not-travel',
   IL: 'reconsider', IR: 'reconsider', PK: 'reconsider', VE: 'reconsider', CU: 'reconsider', MX: 'reconsider',
-  RU: 'caution', TR: 'caution',
+  RU: 'caution', TR: 'caution', IQ: 'reconsider', AF: 'do-not-travel', LB: 'reconsider',
 };
 
 // ========================================================================

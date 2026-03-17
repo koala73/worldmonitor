@@ -3692,6 +3692,19 @@ async function seedWorldBank() {
       return;
     }
 
+    // Percentage-drop guard: if new count < 50% of prior count, skip overwrite
+    try {
+      const priorMeta = await upstashGet(`seed-meta:${WB_BOOTSTRAP_KEY}`);
+      if (priorMeta && typeof priorMeta.recordCount === 'number' && priorMeta.recordCount > 0) {
+        if (rankings.length < priorMeta.recordCount * 0.5) {
+          console.warn(`[WB] Rankings dropped >50%: ${rankings.length} vs prior ${priorMeta.recordCount} — skipping overwrite`);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('[WB] Percentage-drop guard failed (proceeding):', e?.message);
+    }
+
     const metaTtl = WB_TTL_SECONDS + 3600;
     let ok = await upstashSet(WB_BOOTSTRAP_KEY, rankings, WB_TTL_SECONDS);
     console.log(`[WB] techReadiness: ${rankings.length} rankings (redis: ${ok ? 'OK' : 'FAIL'})`);
