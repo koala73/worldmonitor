@@ -516,7 +516,7 @@ export class PanelLayoutManager implements AppModule {
     
     // Ireland variant: zoom to Ireland by default (more zoomed out for context)
     const isIreland = SITE_VARIANT === 'ireland';
-    const defaultZoom = isIreland ? (this.ctx.isMobile ? 4.5 : 5.5) : (this.ctx.isMobile ? 2.5 : 1.0);
+    const defaultZoom = isIreland ? (this.ctx.isMobile ? 3.5 : 4.5) : (this.ctx.isMobile ? 2.5 : 1.0);
     const defaultPan = isIreland ? { x: 0, y: 0 } : { x: 0, y: 0 };
     const defaultView = isIreland ? 'eu' : (this.ctx.isMobile ? this.ctx.resolvedLocation : 'global');
     
