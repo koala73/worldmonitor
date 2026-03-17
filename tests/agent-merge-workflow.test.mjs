@@ -25,4 +25,9 @@ test('agent branches use GitHub auto-merge instead of direct merge API calls', (
     /github\.rest\.pulls\.merge/,
     'agent workflow should not merge PRs immediately on branch push',
   );
+  assert.match(
+    workflow,
+    /TITLE=\$\{BRANCH##\*\/\}[\s\S]*TITLE=\$\{TITLE\/\/-\/ \}/,
+    'agent workflow should derive PR titles with shell-safe parameter expansion',
+  );
 });

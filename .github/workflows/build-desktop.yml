@@ -224,7 +224,13 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm exec tauri build -- $TAURI_BUILD_ARGS
+        run: |
+          if [ -n "${TAURI_BUILD_ARGS}" ]; then
+            read -r -a tauri_args <<< "${TAURI_BUILD_ARGS}"
+            npm exec tauri build -- "${tauri_args[@]}"
+          else
+            npm exec tauri build
+          fi
 
       - name: Verify signed macOS bundle + embedded runtime
         if: contains(matrix.platform, 'macos') && steps.apple-signing.outputs.available == 'true'
@@ -406,11 +412,12 @@ jobs:
       - name: Generate and update release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-context.outputs.tag }}
+          VARIANT: ${{ needs.release-context.outputs.variant }}
+          SHORT_SHA: ${{ needs.release-context.outputs.short_sha }}
         shell: bash
         run: |
-          TAG="${{ needs.release-context.outputs.tag }}"
-          VARIANT="${{ needs.release-context.outputs.variant }}"
-          PREV_TAG=$(node --input-type=module -e "import { execSync } from 'node:child_process'; const tag = process.env.TAG; const variant = process.env.VARIANT; const tags = execSync('git tag --sort=-version:refname', { encoding: 'utf8' }).trim().split('\n').filter(Boolean); const matcher = variant === 'full' ? /^v\\d+\\.\\d+\\.\\d+$/ : new RegExp(`^v\\\\d+\\\\.\\\\d+\\\\.\\\\d+-${variant}$`); const prev = tags.find((candidate) => candidate !== tag && matcher.test(candidate)) || ''; process.stdout.write(prev);")
+          PREV_TAG=$(node --input-type=module -e "import { execSync } from 'node:child_process'; const tag = process.env.TAG; const variant = process.env.VARIANT; const tags = execSync('git tag --sort=-version:refname', { encoding: 'utf8' }).trim().split('\\n').filter(Boolean); const matcher = variant === 'full' ? /^v\\d+\\.\\d+\\.\\d+$/ : new RegExp('^v\\\\d+\\\\.\\\\d+\\\\.\\\\d+-' + variant + '$'); const previous = tags.find((candidate) => candidate !== tag && matcher.test(candidate)) || ''; process.stdout.write(previous);")
           if [ -z "$PREV_TAG" ]; then
             COMMITS="Initial release"
           else
@@ -421,7 +428,7 @@ jobs:
 
           ${COMMITS}
 
-          Release manifest includes commit `${{ needs.release-context.outputs.short_sha }}` and checksums for every uploaded artifact.
+          Release manifest includes commit ${SHORT_SHA} and checksums for every uploaded artifact.
           NOTES
           )
           gh release edit "$TAG" --notes "$BODY"
