@@ -1,522 +1,599 @@
-// Hermetic vault door intro — biometric auth with procedural audio and SVG animation.
-// Wraps ensureBiometricUnlock() with a full-screen bunker door sequence.
+// Single-window biometric vault door.
+// Calls the Tauri biometric plugin directly — no secondary overlay, one fingerprint prompt.
 
-type VaultRefs = {
-  overlay: HTMLDivElement;
-  svgEl: SVGSVGElement;
-  scannerRing: SVGCircleElement;
-  scannerFill: SVGCircleElement;
-  scannerPaths: SVGPathElement[];
-  bolts: SVGGElement[];
-  statusText: HTMLDivElement;
-  leds: HTMLDivElement[];
-};
+import { hasTauriInvokeBridge, invokeTauri } from '../services/tauri-bridge';
 
-// ── CSS ────────────────────────────────────────────────────────────────────────
-
-function injectStyles(): void {
-  if (document.getElementById('vault-intro-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'vault-intro-styles';
-  style.textContent = `
-    @keyframes vault-fade-in {
-      from { opacity: 0; } to { opacity: 1; }
-    }
-    @keyframes vault-scanner-pulse {
-      0%, 100% { opacity: 0.4; stroke-width: 1.5px; }
-      50%       { opacity: 1.0; stroke-width: 2px; }
-    }
-    @keyframes vault-led-blink {
-      0%, 100% { opacity: 1; } 50% { opacity: 0.25; }
-    }
-    @keyframes vault-bolt-retract {
-      0%   { transform: translateY(0);    opacity: 1; }
-      100% { transform: translateY(18px); opacity: 0; }
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-// ── Audio ──────────────────────────────────────────────────────────────────────
-
-function newAudioCtx(): AudioContext | null {
-  try { return new AudioContext(); } catch { return null; }
-}
-
-function playBoltRetracts(ctx: AudioContext): void {
-  const t0 = ctx.currentTime;
-  for (let i = 0; i < 4; i++) {
-    const t = t0 + i * 0.11;
-
-    // Low thud
-    const osc = ctx.createOscillator();
-    osc.frequency.setValueAtTime(88, t);
-    osc.frequency.exponentialRampToValueAtTime(18, t + 0.24);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0.55, t);
-    og.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
-    osc.connect(og).connect(ctx.destination);
-    osc.start(t); osc.stop(t + 0.25);
-
-    // Metallic click
-    const bufSz = Math.floor(ctx.sampleRate * 0.045);
-    const buf = ctx.createBuffer(1, bufSz, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let j = 0; j < bufSz; j++) d[j] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const hpf = ctx.createBiquadFilter();
-    hpf.type = 'highpass'; hpf.frequency.value = 3200;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.28, t);
-    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
-    src.connect(hpf).connect(ng).connect(ctx.destination);
-    src.start(t);
-  }
-}
-
-function playPressureRelease(ctx: AudioContext): void {
-  const t0 = ctx.currentTime + 0.1;
-  const dur = 2.2;
-
-  // Air pressure hiss (filtered white noise, sweeping down)
-  const hissLen = Math.floor(ctx.sampleRate * dur);
-  const hissBuf = ctx.createBuffer(1, hissLen, ctx.sampleRate);
-  const hd = hissBuf.getChannelData(0);
-  for (let i = 0; i < hissLen; i++) hd[i] = Math.random() * 2 - 1;
-  const hissSrc = ctx.createBufferSource();
-  hissSrc.buffer = hissBuf;
-  const hissF = ctx.createBiquadFilter();
-  hissF.type = 'bandpass';
-  hissF.frequency.setValueAtTime(1800, t0);
-  hissF.frequency.exponentialRampToValueAtTime(320, t0 + dur * 0.7);
-  hissF.Q.value = 1.1;
-  const hissG = ctx.createGain();
-  hissG.gain.setValueAtTime(0, t0);
-  hissG.gain.linearRampToValueAtTime(0.4, t0 + 0.09);
-  hissG.gain.setValueAtTime(0.4, t0 + dur * 0.45);
-  hissG.gain.linearRampToValueAtTime(0, t0 + dur);
-  hissSrc.connect(hissF).connect(hissG).connect(ctx.destination);
-  hissSrc.start(t0);
-
-  // Mechanism rumble (low sawtooth with lowpass)
-  const rumble = ctx.createOscillator();
-  rumble.type = 'sawtooth';
-  rumble.frequency.setValueAtTime(44, t0 + 0.25);
-  rumble.frequency.linearRampToValueAtTime(54, t0 + 1.4);
-  const rumbleF = ctx.createBiquadFilter();
-  rumbleF.type = 'lowpass'; rumbleF.frequency.value = 170;
-  const rumbleG = ctx.createGain();
-  rumbleG.gain.setValueAtTime(0, t0 + 0.25);
-  rumbleG.gain.linearRampToValueAtTime(0.18, t0 + 0.45);
-  rumbleG.gain.setValueAtTime(0.18, t0 + 1.3);
-  rumbleG.gain.linearRampToValueAtTime(0, t0 + 1.9);
-  rumble.connect(rumbleF).connect(rumbleG).connect(ctx.destination);
-  rumble.start(t0 + 0.25); rumble.stop(t0 + 2.0);
-
-  // Door-swing whoosh (noise sweep up then down)
-  const wLen = Math.floor(ctx.sampleRate * 1.5);
-  const wBuf = ctx.createBuffer(1, wLen, ctx.sampleRate);
-  const wd = wBuf.getChannelData(0);
-  for (let i = 0; i < wLen; i++) wd[i] = Math.random() * 2 - 1;
-  const wSrc = ctx.createBufferSource();
-  wSrc.buffer = wBuf;
-  const wF = ctx.createBiquadFilter();
-  wF.type = 'bandpass';
-  wF.frequency.setValueAtTime(480, t0 + 0.5);
-  wF.frequency.exponentialRampToValueAtTime(3000, t0 + 1.0);
-  wF.frequency.exponentialRampToValueAtTime(190, t0 + 2.0);
-  wF.Q.value = 0.6;
-  const wG = ctx.createGain();
-  wG.gain.setValueAtTime(0, t0 + 0.5);
-  wG.gain.linearRampToValueAtTime(0.22, t0 + 0.8);
-  wG.gain.linearRampToValueAtTime(0, t0 + 2.0);
-  wSrc.connect(wF).connect(wG).connect(ctx.destination);
-  wSrc.start(t0 + 0.5);
-}
-
-// ── SVG door ───────────────────────────────────────────────────────────────────
-
+const CMD = 'plugin:biometry|authenticate';
+const REASON = 'Unlock World Monitor';
+const BRIDGE_TIMEOUT_MS = 2500;
+const POLL_MS = 50;
 const NS = 'http://www.w3.org/2000/svg';
 
-function svgEl<T extends SVGElement>(tag: string): T {
-  return document.createElementNS(NS, tag) as T;
-}
-
-function attr(el: SVGElement, attrs: Record<string, string>): void {
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-}
-
-function buildDoorSVG(SIZE: number): {
-  svg: SVGSVGElement;
-  scannerRing: SVGCircleElement;
-  scannerFill: SVGCircleElement;
-  scannerPaths: SVGPathElement[];
-  bolts: SVGGElement[];
-} {
-  const C = SIZE / 2;
-  const svg = svgEl<SVGSVGElement>('svg');
-  attr(svg, { viewBox: `0 0 ${SIZE} ${SIZE}`, width: String(SIZE), height: String(SIZE) });
-  svg.style.overflow = 'visible';
-
-  // Defs: radial gradient for door body
-  const defs = svgEl('defs');
-  const grad = svgEl<SVGRadialGradientElement>('radialGradient');
-  attr(grad, { id: 'vaultDoorGrad', cx: '38%', cy: '34%', r: '62%' });
-  for (const [offset, color] of [['0%', '#2e3548'], ['50%', '#1a2030'], ['100%', '#0e1118']] as const) {
-    const s = svgEl<SVGStopElement>('stop');
-    attr(s, { offset, 'stop-color': color });
-    grad.appendChild(s);
-  }
-  defs.appendChild(grad);
-  svg.appendChild(defs);
-
-  // Outer frame ring
-  const frame = svgEl<SVGCircleElement>('circle');
-  attr(frame, { cx: String(C), cy: String(C), r: String(C - 2), fill: '#0a0d12', stroke: '#1a2030', 'stroke-width': '3' });
-  svg.appendChild(frame);
-
-  // Subtle top-left bevel gleam
-  const bevel = svgEl<SVGCircleElement>('circle');
-  attr(bevel, { cx: String(C), cy: String(C - 4), r: String(C - 12), fill: 'none', stroke: 'rgba(255,255,255,0.03)', 'stroke-width': '7' });
-  svg.appendChild(bevel);
-
-  // ── 8 locking bolts ──────────────────────────────────────────────────────────
-  const bolts: SVGGElement[] = [];
-  for (let i = 0; i < 8; i++) {
-    const g = svgEl<SVGGElement>('g');
-    g.setAttribute('transform', `rotate(${i * 45} ${C} ${C})`);
-
-    // Housing (static)
-    const housing = svgEl<SVGRectElement>('rect');
-    attr(housing, {
-      x: String(C - 7), y: '5',
-      width: '14', height: '34', rx: '4',
-      fill: '#12161e', stroke: '#1e2838', 'stroke-width': '1',
-    });
-
-    // Pin group (animated on retract)
-    const pinG = svgEl<SVGGElement>('g');
-    const pin = svgEl<SVGRectElement>('rect');
-    attr(pin, {
-      x: String(C - 5), y: '8',
-      width: '10', height: '24', rx: '3',
-      fill: '#38495e', stroke: '#4a5e72', 'stroke-width': '0.5',
-    });
-    const pinHL = svgEl<SVGRectElement>('rect');
-    attr(pinHL, {
-      x: String(C - 4), y: '9',
-      width: '3', height: '20', rx: '1.5',
-      fill: 'rgba(255,255,255,0.1)',
-    });
-    pinG.appendChild(pin);
-    pinG.appendChild(pinHL);
-    g.appendChild(housing);
-    g.appendChild(pinG);
-    svg.appendChild(g);
-    bolts.push(pinG);
-  }
-
-  // ── Main door body ────────────────────────────────────────────────────────────
-  const doorBody = svgEl<SVGCircleElement>('circle');
-  attr(doorBody, {
-    cx: String(C), cy: String(C), r: String(C - 40),
-    fill: 'url(#vaultDoorGrad)', stroke: '#232c3e', 'stroke-width': '2.5',
-  });
-  svg.appendChild(doorBody);
-
-  // Depth highlight (off-center bright patch)
-  const depthHL = svgEl<SVGCircleElement>('circle');
-  attr(depthHL, {
-    cx: String(C - 18), cy: String(C - 18), r: String(C - 60),
-    fill: 'rgba(255,255,255,0.028)',
-  });
-  svg.appendChild(depthHL);
-
-  // ── Cross-brace reinforcement ribs ────────────────────────────────────────────
-  const ribR = C - 42;
-  const ribDirs: [number, number][] = [[1, 0], [0, 1], [0.707, 0.707], [-0.707, 0.707]];
-  for (const [dx, dy] of ribDirs) {
-    const shadow = svgEl<SVGLineElement>('line');
-    attr(shadow, {
-      x1: String(C - dx * ribR), y1: String(C - dy * ribR + 2),
-      x2: String(C + dx * ribR), y2: String(C + dy * ribR + 2),
-      stroke: 'rgba(0,0,0,0.5)', 'stroke-width': '12', 'stroke-linecap': 'round',
-    });
-    svg.appendChild(shadow);
-
-    const rib = svgEl<SVGLineElement>('line');
-    attr(rib, {
-      x1: String(C - dx * ribR), y1: String(C - dy * ribR),
-      x2: String(C + dx * ribR), y2: String(C + dy * ribR),
-      stroke: '#121820', 'stroke-width': '12', 'stroke-linecap': 'round',
-    });
-    svg.appendChild(rib);
-
-    const ribHL = svgEl<SVGLineElement>('line');
-    attr(ribHL, {
-      x1: String(C - dx * ribR + dy * 2), y1: String(C - dy * ribR - dx * 2),
-      x2: String(C + dx * ribR + dy * 2), y2: String(C + dy * ribR - dx * 2),
-      stroke: 'rgba(255,255,255,0.055)', 'stroke-width': '3', 'stroke-linecap': 'round',
-    });
-    svg.appendChild(ribHL);
-  }
-
-  // ── Rivets at rib intersections ───────────────────────────────────────────────
-  const rivetSpots: [number, number][] = [
-    [C, C - ribR * 0.55], [C, C + ribR * 0.55],
-    [C - ribR * 0.55, C], [C + ribR * 0.55, C],
-    [C - ribR * 0.39, C - ribR * 0.39], [C + ribR * 0.39, C - ribR * 0.39],
-    [C - ribR * 0.39, C + ribR * 0.39], [C + ribR * 0.39, C + ribR * 0.39],
-  ];
-  for (const [rx, ry] of rivetSpots) {
-    const rv = svgEl<SVGCircleElement>('circle');
-    attr(rv, { cx: String(rx), cy: String(ry), r: '5', fill: '#181f2e', stroke: '#252f42', 'stroke-width': '1' });
-    svg.appendChild(rv);
-    const rvHL = svgEl<SVGCircleElement>('circle');
-    attr(rvHL, { cx: String(rx - 1.2), cy: String(ry - 1.2), r: '1.6', fill: 'rgba(255,255,255,0.14)' });
-    svg.appendChild(rvHL);
-  }
-
-  // ── Central scanner housing ───────────────────────────────────────────────────
-  const scannerHousing = svgEl<SVGCircleElement>('circle');
-  attr(scannerHousing, {
-    cx: String(C), cy: String(C), r: '60',
-    fill: '#0b0e14', stroke: '#1c2438', 'stroke-width': '2',
-  });
-  svg.appendChild(scannerHousing);
-
-  // Pulsing ring
-  const scannerRing = svgEl<SVGCircleElement>('circle');
-  attr(scannerRing, {
-    cx: String(C), cy: String(C), r: '52',
-    fill: 'none', stroke: '#1a4a70', 'stroke-width': '1.5',
-  });
-  scannerRing.style.animation = 'vault-scanner-pulse 2.6s ease-in-out infinite';
-  svg.appendChild(scannerRing);
-
-  // Scanner fill (color state indicator)
-  const scannerFill = svgEl<SVGCircleElement>('circle');
-  attr(scannerFill, { cx: String(C), cy: String(C), r: '44', fill: 'rgba(8,16,28,0.85)' });
-  svg.appendChild(scannerFill);
-
-  // Fingerprint icon (simplified concentric arcs)
-  const fpG = svgEl<SVGGElement>('g');
-  fpG.setAttribute('transform', `translate(${C - 20}, ${C - 22})`);
-  fpG.setAttribute('opacity', '0.52');
-  const fpDefs = [
-    'M 20 4 C 10 4 4 10 4 20 C 4 30 8 36 14 38',
-    'M 20 8 C 12 8 8 14 8 20 C 8 27 12 32 20 32',
-    'M 20 12 C 15 12 12 16 12 20 C 12 25 16 28 20 28',
-    'M 20 16 C 17 16 16 18 16 20 C 16 22 18 24 20 24 C 22 24 24 22 24 20 C 24 18 22 16 20 16',
-    'M 20 4 C 30 4 36 10 36 20 C 36 30 30 36 26 38',
-    'M 28 8 C 32 13 32 17 32 20 C 32 26 28 32 20 32',
-    'M 30 12 C 32 16 28 24 20 28',
-    'M 26 16 C 28 18 26 24 20 24',
-  ];
-  const scannerPaths: SVGPathElement[] = [];
-  for (const d of fpDefs) {
-    const p = svgEl<SVGPathElement>('path');
-    attr(p, { d, stroke: '#3a80aa', 'stroke-width': '1.4', fill: 'none', 'stroke-linecap': 'round' });
-    fpG.appendChild(p);
-    scannerPaths.push(p);
-  }
-  svg.appendChild(fpG);
-
-  // ── Door handle (bar on right side) ──────────────────────────────────────────
-  const hx = C + ribR + 4;
-  const hBar = svgEl<SVGRectElement>('rect');
-  attr(hBar, {
-    x: String(hx), y: String(C - 26),
-    width: '13', height: '52', rx: '6.5',
-    fill: '#141c2a', stroke: '#222e42', 'stroke-width': '1.5',
-  });
-  svg.appendChild(hBar);
-  const hBarHL = svgEl<SVGRectElement>('rect');
-  attr(hBarHL, {
-    x: String(hx + 2), y: String(C - 20),
-    width: '3.5', height: '40', rx: '1.75',
-    fill: 'rgba(255,255,255,0.08)',
-  });
-  svg.appendChild(hBarHL);
-
-  return { svg, scannerRing, scannerFill, scannerPaths, bolts };
-}
-
-// ── Overlay DOM ────────────────────────────────────────────────────────────────
-
-function buildOverlay(): VaultRefs {
-  injectStyles();
-
-  const overlay = document.createElement('div');
-  Object.assign(overlay.style, {
-    position: 'fixed',
-    inset: '0',
-    background: '#06080b',
-    zIndex: '1000',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontFamily: '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
-    overflow: 'hidden',
-    animation: 'vault-fade-in 0.55s ease both',
-    userSelect: 'none',
-  } satisfies Partial<CSSStyleDeclaration>);
-
-  // Top classification bar
-  const topBar = document.createElement('div');
-  Object.assign(topBar.style, {
-    position: 'absolute',
-    top: '0', left: '0', right: '0', height: '26px',
-    background: 'rgba(155,15,15,0.92)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: '10px', fontWeight: '700', letterSpacing: '0.22em',
-    color: 'rgba(255,255,255,0.88)',
-  } satisfies Partial<CSSStyleDeclaration>);
-  topBar.textContent = 'TOP SECRET // WORLD MONITOR SECURE ENCLAVE';
-
-  // Logo
-  const logo = document.createElement('div');
-  Object.assign(logo.style, {
-    position: 'absolute',
-    top: '40px',
-    fontSize: '12px', fontWeight: '700', letterSpacing: '0.28em',
-    color: 'rgba(140,175,210,0.42)',
-  } satisfies Partial<CSSStyleDeclaration>);
-  logo.textContent = 'WORLD MONITOR';
-
-  // Build SVG door
-  const SIZE = 320;
-  const { svg, scannerRing, scannerFill, scannerPaths, bolts } = buildDoorSVG(SIZE);
-  svg.style.width = 'min(320px, 62vmin)';
-  svg.style.height = 'min(320px, 62vmin)';
-
-  // LED row
-  const ledRow = document.createElement('div');
-  Object.assign(ledRow.style, {
-    display: 'flex', gap: '8px', marginTop: '18px', alignItems: 'center',
-  } satisfies Partial<CSSStyleDeclaration>);
-
-  const ledDefs = ['#a81c1c', '#2d3748', '#2d3748'] as const;
-  const leds = ledDefs.map((color, i) => {
-    const led = document.createElement('div');
-    Object.assign(led.style, {
-      width: '7px', height: '7px', borderRadius: '50%',
-      background: color,
-      boxShadow: i === 0 ? '0 0 5px 2px rgba(168,28,28,0.6)' : 'none',
-      animation: i === 0 ? 'vault-led-blink 2s ease-in-out infinite' : 'none',
-    } satisfies Partial<CSSStyleDeclaration>);
-    return led;
-  });
-  leds.forEach(l => ledRow.appendChild(l));
-
-  // Status text
-  const statusText = document.createElement('div');
-  Object.assign(statusText.style, {
-    marginTop: '14px',
-    fontSize: '10px', fontWeight: '600', letterSpacing: '0.18em',
-    color: 'rgba(90,130,175,0.55)',
-  } satisfies Partial<CSSStyleDeclaration>);
-  statusText.textContent = 'AWAITING BIOMETRIC AUTHENTICATION';
-
-  // Bottom bar
-  const bottomBar = document.createElement('div');
-  Object.assign(bottomBar.style, {
-    position: 'absolute',
-    bottom: '0', left: '0', right: '0', height: '22px',
-    background: 'rgba(155,15,15,0.92)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: '9px', fontWeight: '700', letterSpacing: '0.18em',
-    color: 'rgba(255,255,255,0.82)',
-  } satisfies Partial<CSSStyleDeclaration>);
-  bottomBar.textContent = 'UNAUTHORIZED ACCESS PROHIBITED — 18 U.S.C. § 1030';
-
-  // Center column
-  const col = document.createElement('div');
-  Object.assign(col.style, {
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-  } satisfies Partial<CSSStyleDeclaration>);
-  col.appendChild(svg);
-  col.appendChild(ledRow);
-  col.appendChild(statusText);
-
-  overlay.appendChild(topBar);
-  overlay.appendChild(logo);
-  overlay.appendChild(col);
-  overlay.appendChild(bottomBar);
-
-  return { overlay, svgEl: svg, scannerRing, scannerFill, scannerPaths, bolts, statusText, leds };
-}
-
-// ── State transitions ──────────────────────────────────────────────────────────
-
-function setAuthenticated(refs: VaultRefs): void {
-  refs.scannerRing.style.animation = '';
-  refs.scannerRing.setAttribute('stroke', '#1a8a4e');
-  refs.scannerRing.style.opacity = '1';
-  refs.scannerFill.setAttribute('fill', 'rgba(6,24,14,0.9)');
-  for (const p of refs.scannerPaths) p.setAttribute('stroke', '#2dd47a');
-  refs.statusText.textContent = 'ACCESS GRANTED';
-  refs.statusText.style.color = 'rgba(45,212,122,0.85)';
-
-  // LEDs: red off, two green on
-  const [led0, led1, led2] = refs.leds;
-  if (led0) Object.assign(led0.style, { background: '#2d3748', boxShadow: 'none', animation: 'none' });
-  if (led1) Object.assign(led1.style, { background: '#15803d', boxShadow: '0 0 5px 2px rgba(21,128,61,0.6)' });
-  if (led2) Object.assign(led2.style, { background: '#15803d', boxShadow: '0 0 5px 2px rgba(21,128,61,0.45)' });
-}
-
-function retractBolts(bolts: SVGGElement[]): void {
-  bolts.forEach((bolt, i) => {
-    bolt.style.animation = `vault-bolt-retract 0.28s ease-in ${i * 0.065}s both`;
-  });
-}
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
-async function playOpenSequence(refs: VaultRefs): Promise<void> {
-  setAuthenticated(refs);
-  await sleep(320);
-
-  const ctx = newAudioCtx();
-  if (ctx) {
-    playBoltRetracts(ctx);
-    setTimeout(() => playPressureRelease(ctx), 400);
-  }
-
-  retractBolts(refs.bolts);
-  await sleep(520);
-
-  // Door swings open — rotate Y around right edge (hinge side), fade out
-  refs.svgEl.style.transition = 'transform 1.75s cubic-bezier(0.42, 0, 0.18, 1), opacity 1.5s ease';
-  refs.svgEl.style.transformOrigin = 'right center';
-  refs.svgEl.style.transform = 'perspective(900px) rotateY(-88deg)';
-  refs.svgEl.style.opacity = '0';
-
-  // Fade background slightly behind the door
-  await sleep(380);
-  refs.overlay.style.transition = 'opacity 1.4s ease';
-  refs.overlay.style.opacity = '0';
-
-  await sleep(1500);
+function svgEl<T extends SVGElement>(tag: string): T {
+  return document.createElementNS(NS, tag) as T;
 }
 
-// ── Public export ──────────────────────────────────────────────────────────────
+function attr(el: SVGElement, attrs: Record<string, string | number>): void {
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+}
+
+async function waitForBridge(): Promise<boolean> {
+  if (hasTauriInvokeBridge()) return true;
+  const deadline = Date.now() + BRIDGE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_MS);
+    if (hasTauriInvokeBridge()) return true;
+  }
+  return false;
+}
+
+// ── Audio ──────────────────────────────────────────────────────────────────────
+
+function newCtx(): AudioContext | null {
+  try { return new AudioContext(); } catch { return null; }
+}
+
+function playBoltRetracts(ctx: AudioContext): void {
+  const t0 = ctx.currentTime;
+  for (let i = 0; i < 5; i++) {
+    const t = t0 + i * 0.09;
+    const osc = ctx.createOscillator();
+    osc.frequency.setValueAtTime(95, t);
+    osc.frequency.exponentialRampToValueAtTime(16, t + 0.2);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.6, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    osc.connect(og).connect(ctx.destination);
+    osc.start(t); osc.stop(t + 0.2);
+
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.04), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let j = 0; j < d.length; j++) d[j] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hpf = ctx.createBiquadFilter();
+    hpf.type = 'highpass'; hpf.frequency.value = 3500;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.3, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    src.connect(hpf).connect(ng).connect(ctx.destination);
+    src.start(t);
+  }
+}
+
+function playDoorOpen(ctx: AudioContext): void {
+  const t0 = ctx.currentTime + 0.08;
+  const dur = 2.4;
+
+  // Pressure hiss (bandpass noise, sweeping 1600 → 280 Hz)
+  const hBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+  const hd = hBuf.getChannelData(0);
+  for (let i = 0; i < hd.length; i++) hd[i] = Math.random() * 2 - 1;
+  const hSrc = ctx.createBufferSource();
+  hSrc.buffer = hBuf;
+  const hF = ctx.createBiquadFilter();
+  hF.type = 'bandpass';
+  hF.frequency.setValueAtTime(1600, t0);
+  hF.frequency.exponentialRampToValueAtTime(280, t0 + dur * 0.7);
+  hF.Q.value = 1.0;
+  const hG = ctx.createGain();
+  hG.gain.setValueAtTime(0, t0);
+  hG.gain.linearRampToValueAtTime(0.42, t0 + 0.1);
+  hG.gain.setValueAtTime(0.42, t0 + dur * 0.42);
+  hG.gain.linearRampToValueAtTime(0, t0 + dur);
+  hSrc.connect(hF).connect(hG).connect(ctx.destination);
+  hSrc.start(t0);
+
+  // Low mechanism rumble
+  const rOsc = ctx.createOscillator();
+  rOsc.type = 'sawtooth';
+  rOsc.frequency.setValueAtTime(42, t0 + 0.3);
+  rOsc.frequency.linearRampToValueAtTime(52, t0 + 1.5);
+  const rF = ctx.createBiquadFilter();
+  rF.type = 'lowpass'; rF.frequency.value = 160;
+  const rG = ctx.createGain();
+  rG.gain.setValueAtTime(0, t0 + 0.3);
+  rG.gain.linearRampToValueAtTime(0.2, t0 + 0.5);
+  rG.gain.setValueAtTime(0.2, t0 + 1.4);
+  rG.gain.linearRampToValueAtTime(0, t0 + 2.1);
+  rOsc.connect(rF).connect(rG).connect(ctx.destination);
+  rOsc.start(t0 + 0.3); rOsc.stop(t0 + 2.2);
+
+  // Whoosh sweep
+  const wBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.6), ctx.sampleRate);
+  const wd = wBuf.getChannelData(0);
+  for (let i = 0; i < wd.length; i++) wd[i] = Math.random() * 2 - 1;
+  const wSrc = ctx.createBufferSource();
+  wSrc.buffer = wBuf;
+  const wF = ctx.createBiquadFilter();
+  wF.type = 'bandpass';
+  wF.frequency.setValueAtTime(440, t0 + 0.55);
+  wF.frequency.exponentialRampToValueAtTime(3200, t0 + 1.1);
+  wF.frequency.exponentialRampToValueAtTime(180, t0 + 2.1);
+  wF.Q.value = 0.55;
+  const wG = ctx.createGain();
+  wG.gain.setValueAtTime(0, t0 + 0.55);
+  wG.gain.linearRampToValueAtTime(0.25, t0 + 0.85);
+  wG.gain.linearRampToValueAtTime(0, t0 + 2.1);
+  wSrc.connect(wF).connect(wG).connect(ctx.destination);
+  wSrc.start(t0 + 0.55);
+}
+
+// ── CSS ────────────────────────────────────────────────────────────────────────
+
+function injectStyles(): void {
+  if (document.getElementById('vault-intro-css')) return;
+  const s = document.createElement('style');
+  s.id = 'vault-intro-css';
+  s.textContent = `
+    @keyframes vi-fadein   { from{opacity:0} to{opacity:1} }
+    @keyframes vi-scan     { 0%,100%{opacity:.35;stroke-width:1.5px} 50%{opacity:.9;stroke-width:2px} }
+    @keyframes vi-glow     { 0%,100%{opacity:0} 50%{opacity:.55} }
+    @keyframes vi-scanerr  { 0%,100%{opacity:.5;stroke-width:1.5px} 50%{opacity:1;stroke-width:2px} }
+    @keyframes vi-shake    { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-4px)} 40%{transform:translateX(4px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(3px)} }
+    @keyframes vi-bolt     { 0%{transform:translateY(0);opacity:1} 100%{transform:translateY(22px);opacity:0} }
+    @keyframes vi-ledblink { 0%,100%{opacity:1} 50%{opacity:.2} }
+  `;
+  document.head.appendChild(s);
+}
+
+// ── SVG door ───────────────────────────────────────────────────────────────────
+
+type DoorParts = {
+  svg: SVGSVGElement;
+  scannerRing: SVGCircleElement;
+  scannerGlow: SVGCircleElement;
+  padFill: SVGCircleElement;
+  fpPaths: SVGPathElement[];
+  statusText: SVGTextElement;
+  boltPins: SVGGElement[];
+  lockedLed: SVGCircleElement;
+};
+
+function buildDoor(): DoorParts {
+  const V = 500;
+  const C = 250;
+
+  const svg = svgEl<SVGSVGElement>('svg');
+  attr(svg, { viewBox: `0 0 ${V} ${V}`, width: V, height: V });
+  svg.style.cssText = 'width:min(440px,72vmin);height:min(440px,72vmin);overflow:visible;display:block;';
+
+  // ── Defs ──────────────────────────────────────────────────────────────────
+  const defs = svgEl('defs');
+
+  // Door body gradient — bright upper-left corner, dark lower-right
+  const dg = svgEl<SVGRadialGradientElement>('radialGradient');
+  attr(dg, { id: 'vi-dg', cx: '34%', cy: '30%', r: '70%' });
+  for (const [off, col] of [['0%','#2e3a4e'],['38%','#1a2232'],['75%','#111826'],['100%','#0c1018']] as const) {
+    const s = svgEl<SVGStopElement>('stop'); attr(s, { offset: off, 'stop-color': col }); dg.appendChild(s);
+  }
+
+  // Frame gradient — darker than door
+  const fg = svgEl<SVGRadialGradientElement>('radialGradient');
+  attr(fg, { id: 'vi-fg', cx: '38%', cy: '33%', r: '66%' });
+  for (const [off, col] of [['0%','#1e2430'],['100%','#080b10']] as const) {
+    const s = svgEl<SVGStopElement>('stop'); attr(s, { offset: off, 'stop-color': col }); fg.appendChild(s);
+  }
+
+  // Scanner pad gradient — near-black with faint deep-blue center
+  const sg = svgEl<SVGRadialGradientElement>('radialGradient');
+  attr(sg, { id: 'vi-sg', cx: '42%', cy: '38%', r: '60%' });
+  for (const [off, col] of [['0%','#0e1824'],['60%','#080d14'],['100%','#050810']] as const) {
+    const s = svgEl<SVGStopElement>('stop'); attr(s, { offset: off, 'stop-color': col }); sg.appendChild(s);
+  }
+
+  // Drop shadow for the whole door
+  const shadow = svgEl<SVGFilterElement>('filter');
+  attr(shadow, { id: 'vi-shadow', x: '-20%', y: '-20%', width: '140%', height: '140%' });
+  const ds = svgEl('feDropShadow');
+  attr(ds, { dx: '0', dy: '12', stdDeviation: '28', 'flood-color': '#000', 'flood-opacity': '0.85' });
+  shadow.appendChild(ds);
+
+  // Scanner glow filter
+  const gf = svgEl<SVGFilterElement>('filter');
+  attr(gf, { id: 'vi-glow', x: '-60%', y: '-60%', width: '220%', height: '220%' });
+  const gb = svgEl('feGaussianBlur');
+  attr(gb, { stdDeviation: '5', result: 'blur' });
+  const gm = svgEl('feMerge');
+  const gm1 = svgEl('feMergeNode'); attr(gm1, { in: 'blur' });
+  const gm2 = svgEl('feMergeNode'); attr(gm2, { in: 'SourceGraphic' });
+  gm.appendChild(gm1); gm.appendChild(gm2);
+  gf.appendChild(gb); gf.appendChild(gm);
+
+  // Clip path for door body
+  const cp = svgEl('clipPath'); attr(cp, { id: 'vi-clip' });
+  const cpc = svgEl<SVGCircleElement>('circle'); attr(cpc, { cx: C, cy: C, r: 197 }); cp.appendChild(cpc);
+
+  defs.appendChild(dg); defs.appendChild(fg); defs.appendChild(sg);
+  defs.appendChild(shadow); defs.appendChild(gf); defs.appendChild(cp);
+  svg.appendChild(defs);
+
+  // ── Outer atmosphere (drop shadow ring) ───────────────────────────────────
+  const shadowRing = svgEl<SVGCircleElement>('circle');
+  attr(shadowRing, { cx: C, cy: C, r: 248, fill: 'url(#vi-fg)', filter: 'url(#vi-shadow)' });
+  svg.appendChild(shadowRing);
+
+  // ── Frame ring ────────────────────────────────────────────────────────────
+  const frame = svgEl<SVGCircleElement>('circle');
+  attr(frame, { cx: C, cy: C, r: 246, fill: 'url(#vi-fg)', stroke: '#0a0d14', 'stroke-width': 3 });
+  svg.appendChild(frame);
+
+  // Frame outer edge highlight (upper-left arc)
+  const frameHL = svgEl<SVGCircleElement>('circle');
+  attr(frameHL, { cx: C, cy: C, r: 244, fill: 'none', stroke: 'rgba(255,255,255,0.04)', 'stroke-width': 2 });
+  svg.appendChild(frameHL);
+
+  // Frame inner bevel shadow
+  const frameInnerShadow = svgEl<SVGCircleElement>('circle');
+  attr(frameInnerShadow, { cx: C, cy: C + 4, r: 202, fill: 'none', stroke: 'rgba(0,0,0,0.7)', 'stroke-width': 8 });
+  svg.appendChild(frameInnerShadow);
+
+  // ── 8 locking bolt mechanisms ─────────────────────────────────────────────
+  const boltPins: SVGGElement[] = [];
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * 360;
+    const g = svgEl<SVGGElement>('g');
+    g.setAttribute('transform', `rotate(${angle} ${C} ${C})`);
+
+    // Bolt housing recess
+    const housing = svgEl<SVGRectElement>('rect');
+    attr(housing, { x: C - 9, y: 6, width: 18, height: 38, rx: 5,
+      fill: '#0a0d12', stroke: '#181e2a', 'stroke-width': 1.5 });
+
+    // Bolt pin
+    const pinG = svgEl<SVGGElement>('g');
+    const pin = svgEl<SVGRectElement>('rect');
+    attr(pin, { x: C - 7, y: 9, width: 14, height: 28, rx: 4,
+      fill: 'url(#vi-dg)', stroke: '#3a4e62', 'stroke-width': 1 });
+    // Pin highlight
+    const pinHL = svgEl<SVGRectElement>('rect');
+    attr(pinHL, { x: C - 6, y: 10, width: 4, height: 24, rx: 2,
+      fill: 'rgba(255,255,255,0.13)' });
+    // Pin shadow
+    const pinSh = svgEl<SVGRectElement>('rect');
+    attr(pinSh, { x: C + 1, y: 10, width: 3, height: 24, rx: 2,
+      fill: 'rgba(0,0,0,0.35)' });
+    pinG.appendChild(pin); pinG.appendChild(pinHL); pinG.appendChild(pinSh);
+    g.appendChild(housing); g.appendChild(pinG);
+    svg.appendChild(g);
+    boltPins.push(pinG);
+  }
+
+  // ── Door body ─────────────────────────────────────────────────────────────
+  const door = svgEl<SVGCircleElement>('circle');
+  attr(door, { cx: C, cy: C, r: 200, fill: 'url(#vi-dg)', stroke: '#1c2438', 'stroke-width': 3 });
+  svg.appendChild(door);
+
+  // Specular highlight — off-center bright patch (upper-left)
+  const specHL = svgEl<SVGEllipseElement>('ellipse');
+  attr(specHL, { cx: C - 55, cy: C - 60, rx: 90, ry: 70,
+    fill: 'rgba(255,255,255,0.028)' });
+  svg.appendChild(specHL);
+
+  // Door face: outer panel ring (shallow groove at r≈170)
+  const outerPanel = svgEl<SVGCircleElement>('circle');
+  attr(outerPanel, { cx: C, cy: C + 1.5, r: 172, fill: 'none',
+    stroke: '#0c1018', 'stroke-width': 6 });
+  svg.appendChild(outerPanel);
+  const outerPanelHL = svgEl<SVGCircleElement>('circle');
+  attr(outerPanelHL, { cx: C, cy: C - 1, r: 171, fill: 'none',
+    stroke: 'rgba(255,255,255,0.045)', 'stroke-width': 1.5 });
+  svg.appendChild(outerPanelHL);
+
+  // Inner panel ring (groove at r≈128)
+  const innerPanel = svgEl<SVGCircleElement>('circle');
+  attr(innerPanel, { cx: C, cy: C + 1, r: 128, fill: 'none',
+    stroke: '#0c1018', 'stroke-width': 5 });
+  svg.appendChild(innerPanel);
+  const innerPanelHL = svgEl<SVGCircleElement>('circle');
+  attr(innerPanelHL, { cx: C, cy: C - 1, r: 127, fill: 'none',
+    stroke: 'rgba(255,255,255,0.04)', 'stroke-width': 1.5 });
+  svg.appendChild(innerPanelHL);
+
+  // 4 reinforcement rivets at panel groove
+  for (const angle of [45, 135, 225, 315]) {
+    const rad = angle * Math.PI / 180;
+    const rx = C + Math.cos(rad) * 149;
+    const ry = C + Math.sin(rad) * 149;
+    const rv = svgEl<SVGCircleElement>('circle');
+    attr(rv, { cx: rx, cy: ry, r: 5.5, fill: '#141c28', stroke: '#222e40', 'stroke-width': 1 });
+    svg.appendChild(rv);
+    const rvHL = svgEl<SVGCircleElement>('circle');
+    attr(rvHL, { cx: rx - 1.5, cy: ry - 1.5, r: 1.8, fill: 'rgba(255,255,255,0.18)' });
+    svg.appendChild(rvHL);
+  }
+
+  // ── Scanner housing (recessed) ────────────────────────────────────────────
+  const scanHousing = svgEl<SVGCircleElement>('circle');
+  attr(scanHousing, { cx: C, cy: C, r: 88, fill: '#070a10', stroke: '#0f1520', 'stroke-width': 3 });
+  svg.appendChild(scanHousing);
+
+  // Housing inner bevel shadow (depth illusion)
+  const housingBevel = svgEl<SVGCircleElement>('circle');
+  attr(housingBevel, { cx: C, cy: C + 3, r: 85, fill: 'none',
+    stroke: 'rgba(0,0,0,0.7)', 'stroke-width': 6 });
+  svg.appendChild(housingBevel);
+
+  // Scanner pad (dark glass surface)
+  const padFill = svgEl<SVGCircleElement>('circle');
+  attr(padFill, { cx: C, cy: C, r: 78, fill: 'url(#vi-sg)' });
+  svg.appendChild(padFill);
+
+  // Scanner pad gloss — subtle top-arc sheen
+  const padGloss = svgEl<SVGEllipseElement>('ellipse');
+  attr(padGloss, { cx: C, cy: C - 22, rx: 46, ry: 26,
+    fill: 'rgba(255,255,255,0.025)' });
+  svg.appendChild(padGloss);
+
+  // Scanner glow halo (behind ring, animated opacity)
+  const scannerGlow = svgEl<SVGCircleElement>('circle');
+  attr(scannerGlow, { cx: C, cy: C, r: 80, fill: 'none',
+    stroke: '#1a5a9e', 'stroke-width': 10 });
+  scannerGlow.style.cssText = 'filter:url(#vi-glow);animation:vi-glow 2.8s ease-in-out infinite;';
+  svg.appendChild(scannerGlow);
+
+  // Scanner ring (clean crisp ring, animated)
+  const scannerRing = svgEl<SVGCircleElement>('circle');
+  attr(scannerRing, { cx: C, cy: C, r: 79, fill: 'none',
+    stroke: '#1e6ab8', 'stroke-width': 1.5 });
+  scannerRing.style.animation = 'vi-scan 2.8s ease-in-out infinite';
+  svg.appendChild(scannerRing);
+
+  // ── Fingerprint ridges (detailed) ─────────────────────────────────────────
+  const fpG = svgEl<SVGGElement>('g');
+  fpG.setAttribute('transform', `translate(${C - 24}, ${C - 28})`);
+  fpG.setAttribute('opacity', '0.6');
+
+  const fpDefs: string[] = [
+    'M 24 3 C 12 3 3 12 3 24 C 3 36 8 44 16 48',
+    'M 24 7 C 14 7 7 14 7 24 C 7 34 12 41 22 44',
+    'M 24 11 C 17 11 11 17 11 24 C 11 31 15 37 24 39',
+    'M 24 15 C 20 15 17 18 17 24 C 17 28 19 32 24 33',
+    'M 24 19 C 22 19 21 21 21 24 C 21 26 22 27 24 27 C 26 27 27 26 27 24 C 27 21 26 19 24 19',
+    'M 24 3 C 36 3 45 12 45 24 C 45 36 38 44 30 47',
+    'M 24 7 C 34 7 41 14 41 24 C 41 34 36 41 26 44',
+    'M 24 11 C 31 11 37 17 37 24 C 37 31 33 37 24 39',
+    'M 24 15 C 28 15 31 18 31 24 C 31 28 29 32 24 33',
+    'M 28 15 C 31 18 31 24 29 28',
+  ];
+  const fpPaths: SVGPathElement[] = [];
+  for (const d of fpDefs) {
+    const p = svgEl<SVGPathElement>('path');
+    attr(p, { d, stroke: '#3080b8', 'stroke-width': '1.3', fill: 'none', 'stroke-linecap': 'round' });
+    fpG.appendChild(p);
+    fpPaths.push(p);
+  }
+  svg.appendChild(fpG);
+
+  // ── Status text (below fingerprint) ──────────────────────────────────────
+  const statusText = svgEl<SVGTextElement>('text');
+  attr(statusText, {
+    x: C, y: C + 58,
+    'text-anchor': 'middle',
+    'font-family': '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+    'font-size': '11', 'font-weight': '500', 'letter-spacing': '0.18em',
+    fill: 'rgba(100,148,200,0.7)',
+  });
+  statusText.textContent = 'PLACE FINGER TO UNLOCK';
+  svg.appendChild(statusText);
+
+  // ── Logo text (etched into door, above scanner) ───────────────────────────
+  const logoText = svgEl<SVGTextElement>('text');
+  attr(logoText, {
+    x: C, y: C - 110,
+    'text-anchor': 'middle',
+    'font-family': '"SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+    'font-size': '11', 'font-weight': '700', 'letter-spacing': '0.3em',
+    fill: 'rgba(180,200,224,0.28)',
+  });
+  logoText.textContent = 'WORLD MONITOR';
+  svg.appendChild(logoText);
+
+  // ── Status LED (bottom of door face) ─────────────────────────────────────
+  const lockedLed = svgEl<SVGCircleElement>('circle');
+  attr(lockedLed, { cx: C, cy: C + 155, r: 4,
+    fill: '#9e1c1c', stroke: '#5a0e0e', 'stroke-width': 1 });
+  lockedLed.style.animation = 'vi-ledblink 2.2s ease-in-out infinite';
+  // Glow behind LED
+  const ledGlow = svgEl<SVGCircleElement>('circle');
+  attr(ledGlow, { cx: C, cy: C + 155, r: 7, fill: 'rgba(158,28,28,0.22)' });
+  svg.appendChild(ledGlow);
+  svg.appendChild(lockedLed);
+
+  return { svg, scannerRing, scannerGlow, padFill, fpPaths, statusText, boltPins, lockedLed };
+}
+
+// ── Overlay ────────────────────────────────────────────────────────────────────
+
+type OverlayRefs = DoorParts & { overlay: HTMLDivElement };
+
+function buildOverlay(): OverlayRefs {
+  injectStyles();
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position:fixed;inset:0;
+    background:radial-gradient(ellipse at 50% 44%, #0f1318 0%, #06080b 65%);
+    z-index:9999;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:"SF Pro Display",-apple-system,BlinkMacSystemFont,sans-serif;
+    overflow:hidden;
+    animation:vi-fadein .5s ease both;
+  `;
+
+  // Quit link — very subtle, bottom of screen
+  const quit = document.createElement('button');
+  quit.textContent = 'Quit';
+  quit.style.cssText = `
+    position:absolute;bottom:28px;
+    background:none;border:none;
+    font-size:12px;font-weight:500;letter-spacing:.08em;
+    color:rgba(120,140,160,0.35);cursor:pointer;padding:6px 14px;
+    transition:color .2s;
+  `;
+  quit.addEventListener('mouseenter', () => { quit.style.color = 'rgba(180,200,220,0.65)'; });
+  quit.addEventListener('mouseleave', () => { quit.style.color = 'rgba(120,140,160,0.35)'; });
+
+  const parts = buildDoor();
+  overlay.appendChild(parts.svg);
+  overlay.appendChild(quit);
+
+  return { ...parts, overlay };
+}
+
+// ── Scanner state ──────────────────────────────────────────────────────────────
+
+function setScannerIdle(p: DoorParts): void {
+  p.scannerRing.style.animation = 'vi-scan 2.8s ease-in-out infinite';
+  p.scannerGlow.style.animation = 'vi-glow 2.8s ease-in-out infinite';
+  p.scannerRing.setAttribute('stroke', '#1e6ab8');
+  p.scannerGlow.setAttribute('stroke', '#1a5a9e');
+  p.padFill.setAttribute('fill', 'url(#vi-sg)');
+  for (const fp of p.fpPaths) fp.setAttribute('stroke', '#3080b8');
+  p.statusText.setAttribute('fill', 'rgba(100,148,200,0.7)');
+  p.statusText.textContent = 'PLACE FINGER TO UNLOCK';
+}
+
+function setScannerScanning(p: DoorParts): void {
+  p.scannerRing.style.animation = 'vi-scan 1.2s ease-in-out infinite';
+  p.scannerGlow.style.animation = 'vi-glow 1.2s ease-in-out infinite';
+  p.statusText.textContent = 'SCANNING…';
+}
+
+function setScannerError(p: DoorParts, msg: string): void {
+  p.scannerRing.style.animation = 'vi-scanerr 1.6s ease-in-out infinite';
+  p.scannerGlow.style.animation = 'vi-scanerr 1.6s ease-in-out infinite';
+  p.scannerRing.setAttribute('stroke', '#b83030');
+  p.scannerGlow.setAttribute('stroke', '#9e1818');
+  p.padFill.setAttribute('fill', '#0a0608');
+  for (const fp of p.fpPaths) fp.setAttribute('stroke', '#a83030');
+  p.statusText.setAttribute('fill', 'rgba(200,80,80,0.85)');
+  p.statusText.textContent = msg;
+  // Shake the scanner pad area
+  p.padFill.style.animation = 'vi-shake .4s ease both';
+  setTimeout(() => { p.padFill.style.animation = ''; }, 400);
+}
+
+function setScannerSuccess(p: DoorParts): void {
+  p.scannerRing.style.animation = '';
+  p.scannerGlow.style.animation = '';
+  p.scannerRing.setAttribute('stroke', '#1ea854');
+  p.scannerGlow.setAttribute('stroke', '#18903e');
+  p.padFill.setAttribute('fill', '#060e0a');
+  for (const fp of p.fpPaths) fp.setAttribute('stroke', '#28c860');
+  p.statusText.setAttribute('fill', 'rgba(40,200,100,0.9)');
+  p.statusText.textContent = 'ACCESS GRANTED';
+  p.lockedLed.style.animation = '';
+  p.lockedLed.setAttribute('fill', '#1a8a3e');
+  p.lockedLed.setAttribute('stroke', '#0e5a24');
+}
+
+// ── Open animation ─────────────────────────────────────────────────────────────
+
+async function playOpenSequence(p: DoorParts & { overlay: HTMLDivElement }): Promise<void> {
+  setScannerSuccess(p);
+  await sleep(280);
+
+  const ctx = newCtx();
+  if (ctx) {
+    playBoltRetracts(ctx);
+    setTimeout(() => playDoorOpen(ctx), 440);
+  }
+
+  // Retract bolts
+  p.boltPins.forEach((pin, i) => {
+    pin.style.animation = `vi-bolt .26s ease-in ${i * 0.055}s both`;
+  });
+  await sleep(540);
+
+  // Door swings open on Y axis (hinged on right)
+  p.svg.style.cssText += `
+    transition: transform 1.9s cubic-bezier(0.4,0,0.15,1), opacity 1.7s ease;
+    transform-origin: right center;
+    transform: perspective(900px) rotateY(-90deg);
+    opacity: 0;
+  `;
+  await sleep(420);
+
+  // Fade background
+  p.overlay.style.transition = 'opacity 1.5s ease';
+  p.overlay.style.opacity = '0';
+  await sleep(1600);
+}
+
+// ── Biometric flow ─────────────────────────────────────────────────────────────
+
+async function runBiometricFlow(
+  refs: DoorParts & { overlay: HTMLDivElement },
+  onQuit: () => void,
+): Promise<boolean> {
+  const quitBtn = refs.overlay.querySelector('button')!;
+
+  let settled = false;
+  let resolveFlow!: (v: boolean) => void;
+  const result = new Promise<boolean>(res => { resolveFlow = res; });
+
+  quitBtn.addEventListener('click', () => {
+    if (settled) return;
+    settled = true;
+    resolveFlow(false);
+    onQuit();
+  });
+
+  const tryAuth = async () => {
+    if (settled) return;
+    const ready = await waitForBridge();
+    if (!ready || settled) return;
+
+    setScannerScanning(refs);
+    try {
+      await invokeTauri<void>(CMD, { reason: REASON, options: { allowDeviceCredential: true } });
+      if (settled) return;
+      settled = true;
+      await playOpenSequence(refs);
+      resolveFlow(true);
+    } catch (err) {
+      if (settled) return;
+      const msg = err instanceof Error ? err.message : '';
+      const text = msg.includes('cancel') || msg.includes('Cancel')
+        ? 'TAP TO TRY AGAIN'
+        : 'AUTHENTICATION FAILED — TAP TO RETRY';
+      setScannerError(refs, text);
+      // Make scanner clickable for retry
+      refs.svg.style.cursor = 'pointer';
+      const retryHandler = () => {
+        refs.svg.style.cursor = '';
+        refs.svg.removeEventListener('click', retryHandler);
+        setScannerIdle(refs);
+        void tryAuth();
+      };
+      refs.svg.addEventListener('click', retryHandler);
+    }
+  };
+
+  // Slight delay so the vault door fade-in completes before Touch ID fires
+  await sleep(600);
+  void tryAuth();
+
+  return result;
+}
+
+// ── Export ─────────────────────────────────────────────────────────────────────
 
 export async function runVaultIntro(): Promise<boolean> {
   const refs = buildOverlay();
   document.body.appendChild(refs.overlay);
 
-  const { ensureBiometricUnlock } = await import('./biometric-gate');
-  const unlocked = await ensureBiometricUnlock();
-
-  if (unlocked) {
-    await playOpenSequence(refs);
-  }
+  let quitCalled = false;
+  const unlocked = await runBiometricFlow(refs, () => { quitCalled = true; });
 
   refs.overlay.remove();
+  if (quitCalled) window.close();
   return unlocked;
 }
