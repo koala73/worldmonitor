@@ -179,6 +179,28 @@ async function main() {
   const capped = mapped.slice(0, MAX_EVENTS);
   if (mapped.length > MAX_EVENTS) console.log(`  Capped: ${mapped.length} → ${MAX_EVENTS}`);
 
+  // Guard: never overwrite existing data with empty results.
+  // Extend TTL on existing key instead so health stays OK.
+  if (capped.length === 0) {
+    console.warn(`  0 events after processing — extending existing key TTL (preserving last good data)`);
+    try {
+      await fetch(redisUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(['EXPIRE', REDIS_KEY, 86400]),
+        signal: AbortSignal.timeout(5_000),
+      });
+      await fetch(redisUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(['EXPIRE', 'seed-meta:conflict:ucdp-events', 604800]),
+        signal: AbortSignal.timeout(5_000),
+      });
+      console.log(`  Extended TTL on ${REDIS_KEY} and seed-meta`);
+    } catch (e) { console.warn(`  TTL extension failed: ${e.message}`); }
+    process.exit(0);
+  }
+
   const payload = {
     events: capped,
     fetchedAt: Date.now(),
