@@ -17,14 +17,8 @@ on:
         default: true
         type: boolean
   push:
-    branches:
-      - main
-    paths:
-      - 'package.json'
-      - 'src-tauri/tauri.conf.json'
-
-permissions:
-  contents: write
+    tags:
+      - 'v*'
 
 concurrency:
   group: desktop-build-${{ github.ref }}
@@ -34,88 +28,7 @@ env:
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 jobs:
-  prepare-release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      build_variant: ${{ steps.release-metadata.outputs.build_variant }}
-      release_draft: ${{ steps.release-metadata.outputs.release_draft }}
-      release_name: ${{ steps.release-metadata.outputs.release_name }}
-      release_tag: ${{ steps.release-metadata.outputs.release_tag }}
-      release_version: ${{ steps.release-metadata.outputs.release_version }}
-      should_release: ${{ steps.release-metadata.outputs.should_release }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set release metadata
-        id: release-metadata
-        shell: bash
-        run: |
-          VERSION=$(jq -r .version package.json)
-          SHOULD_RELEASE="true"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            BUILD_VARIANT="${{ github.event.inputs.variant }}"
-            RELEASE_DRAFT="${{ github.event.inputs.draft }}"
-          else
-            BUILD_VARIANT="full"
-            RELEASE_DRAFT="false"
-            PREVIOUS_VERSION=$(git show "${{ github.event.before }}:package.json" 2>/dev/null | jq -r .version 2>/dev/null || echo "")
-            if [ "$PREVIOUS_VERSION" = "$VERSION" ]; then
-              SHOULD_RELEASE="false"
-            fi
-          fi
-
-          if [ "$BUILD_VARIANT" = "tech" ]; then
-            RELEASE_TAG="v${VERSION}-tech"
-            RELEASE_NAME="Tech Monitor v${VERSION}"
-          else
-            RELEASE_TAG="v${VERSION}"
-            RELEASE_NAME="World Monitor v${VERSION}"
-          fi
-
-          echo "build_variant=$BUILD_VARIANT" >> "$GITHUB_OUTPUT"
-          echo "release_draft=$RELEASE_DRAFT" >> "$GITHUB_OUTPUT"
-          echo "release_name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "release_version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
-
-      - name: Run release doctor
-        if: steps.release-metadata.outputs.should_release == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          ARGS=(--variant "${{ steps.release-metadata.outputs.build_variant }}")
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ARGS+=(--allow-existing-target-release)
-          fi
-          node scripts/release-doctor.mjs "${ARGS[@]}"
-
-      - name: Create tag for this release
-        if: steps.release-metadata.outputs.should_release == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          TAG="${{ steps.release-metadata.outputs.release_tag }}"
-          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
-            echo "Tag ${TAG} already exists remotely; reusing."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" "$GITHUB_SHA" -m "Release $TAG"
-          git push origin "refs/tags/${TAG}"
-
   build-tauri:
-    needs: prepare-release
-    if: needs.prepare-release.outputs.should_release == 'true'
     permissions:
       contents: write
     strategy:
@@ -275,35 +188,24 @@ jobs:
             echo "SKIP_SIGNING=true" >> $GITHUB_ENV
           fi
 
-      # ── Detect whether Windows signing secrets are configured ──
-      - name: Check Windows signing secrets
-        if: matrix.label == 'Windows-x64'
-        id: windows-signing
-        shell: pwsh
-        run: |
-          if ("${{ secrets.WINDOWS_CERTIFICATE }}" -ne "" -and "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" -ne "") {
-            "available=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            Write-Output "Windows signing secrets detected"
-          } else {
-            "available=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            Write-Output "No Windows signing secrets — building unsigned"
-          }
-
-      # ── Load release metadata ──
+      # ── Determine variant ──
       - name: Set build variant
         shell: bash
         run: |
-          echo "BUILD_VARIANT=${{ needs.prepare-release.outputs.build_variant }}" >> "$GITHUB_ENV"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "BUILD_VARIANT=${{ github.event.inputs.variant }}" >> $GITHUB_ENV
+          else
+            echo "BUILD_VARIANT=full" >> $GITHUB_ENV
+          fi
 
       # ── Build with tauri-action ──
       # Signed builds: only when Apple signing secrets are valid and imported
-      # Unsigned builds: fallback when no signing (Windows uses this path; signing secrets
-      #   are passed so Tauri auto-signs when WINDOWS_CERTIFICATE is configured)
+      # Unsigned builds: fallback when no signing (Windows always uses this path)
 
       # ── Build: Full variant (signed) ──
       - name: Build Tauri app (full, signed)
         if: env.BUILD_VARIANT == 'full' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
@@ -316,32 +218,28 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: ${{ needs.prepare-release.outputs.release_tag }}
-          releaseName: ${{ needs.prepare-release.outputs.release_name }}
+          tagName: v__VERSION__
+          releaseName: 'World Monitor v__VERSION__'
           releaseBody: 'See changelog below.'
-          releaseDraft: ${{ fromJSON(needs.prepare-release.outputs.release_draft) }}
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
           prerelease: false
           args: ${{ matrix.args }}
           retryAttempts: 1
 
       # ── Build: Full variant (unsigned — no Apple certs) ──
-      # Windows always uses this path; TAURI_BUNDLE_WINDOWS_CERTIFICATE is passed so Tauri
-      # will auto-sign when the secret is configured, or build unsigned when it is not.
       - name: Build Tauri app (full, unsigned)
         if: env.BUILD_VARIANT == 'full' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
           VITE_DESKTOP_RUNTIME: '1'
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          TAURI_BUNDLE_WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          TAURI_BUNDLE_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
-          tagName: ${{ needs.prepare-release.outputs.release_tag }}
-          releaseName: ${{ needs.prepare-release.outputs.release_name }}
+          tagName: v__VERSION__
+          releaseName: 'World Monitor v__VERSION__'
           releaseBody: 'See changelog below.'
-          releaseDraft: ${{ fromJSON(needs.prepare-release.outputs.release_draft) }}
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
           prerelease: false
           args: ${{ matrix.args }}
           retryAttempts: 1
@@ -349,7 +247,7 @@ jobs:
       # ── Build: Tech variant (signed) ──
       - name: Build Tauri app (tech, signed)
         if: env.BUILD_VARIANT == 'tech' && steps.apple-signing.outputs.available == 'true' && env.SKIP_SIGNING != 'true'
-        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: tech
@@ -362,33 +260,29 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: ${{ needs.prepare-release.outputs.release_tag }}
-          releaseName: ${{ needs.prepare-release.outputs.release_name }}
+          tagName: v__VERSION__-tech
+          releaseName: 'Tech Monitor v__VERSION__'
           releaseBody: 'See changelog below.'
-          releaseDraft: ${{ fromJSON(needs.prepare-release.outputs.release_draft) }}
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
           prerelease: false
           tauriScript: npx tauri
           args: --config src-tauri/tauri.tech.conf.json ${{ matrix.args }}
           retryAttempts: 1
 
       # ── Build: Tech variant (unsigned — no Apple certs) ──
-      # Windows always uses this path; TAURI_BUNDLE_WINDOWS_CERTIFICATE is passed so Tauri
-      # will auto-sign when the secret is configured, or build unsigned when it is not.
       - name: Build Tauri app (tech, unsigned)
         if: env.BUILD_VARIANT == 'tech' && (steps.apple-signing.outputs.available != 'true' || env.SKIP_SIGNING == 'true')
-        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: tech
           VITE_DESKTOP_RUNTIME: '1'
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          TAURI_BUNDLE_WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          TAURI_BUNDLE_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
-          tagName: ${{ needs.prepare-release.outputs.release_tag }}
-          releaseName: ${{ needs.prepare-release.outputs.release_name }}
+          tagName: v__VERSION__-tech
+          releaseName: 'Tech Monitor v__VERSION__'
           releaseBody: 'See changelog below.'
-          releaseDraft: ${{ fromJSON(needs.prepare-release.outputs.release_draft) }}
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.draft) }}
           prerelease: false
           tauriScript: npx tauri
           args: --config src-tauri/tauri.tech.conf.json ${{ matrix.args }}
@@ -450,44 +344,6 @@ jobs:
           path: screenshot.png
           if-no-files-found: warn
 
-      - name: Smoke-test Windows installer
-        if: matrix.label == 'Windows-x64'
-        shell: pwsh
-        run: |
-          $installer = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*_x64-setup.exe" | Select-Object -First 1
-          if (-not $installer) {
-            Write-Error "No NSIS installer found after build"
-            exit 1
-          }
-          Write-Output "✅ Windows NSIS installer: $($installer.Name) ($([math]::Round($installer.Length / 1MB, 1)) MB)"
-
-          $msi = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*_x64_en-US.msi" | Select-Object -First 1
-          if ($msi) {
-            Write-Output "✅ Windows MSI installer: $($msi.Name) ($([math]::Round($msi.Length / 1MB, 1)) MB)"
-          }
-
-          Write-Output "Running NSIS installer silently..."
-          $proc = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait -PassThru
-          Write-Output "Installer exit code: $($proc.ExitCode)"
-
-          $searchPaths = @(
-            (Join-Path $env:LOCALAPPDATA "World Monitor\worldmonitor.exe"),
-            "C:\Program Files\World Monitor\worldmonitor.exe",
-            "C:\Program Files (x86)\World Monitor\worldmonitor.exe"
-          )
-          $found = $false
-          foreach ($p in $searchPaths) {
-            if (Test-Path $p) {
-              Write-Output "✅ Installed binary found: $p"
-              $found = $true
-              break
-            }
-          }
-          if (-not $found) {
-            Write-Warning "Binary not found in standard paths; installation may use a custom directory"
-          }
-          Write-Output "Windows smoke test complete"
-
       - name: Cleanup Apple signing materials
         if: always() && contains(matrix.platform, 'macos')
         shell: bash
@@ -511,8 +367,8 @@ jobs:
 
   # ── Update release notes with changelog after all builds complete ──
   update-release-notes:
-    needs: [prepare-release, build-tauri]
-    if: needs.prepare-release.outputs.should_release == 'true' && always() && contains(needs.build-tauri.result, 'success')
+    needs: build-tauri
+    if: always() && contains(needs.build-tauri.result, 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -526,7 +382,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          TAG="${{ needs.prepare-release.outputs.release_tag }}"
+          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          TAG="v${VERSION}"
           PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
 
           if [ -z "$PREV_TAG" ]; then

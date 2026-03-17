@@ -671,6 +671,7 @@ function youtubeLivePlugin(): Plugin {
 }
 
 export default defineConfig({
+  base: process.env.BASE_PATH || '/',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     // Build-time CPU arch: 'aarch64' on Apple Silicon, 'x64' on Intel.

@@ -86,6 +86,20 @@ type MLWorkerMessage =
 const loadedPipelines = new Map<string, any>();
 const loadingPromises = new Map<string, Promise<void>>();
 
+// Keep at most this many loaded pipelines in memory. When exceeded, the
+// least-recently-loaded (Map insertion order) is evicted to bound memory use.
+const MAX_LOADED_PIPELINES = 3;
+
+function evictOldestPipelineIfNeeded(): void {
+  if (loadedPipelines.size >= MAX_LOADED_PIPELINES) {
+    const oldest = loadedPipelines.keys().next().value;
+    if (oldest !== undefined) {
+      loadedPipelines.delete(oldest);
+      console.log(`[MLWorker] Evicted model ${oldest} to stay within memory limit`);
+    }
+  }
+}
+
 function getModelConfig(modelId: string): ModelConfig | undefined {
   return MODEL_CONFIGS.find(m => m.id === modelId);
 }
@@ -109,24 +123,30 @@ async function loadModel(modelId: string): Promise<void> {
     const ort = (globalThis as any).ort;
     if (ort?.env) { try { ort.env.logLevel = 'error'; } catch { /* ignore */ } }
 
-    const pipe = await pipeline(config.task, config.hfModel, {
-      progress_callback: (progress: { status: string; progress?: number }) => {
-        if (progress.status === 'progress' && progress.progress !== undefined) {
-          self.postMessage({
-            type: 'model-progress',
-            modelId,
-            progress: progress.progress,
-          });
-        }
-      },
-    });
+    try {
+      const pipe = await pipeline(config.task, config.hfModel, {
+        progress_callback: (progress: { status: string; progress?: number }) => {
+          if (progress.status === 'progress' && progress.progress !== undefined) {
+            self.postMessage({
+              type: 'model-progress',
+              modelId,
+              progress: progress.progress,
+            });
+          }
+        },
+      });
 
-    loadedPipelines.set(modelId, pipe);
-    loadingPromises.delete(modelId);
-    console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
+      evictOldestPipelineIfNeeded();
+      loadedPipelines.set(modelId, pipe);
+      console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
 
-    // Notify manager that model is now available (no id = unsolicited notification)
-    self.postMessage({ type: 'model-loaded', modelId });
+      // Notify manager that model is now available (no id = unsolicited notification)
+      self.postMessage({ type: 'model-loaded', modelId });
+    } finally {
+      // Always clean up the loading promise, whether success or failure,
+      // so future calls can retry rather than waiting on a rejected promise.
+      loadingPromises.delete(modelId);
+    }
   })();
 
   loadingPromises.set(modelId, loadPromise);

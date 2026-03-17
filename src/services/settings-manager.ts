@@ -88,17 +88,19 @@ export class SettingsManager {
     }
 
     if (toVerifyRemotely.length > 0) {
-      const results = await Promise.race([
-        Promise.all(toVerifyRemotely.map(async ([key, value]) => {
-          const result = await verifySecretWithApi(key, value, context);
-          return { key, result };
-        })),
-        new Promise<Array<{ key: RuntimeSecretKey; result: { valid: boolean; message?: string } }>>(resolve =>
-          setTimeout(() => resolve(toVerifyRemotely.map(([key]) => ({
-            key, result: { valid: true, message: 'Saved (verification timed out)' },
-          }))), 15000)
-        ),
-      ]);
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<Array<{ key: RuntimeSecretKey; result: { valid: boolean; message?: string } }>>(
+        resolve => { timeoutId = setTimeout(() => resolve(toVerifyRemotely.map(([key]) => ({
+          key, result: { valid: false, message: 'Verification timed out — please try again' },
+        }))), 15000); }
+      );
+      const verifyPromise = Promise.all(toVerifyRemotely.map(async ([key, value]) => {
+        const result = await verifySecretWithApi(key, value, context);
+        return { key, result };
+      }));
+      const results = await Promise.race([verifyPromise, timeoutPromise]);
+      // Always clear the timeout so it doesn't fire after verification completes.
+      clearTimeout(timeoutId);
       for (const { key, result: verifyResult } of results) {
         this.validatedKeys.set(key, verifyResult.valid);
         if (!verifyResult.valid) {

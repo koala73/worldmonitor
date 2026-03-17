@@ -1366,15 +1366,17 @@ body.panel-resize-active iframe {
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(10, 10, 18, 0.94);
-  border-top: 1px solid rgba(160, 100, 255, 0.3);
-  border-radius: 0 0 6px 6px;
+  background: rgba(10, 10, 20, 0.82);
+  border-top: 0.5px solid rgba(160, 100, 255, 0.28);
+  /* Specular highlight along the top edge — glass shelf effect */
+  box-shadow: inset 0 1px 0 rgba(160, 100, 255, 0.12);
+  border-radius: 0 0 12px 12px;
   padding: 10px 12px;
   font-size: 12px;
   color: rgba(220, 200, 255, 0.9);
   z-index: 10;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   animation: panel-ai-slide-in 0.2s ease;
 }
 .panel-ai-overlay--loading {
@@ -1455,11 +1457,12 @@ body.panel-resize-active iframe {
   bottom: 32px;
   left: 50%;
   transform: translateX(-50%) translateY(8px);
-  background: rgba(30, 30, 40, 0.92);
+  background: rgba(28, 28, 36, 0.80);
   color: rgba(220, 220, 240, 0.95);
-  border: 1px solid rgba(100, 100, 180, 0.3);
-  border-radius: 6px;
-  padding: 7px 16px;
+  /* Glass pill — specular top highlight + thin ring */
+  border: 0.5px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  padding: 7px 20px;
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.03em;
@@ -1467,7 +1470,12 @@ body.panel-resize-active iframe {
   opacity: 0;
   z-index: 9999;
   transition: opacity 0.2s ease, transform 0.2s ease;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 .wm-share-toast.visible {
   opacity: 1;
@@ -1479,9 +1487,9 @@ body.panel-resize-active iframe {
   top: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--border-subtle);
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  background: rgba(20, 20, 28, 0.88);
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
   padding: 10px 12px;
   font-size: 11px;
   line-height: 1.5;
@@ -1489,7 +1497,12 @@ body.panel-resize-active iframe {
   min-width: 220px;
   max-width: 300px;
   z-index: 1000;
-  box-shadow: 0 4px 16px var(--shadow-color);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.15s ease, visibility 0.15s ease;
@@ -2549,16 +2562,25 @@ body.panel-resize-active iframe {
   position: fixed;
   bottom: 32px;
   left: 50%;
-  transform: translateX(-50%) translateY(20px);
-  background: var(--surface-active);
-  color: var(--text-secondary);
+  transform: translateX(-50%) translateY(16px);
+  background: rgba(32, 32, 36, 0.88);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  color: rgba(255, 255, 255, 0.85);
   padding: 10px 20px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
+  border-radius: 12px;
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
   font-size: 13px;
+  font-weight: 500;
   z-index: 10002;
   opacity: 0;
-  transition: opacity 0.3s, transform 0.3s;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.35),
+    0 0 0 0.5px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition:
+    opacity 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   pointer-events: none;
 }
 
@@ -2572,12 +2594,13 @@ body.panel-resize-active iframe {
   position: fixed;
   inset: 0;
   z-index: 10001;
-  background: var(--bg);
+  background: rgba(10, 10, 10, 0.72);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
 }
 
 .story-modal {
@@ -2615,8 +2638,11 @@ body.panel-resize-active iframe {
 .story-modal-content {
   max-height: 75vh;
   overflow: auto;
-  border-radius: 14px;
-  box-shadow: 0 12px 48px var(--shadow-color), 0 0 0 1px var(--overlay-light);
+  border-radius: 16px;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.7),
+    0 0 0 0.5px rgba(255, 255, 255, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 .story-image {
@@ -2998,7 +3024,9 @@ body.panel-resize-active iframe {
   left: 0;
   right: 0;
   bottom: 0;
-  background: var(--bg);
+  background: rgba(10, 10, 10, 0.65);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
   display: none;
   justify-content: center;
   align-items: center;
@@ -3010,14 +3038,17 @@ body.panel-resize-active iframe {
 }
 
 .signal-modal {
-  background: var(--bg);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
+  background: var(--surface);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
   width: 90%;
   max-width: 500px;
   max-height: 80vh;
   overflow: hidden;
-  box-shadow: 0 0 30px rgba(0, 170, 255, 0.3);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.65),
+    0 0 0 0.5px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
   animation: signal-pulse 0.5s ease-out;
   will-change: transform, opacity;
 }
@@ -3043,8 +3074,11 @@ body.panel-resize-active iframe {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: var(--accent);
-  color: var(--bg);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.10);
+  color: var(--text);
 }
 
 .signal-modal-title {
@@ -7775,11 +7809,16 @@ a.prediction-link:hover {
 .search-modal {
   width: 560px;
   max-width: 90vw;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 20px 60px var(--shadow-color);
+  background: rgba(20, 20, 22, 0.85);
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.65),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   overflow: hidden;
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
 }
 
 .search-header {
@@ -14428,14 +14467,15 @@ body.has-breaking-alert .panels-grid {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: var(--bg);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .country-intel-overlay.active {
@@ -14445,19 +14485,26 @@ body.has-breaking-alert .panels-grid {
 
 .country-intel-modal {
   background: var(--surface);
-  border: 1px solid var(--overlay-medium);
-  border-radius: 12px;
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
   width: 480px;
   max-width: 92vw;
   max-height: 80vh;
   overflow-y: auto;
-  box-shadow: 0 20px 60px var(--shadow-color);
-  transform: translateY(20px);
-  transition: transform 0.2s ease;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.55),
+    0 0 0 0.5px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transform: translateY(16px) scale(0.98);
+  opacity: 0;
+  transition:
+    transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .country-intel-overlay.active .country-intel-modal {
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
+  opacity: 1;
 }
 
 .country-intel-header {
@@ -14465,7 +14512,10 @@ body.has-breaking-alert .panels-grid {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--overlay-medium);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.10);
 }
 
 .country-intel-title {

@@ -1,29 +1,24 @@
-# World Monitor Documentation
+# World Monitor v2
 
 AI-powered real-time global intelligence dashboard aggregating news, markets, geopolitical data, and infrastructure monitoring into a unified situation awareness interface.
 
-> Scope: this document covers the shared product surface and web deployments. For the macOS desktop fork in this repository, use the root `README.md`, `SECURITY.md`, and `docs/DESKTOP_CONFIGURATION.md` as the authoritative references for packaging, runtime security, and secret handling.
->
-> Status: this document tracks the current repository branch. Tagged GitHub releases for this desktop fork may lag behind the branch state.
-
-🌐 **[World Monitor](https://worldmonitor.app)** | 💻 **[Tech Monitor](https://tech.worldmonitor.app)** | 📈 **[Finance Monitor](https://finance.worldmonitor.app)** | 😊 **[Happy Monitor](https://happy.worldmonitor.app)**
+🌐 **[Live Demo: worldmonitor.app](https://worldmonitor.app)** | 💻 **[Tech Variant: tech.worldmonitor.app](https://tech.worldmonitor.app)**
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
 ![D3.js](https://img.shields.io/badge/D3.js-F9A03C?style=flat&logo=d3.js&logoColor=white)
+![Version](https://img.shields.io/badge/version-2.5.25-blue)
+
 ![World Monitor Dashboard](../new-world-monitor.png)
 
 ## Platform Variants
 
-World Monitor runs four web variants from a single codebase, and this repository also packages desktop builds around the shared application, with macOS as the primary documented target in this fork:
+World Monitor runs two specialized variants from a single codebase, each optimized for different monitoring needs:
 
 | Variant | URL | Focus |
 |---------|-----|-------|
 | **🌍 World Monitor** | [worldmonitor.app](https://worldmonitor.app) | Geopolitical intelligence, military tracking, conflict monitoring, infrastructure security |
 | **💻 Tech Monitor** | [tech.worldmonitor.app](https://tech.worldmonitor.app) | Technology sector intelligence, AI/startup ecosystems, cloud infrastructure, tech events |
-| **📈 Finance Monitor** | [finance.worldmonitor.app](https://finance.worldmonitor.app) | Macro, markets, commodities, exchanges, and trade policy |
-| **😊 Happy Monitor** | [happy.worldmonitor.app](https://happy.worldmonitor.app) | Positive news, humanitarian progress, and breakthrough stories |
-| **Desktop (macOS fork)** | This repository | Native Tauri shell, local sidecar, OS keychain-backed secrets, and macOS-specific UX |
 
 A compact **variant switcher** in the header allows seamless navigation between variants while preserving your map position and panel configuration.
 
@@ -3308,8 +3303,8 @@ const header = `World Monitor v${__APP_VERSION__}`;
 
 ```bash
 # Clone the repository
-git clone https://github.com/bradleybond512/worldmonitor-macos.git
-cd worldmonitor-macos
+git clone https://github.com/bradleybond512/crystal-ball.git
+cd crystal-ball
 
 # Install everything (buf, sebuf plugins, npm deps, proto deps)
 make install

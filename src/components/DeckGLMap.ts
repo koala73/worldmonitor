@@ -430,6 +430,8 @@ export class DeckGLMap {
       this.fetchServerBases();
       this.render();
 
+      this.applyDarkMapEnhancements();
+
       // Arrival choreography canvas overlay
       const wrapper = document.getElementById('deckglMapWrapper');
       if (wrapper) {
@@ -4797,6 +4799,44 @@ export class DeckGLMap {
     } catch { /* layer not ready */ }
   }
 
+  private applyDarkMapEnhancements(): void {
+    if (!this.maplibreMap || this.activeBaseMap !== 'dark') return;
+    try {
+      // Add terrain DEM source for hillshade (Mapzen terrarium — free, no API key)
+      if (!this.maplibreMap.getSource('wm-terrain-dem')) {
+        this.maplibreMap.addSource('wm-terrain-dem', {
+          type: 'raster-dem',
+          tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+          encoding: 'terrarium',
+          tileSize: 256,
+          maxzoom: 14,
+        });
+      }
+      if (!this.maplibreMap.getLayer('wm-hillshade')) {
+        // Insert hillshade below the first symbol (label) layer so labels sit on top
+        const firstSymbolId = this.maplibreMap.getStyle()?.layers?.find(l => l.type === 'symbol')?.id;
+        this.maplibreMap.addLayer(
+          {
+            id: 'wm-hillshade',
+            type: 'hillshade',
+            source: 'wm-terrain-dem',
+            paint: {
+              'hillshade-shadow-color': '#080d1a',
+              'hillshade-highlight-color': '#1a2b48',
+              'hillshade-accent-color': '#0d1220',
+              'hillshade-exaggeration': 0.45,
+              'hillshade-illumination-direction': 330,
+              'hillshade-illumination-anchor': 'map',
+            },
+          },
+          firstSymbolId,
+        );
+      }
+    } catch (e) {
+      console.warn('[DeckGLMap] Dark map enhancements skipped:', e);
+    }
+  }
+
   private switchBasemap(basemap: BaseMapStyle): void {
     if (!this.maplibreMap) return;
     this.activeBaseMap = basemap;
@@ -4812,6 +4852,7 @@ export class DeckGLMap {
       // Re-render deck.gl overlay after style swap — interleaved layers need
       // the new MapLibre style to be loaded before they can re-insert.
       this.render();
+      this.applyDarkMapEnhancements();
     });
   }
 

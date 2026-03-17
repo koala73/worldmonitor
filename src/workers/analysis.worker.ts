@@ -55,15 +55,38 @@ interface CorrelationResult {
 
 // Worker-local state (persists between messages)
 let previousSnapshot: StreamSnapshot | null = null;
-const recentSignalKeys = new Set<string>();
+
+// Tracks seen signal keys with expiry timestamps instead of a Set+setTimeout.
+// Avoids spawning up to 5,000 concurrent timers; expiry is checked lazily on read/write.
+const RECENT_SIGNAL_MAX = 5_000;
+const RECENT_SIGNAL_TTL_MS = 30 * 60 * 1000;
+const recentSignalKeys = new Map<string, number>(); // key → expiresAt
 
 function isRecentDuplicate(key: string): boolean {
-  return recentSignalKeys.has(key);
+  const expiresAt = recentSignalKeys.get(key);
+  if (expiresAt === undefined) return false;
+  if (Date.now() > expiresAt) {
+    recentSignalKeys.delete(key);
+    return false;
+  }
+  return true;
 }
 
 function markSignalSeen(key: string): void {
-  recentSignalKeys.add(key);
-  setTimeout(() => recentSignalKeys.delete(key), 30 * 60 * 1000);
+  // Lazy purge of expired entries every 100 insertions.
+  if (recentSignalKeys.size >= RECENT_SIGNAL_MAX) {
+    const now = Date.now();
+    for (const [k, expiresAt] of recentSignalKeys) {
+      if (expiresAt <= now) recentSignalKeys.delete(k);
+      if (recentSignalKeys.size < RECENT_SIGNAL_MAX) break;
+    }
+    // If still full after purge, evict the oldest entry.
+    if (recentSignalKeys.size >= RECENT_SIGNAL_MAX) {
+      const first = recentSignalKeys.keys().next().value;
+      if (first !== undefined) recentSignalKeys.delete(first);
+    }
+  }
+  recentSignalKeys.set(key, Date.now() + RECENT_SIGNAL_TTL_MS);
 }
 
 // Worker message handler

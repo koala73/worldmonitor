@@ -817,6 +817,7 @@ async function initSettingsWindow(): Promise<void> {
   });
 
   document.getElementById('cancelBtn')?.addEventListener('click', () => {
+    settingsManager.destroy();
     closeSettingsWindow();
   });
 

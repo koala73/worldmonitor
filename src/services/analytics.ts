@@ -1,8 +1,15 @@
 /**
  * PostHog Analytics Service
  *
- * Always active when VITE_POSTHOG_KEY is set. No consent gate.
- * All exports are no-ops when the key is absent (dev/local).
+ * Active when VITE_POSTHOG_KEY is set AND the user has not opted out.
+ * All exports are no-ops when the key is absent (dev/local) or user opted out.
+ *
+ * Consent model:
+ * - localStorage key 'wm-analytics-consent':
+ *     'false'  → user explicitly opted out (analytics disabled)
+ *     'true'   → user explicitly opted in
+ *     absent   → not yet decided (analytics active by default for existing users)
+ * - Ghost Mode always suppresses analytics regardless of consent.
  *
  * Data safety:
  * - Typed allowlists per event — unlisted properties silently dropped
@@ -17,6 +24,26 @@ import { getRuntimeConfigSnapshot, type RuntimeSecretKey } from './runtime-confi
 import { SITE_VARIANT } from '@/config';
 import { isMobileDevice } from '@/utils';
 import { invokeTauri } from './tauri-bridge';
+
+// ── Analytics consent ──
+
+const CONSENT_KEY = 'wm-analytics-consent';
+
+export function hasAnalyticsConsent(): boolean {
+  // Explicit opt-out takes precedence. Absent = default active (preserves existing behaviour for
+  // users who installed before consent gating was added). Set to 'false' to opt out.
+  return localStorage.getItem(CONSENT_KEY) !== 'false';
+}
+
+export function setAnalyticsConsent(allow: boolean): void {
+  localStorage.setItem(CONSENT_KEY, allow ? 'true' : 'false');
+  if (!allow) {
+    // Clear the persistent installation ID so re-identification is not possible.
+    localStorage.removeItem('wm-installation-id');
+    posthogInstance = null;
+    initPromise = null;
+  }
+}
 
 // ── Installation identity ──
 
@@ -113,42 +140,28 @@ function sanitizeProps(event: string, raw: Record<string, unknown>): Record<stri
 }
 
 // ── Defense-in-depth: strip values that look like API keys ──
-//
-// Two-axis check — a property is redacted if EITHER:
-//   (a) its KEY name looks secret-like (contains key/secret/token/auth etc.), OR
-//   (b) its STRING VALUE matches a known API-key format:
-//       • Known prefix patterns  — sk-, gsk_, or-, Bearer, Basic, Token
-//       • 32–128 char hex string — covers SHA-256 tokens, many REST API keys
-//       • 36 char UUID v4        — covers AISStream, some SaaS keys
-//       • 40+ char base64url     — covers GitHub PATs, some OAuth tokens
-//
-// This runs AFTER sanitizeProps already allowlist-filters properties against
-// EVENT_SCHEMAS, so the chance of a real key reaching PostHog is near-zero.
-// deepStripSecrets is pure defense-in-depth.
 
-const _SECRET_KEY_NAMES  = /key|secret|token|password|credential|auth/i;
-const _SECRET_VALUE_PATTERNS: RegExp[] = [
-  /^(sk-|gsk_|or-|Bearer\s|Basic\s|Token\s)/i,  // known prefixes (any case)
-  /^[0-9a-f]{32,128}$/i,                          // hex strings 32–128 chars
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,  // UUID v4
-  /^[A-Za-z0-9_-]{40,}$/,                         // base64url 40+ chars (GitHub PAT etc.)
-];
+const API_KEY_PREFIXES = /^(sk-|gsk_|or-|Bearer )/;
 
-function _looksLikeSecret(key: string, value: string): boolean {
-  if (_SECRET_KEY_NAMES.test(key)) return true;
-  return _SECRET_VALUE_PATTERNS.some(p => p.test(value));
+function stripSecretsValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return API_KEY_PREFIXES.test(value) ? '[REDACTED]' : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripSecretsValue);
+  }
+  if (value !== null && typeof value === 'object') {
+    const cleaned: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      cleaned[k] = stripSecretsValue(v);
+    }
+    return cleaned;
+  }
+  return value;
 }
 
 function deepStripSecrets(props: Record<string, unknown>): Record<string, unknown> {
-  const cleaned: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(props)) {
-    if (typeof v === 'string' && _looksLikeSecret(k, v)) {
-      cleaned[k] = '[REDACTED]';
-    } else {
-      cleaned[k] = v;
-    }
-  }
-  return cleaned;
+  return stripSecretsValue(props) as Record<string, unknown>;
 }
 
 // ── PostHog instance management ──
@@ -171,6 +184,7 @@ const POSTHOG_HOST = isDesktopRuntime()
 
 export async function initAnalytics(): Promise<void> {
   if (!POSTHOG_KEY) return;
+  if (!hasAnalyticsConsent()) return;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
@@ -272,6 +286,7 @@ function flushOfflineQueue(): void {
 
 export function trackEvent(name: string, props?: Record<string, unknown>): void {
   if (isGhostMode()) return;  // Ghost Mode: analytics suppressed
+  if (!hasAnalyticsConsent()) return;
   const safeProps = props ? sanitizeProps(name, props) : {};
   if (!posthogInstance) {
     if (isDesktopRuntime() && POSTHOG_KEY) enqueueOffline(name, safeProps);
@@ -282,7 +297,6 @@ export function trackEvent(name: string, props?: Record<string, unknown>): void 
 
 /** Use sendBeacon transport for events fired just before page reload. */
 export function trackEventBeforeUnload(name: string, props?: Record<string, unknown>): void {
-  if (isGhostMode()) return;  // Ghost Mode: analytics suppressed
   if (!posthogInstance) return;
   const safeProps = props ? sanitizeProps(name, props) : {};
   posthogInstance.capture(name, safeProps, { transport: 'sendBeacon' });

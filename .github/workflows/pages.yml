@@ -30,28 +30,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
+        id: pages
+        with:
+          enablement: true
+
       - name: Build web app (full variant)
         env:
           VITE_VARIANT: full
           VITE_WS_API_URL: ${{ secrets.VITE_WS_API_URL }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: npm run build:full
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
         with:
           path: dist
 
   deploy:
     needs: build-web
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e

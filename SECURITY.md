@@ -12,7 +12,7 @@ Only the latest version on the `main` branch is actively maintained and receives
 
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
-If you discover a security vulnerability in World Monitor, please report it responsibly:
+If you discover a security vulnerability in World Monitor macOS, please report it responsibly:
 
 1. **GitHub Private Vulnerability Reporting**: Use [GitHub's private vulnerability reporting](https://github.com/bradleybond512/worldmonitor-macos/security/advisories/new) to submit your report directly through the repository.
 
@@ -45,14 +45,14 @@ World Monitor is a client-side intelligence dashboard that aggregates publicly a
 ### API Keys & Secrets
 
 - **Web deployment**: API keys are stored server-side in Vercel Edge Functions
-- **Desktop runtime**: secrets are stored in the OS credential store via a consolidated vault entry, never on disk in plaintext
+- **Desktop runtime**: API keys are stored in the OS keychain (macOS Keychain / Windows Credential Manager) via a consolidated vault entry, never on disk in plaintext
 - No API keys should ever be committed to the repository
 - Environment variables (`.env.local`) are gitignored
 - The RSS proxy uses domain allowlisting to prevent SSRF
 
-### Edge Functions & Shared Handlers
+### Edge Functions & Sebuf Handlers
 
-- Shared web APIs are served through Sebuf-backed handlers in the web deployment, with matching local sidecar routes for the desktop runtime where applicable
+- All 17 domain APIs are served through Sebuf (a Proto-first RPC framework) via Vercel Edge Functions
 - Edge functions and handlers should validate/sanitize all input
 - CORS headers are configured per-function
 - Rate limiting and circuit breakers protect against abuse
@@ -70,7 +70,6 @@ World Monitor is a client-side intelligence dashboard that aggregates publicly a
 - **DevTools**: Disabled in production builds; gated behind an opt-in Cargo feature for development
 - **Sidecar authentication**: A per-session CSPRNG token (`LOCAL_API_TOKEN`) authenticates all renderer-to-sidecar requests, preventing other local processes from accessing the API
 - **Capability isolation**: The YouTube login window runs under a restricted capability with no access to secret or cache IPC commands
-- **External URL opening**: `open_url` only allows `https://` and rejects localhost-style hosts plus literal loopback/private/link-local/unique-local/reserved IPs; desktop renderers do not fall back to `window.open()` when this guard rejects a URL
 - **Fetch patch trust boundary**: The global fetch interceptor injects the sidecar token with a 5-minute TTL; the renderer is the intended client — if renderer integrity is compromised, Tauri IPC provides strictly more access than the fetch patch
 
 ### Data Sources
@@ -105,9 +104,9 @@ The following are **out of scope**:
 - Never commit API keys, tokens, or secrets
 - Use environment variables for all sensitive configuration
 - Sanitize external input in edge functions
-- Review dependency updates regularly and validate any fix before merging
+- Keep dependencies updated — run `npm audit` regularly
 - Follow the principle of least privilege for API access
 
 ---
 
-Thank you for helping keep World Monitor and its users safe.
+Thank you for helping keep World Monitor and its users safe! 🔒

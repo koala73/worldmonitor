@@ -121,9 +121,10 @@ function isPrivateIP(ip) {
   // IPv6 loopback
   if (addr === '::1' || addr === '::') return true;
 
-  // IPv6 link-local / unique-local
-  if (/^f[cd][0-9a-f]{2}:/i.test(addr)) return true; // fc00::/7 (ULA)
-  if (/^fe[89ab][0-9a-f]:/i.test(addr)) return true;  // fe80::/10 (link-local)
+  // IPv6 unique-local (fc00::/7 — covers fc** and fd**)
+  if (/^f[cd]/i.test(addr)) return true;
+  // IPv6 link-local (fe80::/10 — covers fe80–febf)
+  if (/^fe[89ab]/i.test(addr)) return true;
 
   const parts = addr.split('.').map(Number);
   if (parts.length !== 4 || parts.some(p => isNaN(p))) return false; // not an IPv4
@@ -1101,7 +1102,11 @@ async function handleOllamaStream(requestUrl, req, res, context) {
       family: 4,
     };
 
-    await new Promise((resolve) => {
+    await new Promise((resolve, reject) => {
+      // Safety timeout — reject if no response path resolves within 2 minutes.
+      const safetyTimeout = setTimeout(() => reject(new Error('Ollama streaming timed out')), 120_000);
+      const done = (err) => { clearTimeout(safetyTimeout); err ? reject(err) : resolve(); };
+
       const ollamaReq = mod.request(reqOptions, (ollamaRes) => {
         if (ollamaRes.statusCode !== 200) {
           const chunks = [];
@@ -1111,7 +1116,7 @@ async function handleOllamaStream(requestUrl, req, res, context) {
             res.write(`data: ${JSON.stringify({ error: `Ollama ${ollamaRes.statusCode}: ${errText}` })}\n\n`);
             res.write('data: [DONE]\n\n');
             res.end();
-            resolve();
+            done();
           });
           return;
         }
@@ -1147,24 +1152,24 @@ async function handleOllamaStream(requestUrl, req, res, context) {
           }
           res.write('data: [DONE]\n\n');
           res.end();
-          resolve();
+          done();
         });
 
         ollamaRes.on('error', (err) => {
           context.logger.error('[ollama-stream] response error:', err.message);
           try { res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`); res.write('data: [DONE]\n\n'); res.end(); } catch { /* already ended */ }
-          resolve();
+          done();
         });
       });
 
       ollamaReq.on('error', (err) => {
         context.logger.error('[ollama-stream] request error:', err.message);
         try { res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`); res.write('data: [DONE]\n\n'); res.end(); } catch { /* already ended */ }
-        resolve();
+        done();
       });
 
       // Destroy the Ollama request if the client disconnects
-      req.on('close', () => { try { ollamaReq.destroy(); } catch { /* ignore */ } resolve(); });
+      req.on('close', () => { try { ollamaReq.destroy(); } catch { /* ignore */ } done(); });
 
       ollamaReq.write(requestBody);
       ollamaReq.end();

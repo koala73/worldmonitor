@@ -116,6 +116,12 @@ function dispatchAlert(alert: BreakingAlert): void {
   document.dispatchEvent(new CustomEvent('wm:breaking-news', { detail: alert }));
 }
 
+/** Dispatch a breaking alert directly (for non-RSS sources like natural hazards). */
+export function dispatchBreakingAlert(alert: BreakingAlert): void {
+  if (isDuplicate(alert.id) || isGlobalCooldown(alert.threatLevel)) return;
+  dispatchAlert(alert);
+}
+
 export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
   const settings = getAlertSettings();
   if (!settings.enabled) return;

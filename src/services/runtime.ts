@@ -253,6 +253,23 @@ export function installRuntimeFetchPatch(): void {
   const nativeFetch = window.fetch.bind(window);
   let localApiToken: string | null = null;
   let tokenFetchedAt = 0;
+  // Serialise concurrent token refreshes so parallel 401s don't each trigger a fresh IPC call.
+  let tokenRefreshPromise: Promise<void> | null = null;
+
+  async function refreshToken(): Promise<void> {
+    if (tokenRefreshPromise) return tokenRefreshPromise;
+    tokenRefreshPromise = (async () => {
+      try {
+        const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+        localApiToken = await tryInvokeTauri<string>('get_local_api_token');
+        tokenFetchedAt = Date.now();
+      } catch {
+        localApiToken = null;
+        tokenFetchedAt = 0;
+      }
+    })().finally(() => { tokenRefreshPromise = null; });
+    return tokenRefreshPromise;
+  }
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
@@ -273,17 +290,7 @@ export function installRuntimeFetchPatch(): void {
 
     const tokenExpired = localApiToken && (Date.now() - tokenFetchedAt > TOKEN_TTL_MS);
     if (!localApiToken || tokenExpired) {
-      // Retry up to 3× with short backoff — the Tauri IPC bridge may not be
-      // fully initialised on the very first API call made at app startup.
-      const { tryInvokeTauri } = await import('@/services/tauri-bridge');
-      for (let attempt = 0; attempt < 3; attempt++) {
-        if (attempt > 0) await sleep(150 * attempt);
-        try {
-          const tok = await tryInvokeTauri<string>('get_local_api_token');
-          if (tok) { localApiToken = tok; tokenFetchedAt = Date.now(); break; }
-        } catch { /* try again */ }
-      }
-      if (!localApiToken) { tokenFetchedAt = 0; }
+      await refreshToken();
     }
 
     const headers = new Headers(init?.headers);
@@ -300,14 +307,7 @@ export function installRuntimeFetchPatch(): void {
       if (!allowCloudFallback) {
         throw new Error(`Cloud fallback blocked for ${target}`);
       }
-      const remoteBase = getRemoteApiBaseUrl();
-      // On desktop the remote base is often empty (no cloud configured). A relative
-      // URL would resolve to tauri://localhost/api/... which WKWebView cannot fetch
-      // and throws "The string did not match the expected pattern". Block that path.
-      if (!remoteBase || !/^https?:\/\//i.test(remoteBase)) {
-        throw new Error(`No valid remote API base configured for desktop (${target})`);
-      }
-      const cloudUrl = `${remoteBase}${target}`;
+      const cloudUrl = `${getRemoteApiBaseUrl()}${target}`;
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
       const cloudHeaders = new Headers(init?.headers);
       return nativeFetch(cloudUrl, { ...init, headers: cloudHeaders });
@@ -321,14 +321,7 @@ export function installRuntimeFetchPatch(): void {
       // Token may be stale after a sidecar restart — refresh and retry once.
       if (response.status === 401 && localApiToken) {
         if (debug) console.log(`[fetch] 401 from sidecar, refreshing token and retrying`);
-        try {
-          const { tryInvokeTauri } = await import('@/services/tauri-bridge');
-          localApiToken = await tryInvokeTauri<string>('get_local_api_token');
-          tokenFetchedAt = Date.now();
-        } catch {
-          localApiToken = null;
-          tokenFetchedAt = 0;
-        }
+        await refreshToken();
         if (localApiToken) {
           const retryHeaders = new Headers(init?.headers);
           retryHeaders.set('Authorization', `Bearer ${localApiToken}`);

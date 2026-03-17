@@ -17,7 +17,6 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'strategic-risk': { name: 'Strategic Risk Overview', enabled: true, priority: 1 },
   intel: { name: 'Intel Feed', enabled: true, priority: 1 },
   'gdelt-intel': { name: 'Live Intelligence', enabled: true, priority: 1 },
-  'claude-agent': { name: 'Claude Intelligence Agent', enabled: true, priority: 1 },
   cascade: { name: 'Infrastructure Cascade', enabled: true, priority: 1 },
   politics: { name: 'World News', enabled: true, priority: 1 },
   us: { name: 'United States', enabled: true, priority: 1 },
@@ -64,20 +63,19 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'gdacs-alerts': { name: 'GDACS Disaster Alerts', enabled: true, priority: 2 },
   'volcano-alerts': { name: 'Volcano Alerts', enabled: true, priority: 2 },
   'nws-alerts': { name: 'NWS Hazard Alerts', enabled: true, priority: 2 },
-  'comms-health': { name: 'Comms Health', enabled: true, priority: 1 },
-  'economic-stress': { name: 'Economic Stress Index', enabled: true, priority: 1 },
+  'tsunami-alerts': { name: 'Tsunami Alerts', enabled: true, priority: 2 },
+  'tropical-cyclones': { name: 'Tropical Cyclones', enabled: true, priority: 2 },
+  'food-insecurity': { name: 'Food Insecurity', enabled: true, priority: 2 },
   'radiation-decay': { name: 'Radiation Decay Calculator', enabled: false, priority: 3 },
   'resource-inventory': { name: 'Resource Inventory', enabled: false, priority: 3 },
-  'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
-  'pinned-webcams': { name: 'Pinned Webcams', enabled: false, priority: 3 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
-  gpsJamming: true,
+  gpsJamming: false,
   conflicts: true,
   bases: true,
-  cables: true,
+  cables: false,
   pipelines: false,
   hotspots: true,
   ais: false,
@@ -90,7 +88,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   outages: true,
   cyberThreats: true,
   datacenters: false,
-  protests: true,
+  protests: false,
   flights: false,
   military: true,
   natural: true,
@@ -100,7 +98,6 @@ const FULL_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
-  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled in full variant)
@@ -153,7 +150,6 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
-  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled in full variant)
@@ -245,7 +241,6 @@ const TECH_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
-  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (enabled in tech variant)
@@ -298,7 +293,6 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
-  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (limited on mobile)
@@ -388,7 +382,6 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
-  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled in finance variant)
@@ -441,7 +434,6 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
-  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled)
@@ -510,7 +502,6 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
-  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled)
@@ -563,7 +554,6 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   // Data source layers
   ucdpEvents: false,
   airstrikes: false,
-  s2pimu: false,
   displacement: false,
   climate: false,
   // Tech layers (disabled)
@@ -608,7 +598,6 @@ export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> =
   ucdpEvents: ['ucdp_events'],
   displacement: ['unhcr'],
   climate: ['climate'],
-  s2pimu: ['s2_underground'],
 };
 
 // ============================================
@@ -628,7 +617,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // Full (geopolitical) variant
   intelligence: {
     labelKey: 'header.panelCatIntelligence',
-    panelKeys: ['alert-center', 'cii', 'strategic-risk', 'intel', 'gdelt-intel', 'claude-agent', 'cascade', 'telegram-intel'],
+    panelKeys: ['alert-center', 'cii', 'strategic-risk', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel'],
     variants: ['full'],
   },
   regionalNews: {
@@ -638,7 +627,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'markets', 'economic', 'trade-policy', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'economic-stress'],
+    panelKeys: ['commodities', 'markets', 'economic', 'trade-policy', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
     variants: ['full'],
   },
   topical: {
@@ -648,7 +637,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
-    panelKeys: ['monitors', 'satellite-fires', 'earthquakes', 'cyber-threats', 'ucdp-events', 'airstrikes', 'displacement', 'climate', 'population-exposure', 'security-advisories', 'oref-sirens', 'disease-outbreaks', 'space-weather', 'air-quality', 'gdacs-alerts', 'volcano-alerts', 'nws-alerts', 'comms-health', 'radiation-decay', 'resource-inventory'],
+    panelKeys: ['monitors', 'satellite-fires', 'earthquakes', 'cyber-threats', 'ucdp-events', 'airstrikes', 'displacement', 'climate', 'population-exposure', 'security-advisories', 'oref-sirens', 'disease-outbreaks', 'space-weather', 'air-quality', 'gdacs-alerts', 'volcano-alerts', 'nws-alerts', 'radiation-decay', 'resource-inventory'],
     variants: ['full'],
   },
 

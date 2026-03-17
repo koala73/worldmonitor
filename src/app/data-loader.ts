@@ -57,8 +57,8 @@ import {
   fetchChokepointStatus,
   fetchCriticalMinerals,
 } from '@/services';
-import { checkBatchForBreakingAlerts } from '@/services/breaking-news-alerts';
-import { evaluateWarThreat, evaluateFinanceTrigger, evaluateCommodityTrigger, evaluateDisasterTrigger, checkFinanceAutoTriggerTimeout } from '@/services/mode-manager';
+import { checkBatchForBreakingAlerts, dispatchBreakingAlert } from '@/services/breaking-news-alerts';
+import { evaluateWarThreat, evaluateFinanceTrigger, evaluateCommodityTrigger, evaluateDisasterTrigger } from '@/services/mode-manager';
 import { fetchGDACSEvents } from '@/services/gdacs';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -66,8 +66,8 @@ import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detect
 import { signalAggregator } from '@/services/signal-aggregator';
 import { updateAndCheck } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
-import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, getTheaterPostureSummaries, type TheaterPostureSummary } from '@/services/military-surge';
-import { fetchCachedTheaterPosture, ingestLocalPostures } from '@/services/cached-theater-posture';
+import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
+import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, isInLearningMode } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
@@ -122,7 +122,6 @@ import { DiseaseOutbreakPanel } from '@/components/DiseaseOutbreakPanel';
 import { AirQualityPanel } from '@/components/AirQualityPanel';
 import { AirstrikesPanel } from '@/components/AirstrikesPanel';
 import { fetchAirstrikes } from '@/services/airstrikes';
-import { fetchS2Underground } from '@/services/s2-underground';
 import { fetchThreatFoxIOCs, fetchOpenPhishFeed, fetchSpamhausDrop, fetchCisaKev } from '@/services/cyber-extra';
 import { fetchSpaceWeather } from '@/services/space-weather';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreak';
@@ -131,15 +130,17 @@ import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { fetchVolcanoAlerts } from '@/services/volcano-alerts';
 import { fetchNWSAlerts } from '@/services/nws-alerts';
-import { fetchCommsHealth } from '@/services/comms-health';
-import { fetchEconomicStress } from '@/services/economic-stress';
 import { updateRegionCount, getHighRiskRegions } from '@/services/ema-forecast';
 import { GDACSAlertsPanel } from '@/components/GDACSAlertsPanel';
 import { VolcanoAlertsPanel } from '@/components/VolcanoAlertsPanel';
 import { NWSAlertsPanel } from '@/components/NWSAlertsPanel';
-import { CommsHealthPanel } from '@/components/CommsHealthPanel';
-import { EconomicStressPanel } from '@/components/EconomicStressPanel';
 import { GivingPanel } from '@/components';
+import { FoodInsecurityPanel } from '@/components/FoodInsecurityPanel';
+import { TropicalCyclonesPanel } from '@/components/TropicalCyclonesPanel';
+import { TsunamiAlertsPanel } from '@/components/TsunamiAlertsPanel';
+import { fetchFoodInsecurityAlerts } from '@/services/food-insecurity';
+import { fetchTropicalCyclones } from '@/services/tropical-cyclones';
+import { fetchTsunamiAlerts } from '@/services/tsunami-alerts';
 import { fetchProgressData } from '@/services/progress-data';
 import { fetchConservationWins } from '@/services/conservation-data';
 import { fetchRenewableEnergyData, fetchEnergyCapacity } from '@/services/renewable-energy-data';
@@ -364,6 +365,9 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT === 'full') tasks.push({ name: 'gdacsAlerts', task: runGuarded('gdacsAlerts', () => this.loadGDACSAlerts()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'volcanoAlerts', task: runGuarded('volcanoAlerts', () => this.loadVolcanoAlerts()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'nwsAlerts', task: runGuarded('nwsAlerts', () => this.loadNWSAlerts()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'tsunamiAlerts', task: runGuarded('tsunamiAlerts', () => this.loadTsunamiAlerts()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'tropicalCyclones', task: runGuarded('tropicalCyclones', () => this.loadTropicalCyclones()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'foodInsecurity', task: runGuarded('foodInsecurity', () => this.loadFoodInsecurity()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'emaForecast', task: runGuarded('emaForecast', () => this.runEMAForecast()) });
 
     if (SITE_VARIANT === 'tech') {
@@ -918,10 +922,6 @@ export class DataLoaderManager implements AppModule {
       }
     } catch {
       this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
-      // Finnhub is down — market data unavailable. Still check whether an
-      // auto-triggered Finance Mode has exceeded its quiet window so it can
-      // de-escalate back to Peace without needing live market data.
-      checkFinanceAutoTriggerTimeout();
     }
 
     try {
@@ -1264,20 +1264,6 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    // S2 Underground intelligence (GhostMaps / ArcGIS CIP)
-    tasks.push((async () => {
-      try {
-        const events = await fetchS2Underground();
-        if (this.ctx.mapLayers.s2pimu) {
-          this.ctx.map?.setS2Underground(events);
-        }
-        if (events.length > 0) dataFreshness.recordUpdate('s2_underground', events.length);
-      } catch (error) {
-        console.error('[Intelligence] S2 Underground fetch failed:', error);
-        dataFreshness.recordError('s2_underground', String(error));
-      }
-    })());
-
     tasks.push((async () => {
       try {
         const unhcrResult = await fetchUnhcrPopulation();
@@ -1502,12 +1488,6 @@ export class DataLoaderManager implements AppModule {
     try {
       const events = await fetchGDACSEvents();
       (this.ctx.panels['gdacs-alerts'] as GDACSAlertsPanel)?.update(events);
-      // Note: intelligenceCache.earthquakes is only populated when the natural
-      // events map layer is enabled. When that layer is disabled the array will
-      // be empty, so the M≥6.5 earthquake trigger path is unavailable — the
-      // GDACS Red/Orange alert path (first argument) still works normally.
-      // The earthquake trigger remains reachable via loadNatural() when the
-      // natural layer is active.
       void evaluateDisasterTrigger(events, this.ctx.intelligenceCache?.earthquakes ?? []);
     } catch (error) {
       console.warn('[gdacs-alerts] fetch failed', error);
@@ -1535,23 +1515,52 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadCommsHealth(): Promise<void> {
+  async loadTsunamiAlerts(): Promise<void> {
     try {
-      const data = await fetchCommsHealth();
-      (this.ctx.panels['comms-health'] as CommsHealthPanel)?.update(data);
+      const alerts = await fetchTsunamiAlerts();
+      (this.ctx.panels['tsunami-alerts'] as TsunamiAlertsPanel)?.update(alerts);
+      for (const a of alerts) {
+        if (a.severity === 'warning') {
+          dispatchBreakingAlert({ id: `tsunami-${a.id}`, headline: a.title, source: 'PTWC', link: a.url, threatLevel: 'critical', timestamp: a.pubDate, origin: 'hotspot_escalation' });
+        } else if (a.severity === 'watch') {
+          dispatchBreakingAlert({ id: `tsunami-${a.id}`, headline: a.title, source: 'PTWC', link: a.url, threatLevel: 'high', timestamp: a.pubDate, origin: 'hotspot_escalation' });
+        }
+      }
     } catch (error) {
-      console.warn('[comms-health] fetch failed', error);
-      (this.ctx.panels['comms-health'] as CommsHealthPanel)?.update(null);
+      console.warn('[tsunami-alerts] fetch failed', error);
+      (this.ctx.panels['tsunami-alerts'] as TsunamiAlertsPanel)?.update([]);
     }
   }
 
-  async loadEconomicStress(): Promise<void> {
+  async loadTropicalCyclones(): Promise<void> {
     try {
-      const data = await fetchEconomicStress();
-      (this.ctx.panels['economic-stress'] as EconomicStressPanel)?.update(data);
+      const storms = await fetchTropicalCyclones();
+      (this.ctx.panels['tropical-cyclones'] as TropicalCyclonesPanel)?.update(storms);
+      for (const s of storms) {
+        if (s.severity === 'critical') {
+          dispatchBreakingAlert({ id: `tc-${s.id}`, headline: `${s.name}: ${s.headline}`, source: 'NHC/JTWC', link: s.advisoryUrl, threatLevel: 'critical', timestamp: s.advisoryTime, origin: 'hotspot_escalation' });
+        } else if (s.severity === 'high') {
+          dispatchBreakingAlert({ id: `tc-${s.id}`, headline: `${s.name}: ${s.headline}`, source: 'NHC/JTWC', link: s.advisoryUrl, threatLevel: 'high', timestamp: s.advisoryTime, origin: 'hotspot_escalation' });
+        }
+      }
     } catch (error) {
-      console.warn('[economic-stress] fetch failed', error);
-      (this.ctx.panels['economic-stress'] as EconomicStressPanel)?.update(null);
+      console.warn('[tropical-cyclones] fetch failed', error);
+      (this.ctx.panels['tropical-cyclones'] as TropicalCyclonesPanel)?.update([]);
+    }
+  }
+
+  async loadFoodInsecurity(): Promise<void> {
+    try {
+      const alerts = await fetchFoodInsecurityAlerts();
+      (this.ctx.panels['food-insecurity'] as FoodInsecurityPanel)?.update(alerts);
+      for (const a of alerts) {
+        if (a.severity === 'critical') {
+          dispatchBreakingAlert({ id: `food-${a.id}`, headline: `Food Crisis: ${a.title}`, source: a.source, link: a.url, threatLevel: 'critical', timestamp: a.pubDate, origin: 'hotspot_escalation' });
+        }
+      }
+    } catch (error) {
+      console.warn('[food-insecurity] fetch failed', error);
+      (this.ctx.panels['food-insecurity'] as FoodInsecurityPanel)?.update([]);
     }
   }
 
@@ -1568,11 +1577,7 @@ export class DataLoaderManager implements AppModule {
     const earthquakes = this.ctx.intelligenceCache?.earthquakes ?? [];
     for (const eq of earthquakes) {
       if (eq.magnitude >= 5.0 && eq.place) {
-        // Use the full place string as the EMA key rather than the trailing
-        // component (e.g. "CA" or "Japan region") to avoid false merging with
-        // protest-event region series that use ISO country codes.  Each seismic
-        // zone gets its own independent EMA series this way.
-        const key = eq.place;
+        const key = eq.place.split(',').pop()?.trim() ?? 'Unknown';
         regionCounts.set(key, (regionCounts.get(key) ?? 0) + 1);
       }
     }
@@ -1866,10 +1871,6 @@ export class DataLoaderManager implements AppModule {
         }
       }
 
-      // Compute local theater postures from live flight data — used as fallback
-      // when the upstream cloud API is unreachable.
-      ingestLocalPostures(getTheaterPostureSummaries(flightData.flights));
-
       this.loadCachedPosturesForBanner();
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.setMilitaryFlights(flightData.flights);
@@ -2144,7 +2145,7 @@ export class DataLoaderManager implements AppModule {
     try {
       const fireResult = await fetchAllFires(1);
       if (fireResult.skipped) {
-        this.ctx.panels['satellite-fires']?.showConfigError('Add NASA FIRMS API key in Settings → API Keys (free at firms.modaps.eosdis.nasa.gov)');
+        this.ctx.panels['satellite-fires']?.showConfigError('NASA_FIRMS_API_KEY not configured — add in Settings');
         this.ctx.statusPanel?.updateApi('FIRMS', { status: 'error' });
         return;
       }

@@ -323,6 +323,26 @@ const ALLOWED_DOMAINS = [
   'www.nature.com',
   'www.livescience.com',
   'www.newscientist.com',
+  // Emergency alert services
+  'www.tsunami.gov',       // NOAA Pacific & Atlantic Tsunami Warning Centers
+  'tfr.faa.gov',           // FAA Temporary Flight Restrictions
+  'www.nrc.gov',           // NRC Nuclear Regulatory Commission
+  'promedmail.org',        // ProMED disease surveillance
+  // Global emergency services (round 2)
+  'www.metoc.navy.mil',    // JTWC tropical cyclone advisories
+  'www.iaea.org',          // IAEA nuclear safety news
+  'fews.net',              // FEWS NET famine early warning
+  'www.fews.net',          // FEWS NET (www variant)
+  'www.nerc.com',          // NERC power grid reliability alerts
+  'www.energy.gov',        // DOE CESER energy emergency alerts
+  'www.csb.gov',           // Chemical Safety Board incident reports
+  'www.phmsa.dot.gov',     // PHMSA pipeline/hazmat incidents
+  'www.ferc.gov',          // FERC hydropower/dam safety
+  // Emergency round 3
+  'emergency.copernicus.eu', // EU Copernicus Emergency Management Service
+  'www.cisa.gov',          // CISA critical infrastructure advisories
+  'inciweb.wildfire.gov',  // InciWeb wildfire incidents (official US)
+  'www.nhc.noaa.gov',      // NHC hurricane recon VDMs RSS
 ];
 
 export default async function handler(req) {
@@ -361,34 +381,44 @@ export default async function handler(req) {
     const isGoogleNews = feedUrl.includes('news.google.com');
     const timeout = isGoogleNews ? 20000 : 12000;
 
-    const fetchDirect = async () => {
-      const response = await fetchWithTimeout(feedUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        redirect: 'manual',
-      }, timeout);
+    const RSS_HEADERS = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+    };
+    const MAX_REDIRECTS = 3;
 
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location');
-        if (location) {
-          const redirectUrl = new URL(location, feedUrl);
-          if (!ALLOWED_DOMAINS.includes(redirectUrl.hostname)) {
+    const fetchDirect = async () => {
+      let currentUrl = feedUrl;
+      let redirectCount = 0;
+
+      while (true) {
+        const response = await fetchWithTimeout(currentUrl, {
+          headers: RSS_HEADERS,
+          redirect: 'manual',
+        }, timeout);
+
+        if (response.status >= 300 && response.status < 400) {
+          if (redirectCount >= MAX_REDIRECTS) throw new Error('Too many redirects');
+          const location = response.headers.get('location');
+          if (!location) break;
+          const redirectUrl = new URL(location, currentUrl);
+          const rHost = redirectUrl.hostname;
+          const rBare = rHost.replace(/^www\./, '');
+          const rWithWww = rHost.startsWith('www.') ? rHost : `www.${rHost}`;
+          if (!ALLOWED_DOMAINS.includes(rHost) && !ALLOWED_DOMAINS.includes(rBare) && !ALLOWED_DOMAINS.includes(rWithWww)) {
             throw new Error('Redirect to disallowed domain');
           }
-          return fetchWithTimeout(redirectUrl.href, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-              'Accept-Language': 'en-US,en;q=0.9',
-            },
-          }, timeout);
+          currentUrl = redirectUrl.href;
+          redirectCount++;
+          continue;
         }
+
+        return response;
       }
 
-      return response;
+      // No location header on a 3xx — follow as non-redirect
+      return fetchWithTimeout(currentUrl, { headers: RSS_HEADERS }, timeout);
     };
 
     let response;
@@ -424,10 +454,13 @@ export default async function handler(req) {
   } catch (error) {
     const isTimeout = error.name === 'AbortError';
     console.error('RSS proxy error:', feedUrl, error.message);
+    // Strip query params before echoing the URL to avoid leaking any secrets embedded in them
+    let safeUrl = feedUrl;
+    try { safeUrl = new URL(feedUrl).origin + new URL(feedUrl).pathname; } catch { /* keep as-is */ }
     return new Response(JSON.stringify({
       error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed',
       details: error.message,
-      url: feedUrl
+      url: safeUrl,
     }), {
       status: isTimeout ? 504 : 502,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },

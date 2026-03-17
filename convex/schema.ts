@@ -8,5 +8,7 @@ export default defineSchema({
     registeredAt: v.number(),
     source: v.optional(v.string()),
     appVersion: v.optional(v.string()),
-  }).index("by_normalized_email", ["normalizedEmail"]),
+  })
+    .index("by_normalized_email", ["normalizedEmail"])
+    .index("by_registered_at", ["registeredAt"]),
 });

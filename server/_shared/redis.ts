@@ -41,10 +41,12 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return;
   try {
-    // Atomic SET with EX — single call avoids race between SET and EXPIRE (C-3 fix)
-    await fetch(`${url}/set/${encodeURIComponent(prefixKey(key))}/${encodeURIComponent(JSON.stringify(value))}/EX/${ttlSeconds}`, {
+    // Use pipeline/JSON body format so the value is never URL-path-encoded —
+    // eliminates any risk of key traversal via crafted value strings.
+    await fetch(`${url}/pipeline`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['SET', prefixKey(key), JSON.stringify(value), 'EX', ttlSeconds]]),
       signal: AbortSignal.timeout(3_000),
     });
   } catch { /* best-effort */ }

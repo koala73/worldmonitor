@@ -35,7 +35,6 @@ import {
   SecurityAdvisoriesPanel,
   OrefSirensPanel,
   TelegramIntelPanel,
-  ClaudeAgentPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { EarthquakesPanel } from '@/components/EarthquakesPanel';
@@ -48,12 +47,8 @@ import { AirstrikesPanel } from '@/components/AirstrikesPanel';
 import { GDACSAlertsPanel } from '@/components/GDACSAlertsPanel';
 import { VolcanoAlertsPanel } from '@/components/VolcanoAlertsPanel';
 import { NWSAlertsPanel } from '@/components/NWSAlertsPanel';
-import { CommsHealthPanel } from '@/components/CommsHealthPanel';
-import { EconomicStressPanel } from '@/components/EconomicStressPanel';
 import { RadiationDecayPanel } from '@/components/RadiationDecayPanel';
 import { ResourceInventoryPanel } from '@/components/ResourceInventoryPanel';
-import { WorldClockPanel } from '@/components/WorldClockPanel';
-import { PinnedWebcamsPanel } from '@/components/PinnedWebcamsPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import { CountersPanel } from '@/components/CountersPanel';
 import { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
@@ -80,7 +75,6 @@ import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
 import { initMode, setMode, alertFamily, getMode, toggleGhostMode, type AppMode } from '@/services/mode-manager';
 import { isLowPowerMode, setLowPowerMode } from '@/services/low-power';
-import { tryInvokeTauri } from '@/services/tauri-bridge';
 
 export interface PanelLayoutCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -105,21 +99,20 @@ export class PanelLayoutManager implements AppModule {
   /** Panels floated to top in Finance Mode. */
   private static readonly FINANCE_PRIORITY = [
     'crypto', 'markets', 'stablecoins', 'commodities',
-    'macro-signals', 'heatmap', 'etf-flows', 'economic', 'economic-stress',
+    'macro-signals', 'heatmap', 'etf-flows', 'economic',
   ];
 
   /** Panels floated to top in War Mode. */
   private static readonly WAR_PRIORITY = [
     'alert-center', 'cyber-threats', 'oref-sirens', 'telegram-intel',
     'gdelt-intel', 'cascade', 'strategic-posture', 'strategic-risk',
-    'cii', 'satellite-fires', 'ucdp-events', 'displacement', 'space-weather', 'comms-health',
+    'cii', 'satellite-fires', 'ucdp-events', 'displacement',
   ];
 
   /** Panels floated to top in Disaster Mode. */
   private static readonly DISASTER_PRIORITY = [
-    'earthquakes', 'satellite-fires', 'gdacs-alerts',
-    'volcano-alerts', 'nws-alerts', 'alert-center', 'displacement',
-    'oref-sirens', 'weather', 'air-quality', 'comms-health', 'economic-stress',
+    'natural-disasters', 'earthquakes', 'satellite-fires', 'gdacs',
+    'alert-center', 'displacement', 'oref-sirens', 'weather',
   ];
 
   constructor(ctx: AppContext, callbacks: PanelLayoutCallbacks) {
@@ -262,7 +255,7 @@ export class PanelLayoutManager implements AppModule {
           <button class="search-btn" id="searchBtn" style="display:none"><kbd>⌘K</kbd> ${t('header.search')}</button>
           <button class="theme-toggle-btn" id="headerThemeToggle" style="display:none" title="${t('header.toggleTheme')}">${this.buildThemeIcon()}</button>
           ${SITE_VARIANT === 'happy' ? '<button class="tv-mode-btn" id="tvModeBtn" style="display:none"></button>' : ''}
-          <span style="display:none"></span>
+          <span id="unifiedSettingsMount" style="display:none"></span>
         </div>
       </div>
 
@@ -271,8 +264,8 @@ export class PanelLayoutManager implements AppModule {
 
         <!-- Sidebar -->
         <aside class="mac-sidebar">
-          <!-- Drag region / traffic-lights safe area — JS drag via _setupWindowDragRegions() -->
-          <div class="mac-sidebar-drag" data-tauri-drag-region></div>
+          <!-- Drag region / traffic-lights safe area -->
+          <div class="mac-sidebar-drag"></div>
 
           <!-- Navigation: variant pills + live panel list -->
           <nav class="mac-sidebar-nav">
@@ -303,7 +296,7 @@ export class PanelLayoutManager implements AppModule {
             <button class="mac-ghost-mode-btn${getMode() === 'ghost' ? ' mac-ghost-mode-active' : ''}" id="ghostModeBtn" title="Ghost Mode — Reduce polling, suppress notifications (⌘⇧G)">👻 Ghost Mode</button>
           </div>` : ''}
 
-          <!-- Footer: theme, low-power, settings, version, collapse -->
+          <!-- Footer: theme, low-power, settings, version -->
           <div class="mac-sidebar-footer">
             <button class="mac-sidebar-footer-btn theme-toggle-btn" id="headerThemeToggle" title="${t('header.toggleTheme')}">
               ${this.buildThemeIcon()}
@@ -316,24 +309,16 @@ export class PanelLayoutManager implements AppModule {
 
         <!-- Main content: toolbar + map/panels -->
         <main class="mac-content">
-          <!-- Draggable toolbar (title bar area) — drag via JS _setupToolbarDrag() -->
+          <!-- Draggable toolbar (title bar area) -->
           <div class="mac-content-toolbar" data-tauri-drag-region>
-            <button class="mac-sidebar-toggle-btn" id="sidebarCollapseBtn" title="Toggle sidebar (⌘\\)" aria-label="Toggle sidebar">
-              <svg width="14" height="12" viewBox="0 0 14 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="0" y="0" width="4" height="12" rx="1.5" fill="currentColor" opacity="0.5"/>
-                <rect x="6" y="0" width="8" height="2" rx="1" fill="currentColor"/>
-                <rect x="6" y="5" width="8" height="2" rx="1" fill="currentColor"/>
-                <rect x="6" y="10" width="8" height="2" rx="1" fill="currentColor"/>
-              </svg>
-            </button>
-            <span class="mac-toolbar-title" data-tauri-drag-region>
+            <span class="mac-toolbar-title">
               ${SITE_VARIANT === 'tech' ? 'Tech Monitor' : SITE_VARIANT === 'finance' ? 'Finance Monitor' : SITE_VARIANT === 'happy' ? 'Good News' : 'World Monitor'}
             </span>
             <div class="mac-toolbar-status">
               <span class="status-dot"></span>
               <span>${t('header.live')}</span>
             </div>
-            <div class="mac-toolbar-spacer" data-tauri-drag-region></div>
+            <div class="mac-toolbar-spacer"></div>
             <div class="region-selector">
               <select id="regionSelect" class="region-select">
                 <option value="global">${t('components.deckgl.views.global')}</option>
@@ -346,13 +331,7 @@ export class PanelLayoutManager implements AppModule {
                 <option value="oceania">${t('components.deckgl.views.oceania')}</option>
               </select>
             </div>
-            <!-- Toolbar overflow — only visible when sidebar is collapsed -->
-            <div class="mac-toolbar-sidebar-overflow" id="toolbarSidebarOverflow">
-              <button class="mac-toolbar-overflow-btn" id="toolbarSettingsBtn" title="Settings (⌘,)">⚙</button>
-              <button class="mac-toolbar-overflow-btn" id="toolbarThemeBtn" title="Toggle theme">☀</button>
-              <button class="mac-toolbar-overflow-btn" id="toolbarModeBtn" title="Cycle mode (⌘M)">🕊</button>
-            </div>
-            <span class="header-clock" id="headerClock" data-tauri-drag-region></span>
+            <span class="header-clock" id="headerClock"></span>
             <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           </div>
 
@@ -715,9 +694,6 @@ export class PanelLayoutManager implements AppModule {
       const gdeltIntelPanel = new GdeltIntelPanel();
       this.ctx.panels['gdelt-intel'] = gdeltIntelPanel;
 
-      const claudeAgentPanel = new ClaudeAgentPanel();
-      this.ctx.panels['claude-agent'] = claudeAgentPanel;
-
       const ciiPanel = new CIIPanel();
       ciiPanel.setShareStoryHandler((code, name) => {
         this.callbacks.openCountryStory(code, name);
@@ -788,13 +764,8 @@ export class PanelLayoutManager implements AppModule {
       const nwsAlertsPanel = new NWSAlertsPanel();
       this.ctx.panels['nws-alerts'] = nwsAlertsPanel;
 
-      this.ctx.panels['comms-health'] = new CommsHealthPanel();
-      this.ctx.panels['economic-stress'] = new EconomicStressPanel();
-
       this.ctx.panels['radiation-decay'] = new RadiationDecayPanel();
       this.ctx.panels['resource-inventory'] = new ResourceInventoryPanel();
-      this.ctx.panels['world-clock'] = new WorldClockPanel();
-      this.ctx.panels['pinned-webcams'] = new PinnedWebcamsPanel();
 
       const displacementPanel = new DisplacementPanel();
       displacementPanel.setCountryClickHandler((lat, lon) => {
@@ -944,9 +915,6 @@ export class PanelLayoutManager implements AppModule {
       // Wire mode selector buttons
       this._initModeSelector();
 
-      // Set up JS-based window drag on toolbar + sidebar drag zone
-      this._setupWindowDragRegions();
-
       // Wire Low Power Mode toggle
       const lpBtn = document.getElementById('lowPowerBtn');
       if (lpBtn) {
@@ -1000,9 +968,6 @@ export class PanelLayoutManager implements AppModule {
     });
     document.addEventListener('wm:toggle-ghost-mode', () => {
       toggleGhostMode();
-    });
-    document.addEventListener('wm:open-settings', () => {
-      this.ctx.unifiedSettings?.open();
     });
 
     // React to mode changes: update button states, body class, re-render family button
@@ -1068,40 +1033,6 @@ export class PanelLayoutManager implements AppModule {
     document.addEventListener('wm:mode-changed', ((e: CustomEvent) => {
       this._applyModePanelOrder((e.detail as { mode: AppMode }).mode);
     }) as EventListener);
-  }
-
-  /**
-   * Set up JS-based window dragging for all drag zones.
-   *
-   * Rationale: In Tauri 2 + WKWebView on macOS, `-webkit-app-region: drag`
-   * intercepts mousedown events at the WebKit layer *before* JS fires, so
-   * calling startDragging() from JS never gets a chance to run. The fix is to
-   * remove all `-webkit-app-region` CSS from drag zones and use an explicit
-   * mousedown → IPC approach instead. Also requires the
-   * `core:window:allow-start-dragging` capability (not included in core:default).
-   */
-  private _setupWindowDragRegions(): void {
-    // Interactive selectors — clicks on these must NOT start a window drag
-    const NO_DRAG_SELECTOR = 'button, select, input, a, label, [role="button"], [role="option"]';
-
-    const attachDrag = (el: Element | null, allowInteractive = false) => {
-      if (!el) return;
-      el.addEventListener('mousedown', (ev: Event) => {
-        const e = ev as MouseEvent;
-        if (e.button !== 0) return; // left button only
-        if (!allowInteractive) {
-          const target = e.target as Element | null;
-          if (target?.closest(NO_DRAG_SELECTOR)) return;
-        }
-        tryInvokeTauri('plugin:window|start_dragging').catch(() => {/* silent */});
-      });
-    };
-
-    // Content toolbar — skip interactive children (region select, search btn)
-    attachDrag(document.querySelector('.mac-content-toolbar'));
-
-    // Sidebar drag zone — empty div, all clicks are drag
-    attachDrag(document.querySelector('.mac-sidebar-drag'), true);
   }
 
   /**

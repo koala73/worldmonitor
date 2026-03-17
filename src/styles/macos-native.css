@@ -14,16 +14,16 @@ body.is-desktop-macos {
   --mac-toolbar-height: 44px;
   --mac-traffic-lights-height: 44px; /* safe area below traffic lights */
 
-  /* Dark-mode macOS system colors (approximated) */
-  --mac-window-bg: #1c1c1e;
-  --mac-sidebar-bg: rgba(44, 44, 46, 0.72);
-  --mac-surface: #2c2c2e;
-  --mac-surface-hover: #3a3a3c;
-  --mac-surface-active: #48484a;
+  /* Dark-mode macOS system colors — deep dark calibration */
+  --mac-window-bg: #161618;
+  --mac-sidebar-bg: rgba(18, 18, 20, 0.92);
+  --mac-surface: #222224;
+  --mac-surface-hover: #2c2c2e;
+  --mac-surface-active: #3a3a3c;
   --mac-label: rgba(255, 255, 255, 0.85);
   --mac-secondary-label: rgba(255, 255, 255, 0.55);
   --mac-tertiary-label: rgba(255, 255, 255, 0.25);
-  --mac-separator: rgba(255, 255, 255, 0.13);
+  --mac-separator: rgba(255, 255, 255, 0.12);
   --mac-fill: rgba(255, 255, 255, 0.08);
 
   /* macOS system accent colors */
@@ -38,28 +38,43 @@ body.is-desktop-macos {
   --mac-purple: #bf5af2;
   --mac-pink: #ff375f;
 
+  /* Apple spring animation easing curves
+     spring-out: elements entering the screen (menus, tooltips, panels)
+     spring-in:  elements leaving (dismissals, close)
+     interactive: button press/tap feedback (slight overshoot = "snappy") */
+  --mac-ease-spring-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --mac-ease-spring-in:  cubic-bezier(0.55, 0, 1, 0.45);
+  --mac-ease-interactive: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --mac-ease-standard:   cubic-bezier(0.4, 0, 0.2, 1); /* keep for slow/ambient motion */
+
   /* Card / panel appearance */
-  --mac-card-bg: #2c2c2e;
-  --mac-card-border: rgba(255, 255, 255, 0.1);
+  --mac-card-bg: #222224;
+  --mac-card-border: rgba(255, 255, 255, 0.10);
   --mac-card-radius: 12px;
-  --mac-card-shadow: 0 2px 12px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(255, 255, 255, 0.07);
+  --mac-card-shadow:
+    0 2px 16px rgba(0, 0, 0, 0.60),
+    0 0 0 0.5px rgba(255, 255, 255, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 /* Light-mode macOS overrides */
 body.is-desktop-macos:where([data-theme="light"], [data-theme="light"] *) {
   --mac-window-bg: #f2f2f7;
-  --mac-sidebar-bg: rgba(242, 242, 247, 0.72);
+  --mac-sidebar-bg: rgba(242, 242, 247, 0.68);
   --mac-surface: #ffffff;
   --mac-surface-hover: #f0f0f5;
   --mac-surface-active: #e5e5ea;
   --mac-label: rgba(0, 0, 0, 0.85);
   --mac-secondary-label: rgba(0, 0, 0, 0.55);
   --mac-tertiary-label: rgba(0, 0, 0, 0.25);
-  --mac-separator: rgba(0, 0, 0, 0.12);
-  --mac-fill: rgba(0, 0, 0, 0.05);
-  --mac-card-bg: #ffffff;
-  --mac-card-border: rgba(0, 0, 0, 0.08);
-  --mac-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --mac-separator: rgba(0, 0, 0, 0.10);
+  --mac-fill: rgba(0, 0, 0, 0.04);
+  --mac-card-bg: rgba(255, 255, 255, 0.92);
+  --mac-card-border: rgba(0, 0, 0, 0.07);
+  --mac-card-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.09),
+    0 0 0 0.5px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* ── Root layout ────────────────────────────────────────────── */
@@ -85,28 +100,36 @@ body.is-desktop-macos .mac-shell {
   flex: 1;
   overflow: hidden;
   min-height: 0;
+  position: relative; /* anchor for absolutely-positioned sidebar */
 }
 
-/* ── Sidebar ────────────────────────────────────────────────── */
+/* ── Sidebar — floats over content so backdrop-filter blurs the map ── */
 body.is-desktop-macos .mac-sidebar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
   width: var(--mac-sidebar-width);
-  height: 100%;
+  z-index: 100;
   display: flex;
   flex-direction: column;
   background: var(--mac-sidebar-bg);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(185%);
+  -webkit-backdrop-filter: blur(32px) saturate(185%);
   border-right: 1px solid var(--mac-separator);
-  flex-shrink: 0;
+  /* Inner-right highlight + depth shadow cast onto the map */
+  box-shadow:
+    inset -0.5px 0 0 rgba(255, 255, 255, 0.06),
+    2px 0 12px rgba(0, 0, 0, 0.35);
   overflow: hidden;
   user-select: none;
 }
 
-/* Traffic-lights safe zone — drag handled via JS _setupWindowDragRegions() */
+/* Traffic-lights safe zone — allows window dragging from sidebar top */
 .mac-sidebar-drag {
   height: var(--mac-traffic-lights-height);
+  -webkit-app-region: drag;
   flex-shrink: 0;
-  cursor: default;
 }
 
 /* Sidebar scrollable nav */
@@ -130,7 +153,7 @@ body.is-desktop-macos .mac-sidebar {
   font-weight: 600;
   color: var(--mac-secondary-label);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   padding: 0 12px 3px;
   display: block;
 }
@@ -148,7 +171,7 @@ body.is-desktop-macos .mac-sidebar {
   color: var(--mac-label);
   cursor: pointer;
   text-decoration: none;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition: background 0.1s var(--mac-ease-spring-out), color 0.1s var(--mac-ease-spring-out);
   -webkit-app-region: no-drag;
   white-space: nowrap;
   overflow: hidden;
@@ -160,8 +183,10 @@ body.is-desktop-macos .mac-sidebar {
 }
 
 .mac-sidebar-item.active {
-  background: var(--mac-accent);
-  color: #fff;
+  background: rgba(10, 132, 255, 0.18);
+  color: var(--mac-blue);
+  border: 0.5px solid rgba(10, 132, 255, 0.38);
+  box-shadow: inset 0 1px 0 rgba(10, 132, 255, 0.12);
 }
 
 .mac-sidebar-item-icon {
@@ -196,23 +221,25 @@ body.is-desktop-macos .mac-sidebar {
 .mac-mode-btn {
   flex: 1;
   padding: 3px 2px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 5px;
-  background: transparent;
+  border: 0.5px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--mac-secondary-label);
   font-size: 10px;
   font-weight: 600;
   font-family: var(--mac-font);
   cursor: pointer;
   text-align: center;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s var(--mac-ease-spring-out), color 0.12s var(--mac-ease-spring-out), border-color 0.12s var(--mac-ease-spring-out);
   white-space: nowrap;
   position: relative;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .mac-mode-btn:hover {
-  background: var(--mac-fill);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--mac-label);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 /* Peace active — blue */
@@ -287,7 +314,7 @@ body.is-desktop-macos .mac-sidebar {
   font-family: var(--mac-font);
   cursor: pointer;
   text-align: center;
-  transition: background 0.12s ease;
+  transition: background 0.12s var(--mac-ease-spring-out);
 }
 
 .mac-alert-family-btn:hover {
@@ -548,7 +575,7 @@ body.is-desktop-macos[data-app-mode="peace"] .mac-toolbar-title {
   font-family: var(--mac-font);
   cursor: pointer;
   text-align: center;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background 0.12s var(--mac-ease-spring-out), color 0.12s var(--mac-ease-spring-out);
 }
 
 .mac-ghost-mode-btn:hover {
@@ -635,7 +662,7 @@ body.is-desktop-macos[data-app-mode="ghost"] .mac-mode-section {
   color: var(--mac-secondary-label);
   cursor: pointer;
   padding: 0;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background 0.12s var(--mac-ease-spring-out), color 0.12s var(--mac-ease-spring-out);
   font-family: var(--mac-font);
 }
 
@@ -645,12 +672,12 @@ body.is-desktop-macos[data-app-mode="ghost"] .mac-mode-section {
 }
 
 #lowPowerBtn.low-power-active {
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.12);
+  color: var(--mac-orange);
+  background: rgba(255, 159, 10, 0.12);
 }
 
 #lowPowerBtn.low-power-active:hover {
-  background: rgba(245, 158, 11, 0.2);
+  background: rgba(255, 159, 10, 0.22);
 }
 
 .mac-sidebar-version {
@@ -658,159 +685,6 @@ body.is-desktop-macos[data-app-mode="ghost"] .mac-mode-section {
   font-size: 11px;
   color: var(--mac-tertiary-label);
   font-variant-numeric: tabular-nums;
-}
-
-/* ── Sidebar collapse ───────────────────────────────────────── */
-body.is-desktop-macos .mac-sidebar {
-  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-              border-right-color 0.22s ease;
-}
-
-body.is-desktop-macos.sidebar-collapsed .mac-sidebar {
-  width: 0 !important;
-  border-right-color: transparent;
-  overflow: hidden;
-}
-
-/* Floating re-open tab — visible only when collapsed */
-.mac-sidebar-collapse-tab {
-  display: none;
-  position: fixed;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%);
-  z-index: 1000;
-  width: 16px;
-  height: 48px;
-  border-radius: 0 8px 8px 0;
-  border: 1px solid var(--mac-separator);
-  border-left: none;
-  background: var(--mac-sidebar-bg);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  cursor: pointer;
-  color: var(--mac-secondary-label);
-  font-size: 10px;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.12s ease, color 0.12s ease, width 0.12s ease;
-  -webkit-app-region: no-drag;
-}
-
-.mac-sidebar-collapse-tab:hover {
-  width: 20px;
-  background: var(--mac-fill);
-  color: var(--mac-label);
-}
-
-body.is-desktop-macos.sidebar-collapsed .mac-sidebar-collapse-tab {
-  display: flex;
-}
-
-/* Collapse toggle button in sidebar footer */
-.mac-sidebar-collapse-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 5px;
-  border: none;
-  background: transparent;
-  color: var(--mac-tertiary-label);
-  cursor: pointer;
-  padding: 0;
-  margin-left: auto;
-  transition: background 0.12s ease, color 0.12s ease;
-  font-size: 13px;
-  flex-shrink: 0;
-  -webkit-app-region: no-drag;
-}
-
-.mac-sidebar-collapse-btn:hover {
-  background: var(--mac-fill);
-  color: var(--mac-label);
-}
-
-/* Sidebar toggle button in toolbar — always visible, Finder/Xcode style */
-.mac-sidebar-toggle-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 30px;
-  border-radius: 7px;
-  border: 1px solid var(--mac-separator);
-  background: var(--mac-fill);
-  color: var(--mac-label);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-  -webkit-app-region: no-drag;
-}
-
-.mac-sidebar-toggle-btn:hover {
-  background: var(--mac-surface-hover);
-  color: var(--mac-label);
-  border-color: var(--mac-secondary-label);
-}
-
-body.is-desktop-macos.sidebar-collapsed .mac-sidebar-toggle-btn {
-  color: var(--mac-accent);
-  background: rgba(10, 132, 255, 0.1);
-}
-
-body.is-desktop-macos.sidebar-collapsed .mac-sidebar-toggle-btn:hover {
-  background: rgba(10, 132, 255, 0.18);
-}
-
-/* When sidebar is collapsed, mac-content fills full window width.
-   The macOS traffic-light buttons (close/min/zoom) sit at x≈8-72 of the window
-   and physically cover the toolbar's left edge. Push the toolbar content past
-   them so the sidebar toggle button is always reachable. */
-body.is-desktop-macos.sidebar-collapsed .mac-content-toolbar {
-  padding-left: 80px;
-}
-
-/* Toolbar overflow controls — shown when sidebar is collapsed */
-.mac-toolbar-sidebar-overflow {
-  display: none;
-  align-items: center;
-  gap: 4px;
-  -webkit-app-region: no-drag;
-}
-
-body.is-desktop-macos.sidebar-collapsed .mac-toolbar-sidebar-overflow {
-  display: flex;
-}
-
-.mac-toolbar-overflow-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--mac-secondary-label);
-  cursor: pointer;
-  font-size: 12px;
-  font-family: var(--mac-font);
-  white-space: nowrap;
-  transition: background 0.12s ease, color 0.12s ease;
-  -webkit-app-region: no-drag;
-}
-
-.mac-toolbar-overflow-btn:hover {
-  background: var(--mac-fill);
-  color: var(--mac-label);
-}
-
-.mac-toolbar-overflow-btn.active {
-  background: rgba(0, 122, 255, 0.15);
-  color: #007aff;
 }
 
 /* ── Content area ───────────────────────────────────────────── */
@@ -828,25 +702,33 @@ body.is-desktop-macos .mac-content {
   height: var(--mac-toolbar-height);
   display: flex;
   align-items: center;
-  padding: 0 14px 0 16px;
+  padding: 0 14px 0 calc(var(--mac-sidebar-width) + 16px);
   gap: 10px;
-  background: rgba(28, 28, 30, 0.85);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: rgba(22, 22, 24, 0.95);
+  backdrop-filter: blur(32px) saturate(185%);
+  -webkit-backdrop-filter: blur(32px) saturate(185%);
   border-bottom: 1px solid var(--mac-separator);
+  /* Top highlight line — matches macOS title bar chrome */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
-  /* Note: no -webkit-app-region here — JS startDragging() handles drag (see _setupToolbarDrag) */
+  -webkit-app-region: drag;
 }
 
 body.is-desktop-macos[data-theme="light"] .mac-content-toolbar {
-  background: rgba(242, 242, 247, 0.85);
+  background: rgba(242, 242, 247, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -0.5px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* All direct children non-draggable so clicks work */
+.mac-content-toolbar > * {
+  -webkit-app-region: no-drag;
 }
 
 .mac-toolbar-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--mac-label);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .mac-toolbar-status {
@@ -873,7 +755,6 @@ body.is-desktop-macos[data-theme="light"] .mac-content-toolbar {
 
 .mac-toolbar-spacer {
   flex: 1;
-  /* drag handled via JS _setupToolbarDrag() */
 }
 
 /* Region selector inside toolbar */
@@ -903,18 +784,12 @@ body.is-desktop-macos[data-theme="light"] .mac-content-toolbar {
   border-color: var(--mac-accent);
 }
 
-/* Clock in toolbar — override main.css absolute positioning so it's a normal flex child */
+/* Clock in toolbar */
 .mac-content-toolbar .header-clock {
-  position: static;      /* override main.css position: absolute */
-  left: auto;            /* override main.css left: 50% */
-  transform: none;       /* override main.css translateX(-50%) */
-  pointer-events: auto;  /* override main.css pointer-events: none so drag events reach it */
   font-family: var(--mac-font-mono);
   font-size: 12px;
   color: var(--mac-secondary-label);
   letter-spacing: 0.03em;
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 
 /* Toolbar search button */
@@ -922,30 +797,60 @@ body.is-desktop-macos[data-theme="light"] .mac-content-toolbar {
   font-family: var(--mac-font);
   font-size: 12px;
   color: var(--mac-secondary-label);
-  background: var(--mac-fill);
-  border: 1px solid var(--mac-separator);
-  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
   padding: 4px 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background 0.12s var(--mac-ease-spring-out), color 0.12s var(--mac-ease-spring-out);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .mac-content-toolbar .search-btn:hover {
-  background: var(--mac-surface-hover);
+  background: rgba(255, 255, 255, 0.12);
   color: var(--mac-label);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
+/* ── macOS keyboard shortcut badge — ⌘K / ⌥⇧K style ────────── */
+body.is-desktop-macos kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mac-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--mac-secondary-label);
+  background: rgba(255, 255, 255, 0.07);
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  padding: 3px 6px;
+  min-width: 16px;
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Light mode */
+body.is-desktop-macos:where([data-theme="light"], [data-theme="light"] *) kbd {
+  color: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* Override the old search-btn inline reset */
 .mac-content-toolbar .search-btn kbd {
-  font-family: var(--mac-font);
-  font-size: 11px;
-  opacity: 0.6;
-  background: none;
-  border: none;
-  padding: 0;
+  /* inherits the global kbd style above */
 }
 
 /* ── Content body (map + panels) ────────────────────────────── */
@@ -993,7 +898,7 @@ body.is-desktop-macos .panel-header .panel-title {
 /* ── Panel cards ─────────────────────────────────────────────── */
 body.is-desktop-macos .panels-grid {
   gap: 8px;
-  padding: 8px;
+  padding: 8px 8px 8px calc(var(--mac-sidebar-width) + 8px);
   background: var(--mac-window-bg);
 }
 
@@ -1001,21 +906,29 @@ body.is-desktop-macos .panels-grid {
 body.is-desktop-macos .panels-grid > * {
   border-radius: var(--mac-card-radius);
   background: var(--mac-card-bg);
-  border: 1px solid var(--mac-card-border);
+  border: 0.5px solid var(--mac-card-border);
   box-shadow: var(--mac-card-shadow);
   overflow: hidden;
-  transition: box-shadow 0.15s ease;
+  transition: box-shadow 0.2s var(--mac-ease-spring-out), transform 0.2s var(--mac-ease-spring-out);
 }
 
 body.is-desktop-macos .panels-grid > *:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.40),
+    0 0 0 0.5px rgba(255, 255, 255, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* Panel header inside cards */
 body.is-desktop-macos .panels-grid .panel-header {
   font-family: var(--mac-font);
-  background: transparent;
-  border-bottom: 1px solid var(--mac-separator);
+  /* Subtle top-to-transparent vibrancy band — matches macOS section headers */
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.035) 0%,
+    transparent 100%
+  );
+  border-bottom: 0.5px solid var(--mac-separator);
   padding: 10px 14px;
 }
 
@@ -1053,12 +966,10 @@ body.is-desktop-macos button:not(.mac-sidebar-footer-btn):not(.mac-sidebar-item)
   font-family: var(--mac-font);
 }
 
-/* ── Scrollbars — macOS overlay style (matches Safari / Finder) ── */
-/* Track: 8 px wide, transparent. Thumb floats inside with 1 px        */
-/* transparent gutter on each side → visible thumb ≈ 6 px, pill-shaped */
+/* ── Scrollbars — macOS overlay style ──────────────────────── */
 body.is-desktop-macos ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
 }
 
 body.is-desktop-macos ::-webkit-scrollbar-track {
@@ -1066,19 +977,14 @@ body.is-desktop-macos ::-webkit-scrollbar-track {
 }
 
 body.is-desktop-macos ::-webkit-scrollbar-thumb {
-  background: rgba(120, 120, 120, 0.55);
-  border-radius: 100px;           /* full pill — matches Safari/Finder */
-  border: 1px solid transparent;  /* 1 px transparent gutter each side */
+  background: rgba(200, 200, 200, 0.30);
+  border-radius: 4px;
+  border: 1px solid transparent;
   background-clip: padding-box;
 }
 
 body.is-desktop-macos ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 100, 100, 0.80);
-  background-clip: padding-box;
-}
-
-body.is-desktop-macos ::-webkit-scrollbar-thumb:active {
-  background: rgba(80, 80, 80, 0.90);
+  background: rgba(150, 150, 150, 0.45);
   background-clip: padding-box;
 }
 
@@ -1086,20 +992,21 @@ body.is-desktop-macos ::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-/* Light-mode thumb — darker against light backgrounds */
-body.is-desktop-macos[data-theme="light"] ::-webkit-scrollbar-thumb,
-body.is-desktop-macos [data-theme="light"] ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.28);
-}
-body.is-desktop-macos[data-theme="light"] ::-webkit-scrollbar-thumb:hover,
-body.is-desktop-macos [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.50);
-}
-
-/* ── Focus rings — macOS blue outline ───────────────────────── */
+/* ── Focus rings — macOS blue outline + glow ────────────────── */
 body.is-desktop-macos *:focus-visible {
   outline: 2px solid var(--mac-accent);
-  outline-offset: 1px;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15);
+}
+
+/* ── Reduced motion — remove animations, keep glass blur ───── */
+@media (prefers-reduced-motion: reduce) {
+  body.is-desktop-macos .mac-toolbar-status .status-dot,
+  body.is-desktop-macos .mac-mode-btn.mac-mode-war-active,
+  body.is-desktop-macos .mac-mode-btn.mac-mode-disaster-active,
+  body.is-desktop-macos .mac-sidebar::before {
+    animation: none !important;
+  }
 }
 
 /* ── Map pin button ──────────────────────────────────────────── */
@@ -1164,7 +1071,7 @@ body.is-desktop-macos #unifiedSettingsMount {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background 0.1s ease;
+  transition: background 0.1s var(--mac-ease-spring-out);
   -webkit-app-region: no-drag;
 }
 
@@ -1178,7 +1085,7 @@ body.is-desktop-macos #unifiedSettingsMount {
   border-radius: 50%;
   flex-shrink: 0;
   background: var(--mac-accent);
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.15s var(--mac-ease-spring-out), box-shadow 0.15s var(--mac-ease-spring-out);
 }
 
 /* Disabled panel: dimmed row, hollow dot */
@@ -1195,15 +1102,16 @@ body.is-desktop-macos #unifiedSettingsMount {
 .mac-content-toolbar .region-selector {
   display: flex;
   align-items: center;
+  -webkit-app-region: no-drag;
 }
 
 .mac-content-toolbar .region-select {
   font-family: var(--mac-font);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--mac-secondary-label);
   background: var(--mac-fill);
   border: 1px solid var(--mac-separator);
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 3px 20px 3px 7px;
   cursor: pointer;
   appearance: none;
@@ -1212,6 +1120,150 @@ body.is-desktop-macos #unifiedSettingsMount {
   background-repeat: no-repeat;
   background-position: right 6px center;
   outline: none;
+}
+
+/* ── macOS-style checkboxes ──────────────────────────────────── */
+/*
+  Replace browser-default checkbox appearance with macOS Ventura/Sequoia style:
+  14×14 rounded square, accent-filled when checked, white SVG checkmark.
+  Apply via class="mac-checkbox" on the <input type="checkbox">.
+*/
+body.is-desktop-macos input[type="checkbox"].mac-checkbox,
+body.is-desktop-macos .mac-checkbox-wrap input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  vertical-align: middle;
+  position: relative;
+  transition:
+    background 0.1s var(--mac-ease-spring-out),
+    border-color 0.1s var(--mac-ease-spring-out),
+    box-shadow 0.1s var(--mac-ease-spring-out);
+  flex-shrink: 0;
+}
+
+body.is-desktop-macos input[type="checkbox"].mac-checkbox:checked,
+body.is-desktop-macos .mac-checkbox-wrap input[type="checkbox"]:checked {
+  background: var(--mac-accent);
+  border-color: var(--mac-accent);
+  box-shadow: none;
+  /* White checkmark via mask */
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2.5 7l3.5 3.5 5.5-6' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E"),
+    linear-gradient(var(--mac-accent), var(--mac-accent));
+  -webkit-mask-size: 100% 100%, 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2.5 7l3.5 3.5 5.5-6' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E"),
+    linear-gradient(var(--mac-accent), var(--mac-accent));
+  background-size: 100% 100%, 100% 100%;
+  background-repeat: no-repeat;
+}
+
+body.is-desktop-macos input[type="checkbox"].mac-checkbox:hover,
+body.is-desktop-macos .mac-checkbox-wrap input[type="checkbox"]:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.30);
+}
+
+body.is-desktop-macos input[type="checkbox"].mac-checkbox:focus-visible,
+body.is-desktop-macos .mac-checkbox-wrap input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--mac-accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15);
+}
+
+/* Light mode */
+body.is-desktop-macos:where([data-theme="light"], [data-theme="light"] *) input[type="checkbox"].mac-checkbox,
+body.is-desktop-macos:where([data-theme="light"], [data-theme="light"] *) .mac-checkbox-wrap input[type="checkbox"] {
+  border-color: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.04);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.06);
+}
+
+/* ── macOS segmented control ─────────────────────────────────── */
+/*
+  Usage:
+    <div class="mac-segmented-control">
+      <button class="mac-seg-btn mac-seg-active">Option A</button>
+      <button class="mac-seg-btn">Option B</button>
+      <button class="mac-seg-btn">Option C</button>
+    </div>
+
+  The container is a frosted pill; the active segment is a raised inner pill.
+*/
+body.is-desktop-macos .mac-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.07);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 1px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+body.is-desktop-macos .mac-seg-btn {
+  flex: 1;
+  padding: 3px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mac-secondary-label);
+  font-family: var(--mac-font);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s var(--mac-ease-spring-out),
+    color 0.15s var(--mac-ease-spring-out),
+    box-shadow 0.15s var(--mac-ease-interactive);
+  -webkit-app-region: no-drag;
+}
+
+body.is-desktop-macos .mac-seg-btn:hover {
+  color: var(--mac-label);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+body.is-desktop-macos .mac-seg-btn.mac-seg-active {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--mac-label);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.30),
+    0 0 0 0.5px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Light mode */
+body.is-desktop-macos:where([data-theme="light"], [data-theme="light"] *) .mac-segmented-control {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.10);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+body.is-desktop-macos:where([data-theme="light"], [data-theme="light"] *) .mac-seg-btn {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+body.is-desktop-macos:where([data-theme="light"], [data-theme="light"] *) .mac-seg-btn:hover {
+  color: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+body.is-desktop-macos:where([data-theme="light"], [data-theme="light"] *) .mac-seg-btn.mac-seg-active {
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.85);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 0 0 0.5px rgba(0, 0, 0, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* ============================================================ */

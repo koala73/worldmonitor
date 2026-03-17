@@ -5,13 +5,13 @@
   --settings-surface-inset: var(--surface);
   --settings-border: var(--overlay-medium);
   --settings-border-strong: var(--overlay-heavy);
-  --settings-text: #e8eaed;
-  --settings-text-secondary: #9aa0a6;
-  --settings-accent: var(--semantic-info);
-  --settings-green: #34d399;
-  --settings-yellow: #fbbf24;
+  --settings-text: rgba(255, 255, 255, 0.85);        /* Apple primary label */
+  --settings-text-secondary: rgba(255, 255, 255, 0.55); /* Apple secondary label */
+  --settings-accent: #0a84ff;                          /* Apple system blue */
+  --settings-green: #32d74b;                           /* Apple system green */
+  --settings-yellow: #ffd60a;                          /* Apple system yellow */
   --settings-red: var(--semantic-critical);
-  --settings-blue: #60a5fa;
+  --settings-blue: #0a84ff;                            /* Apple system blue */
   --font-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
 
   height: 100vh;
@@ -55,7 +55,7 @@
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 8px;
-  background: rgba(96, 165, 250, 0.12);
+  background: rgba(10, 132, 255, 0.15);
   color: var(--settings-blue);
   letter-spacing: 0.03em;
 }
@@ -71,10 +71,12 @@
 .settings-sidebar {
   width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid var(--settings-border);
+  border-right: 0.5px solid var(--settings-border);
   display: flex;
   flex-direction: column;
   background: var(--settings-bg);
+  /* Subtle inner-right edge highlight — mirrors macOS sidebar chrome */
+  box-shadow: inset -0.5px 0 0 rgba(255, 255, 255, 0.04);
 }
 
 .settings-sidebar-search {
@@ -83,21 +85,22 @@
 
 .settings-sidebar-search input {
   width: 100%;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--settings-border);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
   color: var(--settings-text);
   padding: 7px 10px;
   font: inherit;
   font-size: 12px;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .settings-sidebar-search input:focus {
   outline: none;
   border-color: var(--settings-accent);
-  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.15);
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2);
 }
 
 .settings-sidebar-search input::placeholder {
@@ -136,20 +139,11 @@
 }
 
 .settings-nav-item.active {
-  background: rgba(96, 165, 250, 0.1);
-  color: var(--settings-text);
+  background: rgba(10, 132, 255, 0.18);
+  border: 0.5px solid rgba(10, 132, 255, 0.35);
+  color: var(--settings-accent);
   font-weight: 500;
-}
-
-.settings-nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-  background: var(--settings-accent);
+  box-shadow: inset 0 1px 0 rgba(10, 132, 255, 0.1);
 }
 
 .settings-nav-item svg {
@@ -308,12 +302,13 @@
 }
 
 .settings-feat {
-  border: 1px solid var(--settings-border);
-  border-radius: 8px;
+  border: 0.5px solid var(--settings-border);
+  border-radius: 10px;
   background: var(--settings-surface);
-  border-left: 3px solid var(--settings-border);
-  transition: border-color 0.2s;
+  border-left: 2.5px solid var(--settings-border);
+  transition: border-color 0.2s, box-shadow 0.2s;
   overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .settings-feat.ready { border-left-color: var(--settings-green); }
@@ -416,17 +411,17 @@
 
 .settings-feat-pill.ok {
   color: var(--settings-green);
-  background: rgba(52, 211, 153, 0.12);
+  background: rgba(50, 215, 75, 0.12);
 }
 
 .settings-feat-pill.warn {
   color: var(--settings-yellow);
-  background: rgba(251, 191, 36, 0.12);
+  background: rgba(255, 214, 10, 0.12);
 }
 
 .settings-feat-pill.staged {
   color: var(--settings-blue);
-  background: rgba(96, 165, 250, 0.12);
+  background: rgba(10, 132, 255, 0.15);
 }
 
 .settings-feat-chevron {
@@ -516,21 +511,22 @@
 .settings-secret-row input[data-secret],
 .settings-secret-row input[data-model-manual] {
   width: 100%;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--settings-border-strong);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
   color: var(--settings-text);
   padding: 7px 10px;
   font-size: 12px;
   font-family: var(--font-mono);
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .settings-secret-row input:focus {
   outline: none;
   border-color: var(--settings-accent);
-  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.25);
 }
 
 .settings-secret-row input::placeholder {
@@ -538,7 +534,7 @@
 }
 
 .settings-secret-row input.valid-staged {
-  border-color: rgba(52, 211, 153, 0.5);
+  border-color: rgba(50, 215, 75, 0.5);
 }
 
 .settings-secret-row input.invalid {
@@ -548,9 +544,9 @@
 .settings-secret-row select[data-model-select] {
   grid-area: input;
   width: 100%;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--settings-border-strong);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
   color: var(--settings-text);
   padding: 7px 10px;
   font-size: 12px;
@@ -559,7 +555,7 @@
   transition: border-color 0.15s;
   -webkit-appearance: none;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239aa0a6'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='rgba(255,255,255,0.4)'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 28px;
@@ -569,15 +565,15 @@
 .settings-secret-row select[data-model-select]:focus {
   outline: none;
   border-color: var(--settings-accent);
-  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.25);
 }
 
 .settings-secret-row select[data-model-select].valid-staged {
-  border-color: rgba(52, 211, 153, 0.5);
+  border-color: rgba(50, 215, 75, 0.5);
 }
 
 .settings-secret-row select[data-model-select] option {
-  background: #1e1e2e;
+  background: #1c1c1e;
   color: var(--settings-text);
 }
 
@@ -593,8 +589,8 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--settings-accent);
-  background: rgba(96, 165, 250, 0.1);
-  border: 1px solid rgba(96, 165, 250, 0.25);
+  background: rgba(10, 132, 255, 0.12);
+  border: 1px solid rgba(10, 132, 255, 0.3);
   border-radius: 4px;
   padding: 4px 10px;
   text-decoration: none;
@@ -603,7 +599,7 @@
 }
 
 .settings-secret-link:hover {
-  background: rgba(96, 165, 250, 0.2);
+  background: rgba(10, 132, 255, 0.25);
   border-color: var(--settings-accent);
 }
 
@@ -643,7 +639,7 @@
   font-size: 13px;
   font-weight: 600;
   padding: 8px 24px;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   min-width: 80px;
   text-align: center;
@@ -656,15 +652,16 @@
 }
 
 .settings-btn-secondary {
-  background: transparent;
-  border: 1px solid var(--settings-border-strong);
+  background: rgba(255, 255, 255, 0.06);
+  border: 0.5px solid rgba(255, 255, 255, 0.14);
   color: var(--settings-text-secondary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .settings-btn-secondary:hover {
-  background: var(--overlay-subtle);
+  background: rgba(255, 255, 255, 0.10);
   color: var(--settings-text);
-  border-color: var(--settings-text-secondary);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .settings-btn-primary {
@@ -855,9 +852,12 @@ tr.diag-err td { color: var(--settings-red); }
   text-align: center;
   padding: 18px 20px;
   margin-bottom: 16px;
-  border: 1px solid rgba(52, 211, 153, 0.15);
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(52, 211, 153, 0.04) 0%, transparent 100%);
+  border: 0.5px solid rgba(50, 215, 75, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(50, 215, 75, 0.05) 0%, transparent 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(50, 215, 75, 0.08),
+    0 2px 12px rgba(0, 0, 0, 0.25);
 }
 
 .wm-hero-title {
@@ -961,7 +961,7 @@ tr.diag-err td { color: var(--settings-red); }
 .wm-input:focus {
   outline: none;
   border-color: var(--settings-accent);
-  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.25);
 }
 
 .wm-input::placeholder {
@@ -997,12 +997,12 @@ tr.diag-err td { color: var(--settings-red); }
 
 .wm-badge.ok {
   color: var(--settings-green);
-  background: rgba(52, 211, 153, 0.12);
+  background: rgba(50, 215, 75, 0.12);
 }
 
 .wm-badge.warn {
   color: var(--settings-yellow);
-  background: rgba(251, 191, 36, 0.12);
+  background: rgba(255, 214, 10, 0.12);
 }
 
 .wm-register-row {
@@ -1050,7 +1050,7 @@ tr.diag-err td { color: var(--settings-red); }
 
 /* ── Search highlight ── */
 .settings-content mark {
-  background: rgba(251, 191, 36, 0.25);
+  background: rgba(255, 214, 10, 0.2);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;

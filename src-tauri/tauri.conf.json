@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "World Monitor",
   "mainBinaryName": "worldmonitor",
-  "version": "2.6.1",
+  "version": "2.5.25",
   "identifier": "com.bradleybond.worldmonitor",
   "build": {
     "beforeDevCommand": "npm run build:sidecar-sebuf && npm run dev",
@@ -23,15 +23,15 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "backgroundColor": [
-          28,
-          28,
-          30,
+          22,
+          22,
+          24,
           255
         ]
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https: http://127.0.0.1:* ws: wss:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:* https://worldmonitor.app https://tech.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self';"
+      "csp": "default-src 'self'; connect-src 'self' https: http://127.0.0.1:* ws: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' http://127.0.0.1:* https://worldmonitor.app https://tech.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self';"
     }
   },
   "bundle": {
@@ -44,7 +44,7 @@
       "appimage"
     ],
     "category": "Productivity",
-    "shortDescription": "World Monitor desktop app — real-time global intelligence (AGPL-3.0, based on World Monitor by Elie Habib)",
+    "shortDescription": "World Monitor desktop app — real-time global intelligence (AGPL-3.0)",
     "longDescription": "World Monitor is a free, open-source macOS desktop app for real-time global intelligence. Based on World Monitor by Elie Habib. Build with VITE_VARIANT=tech to package Tech Monitor branding and dataset defaults.",
     "icon": [
       "icons/32x32.png",

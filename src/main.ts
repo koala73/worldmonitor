@@ -163,7 +163,7 @@ import { initMetaTags } from '@/services/meta-tags';
 import { installRuntimeFetchPatch, installWebApiRedirect, isDesktopRuntime } from '@/services/runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { initAnalytics, trackApiKeysSnapshot } from '@/services/analytics';
-import { applyStoredTheme } from '@/utils/theme-manager';
+import { applyStoredTheme, watchSystemTheme } from '@/utils/theme-manager';
 import { SITE_VARIANT } from '@/config/variant';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 
@@ -190,6 +190,8 @@ loadDesktopSecrets().then(async () => {
 
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
+// Follow OS dark/light changes when the user has no explicit stored preference
+watchSystemTheme();
 
 // Mark body with macOS-native class so CSS design system activates on desktop
 if (isDesktopRuntime()) {

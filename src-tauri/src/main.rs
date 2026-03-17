@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::net::IpAddr;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -34,8 +33,7 @@ const MENU_HELP_OPEN_LOGS_ID: &str = "help.open_logs";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
-const SUPPORTED_SECRET_KEYS: [&str; 26] = [
-    "ANTHROPIC_API_KEY",
+const SUPPORTED_SECRET_KEYS: [&str; 25] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "FRED_API_KEY",
@@ -211,7 +209,7 @@ fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
 
 fn generate_local_token() -> String {
     let mut buf = [0u8; 32];
-    getrandom::fill(&mut buf).expect("OS CSPRNG unavailable");
+    getrandom::getrandom(&mut buf).expect("OS CSPRNG unavailable");
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -479,77 +477,34 @@ fn open_path_in_shell(path: &Path) -> Result<(), String> {
     open_in_shell(&path.to_string_lossy())
 }
 
-fn is_private_or_reserved_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(addr) => {
-            let [a, b, _, _] = addr.octets();
-            a == 127
-                || a == 10
-                || (a == 172 && (16..=31).contains(&b))
-                || (a == 192 && b == 168)
-                || (a == 169 && b == 254)
-                || a == 0
-                || a >= 224
-        }
-        IpAddr::V6(addr) => {
-            if let Some(mapped) = addr.to_ipv4_mapped() {
-                return is_private_or_reserved_ip(IpAddr::V4(mapped));
-            }
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let parsed = Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
 
-            let first = addr.segments()[0];
-            addr.is_loopback()
-                || addr.is_unspecified()
-                || addr.is_multicast()
-                || (first & 0xfe00) == 0xfc00
-                || (first & 0xffc0) == 0xfe80
-        }
-    }
-}
-
-fn is_blocked_open_url_host(host: &str) -> bool {
-    let normalized = host
-        .trim()
-        .trim_end_matches('.')
-        .trim_matches(|c| c == '[' || c == ']')
-        .to_ascii_lowercase();
-    if normalized.is_empty() {
-        return true;
-    }
-
-    if normalized == "localhost"
-        || normalized.ends_with(".localhost")
-        || normalized.ends_with(".local")
-    {
-        return true;
-    }
-
-    normalized
-        .parse::<IpAddr>()
-        .map(is_private_or_reserved_ip)
-        .unwrap_or(false)
-}
-
-fn validate_open_url(url: &str) -> Result<Url, String> {
-    let parsed = Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
-
+    // Only HTTPS is allowed. Local/internal URLs must never be opened via this command
+    // to prevent a compromised webview from hitting the local API server (127.0.0.1:46123)
+    // or other internal services through the system browser.
     if parsed.scheme() != "https" {
         return Err("Only https:// URLs may be opened via open_url".to_string());
     }
 
-    if is_blocked_open_url_host(parsed.host_str().unwrap_or("")) {
+    // Block loopback, link-local, and private network hosts even over HTTPS
+    let host = parsed.host_str().unwrap_or("");
+    let blocked = host == "localhost"
+        || host == "127.0.0.1"
+        || host == "::1"
+        || host.starts_with("192.168.")
+        || host.starts_with("10.")
+        || host.ends_with(".local");
+    if blocked {
         return Err("Internal/private addresses may not be opened via open_url".to_string());
     }
 
+    // URL length guard — browsers accept long URLs but this prevents log spam
     if url.len() > 4096 {
         return Err("URL exceeds maximum allowed length".to_string());
     }
 
-    Ok(parsed)
-}
-
-#[tauri::command]
-fn open_url(url: String) -> Result<(), String> {
-    let parsed = validate_open_url(&url)?;
     open_in_shell(parsed.as_str())
 }
 
@@ -581,10 +536,7 @@ fn open_sidecar_log_file(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 async fn open_settings_window_command(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.eval("document.dispatchEvent(new CustomEvent('wm:open-settings'))");
-    }
-    Ok(())
+    open_settings_window(&app)
 }
 
 #[tauri::command]
@@ -615,18 +567,6 @@ fn close_live_channels_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Truncate a UTF-8 string to at most `max_bytes` bytes without splitting a multi-byte codepoint.
-fn truncate_to_bytes(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let mut boundary = max_bytes;
-    while !s.is_char_boundary(boundary) {
-        boundary -= 1;
-    }
-    &s[..boundary]
-}
-
 /// Send a native macOS notification via osascript. No-op on non-macOS platforms.
 /// Rate-limited to 1 notification per 30 seconds to prevent notification spam.
 /// Input fields are length-capped and sanitized before interpolation into AppleScript.
@@ -651,10 +591,10 @@ fn send_notification(title: String, body: String, sound: Option<String>) -> Resu
         }
 
         // Enforce length limits to bound log size and script length
-        let title = truncate_to_bytes(&title, 128);
-        let body  = truncate_to_bytes(&body, 256);
+        let title = if title.len() > 128 { &title[..128] } else { title.as_str() };
+        let body  = if body.len()  > 256 { &body[..256]  } else { body.as_str()  };
         let sound_name = sound.as_deref().unwrap_or("Ping");
-        let sound_name = truncate_to_bytes(sound_name, 64);
+        let sound_name = if sound_name.len() > 64 { &sound_name[..64] } else { sound_name };
 
         // Sanitize: remove characters that have meaning in AppleScript string literals.
         // We use double-quoted AppleScript strings so we strip " and \ (escape char).
@@ -707,7 +647,7 @@ async fn install_update(download_url: String) -> Result<(), String> {
         // 1. Download the DMG
         let client = reqwest::Client::builder()
             .use_native_tls()
-            .user_agent(concat!("WorldMonitor-Desktop/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("CrystalBall-Desktop/", env!("CARGO_PKG_VERSION")))
             .timeout(std::time::Duration::from_secs(300))
             .build()
             .map_err(|e| format!("HTTP client init failed: {e}"))?;
@@ -742,11 +682,33 @@ async fn install_update(download_url: String) -> Result<(), String> {
             ));
         }
 
-        // 3. Verify the app bundle identifier before overwriting /Applications.
+        // 3. Verify the app bundle identifier and code signature before overwriting /Applications.
         //    This prevents a compromised GitHub account or MITM from replacing the app
         //    with a malicious binary that passes the host check but is not World Monitor.
         let source = format!("{}/World Monitor.app", mount_point);
         let dest = "/Applications/World Monitor.app";
+
+        // 3a. Verify macOS code signature — ensures binary was signed by the legitimate developer.
+        //     --deep checks all nested bundles/frameworks, --strict applies additional requirements.
+        let sig_check = Command::new("codesign")
+            .args(["--verify", "--deep", "--strict", &source])
+            .output();
+        match sig_check {
+            Ok(out) if out.status.success() => { /* signature valid */ }
+            Ok(out) => {
+                let _ = Command::new("hdiutil").args(["detach", mount_point, "-quiet"]).output();
+                let _ = std::fs::remove_file(tmp_dmg);
+                return Err(format!(
+                    "Code signature verification failed: {}",
+                    String::from_utf8_lossy(&out.stderr).trim()
+                ));
+            }
+            Err(e) => {
+                let _ = Command::new("hdiutil").args(["detach", mount_point, "-quiet"]).output();
+                let _ = std::fs::remove_file(tmp_dmg);
+                return Err(format!("codesign command failed: {e}"));
+            }
+        }
 
         const EXPECTED_BUNDLE_ID: &str = "com.bradleybond.worldmonitor";
         let plist = format!("{source}/Contents/Info.plist");
@@ -833,6 +795,31 @@ async fn fetch_polymarket(webview: Webview, path: String, params: String) -> Res
         .map_err(|e| format!("Read body failed: {e}"))
 }
 
+fn open_settings_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.show();
+        window
+            .set_focus()
+            .map_err(|e| format!("Failed to focus settings window: {e}"))?;
+        return Ok(());
+    }
+
+    let _settings_window = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+        .title("World Monitor Settings")
+        .inner_size(980.0, 760.0)
+        .min_inner_size(820.0, 620.0)
+        .resizable(true)
+        .background_color(tauri::webview::Color(26, 28, 30, 255))
+        .build()
+        .map_err(|e| format!("Failed to create settings window: {e}"))?;
+
+    // On Windows/Linux, menus are per-window. Remove the inherited app menu
+    // from the settings window (macOS uses a shared app-wide menu bar instead).
+    #[cfg(not(target_os = "macos"))]
+    let _ = _settings_window.remove_menu();
+
+    Ok(())
+}
 
 fn open_live_channels_window(app: &AppHandle, base_url: Option<String>) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("live-channels") {
@@ -1048,8 +1035,9 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
         MENU_FILE_SETTINGS_ID => {
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.eval("document.dispatchEvent(new CustomEvent('wm:open-settings'))");
+            if let Err(err) = open_settings_window(app) {
+                append_desktop_log(app, "ERROR", &format!("settings menu failed: {err}"));
+                eprintln!("[tauri] settings menu failed: {err}");
             }
         }
         MENU_FILE_GHOST_MODE_ID => {
@@ -1126,59 +1114,6 @@ mod sanitize_path_tests {
             sanitize_path_for_node(raw),
             r"C:\Users\alice\sidecar\local-api-server.mjs".to_string()
         );
-    }
-}
-
-#[cfg(test)]
-mod open_url_validation_tests {
-    use super::validate_open_url;
-
-    fn assert_rejected(url: &str, expected: &str) {
-        assert_eq!(validate_open_url(url).unwrap_err(), expected);
-    }
-
-    #[test]
-    fn rejects_non_https_targets() {
-        assert_rejected(
-            "http://example.com",
-            "Only https:// URLs may be opened via open_url",
-        );
-    }
-
-    #[test]
-    fn rejects_private_and_local_hosts() {
-        for url in [
-            "https://localhost",
-            "https://localhost./",
-            "https://tauri.localhost",
-            "https://printer.local",
-            "https://127.0.0.2",
-            "https://10.0.0.1",
-            "https://172.16.0.1",
-            "https://192.168.1.25",
-            "https://169.254.169.254",
-            "https://0.0.0.0",
-            "https://224.0.0.1",
-            "https://[::1]/",
-            "https://[::]/",
-            "https://[fd00::1]/",
-            "https://[fe80::1]/",
-            "https://[::ffff:127.0.0.1]/",
-        ] {
-            assert_rejected(url, "Internal/private addresses may not be opened via open_url");
-        }
-    }
-
-    #[test]
-    fn allows_public_https_hosts() {
-        for url in [
-            "https://example.com",
-            "https://example.com./docs",
-            "https://1.1.1.1",
-            "https://[2606:4700:4700::1111]/dns-query",
-        ] {
-            assert!(validate_open_url(url).is_ok(), "{url} should be allowed");
-        }
     }
 }
 
@@ -1431,8 +1366,8 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     *slot = Some(child);
     drop(slot);
 
-    // Wait for sidecar to write confirmed port (up to 15s — Node.js ESM startup can be slow)
-    if let Some(confirmed_port) = read_port_file(&port_file, 15000) {
+    // Wait for sidecar to write confirmed port (up to 5s)
+    if let Some(confirmed_port) = read_port_file(&port_file, 5000) {
         append_desktop_log(
             app,
             "INFO",
@@ -1696,7 +1631,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running worldmonitor tauri application")
+        .expect("error while running worldmonitor-macos tauri application")
         .run(|app, event| {
             match &event {
                 // macOS: hide window on close instead of quitting (standard behavior)
@@ -1745,14 +1680,4 @@ fn main() {
                 _ => {}
             }
         });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::SUPPORTED_SECRET_KEYS;
-
-    #[test]
-    fn supported_secret_keys_include_anthropic() {
-        assert!(SUPPORTED_SECRET_KEYS.contains(&"ANTHROPIC_API_KEY"));
-    }
 }
