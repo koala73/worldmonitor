@@ -7,6 +7,14 @@ const WINDOW_READY_TIMEOUT_MS = 4000;
 const WINDOW_READY_POLL_MS = 100;
 const AUTO_PROMPT_DELAY_MS = 450;
 const MIN_OVERLAY_VISIBLE_MS = 900;
+const UNLOCK_SCAN_SETTLE_MS = 720;
+const UNLOCK_PANEL_SETTLE_MS = 420;
+const UNLOCK_SEAL_BREAK_MS = 240;
+const UNLOCK_PANEL_WITHDRAW_MS = 760;
+const UNLOCK_DOOR_OPEN_MS = 1680;
+const UNLOCK_EXIT_FADE_MS = 320;
+const UNLOCK_SOUND_SEAL_TRANSIENT_MS = 180;
+const UNLOCK_SOUND_DOOR_SWELL_MS = 1480;
 const AUTH_REASON = 'Unlock World Monitor';
 
 function sleep(ms: number): Promise<void> {
@@ -16,12 +24,16 @@ function sleep(ms: number): Promise<void> {
 type OverlayElements = {
   container: HTMLDivElement;
   stage: HTMLDivElement;
+  portalGlow: HTMLDivElement;
   message: HTMLParagraphElement;
   button: HTMLButtonElement;
   quit: HTMLButtonElement;
   panel: HTMLDivElement;
   title: HTMLHeadingElement;
   statusPill: HTMLDivElement;
+  biometricHero: HTMLDivElement;
+  biometricCaption: HTMLDivElement;
+  scanLine: HTMLDivElement;
   leftDoor: HTMLDivElement;
   rightDoor: HTMLDivElement;
   centerBeam: HTMLDivElement;
@@ -65,12 +77,16 @@ async function waitForInteractiveWindow(): Promise<boolean> {
 function ensureOverlay(): {
   container: HTMLDivElement;
   stage: HTMLDivElement;
+  portalGlow: HTMLDivElement;
   message: HTMLParagraphElement;
   button: HTMLButtonElement;
   quit: HTMLButtonElement;
   panel: HTMLDivElement;
   title: HTMLHeadingElement;
   statusPill: HTMLDivElement;
+  biometricHero: HTMLDivElement;
+  biometricCaption: HTMLDivElement;
+  scanLine: HTMLDivElement;
   leftDoor: HTMLDivElement;
   rightDoor: HTMLDivElement;
   centerBeam: HTMLDivElement;
@@ -168,6 +184,26 @@ function ensureOverlay(): {
       88% { opacity: 0.85; }
       100% { transform: translateY(120%); opacity: 0; }
     }
+
+    @keyframes wm-biometry-fingerprint-verify {
+      0% { transform: translateY(-104%) scaleX(0.86); opacity: 0; }
+      14% { opacity: 0.96; }
+      48% { transform: translateY(-10%) scaleX(1); opacity: 1; }
+      72% { transform: translateY(18%) scaleX(1.02); opacity: 0.98; }
+      100% { transform: translateY(104%) scaleX(0.92); opacity: 0; }
+    }
+
+    @keyframes wm-biometry-success-bloom {
+      0% { transform: scale(1); box-shadow: 0 20px 40px rgba(0,0,0,0.18); }
+      42% { transform: scale(1.05); box-shadow: 0 30px 58px rgba(0,0,0,0.26); }
+      100% { transform: scale(1.02); box-shadow: 0 26px 52px rgba(0,0,0,0.22); }
+    }
+
+    @keyframes wm-biometry-seal-break {
+      0% { transform: translateX(-50%) scaleY(0.82); opacity: 0.3; box-shadow: 0 0 18px rgba(255,252,245,0.26); }
+      40% { transform: translateX(-50%) scaleY(1.06); opacity: 0.96; box-shadow: 0 0 56px rgba(255,248,231,0.74); }
+      100% { transform: translateX(-50%) scaleY(1); opacity: 0.9; box-shadow: 0 0 42px rgba(255,248,231,0.42); }
+    }
   `;
   container.appendChild(overlayStyle);
 
@@ -206,6 +242,137 @@ function ensureOverlay(): {
       radial-gradient(circle, rgba(255,255,255,0.18), rgba(129, 185, 255, 0.08) 24%, rgba(255,255,255,0.02) 46%, rgba(0,0,0,0) 72%)
     `,
     filter: 'blur(20px)',
+    opacity: '0.72',
+    transition: 'opacity 900ms ease, filter 1200ms ease, transform 1200ms ease',
+    pointerEvents: 'none',
+  } as CSSStyleDeclaration);
+
+  const airlockDepth = document.createElement('div');
+  airlockDepth.id = 'worldmonitor-airlock-depth';
+  Object.assign(airlockDepth.style, {
+    position: 'absolute',
+    left: '50%',
+    top: '52%',
+    width: '42%',
+    height: '64%',
+    transform: 'translate(-50%, -50%)',
+    borderRadius: '34px',
+    background: `
+      radial-gradient(circle at 50% 18%, rgba(255,255,255,0.20), rgba(255,255,255,0) 22%),
+      linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.00) 20%, rgba(0,0,0,0.22) 100%),
+      linear-gradient(180deg, rgba(28,31,35,0.92), rgba(10,11,14,0.98) 46%, rgba(2,3,4,1))
+    `,
+    boxShadow: `
+      inset 0 24px 64px rgba(255,255,255,0.06),
+      inset 0 -40px 72px rgba(0,0,0,0.62),
+      0 30px 70px rgba(0,0,0,0.28)
+    `,
+    overflow: 'hidden',
+    pointerEvents: 'none',
+  } as CSSStyleDeclaration);
+
+  const airlockDepthGrid = document.createElement('div');
+  Object.assign(airlockDepthGrid.style, {
+    position: 'absolute',
+    inset: '8%',
+    borderRadius: '26px',
+    background: `
+      linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)
+    `,
+    backgroundSize: '34px 34px, 34px 34px',
+    maskImage: 'linear-gradient(180deg, rgba(0,0,0,0.95), rgba(0,0,0,0.26) 82%, transparent)',
+    opacity: '0.30',
+  } as CSSStyleDeclaration);
+
+  const airlockDepthCore = document.createElement('div');
+  Object.assign(airlockDepthCore.style, {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: '58%',
+    height: '68%',
+    transform: 'translate(-50%, -50%)',
+    borderRadius: '28px',
+    background: `
+      radial-gradient(circle at 50% 28%, rgba(255,255,255,0.14), rgba(255,255,255,0.02) 34%, rgba(0,0,0,0) 66%),
+      conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.05), rgba(255,255,255,0.01), rgba(255,255,255,0.06), rgba(255,255,255,0.02), rgba(255,255,255,0.05)),
+      linear-gradient(180deg, rgba(42,45,50,0.72), rgba(13,14,17,0.94))
+    `,
+    border: '1px solid rgba(255,255,255,0.08)',
+    boxShadow: `
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      inset 0 -18px 32px rgba(0,0,0,0.54)
+    `,
+  } as CSSStyleDeclaration);
+
+  airlockDepth.appendChild(airlockDepthGrid);
+  airlockDepth.appendChild(airlockDepthCore);
+
+  const apertureRing = document.createElement('div');
+  apertureRing.id = 'worldmonitor-aperture-ring';
+  Object.assign(apertureRing.style, {
+    position: 'absolute',
+    left: '50%',
+    top: '52%',
+    width: '50%',
+    height: '72%',
+    transform: 'translate(-50%, -50%)',
+    borderRadius: '38px',
+    background: `
+      linear-gradient(180deg, rgba(255,255,255,0.20), rgba(255,255,255,0.00) 16%, rgba(0,0,0,0.24) 100%),
+      conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.10), rgba(120,126,136,0.04), rgba(255,255,255,0.16), rgba(82,88,96,0.04), rgba(255,255,255,0.10))
+    `,
+    border: '1px solid rgba(255,255,255,0.14)',
+    boxShadow: `
+      inset 0 1px 0 rgba(255,255,255,0.24),
+      inset 0 0 0 10px rgba(11,12,14,0.54),
+      0 20px 56px rgba(0,0,0,0.24)
+    `,
+    pointerEvents: 'none',
+  } as CSSStyleDeclaration);
+
+  const leftTrack = document.createElement('div');
+  leftTrack.id = 'worldmonitor-door-track-left';
+  Object.assign(leftTrack.style, {
+    position: 'absolute',
+    top: '12%',
+    left: 'calc(50% - 44px)',
+    width: '24px',
+    height: '76%',
+    borderRadius: '999px',
+    background: `
+      linear-gradient(90deg, rgba(255,255,255,0.10), rgba(255,255,255,0.00) 18%, rgba(0,0,0,0.26) 100%),
+      conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.16), rgba(107,113,121,0.08), rgba(255,255,255,0.14), rgba(72,77,84,0.08), rgba(255,255,255,0.16))
+    `,
+    border: '1px solid rgba(255,255,255,0.12)',
+    boxShadow: `
+      inset 0 1px 0 rgba(255,255,255,0.20),
+      inset -8px 0 10px rgba(0,0,0,0.22),
+      0 0 18px rgba(255,255,255,0.06)
+    `,
+    pointerEvents: 'none',
+  } as CSSStyleDeclaration);
+
+  const rightTrack = document.createElement('div');
+  rightTrack.id = 'worldmonitor-door-track-right';
+  Object.assign(rightTrack.style, {
+    position: 'absolute',
+    top: '12%',
+    right: 'calc(50% - 44px)',
+    width: '24px',
+    height: '76%',
+    borderRadius: '999px',
+    background: `
+      linear-gradient(270deg, rgba(255,255,255,0.10), rgba(255,255,255,0.00) 18%, rgba(0,0,0,0.26) 100%),
+      conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.16), rgba(107,113,121,0.08), rgba(255,255,255,0.14), rgba(72,77,84,0.08), rgba(255,255,255,0.16))
+    `,
+    border: '1px solid rgba(255,255,255,0.12)',
+    boxShadow: `
+      inset 0 1px 0 rgba(255,255,255,0.20),
+      inset 8px 0 10px rgba(0,0,0,0.22),
+      0 0 18px rgba(255,255,255,0.06)
+    `,
     pointerEvents: 'none',
   } as CSSStyleDeclaration);
 
@@ -353,10 +520,11 @@ function ensureOverlay(): {
     width: '50%',
     height: '100%',
     transform: 'translateX(0)',
-    transition: 'transform 900ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 900ms ease',
+    transition: `transform ${UNLOCK_DOOR_OPEN_MS}ms cubic-bezier(0.16, 0.84, 0.18, 1), opacity ${UNLOCK_DOOR_OPEN_MS}ms ease`,
     background: `
       linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.06) 10%, rgba(0,0,0,0) 22%),
       linear-gradient(90deg, rgba(255,255,255,0.10), rgba(255,255,255,0) 20%, rgba(255,255,255,0.05) 74%, rgba(0,0,0,0.12)),
+      conic-gradient(from 180deg at 58% 50%, rgba(255,255,255,0.14), rgba(255,255,255,0.02), rgba(255,255,255,0.10), rgba(0,0,0,0.02), rgba(255,255,255,0.14)),
       repeating-linear-gradient(
         90deg,
         rgba(255,255,255,0.032) 0 1px,
@@ -381,10 +549,11 @@ function ensureOverlay(): {
     width: '50%',
     height: '100%',
     transform: 'translateX(0)',
-    transition: 'transform 900ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 900ms ease',
+    transition: `transform ${UNLOCK_DOOR_OPEN_MS}ms cubic-bezier(0.16, 0.84, 0.18, 1), opacity ${UNLOCK_DOOR_OPEN_MS}ms ease`,
     background: `
       linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0.06) 10%, rgba(0,0,0,0) 22%),
       linear-gradient(270deg, rgba(255,255,255,0.10), rgba(255,255,255,0) 20%, rgba(255,255,255,0.05) 74%, rgba(0,0,0,0.12)),
+      conic-gradient(from 180deg at 42% 50%, rgba(255,255,255,0.14), rgba(255,255,255,0.02), rgba(255,255,255,0.10), rgba(0,0,0,0.02), rgba(255,255,255,0.14)),
       repeating-linear-gradient(
         90deg,
         rgba(255,255,255,0.032) 0 1px,
@@ -409,7 +578,7 @@ function ensureOverlay(): {
     height: '100%',
     transform: 'translateX(-50%)',
     opacity: '0.8',
-    transition: 'opacity 700ms ease, box-shadow 700ms ease',
+    transition: `opacity ${UNLOCK_DOOR_OPEN_MS}ms ease, box-shadow ${UNLOCK_DOOR_OPEN_MS}ms ease`,
     background: 'linear-gradient(180deg, rgba(255,255,255,0), rgba(255,252,245,0.95), rgba(255,255,255,0))',
     boxShadow: '0 0 24px rgba(255,252,245,0.34)',
     animation: 'wm-biometry-beam 3s ease-in-out infinite',
@@ -426,6 +595,7 @@ function ensureOverlay(): {
     borderRadius: '28px',
     background: `
       linear-gradient(180deg, rgba(255,255,255,0.26), rgba(255,255,255,0.06) 10%, rgba(255,255,255,0) 20%),
+      conic-gradient(from 180deg at 50% 0%, rgba(255,255,255,0.12), rgba(255,255,255,0.02), rgba(255,255,255,0.10), rgba(255,255,255,0.03), rgba(255,255,255,0.12)),
       linear-gradient(180deg, rgba(164,169,175,0.38), rgba(58,61,66,0.76) 22%, rgba(27,29,33,0.88))
     `,
     border: '1px solid rgba(255,255,255,0.20)',
@@ -435,7 +605,7 @@ function ensureOverlay(): {
       inset 0 -12px 18px rgba(0,0,0,0.16)
     `,
     backdropFilter: 'blur(14px)',
-    transition: 'transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 700ms ease',
+    transition: 'transform 1100ms cubic-bezier(0.18, 0.8, 0.2, 1), opacity 1100ms ease, filter 1100ms ease',
     animation: 'wm-biometry-float 5.8s ease-in-out infinite',
   } as CSSStyleDeclaration);
 
@@ -700,8 +870,10 @@ function ensureOverlay(): {
   panel.appendChild(message);
   panel.appendChild(telemetry);
   panel.appendChild(buttons);
-  stage.appendChild(portalGlow);
   stage.appendChild(starfield);
+  stage.appendChild(airlockDepth);
+  stage.appendChild(portalGlow);
+  stage.appendChild(apertureRing);
   stage.appendChild(ambientGrid);
   stage.appendChild(deckReflection);
   stage.appendChild(lightSweep);
@@ -711,6 +883,8 @@ function ensureOverlay(): {
   stage.appendChild(frameLabel);
   stage.appendChild(leftDoor);
   stage.appendChild(rightDoor);
+  stage.appendChild(leftTrack);
+  stage.appendChild(rightTrack);
   stage.appendChild(centerBeam);
   stage.appendChild(panel);
   container.appendChild(stage);
@@ -718,12 +892,16 @@ function ensureOverlay(): {
   return {
     container,
     stage,
+    portalGlow,
     message,
     button,
     quit,
     panel,
     title,
     statusPill,
+    biometricHero,
+    biometricCaption,
+    scanLine,
     leftDoor,
     rightDoor,
     centerBeam,
@@ -745,68 +923,245 @@ function playUnlockSound(): void {
   }
 
   const now = ctx.currentTime;
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.setValueAtTime(-22, now);
+  compressor.knee.setValueAtTime(18, now);
+  compressor.ratio.setValueAtTime(2.6, now);
+  compressor.attack.setValueAtTime(0.003, now);
+  compressor.release.setValueAtTime(0.18, now);
+
+  const convolver = ctx.createConvolver();
+  const impulseSeconds = 1.8;
+  const impulse = ctx.createBuffer(2, Math.floor(ctx.sampleRate * impulseSeconds), ctx.sampleRate);
+  for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+    const impulseData = impulse.getChannelData(channel);
+    for (let i = 0; i < impulseData.length; i += 1) {
+      const decay = Math.pow(1 - i / impulseData.length, 2.4);
+      impulseData[i] = (Math.random() * 2 - 1) * decay * (channel === 0 ? 0.75 : 0.62);
+    }
+  }
+  convolver.buffer = impulse;
+
   const master = ctx.createGain();
   master.gain.setValueAtTime(0.0001, now);
-  master.gain.exponentialRampToValueAtTime(0.32, now + 0.06);
-  master.gain.exponentialRampToValueAtTime(0.0001, now + 1.35);
-  master.connect(ctx.destination);
+  master.gain.exponentialRampToValueAtTime(0.34, now + 0.06);
+  master.gain.exponentialRampToValueAtTime(0.22, now + 0.52);
+  master.gain.exponentialRampToValueAtTime(
+    0.0001,
+    now + (UNLOCK_SOUND_DOOR_SWELL_MS + 520) / 1000,
+  );
+  const wet = ctx.createGain();
+  wet.gain.setValueAtTime(0.16, now);
+  const dry = ctx.createGain();
+  dry.gain.setValueAtTime(0.92, now);
+  master.connect(dry);
+  master.connect(convolver);
+  convolver.connect(wet);
+  dry.connect(compressor);
+  wet.connect(compressor);
+  compressor.connect(ctx.destination);
 
   const notes = [
-    { freq: 164.81, start: 0.00, duration: 0.22, gain: 0.18 },
-    { freq: 246.94, start: 0.12, duration: 0.25, gain: 0.12 },
-    { freq: 392.00, start: 0.28, duration: 0.65, gain: 0.08 },
-    { freq: 587.33, start: 0.34, duration: 0.52, gain: 0.05 },
+    { freq: 164.81, start: 0.00, duration: 0.28, gain: 0.16, type: 'triangle' },
+    { freq: 220.00, start: 0.08, duration: 0.36, gain: 0.11, type: 'triangle' },
+    { freq: 329.63, start: 0.22, duration: 0.92, gain: 0.052, type: 'sine' },
+    { freq: 493.88, start: 0.38, duration: 0.84, gain: 0.03, type: 'sine' },
   ];
 
   for (const note of notes) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
+    const notePanner = ctx.createStereoPanner();
     const start = now + note.start;
     const end = start + note.duration;
-    osc.type = 'sawtooth';
+    osc.type = note.type as OscillatorType;
     osc.frequency.setValueAtTime(note.freq, start);
-    osc.frequency.exponentialRampToValueAtTime(note.freq * 1.08, end);
+    osc.frequency.exponentialRampToValueAtTime(note.freq * 1.04, end);
     gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(note.gain, start + 0.03);
+    gain.gain.exponentialRampToValueAtTime(note.gain, start + 0.04);
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    notePanner.pan.setValueAtTime(note.freq > 300 ? 0.18 : -0.12, start);
     osc.connect(gain);
-    gain.connect(master);
+    gain.connect(notePanner);
+    notePanner.connect(master);
     osc.start(start);
     osc.stop(end + 0.03);
   }
 
-  const noiseBuffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.8), ctx.sampleRate);
-  const data = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < data.length; i += 1) {
-    data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  const sealNoiseBuffer = ctx.createBuffer(
+    1,
+    Math.floor(ctx.sampleRate * (UNLOCK_SOUND_SEAL_TRANSIENT_MS / 1000)),
+    ctx.sampleRate,
+  );
+  const sealData = sealNoiseBuffer.getChannelData(0);
+  for (let i = 0; i < sealData.length; i += 1) {
+    sealData[i] = (Math.random() * 2 - 1) * (1 - i / sealData.length);
   }
-  const noise = ctx.createBufferSource();
-  noise.buffer = noiseBuffer;
-  const noiseFilter = ctx.createBiquadFilter();
-  noiseFilter.type = 'bandpass';
-  noiseFilter.frequency.setValueAtTime(980, now);
-  noiseFilter.Q.setValueAtTime(0.5, now);
-  const noiseGain = ctx.createGain();
-  noiseGain.gain.setValueAtTime(0.0001, now);
-  noiseGain.gain.exponentialRampToValueAtTime(0.09, now + 0.08);
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
-  noise.connect(noiseFilter);
-  noiseFilter.connect(noiseGain);
-  noiseGain.connect(master);
-  noise.start(now);
-  noise.stop(now + 0.82);
+  const sealNoise = ctx.createBufferSource();
+  sealNoise.buffer = sealNoiseBuffer;
+  const sealNoiseFilter = ctx.createBiquadFilter();
+  sealNoiseFilter.type = 'highpass';
+  sealNoiseFilter.frequency.setValueAtTime(1400, now);
+  sealNoiseFilter.Q.setValueAtTime(0.8, now);
+  const sealNoiseGain = ctx.createGain();
+  sealNoiseGain.gain.setValueAtTime(0.0001, now);
+  sealNoiseGain.gain.exponentialRampToValueAtTime(0.12, now + 0.03);
+  sealNoiseGain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    now + UNLOCK_SOUND_SEAL_TRANSIENT_MS / 1000,
+  );
+  sealNoise.connect(sealNoiseFilter);
+  sealNoiseFilter.connect(sealNoiseGain);
+  sealNoiseGain.connect(master);
+  sealNoise.start(now);
+  sealNoise.stop(now + UNLOCK_SOUND_SEAL_TRANSIENT_MS / 1000);
 
-  void sleep(1500).then(() => ctx.close().catch(() => {}));
+  const doorNoiseBuffer = ctx.createBuffer(
+    1,
+    Math.floor(ctx.sampleRate * (UNLOCK_SOUND_DOOR_SWELL_MS / 1000)),
+    ctx.sampleRate,
+  );
+  const doorData = doorNoiseBuffer.getChannelData(0);
+  for (let i = 0; i < doorData.length; i += 1) {
+    doorData[i] = (Math.random() * 2 - 1) * 0.42;
+  }
+  const doorNoise = ctx.createBufferSource();
+  doorNoise.buffer = doorNoiseBuffer;
+  const doorRumbleFilter = ctx.createBiquadFilter();
+  doorRumbleFilter.type = 'lowpass';
+  doorRumbleFilter.frequency.setValueAtTime(180, now);
+  doorRumbleFilter.frequency.linearRampToValueAtTime(
+    320,
+    now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000,
+  );
+  doorRumbleFilter.Q.setValueAtTime(0.3, now);
+  const doorRumbleGain = ctx.createGain();
+  const doorRumblePanner = ctx.createStereoPanner();
+  doorRumbleGain.gain.setValueAtTime(0.0001, now + 0.08);
+  doorRumbleGain.gain.exponentialRampToValueAtTime(0.07, now + 0.28);
+  doorRumbleGain.gain.exponentialRampToValueAtTime(
+    0.028,
+    now + (UNLOCK_SOUND_DOOR_SWELL_MS - 260) / 1000,
+  );
+  doorRumbleGain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000,
+  );
+  doorNoise.connect(doorRumbleFilter);
+  doorRumbleFilter.connect(doorRumbleGain);
+  doorRumblePanner.pan.setValueAtTime(-0.08, now + 0.08);
+  doorRumblePanner.pan.linearRampToValueAtTime(0.12, now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000);
+  doorRumbleGain.connect(doorRumblePanner);
+  doorRumblePanner.connect(master);
+  doorNoise.start(now + 0.06);
+  doorNoise.stop(now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000);
+
+  const hydraulicNoiseBuffer = ctx.createBuffer(
+    1,
+    Math.floor(ctx.sampleRate * (UNLOCK_SOUND_DOOR_SWELL_MS / 1000)),
+    ctx.sampleRate,
+  );
+  const hydraulicData = hydraulicNoiseBuffer.getChannelData(0);
+  for (let i = 0; i < hydraulicData.length; i += 1) {
+    hydraulicData[i] = (Math.random() * 2 - 1) * 0.22;
+  }
+  const hydraulicNoise = ctx.createBufferSource();
+  hydraulicNoise.buffer = hydraulicNoiseBuffer;
+  const hydraulicNoiseFilter = ctx.createBiquadFilter();
+  hydraulicNoiseFilter.type = 'bandpass';
+  hydraulicNoiseFilter.frequency.setValueAtTime(520, now + 0.08);
+  hydraulicNoiseFilter.frequency.linearRampToValueAtTime(
+    420,
+    now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000,
+  );
+  hydraulicNoiseFilter.Q.setValueAtTime(0.7, now);
+  const hydraulicTailFilter = ctx.createBiquadFilter();
+  hydraulicTailFilter.type = 'highshelf';
+  hydraulicTailFilter.frequency.setValueAtTime(2600, now);
+  hydraulicTailFilter.gain.setValueAtTime(-6, now);
+  const hydraulicNoiseGain = ctx.createGain();
+  const hydraulicNoisePanner = ctx.createStereoPanner();
+  hydraulicNoiseGain.gain.setValueAtTime(0.0001, now + 0.08);
+  hydraulicNoiseGain.gain.exponentialRampToValueAtTime(0.038, now + 0.18);
+  hydraulicNoiseGain.gain.exponentialRampToValueAtTime(
+    0.022,
+    now + (UNLOCK_SOUND_DOOR_SWELL_MS - 180) / 1000,
+  );
+  hydraulicNoiseGain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000,
+  );
+  hydraulicNoise.connect(hydraulicNoiseFilter);
+  hydraulicNoiseFilter.connect(hydraulicTailFilter);
+  hydraulicTailFilter.connect(hydraulicNoiseGain);
+  hydraulicNoisePanner.pan.setValueAtTime(0.16, now + 0.08);
+  hydraulicNoisePanner.pan.linearRampToValueAtTime(-0.1, now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000);
+  hydraulicNoiseGain.connect(hydraulicNoisePanner);
+  hydraulicNoisePanner.connect(master);
+  hydraulicNoise.start(now + 0.08);
+  hydraulicNoise.stop(now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000);
+
+  const servoOsc = ctx.createOscillator();
+  servoOsc.type = 'sawtooth';
+  servoOsc.frequency.setValueAtTime(72, now + 0.1);
+  servoOsc.frequency.exponentialRampToValueAtTime(
+    104,
+    now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000,
+  );
+  const servoGain = ctx.createGain();
+  const servoPanner = ctx.createStereoPanner();
+  servoGain.gain.setValueAtTime(0.0001, now + 0.1);
+  servoGain.gain.exponentialRampToValueAtTime(0.036, now + 0.22);
+  servoGain.gain.exponentialRampToValueAtTime(0.0001, now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000);
+  servoPanner.pan.setValueAtTime(-0.22, now + 0.1);
+  servoPanner.pan.linearRampToValueAtTime(0.2, now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000);
+  servoOsc.connect(servoGain);
+  servoGain.connect(servoPanner);
+  servoPanner.connect(master);
+  servoOsc.start(now + 0.1);
+  servoOsc.stop(now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000 + 0.04);
+
+  const hydraulicPulseOsc = ctx.createOscillator();
+  hydraulicPulseOsc.type = 'triangle';
+  hydraulicPulseOsc.frequency.setValueAtTime(26, now + 0.08);
+  hydraulicPulseOsc.frequency.exponentialRampToValueAtTime(
+    42,
+    now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000,
+  );
+  const hydraulicPulseGain = ctx.createGain();
+  const hydraulicPulsePanner = ctx.createStereoPanner();
+  hydraulicPulseGain.gain.setValueAtTime(0.0001, now + 0.08);
+  hydraulicPulseGain.gain.linearRampToValueAtTime(0.02, now + 0.24);
+  hydraulicPulseGain.gain.linearRampToValueAtTime(0.01, now + 0.52);
+  hydraulicPulseGain.gain.linearRampToValueAtTime(0.018, now + 0.86);
+  hydraulicPulseGain.gain.linearRampToValueAtTime(0.008, now + 1.18);
+  hydraulicPulseGain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000,
+  );
+  hydraulicPulsePanner.pan.setValueAtTime(0.1, now + 0.08);
+  hydraulicPulsePanner.pan.linearRampToValueAtTime(-0.14, now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000);
+  hydraulicPulseOsc.connect(hydraulicPulseGain);
+  hydraulicPulseGain.connect(hydraulicPulsePanner);
+  hydraulicPulsePanner.connect(master);
+  hydraulicPulseOsc.start(now + 0.08);
+  hydraulicPulseOsc.stop(now + UNLOCK_SOUND_DOOR_SWELL_MS / 1000 + 0.04);
+
+  void sleep(2300).then(() => ctx.close().catch(() => {}));
 }
 
 async function playUnlockCelebration(overlay: OverlayElements): Promise<void> {
   const {
     container,
     stage,
+    portalGlow,
     panel,
     title,
     message,
     statusPill,
+    biometricHero,
+    biometricCaption,
+    scanLine,
     leftDoor,
     rightDoor,
     centerBeam,
@@ -820,18 +1175,34 @@ async function playUnlockCelebration(overlay: OverlayElements): Promise<void> {
   statusPill.style.color = '#fff8ea';
   statusPill.style.background = 'linear-gradient(180deg, rgba(244, 226, 181, 0.24), rgba(112, 91, 42, 0.16))';
   statusPill.style.borderColor = 'rgba(255, 240, 208, 0.24)';
-  title.textContent = 'Command Deck Unsealed';
-  message.textContent = 'Bulkheads disengaged. Welcome aboard.';
-  button.style.opacity = '0';
-  quit.style.opacity = '0';
+  title.textContent = 'Identity Match Confirmed';
+  message.textContent = 'Stand by while the inner airlock cycles open.';
+  biometricCaption.textContent = 'BIOMETRIC MATCH CONFIRMED';
+  biometricCaption.style.color = 'rgba(255, 244, 214, 0.94)';
+  button.style.opacity = '0.18';
+  quit.style.opacity = '0.18';
   button.style.pointerEvents = 'none';
   quit.style.pointerEvents = 'none';
-  panel.style.transform = 'translate(-50%, -50%) scale(0.94)';
-  panel.style.opacity = '0';
+  biometricHero.style.animation = 'wm-biometry-success-bloom 760ms cubic-bezier(0.22, 0.84, 0.22, 1) forwards';
+  biometricHero.style.borderColor = 'rgba(255, 243, 207, 0.34)';
+  biometricHero.style.boxShadow = `
+    inset 0 1px 0 rgba(255,255,255,0.26),
+    0 28px 64px rgba(0,0,0,0.24),
+    0 0 72px rgba(255,244,214,0.18)
+  `;
+  scanLine.style.animation = 'wm-biometry-fingerprint-verify 720ms cubic-bezier(0.2, 0.76, 0.2, 1) 2';
+  scanLine.style.height = '18px';
+  scanLine.style.left = '16px';
+  scanLine.style.right = '16px';
+  scanLine.style.background = 'linear-gradient(180deg, rgba(255,255,255,0), rgba(255, 243, 207, 0.98), rgba(255,255,255,0))';
+  scanLine.style.boxShadow = '0 0 30px rgba(255,243,207,0.34)';
   stage.style.boxShadow = `
     0 40px 160px rgba(0,0,0,0.62),
     inset 0 0 90px rgba(255, 244, 220, 0.14)
   `;
+  portalGlow.style.opacity = '0.92';
+  portalGlow.style.filter = 'blur(26px)';
+  portalGlow.style.transform = 'translate(-50%, -50%) scale(1.03)';
 
   const elapsed = Date.now() - visibleAt;
   if (elapsed < MIN_OVERLAY_VISIBLE_MS) {
@@ -840,15 +1211,56 @@ async function playUnlockCelebration(overlay: OverlayElements): Promise<void> {
 
   playUnlockSound();
 
+  await sleep(UNLOCK_SCAN_SETTLE_MS);
+  title.textContent = 'Command Deck Unsealed';
+  message.textContent = 'Bulkheads disengaged. Welcome aboard.';
+  panel.style.transform = 'translate(-50%, -50%) scale(0.985)';
+  stage.style.boxShadow = `
+    0 44px 172px rgba(0,0,0,0.62),
+    inset 0 0 120px rgba(255, 247, 231, 0.18)
+  `;
+  portalGlow.style.opacity = '1';
+  portalGlow.style.filter = 'blur(34px)';
+  portalGlow.style.transform = 'translate(-50%, -50%) scale(1.08)';
+
+  await sleep(UNLOCK_PANEL_SETTLE_MS);
+
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => {
-      leftDoor.style.transform = 'translateX(-112%) skewY(-2deg)';
-      leftDoor.style.opacity = '0.2';
-      rightDoor.style.transform = 'translateX(112%) skewY(2deg)';
-      rightDoor.style.opacity = '0.2';
+      centerBeam.style.animation = `wm-biometry-seal-break ${UNLOCK_SEAL_BREAK_MS}ms cubic-bezier(0.24, 0.84, 0.28, 1) forwards`;
       centerBeam.style.opacity = '1';
-      centerBeam.style.boxShadow = '0 0 60px rgba(255,248,231,0.68)';
-      window.setTimeout(resolve, 980);
+      centerBeam.style.boxShadow = '0 0 84px rgba(255,248,231,0.78)';
+      portalGlow.style.opacity = '1';
+      portalGlow.style.filter = 'blur(42px)';
+      portalGlow.style.transform = 'translate(-50%, -50%) scale(1.12)';
+      window.setTimeout(() => {
+        panel.style.transform = 'translate(-50%, -50%) translateY(-10px) scale(0.96)';
+        panel.style.opacity = '0';
+        panel.style.filter = 'blur(10px)';
+      }, UNLOCK_PANEL_WITHDRAW_MS);
+      window.setTimeout(() => {
+        leftDoor.style.transform = 'translateX(-108%)';
+        leftDoor.style.opacity = '0.34';
+        leftDoor.style.boxShadow = `
+          inset -38px 0 48px rgba(0,0,0,0.24),
+          inset 0 0 0 1px rgba(255,255,255,0.14),
+          inset 0 1px 0 rgba(255,255,255,0.20),
+          26px 0 42px rgba(255,248,231,0.14)
+        `;
+        rightDoor.style.transform = 'translateX(108%)';
+        rightDoor.style.opacity = '0.34';
+        rightDoor.style.boxShadow = `
+          inset 38px 0 48px rgba(0,0,0,0.24),
+          inset 0 0 0 1px rgba(255,255,255,0.14),
+          inset 0 1px 0 rgba(255,255,255,0.20),
+          -26px 0 42px rgba(255,248,231,0.14)
+        `;
+      }, UNLOCK_SEAL_BREAK_MS);
+      container.style.transition = `opacity ${UNLOCK_EXIT_FADE_MS}ms ease`;
+      window.setTimeout(() => {
+        container.style.opacity = '0';
+      }, UNLOCK_DOOR_OPEN_MS - UNLOCK_EXIT_FADE_MS);
+      window.setTimeout(resolve, UNLOCK_DOOR_OPEN_MS);
     });
   });
 

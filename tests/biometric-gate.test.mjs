@@ -93,6 +93,26 @@ describe('desktop biometric bootstrap', () => {
     );
     assert.match(
       gateSrc,
+      /worldmonitor-airlock-depth/,
+      'unlock stage should include a dedicated inner airlock chamber instead of a flat backdrop only',
+    );
+    assert.match(
+      gateSrc,
+      /worldmonitor-aperture-ring/,
+      'unlock stage should include a machined aperture ring to frame the inner bay',
+    );
+    assert.match(
+      gateSrc,
+      /worldmonitor-door-track-left/,
+      'unlock stage should include visible door track hardware on the left side',
+    );
+    assert.match(
+      gateSrc,
+      /worldmonitor-door-track-right/,
+      'unlock stage should include visible door track hardware on the right side',
+    );
+    assert.match(
+      gateSrc,
       /BIOMETRIC SIGNATURE VERIFIED/,
       'unlock overlay should include biometric access callouts instead of a generic modal body only',
     );
@@ -105,6 +125,96 @@ describe('desktop biometric bootstrap', () => {
       gateSrc,
       /MIN_OVERLAY_VISIBLE_MS\s*=\s*900/,
       'unlock overlay should remain visible long enough to be perceived before the success transition',
+    );
+    assert.match(
+      gateSrc,
+      /UNLOCK_SCAN_SETTLE_MS\s*=\s*720/,
+      'unlock success should pause long enough for a clean biometric verification beat before the doors move',
+    );
+    assert.match(
+      gateSrc,
+      /UNLOCK_DOOR_OPEN_MS\s*=\s*1680/,
+      'unlock doors should open on a slower, premium cadence instead of snapping away too fast',
+    );
+    assert.match(
+      gateSrc,
+      /UNLOCK_SEAL_BREAK_MS\s*=\s*240/,
+      'unlock motion should include a distinct seal-break beat before the full door travel',
+    );
+    assert.match(
+      gateSrc,
+      /UNLOCK_PANEL_WITHDRAW_MS\s*=\s*760/,
+      'the command panel should linger during the opening instead of disappearing the instant unlock starts',
+    );
+    assert.match(
+      gateSrc,
+      /wm-biometry-fingerprint-verify/,
+      'unlock sequence should drive a dedicated fingerprint verification animation',
+    );
+    assert.match(
+      gateSrc,
+      /wm-biometry-seal-break/,
+      'unlock sequence should include a dedicated seal-break lighting pass',
+    );
+    assert.match(
+      gateSrc,
+      /UNLOCK_SOUND_SEAL_TRANSIENT_MS\s*=\s*180/,
+      'unlock sound should include a short seal-break transient before the main door movement',
+    );
+    assert.match(
+      gateSrc,
+      /UNLOCK_SOUND_DOOR_SWELL_MS\s*=\s*1480/,
+      'unlock sound should sustain through the slower door travel instead of ending too early',
+    );
+    assert.match(
+      gateSrc,
+      /sealNoiseFilter/,
+      'unlock sound should have a distinct seal-break layer instead of one generic noise burst',
+    );
+    assert.match(
+      gateSrc,
+      /doorRumbleFilter/,
+      'unlock sound should include a separate low rumble for the door motion',
+    );
+    assert.match(
+      gateSrc,
+      /hydraulicNoiseFilter/,
+      'unlock sound should include a dedicated hydraulic pressure-release layer',
+    );
+    assert.match(
+      gateSrc,
+      /hydraulicPulseOsc/,
+      'unlock sound should include a pulsing hydraulic/mechanical actuator tone',
+    );
+    assert.match(
+      gateSrc,
+      /createDynamicsCompressor/,
+      'unlock sound should use mastering control so the layered effect feels polished instead of raw',
+    );
+    assert.match(
+      gateSrc,
+      /createConvolver/,
+      'unlock sound should include a designed reflective tail for a premium chamber feel',
+    );
+    assert.match(
+      gateSrc,
+      /createStereoPanner/,
+      'unlock sound should place mechanical motion across the sound field instead of dead center only',
+    );
+    assert.match(
+      gateSrc,
+      /hydraulicTailFilter/,
+      'unlock sound should include a separate hydraulic tail texture for the pressure release',
+    );
+    assert.match(
+      gateSrc,
+      /conic-gradient/,
+      'unlock surfaces should use more premium machined-light treatment instead of flat metal only',
+    );
+    assert.match(
+      gateSrc,
+      /BIOMETRIC MATCH CONFIRMED/,
+      'success state should read like a refined secure-facility verification screen',
     );
   });
 });
