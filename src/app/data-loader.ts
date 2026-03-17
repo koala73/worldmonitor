@@ -120,12 +120,16 @@ import { AlertCenterPanel } from '@/components/AlertCenterPanel';
 import { SpaceWeatherPanel } from '@/components/SpaceWeatherPanel';
 import { DiseaseOutbreakPanel } from '@/components/DiseaseOutbreakPanel';
 import { AirQualityPanel } from '@/components/AirQualityPanel';
+import { CommsHealthPanel } from '@/components/CommsHealthPanel';
+import { EconomicStressPanel } from '@/components/EconomicStressPanel';
 import { AirstrikesPanel } from '@/components/AirstrikesPanel';
 import { fetchAirstrikes } from '@/services/airstrikes';
 import { fetchThreatFoxIOCs, fetchOpenPhishFeed, fetchSpamhausDrop, fetchCisaKev } from '@/services/cyber-extra';
 import { fetchSpaceWeather } from '@/services/space-weather';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreak';
 import { fetchGlobalAirQuality } from '@/services/air-quality';
+import { fetchCommsHealth } from '@/services/comms-health';
+import { fetchEconomicStress } from '@/services/economic-stress';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { fetchVolcanoAlerts } from '@/services/volcano-alerts';
@@ -362,6 +366,8 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT === 'full') tasks.push({ name: 'spaceWeather', task: runGuarded('spaceWeather', () => this.loadSpaceWeather()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'airQuality', task: runGuarded('airQuality', () => this.loadAirQuality()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'commsHealth', task: runGuarded('commsHealth', () => this.loadCommsHealth()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'economicStress', task: runGuarded('economicStress', () => this.loadEconomicStress()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'gdacsAlerts', task: runGuarded('gdacsAlerts', () => this.loadGDACSAlerts()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'volcanoAlerts', task: runGuarded('volcanoAlerts', () => this.loadVolcanoAlerts()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'nwsAlerts', task: runGuarded('nwsAlerts', () => this.loadNWSAlerts()) });
@@ -1481,6 +1487,26 @@ export class DataLoaderManager implements AppModule {
     } catch (error) {
       console.warn('[air-quality] fetch failed', error);
       (this.ctx.panels['air-quality'] as AirQualityPanel)?.update([]);
+    }
+  }
+
+  async loadCommsHealth(): Promise<void> {
+    try {
+      const data = await fetchCommsHealth();
+      (this.ctx.panels['comms-health'] as CommsHealthPanel)?.update(data);
+    } catch (error) {
+      console.warn('[comms-health] fetch failed', error);
+      (this.ctx.panels['comms-health'] as CommsHealthPanel)?.update(null);
+    }
+  }
+
+  async loadEconomicStress(): Promise<void> {
+    try {
+      const data = await fetchEconomicStress();
+      (this.ctx.panels['economic-stress'] as EconomicStressPanel)?.update(data);
+    } catch (error) {
+      console.warn('[economic-stress] fetch failed', error);
+      (this.ctx.panels['economic-stress'] as EconomicStressPanel)?.update(null);
     }
   }
 

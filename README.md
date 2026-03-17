@@ -13,7 +13,7 @@
 [![Latest release](https://img.shields.io/github/v/release/bradleybond512/worldmonitor-macos?style=flat)](https://github.com/bradleybond512/worldmonitor-macos/releases/latest)
 
 <p align="center">
-  <strong>Download v2.5.25</strong>
+  <strong>Download v2.7.0</strong>
 </p>
 <p align="center">
   <a href="https://github.com/bradleybond512/worldmonitor-macos/releases/latest"><img src="https://img.shields.io/badge/macOS_Apple_Silicon-DMG-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS Apple Silicon"></a>&nbsp;

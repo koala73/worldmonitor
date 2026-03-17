@@ -1,6 +1,6 @@
 [package]
 name = "worldmonitor-macos"
-version = "2.5.25"
+version = "2.7.0"
 description = "World Monitor macOS native desktop application"
 authors = ["Bradley Bond", "Elie Habib"]
 edition = "2021"

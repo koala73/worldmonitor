@@ -533,6 +533,8 @@ export class App {
         { name: 'spaceWeather', fn: () => this.dataLoader.loadSpaceWeather(), intervalMs: 5 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
         { name: 'diseaseOutbreaks', fn: () => this.dataLoader.loadDiseaseOutbreaks(), intervalMs: 15 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
         { name: 'airQuality', fn: () => this.dataLoader.loadAirQuality(), intervalMs: 30 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
+        { name: 'commsHealth', fn: () => this.dataLoader.loadCommsHealth(), intervalMs: 2 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
+        { name: 'economicStress', fn: () => this.dataLoader.loadEconomicStress(), intervalMs: 15 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
         { name: 'tsunamiAlerts', fn: () => this.dataLoader.loadTsunamiAlerts(), intervalMs: 5 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
         { name: 'tropicalCyclones', fn: () => this.dataLoader.loadTropicalCyclones(), intervalMs: 30 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
         { name: 'foodInsecurity', fn: () => this.dataLoader.loadFoodInsecurity(), intervalMs: 4 * 60 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },

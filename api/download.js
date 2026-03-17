@@ -1,8 +1,8 @@
 // Non-sebuf: returns XML/HTML, stays as standalone Vercel function
 export const config = { runtime: 'edge' };
 
-const RELEASES_URL = 'https://api.github.com/repos/bradleybond512/crystal-ball/releases/latest';
-const RELEASES_PAGE = 'https://github.com/bradleybond512/crystal-ball/releases/latest';
+const RELEASES_URL = 'https://api.github.com/repos/bradleybond512/worldmonitor-macos/releases/latest';
+const RELEASES_PAGE = 'https://github.com/bradleybond512/worldmonitor-macos/releases/latest';
 
 // In-process cache for the GitHub release response (survives warm Edge Function invocations).
 // CDN s-maxage=300 is the primary protection; this is a secondary layer.
@@ -19,8 +19,8 @@ const PLATFORM_PATTERNS = {
 };
 
 const VARIANT_IDENTIFIERS = {
-  full: ['crystalball', 'crystal ball'],
-  world: ['crystalball', 'crystal ball'],
+  full: ['worldmonitor'],
+  world: ['worldmonitor'],
   tech: ['techmonitor'],
   finance: ['financemonitor'],
 };
@@ -61,7 +61,7 @@ export default async function handler(req) {
       const res = await fetch(RELEASES_URL, {
         headers: {
           'Accept': 'application/vnd.github+json',
-          'User-Agent': 'CrystalBall-Download-Redirect',
+          'User-Agent': 'WorldMonitor-Download-Redirect',
         },
         signal: AbortSignal.timeout(8_000),
       });

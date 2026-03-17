@@ -35,6 +35,11 @@ import {
   SecurityAdvisoriesPanel,
   OrefSirensPanel,
   TelegramIntelPanel,
+  CommsHealthPanel,
+  EconomicStressPanel,
+  FoodInsecurityPanel,
+  TropicalCyclonesPanel,
+  TsunamiAlertsPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { EarthquakesPanel } from '@/components/EarthquakesPanel';
@@ -724,6 +729,12 @@ export class PanelLayoutManager implements AppModule {
       const airQualityPanel = new AirQualityPanel();
       this.ctx.panels['air-quality'] = airQualityPanel;
 
+      const commsHealthPanel = new CommsHealthPanel();
+      this.ctx.panels['comms-health'] = commsHealthPanel;
+
+      const economicStressPanel = new EconomicStressPanel();
+      this.ctx.panels['economic-stress'] = economicStressPanel;
+
       const strategicRiskPanel = new StrategicRiskPanel();
       strategicRiskPanel.setLocationClickHandler((lat, lon) => {
         this.ctx.map?.setCenter(lat, lon, 4);
@@ -763,6 +774,15 @@ export class PanelLayoutManager implements AppModule {
 
       const nwsAlertsPanel = new NWSAlertsPanel();
       this.ctx.panels['nws-alerts'] = nwsAlertsPanel;
+
+      const tsunamiAlertsPanel = new TsunamiAlertsPanel();
+      this.ctx.panels['tsunami-alerts'] = tsunamiAlertsPanel;
+
+      const tropicalCyclonesPanel = new TropicalCyclonesPanel();
+      this.ctx.panels['tropical-cyclones'] = tropicalCyclonesPanel;
+
+      const foodInsecurityPanel = new FoodInsecurityPanel();
+      this.ctx.panels['food-insecurity'] = foodInsecurityPanel;
 
       this.ctx.panels['radiation-decay'] = new RadiationDecayPanel();
       this.ctx.panels['resource-inventory'] = new ResourceInventoryPanel();

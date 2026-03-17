@@ -6,6 +6,19 @@ All notable changes to World Monitor are documented here.
 
 ---
 
+## [2.7.0] - 2026-03-16
+
+### Fixed
+
+- Desktop release version syncing now updates and validates `package-lock.json` and `src-tauri/Cargo.lock`, preventing release doctor failures caused by partial version bumps.
+- Desktop local-token generation now uses the `getrandom` 0.3 API (`fill`) so the Tauri Rust app compiles cleanly with the pinned dependency set.
+
+### Changed
+
+- Desktop app metadata advanced to `2.7.0` across the Node and Tauri release files.
+
+---
+
 ## [2.6.1] - 2026-03-16
 
 > This release supersedes an unpublished `v2.6.0` Git tag. The latest public GitHub release moves directly from `v2.5.25` to `v2.6.1`.

@@ -1,8 +1,15 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import handler from '../api/download.js';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const RELEASES_PAGE = 'https://github.com/bradleybond512/worldmonitor-macos/releases/latest';
+const DOWNLOAD_HANDLER_URL = pathToFileURL(resolve(import.meta.dirname, '../api/download.js')).href;
+
+async function importDownloadHandlerFresh() {
+  const module = await import(`${DOWNLOAD_HANDLER_URL}?t=${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  return module.default;
+}
 
 function makeGitHubReleaseResponse(assets) {
   return new Response(JSON.stringify({ assets }), {
@@ -21,6 +28,7 @@ test('matches full variant for dotted World.Monitor AppImage asset names', async
   ]);
 
   try {
+    const handler = await importDownloadHandlerFresh();
     const response = await handler(
       new Request('https://worldmonitor.app/api/download?platform=linux-appimage&variant=full')
     );
@@ -48,6 +56,7 @@ test('matches tech variant for dashed Tech-Monitor AppImage asset names', async 
   ]);
 
   try {
+    const handler = await importDownloadHandlerFresh();
     const response = await handler(
       new Request('https://worldmonitor.app/api/download?platform=linux-appimage&variant=tech')
     );
@@ -71,6 +80,7 @@ test('falls back to release page when requested variant has no matching asset', 
   ]);
 
   try {
+    const handler = await importDownloadHandlerFresh();
     const response = await handler(
       new Request('https://worldmonitor.app/api/download?platform=linux-appimage&variant=finance')
     );
