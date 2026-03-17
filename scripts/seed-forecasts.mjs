@@ -26,6 +26,9 @@ const ENRICHMENT_COMBINED_MAX = 3;
 const ENRICHMENT_SCENARIO_MAX = 3;
 const ENRICHMENT_MAX_PER_DOMAIN = 2;
 const ENRICHMENT_MIN_READINESS = 0.34;
+const ENRICHMENT_PRIORITY_DOMAINS = ['market', 'military'];
+const CYBER_MIN_THREATS_PER_COUNTRY = 5;
+const CYBER_MAX_FORECASTS = 12;
 const MAX_MILITARY_SURGE_AGE_MS = 3 * 60 * 60 * 1000;
 const MAX_MILITARY_BUNDLE_DRIFT_MS = 5 * 60 * 1000;
 
@@ -273,7 +276,7 @@ function getFreshMilitaryForecastInputs(inputs, now = Date.now()) {
   return bundle;
 }
 
-function selectPrimaryMilitarySurge(theaterId, surges) {
+function selectPrimaryMilitarySurge(_theaterId, surges) {
   const typePriority = { fighter: 3, airlift: 2, air_activity: 1 };
   return surges
     .slice()
@@ -318,7 +321,7 @@ function canPromoteMilitarySurge(posture, surge) {
   return false;
 }
 
-function buildMilitaryForecastTitle(theaterId, theaterLabel, surge) {
+function buildMilitaryForecastTitle(_theaterId, theaterLabel, surge) {
   if (!surge) return `Military posture escalation: ${theaterLabel}`;
   const countryPrefix = surge.dominantCountry ? `${surge.dominantCountry}-linked ` : '';
   if (surge.surgeType === 'fighter') return `${countryPrefix}fighter surge near ${theaterLabel}`;
@@ -872,7 +875,7 @@ function detectUcdpConflictZones(inputs) {
 function detectCyberScenarios(inputs) {
   const predictions = [];
   const threats = Array.isArray(inputs.cyberThreats) ? inputs.cyberThreats : inputs.cyberThreats?.threats || [];
-  if (threats.length < 5) return predictions;
+  if (threats.length < CYBER_MIN_THREATS_PER_COUNTRY) return predictions;
 
   const byCountry = {};
   for (const t of threats) {
@@ -882,17 +885,36 @@ function detectCyberScenarios(inputs) {
     byCountry[country].push(t);
   }
 
+  const candidates = [];
   for (const [country, items] of Object.entries(byCountry)) {
-    if (items.length < 5) continue;
+    if (items.length < CYBER_MIN_THREATS_PER_COUNTRY) continue;
     const types = new Set(items.map(t => t.type || t.category || 'unknown'));
-    predictions.push(makePrediction(
-      'cyber', country,
-      `Cyber threat concentration: ${country}`,
-      Math.min(0.7, normalize(items.length, 3, 50) * 0.6),
-      0.3, '7d',
-      [{ type: 'cyber', value: `${items.length} threats (${[...types].join(', ')})`, weight: 0.5 }],
-    ));
+    const criticalCount = items.filter((t) => /ransomware|wiper|ddos|intrusion|exploit|botnet|malware/i.test(`${t.type || ''} ${t.category || ''}`)).length;
+    const score = items.length + (types.size * 1.5) + (criticalCount * 0.75);
+    const probability = Math.min(0.72, (normalize(items.length, 4, 50) * 0.5) + (normalize(types.size, 1, 6) * 0.15));
+    candidates.push({
+      country,
+      items,
+      types,
+      score,
+      probability,
+      confidence: Math.max(0.32, normalize(items.length + criticalCount, 4, 25) * 0.55),
+    });
   }
+  candidates
+    .sort((a, b) => b.score - a.score || b.probability - a.probability || a.country.localeCompare(b.country))
+    .slice(0, CYBER_MAX_FORECASTS)
+    .forEach((candidate) => {
+      predictions.push(makePrediction(
+        'cyber', candidate.country,
+        `Cyber threat concentration: ${candidate.country}`,
+        candidate.probability,
+        candidate.confidence,
+        '7d',
+        [{ type: 'cyber', value: `${candidate.items.length} threats (${[...candidate.types].join(', ')})`, weight: 0.5 }],
+      ));
+    });
+
   return predictions;
 }
 
@@ -2004,7 +2026,7 @@ function summarizeForecastPopulation(predictions) {
   };
 }
 
-function summarizeForecastTraceQuality(predictions, tracedPredictions) {
+function summarizeForecastTraceQuality(predictions, tracedPredictions, enrichmentMeta = null) {
   const fullRun = summarizeForecastPopulation(predictions);
   const traced = summarizeForecastPopulation(tracedPredictions);
 
@@ -2057,6 +2079,7 @@ function summarizeForecastTraceQuality(predictions, tracedPredictions) {
       topPromotionSignals: pickTopCountEntries(promotionSignalCounts, 5),
       topSuppressionSignals: pickTopCountEntries(suppressionSignalCounts, 5),
     },
+    enrichment: enrichmentMeta,
   };
 }
 
@@ -2065,7 +2088,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
   const predictions = Array.isArray(data?.predictions) ? data.predictions : [];
   const maxForecasts = config.maxForecasts || getTraceMaxForecasts(predictions.length);
   const tracedPredictions = predictions.slice(0, maxForecasts).map((pred, index) => buildForecastTraceRecord(pred, index + 1));
-  const quality = summarizeForecastTraceQuality(predictions, tracedPredictions);
+  const quality = summarizeForecastTraceQuality(predictions, tracedPredictions, data?.enrichmentMeta || null);
   const prefix = buildTraceRunPrefix(
     context.runId || `run_${generatedAt}`,
     generatedAt,
@@ -2305,13 +2328,34 @@ function scoreForecastReadiness(pred) {
 function computeAnalysisPriority(pred) {
   const readiness = scoreForecastReadiness(pred);
   const baseScore = (pred.probability || 0) * (pred.confidence || 0);
+  const counterEvidenceTypes = new Set((pred.caseFile?.counterEvidence || []).map(item => item.type));
+  const hasNewsCorroboration = (pred.signals || []).some(signal => signal.type === 'news_corroboration');
   const readinessMultiplier = 0.78 + (readiness.overall * 0.5);
   const groundingBonus = readiness.groundingScore * 0.025;
   const evidenceBonus = readiness.evidenceScore * 0.02;
+  const corroborationBonus = hasNewsCorroboration ? 0.018 : 0;
+  const calibrationBonus = pred.calibration ? 0.012 : 0;
+  const quietDomainBonus = ENRICHMENT_PRIORITY_DOMAINS.includes(pred.domain) && readiness.overall >= 0.45 ? 0.012 : 0;
   const trendBonus = pred.trend === 'rising' ? 0.015 : pred.trend === 'falling' ? -0.005 : 0;
   const lowGroundingPenalty = readiness.groundingScore < 0.2 ? 0.02 : 0;
   const lowEvidencePenalty = readiness.evidenceScore < 0.25 ? 0.015 : 0;
-  return +((baseScore * readinessMultiplier) + groundingBonus + evidenceBonus + trendBonus - lowGroundingPenalty - lowEvidencePenalty).toFixed(6);
+  const coveragePenalty = counterEvidenceTypes.has('coverage_gap') ? 0.015 : 0;
+  const confidencePenalty = counterEvidenceTypes.has('confidence') ? 0.012 : 0;
+  const cyberThinSignalPenalty = pred.domain === 'cyber' && counterEvidenceTypes.has('coverage_gap') ? 0.01 : 0;
+  return +(
+    (baseScore * readinessMultiplier) +
+    groundingBonus +
+    evidenceBonus +
+    corroborationBonus +
+    calibrationBonus +
+    quietDomainBonus +
+    trendBonus -
+    lowGroundingPenalty -
+    lowEvidencePenalty -
+    coveragePenalty -
+    confidencePenalty -
+    cyberThinSignalPenalty
+  ).toFixed(6);
 }
 
 function rankForecastsForAnalysis(predictions) {
@@ -2323,7 +2367,23 @@ function rankForecastsForAnalysis(predictions) {
 }
 
 function filterPublishedForecasts(predictions, minProbability = PUBLISH_MIN_PROBABILITY) {
-  return predictions.filter(pred => (pred?.probability || 0) > minProbability);
+  return predictions.filter((pred) => {
+    if ((pred?.probability || 0) <= minProbability) return false;
+    const narrativeSource = pred?.traceMeta?.narrativeSource || 'fallback';
+    if (narrativeSource !== 'fallback') return true;
+    const readiness = pred?.readiness?.overall ?? scoreForecastReadiness(pred).overall;
+    const priority = typeof pred?.analysisPriority === 'number' ? pred.analysisPriority : computeAnalysisPriority(pred);
+    const counterEvidenceTypes = new Set((pred?.caseFile?.counterEvidence || []).map(item => item.type));
+    const weakFallback = (
+      readiness < 0.4 &&
+      priority < 0.08 &&
+      (pred?.confidence || 0) < 0.45 &&
+      (pred?.probability || 0) < 0.12 &&
+      counterEvidenceTypes.has('coverage_gap') &&
+      counterEvidenceTypes.has('confidence')
+    );
+    return !weakFallback;
+  });
 }
 
 function selectForecastsForEnrichment(predictions, options = {}) {
@@ -2346,30 +2406,54 @@ function selectForecastsForEnrichment(predictions, options = {}) {
       return (b.pred.probability * b.pred.confidence) - (a.pred.probability * a.pred.confidence);
     });
 
-  const selected = [];
   const selectedDomains = new Map();
+  const selectedIds = new Set();
+  const combined = [];
+  const scenarioOnly = [];
+  const reservedScenarioDomains = [];
+  let droppedByDomainCap = 0;
 
-  for (const item of ranked) {
-    if (selected.length >= maxTotal) break;
+  function trySelect(target, item) {
+    if (!item || selectedIds.has(item.pred.id)) return false;
     const currentCount = selectedDomains.get(item.pred.domain) || 0;
-    if (currentCount >= maxPerDomain) continue;
-    selected.push(item);
+    if (currentCount >= maxPerDomain) {
+      droppedByDomainCap++;
+      return false;
+    }
+    target.push(item);
+    selectedIds.add(item.pred.id);
     selectedDomains.set(item.pred.domain, currentCount + 1);
+    return true;
   }
 
-  if (selected.length < maxTotal) {
-    const seen = new Set(selected.map(item => item.pred.id));
-    for (const item of ranked) {
-      if (selected.length >= maxTotal) break;
-      if (seen.has(item.pred.id)) continue;
-      selected.push(item);
-      seen.add(item.pred.id);
-    }
+  for (const item of ranked) {
+    if (combined.length >= maxCombined) break;
+    trySelect(combined, item);
+  }
+
+  for (const domain of ENRICHMENT_PRIORITY_DOMAINS) {
+    if (scenarioOnly.length >= maxScenario) break;
+    const candidate = ranked.find(item => item.pred.domain === domain && !selectedIds.has(item.pred.id));
+    if (candidate && trySelect(scenarioOnly, candidate)) reservedScenarioDomains.push(domain);
+  }
+
+  for (const item of ranked) {
+    if ((combined.length + scenarioOnly.length) >= maxTotal || scenarioOnly.length >= maxScenario) break;
+    trySelect(scenarioOnly, item);
   }
 
   return {
-    combined: selected.slice(0, maxCombined).map(item => item.pred),
-    scenarioOnly: selected.slice(maxCombined, maxCombined + maxScenario).map(item => item.pred),
+    combined: combined.map(item => item.pred),
+    scenarioOnly: scenarioOnly.map(item => item.pred),
+    telemetry: {
+      candidateCount: predictions.length,
+      readinessEligibleCount: ranked.length,
+      selectedCombinedCount: combined.length,
+      selectedScenarioCount: scenarioOnly.length,
+      reservedScenarioDomains,
+      droppedByDomainCap,
+      selectedDomainCounts: Object.fromEntries(selectedDomains),
+    },
   };
 }
 
@@ -2429,6 +2513,13 @@ function resolveForecastLlmProviders(options = {}) {
     });
   }
   return providers.length > 0 ? providers : FORECAST_LLM_PROVIDERS;
+}
+
+function summarizeForecastLlmOptions(options = {}) {
+  return {
+    providerOrder: Array.isArray(options.providerOrder) ? options.providerOrder : [],
+    modelOverrides: options.modelOverrides || {},
+  };
 }
 
 const SCENARIO_SYSTEM_PROMPT = `You are a senior geopolitical intelligence analyst writing scenario briefs.
@@ -2550,7 +2641,14 @@ function validateScenarios(scenarios, predictions) {
 }
 
 async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
-  for (const provider of resolveForecastLlmProviders(options)) {
+  const stage = options.stage || 'default';
+  const providers = resolveForecastLlmProviders(options);
+  const requestedOrder = Array.isArray(options.providerOrder) && options.providerOrder.length > 0
+    ? options.providerOrder.join(',')
+    : providers.map(provider => provider.name).join(',');
+  console.log(`  [LLM:${stage}] providerOrder=${requestedOrder} modelOverrides=${JSON.stringify(options.modelOverrides || {})}`);
+
+  for (const provider of providers) {
     const apiKey = process.env[provider.envKey];
     if (!apiKey) continue;
     try {
@@ -2573,12 +2671,19 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
         }),
         signal: AbortSignal.timeout(provider.timeout),
       });
-      if (!resp.ok) { console.warn(`  [LLM] ${provider.name}: HTTP ${resp.status}`); continue; }
+      if (!resp.ok) {
+        console.warn(`  [LLM:${stage}] ${provider.name} HTTP ${resp.status}`);
+        continue;
+      }
       const json = await resp.json();
       const text = json.choices?.[0]?.message?.content?.trim();
       if (!text || text.length < 20) continue;
-      return { text, model: json.model || provider.model, provider: provider.name };
-    } catch (err) { console.warn(`  [LLM] ${provider.name}: ${err.message}`); }
+      const model = json.model || provider.model;
+      console.log(`  [LLM:${stage}] ${provider.name} success model=${model}`);
+      return { text, model, provider: provider.name };
+    } catch (err) {
+      console.warn(`  [LLM:${stage}] ${provider.name} ${err.message}`);
+    }
   }
   return null;
 }
@@ -2741,11 +2846,33 @@ function populateFallbackNarratives(predictions) {
 }
 
 async function enrichScenariosWithLLM(predictions) {
-  if (predictions.length === 0) return;
+  if (predictions.length === 0) return null;
   const { url, token } = getRedisCredentials();
   const enrichmentTargets = selectForecastsForEnrichment(predictions);
   const combinedLlmOptions = getForecastLlmCallOptions('combined');
   const scenarioLlmOptions = getForecastLlmCallOptions('scenario');
+  const enrichmentMeta = {
+    selection: enrichmentTargets.telemetry,
+    combined: {
+      requested: enrichmentTargets.combined.length,
+      source: 'none',
+      provider: '',
+      model: '',
+      scenarios: 0,
+      perspectives: 0,
+      cases: 0,
+      succeeded: false,
+    },
+    scenario: {
+      requested: enrichmentTargets.scenarioOnly.length,
+      source: 'none',
+      provider: '',
+      model: '',
+      scenarios: 0,
+      cases: 0,
+      succeeded: false,
+    },
+  };
 
   // Higher-quality top forecasts get richer scenario + perspective treatment.
   const topWithPerspectives = enrichmentTargets.combined;
@@ -2758,6 +2885,13 @@ async function enrichScenariosWithLLM(predictions) {
     const cached = await redisGet(url, token, cacheKey);
 
     if (cached?.items) {
+      enrichmentMeta.combined.source = 'cache';
+      enrichmentMeta.combined.succeeded = true;
+      enrichmentMeta.combined.provider = 'cache';
+      enrichmentMeta.combined.model = 'cache';
+      enrichmentMeta.combined.scenarios = cached.items.filter(item => item.scenario).length;
+      enrichmentMeta.combined.perspectives = cached.items.filter(item => item.strategic || item.regional || item.contrarian).length;
+      enrichmentMeta.combined.cases = cached.items.filter(item => item.baseCase || item.escalatoryCase || item.contrarianCase).length;
       for (const item of cached.items) {
         if (item.index >= 0 && item.index < topWithPerspectives.length) {
           applyTraceMeta(topWithPerspectives[item.index], {
@@ -2782,12 +2916,19 @@ async function enrichScenariosWithLLM(predictions) {
       console.log(JSON.stringify({ event: 'llm_combined', cached: true, count: cached.items.length, hash }));
     } else {
       const t0 = Date.now();
-      const result = await callForecastLLM(COMBINED_SYSTEM_PROMPT, buildUserPrompt(topWithPerspectives), combinedLlmOptions);
+      const result = await callForecastLLM(COMBINED_SYSTEM_PROMPT, buildUserPrompt(topWithPerspectives), { ...combinedLlmOptions, stage: 'combined' });
       if (result) {
         const raw = parseLLMScenarios(result.text);
         const validScenarios = validateScenarios(raw, topWithPerspectives);
         const validPerspectives = validatePerspectives(raw, topWithPerspectives);
         const validCases = validateCaseNarratives(raw, topWithPerspectives);
+        enrichmentMeta.combined.source = 'live';
+        enrichmentMeta.combined.provider = result.provider;
+        enrichmentMeta.combined.model = result.model;
+        enrichmentMeta.combined.scenarios = validScenarios.length;
+        enrichmentMeta.combined.perspectives = validPerspectives.length;
+        enrichmentMeta.combined.cases = validCases.length;
+        enrichmentMeta.combined.succeeded = validScenarios.length > 0 || validPerspectives.length > 0 || validCases.length > 0;
 
         for (const s of validScenarios) {
           applyTraceMeta(topWithPerspectives[s.index], {
@@ -2835,7 +2976,7 @@ async function enrichScenariosWithLLM(predictions) {
 
         if (items.length > 0) await redisSet(url, token, cacheKey, { items }, 3600);
       } else {
-        console.warn('  [LLM] Combined call failed');
+        console.warn('  [LLM:combined] call failed');
       }
     }
   }
@@ -2847,6 +2988,12 @@ async function enrichScenariosWithLLM(predictions) {
     const cached = await redisGet(url, token, cacheKey);
 
     if (cached?.scenarios) {
+      enrichmentMeta.scenario.source = 'cache';
+      enrichmentMeta.scenario.succeeded = true;
+      enrichmentMeta.scenario.provider = 'cache';
+      enrichmentMeta.scenario.model = 'cache';
+      enrichmentMeta.scenario.scenarios = cached.scenarios.filter(item => item.scenario).length;
+      enrichmentMeta.scenario.cases = cached.scenarios.filter(item => item.baseCase || item.escalatoryCase || item.contrarianCase).length;
       for (const s of cached.scenarios) {
         if (s.index >= 0 && s.index < scenarioOnly.length && s.scenario) {
           applyTraceMeta(scenarioOnly[s.index], {
@@ -2870,11 +3017,17 @@ async function enrichScenariosWithLLM(predictions) {
       console.log(JSON.stringify({ event: 'llm_scenario', cached: true, count: cached.scenarios.length, hash }));
     } else {
       const t0 = Date.now();
-      const result = await callForecastLLM(SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly), scenarioLlmOptions);
+      const result = await callForecastLLM(SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly), { ...scenarioLlmOptions, stage: 'scenario' });
       if (result) {
         const raw = parseLLMScenarios(result.text);
         const valid = validateScenarios(raw, scenarioOnly);
         const validCases = validateCaseNarratives(raw, scenarioOnly);
+        enrichmentMeta.scenario.source = 'live';
+        enrichmentMeta.scenario.provider = result.provider;
+        enrichmentMeta.scenario.model = result.model;
+        enrichmentMeta.scenario.scenarios = valid.length;
+        enrichmentMeta.scenario.cases = validCases.length;
+        enrichmentMeta.scenario.succeeded = valid.length > 0 || validCases.length > 0;
         for (const s of valid) {
           applyTraceMeta(scenarioOnly[s.index], {
             narrativeSource: 'llm_scenario',
@@ -2926,9 +3079,13 @@ async function enrichScenariosWithLLM(predictions) {
           }
           await redisSet(url, token, cacheKey, { scenarios }, 3600);
         }
+      } else {
+        console.warn('  [LLM:scenario] call failed');
       }
     }
   }
+
+  return enrichmentMeta;
 }
 
 // ── Main pipeline ──────────────────────────────────────────
@@ -2972,7 +3129,7 @@ async function fetchForecasts() {
 
   rankForecastsForAnalysis(predictions);
 
-  await enrichScenariosWithLLM(predictions);
+  const enrichmentMeta = await enrichScenariosWithLLM(predictions);
   populateFallbackNarratives(predictions);
 
   const publishedPredictions = filterPublishedForecasts(predictions);
@@ -2980,7 +3137,7 @@ async function fetchForecasts() {
     console.log(`  Filtered ${predictions.length - publishedPredictions.length} forecasts at publish floor > ${PUBLISH_MIN_PROBABILITY}`);
   }
 
-  return { predictions: publishedPredictions, generatedAt: Date.now() };
+  return { predictions: publishedPredictions, generatedAt: Date.now(), enrichmentMeta };
 }
 
 if (_isDirectRun) {

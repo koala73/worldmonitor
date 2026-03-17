@@ -151,7 +151,15 @@ describe('forecast trace artifact builder', () => {
     populateFallbackNarratives([b]);
 
     const artifacts = buildForecastTraceArtifacts(
-      { generatedAt: Date.parse('2026-03-17T08:00:00Z'), predictions: [a, b] },
+      {
+        generatedAt: Date.parse('2026-03-17T08:00:00Z'),
+        predictions: [a, b],
+        enrichmentMeta: {
+          selection: { candidateCount: 2, readinessEligibleCount: 2, selectedCombinedCount: 1, selectedScenarioCount: 1, reservedScenarioDomains: ['market'] },
+          combined: { requested: 1, source: 'live', provider: 'openrouter', model: 'google/gemini-2.5-flash', scenarios: 1, perspectives: 1, cases: 1, succeeded: true },
+          scenario: { requested: 1, source: 'cache', provider: 'cache', model: 'cache', scenarios: 0, cases: 0, succeeded: true },
+        },
+      },
       { runId: 'run-quality' },
       { basePrefix: 'forecast-runs' },
     );
@@ -164,5 +172,7 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.quality.fullRun.domainCounts.cyber, 1);
     assert.ok(artifacts.summary.quality.traced.avgReadiness > 0);
     assert.ok(artifacts.summary.quality.traced.topSuppressionSignals.length >= 1);
+    assert.equal(artifacts.summary.quality.enrichment.selection.selectedCombinedCount, 1);
+    assert.equal(artifacts.summary.quality.enrichment.combined.provider, 'openrouter');
   });
 });

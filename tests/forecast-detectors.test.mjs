@@ -1650,6 +1650,16 @@ describe('detectCyberScenarios', () => {
   it('handles empty input', () => {
     assert.equal(detectCyberScenarios({}).length, 0);
   });
+
+  it('caps broad cyber output to the top-ranked countries', () => {
+    const threats = [];
+    for (let i = 0; i < 20; i++) {
+      const country = `Country-${i}`;
+      for (let j = 0; j < 5; j++) threats.push({ country, type: 'phishing' });
+    }
+    const result = detectCyberScenarios({ cyberThreats: { threats } });
+    assert.equal(result.length, 12);
+  });
 });
 
 describe('detectGpsJammingScenarios', () => {
@@ -1750,5 +1760,46 @@ describe('discoverGraphCascades', () => {
     discoverGraphCascades(preds, graph);
     const graphCascades = preds[0].cascades.filter(c => c.effect.includes('graph:'));
     assert.equal(graphCascades.length, 0, 'same domain should not cascade');
+  });
+});
+
+describe('forecast quality gating', () => {
+  it('reserves scenario enrichment slots for scarce market and military forecasts', () => {
+    const predictions = [
+      makePrediction('cyber', 'A', 'Cyber A', 0.7, 0.55, '7d', [{ type: 'cyber', value: '8 threats', weight: 0.5 }]),
+      makePrediction('cyber', 'B', 'Cyber B', 0.68, 0.55, '7d', [{ type: 'cyber', value: '7 threats', weight: 0.5 }]),
+      makePrediction('conflict', 'C', 'Conflict C', 0.66, 0.6, '7d', [{ type: 'ucdp', value: '12 events', weight: 0.5 }]),
+      makePrediction('market', 'Middle East', 'Oil price impact', 0.4, 0.5, '30d', [{ type: 'news_corroboration', value: 'Oil traders react', weight: 0.3 }]),
+      makePrediction('military', 'Korean Peninsula', 'Elevated military air activity', 0.34, 0.5, '7d', [{ type: 'mil_surge', value: 'fighter surge', weight: 0.4 }]),
+    ];
+    buildForecastCases(predictions);
+    const selected = selectForecastsForEnrichment(predictions, { maxCombined: 2, maxScenario: 2, maxPerDomain: 2, minReadiness: 0 });
+    assert.equal(selected.combined.length, 2);
+    assert.equal(selected.scenarioOnly.length, 2);
+    assert.ok(selected.scenarioOnly.some(item => item.domain === 'market'));
+    assert.ok(selected.scenarioOnly.some(item => item.domain === 'military'));
+    assert.deepEqual(selected.telemetry.reservedScenarioDomains.sort(), ['market', 'military']);
+  });
+
+  it('filters only the weakest fallback forecasts from publish output', () => {
+    const weak = makePrediction('cyber', 'Thinland', 'Cyber threat concentration: Thinland', 0.11, 0.32, '7d', [
+      { type: 'cyber', value: '5 threats (phishing)', weight: 0.5 },
+    ]);
+    buildForecastCases([weak]);
+    weak.traceMeta = { narrativeSource: 'fallback' };
+    weak.readiness = { overall: 0.28 };
+    weak.analysisPriority = 0.05;
+
+    const strong = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.22, 0.48, '7d', [
+      { type: 'news_corroboration', value: 'Oil prices moved on shipping risk', weight: 0.4 },
+    ]);
+    buildForecastCases([strong]);
+    strong.traceMeta = { narrativeSource: 'fallback' };
+    strong.readiness = { overall: 0.52 };
+    strong.analysisPriority = 0.11;
+
+    const published = filterPublishedForecasts([weak, strong]);
+    assert.equal(published.length, 1);
+    assert.equal(published[0].id, strong.id);
   });
 });
