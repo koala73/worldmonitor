@@ -184,19 +184,21 @@ async function main() {
   if (capped.length === 0) {
     console.warn(`  0 events after processing — extending existing key TTL (preserving last good data)`);
     try {
-      await fetch(redisUrl, {
+      const r1 = await fetch(redisUrl, {
         method: 'POST',
         headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(['EXPIRE', REDIS_KEY, 86400]),
         signal: AbortSignal.timeout(5_000),
       });
-      await fetch(redisUrl, {
+      if (!r1.ok) console.warn(`  EXPIRE ${REDIS_KEY} failed: HTTP ${r1.status}`);
+      const r2 = await fetch(redisUrl, {
         method: 'POST',
         headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(['EXPIRE', 'seed-meta:conflict:ucdp-events', 604800]),
         signal: AbortSignal.timeout(5_000),
       });
-      console.log(`  Extended TTL on ${REDIS_KEY} and seed-meta`);
+      if (!r2.ok) console.warn(`  EXPIRE seed-meta failed: HTTP ${r2.status}`);
+      if (r1.ok && r2.ok) console.log(`  Extended TTL on ${REDIS_KEY} and seed-meta`);
     } catch (e) { console.warn(`  TTL extension failed: ${e.message}`); }
     process.exit(0);
   }
