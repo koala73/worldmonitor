@@ -1985,7 +1985,7 @@ function pickTopCountEntries(countMap, limit = 5) {
     .map(([type, count]) => ({ type, count }));
 }
 
-function summarizeForecastTraceQuality(predictions, tracedPredictions) {
+function summarizeForecastPopulation(predictions) {
   const domainCounts = Object.fromEntries(FORECAST_DOMAINS.map(domain => [domain, 0]));
   const highlightedDomainCounts = Object.fromEntries(FORECAST_DOMAINS.map(domain => [domain, 0]));
 
@@ -1995,6 +1995,18 @@ function summarizeForecastTraceQuality(predictions, tracedPredictions) {
       highlightedDomainCounts[pred.domain] = (highlightedDomainCounts[pred.domain] || 0) + 1;
     }
   }
+
+  return {
+    forecastCount: predictions.length,
+    domainCounts,
+    highlightedDomainCounts,
+    quietDomains: FORECAST_DOMAINS.filter(domain => (domainCounts[domain] || 0) === 0),
+  };
+}
+
+function summarizeForecastTraceQuality(predictions, tracedPredictions) {
+  const fullRun = summarizeForecastPopulation(predictions);
+  const traced = summarizeForecastPopulation(tracedPredictions);
 
   const narrativeSourceCounts = summarizeTypeCounts(
     tracedPredictions.map(item => item.traceMeta?.narrativeSource || 'fallback')
@@ -2027,24 +2039,24 @@ function summarizeForecastTraceQuality(predictions, tracedPredictions) {
     (narrativeSourceCounts.llm_scenario || 0) +
     (narrativeSourceCounts.llm_scenario_cache || 0);
   const enrichedCount = tracedPredictions.length - fallbackCount;
-  const quietDomains = FORECAST_DOMAINS.filter(domain => (domainCounts[domain] || 0) === 0);
 
   return {
-    domainCounts,
-    highlightedDomainCounts,
-    quietDomains,
-    narrativeSourceCounts,
-    fallbackCount,
-    fallbackRate: tracedPredictions.length ? +(fallbackCount / tracedPredictions.length).toFixed(3) : 0,
-    enrichedCount,
-    enrichedRate: tracedPredictions.length ? +(enrichedCount / tracedPredictions.length).toFixed(3) : 0,
-    llmCombinedCount,
-    llmScenarioCount,
-    avgReadiness,
-    avgProbability,
-    avgConfidence,
-    topPromotionSignals: pickTopCountEntries(promotionSignalCounts, 5),
-    topSuppressionSignals: pickTopCountEntries(suppressionSignalCounts, 5),
+    fullRun,
+    traced: {
+      ...traced,
+      narrativeSourceCounts,
+      fallbackCount,
+      fallbackRate: tracedPredictions.length ? +(fallbackCount / tracedPredictions.length).toFixed(3) : 0,
+      enrichedCount,
+      enrichedRate: tracedPredictions.length ? +(enrichedCount / tracedPredictions.length).toFixed(3) : 0,
+      llmCombinedCount,
+      llmScenarioCount,
+      avgReadiness,
+      avgProbability,
+      avgConfidence,
+      topPromotionSignals: pickTopCountEntries(promotionSignalCounts, 5),
+      topSuppressionSignals: pickTopCountEntries(suppressionSignalCounts, 5),
+    },
   };
 }
 

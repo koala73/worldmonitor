@@ -76,7 +76,7 @@ describe('forecast trace artifact builder', () => {
     assert.match(artifacts.summaryKey, /forecast-runs\/2026\/03\/15\/run-123\/summary\.json/);
     assert.equal(artifacts.forecasts.length, 1);
     assert.equal(artifacts.summary.topForecasts[0].id, a.id);
-    assert.deepEqual(artifacts.summary.quality.domainCounts, {
+    assert.deepEqual(artifacts.summary.quality.fullRun.domainCounts, {
       conflict: 1,
       market: 0,
       supply_chain: 1,
@@ -85,7 +85,7 @@ describe('forecast trace artifact builder', () => {
       cyber: 0,
       infrastructure: 0,
     });
-    assert.deepEqual(artifacts.summary.quality.highlightedDomainCounts, {
+    assert.deepEqual(artifacts.summary.quality.fullRun.highlightedDomainCounts, {
       conflict: 1,
       market: 0,
       supply_chain: 1,
@@ -94,12 +94,21 @@ describe('forecast trace artifact builder', () => {
       cyber: 0,
       infrastructure: 0,
     });
-    assert.equal(artifacts.summary.quality.fallbackCount, 1);
-    assert.equal(artifacts.summary.quality.enrichedCount, 0);
-    assert.equal(artifacts.summary.quality.fallbackRate, 1);
-    assert.equal(artifacts.summary.quality.enrichedRate, 0);
-    assert.ok(artifacts.summary.quality.quietDomains.includes('military'));
-    assert.equal(artifacts.summary.quality.topPromotionSignals[0].type, 'cii');
+    assert.deepEqual(artifacts.summary.quality.traced.domainCounts, {
+      conflict: 1,
+      market: 0,
+      supply_chain: 0,
+      political: 0,
+      military: 0,
+      cyber: 0,
+      infrastructure: 0,
+    });
+    assert.equal(artifacts.summary.quality.traced.fallbackCount, 1);
+    assert.equal(artifacts.summary.quality.traced.enrichedCount, 0);
+    assert.equal(artifacts.summary.quality.traced.fallbackRate, 1);
+    assert.equal(artifacts.summary.quality.traced.enrichedRate, 0);
+    assert.ok(artifacts.summary.quality.fullRun.quietDomains.includes('military'));
+    assert.equal(artifacts.summary.quality.traced.topPromotionSignals[0].type, 'cii');
     assert.ok(artifacts.forecasts[0].payload.caseFile.worldState.summary.includes('Iran'));
     assert.equal(artifacts.forecasts[0].payload.caseFile.branches.length, 3);
     assert.equal(artifacts.forecasts[0].payload.traceMeta.narrativeSource, 'fallback');
@@ -147,13 +156,13 @@ describe('forecast trace artifact builder', () => {
       { basePrefix: 'forecast-runs' },
     );
 
-    assert.equal(artifacts.summary.quality.fallbackCount, 1);
-    assert.equal(artifacts.summary.quality.enrichedCount, 1);
-    assert.equal(artifacts.summary.quality.llmCombinedCount, 1);
-    assert.equal(artifacts.summary.quality.llmScenarioCount, 0);
-    assert.equal(artifacts.summary.quality.domainCounts.conflict, 1);
-    assert.equal(artifacts.summary.quality.domainCounts.cyber, 1);
-    assert.ok(artifacts.summary.quality.avgReadiness > 0);
-    assert.ok(artifacts.summary.quality.topSuppressionSignals.length >= 1);
+    assert.equal(artifacts.summary.quality.traced.fallbackCount, 1);
+    assert.equal(artifacts.summary.quality.traced.enrichedCount, 1);
+    assert.equal(artifacts.summary.quality.traced.llmCombinedCount, 1);
+    assert.equal(artifacts.summary.quality.traced.llmScenarioCount, 0);
+    assert.equal(artifacts.summary.quality.fullRun.domainCounts.conflict, 1);
+    assert.equal(artifacts.summary.quality.fullRun.domainCounts.cyber, 1);
+    assert.ok(artifacts.summary.quality.traced.avgReadiness > 0);
+    assert.ok(artifacts.summary.quality.traced.topSuppressionSignals.length >= 1);
   });
 });
