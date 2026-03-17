@@ -10,6 +10,8 @@
     "lockfile:check": "node scripts/check-package-lock.mjs",
     "version:sync": "node scripts/sync-desktop-version.mjs",
     "version:check": "node scripts/sync-desktop-version.mjs --check",
+    "release:prepare": "node scripts/release-prepare.mjs",
+    "release:doctor": "node scripts/release-doctor.mjs --variant full",
     "dev": "vite",
     "dev:tech": "cross-env VITE_VARIANT=tech vite",
     "dev:finance": "cross-env VITE_VARIANT=finance vite",
