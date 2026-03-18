@@ -5,6 +5,7 @@ import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-
 import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
+import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
@@ -94,6 +95,24 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     { value: 'light', label: t('preferences.themeLight') },
   ] as { value: ThemePreference; label: string }[]) {
     const selected = opt.value === currentThemePref ? ' selected' : '';
+    html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
+  }
+  html += `</select>`;
+
+  // Font family
+  const currentFont = getFontFamily();
+  html += `<div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-label-wrap">
+      <div class="ai-flow-toggle-label">${t('preferences.fontFamily')}</div>
+      <div class="ai-flow-toggle-desc">${t('preferences.fontFamilyDesc')}</div>
+    </div>
+  </div>`;
+  html += `<select class="unified-settings-select" id="us-font-family">`;
+  for (const opt of [
+    { value: 'mono', label: t('preferences.fontMono') },
+    { value: 'system', label: t('preferences.fontSystem') },
+  ] as { value: FontFamily; label: string }[]) {
+    const selected = opt.value === currentFont ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
   }
   html += `</select>`;
@@ -266,6 +285,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           setGlobeVisualPreset(target.value as GlobeVisualPreset);
         } else if (target.id === 'us-theme') {
           setThemePreference(target.value as ThemePreference);
+        } else if (target.id === 'us-font-family') {
+          setFontFamily(target.value as FontFamily);
         } else if (target.id === 'us-map-provider') {
           const provider = target.value as MapProvider;
           setMapProvider(provider);
