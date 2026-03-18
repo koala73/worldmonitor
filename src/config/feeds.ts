@@ -1172,6 +1172,9 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
 };
 
 // Variant-aware exports
+// Import Ireland feeds
+import { FEEDS as IRELAND_FEEDS } from './variants/ireland';
+
 export const FEEDS = SITE_VARIANT === 'tech'
   ? TECH_FEEDS
   : SITE_VARIANT === 'finance'
@@ -1180,7 +1183,9 @@ export const FEEDS = SITE_VARIANT === 'tech'
       ? HAPPY_FEEDS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_FEEDS
-        : FULL_FEEDS;
+        : SITE_VARIANT === 'ireland'
+          ? IRELAND_FEEDS
+          : FULL_FEEDS;
 
 export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {
   // Full (geopolitical) variant regions
