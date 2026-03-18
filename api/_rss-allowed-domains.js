@@ -288,5 +288,22 @@ export default [
   "www.mining-technology.com",
   "www.australianmining.com.au",
   "news.goldseek.com",
-  "news.silverseek.com"
+  "news.silverseek.com",
+  // Ireland-specific feeds
+  "siliconrepublic.com",
+  "www.siliconrepublic.com",
+  "techcentral.ie",
+  "www.techcentral.ie",
+  "businessplus.ie",
+  "irishtechnews.ie",
+  "irishtimes.com",
+  "www.irishtimes.com",
+  "independent.ie",
+  "www.independent.ie",
+  "rte.ie",
+  "www.rte.ie",
+  "eu-startups.com",
+  "www.eu-startups.com",
+  "tech.eu",
+  "sifted.eu"
 ];
