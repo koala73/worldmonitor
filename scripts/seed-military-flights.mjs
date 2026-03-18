@@ -2,10 +2,11 @@
 
 import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl } from './_seed-utils.mjs';
 import { summarizeMilitaryTheaters, buildMilitarySurges, appendMilitaryHistory } from './_military-surges.mjs';
+import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
 import tls from 'node:tls';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 loadEnvFile(import.meta.url);
 
@@ -1256,6 +1257,22 @@ async function requestForecastRefreshIfEnabled(runId, assessedAt, source) {
   };
   await redisSet(url, token, FORECAST_REFRESH_REQUEST_KEY, request, FORECAST_REFRESH_REQUEST_TTL);
   console.log('  Forecast refresh requested after military publish');
+
+  const scriptPath = fileURLToPath(new URL('./seed-forecasts.mjs', import.meta.url));
+  console.log('  Triggering forecast reseed after military publish...');
+
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath], {
+      stdio: 'inherit',
+      env: process.env,
+    });
+
+    child.once('error', reject);
+    child.once('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`forecast reseed exited with code ${code}`));
+    });
+  });
 }
 
 // ── Main ───────────────────────────────────────────────────
@@ -1411,7 +1428,7 @@ async function main() {
     try {
       await requestForecastRefreshIfEnabled(runId, assessedAt, source);
     } catch (err) {
-      console.warn(`  Forecast refresh request failed after military publish: ${err.message || err}`);
+      console.warn(`  Forecast reseed failed after military publish: ${err.message || err}`);
     }
 
     const durationMs = Date.now() - startMs;

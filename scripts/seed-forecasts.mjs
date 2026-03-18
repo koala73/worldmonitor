@@ -4230,6 +4230,28 @@ async function clearForecastRefreshRequest() {
   }
 }
 
+function sameForecastRefreshRequest(left, right) {
+  if (!left || !right) return false;
+  return (left.requestedAt || 0) === (right.requestedAt || 0)
+    && (left.requester || '') === (right.requester || '')
+    && (left.requesterRunId || '') === (right.requesterRunId || '')
+    && (left.sourceVersion || '') === (right.sourceVersion || '');
+}
+
+async function clearForecastRefreshRequestIfUnchanged(consumedRequest) {
+  if (!consumedRequest) return;
+  try {
+    const current = await readForecastRefreshRequest();
+    if (!sameForecastRefreshRequest(current, consumedRequest)) {
+      console.log('  [Trigger] Leaving newer refresh request queued');
+      return;
+    }
+    await clearForecastRefreshRequest();
+  } catch (err) {
+    console.warn(`  [Trigger] Conditional refresh request clear failed: ${err.message}`);
+  }
+}
+
 function buildForecastTriggerContext(request = null) {
   const triggerSource = request?.requestedBy || 'forecast_cron';
   return {
@@ -4265,7 +4287,7 @@ if (_isDirectRun) {
     validateFn: (data) => Array.isArray(data?.predictions) && data.predictions.length > 0,
     afterPublish: async (data, meta) => {
       if (triggerContext.triggerRequest) {
-        await clearForecastRefreshRequest();
+        await clearForecastRefreshRequestIfUnchanged(triggerContext.triggerRequest);
       }
       try {
         const snapshot = await appendHistorySnapshot(data);
