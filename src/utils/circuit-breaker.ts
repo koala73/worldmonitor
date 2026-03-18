@@ -337,14 +337,6 @@ export class CircuitBreaker<T> {
           this.markSuccess(now);
           if (shouldCache(result)) {
             this.writeCacheEntry(result, cacheKey, now);
-          } else {
-            // Backend returned an invalid/empty result after we had real data.
-            // Evict the stale cache so the next foreground call surfaces the
-            // unavailable state instead of continuing to serve stale data.
-            this.evictCacheKey(cacheKey);
-            if (this.persistEnabled) {
-              this.deletePersistentCache(cacheKey);
-            }
           }
         }).catch(e => {
           console.warn(`[${this.name}] Background refresh failed:`, e);
