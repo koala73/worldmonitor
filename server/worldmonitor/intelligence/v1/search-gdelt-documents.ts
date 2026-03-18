@@ -38,7 +38,9 @@ export async function searchGdeltDocuments(
   try {
     const seeded = await getCachedJson(SEEDED_KEY, true) as SeededGdeltData | null;
     if (!seeded?.topics?.length) {
-      return { articles: [], query: req.query, error: '' };
+      // Distinct signal: seed is missing/expired, not "no articles matched".
+      // Clients should show a graceful empty state rather than retrying.
+      return { articles: [], query: req.query, error: 'seed-unavailable' };
     }
 
     const queryLower = req.query.toLowerCase();

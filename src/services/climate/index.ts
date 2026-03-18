@@ -14,10 +14,20 @@ import { getHydratedData } from '@/services/bootstrap';
 // lat/lon/severity/type fields they always used. The proto -> legacy
 // mapping happens internally in toDisplayAnomaly().
 export interface ClimateAnomaly {
+  /**
+   * A named geographic region or label where the anomaly is occurring
+   * (e.g., "Northern Europe", "Southeast Asia").
+   */
   zone: string;
   lat: number;
   lon: number;
+  /**
+   * The temperature deviation from the historical average, measured in degrees Celsius (°C).
+   */
   tempDelta: number;
+  /**
+   * The precipitation deviation from the historical average, measured in millimeters (mm).
+   */
   precipDelta: number;
   severity: 'normal' | 'moderate' | 'extreme';
   type: 'warm' | 'cold' | 'wet' | 'dry' | 'mixed';
