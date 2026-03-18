@@ -275,7 +275,7 @@ export class DataLoaderManager implements AppModule {
     try {
       const resp = await fetch(
         toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${getCurrentLanguage()}`),
-        { signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
+        { cache: 'no-cache', signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json() as ListFeedDigestResponse;
@@ -378,7 +378,7 @@ export class DataLoaderManager implements AppModule {
       if (shouldLoad('forecast')) {
         tasks.push({ name: 'forecasts', task: runGuarded('forecasts', () => this.loadForecasts()) });
       }
-      tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
+      if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
       if (shouldLoad('economic')) {
         tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
         tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
@@ -1685,12 +1685,10 @@ export class DataLoaderManager implements AppModule {
     tasks.push((async () => {
       try {
         const protestEvents = await protestsTask;
-        let result = await fetchUcdpEvents(hydratedUcdp);
-        for (let attempt = 1; attempt < 3 && !result.success; attempt++) {
-          await new Promise(r => setTimeout(r, 15_000));
-          result = await fetchUcdpEvents();
-        }
+        const result = await fetchUcdpEvents(hydratedUcdp);
         if (!result.success) {
+          // listUcdpEvents is a pure Redis-read (gold standard). Retrying returns
+          // the same empty result until the Railway seed refreshes the key.
           dataFreshness.recordError('ucdp_events', 'UCDP events unavailable (retaining prior event state)');
           return;
         }

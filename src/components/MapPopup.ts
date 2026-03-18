@@ -11,6 +11,8 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { t } from '@/services/i18n';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
+import { getWingbitsLiveFlight } from '@/services/wingbits';
+import { isFeatureAvailable } from '@/services/runtime-config';
 import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
 import { getCableHealthRecord } from '@/services/cable-health';
@@ -835,6 +837,44 @@ export class MapPopup {
     }
   }
 
+  public async loadWingbitsLiveFlight(hexCode: string): Promise<void> {
+    if (!this.popup) return;
+
+    const section = this.popup.querySelector('.wingbits-live-section');
+    if (!section) return;
+
+    try {
+      const live = await getWingbitsLiveFlight(hexCode);
+
+      if (!this.popup || !section.isConnected) return;
+
+      if (!live) {
+        section.innerHTML = '';
+        return;
+      }
+
+      const rows: string[] = [];
+      if (live.registration) rows.push(`<div class="popup-stat"><span class="stat-label">Reg</span><span class="stat-value">${escapeHtml(live.registration)}</span></div>`);
+      if (live.model) rows.push(`<div class="popup-stat"><span class="stat-label">Model</span><span class="stat-value">${escapeHtml(live.model)}</span></div>`);
+      if (live.operator) rows.push(`<div class="popup-stat"><span class="stat-label">Operator</span><span class="stat-value">${escapeHtml(live.operator)}</span></div>`);
+      if (live.verticalRate !== 0) rows.push(`<div class="popup-stat"><span class="stat-label">Climb</span><span class="stat-value">${live.verticalRate > 0 ? '+' : ''}${Math.round(live.verticalRate)} fpm</span></div>`);
+
+      if (rows.length === 0) {
+        section.innerHTML = '';
+        return;
+      }
+
+      section.innerHTML = `
+        <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:8px">Wingbits Live</div>
+        <div class="popup-stats">${rows.join('')}</div>
+      `;
+    } catch {
+      if (section.isConnected) {
+        section.innerHTML = '';
+      }
+    }
+  }
+
   private renderGdeltArticle(article: GdeltArticle): string {
     const domain = article.source || extractDomain(article.url);
     const timeAgo = formatArticleDate(article.date);
@@ -1247,6 +1287,7 @@ export class MapPopup {
             <span class="stat-value">${pos.observedAt.toLocaleTimeString()}</span>
           </div>
         </div>
+${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
       </div>
     `;
   }
@@ -2156,6 +2197,20 @@ export class MapPopup {
     const aircraftType = escapeHtml(typeLabels[flight.aircraftType] || flight.aircraftType);
     const squawk = flight.squawk ? escapeHtml(flight.squawk) : '';
     const note = flight.note ? escapeHtml(flight.note) : '';
+    const registration = flight.registration ? escapeHtml(flight.registration) : '';
+    const aircraftModel = flight.aircraftModel ? escapeHtml(flight.aircraftModel) : '';
+
+    const climbRateStat = flight.verticalRate !== undefined && flight.verticalRate !== 0 ? `
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.militaryFlight.climbRate')}</span>
+            <span class="stat-value">${flight.verticalRate > 0 ? '+' : ''}${Math.round(flight.verticalRate)} fpm</span>
+          </div>` : '';
+
+    const enrichedStats = flight.enriched ? [
+      flight.enriched.manufacturer ? `<div class="popup-stat"><span class="stat-label">${t('popups.militaryFlight.manufacturer')}</span><span class="stat-value">${escapeHtml(flight.enriched.manufacturer)}</span></div>` : '',
+      flight.enriched.owner ? `<div class="popup-stat"><span class="stat-label">${t('popups.militaryFlight.owner')}</span><span class="stat-value">${escapeHtml(flight.enriched.owner)}</span></div>` : '',
+      flight.enriched.builtYear ? `<div class="popup-stat"><span class="stat-label">${t('popups.militaryFlight.builtYear')}</span><span class="stat-value">${escapeHtml(flight.enriched.builtYear)}</span></div>` : '',
+    ].join('') : '';
 
     return `
       <div class="popup-header military-flight ${flight.operator}">
@@ -2165,6 +2220,7 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         <div class="popup-subtitle">${operatorLabel}</div>
+        ${registration || aircraftModel ? `<div class="popup-subtitle" style="opacity:0.7;font-size:11px;margin-top:-4px">${[registration, aircraftModel].filter(Boolean).join(' · ')}</div>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryFlight.altitude')}</span>
@@ -2178,6 +2234,7 @@ export class MapPopup {
             <span class="stat-label">${t('popups.militaryFlight.heading')}</span>
             <span class="stat-value">${Math.round(flight.heading)}°</span>
           </div>
+          ${climbRateStat}
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryFlight.hexCode')}</span>
             <span class="stat-value">${hexCode}</span>
@@ -2192,8 +2249,10 @@ export class MapPopup {
             <span class="stat-value">${squawk}</span>
           </div>
           ` : ''}
+          ${enrichedStats}
         </div>
         ${flight.note ? `<p class="popup-description">${note}</p>` : ''}
+${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
         <div class="popup-attribution">${t('popups.militaryFlight.attribution')}</div>
       </div>
     `;

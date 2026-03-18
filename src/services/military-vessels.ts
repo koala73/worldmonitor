@@ -36,6 +36,14 @@ const breaker = createCircuitBreaker<{ vessels: MilitaryVessel[]; clusters: Mili
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
   cacheTtlMs: 10 * 60 * 1000,
+  persistCache: true,
+  revivePersistedData: (data) => ({
+    ...data,
+    vessels: data.vessels.map((v: MilitaryVessel) => ({
+      ...v,
+      lastAisUpdate: v.lastAisUpdate instanceof Date ? v.lastAisUpdate : new Date(v.lastAisUpdate as unknown as string),
+    })),
+  }),
 });
 
 // Strategic chokepoints for naval monitoring
@@ -508,9 +516,11 @@ export function stopVesselHistoryCleanup(): void {
 export function initMilitaryVesselStream(): void {
   if (isTracking) return;
 
-  // Invalidate ALL caches when stream starts - fresh data should be read
+  // Invalidate in-memory caches when stream starts — real-time AIS data
+  // replaces them within seconds. Do NOT clear persistent storage here:
+  // a concurrent execute() may be hydrating from it to serve instant data.
   vesselCache = null;
-  breaker.clearCache();  // Clear circuit breaker's 5-minute cache too!
+  breaker.clearMemoryCache();
 
   // Register callback with shared AIS stream
   registerAisCallback(processAisPosition);

@@ -57,35 +57,44 @@ export interface UnhcrFetchResult {
 
 // ─── Internal: proto -> legacy mapping ───
 
+const emptyResult: UnhcrSummary = {
+  year: new Date().getFullYear(),
+  globalTotals: { refugees: 0, asylumSeekers: 0, idps: 0, stateless: 0, total: 0 },
+  countries: [],
+  topFlows: [],
+};
+
 function toDisplaySummary(proto: ProtoResponse): UnhcrSummary {
-  const s = proto.summary!;
-  const gt = s.globalTotals!;
+  const s = proto.summary;
+  if (!s) return { ...emptyResult, globalTotals: { ...emptyResult.globalTotals } };
+
+  const gt = s.globalTotals || { refugees: 0, asylumSeekers: 0, idps: 0, stateless: 0, total: 0 };
   return {
-    year: s.year,
+    year: s.year || new Date().getFullYear(),
     globalTotals: {
-      refugees: Number(gt.refugees),
-      asylumSeekers: Number(gt.asylumSeekers),
-      idps: Number(gt.idps),
-      stateless: Number(gt.stateless),
-      total: Number(gt.total),
+      refugees: Number(gt.refugees || 0),
+      asylumSeekers: Number(gt.asylumSeekers || 0),
+      idps: Number(gt.idps || 0),
+      stateless: Number(gt.stateless || 0),
+      total: Number(gt.total || 0),
     },
-    countries: s.countries.map(toDisplayCountry),
-    topFlows: s.topFlows.map(toDisplayFlow),
+    countries: (s.countries || []).map(toDisplayCountry),
+    topFlows: (s.topFlows || []).map(toDisplayFlow),
   };
 }
 
 function toDisplayCountry(proto: ProtoCountry): CountryDisplacement {
   return {
-    code: proto.code,
-    name: proto.name,
-    refugees: Number(proto.refugees),
-    asylumSeekers: Number(proto.asylumSeekers),
-    idps: Number(proto.idps),
-    stateless: Number(proto.stateless),
-    totalDisplaced: Number(proto.totalDisplaced),
-    hostRefugees: Number(proto.hostRefugees),
-    hostAsylumSeekers: Number(proto.hostAsylumSeekers),
-    hostTotal: Number(proto.hostTotal),
+    code: proto.code || '',
+    name: proto.name || '',
+    refugees: Number(proto.refugees || 0),
+    asylumSeekers: Number(proto.asylumSeekers || 0),
+    idps: Number(proto.idps || 0),
+    stateless: Number(proto.stateless || 0),
+    totalDisplaced: Number(proto.totalDisplaced || 0),
+    hostRefugees: Number(proto.hostRefugees || 0),
+    hostAsylumSeekers: Number(proto.hostAsylumSeekers || 0),
+    hostTotal: Number(proto.hostTotal || 0),
     lat: proto.location?.latitude,
     lon: proto.location?.longitude,
   };
@@ -93,11 +102,11 @@ function toDisplayCountry(proto: ProtoCountry): CountryDisplacement {
 
 function toDisplayFlow(proto: ProtoFlow): DisplacementFlow {
   return {
-    originCode: proto.originCode,
-    originName: proto.originName,
-    asylumCode: proto.asylumCode,
-    asylumName: proto.asylumName,
-    refugees: Number(proto.refugees),
+    originCode: proto.originCode || '',
+    originName: proto.originName || '',
+    asylumCode: proto.asylumCode || '',
+    asylumName: proto.asylumName || '',
+    refugees: Number(proto.refugees || 0),
     originLat: proto.originLocation?.latitude,
     originLon: proto.originLocation?.longitude,
     asylumLat: proto.asylumLocation?.latitude,
@@ -108,13 +117,6 @@ function toDisplayFlow(proto: ProtoFlow): DisplacementFlow {
 // ─── Client + circuit breaker ───
 
 const client = new DisplacementServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
-
-const emptyResult: UnhcrSummary = {
-  year: new Date().getFullYear(),
-  globalTotals: { refugees: 0, asylumSeekers: 0, idps: 0, stateless: 0, total: 0 },
-  countries: [],
-  topFlows: [],
-};
 
 const breaker = createCircuitBreaker<UnhcrSummary>({
   name: 'UNHCR Displacement',

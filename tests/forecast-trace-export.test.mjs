@@ -65,7 +65,34 @@ describe('forecast trace artifact builder', () => {
     populateFallbackNarratives([a, b]);
 
     const artifacts = buildForecastTraceArtifacts(
-      { generatedAt: Date.parse('2026-03-15T08:00:00Z'), predictions: [a, b] },
+      {
+        generatedAt: Date.parse('2026-03-15T08:00:00Z'),
+        predictions: [a, b],
+        publishTelemetry: {
+          suppressedWeakFallback: 1,
+          suppressedSituationOverlap: 2,
+          suppressedSituationCap: 1,
+          suppressedSituationDomainCap: 1,
+          suppressedTotal: 5,
+          reasonCounts: { weak_fallback: 1, situation_overlap: 2, situation_cap: 1, situation_domain_cap: 1 },
+          situationClusterCount: 2,
+          maxForecastsPerSituation: 2,
+          multiForecastSituations: 1,
+          cappedSituations: 1,
+        },
+        triggerContext: {
+          triggerSource: 'military_chain',
+          triggerService: 'seed-forecasts',
+          deployRevision: 'abc123',
+          triggerRequest: {
+            requestedAt: Date.parse('2026-03-15T07:59:00Z'),
+            requestedAtIso: '2026-03-15T07:59:00.000Z',
+            requester: 'seed-military-flights',
+            requesterRunId: 'mil-run-1',
+            sourceVersion: 'wingbits',
+          },
+        },
+      },
       { runId: 'run-123' },
       { basePrefix: 'forecast-runs', maxForecasts: 1 },
     );
@@ -73,6 +100,7 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.manifest.runId, 'run-123');
     assert.equal(artifacts.manifest.forecastCount, 2);
     assert.equal(artifacts.manifest.tracedForecastCount, 1);
+    assert.equal(artifacts.manifest.triggerContext.triggerSource, 'military_chain');
     assert.match(artifacts.manifestKey, /forecast-runs\/2026\/03\/15\/run-123\/manifest\.json/);
     assert.match(artifacts.summaryKey, /forecast-runs\/2026\/03\/15\/run-123\/summary\.json/);
     assert.match(artifacts.worldStateKey, /forecast-runs\/2026\/03\/15\/run-123\/world-state\.json/);
@@ -109,6 +137,10 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.quality.traced.enrichedCount, 0);
     assert.equal(artifacts.summary.quality.traced.fallbackRate, 1);
     assert.equal(artifacts.summary.quality.traced.enrichedRate, 0);
+    assert.equal(artifacts.summary.quality.publish.suppressedSituationOverlap, 2);
+    assert.equal(artifacts.summary.quality.publish.suppressedSituationCap, 1);
+    assert.equal(artifacts.summary.quality.publish.suppressedSituationDomainCap, 1);
+    assert.equal(artifacts.summary.quality.publish.cappedSituations, 1);
     assert.ok(artifacts.summary.quality.fullRun.quietDomains.includes('military'));
     assert.equal(artifacts.summary.quality.traced.topPromotionSignals[0].type, 'cii');
     assert.ok(artifacts.summary.worldStateSummary.summary.includes('active forecasts'));
@@ -125,6 +157,7 @@ describe('forecast trace artifact builder', () => {
     assert.ok(typeof artifacts.summary.worldStateSummary.newlyActiveActors === 'number');
     assert.equal(artifacts.summary.worldStateSummary.branchCount, 6);
     assert.equal(artifacts.summary.worldStateSummary.newBranches, 6);
+    assert.equal(artifacts.summary.triggerContext.triggerRequest.requester, 'seed-military-flights');
     assert.ok(Array.isArray(artifacts.worldState.situationClusters));
     assert.ok(Array.isArray(artifacts.worldState.report.situationWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.actorWatchlist));
@@ -176,8 +209,8 @@ describe('forecast trace artifact builder', () => {
         predictions: [a, b],
         enrichmentMeta: {
           selection: { candidateCount: 2, readinessEligibleCount: 2, selectedCombinedCount: 1, selectedScenarioCount: 1, reservedScenarioDomains: ['market'] },
-          combined: { requested: 1, source: 'live', provider: 'openrouter', model: 'google/gemini-2.5-flash', scenarios: 1, perspectives: 1, cases: 1, succeeded: true },
-          scenario: { requested: 1, source: 'cache', provider: 'cache', model: 'cache', scenarios: 0, cases: 0, succeeded: true },
+          combined: { requested: 1, source: 'live', provider: 'openrouter', model: 'google/gemini-2.5-flash', scenarios: 1, perspectives: 1, cases: 1, rawItemCount: 2, failureReason: '', succeeded: true },
+          scenario: { requested: 1, source: 'cache', provider: 'cache', model: 'cache', scenarios: 0, cases: 0, rawItemCount: 1, failureReason: '', succeeded: true },
         },
       },
       { runId: 'run-quality' },
@@ -194,6 +227,9 @@ describe('forecast trace artifact builder', () => {
     assert.ok(artifacts.summary.quality.traced.topSuppressionSignals.length >= 1);
     assert.equal(artifacts.summary.quality.enrichment.selection.selectedCombinedCount, 1);
     assert.equal(artifacts.summary.quality.enrichment.combined.provider, 'openrouter');
+    assert.equal(artifacts.summary.quality.enrichment.combined.rawItemCount, 2);
+    assert.equal(artifacts.summary.quality.enrichment.scenario.rawItemCount, 1);
+    assert.equal(artifacts.summary.quality.enrichment.combined.failureReason, '');
   });
 });
 

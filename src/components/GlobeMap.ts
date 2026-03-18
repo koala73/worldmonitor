@@ -456,6 +456,7 @@ export class GlobeMap {
   private flights: FlightMarker[] = [];
   private vessels: VesselMarker[] = [];
   private vesselData: Map<string, MilitaryVessel> = new Map();
+  private flightData: Map<string, MilitaryFlight> = new Map();
   private clusterMarkers: ClusterMarker[] = [];
   private clusterData: Map<string, MilitaryVesselCluster> = new Map();
   private popup: MapPopup | null = null;
@@ -1202,6 +1203,20 @@ export class GlobeMap {
         keywords: [],
         escalationScore: d.escalationScore as Hotspot['escalationScore'],
       });
+    }
+
+    if (d._kind === 'flight' && this.popup) {
+      const flight = this.flightData.get(d.id);
+      if (flight) {
+        const aRect = anchor.getBoundingClientRect();
+        const cRect = this.container.getBoundingClientRect();
+        const x = aRect.left - cRect.left + aRect.width / 2;
+        const y = aRect.top - cRect.top;
+        this.hideTooltip();
+        this.popup.show({ type: 'militaryFlight', data: flight, x, y });
+        this.popup.loadWingbitsLiveFlight(flight.hexCode);
+        return;
+      }
     }
 
     if (d._kind === 'vessel' && this.popup) {
@@ -2173,6 +2188,8 @@ export class GlobeMap {
   }
 
   public setMilitaryFlights(flights: MilitaryFlight[]): void {
+    this.flightData.clear();
+    for (const f of flights) this.flightData.set(f.id, f);
     this.flights = flights.map(f => ({
       _kind: 'flight' as const,
       _lat: f.lat,
@@ -3332,6 +3349,7 @@ export class GlobeMap {
   public destroy(): void {
     this.popup?.hide();
     this.popup = null;
+    this.flightData.clear();
     this.vesselData.clear();
     this.clusterData.clear();
     this.container.removeEventListener('contextmenu', this.handleContextMenu);

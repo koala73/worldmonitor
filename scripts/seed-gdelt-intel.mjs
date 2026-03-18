@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, sleep, verifySeedKey } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'intelligence:gdelt-intel:v1';
-const CACHE_TTL = 14400; // 4h — data must outlive health.js maxStaleMin:180 to allow STALE warning before EMPTY/CRIT
+const CACHE_TTL = 21600; // 6h — cron runs every 2h; TTL must outlive maxStaleMin:300 to allow STALE warning before EMPTY/CRIT
 const GDELT_DOC_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
 const INTER_TOPIC_DELAY_MS = 20_000; // 20s between topics to avoid 429
 
+// 4 topics (down from 6 in prior fix #1817) to reduce GDELT 429 pressure on the 2h cron cycle.
+// Dropped: sanctions (covered by market/economic data), intelligence (overlaps with military).
 const INTEL_TOPICS = [
   { id: 'military',     query: '(military exercise OR troop deployment OR airstrike OR "naval exercise") sourcelang:eng' },
   { id: 'cyber',        query: '(cyberattack OR ransomware OR hacking OR "data breach" OR APT) sourcelang:eng' },
   { id: 'nuclear',      query: '(nuclear OR uranium enrichment OR IAEA OR "nuclear weapon" OR plutonium) sourcelang:eng' },
-  { id: 'sanctions',    query: '(sanctions OR embargo OR "trade war" OR tariff OR "economic pressure") sourcelang:eng' },
-  { id: 'intelligence', query: '(espionage OR spy OR intelligence agency OR covert OR surveillance) sourcelang:eng' },
   { id: 'maritime',     query: '(naval blockade OR piracy OR "strait of hormuz" OR "south china sea" OR warship) sourcelang:eng' },
 ];
 
@@ -95,13 +95,34 @@ async function fetchAllTopics() {
     console.log(`    ${result.articles.length} articles`);
     topics.push(result);
   }
+
+  // For topics that returned 0 articles (rate-limited), preserve the previous
+  // snapshot's articles rather than publishing empty results over good cached data.
+  const emptyTopics = topics.filter((t) => t.articles.length === 0);
+  if (emptyTopics.length > 0) {
+    const previous = await verifySeedKey(CANONICAL_KEY).catch(() => null);
+    if (previous && Array.isArray(previous.topics)) {
+      const prevMap = new Map(previous.topics.map((t) => [t.id, t]));
+      for (const topic of topics) {
+        if (topic.articles.length === 0 && prevMap.has(topic.id)) {
+          const prev = prevMap.get(topic.id);
+          if (prev.articles?.length > 0) {
+            console.log(`    ${topic.id}: rate-limited — using ${prev.articles.length} cached articles from previous snapshot`);
+            topic.articles = prev.articles;
+            topic.fetchedAt = prev.fetchedAt;
+          }
+        }
+      }
+    }
+  }
+
   return { topics, fetchedAt: new Date().toISOString() };
 }
 
 function validate(data) {
   if (!Array.isArray(data?.topics) || data.topics.length === 0) return false;
   const populated = data.topics.filter((t) => Array.isArray(t.articles) && t.articles.length > 0);
-  return populated.length >= 3; // at least 3 of 6 topics must have articles
+  return populated.length >= 2; // safety net for first run or total outage; partial 429s are handled by per-topic merge above
 }
 
 runSeed('intelligence', 'gdelt-intel', CANONICAL_KEY, fetchAllTopics, {

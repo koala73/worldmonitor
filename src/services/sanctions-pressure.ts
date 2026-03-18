@@ -163,8 +163,16 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
     });
     const result = toResult(response);
     latestSanctionsPressureResult = result;
+    if (result.totalCount === 0) {
+      // Seed is missing or the feed is down. Evict any stale cache so the
+      // panel surfaces "unavailable" instead of serving old designations
+      // indefinitely via stale-while-revalidate.
+      breaker.clearCache();
+    }
     return result;
-  }, emptyResult);
+  }, emptyResult, {
+    shouldCache: (result) => result.totalCount > 0,
+  });
 }
 
 export function getLatestSanctionsPressure(): SanctionsPressureResult | null {

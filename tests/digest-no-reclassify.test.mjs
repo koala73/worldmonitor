@@ -14,6 +14,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(resolve(__dirname, '..', 'src', 'app', 'data-loader.ts'), 'utf-8');
+const serverSrc = readFileSync(
+  resolve(__dirname, '..', 'server', 'worldmonitor', 'news', 'v1', 'list-feed-digest.ts'),
+  'utf-8',
+);
 
 describe('Digest branch must not reclassify with AI', () => {
   const digestBranchStart = src.indexOf("// Digest branch: server already aggregated feeds");
@@ -48,5 +52,14 @@ describe('Digest branch must not reclassify with AI', () => {
   it('canQueueAiClassification is not imported in data-loader.ts', () => {
     assert.ok(!src.includes("import { canQueueAiClassification"),
       'canQueueAiClassification should not be imported (no call sites remain)');
+  });
+});
+
+describe('feedStatuses must not emit ok entries', () => {
+  it('buildDigest does not write ok to feedStatuses', () => {
+    assert.ok(
+      !serverSrc.includes("feedStatuses[feed.name] = items.length > 0 ? 'ok' : 'empty'"),
+      "feedStatuses must not write 'ok' entries — wastes payload on every response",
+    );
   });
 });

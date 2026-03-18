@@ -35,10 +35,14 @@ import { toApiUrl } from '@/services/runtime';
 // ---- Client + Circuit Breakers ----
 
 const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const WB_BREAKERS_WARN_THRESHOLD = 50;
 const wbBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<ListWorldBankIndicatorsResponse>>>();
 
 function getWbBreaker(indicatorCode: string) {
   if (!wbBreakers.has(indicatorCode)) {
+    if (wbBreakers.size >= WB_BREAKERS_WARN_THRESHOLD) {
+      console.warn(`[wb] breaker pool at ${wbBreakers.size} — unexpected growth, investigate getWbBreaker callers`);
+    }
     wbBreakers.set(indicatorCode, createCircuitBreaker<ListWorldBankIndicatorsResponse>({
       name: `WB:${indicatorCode}`,
       cacheTtlMs: 30 * 60 * 1000,

@@ -2537,6 +2537,7 @@
     "cached": "CACHED",
     "unavailable": "UNAVAILABLE",
     "close": "Close",
+    "cancel": "Cancel",
     "currentVariant": "(current)",
     "retry": "Retry",
     "refresh": "Refresh",
@@ -2578,5 +2579,29 @@
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
     "copyCoordinates": "Copy Coordinates"
+  },
+  "mcp": {
+    "connectPanel": "Connect MCP",
+    "modalTitle": "Connect MCP Server",
+    "serverUrl": "Server URL",
+    "authHeader": "Auth Header",
+    "optional": "optional",
+    "connectBtn": "Connect & List Tools",
+    "connecting": "Connecting...",
+    "foundTools": "Found {{count}} tool(s)",
+    "connectFailed": "Connection failed",
+    "selectTool": "Select a tool",
+    "toolArgs": "Arguments (JSON)",
+    "panelTitle": "Panel Title",
+    "panelTitlePlaceholder": "My MCP Panel",
+    "refreshEvery": "Refresh every",
+    "seconds": "seconds",
+    "addPanel": "Add Panel",
+    "configure": "Configure MCP",
+    "refreshNow": "Refresh now",
+    "invalidJson": "Invalid JSON",
+    "confirmDelete": "Remove this MCP panel?",
+    "quickConnect": "Quick Connect",
+    "or": "or enter a custom server"
   }
 }

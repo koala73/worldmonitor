@@ -2,11 +2,10 @@
 
 import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl } from './_seed-utils.mjs';
 import { summarizeMilitaryTheaters, buildMilitarySurges, appendMilitaryHistory } from './_military-surges.mjs';
-import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
 import tls from 'node:tls';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 loadEnvFile(import.meta.url);
 
@@ -37,6 +36,8 @@ const MILITARY_CLASSIFICATION_AUDIT_STALE_KEY = 'military:classification-audit:s
 const MILITARY_CLASSIFICATION_AUDIT_LIVE_TTL = 900;
 const MILITARY_CLASSIFICATION_AUDIT_STALE_TTL = 86400;
 const CHAIN_FORECAST_SEED = process.env.CHAIN_FORECAST_SEED_ON_MILITARY === '1';
+const FORECAST_REFRESH_REQUEST_KEY = 'forecast:refresh-request:v1';
+const FORECAST_REFRESH_REQUEST_TTL = 60 * 60;
 
 // ── Proxy Config ─────────────────────────────────────────
 const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.OREF_PROXY_AUTH || '';
@@ -1241,24 +1242,21 @@ async function redisGet(url, token, key) {
   try { return JSON.parse(data.result); } catch { return null; }
 }
 
-async function triggerForecastSeedIfEnabled() {
+async function requestForecastRefreshIfEnabled(runId, assessedAt, source) {
   if (!CHAIN_FORECAST_SEED) return;
 
-  const scriptPath = fileURLToPath(new URL('./seed-forecasts.mjs', import.meta.url));
-  console.log('  Triggering forecast reseed after military publish...');
-
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath], {
-      stdio: 'inherit',
-      env: process.env,
-    });
-
-    child.once('error', reject);
-    child.once('exit', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`forecast reseed exited with code ${code}`));
-    });
-  });
+  const { url, token } = getRedisCredentials();
+  const request = {
+    requestedAt: assessedAt,
+    requestedAtIso: new Date(assessedAt).toISOString(),
+    requestedBy: 'military_chain',
+    requester: 'seed-military-flights',
+    requesterRunId: runId,
+    sourceVersion: source || '',
+  };
+  await redisSet(url, token, FORECAST_REFRESH_REQUEST_KEY, request, FORECAST_REFRESH_REQUEST_TTL);
+  console.log('  Forecast refresh requested after military publish');
+  console.log('  Forecast execution is delegated to the forecast service runtime');
 }
 
 // ── Main ───────────────────────────────────────────────────
@@ -1412,9 +1410,9 @@ async function main() {
     await releaseLock('military:flights', runId);
     lockReleased = true;
     try {
-      await triggerForecastSeedIfEnabled();
+      await requestForecastRefreshIfEnabled(runId, assessedAt, source);
     } catch (err) {
-      console.warn(`  Forecast reseed failed after military publish: ${err.message || err}`);
+      console.warn(`  Forecast refresh request failed after military publish: ${err.message || err}`);
     }
 
     const durationMs = Date.now() - startMs;

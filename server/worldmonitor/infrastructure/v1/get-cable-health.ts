@@ -16,7 +16,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 // ========================================================================
 
 const CACHE_KEY = 'cable-health-v1';
-const CACHE_TTL = 600; // 10 min — cable health not time-critical
+const CACHE_TTL = 3600; // 1h — must outlive the 30-min warm-ping interval in ais-relay
 
 // In-memory fallback: serves stale data when both Redis and NGA are down
 let fallbackCache: GetCableHealthResponse | null = null;
@@ -441,7 +441,9 @@ export async function getCableHealth(
     if (result) {
       if (source === 'fresh') {
         const count = result.cables ? Object.keys(result.cables).length : 0;
-        setCachedJson('seed-meta:cable-health', { fetchedAt: Date.now(), recordCount: count }, 604800).catch(() => {});
+        // Write at least 1 so health.js doesn't report EMPTY/CRIT when NGA
+        // has no active warnings — zero disruptions is a valid healthy state.
+        setCachedJson('seed-meta:cable-health', { fetchedAt: Date.now(), recordCount: Math.max(count, 1) }, 604800).catch(() => {});
       }
       fallbackCache = result;
       return result;

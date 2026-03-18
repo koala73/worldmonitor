@@ -44,6 +44,7 @@ import {
   buildCaseTriggers,
   buildForecastActors,
   buildForecastWorldState,
+  buildForecastRunWorldState,
   buildForecastBranches,
   buildActorLenses,
   scoreForecastReadiness,
@@ -63,6 +64,7 @@ import {
   populateFallbackNarratives,
   loadCascadeRules,
   evaluateRuleConditions,
+  summarizePublishFiltering,
   SIGNAL_TO_SOURCE,
   PREDICATE_EVALUATORS,
   DEFAULT_CASCADE_RULES,
@@ -1222,6 +1224,28 @@ describe('forecast narrative fallbacks', () => {
     assert.ok(contrarianCase.length <= 500);
   });
 
+  it('fallback narratives reference broader situation context when available', () => {
+    const pred = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.63, 0.48, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+    ]);
+    buildForecastCase(pred);
+    pred.caseFile.situationContext = {
+      id: 'sit-1',
+      label: 'Iran conflict pressure',
+      forecastCount: 4,
+      topSignals: [{ type: 'ucdp', count: 4 }],
+    };
+    pred.situationContext = pred.caseFile.situationContext;
+
+    const scenario = buildFallbackScenario(pred);
+    const baseCase = buildFallbackBaseCase(pred);
+    const summary = buildFeedSummary(pred);
+
+    assert.match(baseCase, /broader|cluster/i);
+    assert.match(scenario, /broader|cluster/i);
+    assert.match(summary, /broader|cluster/i);
+  });
+
   it('buildFeedSummary stays compact and distinct from the deeper case output', () => {
     const pred = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.7, 0.6, '7d', [
       { type: 'cii', value: 'Iran CII 87 (critical)', weight: 0.4 },
@@ -1801,5 +1825,183 @@ describe('forecast quality gating', () => {
     const published = filterPublishedForecasts([weak, strong]);
     assert.equal(published.length, 1);
     assert.equal(published[0].id, strong.id);
+  });
+
+  it('suppresses weaker duplicate-like conflict forecasts while preserving distinct consequences', () => {
+    const primary = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.64, 0.58, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+      { type: 'news_corroboration', value: 'Iran strike exchange intensifies', weight: 0.3 },
+    ]);
+    const duplicate = makePrediction('conflict', 'Iran', 'Active armed conflict: Iran', 0.52, 0.42, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+      { type: 'news_corroboration', value: 'Iran strike exchange intensifies', weight: 0.3 },
+    ]);
+    const consequence = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.41, 0.51, '30d', [
+      { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
+    ]);
+    const distinctConflict = makePrediction('conflict', 'Gulf', 'Spillover conflict risk: Gulf shipping corridor', 0.47, 0.53, '14d', [
+      { type: 'news_corroboration', value: 'Gulf states prepare for possible spillover', weight: 0.35 },
+    ]);
+
+    buildForecastCases([primary, duplicate, consequence, distinctConflict]);
+    for (const pred of [primary, duplicate, consequence, distinctConflict]) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+    }
+    primary.caseFile.situationContext = { id: 'sit-1', label: 'Iran conflict pressure', forecastCount: 3, topSignals: [{ type: 'ucdp', count: 2 }] };
+    duplicate.caseFile.situationContext = { id: 'sit-1', label: 'Iran conflict pressure', forecastCount: 3, topSignals: [{ type: 'ucdp', count: 2 }] };
+    consequence.caseFile.situationContext = { id: 'sit-1', label: 'Iran conflict pressure', forecastCount: 3, topSignals: [{ type: 'ucdp', count: 2 }] };
+    distinctConflict.caseFile.situationContext = { id: 'sit-2', label: 'Gulf spillover pressure', forecastCount: 1, topSignals: [{ type: 'news_corroboration', count: 1 }] };
+    primary.situationContext = primary.caseFile.situationContext;
+    duplicate.situationContext = duplicate.caseFile.situationContext;
+    consequence.situationContext = consequence.caseFile.situationContext;
+    distinctConflict.situationContext = distinctConflict.caseFile.situationContext;
+    primary.readiness = { overall: 0.63 };
+    duplicate.readiness = { overall: 0.44 };
+    consequence.readiness = { overall: 0.54 };
+    distinctConflict.readiness = { overall: 0.49 };
+    primary.analysisPriority = 0.19;
+    duplicate.analysisPriority = 0.09;
+    consequence.analysisPriority = 0.12;
+    distinctConflict.analysisPriority = 0.11;
+
+    const published = filterPublishedForecasts([primary, duplicate, consequence, distinctConflict]);
+    assert.equal(published.length, 3);
+    assert.ok(published.some((item) => item.id === primary.id));
+    assert.ok(!published.some((item) => item.id === duplicate.id));
+    assert.ok(published.some((item) => item.id === consequence.id));
+    assert.ok(published.some((item) => item.id === distinctConflict.id));
+
+    const telemetry = summarizePublishFiltering([primary, duplicate, consequence, distinctConflict]);
+    assert.equal(telemetry.suppressedSituationOverlap, 1);
+  });
+
+  it('caps dominant same-domain situation output while preserving cross-domain consequences', () => {
+    const conflictA = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.66, 0.61, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+    ]);
+    const conflictB = makePrediction('conflict', 'Gulf', 'Spillover conflict risk: Gulf shipping corridor', 0.61, 0.57, '7d', [
+      { type: 'news_corroboration', value: 'Gulf states prepare for spillover', weight: 0.45 },
+    ]);
+    const conflictC = makePrediction('conflict', 'Israel', 'Retaliatory conflict risk: Israel', 0.58, 0.53, '14d', [
+      { type: 'news_corroboration', value: 'Retaliatory pressure remains elevated around Israel', weight: 0.42 },
+    ]);
+    const consequence = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.49, 0.55, '30d', [
+      { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
+    ]);
+
+    buildForecastCases([conflictA, conflictB, conflictC, consequence]);
+    for (const pred of [conflictA, conflictB, conflictC, consequence]) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.situationContext = {
+        id: 'sit-iran',
+        label: 'Iran conflict and market situation',
+        forecastCount: 4,
+        topSignals: [{ type: 'ucdp', count: 3 }],
+      };
+      pred.caseFile.situationContext = pred.situationContext;
+    }
+    conflictA.readiness = { overall: 0.64 };
+    conflictB.readiness = { overall: 0.59 };
+    conflictC.readiness = { overall: 0.51 };
+    consequence.readiness = { overall: 0.56 };
+    conflictA.analysisPriority = 0.22;
+    conflictB.analysisPriority = 0.19;
+    conflictC.analysisPriority = 0.15;
+    consequence.analysisPriority = 0.17;
+
+    const published = filterPublishedForecasts([conflictA, conflictB, conflictC, consequence]);
+    assert.equal(published.length, 3);
+    assert.ok(published.some((item) => item.id === consequence.id));
+    assert.ok(!published.some((item) => item.id === conflictC.id));
+
+    const telemetry = summarizePublishFiltering([conflictA, conflictB, conflictC, consequence]);
+    assert.equal(telemetry.suppressedSituationDomainCap, 1);
+    assert.equal(telemetry.cappedSituations, 0);
+  });
+
+  it('does not report capped situations when a situation only reaches the cap without dropping anything', () => {
+    const preds = [
+      makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.66, 0.6, '7d', [
+        { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+      ]),
+      makePrediction('political', 'Iran', 'Political instability: Iran', 0.55, 0.54, '14d', [
+        { type: 'news_corroboration', value: 'Emergency cabinet meetings continue', weight: 0.35 },
+      ]),
+      makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.48, 0.52, '30d', [
+        { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
+      ]),
+    ];
+
+    buildForecastCases(preds);
+    for (const [index, pred] of preds.entries()) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.situationContext = {
+        id: 'sit-iran-gulf',
+        label: 'Iran Gulf pressure',
+        forecastCount: 3,
+        topSignals: [{ type: 'news_corroboration', count: 2 }],
+      };
+      pred.caseFile.situationContext = pred.situationContext;
+      pred.readiness = { overall: 0.65 - (index * 0.05) };
+      pred.analysisPriority = 0.22 - (index * 0.03);
+    }
+
+    const published = filterPublishedForecasts(preds);
+    assert.equal(published.length, 3);
+
+    const telemetry = summarizePublishFiltering(preds);
+    assert.equal(telemetry.suppressedSituationCap, 0);
+    assert.equal(telemetry.cappedSituations, 0);
+  });
+
+  it('keeps unrelated forecasts in separate situations instead of token-only over-merging', () => {
+    const conflict = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.65, 0.58, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+    ]);
+    const cyber = makePrediction('cyber', 'Estonia', 'Cyber disruption risk: Estonia', 0.43, 0.52, '7d', [
+      { type: 'news_corroboration', value: 'Estonia reports sustained cyber probing', weight: 0.35 },
+    ]);
+
+    buildForecastCases([conflict, cyber]);
+    const worldState = buildForecastRunWorldState({ predictions: [conflict, cyber] });
+
+    assert.equal(worldState.situationClusters.length, 2);
+    assert.ok(worldState.situationClusters.every((cluster) => cluster.label.endsWith('situation')));
+    assert.ok(worldState.situationClusters.every((cluster) => !/fc-[a-z]+-[0-9a-f]{8}/.test(cluster.label)));
+  });
+
+  it('does not report capped situations when a situation only reaches the cap without dropping anything', () => {
+    const preds = [
+      makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.66, 0.6, '7d', [
+        { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+      ]),
+      makePrediction('political', 'Iran', 'Political instability: Iran', 0.55, 0.54, '14d', [
+        { type: 'news_corroboration', value: 'Emergency cabinet meetings continue', weight: 0.35 },
+      ]),
+      makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.48, 0.52, '30d', [
+        { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
+      ]),
+    ];
+
+    buildForecastCases(preds);
+    for (const [index, pred] of preds.entries()) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.situationContext = {
+        id: 'sit-iran-gulf',
+        label: 'Iran Gulf pressure',
+        forecastCount: 3,
+        topSignals: [{ type: 'news_corroboration', count: 2 }],
+      };
+      pred.caseFile.situationContext = pred.situationContext;
+      pred.readiness = { overall: 0.65 - (index * 0.05) };
+      pred.analysisPriority = 0.22 - (index * 0.03);
+    }
+
+    const published = filterPublishedForecasts(preds);
+    assert.equal(published.length, 3);
+
+    const telemetry = summarizePublishFiltering(preds);
+    assert.equal(telemetry.suppressedSituationCap, 0);
+    assert.equal(telemetry.cappedSituations, 0);
   });
 });

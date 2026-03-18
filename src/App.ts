@@ -777,7 +777,7 @@ export class App {
           intervalMs: REFRESH_INTERVALS.forecasts,
           condition: () => this.isPanelNearViewport('forecast'),
         },
-        { name: 'pizzint', fn: () => this.dataLoader.loadPizzInt(), intervalMs: 10 * 60 * 1000 },
+        { name: 'pizzint', fn: () => this.dataLoader.loadPizzInt(), intervalMs: 10 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
         { name: 'natural', fn: () => this.dataLoader.loadNatural(), intervalMs: 60 * 60 * 1000, condition: () => this.state.mapLayers.natural },
         { name: 'weather', fn: () => this.dataLoader.loadWeatherAlerts(), intervalMs: 10 * 60 * 1000, condition: () => this.state.mapLayers.weather },
         { name: 'fred', fn: () => this.dataLoader.loadFredData(), intervalMs: 6 * 60 * 60 * 1000, condition: () => this.isPanelNearViewport('economic') },

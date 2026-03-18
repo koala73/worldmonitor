@@ -635,6 +635,7 @@ export interface MapLayers {
   processingPlants: boolean;
   commodityPorts: boolean;
   webcams: boolean;
+  weatherRadar: boolean;
 }
 
 export interface AIDataCenter {

@@ -2071,7 +2071,7 @@ const URLHAUS_AUTH_KEY = process.env.URLHAUS_AUTH_KEY || '';
 const OTX_API_KEY = process.env.OTX_API_KEY || '';
 const ABUSEIPDB_API_KEY = process.env.ABUSEIPDB_API_KEY || '';
 const CYBER_SEED_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h — matches IOC feed update cadence
-const CYBER_SEED_TTL = 10800; // 3h — survives 1 missed cycle
+const CYBER_SEED_TTL = 14400; // 4h — must outlive the 2h seed interval (2x)
 const CYBER_RPC_KEY = 'cyber:threats:v2'; // must match handler REDIS_CACHE_KEY in list-cyber-threats.ts
 const CYBER_BOOTSTRAP_KEY = 'cyber:threats-bootstrap:v2';
 const CYBER_MAX_CACHED = 2000;
@@ -2861,7 +2861,7 @@ const THEATER_POSTURE_SEED_INTERVAL_MS = 600_000; // 10 min
 const THEATER_POSTURE_LIVE_KEY = 'theater-posture:sebuf:v1';
 const THEATER_POSTURE_STALE_KEY = 'theater_posture:sebuf:stale:v1';
 const THEATER_POSTURE_BACKUP_KEY = 'theater-posture:sebuf:backup:v1';
-const THEATER_POSTURE_LIVE_TTL = 900;    // 15 min
+const THEATER_POSTURE_LIVE_TTL = 1200;   // 20 min — must outlive the 10-min seed interval (2x)
 const THEATER_POSTURE_STALE_TTL = 86400; // 24h
 const THEATER_POSTURE_BACKUP_TTL = 604800; // 7d
 
@@ -2934,6 +2934,102 @@ const THEATER_QUERY_REGIONS = [
   { name: 'WESTERN', lamin: 10, lamax: 66, lomin: 9, lomax: 66 },
   { name: 'PACIFIC', lamin: 4, lamax: 44, lomin: 104, lomax: 133 },
 ];
+
+async function handleWingbitsTrackRequest(req, res) {
+  const apiKey = process.env.WINGBITS_API_KEY;
+  if (!apiKey) {
+    return safeEnd(res, 503, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'WINGBITS_API_KEY not configured', positions: [] }));
+  }
+
+  const url = new URL(req.url, 'http://localhost');
+  const params = url.searchParams;
+  const laminStr = params.get('lamin');
+  const lominStr = params.get('lomin');
+  const lamaxStr = params.get('lamax');
+  const lomaxStr = params.get('lomax');
+
+  if (!laminStr || !lominStr || !lamaxStr || !lomaxStr) {
+    return safeEnd(res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Missing bbox params: lamin, lomin, lamax, lomax', positions: [] }));
+  }
+
+  const lamin = Number(laminStr);
+  const lomin = Number(lominStr);
+  const lamax = Number(lamaxStr);
+  const lomax = Number(lomaxStr);
+
+  if (!Number.isFinite(lamin) || !Number.isFinite(lomin) || !Number.isFinite(lamax) || !Number.isFinite(lomax)) {
+    return safeEnd(res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Invalid bbox params: must be finite numbers', positions: [] }));
+  }
+
+  const centerLat = (lamin + lamax) / 2;
+  const centerLon = (lomin + lomax) / 2;
+  const widthNm = Math.abs(lomax - lomin) * 60 * Math.cos(centerLat * Math.PI / 180);
+  const heightNm = Math.abs(lamax - lamin) * 60;
+  const areas = [{ alias: 'viewport', by: 'box', la: centerLat, lo: centerLon, w: widthNm, h: heightNm, unit: 'nm' }];
+
+  try {
+    const resp = await fetch('https://customer-api.wingbits.com/v1/flights', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify(areas),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!resp.ok) {
+      console.warn(`[Wingbits Track] API error: ${resp.status}`);
+      return safeEnd(res, 502, { 'Content-Type': 'application/json' },
+        JSON.stringify({ error: `Wingbits API ${resp.status}`, positions: [] }));
+    }
+
+    const data = await resp.json();
+    if (!Array.isArray(data)) {
+      console.warn(`[Wingbits Track] Unexpected response shape: ${JSON.stringify(data).slice(0, 200)}`);
+      return safeEnd(res, 502, { 'Content-Type': 'application/json' },
+        JSON.stringify({ error: 'Wingbits returned non-array response', positions: [] }));
+    }
+    const positions = [];
+    const seenIds = new Set();
+    const now = Date.now();
+
+    for (const areaResult of data) {
+      const flightList = Array.isArray(areaResult.data) ? areaResult.data
+        : Array.isArray(areaResult.flights) ? areaResult.flights
+        : Array.isArray(areaResult) ? areaResult : [];
+      for (const f of flightList) {
+        const icao24 = f.h || f.icao24 || f.id || '';
+        if (!icao24 || seenIds.has(icao24)) continue;
+        seenIds.add(icao24);
+        const lat = f.la ?? f.latitude ?? f.lat ?? 0;
+        const lon = f.lo ?? f.longitude ?? f.lon ?? f.lng ?? 0;
+        positions.push({
+          icao24,
+          callsign: (f.f || f.callsign || f.flight || '').trim(),
+          lat,
+          lon,
+          altitudeM: (f.ab ?? f.altitude ?? f.alt ?? 0) * 0.3048,
+          groundSpeedKts: f.gs ?? f.groundSpeed ?? f.speed ?? 0,
+          trackDeg: f.th ?? f.heading ?? f.track ?? 0,
+          verticalRate: 0,
+          onGround: f.og ?? f.gr ?? f.onGround ?? false,
+          source: 'POSITION_SOURCE_WINGBITS',
+          observedAt: f.ra ? new Date(f.ra).getTime() : now,
+        });
+      }
+    }
+
+    logThrottled('log', 'wingbits-track', `[Wingbits Track] ${positions.length} flights for bbox ${lamin},${lomin},${lamax},${lomax}`);
+    return sendCompressed(req, res, 200,
+      { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=30', 'CDN-Cache-Control': 'public, max-age=15' },
+      JSON.stringify({ positions, source: 'wingbits' }));
+  } catch (err) {
+    console.warn(`[Wingbits Track] Error: ${err?.message || err}`);
+    return safeEnd(res, 503, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: `Wingbits fetch failed: ${err?.message}`, positions: [] }));
+  }
+}
 
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
@@ -3025,6 +3121,29 @@ async function fetchTheaterFlightsFromWingbits() {
   }
 }
 
+function isStrictMilitaryVessel(v) {
+  const shipType = Number(v.shipType);
+  // Only shipType 35 (military) and 55 (law enforcement) are reliable; 50-59 includes
+  // tugs, pilot boats, and SAR craft that inflate counts in busy maritime theaters.
+  if (shipType === 35 || shipType === 55) return true;
+  // Named naval vessels (USS, HMS, PLA, etc.) are reliable regardless of shipType
+  if (v.name && NAVAL_PREFIX_RE.test(v.name.trim().toUpperCase())) return true;
+  return false;
+}
+
+function countMilitaryVesselsInBounds(bounds) {
+  let count = 0;
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  for (const v of candidateReports.values()) {
+    if ((v.timestamp || 0) < cutoff) continue;
+    if (!isStrictMilitaryVessel(v)) continue;
+    if (v.lat >= bounds.south && v.lat <= bounds.north && v.lon >= bounds.west && v.lon <= bounds.east) {
+      count++;
+    }
+  }
+  return count;
+}
+
 function calculateTheaterPostures(flights) {
   return POSTURE_THEATERS.map((theater) => {
     const tf = flights.filter(
@@ -3035,17 +3154,23 @@ function calculateTheaterPostures(flights) {
     const tankers = tf.filter((f) => f.aircraftType === 'tanker').length;
     const awacs = tf.filter((f) => f.aircraftType === 'awacs').length;
     const fighters = tf.filter((f) => f.aircraftType === 'fighter').length;
-    const postureLevel = total >= theater.thresholds.critical ? 'critical'
-      : total >= theater.thresholds.elevated ? 'elevated' : 'normal';
+    const vesselCount = countMilitaryVesselsInBounds(theater.bounds);
+    // Thresholds were calibrated for flight counts; cap vessel contribution at half the
+    // elevated threshold to avoid naval traffic dominating posture in maritime theaters.
+    const vesselContribution = Math.min(vesselCount, Math.floor(theater.thresholds.elevated / 2));
+    const combinedActivity = total + vesselContribution;
+    const postureLevel = combinedActivity >= theater.thresholds.critical ? 'critical'
+      : combinedActivity >= theater.thresholds.elevated ? 'elevated' : 'normal';
     const strikeCapable = tankers >= theater.strikeIndicators.minTankers &&
       awacs >= theater.strikeIndicators.minAwacs && fighters >= theater.strikeIndicators.minFighters;
     const ops = [];
     if (strikeCapable) ops.push('strike_capable');
     if (tankers > 0) ops.push('aerial_refueling');
     if (awacs > 0) ops.push('airborne_early_warning');
+    if (vesselCount > 0) ops.push('naval_presence');
     return {
       theater: theater.id, postureLevel, activeFlights: total,
-      trackedVessels: 0, activeOperations: ops, assessedAt: Date.now(),
+      trackedVessels: vesselCount, activeOperations: ops, assessedAt: Date.now(),
     };
   });
 }
@@ -3062,18 +3187,18 @@ async function seedTheaterPosture() {
     if (wb && wb.length > 0) flights = wb;
   }
   if (flights.length === 0) {
-    console.warn('[TheaterPosture] No military flights from OpenSky or Wingbits — skipping');
-    return;
+    console.warn('[TheaterPosture] No military flights from OpenSky or Wingbits — continuing with vessel-only posture');
   }
   const theaters = calculateTheaterPostures(flights);
+  const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
   const payload = { theaters };
   const ok1 = await upstashSet(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL);
   const ok2 = await upstashSet(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL);
   const ok3 = await upstashSet(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL);
-  await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length }, 604800);
+  await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels }, 604800);
   const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
+  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights, ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
 }
 
 function startTheaterPostureSeedLoop() {
@@ -3213,7 +3338,7 @@ function startCableHealthWarmPingLoop() {
 // ─────────────────────────────────────────────────────────────
 const WEATHER_SEED_INTERVAL_MS = 15 * 60 * 1000; // 15 min
 const WEATHER_REDIS_KEY = 'weather:alerts:v1';
-const WEATHER_CACHE_TTL = 900;
+const WEATHER_CACHE_TTL = 1800; // 30m — must outlive the 15-min seed interval
 let weatherSeedInFlight = false;
 
 async function seedWeatherAlerts() {
@@ -3284,7 +3409,7 @@ async function startWeatherSeedLoop() {
 // ─────────────────────────────────────────────────────────────
 const SPENDING_SEED_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const SPENDING_REDIS_KEY = 'economic:spending:v1';
-const SPENDING_CACHE_TTL = 3600;
+const SPENDING_CACHE_TTL = 7200; // 2h — must outlive the 1h seed interval
 let spendingSeedInFlight = false;
 
 function getDateDaysAgo(days) {
@@ -4067,7 +4192,7 @@ async function startCorridorRiskSeedLoop() {
 const USNI_URL = 'https://news.usni.org/wp-json/wp/v2/posts?categories=4137&per_page=1';
 const USNI_REDIS_KEY = 'usni-fleet:sebuf:v1';
 const USNI_STALE_KEY = 'usni-fleet:sebuf:stale:v1';
-const USNI_TTL = 25200; // 7h
+const USNI_TTL = 43200; // 12h — must outlive the 6h seed interval (2x)
 const USNI_STALE_TTL = 604800; // 7 days
 const USNI_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
 
@@ -4368,6 +4493,7 @@ function isAuthorizedRequest(req) {
 }
 
 function getRouteGroup(pathname) {
+  if (pathname.startsWith('/wingbits/track')) return 'wingbits';
   if (pathname.startsWith('/opensky')) return 'opensky';
   if (pathname.startsWith('/rss')) return 'rss';
   if (pathname.startsWith('/ais/snapshot')) return 'snapshot';
@@ -4626,7 +4752,7 @@ const TRANSIT_COOLDOWN_MS = 30 * 60 * 1000;
 const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_DWELL_MS = 5 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
-const CHOKEPOINT_TRANSIT_TTL = 900;
+const CHOKEPOINT_TRANSIT_TTL = 1200; // 20 min — must outlive the 10-min seed interval (2x)
 const CHOKEPOINT_TRANSIT_INTERVAL_MS = 10 * 60 * 1000;
 
 const NAVAL_PREFIX_RE = /^(USS|USNS|HMS|HMAS|HMCS|INS|JS|ROKS|TCG|FS|BNS|RFS|PLAN|PLA|CGC|PNS|KRI|ITS|SNS|MMSI)/i;
@@ -5134,7 +5260,7 @@ setInterval(() => {
 
 // --- Pre-assembled Transit Summaries (Railway advantage: avoids large Redis reads on Vercel) ---
 const TRANSIT_SUMMARY_REDIS_KEY = 'supply_chain:transit-summaries:v1';
-const TRANSIT_SUMMARY_TTL = 900; // 15 min
+const TRANSIT_SUMMARY_TTL = 1200; // 20 min — must outlive the 10-min seed interval (2x)
 const TRANSIT_SUMMARY_INTERVAL_MS = 10 * 60 * 1000;
 
 // Threat levels for anomaly detection.
@@ -7436,6 +7562,8 @@ const server = http.createServer(async (req, res) => {
     }
   } else if (pathname.startsWith('/ucdp-events')) {
     handleUcdpEventsRequest(req, res);
+  } else if (pathname.startsWith('/wingbits/track')) {
+    handleWingbitsTrackRequest(req, res);
   } else if (pathname.startsWith('/opensky')) {
     handleOpenSkyRequest(req, res, PORT);
   } else if (pathname.startsWith('/worldbank')) {

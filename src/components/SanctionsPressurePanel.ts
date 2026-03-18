@@ -8,13 +8,13 @@ export class SanctionsPressurePanel extends Panel {
   constructor() {
     super({
       id: 'sanctions-pressure',
-      title: 'Sanctions Pressure',
+      title: 'Sanctions & Designations',
       showCount: true,
       trackActivity: true,
       defaultRowSpan: 2,
-      infoTooltip: 'Structured OFAC sanctions pressure built from seeded SDN and Consolidated List exports. This panel answers where sanctions pressure is concentrated, what is newly designated, and which programs are driving the latest pressure.',
+      infoTooltip: 'OFAC sanctions designations from the SDN and Consolidated Lists. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.',
     });
-    this.showLoading('Loading sanctions pressure...');
+    this.showLoading('Loading sanctions data...');
   }
 
   public setData(data: SanctionsPressureResult): void {
@@ -24,44 +24,33 @@ export class SanctionsPressurePanel extends Panel {
   }
 
   private render(): void {
-    if (!this.data) {
-      this.setContent('<div class="economic-empty">No sanctions pressure available.</div>');
+    if (!this.data || this.data.totalCount === 0) {
+      this.setContent('<div class="economic-empty">Sanctions data unavailable.</div>');
       return;
     }
 
     const data = this.data;
-    const topCountry = data.countries[0];
-    const topProgram = data.programs[0];
+
     const summaryHtml = `
       <div class="sanctions-summary">
         ${this.renderSummaryCard('New', data.newEntryCount, data.newEntryCount > 0 ? 'highlight' : '')}
-        ${this.renderSummaryCard('Countries', data.countries.length)}
-        ${this.renderSummaryCard('Programs', data.programs.length)}
+        ${this.renderSummaryCard('Total', data.totalCount)}
         ${this.renderSummaryCard('Vessels', data.vesselCount)}
         ${this.renderSummaryCard('Aircraft', data.aircraftCount)}
-        ${this.renderSummaryCard('Source Mix', `${data.sdnCount}/${data.consolidatedCount}`, 'muted')}
-      </div>
-      <div class="sanctions-headlines">
-        <div class="sanctions-headline">
-          <span class="sanctions-headline-label">Top country</span>
-          <span class="sanctions-headline-value">${topCountry ? `${escapeHtml(topCountry.countryName)} (${topCountry.entryCount})` : 'No country attribution'}</span>
-        </div>
-        <div class="sanctions-headline">
-          <span class="sanctions-headline-label">Top program</span>
-          <span class="sanctions-headline-value">${topProgram ? `${escapeHtml(topProgram.program)} (${topProgram.entryCount})` : 'No program breakdown'}</span>
-        </div>
       </div>
     `;
 
     const countriesHtml = data.countries.length > 0
       ? data.countries.slice(0, 8).map((country) => this.renderCountryRow(country)).join('')
-      : '<div class="economic-empty">No country pressure breakdown available.</div>';
-    const programsHtml = data.programs.length > 0
-      ? data.programs.slice(0, 8).map((program) => this.renderProgramRow(program)).join('')
-      : '<div class="economic-empty">No program pressure breakdown available.</div>';
+      : '<div class="economic-empty">No country attribution available.</div>';
+
     const entriesHtml = data.entries.length > 0
       ? data.entries.slice(0, 10).map((entry) => this.renderEntryRow(entry)).join('')
-      : '<div class="economic-empty">No recent designations available.</div>';
+      : '<div class="economic-empty">No recent designations.</div>';
+
+    const programsHtml = data.programs.length > 0
+      ? data.programs.slice(0, 6).map((program) => this.renderProgramRow(program)).join('')
+      : '<div class="economic-empty">No program breakdown.</div>';
 
     const footer = [
       `Updated ${data.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
@@ -74,16 +63,16 @@ export class SanctionsPressurePanel extends Panel {
         ${summaryHtml}
         <div class="sanctions-sections">
           <div class="sanctions-section">
-            <div class="sanctions-section-title">Top countries</div>
+            <div class="sanctions-section-title">Sanctioned countries</div>
             <div class="sanctions-list">${countriesHtml}</div>
-          </div>
-          <div class="sanctions-section">
-            <div class="sanctions-section-title">Top programs</div>
-            <div class="sanctions-list">${programsHtml}</div>
           </div>
           <div class="sanctions-section">
             <div class="sanctions-section-title">Recent designations</div>
             <div class="sanctions-list">${entriesHtml}</div>
+          </div>
+          <div class="sanctions-section">
+            <div class="sanctions-section-title">Programs</div>
+            <div class="sanctions-list">${programsHtml}</div>
           </div>
         </div>
         <div class="economic-footer">${escapeHtml(footer)}</div>

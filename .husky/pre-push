@@ -25,6 +25,9 @@ for f in api/*.js; do
   }
 done
 
+echo "Running unit tests..."
+npm run test:data || exit 1
+
 echo "Running edge function tests..."
 node --test tests/edge-functions.test.mjs || exit 1
 

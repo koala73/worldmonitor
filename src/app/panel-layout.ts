@@ -64,6 +64,10 @@ import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { isWidgetFeatureEnabled, isProWidgetEnabled, loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
+import { McpDataPanel } from '@/components/McpDataPanel';
+import { openMcpConnectModal } from '@/components/McpConnectModal';
+import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
+import type { McpPanelSpec } from '@/services/mcp-store';
 
 export interface PanelLayoutCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -883,6 +887,14 @@ export class PanelLayoutManager implements AppModule {
       }
     }
 
+    for (const spec of loadMcpPanels()) {
+      const panel = new McpDataPanel(spec);
+      this.ctx.panels[spec.id] = panel;
+      if (!this.ctx.panelSettings[spec.id]) {
+        this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+      }
+    }
+
     const defaultOrder = Object.keys(DEFAULT_PANELS).filter(k => k !== 'map');
     const activePanelKeys = Object.keys(this.ctx.panelSettings).filter(k => k !== 'map');
     const bottomSet = this.getSavedBottomSet();
@@ -1026,6 +1038,26 @@ export class PanelLayoutManager implements AppModule {
       panelsGrid.appendChild(proBlock);
     }
 
+    {
+      const mcpBlock = document.createElement('button');
+      mcpBlock.className = 'add-panel-block mcp-panel-block';
+      mcpBlock.setAttribute('aria-label', t('mcp.connectPanel'));
+      const mcpIcon = document.createElement('span');
+      mcpIcon.className = 'add-panel-block-icon';
+      mcpIcon.textContent = '\u26a1';
+      const mcpLabel = document.createElement('span');
+      mcpLabel.className = 'add-panel-block-label';
+      mcpLabel.textContent = t('mcp.connectPanel');
+      mcpBlock.appendChild(mcpIcon);
+      mcpBlock.appendChild(mcpLabel);
+      mcpBlock.addEventListener('click', () => {
+        openMcpConnectModal({
+          onComplete: (spec) => this.addMcpPanel(spec),
+        });
+      });
+      panelsGrid.appendChild(mcpBlock);
+    }
+
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {
       bottomOrder.forEach(key => {
@@ -1051,7 +1083,7 @@ export class PanelLayoutManager implements AppModule {
     if (import.meta.env.DEV) {
       const configured = new Set(Object.keys(DEFAULT_PANELS).filter(k => k !== 'map'));
       const created = new Set(Object.keys(this.ctx.panels));
-      const extra = [...created].filter(k => !configured.has(k) && k !== 'deduction' && k !== 'runtime-config' && !k.startsWith('cw-'));
+      const extra = [...created].filter(k => !configured.has(k) && k !== 'deduction' && k !== 'runtime-config' && !k.startsWith('cw-') && !k.startsWith('mcp-'));
       if (extra.length) console.warn('[PanelLayout] Panels created but not in DEFAULT_PANELS:', extra);
     }
   }
@@ -1128,6 +1160,27 @@ export class PanelLayoutManager implements AppModule {
   addCustomWidget(spec: CustomWidgetSpec): void {
     saveWidget(spec);
     const panel = new CustomWidgetPanel(spec);
+    this.ctx.panels[spec.id] = panel;
+    this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+    saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+    const el = panel.getElement();
+    this.makeDraggable(el, spec.id);
+    const grid = document.getElementById('panelsGrid');
+    if (grid) {
+      const addBlock = grid.querySelector('.add-panel-block');
+      if (addBlock) {
+        grid.insertBefore(el, addBlock);
+      } else {
+        grid.appendChild(el);
+      }
+    }
+    this.savePanelOrder();
+    this.applyPanelSettings();
+  }
+
+  addMcpPanel(spec: McpPanelSpec): void {
+    saveMcpPanel(spec);
+    const panel = new McpDataPanel(spec);
     this.ctx.panels[spec.id] = panel;
     this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
