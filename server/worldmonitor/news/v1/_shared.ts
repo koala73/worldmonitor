@@ -141,12 +141,14 @@ export interface ProviderCredentials {
   model: string;
   headers: Record<string, string>;
   extraBody?: Record<string, unknown>;
+  /** 'openai' for Ollama, 'anthropic' for Claude Messages API */
+  apiFormat?: 'openai' | 'anthropic';
 }
 
 /**
  * Provider credential resolution.
- * Priority: ollama (local Llama) → groq (cloud) → openrouter (fallback)
- * Default Ollama model changed to llama3.2:3b for small-param inference.
+ * Priority: ollama (local Llama) → claude (Anthropic API)
+ * Groq and OpenRouter removed — only local + Claude.
  */
 export function getProviderCredentials(provider: string): ProviderCredentials | null {
   if (provider === 'ollama') {
@@ -162,35 +164,28 @@ export function getProviderCredentials(provider: string): ProviderCredentials | 
       model: process.env.OLLAMA_MODEL || 'llama3.2:3b',
       headers,
       extraBody: { think: false },
+      apiFormat: 'openai',
     };
   }
 
-  if (provider === 'groq') {
-    const apiKey = process.env.GROQ_API_KEY;
+  if (provider === 'claude') {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return null;
     return {
-      apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-      model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
+      apiUrl: 'https://api.anthropic.com/v1/messages',
+      model: process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
       },
+      apiFormat: 'anthropic',
     };
   }
 
-  if (provider === 'openrouter') {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) return null;
-    return {
-      apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-      model: 'openrouter/free',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://worldmonitor.app',
-        'X-Title': 'WorldMonitor',
-      },
-    };
+  // Legacy aliases — route groq/openrouter requests to claude
+  if (provider === 'groq' || provider === 'openrouter') {
+    return getProviderCredentials('claude');
   }
 
   return null;

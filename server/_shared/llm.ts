@@ -1,12 +1,11 @@
 /**
- * Unified LLM Provider — routes all inference through a single abstraction.
+ * Unified LLM Provider — Ollama (local Llama) primary, Claude API fallback.
  *
- * Provider priority: Ollama (local Llama) → Groq (cloud fallback) → OpenRouter (last resort)
+ * Provider chain: Ollama (local, free, private) → Claude (Anthropic API)
  *
- * The system is designed around small-parameter Llama models (3B-8B) running
- * locally via Ollama. Cloud providers exist only as degraded fallbacks.
- *
- * All providers use the OpenAI-compatible chat completions API format.
+ * No Groq. No OpenRouter. Two providers, both high quality.
+ * Ollama runs your own Llama 3.2 3B locally — zero latency, zero cost.
+ * Claude API is the fallback when local inference is unavailable.
  */
 
 declare const process: { env: Record<string, string | undefined> };
@@ -39,19 +38,20 @@ export interface ProviderConfig {
   model: string;
   headers: Record<string, string>;
   extraBody?: Record<string, unknown>;
+  /** 'openai' for Ollama compat, 'anthropic' for Claude Messages API */
+  apiFormat: 'openai' | 'anthropic';
   available: boolean;
   priority: number;
 }
 
 // ============================================================================
-// PROVIDER RESOLUTION
+// PROVIDER RESOLUTION — Ollama → Claude. That's it.
 // ============================================================================
 
-/** Build the ordered provider list — local Llama first, cloud fallbacks after */
 export function resolveProviders(): ProviderConfig[] {
   const providers: ProviderConfig[] = [];
 
-  // Priority 0: Ollama (local Llama — preferred)
+  // Priority 0: Ollama (local Llama — primary, always preferred)
   const ollamaUrl = process.env.OLLAMA_API_URL;
   if (ollamaUrl) {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -65,44 +65,28 @@ export function resolveProviders(): ProviderConfig[] {
       model: process.env.OLLAMA_MODEL || 'llama3.2:3b',
       headers,
       extraBody: { think: false },
+      apiFormat: 'openai',
       available: true,
       priority: 0,
     });
   }
 
-  // Priority 1: Groq (cloud — fast inference, free tier)
-  const groqKey = process.env.GROQ_API_KEY;
-  if (groqKey) {
+  // Priority 1: Claude (Anthropic API — cloud fallback)
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey) {
     providers.push({
-      id: 'groq',
-      name: 'Groq Cloud',
-      apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-      model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
+      id: 'claude',
+      name: 'Claude (Anthropic)',
+      apiUrl: 'https://api.anthropic.com/v1/messages',
+      model: process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
       headers: {
-        'Authorization': `Bearer ${groqKey}`,
-        'Content-Type': 'application/json',
+        'x-api-key': anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
       },
+      apiFormat: 'anthropic',
       available: true,
       priority: 1,
-    });
-  }
-
-  // Priority 2: OpenRouter (cloud — last resort)
-  const orKey = process.env.OPENROUTER_API_KEY;
-  if (orKey) {
-    providers.push({
-      id: 'openrouter',
-      name: 'OpenRouter',
-      apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-      model: 'openrouter/free',
-      headers: {
-        'Authorization': `Bearer ${orKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://worldmonitor.app',
-        'X-Title': 'WorldMonitor',
-      },
-      available: true,
-      priority: 2,
     });
   }
 
@@ -132,7 +116,7 @@ interface CircuitState {
 
 const circuits = new Map<string, CircuitState>();
 const CIRCUIT_THRESHOLD = 3;
-const CIRCUIT_RESET_MS = 60_000; // 1 minute
+const CIRCUIT_RESET_MS = 60_000;
 
 function isCircuitOpen(providerId: string): boolean {
   const state = circuits.get(providerId);
@@ -158,7 +142,7 @@ function recordSuccess(providerId: string): void {
 }
 
 // ============================================================================
-// CORE INFERENCE — tries providers in priority order with circuit breaker
+// CORE INFERENCE — Ollama first, Claude fallback
 // ============================================================================
 
 const UPSTREAM_TIMEOUT_MS = 30_000;
@@ -172,50 +156,19 @@ export async function infer(req: LLMRequest): Promise<LLMResponse | null> {
 
     try {
       const start = Date.now();
-      const body: Record<string, unknown> = {
-        model: provider.model,
-        messages: [
-          { role: 'system', content: req.systemPrompt },
-          { role: 'user', content: req.userPrompt },
-        ],
-        temperature: req.temperature ?? 0,
-        max_tokens: req.maxTokens ?? 150,
-        ...provider.extraBody,
-      };
 
-      const resp = await fetch(provider.apiUrl, {
-        method: 'POST',
-        headers: provider.headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      });
+      const resp = provider.apiFormat === 'anthropic'
+        ? await callAnthropic(provider, req)
+        : await callOpenAI(provider, req);
 
-      if (resp.status === 429) {
+      if (!resp) {
         recordFailure(provider.id);
         continue;
       }
-
-      if (!resp.ok) {
-        recordFailure(provider.id);
-        continue;
-      }
-
-      const data = (await resp.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const content = data.choices?.[0]?.message?.content?.trim() ?? '';
-
-      if (!content) {
-        recordFailure(provider.id);
-        continue;
-      }
-
-      // Strip thinking tags (common with reasoning models)
-      const cleaned = stripThinkingTags(content);
 
       recordSuccess(provider.id);
       return {
-        content: cleaned,
+        content: stripThinkingTags(resp),
         provider: provider.id,
         model: provider.model,
         cached: false,
@@ -231,7 +184,70 @@ export async function infer(req: LLMRequest): Promise<LLMResponse | null> {
 }
 
 // ============================================================================
-// CONVENIENCE: JSON inference (for classification, structured output)
+// OPENAI-COMPATIBLE CALL (Ollama)
+// ============================================================================
+
+async function callOpenAI(provider: ProviderConfig, req: LLMRequest): Promise<string | null> {
+  const body: Record<string, unknown> = {
+    model: provider.model,
+    messages: [
+      { role: 'system', content: req.systemPrompt },
+      { role: 'user', content: req.userPrompt },
+    ],
+    temperature: req.temperature ?? 0,
+    max_tokens: req.maxTokens ?? 150,
+    ...provider.extraBody,
+  };
+
+  const resp = await fetch(provider.apiUrl, {
+    method: 'POST',
+    headers: provider.headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
+
+  if (!resp.ok) return null;
+
+  const data = (await resp.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = data.choices?.[0]?.message?.content?.trim() ?? '';
+  return content || null;
+}
+
+// ============================================================================
+// ANTHROPIC MESSAGES API CALL (Claude)
+// ============================================================================
+
+async function callAnthropic(provider: ProviderConfig, req: LLMRequest): Promise<string | null> {
+  const body = {
+    model: provider.model,
+    max_tokens: req.maxTokens ?? 150,
+    system: req.systemPrompt,
+    messages: [
+      { role: 'user', content: req.userPrompt },
+    ],
+    temperature: req.temperature ?? 0,
+  };
+
+  const resp = await fetch(provider.apiUrl, {
+    method: 'POST',
+    headers: provider.headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
+
+  if (!resp.ok) return null;
+
+  const data = (await resp.json()) as {
+    content?: Array<{ type: string; text?: string }>;
+  };
+  const content = data.content?.find(c => c.type === 'text')?.text?.trim() ?? '';
+  return content || null;
+}
+
+// ============================================================================
+// CONVENIENCE: JSON inference
 // ============================================================================
 
 export async function inferJSON<T = unknown>(req: LLMRequest): Promise<{ data: T; provider: string; model: string } | null> {
@@ -239,7 +255,6 @@ export async function inferJSON<T = unknown>(req: LLMRequest): Promise<{ data: T
   if (!response) return null;
 
   try {
-    // Extract JSON from response (handle markdown fences)
     let jsonStr = response.content;
     const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (fenceMatch) jsonStr = fenceMatch[1]!;
