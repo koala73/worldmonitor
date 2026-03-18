@@ -3108,18 +3108,6 @@ async function writeForecastTracePointer(pointer) {
   await redisCommand(url, token, ['EXPIRE', TRACE_RUNS_KEY, TRACE_REDIS_TTL_SECONDS]);
 }
 
-async function readPreviousForecastWorldState(storageConfig) {
-  try {
-    const { url, token } = getRedisCredentials();
-    const pointer = await redisGet(url, token, TRACE_LATEST_KEY);
-    if (!pointer?.worldStateKey) return null;
-    return await getR2JsonObject(storageConfig, pointer.worldStateKey);
-  } catch (err) {
-    console.warn(`  [Trace] Prior world state read failed: ${err.message}`);
-    return null;
-  }
-}
-
 // Returns world states ordered most-recent-first (LPUSH prepends, LRANGE 0 N reads from head).
 // Callers that rely on priorMatches[0] being the most recent must not reorder this array.
 async function readForecastWorldStateHistory(storageConfig, limit = WORLD_STATE_HISTORY_LIMIT) {
@@ -3155,13 +3143,11 @@ async function writeForecastTraceArtifacts(data, context = {}) {
   const traceCap = getTraceCapLog(predictionCount);
   console.log(`  Trace cap: raw=${traceCap.raw ?? 'default'} resolved=${traceCap.resolved} total=${traceCap.totalForecasts}`);
 
-  // Run both reads in parallel; derive priorWorldState from history head to avoid
-  // a redundant R2 GET (TRACE_RUNS_KEY[0] and TRACE_LATEST_KEY normally point to the same object).
-  const [priorWorldStates, priorWorldStateFallback] = await Promise.all([
-    readForecastWorldStateHistory(storageConfig, WORLD_STATE_HISTORY_LIMIT),
-    readPreviousForecastWorldState(storageConfig),
-  ]);
-  const priorWorldState = priorWorldStates[0] ?? priorWorldStateFallback;
+  // Use the history head as the canonical most-recent prior world state.
+  // TRACE_RUNS_KEY[0] and TRACE_LATEST_KEY normally point to the same object,
+  // so reading history alone avoids a redundant R2 GET for the latest snapshot.
+  const priorWorldStates = await readForecastWorldStateHistory(storageConfig, WORLD_STATE_HISTORY_LIMIT);
+  const priorWorldState = priorWorldStates[0] ?? null;
   const artifacts = buildForecastTraceArtifacts({
     ...data,
     priorWorldState,
