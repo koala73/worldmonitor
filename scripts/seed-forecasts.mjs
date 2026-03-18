@@ -3211,6 +3211,7 @@ async function writeForecastTraceArtifacts(data, context = {}) {
   if (!storageConfig) return null;
   const predictionCount = Array.isArray(data?.predictions) ? data.predictions.length : 0;
   const traceCap = getTraceCapLog(predictionCount);
+  console.log(`  [Trace] Storage mode=${storageConfig.mode} bucket=${storageConfig.bucket} prefix=${storageConfig.basePrefix}`);
   console.log(`  Trace cap: raw=${traceCap.raw ?? 'default'} resolved=${traceCap.resolved} total=${traceCap.totalForecasts}`);
 
   // Keep TRACE_LATEST_KEY as a fallback because writeForecastTracePointer() updates
