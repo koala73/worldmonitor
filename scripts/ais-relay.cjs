@@ -2935,6 +2935,102 @@ const THEATER_QUERY_REGIONS = [
   { name: 'PACIFIC', lamin: 4, lamax: 44, lomin: 104, lomax: 133 },
 ];
 
+async function handleWingbitsTrackRequest(req, res) {
+  const apiKey = process.env.WINGBITS_API_KEY;
+  if (!apiKey) {
+    return safeEnd(res, 503, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'WINGBITS_API_KEY not configured', positions: [] }));
+  }
+
+  const url = new URL(req.url, 'http://localhost');
+  const params = url.searchParams;
+  const laminStr = params.get('lamin');
+  const lominStr = params.get('lomin');
+  const lamaxStr = params.get('lamax');
+  const lomaxStr = params.get('lomax');
+
+  if (!laminStr || !lominStr || !lamaxStr || !lomaxStr) {
+    return safeEnd(res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Missing bbox params: lamin, lomin, lamax, lomax', positions: [] }));
+  }
+
+  const lamin = Number(laminStr);
+  const lomin = Number(lominStr);
+  const lamax = Number(lamaxStr);
+  const lomax = Number(lomaxStr);
+
+  if (!Number.isFinite(lamin) || !Number.isFinite(lomin) || !Number.isFinite(lamax) || !Number.isFinite(lomax)) {
+    return safeEnd(res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Invalid bbox params: must be finite numbers', positions: [] }));
+  }
+
+  const centerLat = (lamin + lamax) / 2;
+  const centerLon = (lomin + lomax) / 2;
+  const widthNm = Math.abs(lomax - lomin) * 60;
+  const heightNm = Math.abs(lamax - lamin) * 60;
+  const areas = [{ alias: 'viewport', by: 'box', la: centerLat, lo: centerLon, w: widthNm, h: heightNm, unit: 'nm' }];
+
+  try {
+    const resp = await fetch('https://customer-api.wingbits.com/v1/flights', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify(areas),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!resp.ok) {
+      console.warn(`[Wingbits Track] API error: ${resp.status}`);
+      return safeEnd(res, 502, { 'Content-Type': 'application/json' },
+        JSON.stringify({ error: `Wingbits API ${resp.status}`, positions: [] }));
+    }
+
+    const data = await resp.json();
+    if (!Array.isArray(data)) {
+      console.warn(`[Wingbits Track] Unexpected response shape: ${JSON.stringify(data).slice(0, 200)}`);
+      return safeEnd(res, 502, { 'Content-Type': 'application/json' },
+        JSON.stringify({ error: 'Wingbits returned non-array response', positions: [] }));
+    }
+    const positions = [];
+    const seenIds = new Set();
+    const now = Date.now();
+
+    for (const areaResult of data) {
+      const flightList = Array.isArray(areaResult.data) ? areaResult.data
+        : Array.isArray(areaResult.flights) ? areaResult.flights
+        : Array.isArray(areaResult) ? areaResult : [];
+      for (const f of flightList) {
+        const icao24 = f.h || f.icao24 || f.id || '';
+        if (!icao24 || seenIds.has(icao24)) continue;
+        seenIds.add(icao24);
+        const lat = f.la ?? f.latitude ?? f.lat ?? 0;
+        const lon = f.lo ?? f.longitude ?? f.lon ?? f.lng ?? 0;
+        positions.push({
+          icao24,
+          callsign: (f.f || f.callsign || f.flight || '').trim(),
+          lat,
+          lon,
+          altitudeM: (f.ab ?? f.altitude ?? f.alt ?? 0) * 0.3048,
+          groundSpeedKts: f.gs ?? f.groundSpeed ?? f.speed ?? 0,
+          trackDeg: f.th ?? f.heading ?? f.track ?? 0,
+          verticalRate: 0,
+          onGround: f.og ?? false,
+          source: 'POSITION_SOURCE_WINGBITS',
+          observedAt: f.ra ? new Date(f.ra).getTime() : now,
+        });
+      }
+    }
+
+    logThrottled('log', 'wingbits-track', `[Wingbits Track] ${positions.length} flights for bbox ${lamin},${lomin},${lamax},${lomax}`);
+    return sendCompressed(req, res, 200,
+      { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=30', 'CDN-Cache-Control': 'public, max-age=15' },
+      JSON.stringify({ positions, source: 'wingbits' }));
+  } catch (err) {
+    console.warn(`[Wingbits Track] Error: ${err?.message || err}`);
+    return safeEnd(res, 503, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: `Wingbits fetch failed: ${err?.message}`, positions: [] }));
+  }
+}
+
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
@@ -4397,6 +4493,7 @@ function isAuthorizedRequest(req) {
 }
 
 function getRouteGroup(pathname) {
+  if (pathname.startsWith('/wingbits/track')) return 'wingbits';
   if (pathname.startsWith('/opensky')) return 'opensky';
   if (pathname.startsWith('/rss')) return 'rss';
   if (pathname.startsWith('/ais/snapshot')) return 'snapshot';
@@ -7465,6 +7562,8 @@ const server = http.createServer(async (req, res) => {
     }
   } else if (pathname.startsWith('/ucdp-events')) {
     handleUcdpEventsRequest(req, res);
+  } else if (pathname.startsWith('/wingbits/track')) {
+    handleWingbitsTrackRequest(req, res);
   } else if (pathname.startsWith('/opensky')) {
     handleOpenSkyRequest(req, res, PORT);
   } else if (pathname.startsWith('/worldbank')) {
