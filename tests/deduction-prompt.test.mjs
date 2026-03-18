@@ -13,20 +13,21 @@ import { buildNewsContextFromItems } from '../src/utils/news-context.ts';
 describe('inferDeductionMode', () => {
   it('selects brief mode for short convergence assessments', () => {
     assert.equal(
-      inferDeductionMode(
-        'Analyze this convergence pattern and assess likelihood in 2-3 sentences.',
-        'Countries: Iran, Iraq',
-      ),
+      inferDeductionMode('Analyze this convergence pattern and assess likelihood in 2-3 sentences.'),
       'brief',
     );
   });
 
   it('selects forecast mode for open-ended user forecasting', () => {
     assert.equal(
-      inferDeductionMode(
-        'What will possibly happen in the next 72 hours in the Taiwan Strait?',
-        'Location: Taiwan Strait',
-      ),
+      inferDeductionMode('What will possibly happen in the next 72 hours in the Taiwan Strait?'),
+      'forecast',
+    );
+  });
+
+  it('ignores trigger phrases in geoContext — mode is query-only', () => {
+    assert.equal(
+      inferDeductionMode('What is the strategic outlook for the Gulf theater?'),
       'forecast',
     );
   });

@@ -30,9 +30,8 @@ function trimList(items: string[], maxItems: number, maxChars: number): string[]
   return out;
 }
 
-export function inferDeductionMode(query: string, geoContext: string): DeductionMode {
-  const combined = `${query}\n${geoContext}`;
-  return BRIEF_MODE_PATTERNS.some((pattern) => pattern.test(combined)) ? 'brief' : 'forecast';
+export function inferDeductionMode(query: string): DeductionMode {
+  return BRIEF_MODE_PATTERNS.some((pattern) => pattern.test(query)) ? 'brief' : 'forecast';
 }
 
 export function splitDeductionContext(geoContext: string): PromptContextParts {
@@ -94,7 +93,7 @@ export function buildDeductionPrompt(input: {
 }): { mode: DeductionMode; systemPrompt: string; userPrompt: string } {
   const now = input.now ?? new Date();
   const today = now.toISOString().slice(0, 10);
-  const mode = inferDeductionMode(input.query, input.geoContext);
+  const mode = inferDeductionMode(input.query);
   const { primaryContext, recentNews } = splitDeductionContext(input.geoContext);
   const evidence = buildSharedEvidencePrompt(primaryContext, recentNews);
 
