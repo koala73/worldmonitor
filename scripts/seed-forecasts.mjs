@@ -4106,6 +4106,8 @@ async function enrichScenariosWithLLM(predictions) {
   const topWithPerspectives = enrichmentTargets.combined;
   const scenarioOnly = enrichmentTargets.scenarioOnly;
 
+  console.log(`  [LLM] selected combined=${topWithPerspectives.length} scenario=${scenarioOnly.length}`);
+
   // Call 1: Combined scenario + perspectives for top-2
   if (topWithPerspectives.length > 0) {
     const hash = buildCacheHash(topWithPerspectives);
@@ -4219,6 +4221,8 @@ async function enrichScenariosWithLLM(predictions) {
         console.warn('  [LLM:combined] call failed');
       }
     }
+  } else {
+    console.log('  [LLM:combined] skipped selected=0');
   }
 
   // Call 2: Scenario-only for predictions 3-4
@@ -4333,6 +4337,8 @@ async function enrichScenariosWithLLM(predictions) {
         console.warn('  [LLM:scenario] call failed');
       }
     }
+  } else {
+    console.log('  [LLM:scenario] skipped selected=0');
   }
 
   return enrichmentMeta;
