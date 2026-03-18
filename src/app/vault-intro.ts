@@ -234,6 +234,40 @@ function playAuthConfirmed(ctx: AudioContext): void {
   }
 }
 
+// Classic computer female voice: "Authenticated"
+// Prefers Samantha (macOS default US female), falls back to any English female voice.
+function playVoiceAuthenticated(): void {
+  if (!('speechSynthesis' in window)) return;
+
+  const speak = () => {
+    const utter = new SpeechSynthesisUtterance('Authenticated');
+    utter.rate   = 0.80;   // measured, authoritative
+    utter.pitch  = 1.05;   // slightly bright/clear
+    utter.volume = 0.88;
+
+    const voices = window.speechSynthesis.getVoices();
+    // Preference order: classic macOS/iOS female voices
+    const preferred = ['Samantha', 'Victoria', 'Karen', 'Moira', 'Tessa', 'Zoe', 'Susan', 'Allison'];
+    for (const name of preferred) {
+      const v = voices.find(vv => vv.name.includes(name) && vv.lang.startsWith('en'));
+      if (v) { utter.voice = v; break; }
+    }
+    // Fallback: any English female voice
+    if (!utter.voice) {
+      utter.voice = voices.find(vv => vv.lang.startsWith('en') && /female|woman/i.test(vv.name)) ?? null;
+    }
+
+    window.speechSynthesis.speak(utter);
+  };
+
+  // getVoices() is async on first call — wait for voiceschanged if needed
+  if (window.speechSynthesis.getVoices().length > 0) {
+    speak();
+  } else {
+    window.speechSynthesis.addEventListener('voiceschanged', speak, { once: true });
+  }
+}
+
 // ── Fingerprint paths ─────────────────────────────────────────────────────────
 
 const FP_PATHS = [
@@ -1075,6 +1109,8 @@ async function playOpenSequence(
   await sleep(380);
 
   if (audioCtx) { playAuthConfirmed(audioCtx); playMotorWhine(audioCtx); playBoltRetracts(audioCtx); }
+  // Voice fires after the two beeps (360ms), coinciding with the chord swell
+  setTimeout(playVoiceAuthenticated, 360);
 
   refs.state.boltRetractStart = performance.now();
   await sleep(780);
