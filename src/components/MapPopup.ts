@@ -12,6 +12,7 @@ import { isMobileDevice, getCSSColor } from '@/utils';
 import { t } from '@/services/i18n';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
+import { isFeatureAvailable } from '@/services/runtime-config';
 import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
 import { getCableHealthRecord } from '@/services/cable-health';
@@ -874,7 +875,7 @@ export class MapPopup {
     }
   }
 
-    private renderGdeltArticle(article: GdeltArticle): string {
+  private renderGdeltArticle(article: GdeltArticle): string {
     const domain = article.source || extractDomain(article.url);
     const timeAgo = formatArticleDate(article.date);
 
@@ -1286,9 +1287,7 @@ export class MapPopup {
             <span class="stat-value">${pos.observedAt.toLocaleTimeString()}</span>
           </div>
         </div>
-        <div class="wingbits-live-section">
-          <div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div>
-        </div>
+${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
       </div>
     `;
   }
@@ -2253,9 +2252,7 @@ export class MapPopup {
           ${enrichedStats}
         </div>
         ${flight.note ? `<p class="popup-description">${note}</p>` : ''}
-        <div class="wingbits-live-section">
-          <div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div>
-        </div>
+${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
         <div class="popup-attribution">${t('popups.militaryFlight.attribution')}</div>
       </div>
     `;

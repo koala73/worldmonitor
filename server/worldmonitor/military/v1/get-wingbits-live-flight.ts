@@ -70,6 +70,7 @@ export async function getWingbitsLiveFlight(
   if (!req.icao24) return { flight: undefined };
 
   const icao24 = req.icao24.toLowerCase().trim();
+  if (!/^[0-9a-f]{6}$/.test(icao24)) return { flight: undefined };
   const cacheKey = `military:wingbits-live:v1:${icao24}`;
 
   try {

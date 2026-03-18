@@ -3350,7 +3350,7 @@ export class GlobeMap {
     this.popup?.hide();
     this.popup = null;
     this.flightData.clear();
-        this.vesselData.clear();
+    this.vesselData.clear();
     this.clusterData.clear();
     this.container.removeEventListener('contextmenu', this.handleContextMenu);
     this.unsubscribeGlobeQuality?.();

@@ -421,6 +421,7 @@ export function clearWingbitsCache(): void {
  * Returns null if the aircraft is not currently tracked by any Wingbits receiver.
  */
 export async function getWingbitsLiveFlight(icao24: string): Promise<WingbitsLiveFlight | null> {
+  if (!isFeatureAvailable('wingbitsEnrichment')) return null;
   try {
     const resp = await client.getWingbitsLiveFlight({ icao24: icao24.toLowerCase() });
     return resp.flight ?? null;
