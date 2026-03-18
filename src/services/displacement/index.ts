@@ -66,7 +66,7 @@ const emptyResult: UnhcrSummary = {
 
 function toDisplaySummary(proto: ProtoResponse): UnhcrSummary {
   const s = proto.summary;
-  if (!s) return emptyResult;
+  if (!s) return { ...emptyResult, globalTotals: { ...emptyResult.globalTotals } };
 
   const gt = s.globalTotals || { refugees: 0, asylumSeekers: 0, idps: 0, stateless: 0, total: 0 };
   return {
