@@ -34,126 +34,204 @@ function newACtx(): AudioContext | null {
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 
+// Space vault power-up: deep electrical hum charging up, then a rising
+// electronic tone as the locking system energises.
 function playMotorWhine(ctx: AudioContext): void {
   const t0 = ctx.currentTime;
-  const dur = 1.8;
-  const motor = ctx.createOscillator();
-  motor.type = 'sawtooth';
-  motor.frequency.setValueAtTime(62, t0);
-  motor.frequency.exponentialRampToValueAtTime(210, t0 + 0.55);
-  motor.frequency.exponentialRampToValueAtTime(175, t0 + 0.95);
-  motor.frequency.exponentialRampToValueAtTime(75, t0 + dur);
-  const mF = ctx.createBiquadFilter(); mF.type = 'lowpass'; mF.frequency.value = 380;
-  const mG = ctx.createGain();
-  mG.gain.setValueAtTime(0, t0);
-  mG.gain.linearRampToValueAtTime(0.18, t0 + 0.14);
-  mG.gain.setValueAtTime(0.18, t0 + 0.95);
-  mG.gain.linearRampToValueAtTime(0, t0 + dur);
-  motor.connect(mF).connect(mG).connect(ctx.destination);
-  motor.start(t0); motor.stop(t0 + dur + 0.05);
 
-  const gear = ctx.createOscillator();
-  gear.type = 'sawtooth';
-  gear.frequency.setValueAtTime(720, t0 + 0.08);
-  gear.frequency.exponentialRampToValueAtTime(1150, t0 + 0.58);
-  gear.frequency.exponentialRampToValueAtTime(860, t0 + 0.95);
-  gear.frequency.exponentialRampToValueAtTime(380, t0 + dur);
-  const gF = ctx.createBiquadFilter(); gF.type = 'bandpass'; gF.frequency.value = 950; gF.Q.value = 2.2;
-  const gG = ctx.createGain();
-  gG.gain.setValueAtTime(0, t0 + 0.08);
-  gG.gain.linearRampToValueAtTime(0.065, t0 + 0.32);
-  gG.gain.setValueAtTime(0.065, t0 + 0.95);
-  gG.gain.linearRampToValueAtTime(0, t0 + dur);
-  gear.connect(gF).connect(gG).connect(ctx.destination);
-  gear.start(t0 + 0.08); gear.stop(t0 + dur + 0.05);
+  // Sub-bass capacitor charge hum (55 → 82 Hz)
+  const hum = ctx.createOscillator(); hum.type = 'sine';
+  hum.frequency.setValueAtTime(55, t0);
+  hum.frequency.exponentialRampToValueAtTime(82, t0 + 1.4);
+  const humG = ctx.createGain();
+  humG.gain.setValueAtTime(0, t0);
+  humG.gain.linearRampToValueAtTime(0.24, t0 + 0.22);
+  humG.gain.setValueAtTime(0.24, t0 + 1.1);
+  humG.gain.linearRampToValueAtTime(0, t0 + 1.9);
+  hum.connect(humG).connect(ctx.destination);
+  hum.start(t0); hum.stop(t0 + 2.0);
+
+  // Mid electrical buzz (sawtooth, filtered to ~200 Hz band)
+  const buzz = ctx.createOscillator(); buzz.type = 'sawtooth';
+  buzz.frequency.setValueAtTime(105, t0 + 0.08);
+  buzz.frequency.exponentialRampToValueAtTime(190, t0 + 1.0);
+  const buzzF = ctx.createBiquadFilter(); buzzF.type = 'lowpass'; buzzF.frequency.value = 550;
+  const buzzG = ctx.createGain();
+  buzzG.gain.setValueAtTime(0, t0 + 0.08);
+  buzzG.gain.linearRampToValueAtTime(0.08, t0 + 0.35);
+  buzzG.gain.setValueAtTime(0.08, t0 + 1.0);
+  buzzG.gain.linearRampToValueAtTime(0, t0 + 1.6);
+  buzz.connect(buzzF).connect(buzzG).connect(ctx.destination);
+  buzz.start(t0 + 0.08); buzz.stop(t0 + 1.7);
+
+  // High electronic power-up sweep (sci-fi "charging" tone)
+  const sweep = ctx.createOscillator(); sweep.type = 'sine';
+  sweep.frequency.setValueAtTime(320, t0 + 0.5);
+  sweep.frequency.exponentialRampToValueAtTime(1440, t0 + 1.6);
+  const sweepG = ctx.createGain();
+  sweepG.gain.setValueAtTime(0, t0 + 0.5);
+  sweepG.gain.linearRampToValueAtTime(0.052, t0 + 0.7);
+  sweepG.gain.setValueAtTime(0.052, t0 + 1.4);
+  sweepG.gain.linearRampToValueAtTime(0, t0 + 1.7);
+  sweep.connect(sweepG).connect(ctx.destination);
+  sweep.start(t0 + 0.5); sweep.stop(t0 + 1.8);
 }
 
+// Two heavy magnetic bolts releasing — deep THOOM + metallic ring + hydraulic hiss.
 function playBoltRetracts(ctx: AudioContext): void {
   const t0 = ctx.currentTime;
-  for (let i = 0; i < 4; i++) {
-    const t = t0 + i * 0.09;
-    const osc = ctx.createOscillator();
-    osc.frequency.setValueAtTime(95, t);
-    osc.frequency.exponentialRampToValueAtTime(16, t + 0.2);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0.6, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-    osc.connect(og).connect(ctx.destination);
-    osc.start(t); osc.stop(t + 0.2);
-    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.04), ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let j = 0; j < d.length; j++) d[j] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource(); src.buffer = buf;
-    const hpf = ctx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = 3500;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.3, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-    src.connect(hpf).connect(ng).connect(ctx.destination);
-    src.start(t);
+
+  for (let i = 0; i < 2; i++) {
+    const t = t0 + i * 0.38;
+
+    // Sub-bass impact thud (60 → 22 Hz decay)
+    const thud = ctx.createOscillator(); thud.type = 'sine';
+    thud.frequency.setValueAtTime(60, t);
+    thud.frequency.exponentialRampToValueAtTime(22, t + 0.20);
+    const tg = ctx.createGain();
+    tg.gain.setValueAtTime(0.90, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+    thud.connect(tg).connect(ctx.destination);
+    thud.start(t); thud.stop(t + 0.26);
+
+    // Metallic resonance ring (decaying bell-like tone)
+    const ring = ctx.createOscillator(); ring.type = 'sine';
+    ring.frequency.setValueAtTime(380, t + 0.01);
+    ring.frequency.exponentialRampToValueAtTime(240, t + 0.5);
+    const rg = ctx.createGain();
+    rg.gain.setValueAtTime(0.20, t + 0.01);
+    rg.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    ring.connect(rg).connect(ctx.destination);
+    ring.start(t + 0.01); ring.stop(t + 0.58);
+
+    // Hydraulic/pneumatic hiss as bolt slides back
+    const hisBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.18), ctx.sampleRate);
+    const hd = hisBuf.getChannelData(0);
+    for (let j = 0; j < hd.length; j++) hd[j] = Math.random() * 2 - 1;
+    const hSrc = ctx.createBufferSource(); hSrc.buffer = hisBuf;
+    const hbp = ctx.createBiquadFilter(); hbp.type = 'bandpass'; hbp.frequency.value = 1600; hbp.Q.value = 0.7;
+    const hg = ctx.createGain();
+    hg.gain.setValueAtTime(0.14, t + 0.06);
+    hg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    hSrc.connect(hbp).connect(hg).connect(ctx.destination);
+    hSrc.start(t + 0.06);
   }
 }
 
+// Space vault door splitting open:
+// 1. Massive pressure-seal release (sub-bass whomp + air rush)
+// 2. Deep rumble of huge door panels sliding on magnetic rails
+// 3. High-frequency electromagnetic servo whine
+// 4. Resonant low tone — the vault's structural mass vibrating
+// 5. Breathable-air whoosh as atmospheres equalise
 function playDoorOpen(ctx: AudioContext): void {
-  const t0 = ctx.currentTime + 0.08;
-  const dur = 2.8;
-  const aBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.6), ctx.sampleRate);
-  const ad = aBuf.getChannelData(0);
-  for (let i = 0; i < ad.length; i++) ad[i] = Math.random() * 2 - 1;
-  const aSrc = ctx.createBufferSource(); aSrc.buffer = aBuf;
-  const aF = ctx.createBiquadFilter(); aF.type = 'bandpass'; aF.frequency.value = 2800; aF.Q.value = 0.5;
-  const aG = ctx.createGain();
-  aG.gain.setValueAtTime(0, t0); aG.gain.linearRampToValueAtTime(0.55, t0 + 0.04);
-  aG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.55);
-  aSrc.connect(aF).connect(aG).connect(ctx.destination); aSrc.start(t0);
+  const t0 = ctx.currentTime + 0.04;
 
-  const hBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
-  const hd = hBuf.getChannelData(0);
-  for (let i = 0; i < hd.length; i++) hd[i] = Math.random() * 2 - 1;
-  const hSrc = ctx.createBufferSource(); hSrc.buffer = hBuf;
-  const hF = ctx.createBiquadFilter(); hF.type = 'lowpass';
-  hF.frequency.setValueAtTime(120, t0 + 0.1); hF.frequency.exponentialRampToValueAtTime(60, t0 + dur * 0.6);
-  const hG = ctx.createGain();
-  hG.gain.setValueAtTime(0, t0 + 0.1); hG.gain.linearRampToValueAtTime(0.35, t0 + 0.3);
-  hG.gain.setValueAtTime(0.35, t0 + dur * 0.5); hG.gain.linearRampToValueAtTime(0, t0 + dur);
-  hSrc.connect(hF).connect(hG).connect(ctx.destination); hSrc.start(t0 + 0.1);
+  // ── 1. Pressure seal RELEASE — sub-bass punch + low-pass noise whomp ──
+  const wpOsc = ctx.createOscillator(); wpOsc.type = 'sine';
+  wpOsc.frequency.setValueAtTime(52, t0);
+  wpOsc.frequency.exponentialRampToValueAtTime(24, t0 + 0.28);
+  const wpG = ctx.createGain();
+  wpG.gain.setValueAtTime(0.95, t0);
+  wpG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.30);
+  wpOsc.connect(wpG).connect(ctx.destination);
+  wpOsc.start(t0); wpOsc.stop(t0 + 0.32);
 
-  const gOsc = ctx.createOscillator(); gOsc.type = 'sawtooth';
-  gOsc.frequency.setValueAtTime(38, t0 + 0.2); gOsc.frequency.linearRampToValueAtTime(48, t0 + 1.6);
-  gOsc.frequency.linearRampToValueAtTime(32, t0 + dur);
-  const gF = ctx.createBiquadFilter(); gF.type = 'lowpass'; gF.frequency.value = 200;
-  const gG = ctx.createGain();
-  gG.gain.setValueAtTime(0, t0 + 0.2); gG.gain.linearRampToValueAtTime(0.22, t0 + 0.5);
-  gG.gain.setValueAtTime(0.22, t0 + 1.5); gG.gain.linearRampToValueAtTime(0, t0 + 2.4);
-  gOsc.connect(gF).connect(gG).connect(ctx.destination); gOsc.start(t0 + 0.2); gOsc.stop(t0 + 2.5);
+  // Fast burst of filtered noise for the pressure pop
+  const popBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.22), ctx.sampleRate);
+  const popD = popBuf.getChannelData(0);
+  for (let i = 0; i < popD.length; i++) popD[i] = Math.random() * 2 - 1;
+  const popSrc = ctx.createBufferSource(); popSrc.buffer = popBuf;
+  const popF = ctx.createBiquadFilter(); popF.type = 'lowpass'; popF.frequency.value = 140;
+  const popG = ctx.createGain();
+  popG.gain.setValueAtTime(0.70, t0);
+  popG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.22);
+  popSrc.connect(popF).connect(popG).connect(ctx.destination);
+  popSrc.start(t0);
 
-  const mOsc = ctx.createOscillator(); mOsc.type = 'sawtooth';
-  mOsc.frequency.setValueAtTime(340, t0); mOsc.frequency.exponentialRampToValueAtTime(680, t0 + 0.4);
-  mOsc.frequency.exponentialRampToValueAtTime(240, t0 + 1.8);
-  const mF = ctx.createBiquadFilter(); mF.type = 'bandpass'; mF.frequency.value = 480; mF.Q.value = 3;
-  const mG = ctx.createGain();
-  mG.gain.setValueAtTime(0, t0); mG.gain.linearRampToValueAtTime(0.09, t0 + 0.15);
-  mG.gain.setValueAtTime(0.09, t0 + 1.4); mG.gain.linearRampToValueAtTime(0, t0 + 2.0);
-  mOsc.connect(mF).connect(mG).connect(ctx.destination); mOsc.start(t0); mOsc.stop(t0 + 2.1);
+  // ── 2. Door-panel movement rumble — very deep, long sustained ──
+  const rumbBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 2.6), ctx.sampleRate);
+  const rD = rumbBuf.getChannelData(0);
+  for (let i = 0; i < rD.length; i++) rD[i] = Math.random() * 2 - 1;
+  const rSrc = ctx.createBufferSource(); rSrc.buffer = rumbBuf;
+  const rF1 = ctx.createBiquadFilter(); rF1.type = 'lowpass'; rF1.frequency.value = 48;
+  const rF2 = ctx.createBiquadFilter(); rF2.type = 'highpass'; rF2.frequency.value = 18;
+  const rG = ctx.createGain();
+  rG.gain.setValueAtTime(0, t0 + 0.05);
+  rG.gain.linearRampToValueAtTime(0.58, t0 + 0.30);
+  rG.gain.setValueAtTime(0.58, t0 + 1.30);
+  rG.gain.linearRampToValueAtTime(0, t0 + 2.60);
+  rSrc.connect(rF1).connect(rF2).connect(rG).connect(ctx.destination);
+  rSrc.start(t0 + 0.05);
+
+  // ── 3. Electromagnetic servo motors — high sci-fi whine ──
+  const srvOsc = ctx.createOscillator(); srvOsc.type = 'sawtooth';
+  srvOsc.frequency.setValueAtTime(1800, t0 + 0.02);
+  srvOsc.frequency.exponentialRampToValueAtTime(3200, t0 + 0.25);
+  srvOsc.frequency.exponentialRampToValueAtTime(950, t0 + 1.90);
+  const srvF = ctx.createBiquadFilter(); srvF.type = 'bandpass'; srvF.frequency.value = 2200; srvF.Q.value = 3.5;
+  const srvG = ctx.createGain();
+  srvG.gain.setValueAtTime(0, t0 + 0.02);
+  srvG.gain.linearRampToValueAtTime(0.065, t0 + 0.18);
+  srvG.gain.setValueAtTime(0.065, t0 + 1.50);
+  srvG.gain.linearRampToValueAtTime(0, t0 + 2.10);
+  srvOsc.connect(srvF).connect(srvG).connect(ctx.destination);
+  srvOsc.start(t0 + 0.02); srvOsc.stop(t0 + 2.15);
+
+  // ── 4. Structural resonance — low bell of the vault's mass ──
+  const bellOsc = ctx.createOscillator(); bellOsc.type = 'sine';
+  bellOsc.frequency.setValueAtTime(88, t0 + 0.08);
+  bellOsc.frequency.exponentialRampToValueAtTime(62, t0 + 1.40);
+  const bellG = ctx.createGain();
+  bellG.gain.setValueAtTime(0.32, t0 + 0.08);
+  bellG.gain.exponentialRampToValueAtTime(0.001, t0 + 2.20);
+  bellOsc.connect(bellG).connect(ctx.destination);
+  bellOsc.start(t0 + 0.08); bellOsc.stop(t0 + 2.25);
+
+  // ── 5. Atmosphere equalisation — mid-frequency air rush ──
+  const airBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.4), ctx.sampleRate);
+  const aD = airBuf.getChannelData(0);
+  for (let i = 0; i < aD.length; i++) aD[i] = Math.random() * 2 - 1;
+  const airSrc = ctx.createBufferSource(); airSrc.buffer = airBuf;
+  const airF = ctx.createBiquadFilter(); airF.type = 'bandpass'; airF.frequency.value = 2800; airF.Q.value = 0.45;
+  const airG = ctx.createGain();
+  airG.gain.setValueAtTime(0, t0 + 0.18);
+  airG.gain.linearRampToValueAtTime(0.22, t0 + 0.50);
+  airG.gain.setValueAtTime(0.22, t0 + 0.85);
+  airG.gain.linearRampToValueAtTime(0, t0 + 1.45);
+  airSrc.connect(airF).connect(airG).connect(ctx.destination);
+  airSrc.start(t0 + 0.18);
 }
 
+// Sci-fi access granted: two ascending terminal beeps then a warm chord.
 function playAuthConfirmed(ctx: AudioContext): void {
   const t0 = ctx.currentTime;
-  for (const [delay, freq, dur2] of [[0, 880, 0.18], [0.22, 1108, 0.28]] as const) {
-    const osc = ctx.createOscillator(); osc.type = 'sine';
-    osc.frequency.value = freq;
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0, t0 + delay);
-    env.gain.linearRampToValueAtTime(0.16, t0 + delay + 0.04);
-    env.gain.setValueAtTime(0.16, t0 + delay + dur2 * 0.6);
-    env.gain.linearRampToValueAtTime(0, t0 + delay + dur2);
-    osc.connect(env).connect(ctx.destination);
-    osc.start(t0 + delay); osc.stop(t0 + delay + dur2 + 0.05);
+
+  // Two crisp electronic beeps (ascending)
+  for (const [delay, freq] of [[0, 660], [0.20, 990]] as const) {
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0 + delay);
+    g.gain.linearRampToValueAtTime(0.15, t0 + delay + 0.018);
+    g.gain.setValueAtTime(0.15, t0 + delay + 0.10);
+    g.gain.linearRampToValueAtTime(0, t0 + delay + 0.19);
+    o.connect(g).connect(ctx.destination);
+    o.start(t0 + delay); o.stop(t0 + delay + 0.22);
   }
-  const fOsc = ctx.createOscillator(); fOsc.type = 'triangle';
-  fOsc.frequency.setValueAtTime(440, t0 + 0.05); fOsc.frequency.linearRampToValueAtTime(554, t0 + 0.35);
-  const fF = ctx.createBiquadFilter(); fF.type = 'peaking'; fF.frequency.value = 800; fF.gain.value = 8;
-  const fG = ctx.createGain();
-  fG.gain.setValueAtTime(0, t0 + 0.05); fG.gain.linearRampToValueAtTime(0.08, t0 + 0.12);
-  fG.gain.linearRampToValueAtTime(0, t0 + 0.42);
-  fOsc.connect(fF).connect(fG).connect(ctx.destination); fOsc.start(t0 + 0.05); fOsc.stop(t0 + 0.45);
+
+  // Warm confirmation chord (minor 3rd + 5th, sustains)
+  for (const [freq, del] of [[330, 0.36], [392, 0.38], [494, 0.40]] as const) {
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0 + del);
+    g.gain.linearRampToValueAtTime(0.060, t0 + del + 0.04);
+    g.gain.setValueAtTime(0.060, t0 + del + 0.28);
+    g.gain.linearRampToValueAtTime(0, t0 + del + 0.60);
+    o.connect(g).connect(ctx.destination);
+    o.start(t0 + del); o.stop(t0 + del + 0.65);
+  }
 }
 
 // ── Fingerprint paths ─────────────────────────────────────────────────────────
