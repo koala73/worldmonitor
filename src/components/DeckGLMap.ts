@@ -3789,12 +3789,14 @@ export class DeckGLMap {
       y,
     });
 
-    // Async Wingbits live enrichment for military flight popups
+    // Async Wingbits live enrichment for any aircraft popup
     if (popupType === 'militaryFlight') {
       const hexCode = (data as { hexCode?: string }).hexCode;
-      if (hexCode) {
-        this.popup.loadWingbitsLiveFlight(hexCode);
-      }
+      if (hexCode) this.popup.loadWingbitsLiveFlight(hexCode);
+    }
+    if (popupType === 'aircraft') {
+      const icao24 = (data as { icao24?: string }).icao24;
+      if (icao24) this.popup.loadWingbitsLiveFlight(icao24);
     }
   }
 

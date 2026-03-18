@@ -1286,6 +1286,9 @@ export class MapPopup {
             <span class="stat-value">${pos.observedAt.toLocaleTimeString()}</span>
           </div>
         </div>
+        <div class="wingbits-live-section">
+          <div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div>
+        </div>
       </div>
     `;
   }
