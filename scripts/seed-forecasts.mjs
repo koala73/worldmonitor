@@ -32,6 +32,8 @@ const ENRICHMENT_PRIORITY_DOMAINS = ['market', 'military'];
 // Situation-overlap suppression should require more than a same-cluster/same-region match.
 // We only suppress when overlap is strong enough to look like the same forecast expressed twice.
 const DUPLICATE_SCORE_THRESHOLD = 6;
+const MAX_PUBLISHED_FORECASTS_PER_SITUATION = 3;
+const MAX_PUBLISHED_FORECASTS_PER_SITUATION_DOMAIN = 2;
 const CYBER_MIN_THREATS_PER_COUNTRY = 5;
 const CYBER_MAX_FORECASTS = 12;
 const CYBER_SCORE_TYPE_MULTIPLIER = 1.5;    // bonus per distinct threat type
@@ -2264,6 +2266,25 @@ function normalizeSituationText(value) {
     .filter((token) => token && token.length > 2 && !TEXT_STOPWORDS.has(token));
 }
 
+function formatSituationDomainLabel(domains = []) {
+  const cleaned = uniqueSortedStrings((domains || []).map((value) => String(value || '').replace(/_/g, ' ').trim()).filter(Boolean));
+  if (cleaned.length === 0) return 'cross-domain';
+  if (cleaned.length === 1) return cleaned[0];
+  if (cleaned.length === 2) return `${cleaned[0]} and ${cleaned[1]}`;
+  return 'cross-domain';
+}
+
+function formatSituationLabel(cluster) {
+  const leadRegion = cluster.regions[0] || 'Cross-regional';
+  const domainLabel = formatSituationDomainLabel(cluster.domains);
+  return `${leadRegion} ${domainLabel} situation`;
+}
+
+function buildSituationReference(situation) {
+  if (!situation) return 'broader regional situation';
+  return (situation.label || 'broader regional situation').toLowerCase();
+}
+
 function hashSituationKey(parts) {
   return crypto.createHash('sha256').update(parts.filter(Boolean).join('|')).digest('hex').slice(0, 10);
 }
@@ -2273,7 +2294,7 @@ function buildSituationCandidate(prediction) {
     prediction,
     regions: uniqueSortedStrings([prediction.region, ...(prediction.caseFile?.regions || [])]),
     domains: uniqueSortedStrings([prediction.domain, ...(prediction.caseFile?.domains || [])]),
-    actors: uniqueSortedStrings((prediction.caseFile?.actors || []).map((actor) => actor.id || actor.name).filter(Boolean)),
+    actors: uniqueSortedStrings((prediction.caseFile?.actors || []).map((actor) => actor.name || actor.id).filter(Boolean)),
     branchKinds: uniqueSortedStrings((prediction.caseFile?.branches || []).map((branch) => branch.kind).filter(Boolean)),
     tokens: uniqueSortedStrings([
       ...normalizeSituationText(prediction.title),
@@ -2295,6 +2316,21 @@ function computeSituationOverlap(candidate, cluster) {
   );
 }
 
+function shouldMergeSituationCandidate(candidate, cluster, score) {
+  if (score < 3) return false;
+
+  const regionOverlap = intersectCount(candidate.regions, cluster.regions);
+  const actorOverlap = intersectCount(candidate.actors, cluster.actors);
+  const domainOverlap = intersectCount(candidate.domains, cluster.domains);
+  const branchOverlap = intersectCount(candidate.branchKinds, cluster.branchKinds);
+  const tokenOverlap = intersectCount(candidate.tokens, cluster.tokens);
+
+  if (regionOverlap > 0 || actorOverlap > 0) return true;
+  if (domainOverlap > 0 && (tokenOverlap >= 2 || branchOverlap > 0)) return true;
+  if (domainOverlap > 0 && tokenOverlap >= 4) return true;
+  return false;
+}
+
 function finalizeSituationCluster(cluster) {
   const avgProbability = cluster._probabilityTotal / Math.max(1, cluster.forecastCount);
   const avgConfidence = cluster._confidenceTotal / Math.max(1, cluster.forecastCount);
@@ -2307,14 +2343,11 @@ function finalizeSituationCluster(cluster) {
     ...cluster.actors.slice(0, 2),
     ...cluster.domains.slice(0, 2),
   ];
-  const leadRegion = cluster.regions[0] || 'Cross-regional';
-  const leadDomain = cluster.domains[0] || 'multi-domain';
-  const leadActor = cluster.actors[0] || '';
 
   return {
     id: `sit-${hashSituationKey(stableKey)}`,
     stableKey,
-    label: leadActor ? `${leadRegion}: ${leadActor} ${leadDomain} pressure` : `${leadRegion}: ${leadDomain} pressure`,
+    label: formatSituationLabel(cluster),
     forecastCount: cluster.forecastCount,
     forecastIds: cluster.forecastIds.slice(0, 12),
     regions: cluster.regions,
@@ -2354,7 +2387,7 @@ function buildSituationClusters(predictions) {
       }
     }
 
-    if (!bestCluster || bestScore < 3) {
+    if (!bestCluster || !shouldMergeSituationCandidate(candidate, bestCluster, bestScore)) {
       bestCluster = {
         regions: [],
         domains: [],
@@ -3467,8 +3500,8 @@ function getForecastSituationTokens(pred) {
 }
 
 function computeSituationDuplicateScore(current, kept) {
-  const currentActors = uniqueSortedStrings((current.caseFile?.actors || []).map((actor) => actor.id || actor.name));
-  const keptActors = uniqueSortedStrings((kept.caseFile?.actors || []).map((actor) => actor.id || actor.name));
+  const currentActors = uniqueSortedStrings((current.caseFile?.actors || []).map((actor) => actor.name || actor.id));
+  const keptActors = uniqueSortedStrings((kept.caseFile?.actors || []).map((actor) => actor.name || actor.id));
   const currentBranches = uniqueSortedStrings((current.caseFile?.branches || []).map((branch) => branch.kind));
   const keptBranches = uniqueSortedStrings((kept.caseFile?.branches || []).map((branch) => branch.kind));
   const currentSignals = uniqueSortedStrings((current.situationContext?.topSignals || []).map((signal) => signal.type));
@@ -3484,6 +3517,22 @@ function computeSituationDuplicateScore(current, kept) {
   score += intersectCount(currentSignals, keptSignals) * 0.5;
   score += intersectCount(currentTokens, keptTokens) * 0.35;
   return +score.toFixed(3);
+}
+
+function shouldSuppressAsSituationDuplicate(current, kept, duplicateScore) {
+  const currentSignals = uniqueSortedStrings((current.situationContext?.topSignals || []).map((signal) => signal.type));
+  const keptSignals = uniqueSortedStrings((kept.situationContext?.topSignals || []).map((signal) => signal.type));
+  const currentTokens = current.publishTokens || getForecastSituationTokens(current);
+  const keptTokens = kept.publishTokens || getForecastSituationTokens(kept);
+  const sameRegion = (current.region || '') === (kept.region || '');
+  const tokenOverlap = intersectCount(currentTokens, keptTokens);
+  const signalOverlap = intersectCount(currentSignals, keptSignals);
+
+  if (duplicateScore < DUPLICATE_SCORE_THRESHOLD) return false;
+  if (sameRegion) return true;
+  if (tokenOverlap >= 4) return true;
+  if (signalOverlap >= 2) return true;
+  return false;
 }
 
 function summarizePublishFiltering(predictions) {
@@ -3502,17 +3551,22 @@ function summarizePublishFiltering(predictions) {
   return {
     suppressedWeakFallback: reasonCounts.weak_fallback || 0,
     suppressedSituationOverlap: reasonCounts.situation_overlap || 0,
+    suppressedSituationCap: reasonCounts.situation_cap || 0,
+    suppressedSituationDomainCap: reasonCounts.situation_domain_cap || 0,
     suppressedTotal: Object.values(reasonCounts).reduce((sum, count) => sum + count, 0),
     reasonCounts,
     situationClusterCount: Object.keys(situationCounts).length,
     maxForecastsPerSituation: Math.max(0, ...Object.values(situationCounts)),
     multiForecastSituations: Object.values(situationCounts).filter((count) => count > 1).length,
+    cappedSituations: Object.values(situationCounts).filter((count) => count >= MAX_PUBLISHED_FORECASTS_PER_SITUATION).length,
   };
 }
 
 function filterPublishedForecasts(predictions, minProbability = PUBLISH_MIN_PROBABILITY) {
   let weakFallbackCount = 0;
   let overlapSuppressedCount = 0;
+  let situationCapSuppressedCount = 0;
+  let situationDomainCapSuppressedCount = 0;
   const kept = [];
 
   for (const pred of predictions) {
@@ -3542,7 +3596,7 @@ function filterPublishedForecasts(predictions, minProbability = PUBLISH_MIN_PROB
     const bestDuplicate = kept.find((item) => {
       if (item.domain !== pred.domain) return false;
       const duplicateScore = computeSituationDuplicateScore(pred, item);
-      if (duplicateScore < DUPLICATE_SCORE_THRESHOLD) return false;
+      if (!shouldSuppressAsSituationDuplicate(pred, item, duplicateScore)) return false;
 
       const priorityGap = (item.analysisPriority || 0) - priority;
       const confidenceGap = (item.confidence || 0) - (pred.confidence || 0);
@@ -3569,13 +3623,56 @@ function filterPublishedForecasts(predictions, minProbability = PUBLISH_MIN_PROB
 
     kept.push(pred);
   }
+  const published = [];
+  const situationCounts = new Map();
+  const situationDomainCounts = new Map();
+  for (const pred of kept) {
+    const situationId = pred.situationContext?.id || '';
+    if (!situationId) {
+      published.push(pred);
+      continue;
+    }
+    const totalCount = situationCounts.get(situationId) || 0;
+    const domainKey = `${situationId}:${pred.domain}`;
+    const domainCount = situationDomainCounts.get(domainKey) || 0;
+
+    if (domainCount >= MAX_PUBLISHED_FORECASTS_PER_SITUATION_DOMAIN) {
+      situationDomainCapSuppressedCount++;
+      pred.publishDiagnostics = {
+        reason: 'situation_domain_cap',
+        situationId,
+        domain: pred.domain,
+        cap: MAX_PUBLISHED_FORECASTS_PER_SITUATION_DOMAIN,
+      };
+      continue;
+    }
+    if (totalCount >= MAX_PUBLISHED_FORECASTS_PER_SITUATION) {
+      situationCapSuppressedCount++;
+      pred.publishDiagnostics = {
+        reason: 'situation_cap',
+        situationId,
+        cap: MAX_PUBLISHED_FORECASTS_PER_SITUATION,
+      };
+      continue;
+    }
+
+    published.push(pred);
+    situationCounts.set(situationId, totalCount + 1);
+    situationDomainCounts.set(domainKey, domainCount + 1);
+  }
   if (weakFallbackCount > 0) {
     console.log(`  [filterPublished] Suppressed ${weakFallbackCount} weak fallback forecast(s)`);
   }
   if (overlapSuppressedCount > 0) {
     console.log(`  [filterPublished] Suppressed ${overlapSuppressedCount} situation-overlap forecast(s)`);
   }
-  return kept;
+  if (situationDomainCapSuppressedCount > 0) {
+    console.log(`  [filterPublished] Suppressed ${situationDomainCapSuppressedCount} situation-domain-cap forecast(s)`);
+  }
+  if (situationCapSuppressedCount > 0) {
+    console.log(`  [filterPublished] Suppressed ${situationCapSuppressedCount} situation-cap forecast(s)`);
+  }
+  return published;
 }
 
 function selectForecastsForEnrichment(predictions, options = {}) {
@@ -3959,14 +4056,14 @@ function buildFallbackBaseCase(pred) {
   if (branch?.summary && branch?.outcome) {
     const branchText = `${branch.summary} ${branch.outcome}`;
     if (situation?.forecastCount > 1 && !/broader|cluster/i.test(branchText)) {
-      return `${branchText} This path sits inside the broader ${situation.label.toLowerCase()} cluster.`.slice(0, 500);
+      return `${branchText} This path sits inside the broader ${buildSituationReference(situation)}.`.slice(0, 500);
     }
     return branchText.slice(0, 500);
   }
   const support = pred.caseFile?.supportingEvidence?.[0]?.summary || pred.signals?.[0]?.value || pred.title;
   const secondary = pred.caseFile?.supportingEvidence?.[1]?.summary || pred.signals?.[1]?.value;
   const lead = situation?.forecastCount > 1
-    ? `${support} is one of the clearest active drivers inside the broader ${situation.label.toLowerCase()} across ${situation.forecastCount} related forecasts.`
+    ? `${support} is one of the clearest active drivers inside the broader ${buildSituationReference(situation)} across ${situation.forecastCount} related forecasts.`
     : `${support} is the clearest active driver behind this ${pred.domain} forecast in ${pred.region}.`;
   const follow = secondary
     ? `${secondary} keeps the base case anchored near ${roundPct(pred.probability)} over the ${pred.timeHorizon}.`
@@ -4020,7 +4117,7 @@ function buildFeedSummary(pred) {
   const summary = compact.length > 180 ? `${compact.slice(0, 177).trimEnd()}...` : compact;
   if (summary) {
     if (situation?.forecastCount > 1 && !summary.toLowerCase().includes('broader')) {
-      const suffix = ` It sits inside a broader ${situation.label.toLowerCase()} cluster.`;
+      const suffix = ` It sits inside the broader ${buildSituationReference(situation)}.`;
       const combined = `${summary}${suffix}`;
       return combined.length > 220 ? `${combined.slice(0, 217).trimEnd()}...` : combined;
     }
