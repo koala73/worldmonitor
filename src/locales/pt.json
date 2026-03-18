@@ -63,7 +63,8 @@
     "geoHubs": "Geopolitical Hotspots",
     "polymarket": "Previsões",
     "climate": "Anomalias Climáticas",
-    "liveWebcams": "Câmeras ao Vivo",
+    "liveYouTube": "Câmeras ao Vivo",
+    "pinnedWebcams": "Pinned Webcams",
     "securityAdvisories": "Alertas de Segurança",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Inteligência Telegram",
@@ -205,7 +206,9 @@
       "placeholderFinance": "Pesquisar ou digitar um comando...",
       "hintFinance": "Pesquisa • Bolsas • Mercados • Camadas • Navegação • Configurações",
       "commands": "Comandos",
-      "results": "Resultados"
+      "results": "Resultados",
+      "seeAllCommands": "Ver todos os comandos",
+      "hideCommandList": "Voltar"
     },
     "signal": {
       "source": "Source",
@@ -552,6 +555,7 @@
         "nuclearSites": "Locais Nucleares",
         "gammaIrradiators": "Irradiadores gama",
         "spaceports": "Espaçoportos",
+        "satellites": "Vigilância Orbital",
         "pipelines": "Gasodutos",
         "militaryActivity": "Atividade Militar",
         "shipTraffic": "Tráfego de navios",
@@ -581,6 +585,7 @@
         "renewableInstallations": "Energia limpa"
       },
       "layersTitle": "Camadas",
+      "layerSearch": "Pesquisar camadas...",
       "layerGuide": "Guia de camadas",
       "layerWarningTitle": "Aviso de desempenho",
       "layerWarningBody": "Ativar mais de {{threshold}} camadas pode afetar o desempenho de renderização e a taxa de quadros.",
@@ -1055,7 +1060,9 @@
       "filterAlerts": "Alertas",
       "filterOsint": "OSINT",
       "filterPolitics": "Política",
-      "filterMiddleeast": "Oriente Médio"
+      "filterMiddleeast": "Oriente Médio",
+      "live": "AO VIVO",
+      "viewSource": "Ver fonte"
     },
     "investments": {
       "infoTooltip": "Banco de dados de investimentos diretos estrangeiros da Arábia Saudita e dos Emirados Árabes Unidos em infraestrutura crítica global. Clique em uma linha para ir até o investimento no mapa.",
@@ -1216,7 +1223,10 @@
       "yes": "Sim",
       "no": "Nao",
       "tooltip": "<strong>Mercados de Previsão</strong><br>Mercados de previsão com dinheiro real:<br><ul><li>Os preços refletem estimativas de probabilidade coletivas</li><li>Maior volume = sinal mais confiável</li><li>Foco em eventos geopolíticos e atuais</li></ul>Fonte: Polymarket (polymarket.com)",
-      "error": "Falha ao carregar previsões"
+      "error": "Falha ao carregar previsões",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "gdelt": {
       "empty": "Nenhum artigo recente para este tópico"
@@ -1455,6 +1465,13 @@
     "supplyChain": {
       "chokepoints": "Pontos de estrangulamento",
       "fredKeyMissing": "Chave API FRED necessária para tarifas de frete — adicione nas Configurações. Pontos de estrangulamento e minerais disponíveis sem chave.",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Mineral",
       "minerals": "Minerais",
       "noChokepoints": "Dados de pontos de estrangulamento carregando...",
@@ -1564,7 +1581,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Calculado"
+        "computed": "Calculado",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Américas",
@@ -1856,7 +1875,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Source: USNI News Fleet Tracker",
       "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
-      "darkDescription": "⚠ A embarcação escureceu - sinal AIS perdido. Pode indicar operações sensíveis."
+      "darkDescription": "⚠ A embarcação escureceu - sinal AIS perdido. Pode indicar operações sensíveis.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2202,6 +2226,7 @@
     "sourceRegionGulfMena": "Golfo & MENA",
     "filterPanels": "Filtrar painéis...",
     "resetLayout": "Redefinir layout",
+    "resetLayoutTooltip": "Restaurar disposição padrão dos painéis",
     "unsavedChanges": "Você tem alterações de painel não salvas. Descartá-las?",
     "panelCatCore": "Principal",
     "panelCatIntelligence": "Inteligência",
@@ -2343,6 +2368,17 @@
       "sirens24h": "Sirenes / 24h",
       "aviationDisruptions": "Perturbações aéreas",
       "gpsJammingZones": "Zonas de interferência GPS"
+    },
+    "countryFacts": "Dados do país",
+    "loadingFacts": "Carregando dados do país...",
+    "noFacts": "Dados do país indisponíveis.",
+    "facts": {
+      "headOfState": "Chefe de Estado",
+      "population": "População",
+      "capital": "Capital",
+      "languages": "Idiomas",
+      "currencies": "Moedas",
+      "area": "Área"
     }
   },
   "preferences": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Estilo visual dos tiles do mapa.",
     "globePreset": "Predefinição visual",
     "globePresetDesc": "Alternar entre visuais clássicos e aprimorados do globo."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Abrir resumo do país",
+    "copyCoordinates": "Copiar coordenadas"
   }
 }

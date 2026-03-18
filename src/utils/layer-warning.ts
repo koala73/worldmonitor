@@ -1,10 +1,11 @@
 import { t } from '@/services/i18n';
+import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
 
 const DISMISS_KEY = 'wm-layer-warning-dismissed';
 let activeDialog: HTMLElement | null = null;
 
 export function showLayerWarning(threshold: number): void {
-  if (localStorage.getItem(DISMISS_KEY) === '1') return;
+  if (getDismissed(DISMISS_KEY)) return;
   if (activeDialog) return;
   if (window.self !== window.top) return;
   if (new URLSearchParams(window.location.search).get('alert') === 'false') return;
@@ -32,7 +33,7 @@ export function showLayerWarning(threshold: number): void {
 
   const close = () => {
     const cb = overlay.querySelector<HTMLInputElement>('.layer-warn-dismiss input');
-    if (cb?.checked) localStorage.setItem(DISMISS_KEY, '1');
+    if (cb?.checked) setDismissed(DISMISS_KEY);
     overlay.classList.add('layer-warn-out');
     setTimeout(() => { overlay.remove(); activeDialog = null; }, 200);
   };

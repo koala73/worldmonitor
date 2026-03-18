@@ -122,6 +122,17 @@
       "sirens24h": "Sirenen / 24h",
       "aviationDisruptions": "Luftfahrtstörungen",
       "gpsJammingZones": "GPS-Störzonen"
+    },
+    "countryFacts": "Länderfakten",
+    "loadingFacts": "Länderfakten werden geladen...",
+    "noFacts": "Länderfakten nicht verfügbar.",
+    "facts": {
+      "headOfState": "Staatsoberhaupt",
+      "population": "Bevölkerung",
+      "capital": "Hauptstadt",
+      "languages": "Sprachen",
+      "currencies": "Währungen",
+      "area": "Fläche"
     }
   },
   "header": {
@@ -173,6 +184,7 @@
     "sourceRegionGulfMena": "Golf & MENA",
     "filterPanels": "Panels filtern...",
     "resetLayout": "Layout zurücksetzen",
+    "resetLayoutTooltip": "Standard-Panelanordnung wiederherstellen",
     "unsavedChanges": "Sie haben ungespeicherte Panel-Änderungen. Verwerfen?",
     "panelCatCore": "Kern",
     "panelCatIntelligence": "Nachrichtendienst",
@@ -260,7 +272,8 @@
     "techHubs": "Heiße Tech-Hubs",
     "gccInvestments": "GCC-Investitionen",
     "geoHubs": "Geopolitical Hotspots",
-    "liveWebcams": "Live-Webcams",
+    "liveYouTube": "Live-Webcams",
+    "pinnedWebcams": "Pinned Webcams",
     "securityAdvisories": "Sicherheitshinweise",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram-Nachrichten",
@@ -400,7 +413,9 @@
       "placeholderFinance": "Suchen oder Befehl eingeben...",
       "hintFinance": "Suche • Börsen • Märkte • Ebenen • Navigation • Einstellungen",
       "commands": "Befehle",
-      "results": "Ergebnisse"
+      "results": "Ergebnisse",
+      "seeAllCommands": "Alle Befehle anzeigen",
+      "hideCommandList": "Zurück"
     },
     "signal": {
       "title": "INTELLIGENZFINDEN",
@@ -745,6 +760,13 @@
       "upstreamUnavailable": "Lieferkettendaten vorübergehend nicht verfügbar — zwischengespeicherte Daten werden angezeigt",
       "spikeAlert": "Spitze erkannt — Rate deutlich über dem 52-Wochen-Durchschnitt (wöchentlich)",
       "warnings": "Warnung(en)",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Mineral",
       "topProducers": "Top-Produzenten",
       "risk": "Risiko",
@@ -792,7 +814,10 @@
       "yes": "Ja",
       "no": "NEIN",
       "vol": "Bd",
-      "closes": "Schließt"
+      "closes": "Schließt",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "deckgl": {
       "views": {
@@ -851,6 +876,7 @@
         "nuclearSites": "Nukleare Standorte",
         "gammaIrradiators": "Gammastrahler",
         "spaceports": "Raumhäfen",
+        "satellites": "Orbitale Überwachung",
         "pipelines": "ROHRLEITUNGEN",
         "militaryActivity": "Militärische Aktivität",
         "shipTraffic": "Schiffsverkehr",
@@ -880,6 +906,7 @@
         "renewableInstallations": "Saubere Energie"
       },
       "layersTitle": "Schichten",
+      "layerSearch": "Schichten suchen...",
       "layerGuide": "Ebenenführer",
       "layerWarningTitle": "Leistungshinweis",
       "layerWarningBody": "Das Aktivieren von mehr als {{threshold}} Ebenen kann die Renderleistung und Bildrate beeinträchtigen.",
@@ -1353,7 +1380,9 @@
       "filterAlerts": "Warnungen",
       "filterOsint": "OSINT",
       "filterPolitics": "Politik",
-      "filterMiddleeast": "Naher Osten"
+      "filterMiddleeast": "Naher Osten",
+      "live": "LIVE",
+      "viewSource": "Quelle anzeigen"
     },
     "investments": {
       "infoTooltip": "Datenbank über ausländische Direktinvestitionen Saudi-Arabiens und der VAE in globale kritische Infrastruktur. Klicken Sie auf eine Zeile, um zur Investition auf der Karte zu fliegen.",
@@ -1756,7 +1785,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Berechnet"
+        "computed": "Berechnet",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerika",
@@ -2048,7 +2079,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Source: USNI News Fleet Tracker",
       "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
-      "darkDescription": "⚠ Das Schiff ist dunkel geworden – AIS-Signal verloren. Kann auf sensible Vorgänge hinweisen."
+      "darkDescription": "⚠ Das Schiff ist dunkel geworden – AIS-Signal verloren. Kann auf sensible Vorgänge hinweisen.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Visueller Stil der Kartenkacheln.",
     "globePreset": "Visuelle Voreinstellung",
     "globePresetDesc": "Zwischen klassischer und verbesserter Globus-Darstellung wechseln."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Länderübersicht öffnen",
+    "copyCoordinates": "Koordinaten kopieren"
   }
 }

@@ -14,6 +14,8 @@ export interface PanelOptions {
   trackActivity?: boolean;
   infoTooltip?: string;
   premium?: 'locked' | 'enhanced';
+  closable?: boolean;
+  defaultRowSpan?: number;
 }
 
 const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
@@ -267,6 +269,10 @@ export class Panel {
       this.header.appendChild(this.countEl);
     }
 
+    if (options.closable !== false) {
+      this.appendCloseButton();
+    }
+
     this.content = document.createElement('div');
     this.content.className = 'panel-content';
     this.content.id = `${options.id}Content`;
@@ -294,10 +300,15 @@ export class Panel {
     this.element.appendChild(this.colResizeHandle);
     this.setupColResizeHandlers();
 
-    // Restore saved span
+    // Apply default row span (before restore, so saved preferences win)
+    if (options.defaultRowSpan && options.defaultRowSpan > 1) {
+      this.element.classList.add(`span-${options.defaultRowSpan}`);
+    }
+
+    // Restore saved span (overrides default)
     const savedSpans = loadPanelSpans();
     const savedSpan = savedSpans[this.panelId];
-    if (savedSpan && savedSpan > 1) {
+    if (savedSpan !== undefined) {
       setSpanClass(this.element, savedSpan);
     }
 
@@ -632,8 +643,55 @@ export class Panel {
     if (!this.statusBadgeEl) return;
     this.statusBadgeEl.style.display = 'none';
   }
+
+  protected insertLiveCountBadge(count: number): void {
+    const headerLeft = this.header.querySelector('.panel-header-left');
+    if (!headerLeft) return;
+    const badge = document.createElement('span');
+    badge.className = 'panel-live-count';
+    badge.textContent = `${count}`;
+    headerLeft.appendChild(badge);
+  }
+
+  protected appendCloseButton(): void {
+    const closeBtn = h('button', {
+      className: 'icon-btn panel-close-btn',
+      'aria-label': t('components.panel.closePanel'),
+      title: t('components.panel.closePanel'),
+    }, '\u2715');
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.element.dispatchEvent(new CustomEvent('wm:panel-close', {
+        bubbles: true,
+        detail: { panelId: this.panelId },
+      }));
+    });
+    this.header.appendChild(closeBtn);
+  }
+
   public getElement(): HTMLElement {
     return this.element;
+  }
+
+  public isNearViewport(marginPx = 400): boolean {
+    if (!this.element.isConnected) return false;
+    if (typeof window === 'undefined') return true;
+
+    const style = window.getComputedStyle(this.element);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+
+    const rect = this.element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+
+    if (rect.width === 0 || rect.height === 0) return false;
+
+    return (
+      rect.bottom >= -marginPx &&
+      rect.right >= -marginPx &&
+      rect.top <= viewportHeight + marginPx &&
+      rect.left <= viewportWidth + marginPx
+    );
   }
 
   public showLoading(message = t('common.loading')): void {
@@ -667,7 +725,7 @@ export class Panel {
     const children: (HTMLElement | string)[] = [radarEl, msgEl];
 
     if (this.retryCallback) {
-      const backoffSeconds = autoRetrySeconds ?? Math.min(15 * Math.pow(2, this.retryAttempt), 180);
+      const backoffSeconds = autoRetrySeconds ?? Math.min(15 * 2 ** this.retryAttempt, 180);
       this.retryAttempt++;
       let remaining = Math.round(backoffSeconds);
       const countdownEl = h('div', { className: 'panel-error-countdown' },
@@ -719,7 +777,7 @@ export class Panel {
 
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, t('premium.joinWaitlist'));
     if (isDesktopRuntime()) {
-      ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_settings_window_command').catch(() => {}));
+      ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' }).catch(() => window.open('https://worldmonitor.app/pro', '_blank')));
     } else {
       ctaBtn.addEventListener('click', () => window.open('https://worldmonitor.app/pro', '_blank'));
     }

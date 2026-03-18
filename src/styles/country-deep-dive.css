@@ -775,3 +775,9 @@
     grid-template-columns: 1fr;
   }
 }
+
+.cdp-facts-thumbnail { float: right; max-width: 100px; border-radius: 6px; margin: 0 0 8px 12px; }
+.cdp-facts-summary { font-size: 0.82rem; color: var(--cdp-muted); line-height: 1.5; margin-bottom: 8px; }
+.cdp-facts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.cdp-facts-grid .cdp-fact-item { font-size: 0.78rem; }
+.cdp-facts-grid .cdp-fact-label { color: var(--cdp-muted); text-transform: uppercase; font-size: 0.65rem; }

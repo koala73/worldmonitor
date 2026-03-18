@@ -6,25 +6,16 @@ import type {
 
 import { cachedFetchJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
-import { CHROME_UA } from '../../../_shared/constants';
+import { callLlm } from '../../../_shared/llm';
+import { buildDeductionPrompt, postProcessDeductionOutput } from './deduction-prompt';
 
 const DEDUCT_TIMEOUT_MS = 120_000;
 const DEDUCT_CACHE_TTL = 3600;
-const DEFAULT_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = 'llama-3.1-8b-instant';
 
 export async function deductSituation(
     _ctx: ServerContext,
     req: DeductSituationRequest,
 ): Promise<DeductSituationResponse> {
-    const apiKey = process.env.LLM_API_KEY || process.env.GROQ_API_KEY;
-    const apiUrl = process.env.LLM_API_URL || DEFAULT_API_URL;
-    const model = process.env.LLM_MODEL || DEFAULT_MODEL;
-
-    if (!apiKey) {
-        return { analysis: '', model: '', provider: 'skipped' };
-    }
-
     const MAX_QUERY_LEN = 500;
     const MAX_GEO_LEN = 2000;
 
@@ -33,62 +24,27 @@ export async function deductSituation(
 
     if (!query) return { analysis: '', model: '', provider: 'skipped' };
 
-    const cacheKey = `deduct:situation:v1:${(await sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase())).slice(0, 16)}`;
+    const cacheKey = `deduct:situation:v2:${(await sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase())).slice(0, 16)}`;
+
+    const { mode, systemPrompt, userPrompt } = buildDeductionPrompt({ query, geoContext });
 
     const cached = await cachedFetchJson<{ analysis: string; model: string; provider: string }>(
         cacheKey,
         DEDUCT_CACHE_TTL,
         async () => {
-            try {
-                const systemPrompt = `You are a senior geopolitical intelligence analyst and forecaster.
-Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few months) based on the user's query.
-- Use any provided geographic or intelligence context.
-- Be highly analytical, pragmatic, and objective.
-- Identify the most likely outcomes, timelines, and second-order impacts.
-- Do NOT use typical AI preambles (e.g., "Here is the deduction", "Let me see").
-- Format your response in clean markdown with concise bullet points where appropriate.`;
+            const result = await callLlm({
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt },
+                ],
+                temperature: 0.3,
+                maxTokens: 1500,
+                timeoutMs: DEDUCT_TIMEOUT_MS,
+            });
 
-                let userPrompt = query;
-                if (geoContext) {
-                    userPrompt += `\n\n### Current Intelligence Context\n${geoContext}`;
-                }
-
-                const resp = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        Authorization: `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json',
-                        'User-Agent': CHROME_UA
-                    },
-                    body: JSON.stringify({
-                        model,
-                        messages: [
-                            { role: 'system', content: systemPrompt },
-                            { role: 'user', content: userPrompt },
-                        ],
-                        temperature: 0.3,
-                        max_tokens: 1500,
-                    }),
-                    signal: AbortSignal.timeout(DEDUCT_TIMEOUT_MS),
-                });
-
-                if (!resp.ok) return null;
-                const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-                const firstChoice = data.choices?.[0];
-
-                const content = firstChoice?.message?.content?.trim();
-                const reasoning = (firstChoice?.message as any)?.reasoning?.trim();
-
-                let raw = content || reasoning;
-                if (!raw) return null;
-
-                raw = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-
-                return { analysis: raw, model, provider: 'groq' };
-            } catch (err) {
-                console.error('[DeductSituation] Error calling LLM:', err);
-                return null;
-            }
+            if (!result) return null;
+            const analysis = postProcessDeductionOutput(result.content, mode);
+            return { analysis, model: result.model, provider: result.provider };
         }
     );
 

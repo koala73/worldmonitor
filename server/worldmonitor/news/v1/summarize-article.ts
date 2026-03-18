@@ -13,6 +13,7 @@ import {
   getCacheKey,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
 
 // ======================================================================
 // Reasoning preamble detection
@@ -94,6 +95,8 @@ export async function summarizeArticle(
       cacheKey,
       CACHE_TTL_SECONDS,
       async () => {
+        // Health gate inside fetcher — only runs on cache miss
+        if (!(await isProviderAvailable(apiUrl))) return null;
         const uniqueHeadlines = deduplicateHeadlines(headlines.slice(0, 5));
         const { systemPrompt, userPrompt } = buildArticlePrompts(headlines, uniqueHeadlines, {
           mode,

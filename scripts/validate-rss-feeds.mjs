@@ -129,7 +129,7 @@ function parseNewestDate(xml) {
     }
   }
 
-  const valid = dates.filter(d => !isNaN(d.getTime()));
+  const valid = dates.filter(d => !Number.isNaN(d.getTime()));
   if (valid.length === 0) return null;
   return new Date(Math.max(...valid.map(d => d.getTime())));
 }

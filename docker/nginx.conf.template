@@ -1,0 +1,93 @@
+worker_processes auto;
+
+events {
+  worker_connections 1024;
+}
+
+http {
+  include       /etc/nginx/mime.types;
+  default_type  application/octet-stream;
+
+  sendfile        on;
+  keepalive_timeout  65;
+
+  gzip on;
+  gzip_min_length 1024;
+  gzip_comp_level 5;
+  gzip_types
+    text/plain
+    text/css
+    text/javascript
+    application/javascript
+    application/json
+    application/xml
+    application/xml+rss
+    image/svg+xml;
+
+  server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+      include /etc/nginx/security_headers.conf;
+      try_files $uri $uri/ /index.html;
+      add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    location ~* ^/(assets|pro/assets|map-styles|data|textures|favico)/ {
+      include /etc/nginx/security_headers.conf;
+      try_files $uri =404;
+      add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location = /offline.html {
+      include /etc/nginx/security_headers.conf;
+      add_header Cache-Control "public, max-age=86400";
+    }
+
+    location = /sw.js {
+      include /etc/nginx/security_headers.conf;
+      add_header Cache-Control "public, max-age=0, must-revalidate";
+    }
+
+    location = /manifest.webmanifest {
+      include /etc/nginx/security_headers.conf;
+      add_header Cache-Control "public, max-age=86400";
+    }
+
+    location ^~ /pro/assets/ {
+      include /etc/nginx/security_headers.conf;
+      try_files $uri =404;
+      add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location ^~ /pro {
+      include /etc/nginx/security_headers.conf;
+      try_files $uri /pro/index.html;
+      add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    location /api/ {
+      include /etc/nginx/security_headers.conf;
+      if ($request_method = 'OPTIONS') {
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
+        add_header Content-Length 0;
+        return 204;
+      }
+      proxy_pass ${API_UPSTREAM};
+      proxy_http_version 1.1;
+      proxy_set_header Host $proxy_host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      add_header Access-Control-Allow-Origin "*" always;
+      add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+      add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
+    }
+  }
+}

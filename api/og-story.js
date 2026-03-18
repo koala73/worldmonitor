@@ -27,7 +27,7 @@ const LEVEL_LABELS = {
 
 function normalizeLevel(rawLevel) {
   const level = String(rawLevel || '').toLowerCase();
-  return Object.prototype.hasOwnProperty.call(LEVEL_COLORS, level) ? level : 'normal';
+  return Object.hasOwn(LEVEL_COLORS, level) ? level : 'normal';
 }
 
 export default function handler(req, res) {

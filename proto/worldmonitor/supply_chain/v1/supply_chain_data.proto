@@ -30,6 +30,37 @@ message ChokepointInfo {
   repeated string affected_routes = 9;
   string description = 10;
   int32 ais_disruptions = 11;
+  repeated string directions = 12;
+  repeated DirectionalDwt directional_dwt = 13 [deprecated = true];
+  TransitSummary transit_summary = 14;
+}
+
+message DirectionalDwt {
+  string direction = 1;
+  double dwt_thousand_tonnes = 2;
+  double wow_change_pct = 3;
+}
+
+message TransitDayCount {
+  string date = 1;
+  int32 tanker = 2;
+  int32 cargo = 3;
+  int32 other = 4;
+  int32 total = 5;
+}
+
+message TransitSummary {
+  int32 today_total = 1;
+  int32 today_tanker = 2;
+  int32 today_cargo = 3;
+  int32 today_other = 4;
+  double wow_change_pct = 5;
+  repeated TransitDayCount history = 6;
+  string risk_level = 7;
+  int32 incident_count_7d = 8;
+  double disruption_pct = 9;
+  string risk_summary = 10;
+  string risk_report_action = 11;
 }
 
 message MineralProducer {

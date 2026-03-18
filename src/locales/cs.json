@@ -122,6 +122,17 @@
       "sirens24h": "Sirény / 24h",
       "aviationDisruptions": "Letecké poruchy",
       "gpsJammingZones": "Zóny rušení GPS"
+    },
+    "countryFacts": "Fakta o zemi",
+    "loadingFacts": "Načítání faktů o zemi...",
+    "noFacts": "Fakta o zemi nejsou k dispozici.",
+    "facts": {
+      "headOfState": "Hlava státu",
+      "population": "Počet obyvatel",
+      "capital": "Hlavní město",
+      "languages": "Jazyky",
+      "currencies": "Měny",
+      "area": "Rozloha"
     }
   },
   "header": {
@@ -173,6 +184,7 @@
     "sourceRegionGulfMena": "Záliv a MENA",
     "filterPanels": "Filtrovat panely...",
     "resetLayout": "Obnovit rozložení",
+    "resetLayoutTooltip": "Obnovit výchozí uspořádání panelů",
     "unsavedChanges": "Máte neuložené změny panelů. Zahodit je?",
     "panelCatCore": "Hlavní",
     "panelCatIntelligence": "Zpravodajství",
@@ -263,7 +275,8 @@
     "techReadiness": "Index tech. připravenosti",
     "gccInvestments": "Investice GCC",
     "geoHubs": "Geopolitická centra",
-    "liveWebcams": "Živé webkamery",
+    "liveYouTube": "Živé webkamery",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Ekonomiky Perského zálivu",
     "gulfIndices": "Indexy Perského zálivu",
     "gulfCurrencies": "Měny Perského zálivu",
@@ -400,7 +413,9 @@
         "accelerator": "Akcelerátor"
       },
       "commands": "Příkazy",
-      "results": "Výsledky"
+      "results": "Výsledky",
+      "seeAllCommands": "Zobrazit všechny příkazy",
+      "hideCommandList": "Zpět"
     },
     "signal": {
       "title": "ZPRAVODAJSKÉ ZJIŠTĚNÍ",
@@ -745,6 +760,13 @@
       "upstreamUnavailable": "Data dodavatelského řetězce jsou dočasně nedostupná — zobrazuji data z mezipaměti",
       "spikeAlert": "Detekován prudký nárůst — sazba výrazně nad 52týdenním průměrem (týdenní)",
       "warnings": "varování",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Minerál",
       "topProducers": "Největší producenti",
       "risk": "Riziko",
@@ -792,7 +814,10 @@
       "yes": "Ano",
       "no": "Ne",
       "vol": "Obj",
-      "closes": "Zavírá"
+      "closes": "Zavírá",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Zdraví vazby (Peg)",
@@ -969,6 +994,7 @@
       "layerWarningDismiss": "Příště nezobrazovat",
       "layerWarningOk": "Rozumím",
       "layersTitle": "Vrstvy",
+      "layerSearch": "Hledat vrstvy...",
       "timeAll": "Vše",
       "views": {
         "global": "Globální",
@@ -998,6 +1024,7 @@
         "nuclearSites": "Jaderná zařízení",
         "gammaIrradiators": "Gamma ozařovače",
         "spaceports": "Kosmodromy",
+        "satellites": "Orbitální sledování",
         "pipelines": "Potrubí",
         "militaryActivity": "Vojenská aktivita",
         "shipTraffic": "Lodní doprava",
@@ -1495,7 +1522,9 @@
       "filterAlerts": "Upozornění",
       "filterOsint": "OSINT",
       "filterPolitics": "Politika",
-      "filterMiddleeast": "Blízký východ"
+      "filterMiddleeast": "Blízký východ",
+      "live": "ŽIVĚ",
+      "viewSource": "Zobrazit zdroj"
     },
     "investments": {
       "infoTooltip": "Databáze přímých zahraničních investic Saúdské Arábie a SAE do globální kritické infrastruktury. Kliknutím na řádek přejdete k investici na mapě.",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Vypočítáno"
+        "computed": "Vypočítáno",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerika",
@@ -2048,7 +2079,12 @@
       "usniIntel": "Zpravodajství USNI",
       "usniSource": "Zdroj: USNI News Fleet Tracker",
       "approximatePosition": "Pozice je přibližná — na základě týdenní zprávy USNI, nikoli živého AIS.",
-      "darkDescription": "⚠ Plavidlo přešlo do temného režimu - signál AIS ztracen. Může to znamenat citlivé operace."
+      "darkDescription": "⚠ Plavidlo přešlo do temného režimu - signál AIS ztracen. Může to znamenat citlivé operace.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Vizuální styl dlaždic mapy.",
     "globePreset": "Vizuální předvolba",
     "globePresetDesc": "Přepínejte mezi klasickým a vylepšeným zobrazením globálu."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Otevřít přehled země",
+    "copyCoordinates": "Kopírovat souřadnice"
   }
 }

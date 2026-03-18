@@ -10,10 +10,14 @@
 
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { checkRateLimit } from '../_rate-limit.js';
+import { toOrgSlugFromDomain } from './_domain.js';
 
 export const config = { runtime: 'edge' };
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const UPSTREAM_TIMEOUT_MS = 5000;
+const DEFAULT_HEADERS = Object.freeze({ 'User-Agent': UA });
+const GITHUB_HEADERS = Object.freeze({ Accept: 'application/vnd.github.v3+json', ...DEFAULT_HEADERS });
 
 const SIGNAL_KEYWORDS = {
   hiring_surge: ['hiring', 'we\'re hiring', 'join our team', 'open positions', 'new roles', 'growing team'],
@@ -58,8 +62,8 @@ async function fetchHNSignals(companyName) {
     const res = await fetch(
       `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(companyName)}&tags=story&hitsPerPage=20&numericFilters=created_at_i>${Math.floor(Date.now() / 1000) - 30 * 86400}`,
       {
-        headers: { 'User-Agent': UA },
-        signal: AbortSignal.timeout(5000),
+        headers: DEFAULT_HEADERS,
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       },
     );
     if (!res.ok) return [];
@@ -89,8 +93,8 @@ async function fetchGitHubSignals(orgName) {
     const res = await fetch(
       `https://api.github.com/orgs/${encodeURIComponent(orgName)}/repos?sort=created&per_page=10`,
       {
-        headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': UA },
-        signal: AbortSignal.timeout(5000),
+        headers: GITHUB_HEADERS,
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       },
     );
     if (!res.ok) return [];
@@ -120,8 +124,8 @@ async function fetchJobSignals(companyName) {
     const res = await fetch(
       `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(companyName)}&tags=comment,ask_hn&hitsPerPage=10&numericFilters=created_at_i>${Math.floor(Date.now() / 1000) - 60 * 86400}`,
       {
-        headers: { 'User-Agent': UA },
-        signal: AbortSignal.timeout(5000),
+        headers: DEFAULT_HEADERS,
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       },
     );
     if (!res.ok) return [];
@@ -174,7 +178,7 @@ export default async function handler(req) {
     });
   }
 
-  const orgName = domain?.replace(/\.(com|io|co|org|net|ai|dev|app)$/, '').split('.').pop() || company.toLowerCase().replace(/\s+/g, '');
+  const orgName = toOrgSlugFromDomain(domain) || company.toLowerCase().replace(/\s+/g, '');
 
   const [hnSignals, githubSignals, jobSignals] = await Promise.all([
     fetchHNSignals(company),

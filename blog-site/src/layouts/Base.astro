@@ -1,0 +1,127 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  metaTitle?: string;
+  keywords?: string;
+  ogType?: string;
+  ogImage?: string;
+  publishedTime?: string;
+  modifiedTime?: string;
+  author?: string;
+  section?: string;
+  jsonLd?: Record<string, unknown>;
+  breadcrumbLd?: Record<string, unknown>;
+}
+
+const { title, description, metaTitle, keywords, ogType, ogImage, publishedTime, modifiedTime, author, section, jsonLd, breadcrumbLd } = Astro.props;
+const pageTitle = metaTitle || title;
+const resolvedOgImage = ogImage || 'https://www.worldmonitor.app/favico/og-image.png';
+const resolvedOgType = ogType || 'website';
+const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6) : [];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    {keywords && <meta name="keywords" content={keywords} />}
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content={author || 'World Monitor'} />
+    <link rel="canonical" href={Astro.url.href} />
+
+    <meta property="og:type" content={resolvedOgType} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={Astro.url.href} />
+    <meta property="og:site_name" content="World Monitor Blog" />
+    <meta property="og:image" content={resolvedOgImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image:alt" content={pageTitle} />
+    {publishedTime && <meta property="article:published_time" content={publishedTime} />}
+    {modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
+    {resolvedOgType === 'article' && <meta property="article:publisher" content="https://www.worldmonitor.app" />}
+    {section && <meta property="article:section" content={section} />}
+    {keywordTags.map(tag => <meta property="article:tag" content={tag} />)}
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={resolvedOgImage} />
+    <meta name="twitter:site" content="@worldmonitorai" />
+    <meta name="twitter:creator" content="@worldmonitorai" />
+
+    <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favico/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favico/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
+    <link rel="alternate" type="application/rss+xml" title="World Monitor Blog" href="/blog/rss.xml" />
+
+    {jsonLd && (
+      <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    )}
+    {breadcrumbLd && (
+      <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
+    )}
+
+    <style is:global>
+      @import '../styles/global.css';
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav>
+        <a href="/blog/" class="logo">
+          <img src="/favico/favicon-32x32.png" alt="World Monitor" width="28" height="28" class="logo-icon-img" />
+          <div class="logo-text">
+            <span class="logo-name">WORLD MONITOR</span>
+            <span class="logo-sub">by Someone.ceo</span>
+          </div>
+        </a>
+        <ul class="nav-links">
+          <li><a href="/blog/">Blog</a></li>
+          <li><a href="https://www.worldmonitor.app" target="_blank" rel="noopener noreferrer">Dashboard</a></li>
+          <li><a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener noreferrer">Pro</a></li>
+          <li><a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a></li>
+          <li><a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+        </ul>
+        <a href="https://www.worldmonitor.app/pro#waitlist" class="nav-cta" target="_blank" rel="noopener noreferrer">
+          Get Early Access
+        </a>
+      </nav>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="footer-icon-img" />
+          <div class="footer-brand-text">
+            <span class="footer-name">WORLD MONITOR</span>
+            <span class="footer-sub">by Someone.ceo</span>
+          </div>
+        </div>
+        <div class="footer-links">
+          <a href="https://www.worldmonitor.app" target="_blank" rel="noopener noreferrer">Dashboard</a>
+          <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener noreferrer">Pro</a>
+          <a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a>
+          <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener noreferrer">Status</a>
+          <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noopener noreferrer">Discussions</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener noreferrer">X</a>
+        </div>
+        <div class="footer-copy">
+          &copy; {new Date().getFullYear()} World Monitor
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

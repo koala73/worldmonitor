@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   GivingServiceClient,
   type GetGivingSummaryResponse as ProtoResponse,
@@ -124,7 +125,7 @@ function toDisplayInstitutional(proto?: ProtoInstitutional): InstitutionalGiving
 
 // ─── Client + circuit breaker + caching ───
 
-const client = new GivingServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new GivingServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const emptyResult: GivingSummary = {
   generatedAt: new Date().toISOString(),

@@ -144,6 +144,6 @@ runSeed('market', 'etf-flows', CANONICAL_KEY, fetchEtfFlows, {
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'yahoo-chart-5d',
 }).catch((err) => {
-  console.error('FATAL:', err.message || err);
+  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
 });

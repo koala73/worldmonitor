@@ -506,7 +506,11 @@ export const STRATEGIC_WATERWAYS: StrategicWaterway[] = [
   { id: 'panama', name: 'PANAMA CANAL', lat: 9.1, lon: -79.7, description: 'Americas shipping route' },
   { id: 'gibraltar', name: 'STRAIT OF GIBRALTAR', lat: 35.9, lon: -5.6, description: 'Mediterranean access, NATO control' },
   { id: 'bab_el_mandeb', name: 'BAB EL-MANDEB', lat: 12.5, lon: 43.3, description: 'Red Sea chokepoint, Houthi attacks' },
-  { id: 'dardanelles', name: 'DARDANELLES', lat: 40.2, lon: 26.4, description: 'Aegean-Marmara link, Turkey control' },
+  { id: 'cape_of_good_hope', name: 'CAPE OF GOOD HOPE', lat: -34.36, lon: 18.49, description: 'Suez bypass route, tanker traffic' },
+  { id: 'dover_strait', name: 'DOVER STRAIT', lat: 51.0, lon: 1.5, description: 'English Channel narrows, busiest shipping lane' },
+  { id: 'korea_strait', name: 'KOREA STRAIT', lat: 34.0, lon: 129.0, description: 'Japan-Korea shipping lane' },
+  { id: 'kerch_strait', name: 'KERCH STRAIT', lat: 45.3, lon: 36.6, description: 'Black Sea-Azov access, Russia-Ukraine flashpoint' },
+  { id: 'lombok_strait', name: 'LOMBOK STRAIT', lat: -8.5, lon: 115.7, description: 'Malacca bypass for deep-draft vessels' },
 ];
 
 export const APT_GROUPS: APTGroup[] = [
@@ -595,8 +599,44 @@ export const CONFLICT_ZONES: ConflictZone[] = [
   {
     id: 'yemen_redsea',
     name: 'Red Sea Crisis',
-    coords: [[42, 12], [42, 16], [44, 16], [45, 13], [44, 12]],
-    center: [43, 14],
+    coords: [
+      // NW coast along Red Sea
+      [42.6, 16.5],
+      [42.8, 15.8],
+      [42.7, 15.2],
+      [42.9, 14.8],
+      [43.1, 14.0],
+      // Bab el-Mandeb Strait
+      [43.3, 12.6],
+      [43.5, 12.4],
+      // Gulf of Aden coast (south)
+      [44.0, 12.6],
+      [44.8, 12.5],
+      [45.2, 12.8],
+      [45.5, 13.0],
+      [46.0, 13.4],
+      [46.8, 13.8],
+      [47.5, 13.9],
+      [48.0, 14.0],
+      [48.5, 14.5],
+      [49.5, 14.7],
+      [50.5, 14.9],
+      [51.5, 14.7],
+      [52.0, 15.0],
+      [52.2, 15.6],
+      // Inland boundary (north)
+      [51.5, 16.0],
+      [50.0, 16.4],
+      [48.5, 16.8],
+      [47.0, 17.0],
+      [46.0, 17.2],
+      [45.0, 17.0],
+      [44.5, 17.0],
+      [43.5, 17.0],
+      // Close
+      [42.6, 16.5],
+    ],
+    center: [46, 14.5],
     intensity: 'high',
     parties: ['Houthis', 'US/UK Coalition', 'Yemen Govt'],
     casualties: 'Unknown (Maritime)',

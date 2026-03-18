@@ -288,6 +288,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         } else if (target.id === 'us-font-family') {
           setFontFamily(target.value as FontFamily);
         } else if (target.id === 'us-map-provider') {
+        }
           const provider = target.value as MapProvider;
           setMapProvider(provider);
           renderMapThemeDropdown(container, provider);

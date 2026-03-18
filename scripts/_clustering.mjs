@@ -124,6 +124,7 @@ export function clusterItems(items) {
       primaryTitle: primary.title,
       primarySource: primary.source,
       primaryLink: primary.link,
+      pubDate: primary.pubDate,
       sourceCount: group.length,
       isAlert: group.some(i => i.isAlert),
     };

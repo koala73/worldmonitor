@@ -7,6 +7,7 @@ import type {
   ThreatLevel as ProtoThreatLevel,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import { cachedFetchJson, getCachedJsonBatch } from '../../../_shared/redis';
+import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
@@ -61,14 +62,29 @@ interface ParsedItem {
   classSource: 'keyword' | 'llm';
 }
 
+function createTimeoutLinkedController(parentSignal: AbortSignal): {
+  controller: AbortController;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FEED_TIMEOUT_MS);
+  const onAbort = () => controller.abort();
+  parentSignal.addEventListener('abort', onAbort, { once: true });
+
+  return {
+    controller,
+    cleanup: () => {
+      clearTimeout(timeout);
+      parentSignal.removeEventListener('abort', onAbort);
+    },
+  };
+}
+
 async function fetchRssText(
   url: string,
   signal: AbortSignal,
 ): Promise<string | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FEED_TIMEOUT_MS);
-  const onAbort = () => controller.abort();
-  signal.addEventListener('abort', onAbort, { once: true });
+  const { controller, cleanup } = createTimeoutLinkedController(signal);
 
   try {
     const resp = await fetch(url, {
@@ -82,8 +98,7 @@ async function fetchRssText(
     if (!resp.ok) return null;
     return await resp.text();
   } finally {
-    clearTimeout(timeout);
-    signal.removeEventListener('abort', onAbort);
+    cleanup();
   }
 }
 
@@ -92,10 +107,10 @@ async function fetchAndParseRss(
   variant: string,
   signal: AbortSignal,
 ): Promise<ParsedItem[]> {
-  const cacheKey = `rss:feed:v1:${feed.url}`;
+  const cacheKey = `rss:feed:v1:${variant}:${feed.url}`;
 
   try {
-    const cached = await cachedFetchJson<ParsedItem[]>(cacheKey, 600, async () => {
+    const cached = await cachedFetchJson<ParsedItem[]>(cacheKey, 3600, async () => {
       // Try direct fetch first
       let text = await fetchRssText(feed.url, signal).catch(() => null);
 
@@ -104,10 +119,7 @@ async function fetchAndParseRss(
         const relayBase = getRelayBaseUrl();
         if (relayBase) {
           const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), FEED_TIMEOUT_MS);
-          const onAbort = () => controller.abort();
-          signal.addEventListener('abort', onAbort, { once: true });
+          const { controller, cleanup } = createTimeoutLinkedController(signal);
           try {
             const resp = await fetch(relayUrl, {
               headers: getRelayHeaders(),
@@ -115,8 +127,7 @@ async function fetchAndParseRss(
             });
             if (resp.ok) text = await resp.text();
           } catch { /* relay also failed */ } finally {
-            clearTimeout(timeout);
-            signal.removeEventListener('abort', onAbort);
+            cleanup();
           }
         }
       }
@@ -261,26 +272,43 @@ function toProtoItem(item: ParsedItem): ProtoNewsItem {
 }
 
 export async function listFeedDigest(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListFeedDigestRequest,
 ): Promise<ListFeedDigestResponse> {
   const variant = VALID_VARIANTS.has(req.variant) ? req.variant : 'full';
   const lang = req.lang || 'en';
 
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
-
   const fallbackKey = `${variant}:${lang}`;
+
+  const empty = (): ListFeedDigestResponse => ({ categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() });
+
   try {
-    const cached = await cachedFetchJson<ListFeedDigestResponse>(digestCacheKey, 900, async () => {
-      return buildDigest(variant, lang);
-    });
-    if (cached) {
-      if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
-      fallbackDigestCache.set(fallbackKey, { data: cached, ts: Date.now() });
+    // cachedFetchJson coalesces concurrent cold-path calls: concurrent requests
+    // for the same key share a single buildDigest() run instead of fanning out
+    // across all RSS feeds. Returning null skips the Redis write and caches a
+    // neg-sentinel (120s) to absorb the request storm during degraded periods.
+    const fresh = await cachedFetchJson<ListFeedDigestResponse>(
+      digestCacheKey,
+      900,
+      async () => {
+        const result = await buildDigest(variant, lang);
+        const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
+        return totalItems > 0 ? result : null;
+      },
+    );
+
+    if (fresh === null) {
+      markNoCacheResponse(ctx.request);
+      return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
     }
-    return cached ?? fallbackDigestCache.get(fallbackKey)?.data ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
+
+    if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
+    fallbackDigestCache.set(fallbackKey, { data: fresh, ts: Date.now() });
+    return fresh;
   } catch {
-    return fallbackDigestCache.get(fallbackKey)?.data ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
+    markNoCacheResponse(ctx.request);
+    return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
   }
 }
 
@@ -310,6 +338,9 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     }
 
     const results = new Map<string, ParsedItem[]>();
+    // Track feeds that actually completed (with or without items) so we can
+    // distinguish a genuine timeout (never ran) from a successful empty fetch.
+    const completedFeeds = new Set<string>();
 
     for (let i = 0; i < allEntries.length; i += BATCH_CONCURRENCY) {
       if (deadlineController.signal.aborted) break;
@@ -318,7 +349,8 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       const settled = await Promise.allSettled(
         batch.map(async ({ category, feed }) => {
           const items = await fetchAndParseRss(feed, variant, deadlineController.signal);
-          feedStatuses[feed.name] = items.length > 0 ? 'ok' : 'empty';
+          completedFeeds.add(feed.name);
+          if (items.length === 0) feedStatuses[feed.name] = 'empty';
           return { category, items };
         }),
       );
@@ -334,7 +366,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     }
 
     for (const entry of allEntries) {
-      if (!(entry.feed.name in feedStatuses)) {
+      if (!completedFeeds.has(entry.feed.name)) {
         feedStatuses[entry.feed.name] = 'timeout';
       }
     }

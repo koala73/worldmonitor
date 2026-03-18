@@ -1,6 +1,7 @@
 node_modules/
 .idea/
 dist/
+public/blog/
 .DS_Store
 *.log
 .env
@@ -30,6 +31,9 @@ src-tauri/sidecar/node/*
 
 # Compiled sebuf gateway bundle (built by scripts/build-sidecar-sebuf.mjs)
 api/[[][[].*.js
+
+# Compiled sidecar domain handler bundles (built by scripts/build-sidecar-handlers.mjs)
+api/*/v1/\[rpc\].js
 .claudedocs/
 
 # Large generated data files (reproduced by scripts/)

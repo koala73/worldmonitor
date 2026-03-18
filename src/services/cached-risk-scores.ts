@@ -1,4 +1,5 @@
 import type { CountryScore, ComponentScores } from './country-instability';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { setHasCachedScores } from './country-instability';
 import {
   IntelligenceServiceClient,
@@ -11,7 +12,7 @@ import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Sebuf client ----
 
-const client = new IntelligenceServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 // ---- Legacy types (preserved for consumer compatibility) ----
 
@@ -54,6 +55,7 @@ const TIER1_NAMES: Record<string, string> = {
   IL: 'Israel', TW: 'Taiwan', KP: 'North Korea', SA: 'Saudi Arabia', TR: 'Turkey',
   PL: 'Poland', DE: 'Germany', FR: 'France', GB: 'United Kingdom', IN: 'India',
   PK: 'Pakistan', SY: 'Syria', YE: 'Yemen', MM: 'Myanmar', VE: 'Venezuela',
+  CU: 'Cuba', MX: 'Mexico', BR: 'Brazil', AE: 'United Arab Emirates',
 };
 
 const TREND_REVERSE: Record<string, 'rising' | 'stable' | 'falling'> = {
@@ -137,7 +139,7 @@ function isValidCiiEntry(e: unknown): e is CachedCIIScore {
 // ---- localStorage persistence (sync prime for getCachedScores) ----
 
 const LS_KEY = 'wm:risk-scores';
-const LS_MAX_STALENESS_MS = 24 * 60 * 60 * 1000;
+const LS_MAX_STALENESS_MS = 60 * 60 * 1000;
 
 function loadFromStorage(): CachedRiskScores | null {
   try {
@@ -170,7 +172,7 @@ function saveToStorage(data: CachedRiskScores): void {
 
 const breaker = createCircuitBreaker<CachedRiskScores>({
   name: 'Risk Scores',
-  cacheTtlMs: 5 * 60 * 1000, // 5 min
+  cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
 });
 

@@ -1,4 +1,4 @@
-import { isDesktopRuntime, toRuntimeUrl } from '../services/runtime';
+import { isDesktopRuntime, toApiUrl, toRuntimeUrl } from '../services/runtime';
 import { getPersistentCache, setPersistentCache } from '../services/persistent-cache';
 
 const isDev = import.meta.env.DEV;
@@ -12,6 +12,19 @@ const RSS_PROXY_BASE = isDev
   : RSS_DIRECT_TO_RELAY
     ? 'https://proxy.worldmonitor.app'
     : '';
+
+// Widget agent always goes directly to Railway relay.
+// Desktop: sidecar buffers via arrayBuffer() which destroys SSE streaming, so we bypass it.
+const WIDGET_RELAY_BASE = 'https://proxy.worldmonitor.app';
+export function widgetAgentUrl(): string {
+  if (isDev) return '/widget-agent';
+  return `${WIDGET_RELAY_BASE}/widget-agent`;
+}
+
+export function widgetAgentHealthUrl(): string {
+  if (isDev) return '/widget-agent/health';
+  return `${WIDGET_RELAY_BASE}/widget-agent/health`;
+}
 
 export function rssProxyUrl(feedUrl: string): string {
   if (isDesktopRuntime()) return proxyUrl(feedUrl);
@@ -41,7 +54,7 @@ export function proxyUrl(localPath: string): string {
     return localPath;
   }
 
-  return localPath;
+  return toApiUrl(localPath);
 }
 
 function shouldPersistResponse(url: string): boolean {

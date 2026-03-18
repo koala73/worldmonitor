@@ -13,7 +13,7 @@ import {
 } from '@/components/LiveNewsPanel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
-import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { toApiUrl } from '@/services/runtime';
 import { resolveUserCountryCode } from '@/utils/user-location';
 
 /** Builds a stable custom channel id from a YouTube handle (e.g. @Foo -> custom-foo). */
@@ -436,6 +436,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       }
       saveChannelsToStorage(channels);
       renderList(listEl);
+      renderAvailableChannels(listEl);
     });
     return card;
   }
@@ -565,8 +566,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       let resolvedName = nameInput?.value?.trim() || '';
       if (!resolvedName) {
         try {
-          const baseUrl = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
-          const res = await fetch(`${baseUrl}/api/youtube/live?videoId=${encodeURIComponent(videoId)}`);
+          const res = await fetch(toApiUrl(`/api/youtube/live?videoId=${encodeURIComponent(videoId)}`));
           if (res.ok) {
             const data = await res.json();
             resolvedName = data.channelName || data.title || '';
@@ -614,8 +614,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
 
     let resolvedName = '';
     try {
-      const baseUrl = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
-      const res = await fetch(`${baseUrl}/api/youtube/live?channel=${encodeURIComponent(handle)}`);
+      const res = await fetch(toApiUrl(`/api/youtube/live?channel=${encodeURIComponent(handle)}`));
       if (res.ok) {
         const data = await res.json();
         resolvedName = data.channelName || '';

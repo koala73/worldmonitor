@@ -56,8 +56,23 @@ async function readExistingInsights() {
   return data.result ? JSON.parse(data.result) : null;
 }
 
-// Provider config — mirrors server/worldmonitor/news/v1/_shared.ts getProviderCredentials()
+// Provider config — mirrors server/_shared/llm.ts getProviderCredentials()
+// Order: ollama → groq → openrouter (canonical chain)
 const LLM_PROVIDERS = [
+  {
+    name: 'ollama',
+    envKey: 'OLLAMA_API_URL',
+    apiUrlFn: (baseUrl) => new URL('/v1/chat/completions', baseUrl).toString(),
+    model: () => process.env.OLLAMA_MODEL || 'llama3.1:8b',
+    headers: (_key) => {
+      const h = { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA };
+      const apiKey = process.env.OLLAMA_API_KEY;
+      if (apiKey) h.Authorization = `Bearer ${apiKey}`;
+      return h;
+    },
+    extraBody: { think: false },
+    timeout: 25_000,
+  },
   {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
@@ -71,22 +86,8 @@ const LLM_PROVIDERS = [
     envKey: 'OPENROUTER_API_KEY',
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
     model: 'google/gemini-2.5-flash',
-    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'WorldMonitor', 'User-Agent': CHROME_UA }),
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
     timeout: 20_000,
-  },
-  {
-    name: 'ollama',
-    envKey: 'OLLAMA_API_URL',
-    apiUrlFn: (baseUrl) => new URL('/v1/chat/completions', baseUrl).toString(),
-    model: () => process.env.OLLAMA_MODEL || 'llama3.1:8b',
-    headers: (_key) => {
-      const h = { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA };
-      const apiKey = process.env.OLLAMA_API_KEY;
-      if (apiKey) h['Authorization'] = `Bearer ${apiKey}`;
-      return h;
-    },
-    extraBody: { think: false },
-    timeout: 25_000,
   },
 ];
 
@@ -158,7 +159,6 @@ Rules:
       return { text, model: json.model || model, provider: provider.name };
     } catch (err) {
       console.warn(`  ${provider.name} failed: ${err.message}`);
-      continue;
     }
   }
 
@@ -285,6 +285,7 @@ async function fetchInsights() {
       primaryTitle: story.primaryTitle,
       primarySource: story.primarySource,
       primaryLink: story.primaryLink,
+      pubDate: story.pubDate,
       sourceCount: story.sourceCount,
       importanceScore: story.importanceScore,
       velocity: { level: 'normal', sourcesPerHour: 0 },
@@ -327,7 +328,7 @@ runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'digest-clustering-v1',
 }).catch((err) => {
-  console.error('FATAL:', err.message || err);
+  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   // Exit gracefully for cron — health endpoint flags stale data via seed-meta.
   process.exit(0);
 });

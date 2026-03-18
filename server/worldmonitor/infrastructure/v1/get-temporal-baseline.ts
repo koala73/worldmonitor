@@ -26,7 +26,7 @@ export async function getTemporalBaseline(
     const { type, count } = req;
     const region = req.region || 'global';
 
-    if (!type || !VALID_BASELINE_TYPES.includes(type) || typeof count !== 'number' || isNaN(count)) {
+    if (!type || !VALID_BASELINE_TYPES.includes(type) || typeof count !== 'number' || Number.isNaN(count)) {
       return {
         learning: false,
         sampleCount: 0,

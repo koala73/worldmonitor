@@ -1,0 +1,5 @@
+[phases.setup]
+aptPkgs = ["curl"]
+
+[variables]
+NODE_OPTIONS = "--dns-result-order=ipv4first"

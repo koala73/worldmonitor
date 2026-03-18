@@ -1,0 +1,11 @@
+[
+  {"from": "conflict", "to": "supply_chain", "coupling": 0.6, "mechanism": "chokepoint disruption", "requiresChokepoint": true},
+  {"from": "conflict", "to": "market", "coupling": 0.5, "mechanism": "commodity price shock", "requiresChokepoint": true},
+  {"from": "political", "to": "conflict", "coupling": 0.4, "mechanism": "instability escalation", "minProbability": 0.6},
+  {"from": "military", "to": "conflict", "coupling": 0.5, "mechanism": "force deployment", "requiresCriticalPosture": true},
+  {"from": "supply_chain", "to": "market", "coupling": 0.4, "mechanism": "supply shortage pricing"},
+  {"from": "infrastructure", "to": "supply_chain", "coupling": 0.35, "mechanism": "infrastructure failure", "requiresSeverity": "total"},
+  {"from": "infrastructure", "to": "market", "coupling": 0.3, "mechanism": "outage economic impact", "requiresSeverity": "total"},
+  {"from": "conflict", "to": "political", "coupling": 0.35, "mechanism": "conflict-driven instability", "minProbability": 0.5},
+  {"from": "political", "to": "market", "coupling": 0.25, "mechanism": "political uncertainty pricing", "minProbability": 0.5}
+]

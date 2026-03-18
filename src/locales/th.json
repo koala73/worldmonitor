@@ -122,6 +122,17 @@
       "stockIndex": "ดัชนีหุ้น: {{value}}",
       "recentHeadlines": "**พาดหัวข่าวล่าสุด:**",
       "activeStrikes": "ตรวจพบการนัดหยุดงาน {{count}} รายการ"
+    },
+    "countryFacts": "ข้อมูลประเทศ",
+    "loadingFacts": "กำลังโหลดข้อมูลประเทศ...",
+    "noFacts": "ไม่มีข้อมูลประเทศ",
+    "facts": {
+      "headOfState": "ประมุขแห่งรัฐ",
+      "population": "ประชากร",
+      "capital": "เมืองหลวง",
+      "languages": "ภาษา",
+      "currencies": "สกุลเงิน",
+      "area": "พื้นที่"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "อ่าวเปอร์เซีย & MENA",
     "filterPanels": "กรองแผงควบคุม...",
     "resetLayout": "รีเซ็ตเลย์เอาต์",
+    "resetLayoutTooltip": "คืนค่าการจัดเรียงแผงควบคุมเริ่มต้น",
     "unsavedChanges": "คุณมีการเปลี่ยนแปลงแผงควบคุมที่ยังไม่ได้บันทึก ยกเลิกหรือไม่?",
     "panelCatCore": "หลัก",
     "panelCatIntelligence": "ข่าวกรอง",
@@ -263,7 +275,8 @@
     "techReadiness": "ดัชนีความพร้อมด้านเทคโนโลยี",
     "gccInvestments": "การลงทุน GCC",
     "geoHubs": "ศูนย์กลางภูมิรัฐศาสตร์",
-    "liveWebcams": "เว็บแคมสด",
+    "liveYouTube": "เว็บแคมสด",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "เศรษฐกิจอ่าว",
     "gulfIndices": "ดัชนีอ่าว",
     "gulfCurrencies": "สกุลเงินอ่าว",
@@ -376,6 +389,8 @@
       "noResults": "ไม่พบผลลัพธ์",
       "commands": "คำสั่ง",
       "results": "ผลลัพธ์",
+      "seeAllCommands": "ดูคำสั่งทั้งหมด",
+      "hideCommandList": "กลับ",
       "navigate": "นำทาง",
       "select": "เลือก",
       "close": "ปิด",
@@ -756,6 +771,13 @@
       "spikeAlert": "ตรวจพบการพุ่งสูง — อัตราสูงกว่าค่าเฉลี่ย 52 สัปดาห์อย่างมีนัยสำคัญ (รายสัปดาห์)",
       "warnings": "คำเตือน",
       "aisDisruptions": "AIS ขัดข้อง",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "แร่ธาตุ",
       "topProducers": "ผู้ผลิตรายใหญ่",
       "risk": "ความเสี่ยง",
@@ -802,7 +824,10 @@
       "yes": "ใช่",
       "no": "ไม่",
       "vol": "ปริมาณ",
-      "closes": "ปิด"
+      "closes": "ปิด",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "สุขภาพ Peg",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "ไม่ต้องแสดงอีก",
       "layerWarningOk": "รับทราบ",
       "layersTitle": "เลเยอร์",
+      "layerSearch": "ค้นหาเลเยอร์...",
       "timeAll": "ทั้งหมด",
       "views": {
         "global": "ทั่วโลก",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "สถานที่นิวเคลียร์",
         "gammaIrradiators": "เครื่องฉายรังสีแกมมา",
         "spaceports": "ท่าอวกาศ",
+        "satellites": "การเฝ้าระวังจากวงโคจร",
         "pipelines": "ท่อส่ง",
         "militaryActivity": "กิจกรรมทางทหาร",
         "shipTraffic": "การจราจรทางเรือ",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "แจ้งเตือน",
       "filterOsint": "OSINT",
       "filterPolitics": "การเมือง",
-      "filterMiddleeast": "ตะวันออกกลาง"
+      "filterMiddleeast": "ตะวันออกกลาง",
+      "live": "สด",
+      "viewSource": "ดูแหล่งที่มา"
     },
     "investments": {
       "infoTooltip": "ฐานข้อมูลการลงทุนโดยตรงจากต่างประเทศของซาอุดีอาระเบียและ UAE ในโครงสร้างพื้นฐานสำคัญระดับโลก คลิกแถวเพื่อบินไปยังการลงทุนบนแผนที่",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "คำนวณ"
+        "computed": "คำนวณ",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "อเมริกา",
@@ -2056,7 +2087,12 @@
       "usniIntel": "ข่าวกรอง USNI",
       "usniSource": "แหล่งที่มา: USNI News Fleet Tracker",
       "approximatePosition": "ตำแหน่งโดยประมาณ — อ้างอิงจากรายงานรายสัปดาห์ของ USNI ไม่ใช่ AIS แบบเรียลไทม์",
-      "darkDescription": "⚠ เรือสูญเสียสัญญาณ - สัญญาณ AIS หายไป อาจบ่งชี้ปฏิบัติการลับ"
+      "darkDescription": "⚠ เรือสูญเสียสัญญาณ - สัญญาณ AIS หายไป อาจบ่งชี้ปฏิบัติการลับ",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "สไตล์ภาพของไทล์แผนที่",
     "globePreset": "พรีเซ็ตภาพ",
     "globePresetDesc": "สลับระหว่างภาพลูกโลกแบบคลาสสิกและปรับปรุง"
+  },
+  "contextMenu": {
+    "openCountryBrief": "เปิดภาพรวมประเทศ",
+    "copyCoordinates": "คัดลอกพิกัด"
   }
 }

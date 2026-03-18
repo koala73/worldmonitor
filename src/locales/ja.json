@@ -122,6 +122,17 @@
       "stockIndex": "株価指数：{{value}}",
       "recentHeadlines": "**最近のヘッドライン：**",
       "activeStrikes": "{{count}}件の活発なストライキを検知"
+    },
+    "countryFacts": "国の基本情報",
+    "loadingFacts": "国の基本情報を読み込み中...",
+    "noFacts": "国の基本情報は利用できません。",
+    "facts": {
+      "headOfState": "国家元首",
+      "population": "人口",
+      "capital": "首都",
+      "languages": "言語",
+      "currencies": "通貨",
+      "area": "面積"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "湾岸・中東",
     "filterPanels": "パネルを絞り込む...",
     "resetLayout": "レイアウトをリセット",
+    "resetLayoutTooltip": "デフォルトのパネル配置に戻す",
     "unsavedChanges": "パネルの未保存の変更があります。破棄しますか？",
     "panelCatCore": "コア",
     "panelCatIntelligence": "インテリジェンス",
@@ -263,7 +275,8 @@
     "techReadiness": "テック準備度指数",
     "gccInvestments": "GCC投資",
     "geoHubs": "地政学ハブ",
-    "liveWebcams": "ライブカメラ",
+    "liveYouTube": "ライブカメラ",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "湾岸経済",
     "gulfIndices": "湾岸指数",
     "gulfCurrencies": "湾岸通貨",
@@ -376,6 +389,8 @@
       "noResults": "結果なし",
       "commands": "コマンド",
       "results": "結果",
+      "seeAllCommands": "コマンド一覧を見る",
+      "hideCommandList": "戻る",
       "navigate": "移動",
       "select": "選択",
       "close": "閉じる",
@@ -756,6 +771,13 @@
       "spikeAlert": "スパイク検出 — 料金が52週平均を大幅に上回っています（週次）",
       "warnings": "件の警告",
       "aisDisruptions": "AIS途絶",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "鉱物",
       "topProducers": "主要生産国",
       "risk": "リスク",
@@ -802,7 +824,10 @@
       "yes": "はい",
       "no": "いいえ",
       "vol": "出来高",
-      "closes": "締切"
+      "closes": "締切",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "ペグ健全性",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "今後表示しない",
       "layerWarningOk": "了解",
       "layersTitle": "レイヤー",
+      "layerSearch": "レイヤーを検索...",
       "timeAll": "全期間",
       "views": {
         "global": "グローバル",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "核施設",
         "gammaIrradiators": "ガンマ線照射施設",
         "spaceports": "宇宙港",
+        "satellites": "軌道監視",
         "pipelines": "パイプライン",
         "militaryActivity": "軍事活動",
         "shipTraffic": "船舶交通",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "警報",
       "filterOsint": "OSINT",
       "filterPolitics": "政治",
-      "filterMiddleeast": "中東"
+      "filterMiddleeast": "中東",
+      "live": "ライブ",
+      "viewSource": "ソースを見る"
     },
     "investments": {
       "infoTooltip": "サウジアラビアとUAEによるグローバル重要インフラへの外国直接投資データベース。行をクリックするとマップ上の投資先にズーム。",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "算出値"
+        "computed": "算出値",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "アメリカ",
@@ -2056,7 +2087,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Source: USNI News Fleet Tracker",
       "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
-      "darkDescription": "⚠ 艦艇がAIS信号を喪失 — 機密作戦の可能性。"
+      "darkDescription": "⚠ 艦艇がAIS信号を喪失 — 機密作戦の可能性。",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "マップタイルのビジュアルスタイル。",
     "globePreset": "ビジュアルプリセット",
     "globePresetDesc": "クラシックと拡張地球表示を切り替えます。"
+  },
+  "contextMenu": {
+    "openCountryBrief": "国の概要を開く",
+    "copyCoordinates": "座標をコピー"
   }
 }

@@ -1,4 +1,6 @@
-# Architecture
+# Architecture (DEPRECATED)
+
+> **This document is outdated.** The current architecture reference is [`/ARCHITECTURE.md`](../../ARCHITECTURE.md) at the repository root.
 
 World Monitor is an AI-powered real-time global intelligence dashboard built as a TypeScript single-page application. It aggregates 30+ external data sources — covering geopolitics, military activity, financial markets, cyber threats, climate events, and more — into a unified operational picture rendered through an interactive 3D globe and a grid of specialised panels.
 

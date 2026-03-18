@@ -1,3 +1,5 @@
+import { toApiUrl } from '@/services/runtime';
+
 export interface GeoResult {
   country: string;
   code: string;
@@ -22,7 +24,7 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
   signal?.addEventListener('abort', onExternalAbort, { once: true });
 
   try {
-    const res = await fetch(`/api/reverse-geocode?lat=${lat}&lon=${lon}`, {
+    const res = await fetch(toApiUrl(`/api/reverse-geocode?lat=${lat}&lon=${lon}`), {
       signal: controller.signal,
     });
     if (!res.ok) {

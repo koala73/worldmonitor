@@ -1,0 +1,89 @@
+[
+  {
+    "name": "well_grounded_conflict",
+    "forecast": {
+      "domain": "conflict",
+      "region": "Iran",
+      "title": "Escalation risk: Iran",
+      "probability": 0.71,
+      "confidence": 0.62,
+      "timeHorizon": "7d",
+      "trend": "rising",
+      "signals": [
+        { "type": "cii", "value": "Iran CII 87 (critical)", "weight": 0.4 },
+        { "type": "ucdp", "value": "3 UCDP conflict events", "weight": 0.3 },
+        { "type": "theater", "value": "Middle East theater posture elevated", "weight": 0.2 }
+      ],
+      "newsContext": [
+        "Iran military drills intensify after border incident",
+        "Regional officials warn of retaliation risk"
+      ],
+      "calibration": {
+        "marketTitle": "Will Iran conflict escalate before July?",
+        "marketPrice": 0.58,
+        "drift": 0.04,
+        "source": "polymarket"
+      },
+      "cascades": [
+        { "domain": "market", "effect": "commodity price shock", "probability": 0.41 }
+      ]
+    },
+    "thresholds": {
+      "overallMin": 0.7,
+      "groundingMin": 0.6
+    }
+  },
+  {
+    "name": "well_grounded_supply_chain",
+    "forecast": {
+      "domain": "supply_chain",
+      "region": "Red Sea",
+      "title": "Shipping disruption: Red Sea",
+      "probability": 0.64,
+      "confidence": 0.57,
+      "timeHorizon": "7d",
+      "trend": "rising",
+      "signals": [
+        { "type": "chokepoint", "value": "Red Sea disruption detected", "weight": 0.5 },
+        { "type": "gps_jamming", "value": "GPS interference near Red Sea", "weight": 0.2 }
+      ],
+      "newsContext": [
+        "Red Sea shipping disruption worsens after new attacks",
+        "Freight rates react to Red Sea rerouting"
+      ],
+      "calibration": {
+        "marketTitle": "Will oil close above $90?",
+        "marketPrice": 0.62,
+        "drift": 0.03,
+        "source": "polymarket"
+      },
+      "cascades": [
+        { "domain": "market", "effect": "supply shortage pricing", "probability": 0.38 }
+      ]
+    },
+    "thresholds": {
+      "overallMin": 0.66,
+      "groundingMin": 0.6
+    }
+  },
+  {
+    "name": "thin_generic_market",
+    "forecast": {
+      "domain": "market",
+      "region": "Europe",
+      "title": "Energy stress: Europe",
+      "probability": 0.69,
+      "confidence": 0.58,
+      "timeHorizon": "30d",
+      "trend": "stable",
+      "signals": [
+        { "type": "prediction_market", "value": "Broad market stress chatter", "weight": 0.2 }
+      ],
+      "newsContext": [],
+      "cascades": []
+    },
+    "thresholds": {
+      "overallMax": 0.55
+    }
+  }
+]

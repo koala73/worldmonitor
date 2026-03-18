@@ -22,17 +22,8 @@ export interface Accelerator {
   notable?: string[];
 }
 
-export interface TechHQ {
-  id: string;
-  company: string;
-  city: string;
-  country: string;
-  lat: number;
-  lon: number;
-  type: 'faang' | 'unicorn' | 'public';
-  employees?: number;
-  marketCap?: string;
-}
+export type { TechHQ } from '@/types';
+import type { TechHQ } from '@/types';
 
 export interface CloudRegion {
   id: string;

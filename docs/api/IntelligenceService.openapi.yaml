@@ -245,6 +245,64 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-facts:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryFacts
+            description: GetCountryFacts retrieves factual country data from RestCountries and Wikipedia.
+            operationId: GetCountryFacts
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryFactsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-security-advisories:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListSecurityAdvisories
+            description: ListSecurityAdvisories retrieves pre-seeded travel and health advisories.
+            operationId: ListSecurityAdvisories
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSecurityAdvisoriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -726,4 +784,79 @@ components:
                 model:
                     type: string
                 provider:
+                    type: string
+        GetCountryFactsRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+            required:
+                - countryCode
+        GetCountryFactsResponse:
+            type: object
+            properties:
+                headOfState:
+                    type: string
+                headOfStateTitle:
+                    type: string
+                wikipediaSummary:
+                    type: string
+                wikipediaThumbnailUrl:
+                    type: string
+                population:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                capital:
+                    type: string
+                languages:
+                    type: array
+                    items:
+                        type: string
+                currencies:
+                    type: array
+                    items:
+                        type: string
+                areaSqKm:
+                    type: number
+                    format: double
+                countryName:
+                    type: string
+        ListSecurityAdvisoriesRequest:
+            type: object
+        ListSecurityAdvisoriesResponse:
+            type: object
+            properties:
+                advisories:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SecurityAdvisoryItem'
+                byCountry:
+                    type: object
+                    additionalProperties:
+                        type: string
+        ByCountryEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
+        SecurityAdvisoryItem:
+            type: object
+            properties:
+                title:
+                    type: string
+                link:
+                    type: string
+                pubDate:
+                    type: string
+                source:
+                    type: string
+                sourceCountry:
+                    type: string
+                level:
+                    type: string
+                country:
                     type: string

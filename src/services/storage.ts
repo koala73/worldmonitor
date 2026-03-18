@@ -142,7 +142,7 @@ export function calculateDeviation(current: number, baseline: BaselineEntry): {
     return { zScore: 0, percentChange: 0, level: 'normal' };
   }
 
-  const variance = counts.reduce((sum, c) => sum + Math.pow(c - avg, 2), 0) / counts.length;
+  const variance = counts.reduce((sum, c) => sum + (c - avg) ** 2, 0) / counts.length;
   const stdDev = Math.sqrt(variance) || 1;
 
   const zScore = (current - avg) / stdDev;

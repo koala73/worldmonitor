@@ -11,6 +11,10 @@ import "worldmonitor/market/v1/list_stablecoin_markets.proto";
 import "worldmonitor/market/v1/list_etf_flows.proto";
 import "worldmonitor/market/v1/get_country_stock_index.proto";
 import "worldmonitor/market/v1/list_gulf_quotes.proto";
+import "worldmonitor/market/v1/analyze_stock.proto";
+import "worldmonitor/market/v1/backtest_stock.proto";
+import "worldmonitor/market/v1/get_stock_analysis_history.proto";
+import "worldmonitor/market/v1/list_stored_stock_backtests.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -54,5 +58,25 @@ service MarketService {
   // ListGulfQuotes retrieves Gulf region market quotes (indices, currencies, oil).
   rpc ListGulfQuotes(ListGulfQuotesRequest) returns (ListGulfQuotesResponse) {
     option (sebuf.http.config) = {path: "/list-gulf-quotes", method: HTTP_METHOD_GET};
+  }
+
+  // AnalyzeStock retrieves a premium stock analysis report with technicals, news, and AI synthesis.
+  rpc AnalyzeStock(AnalyzeStockRequest) returns (AnalyzeStockResponse) {
+    option (sebuf.http.config) = {path: "/analyze-stock", method: HTTP_METHOD_GET};
+  }
+
+  // GetStockAnalysisHistory retrieves shared premium stock analysis history from the backend store.
+  rpc GetStockAnalysisHistory(GetStockAnalysisHistoryRequest) returns (GetStockAnalysisHistoryResponse) {
+    option (sebuf.http.config) = {path: "/get-stock-analysis-history", method: HTTP_METHOD_GET};
+  }
+
+  // BacktestStock replays premium stock-analysis signals over recent price history.
+  rpc BacktestStock(BacktestStockRequest) returns (BacktestStockResponse) {
+    option (sebuf.http.config) = {path: "/backtest-stock", method: HTTP_METHOD_GET};
+  }
+
+  // ListStoredStockBacktests retrieves stored premium backtest snapshots from the backend store.
+  rpc ListStoredStockBacktests(ListStoredStockBacktestsRequest) returns (ListStoredStockBacktestsResponse) {
+    option (sebuf.http.config) = {path: "/list-stored-stock-backtests", method: HTTP_METHOD_GET};
   }
 }

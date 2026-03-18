@@ -56,6 +56,58 @@ describe('Edge Function no node: built-ins', () => {
   }
 });
 
+describe('Legacy api/*.js endpoint allowlist', () => {
+  const ALLOWED_LEGACY_ENDPOINTS = new Set([
+    'ais-snapshot.js',
+    'bootstrap.js',
+    'cache-purge.js',
+    'contact.js',
+    'download.js',
+    'fwdstart.js',
+    'geo.js',
+    'gpsjam.js',
+    'health.js',
+    'military-flights.js',
+    'og-story.js',
+    'opensky.js',
+    'oref-alerts.js',
+    'polymarket.js',
+    'register-interest.js',
+    'reverse-geocode.js',
+    'rss-proxy.js',
+    'satellites.js',
+    'seed-health.js',
+    'story.js',
+    'telegram-feed.js',
+    'version.js',
+  ]);
+
+  const currentEndpoints = readdirSync(apiDir).filter(
+    (f) => f.endsWith('.js') && !f.startsWith('_'),
+  );
+
+  for (const file of currentEndpoints) {
+    it(`${file} is in the legacy endpoint allowlist`, () => {
+      assert.ok(
+        ALLOWED_LEGACY_ENDPOINTS.has(file),
+        `${file} is a new api/*.js endpoint not in the allowlist. ` +
+          'New data endpoints must use the sebuf protobuf RPC pattern ' +
+          '(proto definition → buf generate → handler in server/worldmonitor/{domain}/v1/ → wired in handler.ts). ' +
+          'If this is a non-data ops endpoint, add it to ALLOWED_LEGACY_ENDPOINTS in tests/edge-functions.test.mjs.',
+      );
+    });
+  }
+
+  it('allowlist has no stale entries (all listed files exist)', () => {
+    for (const file of ALLOWED_LEGACY_ENDPOINTS) {
+      assert.ok(
+        existsSync(join(apiDir, file)),
+        `${file} is in ALLOWED_LEGACY_ENDPOINTS but does not exist in api/ — remove it from the allowlist.`,
+      );
+    }
+  });
+});
+
 describe('Edge Function module isolation', () => {
   for (const { name, path } of edgeFunctions) {
     it(`${name} does not import from ../server/ (Edge Functions cannot resolve cross-directory TS)`, () => {

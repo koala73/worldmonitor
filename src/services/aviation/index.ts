@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   AviationServiceClient,
   type AirportDelayAlert as ProtoAlert,
@@ -14,7 +15,7 @@ import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Consumer-friendly display types ----
 
-export type FlightDelaySource = 'faa' | 'eurocontrol' | 'computed';
+export type FlightDelaySource = 'faa' | 'eurocontrol' | 'computed' | 'aviationstack' | 'notam';
 export type FlightDelaySeverity = 'normal' | 'minor' | 'moderate' | 'major' | 'severe';
 export type FlightDelayType = 'ground_stop' | 'ground_delay' | 'departure_delay' | 'arrival_delay' | 'general' | 'closure';
 export type AirportRegion = 'americas' | 'europe' | 'apac' | 'mena' | 'africa';
@@ -167,6 +168,8 @@ const SOURCE_MAP: Record<string, FlightDelaySource> = {
   FLIGHT_DELAY_SOURCE_FAA: 'faa',
   FLIGHT_DELAY_SOURCE_EUROCONTROL: 'eurocontrol',
   FLIGHT_DELAY_SOURCE_COMPUTED: 'computed',
+  FLIGHT_DELAY_SOURCE_AVIATIONSTACK: 'aviationstack',
+  FLIGHT_DELAY_SOURCE_NOTAM: 'notam',
 };
 
 const FLIGHT_STATUS_MAP: Record<string, FlightStatus> = {
@@ -268,7 +271,7 @@ function toDisplayNewsItem(p: ProtoAviationNews): AviationNewsItem {
 
 // ---- Client + circuit breakers ----
 
-const client = new AviationServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new AviationServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const breakerDelays = createCircuitBreaker<AirportDelayAlert[]>({ name: 'Flight Delays v2', cacheTtlMs: 2 * 60 * 60 * 1000, persistCache: true });
 const breakerOps = createCircuitBreaker<AirportOpsSummary[]>({ name: 'Airport Ops', cacheTtlMs: 6 * 60 * 1000, persistCache: true });

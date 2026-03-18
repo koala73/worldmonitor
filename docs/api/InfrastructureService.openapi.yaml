@@ -200,6 +200,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/list-temporal-anomalies:
+        get:
+            tags:
+                - InfrastructureService
+            summary: ListTemporalAnomalies
+            description: ListTemporalAnomalies returns server-computed temporal anomalies for news and satellite_fires.
+            operationId: ListTemporalAnomalies
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListTemporalAnomaliesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -575,3 +601,41 @@ components:
                     format: int64
                     description: 'Evidence timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: CableHealthEvidence represents a single piece of evidence supporting a health assessment.
+        ListTemporalAnomaliesRequest:
+            type: object
+        ListTemporalAnomaliesResponse:
+            type: object
+            properties:
+                anomalies:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TemporalAnomaly'
+                trackedTypes:
+                    type: array
+                    items:
+                        type: string
+                computedAt:
+                    type: string
+        TemporalAnomaly:
+            type: object
+            properties:
+                type:
+                    type: string
+                region:
+                    type: string
+                currentCount:
+                    type: integer
+                    format: int32
+                expectedCount:
+                    type: integer
+                    format: int32
+                zScore:
+                    type: number
+                    format: double
+                severity:
+                    type: string
+                multiplier:
+                    type: number
+                    format: double
+                message:
+                    type: string

@@ -122,6 +122,17 @@
       "sirens24h": "Syreny / 24h",
       "aviationDisruptions": "Zakłócenia lotnicze",
       "gpsJammingZones": "Strefy zakłóceń GPS"
+    },
+    "countryFacts": "Fakty o kraju",
+    "loadingFacts": "Ładowanie faktów o kraju...",
+    "noFacts": "Fakty o kraju niedostępne.",
+    "facts": {
+      "headOfState": "Głowa państwa",
+      "population": "Ludność",
+      "capital": "Stolica",
+      "languages": "Języki",
+      "currencies": "Waluty",
+      "area": "Powierzchnia"
     }
   },
   "header": {
@@ -173,6 +184,7 @@
     "sourceRegionGulfMena": "Zatoka & MENA",
     "filterPanels": "Filtruj panele...",
     "resetLayout": "Resetuj układ",
+    "resetLayoutTooltip": "Przywróć domyślny układ paneli",
     "unsavedChanges": "Masz niezapisane zmiany paneli. Odrzucić je?",
     "panelCatCore": "Główne",
     "panelCatIntelligence": "Wywiad",
@@ -258,7 +270,8 @@
     "techHubs": "Gorące centra technologiczne",
     "gccInvestments": "Inwestycje GCC",
     "geoHubs": "Geopolitical Hotspots",
-    "liveWebcams": "Kamery na Żywo",
+    "liveYouTube": "Kamery na Żywo",
+    "pinnedWebcams": "Pinned Webcams",
     "securityAdvisories": "Ostrzeżenia Bezpieczeństwa",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Wywiad Telegram",
@@ -400,7 +413,9 @@
       "placeholderFinance": "Szukaj lub wpisz polecenie...",
       "hintFinance": "Szukaj • Giełdy • Rynki • Warstwy • Nawigacja • Ustawienia",
       "commands": "Polecenia",
-      "results": "Wyniki"
+      "results": "Wyniki",
+      "seeAllCommands": "Pokaż wszystkie polecenia",
+      "hideCommandList": "Wstecz"
     },
     "signal": {
       "title": "WYKONANIE INTELIGENCJI",
@@ -775,7 +790,10 @@
       "yes": "Tak",
       "no": "NIE",
       "vol": "Tom",
-      "closes": "Zamyka się"
+      "closes": "Zamyka się",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "deckgl": {
       "views": {
@@ -834,6 +852,7 @@
         "nuclearSites": "Miejsca nuklearne",
         "gammaIrradiators": "Promienniki gamma",
         "spaceports": "Porty kosmiczne",
+        "satellites": "Nadzór Orbitalny",
         "pipelines": "Rurociągi",
         "militaryActivity": "Działalność wojskowa",
         "shipTraffic": "Ruch statków",
@@ -863,6 +882,7 @@
         "renewableInstallations": "Czysta energia"
       },
       "layersTitle": "Warstwy",
+      "layerSearch": "Szukaj warstw...",
       "layerGuide": "Przewodnik po warstwach",
       "layerWarningTitle": "Informacja o wydajności",
       "layerWarningBody": "Włączenie więcej niż {{threshold}} warstw może wpłynąć na wydajność renderowania i liczbę klatek na sekundę.",
@@ -1302,7 +1322,9 @@
       "filterAlerts": "Alarmy",
       "filterOsint": "OSINT",
       "filterPolitics": "Polityka",
-      "filterMiddleeast": "Bliski Wschód"
+      "filterMiddleeast": "Bliski Wschód",
+      "live": "NA ŻYWO",
+      "viewSource": "Zobacz źródło"
     },
     "investments": {
       "infoTooltip": "Baza danych bezpośrednich inwestycji zagranicznych Arabii Saudyjskiej i Zjednoczonych Emiratów Arabskich w globalną infrastrukturę krytyczną. Kliknij wiersz, aby przejść do inwestycji na mapie.",
@@ -1647,6 +1669,13 @@
     "supplyChain": {
       "chokepoints": "Wąskie gardła",
       "fredKeyMissing": "Klucz API FRED wymagany do stawek frachtowych — dodaj go w Ustawieniach. Wąskie gardła i minerały dostępne bez klucza.",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Minerał",
       "minerals": "Minerały",
       "noChokepoints": "Dane o wąskich gardłach ładują się...",
@@ -1756,7 +1785,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurokontrola",
-        "computed": "Obliczone"
+        "computed": "Obliczone",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Ameryki",
@@ -2048,7 +2079,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Source: USNI News Fleet Tracker",
       "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
-      "darkDescription": "⚠ Na statku zgasło światło – utracono sygnał AIS. Może wskazywać wrażliwe operacje."
+      "darkDescription": "⚠ Na statku zgasło światło – utracono sygnał AIS. Może wskazywać wrażliwe operacje.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Styl wizualny kafelków mapy.",
     "globePreset": "Ustawienie wizualne",
     "globePresetDesc": "Przełączaj między klasycznymi a ulepszonymi wizualizacjami globu."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Otwórz przegląd kraju",
+    "copyCoordinates": "Kopiuj współrzędne"
   }
 }

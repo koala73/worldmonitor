@@ -1,0 +1,1225 @@
+{
+  "AF": {
+    "name": "Afghanistan",
+    "keywords": [
+      "afghanistan",
+      "kabul"
+    ]
+  },
+  "AL": {
+    "name": "Albania",
+    "keywords": [
+      "albania",
+      "tirana"
+    ]
+  },
+  "DZ": {
+    "name": "Algeria",
+    "keywords": [
+      "algeria",
+      "algiers"
+    ]
+  },
+  "AD": {
+    "name": "Andorra",
+    "keywords": [
+      "andorra"
+    ]
+  },
+  "AO": {
+    "name": "Angola",
+    "keywords": [
+      "angola",
+      "luanda"
+    ]
+  },
+  "AG": {
+    "name": "Antigua and Barbuda",
+    "keywords": [
+      "antigua"
+    ]
+  },
+  "AR": {
+    "name": "Argentina",
+    "keywords": [
+      "argentina",
+      "buenos aires"
+    ]
+  },
+  "AM": {
+    "name": "Armenia",
+    "keywords": [
+      "armenia",
+      "yerevan"
+    ]
+  },
+  "AU": {
+    "name": "Australia",
+    "keywords": [
+      "australia",
+      "canberra",
+      "sydney"
+    ]
+  },
+  "AT": {
+    "name": "Austria",
+    "keywords": [
+      "austria",
+      "vienna"
+    ]
+  },
+  "AZ": {
+    "name": "Azerbaijan",
+    "keywords": [
+      "azerbaijan",
+      "baku"
+    ]
+  },
+  "BS": {
+    "name": "Bahamas",
+    "keywords": [
+      "bahamas"
+    ]
+  },
+  "BH": {
+    "name": "Bahrain",
+    "keywords": [
+      "bahrain",
+      "manama"
+    ]
+  },
+  "BD": {
+    "name": "Bangladesh",
+    "keywords": [
+      "bangladesh",
+      "dhaka"
+    ]
+  },
+  "BB": {
+    "name": "Barbados",
+    "keywords": [
+      "barbados"
+    ]
+  },
+  "BY": {
+    "name": "Belarus",
+    "keywords": [
+      "belarus",
+      "minsk",
+      "lukashenko"
+    ]
+  },
+  "BE": {
+    "name": "Belgium",
+    "keywords": [
+      "belgium",
+      "brussels"
+    ]
+  },
+  "BZ": {
+    "name": "Belize",
+    "keywords": [
+      "belize"
+    ]
+  },
+  "BJ": {
+    "name": "Benin",
+    "keywords": [
+      "benin"
+    ]
+  },
+  "BT": {
+    "name": "Bhutan",
+    "keywords": [
+      "bhutan"
+    ]
+  },
+  "BO": {
+    "name": "Bolivia",
+    "keywords": [
+      "bolivia"
+    ]
+  },
+  "BA": {
+    "name": "Bosnia and Herzegovina",
+    "keywords": [
+      "bosnia",
+      "sarajevo"
+    ]
+  },
+  "BW": {
+    "name": "Botswana",
+    "keywords": [
+      "botswana"
+    ]
+  },
+  "BR": {
+    "name": "Brazil",
+    "keywords": [
+      "brazil",
+      "brasilia",
+      "são paulo"
+    ]
+  },
+  "BN": {
+    "name": "Brunei",
+    "keywords": [
+      "brunei"
+    ]
+  },
+  "BG": {
+    "name": "Bulgaria",
+    "keywords": [
+      "bulgaria",
+      "sofia"
+    ]
+  },
+  "BF": {
+    "name": "Burkina Faso",
+    "keywords": [
+      "burkina faso",
+      "ouagadougou"
+    ]
+  },
+  "BI": {
+    "name": "Burundi",
+    "keywords": [
+      "burundi"
+    ]
+  },
+  "CV": {
+    "name": "Cape Verde",
+    "keywords": [
+      "cape verde"
+    ]
+  },
+  "KH": {
+    "name": "Cambodia",
+    "keywords": [
+      "cambodia",
+      "phnom penh"
+    ]
+  },
+  "CM": {
+    "name": "Cameroon",
+    "keywords": [
+      "cameroon",
+      "yaoundé"
+    ]
+  },
+  "CA": {
+    "name": "Canada",
+    "keywords": [
+      "canada",
+      "ottawa",
+      "toronto"
+    ]
+  },
+  "CF": {
+    "name": "Central African Republic",
+    "keywords": [
+      "central african republic"
+    ]
+  },
+  "TD": {
+    "name": "Chad",
+    "keywords": [
+      "chad",
+      "ndjamena"
+    ]
+  },
+  "CL": {
+    "name": "Chile",
+    "keywords": [
+      "chile",
+      "santiago"
+    ]
+  },
+  "CN": {
+    "name": "China",
+    "keywords": [
+      "china",
+      "beijing",
+      "xi jinping",
+      "prc"
+    ]
+  },
+  "CO": {
+    "name": "Colombia",
+    "keywords": [
+      "colombia",
+      "bogotá"
+    ]
+  },
+  "KM": {
+    "name": "Comoros",
+    "keywords": [
+      "comoros"
+    ]
+  },
+  "CG": {
+    "name": "Congo",
+    "keywords": [
+      "congo",
+      "brazzaville"
+    ]
+  },
+  "CD": {
+    "name": "DR Congo",
+    "keywords": [
+      "congo",
+      "kinshasa",
+      "drc"
+    ]
+  },
+  "CR": {
+    "name": "Costa Rica",
+    "keywords": [
+      "costa rica"
+    ]
+  },
+  "CI": {
+    "name": "Ivory Coast",
+    "keywords": [
+      "ivory coast",
+      "côte d'ivoire",
+      "abidjan"
+    ]
+  },
+  "HR": {
+    "name": "Croatia",
+    "keywords": [
+      "croatia",
+      "zagreb"
+    ]
+  },
+  "CU": {
+    "name": "Cuba",
+    "keywords": [
+      "cuba",
+      "havana"
+    ]
+  },
+  "CY": {
+    "name": "Cyprus",
+    "keywords": [
+      "cyprus",
+      "nicosia"
+    ]
+  },
+  "CZ": {
+    "name": "Czech Republic",
+    "keywords": [
+      "czech",
+      "prague"
+    ]
+  },
+  "DK": {
+    "name": "Denmark",
+    "keywords": [
+      "denmark",
+      "copenhagen"
+    ]
+  },
+  "DJ": {
+    "name": "Djibouti",
+    "keywords": [
+      "djibouti"
+    ]
+  },
+  "DO": {
+    "name": "Dominican Republic",
+    "keywords": [
+      "dominican republic"
+    ]
+  },
+  "EC": {
+    "name": "Ecuador",
+    "keywords": [
+      "ecuador",
+      "quito"
+    ]
+  },
+  "EG": {
+    "name": "Egypt",
+    "keywords": [
+      "egypt",
+      "cairo",
+      "suez"
+    ]
+  },
+  "SV": {
+    "name": "El Salvador",
+    "keywords": [
+      "el salvador"
+    ]
+  },
+  "GQ": {
+    "name": "Equatorial Guinea",
+    "keywords": [
+      "equatorial guinea"
+    ]
+  },
+  "ER": {
+    "name": "Eritrea",
+    "keywords": [
+      "eritrea",
+      "asmara"
+    ]
+  },
+  "EE": {
+    "name": "Estonia",
+    "keywords": [
+      "estonia",
+      "tallinn"
+    ]
+  },
+  "SZ": {
+    "name": "Eswatini",
+    "keywords": [
+      "eswatini",
+      "swaziland"
+    ]
+  },
+  "ET": {
+    "name": "Ethiopia",
+    "keywords": [
+      "ethiopia",
+      "addis ababa",
+      "tigray"
+    ]
+  },
+  "FJ": {
+    "name": "Fiji",
+    "keywords": [
+      "fiji"
+    ]
+  },
+  "FI": {
+    "name": "Finland",
+    "keywords": [
+      "finland",
+      "helsinki"
+    ]
+  },
+  "FR": {
+    "name": "France",
+    "keywords": [
+      "france",
+      "paris",
+      "macron"
+    ]
+  },
+  "GA": {
+    "name": "Gabon",
+    "keywords": [
+      "gabon"
+    ]
+  },
+  "GM": {
+    "name": "Gambia",
+    "keywords": [
+      "gambia"
+    ]
+  },
+  "GE": {
+    "name": "Georgia",
+    "keywords": [
+      "georgia",
+      "tbilisi"
+    ]
+  },
+  "DE": {
+    "name": "Germany",
+    "keywords": [
+      "germany",
+      "berlin"
+    ]
+  },
+  "GH": {
+    "name": "Ghana",
+    "keywords": [
+      "ghana",
+      "accra"
+    ]
+  },
+  "GR": {
+    "name": "Greece",
+    "keywords": [
+      "greece",
+      "athens"
+    ]
+  },
+  "GT": {
+    "name": "Guatemala",
+    "keywords": [
+      "guatemala"
+    ]
+  },
+  "GN": {
+    "name": "Guinea",
+    "keywords": [
+      "guinea",
+      "conakry"
+    ]
+  },
+  "GW": {
+    "name": "Guinea-Bissau",
+    "keywords": [
+      "guinea-bissau"
+    ]
+  },
+  "GY": {
+    "name": "Guyana",
+    "keywords": [
+      "guyana"
+    ]
+  },
+  "HT": {
+    "name": "Haiti",
+    "keywords": [
+      "haiti",
+      "port-au-prince"
+    ]
+  },
+  "HN": {
+    "name": "Honduras",
+    "keywords": [
+      "honduras"
+    ]
+  },
+  "HK": {
+    "name": "Hong Kong",
+    "keywords": [
+      "hong kong"
+    ]
+  },
+  "HU": {
+    "name": "Hungary",
+    "keywords": [
+      "hungary",
+      "budapest"
+    ]
+  },
+  "IS": {
+    "name": "Iceland",
+    "keywords": [
+      "iceland",
+      "reykjavik"
+    ]
+  },
+  "IN": {
+    "name": "India",
+    "keywords": [
+      "india",
+      "new delhi",
+      "modi"
+    ]
+  },
+  "ID": {
+    "name": "Indonesia",
+    "keywords": [
+      "indonesia",
+      "jakarta"
+    ]
+  },
+  "IR": {
+    "name": "Iran",
+    "keywords": [
+      "iran",
+      "tehran",
+      "khamenei",
+      "irgc"
+    ]
+  },
+  "IQ": {
+    "name": "Iraq",
+    "keywords": [
+      "iraq",
+      "baghdad"
+    ]
+  },
+  "IE": {
+    "name": "Ireland",
+    "keywords": [
+      "ireland",
+      "dublin"
+    ]
+  },
+  "IL": {
+    "name": "Israel",
+    "keywords": [
+      "israel",
+      "tel aviv",
+      "netanyahu",
+      "idf",
+      "gaza",
+      "hamas",
+      "hezbollah"
+    ]
+  },
+  "IT": {
+    "name": "Italy",
+    "keywords": [
+      "italy",
+      "rome"
+    ]
+  },
+  "JM": {
+    "name": "Jamaica",
+    "keywords": [
+      "jamaica"
+    ]
+  },
+  "JP": {
+    "name": "Japan",
+    "keywords": [
+      "japan",
+      "tokyo"
+    ]
+  },
+  "JO": {
+    "name": "Jordan",
+    "keywords": [
+      "jordan",
+      "amman"
+    ]
+  },
+  "KZ": {
+    "name": "Kazakhstan",
+    "keywords": [
+      "kazakhstan",
+      "astana"
+    ]
+  },
+  "KE": {
+    "name": "Kenya",
+    "keywords": [
+      "kenya",
+      "nairobi"
+    ]
+  },
+  "KP": {
+    "name": "North Korea",
+    "keywords": [
+      "north korea",
+      "pyongyang",
+      "kim jong"
+    ]
+  },
+  "KR": {
+    "name": "South Korea",
+    "keywords": [
+      "south korea",
+      "seoul"
+    ]
+  },
+  "KW": {
+    "name": "Kuwait",
+    "keywords": [
+      "kuwait"
+    ]
+  },
+  "KG": {
+    "name": "Kyrgyzstan",
+    "keywords": [
+      "kyrgyzstan"
+    ]
+  },
+  "LA": {
+    "name": "Laos",
+    "keywords": [
+      "laos"
+    ]
+  },
+  "LV": {
+    "name": "Latvia",
+    "keywords": [
+      "latvia",
+      "riga"
+    ]
+  },
+  "LB": {
+    "name": "Lebanon",
+    "keywords": [
+      "lebanon",
+      "beirut",
+      "hezbollah"
+    ]
+  },
+  "LS": {
+    "name": "Lesotho",
+    "keywords": [
+      "lesotho"
+    ]
+  },
+  "LR": {
+    "name": "Liberia",
+    "keywords": [
+      "liberia"
+    ]
+  },
+  "LY": {
+    "name": "Libya",
+    "keywords": [
+      "libya",
+      "tripoli",
+      "benghazi"
+    ]
+  },
+  "LI": {
+    "name": "Liechtenstein",
+    "keywords": [
+      "liechtenstein"
+    ]
+  },
+  "LT": {
+    "name": "Lithuania",
+    "keywords": [
+      "lithuania",
+      "vilnius"
+    ]
+  },
+  "LU": {
+    "name": "Luxembourg",
+    "keywords": [
+      "luxembourg"
+    ]
+  },
+  "MG": {
+    "name": "Madagascar",
+    "keywords": [
+      "madagascar"
+    ]
+  },
+  "MW": {
+    "name": "Malawi",
+    "keywords": [
+      "malawi"
+    ]
+  },
+  "MY": {
+    "name": "Malaysia",
+    "keywords": [
+      "malaysia",
+      "kuala lumpur"
+    ]
+  },
+  "MV": {
+    "name": "Maldives",
+    "keywords": [
+      "maldives"
+    ]
+  },
+  "ML": {
+    "name": "Mali",
+    "keywords": [
+      "mali",
+      "bamako"
+    ]
+  },
+  "MT": {
+    "name": "Malta",
+    "keywords": [
+      "malta"
+    ]
+  },
+  "MR": {
+    "name": "Mauritania",
+    "keywords": [
+      "mauritania"
+    ]
+  },
+  "MU": {
+    "name": "Mauritius",
+    "keywords": [
+      "mauritius"
+    ]
+  },
+  "MX": {
+    "name": "Mexico",
+    "keywords": [
+      "mexico",
+      "mexico city"
+    ]
+  },
+  "MD": {
+    "name": "Moldova",
+    "keywords": [
+      "moldova",
+      "chisinau"
+    ]
+  },
+  "MN": {
+    "name": "Mongolia",
+    "keywords": [
+      "mongolia"
+    ]
+  },
+  "ME": {
+    "name": "Montenegro",
+    "keywords": [
+      "montenegro"
+    ]
+  },
+  "MA": {
+    "name": "Morocco",
+    "keywords": [
+      "morocco",
+      "rabat"
+    ]
+  },
+  "MZ": {
+    "name": "Mozambique",
+    "keywords": [
+      "mozambique",
+      "maputo"
+    ]
+  },
+  "MM": {
+    "name": "Myanmar",
+    "keywords": [
+      "myanmar",
+      "burma",
+      "naypyidaw"
+    ]
+  },
+  "NA": {
+    "name": "Namibia",
+    "keywords": [
+      "namibia"
+    ]
+  },
+  "NP": {
+    "name": "Nepal",
+    "keywords": [
+      "nepal",
+      "kathmandu"
+    ]
+  },
+  "NL": {
+    "name": "Netherlands",
+    "keywords": [
+      "netherlands",
+      "dutch",
+      "amsterdam"
+    ]
+  },
+  "NZ": {
+    "name": "New Zealand",
+    "keywords": [
+      "new zealand",
+      "wellington"
+    ]
+  },
+  "NI": {
+    "name": "Nicaragua",
+    "keywords": [
+      "nicaragua"
+    ]
+  },
+  "NE": {
+    "name": "Niger",
+    "keywords": [
+      "niger",
+      "niamey"
+    ]
+  },
+  "NG": {
+    "name": "Nigeria",
+    "keywords": [
+      "nigeria",
+      "lagos",
+      "abuja"
+    ]
+  },
+  "MK": {
+    "name": "North Macedonia",
+    "keywords": [
+      "north macedonia",
+      "skopje"
+    ]
+  },
+  "NO": {
+    "name": "Norway",
+    "keywords": [
+      "norway",
+      "oslo"
+    ]
+  },
+  "OM": {
+    "name": "Oman",
+    "keywords": [
+      "oman",
+      "muscat"
+    ]
+  },
+  "PK": {
+    "name": "Pakistan",
+    "keywords": [
+      "pakistan",
+      "islamabad",
+      "karachi"
+    ]
+  },
+  "PA": {
+    "name": "Panama",
+    "keywords": [
+      "panama"
+    ]
+  },
+  "PG": {
+    "name": "Papua New Guinea",
+    "keywords": [
+      "papua new guinea"
+    ]
+  },
+  "PY": {
+    "name": "Paraguay",
+    "keywords": [
+      "paraguay"
+    ]
+  },
+  "PE": {
+    "name": "Peru",
+    "keywords": [
+      "peru",
+      "lima"
+    ]
+  },
+  "PH": {
+    "name": "Philippines",
+    "keywords": [
+      "philippines",
+      "manila"
+    ]
+  },
+  "PL": {
+    "name": "Poland",
+    "keywords": [
+      "poland",
+      "warsaw"
+    ]
+  },
+  "PT": {
+    "name": "Portugal",
+    "keywords": [
+      "portugal",
+      "lisbon"
+    ]
+  },
+  "QA": {
+    "name": "Qatar",
+    "keywords": [
+      "qatar",
+      "doha"
+    ]
+  },
+  "RO": {
+    "name": "Romania",
+    "keywords": [
+      "romania",
+      "bucharest"
+    ]
+  },
+  "RU": {
+    "name": "Russia",
+    "keywords": [
+      "russia",
+      "moscow",
+      "kremlin",
+      "putin"
+    ]
+  },
+  "RW": {
+    "name": "Rwanda",
+    "keywords": [
+      "rwanda",
+      "kigali"
+    ]
+  },
+  "SA": {
+    "name": "Saudi Arabia",
+    "keywords": [
+      "saudi arabia",
+      "riyadh",
+      "mbs"
+    ]
+  },
+  "SN": {
+    "name": "Senegal",
+    "keywords": [
+      "senegal",
+      "dakar"
+    ]
+  },
+  "RS": {
+    "name": "Serbia",
+    "keywords": [
+      "serbia",
+      "belgrade"
+    ]
+  },
+  "SL": {
+    "name": "Sierra Leone",
+    "keywords": [
+      "sierra leone"
+    ]
+  },
+  "SG": {
+    "name": "Singapore",
+    "keywords": [
+      "singapore"
+    ]
+  },
+  "SK": {
+    "name": "Slovakia",
+    "keywords": [
+      "slovakia",
+      "bratislava"
+    ]
+  },
+  "SI": {
+    "name": "Slovenia",
+    "keywords": [
+      "slovenia"
+    ]
+  },
+  "SO": {
+    "name": "Somalia",
+    "keywords": [
+      "somalia",
+      "mogadishu"
+    ]
+  },
+  "ZA": {
+    "name": "South Africa",
+    "keywords": [
+      "south africa",
+      "johannesburg",
+      "pretoria"
+    ]
+  },
+  "SS": {
+    "name": "South Sudan",
+    "keywords": [
+      "south sudan",
+      "juba"
+    ]
+  },
+  "ES": {
+    "name": "Spain",
+    "keywords": [
+      "spain",
+      "madrid"
+    ]
+  },
+  "LK": {
+    "name": "Sri Lanka",
+    "keywords": [
+      "sri lanka",
+      "colombo"
+    ]
+  },
+  "SD": {
+    "name": "Sudan",
+    "keywords": [
+      "sudan",
+      "khartoum",
+      "darfur"
+    ]
+  },
+  "SR": {
+    "name": "Suriname",
+    "keywords": [
+      "suriname"
+    ]
+  },
+  "SE": {
+    "name": "Sweden",
+    "keywords": [
+      "sweden",
+      "stockholm"
+    ]
+  },
+  "CH": {
+    "name": "Switzerland",
+    "keywords": [
+      "switzerland",
+      "swiss",
+      "zurich",
+      "geneva"
+    ]
+  },
+  "SY": {
+    "name": "Syria",
+    "keywords": [
+      "syria",
+      "damascus",
+      "assad"
+    ]
+  },
+  "TW": {
+    "name": "Taiwan",
+    "keywords": [
+      "taiwan",
+      "taipei",
+      "tsmc"
+    ]
+  },
+  "TJ": {
+    "name": "Tajikistan",
+    "keywords": [
+      "tajikistan"
+    ]
+  },
+  "TZ": {
+    "name": "Tanzania",
+    "keywords": [
+      "tanzania",
+      "dar es salaam"
+    ]
+  },
+  "TH": {
+    "name": "Thailand",
+    "keywords": [
+      "thailand",
+      "bangkok"
+    ]
+  },
+  "TL": {
+    "name": "Timor-Leste",
+    "keywords": [
+      "timor-leste",
+      "east timor"
+    ]
+  },
+  "TG": {
+    "name": "Togo",
+    "keywords": [
+      "togo"
+    ]
+  },
+  "TT": {
+    "name": "Trinidad and Tobago",
+    "keywords": [
+      "trinidad"
+    ]
+  },
+  "TN": {
+    "name": "Tunisia",
+    "keywords": [
+      "tunisia",
+      "tunis"
+    ]
+  },
+  "TR": {
+    "name": "Turkey",
+    "keywords": [
+      "turkey",
+      "türkiye",
+      "ankara",
+      "erdogan",
+      "istanbul"
+    ]
+  },
+  "TM": {
+    "name": "Turkmenistan",
+    "keywords": [
+      "turkmenistan"
+    ]
+  },
+  "UG": {
+    "name": "Uganda",
+    "keywords": [
+      "uganda",
+      "kampala"
+    ]
+  },
+  "UA": {
+    "name": "Ukraine",
+    "keywords": [
+      "ukraine",
+      "kyiv",
+      "zelensky"
+    ]
+  },
+  "AE": {
+    "name": "United Arab Emirates",
+    "keywords": [
+      "uae",
+      "dubai",
+      "abu dhabi",
+      "emirates"
+    ]
+  },
+  "GB": {
+    "name": "United Kingdom",
+    "keywords": [
+      "united kingdom",
+      "britain",
+      "london"
+    ]
+  },
+  "US": {
+    "name": "United States",
+    "keywords": [
+      "united states",
+      "usa",
+      "america",
+      "washington",
+      "pentagon",
+      "trump",
+      "biden"
+    ]
+  },
+  "UY": {
+    "name": "Uruguay",
+    "keywords": [
+      "uruguay"
+    ]
+  },
+  "UZ": {
+    "name": "Uzbekistan",
+    "keywords": [
+      "uzbekistan",
+      "tashkent"
+    ]
+  },
+  "VE": {
+    "name": "Venezuela",
+    "keywords": [
+      "venezuela",
+      "caracas",
+      "maduro"
+    ]
+  },
+  "VN": {
+    "name": "Vietnam",
+    "keywords": [
+      "vietnam",
+      "hanoi"
+    ]
+  },
+  "YE": {
+    "name": "Yemen",
+    "keywords": [
+      "yemen",
+      "sanaa",
+      "houthi"
+    ]
+  },
+  "ZM": {
+    "name": "Zambia",
+    "keywords": [
+      "zambia"
+    ]
+  },
+  "ZW": {
+    "name": "Zimbabwe",
+    "keywords": [
+      "zimbabwe",
+      "harare"
+    ]
+  }
+}

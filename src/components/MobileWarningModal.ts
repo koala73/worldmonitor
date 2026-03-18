@@ -1,5 +1,6 @@
 import { t } from '@/services/i18n';
 import { isMobileDevice } from '@/utils';
+import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
 
 const STORAGE_KEY = 'mobile-warning-dismissed';
 
@@ -54,7 +55,7 @@ export class MobileWarningModal {
   private dismiss(): void {
     const checkbox = this.element.querySelector('#mobileWarningRemember') as HTMLInputElement;
     if (checkbox?.checked) {
-      localStorage.setItem(STORAGE_KEY, 'true');
+      setDismissed(STORAGE_KEY);
     }
     this.hide();
   }
@@ -68,7 +69,7 @@ export class MobileWarningModal {
   }
 
   public static shouldShow(): boolean {
-    if (localStorage.getItem(STORAGE_KEY) === 'true') return false;
+    if (getDismissed(STORAGE_KEY)) return false;
     return isMobileDevice();
   }
 

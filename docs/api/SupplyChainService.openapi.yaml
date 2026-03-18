@@ -201,6 +201,78 @@ components:
                 aisDisruptions:
                     type: integer
                     format: int32
+                directions:
+                    type: array
+                    items:
+                        type: string
+                directionalDwt:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DirectionalDwt'
+                transitSummary:
+                    $ref: '#/components/schemas/TransitSummary'
+        DirectionalDwt:
+            type: object
+            properties:
+                direction:
+                    type: string
+                dwtThousandTonnes:
+                    type: number
+                    format: double
+                wowChangePct:
+                    type: number
+                    format: double
+        TransitSummary:
+            type: object
+            properties:
+                todayTotal:
+                    type: integer
+                    format: int32
+                todayTanker:
+                    type: integer
+                    format: int32
+                todayCargo:
+                    type: integer
+                    format: int32
+                todayOther:
+                    type: integer
+                    format: int32
+                wowChangePct:
+                    type: number
+                    format: double
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TransitDayCount'
+                riskLevel:
+                    type: string
+                incidentCount7d:
+                    type: integer
+                    format: int32
+                disruptionPct:
+                    type: number
+                    format: double
+                riskSummary:
+                    type: string
+                riskReportAction:
+                    type: string
+        TransitDayCount:
+            type: object
+            properties:
+                date:
+                    type: string
+                tanker:
+                    type: integer
+                    format: int32
+                cargo:
+                    type: integer
+                    format: int32
+                other:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
         GetCriticalMineralsRequest:
             type: object
         GetCriticalMineralsResponse:

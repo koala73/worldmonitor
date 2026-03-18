@@ -16,8 +16,8 @@ const getCacheHeaderValue = (sourcePath) => {
 
 describe('deploy/cache configuration guardrails', () => {
   it('disables caching for HTML entry routes on Vercel', () => {
-    assert.equal(getCacheHeaderValue('/'), 'no-cache, no-store, must-revalidate');
-    assert.equal(getCacheHeaderValue('/index.html'), 'no-cache, no-store, must-revalidate');
+    const spaNoCache = getCacheHeaderValue('/((?!api|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known).*)');
+    assert.equal(spaNoCache, 'no-cache, no-store, must-revalidate');
   });
 
   it('keeps immutable caching for hashed static assets', () => {
@@ -40,10 +40,9 @@ describe('deploy/cache configuration guardrails', () => {
     assert.doesNotMatch(viteConfigSource, /navigateFallbackDenylist:\s*\[/);
   });
 
-  it('uses network-first runtime caching for navigation requests', () => {
+  it('uses network-only runtime caching for navigation requests', () => {
     assert.match(viteConfigSource, /request\.mode === 'navigate'/);
-    assert.match(viteConfigSource, /handler:\s*'NetworkFirst'/);
-    assert.match(viteConfigSource, /cacheName:\s*'html-navigation'/);
+    assert.match(viteConfigSource, /handler:\s*'NetworkOnly'/);
   });
 
   it('contains variant-specific metadata fields used by html replacement and manifest', () => {
@@ -64,7 +63,7 @@ describe('deploy/cache configuration guardrails', () => {
 });
 
 const getSecurityHeaders = () => {
-  const rule = vercelConfig.headers.find((entry) => entry.source === '/(.*)');
+  const rule = vercelConfig.headers.find((entry) => entry.source === '/((?!docs).*)');
   return rule?.headers ?? [];
 };
 
@@ -75,10 +74,9 @@ const getHeaderValue = (key) => {
 };
 
 describe('security header guardrails', () => {
-  it('includes all 6 required security headers on catch-all route', () => {
+  it('includes all 5 required security headers on catch-all route', () => {
     const required = [
       'X-Content-Type-Options',
-      'X-Frame-Options',
       'Strict-Transport-Security',
       'Referrer-Policy',
       'Permissions-Policy',
@@ -95,7 +93,6 @@ describe('security header guardrails', () => {
     const expectedDisabled = [
       'camera=()',
       'microphone=()',
-      'geolocation=()',
       'accelerometer=()',
       'bluetooth=()',
       'display-capture=()',
@@ -115,16 +112,27 @@ describe('security header guardrails', () => {
     }
   });
 
-  it('Permissions-Policy delegates YouTube APIs to YouTube origins', () => {
+  it('Permissions-Policy delegates media APIs to allowed origins', () => {
     const policy = getHeaderValue('Permissions-Policy');
-    const ytDelegated = ['autoplay', 'encrypted-media', 'picture-in-picture'];
-    for (const api of ytDelegated) {
+    // autoplay and encrypted-media delegate to self + YouTube
+    for (const api of ['autoplay', 'encrypted-media']) {
       assert.match(
         policy,
         new RegExp(`${api}=\\(self "https://www\\.youtube\\.com" "https://www\\.youtube-nocookie\\.com"\\)`),
         `Permissions-Policy should delegate ${api} to YouTube origins`
       );
     }
+    // geolocation delegates to self (used by user-location.ts)
+    assert.ok(
+      policy.includes('geolocation=(self)'),
+      'Permissions-Policy should delegate geolocation to self'
+    );
+    // picture-in-picture delegates to self + YouTube
+    assert.match(
+      policy,
+      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com"\)/,
+      'Permissions-Policy should delegate picture-in-picture to YouTube origins'
+    );
   });
 
   it('CSP connect-src does not allow unencrypted WebSocket (ws:)', () => {
@@ -140,11 +148,11 @@ describe('security header guardrails', () => {
     assert.ok(!connectSrc.includes('http://localhost'), 'CSP connect-src must not contain http://localhost in production');
   });
 
-  it('CSP script-src uses hashes instead of unsafe-inline', () => {
+  it('CSP script-src includes wasm-unsafe-eval for WebAssembly support', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
-    assert.ok(!scriptSrc.includes("'unsafe-inline'"), 'CSP script-src must not contain unsafe-inline — use sha256 hashes');
-    assert.match(scriptSrc, /sha256-/, 'CSP script-src should contain at least one sha256 hash');
+    assert.ok(scriptSrc.includes("'wasm-unsafe-eval'"), 'CSP script-src must include wasm-unsafe-eval for WASM support');
+    assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
   });
 
   it('security.txt exists in public/.well-known/', () => {

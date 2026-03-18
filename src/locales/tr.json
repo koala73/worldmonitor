@@ -122,6 +122,17 @@
       "stockIndex": "Borsa endeksi: {{value}}",
       "recentHeadlines": "**Son basliklar:**",
       "activeStrikes": "{{count}} aktif grev tespit edildi"
+    },
+    "countryFacts": "Ülke bilgileri",
+    "loadingFacts": "Ülke bilgileri yükleniyor...",
+    "noFacts": "Ülke bilgileri mevcut değil.",
+    "facts": {
+      "headOfState": "Devlet Başkanı",
+      "population": "Nüfus",
+      "capital": "Başkent",
+      "languages": "Diller",
+      "currencies": "Para birimleri",
+      "area": "Yüz ölçümü"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "Körfez & MENA",
     "filterPanels": "Panelleri filtrele...",
     "resetLayout": "Düzeni sıfırla",
+    "resetLayoutTooltip": "Varsayılan panel düzenini geri yükle",
     "unsavedChanges": "Kaydedilmemiş panel değişiklikleriniz var. Vazgeçilsin mi?",
     "panelCatCore": "Temel",
     "panelCatIntelligence": "İstihbarat",
@@ -263,7 +275,8 @@
     "techReadiness": "Teknoloji Hazirlik Endeksi",
     "gccInvestments": "GCC Yatirimlari",
     "geoHubs": "Jeopolitik Merkezler",
-    "liveWebcams": "Canli Web Kameralari",
+    "liveYouTube": "Canli Web Kameralari",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Körfez Ekonomileri",
     "gulfIndices": "Körfez Endeksleri",
     "gulfCurrencies": "Körfez Para Birimleri",
@@ -376,6 +389,8 @@
       "noResults": "Sonuc bulunamadi",
       "commands": "Komutlar",
       "results": "Sonuçlar",
+      "seeAllCommands": "Tüm komutları gör",
+      "hideCommandList": "Geri",
       "navigate": "gezin",
       "select": "sec",
       "close": "kapat",
@@ -756,6 +771,13 @@
       "spikeAlert": "Ani artış tespit edildi — ücret 52 haftalık ortalamanın önemli ölçüde üzerinde (haftalık)",
       "warnings": "uyarı(lar)",
       "aisDisruptions": "AIS aksaklık(lar)ı",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Mineral",
       "topProducers": "En Büyük Üreticiler",
       "risk": "Risk",
@@ -802,7 +824,10 @@
       "yes": "Evet",
       "no": "Hayir",
       "vol": "Hacim",
-      "closes": "Kapanış"
+      "closes": "Kapanış",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Parite Sagligi",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "Bir daha gösterme",
       "layerWarningOk": "Anladım",
       "layersTitle": "Katmanlar",
+      "layerSearch": "Katman ara...",
       "timeAll": "Tumu",
       "views": {
         "global": "Kuresel",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "Nukleer Tesisler",
         "gammaIrradiators": "Gama Isinlama Tesisleri",
         "spaceports": "Uzay Ussu",
+        "satellites": "Yörünge Gözetimi",
         "pipelines": "Boru Hatlari",
         "militaryActivity": "Askeri Faaliyet",
         "shipTraffic": "Gemi Trafigi",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "Uyarılar",
       "filterOsint": "OSINT",
       "filterPolitics": "Siyaset",
-      "filterMiddleeast": "Orta Doğu"
+      "filterMiddleeast": "Orta Doğu",
+      "live": "CANLI",
+      "viewSource": "Kaynağı görüntüle"
     },
     "investments": {
       "infoTooltip": "Suudi Arabistan ve BAE'nin kuresel kritik altyapilara dogrudan yabanci yatirimlari veritabani. Yatirimi haritada gormek icin bir satira tiklayin.",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Hesaplanan"
+        "computed": "Hesaplanan",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Amerikalar",
@@ -2056,7 +2087,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Source: USNI News Fleet Tracker",
       "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
-      "darkDescription": "Gemi karanliga gecti - AIS sinyali kayboldu. Hassas operasyonlara isaret edebilir."
+      "darkDescription": "Gemi karanliga gecti - AIS sinyali kayboldu. Hassas operasyonlara isaret edebilir.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Harita döşemelerinin görsel stili.",
     "globePreset": "Görsel ön ayar",
     "globePresetDesc": "Klasik ve geliştirilmiş küre görselleri arasında geçiş yapın."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Ülke özetini aç",
+    "copyCoordinates": "Koordinatları kopyala"
   }
 }

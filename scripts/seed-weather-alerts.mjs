@@ -69,6 +69,6 @@ runSeed('weather', 'alerts', CANONICAL_KEY, fetchAlerts, {
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'nws-active',
 }).catch((err) => {
-  console.error('FATAL:', err.message || err);
+  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
 });

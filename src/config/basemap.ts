@@ -150,7 +150,6 @@ export function getStyleForProvider(provider: MapProvider, mapTheme: string): St
       return mapTheme === 'positron' ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE;
     case 'carto':
       return CARTO_STYLES[mapTheme] ?? CARTO_DARK;
-    case 'auto':
     default: {
       const pmtiles = buildPMTilesStyle(asPMTilesTheme(mapTheme));
       return pmtiles ?? (lightFallback ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE);

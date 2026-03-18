@@ -1,18 +1,8 @@
-export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
-
-export type EventCategory =
-  | 'conflict' | 'protest' | 'disaster' | 'diplomatic' | 'economic'
-  | 'terrorism' | 'cyber' | 'health' | 'environmental' | 'military'
-  | 'crime' | 'infrastructure' | 'tech' | 'general';
-
-export interface ThreatClassification {
-  level: ThreatLevel;
-  category: EventCategory;
-  confidence: number;
-  source: 'keyword' | 'ml' | 'llm';
-}
+export type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
+import type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 
 import { getCSSColor } from '@/utils';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 
 /** @deprecated Use getThreatColor() instead for runtime CSS variable reads */
 export const THREAT_COLORS: Record<ThreatLevel, string> = {
@@ -388,8 +378,16 @@ import {
   ApiError,
   type ClassifyEventResponse,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
 
-const classifyClient = new IntelligenceServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const classifyClient = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+
+const classifyBreaker = createCircuitBreaker<ThreatClassification | null>({
+  name: 'AIClassify',
+  cacheTtlMs: 6 * 60 * 60 * 1000,
+  persistCache: true,
+  maxCacheEntries: 256,
+});
 
 const VALID_LEVELS: Record<string, ThreatLevel> = {
   critical: 'critical', high: 'high', medium: 'medium', low: 'low', info: 'info',
@@ -473,7 +471,7 @@ function flushBatch(): void {
               delay = 120_000;
             } else if (err.statusCode === 429) {
               consecutive429s++;
-              delay = Math.min(BASE_PAUSE_MS * Math.pow(2, consecutive429s - 1), MAX_PAUSE_MS);
+              delay = Math.min(BASE_PAUSE_MS * 2 ** (consecutive429s - 1), MAX_PAUSE_MS);
             } else {
               delay = 30_000;
             }
@@ -519,7 +517,7 @@ function scheduleBatch(): void {
   }
 }
 
-export function classifyWithAI(
+function classifyWithAIUncached(
   title: string,
   variant: string
 ): Promise<ThreatClassification | null> {
@@ -532,6 +530,18 @@ export function classifyWithAI(
     batchQueue.push({ title, variant, resolve });
     scheduleBatch();
   });
+}
+
+export function classifyWithAI(
+  title: string,
+  variant: string,
+): Promise<ThreatClassification | null> {
+  const cacheKey = title.trim().toLowerCase().replace(/\s+/g, ' ');
+  return classifyBreaker.execute(
+    () => classifyWithAIUncached(title, variant),
+    null,
+    { cacheKey, shouldCache: (result) => result !== null },
+  );
 }
 
 export function aggregateThreats(

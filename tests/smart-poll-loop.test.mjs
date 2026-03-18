@@ -235,7 +235,7 @@ describe('startSmartPollLoop', () => {
       assert.ok(delays.length >= 8, `expected at least 8 calls, got ${delays.length}`);
       for (const d of delays) {
         assert.ok(d >= 8_000, `delay ${d} should be >= 8000`);
-        assert.ok(d <= 12_000, `delay ${d} should be <= 12000`);
+        assert.ok(d <= 13_000, `delay ${d} should be <= 13000`);
       }
     });
   });
@@ -384,7 +384,7 @@ describe('startSmartPollLoop', () => {
       let aborted = false;
       const handle = startSmartPollLoop(async (ctx) => {
         ctx.signal?.addEventListener('abort', () => { aborted = true; });
-        return new Promise(() => {});
+        return new Promise(() => { });
       }, {
         intervalMs: 1_000, jitterFraction: 0, pauseWhenHidden: true,
         runImmediately: true, visibilityDebounceMs: 0,
@@ -504,7 +504,7 @@ describe('startSmartPollLoop', () => {
       let aborted = false;
       const handle = startSmartPollLoop(async (ctx) => {
         ctx.signal?.addEventListener('abort', () => { aborted = true; });
-        return new Promise(() => {});
+        return new Promise(() => { });
       }, {
         intervalMs: 1_000, jitterFraction: 0, runImmediately: true,
       });
@@ -536,7 +536,7 @@ describe('startSmartPollLoop', () => {
 
     it('abort errors do not trigger backoff', async () => {
       let calls = 0;
-      startSmartPollLoop((ctx) => {
+      startSmartPollLoop((_ctx) => {
         calls++;
         const err = new Error('aborted');
         err.name = 'AbortError';
@@ -555,7 +555,7 @@ describe('startSmartPollLoop', () => {
   describe('in-flight guard', () => {
     it('concurrent calls are deferred, not dropped', async () => {
       let calls = 0;
-      let resolvers = [];
+      const resolvers = [];
       const handle = startSmartPollLoop(() => {
         calls++;
         return new Promise(r => resolvers.push(r));

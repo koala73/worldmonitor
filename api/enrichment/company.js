@@ -12,16 +12,18 @@
 
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { checkRateLimit } from '../_rate-limit.js';
+import { inferCompanyNameFromDomain, toOrgSlugFromDomain } from './_domain.js';
 
 export const config = { runtime: 'edge' };
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const CACHE_TTL_SECONDS = 3600;
+const GITHUB_API_HEADERS = Object.freeze({ Accept: 'application/vnd.github.v3+json', 'User-Agent': UA });
 
 async function fetchGitHubOrg(name) {
   try {
     const res = await fetch(`https://api.github.com/orgs/${encodeURIComponent(name)}`, {
-      headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': UA },
+      headers: GITHUB_API_HEADERS,
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return null;
@@ -46,7 +48,7 @@ async function fetchGitHubTechStack(orgName) {
     const res = await fetch(
       `https://api.github.com/orgs/${encodeURIComponent(orgName)}/repos?sort=stars&per_page=10`,
       {
-        headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': UA },
+        headers: GITHUB_API_HEADERS,
         signal: AbortSignal.timeout(5000),
       },
     );
@@ -115,24 +117,18 @@ async function fetchHackerNewsMentions(companyName) {
   }
 }
 
-function inferFromDomain(domain) {
-  const name = domain.replace(/\.(com|io|co|org|net|ai|dev|app)$/, '')
-    .split('.')
-    .pop()
-    ?.replace(/-/g, ' ')
-    ?.replace(/\b\w/g, (c) => c.toUpperCase()) || domain;
-
-  return { inferredName: name, domain };
-}
-
 function getTodayISO() {
-  return new Date().toISOString().split('T')[0];
+  return toISODate(new Date());
 }
 
 function getDateMonthsAgo(months) {
   const d = new Date();
   d.setMonth(d.getMonth() - months);
-  return d.toISOString().split('T')[0];
+  return toISODate(d);
+}
+
+function toISODate(date) {
+  return date.toISOString().split('T')[0];
 }
 
 export default async function handler(req) {
@@ -160,8 +156,8 @@ export default async function handler(req) {
     });
   }
 
-  const companyName = name || (domain ? inferFromDomain(domain).inferredName : 'Unknown');
-  const searchName = companyName.toLowerCase().replace(/\s+/g, '');
+  const companyName = name || (domain ? inferCompanyNameFromDomain(domain) : 'Unknown');
+  const searchName = domain ? toOrgSlugFromDomain(domain) : companyName.toLowerCase().replace(/\s+/g, '');
 
   const [githubOrg, techStack, secData, hnMentions] = await Promise.all([
     fetchGitHubOrg(searchName),

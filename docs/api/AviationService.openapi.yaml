@@ -55,6 +55,373 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/aviation/v1/get-airport-ops-summary:
+        get:
+            tags:
+                - AviationService
+            summary: GetAirportOpsSummary
+            description: GetAirportOpsSummary returns operational health metrics for watched airports.
+            operationId: GetAirportOpsSummary
+            parameters:
+                - name: airports
+                  in: query
+                  description: IATA airport codes to query (e.g., ["IST", "ESB", "LHR"]).
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetAirportOpsSummaryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/aviation/v1/list-airport-flights:
+        get:
+            tags:
+                - AviationService
+            summary: ListAirportFlights
+            description: ListAirportFlights retrieves recent flights at a specific airport.
+            operationId: ListAirportFlights
+            parameters:
+                - name: airport
+                  in: query
+                  description: IATA airport code (e.g., "IST").
+                  required: false
+                  schema:
+                    type: string
+                - name: direction
+                  in: query
+                  description: Direction filter.
+                  required: false
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Maximum number of flights to return (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAirportFlightsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/aviation/v1/get-carrier-ops:
+        get:
+            tags:
+                - AviationService
+            summary: GetCarrierOps
+            description: GetCarrierOps returns delay and cancellation metrics grouped by carrier.
+            operationId: GetCarrierOps
+            parameters:
+                - name: airports
+                  in: query
+                  description: IATA airport codes to aggregate carrier metrics from.
+                  required: false
+                  schema:
+                    type: string
+                - name: min_flights
+                  in: query
+                  description: 'Minimum number of flights required to include a carrier (default: 1).'
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCarrierOpsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/aviation/v1/get-flight-status:
+        get:
+            tags:
+                - AviationService
+            summary: GetFlightStatus
+            description: GetFlightStatus looks up the current status of a specific flight.
+            operationId: GetFlightStatus
+            parameters:
+                - name: flight_number
+                  in: query
+                  description: IATA flight number (e.g., "TK1952").
+                  required: false
+                  schema:
+                    type: string
+                - name: date
+                  in: query
+                  description: Departure date in ISO 8601 format (e.g., "2026-03-05").
+                  required: false
+                  schema:
+                    type: string
+                - name: origin
+                  in: query
+                  description: Optional origin airport IATA code to disambiguate.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFlightStatusResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/aviation/v1/track-aircraft:
+        get:
+            tags:
+                - AviationService
+            summary: TrackAircraft
+            description: TrackAircraft retrieves recent position data for an aircraft.
+            operationId: TrackAircraft
+            parameters:
+                - name: icao24
+                  in: query
+                  description: ICAO 24-bit transponder address (hex, e.g., "4b1805").
+                  required: false
+                  schema:
+                    type: string
+                - name: callsign
+                  in: query
+                  description: ATC callsign (e.g., "THY7CX").
+                  required: false
+                  schema:
+                    type: string
+                - name: sw_lat
+                  in: query
+                  description: Optional bounding box south-west latitude.
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: sw_lon
+                  in: query
+                  description: Optional bounding box south-west longitude.
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: ne_lat
+                  in: query
+                  description: Optional bounding box north-east latitude.
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: ne_lon
+                  in: query
+                  description: Optional bounding box north-east longitude.
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TrackAircraftResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/aviation/v1/search-flight-prices:
+        get:
+            tags:
+                - AviationService
+            summary: SearchFlightPrices
+            description: SearchFlightPrices searches for flight price offers on a route.
+            operationId: SearchFlightPrices
+            parameters:
+                - name: origin
+                  in: query
+                  description: Origin airport IATA code.
+                  required: false
+                  schema:
+                    type: string
+                - name: destination
+                  in: query
+                  description: Destination airport IATA code.
+                  required: false
+                  schema:
+                    type: string
+                - name: departure_date
+                  in: query
+                  description: Outbound departure date (ISO 8601).
+                  required: false
+                  schema:
+                    type: string
+                - name: return_date
+                  in: query
+                  description: Return date (ISO 8601), empty for one-way.
+                  required: false
+                  schema:
+                    type: string
+                - name: adults
+                  in: query
+                  description: Number of adult passengers (1-9).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cabin
+                  in: query
+                  description: Desired cabin class.
+                  required: false
+                  schema:
+                    type: string
+                - name: nonstop_only
+                  in: query
+                  description: Whether to restrict to nonstop flights only.
+                  required: false
+                  schema:
+                    type: boolean
+                - name: max_results
+                  in: query
+                  description: Maximum number of quotes to return (1-50).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: currency
+                  in: query
+                  description: ISO 4217 currency code for prices (e.g., "usd", "eur", "try").
+                  required: false
+                  schema:
+                    type: string
+                - name: market
+                  in: query
+                  description: Market/locale code (e.g., "us", "tr").
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SearchFlightPricesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/aviation/v1/list-aviation-news:
+        get:
+            tags:
+                - AviationService
+            summary: ListAviationNews
+            description: ListAviationNews retrieves filtered aviation news articles.
+            operationId: ListAviationNews
+            parameters:
+                - name: entities
+                  in: query
+                  description: Entities to filter by (airline names, airport codes, route strings).
+                  required: false
+                  schema:
+                    type: string
+                - name: window_hours
+                  in: query
+                  description: Time window in hours to look back (1-168).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: max_items
+                  in: query
+                  description: Maximum number of news items to return (1-50).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAviationNewsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -214,6 +581,8 @@ components:
                         - FLIGHT_DELAY_SOURCE_FAA
                         - FLIGHT_DELAY_SOURCE_EUROCONTROL
                         - FLIGHT_DELAY_SOURCE_COMPUTED
+                        - FLIGHT_DELAY_SOURCE_AVIATIONSTACK
+                        - FLIGHT_DELAY_SOURCE_NOTAM
                     description: FlightDelaySource represents the source of delay data.
                 updatedAt:
                     type: integer
@@ -251,3 +620,659 @@ components:
                     format: int32
                     description: Total count of items matching the query, if known. Zero if the total is unknown.
             description: PaginationResponse contains pagination metadata returned alongside list results.
+        GetAirportOpsSummaryRequest:
+            type: object
+            properties:
+                airports:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 20
+                        minItems: 1
+                        description: IATA airport codes to query (e.g., ["IST", "ESB", "LHR"]).
+                    maxItems: 20
+                    minItems: 1
+            description: GetAirportOpsSummaryRequest specifies which airports to summarize.
+        GetAirportOpsSummaryResponse:
+            type: object
+            properties:
+                summaries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AirportOpsSummary'
+                cacheHit:
+                    type: boolean
+                    description: Whether the response was served from cache.
+            description: GetAirportOpsSummaryResponse contains operational summaries for requested airports.
+        AirportOpsSummary:
+            type: object
+            properties:
+                iata:
+                    type: string
+                    description: IATA airport code.
+                icao:
+                    type: string
+                    description: ICAO airport code.
+                name:
+                    type: string
+                    description: Airport name.
+                timezone:
+                    type: string
+                    description: IANA timezone (e.g., "Europe/Istanbul").
+                delayPct:
+                    type: number
+                    format: double
+                    description: Percentage of flights currently delayed (0-100).
+                avgDelayMinutes:
+                    type: integer
+                    format: int32
+                    description: Average delay in minutes across delayed flights.
+                cancellationRate:
+                    type: number
+                    format: double
+                    description: Cancellation rate as a percentage (0-100).
+                totalFlights:
+                    type: integer
+                    format: int32
+                    description: Total flights in the observation window.
+                closureStatus:
+                    type: boolean
+                    description: Whether the airport is currently closed.
+                notamFlags:
+                    type: array
+                    items:
+                        type: string
+                        description: Active NOTAM summary flags (e.g., "RWY 06/24 CLSD", "LOW VIS OPS").
+                severity:
+                    type: string
+                    enum:
+                        - FLIGHT_DELAY_SEVERITY_UNSPECIFIED
+                        - FLIGHT_DELAY_SEVERITY_NORMAL
+                        - FLIGHT_DELAY_SEVERITY_MINOR
+                        - FLIGHT_DELAY_SEVERITY_MODERATE
+                        - FLIGHT_DELAY_SEVERITY_MAJOR
+                        - FLIGHT_DELAY_SEVERITY_SEVERE
+                    description: |-
+                        FlightDelaySeverity represents the severity of flight delays at an airport.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                topDelayReasons:
+                    type: array
+                    items:
+                        type: string
+                        description: Top reasons for delays.
+                source:
+                    type: string
+                    description: Data source identifier.
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last update time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: AirportOpsSummary contains operational health metrics for a single airport.
+        ListAirportFlightsRequest:
+            type: object
+            properties:
+                airport:
+                    type: string
+                    maxLength: 4
+                    minLength: 3
+                    description: IATA airport code (e.g., "IST").
+                direction:
+                    type: string
+                    enum:
+                        - FLIGHT_DIRECTION_UNSPECIFIED
+                        - FLIGHT_DIRECTION_DEPARTURE
+                        - FLIGHT_DIRECTION_ARRIVAL
+                        - FLIGHT_DIRECTION_BOTH
+                    description: FlightDirection specifies whether to retrieve departures, arrivals, or both.
+                limit:
+                    type: integer
+                    maximum: 100
+                    minimum: 1
+                    format: int32
+                    description: Maximum number of flights to return (1-100).
+            required:
+                - airport
+            description: ListAirportFlightsRequest specifies parameters for retrieving recent flights at an airport.
+        ListAirportFlightsResponse:
+            type: object
+            properties:
+                flights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FlightInstance'
+                totalAvailable:
+                    type: integer
+                    format: int32
+                    description: Total number of flights available from the provider.
+                source:
+                    type: string
+                    description: Data source identifier.
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last update time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ListAirportFlightsResponse contains recent flights at an airport.
+        FlightInstance:
+            type: object
+            properties:
+                flightNumber:
+                    type: string
+                    description: IATA flight number (e.g., "TK1952").
+                date:
+                    type: string
+                    description: Departure date in ISO 8601 format (e.g., "2026-03-05").
+                operatingCarrier:
+                    $ref: '#/components/schemas/Carrier'
+                origin:
+                    $ref: '#/components/schemas/AirportRef'
+                destination:
+                    $ref: '#/components/schemas/AirportRef'
+                scheduledDeparture:
+                    type: integer
+                    format: int64
+                    description: 'Scheduled departure time as Unix epoch milliseconds (UTC).. Warning: Values > 2^53 may lose precision in JavaScript'
+                estimatedDeparture:
+                    type: integer
+                    format: int64
+                    description: 'Estimated departure time as Unix epoch milliseconds (UTC).. Warning: Values > 2^53 may lose precision in JavaScript'
+                actualDeparture:
+                    type: integer
+                    format: int64
+                    description: 'Actual departure time as Unix epoch milliseconds (UTC).. Warning: Values > 2^53 may lose precision in JavaScript'
+                scheduledArrival:
+                    type: integer
+                    format: int64
+                    description: 'Scheduled arrival time as Unix epoch milliseconds (UTC).. Warning: Values > 2^53 may lose precision in JavaScript'
+                estimatedArrival:
+                    type: integer
+                    format: int64
+                    description: 'Estimated arrival time as Unix epoch milliseconds (UTC).. Warning: Values > 2^53 may lose precision in JavaScript'
+                actualArrival:
+                    type: integer
+                    format: int64
+                    description: 'Actual arrival time as Unix epoch milliseconds (UTC).. Warning: Values > 2^53 may lose precision in JavaScript'
+                status:
+                    type: string
+                    enum:
+                        - FLIGHT_INSTANCE_STATUS_UNSPECIFIED
+                        - FLIGHT_INSTANCE_STATUS_SCHEDULED
+                        - FLIGHT_INSTANCE_STATUS_BOARDING
+                        - FLIGHT_INSTANCE_STATUS_DEPARTED
+                        - FLIGHT_INSTANCE_STATUS_AIRBORNE
+                        - FLIGHT_INSTANCE_STATUS_LANDED
+                        - FLIGHT_INSTANCE_STATUS_ARRIVED
+                        - FLIGHT_INSTANCE_STATUS_CANCELLED
+                        - FLIGHT_INSTANCE_STATUS_DIVERTED
+                        - FLIGHT_INSTANCE_STATUS_UNKNOWN
+                    description: FlightInstanceStatus represents the operational status of a flight occurrence.
+                delayMinutes:
+                    type: integer
+                    format: int32
+                    description: Delay in minutes (0 if on time, negative if early).
+                cancelled:
+                    type: boolean
+                    description: Whether the flight is cancelled.
+                diverted:
+                    type: boolean
+                    description: Whether the flight has been diverted.
+                gate:
+                    type: string
+                    description: Departure gate (if available).
+                terminal:
+                    type: string
+                    description: Departure terminal (if available).
+                aircraftIcao24:
+                    type: string
+                    description: ICAO 24-bit transponder address of the aircraft (hex, e.g., "4b1805").
+                aircraftType:
+                    type: string
+                    description: Aircraft type designator (e.g., "B738").
+                codeshareFlightNumbers:
+                    type: array
+                    items:
+                        type: string
+                        description: Codeshare flight numbers marketed under this operating flight.
+                source:
+                    type: string
+                    description: Data source provider name.
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last update time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: FlightInstance represents a specific occurrence of a flight on a given date.
+        Carrier:
+            type: object
+            properties:
+                iataCode:
+                    type: string
+                    description: IATA two-letter airline code (e.g., "TK").
+                icaoCode:
+                    type: string
+                    description: ICAO three-letter airline code (e.g., "THY").
+                name:
+                    type: string
+                    description: Full airline name (e.g., "Turkish Airlines").
+            description: Carrier represents an airline or aircraft operator.
+        AirportRef:
+            type: object
+            properties:
+                iata:
+                    type: string
+                    description: IATA airport code (e.g., "IST").
+                icao:
+                    type: string
+                    description: ICAO airport code (e.g., "LTFM").
+                name:
+                    type: string
+                    description: Airport name (e.g., "Istanbul Airport").
+                timezone:
+                    type: string
+                    description: IANA timezone (e.g., "Europe/Istanbul").
+            description: AirportRef is a lightweight reference to an airport.
+        GetCarrierOpsRequest:
+            type: object
+            properties:
+                airports:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 20
+                        minItems: 1
+                        description: IATA airport codes to aggregate carrier metrics from.
+                    maxItems: 20
+                    minItems: 1
+                minFlights:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: 'Minimum number of flights required to include a carrier (default: 1).'
+            description: GetCarrierOpsRequest specifies parameters for carrier operations metrics.
+        GetCarrierOpsResponse:
+            type: object
+            properties:
+                carriers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CarrierOpsSummary'
+                source:
+                    type: string
+                    description: Data source identifier.
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last update time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: GetCarrierOpsResponse contains carrier operations metrics.
+        CarrierOpsSummary:
+            type: object
+            properties:
+                carrier:
+                    $ref: '#/components/schemas/Carrier'
+                airport:
+                    type: string
+                    description: Airport IATA code this summary applies to.
+                totalFlights:
+                    type: integer
+                    format: int32
+                    description: Total flights observed.
+                delayedCount:
+                    type: integer
+                    format: int32
+                    description: Number of delayed flights.
+                cancelledCount:
+                    type: integer
+                    format: int32
+                    description: Number of cancelled flights.
+                avgDelayMinutes:
+                    type: integer
+                    format: int32
+                    description: Average delay in minutes across delayed flights.
+                delayPct:
+                    type: number
+                    format: double
+                    description: Delay percentage (0-100).
+                cancellationRate:
+                    type: number
+                    format: double
+                    description: Cancellation rate (0-100).
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last update time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: CarrierOpsSummary contains delay and cancellation metrics for a carrier at an airport.
+        GetFlightStatusRequest:
+            type: object
+            properties:
+                flightNumber:
+                    type: string
+                    maxLength: 10
+                    minLength: 3
+                    description: IATA flight number (e.g., "TK1952").
+                date:
+                    type: string
+                    maxLength: 10
+                    minLength: 10
+                    description: Departure date in ISO 8601 format (e.g., "2026-03-05").
+                origin:
+                    type: string
+                    description: Optional origin airport IATA code to disambiguate.
+            required:
+                - flightNumber
+                - date
+            description: GetFlightStatusRequest specifies a flight to look up.
+        GetFlightStatusResponse:
+            type: object
+            properties:
+                flights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FlightInstance'
+                source:
+                    type: string
+                    description: Data source identifier.
+                cacheHit:
+                    type: boolean
+                    description: Whether the response was served from cache.
+            description: GetFlightStatusResponse contains flight status results.
+        TrackAircraftRequest:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    description: ICAO 24-bit transponder address (hex, e.g., "4b1805").
+                callsign:
+                    type: string
+                    description: ATC callsign (e.g., "THY7CX").
+                swLat:
+                    type: number
+                    format: double
+                    description: Optional bounding box south-west latitude.
+                swLon:
+                    type: number
+                    format: double
+                    description: Optional bounding box south-west longitude.
+                neLat:
+                    type: number
+                    format: double
+                    description: Optional bounding box north-east latitude.
+                neLon:
+                    type: number
+                    format: double
+                    description: Optional bounding box north-east longitude.
+            description: TrackAircraftRequest specifies an aircraft to track.
+        TrackAircraftResponse:
+            type: object
+            properties:
+                positions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PositionSample'
+                source:
+                    type: string
+                    description: Data source identifier.
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last update time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: TrackAircraftResponse contains aircraft position observations.
+        PositionSample:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    description: ICAO 24-bit transponder address (hex, e.g., "4b1805").
+                callsign:
+                    type: string
+                    description: ATC callsign (e.g., "THY7CX").
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude in decimal degrees.
+                lon:
+                    type: number
+                    format: double
+                    description: Longitude in decimal degrees.
+                altitudeM:
+                    type: number
+                    format: double
+                    description: Barometric altitude in metres.
+                groundSpeedKts:
+                    type: number
+                    format: double
+                    description: Ground speed in knots.
+                trackDeg:
+                    type: number
+                    format: double
+                    description: True track over ground in degrees (0 = North, clockwise).
+                verticalRate:
+                    type: number
+                    format: double
+                    description: Vertical rate in metres per second (positive = climbing).
+                onGround:
+                    type: boolean
+                    description: Whether the aircraft is on the ground.
+                source:
+                    type: string
+                    enum:
+                        - POSITION_SOURCE_UNSPECIFIED
+                        - POSITION_SOURCE_OPENSKY
+                        - POSITION_SOURCE_WINGBITS
+                        - POSITION_SOURCE_SIMULATED
+                    description: PositionSource identifies the provider of aircraft position data.
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Observation time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: PositionSample represents a single aircraft position observation.
+        SearchFlightPricesRequest:
+            type: object
+            properties:
+                origin:
+                    type: string
+                    maxLength: 4
+                    minLength: 3
+                    description: Origin airport IATA code.
+                destination:
+                    type: string
+                    maxLength: 4
+                    minLength: 3
+                    description: Destination airport IATA code.
+                departureDate:
+                    type: string
+                    maxLength: 10
+                    minLength: 10
+                    description: Outbound departure date (ISO 8601).
+                returnDate:
+                    type: string
+                    description: Return date (ISO 8601), empty for one-way.
+                adults:
+                    type: integer
+                    maximum: 9
+                    minimum: 1
+                    format: int32
+                    description: Number of adult passengers (1-9).
+                cabin:
+                    type: string
+                    enum:
+                        - CABIN_CLASS_UNSPECIFIED
+                        - CABIN_CLASS_ECONOMY
+                        - CABIN_CLASS_PREMIUM_ECONOMY
+                        - CABIN_CLASS_BUSINESS
+                        - CABIN_CLASS_FIRST
+                    description: CabinClass represents the travel class for a flight ticket.
+                nonstopOnly:
+                    type: boolean
+                    description: Whether to restrict to nonstop flights only.
+                maxResults:
+                    type: integer
+                    maximum: 50
+                    minimum: 1
+                    format: int32
+                    description: Maximum number of quotes to return (1-50).
+                currency:
+                    type: string
+                    description: ISO 4217 currency code for prices (e.g., "usd", "eur", "try").
+                market:
+                    type: string
+                    description: Market/locale code (e.g., "us", "tr").
+            required:
+                - origin
+                - destination
+                - departureDate
+            description: SearchFlightPricesRequest specifies parameters for a flight price search.
+        SearchFlightPricesResponse:
+            type: object
+            properties:
+                quotes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PriceQuote'
+                provider:
+                    type: string
+                    description: Provider name (e.g., "amadeus", "demo").
+                isDemoMode:
+                    type: boolean
+                    description: Whether results are from demo/simulated mode.
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last update time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                isIndicative:
+                    type: boolean
+                    description: Whether returned prices are indicative (subject to change).
+            description: SearchFlightPricesResponse contains flight price offers.
+        PriceQuote:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique quote identifier.
+                origin:
+                    type: string
+                    description: Origin airport IATA code.
+                destination:
+                    type: string
+                    description: Destination airport IATA code.
+                departureDate:
+                    type: string
+                    description: Outbound departure date (ISO 8601).
+                returnDate:
+                    type: string
+                    description: Return date (ISO 8601), empty for one-way.
+                carrier:
+                    $ref: '#/components/schemas/Carrier'
+                priceAmount:
+                    type: number
+                    format: double
+                    description: Total price amount.
+                currency:
+                    type: string
+                    description: ISO 4217 currency code (e.g., "EUR", "USD", "TRY").
+                cabin:
+                    type: string
+                    enum:
+                        - CABIN_CLASS_UNSPECIFIED
+                        - CABIN_CLASS_ECONOMY
+                        - CABIN_CLASS_PREMIUM_ECONOMY
+                        - CABIN_CLASS_BUSINESS
+                        - CABIN_CLASS_FIRST
+                    description: CabinClass represents the travel class for a flight ticket.
+                stops:
+                    type: integer
+                    format: int32
+                    description: Number of stops (0 = nonstop).
+                durationMinutes:
+                    type: integer
+                    format: int32
+                    description: Total travel duration in minutes.
+                bookingUrl:
+                    type: string
+                    description: Booking URL or deep-link (if available).
+                provider:
+                    type: string
+                    description: Provider name (e.g., "amadeus", "demo").
+                isIndicative:
+                    type: boolean
+                    description: Whether the price is indicative rather than bookable.
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Time when this quote was observed, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                checkoutRef:
+                    type: string
+                    description: Reference used during the checkout process (for follow-up actions).
+                expiresAt:
+                    type: integer
+                    format: int64
+                    description: 'Time when this quote expires, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: PriceQuote represents a single flight price offer from a provider.
+        ListAviationNewsRequest:
+            type: object
+            properties:
+                entities:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 10
+                        minItems: 1
+                        description: Entities to filter by (airline names, airport codes, route strings).
+                    maxItems: 10
+                    minItems: 1
+                windowHours:
+                    type: integer
+                    maximum: 168
+                    minimum: 1
+                    format: int32
+                    description: Time window in hours to look back (1-168).
+                maxItems:
+                    type: integer
+                    maximum: 50
+                    minimum: 1
+                    format: int32
+                    description: Maximum number of news items to return (1-50).
+            description: ListAviationNewsRequest specifies filters for aviation news retrieval.
+        ListAviationNewsResponse:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AviationNewsItem'
+                source:
+                    type: string
+                    description: Data source identifier.
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Last update time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ListAviationNewsResponse contains filtered aviation news items.
+        AviationNewsItem:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique item identifier (hash of URL).
+                title:
+                    type: string
+                    description: Article title.
+                url:
+                    type: string
+                    description: Article URL.
+                sourceName:
+                    type: string
+                    description: Name of the news source (e.g., "FlightGlobal").
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Publication time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                snippet:
+                    type: string
+                    description: Short text snippet or description.
+                matchedEntities:
+                    type: array
+                    items:
+                        type: string
+                        description: Entities matched from the query (airport codes, airline names).
+                imageUrl:
+                    type: string
+                    description: Article image URL (if available).
+            description: AviationNewsItem represents a single aviation news article or press release.

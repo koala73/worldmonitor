@@ -6,13 +6,17 @@
  * instead of the legacy /api/wingbits proxy.
  */
 
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker, toUniqueSortedLowercase } from '@/utils';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { dataFreshness } from './data-freshness';
 import { isFeatureAvailable } from './runtime-config';
 import {
   MilitaryServiceClient,
   type AircraftDetails,
+  type WingbitsLiveFlight,
 } from '@/generated/client/worldmonitor/military/v1/service_client';
+
+export type { WingbitsLiveFlight };
 
 export interface WingbitsAircraftDetails {
   icao24: string;
@@ -48,7 +52,7 @@ export interface EnrichedAircraftInfo {
 
 // ---- Sebuf client ----
 
-const client = new MilitaryServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 // Client-side cache for aircraft details
 const localCache = new Map<string, { data: WingbitsAircraftDetails; timestamp: number }>();
@@ -242,7 +246,7 @@ export async function getAircraftDetailsBatch(icao24List: string[]): Promise<Map
   if (!isFeatureAvailable('wingbitsEnrichment')) return new Map();
   const results = new Map<string, WingbitsAircraftDetails>();
   const toFetch: string[] = [];
-  const requestedKeys = Array.from(new Set(icao24List.map((icao24) => icao24.toLowerCase()))).sort();
+  const requestedKeys = toUniqueSortedLowercase(icao24List);
 
   // Check local cache first
   for (const key of requestedKeys) {
@@ -410,4 +414,18 @@ export function getWingbitsStatus(): { configured: boolean | null; cacheSize: nu
 export function clearWingbitsCache(): void {
   localCache.clear();
   lastCacheSweep = 0;
+}
+
+/**
+ * Fetch live position data from the Wingbits ECS network for a single aircraft.
+ * Returns null if the aircraft is not currently tracked by any Wingbits receiver.
+ */
+export async function getWingbitsLiveFlight(icao24: string): Promise<WingbitsLiveFlight | null> {
+  if (!isFeatureAvailable('wingbitsEnrichment')) return null;
+  try {
+    const resp = await client.getWingbitsLiveFlight({ icao24: icao24.toLowerCase() });
+    return resp.flight ?? null;
+  } catch {
+    return null;
+  }
 }

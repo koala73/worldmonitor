@@ -122,6 +122,17 @@
       "stockIndex": "Χρηματιστηριακός δείκτης: {{value}}",
       "recentHeadlines": "**Πρόσφατοι τίτλοι:**",
       "activeStrikes": "{{count}} ενεργές απεργίες ανιχνεύθηκαν"
+    },
+    "countryFacts": "Στοιχεία χώρας",
+    "loadingFacts": "Φόρτωση στοιχείων χώρας...",
+    "noFacts": "Τα στοιχεία χώρας δεν είναι διαθέσιμα.",
+    "facts": {
+      "headOfState": "Αρχηγός κράτους",
+      "population": "Πληθυσμός",
+      "capital": "Πρωτεύουσα",
+      "languages": "Γλώσσες",
+      "currencies": "Νομίσματα",
+      "area": "Έκταση"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "Κόλπος & ΜΕΝΑ",
     "filterPanels": "Φιλτράρισμα πάνελ...",
     "resetLayout": "Επαναφορά διάταξης",
+    "resetLayoutTooltip": "Επαναφορά προεπιλεγμένης διάταξης πάνελ",
     "unsavedChanges": "Έχετε μη αποθηκευμένες αλλαγές πάνελ. Να απορριφθούν;",
     "panelCatCore": "Βασικά",
     "panelCatIntelligence": "Πληροφορίες",
@@ -263,7 +275,8 @@
     "techReadiness": "Δείκτης Τεχνολογικής Ετοιμότητας",
     "gccInvestments": "Επενδύσεις GCC",
     "geoHubs": "Γεωπολιτικά Κέντρα",
-    "liveWebcams": "Ζωντανές Κάμερες",
+    "liveYouTube": "Ζωντανές Κάμερες",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Οικονομίες Κόλπου",
     "gulfIndices": "Δείκτες Κόλπου",
     "gulfCurrencies": "Νομίσματα Κόλπου",
@@ -376,6 +389,8 @@
       "noResults": "Κανένα αποτέλεσμα",
       "commands": "Εντολές",
       "results": "Αποτελέσματα",
+      "seeAllCommands": "Εμφάνιση όλων των εντολών",
+      "hideCommandList": "Πίσω",
       "navigate": "πλοήγηση",
       "select": "επιλογή",
       "close": "κλείσιμο",
@@ -756,6 +771,13 @@
       "spikeAlert": "Ανιχνεύθηκε κορύφωση — τιμή σημαντικά πάνω από τον μέσο όρο 52 εβδομάδων (εβδομαδιαία)",
       "warnings": "προειδοποίηση(-εις)",
       "aisDisruptions": "Διαταραχή(ές) AIS",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Ορυκτό",
       "topProducers": "Κορυφαίοι Παραγωγοί",
       "risk": "Κίνδυνος",
@@ -802,7 +824,10 @@
       "yes": "Ναι",
       "no": "Όχι",
       "vol": "Όγκ",
-      "closes": "Κλείνει"
+      "closes": "Κλείνει",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Υγεία Σύνδεσης",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "Να μην εμφανιστεί ξανά",
       "layerWarningOk": "Κατάλαβα",
       "layersTitle": "Επίπεδα",
+      "layerSearch": "Αναζήτηση επιπέδων...",
       "timeAll": "Όλα",
       "views": {
         "global": "Παγκόσμια",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "Πυρηνικές Εγκαταστάσεις",
         "gammaIrradiators": "Ακτινοβολητές Γάμμα",
         "spaceports": "Διαστημοδρόμια",
+        "satellites": "Τροχιακή Επιτήρηση",
         "pipelines": "Αγωγοί",
         "militaryActivity": "Στρατιωτική Δραστηριότητα",
         "shipTraffic": "Ναυτική Κυκλοφορία",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "Ειδοποιήσεις",
       "filterOsint": "OSINT",
       "filterPolitics": "Πολιτική",
-      "filterMiddleeast": "Μέση Ανατολή"
+      "filterMiddleeast": "Μέση Ανατολή",
+      "live": "ΖΩΝΤΑΝΑ",
+      "viewSource": "Προβολή πηγής"
     },
     "investments": {
       "infoTooltip": "Βάση δεδομένων άμεσων ξένων επενδύσεων Σαουδικής Αραβίας και ΗΑΕ σε παγκόσμιες κρίσιμες υποδομές. Κάντε κλικ σε μια γραμμή για μετάβαση στην επένδυση στον χάρτη.",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Υπολογισμένο"
+        "computed": "Υπολογισμένο",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Αμερική",
@@ -2056,7 +2087,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Πηγή: USNI News Fleet Tracker",
       "approximatePosition": "Κατά προσέγγιση θέση — βασίζεται στην εβδομαδιαία αναφορά USNI, όχι σε AIS πραγματικού χρόνου.",
-      "darkDescription": "⚠ Το πλοίο έχει σκοτεινιάσει - χάθηκε σήμα AIS. Μπορεί να υποδεικνύει ευαίσθητες επιχειρήσεις."
+      "darkDescription": "⚠ Το πλοίο έχει σκοτεινιάσει - χάθηκε σήμα AIS. Μπορεί να υποδεικνύει ευαίσθητες επιχειρήσεις.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Οπτικό στυλ των πλακιδίων χάρτη.",
     "globePreset": "Οπτική προεπιλογή",
     "globePresetDesc": "Εναλλαγή μεταξύ κλασικής και βελτιωμένης απεικόνισης."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Άνοιγμα επισκόπησης χώρας",
+    "copyCoordinates": "Αντιγραφή συντεταγμένων"
   }
 }

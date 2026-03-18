@@ -1,101 +1,16 @@
 /**
- * RPC: getFredSeries -- Federal Reserve Economic Data (FRED) time series
- * Port from api/fred-data.js
+ * RPC: getFredSeries -- reads seeded FRED time series data from Railway seed cache.
+ * All external FRED API calls happen in seed-economy.mjs on Railway.
  */
+
 import type {
   ServerContext,
   GetFredSeriesRequest,
   GetFredSeriesResponse,
-  FredSeries,
-  FredObservation,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
-import { cachedFetchJson } from '../../../_shared/redis';
-
-const FRED_API_BASE = 'https://api.stlouisfed.org/fred';
-const REDIS_CACHE_KEY = 'economic:fred:v1';
-const REDIS_CACHE_TTL = 3600; // 1 hr — FRED data updates infrequently
-
-async function fetchFredSeries(req: GetFredSeriesRequest): Promise<FredSeries | undefined> {
-  try {
-    const apiKey = process.env.FRED_API_KEY;
-    if (!apiKey) return undefined;
-
-    const limit = req.limit > 0 ? Math.min(req.limit, 1000) : 120;
-
-    // Fetch observations and series metadata in parallel
-    const obsParams = new URLSearchParams({
-      series_id: req.seriesId,
-      api_key: apiKey,
-      file_type: 'json',
-      sort_order: 'desc',
-      limit: String(limit),
-    });
-
-    const metaParams = new URLSearchParams({
-      series_id: req.seriesId,
-      api_key: apiKey,
-      file_type: 'json',
-    });
-
-    const [obsResult, metaResult] = await Promise.allSettled([
-      fetch(`${FRED_API_BASE}/series/observations?${obsParams}`, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(10000),
-      }),
-      fetch(`${FRED_API_BASE}/series?${metaParams}`, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(10000),
-      }),
-    ]);
-
-    if (metaResult.status === 'rejected') console.warn('[fred] metadata fetch failed, using defaults:', metaResult.reason);
-
-    // Observations are essential — without them we have no data to return
-    if (obsResult.status === 'rejected') {
-      console.warn('[fred] observations fetch failed:', obsResult.reason);
-      return undefined;
-    }
-    const obsResponse = obsResult.value;
-    if (!obsResponse.ok) return undefined;
-
-    const obsData = await obsResponse.json() as { observations?: Array<{ date: string; value: string }> };
-
-    const observations: FredObservation[] = (obsData.observations || [])
-      .map((obs) => {
-        const value = parseFloat(obs.value);
-        if (isNaN(value) || obs.value === '.') return null;
-        return { date: obs.date, value };
-      })
-      .filter((o): o is FredObservation => o !== null)
-      .reverse(); // oldest first
-
-    let title = req.seriesId;
-    let units = '';
-    let frequency = '';
-
-    const metaResponse = metaResult.status === 'fulfilled' ? metaResult.value : null;
-    if (metaResponse?.ok) {
-      const metaData = await metaResponse.json() as { seriess?: Array<{ title?: string; units?: string; frequency?: string }> };
-      const meta = metaData.seriess?.[0];
-      if (meta) {
-        title = meta.title || req.seriesId;
-        units = meta.units || '';
-        frequency = meta.frequency || '';
-      }
-    }
-
-    return {
-      seriesId: req.seriesId,
-      title,
-      units,
-      frequency,
-      observations,
-    };
-  } catch {
-    return undefined;
-  }
-}
+import { getCachedJson } from '../../../_shared/redis';
+import { applyFredObservationLimit, fredSeedKey, normalizeFredLimit } from './_fred-shared';
 
 export async function getFredSeries(
   _ctx: ServerContext,
@@ -103,12 +18,11 @@ export async function getFredSeries(
 ): Promise<GetFredSeriesResponse> {
   if (!req.seriesId) return { series: undefined };
   try {
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.seriesId}:${req.limit || 0}`;
-    const result = await cachedFetchJson<GetFredSeriesResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
-      const series = await fetchFredSeries(req);
-      return series ? { series } : null;
-    });
-    return result || { series: undefined };
+    const seedKey = fredSeedKey(req.seriesId);
+    const result = await getCachedJson(seedKey, true) as GetFredSeriesResponse | null;
+    if (!result?.series) return { series: undefined };
+    const limit = normalizeFredLimit(req.limit);
+    return { series: applyFredObservationLimit(result.series, limit) };
   } catch {
     return { series: undefined };
   }

@@ -256,7 +256,7 @@ export class CountryTimeline {
         tooltip.style.left = `${x}px`;
         tooltip.style.top = `${y}px`;
       })
-      .on('mousemove', function (event: MouseEvent) {
+      .on('mousemove', (event: MouseEvent) => {
         const rect = container.getBoundingClientRect();
         const x = event.clientX - rect.left + 12;
         const y = event.clientY - rect.top - 10;

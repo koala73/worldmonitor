@@ -12,6 +12,7 @@
 import { fetchEnergyCapacityRpc } from '@/services/economic';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 
 // ---- Types ----
 
@@ -76,7 +77,7 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
 
   // 2. Fallback: fetch from bootstrap endpoint directly
   try {
-    const resp = await fetch('/api/bootstrap?keys=renewableEnergy', {
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=renewableEnergy'), {
       signal: AbortSignal.timeout(5_000),
     });
     if (resp.ok) {

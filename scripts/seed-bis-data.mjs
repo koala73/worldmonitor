@@ -89,9 +89,9 @@ function parseBisNumber(val) {
 function groupByCountry(rows) {
   const byCountry = new Map();
   for (const row of rows) {
-    const cc = row['REF_AREA'] || row['BORROWERS_CTY'] || row['Reference area'] || '';
-    const date = row['TIME_PERIOD'] || row['Time period'] || '';
-    const val = parseBisNumber(row['OBS_VALUE'] || row['Observation value']);
+    const cc = row.REF_AREA || row.BORROWERS_CTY || row['Reference area'] || '';
+    const date = row.TIME_PERIOD || row['Time period'] || '';
+    const val = parseBisNumber(row.OBS_VALUE || row['Observation value']);
     if (!cc || !date || val === null) continue;
     if (!byCountry.has(cc)) byCountry.set(cc, []);
     byCountry.get(cc).push({ date, value: val });
@@ -215,6 +215,6 @@ runSeed('economic', 'bis', KEYS.policy, fetchAll, {
   if (seedData.exchange) await writeExtraKey(KEYS.exchange, seedData.exchange, TTL);
   if (seedData.credit) await writeExtraKey(KEYS.credit, seedData.credit, TTL);
 }).catch((err) => {
-  console.error('FATAL:', err.message || err);
+  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
 });

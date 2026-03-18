@@ -1,0 +1,184 @@
+---
+title: "Webcam Layer"
+description: "Global webcam coverage with timelapse playback, pinned webcam panel, and multi-source integration roadmap."
+---
+The Webcam layer provides global visual intelligence by overlaying webcam locations on the map, with interactive tooltips showing preview images and a pinned webcam panel for persistent monitoring of key locations.
+
+## Data Source: Windy Webcams API v3
+
+The primary data source is the [Windy Webcams API](https://api.windy.com/webcams/api/v3/docs), which provides approximately 65,000 camera locations worldwide.
+
+| Attribute | Value |
+|-----------|-------|
+| **Provider** | Windy Webcams API v3 |
+| **Coverage** | ~65,000 cameras globally |
+| **Update frequency** | Cameras capture images periodically (every 5-15 min) |
+| **Seeder** | `scripts/seed-webcams.mjs` — regional bounding-box fetch with adaptive quadrant splitting |
+| **API key** | Required (`WINDY_API_KEY`); free tier available at [api.windy.com](https://api.windy.com) |
+| **Attribution** | Required on free tier |
+
+### What the API provides
+
+**Seed-time fields** (bulk fetch with `include=location,categories`):
+
+| Field | Description |
+|-------|-------------|
+| `webcamId` | Unique camera identifier |
+| `title` | Camera name/description |
+| `location.latitude` / `location.longitude` | Geographic coordinates |
+| `location.country` | Country name |
+| `location.region` | Region/state |
+| `categories` | Camera category (traffic, landscape, city, etc.) |
+| `status` | Camera status (active/inactive) |
+
+**On-demand fields** (per-camera fetch with `include=images,urls`):
+
+| Field | Description |
+|-------|-------------|
+| `images.current.preview` | Latest captured still image URL |
+| `images.current.thumbnail` | Smaller thumbnail URL |
+| `urls.player` | Embeddable timelapse player URL |
+| `lastUpdatedOn` | Timestamp of last image capture |
+
+### Free tier limitations
+
+- Image token URLs expire after 10 minutes
+- Bounding-box queries capped at 10,000 results per request (seeder uses adaptive quadrant splitting to work around this)
+- Rate limits apply (seeder uses sequential regional fetches)
+
+### API key configuration
+
+The webcam layer requires a `WINDY_API_KEY` environment variable. Get a free key at [api.windy.com](https://api.windy.com).
+
+| Environment | Where to set | Used by |
+|-------------|-------------|---------|
+| **Vercel** (production) | Project Settings > Environment Variables | `get-webcam-image.ts` (on-demand image/player URL fetches) |
+| **Railway** (cron seeder) | Service Variables | `seed-webcams.mjs` (bulk metadata fetch) |
+| **Tauri sidecar** (desktop) | Keychain via Settings > API Keys | On-demand image fetches via sidecar |
+| **Local dev** | `.env` file | Both seeder and dev server |
+
+Without the key:
+- **Seeder** exits gracefully with "WINDY_API_KEY not set, skipping webcam seed"
+- **Image handler** returns `{ error: 'unavailable' }` and tooltips show "Preview unavailable"
+- **Map layer** still renders markers from cached geo data (if previously seeded), but image previews are unavailable
+
+## Architecture
+
+```
+Seed (periodic):
+  Windy API → seed-webcams.mjs → Redis (geo index + metadata hash)
+
+Runtime:
+  Browser map viewport → listWebcams RPC → Redis geo search → clustered response
+  User clicks marker → getWebcamImage RPC → Windy API (cached 5 min) → tooltip with preview
+  User pins webcam → localStorage → PinnedWebcamsPanel (2x2 iframe grid)
+```
+
+### Server-side clustering
+
+The `listWebcams` handler performs server-side spatial clustering based on zoom level. At low zoom, nearby cameras are grouped into cluster markers showing a count. At higher zoom, individual markers appear. This keeps the map performant even when thousands of cameras are in view.
+
+### Caching
+
+Three cache layers work together to minimize latency and external API calls:
+
+| Layer | Scope | TTL | Key |
+|-------|-------|-----|-----|
+| **Redis — geo + metadata** | Seeded camera index | 24 hours | `webcam:cameras:geo:{version}`, `webcam:cameras:meta:{version}` |
+| **Redis — viewport responses** | Clustered results per map view | 24 hours | `webcam:resp:{version}:{zoom}:{quantizedBbox}` |
+| **Redis — image lookups** | Per-webcam image/player URLs | 5 minutes | `webcam:image:{webcamId}` |
+| **Client — image cache** | In-memory Map in browser | 9 minutes | webcamId |
+| **Client — pinned store** | localStorage (permanent) | None (user-managed) | `wm-pinned-webcams` |
+
+### Expected latency behavior
+
+On first interaction after a container start, there is a noticeable delay as caches are cold:
+
+1. **Map viewport change** → `listWebcams` RPC → server performs Redis geo search, builds clustered response, caches it. Subsequent identical viewports return instantly from Redis cache (24h TTL).
+2. **First click on a webcam marker** → `getWebcamImage` RPC → server calls Windy API (network round-trip to external service), caches the response for 5 minutes server-side. The client also caches for 9 minutes — so re-clicking the same webcam within 9 minutes is instant with no server call.
+3. **Pinning a webcam** → the player iframe loads from Windy's CDN (another external round-trip for the embed page). This is not cached by us — the browser handles iframe caching.
+
+Once caches are warm, the only external calls are for webcams not viewed in the last 5-9 minutes.
+
+### Redis data is ephemeral
+
+Redis data does not survive container rebuilds. After rebuilding the stack, the seeder (`scripts/seed-webcams.mjs`) must re-run to repopulate the geo index and metadata. Without seeded data, the webcam layer will show no markers. Viewport response caches and image caches will rebuild organically as users interact with the map.
+
+### No automatic re-seeding (known gap)
+
+**This is a known limitation that needs to be addressed in a follow-up PR.**
+
+The seeder writes geo and metadata keys to Redis with a 24-hour TTL, but nothing triggers a re-seed when those keys expire. After 24 hours without a manual re-seed, the webcam layer silently goes blank.
+
+Current ways to re-seed:
+- Run `scripts/seed-webcams.mjs` from the host
+- Run `scripts/run-seeders.sh` (runs all seeders including webcams)
+- **Railway cron** (recommended): schedule `seed-webcams.mjs` as a Railway cron service every 12-18 hours to stay ahead of the 24-hour TTL expiry
+
+## Pinned Webcams Panel
+
+Users can pin webcams from map tooltips to a persistent side panel. The panel displays up to 4 webcams simultaneously in a 2x2 grid of embedded Windy player iframes.
+
+### Features
+
+- **2x2 iframe grid**: Four active webcam players visible at once
+- **Toggle on/off**: Webcams can be toggled between active (showing in grid) and inactive (in list only)
+- **Overflow list**: When more than 4 webcams are pinned, a scrollable list appears below the grid for managing all pins
+- **Pin from any renderer**: Pin buttons appear in webcam tooltips across all three map renderers (SVG, Globe, DeckGL)
+- **Persistence**: Pinned webcams survive page reloads via localStorage
+- **Custom events**: Panel updates reactively when pins change from any source
+
+### Storage
+
+Pinned webcam data is stored in `localStorage` under the key `wm-pinned-webcams`. Each entry contains:
+
+```
+webcamId, title, lat, lng, category, country, playerUrl, active (boolean), pinnedAt (timestamp)
+```
+
+Maximum 4 webcams can be active (showing in grid) at any time. The total number of pinned webcams is not limited.
+
+## Current Limitations
+
+### Not live video
+
+**This is the most important limitation to understand.** The Windy player does not show live video streams. Most webcams in the Windy network capture still images at periodic intervals (every 5-15 minutes). The embedded player compiles these stills into a timelapse, typically showing the last 24-72 hours of captures.
+
+This means:
+- The "player" is a timelapse of recent snapshots, not a live feed
+- There is no way to filter for live-streaming cameras via the Windy API
+- Real-time situational awareness is limited to the latest captured image (visible in the tooltip preview)
+
+### No live video API exists at free tier
+
+Free sources of actual live video webcam feeds with structured APIs do not currently exist. Live video requires streaming infrastructure (RTSP/HLS/WebRTC) which is expensive to operate. Known live sources are either paid, partner-only, or have no API:
+
+| Source | Status |
+|--------|--------|
+| YouTube Live | Already integrated (Live YouTube panel) but not location-indexed |
+| EarthCam | Partner-only, no public API |
+| SkylineWebcams | No API |
+| TrafficLand | 25K cameras with HLS but requires business coordination |
+| Insecam | Legal liability (unsecured cameras), not viable |
+
+### Other limitations
+
+- **Free tier attribution**: Windy requires attribution when using free API tier
+- **Image token expiry**: Preview image URLs from Windy expire after ~10 minutes; re-fetching is needed for stale tooltips
+- **Seed coverage**: The seeder caps at 10K cameras per regional bounding box; adaptive quadrant splitting mitigates this but very dense regions may still miss cameras
+- **No status filtering**: Inactive/offline cameras may appear on the map with broken previews
+- **iframe sandbox**: Player iframes use `allow-scripts allow-same-origin allow-popups` sandbox policy
+
+## Future Phases
+
+### Phase 2: US DOT 511 State APIs
+
+Tens of thousands of traffic cameras across 20+ US states. Free with developer key per state. These are also periodic still images (refresh every 30-60 seconds), not live video, but update more frequently than Windy cameras.
+
+Target states: NY (511ny.org), CA (511.org), GA (511ga.org), AZ (az511.com), UT.
+
+Challenge: Each state has a slightly different schema requiring normalizing adapters.
+
+### Phase 3: OpenWebcamDB
+
+Supplementary source with ~2,052 curated cameras. Free tier limited to 50 requests/day. Clean REST API but small dataset. Requires aggressive caching strategy.

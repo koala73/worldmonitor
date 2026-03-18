@@ -1,0 +1,176 @@
+[
+  {
+    "name": "red_sea_shipping_disruption_2024_01_15",
+    "eventDate": "2024-01-15",
+    "description": "Red Sea disruption risk hardens after rerouting and interference signals broaden.",
+    "priorForecast": {
+      "domain": "supply_chain",
+      "region": "Red Sea",
+      "title": "Shipping disruption: Red Sea",
+      "probability": 0.52,
+      "confidence": 0.54,
+      "timeHorizon": "7d",
+      "signals": [
+        { "type": "chokepoint", "value": "Red Sea disruption detected", "weight": 0.5 }
+      ],
+      "newsContext": [
+        "Shipping firms monitor Red Sea route risk"
+      ],
+      "calibration": {
+        "marketTitle": "Will oil close above $90?",
+        "marketPrice": 0.54,
+        "drift": 0.02,
+        "source": "polymarket"
+      }
+    },
+    "forecast": {
+      "domain": "supply_chain",
+      "region": "Red Sea",
+      "title": "Shipping disruption: Red Sea",
+      "probability": 0.68,
+      "confidence": 0.59,
+      "timeHorizon": "7d",
+      "signals": [
+        { "type": "chokepoint", "value": "Red Sea disruption detected", "weight": 0.5 },
+        { "type": "gps_jamming", "value": "GPS interference near Red Sea", "weight": 0.2 }
+      ],
+      "newsContext": [
+        "Shipping firms monitor Red Sea route risk",
+        "Freight rates react to Red Sea rerouting"
+      ],
+      "calibration": {
+        "marketTitle": "Will oil close above $90?",
+        "marketPrice": 0.67,
+        "drift": 0.01,
+        "source": "polymarket"
+      },
+      "cascades": [
+        { "domain": "market", "effect": "supply shortage pricing", "probability": 0.38 }
+      ]
+    },
+    "thresholds": {
+      "overallMin": 0.72,
+      "groundingMin": 0.65,
+      "trend": "rising",
+      "changeSummaryIncludes": ["rose from 52% to 68%"],
+      "changeItemsInclude": [
+        "New signal: GPS interference near Red Sea",
+        "New reporting: Freight rates react to Red Sea rerouting",
+        "Market moved from 54% to 67%"
+      ]
+    }
+  },
+  {
+    "name": "iran_exchange_2024_04_14",
+    "eventDate": "2024-04-14",
+    "description": "Iran escalation risk jumps as conflict-event and theater signals stack on top of already-high instability.",
+    "priorForecast": {
+      "domain": "conflict",
+      "region": "Iran",
+      "title": "Escalation risk: Iran",
+      "probability": 0.46,
+      "confidence": 0.55,
+      "timeHorizon": "7d",
+      "signals": [
+        { "type": "cii", "value": "Iran CII 79 (high)", "weight": 0.4 }
+      ],
+      "newsContext": [
+        "Iran military drills intensify after border incident"
+      ],
+      "calibration": {
+        "marketTitle": "Will Iran conflict escalate before July?",
+        "marketPrice": 0.45,
+        "drift": 0.03,
+        "source": "polymarket"
+      }
+    },
+    "forecast": {
+      "domain": "conflict",
+      "region": "Iran",
+      "title": "Escalation risk: Iran",
+      "probability": 0.74,
+      "confidence": 0.64,
+      "timeHorizon": "7d",
+      "signals": [
+        { "type": "cii", "value": "Iran CII 79 (high)", "weight": 0.4 },
+        { "type": "ucdp", "value": "3 UCDP conflict events", "weight": 0.3 },
+        { "type": "theater", "value": "Middle East theater posture elevated", "weight": 0.2 }
+      ],
+      "newsContext": [
+        "Iran military drills intensify after border incident",
+        "Regional officials warn of retaliation risk"
+      ],
+      "calibration": {
+        "marketTitle": "Will Iran conflict escalate before July?",
+        "marketPrice": 0.71,
+        "drift": 0.03,
+        "source": "polymarket"
+      },
+      "cascades": [
+        { "domain": "market", "effect": "commodity price shock", "probability": 0.41 }
+      ]
+    },
+    "thresholds": {
+      "overallMin": 0.78,
+      "groundingMin": 0.65,
+      "trend": "rising",
+      "changeSummaryIncludes": ["rose from 46% to 74%"],
+      "changeItemsInclude": [
+        "New signal: 3 UCDP conflict events",
+        "New reporting: Regional officials warn of retaliation risk",
+        "Market moved from 45% to 71%"
+      ]
+    }
+  },
+  {
+    "name": "europe_energy_stress_eases_2025_02_01",
+    "eventDate": "2025-02-01",
+    "description": "A softer market path and thinner corroboration pull a European energy stress forecast down.",
+    "priorForecast": {
+      "domain": "market",
+      "region": "Europe",
+      "title": "Energy stress: Europe",
+      "probability": 0.64,
+      "confidence": 0.58,
+      "timeHorizon": "30d",
+      "signals": [
+        { "type": "prediction_market", "value": "EU gas price stress remains elevated", "weight": 0.25 }
+      ],
+      "newsContext": [
+        "European gas storage draw accelerates"
+      ],
+      "calibration": {
+        "marketTitle": "Will EU gas prices spike this month?",
+        "marketPrice": 0.59,
+        "drift": 0.02,
+        "source": "polymarket"
+      }
+    },
+    "forecast": {
+      "domain": "market",
+      "region": "Europe",
+      "title": "Energy stress: Europe",
+      "probability": 0.49,
+      "confidence": 0.54,
+      "timeHorizon": "30d",
+      "signals": [
+        { "type": "prediction_market", "value": "EU gas price stress remains elevated", "weight": 0.25 }
+      ],
+      "newsContext": [],
+      "calibration": {
+        "marketTitle": "Will EU gas prices spike this month?",
+        "marketPrice": 0.44,
+        "drift": 0.05,
+        "source": "polymarket"
+      }
+    },
+    "thresholds": {
+      "overallMax": 0.58,
+      "trend": "falling",
+      "changeSummaryIncludes": ["fell from 64% to 49%"],
+      "changeItemsInclude": [
+        "Market moved from 59% to 44%"
+      ]
+    }
+  }
+]

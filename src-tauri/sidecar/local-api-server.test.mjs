@@ -64,8 +64,8 @@ function mockHttpsRequestOnce({ statusCode, headers, body }) {
   const original = https.request;
   https.request = (_options, onResponse) => {
     const req = new EventEmitter();
-    req.setTimeout = () => {};
-    req.write = () => {};
+    req.setTimeout = () => { };
+    req.write = () => { };
     req.destroy = (error) => {
       if (error) req.emit('error', error);
     };
@@ -175,7 +175,7 @@ test('returns local error directly when cloudFallback is off (default)', async (
     port: 0,
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -210,7 +210,7 @@ test('falls back to cloud when cloudFallback is enabled and local handler return
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
     cloudFallback: 'true',
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -258,7 +258,7 @@ test('preserves POST body when cloud fallback is triggered after local non-OK re
     apiDir: localApi.apiDir,
     remoteBase: `http://127.0.0.1:${remotePort}`,
     cloudFallback: 'true',
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -301,7 +301,7 @@ test('uses local handler response when local handler succeeds', async () => {
     port: 0,
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -326,7 +326,7 @@ test('returns 404 when local route does not exist and cloudFallback is off', asy
     port: 0,
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -343,7 +343,7 @@ test('returns 404 when local route does not exist and cloudFallback is off', asy
   }
 });
 
-test('strips browser origin headers before invoking local handlers', async () => {
+test('replaces browser origin with localhost origin for local handlers', async () => {
   const remote = await setupRemoteServer();
   const localApi = await setupApiDir({
     'origin-check.js': `
@@ -352,6 +352,7 @@ test('strips browser origin headers before invoking local handlers', async () =>
         return new Response(JSON.stringify({
           source: 'local',
           originPresent: Boolean(origin),
+          originValue: origin || null,
         }), {
           status: 200,
           headers: { 'content-type': 'application/json' }
@@ -364,7 +365,7 @@ test('strips browser origin headers before invoking local handlers', async () =>
     port: 0,
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -375,7 +376,11 @@ test('strips browser origin headers before invoking local handlers', async () =>
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.source, 'local');
-    assert.equal(body.originPresent, false);
+    // Since e14af08f (#709) the server strips the browser Origin but
+    // immediately replaces it with `http://127.0.0.1:<port>`, so the
+    // handler does receive an Origin header — just the localhost one.
+    assert.equal(body.originPresent, true);
+    assert.equal(body.originValue, `http://127.0.0.1:${port}`);
     assert.equal(remote.hits.length, 0);
   } finally {
     await app.close();
@@ -420,7 +425,7 @@ test('preserves Request body when handler uses fetch(Request)', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -472,7 +477,7 @@ test('returns local handler error when fetch(Request) uses a consumed body', asy
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -503,7 +508,7 @@ test('strips browser origin headers when proxying to cloud fallback (cloudFallba
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
     cloudFallback: 'true',
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -523,6 +528,45 @@ test('strips browser origin headers when proxying to cloud fallback (cloudFallba
   }
 });
 
+test('blocks cloud fallback in Docker mode even when explicitly requested', async () => {
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'docker-test.js': `
+      export default async function handler() {
+        return new Response(JSON.stringify({ source: 'local-error' }), {
+          status: 500,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    `,
+  });
+
+  const warnings = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    cloudFallback: 'true',
+    mode: 'docker',
+    logger: { log() {}, warn(...args) { warnings.push(args.join(' ')); }, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/docker-test`);
+    // Should NOT fall back to cloud; should return the local 500 directly
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.equal(body.source, 'local-error');
+    // Should have logged a warning about Docker mode blocking fallback
+    assert.ok(warnings.some(w => w.includes('Docker mode')), 'Should warn about Docker mode blocking fallback');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+  }
+});
+
 test('responds to OPTIONS preflight with CORS headers', async () => {
   const localApi = await setupApiDir({
     'data.js': `
@@ -535,7 +579,7 @@ test('responds to OPTIONS preflight with CORS headers', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -564,7 +608,7 @@ test('preserves Origin in Vary when gzip compression is applied', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -610,7 +654,7 @@ test('resolves packaged tauri resource layout under _up_/api', async () => {
     port: 0,
     resourceDir: localResource.resourceDir,
     remoteBase: remote.remoteBase,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -638,7 +682,7 @@ test('accepts OLLAMA_API_URL via /api/local-env-update', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -666,7 +710,7 @@ test('accepts OLLAMA_MODEL via /api/local-env-update', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -694,7 +738,7 @@ test('rejects unknown key via /api/local-env-update', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -730,7 +774,7 @@ test('validates OLLAMA_API_URL via /api/local-validate-secret (reachable endpoin
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -769,7 +813,7 @@ test('validates LM Studio style /v1 base URL via /api/local-validate-secret', as
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -809,7 +853,7 @@ test('validates OLLAMA_API_URL via native /api/tags fallback', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -837,7 +881,7 @@ test('validates OLLAMA_MODEL stores model name', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -862,7 +906,7 @@ test('rejects OLLAMA_API_URL with non-http protocol', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -896,7 +940,7 @@ test('treats Cloudflare challenge 403 as soft-pass during secret validation', as
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -929,7 +973,7 @@ test('does not soft-pass provider auth 403 JSON responses even with cf-ray heade
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -956,7 +1000,7 @@ test('auth-required behavior unchanged — rejects unauthenticated requests when
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1012,7 +1056,7 @@ test('prefers Brotli compression for payloads larger than 1KB when supported by 
     port: 0,
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1053,7 +1097,7 @@ test('uses gzip compression when Brotli is unavailable but gzip is accepted', as
     port: 0,
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1086,7 +1130,7 @@ test('rejects unauthenticated requests to /api/local-status when token is set', 
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1120,7 +1164,7 @@ test('rejects unauthenticated requests to /api/local-traffic-log when token is s
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1146,7 +1190,7 @@ test('rejects unauthenticated requests to /api/local-debug-toggle when token is 
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1172,7 +1216,7 @@ test('rejects unauthenticated requests to /api/rss-proxy when token is set', asy
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1198,7 +1242,7 @@ test('allows unauthenticated requests to /api/service-status (health check exemp
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1224,7 +1268,7 @@ test('rss-proxy blocks requests to localhost (SSRF protection)', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1245,7 +1289,7 @@ test('rss-proxy blocks requests to private IP ranges (SSRF protection)', async (
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1273,7 +1317,7 @@ test('rss-proxy blocks non-http protocols (SSRF protection)', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1294,7 +1338,7 @@ test('rss-proxy blocks URLs with credentials (SSRF protection)', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1324,7 +1368,7 @@ test('traffic log strips query strings from entries to protect privacy', async (
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 
@@ -1359,7 +1403,7 @@ test('service-status reports bound fallback port after EADDRINUSE recovery', asy
   const app = await createLocalApiServer({
     port: 46123,
     apiDir: localApi.apiDir,
-    logger: { log() {}, warn() {}, error() {} },
+    logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
 

@@ -1,0 +1,662 @@
+---
+title: "Features & Interface"
+description: "Complete guide to World Monitor features including interactive maps, data layers, intelligence panels, market data, panel management, mobile experience, and keyboard shortcuts."
+---
+World Monitor provides a comprehensive set of features for real-time global intelligence monitoring, from interactive maps and data layers to market tracking and customizable panel layouts.
+
+## Interactive Global Map
+
+- **Zoom & Pan** - Smooth navigation with mouse/trackpad gestures
+- **Regional Focus** - 8 preset views for rapid navigation (Global, Americas, Europe, MENA, Asia, Latin America, Africa, Oceania)
+- **Layer System** - Toggle visibility of 20+ data layers organized by category
+- **Time Filtering** - Filter events by time range (1h, 6h, 24h, 48h, 7d)
+- **Pinnable Map** - Pin the map to the top while scrolling through panels, or let it scroll with the page
+- **Smart Marker Clustering** - Nearby markers group at low zoom, expand on zoom in
+
+## Marker Clustering
+
+Dense regions with many data points use intelligent clustering to prevent visual clutter:
+
+**How It Works**
+
+- Markers within a pixel radius (adaptive to zoom level) merge into cluster badges
+- Cluster badges show the count of grouped items
+- Clicking a cluster opens a popup listing all grouped items
+- Zooming in reduces cluster radius, eventually showing individual markers
+
+**Grouping Logic**
+
+- **Protests**: Cluster within same country only (riots sorted first, high severity prioritized)
+- **Tech HQs**: Cluster within same city (Big Tech sorted before unicorns before public companies)
+- **Tech Events**: Cluster within same location (sorted by date, soonest first)
+
+This prevents issues like Dubai and Riyadh companies appearing merged at global zoom, while still providing clean visualization at continental scales.
+
+## Data Layers
+
+Layers are organized into logical groups for efficient monitoring:
+
+**Geopolitical**
+| Layer | Description |
+|-------|-------------|
+| **Conflicts** | Active conflict zones with involved parties and status |
+| **Hotspots** | Intelligence hotspots with activity levels based on news correlation |
+| **Sanctions** | Countries under economic sanctions regimes |
+| **Protests** | Live social unrest events from ACLED and GDELT |
+
+**Military & Strategic**
+| Layer | Description |
+|-------|-------------|
+| **Military Bases** | 226 global military installations from 9 operators |
+| **Nuclear Facilities** | Power plants, weapons labs, enrichment sites |
+| **Gamma Irradiators** | IAEA-tracked Category 1-3 radiation sources |
+| **APT Groups** | State-sponsored cyber threat actors with geographic attribution |
+| **Spaceports** | 12 major launch facilities (NASA, SpaceX, Roscosmos, CNSA, ESA, ISRO, JAXA) |
+| **Critical Minerals** | Strategic mineral deposits (lithium, cobalt, rare earths) with operator info |
+
+**Infrastructure**
+| Layer | Description |
+|-------|-------------|
+| **Undersea Cables** | 86 submarine cable routes worldwide |
+| **Pipelines** | 88 operating oil & gas pipelines across all continents |
+| **Internet Outages** | Network disruptions via Cloudflare Radar |
+| **AI Datacenters** | 313 AI compute clusters tracked from Epoch AI dataset |
+
+**Transport**
+| Layer | Description |
+|-------|-------------|
+| **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring and 62 strategic ports* |
+| **Delays** | FAA airport delay status and ground stops |
+
+*\*AIS data via [AISStream.io](https://aisstream.io) uses terrestrial receivers with stronger coverage in European/Atlantic waters. Middle East, Asia, and open ocean coverage is limited. Satellite AIS providers (Spire, Kpler) offer global coverage but require commercial licenses.*
+
+**Natural Events**
+| Layer | Description |
+|-------|-------------|
+| **Natural** | USGS earthquakes (M4.5+) + NASA EONET events (storms, wildfires, volcanoes, floods) |
+| **Weather** | NWS severe weather warnings |
+
+**Overlays & Labels**
+| Layer | Description |
+|-------|-------------|
+| **Day/Night** | Real-time solar terminator overlay showing day and night zones (updates every 5 minutes) |
+| **Economic** | Tabbed economic panel with FRED indicators, EIA oil analytics, and USASpending.gov government contracts |
+| **Countries** | Country boundary labels |
+| **Waterways** | Strategic waterways and chokepoints |
+| **Trade Routes** | 19 global trade routes (container, energy, bulk) with multi-segment arcs through strategic chokepoints |
+| **Fires (FIRMS)** | NASA FIRMS satellite fire detection (VIIRS thermal hotspots) for wildfire and operational risk monitoring |
+
+**Webcams**
+| Layer | Description |
+|-------|-------------|
+| **Live Webcams** | 22 live streams across 5 geopolitical regions (Middle East, Eastern Europe, Asia-Pacific, Africa, Americas) with automatic fallback handling |
+
+## Intelligence Panels
+
+Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
+
+| Panel | Purpose |
+|-------|---------|
+| **AI Strategic Posture** | Theater-level military aggregation with strike capability analysis |
+| **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
+| **Country Instability Index** | Real-time stability scores for 24 monitored countries |
+| **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
+| **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
+| **Intel Feed** | Curated defense and security news sources |
+| **Country Brief** | AI-generated country profiles with key indicators, risk factors, and recent developments |
+| **Aviation Intelligence** | 6-tab aviation panel (Ops, Flights, Airlines, Tracking, News, Prices) with NOTAM closure detection across 111 monitored airports |
+| **Climate Anomalies** | Temperature and precipitation deviations across 15 zones using Open-Meteo ERA5 data against rolling baselines |
+| **Displacement Tracking** | UN OCHA HAPI refugee, asylum seeker, and IDP data with origin/host country perspectives |
+| **Gulf Economies** | Indices, currencies, and oil data for 6 GCC countries (Saudi, UAE, Qatar, Kuwait, Bahrain, Oman) |
+| **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers |
+| **Central Banks & BIS** | Policy rates and monetary decisions from 13 central banks via BIS data |
+| **Market Watchlist** | User-defined stock/commodity/crypto symbol lists (up to 50 symbols) |
+
+These panels transform raw signals into actionable intelligence by applying scoring algorithms, trend detection, and cross-source correlation.
+
+## News Aggregation
+
+Multi-source RSS aggregation across categories:
+
+- **World / Geopolitical** - BBC, Reuters, AP, Guardian, NPR, Politico, The Diplomat
+- **Middle East / MENA** - Al Jazeera, BBC ME, Guardian ME, Al Arabiya, Times of Israel
+- **Africa** - BBC Africa, News24, Google News aggregation (regional & Sahel coverage)
+- **Latin America** - BBC Latin America, Guardian Americas, Google News aggregation
+- **Asia-Pacific** - BBC Asia, South China Morning Post, Google News aggregation
+- **Energy & Resources** - Google News aggregation (oil/gas, nuclear, mining, Reuters Energy)
+- **Technology** - Hacker News, Ars Technica, The Verge, MIT Tech Review
+- **AI / ML** - ArXiv, VentureBeat AI, The Verge AI, MIT Tech Review
+- **Finance** - CNBC, MarketWatch, Financial Times, Yahoo Finance
+- **Government** - White House, State Dept, Pentagon, Treasury, Fed, SEC, UN News, CISA
+- **Intel Feed** - Defense One, Breaking Defense, Bellingcat, Krebs Security, Janes
+- **Think Tanks** - Foreign Policy, Atlantic Council, Foreign Affairs, CSIS, RAND, Brookings, Carnegie
+- **Crisis Watch** - International Crisis Group, IAEA, WHO, UNHCR
+- **Regional Sources** - Xinhua, TASS, Kyiv Independent, Moscow Times
+- **Layoffs Tracker** - Tech industry job cuts
+
+## Source Filtering
+
+The **SOURCES** button in the header opens a global source management modal, enabling fine-grained control over which news sources appear in the dashboard.
+
+**Capabilities:**
+
+- **Search**: Filter the source list by name to quickly find specific outlets
+- **Individual Toggle**: Click any source to enable/disable it
+- **Bulk Actions**: "Select All" and "Select None" for quick adjustments
+- **Counter Display**: Shows "45/77 enabled" to indicate current selection
+- **Persistence**: Settings are saved to localStorage and persist across sessions
+
+**Use Cases:**
+
+- **Noise Reduction**: Disable high-volume aggregators (Google News) to focus on primary sources
+- **Regional Focus**: Enable only sources relevant to a specific geographic area
+- **Source Quality**: Disable sources with poor signal-to-noise ratio
+- **Bias Management**: Balance coverage by enabling/disabling sources with known editorial perspectives
+
+**Technical Details:**
+
+- Disabled sources are filtered at fetch time (not display time), reducing bandwidth and API calls
+- Affects all news panels simultaneously: disable BBC once, it is gone everywhere
+- Panels with all sources disabled show "All sources disabled" message
+- Changes take effect on the next refresh cycle
+
+## Regional Intelligence Panels
+
+Dedicated panels provide focused coverage for strategically significant regions:
+
+| Panel | Coverage | Key Topics |
+|-------|----------|------------|
+| **Middle East** | MENA region | Israel-Gaza, Iran, Gulf states, Red Sea |
+| **Africa** | Sub-Saharan Africa | Sahel instability, coups, insurgencies, resources |
+| **Latin America** | Central & South America | Venezuela, drug trafficking, regional politics |
+| **Asia-Pacific** | East & Southeast Asia | China-Taiwan, Korean peninsula, ASEAN |
+| **Energy & Resources** | Global | Oil markets, nuclear, mining, energy security |
+
+Each panel aggregates region-specific sources to provide concentrated situational awareness for that theater. This enables focused monitoring when global events warrant attention to a particular region.
+
+## Live News Streams
+
+Embedded YouTube live streams from major news networks with channel switching:
+
+| Channel | Coverage |
+|---------|----------|
+| **Bloomberg** | Business & financial news |
+| **Sky News** | UK & international news |
+| **Euronews** | European perspective |
+| **DW News** | German international broadcaster |
+| **France 24** | French global news |
+| **Al Arabiya** | Middle East news (Arabic perspective) |
+| **Al Jazeera** | Middle East & international news |
+
+**Core Features:**
+
+- **Channel Switcher** - One-click switching between networks
+- **Live Indicator** - Blinking dot shows stream status, click to pause/play
+- **Mute Toggle** - Audio control (muted by default)
+- **Double-Width Panel** - Larger video player for better viewing
+
+**Performance Optimizations:**
+
+The live stream panel uses the **YouTube IFrame Player API** rather than raw iframe embedding. This provides several advantages:
+
+| Feature | Benefit |
+|---------|---------|
+| **Persistent player** | No iframe reload on mute/play/channel change |
+| **API control** | Direct `playVideo()`, `pauseVideo()`, `mute()` calls |
+| **Reduced bandwidth** | Same stream continues across state changes |
+| **Faster switching** | Channel changes via `loadVideoById()` |
+
+**Idle Detection:**
+
+To conserve resources, the panel implements automatic idle pausing:
+
+| Trigger | Action |
+|---------|--------|
+| **Tab hidden** | Stream pauses (via Visibility API) |
+| **5 min idle** | Stream pauses (no mouse/keyboard activity) |
+| **User returns** | Stream resumes automatically |
+| **Manual pause** | User intent tracked separately |
+
+This prevents background tabs from consuming bandwidth while preserving user preference for manually-paused streams.
+
+## Market Data
+
+- **Stocks** - Major indices and tech stocks via Finnhub (Yahoo Finance backup)
+- **Commodities** - Oil, gold, natural gas, copper, VIX
+- **Crypto** - Bitcoin, Ethereum, Solana via CoinGecko
+- **Sector Heatmap** - Visual sector performance (11 SPDR sectors)
+- **Economic Indicators** - Fed data via FRED (assets, rates, yields)
+- **Oil Analytics** - EIA data: WTI/Brent prices, US production, US inventory with weekly changes
+- **Government Spending** - USASpending.gov: Recent federal contracts and awards
+
+## Prediction Markets
+
+- Polymarket integration for event probability tracking
+- Correlation analysis with news events
+
+## Search (Cmd+K)
+
+Universal command palette for navigating the entire application. All 55 panels, map views, layer toggles, and country briefs are searchable:
+
+- **Map navigation**: Jump to any region (Global, MENA, Europe, Asia-Pacific, Americas, Africa, Oceania)
+- **Layer presets**: Military, Finance, Infrastructure, Intel, All, None, Minimal
+- **Individual layers**: 30+ toggleable layers (AIS, flights, conflicts, cables, fires, GPS jamming, satellites, etc.)
+- **All panels**: Every panel is searchable by name and keywords, including:
+  - Intelligence: AI Insights, AI Forecasts, Strategic Posture, Live Intelligence, Intel Feed, Deduction
+  - Correlation: Force Posture, Escalation Monitor, Economic Warfare, Disaster Cascade
+  - News: Live News, World News, regional feeds (US, Europe, Middle East, Africa, Latin America, Asia-Pacific)
+  - Markets: Markets, Commodities, Crypto, Sector Heatmap, BTC ETF Tracker, Stablecoins, Market Radar, Gulf Economies
+  - Analysis: Country Instability, Strategic Risk, Infrastructure Cascade, Trade Policy, Supply Chain, Economic Indicators
+  - Tracking: Fires, UCDP Events, Displacement, Climate Anomalies, Security Advisories, Population Exposure
+  - Other: Webcams, World Clock, Tech Readiness, Airline Intel, Telegram Intel, Israel Sirens, Layoffs, My Monitors
+- **Country briefs**: Search any country name to open its intelligence brief or navigate the map
+- **Time range**: Filter events by 1h, 6h, 24h, 48h, or 7 days
+- **View controls**: Dark/light mode, fullscreen, settings, refresh all data
+
+## Data Export
+
+- CSV and JSON export of current dashboard state
+- Historical playback from snapshots
+
+---
+
+## Custom Monitors
+
+Create personalized keyword alerts that scan all incoming news:
+
+1. Enter comma-separated keywords (e.g., "nvidia, gpu, chip shortage")
+2. System assigns a unique color
+3. Matching articles are highlighted in the Monitor panel
+4. Matching articles in clusters inherit the monitor color
+
+Monitors persist across sessions via LocalStorage.
+
+---
+
+## Activity Tracking
+
+The dashboard highlights newly-arrived items so you can quickly identify what changed since your last look.
+
+### Visual Indicators
+
+| Indicator | Duration | Purpose |
+|-----------|----------|---------|
+| **NEW tag** | 2 minutes | Badge on items that just appeared |
+| **Glow highlight** | 30 seconds | Subtle animation drawing attention |
+| **Panel badge** | Until viewed | Count of new items in collapsed panels |
+
+### Automatic "Seen" Detection
+
+The system uses IntersectionObserver to detect when panels become visible:
+
+- When a panel is >50% visible for >500ms, items are marked as "seen"
+- Scrolling through a panel marks visible items progressively
+- Switching panels resets the "new" state appropriately
+
+### Panel-Specific Tracking
+
+Each panel maintains independent activity state:
+
+- **News**: New clusters since last view
+- **Markets**: Price changes exceeding thresholds
+- **Predictions**: Probability shifts >5%
+- **Natural Events**: New earthquakes and EONET events
+
+This enables focused monitoring: you can collapse panels you have reviewed and see at a glance which have new activity.
+
+---
+
+## Snapshot System
+
+The dashboard captures periodic snapshots for historical analysis:
+
+- **Automatic capture** every refresh cycle
+- **7-day retention** with automatic cleanup
+- **Stored data**: news clusters, market prices, prediction values, hotspot levels
+- **Playback**: Load historical snapshots to see past dashboard states
+
+Baselines (7-day and 30-day averages) are stored in IndexedDB for deviation analysis.
+
+---
+
+## Critical Mineral Deposits
+
+The Minerals layer displays strategic mineral extraction sites essential for modern technology and defense supply chains.
+
+### Tracked Resources
+
+| Mineral | Strategic Importance | Major Producers |
+|---------|---------------------|-----------------|
+| **Lithium** | EV batteries, energy storage | Australia, Chile, China |
+| **Cobalt** | Battery cathodes, superalloys | DRC (60%+ global), Australia |
+| **Rare Earths** | Magnets, electronics, defense | China (60%+ global), Australia, USA |
+
+### Key Sites
+
+| Site | Mineral | Country | Significance |
+|------|---------|---------|--------------|
+| Greenbushes | Lithium | Australia | World's largest hard-rock lithium mine |
+| Salar de Atacama | Lithium | Chile | Largest brine lithium source |
+| Mutanda | Cobalt | DRC | World's largest cobalt mine |
+| Tenke Fungurume | Cobalt | DRC | Major Chinese-owned cobalt source |
+| Bayan Obo | Rare Earths | China | 45% of global REE production |
+| Mountain Pass | Rare Earths | USA | Only active US rare earth mine |
+
+### Supply Chain Risks
+
+Critical minerals are geopolitically concentrated:
+
+- **Cobalt**: 70% from DRC, significant artisanal mining concerns
+- **Rare Earths**: 60% from China, processing nearly monopolized
+- **Lithium**: Expanding production but demand outpacing supply
+
+News about these regions or mining companies can signal supply disruptions affecting technology and defense sectors.
+
+---
+
+## Cyber Threat Actors (APT Groups)
+
+The map displays geographic attribution markers for major state-sponsored Advanced Persistent Threat (APT) groups. These markers show the approximate operational centers of known threat actors.
+
+### Tracked Groups
+
+| Group | Aliases | Sponsor | Notable Activity |
+|-------|---------|---------|-----------------|
+| **APT28/29** | Fancy Bear, Cozy Bear | Russia (GRU/FSB) | Election interference, government espionage |
+| **APT41** | Double Dragon | China (MSS) | Supply chain attacks, intellectual property theft |
+| **Lazarus** | Hidden Cobra | North Korea (RGB) | Financial theft, cryptocurrency heists |
+| **APT33/35** | Elfin, Charming Kitten | Iran (IRGC) | Critical infrastructure, aerospace targeting |
+
+### Why This Matters
+
+Cyber operations often correlate with geopolitical tensions. When news reports reference Russian cyber activity during a Ukraine escalation, or Iranian hacking during Middle East tensions, these markers provide geographic context for the threat landscape.
+
+### Visual Indicators
+
+APT markers appear as warning triangles with distinct styling. Clicking a marker shows:
+
+- **Official designation** and common aliases
+- **State sponsor** and intelligence agency
+- **Primary targeting sectors**
+
+---
+
+## Social Unrest Tracking
+
+The Protests layer aggregates civil unrest data from two independent sources, providing corroboration and global coverage.
+
+### ACLED (Armed Conflict Location & Event Data)
+
+Academic-grade conflict data with human-verified events:
+
+- **Coverage**: Global, 30-day rolling window
+- **Event types**: Protests, riots, strikes, demonstrations
+- **Metadata**: Actors involved, fatalities, detailed notes
+- **Confidence**: High (human-curated)
+
+### GDELT (Global Database of Events, Language, and Tone)
+
+Real-time news-derived event data:
+
+- **Coverage**: Global, 7-day rolling window
+- **Event types**: Geocoded protest mentions from news
+- **Volume**: Reports per location (signal strength)
+- **Confidence**: Medium (algorithmic extraction)
+
+### Multi-Source Corroboration
+
+Events from both sources are deduplicated using a 0.5 degree spatial grid and date matching. When both ACLED and GDELT report events in the same area:
+
+- Confidence is elevated to "high"
+- ACLED data takes precedence (higher accuracy)
+- Source list shows corroboration
+
+### Severity Classification
+
+| Severity | Criteria |
+|----------|----------|
+| **High** | Fatalities reported, riots, or clashes |
+| **Medium** | Large demonstrations, strikes |
+| **Low** | Smaller protests, localized events |
+
+Events near intelligence hotspots are cross-referenced to provide geopolitical context.
+
+### Map Display Filtering
+
+To reduce visual clutter and focus attention on significant events, the map displays only **high-severity protests and riots**:
+
+| Displayed | Event Type | Visual |
+|-----------|------------|--------|
+| Yes | Riot | Bright red marker |
+| Yes | High-severity protest | Red marker |
+| No | Medium/low-severity protest | Not shown on map |
+
+Lower-severity events are still tracked for CII scoring and data exports: they simply do not create map markers. This filtering prevents dense urban areas (which naturally generate more low-severity demonstrations) from overwhelming the map display.
+
+---
+
+## Aviation Monitoring
+
+The Flights layer tracks airport delays and ground stops at major US airports using FAA NASSTATUS data.
+
+### Delay Types
+
+| Type | Description |
+|------|-------------|
+| **Ground Stop** | No departures permitted; severe disruption |
+| **Ground Delay** | Departures held; arrival rate limiting |
+| **Arrival Delay** | Inbound traffic backed up |
+| **Departure Delay** | Outbound traffic delayed |
+
+### Severity Thresholds
+
+| Severity | Average Delay | Visual |
+|----------|--------------|--------|
+| **Severe** | ≥60 minutes | Red |
+| **Major** | 45-59 minutes | Orange |
+| **Moderate** | 25-44 minutes | Yellow |
+| **Minor** | 15-24 minutes | Gray |
+
+### Monitored Airports
+
+111 airports across 5 regions (Americas, Europe, Asia-Pacific, MENA, Africa) are monitored through three independent data sources (FAA ASWS, AviationStack, ICAO NOTAM):
+
+- Major US hubs: JFK, LAX, ORD, ATL, DFW, DEN, SFO
+- International gateways with high traffic volume
+- 46 MENA airports via ICAO NOTAM for closure detection
+- Airports frequently affected by weather or congestion
+
+Ground stops are particularly significant: they indicate severe disruption (weather, security, or infrastructure failure) and can cascade across the network.
+
+---
+
+## Prediction Market Filtering
+
+The Prediction Markets panel focuses on **geopolitically relevant** markets, filtering out sports and entertainment.
+
+### Inclusion Keywords
+
+Markets matching these topics are displayed:
+
+- **Conflicts**: war, military, invasion, ceasefire, NATO, nuclear
+- **Countries**: Russia, Ukraine, China, Taiwan, Iran, Israel, Gaza
+- **Leaders**: Putin, Zelensky, Trump, Biden, Xi Jinping, Netanyahu
+- **Economics**: Fed, interest rate, inflation, recession, tariffs, sanctions
+- **Global**: UN, EU, treaties, summits, coups, refugees
+
+### Exclusion Keywords
+
+Markets matching these are filtered out:
+
+- **Sports**: NBA, NFL, FIFA, World Cup, championships, playoffs
+- **Entertainment**: Oscars, movies, celebrities, TikTok, streaming
+
+This ensures the panel shows markets like "Will Russia withdraw from Ukraine?" rather than "Will the Lakers win the championship?"
+
+---
+
+## Panel Management
+
+The dashboard organizes data into **draggable, collapsible panels** that persist user preferences across sessions.
+
+### Drag-to-Reorder
+
+Panels can be reorganized by dragging:
+
+1. Grab the panel header (grip icon appears on hover)
+2. Drag to desired position
+3. Drop to reorder
+4. New order saves automatically to LocalStorage
+
+This enables personalized layouts: put your most-watched panels at the top.
+
+### Panel Visibility
+
+Toggle panels on/off via the Settings menu:
+
+- **Hidden panels**: Do not render, do not fetch data
+- **Visible panels**: Full functionality
+- **Collapsed panels**: Header only, data still refreshes
+
+Hiding a panel is different from disabling a layer: the panel itself does not appear in the interface.
+
+### Default Panel Order
+
+Panels are organized by intelligence priority:
+
+| Priority | Panels | Purpose |
+|----------|--------|---------|
+| **Critical** | Strategic Risk, Live Intel | Immediate situational awareness |
+| **Primary** | News, CII, Markets | Core monitoring data |
+| **Supporting** | Predictions, Economic, Monitor | Supplementary analysis |
+| **Reference** | Live News Video | Background context |
+
+### Persistence
+
+Panel state survives browser restarts:
+
+- **LocalStorage**: Panel order, visibility, collapsed state
+- **Automatic save**: Changes persist immediately
+- **Per-device**: Settings are browser-specific (not synced)
+
+---
+
+## Mobile Experience
+
+The dashboard is optimized for mobile devices with a streamlined interface that prioritizes usability on smaller screens.
+
+### First-Time Mobile Welcome
+
+When accessing the dashboard on a mobile device for the first time, a welcome modal explains the mobile-optimized experience:
+
+- **Simplified view notice** - Informs users they are seeing a curated mobile version
+- **Navigation tip** - Explains regional view buttons and marker interaction
+- **"Don't show again" option** - Checkbox to skip on future visits (persisted to localStorage)
+
+### Mobile-First Design
+
+On screens narrower than 768px or touch devices:
+
+- **Compact map** - Reduced height (40vh) to show more panels
+- **Single-column layout** - Panels stack vertically for easy scrolling
+- **Hidden map labels** - All marker labels are hidden to reduce visual clutter
+- **Fixed layer set** - Layer toggle buttons are hidden; a curated set of layers is enabled by default
+- **Simplified controls** - Map resize handle and pin button are hidden
+- **Touch-optimized markers** - Expanded touch targets (44px) for easy tapping
+- **Hidden DEFCON indicator** - Pentagon Pizza Index hidden to reduce header clutter
+- **Hidden FOCUS selector** - Regional focus buttons hidden (use preset views instead)
+- **Compact header** - Social link shows X logo instead of username text
+
+### Mobile Default Layers
+
+The mobile experience focuses on the most essential intelligence layers:
+
+| Layer | Purpose |
+|-------|---------|
+| **Conflicts** | Active conflict zones |
+| **Hotspots** | Intelligence hotspots with activity levels |
+| **Sanctions** | Countries under economic sanctions |
+| **Outages** | Network disruptions |
+| **Natural** | Earthquakes, storms, wildfires |
+| **Weather** | Severe weather warnings |
+
+Layers disabled by default on mobile (but available on desktop):
+
+- Military bases, nuclear facilities, spaceports, minerals
+- Undersea cables, pipelines, datacenters
+- AIS vessels, military flights
+- Protests, economic centers
+
+This curated set provides situational awareness without overwhelming the interface or consuming excessive data/battery.
+
+---
+
+## Offline ML Capabilities
+
+The dashboard includes browser-side machine learning that works without any server connection:
+
+- **Threat Classification** - Three-stage pipeline (keyword pre-filter, browser ML model, optional LLM refinement) classifies news headlines by threat category
+- **Headline Scoring** - ML-based importance scoring for news articles, enabling priority-based rendering
+- **Entity Extraction** - Client-side named entity recognition for identifying countries, organizations, and key figures in headlines
+
+These models run entirely in the browser via Web Workers, providing intelligence analysis capabilities even when offline or when API keys are not configured.
+
+---
+
+## Usage
+
+### Keyboard Shortcuts
+
+- `Cmd+K` / `Ctrl+K` - Open search
+- `Up/Down` - Navigate search results
+- `Enter` - Select result
+- `Esc` - Close modals
+
+### Map Controls
+
+- **Scroll** - Zoom in/out
+- **Drag** - Pan the map
+- **Click markers** - Show detailed popup with full context
+- **Hover markers** - Show tooltip with summary information
+- **Layer toggles** - Show/hide data layers
+
+### Map Marker Design
+
+Infrastructure markers (nuclear facilities, economic centers, ports) display without labels to reduce visual clutter. Full information is available through interaction:
+
+| Layer | Label Behavior | Interaction |
+|-------|---------------|-------------|
+| Nuclear facilities | Hidden | Click for popover with details |
+| Economic centers | Hidden | Click for popover with details |
+| Protests | Hidden | Hover for tooltip, click for details |
+| Military bases | Hidden | Click for popover with base info |
+| Hotspots | Visible | Color-coded activity levels |
+| Conflicts | Visible | Status and involved parties |
+
+This design prioritizes geographic awareness over label density: users can quickly scan for markers and then interact for context.
+
+### Panel Management
+
+- **Drag panels** - Reorder layout
+- **Settings** - Toggle panel visibility
+
+### Shareable Links
+
+The current view state is encoded in the URL, enabling:
+
+- **Bookmarking**: Save specific views for quick access
+- **Sharing**: Send colleagues a link to your exact map position and layer configuration
+- **Deep linking**: Link directly to a specific region or feature
+
+**Encoded Parameters**:
+| Parameter | Description |
+|-----------|-------------|
+| `lat`, `lon` | Map center coordinates |
+| `zoom` | Zoom level (1-10) |
+| `time` | Active time filter (1h, 6h, 24h, 7d) |
+| `view` | Preset view (global, us, mena) |
+| `layers` | Comma-separated enabled layer IDs |
+
+Example: `?lat=38.9&lon=-77&zoom=6&layers=bases,conflicts,hotspots`
+
+Values are validated and clamped to prevent invalid states.

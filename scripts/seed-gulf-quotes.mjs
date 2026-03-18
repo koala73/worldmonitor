@@ -107,6 +107,6 @@ runSeed('market', 'gulf-quotes', CANONICAL_KEY, fetchGulfQuotes, {
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'yahoo-chart',
 }).catch((err) => {
-  console.error('FATAL:', err.message || err);
+  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
 });

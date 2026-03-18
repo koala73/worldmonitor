@@ -39,7 +39,7 @@ export async function initI18n(): Promise<void> {
     nonExplicitSupportedLngs: true,
     fallbackLng: 'en',
     interpolation: { escapeValue: false },
-    detection: { order: ['localStorage', 'navigator'], caches: ['localStorage'] },
+    detection: { order: ['querystring', 'localStorage', 'navigator'], lookupQuerystring: 'lang', caches: ['localStorage'] },
   });
   const detected = await ensureLoaded(i18next.language || 'en');
   if (detected !== 'en') await i18next.changeLanguage(detected);

@@ -24,6 +24,42 @@ export interface NaturalEvent {
   sourceUrl: string;
   sourceName: string;
   closed: boolean;
+  stormId?: string;
+  stormName?: string;
+  basin?: string;
+  stormCategory?: number;
+  classification?: string;
+  windKt?: number;
+  pressureMb?: number;
+  movementDir?: number;
+  movementSpeedKt?: number;
+  forecastTrack: ForecastPoint[];
+  conePolygon: CoordRing[];
+  pastTrack: PastTrackPoint[];
+}
+
+export interface ForecastPoint {
+  lat: number;
+  lon: number;
+  hour: number;
+  windKt: number;
+  category: number;
+}
+
+export interface CoordRing {
+  points: Coordinate[];
+}
+
+export interface Coordinate {
+  lon: number;
+  lat: number;
+}
+
+export interface PastTrackPoint {
+  lat: number;
+  lon: number;
+  windKt: number;
+  timestamp: number;
 }
 
 export interface FieldViolation {

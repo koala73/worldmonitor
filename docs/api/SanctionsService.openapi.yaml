@@ -1,0 +1,190 @@
+openapi: 3.1.0
+info:
+    title: SanctionsService API
+    version: 1.0.0
+paths:
+    /api/sanctions/v1/list-sanctions-pressure:
+        get:
+            tags:
+                - SanctionsService
+            summary: ListSanctionsPressure
+            description: ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions.
+            operationId: ListSanctionsPressure
+            parameters:
+                - name: max_items
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSanctionsPressureResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListSanctionsPressureRequest:
+            type: object
+            properties:
+                maxItems:
+                    type: integer
+                    format: int32
+            description: ListSanctionsPressureRequest retrieves recent OFAC sanctions pressure state.
+        ListSanctionsPressureResponse:
+            type: object
+            properties:
+                entries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SanctionsEntry'
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CountrySanctionsPressure'
+                programs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ProgramSanctionsPressure'
+                fetchedAt:
+                    type: string
+                    format: int64
+                datasetDate:
+                    type: string
+                    format: int64
+                totalCount:
+                    type: integer
+                    format: int32
+                sdnCount:
+                    type: integer
+                    format: int32
+                consolidatedCount:
+                    type: integer
+                    format: int32
+                newEntryCount:
+                    type: integer
+                    format: int32
+                vesselCount:
+                    type: integer
+                    format: int32
+                aircraftCount:
+                    type: integer
+                    format: int32
+            description: ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
+        SanctionsEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                entityType:
+                    type: string
+                    enum:
+                        - SANCTIONS_ENTITY_TYPE_UNSPECIFIED
+                        - SANCTIONS_ENTITY_TYPE_ENTITY
+                        - SANCTIONS_ENTITY_TYPE_INDIVIDUAL
+                        - SANCTIONS_ENTITY_TYPE_VESSEL
+                        - SANCTIONS_ENTITY_TYPE_AIRCRAFT
+                    description: SanctionsEntityType classifies the designated party.
+                countryCodes:
+                    type: array
+                    items:
+                        type: string
+                countryNames:
+                    type: array
+                    items:
+                        type: string
+                programs:
+                    type: array
+                    items:
+                        type: string
+                sourceLists:
+                    type: array
+                    items:
+                        type: string
+                effectiveAt:
+                    type: string
+                    format: int64
+                isNew:
+                    type: boolean
+                note:
+                    type: string
+            description: SanctionsEntry is a normalized OFAC sanctions designation.
+        CountrySanctionsPressure:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                countryName:
+                    type: string
+                entryCount:
+                    type: integer
+                    format: int32
+                newEntryCount:
+                    type: integer
+                    format: int32
+                vesselCount:
+                    type: integer
+                    format: int32
+                aircraftCount:
+                    type: integer
+                    format: int32
+            description: CountrySanctionsPressure summarizes designation volume and recent additions by country.
+        ProgramSanctionsPressure:
+            type: object
+            properties:
+                program:
+                    type: string
+                entryCount:
+                    type: integer
+                    format: int32
+                newEntryCount:
+                    type: integer
+                    format: int32
+            description: ProgramSanctionsPressure summarizes designation volume and recent additions by OFAC program.

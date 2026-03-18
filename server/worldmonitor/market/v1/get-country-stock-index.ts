@@ -71,7 +71,7 @@ const COUNTRY_INDEX: Record<string, { symbol: string; name: string }> = {
 const REDIS_CACHE_KEY = 'market:stock-index:v1';
 const REDIS_CACHE_TTL = 1800; // 30 min — weekly data, slow-moving
 
-let stockIndexCache: Record<string, { data: GetCountryStockIndexResponse; ts: number }> = {};
+const stockIndexCache: Record<string, { data: GetCountryStockIndexResponse; ts: number }> = {};
 const STOCK_INDEX_CACHE_TTL = 3_600_000; // 1 hour (in-memory fallback)
 
 // ========================================================================

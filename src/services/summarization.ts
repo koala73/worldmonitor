@@ -8,6 +8,7 @@
  */
 
 import { mlWorker } from './ml-worker';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { SITE_VARIANT } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { isFeatureAvailable, type RuntimeFeatureId } from './runtime-config';
@@ -35,8 +36,15 @@ export interface SummarizeOptions {
 
 // ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
 
-const newsClient = new NewsServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const newsClient = new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization', cacheTtlMs: 0 });
+
+const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({
+  name: 'SummaryResult',
+  cacheTtlMs: 2 * 60 * 60 * 1000,
+  persistCache: true,
+  maxCacheEntries: 32,
+});
 
 const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: '', model: '', fallback: true, tokens: 0, error: '', errorType: '', status: 'SUMMARIZE_STATUS_UNSPECIFIED', statusDetail: '' };
 
@@ -166,18 +174,27 @@ export async function generateSummary(
     return null;
   }
 
-  lastAttemptedProvider = 'none';
-  const result = await generateSummaryInternal(headlines, onProgress, geoContext, lang, options);
+  const optionsSuffix = options?.skipCloudProviders || options?.skipBrowserFallback
+    ? `:opts${options.skipCloudProviders ? 'C' : ''}${options.skipBrowserFallback ? 'B' : ''}`
+    : '';
+  const cacheKey = buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang) + optionsSuffix;
 
-  // Track at generateSummary return only (not inside tryApiProvider) to avoid
-  // double-counting beta comparison traffic. Only the winning provider is recorded.
-  if (result) {
-    trackLLMUsage(result.provider, result.model, result.cached);
-  } else {
-    trackLLMFailure(lastAttemptedProvider);
-  }
+  return summaryResultBreaker.execute(
+    async () => {
+      lastAttemptedProvider = 'none';
+      const result = await generateSummaryInternal(headlines, onProgress, geoContext, lang, options);
 
-  return result;
+      if (result) {
+        trackLLMUsage(result.provider, result.model, result.cached);
+      } else {
+        trackLLMFailure(lastAttemptedProvider);
+      }
+
+      return result;
+    },
+    null,
+    { cacheKey, shouldCache: (result) => result !== null },
+  );
 }
 
 async function generateSummaryInternal(

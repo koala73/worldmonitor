@@ -5,6 +5,7 @@
 
 import { CHROME_UA } from '../../../_shared/constants';
 import Papa from 'papaparse';
+import { fetchWithTimeout } from './_fetch-with-timeout';
 
 const BIS_BASE = 'https://stats.bis.org/api/v1/data';
 
@@ -30,18 +31,15 @@ export const BIS_COUNTRY_KEYS = Object.keys(BIS_COUNTRIES).join('+');
 export async function fetchBisCSV(dataset: string, key: string, timeout = 12000): Promise<string> {
   const separator = key.includes('?') ? '&' : '?';
   const url = `${BIS_BASE}/${dataset}/${key}${separator}format=csv`;
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  try {
-    const res = await fetch(url, {
+  const res = await fetchWithTimeout(
+    url,
+    {
       headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv' },
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`BIS HTTP ${res.status}`);
-    return await res.text();
-  } finally {
-    clearTimeout(id);
-  }
+    },
+    timeout,
+  );
+  if (!res.ok) throw new Error(`BIS HTTP ${res.status}`);
+  return await res.text();
 }
 
 // Parse BIS CSV using papaparse — robust handling of quoted fields & metadata

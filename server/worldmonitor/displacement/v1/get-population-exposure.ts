@@ -58,7 +58,7 @@ export async function getPopulationExposure(
     let bestDist = Infinity;
 
     for (const [code, [cLat, cLon]] of Object.entries(EXPOSURE_CENTROIDS)) {
-      const dist = Math.sqrt(Math.pow(lat - cLat, 2) + Math.pow(lon - cLon, 2));
+      const dist = Math.sqrt((lat - cLat) ** 2 + (lon - cLon) ** 2);
       if (dist < bestDist) {
         bestDist = dist;
         bestMatch = code;

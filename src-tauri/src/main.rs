@@ -27,9 +27,12 @@ const MENU_HELP_GITHUB_ID: &str = "help.github";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
-const SUPPORTED_SECRET_KEYS: [&str; 25] = [
+const SUPPORTED_SECRET_KEYS: [&str; 28] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
+    "TAVILY_API_KEYS",
+    "BRAVE_API_KEYS",
+    "SERPAPI_API_KEYS",
     "FRED_API_KEY",
     "EIA_API_KEY",
     "CLOUDFLARE_API_TOKEN",
@@ -426,6 +429,25 @@ fn delete_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, 
         *dirty = true;
     }
     schedule_debounced_flush(&cache, &app);
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_cache_entries_by_prefix(webview: Webview, app: AppHandle, cache: tauri::State<'_, PersistentCache>, prefix: String) -> Result<(), String> {
+    require_trusted_window(webview.label())?;
+    let removed_any = {
+        let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
+        let before = data.len();
+        data.retain(|key, _| !key.starts_with(&prefix));
+        data.len() != before
+    };
+    if removed_any {
+        {
+            let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
+            *dirty = true;
+        }
+        schedule_debounced_flush(&cache, &app);
+    }
     Ok(())
 }
 
@@ -1085,6 +1107,7 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         .env("LOCAL_API_RESOURCE_DIR", &resource_for_node)
         .env("LOCAL_API_DATA_DIR", &data_dir)
         .env("LOCAL_API_MODE", "tauri-sidecar")
+        .env("LOCAL_API_CLOUD_FALLBACK", "true")
         .env("LOCAL_API_TOKEN", &local_api_token)
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_err));
@@ -1360,6 +1383,7 @@ fn main() {
             read_cache_entry,
             write_cache_entry,
             delete_cache_entry,
+            delete_cache_entries_by_prefix,
             open_logs_folder,
             open_sidecar_log_file,
             open_settings_window_command,

@@ -45,9 +45,9 @@ describe('Chokepoint scoring', () => {
   });
 
   it('has correct severity enum keys', () => {
-    assert.equal(SEVERITY_SCORE['AIS_DISRUPTION_SEVERITY_LOW'], 1);
-    assert.equal(SEVERITY_SCORE['AIS_DISRUPTION_SEVERITY_ELEVATED'], 2);
-    assert.equal(SEVERITY_SCORE['AIS_DISRUPTION_SEVERITY_HIGH'], 3);
+    assert.equal(SEVERITY_SCORE.AIS_DISRUPTION_SEVERITY_LOW, 1);
+    assert.equal(SEVERITY_SCORE.AIS_DISRUPTION_SEVERITY_ELEVATED, 2);
+    assert.equal(SEVERITY_SCORE.AIS_DISRUPTION_SEVERITY_HIGH, 3);
   });
 });
 
@@ -124,7 +124,7 @@ describe('Chokepoint assignment', () => {
     );
     assert.equal(
       resolveChokepointId({ text: 'New advisory issued for Strait of Hormuz tanker traffic' }),
-      'hormuz',
+      'hormuz_strait',
     );
   });
 
@@ -141,7 +141,7 @@ describe('Chokepoint assignment', () => {
         text: '',
         location: { latitude: 26.6, longitude: 56.2 }, // near Hormuz
       }),
-      'hormuz',
+      'hormuz_strait',
     );
   });
 

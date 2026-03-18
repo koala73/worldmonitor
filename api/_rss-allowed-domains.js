@@ -1,6 +1,6 @@
 // Edge-compatible ESM wrapper for shared RSS allowed domains.
 // Source of truth: shared/rss-allowed-domains.json
-// NOTE: Cannot use `import ... with { type: 'json' }` — Vercel esbuild doesn't support import attributes.
+// NOTE: Cannot use `import ... with { type: "json" }` — Vercel esbuild doesn't support import attributes.
 export default [
   "feeds.bbci.co.uk",
   "www.theguardian.com",
@@ -15,7 +15,6 @@ export default [
   "www.cnbc.com",
   "feeds.marketwatch.com",
   "www.defenseone.com",
-  "breakingdefense.com",
   "www.bellingcat.com",
   "techcrunch.com",
   "huggingface.co",
@@ -87,6 +86,7 @@ export default [
   "dev.events",
   "www.ycombinator.com",
   "a16z.com",
+  "www.a16z.news",
   "review.firstround.com",
   "www.sequoiacap.com",
   "www.nfx.com",
@@ -112,7 +112,6 @@ export default [
   "asharq.com",
   "www.omanobserver.om",
   "english.alarabiya.net",
-  "www.arabnews.com",
   "www.timesofisrael.com",
   "www.haaretz.com",
   "www.scmp.com",
@@ -129,6 +128,7 @@ export default [
   "it.euronews.com",
   "pt.euronews.com",
   "ru.euronews.com",
+  "gr.euronews.com",
   "www.lemonde.fr",
   "rss.dw.com",
   "www.bild.de",
@@ -156,7 +156,6 @@ export default [
   "www.crisisgroup.org",
   "rusi.org",
   "warontherocks.com",
-  "www.aei.org",
   "responsiblestatecraft.org",
   "www.fpri.org",
   "jamestown.org",
@@ -221,8 +220,6 @@ export default [
   "www.coindesk.com",
   "cointelegraph.com",
   "travel.state.gov",
-  "smartraveller.gov.au",
-  "www.smartraveller.gov.au",
   "www.safetravel.govt.nz",
   "th.usembassy.gov",
   "ae.usembassy.gov",
@@ -254,7 +251,6 @@ export default [
   "humanprogress.org",
   "greatergood.berkeley.edu",
   "www.onlygoodnewsdaily.com",
-  "mymodernmet.com",
   "news.mongabay.com",
   "conservationoptimism.org",
   "www.shareable.net",

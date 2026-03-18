@@ -1,11 +1,19 @@
 import { createCircuitBreaker } from '@/utils';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { CountryPopulation, PopulationExposure } from '@/types';
 import { DisplacementServiceClient } from '@/generated/client/worldmonitor/displacement/v1/service_client';
 import type { GetPopulationExposureResponse } from '@/generated/client/worldmonitor/displacement/v1/service_client';
 
-const client = new DisplacementServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new DisplacementServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const countriesBreaker = createCircuitBreaker<GetPopulationExposureResponse>({ name: 'WorldPop Countries', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+
+const exposureBreaker = createCircuitBreaker<ExposureResponse | null>({
+  name: 'PopExposure',
+  cacheTtlMs: 6 * 60 * 60 * 1000,
+  persistCache: true,
+  maxCacheEntries: 64,
+});
 
 export async function fetchCountryPopulations(): Promise<CountryPopulation[]> {
   const result = await countriesBreaker.execute(async () => {
@@ -23,13 +31,15 @@ interface ExposureResponse {
 }
 
 export async function fetchExposure(lat: number, lon: number, radiusKm: number): Promise<ExposureResponse | null> {
-  try {
-    const result = await client.getPopulationExposure({ mode: 'exposure', lat, lon, radius: radiusKm });
-    if (!result.exposure) return null;
-    return result.exposure;
-  } catch {
-    return null;
-  }
+  const cacheKey = `${lat.toFixed(4)},${lon.toFixed(4)},${radiusKm}`;
+  return exposureBreaker.execute(
+    async () => {
+      const result = await client.getPopulationExposure({ mode: 'exposure', lat, lon, radius: radiusKm });
+      return result.exposure ?? null;
+    },
+    null,
+    { cacheKey },
+  );
 }
 
 interface EventForExposure {

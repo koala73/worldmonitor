@@ -60,7 +60,7 @@ function createMockUpstream() {
         return res.end();
       }
       const headers = { 'Content-Type': 'application/xml' };
-      if (etag) headers['ETag'] = etag;
+      if (etag) headers.ETag = etag;
       if (lastModified) headers['Last-Modified'] = lastModified;
       res.writeHead(responseStatus, headers);
       res.end(responseBody);
@@ -178,7 +178,7 @@ function createTestRssProxy(upstreamPort) {
           rssResponseCache.set(feedUrl, {
             data, contentType: 'application/xml',
             statusCode: response.statusCode, timestamp: Date.now(),
-            etag: response.headers['etag'] || null,
+            etag: response.headers.etag || null,
             lastModified: response.headers['last-modified'] || null,
           });
           resolveInFlight();
@@ -225,7 +225,7 @@ function createTestRssProxy(upstreamPort) {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-test('RSS proxy: negative caching prevents thundering herd on 429', async (t) => {
+test('RSS proxy: negative caching prevents thundering herd on 429', async (_t) => {
   const upstream = createMockUpstream();
   upstream.setResponse(429, 'Rate limited');
   const upstreamPort = await listen(upstream.server);
@@ -256,7 +256,7 @@ test('RSS proxy: negative caching prevents thundering herd on 429', async (t) =>
   proxy.server.close();
 });
 
-test('RSS proxy: concurrent requests dedup on in-flight, no cascade on failure', async (t) => {
+test('RSS proxy: concurrent requests dedup on in-flight, no cascade on failure', async (_t) => {
   const upstream = createMockUpstream();
   upstream.setResponse(503, 'Service Unavailable');
   upstream.setDelay(100); // slow enough for concurrent requests to queue up
@@ -286,7 +286,7 @@ test('RSS proxy: concurrent requests dedup on in-flight, no cascade on failure',
   proxy.server.close();
 });
 
-test('RSS proxy: successful 200 response cached with full TTL', async (t) => {
+test('RSS proxy: successful 200 response cached with full TTL', async (_t) => {
   const upstream = createMockUpstream();
   upstream.setResponse(200, '<rss><channel><title>OK</title></channel></rss>');
   const upstreamPort = await listen(upstream.server);
@@ -309,7 +309,7 @@ test('RSS proxy: successful 200 response cached with full TTL', async (t) => {
   proxy.server.close();
 });
 
-test('RSS proxy: FIFO eviction caps cache size', async (t) => {
+test('RSS proxy: FIFO eviction caps cache size', async (_t) => {
   const upstream = createMockUpstream();
   upstream.setResponse(200, '<rss>OK</rss>');
   const upstreamPort = await listen(upstream.server);
@@ -333,7 +333,7 @@ test('RSS proxy: FIFO eviction caps cache size', async (t) => {
   proxy.server.close();
 });
 
-test('RSS proxy: conditional GET returns REVALIDATED on 304', async (t) => {
+test('RSS proxy: conditional GET returns REVALIDATED on 304', async (_t) => {
   const upstream = createMockUpstream();
   upstream.setResponse(200, '<rss><channel><title>Conditional</title></channel></rss>');
   upstream.setETag('"abc123"');
@@ -376,7 +376,7 @@ test('RSS proxy: conditional GET returns REVALIDATED on 304', async (t) => {
   proxy.server.close();
 });
 
-test('RSS proxy: conditional GET with If-Modified-Since', async (t) => {
+test('RSS proxy: conditional GET with If-Modified-Since', async (_t) => {
   const upstream = createMockUpstream();
   upstream.setResponse(200, '<rss><channel><title>LM Test</title></channel></rss>');
   upstream.setLastModified('Wed, 01 Jan 2025 00:00:00 GMT');
@@ -406,7 +406,7 @@ test('RSS proxy: conditional GET with If-Modified-Since', async (t) => {
   proxy.server.close();
 });
 
-test('RSS proxy: stale-on-error resolves in-flight (no hang)', async (t) => {
+test('RSS proxy: stale-on-error resolves in-flight (no hang)', async (_t) => {
   const upstream = createMockUpstream();
   upstream.setResponse(200, '<rss>Fresh</rss>');
   const upstreamPort = await listen(upstream.server);

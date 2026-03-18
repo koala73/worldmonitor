@@ -18,6 +18,7 @@ export class CIIPanel extends Panel {
       id: 'cii',
       title: t('panels.cii'),
       infoTooltip: t('components.cii.infoTooltip'),
+      defaultRowSpan: 2,
     });
     this.showLoading(t('common.loading'));
   }

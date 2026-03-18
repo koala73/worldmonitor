@@ -5,18 +5,10 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson } from '../../../_shared/redis';
-import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, TIER1_COUNTRIES, sha256Hex } from './_shared';
-import { CHROME_UA } from '../../../_shared/constants';
-
-// ========================================================================
-// Constants
-// ========================================================================
+import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
+import { callLlm } from '../../../_shared/llm';
 
 const INTEL_CACHE_TTL = 7200;
-
-// ========================================================================
-// RPC handler
-// ========================================================================
 
 export async function getCountryIntelBrief(
   ctx: ServerContext,
@@ -26,14 +18,11 @@ export async function getCountryIntelBrief(
     countryCode: req.countryCode,
     countryName: '',
     brief: '',
-    model: GROQ_MODEL,
+    model: '',
     generatedAt: Date.now(),
   };
 
   if (!req.countryCode) return empty;
-
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return empty;
 
   let contextSnapshot = '';
   let lang = 'en';
@@ -66,47 +55,33 @@ Rules:
 - Use plain language, not jargon
 - If a context snapshot is provided, explicitly reflect each non-zero signal category in the brief${lang === 'fr' ? '\n- IMPORTANT: You MUST respond ENTIRELY in French language.' : ''}`;
 
+  const userPromptParts = [`Country: ${countryName} (${req.countryCode})`];
+  if (contextSnapshot) {
+    userPromptParts.push(`Context snapshot:\n${contextSnapshot}`);
+  }
+
   let result: GetCountryIntelBriefResponse | null = null;
   try {
     result = await cachedFetchJson<GetCountryIntelBriefResponse>(cacheKey, INTEL_CACHE_TTL, async () => {
-      try {
-        const userPromptParts = [
-          `Country: ${countryName} (${req.countryCode})`,
-        ];
-        if (contextSnapshot) {
-          userPromptParts.push(`Context snapshot:\n${contextSnapshot}`);
-        }
+      const llmResult = await callLlm({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPromptParts.join('\n\n') },
+        ],
+        temperature: 0.4,
+        maxTokens: 900,
+        timeoutMs: UPSTREAM_TIMEOUT_MS,
+      });
 
-        const resp = await fetch(GROQ_API_URL, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-          body: JSON.stringify({
-            model: GROQ_MODEL,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPromptParts.join('\n\n') },
-            ],
-            temperature: 0.4,
-            max_tokens: 900,
-          }),
-          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-        });
+      if (!llmResult) return null;
 
-        if (!resp.ok) return null;
-        const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-        const brief = data.choices?.[0]?.message?.content?.trim() || '';
-        if (!brief) return null;
-
-        return {
-          countryCode: req.countryCode,
-          countryName,
-          brief,
-          model: GROQ_MODEL,
-          generatedAt: Date.now(),
-        };
-      } catch {
-        return null;
-      }
+      return {
+        countryCode: req.countryCode,
+        countryName,
+        brief: llmResult.content,
+        model: llmResult.model,
+        generatedAt: Date.now(),
+      };
     });
   } catch {
     return empty;

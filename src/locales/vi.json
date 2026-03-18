@@ -122,6 +122,17 @@
       "stockIndex": "Chỉ số chứng khoán: {{value}}",
       "recentHeadlines": "**Tin tức gần đây:**",
       "activeStrikes": "Phát hiện {{count}} cuộc đình công đang diễn ra"
+    },
+    "countryFacts": "Thông tin quốc gia",
+    "loadingFacts": "Đang tải thông tin quốc gia...",
+    "noFacts": "Không có thông tin quốc gia.",
+    "facts": {
+      "headOfState": "Nguyên thủ quốc gia",
+      "population": "Dân số",
+      "capital": "Thủ đô",
+      "languages": "Ngôn ngữ",
+      "currencies": "Tiền tệ",
+      "area": "Diện tích"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "Vùng Vịnh & MENA",
     "filterPanels": "Lọc bảng điều khiển...",
     "resetLayout": "Đặt lại bố cục",
+    "resetLayoutTooltip": "Khôi phục sắp xếp bảng điều khiển mặc định",
     "unsavedChanges": "Bạn có thay đổi bảng điều khiển chưa lưu. Bỏ qua chúng?",
     "panelCatCore": "Cốt lõi",
     "panelCatIntelligence": "Tình báo",
@@ -263,7 +275,8 @@
     "techReadiness": "Chỉ số Sẵn sàng Công nghệ",
     "gccInvestments": "Đầu tư GCC",
     "geoHubs": "Trung tâm Địa chính trị",
-    "liveWebcams": "Webcam Trực tiếp",
+    "liveYouTube": "Webcam Trực tiếp",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Kinh tế vùng Vịnh",
     "gulfIndices": "Chỉ số vùng Vịnh",
     "gulfCurrencies": "Tiền tệ vùng Vịnh",
@@ -376,6 +389,8 @@
       "noResults": "Không có kết quả",
       "commands": "Lệnh",
       "results": "Kết quả",
+      "seeAllCommands": "Xem tất cả lệnh",
+      "hideCommandList": "Quay lại",
       "navigate": "điều hướng",
       "select": "chọn",
       "close": "đóng",
@@ -756,6 +771,13 @@
       "spikeAlert": "Phát hiện đột biến — giá cao hơn đáng kể so với trung bình 52 tuần (hàng tuần)",
       "warnings": "cảnh báo",
       "aisDisruptions": "Gián đoạn AIS",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Khoáng sản",
       "topProducers": "Nhà sản xuất hàng đầu",
       "risk": "Rủi ro",
@@ -802,7 +824,10 @@
       "yes": "Có",
       "no": "Không",
       "vol": "KL",
-      "closes": "Đóng"
+      "closes": "Đóng",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Sức khỏe Neo giá",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "Không hiển thị lại",
       "layerWarningOk": "Đã hiểu",
       "layersTitle": "Lớp",
+      "layerSearch": "Tìm lớp...",
       "timeAll": "Tất cả",
       "views": {
         "global": "Toàn cầu",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "Cơ sở Hạt nhân",
         "gammaIrradiators": "Cơ sở Chiếu xạ Gamma",
         "spaceports": "Sân bay Vũ trụ",
+        "satellites": "Giám sát Quỹ đạo",
         "pipelines": "Đường ống",
         "militaryActivity": "Hoạt động Quân sự",
         "shipTraffic": "Giao thông Hàng hải",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "Cảnh báo",
       "filterOsint": "OSINT",
       "filterPolitics": "Chính trị",
-      "filterMiddleeast": "Trung Đông"
+      "filterMiddleeast": "Trung Đông",
+      "live": "TRỰC TIẾP",
+      "viewSource": "Xem nguồn"
     },
     "investments": {
       "infoTooltip": "Cơ sở dữ liệu đầu tư trực tiếp nước ngoài của Ả Rập Saudi và UAE vào hạ tầng quan trọng toàn cầu. Nhấp vào hàng để bay đến vị trí đầu tư trên bản đồ.",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Tính toán"
+        "computed": "Tính toán",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Châu Mỹ",
@@ -2056,7 +2087,12 @@
       "usniIntel": "Tình báo USNI",
       "usniSource": "Nguồn: USNI News Fleet Tracker",
       "approximatePosition": "Vị trí ước tính — dựa trên báo cáo hàng tuần USNI, không phải AIS thời gian thực.",
-      "darkDescription": "⚠ Tàu đã mất tín hiệu - mất tín hiệu AIS. Có thể cho thấy hoạt động nhạy cảm."
+      "darkDescription": "⚠ Tàu đã mất tín hiệu - mất tín hiệu AIS. Có thể cho thấy hoạt động nhạy cảm.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Kiểu hiển thị của tile bản đồ.",
     "globePreset": "Cài đặt trước hình ảnh",
     "globePresetDesc": "Chuyển đổi giữa chế độ cổ điển và nâng cao của quả địa cầu."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Mở tổng quan quốc gia",
+    "copyCoordinates": "Sao chép tọa độ"
   }
 }

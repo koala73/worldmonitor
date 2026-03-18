@@ -30,6 +30,24 @@ function getClientIp(request: Request): string {
   );
 }
 
+function tooManyRequestsResponse(
+  limit: number,
+  reset: number,
+  corsHeaders: Record<string, string>,
+): Response {
+  return new Response(JSON.stringify({ error: 'Too many requests' }), {
+    status: 429,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-RateLimit-Limit': String(limit),
+      'X-RateLimit-Remaining': '0',
+      'X-RateLimit-Reset': String(reset),
+      'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
+      ...corsHeaders,
+    },
+  });
+}
+
 export async function checkRateLimit(
   request: Request,
   corsHeaders: Record<string, string>,
@@ -43,17 +61,7 @@ export async function checkRateLimit(
     const { success, limit, reset } = await rl.limit(ip);
 
     if (!success) {
-      return new Response(JSON.stringify({ error: 'Too many requests' }), {
-        status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-RateLimit-Limit': String(limit),
-          'X-RateLimit-Remaining': '0',
-          'X-RateLimit-Reset': String(reset),
-          'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
-          ...corsHeaders,
-        },
-      });
+      return tooManyRequestsResponse(limit, reset, corsHeaders);
     }
 
     return null;
@@ -115,17 +123,7 @@ export async function checkEndpointRateLimit(
     const { success, limit, reset } = await rl.limit(`${pathname}:${ip}`);
 
     if (!success) {
-      return new Response(JSON.stringify({ error: 'Too many requests' }), {
-        status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-RateLimit-Limit': String(limit),
-          'X-RateLimit-Remaining': '0',
-          'X-RateLimit-Reset': String(reset),
-          'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
-          ...corsHeaders,
-        },
-      });
+      return tooManyRequestsResponse(limit, reset, corsHeaders);
     }
 
     return null;

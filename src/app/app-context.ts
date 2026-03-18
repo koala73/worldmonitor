@@ -1,54 +1,12 @@
-import type { NewsItem, Monitor, PanelConfig, MapLayers, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryFlightCluster, MilitaryVessel, MilitaryVesselCluster, CyberThreat, USNIFleetReport } from '@/types';
+import type { InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryFlightCluster, MilitaryVessel, MilitaryVesselCluster, USNIFleetReport, PanelConfig, MapLayers, NewsItem, MarketData, ClusteredEvent, CyberThreat, Monitor } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { IranEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
+import type { SanctionsPressureResult } from '@/services/sanctions-pressure';
+import type { RadiationWatchResult } from '@/services/radiation';
 import type { SecurityAdvisory } from '@/services/security-advisories';
-import type { MapContainer, Panel, NewsPanel, SignalModal, StatusPanel, SearchModal } from '@/components';
-import type { IntelligenceGapBadge } from '@/components';
-import type { MarketData, ClusteredEvent } from '@/types';
-import type { PredictionMarket } from '@/services/prediction';
-import type { TimeRange } from '@/components';
 import type { Earthquake } from '@/services/earthquakes';
-import type { CountryBriefPanel } from '@/components/CountryBriefPanel';
-import type { CountryTimeline } from '@/components/CountryTimeline';
-import type { PlaybackControl } from '@/components';
-import type { ExportPanel } from '@/utils';
-import type { UnifiedSettings } from '@/components/UnifiedSettings';
-import type { PizzIntIndicator } from '@/components';
-import type { ParsedMapUrlState } from '@/utils';
-import type { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
-import type { CountersPanel } from '@/components/CountersPanel';
-import type { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
-import type { BreakthroughsTickerPanel } from '@/components/BreakthroughsTickerPanel';
-import type { HeroSpotlightPanel } from '@/components/HeroSpotlightPanel';
-import type { GoodThingsDigestPanel } from '@/components/GoodThingsDigestPanel';
-import type { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
-import type { RenewableEnergyPanel } from '@/components/RenewableEnergyPanel';
-import type { TvModeController } from '@/services/tv-mode';
-import type { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 
-export interface CountryBriefSignals {
-  criticalNews: number;
-  protests: number;
-  militaryFlights: number;
-  militaryVessels: number;
-  outages: number;
-  aisDisruptions: number;
-  satelliteFires: number;
-  temporalAnomalies: number;
-  cyberThreats: number;
-  earthquakes: number;
-  displacementOutflow: number;
-  climateStress: number;
-  conflictEvents: number;
-  activeStrikes: number;
-  orefSirens: number;
-  orefHistory24h: number;
-  aviationDisruptions: number;
-  travelAdvisories: number;
-  travelAdvisoryMaxLevel: string | null;
-  gpsJammingHexes: number;
-  isTier1: boolean;
-}
+export type { CountryBriefSignals } from '@/types';
 
 export interface IntelligenceCache {
   flightDelays?: AirportDelayAlert[];
@@ -61,21 +19,19 @@ export interface IntelligenceCache {
   iranEvents?: IranEvent[];
   orefAlerts?: { alertCount: number; historyCount24h: number };
   advisories?: SecurityAdvisory[];
-}
-
-export interface AppModule {
-  init(): void | Promise<void>;
-  destroy(): void;
+  sanctions?: SanctionsPressureResult;
+  radiation?: RadiationWatchResult;
+  imageryScenes?: Array<{ id: string; satellite: string; datetime: string; resolutionM: number; mode: string; geometryGeojson: string; previewUrl: string; assetUrl: string }>;
 }
 
 export interface AppContext {
-  map: MapContainer | null;
+  map: import('@/components').MapContainer | null;
   readonly isMobile: boolean;
   readonly isDesktopApp: boolean;
   readonly container: HTMLElement;
 
-  panels: Record<string, Panel>;
-  newsPanels: Record<string, NewsPanel>;
+  panels: Record<string, import('@/components').Panel>;
+  newsPanels: Record<string, import('@/components').NewsPanel>;
   panelSettings: Record<string, PanelConfig>;
 
   mapLayers: MapLayers;
@@ -83,40 +39,41 @@ export interface AppContext {
   allNews: NewsItem[];
   newsByCategory: Record<string, NewsItem[]>;
   latestMarkets: MarketData[];
-  latestPredictions: PredictionMarket[];
+  latestPredictions: import('@/services/prediction').PredictionMarket[];
   latestClusters: ClusteredEvent[];
   intelligenceCache: IntelligenceCache;
   cyberThreatsCache: CyberThreat[] | null;
 
   disabledSources: Set<string>;
-  currentTimeRange: TimeRange;
+  currentTimeRange: import('@/components').TimeRange;
 
   inFlight: Set<string>;
   seenGeoAlerts: Set<string>;
   monitors: Monitor[];
 
-  signalModal: SignalModal | null;
-  statusPanel: StatusPanel | null;
-  searchModal: SearchModal | null;
-  findingsBadge: IntelligenceGapBadge | null;
-  breakingBanner: BreakingNewsBanner | null;
-  playbackControl: PlaybackControl | null;
-  exportPanel: ExportPanel | null;
-  unifiedSettings: UnifiedSettings | null;
-  pizzintIndicator: PizzIntIndicator | null;
-  countryBriefPage: CountryBriefPanel | null;
-  countryTimeline: CountryTimeline | null;
+  signalModal: import('@/components').SignalModal | null;
+  statusPanel: import('@/components').StatusPanel | null;
+  searchModal: import('@/components').SearchModal | null;
+  findingsBadge: import('@/components').IntelligenceGapBadge | null;
+  breakingBanner: import('@/components/BreakingNewsBanner').BreakingNewsBanner | null;
+  playbackControl: import('@/components').PlaybackControl | null;
+  exportPanel: import('@/utils').ExportPanel | null;
+  unifiedSettings: import('@/components/UnifiedSettings').UnifiedSettings | null;
+  pizzintIndicator: import('@/components').PizzIntIndicator | null;
+  correlationEngine: import('@/services/correlation-engine').CorrelationEngine | null;
+  llmStatusIndicator: import('@/components').LlmStatusIndicator | null;
+  countryBriefPage: import('@/components/CountryBriefPanel').CountryBriefPanel | null;
+  countryTimeline: import('@/components/CountryTimeline').CountryTimeline | null;
 
-  // Happy variant state
-  positivePanel: PositiveNewsFeedPanel | null;
-  countersPanel: CountersPanel | null;
-  progressPanel: ProgressChartsPanel | null;
-  breakthroughsPanel: BreakthroughsTickerPanel | null;
-  heroPanel: HeroSpotlightPanel | null;
-  digestPanel: GoodThingsDigestPanel | null;
-  speciesPanel: SpeciesComebackPanel | null;
-  renewablePanel: RenewableEnergyPanel | null;
-  tvMode: TvModeController | null;
+  positivePanel: import('@/components/PositiveNewsFeedPanel').PositiveNewsFeedPanel | null;
+  countersPanel: import('@/components/CountersPanel').CountersPanel | null;
+  progressPanel: import('@/components/ProgressChartsPanel').ProgressChartsPanel | null;
+  breakthroughsPanel: import('@/components/BreakthroughsTickerPanel').BreakthroughsTickerPanel | null;
+  heroPanel: import('@/components/HeroSpotlightPanel').HeroSpotlightPanel | null;
+  digestPanel: import('@/components/GoodThingsDigestPanel').GoodThingsDigestPanel | null;
+  speciesPanel: import('@/components/SpeciesComebackPanel').SpeciesComebackPanel | null;
+  renewablePanel: import('@/components/RenewableEnergyPanel').RenewableEnergyPanel | null;
+  tvMode: import('@/services/tv-mode').TvModeController | null;
   happyAllItems: NewsItem[];
   isDestroyed: boolean;
   isPlaybackMode: boolean;
@@ -124,7 +81,12 @@ export interface AppContext {
   initialLoadComplete: boolean;
   resolvedLocation: 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 
-  initialUrlState: ParsedMapUrlState | null;
+  initialUrlState: import('@/utils').ParsedMapUrlState | null;
   readonly PANEL_ORDER_KEY: string;
   readonly PANEL_SPANS_KEY: string;
+}
+
+export interface AppModule {
+  init(): void | Promise<void>;
+  destroy(): void;
 }

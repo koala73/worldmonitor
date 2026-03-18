@@ -24,6 +24,7 @@ export class StrategicPosturePanel extends Panel {
       showCount: false,
       trackActivity: true,
       infoTooltip: t('components.strategicPosture.infoTooltip'),
+      defaultRowSpan: 2,
     });
     this.init();
   }
@@ -499,7 +500,7 @@ export class StrategicPosturePanel extends Panel {
           element: (el as HTMLElement).textContent?.slice(0, 30),
           hasHandler: !!this.onLocationClick,
         });
-        if (this.onLocationClick && !isNaN(lat) && !isNaN(lon)) {
+        if (this.onLocationClick && !Number.isNaN(lat) && !Number.isNaN(lon)) {
           console.log('[StrategicPosturePanel] Calling onLocationClick with:', lat, lon);
           this.onLocationClick(lat, lon);
         } else {

@@ -297,6 +297,6 @@ runSeed('infrastructure', 'submarine-cables', CANONICAL_KEY, fetchSubmarineCable
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'telegeography-v3',
 }).catch((err) => {
-  console.error('FATAL:', err.message || err);
+  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
 });

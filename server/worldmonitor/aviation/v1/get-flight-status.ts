@@ -5,8 +5,7 @@ import type {
     FlightInstance,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
-import { CHROME_UA } from '../../../_shared/constants';
-import { AVIATIONSTACK_URL } from './_shared';
+import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 
 const CACHE_TTL = 120; // 2 minutes
 
@@ -68,22 +67,21 @@ export async function getFlightStatus(
     try {
         const result = await cachedFetchJson<{ flights: FlightInstance[]; source: string }>(
             cacheKey, CACHE_TTL, async () => {
-                const apiKey = process.env.AVIATIONSTACK_API;
-                if (!apiKey) {
-                    return { flights: [], source: 'no-key' };
+                const relayBase = getRelayBaseUrl();
+                if (!relayBase) {
+                    return { flights: [], source: 'no-relay' };
                 }
 
                 const params = new URLSearchParams({
-                    access_key: apiKey,
                     flight_iata: flightNumber,
                     flight_date: date,
                     limit: '5',
                 });
                 if (origin) params.set('dep_iata', origin);
 
-                const resp = await fetch(`${AVIATIONSTACK_URL}?${params}`, {
-                    headers: { 'User-Agent': CHROME_UA },
-                    signal: AbortSignal.timeout(10_000),
+                const resp = await fetch(`${relayBase}/aviationstack?${params}`, {
+                    headers: getRelayHeaders(),
+                    signal: AbortSignal.timeout(15_000),
                 });
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const json = await resp.json() as { data?: AVSFlight[]; error?: { message?: string } };

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLock, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 const FAA_CACHE_KEY = 'aviation:delays:faa:v1';
-const NOTAM_CACHE_KEY = 'aviation:notam:closures:v1';
+const NOTAM_CACHE_KEY = 'aviation:notam:closures:v2';
 const CACHE_TTL = 7200;
 
 const FAA_URL = 'https://nasstatus.faa.gov/api/airport-status-information';
@@ -19,11 +19,23 @@ const FAA_AIRPORTS = [
   'LGA', 'BWI', 'SLC', 'SAN', 'IAD', 'DCA', 'MDW', 'TPA', 'HNL', 'PDX',
 ];
 
-const MENA_AIRPORTS_ICAO = [
+const MONITORED_AIRPORTS_ICAO = [
+  // MENA
   'OEJN', 'OERK', 'OEMA', 'OEDF', 'OMDB', 'OMAA', 'OMSJ',
   'OTHH', 'OBBI', 'OOMS', 'OKBK', 'OLBA', 'OJAI', 'OSDI',
   'ORBI', 'OIIE', 'OISS', 'OIMM', 'OIKB', 'HECA', 'GMMN',
   'DTTA', 'DAAG', 'HLLT',
+  // Europe
+  'EGLL', 'LFPG', 'EDDF', 'EHAM', 'LEMD', 'LIRF', 'LTFM',
+  'LSZH', 'LOWW', 'EKCH', 'ENGM', 'ESSA', 'EFHK', 'EPWA',
+  // Americas
+  'KJFK', 'KLAX', 'KORD', 'KATL', 'KDFW', 'KDEN', 'KSFO',
+  'CYYZ', 'MMMX', 'SBGR', 'SCEL', 'SKBO',
+  // APAC
+  'RJTT', 'RKSI', 'VHHH', 'WSSS', 'VTBS', 'VIDP', 'YSSY',
+  'ZBAA', 'ZPPP', 'WMKK',
+  // Africa
+  'FAOR', 'DNMM', 'HKJK', 'GABS',
 ];
 
 function parseDelayTypeFromReason(reason) {
@@ -123,7 +135,7 @@ async function redisSet(url, token, key, value, ttl) {
     body: JSON.stringify(cmd),
     signal: AbortSignal.timeout(10_000),
   });
-  return resp.ok;
+  if (!resp.ok) throw new Error(`Redis SET ${key} failed: HTTP ${resp.status}`);
 }
 
 async function seedFaaDelays() {
@@ -177,8 +189,8 @@ async function seedNotamClosures() {
     return null;
   }
 
-  console.log(`[NOTAM] Fetching closures for ${MENA_AIRPORTS_ICAO.length} MENA airports...`);
-  const locations = MENA_AIRPORTS_ICAO.join(',');
+  console.log(`[NOTAM] Fetching closures for ${MONITORED_AIRPORTS_ICAO.length} monitored airports...`);
+  const locations = MONITORED_AIRPORTS_ICAO.join(',');
   const now = Math.floor(Date.now() / 1000);
 
   let notams = [];
@@ -212,7 +224,7 @@ async function seedNotamClosures() {
 
   for (const n of notams) {
     const icao = n.itema || n.location || '';
-    if (!icao || !MENA_AIRPORTS_ICAO.includes(icao)) continue;
+    if (!icao || !MONITORED_AIRPORTS_ICAO.includes(icao)) continue;
     if (n.endvalidity && n.endvalidity < now) continue;
 
     const code23 = (n.code23 || '').toUpperCase();
@@ -246,26 +258,39 @@ async function main() {
 
   console.log('=== aviation:delays Seed ===');
 
-  const locked = await acquireLock('aviation:delays', runId, 120_000);
-  if (!locked) {
+  const lockResult = await acquireLockSafely('aviation:delays', runId, 120_000, { label: 'aviation:delays' });
+  if (lockResult.skipped) {
+    process.exit(0);
+  }
+  if (!lockResult.locked) {
     console.log('  SKIPPED: another seed run in progress');
     process.exit(0);
   }
 
+  let faaData, notamData;
   try {
-    const faaData = await withRetry(seedFaaDelays);
-    const ok1 = await redisSet(url, token, FAA_CACHE_KEY, faaData, CACHE_TTL);
-    console.log(`  ${FAA_CACHE_KEY}: ${ok1 ? 'written' : 'FAILED'}`);
+    faaData = await withRetry(seedFaaDelays);
+    notamData = await seedNotamClosures();
+  } catch (err) {
+    await releaseLock('aviation:delays', runId);
+    console.error(`  FETCH FAILED: ${err.message || err}`);
+    await extendExistingTtl([FAA_CACHE_KEY, NOTAM_CACHE_KEY, 'seed-meta:aviation:faa', 'seed-meta:aviation:notam'], CACHE_TTL);
+    console.log(`\n=== Failed gracefully (${Math.round(Date.now() - startMs)}ms) ===`);
+    process.exit(0);
+  }
+
+  try {
+    await redisSet(url, token, FAA_CACHE_KEY, faaData, CACHE_TTL);
+    console.log(`  ${FAA_CACHE_KEY}: written`);
     await writeFreshnessMetadata('aviation', 'faa', faaData.alerts.length, 'faa-asws');
 
     const verified1 = await verifySeedKey(FAA_CACHE_KEY);
     console.log(`  FAA verified: ${verified1 ? 'yes' : 'NO'}`);
 
     let notamCount = 0;
-    const notamData = await seedNotamClosures();
     if (notamData) {
-      const ok2 = await redisSet(url, token, NOTAM_CACHE_KEY, notamData, CACHE_TTL);
-      console.log(`  ${NOTAM_CACHE_KEY}: ${ok2 ? 'written' : 'FAILED'}`);
+      await redisSet(url, token, NOTAM_CACHE_KEY, notamData, CACHE_TTL);
+      console.log(`  ${NOTAM_CACHE_KEY}: written`);
       notamCount = notamData.closedIcaos.length;
       await writeFreshnessMetadata('aviation', 'notam', notamCount, 'icao-notam');
 
@@ -282,6 +307,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('FATAL:', err.message || err);
+  console.error(`PUBLISH FAILED: ${err.message || err}`);
   process.exit(1);
 });

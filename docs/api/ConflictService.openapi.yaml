@@ -182,6 +182,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/conflict/v1/get-humanitarian-summary-batch:
+        post:
+            tags:
+                - ConflictService
+            summary: GetHumanitarianSummaryBatch
+            description: GetHumanitarianSummaryBatch retrieves humanitarian summaries for multiple countries in one call.
+            operationId: GetHumanitarianSummaryBatch
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetHumanitarianSummaryBatchRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetHumanitarianSummaryBatchResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -482,3 +514,40 @@ components:
                     format: int64
                 severity:
                     type: string
+        GetHumanitarianSummaryBatchRequest:
+            type: object
+            properties:
+                countryCodes:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 25
+                        minItems: 1
+                        description: ISO 3166-1 alpha-2 country codes (e.g., "YE", "SD"). Max 25.
+                    maxItems: 25
+                    minItems: 1
+            description: GetHumanitarianSummaryBatchRequest looks up humanitarian summaries for multiple countries.
+        GetHumanitarianSummaryBatchResponse:
+            type: object
+            properties:
+                results:
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/HumanitarianCountrySummary'
+                    description: Map of country_code -> humanitarian summary for found countries.
+                fetched:
+                    type: integer
+                    format: int32
+                    description: Number of countries successfully fetched.
+                requested:
+                    type: integer
+                    format: int32
+                    description: Number of countries requested.
+            description: GetHumanitarianSummaryBatchResponse contains humanitarian summaries for the requested countries.
+        ResultsEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    $ref: '#/components/schemas/HumanitarianCountrySummary'

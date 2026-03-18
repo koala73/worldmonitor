@@ -3,6 +3,7 @@ import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
 import RSS_ALLOWED_DOMAINS from './_rss-allowed-domains.js';
+import { jsonResponse } from './_json-response.js';
 
 export const config = { runtime: 'edge' };
 
@@ -29,6 +30,12 @@ const RELAY_ONLY_DOMAINS = new Set([
   'www.atlanticcouncil.org',
 ]);
 
+const DIRECT_FETCH_HEADERS = Object.freeze({
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+});
+
 async function fetchViaRailway(feedUrl, timeoutMs) {
   const relayBaseUrl = getRelayBaseUrl();
   if (!relayBaseUrl) return null;
@@ -44,14 +51,17 @@ async function fetchViaRailway(feedUrl, timeoutMs) {
 // Allowed RSS feed domains — shared source of truth (shared/rss-allowed-domains.js)
 const ALLOWED_DOMAINS = RSS_ALLOWED_DOMAINS;
 
+function isAllowedDomain(hostname) {
+  const bare = hostname.replace(/^www\./, '');
+  const withWww = hostname.startsWith('www.') ? hostname : `www.${hostname}`;
+  return ALLOWED_DOMAINS.includes(hostname) || ALLOWED_DOMAINS.includes(bare) || ALLOWED_DOMAINS.includes(withWww);
+}
+
 export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ error: 'Origin not allowed' }, 403, corsHeaders);
   }
 
   // Handle CORS preflight
@@ -59,18 +69,12 @@ export default async function handler(req) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
   const keyCheck = validateApiKey(req);
   if (keyCheck.required && !keyCheck.valid) {
-    return new Response(JSON.stringify({ error: keyCheck.error }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ error: keyCheck.error }, 401, corsHeaders);
   }
 
   const rateLimitResponse = await checkRateLimit(req, corsHeaders);
@@ -80,10 +84,7 @@ export default async function handler(req) {
   const feedUrl = requestUrl.searchParams.get('url');
 
   if (!feedUrl) {
-    return new Response(JSON.stringify({ error: 'Missing url parameter' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ error: 'Missing url parameter' }, 400, corsHeaders);
   }
 
   try {
@@ -91,13 +92,8 @@ export default async function handler(req) {
 
     // Security: Check if domain is allowed (normalize www prefix)
     const hostname = parsedUrl.hostname;
-    const bare = hostname.replace(/^www\./, '');
-    const withWww = hostname.startsWith('www.') ? hostname : `www.${hostname}`;
-    if (!ALLOWED_DOMAINS.includes(hostname) && !ALLOWED_DOMAINS.includes(bare) && !ALLOWED_DOMAINS.includes(withWww)) {
-      return new Response(JSON.stringify({ error: 'Domain not allowed' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
+    if (!isAllowedDomain(hostname)) {
+      return jsonResponse({ error: 'Domain not allowed' }, 403, corsHeaders);
     }
 
     const isRelayOnly = RELAY_ONLY_DOMAINS.has(hostname);
@@ -108,11 +104,7 @@ export default async function handler(req) {
 
     const fetchDirect = async () => {
       const response = await fetchWithTimeout(feedUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
+        headers: DIRECT_FETCH_HEADERS,
         redirect: 'manual',
       }, timeout);
 
@@ -124,21 +116,11 @@ export default async function handler(req) {
           // canonical redirects (e.g. bbc.co.uk → www.bbc.co.uk) are not
           // incorrectly rejected when only one form is in the allowlist.
           const rHost = redirectUrl.hostname;
-          const rBare = rHost.replace(/^www\./, '');
-          const rWithWww = rHost.startsWith('www.') ? rHost : `www.${rHost}`;
-          if (
-            !ALLOWED_DOMAINS.includes(rHost) &&
-            !ALLOWED_DOMAINS.includes(rBare) &&
-            !ALLOWED_DOMAINS.includes(rWithWww)
-          ) {
+          if (!isAllowedDomain(rHost)) {
             throw new Error('Redirect to disallowed domain');
           }
           return fetchWithTimeout(redirectUrl.href, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-              'Accept-Language': 'en-US,en;q=0.9',
-            },
+            headers: DIRECT_FETCH_HEADERS,
           }, timeout);
         }
       }
@@ -165,7 +147,7 @@ export default async function handler(req) {
 
       if (!response.ok && !usedRelay) {
         const relayResponse = await fetchViaRailway(feedUrl, timeout);
-        if (relayResponse && relayResponse.ok) {
+        if (relayResponse?.ok) {
           response = relayResponse;
         }
       }
@@ -192,13 +174,10 @@ export default async function handler(req) {
   } catch (error) {
     const isTimeout = error.name === 'AbortError';
     console.error('RSS proxy error:', feedUrl, error.message);
-    return new Response(JSON.stringify({
+    return jsonResponse({
       error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed',
       details: error.message,
       url: feedUrl
-    }), {
-      status: isTimeout ? 504 : 502,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    }, isTimeout ? 504 : 502, corsHeaders);
   }
 }

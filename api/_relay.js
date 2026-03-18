@@ -1,6 +1,7 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
+import { jsonResponse } from './_json-response.js';
 
 export function getRelayBaseUrl() {
   const relayUrl = process.env.WS_RELAY_URL;
@@ -34,29 +35,20 @@ export function createRelayHandler(cfg) {
     const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
     if (isDisallowedOrigin(req)) {
-      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
+      return jsonResponse({ error: 'Origin not allowed' }, 403, corsHeaders);
     }
 
     if (req.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
     if (req.method !== 'GET') {
-      return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-        status: 405,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
+      return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
     }
 
     if (cfg.requireApiKey) {
       const keyCheck = validateApiKey(req);
       if (keyCheck.required && !keyCheck.valid) {
-        return new Response(JSON.stringify({ error: keyCheck.error }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
-        });
+        return jsonResponse({ error: keyCheck.error }, 401, corsHeaders);
       }
     }
 
@@ -68,10 +60,7 @@ export function createRelayHandler(cfg) {
     const relayBaseUrl = getRelayBaseUrl();
     if (!relayBaseUrl) {
       if (cfg.fallback) return cfg.fallback(req, corsHeaders);
-      return new Response(JSON.stringify({ error: 'WS_RELAY_URL is not configured' }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
+      return jsonResponse({ error: 'WS_RELAY_URL is not configured' }, 503, corsHeaders);
     }
 
     try {
@@ -108,13 +97,10 @@ export function createRelayHandler(cfg) {
     } catch (error) {
       if (cfg.fallback) return cfg.fallback(req, corsHeaders);
       const isTimeout = error?.name === 'AbortError';
-      return new Response(JSON.stringify({
+      return jsonResponse({
         error: isTimeout ? 'Relay timeout' : 'Relay request failed',
         details: error?.message || String(error),
-      }), {
-        status: isTimeout ? 504 : 502,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
+      }, isTimeout ? 504 : 502, corsHeaders);
     }
   };
 }

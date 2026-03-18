@@ -29,6 +29,13 @@ function isNetworkError(error: unknown): boolean {
  * Matches the `ServerOptions.onError` signature:
  *   (error: unknown, req: Request) => Response | Promise<Response>
  */
+function jsonMessageResponse(message: string, status: number, extras?: Record<string, unknown>): Response {
+  return new Response(JSON.stringify({ message, ...(extras ?? {}) }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 export function mapErrorToResponse(error: unknown, _req: Request): Response {
   // ApiError: has statusCode property (e.g., upstream returns 429, 403, etc.)
   if (error instanceof Error && 'statusCode' in error) {
@@ -51,33 +58,21 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
       console.error(`[error-mapper] ${statusCode}:`, error.message, apiBody ? `| body: ${apiBody}` : '');
     }
 
-    return new Response(JSON.stringify(body), {
-      status: statusCode,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonMessageResponse(message, statusCode, statusCode === 429 ? { retryAfter: body.retryAfter } : undefined);
   }
 
   // JSON parse errors from req.json() on malformed/empty POST body → 400 not 500
   if (error instanceof SyntaxError) {
-    return new Response(JSON.stringify({ message: 'Invalid request body' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonMessageResponse('Invalid request body', 400);
   }
 
   // Network/fetch errors: upstream is unreachable (M-5 fix: runtime-agnostic detection)
   if (isNetworkError(error)) {
     console.error('[error-mapper] Network error (502):', (error as Error).message);
-    return new Response(JSON.stringify({ message: 'Upstream unavailable' }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonMessageResponse('Upstream unavailable', 502);
   }
 
   // Catch-all: 500 Internal Server Error
   console.error('[error-mapper] Unhandled error:', error instanceof Error ? error.message : error);
-  return new Response(JSON.stringify({ message: 'Internal server error' }), {
-    status: 500,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  return jsonMessageResponse('Internal server error', 500);
 }

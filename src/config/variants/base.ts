@@ -15,6 +15,7 @@ export const REFRESH_INTERVALS = {
   markets: 12 * 60 * 1000,
   crypto: 12 * 60 * 1000,
   predictions: 15 * 60 * 1000,
+  forecasts: 30 * 60 * 1000,
   ais: 15 * 60 * 1000,
 };
 
@@ -40,6 +41,8 @@ export const STORAGE_KEYS = {
   disabledFeeds: 'worldmonitor-disabled-feeds',
   liveChannels: 'worldmonitor-live-channels',
   mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
+  activeChannel: 'worldmonitor-active-channel',
+  webcamPrefs: 'worldmonitor-webcam-prefs',
 } as const;
 
 // Type definitions for variant configs

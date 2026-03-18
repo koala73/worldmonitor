@@ -101,26 +101,6 @@ export interface RecordBaselineSnapshotResponse {
   error: string;
 }
 
-export interface ListTemporalAnomaliesRequest {
-}
-
-export interface ListTemporalAnomaliesResponse {
-  anomalies: TemporalAnomalyProto[];
-  trackedTypes: string[];
-  computedAt: string;
-}
-
-export interface TemporalAnomalyProto {
-  type: string;
-  region: string;
-  currentCount: number;
-  expectedCount: number;
-  zScore: number;
-  severity: string;
-  multiplier: number;
-  message: string;
-}
-
 export interface GetCableHealthRequest {
 }
 
@@ -141,6 +121,26 @@ export interface CableHealthEvidence {
   source: string;
   summary: string;
   ts: number;
+}
+
+export interface ListTemporalAnomaliesRequest {
+}
+
+export interface ListTemporalAnomaliesResponse {
+  anomalies: TemporalAnomaly[];
+  trackedTypes: string[];
+  computedAt: string;
+}
+
+export interface TemporalAnomaly {
+  type: string;
+  region: string;
+  currentCount: number;
+  expectedCount: number;
+  zScore: number;
+  severity: string;
+  multiplier: number;
+  message: string;
 }
 
 export type CableHealthStatus = "CABLE_HEALTH_STATUS_UNSPECIFIED" | "CABLE_HEALTH_STATUS_OK" | "CABLE_HEALTH_STATUS_DEGRADED" | "CABLE_HEALTH_STATUS_FAULT";

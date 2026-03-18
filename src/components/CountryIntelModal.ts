@@ -7,6 +7,7 @@ import { sanitizeUrl } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket } from '@/services/prediction';
+import { toFlagEmoji } from '@/utils/country-flag';
 
 interface CountryIntelData {
   brief: string;
@@ -73,15 +74,7 @@ export class CountryIntelModal {
   }
 
   private countryFlag(code: string): string {
-    try {
-      return code
-        .toUpperCase()
-        .split('')
-        .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
-        .join('');
-    } catch {
-      return '🌍';
-    }
+    return toFlagEmoji(code, '🌍');
   }
 
   private levelBadge(level: string): string {

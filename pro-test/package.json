@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000",
-    "build": "vite build",
+    "build": "vite build && node prerender.mjs",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },

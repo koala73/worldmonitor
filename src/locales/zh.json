@@ -122,6 +122,17 @@
       "stockIndex": "股票指数：{{value}}",
       "recentHeadlines": "**近期头条：**",
       "activeStrikes": "检测到{{count}}起活跃罢工"
+    },
+    "countryFacts": "国家概况",
+    "loadingFacts": "正在加载国家概况...",
+    "noFacts": "国家概况不可用。",
+    "facts": {
+      "headOfState": "国家元首",
+      "population": "人口",
+      "capital": "首都",
+      "languages": "语言",
+      "currencies": "货币",
+      "area": "面积"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "海湾与中东",
     "filterPanels": "筛选面板...",
     "resetLayout": "重置布局",
+    "resetLayoutTooltip": "恢复默认面板排列",
     "unsavedChanges": "您有未保存的面板更改。要放弃吗？",
     "panelCatCore": "核心",
     "panelCatIntelligence": "情报",
@@ -263,7 +275,8 @@
     "techReadiness": "科技就绪指数",
     "gccInvestments": "GCC投资",
     "geoHubs": "地缘政治枢纽",
-    "liveWebcams": "实时摄像头",
+    "liveYouTube": "实时摄像头",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "海湾经济",
     "gulfIndices": "海湾指数",
     "gulfCurrencies": "海湾货币",
@@ -376,6 +389,8 @@
       "noResults": "无结果",
       "commands": "命令",
       "results": "结果",
+      "seeAllCommands": "查看所有命令",
+      "hideCommandList": "返回",
       "navigate": "导航",
       "select": "选择",
       "close": "关闭",
@@ -756,6 +771,13 @@
       "spikeAlert": "检测到异常飙升 — 费率显著高于52周均值（周度）",
       "warnings": "条警告",
       "aisDisruptions": "AIS中断",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "矿产",
       "topProducers": "主要生产国",
       "risk": "风险",
@@ -802,7 +824,10 @@
       "yes": "是",
       "no": "否",
       "vol": "交易量",
-      "closes": "截止"
+      "closes": "截止",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "锚定健康度",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "不再显示",
       "layerWarningOk": "知道了",
       "layersTitle": "图层",
+      "layerSearch": "搜索图层...",
       "timeAll": "全部",
       "views": {
         "global": "全球",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "核设施",
         "gammaIrradiators": "伽马辐照器",
         "spaceports": "航天发射场",
+        "satellites": "轨道监视",
         "pipelines": "管道",
         "militaryActivity": "军事活动",
         "shipTraffic": "船舶交通",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "警报",
       "filterOsint": "OSINT",
       "filterPolitics": "政治",
-      "filterMiddleeast": "中东"
+      "filterMiddleeast": "中东",
+      "live": "直播",
+      "viewSource": "查看来源"
     },
     "investments": {
       "infoTooltip": "沙特阿拉伯和阿联酋在全球关键基础设施领域的对外直接投资数据库。点击某行可在地图上飞到该投资所在位置。",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "计算值"
+        "computed": "计算值",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "美洲",
@@ -2056,7 +2087,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Source: USNI News Fleet Tracker",
       "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
-      "darkDescription": "⚠ 舰艇进入暗航状态 - AIS信号丢失。可能表明正在执行敏感任务。"
+      "darkDescription": "⚠ 舰艇进入暗航状态 - AIS信号丢失。可能表明正在执行敏感任务。",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "地图图块的视觉风格。",
     "globePreset": "视觉预设",
     "globePresetDesc": "在经典和增强的地球视觉之间切换。"
+  },
+  "contextMenu": {
+    "openCountryBrief": "打开国家简报",
+    "copyCoordinates": "复制坐标"
   }
 }

@@ -122,6 +122,17 @@
       "stockIndex": "Indice bursier: {{value}}",
       "recentHeadlines": "**Titluri recente:**",
       "activeStrikes": "{{count}} avertismente active detectate"
+    },
+    "countryFacts": "Date despre țară",
+    "loadingFacts": "Se încarcă datele țării...",
+    "noFacts": "Datele țării nu sunt disponibile.",
+    "facts": {
+      "headOfState": "Șeful statului",
+      "population": "Populație",
+      "capital": "Capitală",
+      "languages": "Limbi",
+      "currencies": "Monede",
+      "area": "Suprafață"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "Golf și MENA",
     "filterPanels": "Filtrare panouri...",
     "resetLayout": "Resetați aspectul",
+    "resetLayoutTooltip": "Restaurați aranjamentul implicit al panourilor",
     "unsavedChanges": "Aveți modificări nesalvate ale panourilor. Le abandonați?",
     "panelCatCore": "Principal",
     "panelCatIntelligence": "Informații",
@@ -263,7 +275,8 @@
     "techReadiness": "Indicele de pregătire tehnică",
     "gccInvestments": "GCC Investments",
     "geoHubs": "Noduri geopolitice",
-    "liveWebcams": "Camere Live",
+    "liveYouTube": "Camere Live",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Economiile Golfului",
     "gulfIndices": "Indicii Golfului",
     "gulfCurrencies": "Monede din Golf",
@@ -376,6 +389,8 @@
       "noResults": "Niciun rezultat",
       "commands": "Comenzi",
       "results": "Rezultate",
+      "seeAllCommands": "Vezi toate comenzile",
+      "hideCommandList": "Înapoi",
       "navigate": "navigați",
       "select": "selectați",
       "close": "închide",
@@ -756,6 +771,13 @@
       "spikeAlert": "Salt detectat — rata semnificativ peste media pe 52 de săptămâni",
       "warnings": "avertisment(e)",
       "aisDisruptions": "Perturbări AIS",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Mineral",
       "topProducers": "Producători de top",
       "risk": "Risc",
@@ -802,7 +824,10 @@
       "yes": "Da",
       "no": "Nu",
       "vol": "Vol",
-      "closes": "Se închide"
+      "closes": "Se închide",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Peg Health",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "Nu mai afișa",
       "layerWarningOk": "Am înțeles",
       "layersTitle": "Straturi",
+      "layerSearch": "Caută straturi...",
       "timeAll": "Toate",
       "views": {
         "global": "Global",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "Situri nucleare",
         "gammaIrradiators": "Iradiatoare Gamma",
         "spaceports": "Porturi spațiale",
+        "satellites": "Supraveghere Orbitală",
         "pipelines": "Conducte",
         "militaryActivity": "Activitate militară",
         "shipTraffic": "Trafic naval",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "Alerte",
       "filterOsint": "OSINT",
       "filterPolitics": "Politică",
-      "filterMiddleeast": "Orientul Mijlociu"
+      "filterMiddleeast": "Orientul Mijlociu",
+      "live": "ÎN DIRECT",
+      "viewSource": "Vezi sursa"
     },
     "investments": {
       "infoTooltip": "Baza de date despre investițiile străine directe din Arabia Saudită și Emiratele Arabe Unite în infrastructura critică globală. Faceți clic pe un rând pentru a zbura către investiția de pe hartă.",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Calculat"
+        "computed": "Calculat",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "America",
@@ -2056,7 +2087,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Sursa: USNI News Fleet Tracker",
       "approximatePosition": "Poziția aproximativă - bazată pe raportul săptămânal USNI, nu AIS în timp real.",
-      "darkDescription": "⚠ Nava s-a întunecat - semnalul AIS s-a pierdut. Poate indica operațiuni sensibile."
+      "darkDescription": "⚠ Nava s-a întunecat - semnalul AIS s-a pierdut. Poate indica operațiuni sensibile.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Stilul vizual al dalelor hărții.",
     "globePreset": "Presetare vizuală",
     "globePresetDesc": "Comută între vizualizări clasice și îmbunătățite ale globului."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Deschide prezentarea țării",
+    "copyCoordinates": "Copiază coordonatele"
   }
 }

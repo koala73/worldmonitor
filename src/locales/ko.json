@@ -122,6 +122,17 @@
       "stockIndex": "주가 지수: {{value}}",
       "recentHeadlines": "**최근 헤드라인:**",
       "activeStrikes": "{{count}}건의 활성 공습 감지"
+    },
+    "countryFacts": "국가 정보",
+    "loadingFacts": "국가 정보 로딩 중...",
+    "noFacts": "국가 정보를 사용할 수 없습니다.",
+    "facts": {
+      "headOfState": "국가 원수",
+      "population": "인구",
+      "capital": "수도",
+      "languages": "언어",
+      "currencies": "통화",
+      "area": "면적"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "걸프 & MENA",
     "filterPanels": "패널 필터...",
     "resetLayout": "레이아웃 초기화",
+    "resetLayoutTooltip": "기본 패널 배열로 복원",
     "unsavedChanges": "저장되지 않은 패널 변경 사항이 있습니다. 취소하시겠습니까?",
     "panelCatCore": "핵심",
     "panelCatIntelligence": "정보",
@@ -263,7 +275,8 @@
     "techReadiness": "기술 준비 지수",
     "gccInvestments": "GCC 투자",
     "geoHubs": "지정학 허브",
-    "liveWebcams": "실시간 웹캠",
+    "liveYouTube": "실시간 웹캠",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "걸프 경제",
     "gulfIndices": "걸프 지수",
     "gulfCurrencies": "걸프 통화",
@@ -376,6 +389,8 @@
       "noResults": "결과 없음",
       "commands": "명령어",
       "results": "결과",
+      "seeAllCommands": "모든 명령 보기",
+      "hideCommandList": "뒤로",
       "navigate": "탐색",
       "select": "선택",
       "close": "닫기",
@@ -756,6 +771,13 @@
       "spikeAlert": "급등 감지 — 52주 평균(주간)을 크게 상회하는 운임",
       "warnings": "경고",
       "aisDisruptions": "AIS 두절",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "광물",
       "topProducers": "주요 생산국",
       "risk": "위험도",
@@ -802,7 +824,10 @@
       "yes": "예",
       "no": "아니오",
       "vol": "거래량",
-      "closes": "마감"
+      "closes": "마감",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "페그 건전성",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "다시 표시하지 않기",
       "layerWarningOk": "확인",
       "layersTitle": "레이어",
+      "layerSearch": "레이어 검색...",
       "timeAll": "전체",
       "views": {
         "global": "글로벌",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "핵 시설",
         "gammaIrradiators": "감마 조사기",
         "spaceports": "우주 발사장",
+        "satellites": "궤도 감시",
         "pipelines": "파이프라인",
         "militaryActivity": "군사 활동",
         "shipTraffic": "선박 교통",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "경보",
       "filterOsint": "OSINT",
       "filterPolitics": "정치",
-      "filterMiddleeast": "중동"
+      "filterMiddleeast": "중동",
+      "live": "실시간",
+      "viewSource": "출처 보기"
     },
     "investments": {
       "infoTooltip": "사우디아라비아와 UAE의 글로벌 핵심 인프라 해외직접투자 데이터베이스. 행을 클릭하면 지도에서 해당 투자를 확인할 수 있습니다.",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "산출값"
+        "computed": "산출값",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "아메리카",
@@ -2056,7 +2087,12 @@
       "usniIntel": "USNI 정보",
       "usniSource": "출처: USNI News Fleet Tracker",
       "approximatePosition": "대략적 위치 — USNI 주간 보고서 기반이며 실시간 AIS가 아닙니다.",
-      "darkDescription": "⚠ 함정의 AIS 신호가 소실되었습니다 — 민감한 작전 수행 가능성이 있습니다."
+      "darkDescription": "⚠ 함정의 AIS 신호가 소실되었습니다 — 민감한 작전 수행 가능성이 있습니다.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "지도 타일의 시각적 스타일.",
     "globePreset": "시각적 프리셋",
     "globePresetDesc": "클래식과 향상된 글로브 시각화 간 전환."
+  },
+  "contextMenu": {
+    "openCountryBrief": "국가 개요 열기",
+    "copyCoordinates": "좌표 복사"
   }
 }

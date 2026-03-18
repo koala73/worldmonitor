@@ -1,0 +1,329 @@
+openapi: 3.1.0
+info:
+    title: ForecastService API
+    version: 1.0.0
+paths:
+    /api/forecast/v1/get-forecasts:
+        get:
+            tags:
+                - ForecastService
+            summary: GetForecasts
+            operationId: GetForecasts
+            parameters:
+                - name: domain
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: region
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetForecastsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        GetForecastsRequest:
+            type: object
+            properties:
+                domain:
+                    type: string
+                region:
+                    type: string
+        GetForecastsResponse:
+            type: object
+            properties:
+                forecasts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Forecast'
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        Forecast:
+            type: object
+            properties:
+                id:
+                    type: string
+                domain:
+                    type: string
+                region:
+                    type: string
+                title:
+                    type: string
+                scenario:
+                    type: string
+                feedSummary:
+                    type: string
+                probability:
+                    type: number
+                    format: double
+                confidence:
+                    type: number
+                    format: double
+                timeHorizon:
+                    type: string
+                signals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForecastSignal'
+                cascades:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CascadeEffect'
+                trend:
+                    type: string
+                priorProbability:
+                    type: number
+                    format: double
+                calibration:
+                    $ref: '#/components/schemas/CalibrationInfo'
+                createdAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                updatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                perspectives:
+                    $ref: '#/components/schemas/Perspectives'
+                projections:
+                    $ref: '#/components/schemas/Projections'
+                caseFile:
+                    $ref: '#/components/schemas/ForecastCase'
+        ForecastSignal:
+            type: object
+            properties:
+                type:
+                    type: string
+                value:
+                    type: string
+                weight:
+                    type: number
+                    format: double
+        CascadeEffect:
+            type: object
+            properties:
+                domain:
+                    type: string
+                effect:
+                    type: string
+                probability:
+                    type: number
+                    format: double
+        CalibrationInfo:
+            type: object
+            properties:
+                marketTitle:
+                    type: string
+                marketPrice:
+                    type: number
+                    format: double
+                drift:
+                    type: number
+                    format: double
+                source:
+                    type: string
+        Perspectives:
+            type: object
+            properties:
+                strategic:
+                    type: string
+                regional:
+                    type: string
+                contrarian:
+                    type: string
+        Projections:
+            type: object
+            properties:
+                h24:
+                    type: number
+                    format: double
+                d7:
+                    type: number
+                    format: double
+                d30:
+                    type: number
+                    format: double
+        ForecastCase:
+            type: object
+            properties:
+                supportingEvidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForecastCaseEvidence'
+                counterEvidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForecastCaseEvidence'
+                triggers:
+                    type: array
+                    items:
+                        type: string
+                actorLenses:
+                    type: array
+                    items:
+                        type: string
+                baseCase:
+                    type: string
+                escalatoryCase:
+                    type: string
+                contrarianCase:
+                    type: string
+                changeSummary:
+                    type: string
+                changeItems:
+                    type: array
+                    items:
+                        type: string
+                actors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForecastActor'
+                worldState:
+                    $ref: '#/components/schemas/ForecastWorldState'
+                branches:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForecastBranch'
+        ForecastCaseEvidence:
+            type: object
+            properties:
+                type:
+                    type: string
+                summary:
+                    type: string
+                weight:
+                    type: number
+                    format: double
+        ForecastActor:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                category:
+                    type: string
+                role:
+                    type: string
+                objectives:
+                    type: array
+                    items:
+                        type: string
+                constraints:
+                    type: array
+                    items:
+                        type: string
+                likelyActions:
+                    type: array
+                    items:
+                        type: string
+                influenceScore:
+                    type: number
+                    format: double
+        ForecastWorldState:
+            type: object
+            properties:
+                summary:
+                    type: string
+                activePressures:
+                    type: array
+                    items:
+                        type: string
+                stabilizers:
+                    type: array
+                    items:
+                        type: string
+                keyUnknowns:
+                    type: array
+                    items:
+                        type: string
+        ForecastBranch:
+            type: object
+            properties:
+                kind:
+                    type: string
+                title:
+                    type: string
+                summary:
+                    type: string
+                outcome:
+                    type: string
+                projectedProbability:
+                    type: number
+                    format: double
+                rounds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForecastBranchRound'
+        ForecastBranchRound:
+            type: object
+            properties:
+                round:
+                    type: integer
+                    format: int32
+                focus:
+                    type: string
+                developments:
+                    type: array
+                    items:
+                        type: string
+                actorMoves:
+                    type: array
+                    items:
+                        type: string
+                probabilityShift:
+                    type: number
+                    format: double

@@ -56,7 +56,7 @@ export class PlaybackControl {
     });
 
     slider.addEventListener('input', () => {
-      const idx = parseInt(slider.value);
+      const idx = parseInt(slider.value, 10);
       this.currentIndex = idx;
       this.loadSnapshot(idx);
     });

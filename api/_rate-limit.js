@@ -1,5 +1,6 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { jsonResponse } from './_json-response.js';
 
 let ratelimit = null;
 
@@ -38,16 +39,12 @@ export async function checkRateLimit(request, corsHeaders) {
     const { success, limit, reset } = await rl.limit(ip);
 
     if (!success) {
-      return new Response(JSON.stringify({ error: 'Too many requests' }), {
-        status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-RateLimit-Limit': String(limit),
-          'X-RateLimit-Remaining': '0',
-          'X-RateLimit-Reset': String(reset),
-          'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
-          ...corsHeaders,
-        },
+      return jsonResponse({ error: 'Too many requests' }, 429, {
+        'X-RateLimit-Limit': String(limit),
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': String(reset),
+        'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
+        ...corsHeaders,
       });
     }
 

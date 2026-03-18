@@ -58,7 +58,7 @@ async function fetchSpending() {
     recipientName: String(r['Recipient Name'] || 'Unknown'),
     amount: Number(r['Award Amount']) || 0,
     agency: String(r['Awarding Agency'] || 'Unknown'),
-    description: String(r['Description'] || '').slice(0, 200),
+    description: String(r.Description || '').slice(0, 200),
     startDate: String(r['Start Date'] || ''),
     awardType: AWARD_TYPE_MAP[String(r['Award Type'] || '')] || 'other',
   }));
@@ -83,6 +83,6 @@ runSeed('economic', 'spending', CANONICAL_KEY, fetchSpending, {
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'usaspending-v2',
 }).catch((err) => {
-  console.error('FATAL:', err.message || err);
+  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
 });

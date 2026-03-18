@@ -126,10 +126,10 @@ function toEpochMs(v) {
   const raw = clean(String(v), 80);
   if (!raw) return 0;
   const d = new Date(raw);
-  if (!isNaN(d.getTime())) return d.getTime();
+  if (!Number.isNaN(d.getTime())) return d.getTime();
   const norm = raw.replace(' UTC', 'Z').replace(' GMT', 'Z').replace(' +00:00', 'Z').replace(' ', 'T');
   const d2 = new Date(norm);
-  return isNaN(d2.getTime()) ? 0 : d2.getTime();
+  return Number.isNaN(d2.getTime()) ? 0 : d2.getTime();
 }
 
 function normTags(input, max = 8) {
@@ -556,7 +556,7 @@ async function fetchAllThreats() {
 
   // Keep all threats — geo-resolved first, then unresolved (so the seed never returns 0
   // when GeoIP APIs are rate-limited). Frontend handles missing location gracefully.
-  let results = hydrated.slice();
+  const results = hydrated.slice();
   const geoCount = results.filter((t) => validCoords(t.lat, t.lon)).length;
   console.log(`  Geo resolved: ${geoCount}/${results.length}`);
 
@@ -582,6 +582,6 @@ runSeed('cyber', 'threats', CANONICAL_KEY, fetchAllThreats, {
   sourceVersion: 'multi-ioc-v2',
   extraKeys: [{ key: BOOTSTRAP_KEY }],
 }).catch((err) => {
-  console.error('FATAL:', err.message || err);
+  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
 });

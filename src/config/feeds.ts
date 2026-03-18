@@ -510,6 +510,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
         es: rss('https://es.euronews.com/rss?format=xml'),
         pt: rss('https://pt.euronews.com/rss?format=xml'),
         ru: rss('https://ru.euronews.com/rss?format=xml'),
+        gr: rss('https://gr.euronews.com/rss?format=xml'),
       }
     },
     {
@@ -627,14 +628,12 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Atlantic Council', url: railwayRss('https://www.atlanticcouncil.org/feed/') },
     { name: 'Foreign Affairs', url: rss('https://www.foreignaffairs.com/rss.xml') },
     { name: 'CSIS', url: rss('https://news.google.com/rss/search?q=site:csis.org+when:7d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'RAND', url: rss('https://news.google.com/rss/search?q=site:rand.org+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'RAND', url: rss('https://www.rand.org/pubs/articles.xml') },
     { name: 'Brookings', url: rss('https://news.google.com/rss/search?q=site:brookings.edu+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Carnegie', url: rss('https://news.google.com/rss/search?q=site:carnegieendowment.org+when:7d&hl=en-US&gl=US&ceid=US:en') },
     // New verified think tank feeds
     // War on the Rocks - Defense and national security analysis
     { name: 'War on the Rocks', url: rss('https://warontherocks.com/feed') },
-    // AEI - American Enterprise Institute (US conservative think tank)
-    { name: 'AEI', url: rss('https://www.aei.org/feed/') },
     // Responsible Statecraft - Foreign policy analysis (Quincy Institute)
     { name: 'Responsible Statecraft', url: rss('https://responsiblestatecraft.org/feed/') },
     // RUSI - Royal United Services Institute (UK defense & security)
@@ -678,7 +677,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'El Tiempo', url: rss('https://www.eltiempo.com/rss/mundo_latinoamerica.xml'), lang: 'es' },
     { name: 'La Silla Vacía', url: rss('https://www.lasillavacia.com/rss') },
     { name: 'Primicias', url: rss('https://www.primicias.ec/feed/'), lang: 'es' },
-    { name: 'Infobae Americas', url: rss('https://www.infobae.com/feeds/rss/'), lang: 'es' },
+    { name: 'Infobae Americas', url: rss('https://www.infobae.com/arc/outboundfeeds/rss/'), lang: 'es' },
     { name: 'El Universo', url: rss('https://www.eluniverso.com/arc/outboundfeeds/rss/category/noticias/?outputType=xml'), lang: 'es' },
     // Mexico
     { name: 'Mexico News Daily', url: rss('https://mexiconewsdaily.com/feed/') },
@@ -1051,7 +1050,6 @@ const HAPPY_FEEDS: Record<string, Feed[]> = {
     { name: 'GOOD Magazine', url: rss('https://www.good.is/feed/') },
     { name: 'Sunny Skyz', url: rss('https://www.sunnyskyz.com/rss_tebow.php') },
     { name: 'The Better India', url: rss('https://thebetterindia.com/feed/') },
-    { name: 'My Modern Met', url: rss('https://mymodernmet.com/feed/') },
   ],
   science: [
     { name: 'GNN Science', url: rss('https://www.goodnewsnetwork.org/category/news/science/feed/') },
@@ -1164,6 +1162,13 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
     { name: 'Seeking Alpha Metals', url: rss('https://news.google.com/rss/search?q=site:seekingalpha.com+(gold+OR+silver+OR+copper+OR+mining)+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Commodity Futures', url: rss('https://news.google.com/rss/search?q=(COMEX+OR+NYMEX+OR+"commodity+futures"+OR+CME+commodities)+when:2d&hl=en-US&gl=US&ceid=US:en') },
   ],
+  finance: [
+    { name: 'CNBC', url: rss('https://www.cnbc.com/id/100003114/device/rss/rss.html') },
+    { name: 'MarketWatch', url: rss('https://news.google.com/rss/search?q=site:marketwatch.com+markets+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Yahoo Finance', url: rss('https://finance.yahoo.com/news/rssindex') },
+    { name: 'Financial Times', url: rss('https://www.ft.com/rss/home') },
+    { name: 'Reuters Business', url: rss('https://news.google.com/rss/search?q=site:reuters.com+business+markets&hl=en-US&gl=US&ceid=US:en') },
+  ],
 };
 
 // Variant-aware exports
@@ -1213,7 +1218,6 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
 export const INTEL_SOURCES: Feed[] = [
   // Defense & Security (Tier 1)
   { name: 'Defense One', url: rss('https://www.defenseone.com/rss/all/'), type: 'defense' },
-  { name: 'Breaking Defense', url: rss('https://breakingdefense.com/feed/'), type: 'defense' },
   { name: 'The War Zone', url: rss('https://www.twz.com/feed'), type: 'defense' },
   { name: 'Defense News', url: rss('https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml'), type: 'defense' },
   { name: 'Janes', url: rss('https://news.google.com/rss/search?q=site:janes.com+when:3d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },
@@ -1234,7 +1238,7 @@ export const INTEL_SOURCES: Feed[] = [
   { name: 'Middle East Institute', url: rss('https://news.google.com/rss/search?q=site:mei.edu+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
 
   // Think Tanks & Research (Tier 3)
-  { name: 'RAND', url: rss('https://news.google.com/rss/search?q=site:rand.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
+  { name: 'RAND', url: rss('https://www.rand.org/pubs/articles.xml'), type: 'research' },
   { name: 'Brookings', url: rss('https://news.google.com/rss/search?q=site:brookings.edu&hl=en&gl=US&ceid=US:en'), type: 'research' },
   { name: 'Carnegie', url: rss('https://news.google.com/rss/search?q=site:carnegieendowment.org&hl=en&gl=US&ceid=US:en'), type: 'research' },
   { name: 'FAS', url: rss('https://news.google.com/rss/search?q=site:fas.org+nuclear+weapons+security&hl=en&gl=US&ceid=US:en'), type: 'research' },

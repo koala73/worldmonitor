@@ -312,6 +312,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/military/v1/get-wingbits-live-flight:
+        get:
+            tags:
+                - MilitaryService
+            summary: GetWingbitsLiveFlight
+            description: GetWingbitsLiveFlight retrieves real-time position data from the Wingbits ECS network for a single aircraft.
+            operationId: GetWingbitsLiveFlight
+            parameters:
+                - name: icao24
+                  in: query
+                  description: ICAO 24-bit hex address (lowercase, 6 characters).
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetWingbitsLiveFlightResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1038,3 +1071,69 @@ components:
                 expansionZoom:
                     type: integer
                     format: int32
+        GetWingbitsLiveFlightRequest:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    minLength: 1
+                    description: ICAO 24-bit hex address (lowercase, 6 characters).
+            required:
+                - icao24
+            description: GetWingbitsLiveFlightRequest fetches live Wingbits ECS data for a single aircraft.
+        GetWingbitsLiveFlightResponse:
+            type: object
+            properties:
+                flight:
+                    $ref: '#/components/schemas/WingbitsLiveFlight'
+            description: GetWingbitsLiveFlightResponse contains the live flight data, if available.
+        WingbitsLiveFlight:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    description: ICAO 24-bit hex address.
+                callsign:
+                    type: string
+                    description: Live callsign.
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude in decimal degrees.
+                lon:
+                    type: number
+                    format: double
+                    description: Longitude in decimal degrees.
+                altitude:
+                    type: number
+                    format: double
+                    description: Altitude in feet.
+                speed:
+                    type: number
+                    format: double
+                    description: Ground speed in knots.
+                heading:
+                    type: number
+                    format: double
+                    description: Track/heading in degrees.
+                verticalRate:
+                    type: number
+                    format: double
+                    description: Vertical rate in feet per minute (positive = climb, negative = descent).
+                registration:
+                    type: string
+                    description: Aircraft registration number.
+                model:
+                    type: string
+                    description: Aircraft model (e.g. "PC-12/45").
+                operator:
+                    type: string
+                    description: Operator name.
+                onGround:
+                    type: boolean
+                    description: True if the aircraft is on the ground.
+                lastSeen:
+                    type: string
+                    format: int64
+                    description: Unix timestamp of the last position update.
+            description: WingbitsLiveFlight contains real-time flight position data from the Wingbits ECS network.

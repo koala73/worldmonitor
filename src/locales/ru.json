@@ -122,6 +122,17 @@
       "stockIndex": "Фондовый индекс: {{value}}",
       "recentHeadlines": "**Последние заголовки:**",
       "activeStrikes": "{{count}} активных забастовок обнаружено"
+    },
+    "countryFacts": "Сведения о стране",
+    "loadingFacts": "Загрузка сведений о стране...",
+    "noFacts": "Сведения о стране недоступны.",
+    "facts": {
+      "headOfState": "Глава государства",
+      "population": "Население",
+      "capital": "Столица",
+      "languages": "Языки",
+      "currencies": "Валюты",
+      "area": "Площадь"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "Залив и БВСА",
     "filterPanels": "Фильтр панелей...",
     "resetLayout": "Сбросить макет",
+    "resetLayoutTooltip": "Восстановить расположение панелей по умолчанию",
     "unsavedChanges": "У вас есть несохранённые изменения панелей. Отменить?",
     "panelCatCore": "Основные",
     "panelCatIntelligence": "Разведка",
@@ -263,7 +275,8 @@
     "techReadiness": "Индекс технологической готовности",
     "gccInvestments": "Инвестиции стран Залива",
     "geoHubs": "Геополитические хабы",
-    "liveWebcams": "Веб-камеры",
+    "liveYouTube": "Веб-камеры",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Экономика Залива",
     "gulfIndices": "Индексы Залива",
     "gulfCurrencies": "Валюты Залива",
@@ -376,6 +389,8 @@
       "noResults": "Ничего не найдено",
       "commands": "Команды",
       "results": "Результаты",
+      "seeAllCommands": "Показать все команды",
+      "hideCommandList": "Назад",
       "navigate": "навигация",
       "select": "выбрать",
       "close": "закрыть",
@@ -756,6 +771,13 @@
       "spikeAlert": "Обнаружен всплеск — ставка значительно выше средней за 52 недели (еженедельно)",
       "warnings": "предупреждений",
       "aisDisruptions": "Нарушение(я) AIS",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Минерал",
       "topProducers": "Крупнейшие производители",
       "risk": "Риск",
@@ -802,7 +824,10 @@
       "yes": "Да",
       "no": "Нет",
       "vol": "Объём",
-      "closes": "Закрывается"
+      "closes": "Закрывается",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Здоровье привязки",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "Больше не показывать",
       "layerWarningOk": "Понятно",
       "layersTitle": "Слои",
+      "layerSearch": "Поиск слоёв...",
       "timeAll": "Все",
       "views": {
         "global": "Глобальный",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "Ядерные объекты",
         "gammaIrradiators": "Гамма-облучатели",
         "spaceports": "Космодромы",
+        "satellites": "Орбитальное наблюдение",
         "pipelines": "Трубопроводы",
         "militaryActivity": "Военная активность",
         "shipTraffic": "Судоходство",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "Оповещения",
       "filterOsint": "OSINT",
       "filterPolitics": "Политика",
-      "filterMiddleeast": "Ближний Восток"
+      "filterMiddleeast": "Ближний Восток",
+      "live": "ПРЯМОЙ ЭФИР",
+      "viewSource": "Посмотреть источник"
     },
     "investments": {
       "infoTooltip": "База данных прямых иностранных инвестиций Саудовской Аравии и ОАЭ в мировую критическую инфраструктуру. Нажмите на строку для перехода к инвестиции на карте.",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Расчётные"
+        "computed": "Расчётные",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Америка",
@@ -2056,7 +2087,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Source: USNI News Fleet Tracker",
       "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
-      "darkDescription": "⚠ Судно ушло в тёмный режим — сигнал AIS потерян. Может указывать на секретные операции."
+      "darkDescription": "⚠ Судно ушло в тёмный режим — сигнал AIS потерян. Может указывать на секретные операции.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Визуальный стиль тайлов карты.",
     "globePreset": "Визуальный пресет",
     "globePresetDesc": "Переключение между классической и улучшенной визуализацией глобуса."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Открыть обзор страны",
+    "copyCoordinates": "Скопировать координаты"
   }
 }

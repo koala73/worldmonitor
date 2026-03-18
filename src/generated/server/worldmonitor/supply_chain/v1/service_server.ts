@@ -48,6 +48,37 @@ export interface ChokepointInfo {
   affectedRoutes: string[];
   description: string;
   aisDisruptions: number;
+  directions: string[];
+  directionalDwt: DirectionalDwt[];
+  transitSummary?: TransitSummary;
+}
+
+export interface DirectionalDwt {
+  direction: string;
+  dwtThousandTonnes: number;
+  wowChangePct: number;
+}
+
+export interface TransitSummary {
+  todayTotal: number;
+  todayTanker: number;
+  todayCargo: number;
+  todayOther: number;
+  wowChangePct: number;
+  history: TransitDayCount[];
+  riskLevel: string;
+  incidentCount7d: number;
+  disruptionPct: number;
+  riskSummary: string;
+  riskReportAction: string;
+}
+
+export interface TransitDayCount {
+  date: string;
+  tanker: number;
+  cargo: number;
+  other: number;
+  total: number;
 }
 
 export interface GetCriticalMineralsRequest {

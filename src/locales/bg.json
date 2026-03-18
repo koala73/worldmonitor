@@ -122,6 +122,17 @@
       "stockIndex": "Фондов индекс: {{value}}",
       "recentHeadlines": "**Скорошни заглавия:**",
       "activeStrikes": "{{count}} активни удари открити"
+    },
+    "countryFacts": "Факти за страната",
+    "loadingFacts": "Зареждане на фактите за страната...",
+    "noFacts": "Фактите за страната не са налични.",
+    "facts": {
+      "headOfState": "Държавен глава",
+      "population": "Население",
+      "capital": "Столица",
+      "languages": "Езици",
+      "currencies": "Валути",
+      "area": "Площ"
     }
   },
   "header": {
@@ -175,6 +186,7 @@
     "sourceRegionGulfMena": "Залив & MENA",
     "filterPanels": "Филтриране на панели...",
     "resetLayout": "Нулиране на оформлението",
+    "resetLayoutTooltip": "Възстановяване на подредбата на панелите по подразбиране",
     "unsavedChanges": "Имате незапазени промени на панелите. Да ги отхвърлите ли?",
     "panelCatCore": "Основно",
     "panelCatIntelligence": "Разузнаване",
@@ -263,7 +275,8 @@
     "techReadiness": "Индекс на технологическа готовност",
     "gccInvestments": "GCC инвестиции",
     "geoHubs": "Геополитични центрове",
-    "liveWebcams": "Живи уеб камери",
+    "liveYouTube": "Живи уеб камери",
+    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Икономики на залива",
     "gulfIndices": "Индекси на залива",
     "gulfCurrencies": "Валути на залива",
@@ -376,6 +389,8 @@
       "noResults": "Няма резултати",
       "commands": "Команди",
       "results": "Резултати",
+      "seeAllCommands": "Виж всички команди",
+      "hideCommandList": "Назад",
       "navigate": "навигиране",
       "select": "избор",
       "close": "затвори",
@@ -756,6 +771,13 @@
       "spikeAlert": "Открит скок — курс значително над 52-седмичната средна стойност (седмично)",
       "warnings": "предупреждение(я)",
       "aisDisruptions": "AIS нарушение(я)",
+      "routingAction": "Routing",
+      "disruption": "Disruption",
+      "vessels": "vessels",
+      "incidents7d": "incidents (7d)",
+      "corridorDisruption": "Corridor Disruption",
+      "corridor": "Corridor",
+      "loadingCorridors": "Loading corridor data...",
       "mineral": "Минерал",
       "topProducers": "Топ производители",
       "risk": "Риск",
@@ -802,7 +824,10 @@
       "yes": "Да",
       "no": "Не",
       "vol": "Обем",
-      "closes": "Затвария"
+      "closes": "Затвария",
+      "leanYes": "Lean Yes",
+      "leanNo": "Lean No",
+      "tossUp": "Toss-up"
     },
     "stablecoins": {
       "pegHealth": "Здравина на пега",
@@ -979,6 +1004,7 @@
       "layerWarningDismiss": "Не показвай отново",
       "layerWarningOk": "Разбрах",
       "layersTitle": "Слои",
+      "layerSearch": "Търсене на слоеве...",
       "timeAll": "Всички",
       "views": {
         "global": "Глобално",
@@ -1008,6 +1034,7 @@
         "nuclearSites": "Ядрени места",
         "gammaIrradiators": "Гама облъчватели",
         "spaceports": "Космически пристанища",
+        "satellites": "Орбитално наблюдение",
         "pipelines": "Тръбопроводи",
         "militaryActivity": "Военна активност",
         "shipTraffic": "Трафик на кораби",
@@ -1515,7 +1542,9 @@
       "filterAlerts": "Алерти",
       "filterOsint": "OSINT",
       "filterPolitics": "Политика",
-      "filterMiddleeast": "Близкия изток"
+      "filterMiddleeast": "Близкия изток",
+      "live": "НА ЖИВО",
+      "viewSource": "Виж източника"
     },
     "investments": {
       "infoTooltip": "База данни на Саудитска Арабия и UAE преки чужди инвестиции в глобална критична инфраструктура. Кликнете на ред, за да летите на инвестицията на карта.",
@@ -1757,7 +1786,9 @@
       "sources": {
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
-        "computed": "Изчислено"
+        "computed": "Изчислено",
+        "aviationstack": "Flight Data",
+        "notam": "NOTAM"
       },
       "regions": {
         "americas": "Америки",
@@ -2056,7 +2087,12 @@
       "usniIntel": "USNI Intel",
       "usniSource": "Източник: USNI новини Fleet Tracker",
       "approximatePosition": "Позиция приблизителна — на базата на USNI седмичен доклад, не реално време AIS.",
-      "darkDescription": "⚠ Кораб е отишло тъмно - AIS сигнал загубен. Може да указва на чувствителни операции."
+      "darkDescription": "⚠ Кораб е отишло тъмно - AIS сигнал загубен. Може да указва на чувствителни операции.",
+      "recentTracking": "Recent Tracking",
+      "lastReport": "LATEST",
+      "nearChokepoint": "NEAR CHOKEPOINT",
+      "nearBase": "NEAR BASE",
+      "lastSeen": "LAST SEEN"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2362,5 +2398,9 @@
     "mapThemeDesc": "Визуален стил на картните плочки.",
     "globePreset": "Визуален предварителен набор",
     "globePresetDesc": "Превключване между класически и подобрени визуализации."
+  },
+  "contextMenu": {
+    "openCountryBrief": "Отвори обзор на страната",
+    "copyCoordinates": "Копирай координати"
   }
 }

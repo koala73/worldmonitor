@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as contactMessages from "../contactMessages.js";
 import type * as registerInterest from "../registerInterest.js";
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  contactMessages: typeof contactMessages;
   registerInterest: typeof registerInterest;
 }>;
 
