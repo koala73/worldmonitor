@@ -2966,7 +2966,7 @@ async function handleWingbitsTrackRequest(req, res) {
 
   const centerLat = (lamin + lamax) / 2;
   const centerLon = (lomin + lomax) / 2;
-  const widthNm = Math.abs(lomax - lomin) * 60;
+  const widthNm = Math.abs(lomax - lomin) * 60 * Math.cos(centerLat * Math.PI / 180);
   const heightNm = Math.abs(lamax - lamin) * 60;
   const areas = [{ alias: 'viewport', by: 'box', la: centerLat, lo: centerLon, w: widthNm, h: heightNm, unit: 'nm' }];
 
@@ -3013,7 +3013,7 @@ async function handleWingbitsTrackRequest(req, res) {
           groundSpeedKts: f.gs ?? f.groundSpeed ?? f.speed ?? 0,
           trackDeg: f.th ?? f.heading ?? f.track ?? 0,
           verticalRate: 0,
-          onGround: f.og ?? false,
+          onGround: f.og ?? f.gr ?? f.onGround ?? false,
           source: 'POSITION_SOURCE_WINGBITS',
           observedAt: f.ra ? new Date(f.ra).getTime() : now,
         });
