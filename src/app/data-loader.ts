@@ -275,7 +275,7 @@ export class DataLoaderManager implements AppModule {
     try {
       const resp = await fetch(
         toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${getCurrentLanguage()}`),
-        { signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
+        { cache: 'no-cache', signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json() as ListFeedDigestResponse;

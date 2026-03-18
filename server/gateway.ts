@@ -24,12 +24,13 @@ export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
 // NOTE: This map is shared across all domain bundles (~3KB). Kept centralised for
 // single-source-of-truth maintainability; the size is negligible vs handler code.
 
-type CacheTier = 'fast' | 'medium' | 'slow' | 'static' | 'daily' | 'no-store';
+type CacheTier = 'fast' | 'medium' | 'slow' | 'slow-browser' | 'static' | 'daily' | 'no-store';
 
 const TIER_HEADERS: Record<CacheTier, string> = {
   fast: 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=600',
   medium: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
   slow: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',
+  'slow-browser': 'public, max-age=300, s-maxage=900, stale-while-revalidate=60, stale-if-error=1800',
   static: 'public, s-maxage=7200, stale-while-revalidate=600, stale-if-error=14400',
   daily: 'public, s-maxage=86400, stale-while-revalidate=7200, stale-if-error=172800',
   'no-store': 'no-store',
@@ -41,6 +42,7 @@ const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
   fast: 'public, s-maxage=600, stale-while-revalidate=300, stale-if-error=1200',
   medium: 'public, s-maxage=1200, stale-while-revalidate=600, stale-if-error=1800',
   slow: 'public, s-maxage=3600, stale-while-revalidate=900, stale-if-error=7200',
+  'slow-browser': 'public, s-maxage=900, stale-while-revalidate=60, stale-if-error=1800',
   static: 'public, s-maxage=14400, stale-while-revalidate=3600, stale-if-error=28800',
   daily: 'public, s-maxage=86400, stale-while-revalidate=14400, stale-if-error=172800',
   'no-store': null,
@@ -127,7 +129,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/prediction/v1/list-prediction-markets': 'medium',
   '/api/forecast/v1/get-forecasts': 'medium',
   '/api/supply-chain/v1/get-chokepoint-status': 'medium',
-  '/api/news/v1/list-feed-digest': 'slow',
+  '/api/news/v1/list-feed-digest': 'slow-browser',
   '/api/intelligence/v1/classify-event': 'static',
   '/api/intelligence/v1/get-country-facts': 'daily',
   '/api/intelligence/v1/list-security-advisories': 'slow',
