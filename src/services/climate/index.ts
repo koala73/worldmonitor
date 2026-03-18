@@ -15,8 +15,8 @@ import { getHydratedData } from '@/services/bootstrap';
 // mapping happens internally in toDisplayAnomaly().
 export interface ClimateAnomaly {
   /**
-   * The geographic region or named area where the anomaly is occurring
-   * (e.g., a specific geohash, a named region, or a bounding box).
+   * A named geographic region or label where the anomaly is occurring
+   * (e.g., "Northern Europe", "Southeast Asia").
    */
   zone: string;
   lat: number;
