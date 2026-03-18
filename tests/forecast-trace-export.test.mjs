@@ -65,7 +65,22 @@ describe('forecast trace artifact builder', () => {
     populateFallbackNarratives([a, b]);
 
     const artifacts = buildForecastTraceArtifacts(
-      { generatedAt: Date.parse('2026-03-15T08:00:00Z'), predictions: [a, b] },
+      {
+        generatedAt: Date.parse('2026-03-15T08:00:00Z'),
+        predictions: [a, b],
+        triggerContext: {
+          triggerSource: 'military_chain',
+          triggerService: 'seed-forecasts',
+          deployRevision: 'abc123',
+          triggerRequest: {
+            requestedAt: Date.parse('2026-03-15T07:59:00Z'),
+            requestedAtIso: '2026-03-15T07:59:00.000Z',
+            requester: 'seed-military-flights',
+            requesterRunId: 'mil-run-1',
+            sourceVersion: 'wingbits',
+          },
+        },
+      },
       { runId: 'run-123' },
       { basePrefix: 'forecast-runs', maxForecasts: 1 },
     );
@@ -73,6 +88,7 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.manifest.runId, 'run-123');
     assert.equal(artifacts.manifest.forecastCount, 2);
     assert.equal(artifacts.manifest.tracedForecastCount, 1);
+    assert.equal(artifacts.manifest.triggerContext.triggerSource, 'military_chain');
     assert.match(artifacts.manifestKey, /forecast-runs\/2026\/03\/15\/run-123\/manifest\.json/);
     assert.match(artifacts.summaryKey, /forecast-runs\/2026\/03\/15\/run-123\/summary\.json/);
     assert.match(artifacts.worldStateKey, /forecast-runs\/2026\/03\/15\/run-123\/world-state\.json/);
@@ -125,6 +141,7 @@ describe('forecast trace artifact builder', () => {
     assert.ok(typeof artifacts.summary.worldStateSummary.newlyActiveActors === 'number');
     assert.equal(artifacts.summary.worldStateSummary.branchCount, 6);
     assert.equal(artifacts.summary.worldStateSummary.newBranches, 6);
+    assert.equal(artifacts.summary.triggerContext.triggerRequest.requester, 'seed-military-flights');
     assert.ok(Array.isArray(artifacts.worldState.situationClusters));
     assert.ok(Array.isArray(artifacts.worldState.report.situationWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.actorWatchlist));

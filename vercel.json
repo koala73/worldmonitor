@@ -1,8 +1,10 @@
 {
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
+  "redirects": [
+    { "source": "/docs", "destination": "/docs/documentation", "permanent": false }
+  ],
   "rewrites": [
-    { "source": "/docs", "destination": "https://worldmonitor.mintlify.dev/docs" },
     { "source": "/docs/:match*", "destination": "https://worldmonitor.mintlify.dev/docs/:match*" },
     { "source": "/pro", "destination": "/pro/index.html" },
     { "source": "/((?!api|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known).*)", "destination": "/index.html" }
