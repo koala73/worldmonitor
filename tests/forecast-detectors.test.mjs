@@ -44,6 +44,7 @@ import {
   buildCaseTriggers,
   buildForecastActors,
   buildForecastWorldState,
+  buildForecastRunWorldState,
   buildForecastBranches,
   buildActorLenses,
   scoreForecastReadiness,
@@ -1872,5 +1873,65 @@ describe('forecast quality gating', () => {
 
     const telemetry = summarizePublishFiltering([primary, duplicate, consequence, distinctConflict]);
     assert.equal(telemetry.suppressedSituationOverlap, 1);
+  });
+
+  it('caps dominant same-domain situation output while preserving cross-domain consequences', () => {
+    const conflictA = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.66, 0.61, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+    ]);
+    const conflictB = makePrediction('conflict', 'Gulf', 'Spillover conflict risk: Gulf shipping corridor', 0.61, 0.57, '7d', [
+      { type: 'news_corroboration', value: 'Gulf states prepare for spillover', weight: 0.45 },
+    ]);
+    const conflictC = makePrediction('conflict', 'Israel', 'Retaliatory conflict risk: Israel', 0.58, 0.53, '14d', [
+      { type: 'news_corroboration', value: 'Retaliatory pressure remains elevated around Israel', weight: 0.42 },
+    ]);
+    const consequence = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.49, 0.55, '30d', [
+      { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
+    ]);
+
+    buildForecastCases([conflictA, conflictB, conflictC, consequence]);
+    for (const pred of [conflictA, conflictB, conflictC, consequence]) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.situationContext = {
+        id: 'sit-iran',
+        label: 'Iran conflict and market situation',
+        forecastCount: 4,
+        topSignals: [{ type: 'ucdp', count: 3 }],
+      };
+      pred.caseFile.situationContext = pred.situationContext;
+    }
+    conflictA.readiness = { overall: 0.64 };
+    conflictB.readiness = { overall: 0.59 };
+    conflictC.readiness = { overall: 0.51 };
+    consequence.readiness = { overall: 0.56 };
+    conflictA.analysisPriority = 0.22;
+    conflictB.analysisPriority = 0.19;
+    conflictC.analysisPriority = 0.15;
+    consequence.analysisPriority = 0.17;
+
+    const published = filterPublishedForecasts([conflictA, conflictB, conflictC, consequence]);
+    assert.equal(published.length, 3);
+    assert.ok(published.some((item) => item.id === consequence.id));
+    assert.ok(!published.some((item) => item.id === conflictC.id));
+
+    const telemetry = summarizePublishFiltering([conflictA, conflictB, conflictC, consequence]);
+    assert.equal(telemetry.suppressedSituationDomainCap, 1);
+    assert.equal(telemetry.cappedSituations, 1);
+  });
+
+  it('keeps unrelated forecasts in separate situations instead of token-only over-merging', () => {
+    const conflict = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.65, 0.58, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+    ]);
+    const cyber = makePrediction('cyber', 'Estonia', 'Cyber disruption risk: Estonia', 0.43, 0.52, '7d', [
+      { type: 'news_corroboration', value: 'Estonia reports sustained cyber probing', weight: 0.35 },
+    ]);
+
+    buildForecastCases([conflict, cyber]);
+    const worldState = buildForecastRunWorldState({ predictions: [conflict, cyber] });
+
+    assert.equal(worldState.situationClusters.length, 2);
+    assert.ok(worldState.situationClusters.every((cluster) => cluster.label.endsWith('situation')));
+    assert.ok(worldState.situationClusters.every((cluster) => !/fc-[a-z]+-[0-9a-f]{8}/.test(cluster.label)));
   });
 });

@@ -115,10 +115,14 @@ export class CountryIntelManager implements AppModule {
     });
 
     this.ctx.map.onMapContextMenu((payload) => {
-      showMapContextMenu(payload.screenX, payload.screenY, [
-        { label: t('contextMenu.openCountryBrief'), action: () => this.openCountryBrief(payload.lat, payload.lon) },
-        { label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) },
-      ]);
+      const items = [];
+      if (payload.countryCode && payload.countryName) {
+        items.push({ label: t('contextMenu.openCountryBrief'), action: () => this.openCountryBriefByCode(payload.countryCode!, payload.countryName!) });
+      } else {
+        items.push({ label: t('contextMenu.openCountryBrief'), action: () => this.openCountryBrief(payload.lat, payload.lon) });
+      }
+      items.push({ label: t('contextMenu.copyCoordinates'), action: () => navigator.clipboard.writeText(`${payload.lat.toFixed(5)}, ${payload.lon.toFixed(5)}`).catch(() => {}) });
+      showMapContextMenu(payload.screenX, payload.screenY, items);
     });
 
     this.ctx.countryBriefPage.onClose(() => {

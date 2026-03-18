@@ -358,12 +358,14 @@ export class DeckGLMap {
   private countryGeoJsonLoaded = false;
   private countryHoverSetup = false;
   private highlightedCountryCode: string | null = null;
+  private hoveredCountryIso2: string | null = null;
+  private hoveredCountryName: string | null = null;
 
   // Callbacks
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
-  private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void;
+  private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void;
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
     if (!this.onMapContextMenu || !this.maplibreMap) return;
@@ -372,7 +374,14 @@ export class DeckGLMap {
     const y = e.clientY - rect.top;
     const lngLat = this.maplibreMap.unproject([x, y]);
     if (!Number.isFinite(lngLat.lng)) return;
-    this.onMapContextMenu({ lat: lngLat.lat, lon: lngLat.lng, screenX: e.clientX, screenY: e.clientY });
+    this.onMapContextMenu({
+      lat: lngLat.lat,
+      lon: lngLat.lng,
+      screenX: e.clientX,
+      screenY: e.clientY,
+      countryCode: this.hoveredCountryIso2 ?? undefined,
+      countryName: this.hoveredCountryName ?? undefined,
+    });
   };
   private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
   private onStateChange?: (state: DeckMapState) => void;
@@ -414,6 +423,9 @@ export class DeckGLMap {
   private newsPulseIntervalId: ReturnType<typeof setInterval> | null = null;
   private dayNightIntervalId: ReturnType<typeof setInterval> | null = null;
   private cachedNightPolygon: [number, number][] | null = null;
+  private radarRefreshIntervalId: ReturnType<typeof setInterval> | null = null;
+  private radarActive = false;
+  private radarTileUrl = '';
   private readonly startupTime = Date.now();
   private lastCableHighlightSignature = '';
   private lastCableHealthSignature = '';
@@ -494,6 +506,9 @@ export class DeckGLMap {
     if (this.state.layers.dayNight) {
       this.startDayNightTimer();
     }
+    if (this.state.layers.weatherRadar) {
+      this.startWeatherRadar();
+    }
   }
 
   private startDayNightTimer(): void {
@@ -511,6 +526,66 @@ export class DeckGLMap {
       this.dayNightIntervalId = null;
     }
     this.cachedNightPolygon = null;
+  }
+
+  private startWeatherRadar(): void {
+    this.radarActive = true;
+    this.fetchAndApplyRadar();
+    if (!this.radarRefreshIntervalId) {
+      this.radarRefreshIntervalId = setInterval(() => this.fetchAndApplyRadar(), 5 * 60 * 1000);
+    }
+  }
+
+  private stopWeatherRadar(): void {
+    this.radarActive = false;
+    if (this.radarRefreshIntervalId) {
+      clearInterval(this.radarRefreshIntervalId);
+      this.radarRefreshIntervalId = null;
+    }
+    this.removeRadarLayer();
+  }
+
+  private fetchAndApplyRadar(): void {
+    fetch('https://api.rainviewer.com/public/weather-maps.json')
+      .then(r => r.json())
+      .then((data: { host: string; radar: { past: Array<{ path: string }> } }) => {
+        const past = data.radar?.past;
+        const latest = past?.[past.length - 1];
+        if (!latest) return;
+        this.radarTileUrl = `${data.host}${latest.path}/256/{z}/{x}/{y}/6/1_1.png`;
+        this.applyRadarLayer();
+      })
+      .catch(() => {});
+  }
+
+  private applyRadarLayer(): void {
+    if (!this.maplibreMap || !this.radarActive || !this.radarTileUrl) return;
+    const existing = this.maplibreMap.getSource('weather-radar') as (maplibregl.RasterTileSource & { setTiles: (tiles: string[]) => void }) | undefined;
+    if (existing) {
+      existing.setTiles([this.radarTileUrl]);
+      return;
+    }
+    this.maplibreMap.addSource('weather-radar', {
+      type: 'raster',
+      tiles: [this.radarTileUrl],
+      tileSize: 256,
+      attribution: '© RainViewer',
+    });
+    const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;
+    this.maplibreMap.addLayer({
+      id: 'weather-radar-layer',
+      type: 'raster',
+      source: 'weather-radar',
+      paint: { 'raster-opacity': 0.65 },
+    }, beforeId);
+  }
+
+  private removeRadarLayer(): void {
+    if (!this.maplibreMap) return;
+    try {
+      if (this.maplibreMap.getLayer('weather-radar-layer')) this.maplibreMap.removeLayer('weather-radar-layer');
+      if (this.maplibreMap.getSource('weather-radar')) this.maplibreMap.removeSource('weather-radar');
+    } catch { /* ignore */ }
   }
 
   private setupDOM(): void {
@@ -679,7 +754,7 @@ export class DeckGLMap {
       }
     });
 
-    this.container.addEventListener('contextmenu', this.handleContextMenu);
+    this.maplibreMap.getCanvas().addEventListener('contextmenu', this.handleContextMenu);
   }
 
   private initDeck(): void {
@@ -3536,14 +3611,19 @@ export class DeckGLMap {
     if (!info.object || isChoropleth) {
       if (info.coordinate && this.onCountryClick) {
         const [lon, lat] = info.coordinate as [number, number];
-        const country = isChoropleth && info.object?.properties
-          ? { code: info.object.properties['ISO3166-1-Alpha-2'] as string, name: info.object.properties.name as string }
-          : this.resolveCountryFromCoordinate(lon, lat);
-        this.onCountryClick({
-          lat,
-          lon,
-          ...(country ? { code: country.code, name: country.name } : {}),
-        });
+        let country: { code: string; name: string } | null = null;
+        if (isChoropleth && info.object?.properties) {
+          country = { code: info.object.properties['ISO3166-1-Alpha-2'] as string, name: info.object.properties.name as string };
+        } else if (this.hoveredCountryIso2 && this.hoveredCountryName) {
+          // Use pre-resolved hover state for instant response
+          country = { code: this.hoveredCountryIso2, name: this.hoveredCountryName };
+        } else {
+          country = this.resolveCountryFromCoordinate(lon, lat);
+        }
+        // Only fire if we have a country — ocean/no-country clicks are silently ignored
+        if (country?.code && country?.name) {
+          this.onCountryClick({ lat, lon, code: country.code, name: country.name });
+        }
       }
       return;
     }
@@ -4412,8 +4492,11 @@ export class DeckGLMap {
   }
 
   public setLayers(layers: MapLayers): void {
+    const prevRadar = this.state.layers.weatherRadar;
     this.state.layers = { ...layers };
     this.manageAircraftTimer(this.state.layers.flights);
+    if (this.state.layers.weatherRadar && !prevRadar) this.startWeatherRadar();
+    else if (!this.state.layers.weatherRadar && prevRadar) this.stopWeatherRadar();
     this.render(); // Debounced
 
     Object.entries(this.state.layers).forEach(([key, value]) => {
@@ -5275,7 +5358,7 @@ export class DeckGLMap {
     this.onCountryClick = cb;
   }
 
-  public setOnMapContextMenu(cb: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void): void {
+  public setOnMapContextMenu(cb: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void): void {
     this.onMapContextMenu = cb;
   }
 
@@ -5284,6 +5367,7 @@ export class DeckGLMap {
     if (fromGeometry) return fromGeometry;
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return null;
     try {
+      if (!this.maplibreMap.getLayer('country-interactive')) return null;
       const point = this.maplibreMap.project([lon, lat]);
       const features = this.maplibreMap.queryRenderedFeatures(point, { layers: ['country-interactive'] });
       const properties = (features?.[0]?.properties ?? {}) as Record<string, unknown>;
@@ -5307,6 +5391,7 @@ export class DeckGLMap {
     getCountriesGeoJson()
       .then((geojson) => {
         if (!this.maplibreMap || !geojson) return;
+        if (this.maplibreMap.getSource('country-boundaries')) return;
         this.countriesGeoJsonData = geojson;
         this.conflictZoneGeoJson = null;
         this.maplibreMap.addSource('country-boundaries', {
@@ -5327,10 +5412,21 @@ export class DeckGLMap {
           type: 'fill',
           source: 'country-boundaries',
           paint: {
-            'fill-color': '#3b82f6',
-            'fill-opacity': 0.06,
+            'fill-color': '#ffffff',
+            'fill-opacity': 0.05,
           },
-          filter: ['==', ['get', 'name'], ''],
+          filter: ['==', ['get', 'ISO3166-1-Alpha-2'], ''],
+        });
+        this.maplibreMap.addLayer({
+          id: 'country-hover-border',
+          type: 'line',
+          source: 'country-boundaries',
+          paint: {
+            'line-color': '#ffffff',
+            'line-width': 1.5,
+            'line-opacity': 0.22,
+          },
+          filter: ['==', ['get', 'ISO3166-1-Alpha-2'], ''],
         });
         this.maplibreMap.addLayer({
           id: 'country-highlight-fill',
@@ -5368,33 +5464,46 @@ export class DeckGLMap {
     if (!this.maplibreMap || this.countryHoverSetup) return;
     this.countryHoverSetup = true;
     const map = this.maplibreMap;
-    let hoveredName: string | null = null;
+    let hoveredIso2: string | null = null;
+
+    const clearHover = () => {
+      this.hoveredCountryIso2 = null;
+      this.hoveredCountryName = null;
+      map.getCanvas().style.cursor = '';
+      if (!map.getLayer('country-hover-fill')) return;
+      const noMatch = ['==', ['get', 'ISO3166-1-Alpha-2'], ''] as maplibregl.FilterSpecification;
+      map.setFilter('country-hover-fill', noMatch);
+      map.setFilter('country-hover-border', noMatch);
+    };
 
     map.on('mousemove', (e) => {
       if (!this.onCountryClick) return;
+      if (!map.getLayer('country-interactive')) return;
       const features = map.queryRenderedFeatures(e.point, { layers: ['country-interactive'] });
-      const name = features?.[0]?.properties?.name as string | undefined;
+      const props = features?.[0]?.properties;
+      const iso2 = props?.['ISO3166-1-Alpha-2'] as string | undefined;
+      const name = props?.['name'] as string | undefined;
 
       try {
-        if (name && name !== hoveredName) {
-          hoveredName = name;
-          map.setFilter('country-hover-fill', ['==', ['get', 'name'], name]);
+        if (iso2 && iso2 !== hoveredIso2) {
+          hoveredIso2 = iso2;
+          this.hoveredCountryIso2 = iso2;
+          this.hoveredCountryName = name ?? null;
+          const filter = ['==', ['get', 'ISO3166-1-Alpha-2'], iso2] as maplibregl.FilterSpecification;
+          map.setFilter('country-hover-fill', filter);
+          map.setFilter('country-hover-border', filter);
           map.getCanvas().style.cursor = 'pointer';
-        } else if (!name && hoveredName) {
-          hoveredName = null;
-          map.setFilter('country-hover-fill', ['==', ['get', 'name'], '']);
-          map.getCanvas().style.cursor = '';
+        } else if (!iso2 && hoveredIso2) {
+          hoveredIso2 = null;
+          clearHover();
         }
       } catch { /* style not done loading during theme switch */ }
     });
 
     map.on('mouseout', () => {
-      if (hoveredName) {
-        hoveredName = null;
-        try {
-          map.setFilter('country-hover-fill', ['==', ['get', 'name'], '']);
-        } catch { /* style not done loading */ }
-        map.getCanvas().style.cursor = '';
+      if (hoveredIso2) {
+        hoveredIso2 = null;
+        try { clearHover(); } catch { /* style not done loading */ }
       }
     });
   }
@@ -5409,26 +5518,23 @@ export class DeckGLMap {
   public highlightCountry(code: string): void {
     this.highlightedCountryCode = code;
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
+    if (!this.maplibreMap.getLayer('country-highlight-fill')) return;
     const filter = ['==', ['get', 'ISO3166-1-Alpha-2'], code] as maplibregl.FilterSpecification;
-    try {
-      this.maplibreMap.setFilter('country-highlight-fill', filter);
-      this.maplibreMap.setFilter('country-highlight-border', filter);
-    } catch { /* layer not ready yet */ }
+    this.maplibreMap.setFilter('country-highlight-fill', filter);
+    this.maplibreMap.setFilter('country-highlight-border', filter);
     this.pulseCountryHighlight();
   }
 
   public clearCountryHighlight(): void {
     this.highlightedCountryCode = null;
     if (this.countryPulseRaf) { cancelAnimationFrame(this.countryPulseRaf); this.countryPulseRaf = null; }
-    if (!this.maplibreMap) return;
+    if (!this.maplibreMap || !this.maplibreMap.getLayer('country-highlight-fill')) return;
     const rest = this.getHighlightRestOpacity();
     const noMatch = ['==', ['get', 'ISO3166-1-Alpha-2'], ''] as maplibregl.FilterSpecification;
-    try {
-      this.maplibreMap.setFilter('country-highlight-fill', noMatch);
-      this.maplibreMap.setFilter('country-highlight-border', noMatch);
-      this.maplibreMap.setPaintProperty('country-highlight-fill', 'fill-opacity', rest.fill);
-      this.maplibreMap.setPaintProperty('country-highlight-border', 'line-opacity', rest.border);
-    } catch { /* layer not ready */ }
+    this.maplibreMap.setFilter('country-highlight-fill', noMatch);
+    this.maplibreMap.setFilter('country-highlight-border', noMatch);
+    this.maplibreMap.setPaintProperty('country-highlight-fill', 'fill-opacity', rest.fill);
+    this.maplibreMap.setPaintProperty('country-highlight-border', 'line-opacity', rest.border);
   }
 
   private pulseCountryHighlight(): void {
@@ -5439,23 +5545,23 @@ export class DeckGLMap {
     const start = performance.now();
     const duration = 3000;
     const step = (now: number) => {
+      if (!map.getLayer('country-highlight-fill')) {
+        this.countryPulseRaf = null;
+        return;
+      }
       const t = (now - start) / duration;
       if (t >= 1) {
         this.countryPulseRaf = null;
-        try {
-          map.setPaintProperty('country-highlight-fill', 'fill-opacity', rest.fill);
-          map.setPaintProperty('country-highlight-border', 'line-opacity', rest.border);
-        } catch { /* ignore */ }
+        map.setPaintProperty('country-highlight-fill', 'fill-opacity', rest.fill);
+        map.setPaintProperty('country-highlight-border', 'line-opacity', rest.border);
         return;
       }
       const pulse = Math.sin(t * Math.PI * 3) ** 2;
       const fade = 1 - t * t;
       const fillOp = rest.fill + 0.25 * pulse * fade;
       const borderOp = rest.border + 0.5 * pulse * fade;
-      try {
-        map.setPaintProperty('country-highlight-fill', 'fill-opacity', fillOp);
-        map.setPaintProperty('country-highlight-border', 'line-opacity', borderOp);
-      } catch { /* ignore */ }
+      map.setPaintProperty('country-highlight-fill', 'fill-opacity', fillOp);
+      map.setPaintProperty('country-highlight-border', 'line-opacity', borderOp);
       this.countryPulseRaf = requestAnimationFrame(step);
     };
     this.countryPulseRaf = requestAnimationFrame(step);
@@ -5470,11 +5576,13 @@ export class DeckGLMap {
       : (this.usedFallbackStyle && provider === 'auto')
         ? (isLightMapTheme(mapTheme) ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE)
         : getStyleForProvider(provider, mapTheme);
-    this.maplibreMap.setStyle(style);
+    if (this.countryPulseRaf) { cancelAnimationFrame(this.countryPulseRaf); this.countryPulseRaf = null; }
     this.countryGeoJsonLoaded = false;
+    this.maplibreMap.setStyle(style, { diff: false });
     this.maplibreMap.once('style.load', () => {
       localizeMapLabels(this.maplibreMap);
       this.loadCountryBoundaries();
+      if (this.radarActive) this.applyRadarLayer();
       const paintTheme = isLightMapTheme(mapTheme) ? 'light' as const : 'dark' as const;
       this.updateCountryLayerPaint(paintTheme);
       this.render();
@@ -5531,11 +5639,13 @@ export class DeckGLMap {
     this.usedFallbackStyle = true;
     const fallback = isLightMapTheme(mapTheme) ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE;
     console.warn(`[DeckGLMap] Basemap tiles failed, falling back to OpenFreeMap: ${fallback}`);
-    this.maplibreMap.setStyle(fallback);
+    if (this.countryPulseRaf) { cancelAnimationFrame(this.countryPulseRaf); this.countryPulseRaf = null; }
     this.countryGeoJsonLoaded = false;
+    this.maplibreMap.setStyle(fallback, { diff: false });
     this.maplibreMap.once('style.load', () => {
       localizeMapLabels(this.maplibreMap);
       this.loadCountryBoundaries();
+      if (this.radarActive) this.applyRadarLayer();
       const paintTheme = isLightMapTheme(mapTheme) ? 'light' as const : 'dark' as const;
       this.updateCountryLayerPaint(paintTheme);
       this.render();
@@ -5552,12 +5662,13 @@ export class DeckGLMap {
 
   private updateCountryLayerPaint(theme: 'dark' | 'light'): void {
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
-    const hoverOpacity = theme === 'light' ? 0.10 : 0.06;
-    const highlightOpacity = theme === 'light' ? 0.18 : 0.12;
-    try {
-      this.maplibreMap.setPaintProperty('country-hover-fill', 'fill-opacity', hoverOpacity);
-      this.maplibreMap.setPaintProperty('country-highlight-fill', 'fill-opacity', highlightOpacity);
-    } catch { /* layers may not be ready */ }
+    if (!this.maplibreMap.getLayer('country-hover-fill')) return;
+    const hoverFillOpacity   = theme === 'light' ? 0.08 : 0.05;
+    const hoverBorderOpacity = theme === 'light' ? 0.35 : 0.22;
+    const highlightOpacity   = theme === 'light' ? 0.18 : 0.12;
+    this.maplibreMap.setPaintProperty('country-hover-fill',   'fill-opacity', hoverFillOpacity);
+    this.maplibreMap.setPaintProperty('country-hover-border', 'line-opacity', hoverBorderOpacity);
+    this.maplibreMap.setPaintProperty('country-highlight-fill', 'fill-opacity', highlightOpacity);
   }
 
   public destroy(): void {
@@ -5589,6 +5700,7 @@ export class DeckGLMap {
     }
     this.stopPulseAnimation();
     this.stopDayNightTimer();
+    this.stopWeatherRadar();
     if (this.aircraftFetchTimer) {
       clearInterval(this.aircraftFetchTimer);
       this.aircraftFetchTimer = null;
@@ -5599,10 +5711,9 @@ export class DeckGLMap {
 
     this.deckOverlay?.finalize();
     this.deckOverlay = null;
+    this.maplibreMap?.getCanvas().removeEventListener('contextmenu', this.handleContextMenu);
     this.maplibreMap?.remove();
     this.maplibreMap = null;
-
-    this.container.removeEventListener('contextmenu', this.handleContextMenu);
     this.container.innerHTML = '';
   }
 }

@@ -79,6 +79,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   processingPlants:         def('processingPlants',         '&#127981;', 'processingPlants',         'Processing Plants'),
   commodityPorts:           def('commodityPorts',           '&#9973;',   'commodityPorts',           'Commodity Ports'),
   webcams:                  def('webcams',                  '&#128247;', 'webcams',                  'Live Webcams'),
+  weatherRadar:             def('weatherRadar',             '&#127783;', 'weatherRadar',             'Weather Radar', ['flat']),
 };
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
@@ -90,18 +91,18 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'ucdpEvents', 'displacement', 'climate', 'weather',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
-    'satellites', 'ciiChoropleth', 'dayNight', 'webcams',
+    'satellites', 'ciiChoropleth', 'dayNight', 'webcams', 'weatherRadar',
   ],
   tech: [
     'startupHubs', 'techHQs', 'accelerators', 'cloudRegions',
     'datacenters', 'cables', 'outages', 'cyberThreats',
-    'techEvents', 'natural', 'fires', 'dayNight',
+    'techEvents', 'natural', 'fires', 'dayNight', 'weatherRadar',
   ],
   finance: [
     'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs',
     'gulfInvestments', 'tradeRoutes', 'cables', 'pipelines',
     'outages', 'weather', 'economic', 'waterways',
-    'natural', 'cyberThreats', 'dayNight',
+    'natural', 'cyberThreats', 'dayNight', 'weatherRadar',
   ],
   happy: [
     'positiveEvents', 'kindness', 'happiness',
@@ -111,7 +112,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'miningSites', 'processingPlants', 'commodityPorts', 'commodityHubs',
     'minerals', 'pipelines', 'waterways', 'tradeRoutes',
     'ais', 'economic', 'fires', 'climate',
-    'natural', 'weather', 'outages', 'dayNight',
+    'natural', 'weather', 'outages', 'dayNight', 'weatherRadar',
   ],
 };
 

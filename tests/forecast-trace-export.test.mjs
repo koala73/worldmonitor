@@ -71,11 +71,14 @@ describe('forecast trace artifact builder', () => {
         publishTelemetry: {
           suppressedWeakFallback: 1,
           suppressedSituationOverlap: 2,
-          suppressedTotal: 3,
-          reasonCounts: { weak_fallback: 1, situation_overlap: 2 },
+          suppressedSituationCap: 1,
+          suppressedSituationDomainCap: 1,
+          suppressedTotal: 5,
+          reasonCounts: { weak_fallback: 1, situation_overlap: 2, situation_cap: 1, situation_domain_cap: 1 },
           situationClusterCount: 2,
           maxForecastsPerSituation: 2,
           multiForecastSituations: 1,
+          cappedSituations: 1,
         },
         triggerContext: {
           triggerSource: 'military_chain',
@@ -135,6 +138,9 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.quality.traced.fallbackRate, 1);
     assert.equal(artifacts.summary.quality.traced.enrichedRate, 0);
     assert.equal(artifacts.summary.quality.publish.suppressedSituationOverlap, 2);
+    assert.equal(artifacts.summary.quality.publish.suppressedSituationCap, 1);
+    assert.equal(artifacts.summary.quality.publish.suppressedSituationDomainCap, 1);
+    assert.equal(artifacts.summary.quality.publish.cappedSituations, 1);
     assert.ok(artifacts.summary.quality.fullRun.quietDomains.includes('military'));
     assert.equal(artifacts.summary.quality.traced.topPromotionSignals[0].type, 'cii');
     assert.ok(artifacts.summary.worldStateSummary.summary.includes('active forecasts'));
