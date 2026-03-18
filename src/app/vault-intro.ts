@@ -1,8 +1,11 @@
-// Biometric vault intro — Three.js 3D rendering.
-// WebGL scene with PBR materials, real-time lighting, and animated 3D geometry.
-// Scanner ring is an actual Three.js torus with physical lighting, not a Canvas stroke.
+// Biometric vault intro — Three.js 3D + UnrealBloom post-processing.
+// PBR materials with env-map reflections, emissive LEDs/scanner/fingerprint that
+// bloom through EffectComposer, and a multi-ring camera-barrel scanner housing.
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { hasTauriInvokeBridge, invokeTauri } from '../services/tauri-bridge';
 
 const CMD            = 'plugin:biometry|authenticate';
@@ -95,7 +98,6 @@ function playDoorOpen(ctx: AudioContext): void {
   const t0 = ctx.currentTime + 0.08;
   const dur = 2.8;
 
-  // Heavy pneumatic release — air rushing
   const aBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.6), ctx.sampleRate);
   const ad = aBuf.getChannelData(0);
   for (let i = 0; i < ad.length; i++) ad[i] = Math.random() * 2 - 1;
@@ -109,7 +111,6 @@ function playDoorOpen(ctx: AudioContext): void {
   aSrc.connect(aF).connect(aG).connect(ctx.destination);
   aSrc.start(t0);
 
-  // Deep hydraulic rumble
   const hBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
   const hd = hBuf.getChannelData(0);
   for (let i = 0; i < hd.length; i++) hd[i] = Math.random() * 2 - 1;
@@ -125,7 +126,6 @@ function playDoorOpen(ctx: AudioContext): void {
   hSrc.connect(hF).connect(hG).connect(ctx.destination);
   hSrc.start(t0 + 0.1);
 
-  // Metallic groan — door panels sliding
   const gOsc = ctx.createOscillator(); gOsc.type = 'sawtooth';
   gOsc.frequency.setValueAtTime(38, t0 + 0.2);
   gOsc.frequency.linearRampToValueAtTime(48, t0 + 1.6);
@@ -139,7 +139,6 @@ function playDoorOpen(ctx: AudioContext): void {
   gOsc.connect(gF).connect(gG).connect(ctx.destination);
   gOsc.start(t0 + 0.2); gOsc.stop(t0 + 2.5);
 
-  // High-frequency mechanical whirr — motors running
   const mOsc = ctx.createOscillator(); mOsc.type = 'sawtooth';
   mOsc.frequency.setValueAtTime(340, t0);
   mOsc.frequency.exponentialRampToValueAtTime(680, t0 + 0.4);
@@ -202,6 +201,7 @@ interface AnimState {
   scanner:          ScannerState;
   glowPhase:        number;
   boltRetractStart: number | null;
+  openStartTime:    number | null;
   statusText:       string;
   statusAlpha:      number;
   fingerAlpha:      number;
@@ -212,10 +212,51 @@ function initState(): AnimState {
     scanner:          'idle',
     glowPhase:        0,
     boltRetractStart: null,
+    openStartTime:    null,
     statusText:       '',
     statusAlpha:      0,
     fingerAlpha:      0.44,
   };
+}
+
+// ── Environment map ───────────────────────────────────────────────────────────
+
+function createEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 256;
+  const c = cv.getContext('2d')!;
+
+  // Dark industrial sky: cold overhead → near-black floor
+  const sky = c.createLinearGradient(0, 0, 0, 256);
+  sky.addColorStop(0,    '#9ab8d8');
+  sky.addColorStop(0.18, '#2e4060');
+  sky.addColorStop(0.45, '#0d1220');
+  sky.addColorStop(0.75, '#070810');
+  sky.addColorStop(1,    '#03040a');
+  c.fillStyle = sky; c.fillRect(0, 0, 512, 256);
+
+  // Strong overhead key-light hotspot (upper-left)
+  const key = c.createRadialGradient(140, 8, 0, 140, 8, 100);
+  key.addColorStop(0,   'rgba(230,245,255,1.0)');
+  key.addColorStop(0.4, 'rgba(130,195,240,0.65)');
+  key.addColorStop(1,   'rgba(0,0,0,0)');
+  c.fillStyle = key; c.fillRect(0, 0, 512, 256);
+
+  // Right counter rim
+  const rim = c.createRadialGradient(460, 80, 0, 460, 80, 55);
+  rim.addColorStop(0, 'rgba(40,70,130,0.75)');
+  rim.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = rim; c.fillRect(0, 0, 512, 256);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const envTex = pmrem.fromEquirectangular(tex).texture;
+  tex.dispose();
+  pmrem.dispose();
+  return envTex;
 }
 
 // ── CSS ───────────────────────────────────────────────────────────────────────
@@ -235,17 +276,17 @@ function injectStyles(): void {
 
 // ── Three.js vault scene ──────────────────────────────────────────────────────
 
-// Per-bolt config: base world position, slide direction (unit vector)
 interface BoltCfg { x: number; y: number; dx: number; dy: number; rz: number; }
 const BOLT_CFG: BoltCfg[] = [
-  { x:  0,    y:  2.10, dx:  0, dy:  1, rz: 0            },  // N
-  { x:  2.10, y:  0,    dx:  1, dy:  0, rz: -Math.PI / 2 },  // E
-  { x:  0,    y: -2.10, dx:  0, dy: -1, rz:  Math.PI     },  // S
-  { x: -2.10, y:  0,    dx: -1, dy:  0, rz:  Math.PI / 2 },  // W
+  { x:  0,    y:  2.28, dx:  0, dy:  1, rz: 0            },  // N
+  { x:  2.28, y:  0,    dx:  1, dy:  0, rz: -Math.PI / 2 },  // E
+  { x:  0,    y: -2.28, dx:  0, dy: -1, rz:  Math.PI     },  // S
+  { x: -2.28, y:  0,    dx: -1, dy:  0, rz:  Math.PI / 2 },  // W
 ];
 
 interface VaultScene {
   renderer:      THREE.WebGLRenderer;
+  composer:      EffectComposer;
   scene:         THREE.Scene;
   camera:        THREE.PerspectiveCamera;
   doorGroup:     THREE.Group;
@@ -259,6 +300,8 @@ interface VaultScene {
   fpMesh:        THREE.Mesh;
   interiorLight: THREE.PointLight;
   cameraStartZ:  number;
+  flashEl:       HTMLDivElement | null;
+  overlayEl:     HTMLDivElement | null;
 }
 
 function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
@@ -269,44 +312,49 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.95;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x050709);
-  scene.fog = new THREE.Fog(0x050709, 8, 18);
+  scene.background = new THREE.Color(0x040608);
+  scene.fog = new THREE.Fog(0x040608, 10, 22);
+  scene.environment = createEnvMap(renderer);
+  scene.environmentIntensity = 0.60;
 
-  const camera = new THREE.PerspectiveCamera(52, w / h, 0.1, 50);
-  const cameraStartZ = 5.0;
-  camera.position.set(0, 0.1, cameraStartZ);
+  const camera = new THREE.PerspectiveCamera(48, w / h, 0.1, 60);
+  const cameraStartZ = 6.2;
+  camera.position.set(0, -0.15, cameraStartZ);
   camera.lookAt(0, 0, 0);
 
-  // ── Lighting ─────────────────────────────────────────────────────────────
-  scene.add(new THREE.AmbientLight(0x07090e, 0.6));
+  // ── Bloom post-processing ─────────────────────────────────────────────────
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 1.6, 0.65, 0.32);
+  composer.addPass(bloom);
 
-  // Main overhead-left key light (cold industrial fluorescent)
-  const keyLight = new THREE.DirectionalLight(0xb0ccee, 2.4);
-  keyLight.position.set(1.5, 5, 4);
+  // ── Lighting ─────────────────────────────────────────────────────────────
+  scene.add(new THREE.AmbientLight(0x06080e, 0.5));
+
+  const keyLight = new THREE.DirectionalLight(0xb0ccee, 4.0);
+  keyLight.position.set(2, 6, 5);
   scene.add(keyLight);
 
-  // Left rim fill
-  const rimL = new THREE.DirectionalLight(0x3a506a, 0.9);
-  rimL.position.set(-5, 2, 2);
+  const rimL = new THREE.DirectionalLight(0x3858a0, 1.8);
+  rimL.position.set(-6, 2, 2);
   scene.add(rimL);
 
-  // Right counter-light (very subtle)
-  const rimR = new THREE.DirectionalLight(0x1e2830, 0.35);
-  rimR.position.set(4, -2, 1);
+  const rimR = new THREE.DirectionalLight(0x1e2838, 0.7);
+  rimR.position.set(5, -2, 1);
   scene.add(rimR);
 
-  // Dynamic scanner LED glow (intensity driven per-frame)
-  const ledLight = new THREE.PointLight(0x4090ff, 0.15, 4.5);
-  ledLight.position.set(0, 0, 1.8);
+  // Dynamic scanner LED glow
+  const ledLight = new THREE.PointLight(0x3080ff, 0.2, 5.5);
+  ledLight.position.set(0, 0, 2.0);
   scene.add(ledLight);
 
-  // Vault interior light (off initially, floods on door open)
-  const interiorLight = new THREE.PointLight(0xa0c8ff, 0, 18);
-  interiorLight.position.set(0, 0, -5);
+  // Interior flood (off until door opens)
+  const interiorLight = new THREE.PointLight(0xa8c8ff, 0, 20);
+  interiorLight.position.set(0, 0, -6);
   scene.add(interiorLight);
 
   // ── Room ─────────────────────────────────────────────────────────────────
@@ -314,127 +362,79 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
 
   // ── Shared materials ─────────────────────────────────────────────────────
   const steelMat = new THREE.MeshStandardMaterial({
-    color: 0x282e38,
-    metalness: 0.82,
-    roughness: 0.30,
+    color: 0x28303a,
+    metalness: 0.75,
+    roughness: 0.32,
   });
   const chromeMat = new THREE.MeshStandardMaterial({
-    color: 0x58687a,
-    metalness: 0.96,
-    roughness: 0.07,
+    color: 0x5c6878,
+    metalness: 0.92,
+    roughness: 0.10,
   });
   const darkMat = new THREE.MeshStandardMaterial({
-    color: 0x040507,
-    metalness: 0.62,
-    roughness: 0.85,
+    color: 0x030407,
+    metalness: 0.58,
+    roughness: 0.88,
   });
   const boltMat = new THREE.MeshStandardMaterial({
-    color: 0x38424e,
-    metalness: 0.84,
-    roughness: 0.24,
+    color: 0x303a46,
+    metalness: 0.88,
+    roughness: 0.22,
   });
   const pistonMat = new THREE.MeshStandardMaterial({
-    color: 0x526070,
-    metalness: 0.90,
-    roughness: 0.16,
+    color: 0x4a5c6c,
+    metalness: 0.92,
+    roughness: 0.14,
   });
 
   // ── Door group ───────────────────────────────────────────────────────────
   const doorGroup = new THREE.Group();
   scene.add(doorGroup);
 
-  // Main circular door disc (thick cylinder, flat face toward camera)
+  // Main circular door disc
   const doorDisc = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.26, 2.26, 0.30, 96, 1, false),
+    new THREE.CylinderGeometry(2.32, 2.32, 0.28, 96, 1, false),
     steelMat,
   );
   doorDisc.rotation.x = Math.PI / 2;
-  doorDisc.position.z = -0.15;
+  doorDisc.position.z = -0.14;
   doorGroup.add(doorDisc);
 
-  // Outer machined collar ring (polished chrome)
+  // Outer machined collar (polished chrome)
   const collar = new THREE.Mesh(
-    new THREE.TorusGeometry(2.26, 0.10, 20, 96),
+    new THREE.TorusGeometry(2.32, 0.13, 20, 96),
     chromeMat,
   );
-  collar.position.z = 0.04;
+  collar.position.z = 0.06;
   doorGroup.add(collar);
 
-  // Two concentric decorative groove rings
-  for (const [r, rw] of [[1.78, 0.032], [1.38, 0.026]] as const) {
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(r, rw, 14, 80),
-      chromeMat,
-    );
-    ring.position.z = 0.10;
-    doorGroup.add(ring);
-  }
-
-  // Scanner housing (dark recessed center)
-  const housing = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.06, 1.06, 0.22, 64, 1, false),
-    darkMat,
-  );
-  housing.rotation.x = Math.PI / 2;
-  housing.position.z = -0.02;
-  doorGroup.add(housing);
-
-  // Scanner biometric glass pad (very dark, subtly glossy)
-  const glassMat = new THREE.MeshStandardMaterial({
-    color: 0x060208,
-    metalness: 0.30,
-    roughness: 0.88,
-  });
-  const glass = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.87, 0.87, 0.04, 64, 1, false),
-    glassMat,
-  );
-  glass.rotation.x = Math.PI / 2;
-  glass.position.z = 0.05;
-  doorGroup.add(glass);
-
-  // Scanner outer rim ring (bright chrome)
-  const scanRim = new THREE.Mesh(
-    new THREE.TorusGeometry(1.06, 0.052, 18, 80),
+  // Large decorative ring (between collar and LED groove)
+  const outerRing = new THREE.Mesh(
+    new THREE.TorusGeometry(1.94, 0.040, 16, 96),
     chromeMat,
   );
-  scanRim.position.z = 0.07;
-  doorGroup.add(scanRim);
+  outerRing.position.z = 0.09;
+  doorGroup.add(outerRing);
 
-  // Main scanner ring — 3D torus, slightly tilted for depth
-  const scannerRingMat = new THREE.MeshStandardMaterial({
-    color: 0x141c24,
-    metalness: 0.90,
-    roughness: 0.15,
-    emissive: new THREE.Color(0x1a0408),
-    emissiveIntensity: 0.5,
-  });
-  const scannerRing = new THREE.Mesh(
-    new THREE.TorusGeometry(0.91, 0.075, 24, 90),
-    scannerRingMat,
+  // LED groove channel (slightly darker, recessed)
+  const ledGroove = new THREE.Mesh(
+    new THREE.TorusGeometry(1.56, 0.048, 14, 96),
+    new THREE.MeshStandardMaterial({ color: 0x090d14, metalness: 0.80, roughness: 0.60 }),
   );
-  scannerRing.rotation.x = 0.20;
-  scannerRing.position.z = 0.09;
-  doorGroup.add(scannerRing);
+  ledGroove.position.z = 0.055;
+  doorGroup.add(ledGroove);
 
-  // Rotating scan arc (partial torus, glows during active scanning)
-  const scanArcMat = new THREE.MeshStandardMaterial({
-    color: 0x00d4ff,
-    emissive: new THREE.Color(0x00d4ff),
-    emissiveIntensity: 3.0,
-    transparent: true,
-    opacity: 0,
-  });
-  const scanArc = new THREE.Mesh(
-    new THREE.TorusGeometry(0.87, 0.013, 10, 80, Math.PI * 1.55),
-    scanArcMat,
+  // Inner ring between LED groove and scanner barrel
+  const innerRing = new THREE.Mesh(
+    new THREE.TorusGeometry(1.25, 0.038, 14, 96),
+    chromeMat,
   );
-  scanArc.position.z = 0.14;
-  doorGroup.add(scanArc);
+  innerRing.position.z = 0.085;
+  doorGroup.add(innerRing);
 
-  // ── LED panels (12, in ring around scanner) ───────────────────────────────
+  // ── 12 LED panels ────────────────────────────────────────────────────────
   const LED_COUNT  = 12;
-  const LED_RING_R = 1.22;
+  const LED_RING_R = 1.56;
   const ledMeshes: THREE.Mesh[] = [];
 
   for (let i = 0; i < LED_COUNT; i++) {
@@ -442,123 +442,195 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
     const lx = Math.cos(angle) * LED_RING_R;
     const ly = Math.sin(angle) * LED_RING_R;
 
-    // Dark recessed housing
+    // Dark housing recess
     const ledHousing = new THREE.Mesh(
-      new THREE.BoxGeometry(0.094, 0.094, 0.022),
+      new THREE.BoxGeometry(0.10, 0.10, 0.024),
       darkMat,
     );
-    ledHousing.position.set(lx, ly, 0.076);
+    ledHousing.position.set(lx, ly, 0.065);
     doorGroup.add(ledHousing);
 
-    // Emissive LED face (cloned mat per LED so color/intensity is independent)
+    // Emissive LED face (independent material per LED)
     const ledMat = new THREE.MeshStandardMaterial({
-      color: 0xd0e8ff,
-      emissive: new THREE.Color(0xd0e8ff),
-      emissiveIntensity: 1.4,
+      color: 0xc8e4ff,
+      emissive: new THREE.Color(0xc8e4ff),
+      emissiveIntensity: 3.5,
       metalness: 0.05,
-      roughness: 0.50,
+      roughness: 0.45,
     });
-    const led = new THREE.Mesh(new THREE.BoxGeometry(0.066, 0.066, 0.018), ledMat);
-    led.position.set(lx, ly, 0.089);
+    const led = new THREE.Mesh(new THREE.BoxGeometry(0.070, 0.070, 0.020), ledMat);
+    led.position.set(lx, ly, 0.078);
     doorGroup.add(led);
     ledMeshes.push(led);
   }
 
-  // ── 4 Bolt arm assemblies (N / E / S / W) ────────────────────────────────
+  // ── Scanner barrel (camera-lens barrel, 5 concentric stepped rings) ───────
+  // Each step: outer chrome torus + short cylinder wall stepping inward
+  const barrelSteps: Array<{ r: number; z: number; rw: number }> = [
+    { r: 1.20, z: 0.10,  rw: 0.055 },
+    { r: 1.02, z: 0.00,  rw: 0.048 },
+    { r: 0.85, z: -0.09, rw: 0.040 },
+    { r: 0.70, z: -0.17, rw: 0.034 },
+    { r: 0.57, z: -0.24, rw: 0.028 },
+  ];
+
+  for (let si = 0; si < barrelSteps.length; si++) {
+    const step = barrelSteps[si]!;
+    // Chrome ring face
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(step.r, step.rw, 18, 80),
+      chromeMat,
+    );
+    ring.position.z = step.z;
+    doorGroup.add(ring);
+
+    // Cylinder wall between this step and next (the "barrel wall")
+    if (si < barrelSteps.length - 1) {
+      const next = barrelSteps[si + 1]!;
+      const wallH = step.z - next.z;
+      const wallR = (step.r + next.r) / 2 - 0.01;
+      const wall = new THREE.Mesh(
+        new THREE.CylinderGeometry(wallR, wallR, wallH, 64, 1, true),
+        steelMat,
+      );
+      wall.rotation.x = Math.PI / 2;
+      wall.position.z = (step.z + next.z) / 2;
+      doorGroup.add(wall);
+    }
+  }
+
+  // Scanner floor (dark glass at deepest recess)
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: 0x040208,
+    metalness: 0.25,
+    roughness: 0.92,
+  });
+  const scanFloor = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.52, 0.52, 0.04, 64),
+    glassMat,
+  );
+  scanFloor.rotation.x = Math.PI / 2;
+  scanFloor.position.z = -0.28;
+  doorGroup.add(scanFloor);
+
+  // ── Main scanner ring (glowing torus at entrance to barrel) ───────────────
+  const scannerRingMat = new THREE.MeshStandardMaterial({
+    color: 0x100c1c,
+    metalness: 0.88,
+    roughness: 0.12,
+    emissive: new THREE.Color(0x1a0308),
+    emissiveIntensity: 0.8,
+  });
+  const scannerRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.88, 0.068, 24, 90),
+    scannerRingMat,
+  );
+  scannerRing.rotation.x = 0.18;
+  scannerRing.position.z = 0.10;
+  doorGroup.add(scannerRing);
+
+  // Rotating scan arc (partial torus, spins during active scanning)
+  const scanArcMat = new THREE.MeshStandardMaterial({
+    color: 0x00d4ff,
+    emissive: new THREE.Color(0x00d4ff),
+    emissiveIntensity: 6.0,
+    transparent: true,
+    opacity: 0,
+  });
+  const scanArc = new THREE.Mesh(
+    new THREE.TorusGeometry(0.84, 0.011, 10, 80, Math.PI * 1.5),
+    scanArcMat,
+  );
+  scanArc.position.z = 0.15;
+  doorGroup.add(scanArc);
+
+  // ── 4 Bolt piston assemblies (N / E / S / W) ─────────────────────────────
   const boltGroups: THREE.Group[] = [];
 
   for (const cfg of BOLT_CFG) {
     const bg = new THREE.Group();
-    bg.position.set(cfg.x, cfg.y, 0.06);
+    bg.position.set(cfg.x, cfg.y, 0.02);
     bg.rotation.z = cfg.rz;
 
-    // Main arm body (tall, narrow, rectangular)
-    const arm = new THREE.Mesh(
-      new THREE.BoxGeometry(0.42, 0.92, 0.22),
+    // Piston body (slender cylinder)
+    const piston = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.14, 0.80, 24),
       boltMat,
     );
-    bg.add(arm);
+    piston.position.y = 0.05;
+    bg.add(piston);
 
-    // Machined horizontal slots (detail)
-    const slotMat = new THREE.MeshStandardMaterial({
-      color: 0x020304,
-      metalness: 0.55,
-      roughness: 0.90,
-    });
-    for (let s = 0; s < 3; s++) {
-      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.014, 0.24), slotMat);
-      slot.position.y = -0.22 + s * 0.22;
-      bg.add(slot);
-    }
-
-    // Top face highlight (bright bevel)
-    const bevel = new THREE.Mesh(
-      new THREE.BoxGeometry(0.42, 0.008, 0.22),
-      new THREE.MeshStandardMaterial({ color: 0x7090a8, metalness: 0.95, roughness: 0.08 }),
-    );
-    bevel.position.y = 0.46;
-    bg.add(bevel);
-
-    // Piston tip (darker, at the inner/door-face end)
-    const tip = new THREE.Mesh(
-      new THREE.BoxGeometry(0.36, 0.06, 0.18),
+    // Piston head (wider flange)
+    const head = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.20, 0.20, 0.08, 24),
       pistonMat,
     );
-    tip.position.y = -0.49;
-    bg.add(tip);
+    head.position.y = -0.36;
+    bg.add(head);
+
+    // Polished tip ring
+    const tipRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.17, 0.018, 10, 24),
+      chromeMat,
+    );
+    tipRing.rotation.x = Math.PI / 2;
+    tipRing.position.y = -0.36;
+    bg.add(tipRing);
 
     doorGroup.add(bg);
     boltGroups.push(bg);
   }
 
-  // ── Vertical center piston rod ────────────────────────────────────────────
+  // ── Vertical piston rod (center) ──────────────────────────────────────────
   const rod = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.090, 0.090, 6.0, 24, 1, false),
+    new THREE.CylinderGeometry(0.075, 0.075, 6.2, 20),
     pistonMat,
   );
-  rod.position.set(0, 0, -0.03);
+  rod.position.set(0, 0, -0.02);
   doorGroup.add(rod);
 
-  // Piston segment joint rings
   for (let j = -2; j <= 2; j++) {
-    const joint = new THREE.Mesh(
-      new THREE.TorusGeometry(0.092, 0.020, 10, 24),
+    const jRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.077, 0.016, 10, 20),
       chromeMat,
     );
-    joint.rotation.x = Math.PI / 2;
-    joint.position.set(0, j * 0.70, -0.01);
-    doorGroup.add(joint);
+    jRing.rotation.x = Math.PI / 2;
+    jRing.position.set(0, j * 0.72, 0.0);
+    doorGroup.add(jRing);
   }
 
-  // ── Ball joints (E / W hinge attachment points) ───────────────────────────
-  for (const bx of [-2.26, 2.26]) {
-    const ball = new THREE.Mesh(
-      new THREE.SphereGeometry(0.17, 24, 24),
-      chromeMat,
-    );
-    ball.position.set(bx, 0, 0.06);
-    doorGroup.add(ball);
-  }
+  // ── Wing panels (left / right of circular disc) ───────────────────────────
+  buildWingPanels(doorGroup, steelMat, chromeMat, darkMat);
 
   // ── Fingerprint texture plane ─────────────────────────────────────────────
   const fpCanvas = document.createElement('canvas');
-  fpCanvas.width = fpCanvas.height = 256;
+  fpCanvas.width = fpCanvas.height = 512;
   const fpTexture = new THREE.CanvasTexture(fpCanvas);
-  fpTexture.premultiplyAlpha = true;
+  fpTexture.colorSpace = THREE.SRGBColorSpace;
+
+  // Emissive material: canvas drives both alpha (via map) and bloom (via emissiveMap)
+  const fpMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(0, 0, 0),
+    map: fpTexture,
+    emissive: new THREE.Color(1, 1, 1),
+    emissiveMap: fpTexture,
+    emissiveIntensity: 4.5,
+    transparent: true,
+    depthWrite: false,
+    metalness: 0,
+    roughness: 1,
+  });
 
   const fpMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.96, 0.96),
-    new THREE.MeshBasicMaterial({
-      map: fpTexture,
-      transparent: true,
-      depthWrite: false,
-    }),
+    new THREE.PlaneGeometry(0.88, 0.88),
+    fpMat,
   );
-  fpMesh.position.z = 0.12;
+  fpMesh.position.z = -0.24;
   doorGroup.add(fpMesh);
 
   return {
     renderer,
+    composer,
     scene,
     camera,
     doorGroup,
@@ -572,84 +644,227 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
     fpMesh,
     interiorLight,
     cameraStartZ,
+    flashEl:   null,
+    overlayEl: null,
   };
+}
+
+// ── Wing panels ───────────────────────────────────────────────────────────────
+
+function buildWingPanels(
+  doorGroup: THREE.Group,
+  steelMat: THREE.MeshStandardMaterial,
+  chromeMat: THREE.MeshStandardMaterial,
+  darkMat: THREE.MeshStandardMaterial,
+): void {
+  const wingW = 1.15;
+  const wingH = 4.90;
+  const wingD = 0.26;
+  const wingCX = 2.32 + 0.12 + wingW / 2;  // gap of 0.12 from disc edge
+
+  for (const side of [-1, 1] as const) {
+    const wx = side * wingCX;
+
+    // Main wing body
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(wingW, wingH, wingD),
+      steelMat,
+    );
+    body.position.set(wx, 0, -0.12);
+    doorGroup.add(body);
+
+    // Outer chrome edge strip
+    const edgeStrip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.025, wingH, wingD + 0.01),
+      chromeMat,
+    );
+    edgeStrip.position.set(wx + side * (wingW / 2 - 0.013), 0, -0.12);
+    doorGroup.add(edgeStrip);
+
+    // Top/bottom chrome caps
+    for (const sy of [-1, 1] as const) {
+      const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(wingW + 0.025, 0.022, wingD + 0.01),
+        chromeMat,
+      );
+      cap.position.set(wx, sy * (wingH / 2 + 0.011), -0.12);
+      doorGroup.add(cap);
+    }
+
+    // 3 raised machined panels (portrait rectangles)
+    const panelW = wingW * 0.72;
+    const panelH = wingH / 3 * 0.76;
+    const panelSpacing = wingH / 3;
+    for (let pi = 0; pi < 3; pi++) {
+      const py = (pi - 1) * panelSpacing;
+
+      // Recessed background
+      const recess = new THREE.Mesh(
+        new THREE.BoxGeometry(panelW, panelH, 0.005),
+        darkMat,
+      );
+      recess.position.set(wx, py, 0.0);
+      doorGroup.add(recess);
+
+      // Panel border frame (chrome outline)
+      for (const [bw, bh, bz] of [
+        [panelW + 0.03, 0.018, 0.002],  // top
+        [panelW + 0.03, 0.018, 0.002],  // bottom
+        [0.018, panelH + 0.03, 0.002],  // left
+        [0.018, panelH + 0.03, 0.002],  // right
+      ] as [number, number, number][]) {
+        // Use simplified border: just the torus / plane approach is complex — use BoxGeometry border segments
+        void bw; void bh; void bz;
+      }
+
+      // Simple chrome border (single outer frame box with inner transparent hole approximated by scaling)
+      const border = new THREE.Mesh(
+        new THREE.BoxGeometry(panelW + 0.04, panelH + 0.04, 0.018),
+        chromeMat,
+      );
+      border.position.set(wx, py, -0.004);
+      doorGroup.add(border);
+
+      // Raised inner panel face
+      const face = new THREE.Mesh(
+        new THREE.BoxGeometry(panelW - 0.02, panelH - 0.02, 0.022),
+        steelMat,
+      );
+      face.position.set(wx, py, 0.006);
+      doorGroup.add(face);
+
+      // Horizontal detail grooves on panel
+      for (let gi = 0; gi < 3; gi++) {
+        const gY = py + (gi - 1) * (panelH / 4);
+        const groove = new THREE.Mesh(
+          new THREE.BoxGeometry(panelW * 0.80, 0.008, 0.026),
+          darkMat,
+        );
+        groove.position.set(wx, gY, 0.018);
+        doorGroup.add(groove);
+      }
+
+      // Small indicator LED on each panel (top of panel)
+      const indMat = new THREE.MeshStandardMaterial({
+        color: 0xc0d8ff,
+        emissive: new THREE.Color(0xc0d8ff),
+        emissiveIntensity: 2.5,
+        metalness: 0,
+        roughness: 0.5,
+      });
+      const ind = new THREE.Mesh(
+        new THREE.BoxGeometry(0.045, 0.018, 0.024),
+        indMat,
+      );
+      ind.position.set(wx + side * (panelW / 2 - 0.04), py + panelH / 2 - 0.06, 0.022);
+      doorGroup.add(ind);
+    }
+
+    // Diagonal connection flange (triangular wedge between wing and disc collar)
+    // Approximated as a tapered box at the inner edge
+    const flange = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, wingH * 0.85, 0.14),
+      steelMat,
+    );
+    flange.position.set(wx - side * (wingW / 2 + 0.06), 0, -0.10);
+    doorGroup.add(flange);
+  }
 }
 
 // ── Room geometry ─────────────────────────────────────────────────────────────
 
 function buildRoom(scene: THREE.Scene): void {
   const wallMat = new THREE.MeshStandardMaterial({
-    color: 0x070910,
-    roughness: 0.96,
-    metalness: 0.02,
+    color: 0x06080f,
+    roughness: 0.94,
+    metalness: 0.03,
   });
-  const floorMat = new THREE.MeshStandardMaterial({
-    color: 0x060810,
-    roughness: 0.91,
-    metalness: 0.05,
+  const panelMat = new THREE.MeshStandardMaterial({
+    color: 0x0a0e18,
+    roughness: 0.88,
+    metalness: 0.12,
   });
 
-  // Back wall (concrete, behind door frame)
-  const bwall = new THREE.Mesh(new THREE.PlaneGeometry(28, 16), wallMat);
-  bwall.position.z = -3.4;
+  // Back wall
+  const bwall = new THREE.Mesh(new THREE.PlaneGeometry(32, 18), wallMat);
+  bwall.position.z = -4.0;
   scene.add(bwall);
 
-  // Floor
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(28, 11), floorMat);
+  // Floor (slightly reflective metal grating)
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(32, 14), panelMat);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -3.1;
+  floor.position.y = -3.2;
   scene.add(floor);
 
   // Ceiling
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(28, 11), wallMat);
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(32, 14), wallMat);
   ceil.rotation.x = Math.PI / 2;
-  ceil.position.y = 3.3;
+  ceil.position.y = 3.8;
   scene.add(ceil);
 
-  // Side walls
+  // Side walls with structural rib panels
   for (const [sign, angle] of [[-1, Math.PI / 2], [1, -Math.PI / 2]] as [number, number][]) {
-    const w = new THREE.Mesh(new THREE.PlaneGeometry(11, 16), wallMat);
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(14, 18), wallMat);
     w.rotation.y = angle;
-    w.position.x = sign * 7;
+    w.position.x = sign * 8;
     scene.add(w);
+
+    // Structural ribs on side walls
+    for (let ri = -2; ri <= 2; ri++) {
+      const rib = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 6.0, 0.10),
+        panelMat,
+      );
+      rib.position.set(sign * 7.95, 0, ri * 1.2 - 0.5);
+      rib.rotation.y = angle;
+      scene.add(rib);
+    }
   }
 
   // Overhead fluorescent fixture
   const fixMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    emissive: new THREE.Color(0xd0e8ff),
-    emissiveIntensity: 0.85,
+    emissive: new THREE.Color(0xd8eeff),
+    emissiveIntensity: 1.2,
   });
-  const fixture = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.055, 0.42), fixMat);
-  fixture.position.set(0, 3.24, -1.0);
-  scene.add(fixture);
+  for (const fz of [-0.8, -2.0]) {
+    const fix = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.38), fixMat);
+    fix.position.set(0, 3.72, fz);
+    scene.add(fix);
+    const fixLight = new THREE.PointLight(0xc0d8f0, 2.2, 14);
+    fixLight.position.set(0, 3.55, fz);
+    scene.add(fixLight);
+  }
 
-  // Overhead point light to simulate the fixture
-  const fixLight = new THREE.PointLight(0xb8d8f0, 2.0, 15);
-  fixLight.position.set(0, 3.1, -1.0);
-  scene.add(fixLight);
-
-  // Vault frame collar (thick machined ring around the door opening in the back wall)
+  // Vault frame collar (machined steel ring around door opening)
   const recessMat = new THREE.MeshStandardMaterial({
-    color: 0x0c1018,
-    metalness: 0.82,
-    roughness: 0.35,
+    color: 0x0a0f18,
+    metalness: 0.85,
+    roughness: 0.28,
   });
   const frameCollar = new THREE.Mesh(
-    new THREE.TorusGeometry(2.52, 0.42, 20, 96),
+    new THREE.TorusGeometry(2.60, 0.48, 20, 96),
     recessMat,
   );
-  frameCollar.position.z = -2.2;
+  frameCollar.position.z = -2.6;
   scene.add(frameCollar);
 
-  // Cylindrical recess tunnel (the deep opening behind the door)
+  // Cylindrical tunnel behind door
   const tunnel = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.52, 2.52, 2.4, 64, 1, true),
+    new THREE.CylinderGeometry(2.60, 2.60, 2.8, 64, 1, true),
     recessMat,
   );
   tunnel.rotation.x = Math.PI / 2;
-  tunnel.position.z = -1.2;
+  tunnel.position.z = -1.4;
   scene.add(tunnel);
+
+  // Chrome accent strip at floor/wall junction
+  const floorMolding = new THREE.Mesh(
+    new THREE.BoxGeometry(16, 0.03, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0x303c48, metalness: 0.92, roughness: 0.10 }),
+  );
+  floorMolding.position.set(0, -3.185, -1.0);
+  scene.add(floorMolding);
 }
 
 // ── Fingerprint texture update ────────────────────────────────────────────────
@@ -664,9 +879,9 @@ function updateFingerprintTexture(vs: VaultScene, st: AnimState): void {
 
   const isSuccess = st.scanner === 'success';
   const isActive  = st.scanner === 'warmup' || st.scanner === 'peak';
-  const fpRGB = isSuccess ? '0,210,140' : (isActive ? '0,210,240' : '220,40,10');
+  const fpRGB = isSuccess ? '0,220,150' : (isActive ? '0,210,240' : '230,40,8');
 
-  const fpScale = 2.8;
+  const fpScale = 8.2;
   const fpOX = size / 2 - 24 * fpScale;
   const fpOY = size / 2 - 24 * fpScale;
 
@@ -674,23 +889,30 @@ function updateFingerprintTexture(vs: VaultScene, st: AnimState): void {
   c.translate(fpOX, fpOY);
   c.scale(fpScale, fpScale);
 
-  // Wide neon bloom
-  c.save(); c.filter = 'blur(9px)';
-  c.globalAlpha = st.fingerAlpha * 0.68;
-  c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 2.2; c.lineCap = 'round';
+  // Outermost bloom halo
+  c.save(); c.filter = 'blur(18px)';
+  c.globalAlpha = st.fingerAlpha * 0.50;
+  c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 2.5; c.lineCap = 'round';
+  for (const d of FP_PATHS) c.stroke(new Path2D(d));
+  c.restore();
+
+  // Mid bloom
+  c.save(); c.filter = 'blur(8px)';
+  c.globalAlpha = st.fingerAlpha * 0.75;
+  c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 1.8; c.lineCap = 'round';
   for (const d of FP_PATHS) c.stroke(new Path2D(d));
   c.restore();
 
   // Tight inner glow
-  c.save(); c.filter = 'blur(3.5px)';
-  c.globalAlpha = st.fingerAlpha * 0.90;
-  c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 1.3; c.lineCap = 'round';
+  c.save(); c.filter = 'blur(3px)';
+  c.globalAlpha = st.fingerAlpha * 0.92;
+  c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 1.1; c.lineCap = 'round';
   for (const d of FP_PATHS) c.stroke(new Path2D(d));
   c.restore();
 
-  // Crisp line
+  // Crisp bright core line
   c.globalAlpha = st.fingerAlpha;
-  c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 0.72; c.lineCap = 'round';
+  c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 0.58; c.lineCap = 'round';
   for (const d of FP_PATHS) c.stroke(new Path2D(d));
   c.restore();
 
@@ -699,67 +921,92 @@ function updateFingerprintTexture(vs: VaultScene, st: AnimState): void {
 
 // ── Per-frame render ──────────────────────────────────────────────────────────
 
-function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[]): void {
-  const { renderer, scene, camera, boltGroups, scannerRing, scanArc,
+const OPEN_DURATION = 2200;
+
+function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[], now: number): void {
+  const { boltGroups, scannerRing, scanArc,
           ledMeshes, ledLight, interiorLight } = vs;
 
   const isSuccess = st.scanner === 'success';
   const isActive  = st.scanner === 'warmup' || st.scanner === 'peak';
+  const isError   = st.scanner === 'error';
   const glow      = (Math.sin(st.glowPhase) + 1) * 0.5;
-  const pulse     = isSuccess ? 0.30 : (0.60 + Math.sin(st.glowPhase * 1.2) * 0.28);
+  const pulse     = isSuccess ? 0.25 : (0.55 + Math.sin(st.glowPhase * 1.2) * 0.32);
 
   updateFingerprintTexture(vs, st);
 
   // ── LEDs ──
   const ledColor = isSuccess
-    ? new THREE.Color(0.04, 0.85, 0.52)
-    : new THREE.Color(0.82, 0.93, 1.00);
-  const ledIntensity = 0.70 + pulse * 1.70;
+    ? new THREE.Color(0.04, 0.95, 0.55)
+    : isError
+    ? new THREE.Color(0.90, 0.18, 0.04)
+    : new THREE.Color(0.78, 0.92, 1.00);
+  const ledIntensity = 2.5 + pulse * 3.0;
+
   for (const led of ledMeshes) {
     const m = led.material as THREE.MeshStandardMaterial;
     m.emissive.copy(ledColor);
     m.emissiveIntensity = ledIntensity;
   }
-  ledLight.color.copy(isSuccess ? new THREE.Color(0, 0.85, 0.50) : new THREE.Color(0.25, 0.55, 1.00));
-  ledLight.intensity = isActive ? (0.55 + pulse * 1.0) : (isSuccess ? 0.50 : 0.15);
+  ledLight.color.copy(
+    isSuccess ? new THREE.Color(0, 0.95, 0.52)
+    : isError  ? new THREE.Color(0.90, 0.15, 0.04)
+    : new THREE.Color(0.22, 0.52, 1.00),
+  );
+  ledLight.intensity = isActive ? (1.2 + pulse * 1.8) : (isSuccess ? 1.0 : 0.25);
 
   // ── Scanner ring ──
   const ringMat = scannerRing.material as THREE.MeshStandardMaterial;
   ringMat.emissive.copy(
-    isSuccess ? new THREE.Color(0, 0.80, 0.50)
-    : isActive ? new THREE.Color(0, 0.80, 1.00)
-    : new THREE.Color(0.60, 0.10, 0.10),
+    isSuccess ? new THREE.Color(0, 0.85, 0.52)
+    : isActive ? new THREE.Color(0, 0.75, 1.00)
+    : isError  ? new THREE.Color(0.80, 0.12, 0.04)
+    : new THREE.Color(0.55, 0.08, 0.08),
   );
-  ringMat.emissiveIntensity = isActive ? (0.40 + pulse * 0.60) : (isSuccess ? 0.55 : 0.20);
+  ringMat.emissiveIntensity = isActive
+    ? (1.4 + pulse * 2.2)
+    : (isSuccess ? 2.0 : (isError ? 1.6 : 0.35));
 
-  // Slow continuous rotation for a "living" feel
-  scannerRing.rotation.z += 0.003;
+  scannerRing.rotation.z += 0.0025;
 
-  // ── Scan arc (only during active scan) ──
+  // ── Scan arc ──
   const arcMat = scanArc.material as THREE.MeshStandardMaterial;
-  arcMat.opacity = isActive ? 0.88 : 0;
+  arcMat.opacity = isActive ? 0.92 : 0;
   if (isActive) {
-    arcMat.emissiveIntensity = 1.8 + glow * 1.4;
-    scanArc.rotation.z = st.glowPhase * 2.2;
+    arcMat.emissiveIntensity = 4.0 + glow * 2.5;
+    scanArc.rotation.z = st.glowPhase * 2.4;
   }
 
   // ── Bolt retraction ──
   for (let i = 0; i < 4; i++) {
     const prog  = boltProgress[i] ?? 0;
     const cfg   = BOLT_CFG[i]!;
-    const slide = prog * 1.15;
-    boltGroups[i]!.position.set(cfg.x + cfg.dx * slide, cfg.y + cfg.dy * slide, 0.06);
-    boltGroups[i]!.visible = prog < 0.95;
+    const slide = prog * 1.0;
+    boltGroups[i]!.position.set(cfg.x + cfg.dx * slide, cfg.y + cfg.dy * slide, 0.02);
+    boltGroups[i]!.visible = prog < 0.92;
   }
 
-  // Subtle camera breathe
-  camera.position.y = 0.1 + Math.sin(st.glowPhase * 0.5) * 0.007;
-  camera.lookAt(0, 0, 0);
+  // ── Door-open animation ──
+  if (st.openStartTime !== null) {
+    const prog = Math.min(1, (now - st.openStartTime) / OPEN_DURATION);
+    const ease = prog < 0.5 ? 2 * prog * prog : 1 - Math.pow(-2 * prog + 2, 2) / 2;
+    vs.camera.position.z = vs.cameraStartZ - ease * 3.8;
+    interiorLight.intensity = ease * 28;
+    if (vs.flashEl && prog > 0.35) {
+      const fp = (prog - 0.35) / 0.40;
+      vs.flashEl.style.opacity = String(Math.min(1, fp * 3.0));
+    }
+    if (vs.overlayEl && prog >= 1 && !vs.overlayEl.dataset['fading']) {
+      vs.overlayEl.dataset['fading'] = '1';
+      vs.overlayEl.style.transition = 'opacity 1.4s ease';
+      vs.overlayEl.style.opacity = '0';
+    }
+  } else {
+    vs.camera.position.y = -0.15 + Math.sin(st.glowPhase * 0.5) * 0.006;
+  }
 
-  // Interior vault light off until door open
-  interiorLight.intensity = Math.max(0, interiorLight.intensity);
-
-  renderer.render(scene, camera);
+  vs.camera.lookAt(0, 0, 0);
+  vs.composer.render();
 }
 
 // ── Overlay ───────────────────────────────────────────────────────────────────
@@ -781,40 +1028,37 @@ function buildOverlay(): OverlayRefs {
   const overlay = document.createElement('div');
   overlay.style.cssText = `
     position:fixed;inset:0;z-index:9999;
-    background:#050709;
+    background:#040608;
     overflow:hidden;
     animation:vi-fadein 1.1s cubic-bezier(0.16,1,0.3,1) both;
   `;
 
-  // Three.js fills entire overlay
   const threeCanvas = document.createElement('canvas');
   threeCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:block;';
   overlay.appendChild(threeCanvas);
 
-  // Scanner hit target (centered circle for click/tap)
   const scanBtn = document.createElement('div');
   scanBtn.style.cssText = `
     position:absolute;
     top:50%;left:50%;
-    width:200px;height:200px;
+    width:220px;height:220px;
     transform:translate(-50%,-50%);
     border-radius:50%;
     cursor:pointer;z-index:2;
   `;
   overlay.appendChild(scanBtn);
 
-  // Status badge (positioned above scanner ring center)
   const statusEl = document.createElement('div');
   statusEl.style.cssText = `
     position:absolute;
-    top:calc(50% - 22vmin);left:50%;
+    top:calc(50% - 24vmin);left:50%;
     transform:translateX(-50%);
-    padding:5px 18px;
-    background:rgba(0,6,16,0.88);
+    padding:5px 20px;
+    background:rgba(0,5,14,0.90);
     border:1px solid rgba(0,210,240,0.55);
     border-radius:3px;
     font-family:"SF Pro Display",-apple-system,BlinkMacSystemFont,monospace;
-    font-size:clamp(8px,1.5vmin,11px);font-weight:600;letter-spacing:.14em;
+    font-size:clamp(8px,1.4vmin,11px);font-weight:600;letter-spacing:.16em;
     color:rgba(0,210,240,1);
     pointer-events:none;z-index:3;
     opacity:0;
@@ -822,36 +1066,35 @@ function buildOverlay(): OverlayRefs {
   `;
   overlay.appendChild(statusEl);
 
-  // White flash overlay (for door-open sequence)
   const flashEl = document.createElement('div');
   flashEl.style.cssText = `
     position:fixed;inset:0;z-index:10000;
     background:radial-gradient(circle,
       rgba(255,255,255,1.0) 0%,
-      rgba(210,238,255,0.98) 16%,
-      rgba(120,190,255,0.70) 44%,
-      rgba(0,0,0,0) 78%
+      rgba(200,235,255,0.98) 18%,
+      rgba(100,180,255,0.72) 46%,
+      rgba(0,0,0,0) 80%
     );
     opacity:0;pointer-events:none;
   `;
   overlay.appendChild(flashEl);
 
-  // Quit button
   const quitBtn = document.createElement('button');
   quitBtn.textContent = 'Quit';
   quitBtn.style.cssText = `
     position:absolute;bottom:28px;left:50%;transform:translateX(-50%);
     background:none;border:none;
     font-size:12px;font-weight:500;letter-spacing:.08em;
-    color:rgba(120,140,160,0.32);cursor:pointer;padding:6px 14px;
+    color:rgba(120,140,160,0.30);cursor:pointer;padding:6px 14px;
     transition:color .2s;z-index:4;
   `;
-  quitBtn.addEventListener('mouseenter', () => { quitBtn.style.color = 'rgba(180,200,220,0.62)'; });
-  quitBtn.addEventListener('mouseleave', () => { quitBtn.style.color = 'rgba(120,140,160,0.32)'; });
+  quitBtn.addEventListener('mouseenter', () => { quitBtn.style.color = 'rgba(180,200,220,0.60)'; });
+  quitBtn.addEventListener('mouseleave', () => { quitBtn.style.color = 'rgba(120,140,160,0.30)'; });
   overlay.appendChild(quitBtn);
 
-  // Build Three.js scene (renderer attaches to threeCanvas)
   const vault = buildVaultScene(threeCanvas);
+  vault.flashEl   = flashEl;
+  vault.overlayEl = overlay;
 
   return { overlay, scanBtn, quitBtn, statusEl, flashEl, state, vault };
 }
@@ -862,7 +1105,7 @@ function startLoop(refs: OverlayRefs): () => void {
   let rafId = 0;
 
   const loop = (now: number) => {
-    refs.state.glowPhase = (refs.state.glowPhase + 0.028) % (Math.PI * 2);
+    refs.state.glowPhase = (refs.state.glowPhase + 0.026) % (Math.PI * 2);
 
     const bp: number[] = [];
     for (let i = 0; i < 4; i++) {
@@ -875,20 +1118,24 @@ function startLoop(refs: OverlayRefs): () => void {
       }
     }
 
-    // Update status badge HTML
     const { state, statusEl } = refs;
     if (state.statusAlpha > 0.01 && state.scanner !== 'idle') {
-      statusEl.style.opacity = String(state.statusAlpha);
-      statusEl.textContent   = state.statusText;
+      statusEl.style.opacity  = String(state.statusAlpha);
+      statusEl.textContent    = state.statusText;
       const isSuccess = state.scanner === 'success';
-      const rgb = isSuccess ? '0,220,170' : '0,210,240';
+      const isError   = state.scanner === 'error';
+      const rgb = isSuccess ? '0,225,160' : isError ? '240,70,40' : '0,210,240';
       statusEl.style.color       = `rgba(${rgb},1)`;
-      statusEl.style.borderColor = `rgba(${rgb},0.55)`;
+      statusEl.style.borderColor = `rgba(${rgb},0.52)`;
     } else {
       statusEl.style.opacity = '0';
     }
 
-    renderVaultFrame(refs.vault, state, bp);
+    try {
+      renderVaultFrame(refs.vault, state, bp, now);
+    } catch (e) {
+      console.error('[vault-intro] renderVaultFrame error:', e);
+    }
     rafId = requestAnimationFrame(loop);
   };
 
@@ -898,8 +1145,11 @@ function startLoop(refs: OverlayRefs): () => void {
 
 function handleResize(refs: OverlayRefs): void {
   const { vault } = refs;
-  vault.renderer.setSize(window.innerWidth, window.innerHeight);
-  vault.camera.aspect = window.innerWidth / window.innerHeight;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  vault.renderer.setSize(w, h);
+  vault.composer.setSize(w, h);
+  vault.camera.aspect = w / h;
   vault.camera.updateProjectionMatrix();
 }
 
@@ -909,35 +1159,35 @@ function setIdle(st: AnimState): void {
   st.scanner     = 'idle';
   st.statusText  = '';
   st.statusAlpha = 0;
-  st.fingerAlpha = 0.38;
+  st.fingerAlpha = 0.40;
 }
 
 function setWarmup(st: AnimState): void {
   st.scanner     = 'warmup';
   st.statusText  = 'SCANNING…';
-  st.statusAlpha = 0.82;
-  st.fingerAlpha = 0.52;
+  st.statusAlpha = 0.84;
+  st.fingerAlpha = 0.55;
 }
 
 function setPeak(st: AnimState): void {
   st.scanner     = 'peak';
   st.statusText  = 'PLACE FINGER ON SENSOR';
-  st.statusAlpha = 0.92;
-  st.fingerAlpha = 0.65;
+  st.statusAlpha = 0.94;
+  st.fingerAlpha = 0.68;
 }
 
 function setError(st: AnimState, msg: string): void {
   st.scanner     = 'error';
   st.statusText  = msg;
-  st.statusAlpha = 0.88;
-  st.fingerAlpha = 0.32;
+  st.statusAlpha = 0.90;
+  st.fingerAlpha = 0.30;
 }
 
 function setSuccess(st: AnimState): void {
   st.scanner     = 'success';
   st.statusText  = 'ACCESS GRANTED';
-  st.statusAlpha = 0.92;
-  st.fingerAlpha = 0.75;
+  st.statusAlpha = 0.94;
+  st.fingerAlpha = 0.80;
 }
 
 // ── Opening sequence ──────────────────────────────────────────────────────────
@@ -955,46 +1205,13 @@ async function playOpenSequence(
   refs.state.boltRetractStart = performance.now();
   await sleep(820);
 
-  if (appReady) await appReady;
+  if (appReady) await Promise.race([appReady, sleep(8000)]);
   await sleep(60);
 
   if (audioCtx) playDoorOpen(audioCtx);
 
-  // Animate camera push forward + interior light flood
-  const { vault, flashEl, overlay } = refs;
-  const startZ    = vault.camera.position.z;
-  const duration  = 2200;
-  const t0        = performance.now();
-
-  await new Promise<void>(resolve => {
-    const animate = (now: number) => {
-      const prog = Math.min(1, (now - t0) / duration);
-      // Ease in-out quad
-      const ease = prog < 0.5 ? 2 * prog * prog : 1 - Math.pow(-2 * prog + 2, 2) / 2;
-
-      vault.camera.position.z = startZ - ease * 3.2;
-      vault.camera.lookAt(0, 0, 0);
-      vault.interiorLight.intensity = ease * 20;
-
-      // Flash overlay ramps in after 38% progress
-      if (prog > 0.38) {
-        const fp = (prog - 0.38) / 0.38;
-        flashEl.style.opacity = String(Math.min(1, fp * 2.8));
-      }
-
-      if (prog < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        resolve();
-      }
-    };
-    requestAnimationFrame(animate);
-  });
-
-  // Fade out entire overlay
-  overlay.style.transition = 'opacity 1.4s ease';
-  overlay.style.opacity    = '0';
-  await sleep(1400);
+  refs.state.openStartTime = performance.now();
+  await sleep(OPEN_DURATION + 1600);
 }
 
 // ── Biometric flow ────────────────────────────────────────────────────────────
