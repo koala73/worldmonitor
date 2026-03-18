@@ -63,6 +63,8 @@ Sentry.init({
     /hackLocationFailed is not defined/,
     /userScripts is not defined/,
     /NS_ERROR_ABORT/,
+    /NS_ERROR_OUT_OF_MEMORY/,
+    /^Key not found$/,
     /DataCloneError.*could not be cloned/,
     /cannot decode message/,
     /WKWebView was deallocated/,
