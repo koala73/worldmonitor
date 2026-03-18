@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.79.0",
+    "@aws-sdk/client-s3": "^3.1009.0",
     "fast-xml-parser": "^5.2.3",
     "h3-js": "^4.2.1",
     "telegram": "^2.22.2",
