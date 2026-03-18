@@ -2071,7 +2071,7 @@ const URLHAUS_AUTH_KEY = process.env.URLHAUS_AUTH_KEY || '';
 const OTX_API_KEY = process.env.OTX_API_KEY || '';
 const ABUSEIPDB_API_KEY = process.env.ABUSEIPDB_API_KEY || '';
 const CYBER_SEED_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h — matches IOC feed update cadence
-const CYBER_SEED_TTL = 10800; // 3h — survives 1 missed cycle
+const CYBER_SEED_TTL = 14400; // 4h — must outlive the 2h seed interval (2x)
 const CYBER_RPC_KEY = 'cyber:threats:v2'; // must match handler REDIS_CACHE_KEY in list-cyber-threats.ts
 const CYBER_BOOTSTRAP_KEY = 'cyber:threats-bootstrap:v2';
 const CYBER_MAX_CACHED = 2000;
@@ -2861,7 +2861,7 @@ const THEATER_POSTURE_SEED_INTERVAL_MS = 600_000; // 10 min
 const THEATER_POSTURE_LIVE_KEY = 'theater-posture:sebuf:v1';
 const THEATER_POSTURE_STALE_KEY = 'theater_posture:sebuf:stale:v1';
 const THEATER_POSTURE_BACKUP_KEY = 'theater-posture:sebuf:backup:v1';
-const THEATER_POSTURE_LIVE_TTL = 900;    // 15 min
+const THEATER_POSTURE_LIVE_TTL = 1200;   // 20 min — must outlive the 10-min seed interval (2x)
 const THEATER_POSTURE_STALE_TTL = 86400; // 24h
 const THEATER_POSTURE_BACKUP_TTL = 604800; // 7d
 
@@ -4067,7 +4067,7 @@ async function startCorridorRiskSeedLoop() {
 const USNI_URL = 'https://news.usni.org/wp-json/wp/v2/posts?categories=4137&per_page=1';
 const USNI_REDIS_KEY = 'usni-fleet:sebuf:v1';
 const USNI_STALE_KEY = 'usni-fleet:sebuf:stale:v1';
-const USNI_TTL = 25200; // 7h
+const USNI_TTL = 43200; // 12h — must outlive the 6h seed interval (2x)
 const USNI_STALE_TTL = 604800; // 7 days
 const USNI_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
 
@@ -4626,7 +4626,7 @@ const TRANSIT_COOLDOWN_MS = 30 * 60 * 1000;
 const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_DWELL_MS = 5 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
-const CHOKEPOINT_TRANSIT_TTL = 900;
+const CHOKEPOINT_TRANSIT_TTL = 1200; // 20 min — must outlive the 10-min seed interval (2x)
 const CHOKEPOINT_TRANSIT_INTERVAL_MS = 10 * 60 * 1000;
 
 const NAVAL_PREFIX_RE = /^(USS|USNS|HMS|HMAS|HMCS|INS|JS|ROKS|TCG|FS|BNS|RFS|PLAN|PLA|CGC|PNS|KRI|ITS|SNS|MMSI)/i;
@@ -5134,7 +5134,7 @@ setInterval(() => {
 
 // --- Pre-assembled Transit Summaries (Railway advantage: avoids large Redis reads on Vercel) ---
 const TRANSIT_SUMMARY_REDIS_KEY = 'supply_chain:transit-summaries:v1';
-const TRANSIT_SUMMARY_TTL = 900; // 15 min
+const TRANSIT_SUMMARY_TTL = 1200; // 20 min — must outlive the 10-min seed interval (2x)
 const TRANSIT_SUMMARY_INTERVAL_MS = 10 * 60 * 1000;
 
 // Threat levels for anomaly detection.
