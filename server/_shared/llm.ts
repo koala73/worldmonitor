@@ -9,7 +9,7 @@ export interface ProviderCredentials {
   extraBody?: Record<string, unknown>;
 }
 
-export type LlmProviderName = 'ollama' | 'groq' | 'openrouter' | 'generic';
+export type LlmProviderName = 'ollama' | 'groq' | 'minimax' | 'openrouter' | 'generic';
 
 export interface ProviderCredentialOverrides {
   model?: string;
@@ -62,6 +62,19 @@ export function getProviderCredentials(
     return {
       apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
       model: overrides.model || 'llama-3.1-8b-instant',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    };
+  }
+
+  if (provider === 'minimax') {
+    const apiKey = process.env.MINIMAX_API_KEY;
+    if (!apiKey) return null;
+    return {
+      apiUrl: 'https://api.minimax.io/v1/chat/completions',
+      model: overrides.model || process.env.MINIMAX_MODEL || 'MiniMax-M2.7',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -123,8 +136,7 @@ export function stripThinkingTags(text: string): string {
   return s;
 }
 
-
-const PROVIDER_CHAIN = ['ollama', 'groq', 'openrouter', 'generic'] as const;
+const PROVIDER_CHAIN = ['ollama', 'groq', 'minimax', 'openrouter', 'generic'] as const;
 const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
 
 export interface LlmCallOptions {
