@@ -94,6 +94,7 @@
     "@deck.gl/layers": "^9.2.6",
     "@deck.gl/mapbox": "^9.2.6",
     "@sentry/browser": "^10.39.0",
+    "@types/three": "^0.183.1",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.1",
     "@vercel/analytics": "^1.6.1",
@@ -111,6 +112,7 @@
     "papaparse": "^5.5.3",
     "posthog-js": "^1.360.2",
     "telegram": "^2.26.22",
+    "three": "^0.183.2",
     "topojson-client": "^3.1.0",
     "ws": "^8.19.0",
     "youtubei.js": "^16.0.1"
