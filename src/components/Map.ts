@@ -401,7 +401,10 @@ export class MapComponent {
     const happyLayers: (keyof MapLayers)[] = [
       'positiveEvents', 'kindness', 'happiness', 'speciesRecovery', 'renewableInstallations',
     ];
-    const layers = SITE_VARIANT === 'tech' ? techLayers : SITE_VARIANT === 'finance' ? financeLayers : SITE_VARIANT === 'happy' ? happyLayers : fullLayers;
+    const irelandLayers: (keyof MapLayers)[] = [
+      'datacenters', 'techHQs', 'startupHubs', 'cloudRegions', 'accelerators', 'techEvents',
+    ];
+    const layers = SITE_VARIANT === 'tech' ? techLayers : SITE_VARIANT === 'finance' ? financeLayers : SITE_VARIANT === 'happy' ? happyLayers : SITE_VARIANT === 'ireland' ? irelandLayers : fullLayers;
     const layerLabelKeys: Partial<Record<keyof MapLayers, string>> = {
       hotspots: 'components.deckgl.layers.intelHotspots',
       conflicts: 'components.deckgl.layers.conflictZones',
