@@ -87,11 +87,11 @@ export const FEEDS: Record<string, Feed[]> = {
     { name: 'SaaStock', url: rss('https://news.google.com/rss/search?q="SaaStock"+Dublin+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
   ],
 
-  // 爱尔兰商业新闻
+  // 爱尔兰商业新闻（使用 Google News 搜索）
   ieBusiness: [
-    { name: 'Irish Times Business', url: rss('https://www.irishtimes.com/business/rss') },
-    { name: 'Irish Independent Business', url: rss('https://www.independent.ie/business/rss') },
-    { name: 'RTE Business', url: rss('https://www.rte.ie/feeds/business/') },
+    { name: 'Irish Times Business', url: rss('https://news.google.com/rss/search?q=site:irishtimes.com+business+when:7d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Irish Independent Business', url: rss('https://news.google.com/rss/search?q=site:independent.ie+business+when:7d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'RTE Business', url: rss('https://news.google.com/rss/search?q=site:rte.ie+business+when:7d&hl=en-IE&gl=IE&ceid=IE:en') },
   ],
 };
 
