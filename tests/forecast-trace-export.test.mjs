@@ -176,8 +176,8 @@ describe('forecast trace artifact builder', () => {
         predictions: [a, b],
         enrichmentMeta: {
           selection: { candidateCount: 2, readinessEligibleCount: 2, selectedCombinedCount: 1, selectedScenarioCount: 1, reservedScenarioDomains: ['market'] },
-          combined: { requested: 1, source: 'live', provider: 'openrouter', model: 'google/gemini-2.5-flash', scenarios: 1, perspectives: 1, cases: 1, succeeded: true },
-          scenario: { requested: 1, source: 'cache', provider: 'cache', model: 'cache', scenarios: 0, cases: 0, succeeded: true },
+          combined: { requested: 1, source: 'live', provider: 'openrouter', model: 'google/gemini-2.5-flash', scenarios: 1, perspectives: 1, cases: 1, rawItemCount: 2, failureReason: '', succeeded: true },
+          scenario: { requested: 1, source: 'cache', provider: 'cache', model: 'cache', scenarios: 0, cases: 0, rawItemCount: 1, failureReason: '', succeeded: true },
         },
       },
       { runId: 'run-quality' },
@@ -194,6 +194,9 @@ describe('forecast trace artifact builder', () => {
     assert.ok(artifacts.summary.quality.traced.topSuppressionSignals.length >= 1);
     assert.equal(artifacts.summary.quality.enrichment.selection.selectedCombinedCount, 1);
     assert.equal(artifacts.summary.quality.enrichment.combined.provider, 'openrouter');
+    assert.equal(artifacts.summary.quality.enrichment.combined.rawItemCount, 2);
+    assert.equal(artifacts.summary.quality.enrichment.scenario.rawItemCount, 1);
+    assert.equal(artifacts.summary.quality.enrichment.combined.failureReason, '');
   });
 });
 

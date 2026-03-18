@@ -3640,6 +3640,14 @@ function validateScenarios(scenarios, predictions) {
   });
 }
 
+function getEnrichmentFailureReason({ result, raw, scenarios = 0, perspectives = 0, cases = 0 }) {
+  if (!result) return 'call_failed';
+  if (raw == null) return 'parse_failed';
+  if (Array.isArray(raw) && raw.length === 0) return 'empty_output';
+  if ((scenarios + perspectives + cases) === 0) return 'validation_failed';
+  return '';
+}
+
 async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
   const stage = options.stage || 'default';
   const providers = resolveForecastLlmProviders(options);
@@ -3866,6 +3874,8 @@ async function enrichScenariosWithLLM(predictions) {
       scenarios: 0,
       perspectives: 0,
       cases: 0,
+      rawItemCount: 0,
+      failureReason: '',
       succeeded: false,
     },
     scenario: {
@@ -3875,6 +3885,8 @@ async function enrichScenariosWithLLM(predictions) {
       model: '',
       scenarios: 0,
       cases: 0,
+      rawItemCount: 0,
+      failureReason: '',
       succeeded: false,
     },
   };
@@ -3897,6 +3909,7 @@ async function enrichScenariosWithLLM(predictions) {
       enrichmentMeta.combined.scenarios = cached.items.filter(item => item.scenario).length;
       enrichmentMeta.combined.perspectives = cached.items.filter(item => item.strategic || item.regional || item.contrarian).length;
       enrichmentMeta.combined.cases = cached.items.filter(item => item.baseCase || item.escalatoryCase || item.contrarianCase).length;
+      enrichmentMeta.combined.rawItemCount = cached.items.length;
       for (const item of cached.items) {
         if (item.index >= 0 && item.index < topWithPerspectives.length) {
           applyTraceMeta(topWithPerspectives[item.index], {
@@ -3930,10 +3943,18 @@ async function enrichScenariosWithLLM(predictions) {
         enrichmentMeta.combined.source = 'live';
         enrichmentMeta.combined.provider = result.provider;
         enrichmentMeta.combined.model = result.model;
+        enrichmentMeta.combined.rawItemCount = Array.isArray(raw) ? raw.length : 0;
         enrichmentMeta.combined.scenarios = validScenarios.length;
         enrichmentMeta.combined.perspectives = validPerspectives.length;
         enrichmentMeta.combined.cases = validCases.length;
         enrichmentMeta.combined.succeeded = validScenarios.length > 0 || validPerspectives.length > 0 || validCases.length > 0;
+        enrichmentMeta.combined.failureReason = getEnrichmentFailureReason({
+          result,
+          raw,
+          scenarios: validScenarios.length,
+          perspectives: validPerspectives.length,
+          cases: validCases.length,
+        });
 
         for (const s of validScenarios) {
           applyTraceMeta(topWithPerspectives[s.index], {
@@ -3975,12 +3996,15 @@ async function enrichScenariosWithLLM(predictions) {
         console.log(JSON.stringify({
           event: 'llm_combined', provider: result.provider, model: result.model,
           hash, count: topWithPerspectives.length,
+          rawItems: Array.isArray(raw) ? raw.length : 0,
           scenarios: validScenarios.length, perspectives: validPerspectives.length, cases: validCases.length,
+          failureReason: enrichmentMeta.combined.failureReason || '',
           latencyMs: Math.round(Date.now() - t0), cached: false,
         }));
 
         if (items.length > 0) await redisSet(url, token, cacheKey, { items }, 3600);
       } else {
+        enrichmentMeta.combined.failureReason = 'call_failed';
         console.warn('  [LLM:combined] call failed');
       }
     }
@@ -3999,6 +4023,7 @@ async function enrichScenariosWithLLM(predictions) {
       enrichmentMeta.scenario.model = 'cache';
       enrichmentMeta.scenario.scenarios = cached.scenarios.filter(item => item.scenario).length;
       enrichmentMeta.scenario.cases = cached.scenarios.filter(item => item.baseCase || item.escalatoryCase || item.contrarianCase).length;
+      enrichmentMeta.scenario.rawItemCount = cached.scenarios.length;
       for (const s of cached.scenarios) {
         if (s.index >= 0 && s.index < scenarioOnly.length && s.scenario) {
           applyTraceMeta(scenarioOnly[s.index], {
@@ -4030,9 +4055,16 @@ async function enrichScenariosWithLLM(predictions) {
         enrichmentMeta.scenario.source = 'live';
         enrichmentMeta.scenario.provider = result.provider;
         enrichmentMeta.scenario.model = result.model;
+        enrichmentMeta.scenario.rawItemCount = Array.isArray(raw) ? raw.length : 0;
         enrichmentMeta.scenario.scenarios = valid.length;
         enrichmentMeta.scenario.cases = validCases.length;
         enrichmentMeta.scenario.succeeded = valid.length > 0 || validCases.length > 0;
+        enrichmentMeta.scenario.failureReason = getEnrichmentFailureReason({
+          result,
+          raw,
+          scenarios: valid.length,
+          cases: validCases.length,
+        });
         for (const s of valid) {
           applyTraceMeta(scenarioOnly[s.index], {
             narrativeSource: 'llm_scenario',
@@ -4054,7 +4086,8 @@ async function enrichScenariosWithLLM(predictions) {
 
         console.log(JSON.stringify({
           event: 'llm_scenario', provider: result.provider, model: result.model,
-          hash, count: scenarioOnly.length, scenarios: valid.length, cases: validCases.length,
+          hash, count: scenarioOnly.length, rawItems: Array.isArray(raw) ? raw.length : 0, scenarios: valid.length, cases: validCases.length,
+          failureReason: enrichmentMeta.scenario.failureReason || '',
           latencyMs: Math.round(Date.now() - t0), cached: false,
         }));
 
@@ -4085,6 +4118,7 @@ async function enrichScenariosWithLLM(predictions) {
           await redisSet(url, token, cacheKey, { scenarios }, 3600);
         }
       } else {
+        enrichmentMeta.scenario.failureReason = 'call_failed';
         console.warn('  [LLM:scenario] call failed');
       }
     }
