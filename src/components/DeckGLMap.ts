@@ -5327,17 +5327,14 @@ export class DeckGLMap {
           type: 'geojson',
           data: geojson,
         });
-        // For Ireland variant: fill non-Ireland countries with dark color
-        const isIrelandVariant = SITE_VARIANT === 'ireland';
+        // Country interactive layer - no dimming for Ireland variant (keep basemap clean)
         this.maplibreMap.addLayer({
           id: 'country-interactive',
           type: 'fill',
           source: 'country-boundaries',
           paint: {
-            'fill-color': isIrelandVariant 
-              ? ['case', ['==', ['get', 'ISO3166-1-Alpha-2'], 'IE'], 'rgba(0,0,0,0)', '#1a1a1a']
-              : '#3b82f6',
-            'fill-opacity': isIrelandVariant ? 0.6 : 0,
+            'fill-color': '#3b82f6',
+            'fill-opacity': 0,
           },
         });
         this.maplibreMap.addLayer({
