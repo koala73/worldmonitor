@@ -234,33 +234,40 @@ function playAuthConfirmed(ctx: AudioContext): void {
   }
 }
 
-// Classic computer female voice: "Authenticated"
-// Prefers Samantha (macOS default US female), falls back to any English female voice.
+// Warm, competent American female voice: "Authenticated"
+// Prefers Ava/Allison Enhanced (macOS natural voices) over Samantha (robotic).
 function playVoiceAuthenticated(): void {
   if (!('speechSynthesis' in window)) return;
 
   const speak = () => {
     const utter = new SpeechSynthesisUtterance('Authenticated');
-    utter.rate   = 0.80;   // measured, authoritative
-    utter.pitch  = 1.05;   // slightly bright/clear
-    utter.volume = 0.88;
+    utter.rate   = 0.90;   // confident, natural pace
+    utter.pitch  = 0.92;   // slightly lower = warmer, less synthetic
+    utter.volume = 0.90;
 
     const voices = window.speechSynthesis.getVoices();
-    // Preference order: classic macOS/iOS female voices
-    const preferred = ['Samantha', 'Victoria', 'Karen', 'Moira', 'Tessa', 'Zoe', 'Susan', 'Allison'];
+    const enVoices = voices.filter(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US'));
+
+    // Preference: warm natural American voices (Enhanced/Premium first)
+    const preferred = [
+      'Ava (Enhanced)', 'Ava',
+      'Allison (Enhanced)', 'Allison',
+      'Susan (Enhanced)', 'Susan',
+      'Samantha (Enhanced)',
+      'Nora', 'Aria',
+    ];
     for (const name of preferred) {
-      const v = voices.find(vv => vv.name.includes(name) && vv.lang.startsWith('en'));
+      const v = enVoices.find(vv => vv.name === name) ?? voices.find(vv => vv.name === name);
       if (v) { utter.voice = v; break; }
     }
-    // Fallback: any English female voice
+    // Fallback: any en-US voice that isn't Samantha or Victoria (too robotic)
     if (!utter.voice) {
-      utter.voice = voices.find(vv => vv.lang.startsWith('en') && /female|woman/i.test(vv.name)) ?? null;
+      utter.voice = enVoices.find(v => !['Samantha', 'Victoria'].includes(v.name)) ?? null;
     }
 
     window.speechSynthesis.speak(utter);
   };
 
-  // getVoices() is async on first call — wait for voiceschanged if needed
   if (window.speechSynthesis.getVoices().length > 0) {
     speak();
   } else {
