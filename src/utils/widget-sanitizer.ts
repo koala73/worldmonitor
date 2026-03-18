@@ -55,8 +55,14 @@ export function wrapProWidgetHtml(bodyContent: string): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; connect-src 'none';">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
-body{margin:0;padding:12px;background:#0a0e14;color:#e0e0e0;font-family:system-ui,sans-serif;overflow-y:auto;box-sizing:border-box}
-*{box-sizing:inherit}
+:root{--bg:#0a0a0a;--surface:#141414;--text:#e8e8e8;--text-secondary:#ccc;--text-dim:#888;--text-muted:#666;--border:#2a2a2a;--border-subtle:#1a1a1a;--overlay-subtle:rgba(255,255,255,0.03);--green:#44ff88;--red:#ff4444;--yellow:#ffaa00}
+body{margin:0;padding:12px;background:var(--bg);color:var(--text);font-family:'SF Mono','Monaco','Cascadia Code','Fira Code','DejaVu Sans Mono','Liberation Mono',monospace;font-size:12px;line-height:1.5;overflow-y:auto;box-sizing:border-box}
+*{box-sizing:inherit;font-family:inherit!important}
+table{border-collapse:collapse;width:100%}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);padding:4px 8px;border-bottom:1px solid var(--border);font-weight:600}
+td{padding:5px 8px;border-bottom:1px solid var(--border-subtle);color:var(--text-secondary)}
+.change-positive{color:var(--green)}
+.change-negative{color:var(--red)}
 </style>
 </head>
 <body>${bodyContent}</body>

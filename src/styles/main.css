@@ -19272,6 +19272,11 @@ body.has-breaking-alert .panels-grid {
   gap: 10px;
   min-width: 0;
   color: var(--text);
+  font-family: var(--font-mono) !important;
+}
+
+.wm-widget-generated * {
+  font-family: inherit !important;
 }
 
 .wm-widget-generated > * {

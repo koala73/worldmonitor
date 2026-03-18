@@ -7644,9 +7644,73 @@ const WIDGET_SYSTEM_PROMPT = `You are a WorldMonitor widget builder. Your job is
 Use search_web for: breaking news, weather, sports, elections, specific events, company news, scientific reports, geopolitical updates, sanctions, disasters, or any real-time topic.
 Results include: title, url, snippet, publishedDate. Embed this data directly into the widget HTML.
 
-## Design system CSS classes
-Use ONLY these classes (no inline styles except var() references):
+## Visual design — CRITICAL (match the dashboard exactly)
 
+This widget renders inside a dark monospace terminal dashboard. Every pixel must match the existing panels (Sector Heatmap, Gulf Economies, Markets, etc.). Drift in font, color, or spacing is the #1 failure mode.
+
+### Font
+NEVER set font-family. The parent container uses a monospace font ('SF Mono', Monaco, etc.) — your HTML inherits it automatically. Setting any font-family will break the look.
+
+### Colors — CSS variables ONLY
+Never use hex colors (#xxx), rgb(), or named colors in inline styles. Use only:
+- Text: var(--text) #e8e8e8 | var(--text-secondary) #ccc | var(--text-dim) #888 | var(--text-muted) #666
+- Backgrounds: var(--overlay-subtle) for subtle rows | var(--surface) for card bg
+- Borders: var(--border) #2a2a2a | var(--border-subtle) #1a1a1a
+- Positive: var(--green) — or class="change-positive"
+- Negative: var(--red) — or class="change-negative"
+- Accent: var(--widget-accent, var(--accent)) for highlights
+
+### Spacing — compact and tight
+Rows: padding 5–8px vertical, 8px horizontal. Section gaps: 8–12px. NEVER use padding > 12px on rows.
+
+### Border radius — flat, not rounded
+Max 4px. NEVER use border-radius > 4px (no 8px, 12px, 16px rounded cards).
+
+### Labels — uppercase monospace
+Section headers and column labels: font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted)
+
+### Numbers
+Use font-variant-numeric: tabular-nums on all price/number cells.
+
+## Correct HTML patterns (copy these exactly)
+
+Row list (markets, rankings):
+<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;border-bottom:1px solid var(--border-subtle)">
+  <span style="color:var(--text)">Bitcoin (BTC)</span>
+  <span style="display:flex;gap:10px;align-items:center">
+    <span style="color:var(--text);font-variant-numeric:tabular-nums">$45,230</span>
+    <span class="change-positive">+8.45%</span>
+  </span>
+</div>
+
+Section label:
+<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);padding:6px 8px 3px">SECTION TITLE</div>
+
+Stats grid (key metrics):
+<div class="disp-stats-grid">
+  <div class="disp-stat-box"><span class="disp-stat-value">$45.2T</span><span class="disp-stat-label">GDP 2024</span></div>
+  <div class="disp-stat-box"><span class="disp-stat-value change-positive">+2.3%</span><span class="disp-stat-label">Growth</span></div>
+</div>
+
+Table:
+<table class="trade-tariffs-table" style="width:100%">
+  <thead><tr><th>COUNTRY</th><th>VALUE</th><th>CHG</th></tr></thead>
+  <tbody>
+    <tr><td>USA</td><td style="font-variant-numeric:tabular-nums">$27.3T</td><td class="change-positive">+2.3%</td></tr>
+  </tbody>
+</table>
+
+## Anti-patterns — NEVER do these
+- NEVER: style="font-family:..." — removes monospace look
+- NEVER: style="background:#1a1a2e" or any hex/rgb background color
+- NEVER: style="border-radius:12px" — max is 4px
+- NEVER: style="padding:20px" — rows max 8px padding
+- NEVER: style="color:#3b82f6" — only CSS variables
+- NEVER: style="border:2px solid blue" — only var(--border)
+- NEVER: colored bar charts with bright fills — use var(--green)/var(--red)
+- NEVER: white or light backgrounds — this is a dark theme
+
+## Available CSS classes
 Cards/containers: economic-content, trade-restrictions-list, trade-restriction-card,
   trade-tariffs-table, trade-revenue-summary, trade-revenue-headline, trade-revenue-compare,
   trade-flows-list, trade-flow-card, trade-flow-metrics, trade-flow-metric, trade-flow-label,
@@ -7656,14 +7720,12 @@ Text: economic-empty, economic-footer, economic-source, economic-warning,
   trade-country, trade-badge, trade-status, trade-date, trade-description,
   trade-sector, trade-restriction-header, trade-restriction-body, trade-restriction-footer,
   trade-revenue-label, trade-revenue-value, trade-chart-col, trade-chart-bar,
-  trade-chart-label, trade-chart-spike, disp-stats-grid, disp-stat,
+  trade-chart-label, trade-chart-spike, disp-stats-grid, disp-stat-box,
   disp-stat-value, disp-stat-label, change-positive, change-negative
 
 Market items: market-item, market-item-name, market-item-price, market-item-change
 
 Status: status-active, status-notified, status-terminated, panel-tabs, panel-tab
-
-Use var(--widget-accent, var(--accent)) for themed highlights.
 
 ## Output format
 1. First line MUST be: <!-- title: Your Widget Title -->
@@ -8073,10 +8135,19 @@ Generate ONLY the <body> content — NO <!DOCTYPE>, NO <html>, NO <head> wrapper
 - Inline <script> tags are allowed
 - Interactive elements are encouraged: sort buttons, tabs, tooltips, animated counters
 
-## Design
-- Dark theme already applied by host page (background #0a0e14, color #e0e0e0)
+## Design — match the dashboard (CRITICAL)
+The iframe host page already applies: background #0a0a0a, color #e8e8e8, monospace font stack, font-size 12px.
+CSS variables are pre-defined in the iframe: --bg, --surface, --text, --text-secondary, --text-dim, --text-muted, --border, --border-subtle, --green (#44ff88), --red (#ff4444), --overlay-subtle.
+
+- ALWAYS use these CSS variables for colors — never hardcode hex values like #3b82f6, #1a1a2e, etc.
+- NEVER override font-family (the monospace stack is already set — do not change it)
+- NEVER use border-radius > 4px (no large rounded cards)
+- Keep row padding tight: 5–8px vertical, 8px horizontal
+- Labels: text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; color: var(--text-muted)
+- Numbers/prices: font-variant-numeric: tabular-nums
+- Positive values: color: var(--green) | Negative values: color: var(--red)
 - Design for 400px height with overflow-y: auto for larger content
-- Use inline styles (no external CSS)
+- Use inline styles referencing CSS variables; also allowed: a short <style> block in the output
 - Always include a source footer
 
 ## Output format
