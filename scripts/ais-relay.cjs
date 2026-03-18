@@ -3213,7 +3213,7 @@ function startCableHealthWarmPingLoop() {
 // ─────────────────────────────────────────────────────────────
 const WEATHER_SEED_INTERVAL_MS = 15 * 60 * 1000; // 15 min
 const WEATHER_REDIS_KEY = 'weather:alerts:v1';
-const WEATHER_CACHE_TTL = 900;
+const WEATHER_CACHE_TTL = 1800; // 30m — must outlive the 15-min seed interval
 let weatherSeedInFlight = false;
 
 async function seedWeatherAlerts() {
