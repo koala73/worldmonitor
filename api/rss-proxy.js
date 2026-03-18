@@ -1,4 +1,4 @@
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
@@ -168,7 +168,8 @@ export default async function handler(req) {
           ? `public, max-age=${browserTtl}, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}`
           : 'public, max-age=15, s-maxage=60, stale-while-revalidate=120',
         ...(isSuccess && { 'CDN-Cache-Control': `public, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}` }),
-        ...corsHeaders,
+        // Use ACAO: * for cacheable responses to prevent Vary: Origin fragmentation.
+        ...(isSuccess ? getPublicCorsHeaders() : corsHeaders),
       },
     });
   } catch (error) {

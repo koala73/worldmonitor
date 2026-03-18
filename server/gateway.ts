@@ -129,7 +129,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/prediction/v1/list-prediction-markets': 'medium',
   '/api/forecast/v1/get-forecasts': 'medium',
   '/api/supply-chain/v1/get-chokepoint-status': 'medium',
-  '/api/news/v1/list-feed-digest': 'slow-browser',
+  '/api/news/v1/list-feed-digest': 'slow',
   '/api/intelligence/v1/classify-event': 'static',
   '/api/intelligence/v1/get-country-facts': 'daily',
   '/api/intelligence/v1/list-security-advisories': 'slow',
@@ -283,6 +283,15 @@ export function createDomainGateway(
         const cdnCache = TIER_CDN_CACHE[tier];
         if (cdnCache) mergedHeaders.set('CDN-Cache-Control', cdnCache);
         mergedHeaders.set('X-Cache-Tier', tier);
+
+        // For cacheable public responses: use ACAO: * to collapse Vary: Origin cache
+        // fragmentation. Vercel would otherwise store one cache entry per unique
+        // Origin value (worldmonitor.app, tech.*, finance.*, tauri://, etc.),
+        // multiplying cold-start origin hits by the number of distinct origins.
+        // Security: isDisallowedOrigin() has already 403'd unauthorized origins
+        // before this point, so returning * here only affects allowed callers.
+        mergedHeaders.set('Access-Control-Allow-Origin', '*');
+        mergedHeaders.delete('Vary');
       }
       mergedHeaders.delete('X-No-Cache');
       if (!new URL(request.url).searchParams.has('_debug')) {

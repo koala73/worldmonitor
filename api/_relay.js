@@ -1,4 +1,4 @@
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
@@ -85,13 +85,19 @@ export function createRelayHandler(cfg) {
       const isSuccess = response.status >= 200 && response.status < 300;
       const cacheHeaders = cfg.cacheHeaders ? cfg.cacheHeaders(isSuccess) : {};
 
+      // For cacheable success responses use ACAO: * to prevent Vary: Origin
+      // cache fragmentation on Vercel edge (one cache entry per URL, not per origin).
+      const activeCorsHeaders = isSuccess && cacheHeaders['Cache-Control']?.includes('s-maxage')
+        ? getPublicCorsHeaders()
+        : corsHeaders;
+
       return new Response(body, {
         status: response.status,
         headers: {
           'Content-Type': response.headers.get('content-type') || 'application/json',
           ...cacheHeaders,
           ...extraHeaders,
-          ...corsHeaders,
+          ...activeCorsHeaders,
         },
       });
     } catch (error) {

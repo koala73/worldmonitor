@@ -1,4 +1,4 @@
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { readJsonFromUpstash } from './_upstash-json.js';
 
@@ -83,7 +83,7 @@ export default async function handler(req) {
     200,
     {
       'Cache-Control': 's-maxage=3600, stale-while-revalidate=1800, stale-if-error=3600',
-      ...corsHeaders,
+      ...getPublicCorsHeaders(),
     },
   );
 }
