@@ -1525,8 +1525,8 @@ export class DeckGLMap {
       this.layerCache.delete('trade-chokepoints-layer');
     }
 
-    // Tech variant layers (Supercluster-based deck.gl layers for HQs and events)
-    if (SITE_VARIANT === 'tech') {
+    // Tech-style layers (used by tech + ireland variants)
+    if (SITE_VARIANT === 'tech' || SITE_VARIANT === 'ireland') {
       if (mapLayers.startupHubs) {
         layers.push(this.createStartupHubsLayer());
       }
