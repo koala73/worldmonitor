@@ -4328,14 +4328,22 @@ export class DeckGLMap {
     };
 
     const isLight = getCurrentTheme() === 'light';
-    const legendItems = SITE_VARIANT === 'tech'
+    const legendItems = SITE_VARIANT === 'ireland'
       ? [
-        { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub') },
-        { shape: shapes.circle('rgb(100, 200, 255)'), label: t('components.deckgl.legend.techHQ') },
-        { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.accelerator') },
-        { shape: shapes.circle('rgb(150, 100, 255)'), label: t('components.deckgl.legend.cloudRegion') },
-        { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter') },
+        { shape: shapes.circle('rgb(0, 140, 255)'), label: 'Big Tech Offices (HQs)' },
+        { shape: shapes.circle('rgb(0, 209, 255)'), label: 'Startup & University AI Hubs' },
+        { shape: shapes.circle('rgb(255, 179, 0)'), label: 'Accelerators / Incubators' },
+        { shape: shapes.circle('rgb(153, 102, 255)'), label: 'Cloud Regions / Infrastructure' },
+        { shape: shapes.square('rgb(136, 68, 255)'), label: 'AI Data Centers' },
       ]
+      : SITE_VARIANT === 'tech'
+        ? [
+          { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub') },
+          { shape: shapes.circle('rgb(100, 200, 255)'), label: t('components.deckgl.legend.techHQ') },
+          { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.accelerator') },
+          { shape: shapes.circle('rgb(150, 100, 255)'), label: t('components.deckgl.legend.cloudRegion') },
+          { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter') },
+        ]
       : SITE_VARIANT === 'finance'
         ? [
           { shape: shapes.circle('rgb(255, 215, 80)'), label: t('components.deckgl.legend.stockExchange') },
