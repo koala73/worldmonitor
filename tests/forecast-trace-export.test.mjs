@@ -790,6 +790,31 @@ describe('forecast run world state', () => {
     assert.ok(constrainedUnit?.rounds.some((round) => (round.actionMix?.stabilizing || 0) >= (round.actionMix?.pressure || 0)));
   });
 
+  it('keeps moderate market and supply-chain situations contested unless pressure compounds strongly', () => {
+    const market = makePrediction('market', 'Japan', 'Oil price impact: Japan', 0.58, 0.56, '30d', [
+      { type: 'prediction_market', value: 'Oil contracts reprice on Japan energy risk', weight: 0.3 },
+      { type: 'commodity_price', value: 'Energy prices are drifting higher', weight: 0.2 },
+    ]);
+    buildForecastCase(market);
+
+    const supply = makePrediction('supply_chain', 'Red Sea', 'Shipping disruption: Red Sea', 0.55, 0.54, '14d', [
+      { type: 'chokepoint', value: 'Shipping reroutes remain elevated', weight: 0.3 },
+    ]);
+    buildForecastCase(supply);
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T13:30:00Z'),
+      predictions: [market, supply],
+    });
+
+    const marketUnit = worldState.simulationState.situationSimulations.find((unit) => unit.label.includes('Japan'));
+    const supplyUnit = worldState.simulationState.situationSimulations.find((unit) => unit.label.includes('Red Sea'));
+    assert.equal(marketUnit?.posture, 'contested');
+    assert.equal(supplyUnit?.posture, 'contested');
+    assert.ok((marketUnit?.postureScore || 0) < 0.77);
+    assert.ok((supplyUnit?.postureScore || 0) < 0.77);
+  });
+
   it('builds report outputs from simulation outcomes and cross-situation effects', () => {
     const conflict = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.79, 0.67, '7d', [
       { type: 'ucdp', value: 'Conflict intensity remains elevated in Iran', weight: 0.4 },

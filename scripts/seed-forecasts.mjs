@@ -2598,6 +2598,109 @@ function summarizeSituationPressure(cluster, actors, branches) {
   return clampUnitInterval(((cluster.avgProbability || 0) * 0.5) + (signalWeight * 0.2) + (actorWeight * 0.15) + (branchWeight * 0.15));
 }
 
+const SIMULATION_DOMAIN_PROFILES = {
+  conflict: {
+    pressureBias: 0.12,
+    stabilizationBias: 0.02,
+    actionPressureMultiplier: 1.05,
+    actionStabilizationMultiplier: 0.9,
+    round3SpreadWeight: 0.18,
+    postureBaseline: 0.18,
+    finalPressureWeight: 0.34,
+    deltaWeight: 0.46,
+    escalatoryThreshold: 0.69,
+    constrainedThreshold: 0.37,
+  },
+  military: {
+    pressureBias: 0.14,
+    stabilizationBias: 0.02,
+    actionPressureMultiplier: 1.08,
+    actionStabilizationMultiplier: 0.88,
+    round3SpreadWeight: 0.16,
+    postureBaseline: 0.18,
+    finalPressureWeight: 0.35,
+    deltaWeight: 0.47,
+    escalatoryThreshold: 0.7,
+    constrainedThreshold: 0.36,
+  },
+  political: {
+    pressureBias: 0.06,
+    stabilizationBias: 0.05,
+    actionPressureMultiplier: 0.98,
+    actionStabilizationMultiplier: 1,
+    round3SpreadWeight: 0.14,
+    postureBaseline: 0.16,
+    finalPressureWeight: 0.33,
+    deltaWeight: 0.42,
+    escalatoryThreshold: 0.71,
+    constrainedThreshold: 0.38,
+  },
+  market: {
+    pressureBias: 0.03,
+    stabilizationBias: 0.12,
+    actionPressureMultiplier: 0.82,
+    actionStabilizationMultiplier: 1.12,
+    round3SpreadWeight: 0.1,
+    postureBaseline: 0.18,
+    finalPressureWeight: 0.38,
+    deltaWeight: 0.3,
+    escalatoryThreshold: 0.77,
+    constrainedThreshold: 0.27,
+  },
+  supply_chain: {
+    pressureBias: 0.04,
+    stabilizationBias: 0.14,
+    actionPressureMultiplier: 0.84,
+    actionStabilizationMultiplier: 1.14,
+    round3SpreadWeight: 0.08,
+    postureBaseline: 0.18,
+    finalPressureWeight: 0.38,
+    deltaWeight: 0.3,
+    escalatoryThreshold: 0.77,
+    constrainedThreshold: 0.25,
+  },
+  infrastructure: {
+    pressureBias: 0.02,
+    stabilizationBias: 0.16,
+    actionPressureMultiplier: 0.8,
+    actionStabilizationMultiplier: 1.18,
+    round3SpreadWeight: 0.08,
+    postureBaseline: 0.08,
+    finalPressureWeight: 0.27,
+    deltaWeight: 0.28,
+    escalatoryThreshold: 0.79,
+    constrainedThreshold: 0.43,
+  },
+  cyber: {
+    pressureBias: 0.08,
+    stabilizationBias: 0.08,
+    actionPressureMultiplier: 0.92,
+    actionStabilizationMultiplier: 1.04,
+    round3SpreadWeight: 0.1,
+    postureBaseline: 0.12,
+    finalPressureWeight: 0.3,
+    deltaWeight: 0.34,
+    escalatoryThreshold: 0.74,
+    constrainedThreshold: 0.37,
+  },
+  default: {
+    pressureBias: 0.05,
+    stabilizationBias: 0.08,
+    actionPressureMultiplier: 0.92,
+    actionStabilizationMultiplier: 1.04,
+    round3SpreadWeight: 0.1,
+    postureBaseline: 0.12,
+    finalPressureWeight: 0.3,
+    deltaWeight: 0.34,
+    escalatoryThreshold: 0.74,
+    constrainedThreshold: 0.36,
+  },
+};
+
+function getSimulationDomainProfile(dominantDomain) {
+  return SIMULATION_DOMAIN_PROFILES[dominantDomain] || SIMULATION_DOMAIN_PROFILES.default;
+}
+
 const PRESSURE_ACTION_MARKERS = ['reposition', 'reprice', 'rebalance', 'retaliat', 'escalat', 'mobiliz', 'rerout', 'repris', 'spillover', 'price', 'shift messaging', 'shift posture'];
 const STABILIZING_ACTION_MARKERS = ['prevent', 'preserve', 'contain', 'protect', 'reduce', 'maintain', 'harden', 'mitigation', 'continuity', 'de-escal', 'limit', 'triage'];
 
@@ -2617,6 +2720,7 @@ function summarizeBranchDynamics(branches = []) {
 
 function scoreActorAction(summary, stage, dominantDomain, actor) {
   const text = (summary || '').toLowerCase();
+  const profile = getSimulationDomainProfile(dominantDomain);
   let pressureBias = 0.2;
   let stabilizationBias = 0.2;
 
@@ -2627,22 +2731,16 @@ function scoreActorAction(summary, stage, dominantDomain, actor) {
     if (text.includes(marker)) stabilizationBias += 0.18;
   }
 
-  if (stage === 'round_1' && ['conflict', 'military', 'political', 'cyber'].includes(dominantDomain)) {
-    pressureBias += 0.12;
-  }
+  if (stage === 'round_1' && ['conflict', 'military', 'political', 'cyber'].includes(dominantDomain)) pressureBias += 0.12;
   if (stage === 'round_3') {
     stabilizationBias += 0.08;
   }
-  if (dominantDomain === 'supply_chain' || dominantDomain === 'infrastructure') {
-    stabilizationBias += 0.04;
-  }
-  if (dominantDomain === 'market') {
-    pressureBias += 0.06;
-  }
+  pressureBias += profile.pressureBias || 0;
+  stabilizationBias += profile.stabilizationBias || 0;
 
   const influence = clampUnitInterval(actor?.influenceScore || 0.5);
-  const pressureContribution = +(influence * pressureBias * 0.6).toFixed(3);
-  const stabilizationContribution = +(influence * stabilizationBias * 0.6).toFixed(3);
+  const pressureContribution = +(influence * pressureBias * 0.6 * (profile.actionPressureMultiplier || 1)).toFixed(3);
+  const stabilizationContribution = +(influence * stabilizationBias * 0.6 * (profile.actionStabilizationMultiplier || 1)).toFixed(3);
   let intent = 'mixed';
   if (pressureContribution > stabilizationContribution + 0.08) intent = 'pressure';
   else if (stabilizationContribution > pressureContribution + 0.08) intent = 'stabilizing';
@@ -2679,6 +2777,8 @@ function buildActorRoundActions(stage, situation, actors = []) {
 
 function buildSimulationRound(stage, situation, context) {
   const { actors, branches, counterEvidence, supportiveEvidence, priorSimulation } = context;
+  const dominantDomain = situation.dominantDomain || situation.domains?.[0] || '';
+  const profile = getSimulationDomainProfile(dominantDomain);
   const topSignalTypes = (situation.topSignals || []).slice(0, 3).map((item) => item.type);
   const branchKinds = uniqueSortedStrings(branches.map((branch) => branch.kind).filter(Boolean));
   const branchPressure = summarizeSituationPressure(situation, actors, branches);
@@ -2728,7 +2828,7 @@ function buildSimulationRound(stage, situation, context) {
     pressureDelta = clampUnitInterval(
       (branchPressure * 0.08) +
       (branchDynamics.escalatoryWeight * 0.14) +
-      (domainSpread * 0.18) +
+      (domainSpread * (profile.round3SpreadWeight || 0.1)) +
       (actionPressure * 0.18) +
       ((priorSimulation?.rounds?.[1]?.pressureDelta || 0) * 0.18)
     );
@@ -2742,7 +2842,14 @@ function buildSimulationRound(stage, situation, context) {
     lead = (situation.domains || []).length > 1 ? `${formatSituationDomainLabel(situation.domains)} spillover` : `${situation.domains[0] || 'regional'} effects`;
   }
 
-  const netPressure = +clampUnitInterval((situation.avgProbability || 0) + ((pressureDelta - stabilizationDelta) * 0.7)).toFixed(3);
+  const rawPressureDelta = pressureDelta;
+  const rawStabilizationDelta = stabilizationDelta;
+  pressureDelta = clampUnitInterval(pressureDelta * (profile.actionPressureMultiplier || 1));
+  stabilizationDelta = clampUnitInterval(stabilizationDelta * (profile.actionStabilizationMultiplier || 1));
+  const netPressure = +clampUnitInterval(
+    ((situation.avgProbability || 0) * 0.78) +
+    ((pressureDelta - stabilizationDelta) * 0.36)
+  ).toFixed(3);
   const actionMix = summarizeTypeCounts(actorActions.map((action) => action.intent));
   return {
     stage,
@@ -2751,30 +2858,42 @@ function buildSimulationRound(stage, situation, context) {
     branchKinds,
     actions: actorActions,
     actionMix,
+    dominantDomain,
+    rawPressureDelta: +rawPressureDelta.toFixed(3),
+    rawStabilizationDelta: +rawStabilizationDelta.toFixed(3),
     pressureDelta: +pressureDelta.toFixed(3),
     stabilizationDelta: +stabilizationDelta.toFixed(3),
     netPressure,
   };
 }
 
-function summarizeSimulationOutcome(rounds = []) {
+function summarizeSimulationOutcome(rounds = [], dominantDomain = '') {
+  const profile = getSimulationDomainProfile(dominantDomain);
   const finalRound = rounds[rounds.length - 1] || null;
   const netPressureDelta = rounds.length
     ? +rounds.reduce((sum, round) => sum + ((round.pressureDelta || 0) - (round.stabilizationDelta || 0)), 0).toFixed(3)
     : 0;
+  const totalPressure = rounds.length
+    ? +rounds.reduce((sum, round) => sum + (round.pressureDelta || 0), 0).toFixed(3)
+    : 0;
+  const totalStabilization = rounds.length
+    ? +rounds.reduce((sum, round) => sum + (round.stabilizationDelta || 0), 0).toFixed(3)
+    : 0;
   const postureScore = clampUnitInterval(
-    0.35 +
-    ((finalRound?.netPressure || 0) * 0.35) +
-    (netPressureDelta * 0.45)
+    (profile.postureBaseline || 0.12) +
+    ((finalRound?.netPressure || 0) * (profile.finalPressureWeight || 0.3)) +
+    (netPressureDelta * (profile.deltaWeight || 0.34))
   );
   let posture = 'contested';
-  if (postureScore >= 0.72) posture = 'escalatory';
-  else if (postureScore <= 0.42) posture = 'constrained';
+  if (postureScore >= (profile.escalatoryThreshold || 0.74)) posture = 'escalatory';
+  else if (postureScore <= (profile.constrainedThreshold || 0.4)) posture = 'constrained';
 
   return {
     posture,
     postureScore: +postureScore.toFixed(3),
     netPressureDelta,
+    totalPressure,
+    totalStabilization,
   };
 }
 
@@ -2797,7 +2916,7 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
       buildSimulationRound('round_2', situation, { actors, branches, counterEvidence, supportiveEvidence: supportingEvidence, priorSimulation }),
       buildSimulationRound('round_3', situation, { actors, branches, counterEvidence, supportiveEvidence: supportingEvidence, priorSimulation }),
     ];
-    const outcome = summarizeSimulationOutcome(rounds);
+    const outcome = summarizeSimulationOutcome(rounds, situation.dominantDomain || situation.domains?.[0] || '');
 
     return {
       situationId: situation.id,
