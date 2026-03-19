@@ -7,6 +7,7 @@ import {
   populateFallbackNarratives,
   buildForecastTraceArtifacts,
   buildForecastRunWorldState,
+  buildCrossSituationEffects,
   attachSituationContext,
   projectSituationClusters,
   refreshPublishedNarratives,
@@ -951,6 +952,34 @@ describe('forecast run world state', () => {
     assert.ok(worldState.situationFamilies.length >= 1);
     assert.ok(worldState.situationFamilies.length <= worldState.situationClusters.length);
     assert.ok(worldState.report.familyWatchlist.length >= 1);
+  });
+
+  it('does not synthesize cross-situation effects from family membership alone', () => {
+    const source = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.74, 0.64, '7d', [
+      { type: 'ucdp', value: 'Iran theater remains active', weight: 0.4 },
+    ]);
+    source.newsContext = ['Regional actors prepare responses'];
+    buildForecastCase(source);
+
+    const target = makePrediction('market', 'Japan', 'Market repricing: Japan', 0.58, 0.55, '30d', [
+      { type: 'prediction_market', value: 'Japan markets price energy risk', weight: 0.35 },
+    ]);
+    target.newsContext = ['Regional actors prepare responses'];
+    buildForecastCase(target);
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T12:45:00Z'),
+      predictions: [source, target],
+    });
+
+    const patchedSimulationState = structuredClone(worldState.simulationState);
+    for (const unit of patchedSimulationState.situationSimulations || []) {
+      unit.familyId = 'fam-shared-test';
+      unit.familyLabel = 'Shared test family';
+    }
+
+    const effects = buildCrossSituationEffects(patchedSimulationState);
+    assert.equal(effects.length, 0);
   });
 
   it('ignores incompatible prior simulation momentum when the simulation version changes', () => {

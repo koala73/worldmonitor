@@ -2559,8 +2559,14 @@ function finalizeSituationFamily(family) {
 
 function buildSituationFamilies(situationClusters = []) {
   const families = [];
+  const orderedClusters = [...(situationClusters || [])].sort((a, b) => (
+    (a.dominantRegion || '').localeCompare(b.dominantRegion || '')
+    || (a.dominantDomain || '').localeCompare(b.dominantDomain || '')
+    || a.label.localeCompare(b.label)
+    || a.id.localeCompare(b.id)
+  ));
 
-  for (const cluster of situationClusters || []) {
+  for (const cluster of orderedClusters) {
     const candidate = buildSituationFamilyCandidate(cluster);
     let bestFamily = null;
     let bestScore = 0;
@@ -3306,9 +3312,9 @@ function buildCrossSituationEffects(simulationState) {
       const sourceChannels = (source.effectChannels || []).map((item) => item.type);
       const targetSensitivity = getTargetSensitivityChannels(target.dominantDomain);
       const channelOverlap = intersectCount(sourceChannels, targetSensitivity);
-      const hasObservableLink = familyLink || regionOverlap > 0 || actorOverlap > 0 || labelTokenOverlap > 0;
+      const hasDirectObservableLink = regionOverlap > 0 || actorOverlap > 0 || labelTokenOverlap > 0;
       if (channelOverlap === 0) continue;
-      if (!hasObservableLink) continue;
+      if (!hasDirectObservableLink) continue;
 
       const strongestChannel = (source.effectChannels || [])
         .slice()
@@ -5761,6 +5767,7 @@ export {
   buildFeedSummary,
   buildFallbackPerspectives,
   populateFallbackNarratives,
+  buildCrossSituationEffects,
   attachSituationContext,
   projectSituationClusters,
   refreshPublishedNarratives,
