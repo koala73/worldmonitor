@@ -1171,6 +1171,110 @@ describe('forecast run world state', () => {
     assert.ok(effects.some((item) => item.channel === 'regional_spillover' && item.relation === 'regional pressure transfer'));
   });
 
+  it('emits reverse-direction effects when only the later-listed situation can drive the target', () => {
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T14:05:00Z'),
+      predictions: [
+        makePrediction('infrastructure', 'Romania', 'Infrastructure pressure: Romania', 0.34, 0.48, '14d', [
+          { type: 'outage', value: 'Romania infrastructure remains contained', weight: 0.24 },
+        ]),
+        makePrediction('market', 'Black Sea', 'Market repricing: Black Sea', 0.57, 0.56, '14d', [
+          { type: 'prediction_market', value: 'Black Sea pricing reacts to service disruption risk', weight: 0.36 },
+        ]),
+      ],
+    });
+
+    const patchedSimulationState = structuredClone(worldState.simulationState);
+    const infraUnit = patchedSimulationState.situationSimulations.find((item) => item.dominantDomain === 'infrastructure');
+    const marketUnit = patchedSimulationState.situationSimulations.find((item) => item.dominantDomain === 'market');
+    assert.ok(infraUnit);
+    assert.ok(marketUnit);
+
+    infraUnit.posture = 'constrained';
+    infraUnit.postureScore = 0.19;
+    infraUnit.effectChannels = [{ type: 'service_disruption', count: 1 }];
+
+    marketUnit.posture = 'contested';
+    marketUnit.postureScore = 0.49;
+    marketUnit.totalPressure = 0.67;
+    marketUnit.totalStabilization = 0.24;
+    marketUnit.effectChannels = [{ type: 'service_disruption', count: 2 }];
+
+    patchedSimulationState.interactionLedger = [
+      {
+        id: 'reverse-only',
+        stage: 'round_2',
+        sourceSituationId: infraUnit.situationId,
+        targetSituationId: marketUnit.situationId,
+        strongestChannel: 'service_disruption',
+        score: 5,
+        sourceActorName: 'Port Operator',
+        targetActorName: 'Market Desk',
+        interactionType: 'spillover',
+      },
+      {
+        id: 'reverse-emitter',
+        stage: 'round_2',
+        sourceSituationId: marketUnit.situationId,
+        targetSituationId: infraUnit.situationId,
+        strongestChannel: 'service_disruption',
+        score: 5,
+        sourceActorName: 'Market Desk',
+        targetActorName: 'Port Operator',
+        interactionType: 'spillover',
+      },
+    ];
+
+    const effects = buildCrossSituationEffects(patchedSimulationState);
+    assert.ok(effects.some((item) => item.sourceSituationId === marketUnit.situationId && item.targetSituationId === infraUnit.situationId));
+  });
+
+  it('prefers a usable shared channel over the alphabetically first shared channel', () => {
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T14:10:00Z'),
+      predictions: [
+        makePrediction('market', 'Black Sea', 'Market repricing: Black Sea', 0.56, 0.55, '14d', [
+          { type: 'prediction_market', value: 'Black Sea pricing reflects service disruption risk', weight: 0.36 },
+        ]),
+        makePrediction('infrastructure', 'Romania', 'Infrastructure pressure: Romania', 0.45, 0.52, '14d', [
+          { type: 'outage', value: 'Romania infrastructure remains exposed to service disruption', weight: 0.3 },
+        ]),
+      ],
+    });
+
+    const patchedSimulationState = structuredClone(worldState.simulationState);
+    const marketUnit = patchedSimulationState.situationSimulations.find((item) => item.dominantDomain === 'market');
+    const infraUnit = patchedSimulationState.situationSimulations.find((item) => item.dominantDomain === 'infrastructure');
+    assert.ok(marketUnit);
+    assert.ok(infraUnit);
+
+    marketUnit.posture = 'contested';
+    marketUnit.postureScore = 0.5;
+    marketUnit.totalPressure = 0.65;
+    marketUnit.totalStabilization = 0.25;
+    marketUnit.effectChannels = [
+      { type: 'containment', count: 3 },
+      { type: 'service_disruption', count: 2 },
+    ];
+
+    patchedSimulationState.interactionLedger = [
+      {
+        id: 'shared-channel-choice',
+        stage: 'round_2',
+        sourceSituationId: marketUnit.situationId,
+        targetSituationId: infraUnit.situationId,
+        strongestChannel: 'service_disruption',
+        score: 5.5,
+        sourceActorName: 'Shipping Desk',
+        targetActorName: 'Port Operator',
+        interactionType: 'spillover',
+      },
+    ];
+
+    const effects = buildCrossSituationEffects(patchedSimulationState);
+    assert.ok(effects.some((item) => item.channel === 'service_disruption'));
+  });
+
   it('uses a cross-regional family label when no single region clearly dominates a family', () => {
     const iranPolitical = makePrediction('political', 'Iran', 'Political pressure: Iran', 0.62, 0.56, '14d', [
       { type: 'policy_change', value: 'Political posture hardens in Iran', weight: 0.35 },

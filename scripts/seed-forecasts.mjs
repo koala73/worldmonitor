@@ -3388,80 +3388,99 @@ function buildSimulationInteractionLedger(actionLedger = [], situationSimulation
     stageGroups.set(action.stage, group);
   }
 
+  function pickInteractionChannel(sharedChannels, sourceSimulation, targetSimulation) {
+    const targetSensitivity = new Set(getTargetSensitivityChannels(targetSimulation?.dominantDomain));
+    const sourceChannelWeights = new Map(
+      (sourceSimulation?.effectChannels || []).map((item) => [item.type, Number(item.count || 0)])
+    );
+    return uniqueSortedStrings(sharedChannels)
+      .map((channel) => ({
+        channel,
+        usable: targetSensitivity.has(channel) ? 1 : 0,
+        weight: sourceChannelWeights.get(channel) || 0,
+      }))
+      .sort((a, b) => b.usable - a.usable || b.weight - a.weight || a.channel.localeCompare(b.channel))[0]?.channel || '';
+  }
+
+  function pushInteraction(source, target, stage) {
+    if (source.situationId === target.situationId) return;
+
+    const sharedActor = source.actorId && target.actorId && source.actorId === target.actorId;
+    const sharedChannels = uniqueSortedStrings((source.channels || []).filter((channel) => (target.channels || []).includes(channel)));
+    const familyLink = source.familyId && target.familyId && source.familyId === target.familyId;
+    const regionLink = intersectCount(source.regions || [], target.regions || []) > 0;
+    const sameIntent = source.intent === target.intent;
+    const opposingIntent = (
+      (source.intent === 'pressure' && target.intent === 'stabilizing')
+      || (source.intent === 'stabilizing' && target.intent === 'pressure')
+    );
+
+    const score = (sharedActor ? 4 : 0)
+      + (sharedChannels.length * 2)
+      + (familyLink ? 1 : 0)
+      + (regionLink ? 1.5 : 0)
+      + (sameIntent ? 0.5 : 0)
+      + (opposingIntent ? 0.75 : 0);
+    if (score < 3) return;
+
+    let interactionType = 'coupling';
+    if (sharedActor) interactionType = 'actor_carryover';
+    else if (opposingIntent) interactionType = 'constraint';
+    else if (sameIntent && sharedChannels.length > 0) interactionType = 'reinforcement';
+    else if (sharedChannels.length > 0) interactionType = 'spillover';
+
+    const sourceSimulation = simulationsById.get(source.situationId) || null;
+    const targetSimulation = simulationsById.get(target.situationId) || null;
+    const strongestChannel = pickInteractionChannel(sharedChannels, sourceSimulation, targetSimulation);
+
+    ledger.push({
+      id: `simint-${hashSituationKey([
+        stage,
+        source.situationId,
+        target.situationId,
+        strongestChannel || interactionType,
+        source.actorId || source.actorName || '',
+        target.actorId || target.actorName || '',
+      ])}`,
+      stage,
+      sourceSituationId: source.situationId,
+      sourceLabel: source.situationLabel,
+      sourceFamilyId: source.familyId,
+      sourceFamilyLabel: source.familyLabel,
+      sourceActorId: source.actorId,
+      sourceActorName: source.actorName,
+      sourceIntent: source.intent,
+      sourceDomain: source.dominantDomain,
+      targetSituationId: target.situationId,
+      targetLabel: target.situationLabel,
+      targetFamilyId: target.familyId,
+      targetFamilyLabel: target.familyLabel,
+      targetActorId: target.actorId,
+      targetActorName: target.actorName,
+      targetIntent: target.intent,
+      targetDomain: target.dominantDomain,
+      interactionType,
+      strongestChannel,
+      sharedChannels,
+      sharedActor,
+      familyLink,
+      regionLink,
+      score: +score.toFixed(3),
+      summary: `${source.actorName || 'An actor'} in ${source.situationLabel} ${interactionType.replace(/_/g, ' ')} with ${target.actorName || 'another actor'} in ${target.situationLabel} during ${stage.replace('_', ' ')}.`,
+      sourcePosture: sourceSimulation?.posture || '',
+      sourcePostureScore: sourceSimulation?.postureScore || 0,
+      targetPosture: targetSimulation?.posture || '',
+      targetPostureScore: targetSimulation?.postureScore || 0,
+    });
+  }
+
   for (const [stage, actions] of stageGroups.entries()) {
     for (let i = 0; i < actions.length; i++) {
-      const source = actions[i];
       for (let j = i + 1; j < actions.length; j++) {
+        const source = actions[i];
         const target = actions[j];
-        if (source.situationId === target.situationId) continue;
-
-        const sharedActor = source.actorId && target.actorId && source.actorId === target.actorId;
-        const sharedChannels = uniqueSortedStrings((source.channels || []).filter((channel) => (target.channels || []).includes(channel)));
-        const familyLink = source.familyId && target.familyId && source.familyId === target.familyId;
-        const regionLink = intersectCount(source.regions || [], target.regions || []) > 0;
-        const sameIntent = source.intent === target.intent;
-        const opposingIntent = (
-          (source.intent === 'pressure' && target.intent === 'stabilizing')
-          || (source.intent === 'stabilizing' && target.intent === 'pressure')
-        );
-
-        const score = (sharedActor ? 4 : 0)
-          + (sharedChannels.length * 2)
-          + (familyLink ? 1 : 0)
-          + (regionLink ? 1.5 : 0)
-          + (sameIntent ? 0.5 : 0)
-          + (opposingIntent ? 0.75 : 0);
-        if (score < 3) continue;
-
-        let interactionType = 'coupling';
-        if (sharedActor) interactionType = 'actor_carryover';
-        else if (opposingIntent) interactionType = 'constraint';
-        else if (sameIntent && sharedChannels.length > 0) interactionType = 'reinforcement';
-        else if (sharedChannels.length > 0) interactionType = 'spillover';
-
-        const strongestChannel = sharedChannels[0] || '';
-        const sourceSimulation = simulationsById.get(source.situationId) || null;
-        const targetSimulation = simulationsById.get(target.situationId) || null;
-
-        ledger.push({
-          id: `simint-${hashSituationKey([
-            stage,
-            source.situationId,
-            target.situationId,
-            strongestChannel || interactionType,
-            source.actorId || source.actorName || '',
-            target.actorId || target.actorName || '',
-          ])}`,
-          stage,
-          sourceSituationId: source.situationId,
-          sourceLabel: source.situationLabel,
-          sourceFamilyId: source.familyId,
-          sourceFamilyLabel: source.familyLabel,
-          sourceActorId: source.actorId,
-          sourceActorName: source.actorName,
-          sourceIntent: source.intent,
-          sourceDomain: source.dominantDomain,
-          targetSituationId: target.situationId,
-          targetLabel: target.situationLabel,
-          targetFamilyId: target.familyId,
-          targetFamilyLabel: target.familyLabel,
-          targetActorId: target.actorId,
-          targetActorName: target.actorName,
-          targetIntent: target.intent,
-          targetDomain: target.dominantDomain,
-          interactionType,
-          strongestChannel,
-          sharedChannels,
-          sharedActor,
-          familyLink,
-          regionLink,
-          score: +score.toFixed(3),
-          summary: `${source.actorName || 'An actor'} in ${source.situationLabel} ${interactionType.replace(/_/g, ' ')} with ${target.actorName || 'another actor'} in ${target.situationLabel} during ${stage.replace('_', ' ')}.`,
-          sourcePosture: sourceSimulation?.posture || '',
-          sourcePostureScore: sourceSimulation?.postureScore || 0,
-          targetPosture: targetSimulation?.posture || '',
-          targetPostureScore: targetSimulation?.postureScore || 0,
-        });
+        pushInteraction(source, target, stage);
+        pushInteraction(target, source, stage);
       }
     }
   }
