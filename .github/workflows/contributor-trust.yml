@@ -20,26 +20,16 @@ jobs:
         id: brin
         run: |
           AUTHOR="${{ github.event.pull_request.user.login }}"
-          # Use --fail-with-body so non-2xx responses are captured; fall back to empty string on network error.
           RESPONSE=$(curl -sf --max-time 10 "https://api.brin.sh/contributor/${AUTHOR}" 2>/dev/null || true)
           if [ -z "$RESPONSE" ]; then
-            # API unavailable — skip labeling entirely
             echo "verdict=unavailable" >> "$GITHUB_OUTPUT"
           else
-            VERDICT=$(echo "$RESPONSE" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    v = d.get('verdict', '')
-    print(v if v in ('safe', 'caution', 'suspicious', 'dangerous') else 'unavailable')
-except Exception:
-    print('unavailable')
-")
+            VERDICT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); v=d.get('verdict',''); print(v if v in ('safe','caution','suspicious','dangerous') else 'unavailable')" 2>/dev/null || echo "unavailable")
             echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Apply trust label
-        if: >
+        if: |
           steps.brin.outputs.verdict == 'safe' ||
           steps.brin.outputs.verdict == 'caution' ||
           steps.brin.outputs.verdict == 'suspicious' ||
