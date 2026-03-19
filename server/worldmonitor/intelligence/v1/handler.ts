@@ -22,6 +22,6 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   listGpsInterference: async (_ctx, _req) => ({ observations: [], fetchedAt: '' }),
   listOrefAlerts: async (_ctx, _req) => ({ alerts: [], fetchedAt: '' }),
   listTelegramFeed: async (_ctx, _req) => ({ posts: [], fetchedAt: '' }),
-  getCompanyEnrichment: async (_ctx, _req) => ({ company: undefined }),
-  listCompanySignals: async (_ctx, _req) => ({ signals: [] }),
+  getCompanyEnrichment: async (_ctx, _req) => ({ techStack: [], hackerNewsMentions: [], enrichedAtMs: '', sources: [] }),
+  listCompanySignals: async (_ctx, _req) => ({ company: '', domain: '', signals: [], discoveredAtMs: '' }),
 };
