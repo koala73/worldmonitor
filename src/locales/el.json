@@ -958,8 +958,8 @@
       "nuclear": "Πυρηνικό"
     },
     "community": {
-      "joinDiscussion": "Συμμετοχή στη Συζήτηση",
-      "openDiscussion": "Ανοιχτή Συζήτηση",
+      "joinDiscussion": "Join Discord",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "Να μην εμφανιστεί ξανά",
       "sectionLabel": "Κοινότητα"
     },

@@ -958,8 +958,8 @@
       "nuclear": "核施設"
     },
     "community": {
-      "joinDiscussion": "ディスカッションに参加",
-      "openDiscussion": "ディスカッションを開く",
+      "joinDiscussion": "Join Discord",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "今後表示しない",
       "sectionLabel": "コミュニティ"
     },

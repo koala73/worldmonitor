@@ -958,8 +958,8 @@
       "nuclear": "นิวเคลียร์"
     },
     "community": {
-      "joinDiscussion": "เข้าร่วมการสนทนา",
-      "openDiscussion": "เปิดการสนทนา",
+      "joinDiscussion": "Join Discord",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "ไม่แสดงอีก",
       "sectionLabel": "ชุมชน"
     },
