@@ -18,7 +18,7 @@ describe('warm-ping seed scripts', () => {
     assert.match(src, /method:\s*'POST'/);
   });
 
-  it('sends the app Origin header for military\/maritime warm-pings', () => {
+  it('sends the app Origin header for military/maritime warm-pings', () => {
     const src = readScript('scripts/seed-military-maritime-news.mjs');
     assert.match(src, /Origin:\s*'https:\/\/worldmonitor\.app'/);
     assert.match(src, /method:\s*'POST'/);

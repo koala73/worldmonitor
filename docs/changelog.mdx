@@ -6,17 +6,28 @@ rss: true
 
 All notable changes to World Monitor are documented here. Subscribe via [RSS](/changelog/rss.xml) to stay updated.
 
-<Update label="Unreleased" description="Unreleased" tags={["Supply Chain", "Maritime", "Charts"]}>
+<Update label="Unreleased" description="Unreleased" tags={["Trade", "Intelligence", "Search", "Supply Chain", "Maritime"]}>
 
 ### Added
 
+- **US Treasury customs revenue** in Trade Policy panel with monthly data, FYTD year-over-year comparison, and revenue spike highlighting (#1663)
+- **Security advisories gold standard migration**: Railway cron seed fetches 24 government RSS feeds hourly, Vercel reads Redis only (#1637)
+- **CMD+K full panel coverage**: all 55 panels now searchable (was 31), including AI forecasts, correlation panels, webcams, displacement, security advisories (#1656)
 - Chokepoint transit intelligence with 3 free data sources: IMF PortWatch, CorridorRisk, AISStream (#1560)
 - 13 monitored chokepoints (was 6): added Cape of Good Hope, Gibraltar, Bosporus Strait (absorbs Dardanelles), Korea, Dover, Kerch, Lombok (#1560, #1572)
 - Expandable chokepoint cards with TradingView lightweight-charts 180-day time-series (#1560)
 - Real-time transit counting with crossing detection on Railway relay (#1560)
+- R2 trace storage for forecast debugging with Cloudflare API upload (#1655)
+- `@ts-nocheck` injection in Makefile generate target for CI proto-freshness parity (#1637)
 
 ### Fixed
 
+- Trade Policy panel WTO gate changed from panel-wide to per-tab, so Revenue tab works on desktop without WTO API key (#1663)
+- Conflict-intel seed succeeds without ACLED credentials by accepting empty events when humanitarian/PizzINT data is available (#1651)
+- Seed-forecasts crash from top-level `@aws-sdk/client-s3` import resolved with lazy dynamic import (#1654)
+- Bootstrap desktop timeouts restored (5s/8s) while keeping aggressive web timeouts (1.2s/1.8s) (#1653)
+- Service worker navigation reverted to NetworkOnly to prevent stale HTML caching on deploy (#1653)
+- Railway seed watch paths fixed for 5 services (seed-insights, seed-unrest-events, seed-prediction-markets, seed-infra, seed-gpsjam)
 - PortWatch ArcGIS URL, field names, and chokepoint name mappings (#1572)
 
 </Update>

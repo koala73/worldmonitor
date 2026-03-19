@@ -15,6 +15,9 @@ for f in scripts/*.cjs; do
   [ -f "$f" ] && node -c "$f" || exit 1
 done
 
+echo "Running Unicode safety check..."
+node scripts/check-unicode-safety.mjs || exit 1
+
 echo "Running edge function bundle check..."
 for f in api/*.js; do
   case "$(basename "$f")" in _*) continue;; esac
@@ -24,6 +27,9 @@ for f in api/*.js; do
     exit 1
   }
 done
+
+echo "Running unit tests..."
+npm run test:data || exit 1
 
 echo "Running edge function tests..."
 node --test tests/edge-functions.test.mjs || exit 1

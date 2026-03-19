@@ -1,0 +1,2 @@
+echo "Running Unicode safety check (staged files)..."
+node scripts/check-unicode-safety.mjs --staged || exit 1

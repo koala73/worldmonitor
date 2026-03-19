@@ -20,12 +20,14 @@ const BASELINE_RISK: Record<string, number> = {
   US: 5, RU: 35, CN: 25, UA: 50, IR: 40, IL: 45, TW: 30, KP: 45,
   SA: 20, TR: 25, PL: 10, DE: 5, FR: 10, GB: 5, IN: 20, PK: 35,
   SY: 50, YE: 50, MM: 45, VE: 40, CU: 45, MX: 35, BR: 15, AE: 10,
+  KR: 15, IQ: 40, AF: 45, LB: 40, EG: 20, JP: 5, QA: 10,
 };
 
 const EVENT_MULTIPLIER: Record<string, number> = {
   US: 0.3, RU: 2.0, CN: 2.5, UA: 0.8, IR: 2.0, IL: 0.7, TW: 1.5, KP: 3.0,
   SA: 2.0, TR: 1.2, PL: 0.8, DE: 0.5, FR: 0.6, GB: 0.5, IN: 0.8, PK: 1.5,
   SY: 0.7, YE: 0.7, MM: 1.8, VE: 1.8, CU: 2.0, MX: 1.0, BR: 0.6, AE: 1.5,
+  KR: 0.8, IQ: 1.2, AF: 0.8, LB: 1.5, EG: 1.0, JP: 0.5, QA: 0.8,
 };
 
 const COUNTRY_KEYWORDS: Record<string, string[]> = {
@@ -53,6 +55,13 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   MX: ['mexico', 'mexican', 'sheinbaum', 'cartel', 'sinaloa'],
   BR: ['brazil', 'brasilia', 'lula'],
   AE: ['uae', 'emirates', 'dubai', 'abu dhabi', 'united arab emirates'],
+  KR: ['south korea', 'korean peninsula', 'seoul', 'yoon'],
+  IQ: ['iraq', 'iraqi', 'baghdad', 'kurdistan', 'mosul', 'basra'],
+  AF: ['afghanistan', 'afghan', 'kabul', 'taliban', 'kandahar'],
+  LB: ['lebanon', 'lebanese', 'beirut', 'hezbollah', 'nasrallah'],
+  EG: ['egypt', 'egyptian', 'cairo', 'suez', 'sisi'],
+  JP: ['japan', 'japanese', 'tokyo', 'okinawa', 'kishida'],
+  QA: ['qatar', 'qatari', 'doha', 'al jazeera'],
 };
 
 const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
@@ -80,19 +89,26 @@ const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: num
   MX: { minLat: 14.5, maxLat: 32.7, minLon: -118.4, maxLon: -86.7 },
   BR: { minLat: -33.7, maxLat: 5.3, minLon: -73.9, maxLon: -34.8 },
   AE: { minLat: 22.6, maxLat: 26.1, minLon: 51.6, maxLon: 56.4 },
+  KR: { minLat: 33.1, maxLat: 38.6, minLon: 125.1, maxLon: 131.9 },
+  IQ: { minLat: 29.1, maxLat: 37.4, minLon: 38.8, maxLon: 48.6 },
+  AF: { minLat: 29.4, maxLat: 38.5, minLon: 60.5, maxLon: 75.0 },
+  LB: { minLat: 33.1, maxLat: 34.7, minLon: 35.1, maxLon: 36.6 },
+  EG: { minLat: 22.0, maxLat: 31.7, minLon: 24.7, maxLon: 36.9 },
+  JP: { minLat: 24.4, maxLat: 45.5, minLon: 122.9, maxLon: 153.0 },
+  QA: { minLat: 24.5, maxLat: 26.2, minLon: 50.7, maxLon: 51.7 },
 };
 
 const ZONE_COUNTRY_MAP: Record<string, string[]> = {
   'North America': ['US'], 'Europe': ['DE', 'FR', 'GB', 'PL', 'TR', 'UA'],
-  'East Asia': ['CN', 'TW', 'KP'], 'South Asia': ['IN', 'PK', 'MM'],
-  'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE'], 'Russia': ['RU'],
-  'Latin America': ['VE', 'CU', 'MX', 'BR'],
+  'East Asia': ['CN', 'TW', 'KP', 'KR', 'JP'], 'South Asia': ['IN', 'PK', 'MM', 'AF'],
+  'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE', 'IQ', 'LB', 'QA'], 'Russia': ['RU'],
+  'Latin America': ['VE', 'CU', 'MX', 'BR'], 'North Africa': ['EG'],
 };
 
 const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
   UA: 'do-not-travel', SY: 'do-not-travel', YE: 'do-not-travel', MM: 'do-not-travel',
   IL: 'reconsider', IR: 'reconsider', PK: 'reconsider', VE: 'reconsider', CU: 'reconsider', MX: 'reconsider',
-  RU: 'caution', TR: 'caution',
+  RU: 'caution', TR: 'caution', IQ: 'reconsider', AF: 'do-not-travel', LB: 'reconsider',
 };
 
 // ========================================================================
@@ -124,6 +140,16 @@ function safeNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// ISO3 → ISO2 mapping for displacement data (UNHCR uses ISO3)
+const ISO3_TO_ISO2: Record<string, string> = {
+  USA: 'US', RUS: 'RU', CHN: 'CN', UKR: 'UA', IRN: 'IR', ISR: 'IL',
+  TWN: 'TW', PRK: 'KP', SAU: 'SA', TUR: 'TR', POL: 'PL', DEU: 'DE',
+  FRA: 'FR', GBR: 'GB', IND: 'IN', PAK: 'PK', SYR: 'SY', YEM: 'YE',
+  MMR: 'MM', VEN: 'VE', CUB: 'CU', MEX: 'MX', BRA: 'BR', ARE: 'AE',
+  KOR: 'KR', IRQ: 'IQ', AFG: 'AF', LBN: 'LB', EGY: 'EG', JPN: 'JP',
+  QAT: 'QA',
+};
+
 interface CountrySignals {
   protests: number;
   riots: number;
@@ -148,6 +174,7 @@ interface CountrySignals {
   orefAlertCount: number;
   orefHistoryCount24h: number;
   advisoryLevel: 'do-not-travel' | 'reconsider' | 'caution' | null;
+  totalDisplaced: number;
 }
 
 function emptySignals(): CountrySignals {
@@ -161,23 +188,37 @@ function emptySignals(): CountrySignals {
     iranStrikes: 0, highSeverityStrikes: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
     advisoryLevel: null,
+    totalDisplaced: 0,
   };
 }
 
-async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: string; fatalities: number }>> {
-  const endDate = new Date().toISOString().split('T')[0]!;
-  const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
-  const raw = await fetchAcledCached({
-    eventTypes: 'Protests|Riots|Battles|Explosions/Remote violence|Violence against civilians',
-    startDate,
-    endDate,
-    limit: 1000,
-  });
-  return raw.map((e) => ({
-    country: e.country || '',
-    event_type: e.event_type || '',
-    fatalities: parseInt(e.fatalities || '0', 10) || 0,
-  }));
+async function fetchACLEDEvents(): Promise<Array<{ country: string; event_type: string; fatalities: number; daysAgo: number }>> {
+  const now = Date.now();
+  const today = new Date(now).toISOString().split('T')[0]!;
+  const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+  const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+  const eventTypes = 'Protests|Riots|Battles|Explosions/Remote violence|Violence against civilians';
+
+  // Two separate cached queries so each window has its own 1 000-event budget.
+  // A single 30-day request at limit:1500 silently drops tail events once the
+  // global count exceeds the cap; splitting ensures post-conflict countries
+  // (low recent activity, higher older activity) are not squeezed out.
+  const [recent, older] = await Promise.all([
+    fetchAcledCached({ eventTypes, startDate: sevenDaysAgo, endDate: today, limit: 1000 }),
+    fetchAcledCached({ eventTypes, startDate: thirtyDaysAgo, endDate: sevenDaysAgo, limit: 1000 }),
+  ]);
+
+  const toRow = (e: (typeof recent)[number]) => {
+    const eventMs = e.event_date ? new Date(e.event_date).getTime() : now;
+    return {
+      country: e.country || '',
+      event_type: e.event_type || '',
+      fatalities: parseInt(e.fatalities || '0', 10) || 0,
+      daysAgo: Math.max(0, Math.floor((now - eventMs) / (24 * 60 * 60 * 1000))),
+    };
+  };
+
+  return [...recent.map(toRow), ...older.map(toRow)];
 }
 
 interface AuxiliarySources {
@@ -190,10 +231,13 @@ interface AuxiliarySources {
   iranEvents: any[];
   orefData: { activeAlertCount: number; historyCount24h: number } | null;
   advisories: { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null;
+  // Per-country displaced population by ISO3 code (UNHCR — persists after ceasefires)
+  displacedByIso3: Record<string, number>;
 }
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw] = await Promise.all([
+  const currentYear = new Date().getFullYear();
+  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw] = await Promise.all([
     getCachedJson('conflict:ucdp-events:v1', true).catch(() => null),
     getCachedJson('infra:outages:v1', true).catch(() => null),
     getCachedJson('climate:anomalies:v1', true).catch(() => null),
@@ -203,6 +247,10 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     getCachedJson('conflict:iran-events:v1', true).catch(() => null),
     getCachedJson('relay:oref:history:v1', true).catch(() => null),
     getCachedJson('intelligence:advisories:v1', true).catch(() => null),
+    // Try current year, fall back to previous year if not yet seeded
+    getCachedJson(`displacement:summary:v1:${currentYear}`, true)
+      .catch(() => null)
+      .then(d => d ?? getCachedJson(`displacement:summary:v1:${currentYear - 1}`, true).catch(() => null)),
   ]);
   const arr = (v: any, field?: string, maxLen = 10000) => {
     let a: any[];
@@ -218,6 +266,22 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     orefData = { activeAlertCount: alertCount, historyCount24h: histCount };
   }
 
+  // Build ISO3→totalDisplaced map from UNHCR displacement summary
+  const displacedByIso3: Record<string, number> = {};
+  const dispCountries: any[] = arr(displacementRaw, 'countries');
+  for (const c of dispCountries) {
+    const iso3 = String(c.code || '').toUpperCase();
+    if (iso3) displacedByIso3[iso3] = safeNum(c.totalDisplaced);
+  }
+  // Also try nested summary.countries (seed wraps in { summary: { countries: [...] } })
+  if (dispCountries.length === 0) {
+    const summaryCountries: any[] = arr((displacementRaw as any)?.summary, 'countries');
+    for (const c of summaryCountries) {
+      const iso3 = String(c.code || '').toUpperCase();
+      if (iso3) displacedByIso3[iso3] = safeNum(c.totalDisplaced);
+    }
+  }
+
   return {
     ucdpEvents: arr(ucdpRaw, 'events'),
     outages: arr(outagesRaw, 'outages'),
@@ -230,11 +294,12 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     advisories: advisoriesRaw && typeof advisoriesRaw === 'object' && (advisoriesRaw as any).byCountry
       ? { byCountry: (advisoriesRaw as any).byCountry }
       : null,
+    displacedByIso3,
   };
 }
 
 export function computeCIIScores(
-  acled: Array<{ country: string; event_type: string; fatalities: number }>,
+  acled: Array<{ country: string; event_type: string; fatalities: number; daysAgo?: number }>,
   aux: AuxiliarySources,
 ): CiiScore[] {
   const data: Record<string, CountrySignals> = {};
@@ -244,26 +309,37 @@ export function computeCIIScores(
     data[code].advisoryLevel = liveLevel || ADVISORY_LEVELS_FALLBACK[code] || null;
   }
 
-  // --- ACLED ingestion with fatality split ---
+  // --- Displacement ingestion (UNHCR — persists after ceasefires) ---
+  for (const [iso3, totalDisplaced] of Object.entries(aux.displacedByIso3 ?? {})) {
+    const iso2 = ISO3_TO_ISO2[iso3];
+    if (iso2 && data[iso2]) {
+      data[iso2].totalDisplaced = Math.max(data[iso2].totalDisplaced, totalDisplaced);
+    }
+  }
+
+  // --- ACLED ingestion with fatality split and time decay ---
+  // Events 0-7 days old: weight 1.0 (full impact)
+  // Events 8-30 days old: weight 0.4 (partial — captures post-ceasefire/post-conflict tail)
   for (const ev of acled) {
     const code = normalizeCountryName(ev.country);
     if (!code || !data[code]) continue;
     const type = ev.event_type.toLowerCase();
-    const fat = safeNum(ev.fatalities);
+    const weight = (ev.daysAgo ?? 0) <= 7 ? 1.0 : 0.4;
+    const fat = safeNum(ev.fatalities) * weight;
     if (type.includes('protest')) {
-      data[code].protests++;
+      data[code].protests += weight;
       data[code].protestFatalities += fat;
     } else if (type.includes('riot')) {
-      data[code].riots++;
+      data[code].riots += weight;
       data[code].protestFatalities += fat;
     } else if (type.includes('battle')) {
-      data[code].battles++;
+      data[code].battles += weight;
       data[code].conflictFatalities += fat;
     } else if (type.includes('explosion') || type.includes('remote')) {
-      data[code].explosions++;
+      data[code].explosions += weight;
       data[code].conflictFatalities += fat;
     } else if (type.includes('violence')) {
-      data[code].civilianViolence++;
+      data[code].civilianViolence += weight;
       data[code].conflictFatalities += fat;
     }
     data[code].fatalities += fat;
@@ -388,13 +464,23 @@ export function computeCIIScores(
       ? (d.orefAlertCount > 0 ? 15 : 0) + (d.orefHistoryCount24h >= 10 ? 10 : d.orefHistoryCount24h >= 3 ? 5 : 0)
       : 0;
 
+    // --- Displacement boost (UNHCR — persists after ceasefires) ---
+    // Ramp anchored so the scale spans meaningful crisis sizes:
+    //   100K  → +4  |  500K → +9  |  1M → +12  |  5M → +18  |  10M+ → +20
+    // Formula: (log10(n) - 5) * 8 + 4, clamped [0, 20].
+    // Below ~32K displaced → 0; cap reached at 10M.
+    const displacementBoost = d.totalDisplaced > 0
+      ? Math.min(20, Math.max(0, Math.round((Math.log10(d.totalDisplaced) - 5) * 8 + 4)))
+      : 0;
+
     const blended = baseline * 0.4
       + eventScore * 0.6
       + climateBoost
       + cyberBoost
       + fireBoost
       + advisoryBoost
-      + orefBlendBoost;
+      + orefBlendBoost
+      + displacementBoost;
 
     // --- Floors ---
     const ucdpFloor = d.ucdpWar ? 70 : (d.ucdpMinor ? 50 : 0);
@@ -485,7 +571,7 @@ export async function getRiskScores(
 
   const stale = (await getCachedJson(RISK_STALE_CACHE_KEY)) as GetRiskScoresResponse | null;
   if (stale) return stale;
-  const emptyAux: AuxiliarySources = { ucdpEvents: [], outages: [], climate: [], cyber: [], fires: [], gpsHexes: [], iranEvents: [], orefData: null, advisories: null };
+  const emptyAux: AuxiliarySources = { ucdpEvents: [], outages: [], climate: [], cyber: [], fires: [], gpsHexes: [], iranEvents: [], orefData: null, advisories: null, displacedByIso3: {} };
   const ciiScores = computeCIIScores([], emptyAux);
   return { ciiScores, strategicRisks: computeStrategicRisks(ciiScores) };
 }

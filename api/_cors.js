@@ -25,6 +25,23 @@ export function getCorsHeaders(req, methods = 'GET, OPTIONS') {
   };
 }
 
+/**
+ * CORS headers for public cacheable responses (seeded data, no per-user variation).
+ * Uses ACAO: * so Vercel edge stores ONE cache entry per URL instead of one per
+ * unique Origin. Eliminates Vary: Origin cache fragmentation that multiplies
+ * origin hits by the number of distinct client origins.
+ *
+ * Safe to use when isDisallowedOrigin() has already blocked unauthorized origins.
+ */
+export function getPublicCorsHeaders(methods = 'GET, OPTIONS') {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': methods,
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
 export function isDisallowedOrigin(req) {
   const origin = req.headers.get('origin');
   if (!origin) return false;

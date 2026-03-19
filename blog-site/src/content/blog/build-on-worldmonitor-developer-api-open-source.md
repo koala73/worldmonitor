@@ -1,7 +1,7 @@
 ---
 title: "Build on World Monitor: Open APIs, Proto-First Architecture, and the Developer Platform"
-description: "Build intelligence applications on World Monitor's typed API layer. 22 services, 92 proto files, 60+ edge functions, auto-generated TypeScript clients. AGPL-3.0 open source."
-metaTitle: "World Monitor Developer API: 22 Services, 92 Proto Files, Open Source Intelligence Platform"
+description: "Build intelligence apps on World Monitor's typed API: 22 services, 92 proto files, 60+ edge functions, and auto-generated TypeScript clients. AGPL-3.0."
+metaTitle: "Developer API & Open Source Platform | World Monitor"
 keywords: "open source intelligence API, OSINT API free, geopolitical data API, intelligence platform developer, proto-first API architecture"
 audience: "Developers, data engineers, startup builders, academic researchers, open-source contributors"
 heroImage: "/blog/images/blog/build-on-worldmonitor-developer-api-open-source.jpg"
@@ -116,7 +116,7 @@ Feed World Monitor data into your own analytics:
 Academic researchers can use the API programmatically:
 
 - Study the relationship between news velocity and conflict escalation
-- Analyze prediction market accuracy against actual outcomes
+- Analyze prediction market accuracy against actual outcomes (see [prediction markets and AI forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/))
 - Build custom scoring models using World Monitor's raw data feeds
 
 ### Mobile Apps
@@ -134,7 +134,7 @@ Build alerting bots that post to your team channel when:
 
 ## Self-Hosting
 
-World Monitor is AGPL-3.0. You can self-host the entire platform:
+World Monitor is AGPL-3.0. You can self-host the entire platform, including [local AI capabilities that run without cloud dependencies](/blog/posts/ai-powered-intelligence-without-the-cloud/):
 
 **Frontend:** React + TypeScript + Vite. Standard `npm install && npm run build`.
 
@@ -184,7 +184,7 @@ For reference, World Monitor is built with:
 
 ## Why Build on World Monitor?
 
-The intelligence industry has a consolidation problem. A handful of vendors control the data, the algorithms, and the interfaces. Analysts are locked into ecosystems they can't customize, audit, or extend.
+The intelligence industry has a consolidation problem. A handful of vendors control the data, the algorithms, and the interfaces. Analysts are locked into ecosystems they can't customize, audit, or extend. See how World Monitor [compares to traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/) in practice.
 
 World Monitor's open, typed, proto-first architecture is the alternative:
 
@@ -195,6 +195,17 @@ World Monitor's open, typed, proto-first architecture is the alternative:
 - **Own your intelligence:** No vendor lock-in, no API key revocation, no price hikes
 
 The intelligence platform of the future isn't a product. It's an ecosystem. World Monitor is building the foundation.
+
+## Frequently Asked Questions
+
+**Is the World Monitor API free to use?**
+Yes. World Monitor is AGPL-3.0 open source. You can use the public API at api.worldmonitor.app or self-host the entire stack. There are no API keys required for public endpoints and no usage fees.
+
+**What languages can I use to consume the API?**
+Any language that supports HTTP. The auto-generated OpenAPI spec provides compatibility with Swift, Kotlin, Python, Go, Java, and more. TypeScript clients are generated directly from the proto files for first-class type safety.
+
+**How do I add a custom data source to my self-hosted instance?**
+Define your data structures in a proto file, implement a handler function, wire it into the service registry, and add a seed script to populate Redis. The proto-first architecture ensures type safety across the full stack automatically.
 
 ---
 

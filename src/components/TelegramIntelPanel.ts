@@ -95,7 +95,7 @@ export class TelegramIntelPanel extends Panel {
   private buildItem(item: TelegramItem): HTMLElement {
     const timeAgo = formatTelegramTime(item.ts);
     const itemDate = new Date(item.ts).getTime();
-    const isLive = !isNaN(itemDate) && (Date.now() - itemDate) < LIVE_THRESHOLD_MS;
+    const isLive = !Number.isNaN(itemDate) && (Date.now() - itemDate) < LIVE_THRESHOLD_MS;
     const raw = item.text || '';
     const escaped = raw
       .replace(/&/g, '&amp;')

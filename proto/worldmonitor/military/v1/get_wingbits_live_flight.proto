@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// WingbitsLiveFlight contains real-time flight position data from the Wingbits ECS network.
+message WingbitsLiveFlight {
+  // ICAO 24-bit hex address.
+  string icao24 = 1;
+  // Live callsign.
+  string callsign = 2;
+  // Latitude in decimal degrees.
+  double lat = 3;
+  // Longitude in decimal degrees.
+  double lon = 4;
+  // Altitude in feet.
+  double altitude = 5;
+  // Ground speed in knots.
+  double speed = 6;
+  // Track/heading in degrees.
+  double heading = 7;
+  // Vertical rate in feet per minute (positive = climb, negative = descent).
+  double vertical_rate = 8;
+  // Aircraft registration number.
+  string registration = 9;
+  // Aircraft model (e.g. "PC-12/45").
+  string model = 10;
+  // Operator name.
+  string operator = 11;
+  // True if the aircraft is on the ground.
+  bool on_ground = 12;
+  // Unix timestamp of the last position update.
+  int64 last_seen = 13;
+}
+
+// GetWingbitsLiveFlightRequest fetches live Wingbits ECS data for a single aircraft.
+message GetWingbitsLiveFlightRequest {
+  // ICAO 24-bit hex address (lowercase, 6 characters).
+  string icao24 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (sebuf.http.query) = {name: "icao24"}
+  ];
+}
+
+// GetWingbitsLiveFlightResponse contains the live flight data, if available.
+message GetWingbitsLiveFlightResponse {
+  // Live flight position data; absent if Wingbits has no current signal for this aircraft.
+  WingbitsLiveFlight flight = 1;
+}

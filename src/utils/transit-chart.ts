@@ -104,7 +104,7 @@ export class TransitChart {
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
     const W = rect.width;
-    const H = parseInt(canvas.style.height) || 140;
+    const H = parseInt(canvas.style.height, 10) || 140;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
 

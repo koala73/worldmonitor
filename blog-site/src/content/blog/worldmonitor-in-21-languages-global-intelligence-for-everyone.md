@@ -1,7 +1,7 @@
 ---
 title: "Intelligence Without Borders: World Monitor in 21 Languages"
-description: "World Monitor supports 21 languages including Arabic (RTL), Japanese, Chinese, and Korean. Localized news feeds, AI analysis in your language, and multilingual search."
-metaTitle: "Global Intelligence Dashboard in 21 Languages | Arabic RTL, Japanese, Chinese | World Monitor"
+description: "World Monitor supports 21 languages with full RTL Arabic, CJK, and locale-specific news feeds. AI analysis and search in your preferred language, free."
+metaTitle: "World Monitor in 21 Languages | Multilingual OSINT"
 keywords: "multilingual intelligence dashboard, Arabic OSINT tool, Japanese intelligence platform, global dashboard localized, RTL intelligence dashboard"
 audience: "Non-English-speaking analysts, international organizations, global enterprises, multilingual researchers"
 heroImage: "/blog/images/blog/worldmonitor-in-21-languages-global-intelligence-for-everyone.jpg"
@@ -95,7 +95,7 @@ World Monitor's AI capabilities generate output in your selected language:
 - **Threat Classification:** Categorization labels appear in your language
 - **AI Deduction:** Geopolitical forecasting is generated in the interface language
 
-When using local LLMs (Ollama, LM Studio), multilingual output depends on the model's training data. Larger models like Llama 3.1 70B handle most major languages well. The browser-based T5 fallback performs best in English but provides basic multilingual capability.
+When using local LLMs (Ollama, LM Studio), multilingual output depends on the model's training data. Larger models like Llama 3.1 70B handle most major languages well. The browser-based T5 fallback performs best in English but provides basic multilingual capability. For more on how World Monitor keeps your data private with local AI, see [AI-Powered Intelligence Without the Cloud](/blog/posts/ai-powered-intelligence-without-the-cloud/).
 
 ## Multilingual Command Palette
 
@@ -107,7 +107,7 @@ The Cmd+K command palette indexes keywords in all 21 languages:
 - Search for "مصر" → Egypt (Arabic)
 - Search for "중국" → China (Korean)
 
-All 195 countries have searchable names in every supported language. Layer names, panel names, and command keywords are also localized in the search index.
+All 195 countries have searchable names in every supported language. Layer names, panel names, and command keywords are also localized in the search index. Learn more about this feature in [Command Palette: Search Everything Instantly](/blog/posts/command-palette-search-everything-instantly/).
 
 ## Auto-Detection
 
@@ -135,7 +135,7 @@ Researchers studying geopolitics in non-English contexts benefit from seeing dat
 
 ### Journalism
 
-Correspondents based in foreign bureaus can use World Monitor in the local language, making it easier to cross-reference dashboard intelligence with local source material.
+Correspondents based in foreign bureaus can use World Monitor in the local language, making it easier to cross-reference dashboard intelligence with local source material. See how journalists use World Monitor for [tracking global conflicts](/blog/posts/track-global-conflicts-in-real-time/).
 
 ## Technical Implementation
 
@@ -151,6 +151,17 @@ For the technically curious:
 ## Contributing Translations
 
 World Monitor is open source. Translation contributions for new languages or improvements to existing translations are welcome through the GitHub repository. The JSON-based translation format makes it straightforward for bilingual contributors to add or refine translations without writing code.
+
+## Frequently Asked Questions
+
+**Does switching languages change the news sources I see?**
+Yes. World Monitor includes locale-specific RSS feeds. Switching to French surfaces sources like Le Monde and France 24, while Arabic shows Al Jazeera Arabic and regional MENA outlets. You get native-language reporting, not just translated English headlines.
+
+**How does Arabic RTL support work?**
+The entire interface mirrors when Arabic is selected: sidebars, panels, navigation, and text alignment all switch to right-to-left. Map controls adapt to RTL interaction patterns, so the experience feels native rather than a forced translation.
+
+**Can I contribute translations for a new language?**
+Yes. World Monitor is open source and uses JSON-based translation files. Bilingual contributors can add or refine translations through the GitHub repository without writing code.
 
 ---
 

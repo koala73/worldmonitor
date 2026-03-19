@@ -1,5 +1,6 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
+import { jsonResponse } from './_json-response.js';
 
 export const config = { runtime: 'edge' };
 
@@ -34,6 +35,7 @@ const SEED_DOMAINS = {
   'intelligence:gpsjam':      { key: 'seed-meta:intelligence:gpsjam',      intervalMin: 360 },
   'intelligence:satellites':  { key: 'seed-meta:intelligence:satellites',  intervalMin: 90 },
   'military:flights':         { key: 'seed-meta:military:flights',         intervalMin: 8 },
+  'military-forecast-inputs': { key: 'seed-meta:military-forecast-inputs', intervalMin: 8 },
   'infra:service-statuses':   { key: 'seed-meta:infra:service-statuses',   intervalMin: 60 },
   'supply_chain:shipping':    { key: 'seed-meta:supply_chain:shipping',    intervalMin: 120 },
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
@@ -44,11 +46,14 @@ const SEED_DOMAINS = {
   'economic:worldbank-techreadiness': { key: 'seed-meta:economic:worldbank-techreadiness:v1', intervalMin: 5040 },
   'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },
   'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
-  'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 210 },
-  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 60 },
+  'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 240 },
+  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // 420min maxStaleMin / 2 — aligned with health.js (6h cron + 1h grace)
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
-  'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 45 },
+  'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
+  'thermal:escalation':       { key: 'seed-meta:thermal:escalation',       intervalMin: 180 },
+  'radiation:observations':   { key: 'seed-meta:radiation:observations',   intervalMin: 15 },
+  'sanctions:pressure':       { key: 'seed-meta:sanctions:pressure',       intervalMin: 360 },
 };
 
 async function getMetaBatch(keys) {
@@ -86,9 +91,7 @@ export default async function handler(req) {
 
   const apiKeyResult = validateApiKey(req);
   if (apiKeyResult.required && !apiKeyResult.valid)
-    return new Response(JSON.stringify({ error: apiKeyResult.error }), {
-      status: 401, headers: { ...cors, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: apiKeyResult.error }, 401, cors);
 
   const now = Date.now();
   const entries = Object.entries(SEED_DOMAINS);
@@ -98,9 +101,7 @@ export default async function handler(req) {
   try {
     metaMap = await getMetaBatch(metaKeys);
   } catch {
-    return new Response(JSON.stringify({ error: 'Redis unavailable' }), {
-      status: 503, headers: { ...cors, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'Redis unavailable' }, 503, cors);
   }
 
   const seeds = {};
@@ -135,12 +136,8 @@ export default async function handler(req) {
 
   const httpStatus = overall === 'healthy' ? 200 : overall === 'warning' ? 200 : 503;
 
-  return new Response(JSON.stringify({ overall, seeds, checkedAt: now }), {
-    status: httpStatus,
-    headers: {
-      ...cors,
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-cache',
-    },
+  return jsonResponse({ overall, seeds, checkedAt: now }, httpStatus, {
+    ...cors,
+    'Cache-Control': 'no-cache',
   });
 }

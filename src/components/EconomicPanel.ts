@@ -1,26 +1,88 @@
 import { Panel } from './Panel';
-import type { FredSeries, OilAnalytics, BisData } from '@/services/economic';
+import type { FredSeries, BisData } from '@/services/economic';
 import { t } from '@/services/i18n';
-import type { SpendingSummary } from '@/services/usa-spending';
-import { getChangeClass, formatChange, formatOilValue, getTrendIndicator, getTrendColor } from '@/services/economic';
-import { formatAwardAmount, getAwardTypeIcon } from '@/services/usa-spending';
 import { escapeHtml } from '@/utils/sanitize';
-import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
+import { isFeatureAvailable } from '@/services/runtime-config';
+import type { SpendingSummary } from '@/services/usa-spending';
+import { formatAwardAmount, getAwardTypeIcon } from '@/services/usa-spending';
 import { getCSSColor } from '@/utils';
 
-type TabId = 'indicators' | 'oil' | 'spending' | 'centralBanks';
+type TabId = 'indicators' | 'spending' | 'centralBanks';
+
+function formatSeriesValue(series: FredSeries): string {
+  if (series.value === null) return 'N/A';
+  if (series.unit === '$B') return `$${series.value.toLocaleString()}B`;
+  return `${series.value.toLocaleString()}${series.unit}`;
+}
+
+function formatSeriesChange(series: FredSeries): string {
+  if (series.change === null) return 'No change';
+  const sign = series.change > 0 ? '+' : '';
+  if (series.unit === '$B') {
+    const prefix = series.change < 0 ? '-$' : `${sign}$`;
+    return `${prefix}${Math.abs(series.change).toLocaleString()}B`;
+  }
+  return `${sign}${series.change.toLocaleString()}${series.unit}`;
+}
+
+function getSeriesChangeClass(change: number | null): string {
+  if (change === null || change === 0) return 'neutral';
+  return change > 0 ? 'positive' : 'negative';
+}
+
+function getMacroPressure(data: FredSeries[]): {
+  label: string;
+  detail: string;
+  className: string;
+} {
+  const byId = new Map(data.map((series) => [series.id, series]));
+  const vix = byId.get('VIXCLS')?.value ?? null;
+  const curve = byId.get('T10Y2Y')?.value ?? null;
+  const unemployment = byId.get('UNRATE')?.value ?? null;
+  const fedFunds = byId.get('FEDFUNDS')?.value ?? null;
+
+  let score = 0;
+  if (vix !== null) score += vix >= 25 ? 2 : vix >= 18 ? 1 : 0;
+  if (curve !== null) score += curve <= 0 ? 2 : curve < 0.5 ? 1 : 0;
+  if (unemployment !== null) score += unemployment >= 4.5 ? 1 : 0;
+  if (fedFunds !== null) score += fedFunds >= 5 ? 1 : fedFunds <= 2 ? -1 : 0;
+
+  if (score >= 4) {
+    return {
+      label: t('components.economic.pressure.stress'),
+      detail: t('components.economic.pressure.stressDetail'),
+      className: 'macro-pressure-stress',
+    };
+  }
+  if (score >= 2) {
+    return {
+      label: t('components.economic.pressure.watch'),
+      detail: t('components.economic.pressure.watchDetail'),
+      className: 'macro-pressure-watch',
+    };
+  }
+  return {
+    label: t('components.economic.pressure.steady'),
+    detail: t('components.economic.pressure.steadyDetail'),
+    className: 'macro-pressure-steady',
+  };
+}
 
 export class EconomicPanel extends Panel {
   private fredData: FredSeries[] = [];
-  private oilData: OilAnalytics | null = null;
   private spendingData: SpendingSummary | null = null;
   private bisData: BisData | null = null;
   private lastUpdate: Date | null = null;
   private activeTab: TabId = 'indicators';
 
   constructor() {
-    super({ id: 'economic', title: t('panels.economic'), defaultRowSpan: 2, infoTooltip: t('components.economic.infoTooltip') });
+    super({
+      id: 'economic',
+      title: t('panels.economic'),
+      defaultRowSpan: 2,
+      infoTooltip: t('components.economic.infoTooltip'),
+    });
     this.content.addEventListener('click', (e) => {
       const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
       if (tab?.dataset.tab) {
@@ -36,11 +98,6 @@ export class EconomicPanel extends Panel {
     this.render();
   }
 
-  public updateOil(data: OilAnalytics): void {
-    this.oilData = data;
-    this.render();
-  }
-
   public updateSpending(data: SpendingSummary): void {
     this.spendingData = data;
     this.render();
@@ -52,48 +109,35 @@ export class EconomicPanel extends Panel {
   }
 
   public setLoading(loading: boolean): void {
-    if (loading) {
-      this.showLoading();
-    }
+    if (loading) this.showLoading();
   }
 
   private render(): void {
-    const hasOil = this.oilData && (this.oilData.wtiPrice || this.oilData.brentPrice);
     const hasSpending = this.spendingData && this.spendingData.awards?.length > 0;
     const hasBis = this.bisData && this.bisData.policyRates?.length > 0;
 
-    // Build tabs HTML
     const tabsHtml = `
       <div class="panel-tabs">
         <button class="panel-tab ${this.activeTab === 'indicators' ? 'active' : ''}" data-tab="indicators">
-          📊 ${t('components.economic.indicators')}
+          ${t('components.economic.indicators')}
         </button>
-        ${hasOil ? `
-          <button class="panel-tab ${this.activeTab === 'oil' ? 'active' : ''}" data-tab="oil">
-            🛢️ ${t('components.economic.oil')}
-          </button>
-        ` : ''}
         ${hasSpending ? `
           <button class="panel-tab ${this.activeTab === 'spending' ? 'active' : ''}" data-tab="spending">
-            🏛️ ${t('components.economic.gov')}
+            ${t('components.economic.gov')}
           </button>
         ` : ''}
         ${hasBis ? `
           <button class="panel-tab ${this.activeTab === 'centralBanks' ? 'active' : ''}" data-tab="centralBanks">
-            🏦 ${t('components.economic.centralBanks')}
+            ${t('components.economic.centralBanks')}
           </button>
         ` : ''}
       </div>
     `;
 
     let contentHtml = '';
-
     switch (this.activeTab) {
       case 'indicators':
         contentHtml = this.renderIndicators();
-        break;
-      case 'oil':
-        contentHtml = this.renderOil();
         break;
       case 'spending':
         contentHtml = this.renderSpending();
@@ -116,13 +160,11 @@ export class EconomicPanel extends Panel {
         <span class="economic-source">${this.getSourceLabel()} • ${updateTime}</span>
       </div>
     `);
-
   }
 
   private getSourceLabel(): string {
     switch (this.activeTab) {
       case 'indicators': return 'FRED';
-      case 'oil': return 'EIA';
       case 'spending': return 'USASpending.gov';
       case 'centralBanks': return 'BIS';
     }
@@ -136,71 +178,46 @@ export class EconomicPanel extends Panel {
       return `<div class="economic-empty">${t('components.economic.noIndicatorData')}</div>`;
     }
 
-    return `
-      <div class="economic-indicators">
-        ${this.fredData.map(series => {
-      const changeClass = getChangeClass(series.change);
-      const changeStr = formatChange(series.change, series.unit);
-      const arrow = series.change !== null
-        ? (series.change > 0 ? '▲' : series.change < 0 ? '▼' : '–')
-        : '';
+    const pressure = getMacroPressure(this.fredData);
+    const summaryIds = ['VIXCLS', 'T10Y2Y', 'FEDFUNDS', 'UNRATE'];
+    const summarySeries = this.fredData.filter((series) => summaryIds.includes(series.id));
+    const detailSeries = this.fredData.filter((series) => !summaryIds.includes(series.id));
+    const orderedSeries = [...summarySeries, ...detailSeries];
 
-      return `
+    return `
+      <div class="economic-content-macro">
+        <div class="macro-pressure-card ${pressure.className}">
+          <div class="macro-pressure-label">${t('components.economic.pressure.label')}</div>
+          <div class="macro-pressure-value">${escapeHtml(pressure.label)}</div>
+          <div class="macro-pressure-detail">${escapeHtml(pressure.detail)}</div>
+        </div>
+        <div class="macro-summary-grid">
+          ${summarySeries.map((series) => `
+            <div class="macro-summary-card">
+              <div class="macro-summary-head">
+                <span class="indicator-name">${escapeHtml(series.name)}</span>
+                <span class="indicator-id">${escapeHtml(series.id)}</span>
+              </div>
+              <div class="macro-summary-value">${escapeHtml(formatSeriesValue(series))}</div>
+              <div class="macro-summary-change ${getSeriesChangeClass(series.change)}">${escapeHtml(formatSeriesChange(series))}</div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="economic-indicators">
+          ${orderedSeries.map((series) => `
             <div class="economic-indicator" data-series="${escapeHtml(series.id)}">
               <div class="indicator-header">
                 <span class="indicator-name">${escapeHtml(series.name)}</span>
                 <span class="indicator-id">${escapeHtml(series.id)}</span>
               </div>
               <div class="indicator-value">
-                <span class="value">${escapeHtml(String(series.value !== null ? series.value : 'N/A'))}${escapeHtml(series.unit)}</span>
-                <span class="change ${escapeHtml(changeClass)}">${escapeHtml(arrow)} ${escapeHtml(changeStr)}</span>
+                <span class="value">${escapeHtml(formatSeriesValue(series))}</span>
+                <span class="change ${getSeriesChangeClass(series.change)}">${escapeHtml(formatSeriesChange(series))}</span>
               </div>
               <div class="indicator-date">${escapeHtml(series.date)}</div>
             </div>
-          `;
-    }).join('')}
-      </div>
-    `;
-  }
-
-  private renderOil(): string {
-    if (!this.oilData) {
-      return `<div class="economic-empty">${t('components.economic.noOilDataRetry')}</div>`;
-    }
-
-    const metrics = [
-      this.oilData.wtiPrice,
-      this.oilData.brentPrice,
-      this.oilData.usProduction,
-      this.oilData.usInventory,
-    ].filter(Boolean);
-
-    if (metrics.length === 0) {
-      return `<div class="economic-empty">${t('components.economic.noOilMetrics')}</div>`;
-    }
-
-    return `
-      <div class="economic-indicators oil-metrics">
-        ${metrics.map(metric => {
-      if (!metric) return '';
-      const trendIcon = getTrendIndicator(metric.trend);
-      const trendColor = getTrendColor(metric.trend, metric.name.includes('Production'));
-
-      return `
-            <div class="economic-indicator oil-metric">
-              <div class="indicator-header">
-                <span class="indicator-name">${escapeHtml(metric.name)}</span>
-              </div>
-              <div class="indicator-value">
-                <span class="value">${escapeHtml(formatOilValue(metric.current, metric.unit))} ${escapeHtml(metric.unit)}</span>
-                <span class="change" style="color: ${escapeHtml(trendColor)}">
-                  ${escapeHtml(trendIcon)} ${escapeHtml(String(metric.changePct > 0 ? '+' : ''))}${escapeHtml(String(metric.changePct))}%
-                </span>
-              </div>
-              <div class="indicator-date">${t('components.economic.vsPreviousWeek')}</div>
-            </div>
-          `;
-    }).join('')}
+          `).join('')}
+        </div>
       </div>
     `;
   }
@@ -216,7 +233,7 @@ export class EconomicPanel extends Panel {
       <div class="spending-summary">
         <div class="spending-total">
           ${escapeHtml(formatAwardAmount(totalAmount))} ${t('components.economic.in')} ${escapeHtml(String(awards.length))} ${t('components.economic.awards')}
-          <span class="spending-period">${escapeHtml(periodStart)} – ${escapeHtml(periodEnd)}</span>
+          <span class="spending-period">${escapeHtml(periodStart)} / ${escapeHtml(periodEnd)}</span>
         </div>
       </div>
       <div class="spending-list">
@@ -244,7 +261,6 @@ export class EconomicPanel extends Panel {
     const redColor = getCSSColor('--semantic-critical');
     const neutralColor = getCSSColor('--text-dim');
 
-    // Policy Rates — sorted by rate descending
     const sortedRates = [...this.bisData.policyRates].sort((a, b) => b.rate - a.rate);
     const policyHtml = `
       <div class="bis-section">
@@ -272,7 +288,6 @@ export class EconomicPanel extends Panel {
       </div>
     `;
 
-    // Exchange Rates
     let eerHtml = '';
     if (this.bisData.exchangeRates?.length > 0) {
       eerHtml = `
@@ -300,7 +315,6 @@ export class EconomicPanel extends Panel {
       `;
     }
 
-    // Credit-to-GDP
     let creditHtml = '';
     if (this.bisData.creditToGdp?.length > 0) {
       const sortedCredit = [...this.bisData.creditToGdp].sort((a, b) => b.creditGdpRatio - a.creditGdpRatio);

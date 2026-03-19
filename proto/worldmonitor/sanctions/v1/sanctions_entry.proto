@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.sanctions.v1;
+
+// SanctionsEntityType classifies the designated party.
+enum SanctionsEntityType {
+  SANCTIONS_ENTITY_TYPE_UNSPECIFIED = 0;
+  SANCTIONS_ENTITY_TYPE_ENTITY = 1;
+  SANCTIONS_ENTITY_TYPE_INDIVIDUAL = 2;
+  SANCTIONS_ENTITY_TYPE_VESSEL = 3;
+  SANCTIONS_ENTITY_TYPE_AIRCRAFT = 4;
+}
+
+// SanctionsEntry is a normalized OFAC sanctions designation.
+message SanctionsEntry {
+  string id = 1;
+  string name = 2;
+  SanctionsEntityType entity_type = 3;
+  repeated string country_codes = 4;
+  repeated string country_names = 5;
+  repeated string programs = 6;
+  repeated string source_lists = 7;
+  int64 effective_at = 8;
+  bool is_new = 9;
+  string note = 10;
+}

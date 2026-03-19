@@ -4,6 +4,7 @@ import type { Forecast } from '@/services/forecast';
 import { t } from '@/services/i18n';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
+const PANEL_MIN_PROBABILITY = 0.1;
 
 const DOMAIN_LABELS: Record<string, string> = {
   all: 'All',
@@ -101,30 +102,32 @@ export class ForecastPanel extends Panel {
 
   updateForecasts(forecasts: Forecast[]): void {
     this.forecasts = forecasts;
-    this.setCount(forecasts.length);
-    this.setDataBadge(forecasts.length > 0 ? 'live' : 'unavailable');
+    const visible = this.getVisibleForecasts();
+    this.setCount(visible.length);
+    this.setDataBadge(visible.length > 0 ? 'live' : 'unavailable');
     this.render();
   }
 
+  private getVisibleForecasts(): Forecast[] {
+    return this.forecasts.filter(f => (f.probability || 0) >= PANEL_MIN_PROBABILITY);
+  }
+
   private render(): void {
-    if (this.forecasts.length === 0) {
+    const visibleForecasts = this.getVisibleForecasts();
+    if (visibleForecasts.length === 0) {
       this.setContent('<div class="fc-empty">No forecasts available</div>');
       return;
     }
 
     const filtered = this.activeDomain === 'all'
-      ? this.forecasts
-      : this.forecasts.filter(f => f.domain === this.activeDomain);
-
-    const sorted = [...filtered].sort((a, b) =>
-      (b.probability * b.confidence) - (a.probability * a.confidence)
-    );
+      ? visibleForecasts
+      : visibleForecasts.filter(f => f.domain === this.activeDomain);
 
     const filtersHtml = DOMAINS.map(d =>
       `<button class="fc-filter${d === this.activeDomain ? ' fc-active' : ''}" data-fc-domain="${d}">${DOMAIN_LABELS[d]}</button>`
     ).join('');
 
-    const cardsHtml = sorted.map(f => this.renderCard(f)).join('');
+    const cardsHtml = filtered.map(f => this.renderCard(f)).join('');
 
     this.setContent(`
       <div class="fc-panel">

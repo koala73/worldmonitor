@@ -21,17 +21,21 @@ const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 // 1. TTL alignment
 // ========================================================================
 
-describe('cache TTL alignment with upstream refresh rates', () => {
-  it('climate anomalies uses 3h TTL (ERA5 has 2-7 day lag)', () => {
+describe('cache-only handlers read from seed keys', () => {
+  it('climate anomalies is pure cache read (seed controls TTL)', () => {
     const src = readSrc('server/worldmonitor/climate/v1/list-climate-anomalies.ts');
-    assert.match(src, /REDIS_CACHE_TTL = 10800/,
-      'Climate cache TTL should be 10800s (3 hours)');
+    assert.match(src, /getCachedJson/,
+      'Climate handler should use getCachedJson (seed-only)');
+    assert.doesNotMatch(src, /cachedFetchJson/,
+      'Climate handler should not call external APIs');
   });
 
-  it('fire detections uses 1h TTL (FIRMS NRT updates every ~3h)', () => {
+  it('fire detections is pure cache read (seed controls TTL)', () => {
     const src = readSrc('server/worldmonitor/wildfire/v1/list-fire-detections.ts');
-    assert.match(src, /REDIS_CACHE_TTL = 3600/,
-      'Fire cache TTL should be 3600s (1 hour)');
+    assert.match(src, /getCachedJson/,
+      'Fire handler should use getCachedJson (seed-only)');
+    assert.doesNotMatch(src, /cachedFetchJson/,
+      'Fire handler should not call external APIs');
   });
 });
 
@@ -87,10 +91,12 @@ describe('ACLED consumers use shared cache layer', () => {
       'Conflict handler should use shared ACLED fetch');
   });
 
-  it('unrest handler imports fetchAcledCached', () => {
+  it('unrest handler is pure cache read (seed-only, no ACLED calls)', () => {
     const src = readSrc('server/worldmonitor/unrest/v1/list-unrest-events.ts');
-    assert.match(src, /fetchAcledCached/,
-      'Unrest handler should use shared ACLED fetch');
+    assert.match(src, /getCachedJson/,
+      'Unrest handler should use getCachedJson (seed-only)');
+    assert.doesNotMatch(src, /cachedFetchJson/,
+      'Unrest handler should not call external APIs');
   });
 
   it('risk scores handler imports fetchAcledCached', () => {
@@ -101,9 +107,8 @@ describe('ACLED consumers use shared cache layer', () => {
 
   it('no handler has its own ACLED_API_URL constant', () => {
     const conflict = readSrc('server/worldmonitor/conflict/v1/list-acled-events.ts');
-    const unrest = readSrc('server/worldmonitor/unrest/v1/list-unrest-events.ts');
     const riskScores = readSrc('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
-    for (const [name, src] of [['conflict', conflict], ['unrest', unrest], ['risk-scores', riskScores]]) {
+    for (const [name, src] of [['conflict', conflict], ['risk-scores', riskScores]]) {
       assert.doesNotMatch(src, /ACLED_API_URL/,
         `${name} handler should not define its own ACLED_API_URL`);
     }

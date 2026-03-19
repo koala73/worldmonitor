@@ -3,6 +3,8 @@ export const config = { runtime: 'edge' };
 import { ConvexHttpClient } from 'convex/browser';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { getClientIp, verifyTurnstile } from './_turnstile.js';
+import { jsonResponse } from './_json-response.js';
+import { createIpRateLimiter } from './_ip-rate-limit.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[+(]?\d[\d\s()./-]{4,23}\d$/;
@@ -22,20 +24,10 @@ const FREE_EMAIL_DOMAINS = new Set([
   't-online.de', 'libero.it', 'virgilio.it',
 ]);
 
-const rateLimitMap = new Map();
 const RATE_LIMIT = 3;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 
-function isRateLimited(ip) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
-    rateLimitMap.set(ip, { windowStart: now, count: 1 });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > RATE_LIMIT;
-}
+const rateLimiter = createIpRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS });
 
 async function sendNotificationEmail(name, email, organization, phone, message) {
   const resendKey = process.env.RESEND_API_KEY;
@@ -95,15 +87,6 @@ function sanitizeForSubject(str, maxLen = 50) {
   return str.replace(/[\r\n\0]/g, '').slice(0, maxLen);
 }
 
-function jsonResponse(body, status, cors) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: cors
-      ? { 'Content-Type': 'application/json', ...cors }
-      : { 'Content-Type': 'application/json' },
-  });
-}
-
 export default async function handler(req) {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
@@ -121,7 +104,7 @@ export default async function handler(req) {
 
   const ip = getClientIp(req);
 
-  if (isRateLimited(ip)) {
+  if (rateLimiter.isRateLimited(ip)) {
     return jsonResponse({ error: 'Too many requests' }, 429, cors);
   }
 

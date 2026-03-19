@@ -12,6 +12,7 @@
 
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { checkRateLimit } from '../_rate-limit.js';
+import { inferCompanyNameFromDomain, toOrgSlugFromDomain } from './_domain.js';
 
 export const config = { runtime: 'edge' };
 
@@ -116,16 +117,6 @@ async function fetchHackerNewsMentions(companyName) {
   }
 }
 
-function inferFromDomain(domain) {
-  const name = domain.replace(/\.(com|io|co|org|net|ai|dev|app)$/, '')
-    .split('.')
-    .pop()
-    ?.replace(/-/g, ' ')
-    ?.replace(/\b\w/g, (c) => c.toUpperCase()) || domain;
-
-  return { inferredName: name, domain };
-}
-
 function getTodayISO() {
   return toISODate(new Date());
 }
@@ -165,8 +156,8 @@ export default async function handler(req) {
     });
   }
 
-  const companyName = name || (domain ? inferFromDomain(domain).inferredName : 'Unknown');
-  const searchName = companyName.toLowerCase().replace(/\s+/g, '');
+  const companyName = name || (domain ? inferCompanyNameFromDomain(domain) : 'Unknown');
+  const searchName = domain ? toOrgSlugFromDomain(domain) : companyName.toLowerCase().replace(/\s+/g, '');
 
   const [githubOrg, techStack, secData, hnMentions] = await Promise.all([
     fetchGitHubOrg(searchName),

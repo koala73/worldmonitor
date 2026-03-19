@@ -138,8 +138,11 @@ The Trade Policy panel provides real-time visibility into global trade restricti
 | **Tariffs** | WTO tariff database | Tariff rate trends between country pairs (e.g., US↔China) with historical datapoints |
 | **Flows** | WTO trade statistics | Bilateral trade flow volumes with year-over-year change indicators |
 | **Barriers** | WTO SPS/TBT notifications | Sanitary, phytosanitary, and technical barriers to trade with status tracking |
+| **Revenue** | US Treasury Monthly Treasury Statement | Monthly US customs duties revenue with fiscal-year-to-date totals and year-over-year comparison |
 
-The `trade/v1` proto service defines four RPCs, each with its own circuit breaker (30-minute cache TTL) and `upstreamUnavailable` signaling for graceful degradation when WTO endpoints are temporarily unreachable. The panel is available on FULL and FINANCE variants. Trade policy data feeds into the data freshness tracker as `wto_trade`, with intelligence gap warnings when the WTO feed goes stale.
+The `trade/v1` proto service defines five RPCs. The four WTO RPCs each have their own circuit breaker (30-minute cache TTL) and `upstreamUnavailable` signaling for graceful degradation when WTO endpoints are temporarily unreachable. The fifth RPC (`GetCustomsRevenue`) serves US Treasury customs duties data from a Railway seed (free API, no key required). The panel is available on FULL and FINANCE variants. WTO data feeds into the data freshness tracker as `wto_trade`, and Treasury revenue as `treasury_revenue`, with intelligence gap warnings when either feed goes stale.
+
+The Revenue tab is particularly relevant during periods of active trade policy changes. US customs duties revenue spiked from approximately $7B/month (pre-2025) to $27-31B/month following the 2025-2026 tariff escalation. WTO annual tariff data lags by approximately one year, so the monthly Treasury revenue data provides near-real-time visibility into the actual fiscal impact of tariff policy. The Revenue tab shows a fiscal-year-to-date summary with a year-over-year comparison using matched fiscal month counts (e.g., FY2026 Oct-Feb vs FY2025 Oct-Feb), along with a monthly table highlighting months where revenue exceeds twice the prior-year monthly average. On desktop without a WTO API key, the Revenue tab is still accessible since Treasury data requires no authentication.
 
 ---
 

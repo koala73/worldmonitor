@@ -1,7 +1,7 @@
 ---
 title: "Monitor Global Supply Chains and Commodity Disruptions in Real Time"
-description: "Track commodity prices, port disruptions, pipeline infrastructure, shipping routes, and supply chain risks on one free dashboard. World Monitor Commodity Monitor."
-metaTitle: "Real-Time Supply Chain Monitoring Dashboard | Commodity Disruption Alerts | World Monitor"
+description: "Track commodity prices, port disruptions, pipeline infrastructure, and supply chain risks in real time. Free supply chain monitoring dashboard on World Monitor."
+metaTitle: "Supply Chain Monitoring Dashboard | World Monitor"
 keywords: "supply chain monitoring tool, commodity price dashboard, supply chain disruption alerts, global shipping tracker, commodity risk monitoring"
 audience: "Supply chain managers, commodity traders, logistics professionals, procurement teams, risk analysts"
 heroImage: "/blog/images/blog/monitor-global-supply-chains-and-commodity-disruptions.jpg"
@@ -24,7 +24,7 @@ Modern supply chains are global, interconnected, and fragile. A single disruptio
 - A port strike in Montreal affects grain exports to North Africa
 - GPS jamming in the Baltic disrupts automated shipping navigation
 
-Traditional supply chain tools focus on your own logistics: purchase orders, shipment tracking, inventory levels. They don't tell you about the geopolitical, military, and environmental events that create the disruptions in the first place.
+Traditional supply chain tools focus on your own logistics: purchase orders, shipment tracking, inventory levels. They don't tell you about the geopolitical, military, and environmental events that create the disruptions in the first place. For a deeper look at how conflicts affect logistics, see [tracking global trade routes and chokepoints](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/).
 
 World Monitor fills that gap.
 
@@ -146,7 +146,7 @@ Supply chains don't just face geopolitical risk. Environmental events are equall
 - **NASA EONET:** Volcanic eruptions, floods, and severe storms
 - **Cloudflare Radar:** Internet outages that disrupt digital supply chains
 
-All of these layer onto the same map as your commodity and infrastructure data.
+All of these layer onto the same map as your commodity and infrastructure data. For more on these capabilities, see [natural disaster monitoring with World Monitor](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/).
 
 ## GPS Jamming: The Invisible Shipping Risk
 
@@ -189,7 +189,18 @@ World Monitor maps these jamming zones using H3 hexagonal grid classification, u
 
 Enterprise supply chain risk platforms (Resilinc, Everstream Analytics, Interos) charge five to six figures annually and require weeks of onboarding. World Monitor is available now, in your browser, for free.
 
-It's not a replacement for a full supply chain management platform. It's the situational awareness layer that tells you where to look, before your logistics system shows delays.
+It's not a replacement for a full supply chain management platform. It's the situational awareness layer that tells you where to look, before your logistics system shows delays. See how World Monitor compares to [traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
+
+## Frequently Asked Questions
+
+**How often are commodity prices updated?**
+Prices are sourced from CME, ICE, LME, and other major exchanges with near real-time updates throughout trading hours. The dashboard shows current price, daily change, and trend indicators.
+
+**Can I set alerts for specific supply chain disruptions?**
+Yes. World Monitor's Custom Keyword Monitors let you set persistent alerts for terms like "port closure," "pipeline disruption," or specific commodity names. Matching headlines from 435+ RSS feeds are highlighted in your chosen color.
+
+**Does the Commodity Monitor include geopolitical risk context?**
+Yes. The Country Instability Index (CII), conflict layers, and Infrastructure Cascade panel overlay directly onto commodity and shipping data, so you see disruption risks alongside pricing.
 
 ---
 

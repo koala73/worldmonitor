@@ -203,7 +203,7 @@ async function fetchPizzintStatus() {
   const open = locations.filter(l => !l.isClosedNow);
   const spikes = locations.filter(l => l.isSpike).length;
   const avgPop = open.length > 0 ? open.reduce((s, l) => s + l.currentPopularity, 0) / open.length : 0;
-  let adjusted = Math.min(100, avgPop + spikes * 10);
+  const adjusted = Math.min(100, avgPop + spikes * 10);
   let defconLevel = 5, defconLabel = 'Normal Activity';
   if (adjusted >= 85) { defconLevel = 1; defconLabel = 'Maximum Activity'; }
   else if (adjusted >= 70) { defconLevel = 2; defconLabel = 'High Activity'; }

@@ -1,7 +1,7 @@
 ---
 title: "Earthquake, Fire, Flood: Real-Time Natural Disaster Monitoring with World Monitor"
-description: "Monitor earthquakes (USGS), satellite-detected fires (NASA FIRMS), volcanic eruptions, and floods in real time. Free natural disaster tracking with geopolitical context."
-metaTitle: "Real-Time Natural Disaster Monitoring Dashboard | Earthquakes, Fires, Volcanoes | World Monitor"
+description: "Track earthquakes, satellite-detected fires, volcanic eruptions, and floods in real time. Free disaster monitoring with geopolitical context on World Monitor."
+metaTitle: "Natural Disaster Monitoring Dashboard | World Monitor"
 keywords: "real-time earthquake map, natural disaster monitoring dashboard, NASA fire detection map, disaster tracking tool free, earthquake volcano flood tracker"
 audience: "Emergency responders, disaster preparedness professionals, insurers, humanitarian organizations, concerned citizens"
 heroImage: "/blog/images/blog/natural-disaster-monitoring-earthquakes-fires-volcanoes.jpg"
@@ -26,7 +26,7 @@ World Monitor integrates the **U.S. Geological Survey earthquake feed** for all 
 
 The USGS feed updates within minutes of a seismic event. For major earthquakes, World Monitor's news panel typically shows wire service alerts within 5-10 minutes, giving you both the raw seismic data and the human reporting side by side.
 
-**Why it matters beyond seismology:** Earthquakes trigger cascading effects. A magnitude 7.0 near an undersea cable route can disrupt internet traffic for an entire region. A quake near a nuclear facility triggers safety protocols. A tremor in a politically unstable country can accelerate instability. World Monitor shows all of these connections because the earthquake data shares the map with infrastructure, nuclear facilities, and CII (Country Instability Index) overlays.
+**Why it matters beyond seismology:** Earthquakes trigger cascading effects. A magnitude 7.0 near an undersea cable route can disrupt internet traffic for an entire region. A quake near a nuclear facility triggers safety protocols. A tremor in a politically unstable country can accelerate instability. World Monitor shows all of these connections because the earthquake data shares the map with infrastructure, nuclear facilities, and CII (Country Instability Index) overlays. This is part of the broader approach to [monitoring global supply chains and commodity disruptions](/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/).
 
 ### 2. Satellite Fire Detection (NASA FIRMS / VIIRS)
 
@@ -151,7 +151,7 @@ World Monitor's **Custom Keyword Monitors** let you set persistent alerts for na
 - When matching headlines appear in the 435+ RSS feeds, they're highlighted in your custom color
 - Monitors persist across sessions via localStorage
 
-Combined with the map layers, you have a complete early warning system: spatial data on the map, textual alerts in the news panel, AI analysis in the brief, and live video for ground truth.
+Combined with the map layers, you have a complete early warning system: spatial data on the map, textual alerts in the news panel, AI analysis in the brief, and [live video for ground truth](/blog/posts/live-webcams-from-geopolitical-hotspots/).
 
 ## Why World Monitor for Disaster Monitoring
 
@@ -163,7 +163,18 @@ Dedicated disaster monitoring platforms exist (GDACS, ReliefWeb, PDC Global). Wo
 - AI analysis for rapid situation synthesis
 - Multi-source verification (satellite, seismic, news, webcam, OSINT)
 
-A disaster doesn't happen in isolation. Its impact depends on the political stability of the affected country, the infrastructure that fails, the markets that react, and the humanitarian capacity available. World Monitor shows all of these in one view.
+A disaster doesn't happen in isolation. Its impact depends on the political stability of the affected country, the infrastructure that fails, the markets that react, and the humanitarian capacity available. World Monitor shows all of these in one view. Learn more about [what World Monitor is and how it works](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
+
+## Frequently Asked Questions
+
+**How quickly do earthquake alerts appear on the map?**
+USGS data typically updates within minutes of a seismic event. World Monitor displays all earthquakes magnitude 4.5 and above globally, with magnitude, depth, location, and timestamp.
+
+**Does World Monitor detect wildfires directly?**
+World Monitor uses NASA FIRMS satellite data (VIIRS sensor) to map thermal anomalies with sub-kilometer accuracy. This covers wildfires, industrial fires, agricultural burning, and conflict-related fires.
+
+**Can I set up alerts for natural disasters in specific regions?**
+Yes. Use Custom Keyword Monitors for terms like "earthquake," "wildfire," or "flood." Matching headlines from 435+ RSS feeds are highlighted in your chosen color and persist across sessions.
 
 ---
 

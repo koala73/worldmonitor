@@ -13,7 +13,10 @@ import { isFeatureAvailable } from './runtime-config';
 import {
   MilitaryServiceClient,
   type AircraftDetails,
+  type WingbitsLiveFlight,
 } from '@/generated/client/worldmonitor/military/v1/service_client';
+
+export type { WingbitsLiveFlight };
 
 export interface WingbitsAircraftDetails {
   icao24: string;
@@ -411,4 +414,18 @@ export function getWingbitsStatus(): { configured: boolean | null; cacheSize: nu
 export function clearWingbitsCache(): void {
   localCache.clear();
   lastCacheSweep = 0;
+}
+
+/**
+ * Fetch live position data from the Wingbits ECS network for a single aircraft.
+ * Returns null if the aircraft is not currently tracked by any Wingbits receiver.
+ */
+export async function getWingbitsLiveFlight(icao24: string): Promise<WingbitsLiveFlight | null> {
+  if (!isFeatureAvailable('wingbitsEnrichment')) return null;
+  try {
+    const resp = await client.getWingbitsLiveFlight({ icao24: icao24.toLowerCase() });
+    return resp.flight ?? null;
+  } catch {
+    return null;
+  }
 }

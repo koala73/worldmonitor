@@ -1,7 +1,7 @@
 /**
  * Shared helpers, types, and constants for the market service handler RPCs.
  */
-import { CHROME_UA, yahooGate } from '../../../_shared/constants';
+import { CHROME_UA, finnhubGate, yahooGate } from '../../../_shared/constants';
 import cryptoConfig from '../../../../shared/crypto.json';
 import stablecoinConfig from '../../../../shared/stablecoins.json';
 export { parseStringArray } from '../../../_shared/parse-string-array';
@@ -108,6 +108,7 @@ export async function fetchFinnhubQuote(
   apiKey: string,
 ): Promise<{ symbol: string; price: number; changePercent: number } | null> {
   try {
+    await finnhubGate();
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
     const resp = await fetch(url, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'X-Finnhub-Token': apiKey },

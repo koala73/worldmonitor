@@ -1,7 +1,7 @@
 ---
 title: "Cyber Threat Intelligence Meets Geopolitics: World Monitor for Security Teams"
-description: "Monitor botnets (Feodo Tracker), malicious URLs (URLhaus), threat exchange data (AlienVault OTX), and internet outages with geopolitical context. Free."
-metaTitle: "Free Cyber Threat Intelligence Dashboard | Botnet, Malware & Outage Tracking | World Monitor"
+description: "Track botnets, malware URLs, and internet outages with geopolitical context. Integrates Feodo Tracker, URLhaus, and AlienVault OTX on one map."
+metaTitle: "Cyber Threat Intelligence Dashboard | World Monitor"
 keywords: "cyber threat intelligence dashboard free, botnet tracking tool, malware monitoring dashboard, internet outage map, threat intelligence OSINT"
 audience: "SOC analysts, cybersecurity professionals, CISO teams, threat researchers, IT security managers"
 heroImage: "/blog/images/blog/cyber-threat-intelligence-for-security-teams.jpg"
@@ -12,7 +12,7 @@ Most cyber threat intelligence platforms show you indicators of compromise in is
 
 When a wave of phishing campaigns targets European energy companies, is it financially motivated or state-sponsored? When a country's internet goes dark, is it an infrastructure failure or a government-ordered shutdown? When botnet command-and-control servers cluster in a specific region, does it correlate with the geopolitical situation there?
 
-World Monitor answers these questions by putting cyber threat data on the same map as military movements, political instability scores, and infrastructure networks.
+World Monitor answers these questions by putting cyber threat data on the same map as [military movements and conflict tracking](/blog/posts/track-global-conflicts-in-real-time/), political instability scores, and infrastructure networks.
 
 ## Integrated Threat Feeds
 
@@ -61,7 +61,7 @@ World Monitor integrates **Cloudflare Radar** data to detect and map internet ou
 
 - **Government-ordered shutdowns** during protests or elections
 - **Infrastructure failures** from natural disasters or attacks
-- **Submarine cable cuts** affecting regional connectivity
+- **Submarine cable cuts** affecting regional connectivity (see [global supply chain and infrastructure monitoring](/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/))
 - **BGP hijacking** incidents redirecting traffic through unauthorized networks
 
 Mapping outages alongside conflict and protest data creates a powerful correlation: when a country's internet goes dark the same day CII spikes and Telegram OSINT reports protests, the pattern is clear.
@@ -155,7 +155,18 @@ Consider two scenarios:
 
 Same C2 server. Dramatically different risk assessment. In Scenario B, that server might be part of a state-sponsored operation preceding military action. Your response should be proportionally different.
 
-World Monitor doesn't replace your SIEM, your EDR, or your threat intelligence platform. It adds the context layer that tells you why threats are happening and what might come next.
+World Monitor doesn't replace your SIEM, your EDR, or your threat intelligence platform. It adds the context layer that tells you why threats are happening and what might come next. For a broader look at how open-source intelligence supports this analysis, see [OSINT for everyone](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/).
+
+## Frequently Asked Questions
+
+**How often is the cyber threat data updated?**
+Threat feeds from Feodo Tracker, URLhaus, and AlienVault OTX are refreshed regularly through automated seed pipelines. Cloudflare Radar outage data updates in near real-time. The freshness of each data source is visible in the platform's health dashboard.
+
+**Can I integrate World Monitor's cyber threat data into my existing SIEM?**
+Yes. World Monitor's API provides typed endpoints for all cyber threat data. You can pull C2 server locations, malware URLs, and threat intelligence pulses programmatically and feed them into Splunk, Elastic, or any SIEM that accepts JSON data.
+
+**Does World Monitor detect threats targeting my specific organization?**
+World Monitor provides geographic and geopolitical threat context rather than organization-specific detection. It complements your EDR and SIEM by showing whether cyber activity in your region correlates with broader geopolitical tensions, helping you prioritize and contextualize alerts.
 
 ---
 

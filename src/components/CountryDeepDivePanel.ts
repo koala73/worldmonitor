@@ -743,6 +743,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.addSignalChip(chips, signals.outages, t('countryBrief.chips.outages'), '🌐', 'outage');
     this.addSignalChip(chips, signals.aisDisruptions, t('countryBrief.chips.aisDisruptions'), '🚢', 'outage');
     this.addSignalChip(chips, signals.satelliteFires, t('countryBrief.chips.satelliteFires'), '🔥', 'climate');
+    this.addSignalChip(chips, signals.radiationAnomalies, 'Radiation anomalies', '☢️', 'outage');
     this.addSignalChip(chips, signals.temporalAnomalies, t('countryBrief.chips.temporalAnomalies'), '⏱️', 'outage');
     this.addSignalChip(chips, signals.cyberThreats, t('countryBrief.chips.cyberThreats'), '🛡️', 'conflict');
     this.addSignalChip(chips, signals.earthquakes, t('countryBrief.chips.earthquakes'), '🌍', 'quake');
@@ -774,7 +775,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const seeded: CountryDeepDiveSignalDetails = {
       critical: signals.criticalNews + Math.max(0, signals.activeStrikes),
       high: signals.militaryFlights + signals.militaryVessels + signals.protests,
-      medium: signals.outages + signals.cyberThreats + signals.aisDisruptions,
+      medium: signals.outages + signals.cyberThreats + signals.aisDisruptions + signals.radiationAnomalies,
       low: signals.earthquakes + signals.temporalAnomalies + signals.satelliteFires,
       recentHigh: [],
     };

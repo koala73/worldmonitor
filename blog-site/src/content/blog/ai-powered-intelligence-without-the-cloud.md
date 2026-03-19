@@ -1,7 +1,7 @@
 ---
 title: "AI-Powered Intelligence Without the Cloud: World Monitor's Privacy-First Approach"
-description: "Run AI-powered intelligence analysis entirely on your own hardware. World Monitor supports Ollama, LM Studio, and in-browser ML for fully private geopolitical analysis."
-metaTitle: "AI Intelligence Analysis Without the Cloud | Local LLM + OSINT | World Monitor"
+description: "Run AI-powered intelligence analysis on your own hardware. World Monitor supports Ollama, LM Studio, and in-browser ML for private geopolitical analysis."
+metaTitle: "Local AI Intelligence Analysis | World Monitor"
 keywords: "local LLM intelligence, private AI analysis, offline intelligence tool, Ollama OSINT, privacy-first AI dashboard"
 audience: "Privacy-conscious analysts, security researchers, government users, enterprise security teams, local LLM enthusiasts"
 heroImage: "/blog/images/blog/ai-powered-intelligence-without-the-cloud.jpg"
@@ -10,7 +10,7 @@ pubDate: "2026-03-07"
 
 Every time you paste a sensitive document into ChatGPT, that data touches someone else's servers. For intelligence analysts, security researchers, and anyone handling sensitive geopolitical information, that's not just inconvenient. It's a risk.
 
-World Monitor takes a different approach. Every AI feature in the platform can run entirely on your own hardware, with no data leaving your machine.
+World Monitor takes a different approach. Every AI feature in the platform can run entirely on your own hardware, with no data leaving your machine. If you're new to the platform, learn [what World Monitor is and how it works](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
 
 ## The Problem with Cloud-Based Intelligence Tools
 
@@ -71,7 +71,7 @@ Classifies headline sentiment to detect shifts in media tone about countries, le
 
 World Monitor's **Headline Memory** feature builds a local semantic index of up to 5,000 headlines using ONNX embeddings stored in IndexedDB. When you ask the AI about a topic, it retrieves relevant headlines from your local index for grounded, cited responses.
 
-This is a full Retrieval-Augmented Generation pipeline running in your browser. No vector database subscription. No cloud embedding API.
+This is a full Retrieval-Augmented Generation pipeline running in your browser. No vector database subscription. No cloud embedding API. Combined with [prediction markets and AI forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/), this local RAG pipeline enables deeply grounded geopolitical analysis.
 
 ### 3-Stage Threat Classification
 
@@ -136,9 +136,20 @@ Material non-public information (MNPI) requirements mean certain geopolitical an
 
 ## Open Source: Trust Through Transparency
 
-You don't have to take our word for the privacy claims. World Monitor is fully open source under AGPL-3.0. Every network call, every data flow, every AI prompt is in the codebase for you to audit.
+You don't have to take our word for the privacy claims. World Monitor is fully open source under AGPL-3.0. Every network call, every data flow, every AI prompt is in the codebase for you to audit. Developers can explore the full [typed API layer and proto-first architecture](/blog/posts/build-on-worldmonitor-developer-api-open-source/) to verify exactly how data flows through the system.
 
 The proto-first API architecture (92 proto files, 22 typed services) means even the API contracts are transparent. You can see exactly what data each endpoint expects and returns.
+
+## Frequently Asked Questions
+
+**Do I need an internet connection to use World Monitor's AI features?**
+No. With Ollama or LM Studio installed locally, all AI analysis runs on your hardware. The browser-based T5 fallback also works fully offline after the initial model download. You only need internet to fetch fresh data feeds.
+
+**Which local LLM models work best with World Monitor?**
+Llama 3.1 (8B or 70B) and Mistral offer the best balance of quality and speed for intelligence analysis. Smaller models like Phi work on lower-end hardware but produce less detailed assessments.
+
+**Is the local AI analysis as good as cloud-based alternatives?**
+For most intelligence tasks, local models like Llama 3.1 70B produce comparable results to cloud APIs. The browser-based T5 tier is more limited in capability but ensures AI features always remain available regardless of connectivity.
 
 ---
 

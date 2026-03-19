@@ -1,7 +1,7 @@
 ---
 title: "Track Global Conflicts in Real Time: World Monitor's Geopolitical Intelligence"
-description: "Monitor active conflicts, military movements, and geopolitical escalation in real time with World Monitor's interactive 3D globe. 210+ bases, 9 theaters, live ADS-B and AIS tracking."
-metaTitle: "Track Global Conflicts in Real Time | Free Geopolitical Intelligence Map"
+description: "Monitor active conflicts, military movements, and geopolitical escalation in real time. World Monitor tracks 210+ bases across 9 theaters with live ADS-B data."
+metaTitle: "Track Global Conflicts in Real Time | World Monitor"
 keywords: "real-time conflict map, geopolitical intelligence map, military tracking dashboard, conflict monitoring tool, global conflict tracker"
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
@@ -27,7 +27,7 @@ The answer comes from layering multiple intelligence sources onto a single inter
 - **GPS/GNSS jamming zones** detected from ADS-B anomalies
 - **NASA satellite fire detection** (VIIRS) for ground-truth verification
 
-Each layer can be toggled independently. Combine them to build a multi-source picture of any developing situation.
+Each layer can be toggled independently. Combine them to build a multi-source picture of any developing situation. For a broader look at what the platform offers, see [What Is World Monitor?](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
 
 ## 9 Strategic Theaters Under Continuous Assessment
 
@@ -112,7 +112,7 @@ The Infrastructure Cascade panel shows what happens when a conflict zone overlap
 
 ## 26 Telegram Channels: The Raw Feed
 
-For analysts who want unfiltered intelligence, World Monitor integrates 26 curated Telegram channels via MTProto:
+For analysts who want unfiltered intelligence, World Monitor integrates 26 curated Telegram channels via MTProto. Learn more about how this fits into the broader OSINT landscape in [OSINT for Everyone](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/).
 
 The channels are tiered by reliability. Tier 1 sources are verified primary reporters. Tier 2 includes established OSINT accounts like Aurora Intel, BNO News, and DeepState. Tier 3 captures secondary aggregators for broader coverage.
 
@@ -127,7 +127,7 @@ World Monitor's AI capabilities aren't just summarization. The **AI Deduction pa
 - Each forecast is grounded in cited headlines and data points
 - Cross-reference with Polymarket prediction data for market sentiment
 
-This runs on your choice of LLM: local (Ollama, LM Studio), cloud (Groq, OpenRouter), or entirely in-browser (Transformers.js T5 model).
+This runs on your choice of LLM: local (Ollama, LM Studio), cloud (Groq, OpenRouter), or entirely in-browser (Transformers.js T5 model). For details on the prediction markets integration, see [Prediction Markets and AI Forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/).
 
 ## Real-World Use Cases
 
@@ -152,6 +152,17 @@ Jump between regions instantly with 8 preset views: Global, Americas, Europe, ME
 Build a picture, then share it. World Monitor encodes your entire view state (map position, active layers, time range) into a URL. Send it to a colleague, and they see exactly what you see.
 
 For public sharing, the story export feature generates social-ready briefs with Open Graph images for Twitter/X, LinkedIn, WhatsApp, Telegram, and Reddit.
+
+## Frequently Asked Questions
+
+**What data sources does World Monitor use for conflict tracking?**
+World Monitor aggregates ACLED conflict events, UCDP warfare data, live ADS-B aircraft transponders, AIS maritime positions merged with USNI fleet reports, 26 Telegram OSINT channels, and NASA satellite fire detection. All sources are public and verifiable.
+
+**Is World Monitor free to use for conflict monitoring?**
+Yes. World Monitor is completely free and open source under AGPL-3.0. There is no login, paywall, or data collection. You can also self-host it for full control.
+
+**How does the Country Instability Index (CII) work?**
+The CII scores each country from 0 to 100 using four weighted components: baseline risk (40%), unrest indicators (20%), security events (20%), and information velocity (20%). Real-time boosters adjust scores based on proximity to hotspots, rocket alerts, GPS jamming, and travel advisory changes.
 
 ---
 

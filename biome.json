@@ -59,6 +59,8 @@
 			},
 			"complexity": {
 				"noForEach": "off",
+				"noImportantStyles": "off",
+				"useLiteralKeys": "off",
 				"useFlatMap": "warn",
 				"noUselessSwitchCase": "warn",
 				"noUselessConstructor": "warn",

@@ -139,23 +139,24 @@ export class HeatmapPanel extends Panel {
   }
 
   public renderHeatmap(data: Array<{ name: string; change: number | null }>): void {
-    const validData = data.filter((d) => d.change !== null);
-
-    if (validData.length === 0) {
+    if (data.length === 0) {
       this.showRetrying(t('common.failedSectorData'));
       return;
     }
 
     const html =
       '<div class="heatmap">' +
-      validData
+      data
         .map(
-          (sector) => `
-        <div class="heatmap-cell ${getHeatmapClass(sector.change!)}">
+          (sector) => {
+            const change = sector.change ?? 0;
+            return `
+        <div class="heatmap-cell ${getHeatmapClass(change)}">
           <div class="sector-name">${escapeHtml(sector.name)}</div>
-          <div class="sector-change ${getChangeClass(sector.change!)}">${formatChange(sector.change!)}</div>
+          <div class="sector-change ${getChangeClass(change)}">${formatChange(change)}</div>
         </div>
-      `
+      `;
+          }
         )
         .join('') +
       '</div>';

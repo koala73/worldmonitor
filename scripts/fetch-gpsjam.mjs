@@ -257,7 +257,7 @@ async function main() {
     body = await fetchWingbits(apiKey);
   } catch (err) {
     console.error(`[gpsjam] Fetch failed: ${err.message} — extending TTL on stale data`);
-    await extendExistingTtl([REDIS_KEY_V2, REDIS_KEY_V1], REDIS_TTL);
+    await extendExistingTtl([REDIS_KEY_V2, REDIS_KEY_V1, 'seed-meta:intelligence:gpsjam'], REDIS_TTL);
     process.exit(0);
   }
 

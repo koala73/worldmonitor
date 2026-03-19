@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 
 import {
   forecastId,
@@ -18,6 +18,7 @@ import {
   detectCyberScenarios,
   detectGpsJammingScenarios,
   detectFromPredictionMarkets,
+  getFreshMilitaryForecastInputs,
   normalizeChokepoints,
   normalizeGpsJamming,
   loadEntityGraph,
@@ -43,11 +44,17 @@ import {
   buildCaseTriggers,
   buildForecastActors,
   buildForecastWorldState,
+  buildForecastRunWorldState,
   buildForecastBranches,
   buildActorLenses,
   scoreForecastReadiness,
   computeAnalysisPriority,
   rankForecastsForAnalysis,
+  filterPublishedForecasts,
+  selectForecastsForEnrichment,
+  parseForecastProviderOrder,
+  getForecastLlmCallOptions,
+  resolveForecastLlmProviders,
   buildFallbackScenario,
   buildFallbackBaseCase,
   buildFallbackEscalatoryCase,
@@ -57,11 +64,26 @@ import {
   populateFallbackNarratives,
   loadCascadeRules,
   evaluateRuleConditions,
+  summarizePublishFiltering,
   SIGNAL_TO_SOURCE,
   PREDICATE_EVALUATORS,
   DEFAULT_CASCADE_RULES,
   PROJECTION_CURVES,
 } from '../scripts/seed-forecasts.mjs';
+
+const originalForecastEnv = {
+  FORECAST_LLM_PROVIDER_ORDER: process.env.FORECAST_LLM_PROVIDER_ORDER,
+  FORECAST_LLM_COMBINED_PROVIDER_ORDER: process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER,
+  FORECAST_LLM_MODEL_OPENROUTER: process.env.FORECAST_LLM_MODEL_OPENROUTER,
+  FORECAST_LLM_COMBINED_MODEL_OPENROUTER: process.env.FORECAST_LLM_COMBINED_MODEL_OPENROUTER,
+};
+
+afterEach(() => {
+  for (const [key, value] of Object.entries(originalForecastEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+});
 
 describe('forecastId', () => {
   it('same inputs produce same ID', () => {
@@ -420,6 +442,18 @@ describe('detectConflictScenarios', () => {
     assert.ok(result.length >= 1);
     assert.equal(result[0].region, 'Middle East');
   });
+
+  it('accepts theater posture entries that use theater instead of id', () => {
+    const inputs = {
+      ciiScores: [],
+      theaterPosture: { theaters: [{ theater: 'taiwan-theater', name: 'Taiwan Theater', postureLevel: 'elevated' }] },
+      iranEvents: [],
+      ucdpEvents: [],
+    };
+    const result = detectConflictScenarios(inputs);
+    assert.ok(result.length >= 1);
+    assert.equal(result[0].region, 'Western Pacific');
+  });
 });
 
 describe('detectMarketScenarios', () => {
@@ -538,13 +572,114 @@ describe('detectPoliticalScenarios', () => {
 describe('detectMilitaryScenarios', () => {
   it('accepts live theater entries that use theater instead of id', () => {
     const inputs = {
-      theaterPosture: { theaters: [{ theater: 'baltic-theater', postureLevel: 'critical', activeFlights: 12 }] },
+      militaryForecastInputs: { fetchedAt: Date.now(), theaters: [{ theater: 'baltic-theater', postureLevel: 'critical', activeFlights: 12 }] },
       temporalAnomalies: { anomalies: [] },
     };
     const result = detectMilitaryScenarios(inputs);
     assert.equal(result.length, 1);
     assert.equal(result[0].domain, 'military');
     assert.equal(result[0].region, 'Northern Europe');
+  });
+
+  it('creates a military forecast from theater surge data even before posture turns elevated', () => {
+    const inputs = {
+      temporalAnomalies: { anomalies: [] },
+      militaryForecastInputs: {
+        fetchedAt: Date.now(),
+        theaters: [{ theater: 'taiwan-theater', postureLevel: 'normal', activeFlights: 5 }],
+        surges: [{
+          theaterId: 'taiwan-theater',
+          surgeType: 'fighter',
+          currentCount: 8,
+          baselineCount: 2,
+          surgeMultiple: 4,
+          persistent: true,
+          persistenceCount: 2,
+          postureLevel: 'normal',
+          strikeCapable: true,
+          fighters: 8,
+          tankers: 1,
+          awacs: 1,
+          dominantCountry: 'China',
+          dominantCountryCount: 6,
+          dominantOperator: 'plaaf',
+        }],
+      },
+    };
+    const result = detectMilitaryScenarios(inputs);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].title, 'China-linked fighter surge near Taiwan Strait');
+    assert.ok(result[0].probability >= 0.7);
+    assert.ok(result[0].signals.some((signal) => signal.type === 'mil_surge'));
+    assert.ok(result[0].signals.some((signal) => signal.type === 'operator'));
+    assert.ok(result[0].signals.some((signal) => signal.type === 'persistence'));
+    assert.ok(result[0].signals.some((signal) => signal.type === 'theater_actor_fit'));
+  });
+
+  it('ignores stale military surge payloads', () => {
+    const inputs = {
+      temporalAnomalies: { anomalies: [] },
+      militaryForecastInputs: {
+        fetchedAt: Date.now() - (4 * 60 * 60 * 1000),
+        theaters: [{ theater: 'taiwan-theater', postureLevel: 'normal', activeFlights: 5 }],
+        surges: [{
+          theaterId: 'taiwan-theater',
+          surgeType: 'fighter',
+          currentCount: 8,
+          baselineCount: 2,
+          surgeMultiple: 4,
+          postureLevel: 'normal',
+          strikeCapable: true,
+          fighters: 8,
+          tankers: 1,
+          awacs: 1,
+          dominantCountry: 'China',
+          dominantCountryCount: 6,
+        }],
+      },
+    };
+    const result = detectMilitaryScenarios(inputs);
+    assert.equal(result.length, 0);
+  });
+
+  it('rejects military bundles whose theater timestamps drift from fetchedAt', () => {
+    const bundle = getFreshMilitaryForecastInputs({
+      militaryForecastInputs: {
+        fetchedAt: Date.now(),
+        theaters: [{ theater: 'taiwan-theater', postureLevel: 'elevated', assessedAt: Date.now() - (6 * 60 * 1000) }],
+        surges: [],
+      },
+    });
+    assert.equal(bundle, null);
+  });
+
+  it('suppresses one-off generic air activity when it lacks persistence and theater-relevant actors', () => {
+    const inputs = {
+      temporalAnomalies: { anomalies: [] },
+      militaryForecastInputs: {
+        fetchedAt: Date.now(),
+        theaters: [{ theater: 'iran-theater', postureLevel: 'normal', activeFlights: 6 }],
+        surges: [{
+          theaterId: 'iran-theater',
+          surgeType: 'air_activity',
+          currentCount: 6,
+          baselineCount: 2.7,
+          surgeMultiple: 2.22,
+          persistent: false,
+          persistenceCount: 0,
+          postureLevel: 'normal',
+          strikeCapable: false,
+          fighters: 0,
+          tankers: 0,
+          awacs: 0,
+          dominantCountry: 'Qatar',
+          dominantCountryCount: 4,
+          dominantOperator: 'other',
+        }],
+      },
+    };
+    const result = detectMilitaryScenarios(inputs);
+    assert.equal(result.length, 0);
   });
 });
 
@@ -800,6 +935,108 @@ describe('forecast evaluation and ranking', () => {
     rankForecastsForAnalysis(ranked);
     assert.equal(ranked[0].title, rich.title);
   });
+
+  it('penalizes thin forecasts with weak grounding even at similar base probability', () => {
+    const grounded = makePrediction('political', 'France', 'Political instability: France', 0.64, 0.57, '7d', [
+      { type: 'unrest', value: 'France protest intensity remains elevated', weight: 0.3 },
+      { type: 'cii', value: 'France institutional stress index 68', weight: 0.25 },
+    ]);
+    grounded.newsContext = ['French unions warn of a broader escalation in strikes'];
+    grounded.trend = 'rising';
+    buildForecastCase(grounded);
+
+    const thin = makePrediction('conflict', 'Brazil', 'Active armed conflict: Brazil', 0.65, 0.57, '7d', [
+      { type: 'conflict_events', value: 'Localized violence persists', weight: 0.15 },
+    ]);
+    thin.trend = 'stable';
+    buildForecastCase(thin);
+
+    assert.ok(computeAnalysisPriority(grounded) > computeAnalysisPriority(thin));
+  });
+
+  it('filters non-positive forecasts before publish while keeping positive probabilities', () => {
+    const dropped = makePrediction('market', 'Red Sea', 'Shipping/Oil price impact from Suez Canal disruption', 0, 0.58, '30d', []);
+    const kept = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.12, 0.58, '7d', []);
+    const ranked = [dropped, kept];
+
+    const published = filterPublishedForecasts(ranked);
+    assert.equal(published.length, 1);
+    assert.equal(published[0].id, kept.id);
+  });
+
+  it('selects enrichment targets from a broader, domain-balanced top slice', () => {
+    const conflictA = makePrediction('conflict', 'Iran', 'Conflict A', 0.72, 0.61, '7d', [
+      { type: 'cii', value: 'Iran CII 87', weight: 0.4 },
+      { type: 'ucdp', value: '3 UCDP conflict events', weight: 0.3 },
+    ]);
+    conflictA.newsContext = ['Iran military drills intensify after border incident'];
+    conflictA.trend = 'rising';
+    buildForecastCase(conflictA);
+
+    const conflictB = makePrediction('conflict', 'Israel', 'Conflict B', 0.71, 0.6, '7d', [
+      { type: 'ucdp', value: '4 UCDP conflict events', weight: 0.35 },
+      { type: 'theater', value: 'Eastern Mediterranean posture elevated', weight: 0.25 },
+    ]);
+    conflictB.newsContext = ['Regional officials warn of retaliation risk'];
+    conflictB.trend = 'rising';
+    buildForecastCase(conflictB);
+
+    const conflictC = makePrediction('conflict', 'Mexico', 'Conflict C', 0.7, 0.59, '7d', [
+      { type: 'conflict_events', value: 'Violence persists across multiple states', weight: 0.2 },
+    ]);
+    conflictC.trend = 'stable';
+    buildForecastCase(conflictC);
+
+    const cyberA = makePrediction('cyber', 'China', 'Cyber A', 0.69, 0.58, '7d', [
+      { type: 'cyber', value: 'Hostile malware hosting remains elevated', weight: 0.4 },
+      { type: 'news_corroboration', value: 'Security firms warn of sustained activity', weight: 0.2 },
+    ]);
+    cyberA.newsContext = ['Security researchers warn of renewed malware coordination'];
+    cyberA.trend = 'rising';
+    buildForecastCase(cyberA);
+
+    const cyberB = makePrediction('cyber', 'Russia', 'Cyber B', 0.67, 0.56, '7d', [
+      { type: 'cyber', value: 'C2 server concentration remains high', weight: 0.35 },
+      { type: 'news_corroboration', value: 'Government agencies issue new advisories', weight: 0.2 },
+    ]);
+    cyberB.newsContext = ['Authorities publish a fresh advisory on state-linked activity'];
+    cyberB.trend = 'rising';
+    buildForecastCase(cyberB);
+
+    const supplyChain = makePrediction('supply_chain', 'Red Sea', 'Shipping disruption: Red Sea', 0.68, 0.59, '7d', [
+      { type: 'chokepoint', value: 'Red Sea disruption detected', weight: 0.5 },
+      { type: 'gps_jamming', value: 'GPS interference near Red Sea', weight: 0.2 },
+    ]);
+    supplyChain.newsContext = ['Freight rates react to Red Sea rerouting'];
+    supplyChain.trend = 'rising';
+    buildForecastCase(supplyChain);
+
+    const market = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.73, 0.58, '30d', [
+      { type: 'chokepoint', value: 'Hormuz transit risk rises', weight: 0.5 },
+      { type: 'prediction_market', value: 'Oil breakout chatter increases', weight: 0.2 },
+    ]);
+    market.newsContext = ['Analysts warn of renewed stress in the Strait of Hormuz'];
+    market.calibration = { marketTitle: 'Will oil close above $90?', marketPrice: 0.65, drift: 0.05, source: 'polymarket' };
+    market.trend = 'rising';
+    buildForecastCase(market);
+
+    const selected = selectForecastsForEnrichment([
+      conflictA,
+      conflictB,
+      conflictC,
+      cyberA,
+      cyberB,
+      supplyChain,
+      market,
+    ]);
+
+    const enriched = [...selected.combined, ...selected.scenarioOnly];
+    assert.equal(enriched.length, 6);
+    assert.ok(enriched.some(pred => pred.domain === 'supply_chain'));
+    assert.ok(enriched.some(pred => pred.domain === 'market'));
+    assert.ok(enriched.filter(pred => pred.domain === 'conflict').length <= 2);
+    assert.ok(enriched.filter(pred => pred.domain === 'cyber').length <= 2);
+  });
 });
 
 describe('forecast change tracking', () => {
@@ -854,6 +1091,61 @@ describe('forecast change tracking', () => {
     const summary = buildChangeSummary(pred, null, items);
     assert.match(summary, /new in the current run/i);
     assert.ok(items[0].includes('New forecast surfaced'));
+  });
+});
+
+describe('forecast llm overrides', () => {
+  it('parses provider order safely', () => {
+    assert.equal(parseForecastProviderOrder(''), null);
+    assert.deepEqual(parseForecastProviderOrder('openrouter, groq, openrouter, invalid'), ['openrouter', 'groq']);
+  });
+
+  it('keeps default provider order when no override is set', () => {
+    delete process.env.FORECAST_LLM_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_MODEL_OPENROUTER;
+    delete process.env.FORECAST_LLM_COMBINED_MODEL_OPENROUTER;
+
+    const options = getForecastLlmCallOptions('combined');
+    const providers = resolveForecastLlmProviders(options);
+
+    assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
+    assert.equal(providers[0]?.name, 'groq');
+    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[1]?.name, 'openrouter');
+    assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
+  });
+
+  it('supports a stronger combined-model override without changing scenario defaults', () => {
+    process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER = 'openrouter';
+    process.env.FORECAST_LLM_COMBINED_MODEL_OPENROUTER = 'google/gemini-2.5-pro';
+
+    const combinedOptions = getForecastLlmCallOptions('combined');
+    const combinedProviders = resolveForecastLlmProviders(combinedOptions);
+    const scenarioOptions = getForecastLlmCallOptions('scenario');
+    const scenarioProviders = resolveForecastLlmProviders(scenarioOptions);
+
+    assert.deepEqual(combinedOptions.providerOrder, ['openrouter']);
+    assert.equal(combinedProviders.length, 1);
+    assert.equal(combinedProviders[0]?.name, 'openrouter');
+    assert.equal(combinedProviders[0]?.model, 'google/gemini-2.5-pro');
+
+    assert.deepEqual(scenarioOptions.providerOrder, ['groq', 'openrouter']);
+    assert.equal(scenarioProviders[0]?.name, 'groq');
+    assert.equal(scenarioProviders[1]?.model, 'google/gemini-2.5-flash');
+  });
+
+  it('lets a global provider order and openrouter model apply to non-combined stages', () => {
+    process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter';
+    process.env.FORECAST_LLM_MODEL_OPENROUTER = 'google/gemini-2.5-flash-lite-preview';
+
+    const options = getForecastLlmCallOptions('scenario');
+    const providers = resolveForecastLlmProviders(options);
+
+    assert.deepEqual(options.providerOrder, ['openrouter']);
+    assert.equal(providers.length, 1);
+    assert.equal(providers[0]?.name, 'openrouter');
+    assert.equal(providers[0]?.model, 'google/gemini-2.5-flash-lite-preview');
   });
 });
 
@@ -930,6 +1222,28 @@ describe('forecast narrative fallbacks', () => {
     assert.match(baseCase, /France major outage/);
     assert.ok(escalatoryCase.length <= 500);
     assert.ok(contrarianCase.length <= 500);
+  });
+
+  it('fallback narratives reference broader situation context when available', () => {
+    const pred = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.63, 0.48, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+    ]);
+    buildForecastCase(pred);
+    pred.caseFile.situationContext = {
+      id: 'sit-1',
+      label: 'Iran conflict pressure',
+      forecastCount: 4,
+      topSignals: [{ type: 'ucdp', count: 4 }],
+    };
+    pred.situationContext = pred.caseFile.situationContext;
+
+    const scenario = buildFallbackScenario(pred);
+    const baseCase = buildFallbackBaseCase(pred);
+    const summary = buildFeedSummary(pred);
+
+    assert.match(baseCase, /broader|cluster/i);
+    assert.match(scenario, /broader|cluster/i);
+    assert.match(summary, /broader|cluster/i);
   });
 
   it('buildFeedSummary stays compact and distinct from the deeper case output', () => {
@@ -1360,6 +1674,16 @@ describe('detectCyberScenarios', () => {
   it('handles empty input', () => {
     assert.equal(detectCyberScenarios({}).length, 0);
   });
+
+  it('caps broad cyber output to the top-ranked countries', () => {
+    const threats = [];
+    for (let i = 0; i < 20; i++) {
+      const country = `Country-${i}`;
+      for (let j = 0; j < 5; j++) threats.push({ country, type: 'phishing' });
+    }
+    const result = detectCyberScenarios({ cyberThreats: { threats } });
+    assert.equal(result.length, 12);
+  });
 });
 
 describe('detectGpsJammingScenarios', () => {
@@ -1460,5 +1784,224 @@ describe('discoverGraphCascades', () => {
     discoverGraphCascades(preds, graph);
     const graphCascades = preds[0].cascades.filter(c => c.effect.includes('graph:'));
     assert.equal(graphCascades.length, 0, 'same domain should not cascade');
+  });
+});
+
+describe('forecast quality gating', () => {
+  it('reserves scenario enrichment slots for scarce market and military forecasts', () => {
+    const predictions = [
+      makePrediction('cyber', 'A', 'Cyber A', 0.7, 0.55, '7d', [{ type: 'cyber', value: '8 threats', weight: 0.5 }]),
+      makePrediction('cyber', 'B', 'Cyber B', 0.68, 0.55, '7d', [{ type: 'cyber', value: '7 threats', weight: 0.5 }]),
+      makePrediction('conflict', 'C', 'Conflict C', 0.66, 0.6, '7d', [{ type: 'ucdp', value: '12 events', weight: 0.5 }]),
+      makePrediction('market', 'Middle East', 'Oil price impact', 0.4, 0.5, '30d', [{ type: 'news_corroboration', value: 'Oil traders react', weight: 0.3 }]),
+      makePrediction('military', 'Korean Peninsula', 'Elevated military air activity', 0.34, 0.5, '7d', [{ type: 'mil_surge', value: 'fighter surge', weight: 0.4 }]),
+    ];
+    buildForecastCases(predictions);
+    const selected = selectForecastsForEnrichment(predictions, { maxCombined: 2, maxScenario: 2, maxPerDomain: 2, minReadiness: 0 });
+    assert.equal(selected.combined.length, 2);
+    assert.equal(selected.scenarioOnly.length, 2);
+    assert.ok(selected.scenarioOnly.some(item => item.domain === 'market'));
+    assert.ok(selected.scenarioOnly.some(item => item.domain === 'military'));
+    assert.deepEqual(selected.telemetry.reservedScenarioDomains.sort(), ['market', 'military']);
+  });
+
+  it('filters only the weakest fallback forecasts from publish output', () => {
+    const weak = makePrediction('cyber', 'Thinland', 'Cyber threat concentration: Thinland', 0.11, 0.32, '7d', [
+      { type: 'cyber', value: '5 threats (phishing)', weight: 0.5 },
+    ]);
+    buildForecastCases([weak]);
+    weak.traceMeta = { narrativeSource: 'fallback' };
+    weak.readiness = { overall: 0.28 };
+    weak.analysisPriority = 0.05;
+
+    const strong = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.22, 0.48, '7d', [
+      { type: 'news_corroboration', value: 'Oil prices moved on shipping risk', weight: 0.4 },
+    ]);
+    buildForecastCases([strong]);
+    strong.traceMeta = { narrativeSource: 'fallback' };
+    strong.readiness = { overall: 0.52 };
+    strong.analysisPriority = 0.11;
+
+    const published = filterPublishedForecasts([weak, strong]);
+    assert.equal(published.length, 1);
+    assert.equal(published[0].id, strong.id);
+  });
+
+  it('suppresses weaker duplicate-like conflict forecasts while preserving distinct consequences', () => {
+    const primary = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.64, 0.58, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+      { type: 'news_corroboration', value: 'Iran strike exchange intensifies', weight: 0.3 },
+    ]);
+    const duplicate = makePrediction('conflict', 'Iran', 'Active armed conflict: Iran', 0.52, 0.42, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+      { type: 'news_corroboration', value: 'Iran strike exchange intensifies', weight: 0.3 },
+    ]);
+    const consequence = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.41, 0.51, '30d', [
+      { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
+    ]);
+    const distinctConflict = makePrediction('conflict', 'Gulf', 'Spillover conflict risk: Gulf shipping corridor', 0.47, 0.53, '14d', [
+      { type: 'news_corroboration', value: 'Gulf states prepare for possible spillover', weight: 0.35 },
+    ]);
+
+    buildForecastCases([primary, duplicate, consequence, distinctConflict]);
+    for (const pred of [primary, duplicate, consequence, distinctConflict]) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+    }
+    primary.caseFile.situationContext = { id: 'sit-1', label: 'Iran conflict pressure', forecastCount: 3, topSignals: [{ type: 'ucdp', count: 2 }] };
+    duplicate.caseFile.situationContext = { id: 'sit-1', label: 'Iran conflict pressure', forecastCount: 3, topSignals: [{ type: 'ucdp', count: 2 }] };
+    consequence.caseFile.situationContext = { id: 'sit-1', label: 'Iran conflict pressure', forecastCount: 3, topSignals: [{ type: 'ucdp', count: 2 }] };
+    distinctConflict.caseFile.situationContext = { id: 'sit-2', label: 'Gulf spillover pressure', forecastCount: 1, topSignals: [{ type: 'news_corroboration', count: 1 }] };
+    primary.situationContext = primary.caseFile.situationContext;
+    duplicate.situationContext = duplicate.caseFile.situationContext;
+    consequence.situationContext = consequence.caseFile.situationContext;
+    distinctConflict.situationContext = distinctConflict.caseFile.situationContext;
+    primary.readiness = { overall: 0.63 };
+    duplicate.readiness = { overall: 0.44 };
+    consequence.readiness = { overall: 0.54 };
+    distinctConflict.readiness = { overall: 0.49 };
+    primary.analysisPriority = 0.19;
+    duplicate.analysisPriority = 0.09;
+    consequence.analysisPriority = 0.12;
+    distinctConflict.analysisPriority = 0.11;
+
+    const published = filterPublishedForecasts([primary, duplicate, consequence, distinctConflict]);
+    assert.equal(published.length, 3);
+    assert.ok(published.some((item) => item.id === primary.id));
+    assert.ok(!published.some((item) => item.id === duplicate.id));
+    assert.ok(published.some((item) => item.id === consequence.id));
+    assert.ok(published.some((item) => item.id === distinctConflict.id));
+
+    const telemetry = summarizePublishFiltering([primary, duplicate, consequence, distinctConflict]);
+    assert.equal(telemetry.suppressedSituationOverlap, 1);
+  });
+
+  it('caps dominant same-domain situation output while preserving cross-domain consequences', () => {
+    const conflictA = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.66, 0.61, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+    ]);
+    const conflictB = makePrediction('conflict', 'Gulf', 'Spillover conflict risk: Gulf shipping corridor', 0.61, 0.57, '7d', [
+      { type: 'news_corroboration', value: 'Gulf states prepare for spillover', weight: 0.45 },
+    ]);
+    const conflictC = makePrediction('conflict', 'Israel', 'Retaliatory conflict risk: Israel', 0.58, 0.53, '14d', [
+      { type: 'news_corroboration', value: 'Retaliatory pressure remains elevated around Israel', weight: 0.42 },
+    ]);
+    const consequence = makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.49, 0.55, '30d', [
+      { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
+    ]);
+
+    buildForecastCases([conflictA, conflictB, conflictC, consequence]);
+    for (const pred of [conflictA, conflictB, conflictC, consequence]) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.situationContext = {
+        id: 'sit-iran',
+        label: 'Iran conflict and market situation',
+        forecastCount: 4,
+        topSignals: [{ type: 'ucdp', count: 3 }],
+      };
+      pred.caseFile.situationContext = pred.situationContext;
+    }
+    conflictA.readiness = { overall: 0.64 };
+    conflictB.readiness = { overall: 0.59 };
+    conflictC.readiness = { overall: 0.51 };
+    consequence.readiness = { overall: 0.56 };
+    conflictA.analysisPriority = 0.22;
+    conflictB.analysisPriority = 0.19;
+    conflictC.analysisPriority = 0.15;
+    consequence.analysisPriority = 0.17;
+
+    const published = filterPublishedForecasts([conflictA, conflictB, conflictC, consequence]);
+    assert.equal(published.length, 3);
+    assert.ok(published.some((item) => item.id === consequence.id));
+    assert.ok(!published.some((item) => item.id === conflictC.id));
+
+    const telemetry = summarizePublishFiltering([conflictA, conflictB, conflictC, consequence]);
+    assert.equal(telemetry.suppressedSituationDomainCap, 1);
+    assert.equal(telemetry.cappedSituations, 0);
+  });
+
+  it('does not report capped situations when a situation only reaches the cap without dropping anything', () => {
+    const preds = [
+      makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.66, 0.6, '7d', [
+        { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+      ]),
+      makePrediction('political', 'Iran', 'Political instability: Iran', 0.55, 0.54, '14d', [
+        { type: 'news_corroboration', value: 'Emergency cabinet meetings continue', weight: 0.35 },
+      ]),
+      makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.48, 0.52, '30d', [
+        { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
+      ]),
+    ];
+
+    buildForecastCases(preds);
+    for (const [index, pred] of preds.entries()) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.situationContext = {
+        id: 'sit-iran-gulf',
+        label: 'Iran Gulf pressure',
+        forecastCount: 3,
+        topSignals: [{ type: 'news_corroboration', count: 2 }],
+      };
+      pred.caseFile.situationContext = pred.situationContext;
+      pred.readiness = { overall: 0.65 - (index * 0.05) };
+      pred.analysisPriority = 0.22 - (index * 0.03);
+    }
+
+    const published = filterPublishedForecasts(preds);
+    assert.equal(published.length, 3);
+
+    const telemetry = summarizePublishFiltering(preds);
+    assert.equal(telemetry.suppressedSituationCap, 0);
+    assert.equal(telemetry.cappedSituations, 0);
+  });
+
+  it('keeps unrelated forecasts in separate situations instead of token-only over-merging', () => {
+    const conflict = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.65, 0.58, '7d', [
+      { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+    ]);
+    const cyber = makePrediction('cyber', 'Estonia', 'Cyber disruption risk: Estonia', 0.43, 0.52, '7d', [
+      { type: 'news_corroboration', value: 'Estonia reports sustained cyber probing', weight: 0.35 },
+    ]);
+
+    buildForecastCases([conflict, cyber]);
+    const worldState = buildForecastRunWorldState({ predictions: [conflict, cyber] });
+
+    assert.equal(worldState.situationClusters.length, 2);
+    assert.ok(worldState.situationClusters.every((cluster) => cluster.label.endsWith('situation')));
+    assert.ok(worldState.situationClusters.every((cluster) => !/fc-[a-z]+-[0-9a-f]{8}/.test(cluster.label)));
+  });
+
+  it('does not report capped situations when a situation only reaches the cap without dropping anything', () => {
+    const preds = [
+      makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.66, 0.6, '7d', [
+        { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
+      ]),
+      makePrediction('political', 'Iran', 'Political instability: Iran', 0.55, 0.54, '14d', [
+        { type: 'news_corroboration', value: 'Emergency cabinet meetings continue', weight: 0.35 },
+      ]),
+      makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.48, 0.52, '30d', [
+        { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
+      ]),
+    ];
+
+    buildForecastCases(preds);
+    for (const [index, pred] of preds.entries()) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.situationContext = {
+        id: 'sit-iran-gulf',
+        label: 'Iran Gulf pressure',
+        forecastCount: 3,
+        topSignals: [{ type: 'news_corroboration', count: 2 }],
+      };
+      pred.caseFile.situationContext = pred.situationContext;
+      pred.readiness = { overall: 0.65 - (index * 0.05) };
+      pred.analysisPriority = 0.22 - (index * 0.03);
+    }
+
+    const published = filterPublishedForecasts(preds);
+    assert.equal(published.length, 3);
+
+    const telemetry = summarizePublishFiltering(preds);
+    assert.equal(telemetry.suppressedSituationCap, 0);
+    assert.equal(telemetry.cappedSituations, 0);
   });
 });

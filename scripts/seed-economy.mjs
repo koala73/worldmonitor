@@ -15,7 +15,7 @@ const FRED_KEY_PREFIX = 'economic:fred:v1';
 const FRED_TTL = 3600;
 const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
-const MACRO_TTL = 900;
+const MACRO_TTL = 1800;
 
 const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO'];
 
@@ -96,7 +96,7 @@ async function fetchCapacityForSource(sourceCode, apiKey, startYear) {
   for (const row of rows) {
     if (row.period == null || row.capability == null) continue;
     const year = parseInt(row.period, 10);
-    if (isNaN(year)) continue;
+    if (Number.isNaN(year)) continue;
     const mw = typeof row.capability === 'number' ? row.capability : parseFloat(String(row.capability));
     if (!Number.isFinite(mw)) continue;
     yearTotals.set(year, (yearTotals.get(year) ?? 0) + mw);
@@ -172,7 +172,7 @@ async function fetchFredSeries() {
 
       const obsData = await obsResp.value.json();
       const observations = (obsData.observations || [])
-        .map((o) => { const v = parseFloat(o.value); return isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
+        .map((o) => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
         .filter(Boolean)
         .reverse();
 
@@ -391,7 +391,7 @@ async function fetchAll() {
     }
   }
 
-  if (ms && !ms.unavailable) await writeExtraKeyWithMeta(KEYS.macroSignals, ms, MACRO_TTL, ms.totalCount ?? 0);
+  if (ms && !ms.unavailable && ms.totalCount > 0) await writeExtraKeyWithMeta(KEYS.macroSignals, ms, MACRO_TTL, ms.totalCount ?? 0);
 
   return ep || { prices: [] };
 }

@@ -239,6 +239,17 @@ The `SmartPollLoop` is the core refresh orchestration primitive used by all data
 | `seed-displacement-summary` | UNHCR / IOM | 30 min | N/A |
 | `seed-military-bases` | Curated 210+ base database | Daily | N/A |
 | `seed-wb-indicators` | World Bank tech readiness | Daily | `economic:worldbank-techreadiness:v1` |
+| `seed-forecasts` | Groq LLM + multi-domain signals | 15 min | `forecast:predictions:v2` |
+| `seed-conflict-intel` | ACLED + HAPI + PizzINT + GDELT | 15 min | `conflict:acled:v1:all:0:0` |
+| `seed-economy` | EIA energy + FRED macro + spending | 15 min | N/A (extra keys) |
+| `seed-supply-chain-trade` | FRED shipping + WTO + US Treasury | 6 hours | `supply_chain:shipping:v2` |
+| `seed-security-advisories` | 24 gov RSS feeds via relay proxy | 1 hour | `intelligence:advisories-bootstrap:v1` |
+| `seed-usni-fleet` | USNI News WP-JSON (curl for JA3 bypass) | 6 hours | `usni-fleet:sebuf:v1` |
+| `seed-gdelt-intel` | GDELT 2.0 Doc API (8 topics) | 1 hour | `intelligence:gdelt-intel:v1` |
+| `seed-research` | arXiv + HN + tech events + GitHub | 6 hours | N/A (extra keys) |
+| `seed-correlation` | Cross-domain correlation engine | 5 min | `correlation:cards-bootstrap:v1` |
+| `seed-gpsjam` | GPSJam.org H3 interference hexes | 6 hours | N/A |
+| `seed-aviation` | Airport ops summaries + aviation news | 15 min | N/A (warm-ping) |
 
 Seeds use `cachedFetchJson` with in-flight promise coalescing — if a seed run overlaps with a previous run still writing, the concurrent write is deduplicated. Each seed script is self-contained (single `.mjs` file, no build step), runs on Node.js 20+, and connects to Upstash Redis via REST API. Failed seed runs log errors but never corrupt existing cached data — the previous cache entry persists until a successful run replaces it.
 

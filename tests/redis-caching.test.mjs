@@ -463,47 +463,35 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     });
   }
 
-  it('coalesces concurrent calls into a single upstream fetch', async () => {
+  it('reads live data from Redis without making upstream calls', async () => {
     const { module, cleanup } = await importTheaterPosture();
     const restoreEnv = withEnv({
-      LOCAL_API_MODE: 'sidecar',
-      WS_RELAY_URL: undefined,
-      WINGBITS_API_KEY: undefined,
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
       UPSTASH_REDIS_REST_TOKEN: 'token',
-      VERCEL_ENV: undefined,
-      VERCEL_GIT_COMMIT_SHA: undefined,
     });
     const originalFetch = globalThis.fetch;
 
+    const liveData = { theaters: [{ theater: 'live-test', postureLevel: 'elevated', activeFlights: 5, trackedVessels: 0, activeOperations: [], assessedAt: Date.now() }] };
     let openskyFetchCount = 0;
     globalThis.fetch = async (url) => {
       const raw = String(url);
-      if (raw.includes('/get/') || raw.includes('/pipeline')) {
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        if (key === 'theater-posture:sebuf:v1') {
+          return jsonResponse({ result: JSON.stringify(liveData) });
+        }
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/')) {
-        return jsonResponse({ result: 'OK' });
-      }
-      if (raw.includes('opensky-network.org')) {
+      if (raw.includes('opensky-network.org') || raw.includes('wingbits.com')) {
         openskyFetchCount += 1;
-        await new Promise((r) => setTimeout(r, 10));
-        return mockOpenSkyResponse();
       }
       return jsonResponse({}, false);
     };
 
     try {
-      const [a, b, c] = await Promise.all([
-        module.getTheaterPosture({}, {}),
-        module.getTheaterPosture({}, {}),
-        module.getTheaterPosture({}, {}),
-      ]);
-
-      assert.equal(openskyFetchCount, 2, 'coalesced into one fetcher invocation × 2 theater query regions');
-      assert.ok(a.theaters.length > 0, 'should return theater posture data');
-      assert.deepEqual(a, b, 'all callers should receive the same result');
-      assert.deepEqual(b, c, 'all callers should receive the same result');
+      const result = await module.getTheaterPosture({}, {});
+      assert.equal(openskyFetchCount, 0, 'must not call upstream APIs (Redis-read-only)');
+      assert.deepEqual(result, liveData, 'should return live Redis data');
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -594,16 +582,11 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     }
   });
 
-  it('awaits stale/backup writes before returning', async () => {
+  it('does not write to Redis (read-only handler)', async () => {
     const { module, cleanup } = await importTheaterPosture();
     const restoreEnv = withEnv({
-      LOCAL_API_MODE: 'sidecar',
-      WS_RELAY_URL: undefined,
-      WINGBITS_API_KEY: undefined,
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
       UPSTASH_REDIS_REST_TOKEN: 'token',
-      VERCEL_ENV: undefined,
-      VERCEL_GIT_COMMIT_SHA: undefined,
     });
     const originalFetch = globalThis.fetch;
 
@@ -613,23 +596,16 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
       if (raw.includes('/get/')) {
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/')) {
-        const key = decodeURIComponent(raw.split('/set/').pop()?.split('/').shift() || '');
-        cacheWrites.push(key);
+      if (raw.includes('/set/') || raw.includes('/pipeline')) {
+        cacheWrites.push(raw);
         return jsonResponse({ result: 'OK' });
-      }
-      if (raw.includes('opensky-network.org')) {
-        return mockOpenSkyResponse();
       }
       return jsonResponse({}, false);
     };
 
     try {
       await module.getTheaterPosture({}, {});
-      const staleWritten = cacheWrites.some((k) => k.includes('stale'));
-      const backupWritten = cacheWrites.some((k) => k.includes('backup'));
-      assert.ok(staleWritten, 'stale tier should be written before response returns');
-      assert.ok(backupWritten, 'backup tier should be written before response returns');
+      assert.equal(cacheWrites.length, 0, 'handler must not write to Redis (read-only)');
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;

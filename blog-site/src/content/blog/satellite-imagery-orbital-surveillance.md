@@ -1,7 +1,7 @@
 ---
 title: "Satellite Eyes: How World Monitor Brings Orbital Surveillance to Your Browser"
-description: "Access real-time satellite imagery of geopolitical hotspots with World Monitor's orbital surveillance layer. STAC API integration, cloud coverage data, and resolution metadata."
-metaTitle: "Free Satellite Imagery Dashboard | Orbital Surveillance for OSINT | World Monitor"
+description: "Access satellite imagery of geopolitical hotspots in World Monitor. Search by location, time, and cloud cover with STAC API, overlaid on 44 live intelligence layers."
+metaTitle: "Satellite Imagery for OSINT | World Monitor"
 keywords: "satellite imagery OSINT, free satellite intelligence, orbital surveillance dashboard, STAC API satellite search, geopolitical satellite monitoring"
 audience: "OSINT analysts, remote sensing enthusiasts, defense researchers, environmental monitors"
 heroImage: "/blog/images/blog/satellite-imagery-orbital-surveillance.jpg"
@@ -38,7 +38,7 @@ The system returns available satellite passes, ranked by relevance, with preview
 
 News reports claim a military buildup near a border. The conflict layer shows increased news activity. ADS-B shows military flight patterns. Now pull satellite imagery to see if there are new vehicle concentrations, field camps, or infrastructure construction.
 
-Satellite imagery provides the physical evidence that other intelligence signals suggest.
+Satellite imagery provides the physical evidence that other intelligence signals suggest. See how World Monitor [tracks global conflicts in real time](/blog/posts/track-global-conflicts-in-real-time/) for the data that makes satellite verification actionable.
 
 ### Infrastructure Damage Assessment
 
@@ -46,7 +46,7 @@ After a reported strike on a pipeline, port, or datacenter, satellite imagery sh
 
 ### Environmental Monitoring
 
-Track deforestation, mining expansion, flooding, and fire damage. The NASA FIRMS fire layer shows active hotspots; satellite imagery shows the aftermath and extent.
+Track deforestation, mining expansion, flooding, and fire damage. The NASA FIRMS fire layer shows active hotspots; satellite imagery shows the aftermath and extent. For more on natural hazard tracking, see [natural disaster monitoring with World Monitor](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/).
 
 ### Maritime Intelligence
 
@@ -73,7 +73,7 @@ The orbital layer becomes most powerful when combined with World Monitor's other
 | Protest camp | Conflict + Telegram OSINT | Crowd size estimation, barricade placement |
 | Natural disaster | USGS + NASA FIRMS | Damage footprint, flood extent |
 
-No other free dashboard lets you overlay satellite imagery on top of real-time conflict data, military tracking, and AI-scored intelligence, in the same view.
+No other free dashboard lets you overlay satellite imagery on top of real-time conflict data, military tracking, and AI-scored intelligence, in the same view. Explore the full [OSINT capabilities World Monitor offers](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/).
 
 ## Resolution and Coverage
 
@@ -104,6 +104,17 @@ The orbital surveillance layer is available across all platforms, with the deskt
 Commercial satellite constellations are growing rapidly. More satellites mean more frequent revisits, higher resolution, and faster delivery. As this data becomes more accessible, tools like World Monitor that integrate imagery into multi-source intelligence workflows will become essential.
 
 The days of satellite intelligence being locked in classified systems are ending. World Monitor puts orbital surveillance alongside 44 other intelligence layers, in your browser, for free.
+
+## Frequently Asked Questions
+
+**Is the satellite imagery on World Monitor free?**
+Yes. World Monitor connects to open satellite data through the STAC API standard. You can search, filter, and overlay imagery at no cost with no account required.
+
+**What resolution satellite imagery is available?**
+Resolution varies by source, from 250m+ for weather patterns down to 1-5m for individual buildings and vehicle concentrations. Each image includes resolution metadata so you know the detail level before analyzing it.
+
+**Can I compare before and after satellite images of an event?**
+Yes. Use the time-range query feature to pull imagery from different dates. This is particularly useful for damage assessment, military buildup verification, and tracking infrastructure changes over time.
 
 ---
 

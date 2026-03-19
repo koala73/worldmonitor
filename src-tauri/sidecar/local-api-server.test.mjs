@@ -528,6 +528,45 @@ test('strips browser origin headers when proxying to cloud fallback (cloudFallba
   }
 });
 
+test('blocks cloud fallback in Docker mode even when explicitly requested', async () => {
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'docker-test.js': `
+      export default async function handler() {
+        return new Response(JSON.stringify({ source: 'local-error' }), {
+          status: 500,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    `,
+  });
+
+  const warnings = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    cloudFallback: 'true',
+    mode: 'docker',
+    logger: { log() {}, warn(...args) { warnings.push(args.join(' ')); }, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/docker-test`);
+    // Should NOT fall back to cloud; should return the local 500 directly
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.equal(body.source, 'local-error');
+    // Should have logged a warning about Docker mode blocking fallback
+    assert.ok(warnings.some(w => w.includes('Docker mode')), 'Should warn about Docker mode blocking fallback');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+  }
+});
+
 test('responds to OPTIONS preflight with CORS headers', async () => {
   const localApi = await setupApiDir({
     'data.js': `

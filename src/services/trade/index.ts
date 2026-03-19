@@ -1,6 +1,6 @@
 /**
- * Trade policy intelligence service -- WTO data sources.
- * Trade restrictions, tariff trends, trade flows, and SPS/TBT barriers.
+ * Trade policy intelligence service.
+ * WTO MFN baselines, trade flows/barriers, and US customs/effective tariff context.
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
@@ -13,6 +13,7 @@ import {
   type GetCustomsRevenueResponse,
   type TradeRestriction,
   type TariffDataPoint,
+  type EffectiveTariffRate,
   type TradeFlowRecord,
   type TradeBarrier,
   type CustomsRevenueMonth,
@@ -22,7 +23,7 @@ import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
 
 // Re-export types for consumers
-export type { TradeRestriction, TariffDataPoint, TradeFlowRecord, TradeBarrier, CustomsRevenueMonth };
+export type { TradeRestriction, TariffDataPoint, EffectiveTariffRate, TradeFlowRecord, TradeBarrier, CustomsRevenueMonth };
 export type {
   GetTradeRestrictionsResponse,
   GetTariffTrendsResponse,
@@ -50,7 +51,7 @@ export async function fetchTradeRestrictions(countries: string[] = [], limit = 5
   try {
     return await restrictionsBreaker.execute(async () => {
       return client.getTradeRestrictions({ countries, limit });
-    }, emptyRestrictions);
+    }, emptyRestrictions, { shouldCache: r => (r.restrictions?.length ?? 0) > 0 });
   } catch {
     return emptyRestrictions;
   }
@@ -61,7 +62,7 @@ export async function fetchTariffTrends(reportingCountry: string, partnerCountry
   try {
     return await tariffsBreaker.execute(async () => {
       return client.getTariffTrends({ reportingCountry, partnerCountry, productSector, years });
-    }, emptyTariffs);
+    }, emptyTariffs, { shouldCache: r => (r.datapoints?.length ?? 0) > 0 });
   } catch {
     return emptyTariffs;
   }
@@ -72,7 +73,7 @@ export async function fetchTradeFlows(reportingCountry: string, partnerCountry: 
   try {
     return await flowsBreaker.execute(async () => {
       return client.getTradeFlows({ reportingCountry, partnerCountry, years });
-    }, emptyFlows);
+    }, emptyFlows, { shouldCache: r => (r.flows?.length ?? 0) > 0 });
   } catch {
     return emptyFlows;
   }
@@ -83,7 +84,7 @@ export async function fetchTradeBarriers(countries: string[] = [], measureType =
   try {
     return await barriersBreaker.execute(async () => {
       return client.getTradeBarriers({ countries, measureType, limit });
-    }, emptyBarriers);
+    }, emptyBarriers, { shouldCache: r => (r.barriers?.length ?? 0) > 0 });
   } catch {
     return emptyBarriers;
   }
@@ -95,7 +96,7 @@ export async function fetchCustomsRevenue(): Promise<GetCustomsRevenueResponse> 
   try {
     return await revenueBreaker.execute(async () => {
       return client.getCustomsRevenue({});
-    }, emptyRevenue);
+    }, emptyRevenue, { shouldCache: r => (r.months?.length ?? 0) > 0 });
   } catch {
     return emptyRevenue;
   }

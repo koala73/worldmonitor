@@ -8,6 +8,8 @@
     "lint": "biome lint ./src ./server ./api ./tests ./e2e ./scripts ./middleware.ts",
     "lint:fix": "biome check ./src ./server ./api ./tests ./e2e ./scripts ./middleware.ts --fix",
     "lint:boundaries": "node scripts/lint-boundaries.mjs",
+    "lint:unicode": "node scripts/check-unicode-safety.mjs",
+    "lint:unicode:staged": "node scripts/check-unicode-safety.mjs --staged",
     "lint:md": "markdownlint-cli2 '**/*.md' '!**/node_modules/**' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**'",
     "version:sync": "node scripts/sync-desktop-version.mjs",
     "version:check": "node scripts/sync-desktop-version.mjs --check",
@@ -86,6 +88,7 @@
     "vite-plugin-pwa": "^1.2.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.79.0",
     "@aws-sdk/client-s3": "^3.1009.0",
     "@deck.gl/aggregation-layers": "^9.2.6",
     "@deck.gl/core": "^9.2.6",

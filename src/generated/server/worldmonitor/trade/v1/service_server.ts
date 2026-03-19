@@ -36,6 +36,7 @@ export interface GetTariffTrendsResponse {
   datapoints: TariffDataPoint[];
   fetchedAt: string;
   upstreamUnavailable: boolean;
+  effectiveTariffRate?: EffectiveTariffRate;
 }
 
 export interface TariffDataPoint {
@@ -46,6 +47,14 @@ export interface TariffDataPoint {
   tariffRate: number;
   boundRate: number;
   indicatorCode: string;
+}
+
+export interface EffectiveTariffRate {
+  sourceName: string;
+  sourceUrl: string;
+  observationPeriod: string;
+  updatedAt: string;
+  tariffRate: number;
 }
 
 export interface GetTradeFlowsRequest {

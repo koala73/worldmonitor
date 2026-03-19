@@ -6,14 +6,24 @@ All notable changes to World Monitor are documented here.
 
 ### Added
 
+- US Treasury customs revenue in Trade Policy panel with monthly data, FYTD year-over-year comparison, and revenue spike highlighting (#1663)
+- Security advisories gold standard migration: Railway cron seed fetches 24 government RSS feeds hourly, Vercel reads Redis only (#1637)
+- CMD+K full panel coverage: all 55 panels now searchable (was 31), including AI forecasts, correlation panels, webcams, displacement, security advisories (#1656)
 - Chokepoint transit intelligence with 3 free data sources: IMF PortWatch (vessel transit counts), CorridorRisk (risk intelligence), AISStream (24h crossing counter) (#1560)
 - 13 monitored chokepoints (was 6): added Cape of Good Hope, Gibraltar, Bosporus Strait (absorbs Dardanelles), Korea, Dover, Kerch, Lombok (#1560, #1572)
 - Expandable chokepoint cards with TradingView lightweight-charts 180-day time-series (tanker vs cargo) (#1560)
 - Real-time transit counting with enter+dwell+exit crossing detection, 30min cooldown (#1560)
 - PortWatch, CorridorRisk, and transit seed loops on Railway relay (#1560)
+- R2 trace storage for forecast debugging with Cloudflare API upload (#1655)
 
 ### Fixed
 
+- Trade Policy panel WTO gate changed from panel-wide to per-tab, so Revenue tab works on desktop without WTO API key (#1663)
+- Conflict-intel seed succeeds without ACLED credentials by accepting empty events when humanitarian/PizzINT data is available (#1651)
+- Seed-forecasts crash from top-level @aws-sdk/client-s3 import resolved with lazy dynamic import (#1654)
+- Bootstrap desktop timeouts restored (5s/8s) while keeping aggressive web timeouts (1.2s/1.8s) (#1653)
+- Service worker navigation reverted to NetworkOnly to prevent stale HTML caching on deploy (#1653)
+- Railway seed watch paths fixed for 5 services (seed-insights, seed-unrest-events, seed-prediction-markets, seed-infra, seed-gpsjam)
 - PortWatch ArcGIS URL, field names, and chokepoint name mappings (#1572)
 
 ## [2.6.1] - 2026-03-11

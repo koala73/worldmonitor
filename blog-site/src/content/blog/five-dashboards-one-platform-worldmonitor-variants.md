@@ -1,7 +1,7 @@
 ---
 title: "Five Dashboards, One Platform: How World Monitor Serves Every Intelligence Need"
-description: "World Monitor runs 5 specialized dashboards from one codebase: geopolitical, tech, finance, commodity, and positive news. Switch between them instantly. All free."
-metaTitle: "5 Free Intelligence Dashboards: World, Tech, Finance, Commodity, Happy | World Monitor"
+description: "World Monitor offers 5 free intelligence dashboards: geopolitical, tech, finance, commodity, and positive news. Switch between them instantly from one platform."
+metaTitle: "5 Intelligence Dashboards, One Platform | World Monitor"
 keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, multi-purpose intelligence platform, specialized monitoring tools"
 audience: "General tech audience, product managers, developers, knowledge workers, content creators"
 heroImage: "/blog/images/blog/five-dashboards-one-platform-worldmonitor-variants.jpg"
@@ -18,7 +18,7 @@ World Monitor runs **five specialized dashboards** from a single codebase. Switc
 **Panels:** 45
 **Focus:** Conflicts, military, infrastructure, geopolitical risk
 
-This is the flagship. World Monitor is built for OSINT analysts, defense researchers, journalists, and anyone who needs to understand global security dynamics.
+This is the flagship. World Monitor is built for OSINT analysts, defense researchers, journalists, and anyone who needs to [understand global security dynamics](/blog/posts/track-global-conflicts-in-real-time/).
 
 **Key features:**
 
@@ -64,7 +64,7 @@ Tech Monitor maps the global technology landscape: where AI is being built, wher
 **Panels:** 27
 **Focus:** Markets, central banks, forex, Gulf FDI, macro signals
 
-Finance Monitor is for traders and analysts who know that markets move on geopolitics. It combines traditional financial data with the intelligence layers that drive price action.
+Finance Monitor is for [traders and analysts](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/) who know that markets move on geopolitics. It combines traditional financial data with the intelligence layers that drive price action.
 
 **Key features:**
 
@@ -88,7 +88,7 @@ Finance Monitor is for traders and analysts who know that markets move on geopol
 **Panels:** 16
 **Focus:** Mining, metals, energy, supply chain disruption
 
-Commodity Monitor tracks the physical resources that power the global economy: where they're extracted, how they're priced, and what threatens their supply.
+Commodity Monitor tracks the physical resources that power the global economy: where they're extracted, how they're priced, and [what threatens their supply](/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/).
 
 **Key features:**
 
@@ -185,6 +185,17 @@ But when you need to cross domains (the commodity trader wants to check if a con
 All five variants are completely free. No freemium gates. No "contact sales" buttons. No feature tiers. The same platform, the same data, the same AI. Available to a solo researcher in Nairobi and a hedge fund analyst in New York.
 
 Open source under AGPL-3.0. Deploy it yourself, contribute to it, or just use it.
+
+## Frequently Asked Questions
+
+**Can I use multiple dashboard variants at the same time?**
+Yes. Each variant runs at its own URL, so you can open several in separate browser tabs. Your preferences and language settings carry across all of them.
+
+**Do the variants share the same data, or are they separate platforms?**
+All five variants share a single codebase and the same underlying data engine. The difference is which panels, layers, and feeds are pre-selected for each audience.
+
+**Is there a limit on how long I can use the dashboards for free?**
+No. All five variants are completely free with no time limits, feature gates, or usage caps.
 
 ---
 

@@ -7,6 +7,7 @@ import type {
 import { cachedFetchJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
+import { buildDeductionPrompt, postProcessDeductionOutput } from './deduction-prompt';
 
 const DEDUCT_TIMEOUT_MS = 120_000;
 const DEDUCT_CACHE_TTL = 3600;
@@ -23,20 +24,9 @@ export async function deductSituation(
 
     if (!query) return { analysis: '', model: '', provider: 'skipped' };
 
-    const cacheKey = `deduct:situation:v1:${(await sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase())).slice(0, 16)}`;
+    const cacheKey = `deduct:situation:v2:${(await sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase())).slice(0, 16)}`;
 
-    const systemPrompt = `You are a senior geopolitical intelligence analyst and forecaster.
-Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few months) based on the user's query.
-- Use any provided geographic or intelligence context.
-- Be highly analytical, pragmatic, and objective.
-- Identify the most likely outcomes, timelines, and second-order impacts.
-- Do NOT use typical AI preambles (e.g., "Here is the deduction", "Let me see").
-- Format your response in clean markdown with concise bullet points where appropriate.`;
-
-    let userPrompt = query;
-    if (geoContext) {
-        userPrompt += `\n\n### Current Intelligence Context\n${geoContext}`;
-    }
+    const { mode, systemPrompt, userPrompt } = buildDeductionPrompt({ query, geoContext });
 
     const cached = await cachedFetchJson<{ analysis: string; model: string; provider: string }>(
         cacheKey,
@@ -53,7 +43,8 @@ Your task is to DEDUCT the situation in a near timeline (e.g. 24 hours to a few 
             });
 
             if (!result) return null;
-            return { analysis: result.content, model: result.model, provider: result.provider };
+            const analysis = postProcessDeductionOutput(result.content, mode);
+            return { analysis, model: result.model, provider: result.provider };
         }
     );
 

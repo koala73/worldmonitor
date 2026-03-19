@@ -1,7 +1,7 @@
 ---
 title: "OSINT for Everyone: How World Monitor Democratizes Open Source Intelligence"
-description: "Learn how World Monitor brings professional-grade OSINT capabilities to everyone with 435+ feeds, live tracking, AI analysis, and 45 data layers, all for free."
-metaTitle: "OSINT for Everyone: Free Open Source Intelligence Dashboard | World Monitor"
+description: "World Monitor brings professional-grade OSINT to everyone. 435+ feeds, live tracking, AI threat analysis, and 45 data layers in one free open source dashboard."
+metaTitle: "OSINT for Everyone: Free Intelligence Dashboard"
 keywords: "OSINT tools free, open source intelligence software, OSINT dashboard, intelligence gathering tools, OSINT for beginners"
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
 heroImage: "/blog/images/blog/osint-for-everyone-open-source-intelligence-democratized.jpg"
@@ -29,7 +29,7 @@ If you've ever tried to monitor a developing situation, whether it's a military 
 
 Each tool has its own interface, its own refresh cycle, its own learning curve. Cross-referencing between them is manual and slow. By the time you've built a picture, the situation has moved.
 
-World Monitor integrates all of these data sources (and many more) into a single, layered map with real-time updates.
+World Monitor integrates all of these data sources (and many more) into a single, layered map with real-time updates. Learn more about [what World Monitor is and how it works](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
 
 ## 435+ Intelligence Feeds, Zero Configuration
 
@@ -115,17 +115,28 @@ You can also share map states via URL: the map position, active layers, time ran
 1. **Open worldmonitor.app** in any modern browser
 2. **Toggle layers** using the left sidebar: start with "Conflicts" and "Military Bases"
 3. **Click any data point** on the map for details and source links
-4. **Open the Command Palette** (Cmd+K / Ctrl+K) to fuzzy-search across 24 result types and 250+ country commands
+4. **Open the [Command Palette](/blog/posts/command-palette-search-everything-instantly/)** (Cmd+K / Ctrl+K) to fuzzy-search across 24 result types and 250+ country commands
 5. **Click any country** for its full intelligence dossier with CII score
 6. **Set up keyword monitors** for topics you want to track persistently
 
-No account needed. No API keys required for the web version. For local AI analysis, install Ollama and point World Monitor at your local instance.
+No account needed. No API keys required for the web version. For local AI analysis, install Ollama and point World Monitor at your local instance. You can also explore [AI-powered intelligence without the cloud](/blog/posts/ai-powered-intelligence-without-the-cloud/).
 
 ## Why Open Source Matters for OSINT
 
 Closed-source intelligence tools are black boxes. You can't verify how they score threats, where their data comes from, or whether their algorithms have blind spots.
 
 World Monitor's AGPL-3.0 license means every scoring algorithm, every data pipeline, and every AI prompt is open for inspection. Security researchers can audit it. Academics can cite it. Developers can extend it. And anyone can self-host it for complete operational security.
+
+## Frequently Asked Questions
+
+**Is World Monitor really free for OSINT research?**
+Yes. Every feature, data source, and AI capability is available at no cost with no account required. The platform is open source under AGPL-3.0, so you can also self-host it.
+
+**Do I need technical skills to use World Monitor for OSINT?**
+No. The interface is designed for analysts of all skill levels. Toggle layers on the sidebar, click data points for details, and use the Command Palette (Cmd+K) to search across all intelligence sources instantly.
+
+**How does World Monitor compare to traditional OSINT tools?**
+World Monitor consolidates 435+ feeds, live tracking, AI analysis, and 45 data layers into one dashboard. Traditional tools require juggling dozens of separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
 
 ---
 

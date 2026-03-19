@@ -10,6 +10,7 @@
 
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { checkRateLimit } from '../_rate-limit.js';
+import { toOrgSlugFromDomain } from './_domain.js';
 
 export const config = { runtime: 'edge' };
 
@@ -177,7 +178,7 @@ export default async function handler(req) {
     });
   }
 
-  const orgName = domain?.replace(/\.(com|io|co|org|net|ai|dev|app)$/, '').split('.').pop() || company.toLowerCase().replace(/\s+/g, '');
+  const orgName = toOrgSlugFromDomain(domain) || company.toLowerCase().replace(/\s+/g, '');
 
   const [hnSignals, githubSignals, jobSignals] = await Promise.all([
     fetchHNSignals(company),

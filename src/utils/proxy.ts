@@ -13,6 +13,19 @@ const RSS_PROXY_BASE = isDev
     ? 'https://proxy.worldmonitor.app'
     : '';
 
+// Widget agent always goes directly to Railway relay.
+// Desktop: sidecar buffers via arrayBuffer() which destroys SSE streaming, so we bypass it.
+const WIDGET_RELAY_BASE = 'https://proxy.worldmonitor.app';
+export function widgetAgentUrl(): string {
+  if (isDev) return '/widget-agent';
+  return `${WIDGET_RELAY_BASE}/widget-agent`;
+}
+
+export function widgetAgentHealthUrl(): string {
+  if (isDev) return '/widget-agent/health';
+  return `${WIDGET_RELAY_BASE}/widget-agent/health`;
+}
+
 export function rssProxyUrl(feedUrl: string): string {
   if (isDesktopRuntime()) return proxyUrl(feedUrl);
   if (RSS_PROXY_BASE) {

@@ -1,5 +1,6 @@
-import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
+import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout, buildRelayResponse } from './_relay.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { jsonResponse } from './_json-response.js';
 
 export const config = { runtime: 'edge' };
 
@@ -7,27 +8,18 @@ export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ error: 'Origin not allowed' }, 403, corsHeaders);
   }
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
   const relayBaseUrl = getRelayBaseUrl();
   if (!relayBaseUrl) {
-    return new Response(JSON.stringify({ error: 'WS_RELAY_URL is not configured' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    return jsonResponse({ error: 'WS_RELAY_URL is not configured' }, 503, corsHeaders);
   }
 
   try {
@@ -55,22 +47,15 @@ export default async function handler(req) {
       }
     } catch {}
 
-    return new Response(body, {
-      status: response.status,
-      headers: {
-        'Content-Type': response.headers.get('content-type') || 'application/json',
-        'Cache-Control': cacheControl,
-        ...corsHeaders,
-      },
+    return buildRelayResponse(response, body, {
+      'Cache-Control': response.ok ? cacheControl : 'no-store',
+      ...corsHeaders,
     });
   } catch (error) {
     const isTimeout = error?.name === 'AbortError';
-    return new Response(JSON.stringify({
+    return jsonResponse({
       error: isTimeout ? 'Relay timeout' : 'Relay request failed',
       details: error?.message || String(error),
-    }), {
-      status: isTimeout ? 504 : 502,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders },
-    });
+    }, isTimeout ? 504 : 502, { 'Cache-Control': 'no-store', ...corsHeaders });
   }
 }
