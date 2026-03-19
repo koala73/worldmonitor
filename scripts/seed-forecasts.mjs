@@ -2598,52 +2598,159 @@ function summarizeSituationPressure(cluster, actors, branches) {
   return clampUnitInterval(((cluster.avgProbability || 0) * 0.5) + (signalWeight * 0.2) + (actorWeight * 0.15) + (branchWeight * 0.15));
 }
 
+const PRESSURE_ACTION_MARKERS = ['reposition', 'reprice', 'rebalance', 'retaliat', 'escalat', 'mobiliz', 'rerout', 'repris', 'spillover', 'price', 'shift messaging', 'shift posture'];
+const STABILIZING_ACTION_MARKERS = ['prevent', 'preserve', 'contain', 'protect', 'reduce', 'maintain', 'harden', 'mitigation', 'continuity', 'de-escal', 'limit', 'triage'];
+
+function summarizeBranchDynamics(branches = []) {
+  const escalatory = branches.filter((branch) => branch.kind === 'escalatory');
+  const contrarian = branches.filter((branch) => branch.kind === 'contrarian');
+  const base = branches.filter((branch) => branch.kind === 'base');
+  const avgScore = (items, scorer) => items.length
+    ? items.reduce((sum, item) => sum + scorer(item), 0) / items.length
+    : 0;
+  return {
+    escalatoryWeight: clampUnitInterval(avgScore(escalatory, (branch) => (branch.projectedProbability || 0) + Math.max(0, branch.probabilityDelta || 0))),
+    contrarianWeight: clampUnitInterval(avgScore(contrarian, (branch) => (branch.projectedProbability || 0) + Math.max(0, -(branch.probabilityDelta || 0)))),
+    baseWeight: clampUnitInterval(avgScore(base, (branch) => branch.projectedProbability || 0)),
+  };
+}
+
+function scoreActorAction(summary, stage, dominantDomain, actor) {
+  const text = (summary || '').toLowerCase();
+  let pressureBias = 0.2;
+  let stabilizationBias = 0.2;
+
+  for (const marker of PRESSURE_ACTION_MARKERS) {
+    if (text.includes(marker)) pressureBias += 0.18;
+  }
+  for (const marker of STABILIZING_ACTION_MARKERS) {
+    if (text.includes(marker)) stabilizationBias += 0.18;
+  }
+
+  if (stage === 'round_1' && ['conflict', 'military', 'political', 'cyber'].includes(dominantDomain)) {
+    pressureBias += 0.12;
+  }
+  if (stage === 'round_3') {
+    stabilizationBias += 0.08;
+  }
+  if (dominantDomain === 'supply_chain' || dominantDomain === 'infrastructure') {
+    stabilizationBias += 0.04;
+  }
+  if (dominantDomain === 'market') {
+    pressureBias += 0.06;
+  }
+
+  const influence = clampUnitInterval(actor?.influenceScore || 0.5);
+  const pressureContribution = +(influence * pressureBias * 0.6).toFixed(3);
+  const stabilizationContribution = +(influence * stabilizationBias * 0.6).toFixed(3);
+  let intent = 'mixed';
+  if (pressureContribution > stabilizationContribution + 0.08) intent = 'pressure';
+  else if (stabilizationContribution > pressureContribution + 0.08) intent = 'stabilizing';
+
+  return {
+    intent,
+    pressureContribution,
+    stabilizationContribution,
+  };
+}
+
+function buildActorRoundActions(stage, situation, actors = []) {
+  return actors.slice(0, 6).map((actor) => {
+    let summary = '';
+    if (stage === 'round_1') {
+      summary = actor.likelyActions?.[0] || actor.objectives?.[0] || `Adjust posture around ${situation.dominantRegion || situation.label}.`;
+    } else if (stage === 'round_2') {
+      summary = actor.likelyActions?.[1] || actor.objectives?.[1] || actor.likelyActions?.[0] || `Respond to the evolving ${situation.label}.`;
+    } else {
+      summary = actor.constraints?.[0]
+        ? `Operate within ${actor.constraints[0]}`
+        : actor.likelyActions?.[2] || actor.constraints?.[1] || `Manage spillover from ${situation.label}.`;
+    }
+    const effect = scoreActorAction(summary, stage, situation.dominantDomain || situation.domains?.[0] || '', actor);
+    return {
+      actorId: actor.id,
+      actorName: actor.name,
+      category: actor.category,
+      summary,
+      ...effect,
+    };
+  });
+}
+
 function buildSimulationRound(stage, situation, context) {
   const { actors, branches, counterEvidence, supportiveEvidence, priorSimulation } = context;
   const topSignalTypes = (situation.topSignals || []).slice(0, 3).map((item) => item.type);
-  const actorLikelyActions = actors.flatMap((actor) => actor.likelyActions || []).filter(Boolean);
   const branchKinds = uniqueSortedStrings(branches.map((branch) => branch.kind).filter(Boolean));
   const branchPressure = summarizeSituationPressure(situation, actors, branches);
+  const branchDynamics = summarizeBranchDynamics(branches);
   const counterWeight = Math.min(1, (counterEvidence.length || 0) / 5);
   const supportWeight = Math.min(1, (supportiveEvidence.length || 0) / 5);
   const priorMomentum = clampUnitInterval(priorSimulation?.postureScore || 0.5);
+  const actorActions = buildActorRoundActions(stage, situation, actors);
+  const actionPressure = actorActions.reduce((sum, action) => sum + (action.pressureContribution || 0), 0);
+  const actionStabilization = actorActions.reduce((sum, action) => sum + (action.stabilizationContribution || 0), 0);
+  const domainSpread = Math.min(1, Math.max(0, ((situation.domains || []).length - 1) * 0.25));
 
   let pressureDelta = 0;
   let stabilizationDelta = 0;
   let lead = '';
-  let actions = [];
 
   if (stage === 'round_1') {
-    pressureDelta = clampUnitInterval((branchPressure * 0.45) + (supportWeight * 0.2) + (priorMomentum * 0.15));
-    stabilizationDelta = clampUnitInterval(counterWeight * 0.35);
+    pressureDelta = clampUnitInterval(
+      (branchPressure * 0.18) +
+      (branchDynamics.escalatoryWeight * 0.24) +
+      (supportWeight * 0.14) +
+      (actionPressure * 0.28) +
+      (priorMomentum * 0.08)
+    );
+    stabilizationDelta = clampUnitInterval(
+      (counterWeight * 0.18) +
+      (branchDynamics.contrarianWeight * 0.18) +
+      (actionStabilization * 0.26)
+    );
     lead = topSignalTypes[0] || situation.domains[0] || 'signal interpretation';
-    actions = uniqueSortedStrings(actorLikelyActions).slice(0, 4);
   } else if (stage === 'round_2') {
-    pressureDelta = clampUnitInterval((branchPressure * 0.35) + (actors.length ? 0.2 : 0) + (branchKinds.length ? 0.15 : 0));
-    stabilizationDelta = clampUnitInterval((counterWeight * 0.4) + ((priorSimulation?.rounds?.[0]?.stabilizationDelta || 0) * 0.2));
+    pressureDelta = clampUnitInterval(
+      (branchPressure * 0.12) +
+      (branchDynamics.escalatoryWeight * 0.24) +
+      (actionPressure * 0.26) +
+      (actors.length ? 0.08 : 0) +
+      ((priorSimulation?.rounds?.[0]?.pressureDelta || 0) * 0.12)
+    );
+    stabilizationDelta = clampUnitInterval(
+      (counterWeight * 0.16) +
+      (branchDynamics.contrarianWeight * 0.2) +
+      (actionStabilization * 0.28) +
+      ((priorSimulation?.rounds?.[0]?.stabilizationDelta || 0) * 0.12)
+    );
     lead = branchKinds[0] || topSignalTypes[0] || 'interaction response';
-    actions = uniqueSortedStrings([
-      ...actorLikelyActions,
-      ...branches.flatMap((branch) => branch.triggerSample || []),
-    ]).slice(0, 4);
   } else {
-    const crossDomainWeight = Math.min(1, ((situation.domains || []).length - 1) * 0.25);
-    pressureDelta = clampUnitInterval((branchPressure * 0.25) + (crossDomainWeight * 0.35) + ((priorSimulation?.rounds?.[1]?.pressureDelta || 0) * 0.15));
-    stabilizationDelta = clampUnitInterval((counterWeight * 0.35) + (supportWeight * 0.15) + ((priorSimulation?.rounds?.[1]?.stabilizationDelta || 0) * 0.15));
+    pressureDelta = clampUnitInterval(
+      (branchPressure * 0.08) +
+      (branchDynamics.escalatoryWeight * 0.14) +
+      (domainSpread * 0.18) +
+      (actionPressure * 0.18) +
+      ((priorSimulation?.rounds?.[1]?.pressureDelta || 0) * 0.18)
+    );
+    stabilizationDelta = clampUnitInterval(
+      (counterWeight * 0.18) +
+      (branchDynamics.contrarianWeight * 0.18) +
+      (supportWeight * 0.08) +
+      (actionStabilization * 0.24) +
+      ((priorSimulation?.rounds?.[1]?.stabilizationDelta || 0) * 0.18)
+    );
     lead = (situation.domains || []).length > 1 ? `${formatSituationDomainLabel(situation.domains)} spillover` : `${situation.domains[0] || 'regional'} effects`;
-    actions = uniqueSortedStrings([
-      ...branches.map((branch) => branch.outcome).filter(Boolean),
-      ...counterEvidence.map((item) => item.type).filter(Boolean),
-    ]).slice(0, 4);
   }
 
-  const netPressure = +clampUnitInterval((pressureDelta - stabilizationDelta + (situation.avgProbability || 0))).toFixed(3);
+  const netPressure = +clampUnitInterval((situation.avgProbability || 0) + ((pressureDelta - stabilizationDelta) * 0.7)).toFixed(3);
+  const actionMix = summarizeTypeCounts(actorActions.map((action) => action.intent));
   return {
     stage,
     lead,
     signalTypes: topSignalTypes,
     branchKinds,
-    actions,
+    actions: actorActions,
+    actionMix,
     pressureDelta: +pressureDelta.toFixed(3),
     stabilizationDelta: +stabilizationDelta.toFixed(3),
     netPressure,
@@ -2652,7 +2759,14 @@ function buildSimulationRound(stage, situation, context) {
 
 function summarizeSimulationOutcome(rounds = []) {
   const finalRound = rounds[rounds.length - 1] || null;
-  const postureScore = finalRound?.netPressure || 0;
+  const netPressureDelta = rounds.length
+    ? +rounds.reduce((sum, round) => sum + ((round.pressureDelta || 0) - (round.stabilizationDelta || 0)), 0).toFixed(3)
+    : 0;
+  const postureScore = clampUnitInterval(
+    0.35 +
+    ((finalRound?.netPressure || 0) * 0.35) +
+    (netPressureDelta * 0.45)
+  );
   let posture = 'contested';
   if (postureScore >= 0.72) posture = 'escalatory';
   else if (postureScore <= 0.42) posture = 'constrained';
@@ -2660,9 +2774,7 @@ function summarizeSimulationOutcome(rounds = []) {
   return {
     posture,
     postureScore: +postureScore.toFixed(3),
-    netPressureDelta: rounds.length
-      ? +rounds.reduce((sum, round) => sum + ((round.pressureDelta || 0) - (round.stabilizationDelta || 0)), 0).toFixed(3)
-      : 0,
+    netPressureDelta,
   };
 }
 
@@ -2718,6 +2830,17 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
         projectedProbability: branch.projectedProbability,
         probabilityDelta: branch.probabilityDelta,
       })),
+      actionPlan: rounds.map((round) => ({
+        stage: round.stage,
+        actions: (round.actions || []).map((action) => ({
+          actorId: action.actorId,
+          actorName: action.actorName,
+          summary: action.summary,
+          intent: action.intent,
+          pressureContribution: action.pressureContribution,
+          stabilizationContribution: action.stabilizationContribution,
+        })),
+      })),
       rounds,
       ...outcome,
     };
@@ -2738,7 +2861,7 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
       situationCount: roundSlice.length,
       avgNetPressure,
       leadSignals: pickTopCountEntries(summarizeTypeCounts(roundSlice.flatMap((round) => round.signalTypes || [])), 4),
-      leadActions: uniqueSortedStrings(roundSlice.flatMap((round) => round.actions || [])).slice(0, 6),
+      leadActions: uniqueSortedStrings(roundSlice.flatMap((round) => (round.actions || []).map((action) => action.summary).filter(Boolean))).slice(0, 6),
     };
   });
 
@@ -2775,7 +2898,7 @@ function buildSituationOutcomeSummaries(simulationState) {
           stage: round.stage,
           lead: round.lead,
           netPressure: round.netPressure,
-          actions: round.actions || [],
+          actions: (round.actions || []).map((action) => action.summary),
         })),
       };
     });
@@ -2797,15 +2920,16 @@ function buildSimulationReportInputs(worldState) {
     pressureSignals: (item.pressureSignals || []).map((signal) => signal.type),
     stabilizers: item.stabilizers || [],
     constraints: item.constraints || [],
-    rounds: (item.rounds || []).map((round) => ({
-      stage: round.stage,
-      lead: round.lead,
-      netPressure: round.netPressure,
-      pressureDelta: round.pressureDelta,
-      stabilizationDelta: round.stabilizationDelta,
-      actions: round.actions || [],
-    })),
-  }));
+      rounds: (item.rounds || []).map((round) => ({
+        stage: round.stage,
+        lead: round.lead,
+        netPressure: round.netPressure,
+        pressureDelta: round.pressureDelta,
+        stabilizationDelta: round.stabilizationDelta,
+        actionMix: round.actionMix || {},
+        actions: (round.actions || []).map((action) => action.summary),
+      })),
+    }));
 
   return {
     summary: reportInputs.length

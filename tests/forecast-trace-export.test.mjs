@@ -751,6 +751,43 @@ describe('forecast run world state', () => {
     assert.ok(worldState.simulationState.roundTransitions.every((round) => round.situationCount >= 1));
     assert.ok(worldState.simulationState.situationSimulations.every((unit) => ['escalatory', 'contested', 'constrained'].includes(unit.posture)));
     assert.ok(worldState.simulationState.situationSimulations.every((unit) => unit.rounds.every((round) => typeof round.netPressure === 'number')));
+    assert.ok(worldState.simulationState.situationSimulations.every((unit) => Array.isArray(unit.actionPlan) && unit.actionPlan.length === 3));
+    assert.ok(worldState.simulationState.situationSimulations.every((unit) => unit.actionPlan.every((round) => Array.isArray(round.actions))));
+  });
+
+  it('derives differentiated simulation postures from actor actions, branches, and counter-evidence', () => {
+    const escalatory = makePrediction('conflict', 'Israel', 'Active armed conflict: Israel', 0.88, 0.71, '7d', [
+      { type: 'ucdp', value: 'Israeli theater remains highly active', weight: 0.45 },
+      { type: 'news_corroboration', value: 'Regional actors prepare responses', weight: 0.3 },
+    ]);
+    buildForecastCase(escalatory);
+
+    const constrained = makePrediction('infrastructure', 'Cuba', 'Infrastructure cascade risk: Cuba', 0.28, 0.44, '14d', [
+      { type: 'outage', value: 'Localized outages remain contained', weight: 0.2 },
+    ]);
+    buildForecastCase(constrained);
+    constrained.caseFile.counterEvidence = [
+      { type: 'confidence', summary: 'Confidence remains limited and the pattern is not yet broad.', weight: 0.3 },
+      { type: 'coverage_gap', summary: 'Cross-system corroboration is still thin.', weight: 0.25 },
+      { type: 'trend', summary: 'Momentum is already easing.', weight: 0.25 },
+    ];
+    constrained.caseFile.actors = (constrained.caseFile.actors || []).map((actor) => ({
+      ...actor,
+      likelyActions: ['Maintain continuity around exposed nodes.'],
+      constraints: ['Containment remains the priority and escalation is costly.'],
+    }));
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T13:00:00Z'),
+      predictions: [escalatory, constrained],
+    });
+
+    const escalatoryUnit = worldState.simulationState.situationSimulations.find((unit) => unit.label.includes('Israel'));
+    const constrainedUnit = worldState.simulationState.situationSimulations.find((unit) => unit.label.includes('Cuba'));
+    assert.equal(escalatoryUnit?.posture, 'escalatory');
+    assert.equal(constrainedUnit?.posture, 'constrained');
+    assert.ok(escalatoryUnit?.rounds.some((round) => (round.actionMix?.pressure || 0) > (round.actionMix?.stabilizing || 0)));
+    assert.ok(constrainedUnit?.rounds.some((round) => (round.actionMix?.stabilizing || 0) >= (round.actionMix?.pressure || 0)));
   });
 
   it('builds report outputs from simulation outcomes and cross-situation effects', () => {
