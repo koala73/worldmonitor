@@ -10,6 +10,7 @@ import {
   SECTORS,
   COMMODITIES,
   MARKET_SYMBOLS,
+  STOCK_CATALOG,
   SITE_VARIANT,
   LAYER_TO_SOURCE,
 } from '@/config';
@@ -78,7 +79,7 @@ import {
   fetchSanctionsPressure,
   fetchRadiationWatch,
 } from '@/services';
-import { getMarketWatchlistEntries } from '@/services/market-watchlist';
+import { getMarketWatchlistEntries, getCatalogSelection } from '@/services/market-watchlist';
 import { fetchStockAnalysesForTargets, getStockAnalysisTargets } from '@/services/stock-analysis';
 import {
   fetchStockBacktestsForTargets,
@@ -1244,17 +1245,29 @@ export class DataLoaderManager implements AppModule {
 
   async loadMarkets(): Promise<void> {
     try {
+      const catalogSelection = getCatalogSelection();
       const customEntries = getMarketWatchlistEntries();
       const effectiveSymbols = (() => {
-        if (customEntries.length === 0) return MARKET_SYMBOLS;
-        const base = MARKET_SYMBOLS.slice();
+        // If user picked from the catalog, use that as the base instead of defaults
+        let base;
+        if (catalogSelection && catalogSelection.length > 0) {
+          const catalogMap = new Map(STOCK_CATALOG.map((s) => [s.symbol, s]));
+          base = catalogSelection
+            .map((sym) => catalogMap.get(sym))
+            .filter((s): s is NonNullable<typeof s> => !!s);
+          if (base.length === 0) base = MARKET_SYMBOLS.slice();
+        } else {
+          base = MARKET_SYMBOLS.slice();
+        }
+
+        // Append any freeform custom entries on top
         const seen = new Set(base.map((s) => s.symbol));
         for (const entry of customEntries) {
           const sym = entry.symbol;
           if (!sym || seen.has(sym)) continue;
           seen.add(sym);
           base.push({ symbol: sym, name: entry.name || sym, display: entry.display || sym });
-          if (base.length >= 50) break;
+          if (base.length >= 80) break;
         }
         return base;
       })();

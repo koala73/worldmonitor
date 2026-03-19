@@ -6017,6 +6017,194 @@ body.playback-mode .status-dot {
   opacity: 0.7;
 }
 
+/* Market edit button */
+.market-edit-btn {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.panel:hover .market-edit-btn {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .market-edit-btn {
+    opacity: 0.7;
+  }
+}
+
+/* Watchlist picker modal */
+.wl-modal {
+  max-width: 520px;
+  width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.wl-region-bar {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px 8px;
+  flex-wrap: wrap;
+}
+
+.wl-pill {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wl-pill:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+.wl-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+.wl-search {
+  padding: 0 16px 8px;
+}
+
+.wl-search input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.wl-search input:focus {
+  border-color: var(--accent);
+}
+
+.wl-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  align-content: start;
+  min-height: 200px;
+  max-height: 45vh;
+}
+
+.wl-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.wl-item:hover {
+  border-color: var(--text-dim);
+}
+
+.wl-item.active {
+  border-color: var(--accent);
+  background: rgba(0, 200, 255, 0.06);
+}
+
+.wl-check {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.wl-item.active .wl-check {
+  border-color: var(--accent);
+  background: rgba(0, 200, 255, 0.15);
+}
+
+.wl-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.wl-item-name {
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wl-item-ticker {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.wl-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.wl-counter {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.wl-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.wl-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wl-btn:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+.wl-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+.wl-btn-primary:hover {
+  opacity: 0.9;
+}
+
 /* Gulf Economies */
 .gulf-section {
   margin-bottom: 8px;

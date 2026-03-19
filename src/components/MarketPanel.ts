@@ -6,104 +6,43 @@ import { escapeHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
 import {
-  getMarketWatchlistEntries,
-  parseMarketWatchlistInput,
-  resetMarketWatchlist,
-  setMarketWatchlistEntries,
+  STOCK_CATALOG,
+  REGION_LABELS,
+  MARKET_SYMBOLS,
+  type CatalogSymbol,
+} from '@/config/markets';
+import {
+  getCatalogSelection,
+  setCatalogSelection,
+  clearCatalogSelection,
 } from '@/services/market-watchlist';
 
 export class MarketPanel extends Panel {
-  private settingsBtn: HTMLButtonElement | null = null;
-  private overlay: HTMLElement | null = null;
+  private pickerOverlay: HTMLElement | null = null;
+  private escHandler: ((e: KeyboardEvent) => void) | null = null;
 
   constructor() {
     super({ id: 'markets', title: t('panels.markets'), infoTooltip: t('components.markets.infoTooltip') });
-    this.createSettingsButton();
+    this.addEditButton();
   }
 
-  private createSettingsButton(): void {
-    this.settingsBtn = document.createElement('button');
-    this.settingsBtn.className = 'live-news-settings-btn';
-    this.settingsBtn.title = 'Customize market watchlist';
-    this.settingsBtn.textContent = 'Watchlist';
-    this.settingsBtn.addEventListener('click', (e) => {
+  private addEditButton(): void {
+    const btn = document.createElement('button');
+    btn.className = 'icon-btn market-edit-btn';
+    btn.title = 'Customize watchlist';
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`;
+
+    const closeBtn = this.header.querySelector('.panel-close-btn');
+    if (closeBtn) {
+      this.header.insertBefore(btn, closeBtn);
+    } else {
+      this.header.appendChild(btn);
+    }
+
+    btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.openWatchlistModal();
+      this.openPicker();
     });
-    this.header.appendChild(this.settingsBtn);
-  }
-
-  private openWatchlistModal(): void {
-    if (this.overlay) return;
-
-    const current = getMarketWatchlistEntries();
-    const currentText = current.length
-      ? current.map((e) => (e.name ? `${e.symbol}|${e.name}` : e.symbol)).join('\n')
-      : '';
-
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay active';
-    overlay.id = 'marketWatchlistModal';
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) this.closeWatchlistModal();
-    });
-
-    const modal = document.createElement('div');
-    modal.className = 'modal unified-settings-modal';
-    modal.style.maxWidth = '680px';
-
-    modal.innerHTML = `
-      <div class="modal-header">
-        <span class="modal-title">Market watchlist</span>
-        <button class="modal-close" aria-label="Close">×</button>
-      </div>
-      <div style="padding:14px 16px 16px 16px">
-        <div style="color:var(--text-dim);font-size:12px;line-height:1.4;margin-bottom:10px">
-          Add extra tickers (comma or newline separated). Friendly labels supported: SYMBOL|Label.
-          Example: TSLA|Tesla, AAPL|Apple, ^GSPC|S&P 500
-          <br/>
-          Tip: keep it under ~30 unless you enjoy scrolling.
-        </div>
-        <textarea id="wmMarketWatchlistInput"
-          style="width:100%;min-height:120px;resize:vertical;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit;font-size:12px;outline:none"
-          spellcheck="false"></textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-          <button type="button" class="panels-reset-layout" id="wmMarketResetBtn">Reset</button>
-          <button type="button" class="panels-reset-layout" id="wmMarketCancelBtn">Cancel</button>
-          <button type="button" class="panels-reset-layout" id="wmMarketSaveBtn" style="border-color:var(--text-dim);color:var(--text)">Save</button>
-        </div>
-      </div>
-    `;
-
-    const closeBtn = modal.querySelector('.modal-close') as HTMLButtonElement | null;
-    closeBtn?.addEventListener('click', () => this.closeWatchlistModal());
-
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    this.overlay = overlay;
-
-    const input = modal.querySelector<HTMLTextAreaElement>('#wmMarketWatchlistInput');
-    if (input) input.value = currentText;
-
-    modal.querySelector<HTMLButtonElement>('#wmMarketCancelBtn')?.addEventListener('click', () => this.closeWatchlistModal());
-    modal.querySelector<HTMLButtonElement>('#wmMarketResetBtn')?.addEventListener('click', () => {
-      resetMarketWatchlist();
-      if (input) input.value = ''; // defaults are always included automatically
-      this.closeWatchlistModal();
-    });
-    modal.querySelector<HTMLButtonElement>('#wmMarketSaveBtn')?.addEventListener('click', () => {
-      const raw = input?.value || '';
-      const parsed = parseMarketWatchlistInput(raw);
-      if (parsed.length === 0) resetMarketWatchlist();
-      else setMarketWatchlistEntries(parsed);
-      this.closeWatchlistModal();
-    });
-  }
-
-  private closeWatchlistModal(): void {
-    if (!this.overlay) return;
-    this.overlay.remove();
-    this.overlay = null;
   }
 
   public renderMarkets(data: MarketData[], rateLimited?: boolean): void {
@@ -131,6 +70,173 @@ export class MarketPanel extends Panel {
       .join('');
 
     this.setContent(html);
+  }
+
+  private openPicker(): void {
+    if (this.pickerOverlay) return;
+
+    const saved = getCatalogSelection();
+    const defaultSyms = MARKET_SYMBOLS.map((s) => s.symbol);
+    const selected = new Set(saved || defaultSyms);
+
+    let activeRegion = 'all';
+    let filterText = '';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay active';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-label', 'Customize Markets');
+    this.pickerOverlay = overlay;
+
+    const regionKeys = Object.keys(REGION_LABELS);
+
+    const getVisible = (): CatalogSymbol[] => {
+      let list: CatalogSymbol[] = STOCK_CATALOG;
+      if (activeRegion !== 'all') {
+        list = list.filter((s) => s.region === activeRegion);
+      }
+      if (filterText) {
+        const q = filterText.toLowerCase();
+        list = list.filter(
+          (s) =>
+            s.name.toLowerCase().includes(q) ||
+            s.symbol.toLowerCase().includes(q) ||
+            s.display.toLowerCase().includes(q),
+        );
+      }
+      return list;
+    };
+
+    const renderPills = () => {
+      const bar = overlay.querySelector('.wl-region-bar');
+      if (!bar) return;
+      let html = `<button class="wl-pill${activeRegion === 'all' ? ' active' : ''}" data-region="all">All</button>`;
+      for (const key of regionKeys) {
+        html += `<button class="wl-pill${activeRegion === key ? ' active' : ''}" data-region="${key}">${escapeHtml(REGION_LABELS[key] || key)}</button>`;
+      }
+      bar.innerHTML = html;
+    };
+
+    const renderGrid = () => {
+      const grid = overlay.querySelector('.wl-grid');
+      if (!grid) return;
+      const visible = getVisible();
+      grid.innerHTML = visible
+        .map((s) => {
+          const on = selected.has(s.symbol);
+          return `<div class="wl-item${on ? ' active' : ''}" data-symbol="${escapeHtml(s.symbol)}">
+          <div class="wl-check">${on ? '&#10003;' : ''}</div>
+          <div class="wl-item-info">
+            <span class="wl-item-name">${escapeHtml(s.name)}</span>
+            <span class="wl-item-ticker">${escapeHtml(s.display)}</span>
+          </div>
+        </div>`;
+        })
+        .join('');
+      updateCounter();
+    };
+
+    const updateCounter = () => {
+      const el = overlay.querySelector('.wl-counter');
+      if (el) el.textContent = `${selected.size} selected`;
+    };
+
+    overlay.innerHTML = `
+      <div class="modal wl-modal">
+        <div class="modal-header">
+          <span class="modal-title">Customize Watchlist</span>
+          <button class="modal-close wl-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="wl-region-bar"></div>
+        <div class="wl-search">
+          <input type="text" placeholder="Search stocks, indices..." />
+        </div>
+        <div class="wl-grid"></div>
+        <div class="wl-footer">
+          <span class="wl-counter"></span>
+          <div class="wl-actions">
+            <button class="wl-btn wl-reset">Reset defaults</button>
+            <button class="wl-btn wl-btn-primary wl-save">Save</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    overlay.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+
+      if (target === overlay || target.closest('.wl-close')) {
+        this.closePicker();
+        return;
+      }
+
+      const pill = target.closest<HTMLElement>('.wl-pill');
+      if (pill?.dataset.region) {
+        activeRegion = pill.dataset.region;
+        renderPills();
+        renderGrid();
+        return;
+      }
+
+      const item = target.closest<HTMLElement>('.wl-item');
+      if (item?.dataset.symbol) {
+        const sym = item.dataset.symbol;
+        if (selected.has(sym)) selected.delete(sym);
+        else selected.add(sym);
+        item.classList.toggle('active');
+        const check = item.querySelector('.wl-check');
+        if (check) check.innerHTML = selected.has(sym) ? '&#10003;' : '';
+        updateCounter();
+        return;
+      }
+
+      if (target.closest('.wl-reset')) {
+        clearCatalogSelection();
+        this.closePicker();
+        return;
+      }
+
+      if (target.closest('.wl-save')) {
+        const ordered = STOCK_CATALOG
+          .filter((s) => selected.has(s.symbol))
+          .map((s) => s.symbol);
+        if (ordered.length > 0) {
+          setCatalogSelection(ordered);
+        } else {
+          clearCatalogSelection();
+        }
+        this.closePicker();
+        return;
+      }
+    });
+
+    overlay.addEventListener('input', (e) => {
+      const input = e.target as HTMLInputElement;
+      if (input.closest('.wl-search')) {
+        filterText = input.value;
+        renderGrid();
+      }
+    });
+
+    this.escHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') this.closePicker();
+    };
+    document.addEventListener('keydown', this.escHandler);
+
+    document.body.appendChild(overlay);
+    renderPills();
+    renderGrid();
+  }
+
+  private closePicker(): void {
+    if (this.pickerOverlay) {
+      this.pickerOverlay.remove();
+      this.pickerOverlay = null;
+    }
+    if (this.escHandler) {
+      document.removeEventListener('keydown', this.escHandler);
+      this.escHandler = null;
+    }
   }
 }
 
