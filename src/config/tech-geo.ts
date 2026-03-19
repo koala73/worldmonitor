@@ -64,6 +64,13 @@ export const STARTUP_HUBS: StartupHub[] = [
   { id: 'amsterdam', name: 'Amsterdam Startup', city: 'Amsterdam', country: 'Netherlands', lat: 52.3676, lon: 4.9041, tier: 'emerging' },
   { id: 'stockholm', name: 'Stockholm Tech', city: 'Stockholm', country: 'Sweden', lat: 59.3293, lon: 18.0686, tier: 'emerging' },
   { id: 'dogpatch-dublin', name: 'Dogpatch Labs Dublin', city: 'Dublin', country: 'Ireland', lat: 53.3498, lon: -6.2603, tier: 'emerging' },
+  { id: 'portershed-galway', name: 'Portershed Galway', city: 'Galway', country: 'Ireland', lat: 53.2744, lon: -9.0491, tier: 'emerging', description: 'West of Ireland startup community hub' },
+  { id: 'rubicon-cork', name: 'Rubicon Centre Cork', city: 'Cork', country: 'Ireland', lat: 51.8926, lon: -8.4920, tier: 'emerging', description: 'MTU innovation hub in Cork' },
+  { id: 'ucc-tyndall-ai', name: 'UCC Tyndall AI & Photonics', city: 'Cork', country: 'Ireland', lat: 51.8969, lon: -8.4845, tier: 'major', description: 'University-led AI and deep-tech research cluster' },
+  { id: 'tcd-adapt', name: 'TCD ADAPT Centre', city: 'Dublin', country: 'Ireland', lat: 53.3438, lon: -6.2546, tier: 'major', description: 'National AI and digital content research centre' },
+  { id: 'ucd-ai', name: 'UCD AI/ML Research Hub', city: 'Dublin', country: 'Ireland', lat: 53.3065, lon: -6.2218, tier: 'major', description: 'UCD AI and data science ecosystem' },
+  { id: 'dcu-insight', name: 'DCU Insight Centre', city: 'Dublin', country: 'Ireland', lat: 53.3856, lon: -6.2589, tier: 'emerging', description: 'Data analytics and AI research cluster' },
+  { id: 'ul-nimbus', name: 'UL Nimbus Research Centre', city: 'Limerick', country: 'Ireland', lat: 52.6739, lon: -8.5716, tier: 'emerging', description: 'Smart manufacturing and AI applications' },
   { id: 'seoul', name: 'Seoul Startup', city: 'Seoul', country: 'South Korea', lat: 37.5665, lon: 126.9780, tier: 'emerging' },
   { id: 'sydney', name: 'Sydney Tech', city: 'Sydney', country: 'Australia', lat: -33.8688, lon: 151.2093, tier: 'emerging' },
   { id: 'saopaulo', name: 'São Paulo Tech', city: 'São Paulo', country: 'Brazil', lat: -23.5505, lon: -46.6333, tier: 'emerging' },
@@ -137,6 +144,13 @@ export const ACCELERATORS: Accelerator[] = [
   { id: 'nvidia-inception', name: 'NVIDIA Inception', city: 'Santa Clara', country: 'USA', lat: 37.3708, lon: -121.9675, type: 'accelerator' },
   { id: 'aws-activate', name: 'AWS Activate', city: 'Seattle', country: 'USA', lat: 47.6205, lon: -122.3493, type: 'accelerator' },
   { id: 'cisco-launchpad', name: 'Cisco Launchpad', city: 'San Jose', country: 'USA', lat: 37.4089, lon: -121.9533, type: 'accelerator' },
+
+  // ============ IRELAND ============
+  { id: 'ndrc-dublin', name: 'NDRC', city: 'Dublin', country: 'Ireland', lat: 53.3440, lon: -6.2672, type: 'accelerator', founded: 2007, notable: ['Boxever', 'Nuritas'] },
+  { id: 'guinness-enterprise-centre', name: 'Guinness Enterprise Centre', city: 'Dublin', country: 'Ireland', lat: 53.3421, lon: -6.2869, type: 'incubator' },
+  { id: 'portershed-accelerator', name: 'Portershed Accelerator', city: 'Galway', country: 'Ireland', lat: 53.2748, lon: -9.0490, type: 'incubator' },
+  { id: 'axisbic-cork', name: 'AxisBIC', city: 'Cork', country: 'Ireland', lat: 51.9009, lon: -8.4756, type: 'accelerator' },
+  { id: 'rubicon-accelerator-cork', name: 'Rubicon Accelerator', city: 'Cork', country: 'Ireland', lat: 51.8926, lon: -8.4920, type: 'incubator' },
 
   // ============ EUROPE - UK ============
   { id: 'seedcamp', name: 'Seedcamp', city: 'London', country: 'UK', lat: 51.5074, lon: -0.1278, type: 'accelerator', founded: 2007, notable: ['TransferWise', 'Revolut'] },
@@ -366,6 +380,11 @@ export const TECH_HQS: TechHQ[] = [
   { id: 'google-emea', company: 'Google EMEA HQ', city: 'Dublin', country: 'Ireland', lat: 53.3438, lon: -6.2302, type: 'faang' },
   { id: 'meta-emea', company: 'Meta EMEA HQ', city: 'Dublin', country: 'Ireland', lat: 53.3450, lon: -6.2290, type: 'faang' },
   { id: 'microsoft-emea', company: 'Microsoft EMEA HQ', city: 'Dublin', country: 'Ireland', lat: 53.3410, lon: -6.2360, type: 'public' },
+  { id: 'aws-dublin', company: 'AWS Ireland', city: 'Dublin', country: 'Ireland', lat: 53.3498, lon: -6.2603, type: 'faang' },
+  { id: 'linkedin-dublin', company: 'LinkedIn Ireland', city: 'Dublin', country: 'Ireland', lat: 53.3394, lon: -6.2377, type: 'public' },
+  { id: 'intel-cork', company: 'Intel Ireland', city: 'Cork', country: 'Ireland', lat: 51.8985, lon: -8.5023, type: 'public' },
+  { id: 'ibm-cork', company: 'IBM Ireland', city: 'Cork', country: 'Ireland', lat: 51.8919, lon: -8.4891, type: 'public' },
+  { id: 'vmware-cork', company: 'VMware Cork', city: 'Cork', country: 'Ireland', lat: 51.9000, lon: -8.4756, type: 'public' },
   { id: 'salesforce-emea', company: 'Salesforce EMEA HQ', city: 'Dublin', country: 'Ireland', lat: 53.3430, lon: -6.2330, type: 'public' },
   
   // Finland

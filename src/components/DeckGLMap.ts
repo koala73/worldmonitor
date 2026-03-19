@@ -405,6 +405,7 @@ export class DeckGLMap {
   private techEventSC: Supercluster | null = null;
   private datacenterSC: Supercluster | null = null;
   private datacenterSCSource: AIDataCenter[] = [];
+  private techHQSCSource = TECH_HQS;
   private protestClusters: MapProtestCluster[] = [];
   private techHQClusters: MapTechHQCluster[] = [];
   private techEventClusters: MapTechEventCluster[] = [];
@@ -920,8 +921,29 @@ export class DeckGLMap {
     this.lastSCZoom = -1;
   }
 
+  private getVisibleStartupHubs() {
+    if (SITE_VARIANT !== 'ireland') return STARTUP_HUBS;
+    return STARTUP_HUBS.filter(h => h.country.trim().toLowerCase() === 'ireland');
+  }
+
+  private getVisibleAccelerators() {
+    if (SITE_VARIANT !== 'ireland') return ACCELERATORS;
+    return ACCELERATORS.filter(a => a.country.trim().toLowerCase() === 'ireland');
+  }
+
+  private getVisibleCloudRegions() {
+    if (SITE_VARIANT !== 'ireland') return CLOUD_REGIONS;
+    return CLOUD_REGIONS.filter(r => r.country.trim().toLowerCase() === 'ireland');
+  }
+
+  private getVisibleTechHQs() {
+    if (SITE_VARIANT !== 'ireland') return TECH_HQS;
+    return TECH_HQS.filter(h => h.country.trim().toLowerCase() === 'ireland');
+  }
+
   private rebuildTechHQSupercluster(): void {
-    const points = TECH_HQS.map((h, i) => ({
+    this.techHQSCSource = this.getVisibleTechHQs();
+    const points = this.techHQSCSource.map((h, i) => ({
       type: 'Feature' as const,
       geometry: { type: 'Point' as const, coordinates: [h.lon, h.lat] as [number, number] },
       properties: {
@@ -1045,7 +1067,7 @@ export class DeckGLMap {
     const boundsKey = `${bbox[0].toFixed(4)}:${bbox[1].toFixed(4)}:${bbox[2].toFixed(4)}:${bbox[3].toFixed(4)}`;
     const layers = this.state.layers;
     const useProtests = layers.protests && this.protestSuperclusterSource.length > 0;
-    const useTechHQ = SITE_VARIANT === 'tech' && layers.techHQs;
+    const useTechHQ = (SITE_VARIANT === 'tech' || SITE_VARIANT === 'ireland') && layers.techHQs;
     const useTechEvents = SITE_VARIANT === 'tech' && layers.techEvents && this.techEvents.length > 0;
     const useDatacenterClusters = layers.datacenters && zoom < 5;
     const layerMask = `${Number(useProtests)}${Number(useTechHQ)}${Number(useTechEvents)}${Number(useDatacenterClusters)}`;
@@ -1133,7 +1155,7 @@ export class DeckGLMap {
             sampled: clusterCount > DeckGLMap.MAX_CLUSTER_LEAVES,
           };
         }
-        const item = TECH_HQS[f.properties.index]!;
+        const item = this.techHQSCSource[f.properties.index]!;
         return {
           id: `hp-${f.properties.index}`, lat: item.lat, lon: item.lon,
           count: 1, items: [item], city: item.city, country: item.country,
@@ -2637,7 +2659,7 @@ export class DeckGLMap {
   private createStartupHubsLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'startup-hubs-layer',
-      data: STARTUP_HUBS,
+      data: this.getVisibleStartupHubs(),
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 10000,
       getFillColor: COLORS.startupHub,
@@ -2650,7 +2672,7 @@ export class DeckGLMap {
   private createAcceleratorsLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'accelerators-layer',
-      data: ACCELERATORS,
+      data: this.getVisibleAccelerators(),
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 6000,
       getFillColor: COLORS.accelerator,
@@ -2663,7 +2685,7 @@ export class DeckGLMap {
   private createCloudRegionsLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'cloud-regions-layer',
-      data: CLOUD_REGIONS,
+      data: this.getVisibleCloudRegions(),
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 12000,
       getFillColor: COLORS.cloudRegion,
@@ -3653,7 +3675,7 @@ export class DeckGLMap {
       if (cluster.items.length === 0 && cluster._clusterId != null && this.techHQSC) {
         try {
           const leaves = this.techHQSC.getLeaves(cluster._clusterId, DeckGLMap.MAX_CLUSTER_LEAVES);
-          cluster.items = leaves.map(l => TECH_HQS[l.properties.index]).filter(Boolean) as typeof TECH_HQS;
+          cluster.items = leaves.map(l => this.techHQSCSource[l.properties.index]).filter(Boolean) as typeof TECH_HQS;
           cluster.sampled = cluster.items.length < cluster.count;
         } catch (e) {
           console.warn('[DeckGLMap] stale techHQ cluster', cluster._clusterId, e);

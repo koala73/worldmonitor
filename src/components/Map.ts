@@ -1956,7 +1956,9 @@ export class MapComponent {
 
     // Startup Hubs (🚀 icon by tier)
     if (this.state.layers.startupHubs) {
-      STARTUP_HUBS.forEach((hub) => {
+      STARTUP_HUBS
+        .filter(hub => SITE_VARIANT !== 'ireland' || hub.country.trim().toLowerCase() === 'ireland')
+        .forEach((hub) => {
         const pos = projection([hub.lon, hub.lat]);
         if (!pos) return;
 
@@ -1994,7 +1996,9 @@ export class MapComponent {
 
     // Cloud Regions (☁️ icons by provider)
     if (this.state.layers.cloudRegions) {
-      CLOUD_REGIONS.forEach((region) => {
+      CLOUD_REGIONS
+        .filter(region => SITE_VARIANT !== 'ireland' || region.country.trim().toLowerCase() === 'ireland')
+        .forEach((region) => {
         const pos = projection([region.lon, region.lat]);
         if (!pos) return;
 
@@ -2037,7 +2041,8 @@ export class MapComponent {
       // Cluster radius depends on zoom - tighter clustering when zoomed out
       const clusterRadius = this.state.zoom >= 4 ? 15 : this.state.zoom >= 3 ? 25 : 40;
       // Group by city to prevent clustering companies from different cities
-      const clusters = this.clusterMarkers(TECH_HQS, projection, clusterRadius, hq => hq.city);
+      const visibleTechHQs = TECH_HQS.filter(hq => SITE_VARIANT !== 'ireland' || hq.country.trim().toLowerCase() === 'ireland');
+      const clusters = this.clusterMarkers(visibleTechHQs, projection, clusterRadius, hq => hq.city);
 
       clusters.forEach((cluster) => {
         if (cluster.items.length === 0) return;
@@ -2104,7 +2109,9 @@ export class MapComponent {
 
     // Accelerators (🎯 icons)
     if (this.state.layers.accelerators) {
-      ACCELERATORS.forEach((acc) => {
+      ACCELERATORS
+        .filter(acc => SITE_VARIANT !== 'ireland' || acc.country.trim().toLowerCase() === 'ireland')
+        .forEach((acc) => {
         const pos = projection([acc.lon, acc.lat]);
         if (!pos) return;
 
