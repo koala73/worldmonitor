@@ -7,6 +7,9 @@ import {
   populateFallbackNarratives,
   buildForecastTraceArtifacts,
   buildForecastRunWorldState,
+  attachSituationContext,
+  projectSituationClusters,
+  refreshPublishedNarratives,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -62,12 +65,19 @@ describe('forecast trace artifact builder', () => {
     b.trend = 'rising';
     buildForecastCase(b);
 
-    populateFallbackNarratives([a, b]);
+    const c = makePrediction('cyber', 'China', 'Cyber pressure: China', 0.59, 0.55, '7d', [
+      { type: 'cyber', value: 'Malware-hosting concentration remains elevated', weight: 0.4 },
+    ]);
+    c.trend = 'stable';
+    buildForecastCase(c);
+
+    populateFallbackNarratives([a, b, c]);
 
     const artifacts = buildForecastTraceArtifacts(
       {
         generatedAt: Date.parse('2026-03-15T08:00:00Z'),
         predictions: [a, b],
+        fullRunPredictions: [a, b, c],
         publishTelemetry: {
           suppressedWeakFallback: 1,
           suppressedSituationOverlap: 2,
@@ -141,8 +151,10 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.quality.publish.suppressedSituationCap, 1);
     assert.equal(artifacts.summary.quality.publish.suppressedSituationDomainCap, 1);
     assert.equal(artifacts.summary.quality.publish.cappedSituations, 1);
+    assert.equal(artifacts.summary.quality.candidateRun.domainCounts.cyber, 1);
     assert.ok(artifacts.summary.quality.fullRun.quietDomains.includes('military'));
     assert.equal(artifacts.summary.quality.traced.topPromotionSignals[0].type, 'cii');
+    assert.equal(artifacts.summary.worldStateSummary.scope, 'published');
     assert.ok(artifacts.summary.worldStateSummary.summary.includes('active forecasts'));
     assert.ok(artifacts.summary.worldStateSummary.reportSummary.includes('leading domains'));
     assert.ok(typeof artifacts.summary.worldStateSummary.reportContinuitySummary === 'string');
@@ -156,6 +168,8 @@ describe('forecast trace artifact builder', () => {
     assert.ok(typeof artifacts.summary.worldStateSummary.simulationInputSummary === 'string');
     assert.ok(typeof artifacts.summary.worldStateSummary.simulationEffectCount === 'number');
     assert.ok(typeof artifacts.summary.worldStateSummary.historyRuns === 'number');
+    assert.equal(artifacts.summary.worldStateSummary.candidateStateSummary.forecastCount, 3);
+    assert.ok(artifacts.summary.worldStateSummary.candidateStateSummary.situationCount >= artifacts.summary.worldStateSummary.situationCount);
     assert.ok(Array.isArray(artifacts.worldState.actorRegistry));
     assert.ok(artifacts.worldState.actorRegistry.every(actor => actor.name && actor.id));
     assert.equal(artifacts.summary.worldStateSummary.persistentActorCount, 0);
@@ -240,6 +254,62 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.quality.enrichment.combined.rawItemCount, 2);
     assert.equal(artifacts.summary.quality.enrichment.scenario.rawItemCount, 1);
     assert.equal(artifacts.summary.quality.enrichment.combined.failureReason, '');
+  });
+
+  it('projects published situations from the original full-run clusters without re-clustering ranked subsets', () => {
+    const a = makePrediction('market', 'Red Sea', 'Freight shock: Red Sea', 0.74, 0.61, '7d', [
+      { type: 'chokepoint', value: 'Red Sea disruption detected', weight: 0.4 },
+    ]);
+    const b = makePrediction('supply_chain', 'Hormuz', 'Shipping disruption: Hormuz', 0.71, 0.6, '7d', [
+      { type: 'chokepoint', value: 'Hormuz disruption risk rising', weight: 0.4 },
+    ]);
+    const c = makePrediction('market', 'Hormuz', 'Oil pricing pressure: Hormuz', 0.69, 0.58, '7d', [
+      { type: 'commodity_price', value: 'Energy prices are moving higher', weight: 0.3 },
+    ]);
+    const d = makePrediction('supply_chain', 'Red Sea', 'Container rerouting risk: Red Sea', 0.68, 0.57, '7d', [
+      { type: 'shipping_delay', value: 'Freight rerouting remains elevated', weight: 0.3 },
+    ]);
+
+    buildForecastCase(a);
+    buildForecastCase(b);
+    buildForecastCase(c);
+    buildForecastCase(d);
+    populateFallbackNarratives([a, b, c, d]);
+
+    const fullRunSituationClusters = attachSituationContext([a, b, c, d]);
+    const publishedPredictions = [a, c, d];
+    const projectedClusters = projectSituationClusters(fullRunSituationClusters, publishedPredictions);
+    attachSituationContext(publishedPredictions, projectedClusters);
+    refreshPublishedNarratives(publishedPredictions);
+
+    const projectedIds = new Set(projectedClusters.map((cluster) => cluster.id));
+    assert.equal(projectedClusters.reduce((sum, cluster) => sum + cluster.forecastCount, 0), publishedPredictions.length);
+    assert.ok(projectedIds.has(a.situationContext.id));
+    assert.ok(projectedIds.has(c.situationContext.id));
+    assert.ok(projectedIds.has(d.situationContext.id));
+  });
+
+  it('refreshes published narratives after shrinking a broader situation cluster', () => {
+    const a = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.74, 0.64, '7d', [
+      { type: 'cii', value: 'Iran CII 79 (high)', weight: 0.4 },
+    ]);
+    const b = makePrediction('conflict', 'Iran', 'Retaliation risk: Iran', 0.7, 0.6, '7d', [
+      { type: 'news_corroboration', value: 'Officials warn of retaliation risk', weight: 0.3 },
+    ]);
+
+    buildForecastCase(a);
+    buildForecastCase(b);
+    const fullRunSituationClusters = attachSituationContext([a, b]);
+    populateFallbackNarratives([a, b]);
+
+    const publishedPredictions = [a];
+    const projectedClusters = projectSituationClusters(fullRunSituationClusters, publishedPredictions);
+    attachSituationContext(publishedPredictions, projectedClusters);
+    refreshPublishedNarratives(publishedPredictions);
+
+    assert.equal(a.caseFile.situationContext.forecastCount, 1);
+    assert.ok(!a.scenario.includes('broader cluster'));
+    assert.ok(!a.feedSummary.includes('broader'));
   });
 });
 
