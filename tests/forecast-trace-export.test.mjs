@@ -80,6 +80,7 @@ describe('forecast trace artifact builder', () => {
         predictions: [a, b],
         fullRunPredictions: [a, b, c],
         publishTelemetry: {
+          suppressedFamilySelection: 2,
           suppressedWeakFallback: 1,
           suppressedSituationOverlap: 2,
           suppressedSituationCap: 1,
@@ -149,6 +150,7 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.quality.traced.fallbackRate, 1);
     assert.equal(artifacts.summary.quality.traced.enrichedRate, 0);
     assert.equal(artifacts.summary.quality.publish.suppressedSituationOverlap, 2);
+    assert.equal(artifacts.summary.quality.publish.suppressedFamilySelection, 2);
     assert.equal(artifacts.summary.quality.publish.suppressedSituationCap, 1);
     assert.equal(artifacts.summary.quality.publish.suppressedSituationDomainCap, 1);
     assert.equal(artifacts.summary.quality.publish.cappedSituations, 1);
