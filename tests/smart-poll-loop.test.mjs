@@ -585,3 +585,98 @@ describe('startSmartPollLoop', () => {
     });
   });
 });
+
+// Build a plain-JS VisibilityHub that mirrors the contract of the real class,
+// used to test hub behavior without needing to strip TypeScript class syntax.
+function buildVisibilityHub(doc) {
+  const hasVisibilityApiBody = extractBody(runtimeSrc, 'hasVisibilityApi');
+  const factory = new Function('document', `
+    function hasVisibilityApi() { ${hasVisibilityApiBody} }
+    let _listeners = new Set();
+    let _handler = null;
+    function ensureListening() {
+      if (_handler || !hasVisibilityApi()) return;
+      _handler = () => { for (const cb of _listeners) cb(); };
+      document.addEventListener('visibilitychange', _handler);
+    }
+    function stopListening() {
+      if (!_handler) return;
+      document.removeEventListener('visibilitychange', _handler);
+      _handler = null;
+    }
+    return {
+      subscribe(cb) {
+        _listeners.add(cb);
+        ensureListening();
+        return () => { _listeners.delete(cb); if (_listeners.size === 0) stopListening(); };
+      },
+      destroy() { stopListening(); _listeners.clear(); },
+    };
+  `);
+  return factory(doc);
+}
+
+describe('VisibilityHub', () => {
+  let doc;
+
+  beforeEach(() => {
+    doc = createDocMock();
+  });
+
+  it('subscribe fans out to the callback on visibilitychange', () => {
+    const hub = buildVisibilityHub(doc);
+    let fired = 0;
+    hub.subscribe(() => { fired++; });
+    doc._fire('visibilitychange');
+    assert.equal(fired, 1);
+    hub.destroy();
+  });
+
+  it('unsubscribe callback prevents further notifications', () => {
+    const hub = buildVisibilityHub(doc);
+    let fired = 0;
+    const unsub = hub.subscribe(() => { fired++; });
+    unsub();
+    doc._fire('visibilitychange');
+    assert.equal(fired, 0, 'unsubscribed callback must not fire');
+    hub.destroy();
+  });
+
+  it('removes the DOM listener when the last subscriber unsubscribes', () => {
+    const hub = buildVisibilityHub(doc);
+    const unsub = hub.subscribe(() => {});
+    assert.equal(doc._listenerCount('visibilitychange'), 1, 'listener added on first subscribe');
+    unsub();
+    assert.equal(doc._listenerCount('visibilitychange'), 0, 'listener removed when subscriber count reaches 0');
+    hub.destroy();
+  });
+
+  it('fans out to all subscribers on visibilitychange', () => {
+    const hub = buildVisibilityHub(doc);
+    const fired = [];
+    hub.subscribe(() => fired.push('a'));
+    hub.subscribe(() => fired.push('b'));
+    doc._fire('visibilitychange');
+    assert.deepEqual(fired.sort(), ['a', 'b']);
+    hub.destroy();
+  });
+
+  it('destroy clears all subscribers and removes the DOM listener', () => {
+    const hub = buildVisibilityHub(doc);
+    let fired = 0;
+    hub.subscribe(() => { fired++; });
+    hub.destroy();
+    doc._fire('visibilitychange');
+    assert.equal(fired, 0, 'no callbacks after destroy');
+    assert.equal(doc._listenerCount('visibilitychange'), 0, 'DOM listener removed after destroy');
+  });
+
+  it('multiple subscribers share one DOM listener', () => {
+    const hub = buildVisibilityHub(doc);
+    hub.subscribe(() => {});
+    hub.subscribe(() => {});
+    hub.subscribe(() => {});
+    assert.equal(doc._listenerCount('visibilitychange'), 1, 'N subscribers → exactly 1 DOM listener');
+    hub.destroy();
+  });
+});

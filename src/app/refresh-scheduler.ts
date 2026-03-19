@@ -15,10 +15,6 @@ export class RefreshScheduler implements AppModule {
   private hiddenSince = 0;
   private visibilityHub = new VisibilityHub();
 
-  private static readonly FLUSH_STAGGER_FAST_MS = 100;
-  private static readonly FLUSH_STAGGER_SLOW_MS = 300;
-  private static readonly FLUSH_FAST_COUNT = 4;
-
   constructor(ctx: AppContext) {
     this.ctx = ctx;
   }
@@ -89,8 +85,8 @@ export class RefreshScheduler implements AppModule {
     }
     this.flushTimeoutIds.clear();
 
-    // Collect stale tasks and sort by interval ascending (higher-frequency first)
-    const stale = [];
+    // Collect stale tasks and sort by interval ascending (highest-frequency first)
+    const stale: { loop: SmartPollLoopHandle; intervalMs: number }[] = [];
     for (const entry of this.refreshRunners.values()) {
       if (hiddenMs >= entry.intervalMs) {
         stale.push(entry);
@@ -98,18 +94,18 @@ export class RefreshScheduler implements AppModule {
     }
     stale.sort((a, b) => a.intervalMs - b.intervalMs);
 
-    // Tiered stagger: first 4 tasks at 100ms, rest at 300ms
-    const FLUSH_FAST_COUNT = 4;
+    // Tiered stagger: first 4 tasks at 100ms gaps, rest at 300ms gaps
     const FLUSH_STAGGER_FAST_MS = 100;
     const FLUSH_STAGGER_SLOW_MS = 300;
     let stagger = 0;
-    for (let i = 0; i < stale.length; i++) {
+    let idx = 0;
+    for (const entry of stale) {
       const delay = stagger;
-      stagger += (i < FLUSH_FAST_COUNT) ? FLUSH_STAGGER_FAST_MS : FLUSH_STAGGER_SLOW_MS;
-      const idx = i;
+      stagger += (idx < 4) ? FLUSH_STAGGER_FAST_MS : FLUSH_STAGGER_SLOW_MS;
+      idx++;
       const timeoutId = setTimeout(() => {
         this.flushTimeoutIds.delete(timeoutId);
-        stale[idx].loop.trigger();
+        entry.loop.trigger();
       }, delay);
       this.flushTimeoutIds.add(timeoutId);
     }
