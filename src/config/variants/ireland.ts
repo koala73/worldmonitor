@@ -93,17 +93,32 @@ export const FEEDS: Record<string, Feed[]> = {
     { name: 'Irish Independent Business', url: rss('https://news.google.com/rss/search?q=site:independent.ie+business+when:7d&hl=en-IE&gl=IE&ceid=IE:en') },
     { name: 'RTE Business', url: rss('https://news.google.com/rss/search?q=site:rte.ie+business+when:7d&hl=en-IE&gl=IE&ceid=IE:en') },
   ],
+
+  // 爱尔兰科技并购（M&A）
+  ieDeals: [
+    { name: 'Irish Tech M&A', url: rss('https://news.google.com/rss/search?q=(Ireland+OR+Irish+OR+Dublin)+(tech+OR+startup)+(acquisition+OR+acquires+OR+merger+OR+takeover)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Irish Times Deals', url: rss('https://news.google.com/rss/search?q=site:irishtimes.com+(acquisition+OR+merger)+tech+Ireland+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Silicon Republic Deals', url: rss('https://news.google.com/rss/search?q=site:siliconrepublic.com+(acquisition+OR+merger+OR+deal)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+  ],
+
+  // 爱尔兰大厂招聘
+  ieJobs: [
+    { name: 'Irish Tech Jobs', url: rss('https://news.google.com/rss/search?q=(Ireland+OR+Dublin)+(Google+OR+Meta+OR+Microsoft+OR+Amazon+OR+Apple+OR+Intel)+hiring+OR+jobs+when:7d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'LinkedIn Ireland Hiring', url: rss('https://news.google.com/rss/search?q=site:linkedin.com+Ireland+tech+hiring+when:7d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'IrishJobs Tech', url: rss('https://news.google.com/rss/search?q=site:irishjobs.ie+technology+jobs+when:7d&hl=en-IE&gl=IE&ceid=IE:en') },
+  ],
 };
 
 // Ireland variant panels
 export const PANELS: Record<string, PanelConfig> = {
   ieTech: { name: 'Irish Tech', enabled: true, priority: 1 },
   ieAcademic: { name: 'Academia', enabled: true, priority: 2 },
-  tech: { name: 'Global Tech', enabled: true, priority: 3 },
-  ai: { name: 'AI/ML', enabled: true, priority: 4 },
+  ieDeals: { name: 'Tech M&A', enabled: true, priority: 3 },
+  ieJobs: { name: 'Big Tech Jobs', enabled: true, priority: 4 },
   startups: { name: 'Startups', enabled: true, priority: 5 },
   ieSummits: { name: 'Summits', enabled: true, priority: 6 },
   ieBusiness: { name: 'Business', enabled: true, priority: 7 },
+  ai: { name: 'AI/ML', enabled: true, priority: 8 },
 };
 
 // Ireland map layers (minimal for tech focus)
