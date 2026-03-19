@@ -110,7 +110,7 @@ function deleteFromLocalStorageByPrefix(prefix: string): void {
 function validateBreakerPrefix(prefix: string): void {
   const trimmed = prefix.trim();
   const suffix = trimmed.slice('breaker:'.length);
-  if (!trimmed.startsWith('breaker:') || !/[^:]/.test(suffix)) {
+  if (!trimmed.startsWith('breaker:') || suffix.length === 0 || !/\w/.test(suffix)) {
     throw new Error('deletePersistentCacheByPrefix requires a specific breaker: prefix');
   }
 }

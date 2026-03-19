@@ -438,7 +438,7 @@ fn delete_cache_entries_by_prefix(webview: Webview, app: AppHandle, cache: tauri
     let suffix = prefix
         .strip_prefix("breaker:")
         .ok_or_else(|| "delete_cache_entries_by_prefix only accepts breaker: prefixes".to_string())?;
-    if !suffix.chars().any(|ch| ch != ':') {
+    if suffix.is_empty() || suffix.chars().all(|ch| ch == ':') {
         return Err("delete_cache_entries_by_prefix requires a specific breaker: prefix".to_string());
     }
     let removed_any = {

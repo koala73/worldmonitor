@@ -79,8 +79,11 @@ export async function fetchMultipleStocks(
   // Preserve exact requested symbols for cache keys and request payloads so
   // case-distinct instruments do not collapse into one cache entry.
   const symbolMetaMap = new Map<string, { symbol: string; name: string; display: string }>();
-  // Keep the first requested candidate as a case-insensitive fallback so
-  // backend symbol normalization still retains metadata instead of dropping it.
+  // Case-insensitive fallback: maps UPPER(symbol) → first requested candidate.
+  // "First wins" is intentional — assumes case-variants are the same instrument
+  // (e.g. btc-usd / BTC-USD both refer to the same asset). When the backend
+  // normalizes casing (e.g. returns "Btc-Usd"), we still recover metadata
+  // rather than silently dropping it as the old null-sentinel approach did.
   const uppercaseMetaMap = new Map<string, { symbol: string; name: string; display: string }>();
   for (const s of symbols) {
     const trimmed = s.symbol.trim();

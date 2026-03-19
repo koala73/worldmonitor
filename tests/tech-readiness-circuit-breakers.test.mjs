@@ -24,7 +24,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as ts from 'typescript';
+import * as ts from 'typescript'; // TypeScript compiler API — available via the typescript devDep used by tsc
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
