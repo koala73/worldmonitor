@@ -1544,6 +1544,11 @@ export class DeckGLMap {
       }
     }
 
+    const irelandTechFallback = this.createIrelandTechFallbackLayer(mapLayers);
+    if (irelandTechFallback) {
+      layers.push(irelandTechFallback);
+    }
+
     // Gulf FDI investments layer
     if (mapLayers.gulfInvestments) {
       layers.push(this.createGulfInvestmentsLayer());
@@ -2704,6 +2709,38 @@ export class DeckGLMap {
       getLineColor: isIreland ? [255, 255, 255, 220] as [number, number, number, number] : [0, 0, 0, 0] as [number, number, number, number],
       lineWidthMinPixels: isIreland ? 1.5 : 0,
       pickable: true,
+    });
+  }
+
+  private createIrelandTechFallbackLayer(mapLayers: MapLayers): ScatterplotLayer | null {
+    if (SITE_VARIANT !== 'ireland') return null;
+    const points: Array<{ lon: number; lat: number; color: [number, number, number, number] }> = [];
+    if (mapLayers.techHQs) {
+      this.getVisibleTechHQs().forEach(p => points.push({ lon: p.lon, lat: p.lat, color: [0, 140, 255, 240] }));
+    }
+    if (mapLayers.startupHubs) {
+      this.getVisibleStartupHubs().forEach(p => points.push({ lon: p.lon, lat: p.lat, color: [0, 209, 255, 235] }));
+    }
+    if (mapLayers.accelerators) {
+      this.getVisibleAccelerators().forEach(p => points.push({ lon: p.lon, lat: p.lat, color: [255, 179, 0, 235] }));
+    }
+    if (mapLayers.cloudRegions) {
+      this.getVisibleCloudRegions().forEach(p => points.push({ lon: p.lon, lat: p.lat, color: [153, 102, 255, 235] }));
+    }
+    if (points.length === 0) return null;
+
+    return new ScatterplotLayer({
+      id: 'ireland-tech-fallback-layer',
+      data: points,
+      getPosition: d => [d.lon, d.lat],
+      getRadius: 26000,
+      radiusMinPixels: 11,
+      radiusMaxPixels: 22,
+      stroked: true,
+      getFillColor: d => d.color,
+      getLineColor: [255, 255, 255, 230],
+      lineWidthMinPixels: 2,
+      pickable: false,
     });
   }
 
