@@ -3626,8 +3626,8 @@ function buildReportableInteractionLedger(interactionLedger = [], situationSimul
       const confidence = Number(item.confidence || 0);
       const score = Number(item.score || 0);
       const politicalChannel = item.strongestChannel === 'political_pressure';
-      const sharedActor = Boolean(item.sharedActor);
-      const regionLink = Boolean(item.regionLink);
+      const sharedActor = Boolean(item.sharedActor) || intersectCount(source.actorIds || [], target.actorIds || []) > 0;
+      const regionLink = Boolean(item.regionLink) || intersectCount(source.regions || [], target.regions || []) > 0;
       if (item.interactionType === 'actor_carryover' && specificity < 0.62) return false;
       if (politicalChannel) {
         if (!regionLink && !sharedActor) return false;
@@ -3636,7 +3636,7 @@ function buildReportableInteractionLedger(interactionLedger = [], situationSimul
       }
       if (confidence >= 0.72 && score >= 5) return true;
       if (directOverlap && confidence >= 0.58 && score >= 4.5) return true;
-      if (item.sharedActor && specificity >= 0.7 && confidence >= 0.56) return true;
+      if (sharedActor && specificity >= 0.7 && confidence >= 0.56) return true;
       return false;
     })
     .sort((a, b) => b.confidence - a.confidence || b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel));
@@ -3874,7 +3874,7 @@ function buildCrossSituationEffects(simulationState) {
       if (
         group.strongestChannel === 'political_pressure'
         && !hasRegionLink
-        && (!hasSharedActor || computeReportableEffectConfidence(group, source, target, strongestChannelWeight) < 0.8 || (group.stages?.size || 0) < 2)
+        && (!hasSharedActor || computeReportableEffectConfidence(group, source, target, strongestChannelWeight) < 0.72 || (group.stages?.size || 0) < 2)
       ) continue;
 
       const score = +(
@@ -3885,7 +3885,7 @@ function buildCrossSituationEffects(simulationState) {
       if (score < 4.8) continue;
       const confidence = computeReportableEffectConfidence(group, source, target, strongestChannelWeight);
       if (confidence < 0.5) continue;
-      if (group.strongestChannel === 'political_pressure' && confidence < 0.74) continue;
+      if (group.strongestChannel === 'political_pressure' && confidence < 0.72) continue;
 
       effects.push({
         sourceSituationId: source.situationId,
@@ -6612,6 +6612,7 @@ export {
   buildFallbackPerspectives,
   populateFallbackNarratives,
   buildCrossSituationEffects,
+  buildReportableInteractionLedger,
   buildInteractionWatchlist,
   attachSituationContext,
   projectSituationClusters,
