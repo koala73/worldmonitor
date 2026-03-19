@@ -3340,6 +3340,18 @@ function buildForecastRunWorldState(data) {
   return worldState;
 }
 
+function summarizeWorldStateSurface(worldState) {
+  if (!worldState) return null;
+  return {
+    forecastCount: Array.isArray(worldState.branchStates) ? new Set(worldState.branchStates.map((branch) => branch.forecastId)).size : 0,
+    domainCount: worldState.domainStates?.length || 0,
+    regionCount: worldState.regionalStates?.length || 0,
+    situationCount: worldState.situationClusters?.length || 0,
+    simulationSituationCount: worldState.simulationState?.totalSituationSimulations || 0,
+    simulationEffectCount: worldState.report?.crossSituationEffects?.length || 0,
+  };
+}
+
 function summarizeTypeCounts(items) {
   const counts = new Map();
   for (const item of items) {
@@ -3378,7 +3390,7 @@ function summarizeForecastPopulation(predictions) {
   };
 }
 
-function summarizeForecastTraceQuality(predictions, tracedPredictions, enrichmentMeta = null, publishTelemetry = null) {
+function summarizeForecastTraceQuality(predictions, tracedPredictions, enrichmentMeta = null, publishTelemetry = null, candidatePredictions = null) {
   const fullRun = summarizeForecastPopulation(predictions);
   const traced = summarizeForecastPopulation(tracedPredictions);
 
@@ -3431,6 +3443,9 @@ function summarizeForecastTraceQuality(predictions, tracedPredictions, enrichmen
       topPromotionSignals: pickTopCountEntries(promotionSignalCounts, 5),
       topSuppressionSignals: pickTopCountEntries(suppressionSignalCounts, 5),
     },
+    candidateRun: Array.isArray(candidatePredictions) && candidatePredictions.length > predictions.length
+      ? summarizeForecastPopulation(candidatePredictions)
+      : null,
     enrichment: enrichmentMeta,
     publish: publishTelemetry,
   };
@@ -3439,9 +3454,16 @@ function summarizeForecastTraceQuality(predictions, tracedPredictions, enrichmen
 function buildForecastTraceArtifacts(data, context = {}, config = {}) {
   const generatedAt = data?.generatedAt || Date.now();
   const predictions = Array.isArray(data?.predictions) ? data.predictions : [];
+  const fullRunPredictions = Array.isArray(data?.fullRunPredictions) ? data.fullRunPredictions : predictions;
   const maxForecasts = config.maxForecasts || getTraceMaxForecasts(predictions.length);
   const tracedPredictions = predictions.slice(0, maxForecasts).map((pred, index) => buildForecastTraceRecord(pred, index + 1));
-  const quality = summarizeForecastTraceQuality(predictions, tracedPredictions, data?.enrichmentMeta || null, data?.publishTelemetry || null);
+  const quality = summarizeForecastTraceQuality(
+    predictions,
+    tracedPredictions,
+    data?.enrichmentMeta || null,
+    data?.publishTelemetry || null,
+    fullRunPredictions
+  );
   const worldState = buildForecastRunWorldState({
     generatedAt,
     predictions,
@@ -3450,6 +3472,16 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     situationClusters: data?.situationClusters || undefined,
     publishTelemetry: data?.publishTelemetry || null,
   });
+  const candidateWorldState = fullRunPredictions !== predictions || data?.fullRunSituationClusters
+    ? buildForecastRunWorldState({
+      generatedAt,
+      predictions: fullRunPredictions,
+      priorWorldState: data?.priorWorldState || null,
+      priorWorldStates: data?.priorWorldStates || [],
+      situationClusters: data?.fullRunSituationClusters || undefined,
+      publishTelemetry: data?.publishTelemetry || null,
+    })
+    : null;
   const prefix = buildTraceRunPrefix(
     context.runId || `run_${generatedAt}`,
     generatedAt,
@@ -3488,6 +3520,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     triggerContext: manifest.triggerContext,
     quality,
     worldStateSummary: {
+      scope: 'published',
       summary: worldState.summary,
       reportSummary: worldState.report?.summary || '',
       reportContinuitySummary: worldState.reportContinuity?.summary || '',
@@ -3526,6 +3559,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
       constrainedSimulations: worldState.simulationState?.postureCounts?.constrained || 0,
       newForecasts: worldState.continuity.newForecasts,
       materiallyChanged: worldState.continuity.materiallyChanged.length,
+      candidateStateSummary: summarizeWorldStateSurface(candidateWorldState),
     },
     topForecasts: tracedPredictions.map(item => ({
       rank: item.rank,
@@ -4859,7 +4893,8 @@ async function fetchForecasts() {
   computeTrends(predictions, prior);
   buildForecastCases(predictions);
   annotateForecastChanges(predictions, prior);
-  const situationClusters = attachSituationContext(predictions);
+  const fullRunPredictions = predictions.slice();
+  const fullRunSituationClusters = attachSituationContext(predictions);
   prepareForecastMetrics(predictions);
 
   rankForecastsForAnalysis(predictions);
@@ -4869,11 +4904,20 @@ async function fetchForecasts() {
 
   const publishedPredictions = filterPublishedForecasts(predictions);
   const publishTelemetry = summarizePublishFiltering(predictions);
+  const publishedSituationClusters = attachSituationContext(publishedPredictions);
   if (publishedPredictions.length !== predictions.length) {
     console.log(`  Filtered ${predictions.length - publishedPredictions.length} forecasts at publish floor > ${PUBLISH_MIN_PROBABILITY}`);
   }
 
-  return { predictions: publishedPredictions, generatedAt: Date.now(), enrichmentMeta, publishTelemetry, situationClusters };
+  return {
+    predictions: publishedPredictions,
+    fullRunPredictions,
+    generatedAt: Date.now(),
+    enrichmentMeta,
+    publishTelemetry,
+    situationClusters: publishedSituationClusters,
+    fullRunSituationClusters,
+  };
 }
 
 async function readForecastRefreshRequest() {
