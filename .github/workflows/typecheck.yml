@@ -2,8 +2,12 @@ name: Typecheck
 
 on:
   pull_request:
+    paths-ignore:
+      - 'scripts/**'
   push:
     branches: [main]
+    paths-ignore:
+      - 'scripts/**'
 
 jobs:
   typecheck:
