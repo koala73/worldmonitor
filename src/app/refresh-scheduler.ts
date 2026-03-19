@@ -1,5 +1,5 @@
 import type { AppContext, AppModule } from '@/app/app-context';
-import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
+import { startSmartPollLoop, VisibilityHub, type SmartPollLoopHandle } from '@/services/runtime';
 
 export interface RefreshRegistration {
   name: string;
@@ -13,6 +13,11 @@ export class RefreshScheduler implements AppModule {
   private refreshRunners = new Map<string, { loop: SmartPollLoopHandle; intervalMs: number }>();
   private flushTimeoutIds = new Set<ReturnType<typeof setTimeout>>();
   private hiddenSince = 0;
+  private visibilityHub = new VisibilityHub();
+
+  private static readonly FLUSH_STAGGER_FAST_MS = 100;
+  private static readonly FLUSH_STAGGER_SLOW_MS = 300;
+  private static readonly FLUSH_FAST_COUNT = 4;
 
   constructor(ctx: AppContext) {
     this.ctx = ctx;
@@ -29,6 +34,7 @@ export class RefreshScheduler implements AppModule {
       loop.stop();
     }
     this.refreshRunners.clear();
+    this.visibilityHub.destroy();
   }
 
   setHiddenSince(ts: number): void {
@@ -64,6 +70,7 @@ export class RefreshScheduler implements AppModule {
       refreshOnVisible: false,
       runImmediately: false,
       maxBackoffMultiplier: 4,
+      visibilityHub: this.visibilityHub,
       onError: (e) => {
         console.error(`[App] Refresh ${name} failed:`, e);
       },
@@ -82,14 +89,27 @@ export class RefreshScheduler implements AppModule {
     }
     this.flushTimeoutIds.clear();
 
+    // Collect stale tasks and sort by interval ascending (higher-frequency first)
+    const stale = [];
+    for (const entry of this.refreshRunners.values()) {
+      if (hiddenMs >= entry.intervalMs) {
+        stale.push(entry);
+      }
+    }
+    stale.sort((a, b) => a.intervalMs - b.intervalMs);
+
+    // Tiered stagger: first 4 tasks at 100ms, rest at 300ms
+    const FLUSH_FAST_COUNT = 4;
+    const FLUSH_STAGGER_FAST_MS = 100;
+    const FLUSH_STAGGER_SLOW_MS = 300;
     let stagger = 0;
-    for (const { loop, intervalMs } of this.refreshRunners.values()) {
-      if (hiddenMs < intervalMs) continue;
+    for (let i = 0; i < stale.length; i++) {
       const delay = stagger;
-      stagger += 150;
+      stagger += (i < FLUSH_FAST_COUNT) ? FLUSH_STAGGER_FAST_MS : FLUSH_STAGGER_SLOW_MS;
+      const idx = i;
       const timeoutId = setTimeout(() => {
         this.flushTimeoutIds.delete(timeoutId);
-        loop.trigger();
+        stale[idx].loop.trigger();
       }, delay);
       this.flushTimeoutIds.add(timeoutId);
     }

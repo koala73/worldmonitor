@@ -15,6 +15,7 @@ function stripTS(src) {
   out = out.replace(/\bas\s+\{[^}]+\}/g, '');
   out = out.replace(/:\s*ReturnType<typeof\s+\w+>\s*\|\s*null/g, '');
   out = out.replace(/:\s*AbortController\s*\|\s*null/g, '');
+  out = out.replace(/:\s*\(\(\)\s*=>\s*void\)\s*\|\s*null/g, '');
   out = out.replace(/:\s*SmartPollReason/g, '');
   out = out.replace(/:\s*SmartPollContext/g, '');
   out = out.replace(/:\s*SmartPollOptions/g, '');
@@ -536,7 +537,7 @@ describe('startSmartPollLoop', () => {
 
     it('abort errors do not trigger backoff', async () => {
       let calls = 0;
-      startSmartPollLoop((_ctx) => {
+      startSmartPollLoop((ctx) => {
         calls++;
         const err = new Error('aborted');
         err.name = 'AbortError';
@@ -555,7 +556,7 @@ describe('startSmartPollLoop', () => {
   describe('in-flight guard', () => {
     it('concurrent calls are deferred, not dropped', async () => {
       let calls = 0;
-      const resolvers = [];
+      let resolvers = [];
       const handle = startSmartPollLoop(() => {
         calls++;
         return new Promise(r => resolvers.push(r));

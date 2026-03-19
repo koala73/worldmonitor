@@ -111,7 +111,7 @@ export function getApiBaseUrl(): string {
     return '';
   }
 
-const configuredBaseUrl = ENV.VITE_TAURI_API_BASE_URL;
+  const configuredBaseUrl = ENV.VITE_TAURI_API_BASE_URL;
   if (configuredBaseUrl) {
     return normalizeBaseUrl(configuredBaseUrl);
   }
@@ -151,7 +151,7 @@ export function getCanonicalApiOrigin(): string {
 }
 
 export function getRemoteApiBaseUrl(): string {
-const configuredRemoteBase = ENV.VITE_TAURI_REMOTE_API_BASE_URL;
+  const configuredRemoteBase = ENV.VITE_TAURI_REMOTE_API_BASE_URL;
   if (configuredRemoteBase) {
     return normalizeBaseUrl(configuredRemoteBase);
   }
@@ -215,7 +215,7 @@ const APP_HOSTS = new Set([
   'api.worldmonitor.app',
   'localhost',
   '127.0.0.1',
-...extractHostnames(WS_API_URL, ENV.VITE_WS_RELAY_URL),
+  ...extractHostnames(WS_API_URL, ENV.VITE_WS_RELAY_URL),
 ]);
 
 function isAppOriginUrl(urlStr: string): boolean {
@@ -228,29 +228,26 @@ function isAppOriginUrl(urlStr: string): boolean {
   }
 }
 
-function toPathAndSearch(url: string | URL): string {
-  const u = typeof url === 'string' ? new URL(url) : url;
-  return `${u.pathname}${u.search}`;
-}
-
 function getApiTargetFromRequestInput(input: RequestInfo | URL): string | null {
   if (typeof input === 'string') {
     if (input.startsWith('/')) return input;
     if (isAppOriginUrl(input)) {
-      return toPathAndSearch(input);
+      const u = new URL(input);
+      return `${u.pathname}${u.search}`;
     }
     return null;
   }
 
   if (input instanceof URL) {
     if (isAppOriginUrl(input.href)) {
-      return toPathAndSearch(input);
+      return `${input.pathname}${input.search}`;
     }
     return null;
   }
 
   if (isAppOriginUrl(input.url)) {
-    return toPathAndSearch(input.url);
+    const u = new URL(input.url);
+    return `${u.pathname}${u.search}`;
   }
   return null;
 }
@@ -280,6 +277,43 @@ export interface SmartPollOptions {
   minIntervalMs?: number;
   onError?: (error: unknown) => void;
   visibilityDebounceMs?: number;
+  visibilityHub?: VisibilityHub;
+}
+
+export class VisibilityHub {
+  private listeners = new Set<() => void>();
+  private listening = false;
+  private handler: (() => void) | null = null;
+
+  subscribe(cb: () => void): () => void {
+    this.listeners.add(cb);
+    this.ensureListening();
+    return () => {
+      this.listeners.delete(cb);
+      if (this.listeners.size === 0) this.stopListening();
+    };
+  }
+
+  destroy(): void {
+    this.stopListening();
+    this.listeners.clear();
+  }
+
+  private ensureListening(): void {
+    if (this.listening || !hasVisibilityApi()) return;
+    this.handler = () => {
+      for (const cb of this.listeners) cb();
+    };
+    document.addEventListener('visibilitychange', this.handler);
+    this.listening = true;
+  }
+
+  private stopListening(): void {
+    if (!this.listening || !this.handler) return;
+    document.removeEventListener('visibilitychange', this.handler);
+    this.handler = null;
+    this.listening = false;
+  }
 }
 
 export interface SmartPollLoopHandle {
@@ -450,7 +484,10 @@ export function startSmartPollLoop(
     handleVisibilityChange();
   };
 
-  if (hasVisibilityApi()) {
+  let unsubVisibility: (() => void) | null = null;
+  if (opts.visibilityHub) {
+    unsubVisibility = opts.visibilityHub.subscribe(onVisibilityChange);
+  } else if (hasVisibilityApi()) {
     document.addEventListener('visibilitychange', onVisibilityChange);
   }
 
@@ -468,7 +505,10 @@ export function startSmartPollLoop(
       clearVisibilityDebounce();
       activeController?.abort();
       activeController = null;
-      if (hasVisibilityApi()) {
+      if (unsubVisibility) {
+        unsubVisibility();
+        unsubVisibility = null;
+      } else if (hasVisibilityApi()) {
         document.removeEventListener('visibilitychange', onVisibilityChange);
       }
     },

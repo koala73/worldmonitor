@@ -254,7 +254,7 @@ describe('flushStaleRefreshes behavior', () => {
     assert.equal(ctx.hiddenSince, 0, 'hiddenSince must still be reset even if no services flushed');
   });
 
-  it('staggers re-triggered services deterministically by 150ms', () => {
+  it('staggers re-triggered services deterministically (fast tier: 100ms steps)', () => {
     const timestamps = [];
     const start = timers.now;
 
@@ -270,7 +270,7 @@ describe('flushStaleRefreshes behavior', () => {
     timers.runAll();
 
     assert.equal(timestamps.length, 3, 'All 3 services should fire');
-    assert.deepEqual(timestamps, [0, 150, 300], 'Services should fire in 150ms steps');
+    assert.deepEqual(timestamps, [0, 100, 200], 'Fast-tier services fire in 100ms steps');
   });
 
   it('cleans up stale flush timeout IDs after triggering', () => {
