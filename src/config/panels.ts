@@ -70,6 +70,10 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
+  'warfare-simulation': { name: 'War Simulation', enabled: true, priority: 1 },
+  'warfare-correlation': { name: 'Warfare Monitor', enabled: true, priority: 2 },
+  'missile-tracker': { name: 'Missile Tracker', enabled: true, priority: 2 },
+  'casualty-estimator': { name: 'Casualty Projections', enabled: true, priority: 2 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {

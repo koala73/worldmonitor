@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package worldmonitor.warfare.v1;
+
+import "worldmonitor/warfare/v1/combat_system.proto";
+
+// SimulationStatus represents the state of a game simulation.
+enum SimulationStatus {
+  SIMULATION_STATUS_UNSPECIFIED = 0;
+  SIMULATION_STATUS_SETUP = 1;
+  SIMULATION_STATUS_RUNNING = 2;
+  SIMULATION_STATUS_PAUSED = 3;
+  SIMULATION_STATUS_CONCLUDED = 4;
+}
+
+// GameSimulation represents an active conflict simulation scenario.
+message GameSimulation {
+  // Unique simulation identifier.
+  string simulation_id = 1;
+  // Descriptive name for the scenario.
+  string name = 2;
+  // Real-world conflict this is based on (if any).
+  string conflict_basis = 3;
+  // Participating factions.
+  repeated string factions = 4;
+  // Current simulation status.
+  SimulationStatus status = 5;
+  // Current turn number (each turn = 1 simulated day).
+  int32 current_turn = 6;
+  // Maximum turns before auto-conclusion.
+  int32 max_turns = 7;
+  // Theater of operations.
+  string theater = 8;
+  // Created timestamp, as Unix epoch milliseconds.
+  int64 created_at = 9;
+  // Last updated timestamp, as Unix epoch milliseconds.
+  int64 updated_at = 10;
+}
+
+// GameTurn represents the result of advancing the simulation by one turn.
+message GameTurn {
+  // Turn number.
+  int32 turn_number = 1;
+  // Simulation identifier.
+  string simulation_id = 2;
+  // Engagements that occurred during this turn.
+  repeated CombatEngagement engagements = 3;
+  // Missile launches during this turn.
+  repeated TurnMissileEvent missile_events = 4;
+  // Per-faction casualty totals accumulated through this turn.
+  repeated CasualtyEstimate cumulative_casualties = 5;
+  // Supply status changes.
+  repeated TurnSupplyEvent supply_events = 6;
+  // Territory changes.
+  repeated TurnTerritoryEvent territory_events = 7;
+  // Narrative summary of the turn's events.
+  string summary = 8;
+  // Timestamp of turn resolution, as Unix epoch milliseconds.
+  int64 resolved_at = 9;
+}
+
+// TurnMissileEvent is a summary of missile activity in a single turn.
+message TurnMissileEvent {
+  string launch_id = 1;
+  string launcher_faction = 2;
+  string missile_name = 3;
+  string target_description = 4;
+  string status = 5;
+  bool intercepted = 6;
+  string interceptor_type = 7;
+}
+
+// TurnSupplyEvent is a supply status change in a single turn.
+message TurnSupplyEvent {
+  string faction = 1;
+  string supply_line_id = 2;
+  string event_type = 3; // "disrupted", "restored", "depleted"
+  string description = 4;
+}
+
+// TurnTerritoryEvent is a territorial change in a single turn.
+message TurnTerritoryEvent {
+  string territory_id = 1;
+  string previous_faction = 2;
+  string new_faction = 3;
+  string event_type = 4; // "captured", "contested", "liberated"
+  string description = 5;
+}

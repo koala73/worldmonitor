@@ -43,6 +43,10 @@ import {
   EscalationCorrelationPanel,
   EconomicCorrelationPanel,
   DisasterCorrelationPanel,
+  WarfareSimulationPanel,
+  WarfareCorrelationPanel,
+  MissileTrackerPanel,
+  CasualtyEstimatorPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
@@ -648,6 +652,16 @@ export class PanelLayoutManager implements AppModule {
       const p = new DisasterCorrelationPanel();
       p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 5); });
       this.ctx.panels['disaster-correlation'] = p;
+    }
+
+    // Warfare simulation panels
+    this.createPanel('warfare-simulation', () => new WarfareSimulationPanel());
+    this.createPanel('missile-tracker', () => new MissileTrackerPanel());
+    this.createPanel('casualty-estimator', () => new CasualtyEstimatorPanel());
+    if (this.shouldCreatePanel('warfare-correlation')) {
+      const p = new WarfareCorrelationPanel();
+      p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 5); });
+      this.ctx.panels['warfare-correlation'] = p;
     }
 
     if (this.shouldCreatePanel('strategic-risk')) {

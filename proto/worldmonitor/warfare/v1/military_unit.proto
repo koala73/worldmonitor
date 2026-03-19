@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package worldmonitor.warfare.v1;
+
+import "worldmonitor/core/v1/geo.proto";
+
+// UnitType represents the classification of a military ground/air/naval unit.
+enum UnitType {
+  UNIT_TYPE_UNSPECIFIED = 0;
+  UNIT_TYPE_INFANTRY = 1;
+  UNIT_TYPE_ARMOR = 2;
+  UNIT_TYPE_ARTILLERY = 3;
+  UNIT_TYPE_AIR_DEFENSE = 4;
+  UNIT_TYPE_HELICOPTER = 5;
+  UNIT_TYPE_FIGHTER_AIRCRAFT = 6;
+  UNIT_TYPE_BOMBER_AIRCRAFT = 7;
+  UNIT_TYPE_NAVAL_SURFACE = 8;
+  UNIT_TYPE_SUBMARINE = 9;
+  UNIT_TYPE_SPECIAL_FORCES = 10;
+  UNIT_TYPE_LOGISTICS = 11;
+  UNIT_TYPE_ENGINEERING = 12;
+  UNIT_TYPE_RECONNAISSANCE = 13;
+  UNIT_TYPE_ELECTRONIC_WARFARE = 14;
+  UNIT_TYPE_DRONE = 15;
+}
+
+// UnitState represents the operational state of a military unit.
+enum UnitState {
+  UNIT_STATE_UNSPECIFIED = 0;
+  UNIT_STATE_ACTIVE = 1;
+  UNIT_STATE_FORTIFIED = 2;
+  UNIT_STATE_MOVING = 3;
+  UNIT_STATE_ENGAGED = 4;
+  UNIT_STATE_RETREATING = 5;
+  UNIT_STATE_DAMAGED = 6;
+  UNIT_STATE_DESTROYED = 7;
+  UNIT_STATE_RESERVE = 8;
+}
+
+// MilitaryUnit represents a trackable military formation in the simulation.
+message MilitaryUnit {
+  // Unique unit identifier.
+  string unit_id = 1;
+  // Display name (e.g., "3rd Armored Brigade").
+  string name = 2;
+  // Unit classification.
+  UnitType unit_type = 3;
+  // Faction or country operating this unit (ISO 3166-1 alpha-2).
+  string faction = 4;
+  // Current position.
+  worldmonitor.core.v1.GeoCoordinates location = 5;
+  // Destination if moving.
+  worldmonitor.core.v1.GeoCoordinates destination = 6;
+  // Personnel count.
+  int32 personnel = 7;
+  // Major equipment count (tanks, IFVs, artillery pieces, aircraft, etc.).
+  int32 equipment_count = 8;
+  // Combat readiness (0-100).
+  int32 readiness = 9;
+  // Unit morale (0-100).
+  int32 morale = 10;
+  // Supply level (0-100).
+  int32 supply_level = 11;
+  // Firepower rating (composite combat strength).
+  double firepower = 12;
+  // Armor/defense rating.
+  double armor_rating = 13;
+  // Movement speed in km per day.
+  double speed_km_day = 14;
+  // Current operational state.
+  UnitState state = 15;
+  // Last updated time, as Unix epoch milliseconds.
+  int64 updated_at = 16;
+  // Parent formation ID (for hierarchical organization).
+  string parent_unit_id = 17;
+}
+
+// ForceComposition provides an aggregate view of a faction's military strength.
+message ForceComposition {
+  // Faction identifier.
+  string faction = 1;
+  // Total active units.
+  int32 total_units = 2;
+  // Total personnel across all units.
+  int32 total_personnel = 3;
+  // Total major equipment across all units.
+  int32 total_equipment = 4;
+  // Composite force strength index (0-100).
+  double force_strength_index = 5;
+  // Breakdown by unit type.
+  repeated UnitTypeBreakdown breakdown = 6;
+}
+
+// UnitTypeBreakdown provides counts per unit type.
+message UnitTypeBreakdown {
+  UnitType unit_type = 1;
+  int32 count = 2;
+  int32 personnel = 3;
+}

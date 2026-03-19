@@ -1,0 +1,261 @@
+syntax = "proto3";
+
+package worldmonitor.warfare.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/warfare/v1/game_state.proto";
+import "worldmonitor/warfare/v1/military_unit.proto";
+import "worldmonitor/warfare/v1/combat_system.proto";
+import "worldmonitor/warfare/v1/missile_tracking.proto";
+import "worldmonitor/warfare/v1/logistics.proto";
+import "worldmonitor/warfare/v1/territorial_control.proto";
+import "worldmonitor/warfare/v1/conflict_analysis.proto";
+
+// WarfareService provides APIs for war simulation, combat modeling, missile
+// tracking, logistics management, and conflict outcome forecasting.
+service WarfareService {
+  option (sebuf.http.service_config) = {base_path: "/api/warfare/v1"};
+
+  // CreateSimulation initializes a new conflict simulation scenario.
+  rpc CreateSimulation(CreateSimulationRequest) returns (CreateSimulationResponse) {
+    option (sebuf.http.config) = {path: "/create-simulation", method: HTTP_METHOD_POST};
+  }
+
+  // GetGameState retrieves the current state of a running simulation.
+  rpc GetGameState(GetGameStateRequest) returns (GetGameStateResponse) {
+    option (sebuf.http.config) = {path: "/get-game-state", method: HTTP_METHOD_GET};
+  }
+
+  // AdvanceTurn advances the simulation by one turn and returns results.
+  rpc AdvanceTurn(AdvanceTurnRequest) returns (AdvanceTurnResponse) {
+    option (sebuf.http.config) = {path: "/advance-turn", method: HTTP_METHOD_POST};
+  }
+
+  // ListUnits retrieves all military units in a simulation, with optional faction filter.
+  rpc ListUnits(ListUnitsRequest) returns (ListUnitsResponse) {
+    option (sebuf.http.config) = {path: "/list-units", method: HTTP_METHOD_GET};
+  }
+
+  // MoveUnit issues a movement order for a unit.
+  rpc MoveUnit(MoveUnitRequest) returns (MoveUnitResponse) {
+    option (sebuf.http.config) = {path: "/move-unit", method: HTTP_METHOD_POST};
+  }
+
+  // SimulateCombat runs a combat engagement between specified forces.
+  rpc SimulateCombat(SimulateCombatRequest) returns (SimulateCombatResponse) {
+    option (sebuf.http.config) = {path: "/simulate-combat", method: HTTP_METHOD_POST};
+  }
+
+  // ListMissileSystems retrieves deployed missile and air defense systems.
+  rpc ListMissileSystems(ListMissileSystemsRequest) returns (ListMissileSystemsResponse) {
+    option (sebuf.http.config) = {path: "/list-missile-systems", method: HTTP_METHOD_GET};
+  }
+
+  // TrackMissileLaunch records and tracks a missile launch event.
+  rpc TrackMissileLaunch(TrackMissileLaunchRequest) returns (TrackMissileLaunchResponse) {
+    option (sebuf.http.config) = {path: "/track-missile-launch", method: HTTP_METHOD_POST};
+  }
+
+  // SimulateInterception models an air defense interception attempt.
+  rpc SimulateInterception(SimulateInterceptionRequest) returns (SimulateInterceptionResponse) {
+    option (sebuf.http.config) = {path: "/simulate-interception", method: HTTP_METHOD_POST};
+  }
+
+  // GetSupplyStatus retrieves resource pool and logistics health for a faction.
+  rpc GetSupplyStatus(GetSupplyStatusRequest) returns (GetSupplyStatusResponse) {
+    option (sebuf.http.config) = {path: "/get-supply-status", method: HTTP_METHOD_GET};
+  }
+
+  // ListSupplyLines retrieves active supply lines for a faction.
+  rpc ListSupplyLines(ListSupplyLinesRequest) returns (ListSupplyLinesResponse) {
+    option (sebuf.http.config) = {path: "/list-supply-lines", method: HTTP_METHOD_GET};
+  }
+
+  // GetTerritorialControl retrieves territorial control data for a simulation.
+  rpc GetTerritorialControl(GetTerritorialControlRequest) returns (GetTerritorialControlResponse) {
+    option (sebuf.http.config) = {path: "/get-territorial-control", method: HTTP_METHOD_GET};
+  }
+
+  // GetFrontlinePositions retrieves frontline segments between factions.
+  rpc GetFrontlinePositions(GetFrontlinePositionsRequest) returns (GetFrontlinePositionsResponse) {
+    option (sebuf.http.config) = {path: "/get-frontline-positions", method: HTTP_METHOD_GET};
+  }
+
+  // AssessCapabilities evaluates military strength for a faction.
+  rpc AssessCapabilities(AssessCapabilitiesRequest) returns (AssessCapabilitiesResponse) {
+    option (sebuf.http.config) = {path: "/assess-capabilities", method: HTTP_METHOD_POST};
+  }
+
+  // ProjectCasualties provides forward-looking casualty estimates.
+  rpc ProjectCasualties(ProjectCasualtiesRequest) returns (ProjectCasualtiesResponse) {
+    option (sebuf.http.config) = {path: "/project-casualties", method: HTTP_METHOD_POST};
+  }
+
+  // AnalyzeOutcomes generates possible conflict resolution scenarios.
+  rpc AnalyzeOutcomes(AnalyzeOutcomesRequest) returns (AnalyzeOutcomesResponse) {
+    option (sebuf.http.config) = {path: "/analyze-outcomes", method: HTTP_METHOD_POST};
+  }
+}
+
+// ──────────────────────────────── Request / Response messages ────────────────────────────────
+
+message CreateSimulationRequest {
+  string name = 1;
+  string conflict_basis = 2;
+  repeated string factions = 3;
+  string theater = 4;
+  int32 max_turns = 5;
+}
+
+message CreateSimulationResponse {
+  GameSimulation simulation = 1;
+}
+
+message GetGameStateRequest {
+  string simulation_id = 1 [(sebuf.http.query) = { name: "simulation_id" }];
+}
+
+message GetGameStateResponse {
+  GameSimulation simulation = 1;
+  repeated MilitaryUnit units = 2;
+  repeated CasualtyEstimate casualties = 3;
+  int32 total_engagements = 4;
+}
+
+message AdvanceTurnRequest {
+  string simulation_id = 1;
+}
+
+message AdvanceTurnResponse {
+  GameTurn turn = 1;
+}
+
+message ListUnitsRequest {
+  string simulation_id = 1 [(sebuf.http.query) = { name: "simulation_id" }];
+  string faction = 2 [(sebuf.http.query) = { name: "faction" }];
+}
+
+message ListUnitsResponse {
+  repeated MilitaryUnit units = 1;
+  repeated ForceComposition compositions = 2;
+}
+
+message MoveUnitRequest {
+  string simulation_id = 1;
+  string unit_id = 2;
+  double destination_lat = 3;
+  double destination_lon = 4;
+}
+
+message MoveUnitResponse {
+  MilitaryUnit unit = 1;
+  double estimated_arrival_turns = 2;
+}
+
+message SimulateCombatRequest {
+  string simulation_id = 1;
+  repeated string attacker_unit_ids = 2;
+  repeated string defender_unit_ids = 3;
+  TerrainType terrain = 4;
+  double surprise_factor = 5;
+}
+
+message SimulateCombatResponse {
+  CombatEngagement engagement = 1;
+  repeated MilitaryUnit updated_units = 2;
+}
+
+message ListMissileSystemsRequest {
+  string simulation_id = 1 [(sebuf.http.query) = { name: "simulation_id" }];
+  string faction = 2 [(sebuf.http.query) = { name: "faction" }];
+}
+
+message ListMissileSystemsResponse {
+  repeated MissileSystem systems = 1;
+}
+
+message TrackMissileLaunchRequest {
+  string simulation_id = 1;
+  string system_id = 2;
+  double target_lat = 3;
+  double target_lon = 4;
+}
+
+message TrackMissileLaunchResponse {
+  MissileLaunch launch = 1;
+}
+
+message SimulateInterceptionRequest {
+  string simulation_id = 1;
+  string launch_id = 2;
+  string interceptor_system_id = 3;
+}
+
+message SimulateInterceptionResponse {
+  InterceptionAttempt attempt = 1;
+  MissileLaunch updated_launch = 2;
+}
+
+message GetSupplyStatusRequest {
+  string simulation_id = 1 [(sebuf.http.query) = { name: "simulation_id" }];
+  string faction = 2 [(sebuf.http.query) = { name: "faction" }];
+}
+
+message GetSupplyStatusResponse {
+  ResourcePool resources = 1;
+  repeated SupplyLine supply_lines = 2;
+}
+
+message ListSupplyLinesRequest {
+  string simulation_id = 1 [(sebuf.http.query) = { name: "simulation_id" }];
+  string faction = 2 [(sebuf.http.query) = { name: "faction" }];
+}
+
+message ListSupplyLinesResponse {
+  repeated SupplyLine lines = 1;
+}
+
+message GetTerritorialControlRequest {
+  string simulation_id = 1 [(sebuf.http.query) = { name: "simulation_id" }];
+}
+
+message GetTerritorialControlResponse {
+  repeated ControlledTerritory territories = 1;
+  int32 total_contested = 2;
+}
+
+message GetFrontlinePositionsRequest {
+  string simulation_id = 1 [(sebuf.http.query) = { name: "simulation_id" }];
+}
+
+message GetFrontlinePositionsResponse {
+  repeated FrontlinePosition positions = 1;
+}
+
+message AssessCapabilitiesRequest {
+  string simulation_id = 1;
+  string faction = 2;
+}
+
+message AssessCapabilitiesResponse {
+  MilitaryCapabilityAssessment assessment = 1;
+}
+
+message ProjectCasualtiesRequest {
+  string simulation_id = 1;
+  string faction = 2;
+  int32 horizon_days = 3;
+}
+
+message ProjectCasualtiesResponse {
+  CasualtyProjection projection = 1;
+}
+
+message AnalyzeOutcomesRequest {
+  string simulation_id = 1;
+}
+
+message AnalyzeOutcomesResponse {
+  repeated ConflictOutcomeScenario scenarios = 1;
+  string analysis_summary = 2;
+}

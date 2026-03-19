@@ -63,3 +63,7 @@ export * from './MilitaryCorrelationPanel';
 export * from './EscalationCorrelationPanel';
 export * from './EconomicCorrelationPanel';
 export * from './DisasterCorrelationPanel';
+export * from './WarfareSimulationPanel';
+export * from './WarfareCorrelationPanel';
+export * from './MissileTrackerPanel';
+export * from './CasualtyEstimatorPanel';

@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package worldmonitor.warfare.v1;
+
+import "worldmonitor/core/v1/geo.proto";
+
+// SupplyType represents the type of materiel in a supply line.
+enum SupplyType {
+  SUPPLY_TYPE_UNSPECIFIED = 0;
+  SUPPLY_TYPE_AMMUNITION = 1;
+  SUPPLY_TYPE_FUEL = 2;
+  SUPPLY_TYPE_FOOD = 3;
+  SUPPLY_TYPE_PERSONNEL = 4;
+  SUPPLY_TYPE_EQUIPMENT = 5;
+  SUPPLY_TYPE_MEDICAL = 6;
+}
+
+// SupplyLineStatus represents the operational state of a supply line.
+enum SupplyLineStatus {
+  SUPPLY_LINE_STATUS_UNSPECIFIED = 0;
+  SUPPLY_LINE_STATUS_OPERATIONAL = 1;
+  SUPPLY_LINE_STATUS_DEGRADED = 2;
+  SUPPLY_LINE_STATUS_DISRUPTED = 3;
+  SUPPLY_LINE_STATUS_SEVERED = 4;
+}
+
+// SupplyLine represents a logistics corridor between positions.
+message SupplyLine {
+  // Unique supply line identifier.
+  string line_id = 1;
+  // Faction operating this supply line.
+  string faction = 2;
+  // Origin point.
+  worldmonitor.core.v1.GeoCoordinates origin = 3;
+  // Destination point.
+  worldmonitor.core.v1.GeoCoordinates destination = 4;
+  // Route waypoints.
+  repeated worldmonitor.core.v1.GeoCoordinates waypoints = 5;
+  // Primary supply type carried.
+  SupplyType supply_type = 6;
+  // Throughput rate in tons per day.
+  double throughput_tons_per_day = 7;
+  // Vulnerability rating (0-100, higher = more vulnerable).
+  int32 vulnerability = 8;
+  // Current operational status.
+  SupplyLineStatus status = 9;
+  // Total length in km.
+  double length_km = 10;
+  // Number of interdiction attempts.
+  int32 interdiction_count = 11;
+  // Last disruption timestamp, as Unix epoch milliseconds.
+  int64 last_disrupted_at = 12;
+}
+
+// ResourcePool represents the total resource stockpile for a faction.
+message ResourcePool {
+  // Faction identifier.
+  string faction = 1;
+  // Total ammunition (tons).
+  double ammunition_tons = 2;
+  // Total fuel (tons).
+  double fuel_tons = 3;
+  // Total food rations (days of supply for total personnel).
+  double food_days = 4;
+  // Total available manpower reserves.
+  int32 manpower_reserves = 5;
+  // Equipment in reserve (not deployed).
+  int32 equipment_reserves = 6;
+  // Daily ammunition consumption rate (tons/day).
+  double ammo_consumption_rate = 7;
+  // Daily fuel consumption rate (tons/day).
+  double fuel_consumption_rate = 8;
+  // Estimated days until critical shortage.
+  double days_until_critical = 9;
+  // Overall logistics health (0-100).
+  int32 logistics_health = 10;
+}

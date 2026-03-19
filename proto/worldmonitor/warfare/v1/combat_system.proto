@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package worldmonitor.warfare.v1;
+
+import "worldmonitor/core/v1/geo.proto";
+
+// CombatOutcome represents the result of an engagement.
+enum CombatOutcome {
+  COMBAT_OUTCOME_UNSPECIFIED = 0;
+  COMBAT_OUTCOME_ATTACKER_VICTORY = 1;
+  COMBAT_OUTCOME_DEFENDER_VICTORY = 2;
+  COMBAT_OUTCOME_STALEMATE = 3;
+  COMBAT_OUTCOME_MUTUAL_WITHDRAWAL = 4;
+}
+
+// TerrainType affects combat modifiers.
+enum TerrainType {
+  TERRAIN_TYPE_UNSPECIFIED = 0;
+  TERRAIN_TYPE_OPEN = 1;
+  TERRAIN_TYPE_URBAN = 2;
+  TERRAIN_TYPE_FOREST = 3;
+  TERRAIN_TYPE_MOUNTAIN = 4;
+  TERRAIN_TYPE_DESERT = 5;
+  TERRAIN_TYPE_RIVER_CROSSING = 6;
+  TERRAIN_TYPE_COASTAL = 7;
+  TERRAIN_TYPE_ARCTIC = 8;
+}
+
+// CombatEngagement represents a resolved battle between forces.
+message CombatEngagement {
+  // Unique engagement identifier.
+  string engagement_id = 1;
+  // Simulation turn when engagement occurred.
+  int32 turn_number = 2;
+  // Location of the engagement.
+  worldmonitor.core.v1.GeoCoordinates location = 3;
+  // Attacker faction.
+  string attacker_faction = 4;
+  // Defender faction.
+  string defender_faction = 5;
+  // Attacker unit IDs involved.
+  repeated string attacker_unit_ids = 6;
+  // Defender unit IDs involved.
+  repeated string defender_unit_ids = 7;
+  // Duration of engagement in hours.
+  double duration_hours = 8;
+  // Terrain at engagement location.
+  TerrainType terrain = 9;
+  // Attacker combat power before engagement.
+  double attacker_power = 10;
+  // Defender combat power before engagement.
+  double defender_power = 11;
+  // Terrain modifier applied.
+  double terrain_modifier = 12;
+  // Weather modifier applied.
+  double weather_modifier = 13;
+  // Surprise factor (1.0 = none, >1.0 = attacker surprise, <1.0 = defender surprise).
+  double surprise_factor = 14;
+  // Engagement resolution.
+  CombatOutcome outcome = 15;
+  // Attacker casualties (personnel).
+  int32 attacker_casualties = 16;
+  // Defender casualties (personnel).
+  int32 defender_casualties = 17;
+  // Attacker equipment lost.
+  int32 attacker_equipment_lost = 18;
+  // Defender equipment lost.
+  int32 defender_equipment_lost = 19;
+  // Civilian casualties estimated.
+  int32 civilian_casualties = 20;
+  // Infrastructure damage (0-100).
+  int32 infrastructure_damage = 21;
+  // Timestamp of engagement resolution, as Unix epoch milliseconds.
+  int64 resolved_at = 22;
+}
+
+// CasualtyEstimate provides cumulative or projected loss figures.
+message CasualtyEstimate {
+  // Faction identifier.
+  string faction = 1;
+  // Total military killed.
+  int32 military_killed = 2;
+  // Total military wounded.
+  int32 military_wounded = 3;
+  // Total military missing or captured.
+  int32 military_missing = 4;
+  // Estimated civilian casualties.
+  int32 civilian_casualties = 5;
+  // Equipment destroyed.
+  int32 equipment_destroyed = 6;
+  // Confidence level of estimate (0-100).
+  int32 confidence = 7;
+  // Estimation methodology.
+  string methodology = 8;
+}

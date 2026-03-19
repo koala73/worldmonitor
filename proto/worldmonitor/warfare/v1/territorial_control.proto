@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package worldmonitor.warfare.v1;
+
+import "worldmonitor/core/v1/geo.proto";
+
+// TerritoryTrend represents how territorial control is changing.
+enum TerritoryTrend {
+  TERRITORY_TREND_UNSPECIFIED = 0;
+  TERRITORY_TREND_EXPANDING = 1;
+  TERRITORY_TREND_STABLE = 2;
+  TERRITORY_TREND_CONTRACTING = 3;
+  TERRITORY_TREND_CONTESTED = 4;
+}
+
+// ControlledTerritory represents an area under faction control.
+message ControlledTerritory {
+  // Unique territory identifier.
+  string territory_id = 1;
+  // Controlling faction.
+  string faction = 2;
+  // Polygon boundary as coordinate pairs (GeoJSON-style ring).
+  repeated worldmonitor.core.v1.GeoCoordinates polygon = 3;
+  // Centroid for labeling.
+  worldmonitor.core.v1.GeoCoordinates centroid = 4;
+  // Population under control.
+  int64 population = 5;
+  // Whether territory is actively contested.
+  bool contested = 6;
+  // Strategic value index (0-100).
+  int32 strategic_value = 7;
+  // Control trend.
+  TerritoryTrend trend = 8;
+  // Number of military units stationed in territory.
+  int32 garrison_count = 9;
+  // Area in square kilometers.
+  double area_sq_km = 10;
+  // Recent battle count in this territory.
+  int32 recent_battles = 11;
+}
+
+// FrontlinePosition represents a segment of the front between opposing forces.
+message FrontlinePosition {
+  // Unique position identifier.
+  string position_id = 1;
+  // Ordered coordinates defining the frontline segment.
+  repeated worldmonitor.core.v1.GeoCoordinates line = 2;
+  // Faction on the north/west side.
+  string faction_a = 3;
+  // Faction on the south/east side.
+  string faction_b = 4;
+  // Fortification level (0-100).
+  int32 fortification = 5;
+  // Estimated stability (0-100, low = likely to shift).
+  int32 stability = 6;
+  // Pressure direction: "a_to_b", "b_to_a", "neutral".
+  string pressure_direction = 7;
+}

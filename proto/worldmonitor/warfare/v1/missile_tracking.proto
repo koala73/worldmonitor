@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package worldmonitor.warfare.v1;
+
+import "worldmonitor/core/v1/geo.proto";
+
+// MissileType represents the classification of a missile system.
+enum MissileType {
+  MISSILE_TYPE_UNSPECIFIED = 0;
+  MISSILE_TYPE_BALLISTIC_SHORT = 1;
+  MISSILE_TYPE_BALLISTIC_MEDIUM = 2;
+  MISSILE_TYPE_BALLISTIC_INTERCONTINENTAL = 3;
+  MISSILE_TYPE_CRUISE = 4;
+  MISSILE_TYPE_HYPERSONIC = 5;
+  MISSILE_TYPE_ANTI_SHIP = 6;
+  MISSILE_TYPE_ANTI_AIRCRAFT = 7;
+  MISSILE_TYPE_ANTI_TANK = 8;
+  MISSILE_TYPE_LOITERING_MUNITION = 9;
+}
+
+// MissileStatus represents the current state of a launched missile.
+enum MissileStatus {
+  MISSILE_STATUS_UNSPECIFIED = 0;
+  MISSILE_STATUS_LAUNCHED = 1;
+  MISSILE_STATUS_IN_FLIGHT = 2;
+  MISSILE_STATUS_INTERCEPTED = 3;
+  MISSILE_STATUS_IMPACTED = 4;
+  MISSILE_STATUS_FAILED = 5;
+}
+
+// InterceptorType represents the type of air defense system used.
+enum InterceptorType {
+  INTERCEPTOR_TYPE_UNSPECIFIED = 0;
+  INTERCEPTOR_TYPE_PATRIOT = 1;
+  INTERCEPTOR_TYPE_THAAD = 2;
+  INTERCEPTOR_TYPE_IRON_DOME = 3;
+  INTERCEPTOR_TYPE_S300 = 4;
+  INTERCEPTOR_TYPE_S400 = 5;
+  INTERCEPTOR_TYPE_DAVIDS_SLING = 6;
+  INTERCEPTOR_TYPE_ARROW = 7;
+  INTERCEPTOR_TYPE_NASAMS = 8;
+  INTERCEPTOR_TYPE_IRIS_T = 9;
+  INTERCEPTOR_TYPE_GEPARD = 10;
+  INTERCEPTOR_TYPE_CRAM = 11;
+  INTERCEPTOR_TYPE_OTHER = 12;
+}
+
+// MissileSystem represents a deployed weapons platform capable of missile launch.
+message MissileSystem {
+  // Unique system identifier.
+  string system_id = 1;
+  // System name/designation (e.g., "Iskander-M", "Patriot PAC-3").
+  string designation = 2;
+  // Missile type capability.
+  MissileType missile_type = 3;
+  // Operating country (ISO 3166-1 alpha-2).
+  string operator_country = 4;
+  // Operating faction identifier.
+  string faction = 5;
+  // Deployed location.
+  worldmonitor.core.v1.GeoCoordinates location = 6;
+  // Maximum operational range in km.
+  double range_km = 7;
+  // Current missile count available.
+  int32 ammo_remaining = 8;
+  // Maximum missile capacity.
+  int32 ammo_capacity = 9;
+  // Whether system is operational.
+  bool operational = 10;
+  // Last launch time, as Unix epoch milliseconds.
+  int64 last_launch_at = 11;
+}
+
+// MissileLaunch represents a single missile launch event.
+message MissileLaunch {
+  // Unique launch event identifier.
+  string launch_id = 1;
+  // Missile system that launched.
+  string system_id = 2;
+  // Missile name/designation.
+  string missile_name = 3;
+  // Type of missile launched.
+  MissileType missile_type = 4;
+  // Launching faction.
+  string launcher_faction = 5;
+  // Launch location.
+  worldmonitor.core.v1.GeoCoordinates launch_location = 6;
+  // Intended target location.
+  worldmonitor.core.v1.GeoCoordinates target_location = 7;
+  // Actual impact location (if impacted).
+  worldmonitor.core.v1.GeoCoordinates impact_location = 8;
+  // Trajectory waypoints for visualization.
+  repeated TrajectoryPoint trajectory = 9;
+  // Current status.
+  MissileStatus status = 10;
+  // Time of flight in seconds.
+  double time_of_flight_seconds = 11;
+  // Estimated payload in kg.
+  double payload_kg = 12;
+  // Apogee altitude in meters (for ballistic missiles).
+  double apogee_meters = 13;
+  // Circular error probable in meters.
+  double cep_meters = 14;
+  // Launch timestamp, as Unix epoch milliseconds.
+  int64 launched_at = 15;
+  // Impact/interception timestamp, as Unix epoch milliseconds.
+  int64 resolved_at = 16;
+}
+
+// TrajectoryPoint represents a single point along a missile's flight path.
+message TrajectoryPoint {
+  // Position.
+  worldmonitor.core.v1.GeoCoordinates location = 1;
+  // Altitude in meters.
+  double altitude_meters = 2;
+  // Speed in m/s.
+  double speed_ms = 3;
+  // Time offset from launch in seconds.
+  double time_offset_seconds = 4;
+}
+
+// InterceptionAttempt represents an air defense engagement against a missile.
+message InterceptionAttempt {
+  // Unique interception identifier.
+  string interception_id = 1;
+  // The missile launch being intercepted.
+  string launch_id = 2;
+  // Interceptor system used.
+  InterceptorType interceptor_type = 3;
+  // Interceptor system ID.
+  string interceptor_system_id = 4;
+  // Defending faction.
+  string defender_faction = 5;
+  // Engagement location.
+  worldmonitor.core.v1.GeoCoordinates engagement_location = 6;
+  // Distance of engagement in km.
+  double engagement_distance_km = 7;
+  // Whether interception was successful.
+  bool success = 8;
+  // Engagement duration in seconds.
+  double duration_seconds = 9;
+  // Interceptors expended.
+  int32 interceptors_used = 10;
+  // Timestamp, as Unix epoch milliseconds.
+  int64 attempted_at = 11;
+}

@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package worldmonitor.warfare.v1;
+
+// CapabilityTrend represents how a faction's military capability is changing.
+enum CapabilityTrend {
+  CAPABILITY_TREND_UNSPECIFIED = 0;
+  CAPABILITY_TREND_IMPROVING = 1;
+  CAPABILITY_TREND_STABLE = 2;
+  CAPABILITY_TREND_DEGRADING = 3;
+  CAPABILITY_TREND_COLLAPSING = 4;
+}
+
+// MilitaryCapabilityAssessment evaluates a faction's overall fighting capability.
+message MilitaryCapabilityAssessment {
+  // Assessed faction.
+  string faction = 1;
+  // Assessment timestamp, as Unix epoch milliseconds.
+  int64 assessed_at = 2;
+  // Total active units.
+  int32 unit_count = 3;
+  // Total personnel strength.
+  int32 personnel_strength = 4;
+  // Total major equipment.
+  int32 equipment_count = 5;
+  // Composite combat power index (0-100).
+  double combat_power_index = 6;
+  // Logistical sustainability rating (0-100).
+  int32 logistics_rating = 7;
+  // Leadership quality assessment (0-100).
+  int32 leadership_rating = 8;
+  // Technological advantage index (0-100).
+  int32 tech_advantage = 9;
+  // Overall morale assessment (0-100).
+  int32 morale = 10;
+  // Air superiority rating (0-100).
+  int32 air_superiority = 11;
+  // Naval dominance rating (0-100).
+  int32 naval_dominance = 12;
+  // Capability trend.
+  CapabilityTrend trend = 13;
+  // Confidence in assessment (0-100).
+  int32 confidence = 14;
+}
+
+// CasualtyProjection provides forward-looking loss estimates.
+message CasualtyProjection {
+  // Faction identifier.
+  string faction = 1;
+  // Projection horizon in days.
+  int32 horizon_days = 2;
+  // Projected military killed (best estimate).
+  int32 projected_killed = 3;
+  // Projected military wounded.
+  int32 projected_wounded = 4;
+  // Projected civilian casualties.
+  int32 projected_civilian = 5;
+  // Low bound estimate (90% confidence).
+  int32 low_estimate = 6;
+  // High bound estimate (90% confidence).
+  int32 high_estimate = 7;
+  // Projected equipment losses.
+  int32 projected_equipment_lost = 8;
+  // Primary factors driving projection.
+  repeated string driving_factors = 9;
+  // Confidence in projection (0-100).
+  int32 confidence = 10;
+}
+
+// ConflictOutcomeScenario represents one possible resolution path.
+message ConflictOutcomeScenario {
+  // Scenario identifier.
+  string scenario_id = 1;
+  // Display label (e.g., "Attacker Swift Victory").
+  string label = 2;
+  // Description of this scenario.
+  string description = 3;
+  // Estimated probability (0-100).
+  int32 probability_percent = 4;
+  // Estimated duration to resolution in days.
+  int32 duration_days = 5;
+  // Expected total military casualties across all factions.
+  int32 expected_military_casualties = 6;
+  // Expected total civilian casualties.
+  int32 expected_civilian_casualties = 7;
+  // Territorial outcome description.
+  string territorial_outcome = 8;
+  // Conditions required for this scenario.
+  repeated string required_conditions = 9;
+  // Resolution mechanism (e.g., "military victory", "negotiated ceasefire").
+  string resolution_mechanism = 10;
+}
