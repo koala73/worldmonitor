@@ -992,8 +992,14 @@ export class DeckGLMap {
     this.lastSCZoom = -1;
   }
 
+  private getVisibleDatacenters(): AIDataCenter[] {
+    const active = AI_DATA_CENTERS.filter(dc => dc.status !== 'decommissioned');
+    if (SITE_VARIANT !== 'ireland') return active;
+    return active.filter(dc => dc.country.trim().toLowerCase() === 'ireland');
+  }
+
   private rebuildDatacenterSupercluster(): void {
-    const activeDCs = AI_DATA_CENTERS.filter(dc => dc.status !== 'decommissioned');
+    const activeDCs = this.getVisibleDatacenters();
     this.datacenterSCSource = activeDCs;
     const points = activeDCs.map((dc, i) => ({
       type: 'Feature' as const,
@@ -1946,7 +1952,7 @@ export class DeckGLMap {
 
   private createDatacentersLayer(): IconLayer {
     const highlightedDC = this.highlightedAssets.datacenter;
-    const data = AI_DATA_CENTERS.filter(dc => dc.status !== 'decommissioned');
+    const data = this.getVisibleDatacenters();
 
     // Datacenters: SQUARE icons - purple color, semi-transparent for layering
     return new IconLayer({

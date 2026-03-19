@@ -1846,7 +1846,10 @@ export class MapComponent {
     // AI Data Centers (always HTML - 🖥️ icons, filter to ≥10k GPUs)
     const MIN_GPU_COUNT = 10000;
     if (this.state.layers.datacenters) {
-      AI_DATA_CENTERS.filter(dc => (dc.chipCount || 0) >= MIN_GPU_COUNT).forEach((dc) => {
+      AI_DATA_CENTERS
+        .filter(dc => (dc.chipCount || 0) >= MIN_GPU_COUNT)
+        .filter(dc => SITE_VARIANT !== 'ireland' || dc.country.trim().toLowerCase() === 'ireland')
+        .forEach((dc) => {
         const pos = projection([dc.lon, dc.lat]);
         if (!pos) return;
 
