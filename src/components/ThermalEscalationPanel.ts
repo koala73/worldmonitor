@@ -2,6 +2,14 @@ import { Panel } from './Panel';
 import type { ThermalEscalationCluster, ThermalEscalationWatch } from '@/services/thermal-escalation';
 import { escapeHtml } from '@/utils/sanitize';
 
+// P1: allowlists prevent unescaped API values from injecting into class attribute context
+const STATUS_CLASS: Record<string, string> = {
+  spike: 'spike', persistent: 'persistent', elevated: 'elevated', normal: 'normal',
+};
+const CONFIDENCE_CLASS: Record<string, string> = {
+  high: 'high', medium: 'medium', low: 'low',
+};
+
 export class ThermalEscalationPanel extends Panel {
   private clusters: ThermalEscalationCluster[] = [];
   private fetchedAt: Date | null = null;
@@ -26,7 +34,7 @@ export class ThermalEscalationPanel extends Panel {
     this.showLoading('Loading thermal data...');
 
     this.content.addEventListener('click', (e) => {
-      const row = (e.target as HTMLElement).closest<HTMLElement>('.thermal-row');
+      const row = (e.target as HTMLElement).closest<HTMLElement>('.te-card');
       if (!row) return;
       const lat = Number(row.dataset.lat);
       const lon = Number(row.dataset.lon);
@@ -52,89 +60,100 @@ export class ThermalEscalationPanel extends Panel {
       return;
     }
 
-    const rows = this.clusters.map((c) => {
-      const age = formatAge(c.lastDetectedAt);
-      const persistence = c.persistenceHours >= 24 ? `${Math.round(c.persistenceHours / 24)}d` : `${Math.round(c.persistenceHours)}h`;
-      const frpDisplay = c.totalFrp >= 1000 ? `${(c.totalFrp / 1000).toFixed(1)}k` : c.totalFrp.toFixed(0);
-      const deltaSign = c.countDelta > 0 ? '+' : '';
-      const flags = [
-        `<span class="thermal-badge thermal-status thermal-status-${c.status}">${escapeHtml(c.status)}</span>`,
-        `<span class="thermal-badge thermal-confidence thermal-confidence-${c.confidence}">${escapeHtml(c.confidence)}</span>`,
-        c.strategicRelevance === 'high' ? '<span class="thermal-badge thermal-flag-strategic">strategic</span>' : '',
-        c.context === 'conflict_adjacent' ? '<span class="thermal-badge thermal-flag-conflict">conflict-adjacent</span>' : '',
-        c.context === 'energy_adjacent' ? '<span class="thermal-badge thermal-flag-energy">energy-adjacent</span>' : '',
-        c.context === 'industrial' ? '<span class="thermal-badge thermal-flag-industrial">industrial</span>' : '',
-      ].filter(Boolean).join('');
-      const assets = c.nearbyAssets.length > 0
-        ? `<div class="thermal-assets">${c.nearbyAssets.slice(0, 3).map(a => escapeHtml(a)).join(' · ')}</div>`
-        : '';
-      return `
-        <tr class="thermal-row" data-lat="${c.lat}" data-lon="${c.lon}">
-          <td class="thermal-location">
-            <div class="thermal-location-name">${escapeHtml(c.regionLabel)}</div>
-            <div class="thermal-location-meta">${escapeHtml(c.countryName)} · ${c.observationCount} obs · ${c.uniqueSourceCount} src</div>
-            <div class="thermal-location-flags">${flags}</div>
-            ${assets}
-          </td>
-          <td class="thermal-frp">${escapeHtml(frpDisplay)} MW</td>
-          <td class="thermal-delta">${escapeHtml(`${deltaSign}${Math.round(c.countDelta)}`)} · z${c.zScore.toFixed(1)}</td>
-          <td class="thermal-persistence">${escapeHtml(persistence)}</td>
-          <td class="thermal-observed">${escapeHtml(age)}</td>
-        </tr>
-      `;
-    }).join('');
-
-    const summary = `
-      <div class="thermal-summary">
-        <div class="thermal-summary-card">
-          <span class="thermal-summary-label">Clusters</span>
-          <span class="thermal-summary-value">${this.summary.clusterCount}</span>
-        </div>
-        <div class="thermal-summary-card thermal-summary-card-elevated">
-          <span class="thermal-summary-label">Elevated</span>
-          <span class="thermal-summary-value">${this.summary.elevatedCount}</span>
-        </div>
-        <div class="thermal-summary-card thermal-summary-card-spike">
-          <span class="thermal-summary-label">Spikes</span>
-          <span class="thermal-summary-value">${this.summary.spikeCount}</span>
-        </div>
-        <div class="thermal-summary-card thermal-summary-card-persistent">
-          <span class="thermal-summary-label">Persistent</span>
-          <span class="thermal-summary-value">${this.summary.persistentCount}</span>
-        </div>
-        <div class="thermal-summary-card thermal-summary-card-conflict">
-          <span class="thermal-summary-label">Conflict-Adj</span>
-          <span class="thermal-summary-value">${this.summary.conflictAdjacentCount}</span>
-        </div>
-        <div class="thermal-summary-card thermal-summary-card-strategic">
-          <span class="thermal-summary-label">High Relevance</span>
-          <span class="thermal-summary-value">${this.summary.highRelevanceCount}</span>
-        </div>
-      </div>
-    `;
-
     const footer = this.fetchedAt && this.fetchedAt.getTime() > 0
       ? `Updated ${this.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       : '';
 
     this.setContent(`
-      <div class="thermal-panel-content">
-        ${summary}
-        <table class="thermal-table">
-          <thead>
-            <tr>
-              <th>Cluster</th>
-              <th>FRP</th>
-              <th>Delta</th>
-              <th>Duration</th>
-              <th>Last Seen</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-        <div class="thermal-footer">${escapeHtml(footer)}</div>
+      <div class="te-panel">
+        ${this.renderSummary()}
+        <div class="te-list">
+          ${this.clusters.map(c => this.renderCard(c)).join('')}
+        </div>
+        ${footer ? `<div class="te-footer">${escapeHtml(footer)}</div>` : ''}
       </div>
     `);
+  }
+
+  private renderSummary(): string {
+    const { clusterCount, elevatedCount, spikeCount, persistentCount, conflictAdjacentCount, highRelevanceCount } = this.summary;
+    return `
+      <div class="te-summary">
+        <div class="te-stat">
+          <span class="te-stat-val">${clusterCount}</span>
+          <span class="te-stat-label">Total</span>
+        </div>
+        <div class="te-stat te-stat-elevated">
+          <span class="te-stat-val">${elevatedCount}</span>
+          <span class="te-stat-label">Elevated</span>
+        </div>
+        <div class="te-stat te-stat-spike">
+          <span class="te-stat-val">${spikeCount}</span>
+          <span class="te-stat-label">Spikes</span>
+        </div>
+        <div class="te-stat te-stat-persistent">
+          <span class="te-stat-val">${persistentCount}</span>
+          <span class="te-stat-label">Persist</span>
+        </div>
+        <div class="te-stat te-stat-conflict">
+          <span class="te-stat-val">${conflictAdjacentCount}</span>
+          <span class="te-stat-label">Conflict</span>
+        </div>
+        <div class="te-stat te-stat-strategic">
+          <span class="te-stat-val">${highRelevanceCount}</span>
+          <span class="te-stat-label">Strategic</span>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderCard(c: ThermalEscalationCluster): string {
+    // P1: use allowlisted class names, never raw API strings in attributes
+    const statusClass = STATUS_CLASS[c.status] ?? 'normal';
+    const confClass = CONFIDENCE_CLASS[c.confidence] ?? 'low';
+
+    const persistence = c.persistenceHours >= 24
+      ? `${Math.round(c.persistenceHours / 24)}d`
+      : `${Math.round(c.persistenceHours)}h`;
+    const frpDisplay = c.totalFrp >= 1000 ? `${(c.totalFrp / 1000).toFixed(1)}k` : c.totalFrp.toFixed(0);
+    const deltaSign = c.countDelta > 0 ? '+' : '';
+    const deltaClass = c.countDelta > 0 ? 'pos' : c.countDelta < 0 ? 'neg' : '';
+
+    // P2: confidence badge reinstated
+    const badges = [
+      `<span class="te-badge te-badge-${statusClass}">${escapeHtml(c.status)}</span>`,
+      `<span class="te-badge te-badge-conf-${confClass}">${escapeHtml(c.confidence)}</span>`,
+      c.strategicRelevance === 'high' ? '<span class="te-badge te-badge-strategic">strategic</span>' : '',
+      c.context === 'conflict_adjacent' ? '<span class="te-badge te-badge-conflict">conflict-adj</span>' : '',
+      c.context === 'energy_adjacent' ? '<span class="te-badge te-badge-energy">energy-adj</span>' : '',
+      c.context === 'industrial' ? '<span class="te-badge te-badge-industrial">industrial</span>' : '',
+    ].filter(Boolean).join('');
+
+    // P2: nearbyAssets reinstated (up to 3)
+    const assets = c.nearbyAssets.length > 0
+      ? `<div class="te-assets">${c.nearbyAssets.slice(0, 3).map(a => escapeHtml(a)).join(' · ')}</div>`
+      : '';
+
+    // P2: lastDetectedAt reinstated
+    const age = formatAge(c.lastDetectedAt);
+
+    return `
+      <div class="te-card te-card-${statusClass}" data-lat="${c.lat}" data-lon="${c.lon}">
+        <div class="te-card-accent"></div>
+        <div class="te-card-body">
+          <div class="te-region">${escapeHtml(c.regionLabel)}</div>
+          <div class="te-meta">${escapeHtml(c.countryName)} · ${c.observationCount} obs · ${c.uniqueSourceCount} src</div>
+          <div class="te-badges">${badges}</div>
+          ${assets}
+        </div>
+        <div class="te-metrics">
+          <div class="te-frp">${escapeHtml(frpDisplay)} <span class="te-frp-unit">MW</span></div>
+          <div class="te-delta ${deltaClass}">${escapeHtml(`${deltaSign}${Math.round(c.countDelta)}`)} · z${c.zScore.toFixed(1)}</div>
+          <div class="te-persist">${escapeHtml(persistence)}</div>
+          <div class="te-last">${escapeHtml(age)}</div>
+        </div>
+      </div>
+    `;
   }
 }
 

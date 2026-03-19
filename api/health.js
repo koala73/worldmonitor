@@ -97,7 +97,7 @@ const SEED_META = {
   // RPC/warm-ping keys — seed-meta written by relay loops or handlers
   // serviceStatuses: moved to ON_DEMAND — RPC-populated, no dedicated seed, goes stale when no users visit
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
-  macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 60 },
+  macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 20 },
   bisPolicy:        { key: 'seed-meta:economic:bis:policy',       maxStaleMin: 10080 },
   bisExchange:      { key: 'seed-meta:economic:bis:eer',          maxStaleMin: 10080 },
   bisCredit:        { key: 'seed-meta:economic:bis:credit',       maxStaleMin: 10080 },
@@ -116,7 +116,7 @@ const SEED_META = {
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 30 },
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
-  gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 150 }, // 2h cron + 30min grace; CACHE_TTL is 24h so merge fallback always survives
+  gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 420 }, // 6h cron + 1h grace; CACHE_TTL is 24h so per-topic merge always has a prior snapshot
   forecasts:        { key: 'seed-meta:forecast:predictions',       maxStaleMin: 90 },
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
   techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },

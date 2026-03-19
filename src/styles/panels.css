@@ -2144,3 +2144,245 @@
 .deduction-result h3 { margin-top: 12px; margin-bottom: 4px; font-size: 1.1em; color: var(--text-bright, #fff); }
 .deduction-result ul { padding-left: 20px; margin-top: 4px; }
 .deduction-result li { margin-bottom: 4px; }
+
+/* ----------------------------------------------------------
+   Thermal Escalation Panel (Option A — Dense Intel)
+   ---------------------------------------------------------- */
+.te-panel { font-size: 12px; }
+
+/* Summary strip */
+.te-summary {
+  display: flex;
+  gap: 1px;
+  background: var(--border-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.te-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px;
+  background: var(--surface);
+  gap: 1px;
+}
+
+/* P3: no hover — stats are display-only, no click handler */
+
+.te-stat-val {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.te-stat-label {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.te-stat-spike .te-stat-val { color: var(--semantic-critical); }
+.te-stat-persistent .te-stat-val { color: var(--semantic-high); }
+.te-stat-elevated .te-stat-val { color: var(--semantic-elevated); }
+.te-stat-conflict .te-stat-val { color: color-mix(in srgb, var(--semantic-critical) 75%, var(--text-dim)); }
+.te-stat-strategic .te-stat-val { color: color-mix(in srgb, var(--semantic-elevated) 75%, var(--text-dim)); }
+
+/* Card list */
+.te-list { display: flex; flex-direction: column; }
+
+.te-card {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.te-card:hover { background: var(--surface-hover); }
+.te-card:last-child { border-bottom: none; }
+
+/* Left accent bar — color set per status via modifier */
+.te-card-accent {
+  width: 3px;
+  flex-shrink: 0;
+  background: var(--border-strong);
+}
+
+.te-card-spike .te-card-accent { background: var(--semantic-critical); }
+.te-card-persistent .te-card-accent { background: var(--semantic-high); }
+.te-card-elevated .te-card-accent { background: var(--semantic-elevated); }
+.te-card-normal .te-card-accent { background: var(--semantic-normal); }
+
+.te-card-body {
+  flex: 1;
+  padding: 7px 8px;
+  min-width: 0;
+}
+
+.te-region {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.te-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.te-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.te-badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.te-badge-spike {
+  background: color-mix(in srgb, var(--semantic-critical) 18%, transparent);
+  color: var(--semantic-critical);
+  border-color: color-mix(in srgb, var(--semantic-critical) 32%, transparent);
+}
+
+.te-badge-persistent {
+  background: color-mix(in srgb, var(--semantic-high) 15%, transparent);
+  color: var(--semantic-high);
+  border-color: color-mix(in srgb, var(--semantic-high) 28%, transparent);
+}
+
+.te-badge-elevated {
+  background: color-mix(in srgb, var(--semantic-elevated) 13%, transparent);
+  color: var(--semantic-elevated);
+  border-color: color-mix(in srgb, var(--semantic-elevated) 25%, transparent);
+}
+
+.te-badge-normal {
+  background: color-mix(in srgb, var(--semantic-normal) 12%, transparent);
+  color: var(--semantic-normal);
+  border-color: color-mix(in srgb, var(--semantic-normal) 22%, transparent);
+}
+
+.te-badge-strategic {
+  background: color-mix(in srgb, var(--semantic-elevated) 10%, transparent);
+  color: color-mix(in srgb, var(--semantic-elevated) 80%, var(--text-dim));
+  border-color: color-mix(in srgb, var(--semantic-elevated) 20%, transparent);
+}
+
+.te-badge-conflict {
+  background: color-mix(in srgb, var(--semantic-critical) 9%, transparent);
+  color: color-mix(in srgb, var(--semantic-critical) 75%, var(--text-dim));
+  border-color: color-mix(in srgb, var(--semantic-critical) 18%, transparent);
+}
+
+.te-badge-energy {
+  background: color-mix(in srgb, #4488ff 10%, transparent);
+  color: #6699ff;
+  border-color: color-mix(in srgb, #4488ff 20%, transparent);
+}
+
+.te-badge-industrial {
+  background: color-mix(in srgb, var(--text-dim) 10%, transparent);
+  color: var(--text-dim);
+  border-color: color-mix(in srgb, var(--text-dim) 18%, transparent);
+}
+
+/* Right metrics column */
+.te-metrics {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  padding: 7px 10px 7px 6px;
+  flex-shrink: 0;
+}
+
+.te-frp {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.te-frp-unit { font-size: 9px; color: var(--text-muted); font-weight: 400; }
+
+.te-delta {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.te-delta.pos { color: var(--semantic-critical); font-weight: 600; }
+.te-delta.neg { color: var(--semantic-normal); font-weight: 600; }
+
+.te-persist {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 10px;
+  background: var(--border);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* P2: lastDetectedAt age reinstated */
+.te-last {
+  font-size: 9px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* P2: confidence badges reinstated */
+.te-badge-conf-high {
+  background: color-mix(in srgb, var(--semantic-normal) 12%, transparent);
+  color: var(--semantic-normal);
+  border-color: color-mix(in srgb, var(--semantic-normal) 22%, transparent);
+}
+
+.te-badge-conf-medium {
+  background: color-mix(in srgb, var(--semantic-elevated) 11%, transparent);
+  color: var(--semantic-elevated);
+  border-color: color-mix(in srgb, var(--semantic-elevated) 20%, transparent);
+}
+
+.te-badge-conf-low {
+  background: color-mix(in srgb, var(--text-dim) 9%, transparent);
+  color: var(--text-muted);
+  border-color: color-mix(in srgb, var(--text-dim) 16%, transparent);
+}
+
+/* P2: nearbyAssets reinstated */
+.te-assets {
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.te-footer {
+  padding: 5px 8px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: right;
+}

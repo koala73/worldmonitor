@@ -15,5 +15,6 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
+      - run: npm run lint:unicode
       - run: npm run lint
       - run: npm run lint:boundaries
