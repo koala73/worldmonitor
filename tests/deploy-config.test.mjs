@@ -63,7 +63,7 @@ describe('deploy/cache configuration guardrails', () => {
 });
 
 const getSecurityHeaders = () => {
-  const rule = vercelConfig.headers.find((entry) => entry.source === '/(.*)');
+  const rule = vercelConfig.headers.find((entry) => entry.source === '/((?!docs).*)');
   return rule?.headers ?? [];
 };
 

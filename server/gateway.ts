@@ -24,12 +24,13 @@ export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
 // NOTE: This map is shared across all domain bundles (~3KB). Kept centralised for
 // single-source-of-truth maintainability; the size is negligible vs handler code.
 
-type CacheTier = 'fast' | 'medium' | 'slow' | 'static' | 'daily' | 'no-store';
+type CacheTier = 'fast' | 'medium' | 'slow' | 'slow-browser' | 'static' | 'daily' | 'no-store';
 
 const TIER_HEADERS: Record<CacheTier, string> = {
   fast: 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=600',
   medium: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
   slow: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',
+  'slow-browser': 'public, max-age=300, s-maxage=900, stale-while-revalidate=60, stale-if-error=1800',
   static: 'public, s-maxage=7200, stale-while-revalidate=600, stale-if-error=14400',
   daily: 'public, s-maxage=86400, stale-while-revalidate=7200, stale-if-error=172800',
   'no-store': 'no-store',
@@ -41,6 +42,7 @@ const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
   fast: 'public, s-maxage=600, stale-while-revalidate=300, stale-if-error=1200',
   medium: 'public, s-maxage=1200, stale-while-revalidate=600, stale-if-error=1800',
   slow: 'public, s-maxage=3600, stale-while-revalidate=900, stale-if-error=7200',
+  'slow-browser': 'public, s-maxage=900, stale-while-revalidate=60, stale-if-error=1800',
   static: 'public, s-maxage=14400, stale-while-revalidate=3600, stale-if-error=28800',
   daily: 'public, s-maxage=86400, stale-while-revalidate=14400, stale-if-error=172800',
   'no-store': null,
@@ -89,6 +91,9 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/giving/v1/get-giving-summary': 'static',
   '/api/intelligence/v1/get-country-intel-brief': 'static',
   '/api/climate/v1/list-climate-anomalies': 'static',
+  '/api/sanctions/v1/list-sanctions-pressure': 'static',
+  '/api/radiation/v1/list-radiation-observations': 'slow',
+  '/api/thermal/v1/list-thermal-escalations': 'slow',
   '/api/research/v1/list-tech-events': 'static',
   '/api/military/v1/get-usni-fleet-report': 'static',
   '/api/conflict/v1/list-ucdp-events': 'static',
@@ -109,6 +114,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/supply-chain/v1/get-critical-minerals': 'daily',
   '/api/military/v1/get-aircraft-details': 'static',
   '/api/military/v1/get-wingbits-status': 'static',
+  '/api/military/v1/get-wingbits-live-flight': 'no-store',
 
   '/api/military/v1/list-military-flights': 'slow',
   '/api/market/v1/list-etf-flows': 'slow',
@@ -278,6 +284,11 @@ export function createDomainGateway(
         const cdnCache = TIER_CDN_CACHE[tier];
         if (cdnCache) mergedHeaders.set('CDN-Cache-Control', cdnCache);
         mergedHeaders.set('X-Cache-Tier', tier);
+
+        // Keep per-origin ACAO (already set from corsHeaders above) and preserve Vary: Origin.
+        // ACAO: * with no Vary would collapse all origins into one cache entry, bypassing
+        // isDisallowedOrigin() for cache hits — Vercel CDN serves s-maxage responses without
+        // re-invoking the function, so a disallowed origin could read a cached ACAO: * response.
       }
       mergedHeaders.delete('X-No-Cache');
       if (!new URL(request.url).searchParams.has('_debug')) {

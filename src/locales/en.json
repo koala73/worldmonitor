@@ -3,6 +3,67 @@
     "title": "World Monitor",
     "description": "Global Situation with AI Insights"
   },
+  "widgets": {
+    "createWithAi": "Create with AI",
+    "confirmDelete": "Remove this widget permanently?",
+    "chatTitle": "Widget Builder",
+    "modifyTitle": "Modify Widget",
+    "inputPlaceholder": "Describe your widget...",
+    "addToDashboard": "Add to Dashboard",
+    "applyChanges": "Apply Changes",
+    "send": "Send",
+    "changeAccent": "Change accent color",
+    "modifyWithAi": "Modify widget with AI",
+    "ready": "Widget ready: {{title}}",
+    "fetching": "Fetching {{target}}...",
+    "requestTimedOut": "Request timed out. Please try again.",
+    "serverError": "Server error: {{status}}",
+    "unknownError": "Unknown error",
+    "generatedWidget": "Generated widget: {{title}}",
+    "checkingConnection": "Checking widget access…",
+    "preflightConnected": "Connected to the widget agent",
+    "preflightInvalidKey": "Widget key rejected. Update wm-widget-key and reload.",
+    "preflightUnavailable": "Widget agent is temporarily unavailable.",
+    "preflightAiUnavailable": "AI backend is unavailable. Try again later.",
+    "readyToGenerate": "Ready to generate. Pick an example or describe your widget.",
+    "readyToApply": "Preview ready for {{title}}. Review it, then add it to the dashboard.",
+    "modifyHint": "Previewing the current widget. Submit a change request to revise it.",
+    "generating": "Generating…",
+    "examplesTitle": "Prompt ideas",
+    "previewTitle": "Live Preview",
+    "phaseChecking": "Checking",
+    "phaseReadyToPrompt": "Ready",
+    "phaseFetching": "Fetching",
+    "phaseComposing": "Composing",
+    "phaseComplete": "Ready",
+    "phaseError": "Error",
+    "previewCheckingHeading": "Connecting the widget builder",
+    "previewReadyHeading": "Describe the widget you want",
+    "previewFetchingHeading": "Fetching live WorldMonitor data",
+    "previewComposingHeading": "Composing the widget layout",
+    "previewErrorHeading": "The preview needs attention",
+    "previewCheckingCopy": "We are validating your widget key and backend availability before enabling generation.",
+    "previewReadyCopy": "Use a prompt example or describe the exact live view you want. The preview will update here before you save it.",
+    "previewFetchingCopy": "The agent is calling approved WorldMonitor endpoints and shaping the dataset for the widget.",
+    "previewComposingCopy": "The preview is rendering with the latest live data and dashboard styling.",
+    "previewErrorCopy": "Fix the issue, then retry. Your existing widgets are unaffected.",
+    "createInteractive": "Create Interactive Widget",
+    "proBadge": "PRO",
+    "preflightProUnavailable": "PRO widget agent unavailable. Check PRO_WIDGET_KEY on the server.",
+    "preflightInvalidProKey": "PRO key rejected. Update wm-pro-key and reload.",
+    "examples": {
+      "oilGold": "Show me today's crude oil price versus gold",
+      "cryptoMovers": "Create a widget for the top crypto movers in the last 24 hours",
+      "flightDelays": "Summarize the worst international flight delays right now",
+      "conflictHotspots": "Map the latest UCDP conflict hotspots with short labels"
+    },
+    "proExamples": {
+      "interactiveChart": "Interactive Chart.js chart comparing oil and gold prices",
+      "sortableTable": "Sortable crypto price table with search filter",
+      "animatedCounters": "Animated counters for key economic indicators",
+      "tabbedComparison": "Tabbed comparison of conflict events by region"
+    }
+  },
   "countryBrief": {
     "identifying": "Identifying country...",
     "locating": "Locating region...",
@@ -235,11 +296,12 @@
     "latam": "Latin America",
     "asia": "Asia-Pacific",
     "energy": "Energy & Resources",
+    "energyComplex": "Energy Complex",
     "gov": "Government",
     "thinktanks": "Think Tanks",
     "polymarket": "Predictions",
-    "commodities": "Commodities",
-    "economic": "Economic Indicators",
+    "commodities": "Metals & Materials",
+    "economic": "Macro Stress",
     "tradePolicy": "Trade Policy",
     "supplyChain": "Supply Chain",
     "finance": "Financial",
@@ -250,7 +312,7 @@
     "layoffs": "Layoffs Tracker",
     "monitors": "My Monitors",
     "satelliteFires": "Fires",
-    "macroSignals": "Market Radar",
+    "macroSignals": "Market Regime",
     "etfFlows": "BTC ETF Tracker",
     "stablecoins": "Stablecoins",
     "deduction": "Deduct Situation",
@@ -762,19 +824,13 @@
     },
     "economic": {
       "indicators": "Indicators",
-      "oil": "Oil",
       "gov": "Gov",
-      "noData": "No economic data available",
-      "noOilData": "Oil data not available",
-      "noOilMetrics": "No oil metrics available. Add EIA_API_KEY to enable.",
+      "centralBanks": "Central Banks",
+      "noIndicatorData": "No indicator data yet - FRED may be loading",
+      "fredKeyMissing": "FRED API key required. Add it in Settings to enable economic indicators.",
       "noSpending": "No recent government awards",
       "awards": "awards",
-      "noIndicatorData": "No indicator data yet - FRED may be loading",
-      "fredKeyMissing": "FRED API key required — add it in Settings to enable economic indicators",
-      "noOilDataRetry": "Oil data temporarily unavailable - will retry",
-      "vsPreviousWeek": "vs previous week",
       "in": "in",
-      "centralBanks": "Central Banks",
       "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
       "exchangeRate": "Exchange Rate",
@@ -784,7 +840,22 @@
       "cut": "cut",
       "hike": "hike",
       "hold": "hold",
-      "infoTooltip": "<strong>Economic Indicators</strong> Key macro data from FRED, EIA, and BIS:<ul><li><strong>Indicators</strong>: GDP, unemployment, inflation, interest rates</li><li><strong>Oil</strong>: WTI/Brent prices, inventory, and spreads</li><li><strong>Gov</strong>: Recent US government contract awards</li><li><strong>Central Banks</strong>: Policy rates and exchange rate data</li></ul>"
+      "pressure": {
+        "label": "Macro pressure",
+        "stress": "Stress",
+        "watch": "Watch",
+        "steady": "Steady",
+        "stressDetail": "Volatility and curve pressure are elevated.",
+        "watchDetail": "Cross-market conditions need closer monitoring.",
+        "steadyDetail": "Macro conditions are stable for now."
+      },
+      "infoTooltip": "<strong>Macro Stress</strong> Macro gauges, government spending, and central bank data:<ul><li><strong>Indicators</strong>: VIX, rates, yield curve, labor, inflation</li><li><strong>Gov</strong>: Recent US government contract awards</li><li><strong>Central Banks</strong>: BIS policy rates and exchange rate data</li></ul>"
+    },
+    "energyComplex": {
+      "noData": "Energy data temporarily unavailable - will retry",
+      "liveTape": "Live Tape",
+      "liveTapeSource": "Market quotes",
+      "infoTooltip": "<strong>Energy Complex</strong> Physical and tradeable energy signals in one place:<ul><li><strong>EIA metrics</strong>: WTI, Brent, US production, and inventories</li><li><strong>Live tape</strong>: Tradeable energy prices like crude and natural gas</li><li><strong>Purpose</strong>: Separate physical energy stress from broader macro and commodity panels</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "Chokepoints",
@@ -822,16 +893,29 @@
     },
     "tradePolicy": {
       "restrictions": "Restrictions",
+      "overview": "Overview",
       "tariffs": "Tariffs",
       "flows": "Trade Flows",
       "barriers": "Barriers",
       "noRestrictions": "No active trade restrictions",
+      "noOverviewData": "No tariff overview data available",
       "noTariffData": "No tariff data available",
       "noFlowData": "No trade flow data available",
       "noBarriers": "No trade barriers reported",
       "apiKeyMissing": "WTO API key required — add it in Settings",
       "upstreamUnavailable": "WTO data temporarily unavailable — showing cached data",
       "appliedRate": "Applied Rate",
+      "mfnAppliedRate": "MFN Applied Rate",
+      "baselineMfnTariff": "Baseline MFN tariff",
+      "effectiveTariffRateLabel": "Effective tariff rate",
+      "gapLabel": "Gap",
+      "gapVsMfnLabel": "Gap vs MFN",
+      "noEffectiveCoverageForCountry": "No effective-rate coverage for this country",
+      "effectiveMinusBaseline": "Effective rate minus WTO MFN baseline",
+      "wtoBaselineMeta": "WTO MFN applied rate | {{year}}",
+      "overviewNoteNoEffective": "These figures are WTO MFN baseline rates, not the current tariff burden from unilateral tariff actions.",
+      "usBaselineLabel": "US WTO MFN baseline",
+      "overviewNoteTail": "These cards show WTO baseline commitments, not the live effective tariff burden.",
       "boundRate": "Bound Rate",
       "exports": "Exports",
       "imports": "Imports",
@@ -849,7 +933,7 @@
       "colDate": "Date",
       "colMonthly": "Monthly",
       "colFytd": "FY YTD",
-      "infoTooltip": "<strong>Trade Policy</strong> WTO trade monitoring:<ul><li><strong>Restrictions</strong>: Active trade measures by country and sector</li><li><strong>Tariffs</strong>: Applied tariff rate trends by year</li><li><strong>Trade Flows</strong>: Export/import volumes with year-over-year changes</li><li><strong>Barriers</strong>: Technical barriers to trade (TBT/SPS notifications)</li><li><strong>Revenue</strong>: Monthly US customs duties revenue (US Treasury MTS data)</li></ul>"
+      "infoTooltip": "<strong>Trade Policy</strong> WTO baseline and tariff-impact monitoring:<ul><li><strong>Overview</strong>: WTO MFN baseline rates with US effective-rate context when available</li><li><strong>Tariffs</strong>: WTO MFN tariff trends vs the US effective tariff estimate</li><li><strong>Trade Flows</strong>: Export/import volumes with year-over-year changes</li><li><strong>Barriers</strong>: Technical barriers to trade (TBT/SPS notifications)</li><li><strong>Revenue</strong>: Monthly US customs duties revenue (US Treasury MTS data)</li></ul>"
     },
     "gdelt": {
       "empty": "No recent articles for this topic"
@@ -1081,6 +1165,8 @@
         "militaryBases": "Military Bases",
         "nuclearSites": "Nuclear Sites",
         "gammaIrradiators": "Gamma Irradiators",
+        "radiationSpike": "Radiation spike",
+        "radiationElevated": "Elevated radiation",
         "spaceports": "Spaceports",
         "satellites": "Orbital Surveillance",
         "pipelines": "Pipelines",
@@ -1671,7 +1757,7 @@
         "momentum": "Momentum",
         "fearGreed": "Fear & Greed"
       },
-      "infoTooltip": "<strong>Market Radar</strong> Composite signal dashboard for crypto macro positioning:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>Verdict: BUY when majority signals bullish, CASH otherwise."
+      "infoTooltip": "<strong>Market Regime</strong> Composite signal dashboard for positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li><li>Calibrated against prediction market baselines where available</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above."
@@ -1695,7 +1781,7 @@
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sector performance at a glance. Color intensity reflects the magnitude of daily change. Green = gains, Red = losses."
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Key commodity prices including gold, silver, oil, natural gas, copper, and agricultural products. Sparklines show recent price trend."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
     },
     "panel": {
       "showMethodologyInfo": "Show methodology info",
@@ -2464,6 +2550,7 @@
     "cached": "CACHED",
     "unavailable": "UNAVAILABLE",
     "close": "Close",
+    "cancel": "Cancel",
     "currentVariant": "(current)",
     "retry": "Retry",
     "refresh": "Refresh",
@@ -2505,5 +2592,29 @@
   "contextMenu": {
     "openCountryBrief": "Open Country Brief",
     "copyCoordinates": "Copy Coordinates"
+  },
+  "mcp": {
+    "connectPanel": "Connect MCP",
+    "modalTitle": "Connect MCP Server",
+    "serverUrl": "Server URL",
+    "authHeader": "Auth Header",
+    "optional": "optional",
+    "connectBtn": "Connect & List Tools",
+    "connecting": "Connecting...",
+    "foundTools": "Found {{count}} tool(s)",
+    "connectFailed": "Connection failed",
+    "selectTool": "Select a tool",
+    "toolArgs": "Arguments (JSON)",
+    "panelTitle": "Panel Title",
+    "panelTitlePlaceholder": "My MCP Panel",
+    "refreshEvery": "Refresh every",
+    "seconds": "seconds",
+    "addPanel": "Add Panel",
+    "configure": "Configure MCP",
+    "refreshNow": "Refresh now",
+    "invalidJson": "Invalid JSON",
+    "confirmDelete": "Remove this MCP panel?",
+    "quickConnect": "Quick Connect",
+    "or": "or enter a custom server"
   }
 }

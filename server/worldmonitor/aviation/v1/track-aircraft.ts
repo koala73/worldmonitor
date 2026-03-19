@@ -15,6 +15,11 @@ interface OpenSkyResponse {
     states?: unknown[][];
 }
 
+interface WingbitsRelayResponse {
+    positions?: PositionSample[];
+    source?: string;
+}
+
 function parseOpenSkyStates(states: unknown[][]): PositionSample[] {
     const now = Date.now();
     return states
@@ -68,7 +73,7 @@ async function fetchOpenSkyAnonymous(req: TrackAircraftRequest): Promise<Positio
     }
 
     const resp = await fetch(url, {
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(6_000),
         headers: { 'Accept': 'application/json', 'User-Agent': CHROME_UA },
     });
     if (!resp.ok) throw new Error(`OpenSky anonymous HTTP ${resp.status}`);
@@ -131,6 +136,25 @@ export async function trackAircraft(
                     }
                 } catch (err) {
                     console.warn(`[Aviation] Direct OpenSky anonymous failed: ${err instanceof Error ? err.message : err}`);
+                }
+
+                // Try Wingbits relay (bbox only — no global fallback)
+                if (relayBase && req.swLat != null && req.neLat != null) {
+                    try {
+                        const wbUrl = `${relayBase}/wingbits/track?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
+                        const wbResp = await fetch(wbUrl, {
+                            headers: getRelayHeaders({}),
+                            signal: AbortSignal.timeout(15_000),
+                        });
+                        if (wbResp.ok) {
+                            const wbData = await wbResp.json() as WingbitsRelayResponse;
+                            if (wbData.positions && wbData.positions.length > 0) {
+                                return { positions: wbData.positions, source: 'wingbits' };
+                            }
+                        }
+                    } catch (err) {
+                        console.warn(`[Aviation] Wingbits relay failed: ${err instanceof Error ? err.message : err}`);
+                    }
                 }
 
                 return null; // negative-cached briefly

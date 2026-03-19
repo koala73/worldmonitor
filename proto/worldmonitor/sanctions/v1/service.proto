@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.sanctions.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/sanctions/v1/list_sanctions_pressure.proto";
+
+// SanctionsService provides structured OFAC sanctions pressure data.
+service SanctionsService {
+  option (sebuf.http.service_config) = {base_path: "/api/sanctions/v1"};
+
+  // ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions.
+  rpc ListSanctionsPressure(ListSanctionsPressureRequest) returns (ListSanctionsPressureResponse) {
+    option (sebuf.http.config) = {path: "/list-sanctions-pressure", method: HTTP_METHOD_GET};
+  }
+}

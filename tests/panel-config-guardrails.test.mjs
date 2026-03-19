@@ -43,6 +43,7 @@ describe('panel-config guardrails', () => {
       /this\.ctx\.panels\['runtime-config'\]/,     // desktop-only, intentionally ungated
       /panel as unknown as/,                       // lazyPanel generic cast
       /this\.ctx\.panels\[panelKey\]\s*=/,         // FEEDS loop (guarded by DEFAULT_PANELS check)
+      /this\.ctx\.panels\[spec\.id\]\s*=/,         // custom widgets (cw- prefix, always enabled)
     ];
 
     for (let i = 0; i < lines.length; i++) {

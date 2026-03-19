@@ -4,25 +4,16 @@ import { ConvexHttpClient } from 'convex/browser';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { getClientIp, verifyTurnstile } from './_turnstile.js';
 import { jsonResponse } from './_json-response.js';
+import { createIpRateLimiter } from './_ip-rate-limit.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
 const MAX_META_LENGTH = 100;
 
-const rateLimitMap = new Map();
 const RATE_LIMIT = 5;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 
-function isRateLimited(ip) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
-    rateLimitMap.set(ip, { windowStart: now, count: 1 });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > RATE_LIMIT;
-}
+const rateLimiter = createIpRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS });
 
 async function sendConfirmationEmail(email, referralCode) {
   const referralLink = `https://worldmonitor.app/pro?ref=${referralCode}`;
@@ -193,7 +184,7 @@ export default async function handler(req) {
   }
 
   const ip = getClientIp(req);
-  if (isRateLimited(ip)) {
+  if (rateLimiter.isRateLimited(ip)) {
     return jsonResponse({ error: 'Too many requests' }, 429, cors);
   }
 
@@ -214,7 +205,7 @@ export default async function handler(req) {
   const DESKTOP_SOURCES = new Set(['desktop-settings']);
   const isDesktopSource = typeof body.source === 'string' && DESKTOP_SOURCES.has(body.source);
   if (isDesktopSource) {
-    const entry = rateLimitMap.get(ip);
+    const entry = rateLimiter.getEntry(ip);
     if (entry && entry.count > 2) {
       return jsonResponse({ error: 'Rate limit exceeded' }, 429, cors);
     }

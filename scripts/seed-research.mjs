@@ -14,7 +14,7 @@ loadEnvFile(import.meta.url);
 
 const ARXIV_TTL = 3600;
 const HN_TTL = 600;
-const TECH_EVENTS_TTL = 21600;
+const TECH_EVENTS_TTL = 28800; // 8h — outlives maxStaleMin:480 for health buffer
 const TRENDING_TTL = 3600;
 
 // ─── arXiv Papers ───

@@ -22,6 +22,8 @@ const BOOTSTRAP_CACHE_KEYS = {
   minerals:         'supply_chain:minerals:v2',
   giving:           'giving:summary:v1',
   climateAnomalies: 'climate:anomalies:v1',
+  radiationWatch: 'radiation:observations:v1',
+  thermalEscalation: 'thermal:escalation:v1',
   wildfires:        'wildfire:fires:v1',
   cyberThreats:     'cyber:threats-bootstrap:v2',
   techReadiness:    'economic:worldbank-techreadiness:v1',
@@ -49,17 +51,20 @@ const BOOTSTRAP_CACHE_KEYS = {
   forecasts:         'forecast:predictions:v2',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
   customsRevenue:    'trade:customs-revenue:v1',
+  sanctionsPressure: 'sanctions:pressure:v1',
 };
 
 const SLOW_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
   'sectors', 'etfFlows', 'wildfires', 'climateAnomalies',
+  'radiationWatch', 'thermalEscalation',
   'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
   'naturalEvents',
   'cryptoQuotes', 'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
   'techEvents',
   'securityAdvisories',
   'customsRevenue',
+  'sanctionsPressure',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints', 'chokepointTransits',
@@ -151,8 +156,17 @@ export default async function handler(req) {
   const missing = [];
   for (let i = 0; i < names.length; i++) {
     const val = cached.get(keys[i]);
-    if (val !== undefined) data[names[i]] = val;
-    else missing.push(names[i]);
+    if (val !== undefined) {
+      // Strip seed-internal metadata not intended for API clients
+      if (names[i] === 'forecasts' && val != null && 'enrichmentMeta' in val) {
+        const { enrichmentMeta: _stripped, ...rest } = val;
+        data[names[i]] = rest;
+      } else {
+        data[names[i]] = val;
+      }
+    } else {
+      missing.push(names[i]);
+    }
   }
 
   const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';

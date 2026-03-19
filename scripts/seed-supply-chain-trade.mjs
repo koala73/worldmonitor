@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey } from './_seed-utils.mjs';
+import { BUDGET_LAB_TARIFFS_URL, htmlToPlainText, toIsoDate, parseBudgetLabEffectiveTariffHtml } from './_trade-parse-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -234,6 +235,30 @@ async function wtoFetch(path, params) {
   return resp.json();
 }
 
+async function fetchBudgetLabEffectiveTariffRate() {
+  try {
+    const resp = await fetch(BUDGET_LAB_TARIFFS_URL, {
+      headers: { Accept: 'text/html', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      console.warn(`  Budget Lab tariffs: HTTP ${resp.status}`);
+      return null;
+    }
+    const html = await resp.text();
+    const parsed = parseBudgetLabEffectiveTariffHtml(html);
+    if (!parsed) {
+      console.warn('  Budget Lab tariffs: effective tariff rate not found in page content');
+      return null;
+    }
+    console.log(`  Budget Lab effective tariff: ${parsed.tariffRate.toFixed(1)}%${parsed.observationPeriod ? ` (${parsed.observationPeriod})` : ''}`);
+    return parsed;
+  } catch (e) {
+    console.warn(`  Budget Lab tariffs: ${e.message}`);
+    return null;
+  }
+}
+
 // ─── Trade Flows (WTO) — pre-seed major reporters vs World + key bilateral pairs ───
 
 const BILATERAL_PAIRS = [
@@ -407,7 +432,7 @@ async function fetchTradeRestrictions() {
       id: `${cc}-${year}-${row.IndicatorCode ?? ''}`,
       reportingCountry: WTO_MEMBER_CODES[cc] ?? String(row.ReportingEconomy ?? ''),
       affectedCountry: 'All trading partners', productSector: 'All products',
-      measureType: 'MFN Applied Tariff', description: `Average tariff rate: ${value.toFixed(1)}%`,
+      measureType: 'WTO MFN Baseline', description: `WTO MFN baseline: ${value.toFixed(1)}%`,
       status: value > 10 ? 'high' : value > 5 ? 'moderate' : 'low',
       notifiedAt: year, sourceUrl: 'https://stats.wto.org',
     };
@@ -426,6 +451,7 @@ async function fetchTradeRestrictions() {
 async function fetchTariffTrends() {
   const currentYear = new Date().getFullYear();
   const trends = {};
+  const usEffectiveTariffRate = await fetchBudgetLabEffectiveTariffRate();
 
   for (const reporter of MAJOR_REPORTERS) {
     const years = 10;
@@ -449,7 +475,12 @@ async function fetchTariffTrends() {
 
     if (datapoints.length > 0) {
       const cacheKey = `trade:tariffs:v1:${reporter}:all:${years}`;
-      trends[cacheKey] = { datapoints, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+      trends[cacheKey] = {
+        datapoints,
+        ...(reporter === '840' && usEffectiveTariffRate ? { effectiveTariffRate: usEffectiveTariffRate } : {}),
+        fetchedAt: new Date().toISOString(),
+        upstreamUnavailable: false,
+      };
     }
     await sleep(500);
   }
@@ -566,7 +597,7 @@ function validate(data) {
 runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
   validateFn: validate,
   ttlSeconds: SHIPPING_TTL,
-  sourceVersion: 'fred-wto-sse-bdi',
+  sourceVersion: 'fred-wto-sse-bdi-budgetlab',
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

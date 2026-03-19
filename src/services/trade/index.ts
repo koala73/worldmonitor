@@ -1,6 +1,6 @@
 /**
- * Trade policy intelligence service -- WTO data sources.
- * Trade restrictions, tariff trends, trade flows, and SPS/TBT barriers.
+ * Trade policy intelligence service.
+ * WTO MFN baselines, trade flows/barriers, and US customs/effective tariff context.
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
@@ -13,6 +13,7 @@ import {
   type GetCustomsRevenueResponse,
   type TradeRestriction,
   type TariffDataPoint,
+  type EffectiveTariffRate,
   type TradeFlowRecord,
   type TradeBarrier,
   type CustomsRevenueMonth,
@@ -22,7 +23,7 @@ import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
 
 // Re-export types for consumers
-export type { TradeRestriction, TariffDataPoint, TradeFlowRecord, TradeBarrier, CustomsRevenueMonth };
+export type { TradeRestriction, TariffDataPoint, EffectiveTariffRate, TradeFlowRecord, TradeBarrier, CustomsRevenueMonth };
 export type {
   GetTradeRestrictionsResponse,
   GetTariffTrendsResponse,

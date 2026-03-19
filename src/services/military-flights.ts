@@ -59,6 +59,14 @@ const breaker = createCircuitBreaker<{ flights: MilitaryFlight[]; clusters: Mili
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000, // 5 minute cooldown
   cacheTtlMs: 10 * 60 * 1000,
+  persistCache: true,
+  revivePersistedData: (data) => ({
+    ...data,
+    flights: data.flights.map((f: MilitaryFlight) => ({
+      ...f,
+      lastSeen: f.lastSeen instanceof Date ? f.lastSeen : new Date(f.lastSeen as unknown as string),
+    })),
+  }),
 });
 
 interface MilitaryFlightsResponse {

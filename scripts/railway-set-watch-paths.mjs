@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
- * Sets watchPatterns on all Railway seed services so they only redeploy
- * when their actual source files change (not on blog/frontend pushes).
+ * Sets watchPatterns and validates startCommand on all Railway seed services.
+ *
+ * All seed services use rootDirectory="scripts", so the correct startCommand
+ * is `node seed-<name>.mjs` (NOT `node scripts/seed-<name>.mjs` — that path
+ * would double the scripts/ prefix and cause MODULE_NOT_FOUND at runtime).
  *
  * Usage: node scripts/railway-set-watch-paths.mjs [--dry-run]
  *
@@ -65,21 +68,27 @@ async function main() {
 
   console.log(`Found ${services.length} seed services\n`);
 
-  // 2. Check current watch patterns
+  // 2. Check each service's watchPatterns and startCommand
   for (const svc of services) {
     const { service } = await gql(token, `
-      query ($id: String!) {
+      query ($id: String!, $envId: String!) {
         service(id: $id) {
-          serviceInstances(first: 1) {
-            edges { node { watchPatterns } }
+          serviceInstances(first: 1, environmentId: $envId) {
+            edges { node { watchPatterns startCommand } }
           }
         }
       }
-    `, { id: svc.id });
+    `, { id: svc.id, envId: ENV_ID });
 
-    const current = service.serviceInstances.edges[0]?.node?.watchPatterns || [];
+    const instance = service.serviceInstances.edges[0]?.node || {};
+    const currentPatterns = instance.watchPatterns || [];
+    const currentStartCmd = instance.startCommand || '';
 
-    // Build expected watch patterns
+    // rootDirectory="scripts" so startCommand must NOT include the scripts/ prefix
+    const expectedStartCmd = `node ${svc.name}.mjs`;
+    const startCmdOk = currentStartCmd === expectedStartCmd;
+
+    // Build expected watch patterns (relative to git repo root)
     const scriptFile = `scripts/${svc.name}.mjs`;
     const patterns = [scriptFile, 'scripts/_seed-utils.mjs', 'scripts/package.json'];
 
@@ -87,29 +96,37 @@ async function main() {
       patterns.push('scripts/shared/**', 'shared/**');
     }
 
-    // Special cases
     if (svc.name === 'seed-iran-events') {
       patterns.push('scripts/data/iran-events-latest.json');
     }
 
-    const currentStr = JSON.stringify(current.sort());
-    const expectedStr = JSON.stringify([...patterns].sort());
+    const patternsOk = JSON.stringify(currentPatterns.sort()) === JSON.stringify([...patterns].sort());
 
-    if (currentStr === expectedStr) {
+    if (patternsOk && startCmdOk) {
       console.log(`  ${svc.name}: already correct`);
       continue;
     }
 
     console.log(`  ${svc.name}:`);
-    console.log(`    current:  ${current.length ? current.join(', ') : '(none)'}`);
-    console.log(`    setting:  ${patterns.join(', ')}`);
+    if (!startCmdOk) {
+      console.log(`    startCommand current:  ${currentStartCmd || '(none)'}`);
+      console.log(`    startCommand expected: ${expectedStartCmd}`);
+    }
+    if (!patternsOk) {
+      console.log(`    watchPatterns current:  ${currentPatterns.length ? currentPatterns.join(', ') : '(none)'}`);
+      console.log(`    watchPatterns setting:  ${patterns.join(', ')}`);
+    }
 
     if (DRY_RUN) {
       console.log(`    [DRY RUN] skipped\n`);
       continue;
     }
 
-    // 3. Update via serviceInstanceUpdate
+    // Build update input with only changed fields
+    const input = {};
+    if (!patternsOk) input.watchPatterns = patterns;
+    if (!startCmdOk) input.startCommand = expectedStartCmd;
+
     await gql(token, `
       mutation ($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
         serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input)
@@ -117,7 +134,7 @@ async function main() {
     `, {
       serviceId: svc.id,
       environmentId: ENV_ID,
-      input: { watchPatterns: patterns },
+      input,
     });
 
     console.log(`    updated!\n`);

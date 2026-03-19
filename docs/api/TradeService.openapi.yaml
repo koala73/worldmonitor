@@ -334,6 +334,8 @@ components:
                 upstreamUnavailable:
                     type: boolean
                     description: True if upstream fetch failed and results may be stale/empty.
+                effectiveTariffRate:
+                    $ref: '#/components/schemas/EffectiveTariffRate'
             description: Response containing tariff trend datapoints.
         TariffDataPoint:
             type: object
@@ -363,6 +365,26 @@ components:
                     type: string
                     description: WTO indicator code used for this datapoint.
             description: Single tariff data point for a reporter-partner-product combination.
+        EffectiveTariffRate:
+            type: object
+            properties:
+                sourceName:
+                    type: string
+                    description: Source name for the effective-rate estimate.
+                sourceUrl:
+                    type: string
+                    description: Canonical source URL for the estimate/methodology.
+                observationPeriod:
+                    type: string
+                    description: Human-readable observation period (for example "December 2025").
+                updatedAt:
+                    type: string
+                    description: ISO 8601 date when the source page was last updated, if known.
+                tariffRate:
+                    type: number
+                    format: double
+                    description: Effective tariff rate (percentage).
+            description: Current effective tariff estimate for countries with coverage beyond WTO MFN baselines.
         GetTradeFlowsRequest:
             type: object
             properties:

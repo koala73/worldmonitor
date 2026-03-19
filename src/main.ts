@@ -63,6 +63,8 @@ Sentry.init({
     /hackLocationFailed is not defined/,
     /userScripts is not defined/,
     /NS_ERROR_ABORT/,
+    /NS_ERROR_OUT_OF_MEMORY/,
+    /^Key not found$/,
     /DataCloneError.*could not be cloned/,
     /cannot decode message/,
     /WKWebView was deallocated/,
@@ -237,6 +239,11 @@ Sentry.init({
     /^SyntaxError: Unexpected keyword/,
     /ucConfig is not defined/,
     /getShaderPrecisionFormat/,
+    /Cannot read properties of null \(reading 'touches'\)/,
+    /Failed to execute 'querySelectorAll' on '[^']*': ':[a-z]+\(/,
+    /args\.site\.enabledFeatures/,
+    /can't access property "\w+", FONTS\[/,
+    /^\w{1,2} is not a function\. \(In '\w{1,2}\(/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -284,6 +291,20 @@ Sentry.init({
     if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
     // Suppress YouTube IFrame widget API internal errors
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
+    // Suppress TransactionInactiveError only when no first-party frames are present
+    // (Safari kills open IDB transactions in background tabs — not actionable noise)
+    // First-party paths in storage.ts / persistent-cache.ts / vector-db.ts must still surface.
+    if (/TransactionInactiveError/.test(msg) || excType === 'TransactionInactiveError') {
+      const appFrames = frames.filter(
+        f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]'
+          && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename)
+      );
+      const hasFirstParty = appFrames.some(
+        f => /\.(ts|tsx)$/.test(f.filename ?? '') || /^src\//.test(f.filename ?? '')
+          || /\/(main|index|app)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '')
+      );
+      if (!hasFirstParty) return null;
+    }
     return event;
   },
 });

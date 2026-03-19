@@ -14,6 +14,7 @@ import {
   PredictionPanel,
   MonitorPanel,
   EconomicPanel,
+  EnergyComplexPanel,
   GdeltIntelPanel,
   LiveNewsPanel,
   LiveWebcamsPanel,
@@ -33,6 +34,7 @@ import {
   InvestmentsPanel,
   TradePolicyPanel,
   SupplyChainPanel,
+  SanctionsPressurePanel,
   GulfEconomiesPanel,
   WorldClockPanel,
   AirlineIntelPanel,
@@ -58,6 +60,14 @@ import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
 import { getSecretState } from '@/services/runtime-config';
+import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
+import { openWidgetChatModal } from '@/components/WidgetChatModal';
+import { isWidgetFeatureEnabled, isProWidgetEnabled, loadWidgets, saveWidget } from '@/services/widget-store';
+import type { CustomWidgetSpec } from '@/services/widget-store';
+import { McpDataPanel } from '@/components/McpDataPanel';
+import { openMcpConnectModal } from '@/components/McpConnectModal';
+import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
+import type { McpPanelSpec } from '@/services/mcp-store';
 
 export interface PanelLayoutCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -510,7 +520,7 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('heatmap', () => new HeatmapPanel());
     this.createPanel('markets', () => new MarketPanel());
     const stockAnalysisPanel = this.createPanel('stock-analysis', () => new StockAnalysisPanel());
-    if (stockAnalysisPanel && !getSecretState('WORLDMONITOR_API_KEY').present) {
+    if (stockAnalysisPanel && !getSecretState('WORLDMONITOR_API_KEY').present && !isProWidgetEnabled()) {
       stockAnalysisPanel.showLocked([
         'AI stock briefs with technical + news synthesis',
         'Trend scoring from MA, MACD, RSI, and volume structure',
@@ -518,7 +528,7 @@ export class PanelLayoutManager implements AppModule {
       ]);
     }
     const stockBacktestPanel = this.createPanel('stock-backtest', () => new StockBacktestPanel());
-    if (stockBacktestPanel && !getSecretState('WORLDMONITOR_API_KEY').present) {
+    if (stockBacktestPanel && !getSecretState('WORLDMONITOR_API_KEY').present && !isProWidgetEnabled()) {
       stockBacktestPanel.showLocked([
         'Historical replay of premium stock-analysis signals',
         'Win-rate, accuracy, and simulated-return metrics',
@@ -534,6 +544,7 @@ export class PanelLayoutManager implements AppModule {
     });
 
     this.createPanel('commodities', () => new CommoditiesPanel());
+    this.createPanel('energy-complex', () => new EnergyComplexPanel());
     this.createPanel('polymarket', () => new PredictionPanel());
 
     this.createNewsPanel('gov', 'panels.gov');
@@ -561,6 +572,7 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('economic', () => new EconomicPanel());
 
     this.createPanel('trade-policy', () => new TradePolicyPanel());
+    this.createPanel('sanctions-pressure', () => new SanctionsPressurePanel());
     this.createPanel('supply-chain', () => new SupplyChainPanel());
 
     this.createNewsPanel('africa', 'panels.africa');
@@ -691,13 +703,29 @@ export class PanelLayoutManager implements AppModule {
       }),
     );
 
+    this.lazyPanel('radiation-watch', () =>
+      import('@/components/RadiationWatchPanel').then(m => {
+        const p = new m.RadiationWatchPanel();
+        p.setLocationClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
+        return p;
+      }),
+    );
+
+    this.lazyPanel('thermal-escalation', () =>
+      import('@/components/ThermalEscalationPanel').then(m => {
+        const p = new m.ThermalEscalationPanel();
+        p.setLocationClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
+        return p;
+      }),
+    );
+
     const _wmKeyPresent = getSecretState('WORLDMONITOR_API_KEY').present;
     const _lockPanels = this.ctx.isDesktopApp && !_wmKeyPresent;
 
     this.lazyPanel('daily-market-brief', () =>
       import('@/components/DailyMarketBriefPanel').then(m => new m.DailyMarketBriefPanel()),
       undefined,
-      !_wmKeyPresent ? ['Pre-market watchlist priorities', 'Action plan for the session', 'Risk watch tied to current finance headlines'] : undefined,
+      (!_wmKeyPresent && !isProWidgetEnabled()) ? ['Pre-market watchlist priorities', 'Action plan for the session', 'Risk watch tied to current finance headlines'] : undefined,
     );
 
     this.lazyPanel('forecast', () =>
@@ -849,6 +877,24 @@ export class PanelLayoutManager implements AppModule {
       );
     }
 
+    if (isWidgetFeatureEnabled() || isProWidgetEnabled()) {
+      for (const spec of loadWidgets()) {
+        const panel = new CustomWidgetPanel(spec);
+        this.ctx.panels[spec.id] = panel;
+        if (!this.ctx.panelSettings[spec.id]) {
+          this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+        }
+      }
+    }
+
+    for (const spec of loadMcpPanels()) {
+      const panel = new McpDataPanel(spec);
+      this.ctx.panels[spec.id] = panel;
+      if (!this.ctx.panelSettings[spec.id]) {
+        this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+      }
+    }
+
     const defaultOrder = Object.keys(DEFAULT_PANELS).filter(k => k !== 'map');
     const activePanelKeys = Object.keys(this.ctx.panelSettings).filter(k => k !== 'map');
     const bottomSet = this.getSavedBottomSet();
@@ -944,6 +990,74 @@ export class PanelLayoutManager implements AppModule {
     });
     panelsGrid.appendChild(addPanelBlock);
 
+    if (isWidgetFeatureEnabled()) {
+      const aiBlock = document.createElement('button');
+      aiBlock.className = 'add-panel-block ai-widget-block';
+      aiBlock.setAttribute('aria-label', t('widgets.createWithAi'));
+      const aiIcon = document.createElement('span');
+      aiIcon.className = 'add-panel-block-icon';
+      aiIcon.textContent = '\u2728';
+      const aiLabel = document.createElement('span');
+      aiLabel.className = 'add-panel-block-label';
+      aiLabel.textContent = t('widgets.createWithAi');
+      aiBlock.appendChild(aiIcon);
+      aiBlock.appendChild(aiLabel);
+      aiBlock.addEventListener('click', () => {
+        openWidgetChatModal({
+          mode: 'create',
+          tier: 'basic',
+          onComplete: (spec) => this.addCustomWidget(spec),
+        });
+      });
+      panelsGrid.appendChild(aiBlock);
+    }
+
+    if (isProWidgetEnabled()) {
+      const proBlock = document.createElement('button');
+      proBlock.className = 'add-panel-block ai-widget-block ai-widget-block-pro';
+      proBlock.setAttribute('aria-label', t('widgets.createInteractive'));
+      const proIcon = document.createElement('span');
+      proIcon.className = 'add-panel-block-icon';
+      proIcon.textContent = '\u26a1';
+      const proLabel = document.createElement('span');
+      proLabel.className = 'add-panel-block-label';
+      proLabel.textContent = t('widgets.createInteractive');
+      const proBadge = document.createElement('span');
+      proBadge.className = 'widget-pro-badge';
+      proBadge.textContent = t('widgets.proBadge');
+      proBlock.appendChild(proIcon);
+      proBlock.appendChild(proLabel);
+      proBlock.appendChild(proBadge);
+      proBlock.addEventListener('click', () => {
+        openWidgetChatModal({
+          mode: 'create',
+          tier: 'pro',
+          onComplete: (spec) => this.addCustomWidget(spec),
+        });
+      });
+      panelsGrid.appendChild(proBlock);
+    }
+
+    {
+      const mcpBlock = document.createElement('button');
+      mcpBlock.className = 'add-panel-block mcp-panel-block';
+      mcpBlock.setAttribute('aria-label', t('mcp.connectPanel'));
+      const mcpIcon = document.createElement('span');
+      mcpIcon.className = 'add-panel-block-icon';
+      mcpIcon.textContent = '\u26a1';
+      const mcpLabel = document.createElement('span');
+      mcpLabel.className = 'add-panel-block-label';
+      mcpLabel.textContent = t('mcp.connectPanel');
+      mcpBlock.appendChild(mcpIcon);
+      mcpBlock.appendChild(mcpLabel);
+      mcpBlock.addEventListener('click', () => {
+        openMcpConnectModal({
+          onComplete: (spec) => this.addMcpPanel(spec),
+        });
+      });
+      panelsGrid.appendChild(mcpBlock);
+    }
+
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {
       bottomOrder.forEach(key => {
@@ -969,7 +1083,7 @@ export class PanelLayoutManager implements AppModule {
     if (import.meta.env.DEV) {
       const configured = new Set(Object.keys(DEFAULT_PANELS).filter(k => k !== 'map'));
       const created = new Set(Object.keys(this.ctx.panels));
-      const extra = [...created].filter(k => !configured.has(k) && k !== 'deduction' && k !== 'runtime-config');
+      const extra = [...created].filter(k => !configured.has(k) && k !== 'deduction' && k !== 'runtime-config' && !k.startsWith('cw-') && !k.startsWith('mcp-'));
       if (extra.length) console.warn('[PanelLayout] Panels created but not in DEFAULT_PANELS:', extra);
     }
   }
@@ -1041,6 +1155,48 @@ export class PanelLayoutManager implements AppModule {
     if (regionSelect && currentView) {
       regionSelect.value = currentView;
     }
+  }
+
+  addCustomWidget(spec: CustomWidgetSpec): void {
+    saveWidget(spec);
+    const panel = new CustomWidgetPanel(spec);
+    this.ctx.panels[spec.id] = panel;
+    this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+    saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+    const el = panel.getElement();
+    this.makeDraggable(el, spec.id);
+    const grid = document.getElementById('panelsGrid');
+    if (grid) {
+      const addBlock = grid.querySelector('.add-panel-block');
+      if (addBlock) {
+        grid.insertBefore(el, addBlock);
+      } else {
+        grid.appendChild(el);
+      }
+    }
+    this.savePanelOrder();
+    this.applyPanelSettings();
+  }
+
+  addMcpPanel(spec: McpPanelSpec): void {
+    saveMcpPanel(spec);
+    const panel = new McpDataPanel(spec);
+    this.ctx.panels[spec.id] = panel;
+    this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+    saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+    const el = panel.getElement();
+    this.makeDraggable(el, spec.id);
+    const grid = document.getElementById('panelsGrid');
+    if (grid) {
+      const addBlock = grid.querySelector('.add-panel-block');
+      if (addBlock) {
+        grid.insertBefore(el, addBlock);
+      } else {
+        grid.appendChild(el);
+      }
+    }
+    this.savePanelOrder();
+    this.applyPanelSettings();
   }
 
   private getSavedPanelOrder(): string[] {

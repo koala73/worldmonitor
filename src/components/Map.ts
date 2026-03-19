@@ -12,6 +12,7 @@ import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
+import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import {
@@ -124,6 +125,7 @@ export class MapComponent {
   private hotspots: HotspotWithBreaking[];
   private earthquakes: Earthquake[] = [];
   private weatherAlerts: WeatherAlert[] = [];
+  private radiationObservations: RadiationObservation[] = [];
   private outages: InternetOutage[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
@@ -1688,6 +1690,39 @@ export class MapComponent {
           this.popup.show({
             type: 'weather',
             data: alert,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        });
+
+        this.overlays.appendChild(div);
+      });
+    }
+
+    if (this.state.layers.radiationWatch) {
+      this.radiationObservations.forEach((observation) => {
+        const pos = projection([observation.lon, observation.lat]);
+        if (!pos) return;
+
+        const div = document.createElement('div');
+        const color = observation.severity === 'spike' ? '#ff3030' : '#ffaa00';
+        div.className = `radiation-watch-marker radiation-watch-marker-${observation.severity}`;
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+        div.style.width = '14px';
+        div.style.height = '14px';
+        div.style.borderRadius = '50%';
+        div.style.background = color;
+        div.style.border = '2px solid rgba(255,255,255,0.75)';
+        div.style.boxShadow = `0 0 10px ${color}88`;
+        div.title = `${observation.location}: ${observation.value.toFixed(1)} ${observation.unit}`;
+
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({
+            type: 'radiation',
+            data: observation,
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
           });
@@ -3844,6 +3879,11 @@ export class MapComponent {
 
   public setWeatherAlerts(alerts: WeatherAlert[]): void {
     this.weatherAlerts = alerts;
+    this.render();
+  }
+
+  public setRadiationObservations(observations: RadiationObservation[]): void {
+    this.radiationObservations = observations;
     this.render();
   }
 

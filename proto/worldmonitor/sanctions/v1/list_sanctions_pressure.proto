@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.sanctions.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/sanctions/v1/country_sanctions_pressure.proto";
+import "worldmonitor/sanctions/v1/program_sanctions_pressure.proto";
+import "worldmonitor/sanctions/v1/sanctions_entry.proto";
+
+// ListSanctionsPressureRequest retrieves recent OFAC sanctions pressure state.
+message ListSanctionsPressureRequest {
+  int32 max_items = 1 [(sebuf.http.query) = { name: "max_items" }];
+}
+
+// ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
+message ListSanctionsPressureResponse {
+  repeated SanctionsEntry entries = 1;
+  repeated CountrySanctionsPressure countries = 2;
+  repeated ProgramSanctionsPressure programs = 3;
+  int64 fetched_at = 4;
+  int64 dataset_date = 5;
+  int32 total_count = 6;
+  int32 sdn_count = 7;
+  int32 consolidated_count = 8;
+  int32 new_entry_count = 9;
+  int32 vessel_count = 10;
+  int32 aircraft_count = 11;
+}

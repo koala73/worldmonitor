@@ -74,6 +74,7 @@ describe('Legacy api/*.js endpoint allowlist', () => {
     'polymarket.js',
     'register-interest.js',
     'reverse-geocode.js',
+    'mcp-proxy.js',
     'rss-proxy.js',
     'satellites.js',
     'seed-health.js',

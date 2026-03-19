@@ -1,0 +1,239 @@
+openapi: 3.1.0
+info:
+    title: RadiationService API
+    version: 1.0.0
+paths:
+    /api/radiation/v1/list-radiation-observations:
+        get:
+            tags:
+                - RadiationService
+            summary: ListRadiationObservations
+            description: ListRadiationObservations retrieves normalized EPA RadNet and Safecast readings.
+            operationId: ListRadiationObservations
+            parameters:
+                - name: max_items
+                  in: query
+                  description: Maximum items to return (1-25). Zero uses the service default.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListRadiationObservationsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListRadiationObservationsRequest:
+            type: object
+            properties:
+                maxItems:
+                    type: integer
+                    format: int32
+                    description: Maximum items to return (1-25). Zero uses the service default.
+            description: ListRadiationObservationsRequest specifies optional result limits.
+        ListRadiationObservationsResponse:
+            type: object
+            properties:
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RadiationObservation'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Time the service synthesized the response, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                epaCount:
+                    type: integer
+                    format: int32
+                    description: Number of EPA RadNet observations included.
+                safecastCount:
+                    type: integer
+                    format: int32
+                    description: Number of Safecast observations included.
+                anomalyCount:
+                    type: integer
+                    format: int32
+                    description: Total observations classified above normal.
+                elevatedCount:
+                    type: integer
+                    format: int32
+                    description: Observations classified as elevated.
+                spikeCount:
+                    type: integer
+                    format: int32
+                    description: Observations classified as spike-level anomalies.
+                corroboratedCount:
+                    type: integer
+                    format: int32
+                    description: Observations corroborated by more than one source.
+                lowConfidenceCount:
+                    type: integer
+                    format: int32
+                    description: Observations that remain low-confidence after synthesis.
+                conflictingCount:
+                    type: integer
+                    format: int32
+                    description: Observations where contributing sources materially disagree.
+                convertedFromCpmCount:
+                    type: integer
+                    format: int32
+                    description: Observations whose normalized value was derived from CPM.
+            description: ListRadiationObservationsResponse contains normalized readings plus coverage metadata.
+        RadiationObservation:
+            type: object
+            properties:
+                id:
+                    type: string
+                    maxLength: 160
+                    minLength: 1
+                    description: Unique source-specific observation identifier.
+                source:
+                    type: string
+                    enum:
+                        - RADIATION_SOURCE_UNSPECIFIED
+                        - RADIATION_SOURCE_EPA_RADNET
+                        - RADIATION_SOURCE_SAFECAST
+                    description: RadiationSource identifies the upstream measurement network.
+                locationName:
+                    type: string
+                    description: Human-readable location label.
+                country:
+                    type: string
+                    description: Country or territory label.
+                location:
+                    $ref: '#/components/schemas/GeoCoordinates'
+                value:
+                    type: number
+                    format: double
+                    description: Dose equivalent rate normalized to nSv/h.
+                unit:
+                    type: string
+                    description: Display unit, currently always nSv/h after normalization.
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Time the observation was recorded, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                freshness:
+                    type: string
+                    enum:
+                        - RADIATION_FRESHNESS_UNSPECIFIED
+                        - RADIATION_FRESHNESS_LIVE
+                        - RADIATION_FRESHNESS_RECENT
+                        - RADIATION_FRESHNESS_HISTORICAL
+                    description: RadiationFreshness groups observations by recency.
+                baselineValue:
+                    type: number
+                    format: double
+                    description: Rolling baseline for this station in nSv/h.
+                delta:
+                    type: number
+                    format: double
+                    description: Current reading minus rolling baseline in nSv/h.
+                zScore:
+                    type: number
+                    format: double
+                    description: Standard deviation distance from the rolling baseline.
+                severity:
+                    type: string
+                    enum:
+                        - RADIATION_SEVERITY_UNSPECIFIED
+                        - RADIATION_SEVERITY_NORMAL
+                        - RADIATION_SEVERITY_ELEVATED
+                        - RADIATION_SEVERITY_SPIKE
+                    description: RadiationSeverity classifies whether a reading is behaving normally.
+                contributingSources:
+                    type: array
+                    items:
+                        type: string
+                        enum:
+                            - RADIATION_SOURCE_UNSPECIFIED
+                            - RADIATION_SOURCE_EPA_RADNET
+                            - RADIATION_SOURCE_SAFECAST
+                        description: RadiationSource identifies the upstream measurement network.
+                confidence:
+                    type: string
+                    enum:
+                        - RADIATION_CONFIDENCE_UNSPECIFIED
+                        - RADIATION_CONFIDENCE_LOW
+                        - RADIATION_CONFIDENCE_MEDIUM
+                        - RADIATION_CONFIDENCE_HIGH
+                    description: RadiationConfidence represents how strongly the reading is supported.
+                corroborated:
+                    type: boolean
+                    description: Whether a second source corroborated the observed pattern.
+                conflictingSources:
+                    type: boolean
+                    description: Whether contributing sources materially disagree.
+                convertedFromCpm:
+                    type: boolean
+                    description: True when the value was converted from CPM using a generic fallback.
+                sourceCount:
+                    type: integer
+                    format: int32
+                    description: Number of distinct contributing sources.
+            required:
+                - id
+            description: RadiationObservation represents a normalized ambient dose-rate reading.
+        GeoCoordinates:
+            type: object
+            properties:
+                latitude:
+                    type: number
+                    maximum: 90
+                    minimum: -90
+                    format: double
+                    description: Latitude in decimal degrees (-90 to 90).
+                longitude:
+                    type: number
+                    maximum: 180
+                    minimum: -180
+                    format: double
+                    description: Longitude in decimal degrees (-180 to 180).
+            description: GeoCoordinates represents a geographic location using WGS84 coordinates.

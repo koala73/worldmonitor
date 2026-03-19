@@ -24,3 +24,23 @@ export function yahooGate(): Promise<void> {
   });
   return yahooQueue;
 }
+
+/**
+ * Global Finnhub request gate.
+ * Free-tier Finnhub keys are sensitive to burst concurrency; spacing requests
+ * reduces 429 cascades that otherwise spill into Yahoo fallback.
+ */
+let finnhubLastRequest = 0;
+const FINNHUB_MIN_GAP_MS = 350;
+let finnhubQueue: Promise<void> = Promise.resolve();
+
+export function finnhubGate(): Promise<void> {
+  finnhubQueue = finnhubQueue.then(async () => {
+    const elapsed = Date.now() - finnhubLastRequest;
+    if (elapsed < FINNHUB_MIN_GAP_MS) {
+      await new Promise<void>(r => setTimeout(r, FINNHUB_MIN_GAP_MS - elapsed));
+    }
+    finnhubLastRequest = Date.now();
+  });
+  return finnhubQueue;
+}

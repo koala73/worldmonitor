@@ -303,7 +303,8 @@ export class UnifiedSettings {
     const panelSettings = this.draftPanelSettings;
     const variant = SITE_VARIANT || 'full';
     let entries = Object.entries(panelSettings)
-      .filter(([key]) => key !== 'runtime-config' || this.config.isDesktopApp);
+      .filter(([key]) => key !== 'runtime-config' || this.config.isDesktopApp)
+      .filter(([key]) => !key.startsWith('cw-'));
 
     if (this.activePanelCategory !== 'all') {
       const catDef = PANEL_CATEGORY_MAP[this.activePanelCategory];

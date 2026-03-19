@@ -1,20 +1,21 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, sleep, verifySeedKey } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'intelligence:gdelt-intel:v1';
-const CACHE_TTL = 7200; // 2h — aligns with health.js maxStaleMin:120
+const CACHE_TTL = 86400; // 24h — intentionally much longer than the 2h cron so verifySeedKey always has a prior snapshot to merge from when GDELT 429s all topics
 const GDELT_DOC_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
-const INTER_TOPIC_DELAY_MS = 20_000; // 20s between topics to avoid 429
+const INTER_TOPIC_DELAY_MS = 20_000; // 20s between topics on success
+const POST_EXHAUST_DELAY_MS = 120_000; // 2min extra cooldown after a topic exhausts all retries
 
 const INTEL_TOPICS = [
   { id: 'military',     query: '(military exercise OR troop deployment OR airstrike OR "naval exercise") sourcelang:eng' },
   { id: 'cyber',        query: '(cyberattack OR ransomware OR hacking OR "data breach" OR APT) sourcelang:eng' },
   { id: 'nuclear',      query: '(nuclear OR uranium enrichment OR IAEA OR "nuclear weapon" OR plutonium) sourcelang:eng' },
   { id: 'sanctions',    query: '(sanctions OR embargo OR "trade war" OR tariff OR "economic pressure") sourcelang:eng' },
-  { id: 'intelligence', query: '(espionage OR spy OR intelligence agency OR covert OR surveillance) sourcelang:eng' },
+  { id: 'intelligence', query: '(espionage OR spy OR "intelligence agency" OR covert OR surveillance) sourcelang:eng' },
   { id: 'maritime',     query: '(naval blockade OR piracy OR "strait of hormuz" OR "south china sea" OR warship) sourcelang:eng' },
 ];
 
@@ -74,13 +75,13 @@ async function fetchWithRetry(topic, maxRetries = 3) {
     } catch (err) {
       const is429 = err.message?.includes('429');
       if (!is429 || attempt === maxRetries) {
-        // Non-429 error or exhausted retries: return empty rather than killing the whole seed
         console.warn(`    ${topic.id}: giving up after ${attempt + 1} attempts (${err.message})`);
-        return { id: topic.id, articles: [], fetchedAt: new Date().toISOString() };
+        // exhausted:true only when 429 was the reason — post-exhaust cooldown is only relevant for rate-limit windows
+        return { id: topic.id, articles: [], fetchedAt: new Date().toISOString(), exhausted: is429 };
       }
-      // Start backoff at 20s (GDELT needs longer cooldown than 10s)
-      const backoff = 20_000 + attempt * 15_000;
-      console.log(`    429 rate-limited, waiting ${backoff / 1000}s...`);
+      // Exponential backoff: 60s, 120s, 240s — GDELT rate limit windows exceed 50s
+      const backoff = 60_000 * Math.pow(2, attempt);
+      console.log(`    429 rate-limited, waiting ${backoff / 1000}s... (attempt ${attempt + 1}/${maxRetries + 1})`);
       await sleep(backoff);
     }
   }
@@ -94,14 +95,41 @@ async function fetchAllTopics() {
     const result = await fetchWithRetry(INTEL_TOPICS[i]);
     console.log(`    ${result.articles.length} articles`);
     topics.push(result);
+    // After a topic exhausts all retries, give GDELT a longer cooldown before hitting
+    // it again with the next topic — the rate limit window for popular queries exceeds 50s
+    if (result.exhausted && i < INTEL_TOPICS.length - 1) {
+      console.log(`    Rate-limit cooldown: waiting ${POST_EXHAUST_DELAY_MS / 1000}s before next topic...`);
+      await sleep(POST_EXHAUST_DELAY_MS);
+    }
   }
+
+  // For topics that returned 0 articles (rate-limited), preserve the previous
+  // snapshot's articles rather than publishing empty results over good cached data.
+  const emptyTopics = topics.filter((t) => t.articles.length === 0);
+  if (emptyTopics.length > 0) {
+    const previous = await verifySeedKey(CANONICAL_KEY).catch(() => null);
+    if (previous && Array.isArray(previous.topics)) {
+      const prevMap = new Map(previous.topics.map((t) => [t.id, t]));
+      for (const topic of topics) {
+        if (topic.articles.length === 0 && prevMap.has(topic.id)) {
+          const prev = prevMap.get(topic.id);
+          if (prev.articles?.length > 0) {
+            console.log(`    ${topic.id}: rate-limited — using ${prev.articles.length} cached articles from previous snapshot`);
+            topic.articles = prev.articles;
+            topic.fetchedAt = prev.fetchedAt;
+          }
+        }
+      }
+    }
+  }
+
   return { topics, fetchedAt: new Date().toISOString() };
 }
 
 function validate(data) {
   if (!Array.isArray(data?.topics) || data.topics.length === 0) return false;
   const populated = data.topics.filter((t) => Array.isArray(t.articles) && t.articles.length > 0);
-  return populated.length >= 3; // at least 3 of 6 topics must have articles
+  return populated.length >= 3; // at least 3 of 6 topics must have articles; partial 429s handled by per-topic merge above
 }
 
 runSeed('intelligence', 'gdelt-intel', CANONICAL_KEY, fetchAllTopics, {

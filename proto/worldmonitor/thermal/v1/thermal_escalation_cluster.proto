@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package worldmonitor.thermal.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+message ThermalEscalationCluster {
+  string id = 1;
+  worldmonitor.core.v1.GeoCoordinates centroid = 2;
+  string country_code = 3;
+  string country_name = 4;
+  string region_label = 5;
+  string first_detected_at = 6;
+  string last_detected_at = 7;
+  int32 observation_count = 8;
+  int32 unique_source_count = 9;
+  double max_brightness = 10;
+  double avg_brightness = 11;
+  double max_frp = 12;
+  double total_frp = 13;
+  double night_detection_share = 14;
+  double baseline_expected_count = 15;
+  double baseline_expected_frp = 16;
+  double count_delta = 17;
+  double frp_delta = 18;
+  double z_score = 19;
+  double persistence_hours = 20;
+  ThermalStatus status = 21;
+  ThermalContext context = 22;
+  ThermalConfidence confidence = 23;
+  ThermalStrategicRelevance strategic_relevance = 24;
+  repeated string nearby_assets = 25;
+  repeated string narrative_flags = 26;
+}
+
+enum ThermalStatus {
+  THERMAL_STATUS_UNSPECIFIED = 0;
+  THERMAL_STATUS_NORMAL = 1;
+  THERMAL_STATUS_ELEVATED = 2;
+  THERMAL_STATUS_SPIKE = 3;
+  THERMAL_STATUS_PERSISTENT = 4;
+}
+
+enum ThermalContext {
+  THERMAL_CONTEXT_UNSPECIFIED = 0;
+  THERMAL_CONTEXT_WILDLAND = 1;
+  THERMAL_CONTEXT_URBAN_EDGE = 2;
+  THERMAL_CONTEXT_INDUSTRIAL = 3;
+  THERMAL_CONTEXT_ENERGY_ADJACENT = 4;
+  THERMAL_CONTEXT_CONFLICT_ADJACENT = 5;
+  THERMAL_CONTEXT_LOGISTICS_ADJACENT = 6;
+  THERMAL_CONTEXT_MIXED = 7;
+}
+
+enum ThermalConfidence {
+  THERMAL_CONFIDENCE_UNSPECIFIED = 0;
+  THERMAL_CONFIDENCE_LOW = 1;
+  THERMAL_CONFIDENCE_MEDIUM = 2;
+  THERMAL_CONFIDENCE_HIGH = 3;
+}
+
+enum ThermalStrategicRelevance {
+  THERMAL_RELEVANCE_UNSPECIFIED = 0;
+  THERMAL_RELEVANCE_LOW = 1;
+  THERMAL_RELEVANCE_MEDIUM = 2;
+  THERMAL_RELEVANCE_HIGH = 3;
+}

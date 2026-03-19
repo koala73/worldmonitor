@@ -69,36 +69,17 @@ export class GdeltIntelPanel extends Panel {
     const topic = this.activeTopic;
     this.showLoading();
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const data = await fetchTopicIntelligence(topic);
-        if (!this.element?.isConnected) return;
-        this.topicData.set(topic.id, data);
-
-        if (topic.id !== this.activeTopic.id) return;
-
-        if (!data.articles?.length && attempt < 2) {
-          this.showRetrying(undefined, 15);
-          await new Promise(r => setTimeout(r, 15_000));
-          if (!this.element?.isConnected || topic.id !== this.activeTopic.id) return;
-          continue;
-        }
-
-        this.renderArticles(data.articles ?? []);
-        this.setCount(data.articles?.length ?? 0);
-        return;
-      } catch (error) {
-        if (this.isAbortError(error)) return;
-        if (!this.element?.isConnected || topic.id !== this.activeTopic.id) return;
-        console.error(`[GdeltIntelPanel] Load error (attempt ${attempt + 1}):`, error);
-        if (attempt < 2) {
-          this.showRetrying(undefined, 15);
-          await new Promise(r => setTimeout(r, 15_000));
-          if (!this.element?.isConnected || topic.id !== this.activeTopic.id) return;
-          continue;
-        }
-        this.showError(t('common.failedIntelFeed'), () => this.loadActiveTopic());
-      }
+    try {
+      const data = await fetchTopicIntelligence(topic);
+      if (!this.element?.isConnected || topic.id !== this.activeTopic.id) return;
+      this.topicData.set(topic.id, data);
+      this.renderArticles(data.articles ?? []);
+      this.setCount(data.articles?.length ?? 0);
+    } catch (error) {
+      if (this.isAbortError(error)) return;
+      if (!this.element?.isConnected || topic.id !== this.activeTopic.id) return;
+      console.error('[GdeltIntelPanel] Load error:', error);
+      this.showError(t('common.failedIntelFeed'), () => this.loadActiveTopic());
     }
   }
 
