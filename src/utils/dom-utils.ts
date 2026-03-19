@@ -63,7 +63,7 @@ export function rawHtml(html: string): DocumentFragment {
 const SAFE_TAGS = new Set([
   'strong', 'em', 'b', 'i', 'br', 'p', 'ul', 'ol', 'li', 'span', 'div', 'a',
 ]);
-const SAFE_ATTRS = new Set(['style', 'class', 'href', 'target', 'rel']);
+const SAFE_ATTRS = new Set(['class', 'href', 'target', 'rel']);
 
 /** Like rawHtml() but strips tags and attributes not in the allowlist. */
 export function safeHtml(html: string): DocumentFragment {
