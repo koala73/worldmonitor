@@ -2584,9 +2584,33 @@ function formatSituationFamilyLabel(family) {
   const leadRegion = hasClearLeadRegion
     ? (family.dominantRegion || family.regions?.[0] || 'Cross-regional')
     : 'Cross-regional';
-  const topDomains = pickDominantSituationValues(family._domainCounts, family.domains, 2);
-  const domainLabel = formatSituationDomainLabel(topDomains.length ? topDomains : family.domains);
-  return `${leadRegion} ${domainLabel} pressure family`;
+  const archetypeLabelMap = {
+    war_theater: 'war theater',
+    political_instability: 'political instability',
+    maritime_supply: 'maritime supply pressure',
+    cyber_pressure: 'cyber pressure',
+    infrastructure_fragility: 'infrastructure pressure',
+    market_repricing: 'market repricing',
+    mixed_regional: 'cross-domain pressure',
+  };
+  const archetypeLabel = archetypeLabelMap[family.archetype] || 'cross-domain pressure';
+  return `${leadRegion} ${archetypeLabel} family`;
+}
+
+function inferSituationFamilyArchetype(input = {}) {
+  const domains = uniqueSortedStrings([input.dominantDomain, ...(input.domains || [])].filter(Boolean));
+  const signals = uniqueSortedStrings((input.signalTypes || []).filter(Boolean));
+  const tokens = uniqueSortedStrings([...(input.tokens || []), ...(input.specificTokens || [])].filter(Boolean));
+
+  if (domains.includes('conflict') || domains.includes('military')) return 'war_theater';
+  if (domains.includes('cyber')) return 'cyber_pressure';
+  if (domains.includes('infrastructure')) return 'infrastructure_fragility';
+  if (domains.includes('supply_chain') || signals.some((item) => ['chokepoint', 'gps_jamming'].includes(item)) || tokens.some((token) => ['shipping', 'port', 'freight', 'corridor', 'maritime'].includes(token))) {
+    return 'maritime_supply';
+  }
+  if (domains.includes('political')) return 'political_instability';
+  if (domains.includes('market')) return 'market_repricing';
+  return 'mixed_regional';
 }
 
 function buildSituationFamilyCandidate(cluster) {
@@ -2603,6 +2627,12 @@ function buildSituationFamilyCandidate(cluster) {
     specificTokens: filterSpecificSituationTokens(tokens).slice(0, 20),
     regionTokens: extractRegionLinkTokens([cluster.dominantRegion, ...(cluster.regions || [])]).slice(0, 8),
     signalTypes: uniqueSortedStrings((cluster.topSignals || []).map((signal) => signal.type).filter(Boolean)),
+    archetype: inferSituationFamilyArchetype({
+      dominantDomain: cluster.dominantDomain,
+      domains: cluster.domains,
+      signalTypes: (cluster.topSignals || []).map((signal) => signal.type),
+      tokens,
+    }),
   };
 }
 
@@ -2614,12 +2644,13 @@ function computeSituationFamilyOverlap(candidate, family) {
     intersectCount(candidate.signalTypes, family.signalTypes) * 1.2 +
     intersectCount(candidate.specificTokens, family.specificTokens) * 1.1 +
     intersectCount(candidate.regionTokens, family.regionTokens) * 0.8 +
-    intersectCount(candidate.tokens, family.tokens) * 0.25
+    intersectCount(candidate.tokens, family.tokens) * 0.25 +
+    (candidate.archetype && family.archetype && candidate.archetype === family.archetype ? 1.4 : 0)
   );
 }
 
 function shouldMergeSituationFamilyCandidate(candidate, family, score) {
-  if (score < 4) return false;
+  if (score < 4.5) return false;
 
   const regionOverlap = intersectCount(candidate.regions, family.regions);
   const actorOverlap = intersectCount(candidate.actors, family.actors);
@@ -2627,17 +2658,27 @@ function shouldMergeSituationFamilyCandidate(candidate, family, score) {
   const signalOverlap = intersectCount(candidate.signalTypes, family.signalTypes);
   const specificTokenOverlap = intersectCount(candidate.specificTokens, family.specificTokens);
   const regionTokenOverlap = intersectCount(candidate.regionTokens, family.regionTokens);
+  const archetypeMatch = candidate.archetype && family.archetype && candidate.archetype === family.archetype;
 
-  if (regionOverlap > 0 && (domainOverlap > 0 || signalOverlap > 0 || specificTokenOverlap > 0)) return true;
-  if (actorOverlap > 0 && (domainOverlap > 0 || specificTokenOverlap > 0)) return true;
-  if (domainOverlap > 0 && signalOverlap >= 2 && specificTokenOverlap >= 2 && regionTokenOverlap > 0) return true;
+  if (regionOverlap > 0 && archetypeMatch && (domainOverlap > 0 || signalOverlap > 0 || specificTokenOverlap > 0)) return true;
+  if (actorOverlap > 0 && archetypeMatch && (domainOverlap > 0 || specificTokenOverlap > 0)) return true;
+  if (regionOverlap > 0 && actorOverlap > 0 && (specificTokenOverlap > 0 || signalOverlap > 0)) return true;
+  if (domainOverlap > 0 && archetypeMatch && signalOverlap >= 2 && specificTokenOverlap >= 2 && regionTokenOverlap > 0) return true;
   return false;
 }
 
 function finalizeSituationFamily(family) {
   const dominantRegion = pickDominantSituationValue(family._regionCounts, family.regions);
   const dominantDomain = pickDominantSituationValue(family._domainCounts, family.domains);
+  const archetype = family.archetype || inferSituationFamilyArchetype({
+    dominantDomain,
+    domains: family.domains,
+    signalTypes: family.signalTypes,
+    tokens: family.tokens,
+    specificTokens: family.specificTokens,
+  });
   const stableKey = [
+    archetype,
     ...family.regions.slice(0, 2),
     ...family.actors.slice(0, 2),
     ...family.domains.slice(0, 2),
@@ -2649,7 +2690,9 @@ function finalizeSituationFamily(family) {
       ...family,
       dominantRegion,
       dominantDomain,
+      archetype,
     }),
+    archetype,
     dominantRegion,
     dominantDomain,
     regions: family.regions,
@@ -2700,6 +2743,7 @@ function buildSituationFamilies(situationClusters = []) {
         _probabilityTotal: 0,
         _regionCounts: {},
         _domainCounts: {},
+        archetype: candidate.archetype,
       };
       families.push(bestFamily);
     }
@@ -2716,6 +2760,7 @@ function buildSituationFamilies(situationClusters = []) {
     bestFamily._probabilityTotal += Number(cluster.avgProbability || 0);
     incrementSituationCounts(bestFamily._regionCounts, candidate.regions);
     incrementSituationCounts(bestFamily._domainCounts, candidate.domains);
+    if (!bestFamily.archetype) bestFamily.archetype = candidate.archetype;
   }
 
   return families
@@ -2951,6 +2996,26 @@ function getSimulationDomainProfile(dominantDomain) {
 
 const PRESSURE_ACTION_MARKERS = ['reposition', 'reprice', 'rebalance', 'retaliat', 'escalat', 'mobiliz', 'rerout', 'repris', 'spillover', 'price', 'shift messaging', 'shift posture'];
 const STABILIZING_ACTION_MARKERS = ['prevent', 'preserve', 'contain', 'protect', 'reduce', 'maintain', 'harden', 'mitigation', 'continuity', 'de-escal', 'limit', 'triage'];
+const GENERIC_ACTOR_CATEGORIES = new Set(['general', 'external', 'market', 'commercial', 'civic']);
+const GENERIC_ACTOR_NAME_MARKERS = ['regional', 'participants', 'observers', 'operators', 'officials', 'watchers', 'forces', 'leadership', 'networks', 'authorities', 'teams', 'providers'];
+
+function scoreActorSpecificity(actorLike = {}) {
+  const actorName = String(actorLike.actorName || actorLike.name || '').toLowerCase();
+  const actorId = String(actorLike.actorId || actorLike.id || '').toLowerCase();
+  const category = String(actorLike.category || '').toLowerCase();
+  const genericNameHitCount = GENERIC_ACTOR_NAME_MARKERS.filter((item) => actorName.includes(item)).length;
+  let score = 0.55;
+
+  if (actorId && !actorId.startsWith('shared-')) score += 0.1;
+  if (category && !GENERIC_ACTOR_CATEGORIES.has(category)) score += 0.15;
+  if (actorName && genericNameHitCount === 0) score += 0.15;
+  if (actorName.split(/\s+/).length >= 3) score += 0.05;
+  if (genericNameHitCount > 0) score -= Math.min(0.28, genericNameHitCount * 0.12);
+  if (actorName.includes('command') || actorName.includes('desk') || actorName.includes('authority')) score -= 0.14;
+  if (actorId.startsWith('shared-')) score -= 0.12;
+
+  return clampUnitInterval(score);
+}
 
 function summarizeBranchDynamics(branches = []) {
   const escalatory = branches.filter((branch) => branch.kind === 'escalatory');
@@ -3078,6 +3143,7 @@ function buildActorRoundActions(stage, situation, actors = []) {
       actorId: actor.id,
       actorName: actor.name,
       category: actor.category,
+      actorSpecificity: scoreActorSpecificity(actor),
       summary,
       channels,
       ...effect,
@@ -3294,6 +3360,7 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
 
   const actionLedger = buildSimulationActionLedger(situationSimulations);
   const interactionLedger = buildSimulationInteractionLedger(actionLedger, situationSimulations);
+  const reportableInteractionLedger = buildReportableInteractionLedger(interactionLedger, situationSimulations);
   const replayTimeline = buildSimulationReplayTimeline(situationSimulations, actionLedger, interactionLedger);
 
   const postureCounts = summarizeTypeCounts(situationSimulations.map((item) => item.posture));
@@ -3324,6 +3391,7 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
     roundTransitions,
     actionLedger,
     interactionLedger,
+    reportableInteractionLedger,
     replayTimeline,
     situationSimulations,
   };
@@ -3362,6 +3430,7 @@ function buildSimulationActionLedger(situationSimulations = []) {
           actorId: action.actorId || '',
           actorName: action.actorName || '',
           category: action.category || '',
+          actorSpecificity: Number(action.actorSpecificity || 0),
           summary: action.summary || '',
           intent: action.intent || 'mixed',
           channels: action.channels || [],
@@ -3414,13 +3483,17 @@ function buildSimulationInteractionLedger(actionLedger = [], situationSimulation
       (source.intent === 'pressure' && target.intent === 'stabilizing')
       || (source.intent === 'stabilizing' && target.intent === 'pressure')
     );
+    const sourceSpecificity = scoreActorSpecificity(source);
+    const targetSpecificity = scoreActorSpecificity(target);
+    const avgSpecificity = (sourceSpecificity + targetSpecificity) / 2;
 
     const score = (sharedActor ? 4 : 0)
       + (sharedChannels.length * 2)
       + (familyLink ? 1 : 0)
       + (regionLink ? 1.5 : 0)
       + (sameIntent ? 0.5 : 0)
-      + (opposingIntent ? 0.75 : 0);
+      + (opposingIntent ? 0.75 : 0)
+      + (avgSpecificity * 1.25);
     if (score < 3) return;
 
     let interactionType = 'coupling';
@@ -3465,7 +3538,16 @@ function buildSimulationInteractionLedger(actionLedger = [], situationSimulation
       sharedActor,
       familyLink,
       regionLink,
+      actorSpecificity: +avgSpecificity.toFixed(3),
+      directLinkCount: (sharedActor ? 1 : 0) + (regionLink ? 1 : 0) + (sharedChannels.length > 0 ? 1 : 0),
       score: +score.toFixed(3),
+      confidence: +((
+        (sharedActor ? 0.38 : 0) +
+        (regionLink ? 0.22 : 0) +
+        Math.min(0.26, sharedChannels.length * 0.12) +
+        (familyLink ? 0.06 : 0) +
+        (avgSpecificity * 0.22)
+      )).toFixed(3),
       summary: `${source.actorName || 'An actor'} in ${source.situationLabel} ${interactionType.replace(/_/g, ' ')} with ${target.actorName || 'another actor'} in ${target.situationLabel} during ${stage.replace('_', ' ')}.`,
       sourcePosture: sourceSimulation?.posture || '',
       sourcePostureScore: sourceSimulation?.postureScore || 0,
@@ -3524,6 +3606,30 @@ function buildSimulationReplayTimeline(situationSimulations = [], actionLedger =
       })),
     };
   });
+}
+
+function buildReportableInteractionLedger(interactionLedger = [], situationSimulations = []) {
+  const simulationIndex = new Map((situationSimulations || []).map((item) => [item.situationId, item]));
+  return (interactionLedger || [])
+    .filter((item) => {
+      const source = simulationIndex.get(item.sourceSituationId);
+      const target = simulationIndex.get(item.targetSituationId);
+      if (!source || !target || !item.strongestChannel) return false;
+      const directOverlap = (
+        intersectCount(source.regions || [], target.regions || []) > 0
+        || intersectCount(source.actorIds || [], target.actorIds || []) > 0
+      );
+      const specificity = Number(item.actorSpecificity || 0);
+      const confidence = Number(item.confidence || 0);
+      const score = Number(item.score || 0);
+      if (item.interactionType === 'actor_carryover' && specificity < 0.62) return false;
+      if (confidence >= 0.72 && score >= 5) return true;
+      if (directOverlap && confidence >= 0.58 && score >= 4.5) return true;
+      if (item.sharedActor && specificity >= 0.7 && confidence >= 0.56) return true;
+      return false;
+    })
+    .sort((a, b) => b.confidence - a.confidence || b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel))
+    .slice(0, 32);
 }
 
 function describeSimulationPosture(posture) {
@@ -3630,7 +3736,9 @@ function canEmitCrossSituationEffect(source, strongestChannel, strongestChannelW
 
 function buildCrossSituationEffects(simulationState) {
   const simulations = Array.isArray(simulationState?.situationSimulations) ? simulationState.situationSimulations : [];
-  const interactions = Array.isArray(simulationState?.interactionLedger) ? simulationState.interactionLedger : [];
+  const interactions = Array.isArray(simulationState?.reportableInteractionLedger)
+    ? simulationState.reportableInteractionLedger
+    : (Array.isArray(simulationState?.interactionLedger) ? simulationState.interactionLedger : []);
   const simulationIndex = new Map(simulations.map((item) => [item.situationId, item]));
   const interactionGroups = new Map();
 
@@ -3682,7 +3790,7 @@ function buildCrossSituationEffects(simulationState) {
         + (group.stages.size * 0.5)
         + (group.interactionTypes.has('actor_carryover') ? 1.5 : 0)
       ).toFixed(3);
-      if (score < 4) continue;
+      if (score < 4.8) continue;
 
       effects.push({
         sourceSituationId: source.situationId,
@@ -4107,7 +4215,9 @@ function buildWorldStateReport(worldState) {
   const simulationReportInputs = buildSimulationReportInputs(worldState);
   const simulationOutcomeSummaries = buildSituationOutcomeSummaries(worldState.simulationState);
   const crossSituationEffects = buildCrossSituationEffects(worldState.simulationState);
-  const interactionLedger = Array.isArray(worldState.simulationState?.interactionLedger) ? worldState.simulationState.interactionLedger : [];
+  const interactionLedger = Array.isArray(worldState.simulationState?.reportableInteractionLedger)
+    ? worldState.simulationState.reportableInteractionLedger
+    : (Array.isArray(worldState.simulationState?.interactionLedger) ? worldState.simulationState.interactionLedger : []);
   const replayTimeline = Array.isArray(worldState.simulationState?.replayTimeline) ? worldState.simulationState.replayTimeline : [];
   const simulationWatchlist = (worldState.simulationState?.situationSimulations || [])
     .slice()

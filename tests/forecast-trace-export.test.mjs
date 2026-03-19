@@ -1224,6 +1224,7 @@ describe('forecast run world state', () => {
         interactionType: 'spillover',
       },
     ];
+    patchedSimulationState.reportableInteractionLedger = [...patchedSimulationState.interactionLedger];
 
     const effects = buildCrossSituationEffects(patchedSimulationState);
     assert.ok(effects.some((item) => item.sourceSituationId === marketUnit.situationId && item.targetSituationId === infraUnit.situationId));
@@ -1270,6 +1271,7 @@ describe('forecast run world state', () => {
         interactionType: 'spillover',
       },
     ];
+    patchedSimulationState.reportableInteractionLedger = [...patchedSimulationState.interactionLedger];
 
     const effects = buildCrossSituationEffects(patchedSimulationState);
     assert.ok(effects.some((item) => item.channel === 'service_disruption'));
@@ -1319,6 +1321,73 @@ describe('forecast run world state', () => {
 
     assert.ok(worldState.situationFamilies.length >= 1);
     assert.ok(worldState.situationFamilies.some((family) => family.label.startsWith('Cross-regional ')));
+  });
+
+  it('assigns archetype-aware family labels for maritime supply situations', () => {
+    const supplyA = makePrediction('supply_chain', 'Red Sea', 'Shipping disruption: Red Sea', 0.68, 0.58, '14d', [
+      { type: 'chokepoint', value: 'Shipping disruption persists in the Red Sea corridor', weight: 0.4 },
+    ]);
+    buildForecastCase(supplyA);
+
+    const supplyB = makePrediction('supply_chain', 'Bab el-Mandeb', 'Freight rerouting: Bab el-Mandeb', 0.64, 0.56, '14d', [
+      { type: 'gps_jamming', value: 'Maritime routing disruption persists near Bab el-Mandeb', weight: 0.32 },
+    ]);
+    buildForecastCase(supplyB);
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T15:00:00Z'),
+      predictions: [supplyA, supplyB],
+    });
+
+    assert.ok(worldState.situationFamilies.some((family) => family.archetype === 'maritime_supply'));
+    assert.ok(worldState.situationFamilies.some((family) => family.label.includes('maritime supply')));
+  });
+
+  it('keeps weak generic interactions out of the reportable interaction surface', () => {
+    const source = makePrediction('political', 'Brazil', 'Political pressure: Brazil', 0.56, 0.53, '14d', [
+      { type: 'policy_change', value: 'Political pressure is building in Brazil', weight: 0.32 },
+    ]);
+    buildForecastCase(source);
+    source.caseFile.actors = [
+      {
+        id: 'regional-command-generic',
+        name: 'Regional command authority',
+        category: 'state',
+        influenceScore: 0.58,
+        domains: ['political'],
+        regions: ['Brazil', 'Israel'],
+        objectives: ['Shape regional posture'],
+        constraints: ['Avoid direct confrontation'],
+        likelyActions: ['Shift messaging and posture as new evidence arrives.'],
+      },
+    ];
+
+    const target = makePrediction('political', 'Israel', 'Political pressure: Israel', 0.58, 0.54, '14d', [
+      { type: 'policy_change', value: 'Political pressure is building in Israel', weight: 0.33 },
+    ]);
+    buildForecastCase(target);
+    target.caseFile.actors = [
+      {
+        id: 'regional-command-generic',
+        name: 'Regional command authority',
+        category: 'state',
+        influenceScore: 0.58,
+        domains: ['political'],
+        regions: ['Brazil', 'Israel'],
+        objectives: ['Shape regional posture'],
+        constraints: ['Avoid direct confrontation'],
+        likelyActions: ['Shift messaging and posture as new evidence arrives.'],
+      },
+    ];
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T15:10:00Z'),
+      predictions: [source, target],
+    });
+
+    assert.ok(Array.isArray(worldState.simulationState.reportableInteractionLedger));
+    assert.equal(worldState.simulationState.reportableInteractionLedger.length, 0);
+    assert.equal(worldState.report.interactionWatchlist.length, 0);
   });
 
   it('ignores incompatible prior simulation momentum when the simulation version changes', () => {
