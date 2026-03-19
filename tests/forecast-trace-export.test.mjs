@@ -171,6 +171,8 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.worldStateSummary.simulationRoundCount, 3);
     assert.ok(typeof artifacts.summary.worldStateSummary.simulationSummary === 'string');
     assert.ok(typeof artifacts.summary.worldStateSummary.simulationInputSummary === 'string');
+    assert.ok(typeof artifacts.summary.worldStateSummary.simulationActionCount === 'number');
+    assert.ok(typeof artifacts.summary.worldStateSummary.simulationInteractionCount === 'number');
     assert.ok(typeof artifacts.summary.worldStateSummary.simulationEffectCount === 'number');
     assert.ok(typeof artifacts.summary.worldStateSummary.historyRuns === 'number');
     assert.equal(artifacts.summary.worldStateSummary.candidateStateSummary.forecastCount, 3);
@@ -185,12 +187,18 @@ describe('forecast trace artifact builder', () => {
     assert.ok(Array.isArray(artifacts.worldState.situationClusters));
     assert.ok(Array.isArray(artifacts.worldState.simulationState?.situationSimulations));
     assert.equal(artifacts.worldState.simulationState?.roundTransitions?.length, 3);
+    assert.ok(Array.isArray(artifacts.worldState.simulationState?.actionLedger));
+    assert.ok(Array.isArray(artifacts.worldState.simulationState?.interactionLedger));
+    assert.ok(Array.isArray(artifacts.worldState.simulationState?.replayTimeline));
     assert.ok(Array.isArray(artifacts.worldState.report.situationWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.actorWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.branchWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.simulationWatchlist));
+    assert.ok(Array.isArray(artifacts.worldState.report.interactionWatchlist));
+    assert.ok(Array.isArray(artifacts.worldState.report.replayWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.simulationOutcomeSummaries));
     assert.ok(Array.isArray(artifacts.worldState.report.crossSituationEffects));
+    assert.ok(Array.isArray(artifacts.worldState.report.replayTimeline));
     assert.ok(artifacts.forecasts[0].payload.caseFile.worldState.summary.includes('Iran'));
     assert.equal(artifacts.forecasts[0].payload.caseFile.branches.length, 3);
     assert.equal(artifacts.forecasts[0].payload.traceMeta.narrativeSource, 'fallback');
@@ -763,6 +771,10 @@ describe('forecast run world state', () => {
     assert.ok(worldState.simulationState.totalSituationSimulations >= 2);
     assert.equal(worldState.simulationState.totalRounds, 3);
     assert.ok(worldState.simulationState.roundTransitions.every((round) => round.situationCount >= 1));
+    assert.ok(Array.isArray(worldState.simulationState.actionLedger));
+    assert.ok(worldState.simulationState.actionLedger.length >= 2);
+    assert.ok(Array.isArray(worldState.simulationState.replayTimeline));
+    assert.equal(worldState.simulationState.replayTimeline.length, 3);
     assert.ok(worldState.simulationState.situationSimulations.every((unit) => ['escalatory', 'contested', 'constrained'].includes(unit.posture)));
     assert.ok(worldState.simulationState.situationSimulations.every((unit) => unit.rounds.every((round) => typeof round.netPressure === 'number')));
     assert.ok(worldState.simulationState.situationSimulations.every((unit) => Array.isArray(unit.actionPlan) && unit.actionPlan.length === 3));
@@ -880,9 +892,13 @@ describe('forecast run world state', () => {
     assert.ok(worldState.report.simulationOutcomeSummaries.length >= 2);
     assert.ok(worldState.report.simulationOutcomeSummaries.every((item) => item.rounds.length === 3));
     assert.ok(worldState.report.simulationOutcomeSummaries.every((item) => ['escalatory', 'contested', 'constrained'].includes(item.posture)));
+    assert.ok(worldState.simulationState.interactionLedger.length >= 1);
+    assert.ok(worldState.simulationState.replayTimeline.some((item) => item.interactionCount >= 1));
     assert.ok(worldState.report.crossSituationEffects.length >= 1);
     assert.ok(worldState.report.crossSituationEffects.some((item) => item.summary.includes('Japan')));
     assert.ok(worldState.report.crossSituationEffects.every((item) => item.channel));
+    assert.ok(worldState.report.interactionWatchlist.length >= 1);
+    assert.ok(worldState.report.replayWatchlist.length === 3);
     assert.ok(worldState.simulationState.situationSimulations.every((item) => item.familyId));
   });
 

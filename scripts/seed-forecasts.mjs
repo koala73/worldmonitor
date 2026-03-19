@@ -3292,6 +3292,10 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
     };
   });
 
+  const actionLedger = buildSimulationActionLedger(situationSimulations);
+  const interactionLedger = buildSimulationInteractionLedger(actionLedger, situationSimulations);
+  const replayTimeline = buildSimulationReplayTimeline(situationSimulations, actionLedger, interactionLedger);
+
   const postureCounts = summarizeTypeCounts(situationSimulations.map((item) => item.posture));
   const summary = situationSimulations.length
     ? `${situationSimulations.length} simulation units were derived from active situations and advanced through 3 deterministic rounds, producing ${postureCounts.escalatory || 0} escalatory, ${postureCounts.contested || 0} contested, and ${postureCounts.constrained || 0} constrained paths.`
@@ -3318,8 +3322,189 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
     totalRounds: roundTransitions.length,
     postureCounts,
     roundTransitions,
+    actionLedger,
+    interactionLedger,
+    replayTimeline,
     situationSimulations,
   };
+}
+
+function buildSimulationActionLedger(situationSimulations = []) {
+  const stageOrder = new Map([
+    ['round_1', 1],
+    ['round_2', 2],
+    ['round_3', 3],
+  ]);
+  const ledger = [];
+  let ordinal = 0;
+
+  for (const simulation of situationSimulations || []) {
+    for (const round of (simulation.rounds || [])) {
+      for (const action of (round.actions || [])) {
+        ordinal += 1;
+        ledger.push({
+          id: `simact-${hashSituationKey([
+            simulation.situationId,
+            round.stage,
+            action.actorId || action.actorName || String(ordinal),
+            String(ordinal),
+          ])}`,
+          ordinal,
+          stage: round.stage,
+          stageOrder: stageOrder.get(round.stage) || 0,
+          situationId: simulation.situationId,
+          situationLabel: simulation.label,
+          familyId: simulation.familyId,
+          familyLabel: simulation.familyLabel,
+          dominantDomain: simulation.dominantDomain,
+          dominantRegion: simulation.dominantRegion,
+          regions: simulation.regions || [],
+          actorId: action.actorId || '',
+          actorName: action.actorName || '',
+          category: action.category || '',
+          summary: action.summary || '',
+          intent: action.intent || 'mixed',
+          channels: action.channels || [],
+          pressureContribution: Number(action.pressureContribution || 0),
+          stabilizationContribution: Number(action.stabilizationContribution || 0),
+          posture: simulation.posture,
+          postureScore: simulation.postureScore,
+        });
+      }
+    }
+  }
+
+  return ledger;
+}
+
+function buildSimulationInteractionLedger(actionLedger = [], situationSimulations = []) {
+  const simulationsById = new Map((situationSimulations || []).map((item) => [item.situationId, item]));
+  const ledger = [];
+  const stageGroups = new Map();
+
+  for (const action of actionLedger || []) {
+    const group = stageGroups.get(action.stage) || [];
+    group.push(action);
+    stageGroups.set(action.stage, group);
+  }
+
+  for (const [stage, actions] of stageGroups.entries()) {
+    for (let i = 0; i < actions.length; i++) {
+      const source = actions[i];
+      for (let j = i + 1; j < actions.length; j++) {
+        const target = actions[j];
+        if (source.situationId === target.situationId) continue;
+
+        const sharedActor = source.actorId && target.actorId && source.actorId === target.actorId;
+        const sharedChannels = uniqueSortedStrings((source.channels || []).filter((channel) => (target.channels || []).includes(channel)));
+        const familyLink = source.familyId && target.familyId && source.familyId === target.familyId;
+        const regionLink = intersectCount(source.regions || [], target.regions || []) > 0;
+        const sameIntent = source.intent === target.intent;
+        const opposingIntent = (
+          (source.intent === 'pressure' && target.intent === 'stabilizing')
+          || (source.intent === 'stabilizing' && target.intent === 'pressure')
+        );
+
+        const score = (sharedActor ? 4 : 0)
+          + (sharedChannels.length * 2)
+          + (familyLink ? 1 : 0)
+          + (regionLink ? 1.5 : 0)
+          + (sameIntent ? 0.5 : 0)
+          + (opposingIntent ? 0.75 : 0);
+        if (score < 3) continue;
+
+        let interactionType = 'coupling';
+        if (sharedActor) interactionType = 'actor_carryover';
+        else if (opposingIntent) interactionType = 'constraint';
+        else if (sameIntent && sharedChannels.length > 0) interactionType = 'reinforcement';
+        else if (sharedChannels.length > 0) interactionType = 'spillover';
+
+        const strongestChannel = sharedChannels[0] || '';
+        const sourceSimulation = simulationsById.get(source.situationId) || null;
+        const targetSimulation = simulationsById.get(target.situationId) || null;
+
+        ledger.push({
+          id: `simint-${hashSituationKey([
+            stage,
+            source.situationId,
+            target.situationId,
+            strongestChannel || interactionType,
+            source.actorId || source.actorName || '',
+            target.actorId || target.actorName || '',
+          ])}`,
+          stage,
+          sourceSituationId: source.situationId,
+          sourceLabel: source.situationLabel,
+          sourceFamilyId: source.familyId,
+          sourceFamilyLabel: source.familyLabel,
+          sourceActorId: source.actorId,
+          sourceActorName: source.actorName,
+          sourceIntent: source.intent,
+          sourceDomain: source.dominantDomain,
+          targetSituationId: target.situationId,
+          targetLabel: target.situationLabel,
+          targetFamilyId: target.familyId,
+          targetFamilyLabel: target.familyLabel,
+          targetActorId: target.actorId,
+          targetActorName: target.actorName,
+          targetIntent: target.intent,
+          targetDomain: target.dominantDomain,
+          interactionType,
+          strongestChannel,
+          sharedChannels,
+          sharedActor,
+          familyLink,
+          regionLink,
+          score: +score.toFixed(3),
+          summary: `${source.actorName || 'An actor'} in ${source.situationLabel} ${interactionType.replace(/_/g, ' ')} with ${target.actorName || 'another actor'} in ${target.situationLabel} during ${stage.replace('_', ' ')}.`,
+          sourcePosture: sourceSimulation?.posture || '',
+          sourcePostureScore: sourceSimulation?.postureScore || 0,
+          targetPosture: targetSimulation?.posture || '',
+          targetPostureScore: targetSimulation?.postureScore || 0,
+        });
+      }
+    }
+  }
+
+  return ledger
+    .sort((a, b) => b.score - a.score || a.stage.localeCompare(b.stage) || a.sourceLabel.localeCompare(b.sourceLabel))
+    .slice(0, 80);
+}
+
+function buildSimulationReplayTimeline(situationSimulations = [], actionLedger = [], interactionLedger = []) {
+  const stages = ['round_1', 'round_2', 'round_3'];
+  return stages.map((stage) => {
+    const roundSlice = (situationSimulations || [])
+      .map((item) => item.rounds.find((round) => round.stage === stage))
+      .filter(Boolean);
+    const actions = (actionLedger || []).filter((item) => item.stage === stage);
+    const interactions = (interactionLedger || []).filter((item) => item.stage === stage);
+    const postureMix = summarizeTypeCounts(
+      (situationSimulations || [])
+        .filter((item) => item.rounds.some((round) => round.stage === stage))
+        .map((item) => item.posture)
+    );
+    return {
+      stage,
+      situationCount: roundSlice.length,
+      actionCount: actions.length,
+      interactionCount: interactions.length,
+      avgNetPressure: roundSlice.length
+        ? +(roundSlice.reduce((sum, round) => sum + (round.netPressure || 0), 0) / roundSlice.length).toFixed(3)
+        : 0,
+      postureMix,
+      leadSignals: pickTopCountEntries(summarizeTypeCounts(roundSlice.flatMap((round) => round.signalTypes || [])), 4),
+      leadChannels: pickTopCountEntries(summarizeTypeCounts(actions.flatMap((action) => action.channels || [])), 5),
+      leadActions: uniqueSortedStrings(actions.map((action) => action.summary).filter(Boolean)).slice(0, 6),
+      leadInteractions: (interactions || []).slice(0, 5).map((item) => ({
+        sourceLabel: item.sourceLabel,
+        targetLabel: item.targetLabel,
+        interactionType: item.interactionType,
+        strongestChannel: item.strongestChannel,
+        score: item.score,
+      })),
+    };
+  });
 }
 
 function describeSimulationPosture(posture) {
@@ -3366,6 +3551,7 @@ function buildSimulationReportInputs(worldState) {
     dominantDomain: item.dominantDomain,
     actorCount: (item.actorIds || []).length,
     branchCount: (item.branchIds || []).length,
+    actionCount: (item.actionPlan || []).reduce((sum, round) => sum + ((round.actions || []).length), 0),
     pressureSignals: (item.pressureSignals || []).map((signal) => signal.type),
     effectChannels: (item.effectChannels || []).map((item) => item.type),
     stabilizers: item.stabilizers || [],
@@ -3425,6 +3611,81 @@ function canEmitCrossSituationEffect(source, strongestChannel, strongestChannelW
 
 function buildCrossSituationEffects(simulationState) {
   const simulations = Array.isArray(simulationState?.situationSimulations) ? simulationState.situationSimulations : [];
+  const interactions = Array.isArray(simulationState?.interactionLedger) ? simulationState.interactionLedger : [];
+  const simulationIndex = new Map(simulations.map((item) => [item.situationId, item]));
+  const interactionGroups = new Map();
+
+  for (const interaction of interactions) {
+    if (!interaction?.strongestChannel) continue;
+    const key = [
+      interaction.sourceSituationId,
+      interaction.targetSituationId,
+      interaction.strongestChannel,
+    ].join(':');
+    const group = interactionGroups.get(key) || {
+      sourceSituationId: interaction.sourceSituationId,
+      targetSituationId: interaction.targetSituationId,
+      strongestChannel: interaction.strongestChannel,
+      score: 0,
+      stages: new Set(),
+      sourceActors: new Set(),
+      targetActors: new Set(),
+      interactionTypes: new Set(),
+    };
+    group.score += Number(interaction.score || 0);
+    group.stages.add(interaction.stage);
+    if (interaction.sourceActorName) group.sourceActors.add(interaction.sourceActorName);
+    if (interaction.targetActorName) group.targetActors.add(interaction.targetActorName);
+    if (interaction.interactionType) group.interactionTypes.add(interaction.interactionType);
+    interactionGroups.set(key, group);
+  }
+
+  if (interactionGroups.size > 0) {
+    const effects = [];
+    for (const group of interactionGroups.values()) {
+      const source = simulationIndex.get(group.sourceSituationId);
+      const target = simulationIndex.get(group.targetSituationId);
+      if (!source || !target) continue;
+      const targetSensitivity = getTargetSensitivityChannels(target.dominantDomain);
+      if (!targetSensitivity.includes(group.strongestChannel)) continue;
+      const relation = inferSystemEffectRelationFromChannel(group.strongestChannel, target.dominantDomain);
+      if (!relation) continue;
+      const strongestChannelWeight = (source.effectChannels || []).find((item) => item.type === group.strongestChannel)?.count || 0;
+      const hasDirectStructuralLink = (
+        intersectCount(source.regions || [], target.regions || []) > 0
+        || intersectCount(source.actorIds || [], target.actorIds || []) > 0
+      );
+      if (!canEmitCrossSituationEffect(source, group.strongestChannel, strongestChannelWeight, hasDirectStructuralLink)) continue;
+      if (strongestChannelWeight < 2 && !hasDirectStructuralLink) continue;
+
+      const score = +(
+        group.score
+        + (group.stages.size * 0.5)
+        + (group.interactionTypes.has('actor_carryover') ? 1.5 : 0)
+      ).toFixed(3);
+      if (score < 4) continue;
+
+      effects.push({
+        sourceSituationId: source.situationId,
+        sourceLabel: source.label,
+        sourceFamilyId: source.familyId,
+        sourceFamilyLabel: source.familyLabel,
+        targetSituationId: target.situationId,
+        targetLabel: target.label,
+        targetFamilyId: target.familyId,
+        targetFamilyLabel: target.familyLabel,
+        channel: group.strongestChannel,
+        relation,
+        score,
+        summary: `${source.label} is likely to feed ${relation} into ${target.label}, reinforced by ${group.stages.size} round(s) of ${group.strongestChannel.replace(/_/g, ' ')} interactions and a ${describeSimulationPosture(source.posture)} posture at ${roundPct(source.postureScore)}.`,
+      });
+    }
+
+    return effects
+      .sort((a, b) => b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel) || a.targetLabel.localeCompare(b.targetLabel))
+      .slice(0, 8);
+  }
+
   const effects = [];
 
   for (let i = 0; i < simulations.length; i++) {
@@ -3827,6 +4088,8 @@ function buildWorldStateReport(worldState) {
   const simulationReportInputs = buildSimulationReportInputs(worldState);
   const simulationOutcomeSummaries = buildSituationOutcomeSummaries(worldState.simulationState);
   const crossSituationEffects = buildCrossSituationEffects(worldState.simulationState);
+  const interactionLedger = Array.isArray(worldState.simulationState?.interactionLedger) ? worldState.simulationState.interactionLedger : [];
+  const replayTimeline = Array.isArray(worldState.simulationState?.replayTimeline) ? worldState.simulationState.replayTimeline : [];
   const simulationWatchlist = (worldState.simulationState?.situationSimulations || [])
     .slice()
     .sort((a, b) => (b.postureScore || 0) - (a.postureScore || 0) || a.label.localeCompare(b.label))
@@ -3835,6 +4098,22 @@ function buildWorldStateReport(worldState) {
       type: `${item.posture}_simulation`,
       label: item.label,
       summary: `${item.label} resolved to a ${item.posture} posture after 3 rounds, with ${Math.round((item.postureScore || 0) * 100)}% final pressure and ${item.actorIds.length} active actors.`,
+    }));
+  const interactionWatchlist = interactionLedger
+    .slice()
+    .sort((a, b) => b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel))
+    .slice(0, 6)
+    .map((item) => ({
+      type: `interaction_${item.interactionType}`,
+      label: `${item.sourceLabel} -> ${item.targetLabel}`,
+      summary: `${item.sourceActorName || 'An actor'} in ${item.sourceLabel} ${item.interactionType.replace(/_/g, ' ')} with ${item.targetActorName || 'another actor'} in ${item.targetLabel} during ${item.stage.replace('_', ' ')} via ${item.strongestChannel.replace(/_/g, ' ')}.`,
+    }));
+  const replayWatchlist = replayTimeline
+    .slice()
+    .map((round) => ({
+      type: `replay_${round.stage}`,
+      label: round.stage.replace('_', ' '),
+      summary: `${round.stage.replace('_', ' ')} carried ${round.actionCount} actions, ${round.interactionCount} cross-situation interactions, and ${round.situationCount} active situations at ${Math.round((round.avgNetPressure || 0) * 100)}% average net pressure.`,
     }));
 
   const familyWatchlist = (worldState.situationFamilies || [])
@@ -3845,7 +4124,7 @@ function buildWorldStateReport(worldState) {
       summary: `${family.label} currently groups ${family.situationCount} situations across ${family.forecastCount} forecasts.`,
     }));
 
-  const summary = `${worldState.summary} The leading domains in this run are ${leadDomains.join(', ') || 'none'}, the main continuity changes are captured through ${worldState.actorContinuity?.newlyActiveCount || 0} newly active actors and ${worldState.branchContinuity?.strengthenedBranchCount || 0} strengthened branches, the situation layer currently carries ${worldState.situationClusters?.length || 0} active clusters inside ${worldState.situationFamilies?.length || 0} broader families, the simulation layer reports ${worldState.simulationState?.totalSituationSimulations || 0} executable units, and ${crossSituationEffects.length} cross-situation system effects are active in the report view.`;
+  const summary = `${worldState.summary} The leading domains in this run are ${leadDomains.join(', ') || 'none'}, the main continuity changes are captured through ${worldState.actorContinuity?.newlyActiveCount || 0} newly active actors and ${worldState.branchContinuity?.strengthenedBranchCount || 0} strengthened branches, the situation layer currently carries ${worldState.situationClusters?.length || 0} active clusters inside ${worldState.situationFamilies?.length || 0} broader families, the simulation layer reports ${worldState.simulationState?.totalSituationSimulations || 0} executable units with ${(worldState.simulationState?.actionLedger || []).length} logged actions and ${interactionLedger.length} interaction links, and ${crossSituationEffects.length} cross-situation system effects are active in the report view.`;
 
   return {
     summary,
@@ -3864,8 +4143,11 @@ function buildWorldStateReport(worldState) {
     familyWatchlist,
     continuityWatchlist,
     simulationWatchlist,
+    interactionWatchlist,
+    replayWatchlist,
     simulationOutcomeSummaries,
     crossSituationEffects,
+    replayTimeline,
     keyUncertainties: (worldState.uncertainties || []).slice(0, 6).map(item => item.summary || item),
   };
 }
@@ -4075,6 +4357,8 @@ function summarizeWorldStateSurface(worldState) {
     situationCount: worldState.situationClusters?.length || 0,
     familyCount: worldState.situationFamilies?.length || 0,
     simulationSituationCount: worldState.simulationState?.totalSituationSimulations || 0,
+    simulationActionCount: worldState.simulationState?.actionLedger?.length || 0,
+    simulationInteractionCount: worldState.simulationState?.interactionLedger?.length || 0,
     simulationEffectCount: worldState.report?.crossSituationEffects?.length || 0,
   };
 }
@@ -4267,6 +4551,8 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
       familyCount: worldState.situationFamilies?.length || 0,
       simulationSituationCount: worldState.simulationState?.totalSituationSimulations || 0,
       simulationRoundCount: worldState.simulationState?.totalRounds || 0,
+      simulationActionCount: worldState.simulationState?.actionLedger?.length || 0,
+      simulationInteractionCount: worldState.simulationState?.interactionLedger?.length || 0,
       simulationEffectCount: worldState.report?.crossSituationEffects?.length || 0,
       persistentSituations: worldState.situationContinuity.persistentSituationCount,
       newSituations: worldState.situationContinuity.newSituationCount,
