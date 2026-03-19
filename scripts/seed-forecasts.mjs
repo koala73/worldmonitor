@@ -34,6 +34,8 @@ const ENRICHMENT_PRIORITY_DOMAINS = ['market', 'military'];
 const DUPLICATE_SCORE_THRESHOLD = 6;
 const MAX_PUBLISHED_FORECASTS_PER_SITUATION = 3;
 const MAX_PUBLISHED_FORECASTS_PER_SITUATION_DOMAIN = 2;
+const MAX_PUBLISHED_FORECASTS_PER_FAMILY = 4;
+const MAX_PUBLISHED_FORECASTS_PER_FAMILY_DOMAIN = 2;
 const CYBER_MIN_THREATS_PER_COUNTRY = 5;
 const CYBER_MAX_FORECASTS = 12;
 const CYBER_SCORE_TYPE_MULTIPLIER = 1.5;    // bonus per distinct threat type
@@ -2477,6 +2479,139 @@ function buildSituationClusters(predictions) {
     .sort((a, b) => b.forecastCount - a.forecastCount || b.avgProbability - a.avgProbability);
 }
 
+function formatSituationFamilyLabel(family) {
+  const leadRegion = family.dominantRegion || family.regions?.[0] || 'Cross-regional';
+  const topDomains = pickDominantSituationValues(family._domainCounts, family.domains, 2);
+  const domainLabel = formatSituationDomainLabel(topDomains.length ? topDomains : family.domains);
+  return `${leadRegion} ${domainLabel} pressure family`;
+}
+
+function buildSituationFamilyCandidate(cluster) {
+  return {
+    cluster,
+    regions: uniqueSortedStrings([cluster.dominantRegion, ...(cluster.regions || [])].filter(Boolean)),
+    domains: uniqueSortedStrings([cluster.dominantDomain, ...(cluster.domains || [])].filter(Boolean)),
+    actors: uniqueSortedStrings(cluster.actors || []),
+    tokens: uniqueSortedStrings([
+      ...normalizeSituationText(cluster.label),
+      ...((cluster.sampleTitles || []).flatMap((title) => normalizeSituationText(title))),
+    ])
+      .filter((token) => !['situation', 'family', 'pressure'].includes(token))
+      .slice(0, 28),
+    signalTypes: uniqueSortedStrings((cluster.topSignals || []).map((signal) => signal.type).filter(Boolean)),
+  };
+}
+
+function computeSituationFamilyOverlap(candidate, family) {
+  return (
+    intersectCount(candidate.regions, family.regions) * 4 +
+    intersectCount(candidate.actors, family.actors) * 2 +
+    intersectCount(candidate.domains, family.domains) * 1.5 +
+    intersectCount(candidate.signalTypes, family.signalTypes) * 1.2 +
+    intersectCount(candidate.tokens, family.tokens) * 0.5
+  );
+}
+
+function shouldMergeSituationFamilyCandidate(candidate, family, score) {
+  if (score < 3) return false;
+
+  const regionOverlap = intersectCount(candidate.regions, family.regions);
+  const actorOverlap = intersectCount(candidate.actors, family.actors);
+  const domainOverlap = intersectCount(candidate.domains, family.domains);
+  const signalOverlap = intersectCount(candidate.signalTypes, family.signalTypes);
+  const tokenOverlap = intersectCount(candidate.tokens, family.tokens);
+
+  if (regionOverlap > 0 && (domainOverlap > 0 || signalOverlap > 0 || tokenOverlap >= 2)) return true;
+  if (actorOverlap > 0 && (domainOverlap > 0 || tokenOverlap >= 2)) return true;
+  if (domainOverlap > 0 && signalOverlap > 0 && tokenOverlap >= 3) return true;
+  return false;
+}
+
+function finalizeSituationFamily(family) {
+  const dominantRegion = pickDominantSituationValue(family._regionCounts, family.regions);
+  const dominantDomain = pickDominantSituationValue(family._domainCounts, family.domains);
+  const stableKey = [
+    ...family.regions.slice(0, 2),
+    ...family.actors.slice(0, 2),
+    ...family.domains.slice(0, 2),
+  ];
+
+  return {
+    id: `fam-${hashSituationKey(stableKey)}`,
+    label: formatSituationFamilyLabel({
+      ...family,
+      dominantRegion,
+      dominantDomain,
+    }),
+    dominantRegion,
+    dominantDomain,
+    regions: family.regions,
+    domains: family.domains,
+    actors: family.actors,
+    signalTypes: family.signalTypes,
+    tokens: family.tokens,
+    situationCount: family.situationIds.length,
+    forecastCount: family.forecastCount,
+    situationIds: family.situationIds,
+    avgProbability: +(family._probabilityTotal / Math.max(1, family.situationIds.length)).toFixed(3),
+  };
+}
+
+function buildSituationFamilies(situationClusters = []) {
+  const families = [];
+  const orderedClusters = [...(situationClusters || [])].sort((a, b) => (
+    (a.dominantRegion || '').localeCompare(b.dominantRegion || '')
+    || (a.dominantDomain || '').localeCompare(b.dominantDomain || '')
+    || a.label.localeCompare(b.label)
+    || a.id.localeCompare(b.id)
+  ));
+
+  for (const cluster of orderedClusters) {
+    const candidate = buildSituationFamilyCandidate(cluster);
+    let bestFamily = null;
+    let bestScore = 0;
+
+    for (const family of families) {
+      const score = computeSituationFamilyOverlap(candidate, family);
+      if (score > bestScore) {
+        bestScore = score;
+        bestFamily = family;
+      }
+    }
+
+    if (!bestFamily || !shouldMergeSituationFamilyCandidate(candidate, bestFamily, bestScore)) {
+      bestFamily = {
+        regions: [],
+        domains: [],
+        actors: [],
+        signalTypes: [],
+        tokens: [],
+        situationIds: [],
+        forecastCount: 0,
+        _probabilityTotal: 0,
+        _regionCounts: {},
+        _domainCounts: {},
+      };
+      families.push(bestFamily);
+    }
+
+    bestFamily.regions = uniqueSortedStrings([...bestFamily.regions, ...candidate.regions]);
+    bestFamily.domains = uniqueSortedStrings([...bestFamily.domains, ...candidate.domains]);
+    bestFamily.actors = uniqueSortedStrings([...bestFamily.actors, ...candidate.actors]);
+    bestFamily.signalTypes = uniqueSortedStrings([...bestFamily.signalTypes, ...candidate.signalTypes]);
+    bestFamily.tokens = uniqueSortedStrings([...bestFamily.tokens, ...candidate.tokens]).slice(0, 32);
+    bestFamily.situationIds.push(cluster.id);
+    bestFamily.forecastCount += cluster.forecastCount || 0;
+    bestFamily._probabilityTotal += Number(cluster.avgProbability || 0);
+    incrementSituationCounts(bestFamily._regionCounts, candidate.regions);
+    incrementSituationCounts(bestFamily._domainCounts, candidate.domains);
+  }
+
+  return families
+    .map(finalizeSituationFamily)
+    .sort((a, b) => b.forecastCount - a.forecastCount || b.avgProbability - a.avgProbability);
+}
+
 function buildSituationContinuitySummary(currentSituationClusters, priorWorldState = null) {
   const priorSituationClusters = Array.isArray(priorWorldState?.situationClusters) ? priorWorldState.situationClusters : [];
   const matchedPriorIds = new Set();
@@ -2754,6 +2889,66 @@ function scoreActorAction(summary, stage, dominantDomain, actor) {
   };
 }
 
+function inferActionChannels(summary, intent, dominantDomain) {
+  const text = String(summary || '').toLowerCase();
+  const channels = new Set();
+
+  if (dominantDomain === 'conflict' || dominantDomain === 'military') channels.add('security_escalation');
+  if (dominantDomain === 'political') channels.add('political_pressure');
+  if (dominantDomain === 'market') channels.add('market_repricing');
+  if (dominantDomain === 'supply_chain') channels.add('logistics_disruption');
+  if (dominantDomain === 'infrastructure') channels.add('service_disruption');
+  if (dominantDomain === 'cyber') channels.add('cyber_disruption');
+  if (intent === 'pressure') channels.add('regional_spillover');
+
+  if (/(mobiliz|retaliat|escalat|strike|attack|deploy|coordination)/.test(text)) channels.add('security_escalation');
+  if (/(sanction|policy|cabinet|election|messaging|posture)/.test(text)) channels.add('political_pressure');
+  if (/(repric|price|commodity|oil|contract|risk premium)/.test(text)) channels.add('market_repricing');
+  if (/(rerout|shipping|port|throughput|logistics|corridor|freight)/.test(text)) channels.add('logistics_disruption');
+  if (/(outage|continuity|service|grid|facility|capacity|harden)/.test(text)) channels.add('service_disruption');
+  if (/(cyber|network|gps|spoof|jam|malware|phish)/.test(text)) channels.add('cyber_disruption');
+  if (/(spillover|regional|neighbor|broader)/.test(text)) channels.add('regional_spillover');
+  if (intent === 'stabilizing') channels.add('containment');
+
+  return [...channels];
+}
+
+function getTargetSensitivityChannels(domain) {
+  const map = {
+    conflict: ['security_escalation', 'political_pressure', 'regional_spillover'],
+    military: ['security_escalation', 'political_pressure', 'regional_spillover'],
+    political: ['political_pressure', 'security_escalation', 'regional_spillover'],
+    market: ['market_repricing', 'logistics_disruption', 'political_pressure', 'regional_spillover', 'service_disruption'],
+    supply_chain: ['logistics_disruption', 'service_disruption', 'security_escalation', 'regional_spillover'],
+    infrastructure: ['service_disruption', 'cyber_disruption', 'security_escalation', 'regional_spillover'],
+    cyber: ['cyber_disruption', 'service_disruption', 'political_pressure'],
+  };
+  return map[domain] || ['regional_spillover'];
+}
+
+function inferSystemEffectRelationFromChannel(channel, targetDomain) {
+  const relationMap = {
+    'security_escalation:market': 'risk repricing',
+    'security_escalation:supply_chain': 'route disruption',
+    'security_escalation:infrastructure': 'service disruption',
+    'political_pressure:market': 'policy repricing',
+    'political_pressure:conflict': 'escalation risk',
+    'political_pressure:supply_chain': 'trade friction',
+    'market_repricing:market': 'commodity pricing pressure',
+    'logistics_disruption:market': 'cost pass-through',
+    'logistics_disruption:supply_chain': 'logistics disruption',
+    'service_disruption:market': 'capacity shock',
+    'service_disruption:supply_chain': 'throughput disruption',
+    'service_disruption:infrastructure': 'service degradation',
+    'cyber_disruption:infrastructure': 'service degradation',
+    'cyber_disruption:market': 'risk repricing',
+    'regional_spillover:market': 'regional spillover',
+    'regional_spillover:supply_chain': 'regional spillover',
+    'regional_spillover:political': 'regional pressure transfer',
+  };
+  return relationMap[`${channel}:${targetDomain}`] || inferSystemEffectRelation('', targetDomain);
+}
+
 function buildActorRoundActions(stage, situation, actors = []) {
   return actors.slice(0, 6).map((actor) => {
     let summary = '';
@@ -2767,11 +2962,13 @@ function buildActorRoundActions(stage, situation, actors = []) {
         : actor.likelyActions?.[2] || actor.constraints?.[1] || `Manage spillover from ${situation.label}.`;
     }
     const effect = scoreActorAction(summary, stage, situation.dominantDomain || situation.domains?.[0] || '', actor);
+    const channels = inferActionChannels(summary, effect.intent, situation.dominantDomain || situation.domains?.[0] || '');
     return {
       actorId: actor.id,
       actorName: actor.name,
       category: actor.category,
       summary,
+      channels,
       ...effect,
     };
   });
@@ -2791,6 +2988,7 @@ function buildSimulationRound(stage, situation, context) {
   const actorActions = buildActorRoundActions(stage, situation, actors);
   const actionPressure = actorActions.reduce((sum, action) => sum + (action.pressureContribution || 0), 0);
   const actionStabilization = actorActions.reduce((sum, action) => sum + (action.stabilizationContribution || 0), 0);
+  const effectChannels = pickTopCountEntries(summarizeTypeCounts(actorActions.flatMap((action) => action.channels || [])), 5);
   const domainSpread = Math.min(1, Math.max(0, ((situation.domains || []).length - 1) * 0.25));
 
   let pressureDelta = 0;
@@ -2858,6 +3056,7 @@ function buildSimulationRound(stage, situation, context) {
     branchKinds,
     actions: actorActions,
     actionMix,
+    effectChannels,
     dominantDomain,
     rawPressureDelta: +rawPressureDelta.toFixed(3),
     rawStabilizationDelta: +rawStabilizationDelta.toFixed(3),
@@ -2902,6 +3101,7 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
   const branchStates = Array.isArray(worldState?.branchStates) ? worldState.branchStates : [];
   const supporting = Array.isArray(worldState?.evidenceLedger?.supporting) ? worldState.evidenceLedger.supporting : [];
   const counter = Array.isArray(worldState?.evidenceLedger?.counter) ? worldState.evidenceLedger.counter : [];
+  const familyIndex = buildSituationFamilyIndex(worldState?.situationFamilies || []);
   const priorSimulationState = priorWorldState?.simulationState;
   const compatiblePriorSimulations = priorSimulationState?.version === SIMULATION_STATE_VERSION
     ? (priorSimulationState?.situationSimulations || [])
@@ -2915,15 +3115,25 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
     const supportingEvidence = supporting.filter((item) => forecastIds.includes(item.forecastId)).slice(0, 8);
     const counterEvidence = counter.filter((item) => forecastIds.includes(item.forecastId)).slice(0, 8);
     const priorSimulation = priorSimulations.get(situation.id) || null;
+    const family = familyIndex.get(situation.id) || null;
     const rounds = [
       buildSimulationRound('round_1', situation, { actors, branches, counterEvidence, supportiveEvidence: supportingEvidence, priorSimulation }),
       buildSimulationRound('round_2', situation, { actors, branches, counterEvidence, supportiveEvidence: supportingEvidence, priorSimulation }),
       buildSimulationRound('round_3', situation, { actors, branches, counterEvidence, supportiveEvidence: supportingEvidence, priorSimulation }),
     ];
     const outcome = summarizeSimulationOutcome(rounds, situation.dominantDomain || situation.domains?.[0] || '');
+    const effectChannelWeights = {};
+    for (const round of rounds) {
+      for (const item of round.effectChannels || []) {
+        effectChannelWeights[item.type] = (effectChannelWeights[item.type] || 0) + (item.count || 0);
+      }
+    }
+    const effectChannelCounts = pickTopCountEntries(effectChannelWeights, 6);
 
     return {
       situationId: situation.id,
+      familyId: family?.id || '',
+      familyLabel: family?.label || '',
       label: situation.label,
       dominantRegion: situation.dominantRegion || situation.regions?.[0] || '',
       dominantDomain: situation.dominantDomain || situation.domains?.[0] || '',
@@ -2953,6 +3163,7 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
         projectedProbability: branch.projectedProbability,
         probabilityDelta: branch.probabilityDelta,
       })),
+      effectChannels: effectChannelCounts,
       actionPlan: rounds.map((round) => ({
         stage: round.stage,
         actions: (round.actions || []).map((action) => ({
@@ -2960,6 +3171,7 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
           actorName: action.actorName,
           summary: action.summary,
           intent: action.intent,
+          channels: action.channels || [],
           pressureContribution: action.pressureContribution,
           stabilizationContribution: action.stabilizationContribution,
         })),
@@ -3034,6 +3246,8 @@ function buildSimulationReportInputs(worldState) {
     : [];
   const reportInputs = simulations.map((item) => ({
     situationId: item.situationId,
+    familyId: item.familyId,
+    familyLabel: item.familyLabel,
     label: item.label,
     posture: item.posture,
     postureScore: item.postureScore,
@@ -3042,6 +3256,7 @@ function buildSimulationReportInputs(worldState) {
     actorCount: (item.actorIds || []).length,
     branchCount: (item.branchIds || []).length,
     pressureSignals: (item.pressureSignals || []).map((signal) => signal.type),
+    effectChannels: (item.effectChannels || []).map((item) => item.type),
     stabilizers: item.stabilizers || [],
     constraints: item.constraints || [],
       rounds: (item.rounds || []).map((round) => ({
@@ -3090,31 +3305,49 @@ function buildCrossSituationEffects(simulationState) {
     for (let j = 0; j < simulations.length; j++) {
       if (i === j) continue;
       const target = simulations[j];
-      const relation = inferSystemEffectRelation(source.dominantDomain, target.dominantDomain);
-      if (!relation) continue;
-
       const regionOverlap = intersectCount(source.regions || [], target.regions || []);
       const actorOverlap = intersectCount(source.actorIds || [], target.actorIds || []);
+      const familyLink = source.familyId && target.familyId && source.familyId === target.familyId;
       const labelTokenOverlap = intersectCount(
         normalizeSituationText(source.label).filter((token) => !['situation', 'conflict', 'political', 'market', 'supply', 'chain', 'infrastructure', 'cyber'].includes(token)),
         normalizeSituationText(target.label).filter((token) => !['situation', 'conflict', 'political', 'market', 'supply', 'chain', 'infrastructure', 'cyber'].includes(token)),
       );
-      const hasObservableLink = regionOverlap > 0 || actorOverlap > 0 || labelTokenOverlap > 0;
-      if (!hasObservableLink) continue;
+      const sourceChannels = (source.effectChannels || []).map((item) => item.type);
+      const targetSensitivity = getTargetSensitivityChannels(target.dominantDomain);
+      const channelOverlap = intersectCount(sourceChannels, targetSensitivity);
+      const hasDirectObservableLink = regionOverlap > 0 || actorOverlap > 0 || labelTokenOverlap > 0;
+      if (channelOverlap === 0) continue;
+      if (!hasDirectObservableLink) continue;
+
+      const strongestChannel = (source.effectChannels || [])
+        .slice()
+        .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type))
+        .find((item) => targetSensitivity.includes(item.type))
+        ?.type || '';
+      const relation = inferSystemEffectRelationFromChannel(strongestChannel, target.dominantDomain);
+      if (!relation) continue;
+
       const score = (source.posture === 'escalatory' ? 2 : source.posture === 'contested' ? 1 : 0)
+        + (channelOverlap * 2.5)
+        + (familyLink ? 1.5 : 0)
         + (regionOverlap * 2)
         + (actorOverlap * 1.5)
         + (labelTokenOverlap * 0.5);
-      if (score < 2) continue;
+      if (score < 4) continue;
 
       effects.push({
         sourceSituationId: source.situationId,
         sourceLabel: source.label,
+        sourceFamilyId: source.familyId,
+        sourceFamilyLabel: source.familyLabel,
         targetSituationId: target.situationId,
         targetLabel: target.label,
+        targetFamilyId: target.familyId,
+        targetFamilyLabel: target.familyLabel,
+        channel: strongestChannel,
         relation,
         score: +score.toFixed(3),
-        summary: `${source.label} is likely to feed ${relation} into ${target.label}, given a ${describeSimulationPosture(source.posture)} posture and ${roundPct(source.postureScore)} final pressure.`,
+        summary: `${source.label} is likely to feed ${relation} into ${target.label}, driven by ${strongestChannel.replace(/_/g, ' ')} and a ${describeSimulationPosture(source.posture)} posture at ${roundPct(source.postureScore)}.`,
       });
     }
   }
@@ -3149,6 +3382,40 @@ function attachSituationContext(predictions, situationClusters = buildSituationC
     pred.caseFile.situationContext = situationContext;
   }
   return situationClusters;
+}
+
+function buildSituationFamilyIndex(situationFamilies) {
+  const index = new Map();
+  for (const family of situationFamilies || []) {
+    for (const situationId of family.situationIds || []) {
+      if (index.has(situationId)) continue;
+      index.set(situationId, family);
+    }
+  }
+  return index;
+}
+
+function attachSituationFamilyContext(predictions, situationFamilies = []) {
+  const familyIndex = buildSituationFamilyIndex(situationFamilies);
+  for (const pred of predictions || []) {
+    const family = familyIndex.get(pred.situationContext?.id || '');
+    if (!family) continue;
+    const familyContext = {
+      id: family.id,
+      label: family.label,
+      dominantRegion: family.dominantRegion,
+      dominantDomain: family.dominantDomain,
+      situationCount: family.situationCount,
+      forecastCount: family.forecastCount,
+      regions: family.regions,
+      domains: family.domains,
+      situationIds: family.situationIds,
+    };
+    pred.familyContext = familyContext;
+    pred.caseFile = pred.caseFile || buildForecastCase(pred);
+    pred.caseFile.familyContext = familyContext;
+  }
+  return situationFamilies;
 }
 
 function buildSituationForecastIndex(situationClusters) {
@@ -3438,7 +3705,15 @@ function buildWorldStateReport(worldState) {
       summary: `${item.label} resolved to a ${item.posture} posture after 3 rounds, with ${Math.round((item.postureScore || 0) * 100)}% final pressure and ${item.actorIds.length} active actors.`,
     }));
 
-  const summary = `${worldState.summary} The leading domains in this run are ${leadDomains.join(', ') || 'none'}, the main continuity changes are captured through ${worldState.actorContinuity?.newlyActiveCount || 0} newly active actors and ${worldState.branchContinuity?.strengthenedBranchCount || 0} strengthened branches, the situation layer currently carries ${worldState.situationClusters?.length || 0} active clusters, the simulation layer reports ${worldState.simulationState?.totalSituationSimulations || 0} executable units, and ${crossSituationEffects.length} cross-situation system effects are active in the report view.`;
+  const familyWatchlist = (worldState.situationFamilies || [])
+    .slice(0, 6)
+    .map((family) => ({
+      type: 'situation_family',
+      label: family.label,
+      summary: `${family.label} currently groups ${family.situationCount} situations across ${family.forecastCount} forecasts.`,
+    }));
+
+  const summary = `${worldState.summary} The leading domains in this run are ${leadDomains.join(', ') || 'none'}, the main continuity changes are captured through ${worldState.actorContinuity?.newlyActiveCount || 0} newly active actors and ${worldState.branchContinuity?.strengthenedBranchCount || 0} strengthened branches, the situation layer currently carries ${worldState.situationClusters?.length || 0} active clusters inside ${worldState.situationFamilies?.length || 0} broader families, the simulation layer reports ${worldState.simulationState?.totalSituationSimulations || 0} executable units, and ${crossSituationEffects.length} cross-situation system effects are active in the report view.`;
 
   return {
     summary,
@@ -3454,6 +3729,7 @@ function buildWorldStateReport(worldState) {
     actorWatchlist,
     branchWatchlist,
     situationWatchlist,
+    familyWatchlist,
     continuityWatchlist,
     simulationWatchlist,
     simulationOutcomeSummaries,
@@ -3623,6 +3899,7 @@ function buildForecastRunWorldState(data) {
   const branchStates = buildForecastBranchStates(predictions);
   const branchContinuity = buildBranchContinuitySummary(branchStates, priorWorldState);
   const situationClusters = data?.situationClusters || buildSituationClusters(predictions);
+  const situationFamilies = data?.situationFamilies || buildSituationFamilies(situationClusters);
   const situationContinuity = buildSituationContinuitySummary(situationClusters, priorWorldState);
   const situationSummary = buildSituationSummary(situationClusters, situationContinuity);
   const reportContinuity = buildReportContinuity({
@@ -3631,7 +3908,7 @@ function buildForecastRunWorldState(data) {
   const continuity = buildForecastRunContinuity(predictions);
   const evidenceLedger = buildForecastEvidenceLedger(predictions);
   const activeDomains = domainStates.filter((item) => item.forecastCount > 0).map((item) => item.domain);
-  const summary = `${predictions.length} active forecasts are spanning ${activeDomains.length} domains, ${regionalStates.length} key regions, and ${situationClusters.length} clustered situations in this run, with ${continuity.newForecasts} new forecasts, ${continuity.materiallyChanged.length} materially changed paths, ${actorContinuity.newlyActiveCount} newly active actors, and ${branchContinuity.strengthenedBranchCount} strengthened branches.`;
+  const summary = `${predictions.length} active forecasts are spanning ${activeDomains.length} domains, ${regionalStates.length} key regions, ${situationClusters.length} clustered situations, and ${situationFamilies.length} broader situation families in this run, with ${continuity.newForecasts} new forecasts, ${continuity.materiallyChanged.length} materially changed paths, ${actorContinuity.newlyActiveCount} newly active actors, and ${branchContinuity.strengthenedBranchCount} strengthened branches.`;
   const worldState = {
     version: 1,
     generatedAt,
@@ -3644,6 +3921,7 @@ function buildForecastRunWorldState(data) {
     branchStates,
     branchContinuity,
     situationClusters,
+    situationFamilies,
     situationContinuity,
     situationSummary,
     reportContinuity,
@@ -3663,6 +3941,7 @@ function summarizeWorldStateSurface(worldState) {
     domainCount: worldState.domainStates?.length || 0,
     regionCount: worldState.regionalStates?.length || 0,
     situationCount: worldState.situationClusters?.length || 0,
+    familyCount: worldState.situationFamilies?.length || 0,
     simulationSituationCount: worldState.simulationState?.totalSituationSimulations || 0,
     simulationEffectCount: worldState.report?.crossSituationEffects?.length || 0,
   };
@@ -3786,6 +4065,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     priorWorldState: data?.priorWorldState || null,
     priorWorldStates: data?.priorWorldStates || [],
     situationClusters: data?.situationClusters || undefined,
+    situationFamilies: data?.situationFamilies || undefined,
     publishTelemetry: data?.publishTelemetry || null,
   });
   const candidateWorldState = fullRunPredictions !== predictions || data?.fullRunSituationClusters
@@ -3795,6 +4075,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
       priorWorldState: data?.priorWorldState || null,
       priorWorldStates: data?.priorWorldStates || [],
       situationClusters: data?.fullRunSituationClusters || undefined,
+      situationFamilies: data?.fullRunSituationFamilies || undefined,
       publishTelemetry: data?.publishTelemetry || null,
     })
     : null;
@@ -3845,6 +4126,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
       domainCount: worldState.domainStates.length,
       regionCount: worldState.regionalStates.length,
       situationCount: worldState.situationClusters.length,
+      familyCount: worldState.situationFamilies?.length || 0,
       simulationSituationCount: worldState.simulationState?.totalSituationSimulations || 0,
       simulationRoundCount: worldState.simulationState?.totalRounds || 0,
       simulationEffectCount: worldState.report?.crossSituationEffects?.length || 0,
@@ -4264,10 +4546,20 @@ function summarizePublishFiltering(predictions) {
       .map((pred) => pred.situationContext?.id)
       .filter(Boolean),
   );
+  const familyCounts = summarizeTypeCounts(
+    predictions
+      .map((pred) => pred.familyContext?.id)
+      .filter(Boolean),
+  );
   const cappedSituationIds = new Set(
     predictions
       .filter((pred) => pred.publishDiagnostics?.reason === 'situation_cap' && pred.publishDiagnostics?.situationId)
       .map((pred) => pred.publishDiagnostics.situationId),
+  );
+  const cappedFamilyIds = new Set(
+    predictions
+      .filter((pred) => pred.publishDiagnostics?.reason === 'situation_family_cap' && pred.publishDiagnostics?.familyId)
+      .map((pred) => pred.publishDiagnostics.familyId),
   );
 
   return {
@@ -4275,12 +4567,17 @@ function summarizePublishFiltering(predictions) {
     suppressedSituationOverlap: reasonCounts.situation_overlap || 0,
     suppressedSituationCap: reasonCounts.situation_cap || 0,
     suppressedSituationDomainCap: reasonCounts.situation_domain_cap || 0,
+    suppressedSituationFamilyCap: reasonCounts.situation_family_cap || 0,
     suppressedTotal: Object.values(reasonCounts).reduce((sum, count) => sum + count, 0),
     reasonCounts,
     situationClusterCount: Object.keys(situationCounts).length,
+    familyClusterCount: Object.keys(familyCounts).length,
     maxForecastsPerSituation: Math.max(0, ...Object.values(situationCounts)),
+    maxForecastsPerFamily: Math.max(0, ...Object.values(familyCounts)),
     multiForecastSituations: Object.values(situationCounts).filter((count) => count > 1).length,
+    multiForecastFamilies: Object.values(familyCounts).filter((count) => count > 1).length,
     cappedSituations: cappedSituationIds.size,
+    cappedFamilies: cappedFamilyIds.size,
   };
 }
 
@@ -4317,6 +4614,7 @@ function filterPublishedForecasts(predictions, minProbability = PUBLISH_MIN_PROB
 
     const bestDuplicate = kept.find((item) => {
       if (item.domain !== pred.domain) return false;
+      if (item.familyContext?.id && pred.familyContext?.id && item.familyContext.id !== pred.familyContext.id) return false;
       const duplicateScore = computeSituationDuplicateScore(pred, item);
       if (!shouldSuppressAsSituationDuplicate(pred, item, duplicateScore)) return false;
 
@@ -4394,6 +4692,58 @@ function filterPublishedForecasts(predictions, minProbability = PUBLISH_MIN_PROB
   if (situationCapSuppressedCount > 0) {
     console.log(`  [filterPublished] Suppressed ${situationCapSuppressedCount} situation-cap forecast(s)`);
   }
+  return published;
+}
+
+function applySituationFamilyCaps(predictions, situationFamilies = []) {
+  let familyCapSuppressedCount = 0;
+  const published = [];
+  const familyCounts = new Map();
+  const familyDomainCounts = new Map();
+  const familyIndex = buildSituationFamilyIndex(situationFamilies);
+
+  for (const pred of predictions || []) {
+    const family = familyIndex.get(pred.situationContext?.id || '');
+    if (!family) {
+      published.push(pred);
+      continue;
+    }
+    const familyId = family.id;
+    const familyTotalCount = familyCounts.get(familyId) || 0;
+    const familyDomainKey = `${familyId}:${pred.domain}`;
+    const familyDomainCount = familyDomainCounts.get(familyDomainKey) || 0;
+
+    if (familyDomainCount >= MAX_PUBLISHED_FORECASTS_PER_FAMILY_DOMAIN) {
+      familyCapSuppressedCount++;
+      pred.publishDiagnostics = {
+        reason: 'situation_family_cap',
+        situationId: pred.situationContext?.id || '',
+        familyId,
+        domain: pred.domain,
+        cap: MAX_PUBLISHED_FORECASTS_PER_FAMILY_DOMAIN,
+      };
+      continue;
+    }
+    if (familyTotalCount >= MAX_PUBLISHED_FORECASTS_PER_FAMILY) {
+      familyCapSuppressedCount++;
+      pred.publishDiagnostics = {
+        reason: 'situation_family_cap',
+        situationId: pred.situationContext?.id || '',
+        familyId,
+        cap: MAX_PUBLISHED_FORECASTS_PER_FAMILY,
+      };
+      continue;
+    }
+
+    published.push(pred);
+    familyCounts.set(familyId, familyTotalCount + 1);
+    familyDomainCounts.set(familyDomainKey, familyDomainCount + 1);
+  }
+
+  if (familyCapSuppressedCount > 0) {
+    console.log(`  [filterPublished] Suppressed ${familyCapSuppressedCount} situation-family-cap forecast(s)`);
+  }
+
   return published;
 }
 
@@ -5225,6 +5575,7 @@ async function fetchForecasts() {
   annotateForecastChanges(predictions, prior);
   const fullRunPredictions = predictions.slice();
   const fullRunSituationClusters = attachSituationContext(predictions);
+  const fullRunSituationFamilies = attachSituationFamilyContext(predictions, buildSituationFamilies(fullRunSituationClusters));
   prepareForecastMetrics(predictions);
 
   rankForecastsForAnalysis(predictions);
@@ -5232,10 +5583,15 @@ async function fetchForecasts() {
   const enrichmentMeta = await enrichScenariosWithLLM(predictions);
   populateFallbackNarratives(predictions);
 
-  const publishedPredictions = filterPublishedForecasts(predictions);
+  const initiallyPublishedPredictions = filterPublishedForecasts(predictions);
+  const initiallyPublishedSituationClusters = projectSituationClusters(fullRunSituationClusters, initiallyPublishedPredictions);
+  attachSituationContext(initiallyPublishedPredictions, initiallyPublishedSituationClusters);
+  const initiallyPublishedSituationFamilies = attachSituationFamilyContext(initiallyPublishedPredictions, buildSituationFamilies(initiallyPublishedSituationClusters));
+  const publishedPredictions = applySituationFamilyCaps(initiallyPublishedPredictions, initiallyPublishedSituationFamilies);
   const publishTelemetry = summarizePublishFiltering(predictions);
   const publishedSituationClusters = projectSituationClusters(fullRunSituationClusters, publishedPredictions);
   attachSituationContext(publishedPredictions, publishedSituationClusters);
+  const publishedSituationFamilies = attachSituationFamilyContext(publishedPredictions, buildSituationFamilies(publishedSituationClusters));
   refreshPublishedNarratives(publishedPredictions);
   if (publishedPredictions.length !== predictions.length) {
     console.log(`  Filtered ${predictions.length - publishedPredictions.length} forecasts at publish floor > ${PUBLISH_MIN_PROBABILITY}`);
@@ -5248,7 +5604,9 @@ async function fetchForecasts() {
     enrichmentMeta,
     publishTelemetry,
     situationClusters: publishedSituationClusters,
+    situationFamilies: publishedSituationFamilies,
     fullRunSituationClusters,
+    fullRunSituationFamilies,
   };
 }
 
@@ -5421,6 +5779,7 @@ export {
   computeAnalysisPriority,
   rankForecastsForAnalysis,
   filterPublishedForecasts,
+  applySituationFamilyCaps,
   summarizePublishFiltering,
   selectForecastsForEnrichment,
   parseForecastProviderOrder,
@@ -5433,6 +5792,7 @@ export {
   buildFeedSummary,
   buildFallbackPerspectives,
   populateFallbackNarratives,
+  buildCrossSituationEffects,
   attachSituationContext,
   projectSituationClusters,
   refreshPublishedNarratives,
