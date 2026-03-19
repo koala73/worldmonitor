@@ -15,7 +15,7 @@ const BOOTSTRAP_KEYS = {
   techReadiness:     'economic:worldbank-techreadiness:v1',
   progressData:      'economic:worldbank-progress:v1',
   renewableEnergy:   'economic:worldbank-renewable:v1',
-  positiveGeoEvents: 'positive-events:geo-bootstrap:v1',
+  positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   riskScores:        'risk:scores:sebuf:stale:v1',
   naturalEvents:     'natural:events:v1',
   flightDelays:      'aviation:delays-bootstrap:v1',
