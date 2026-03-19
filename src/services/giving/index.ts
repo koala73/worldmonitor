@@ -66,8 +66,21 @@ export interface GivingFetchResult {
 
 // ─── Proto -> display mapping ───
 
+const emptyResult: GivingSummary = {
+  generatedAt: new Date().toISOString(),
+  activityIndex: 0,
+  trend: 'stable',
+  estimatedDailyFlowUsd: 0,
+  platforms: [],
+  categories: [],
+  crypto: { dailyInflowUsd: 0, trackedWallets: 0, transactions24h: 0, topReceivers: [], pctOfTotal: 0 },
+  institutional: { oecdOdaAnnualUsdBn: 0, oecdDataYear: 0, cafWorldGivingIndex: 0, cafDataYear: 0, candidGrantsTracked: 0, dataLag: 'Unknown' },
+};
+
 function toDisplaySummary(proto: ProtoResponse): GivingSummary {
-  const s = proto.summary!;
+  const s = proto.summary;
+  if (!s) return emptyResult;
+
   return {
     generatedAt: s.generatedAt,
     activityIndex: s.activityIndex,
@@ -126,17 +139,6 @@ function toDisplayInstitutional(proto?: ProtoInstitutional): InstitutionalGiving
 // ─── Client + circuit breaker + caching ───
 
 const client = new GivingServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
-
-const emptyResult: GivingSummary = {
-  generatedAt: new Date().toISOString(),
-  activityIndex: 0,
-  trend: 'stable',
-  estimatedDailyFlowUsd: 0,
-  platforms: [],
-  categories: [],
-  crypto: { dailyInflowUsd: 0, trackedWallets: 0, transactions24h: 0, topReceivers: [], pctOfTotal: 0 },
-  institutional: { oecdOdaAnnualUsdBn: 0, oecdDataYear: 0, cafWorldGivingIndex: 0, cafDataYear: 0, candidGrantsTracked: 0, dataLag: 'Unknown' },
-};
 
 const breaker = createCircuitBreaker<GivingSummary>({
   name: 'Global Giving',
