@@ -7,7 +7,8 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'intelligence:gdelt-intel:v1';
 const CACHE_TTL = 86400; // 24h — intentionally much longer than the 2h cron so verifySeedKey always has a prior snapshot to merge from when GDELT 429s all topics
 const GDELT_DOC_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
-const INTER_TOPIC_DELAY_MS = 20_000; // 20s between topics to avoid 429
+const INTER_TOPIC_DELAY_MS = 20_000; // 20s between topics on success
+const POST_EXHAUST_DELAY_MS = 120_000; // 2min extra cooldown after a topic exhausts all retries
 
 const INTEL_TOPICS = [
   { id: 'military',     query: '(military exercise OR troop deployment OR airstrike OR "naval exercise") sourcelang:eng' },
@@ -74,13 +75,13 @@ async function fetchWithRetry(topic, maxRetries = 3) {
     } catch (err) {
       const is429 = err.message?.includes('429');
       if (!is429 || attempt === maxRetries) {
-        // Non-429 error or exhausted retries: return empty rather than killing the whole seed
         console.warn(`    ${topic.id}: giving up after ${attempt + 1} attempts (${err.message})`);
-        return { id: topic.id, articles: [], fetchedAt: new Date().toISOString() };
+        // exhausted:true only when 429 was the reason — post-exhaust cooldown is only relevant for rate-limit windows
+        return { id: topic.id, articles: [], fetchedAt: new Date().toISOString(), exhausted: is429 };
       }
-      // Start backoff at 20s (GDELT needs longer cooldown than 10s)
-      const backoff = 20_000 + attempt * 15_000;
-      console.log(`    429 rate-limited, waiting ${backoff / 1000}s...`);
+      // Exponential backoff: 60s, 120s, 240s — GDELT rate limit windows exceed 50s
+      const backoff = 60_000 * Math.pow(2, attempt);
+      console.log(`    429 rate-limited, waiting ${backoff / 1000}s... (attempt ${attempt + 1}/${maxRetries + 1})`);
       await sleep(backoff);
     }
   }
@@ -94,6 +95,12 @@ async function fetchAllTopics() {
     const result = await fetchWithRetry(INTEL_TOPICS[i]);
     console.log(`    ${result.articles.length} articles`);
     topics.push(result);
+    // After a topic exhausts all retries, give GDELT a longer cooldown before hitting
+    // it again with the next topic — the rate limit window for popular queries exceeds 50s
+    if (result.exhausted && i < INTEL_TOPICS.length - 1) {
+      console.log(`    Rate-limit cooldown: waiting ${POST_EXHAUST_DELAY_MS / 1000}s before next topic...`);
+      await sleep(POST_EXHAUST_DELAY_MS);
+    }
   }
 
   // For topics that returned 0 articles (rate-limited), preserve the previous

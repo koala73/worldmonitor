@@ -30,6 +30,29 @@ export async function fetchWithTimeout(url, options, timeoutMs = 15000) {
   }
 }
 
+/** Build the final relay response — wraps non-JSON errors in a JSON envelope
+ *  so the client can always parse the body (guards against Cloudflare HTML 502s).
+ *  Exported so that standalone handlers (e.g. telegram-feed.js) can reuse it. */
+export function buildRelayResponse(response, body, headers) {
+  const ct = (response.headers.get('content-type') || '').toLowerCase();
+  // Treat any JSON-compatible type as JSON: application/json, application/problem+json,
+  // application/vnd.api+json, application/ld+json, etc.
+  const isNonJsonError = !response.ok && !ct.includes('/json') && !ct.includes('+json');
+  if (isNonJsonError) {
+    console.warn(`[relay] Wrapping non-JSON ${response.status} upstream error (ct: ${ct || 'none'}); body preview: ${String(body).slice(0, 120)}`);
+  }
+  return new Response(
+    isNonJsonError ? JSON.stringify({ error: `Upstream error: HTTP ${response.status}`, status: response.status }) : body,
+    {
+      status: response.status,
+      headers: {
+        'Content-Type': isNonJsonError ? 'application/json' : (response.headers.get('content-type') || 'application/json'),
+        ...headers,
+      },
+    },
+  );
+}
+
 export function createRelayHandler(cfg) {
   return async function handler(req) {
     const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
@@ -85,15 +108,7 @@ export function createRelayHandler(cfg) {
       const isSuccess = response.status >= 200 && response.status < 300;
       const cacheHeaders = cfg.cacheHeaders ? cfg.cacheHeaders(isSuccess) : {};
 
-      return new Response(body, {
-        status: response.status,
-        headers: {
-          'Content-Type': response.headers.get('content-type') || 'application/json',
-          ...cacheHeaders,
-          ...extraHeaders,
-          ...corsHeaders,
-        },
-      });
+      return buildRelayResponse(response, body, { ...cacheHeaders, ...extraHeaders, ...corsHeaders });
     } catch (error) {
       if (cfg.fallback) return cfg.fallback(req, corsHeaders);
       const isTimeout = error?.name === 'AbortError';

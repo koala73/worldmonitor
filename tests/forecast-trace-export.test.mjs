@@ -7,6 +7,10 @@ import {
   populateFallbackNarratives,
   buildForecastTraceArtifacts,
   buildForecastRunWorldState,
+  buildCrossSituationEffects,
+  attachSituationContext,
+  projectSituationClusters,
+  refreshPublishedNarratives,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -62,12 +66,19 @@ describe('forecast trace artifact builder', () => {
     b.trend = 'rising';
     buildForecastCase(b);
 
-    populateFallbackNarratives([a, b]);
+    const c = makePrediction('cyber', 'China', 'Cyber pressure: China', 0.59, 0.55, '7d', [
+      { type: 'cyber', value: 'Malware-hosting concentration remains elevated', weight: 0.4 },
+    ]);
+    c.trend = 'stable';
+    buildForecastCase(c);
+
+    populateFallbackNarratives([a, b, c]);
 
     const artifacts = buildForecastTraceArtifacts(
       {
         generatedAt: Date.parse('2026-03-15T08:00:00Z'),
         predictions: [a, b],
+        fullRunPredictions: [a, b, c],
         publishTelemetry: {
           suppressedWeakFallback: 1,
           suppressedSituationOverlap: 2,
@@ -141,8 +152,10 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.quality.publish.suppressedSituationCap, 1);
     assert.equal(artifacts.summary.quality.publish.suppressedSituationDomainCap, 1);
     assert.equal(artifacts.summary.quality.publish.cappedSituations, 1);
+    assert.equal(artifacts.summary.quality.candidateRun.domainCounts.cyber, 1);
     assert.ok(artifacts.summary.quality.fullRun.quietDomains.includes('military'));
     assert.equal(artifacts.summary.quality.traced.topPromotionSignals[0].type, 'cii');
+    assert.equal(artifacts.summary.worldStateSummary.scope, 'published');
     assert.ok(artifacts.summary.worldStateSummary.summary.includes('active forecasts'));
     assert.ok(artifacts.summary.worldStateSummary.reportSummary.includes('leading domains'));
     assert.ok(typeof artifacts.summary.worldStateSummary.reportContinuitySummary === 'string');
@@ -150,12 +163,16 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.worldStateSummary.regionCount, 2);
     assert.ok(typeof artifacts.summary.worldStateSummary.situationCount === 'number');
     assert.ok(artifacts.summary.worldStateSummary.situationCount >= 1);
+    assert.ok(typeof artifacts.summary.worldStateSummary.familyCount === 'number');
+    assert.ok(artifacts.summary.worldStateSummary.familyCount >= 1);
     assert.ok(typeof artifacts.summary.worldStateSummary.simulationSituationCount === 'number');
     assert.equal(artifacts.summary.worldStateSummary.simulationRoundCount, 3);
     assert.ok(typeof artifacts.summary.worldStateSummary.simulationSummary === 'string');
     assert.ok(typeof artifacts.summary.worldStateSummary.simulationInputSummary === 'string');
     assert.ok(typeof artifacts.summary.worldStateSummary.simulationEffectCount === 'number');
     assert.ok(typeof artifacts.summary.worldStateSummary.historyRuns === 'number');
+    assert.equal(artifacts.summary.worldStateSummary.candidateStateSummary.forecastCount, 3);
+    assert.ok(artifacts.summary.worldStateSummary.candidateStateSummary.situationCount >= artifacts.summary.worldStateSummary.situationCount);
     assert.ok(Array.isArray(artifacts.worldState.actorRegistry));
     assert.ok(artifacts.worldState.actorRegistry.every(actor => actor.name && actor.id));
     assert.equal(artifacts.summary.worldStateSummary.persistentActorCount, 0);
@@ -240,6 +257,62 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.quality.enrichment.combined.rawItemCount, 2);
     assert.equal(artifacts.summary.quality.enrichment.scenario.rawItemCount, 1);
     assert.equal(artifacts.summary.quality.enrichment.combined.failureReason, '');
+  });
+
+  it('projects published situations from the original full-run clusters without re-clustering ranked subsets', () => {
+    const a = makePrediction('market', 'Red Sea', 'Freight shock: Red Sea', 0.74, 0.61, '7d', [
+      { type: 'chokepoint', value: 'Red Sea disruption detected', weight: 0.4 },
+    ]);
+    const b = makePrediction('supply_chain', 'Hormuz', 'Shipping disruption: Hormuz', 0.71, 0.6, '7d', [
+      { type: 'chokepoint', value: 'Hormuz disruption risk rising', weight: 0.4 },
+    ]);
+    const c = makePrediction('market', 'Hormuz', 'Oil pricing pressure: Hormuz', 0.69, 0.58, '7d', [
+      { type: 'commodity_price', value: 'Energy prices are moving higher', weight: 0.3 },
+    ]);
+    const d = makePrediction('supply_chain', 'Red Sea', 'Container rerouting risk: Red Sea', 0.68, 0.57, '7d', [
+      { type: 'shipping_delay', value: 'Freight rerouting remains elevated', weight: 0.3 },
+    ]);
+
+    buildForecastCase(a);
+    buildForecastCase(b);
+    buildForecastCase(c);
+    buildForecastCase(d);
+    populateFallbackNarratives([a, b, c, d]);
+
+    const fullRunSituationClusters = attachSituationContext([a, b, c, d]);
+    const publishedPredictions = [a, c, d];
+    const projectedClusters = projectSituationClusters(fullRunSituationClusters, publishedPredictions);
+    attachSituationContext(publishedPredictions, projectedClusters);
+    refreshPublishedNarratives(publishedPredictions);
+
+    const projectedIds = new Set(projectedClusters.map((cluster) => cluster.id));
+    assert.equal(projectedClusters.reduce((sum, cluster) => sum + cluster.forecastCount, 0), publishedPredictions.length);
+    assert.ok(projectedIds.has(a.situationContext.id));
+    assert.ok(projectedIds.has(c.situationContext.id));
+    assert.ok(projectedIds.has(d.situationContext.id));
+  });
+
+  it('refreshes published narratives after shrinking a broader situation cluster', () => {
+    const a = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.74, 0.64, '7d', [
+      { type: 'cii', value: 'Iran CII 79 (high)', weight: 0.4 },
+    ]);
+    const b = makePrediction('conflict', 'Iran', 'Retaliation risk: Iran', 0.7, 0.6, '7d', [
+      { type: 'news_corroboration', value: 'Officials warn of retaliation risk', weight: 0.3 },
+    ]);
+
+    buildForecastCase(a);
+    buildForecastCase(b);
+    const fullRunSituationClusters = attachSituationContext([a, b]);
+    populateFallbackNarratives([a, b]);
+
+    const publishedPredictions = [a];
+    const projectedClusters = projectSituationClusters(fullRunSituationClusters, publishedPredictions);
+    attachSituationContext(publishedPredictions, projectedClusters);
+    refreshPublishedNarratives(publishedPredictions);
+
+    assert.equal(a.caseFile.situationContext.forecastCount, 1);
+    assert.ok(!a.scenario.includes('broader cluster'));
+    assert.ok(!a.feedSummary.includes('broader'));
   });
 });
 
@@ -681,6 +754,68 @@ describe('forecast run world state', () => {
     assert.ok(worldState.simulationState.roundTransitions.every((round) => round.situationCount >= 1));
     assert.ok(worldState.simulationState.situationSimulations.every((unit) => ['escalatory', 'contested', 'constrained'].includes(unit.posture)));
     assert.ok(worldState.simulationState.situationSimulations.every((unit) => unit.rounds.every((round) => typeof round.netPressure === 'number')));
+    assert.ok(worldState.simulationState.situationSimulations.every((unit) => Array.isArray(unit.actionPlan) && unit.actionPlan.length === 3));
+    assert.ok(worldState.simulationState.situationSimulations.every((unit) => unit.actionPlan.every((round) => Array.isArray(round.actions))));
+  });
+
+  it('derives differentiated simulation postures from actor actions, branches, and counter-evidence', () => {
+    const escalatory = makePrediction('conflict', 'Israel', 'Active armed conflict: Israel', 0.88, 0.71, '7d', [
+      { type: 'ucdp', value: 'Israeli theater remains highly active', weight: 0.45 },
+      { type: 'news_corroboration', value: 'Regional actors prepare responses', weight: 0.3 },
+    ]);
+    buildForecastCase(escalatory);
+
+    const constrained = makePrediction('infrastructure', 'Cuba', 'Infrastructure cascade risk: Cuba', 0.28, 0.44, '14d', [
+      { type: 'outage', value: 'Localized outages remain contained', weight: 0.2 },
+    ]);
+    buildForecastCase(constrained);
+    constrained.caseFile.counterEvidence = [
+      { type: 'confidence', summary: 'Confidence remains limited and the pattern is not yet broad.', weight: 0.3 },
+      { type: 'coverage_gap', summary: 'Cross-system corroboration is still thin.', weight: 0.25 },
+      { type: 'trend', summary: 'Momentum is already easing.', weight: 0.25 },
+    ];
+    constrained.caseFile.actors = (constrained.caseFile.actors || []).map((actor) => ({
+      ...actor,
+      likelyActions: ['Maintain continuity around exposed nodes.'],
+      constraints: ['Containment remains the priority and escalation is costly.'],
+    }));
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T13:00:00Z'),
+      predictions: [escalatory, constrained],
+    });
+
+    const escalatoryUnit = worldState.simulationState.situationSimulations.find((unit) => unit.label.includes('Israel'));
+    const constrainedUnit = worldState.simulationState.situationSimulations.find((unit) => unit.label.includes('Cuba'));
+    assert.equal(escalatoryUnit?.posture, 'escalatory');
+    assert.equal(constrainedUnit?.posture, 'constrained');
+    assert.ok(escalatoryUnit?.rounds.some((round) => (round.actionMix?.pressure || 0) > (round.actionMix?.stabilizing || 0)));
+    assert.ok(constrainedUnit?.rounds.some((round) => (round.actionMix?.stabilizing || 0) >= (round.actionMix?.pressure || 0)));
+  });
+
+  it('keeps moderate market and supply-chain situations contested unless pressure compounds strongly', () => {
+    const market = makePrediction('market', 'Japan', 'Oil price impact: Japan', 0.58, 0.56, '30d', [
+      { type: 'prediction_market', value: 'Oil contracts reprice on Japan energy risk', weight: 0.3 },
+      { type: 'commodity_price', value: 'Energy prices are drifting higher', weight: 0.2 },
+    ]);
+    buildForecastCase(market);
+
+    const supply = makePrediction('supply_chain', 'Red Sea', 'Shipping disruption: Red Sea', 0.55, 0.54, '14d', [
+      { type: 'chokepoint', value: 'Shipping reroutes remain elevated', weight: 0.3 },
+    ]);
+    buildForecastCase(supply);
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T13:30:00Z'),
+      predictions: [market, supply],
+    });
+
+    const marketUnit = worldState.simulationState.situationSimulations.find((unit) => unit.label.includes('Japan'));
+    const supplyUnit = worldState.simulationState.situationSimulations.find((unit) => unit.label.includes('Red Sea'));
+    assert.equal(marketUnit?.posture, 'contested');
+    assert.equal(supplyUnit?.posture, 'contested');
+    assert.ok((marketUnit?.postureScore || 0) < 0.77);
+    assert.ok((supplyUnit?.postureScore || 0) < 0.77);
   });
 
   it('builds report outputs from simulation outcomes and cross-situation effects', () => {
@@ -736,6 +871,8 @@ describe('forecast run world state', () => {
     assert.ok(worldState.report.simulationOutcomeSummaries.every((item) => ['escalatory', 'contested', 'constrained'].includes(item.posture)));
     assert.ok(worldState.report.crossSituationEffects.length >= 1);
     assert.ok(worldState.report.crossSituationEffects.some((item) => item.summary.includes('Japan')));
+    assert.ok(worldState.report.crossSituationEffects.every((item) => item.channel));
+    assert.ok(worldState.simulationState.situationSimulations.every((item) => item.familyId));
   });
 
   it('does not synthesize cross-situation effects for unrelated theaters with no overlap', () => {
@@ -785,5 +922,98 @@ describe('forecast run world state', () => {
     const dominantSimulation = worldState.simulationState.situationSimulations.find((item) => item.label.includes('Middle East'));
     assert.equal(dominantSimulation?.dominantDomain, 'supply_chain');
     assert.ok(dominantInput);
+  });
+
+  it('builds broader situation families above individual situations', () => {
+    const conflict = makePrediction('conflict', 'Israel', 'Active armed conflict: Israel', 0.76, 0.66, '7d', [
+      { type: 'ucdp', value: 'Israeli theater remains active', weight: 0.4 },
+    ]);
+    conflict.newsContext = ['Regional actors prepare responses'];
+    buildForecastCase(conflict);
+
+    const market = makePrediction('market', 'Middle East', 'Oil price impact: Middle East', 0.59, 0.56, '30d', [
+      { type: 'prediction_market', value: 'Energy traders reprice risk', weight: 0.35 },
+    ]);
+    market.newsContext = ['Regional actors prepare responses'];
+    buildForecastCase(market);
+
+    const supply = makePrediction('supply_chain', 'Eastern Mediterranean', 'Shipping disruption: Eastern Mediterranean', 0.57, 0.54, '14d', [
+      { type: 'chokepoint', value: 'Shipping reroutes continue', weight: 0.35 },
+    ]);
+    supply.newsContext = ['Regional actors prepare responses'];
+    buildForecastCase(supply);
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T12:30:00Z'),
+      predictions: [conflict, market, supply],
+    });
+
+    assert.ok(worldState.situationClusters.length >= 2);
+    assert.ok(worldState.situationFamilies.length >= 1);
+    assert.ok(worldState.situationFamilies.length <= worldState.situationClusters.length);
+    assert.ok(worldState.report.familyWatchlist.length >= 1);
+  });
+
+  it('does not synthesize cross-situation effects from family membership alone', () => {
+    const source = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.74, 0.64, '7d', [
+      { type: 'ucdp', value: 'Iran theater remains active', weight: 0.4 },
+    ]);
+    source.newsContext = ['Regional actors prepare responses'];
+    buildForecastCase(source);
+
+    const target = makePrediction('market', 'Japan', 'Market repricing: Japan', 0.58, 0.55, '30d', [
+      { type: 'prediction_market', value: 'Japan markets price energy risk', weight: 0.35 },
+    ]);
+    target.newsContext = ['Regional actors prepare responses'];
+    buildForecastCase(target);
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T12:45:00Z'),
+      predictions: [source, target],
+    });
+
+    const patchedSimulationState = structuredClone(worldState.simulationState);
+    for (const unit of patchedSimulationState.situationSimulations || []) {
+      unit.familyId = 'fam-shared-test';
+      unit.familyLabel = 'Shared test family';
+    }
+
+    const effects = buildCrossSituationEffects(patchedSimulationState);
+    assert.equal(effects.length, 0);
+  });
+
+  it('ignores incompatible prior simulation momentum when the simulation version changes', () => {
+    const conflict = makePrediction('conflict', 'Israel', 'Active armed conflict: Israel', 0.76, 0.66, '7d', [
+      { type: 'ucdp', value: 'Israeli theater remains active', weight: 0.4 },
+    ]);
+    buildForecastCase(conflict);
+
+    const priorWorldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T08:00:00Z'),
+      predictions: [conflict],
+    });
+    priorWorldState.simulationState = {
+      ...priorWorldState.simulationState,
+      version: 1,
+      situationSimulations: (priorWorldState.simulationState?.situationSimulations || []).map((item) => ({
+        ...item,
+        postureScore: 0.99,
+        rounds: (item.rounds || []).map((round) => ({
+          ...round,
+          pressureDelta: 0.99,
+          stabilizationDelta: 0,
+        })),
+      })),
+    };
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-19T09:00:00Z'),
+      predictions: [conflict],
+      priorWorldState,
+      priorWorldStates: [priorWorldState],
+    });
+
+    assert.equal(worldState.simulationState.version, 2);
+    assert.ok((worldState.simulationState.situationSimulations || []).every((item) => item.postureScore < 0.99));
   });
 });

@@ -51,6 +51,7 @@ import {
   computeAnalysisPriority,
   rankForecastsForAnalysis,
   filterPublishedForecasts,
+  applySituationFamilyCaps,
   selectForecastsForEnrichment,
   parseForecastProviderOrder,
   getForecastLlmCallOptions,
@@ -1919,6 +1920,92 @@ describe('forecast quality gating', () => {
     assert.equal(telemetry.cappedSituations, 0);
   });
 
+  it('does not suppress same-domain forecasts as duplicates when they belong to different situation families', () => {
+    const iranConflict = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.67, 0.61, '7d', [
+      { type: 'ucdp', value: 'Iran conflict intensity remains elevated', weight: 0.45 },
+    ]);
+    const brazilConflict = makePrediction('conflict', 'Brazil', 'Escalation risk: Brazil', 0.62, 0.58, '7d', [
+      { type: 'ucdp', value: 'Brazil conflict intensity remains elevated', weight: 0.42 },
+    ]);
+
+    buildForecastCases([iranConflict, brazilConflict]);
+    for (const pred of [iranConflict, brazilConflict]) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.readiness = { overall: 0.58 };
+      pred.analysisPriority = 0.16;
+    }
+
+    iranConflict.situationContext = { id: 'sit-iran', label: 'Iran conflict situation', forecastCount: 1, topSignals: [{ type: 'ucdp', count: 1 }] };
+    brazilConflict.situationContext = { id: 'sit-brazil', label: 'Brazil conflict situation', forecastCount: 1, topSignals: [{ type: 'ucdp', count: 1 }] };
+    iranConflict.caseFile.situationContext = iranConflict.situationContext;
+    brazilConflict.caseFile.situationContext = brazilConflict.situationContext;
+    iranConflict.familyContext = { id: 'fam-middle-east', label: 'Middle East conflict pressure family', situationCount: 1, forecastCount: 1 };
+    brazilConflict.familyContext = { id: 'fam-brazil', label: 'Brazil conflict pressure family', situationCount: 1, forecastCount: 1 };
+    iranConflict.caseFile.familyContext = iranConflict.familyContext;
+    brazilConflict.caseFile.familyContext = brazilConflict.familyContext;
+
+    const published = filterPublishedForecasts([iranConflict, brazilConflict]);
+    assert.equal(published.length, 2);
+
+    const telemetry = summarizePublishFiltering([iranConflict, brazilConflict]);
+    assert.equal(telemetry.suppressedSituationOverlap, 0);
+  });
+
+  it('caps dominant family output while preserving family diversity', () => {
+    const preds = [
+      makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.69, 0.62, '7d', [{ type: 'ucdp', value: 'Iran events remain elevated', weight: 0.4 }]),
+      makePrediction('political', 'Iran', 'Political instability: Iran', 0.56, 0.56, '14d', [{ type: 'news_corroboration', value: 'Emergency cabinet talks continue', weight: 0.35 }]),
+      makePrediction('market', 'Middle East', 'Oil price impact: Middle East', 0.53, 0.55, '30d', [{ type: 'prediction_market', value: 'Oil repricing persists', weight: 0.3 }]),
+      makePrediction('supply_chain', 'Persian Gulf', 'Shipping disruption: Persian Gulf', 0.51, 0.54, '14d', [{ type: 'chokepoint', value: 'Shipping reroutes persist', weight: 0.35 }]),
+      makePrediction('infrastructure', 'Iran', 'Infrastructure strain: Iran', 0.49, 0.53, '14d', [{ type: 'news_corroboration', value: 'Grid strain and outages remain elevated', weight: 0.32 }]),
+      makePrediction('conflict', 'Brazil', 'Escalation risk: Brazil', 0.63, 0.58, '7d', [{ type: 'ucdp', value: 'Brazil conflict remains active', weight: 0.42 }]),
+    ];
+
+    buildForecastCases(preds);
+    for (const [index, pred] of preds.entries()) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.readiness = { overall: 0.68 - (index * 0.03) };
+      pred.analysisPriority = 0.24 - (index * 0.02);
+    }
+
+    const familyA = {
+      id: 'fam-middle-east',
+      label: 'Middle East pressure family',
+      situationCount: 5,
+      forecastCount: 5,
+      situationIds: ['sit-iran-conflict', 'sit-iran-political', 'sit-middleeast-market', 'sit-gulf-shipping', 'sit-iran-infra'],
+    };
+    const familyB = {
+      id: 'fam-brazil',
+      label: 'Brazil pressure family',
+      situationCount: 1,
+      forecastCount: 1,
+      situationIds: ['sit-brazil-conflict'],
+    };
+    preds[0].situationContext = { id: 'sit-iran-conflict', label: 'Iran conflict situation', forecastCount: 1, topSignals: [{ type: 'ucdp', count: 1 }] };
+    preds[1].situationContext = { id: 'sit-iran-political', label: 'Iran political situation', forecastCount: 1, topSignals: [{ type: 'news_corroboration', count: 1 }] };
+    preds[2].situationContext = { id: 'sit-middleeast-market', label: 'Middle East market situation', forecastCount: 1, topSignals: [{ type: 'prediction_market', count: 1 }] };
+    preds[3].situationContext = { id: 'sit-gulf-shipping', label: 'Persian Gulf supply chain situation', forecastCount: 1, topSignals: [{ type: 'chokepoint', count: 1 }] };
+    preds[4].situationContext = { id: 'sit-iran-infra', label: 'Iran infrastructure situation', forecastCount: 1, topSignals: [{ type: 'news_corroboration', count: 1 }] };
+    preds[5].situationContext = { id: 'sit-brazil-conflict', label: 'Brazil conflict situation', forecastCount: 1, topSignals: [{ type: 'ucdp', count: 1 }] };
+    for (const pred of preds.slice(0, 5)) {
+      pred.familyContext = familyA;
+      pred.caseFile.situationContext = pred.situationContext;
+      pred.caseFile.familyContext = familyA;
+    }
+    preds[5].familyContext = familyB;
+    preds[5].caseFile.situationContext = preds[5].situationContext;
+    preds[5].caseFile.familyContext = familyB;
+
+    const published = applySituationFamilyCaps(preds, [familyA, familyB]);
+    assert.equal(published.length, 5);
+    assert.ok(published.some((item) => item.id === preds[5].id));
+
+    const telemetry = summarizePublishFiltering(preds);
+    assert.equal(telemetry.suppressedSituationFamilyCap, 1);
+    assert.equal(telemetry.cappedFamilies, 1);
+  });
+
   it('does not report capped situations when a situation only reaches the cap without dropping anything', () => {
     const preds = [
       makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.66, 0.6, '7d', [
@@ -1970,38 +2057,4 @@ describe('forecast quality gating', () => {
     assert.ok(worldState.situationClusters.every((cluster) => !/fc-[a-z]+-[0-9a-f]{8}/.test(cluster.label)));
   });
 
-  it('does not report capped situations when a situation only reaches the cap without dropping anything', () => {
-    const preds = [
-      makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.66, 0.6, '7d', [
-        { type: 'ucdp', value: '27 conflict events in Iran', weight: 0.5 },
-      ]),
-      makePrediction('political', 'Iran', 'Political instability: Iran', 0.55, 0.54, '14d', [
-        { type: 'news_corroboration', value: 'Emergency cabinet meetings continue', weight: 0.35 },
-      ]),
-      makePrediction('market', 'Middle East', 'Oil price impact from Strait of Hormuz disruption', 0.48, 0.52, '30d', [
-        { type: 'news_corroboration', value: 'Oil traders react to Hormuz risk', weight: 0.4 },
-      ]),
-    ];
-
-    buildForecastCases(preds);
-    for (const [index, pred] of preds.entries()) {
-      pred.traceMeta = { narrativeSource: 'fallback' };
-      pred.situationContext = {
-        id: 'sit-iran-gulf',
-        label: 'Iran Gulf pressure',
-        forecastCount: 3,
-        topSignals: [{ type: 'news_corroboration', count: 2 }],
-      };
-      pred.caseFile.situationContext = pred.situationContext;
-      pred.readiness = { overall: 0.65 - (index * 0.05) };
-      pred.analysisPriority = 0.22 - (index * 0.03);
-    }
-
-    const published = filterPublishedForecasts(preds);
-    assert.equal(published.length, 3);
-
-    const telemetry = summarizePublishFiltering(preds);
-    assert.equal(telemetry.suppressedSituationCap, 0);
-    assert.equal(telemetry.cappedSituations, 0);
-  });
 });

@@ -5478,13 +5478,13 @@ export class DeckGLMap {
 
     map.on('mousemove', (e) => {
       if (!this.onCountryClick) return;
-      if (!map.getLayer('country-interactive')) return;
-      const features = map.queryRenderedFeatures(e.point, { layers: ['country-interactive'] });
-      const props = features?.[0]?.properties;
-      const iso2 = props?.['ISO3166-1-Alpha-2'] as string | undefined;
-      const name = props?.['name'] as string | undefined;
-
       try {
+        if (!map.getLayer('country-interactive')) return;
+        const features = map.queryRenderedFeatures(e.point, { layers: ['country-interactive'] });
+        const props = features?.[0]?.properties;
+        const iso2 = props?.['ISO3166-1-Alpha-2'] as string | undefined;
+        const name = props?.['name'] as string | undefined;
+
         if (iso2 && iso2 !== hoveredIso2) {
           hoveredIso2 = iso2;
           this.hoveredCountryIso2 = iso2;

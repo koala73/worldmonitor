@@ -111,7 +111,7 @@ export function getApiBaseUrl(): string {
     return '';
   }
 
-  const configuredBaseUrl = ENV.VITE_TAURI_API_BASE_URL;
+const configuredBaseUrl = ENV.VITE_TAURI_API_BASE_URL;
   if (configuredBaseUrl) {
     return normalizeBaseUrl(configuredBaseUrl);
   }
@@ -151,7 +151,7 @@ export function getCanonicalApiOrigin(): string {
 }
 
 export function getRemoteApiBaseUrl(): string {
-  const configuredRemoteBase = ENV.VITE_TAURI_REMOTE_API_BASE_URL;
+const configuredRemoteBase = ENV.VITE_TAURI_REMOTE_API_BASE_URL;
   if (configuredRemoteBase) {
     return normalizeBaseUrl(configuredRemoteBase);
   }
@@ -215,7 +215,7 @@ const APP_HOSTS = new Set([
   'api.worldmonitor.app',
   'localhost',
   '127.0.0.1',
-  ...extractHostnames(WS_API_URL, ENV.VITE_WS_RELAY_URL),
+...extractHostnames(WS_API_URL, ENV.VITE_WS_RELAY_URL),
 ]);
 
 function isAppOriginUrl(urlStr: string): boolean {

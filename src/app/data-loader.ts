@@ -2069,9 +2069,7 @@ export class DataLoaderManager implements AppModule {
     if (!this.ctx.map) return;
     try {
       const map = this.ctx.map;
-      const zoom = map.getState().zoom ?? 3;
-
-      if (zoom < 2) return;
+      const zoom = Math.max(2, map.getState().zoom ?? 3);
 
       const now = Date.now();
       if (now - this.lastWebcamFetchAt < 1000) return;

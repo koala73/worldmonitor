@@ -1376,10 +1376,21 @@ async function seedMarketQuotes() {
 
 async function seedCommodityQuotes() {
   const quotes = [];
+  const missing = [];
   for (const s of COMMODITY_SYMBOLS) {
     const yahoo = await fetchYahooChartDirect(s);
     if (yahoo) quotes.push({ symbol: s, name: s, display: s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    else missing.push(s);
     await sleep(150);
+  }
+  // Retry symbols that failed (Yahoo 429 recovery)
+  if (missing.length > 0) {
+    await sleep(3000);
+    for (const s of missing) {
+      const yahoo = await fetchYahooChartDirect(s);
+      if (yahoo) quotes.push({ symbol: s, name: s, display: s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+      await sleep(200);
+    }
   }
 
   if (quotes.length === 0) {

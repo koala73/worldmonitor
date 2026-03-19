@@ -15,7 +15,7 @@ const FRED_KEY_PREFIX = 'economic:fred:v1';
 const FRED_TTL = 3600;
 const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
-const MACRO_TTL = 900;
+const MACRO_TTL = 1800;
 
 const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO'];
 
@@ -391,7 +391,7 @@ async function fetchAll() {
     }
   }
 
-  if (ms && !ms.unavailable) await writeExtraKeyWithMeta(KEYS.macroSignals, ms, MACRO_TTL, ms.totalCount ?? 0);
+  if (ms && !ms.unavailable && ms.totalCount > 0) await writeExtraKeyWithMeta(KEYS.macroSignals, ms, MACRO_TTL, ms.totalCount ?? 0);
 
   return ep || { prices: [] };
 }

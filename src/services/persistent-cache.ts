@@ -1,6 +1,6 @@
 import { isDesktopRuntime } from './runtime';
 import { invokeTauri } from './tauri-bridge';
-import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from '@/utils';
+import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from '@/utils/storage-quota';
 
 type CacheEnvelope<T> = {
   key: string;
@@ -107,6 +107,14 @@ function deleteFromLocalStorageByPrefix(prefix: string): void {
   }
 }
 
+function validateBreakerPrefix(prefix: string): void {
+  const trimmed = prefix.trim();
+  const suffix = trimmed.slice('breaker:'.length);
+  if (!trimmed.startsWith('breaker:') || suffix.length === 0 || !/\w/.test(suffix)) {
+    throw new Error('deletePersistentCacheByPrefix requires a specific breaker: prefix');
+  }
+}
+
 export async function getPersistentCache<T>(key: string): Promise<CacheEnvelope<T> | null> {
   if (isDesktopRuntime()) {
     try {
@@ -200,6 +208,8 @@ export async function deletePersistentCache(key: string): Promise<void> {
 }
 
 export async function deletePersistentCacheByPrefix(prefix: string): Promise<void> {
+  validateBreakerPrefix(prefix);
+
   if (isDesktopRuntime()) {
     try {
       await invokeTauri<void>('delete_cache_entries_by_prefix', { prefix });

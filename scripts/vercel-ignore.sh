@@ -17,11 +17,16 @@ fi
 # Skip preview deploys that aren't tied to a pull request
 [ -z "$VERCEL_GIT_PULL_REQUEST_ID" ] && exit 0
 
-[ -z "$VERCEL_GIT_PREVIOUS_SHA" ] && exit 1
-git cat-file -e "$VERCEL_GIT_PREVIOUS_SHA" 2>/dev/null || exit 1
+# Resolve comparison base: prefer VERCEL_GIT_PREVIOUS_SHA, fall back to merge-base with main
+# (empty/invalid PREVIOUS_SHA caused false "build" on PRs that only touch scripts/)
+COMPARE_SHA="$VERCEL_GIT_PREVIOUS_SHA"
+if [ -z "$COMPARE_SHA" ] || ! git cat-file -e "$COMPARE_SHA" 2>/dev/null; then
+  COMPARE_SHA=$(git merge-base HEAD origin/main 2>/dev/null)
+fi
+[ -z "$COMPARE_SHA" ] && exit 1
 
 # Build if any of these web-relevant paths changed
-git diff --name-only "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- \
+git diff --name-only "$COMPARE_SHA" HEAD -- \
   'src/' \
   'api/' \
   'server/' \
