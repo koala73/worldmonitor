@@ -1,4 +1,4 @@
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
 
@@ -171,8 +171,12 @@ export default async function handler(req) {
 
   const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
 
+  // Bootstrap data is fully public (world events, market prices, seismic data).
+  // Use ACAO: * so CF caches one entry valid for all origins, including Vercel
+  // preview deployments. Per-origin ACAO with Vary: Origin causes CF to pin the
+  // first origin's ACAO on the cached response, breaking CORS for other origins.
   return jsonResponse({ data, missing }, 200, {
-    ...cors,
+    ...getPublicCorsHeaders(),
     'Cache-Control': cacheControl,
     'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
   });
