@@ -1,4 +1,4 @@
-import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
+import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout, buildRelayResponse } from './_relay.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 
 export const config = { runtime: 'edge' };
@@ -55,30 +55,9 @@ export default async function handler(req) {
       }
     } catch {}
 
-    // Wrap non-JSON error responses in a JSON envelope (e.g. HTML 502 pages)
-    const upstreamCt = (response.headers.get('content-type') || '').toLowerCase();
-    const isJsonResponse = upstreamCt.includes('application/json');
-    if (!response.ok && !isJsonResponse) {
-      return new Response(JSON.stringify({
-        error: 'Upstream error',
-        status: response.status,
-      }), {
-        status: response.status,
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-store',
-          ...corsHeaders,
-        },
-      });
-    }
-
-    return new Response(body, {
-      status: response.status,
-      headers: {
-        'Content-Type': response.headers.get('content-type') || 'application/json',
-        'Cache-Control': cacheControl,
-        ...corsHeaders,
-      },
+    return buildRelayResponse(response, body, {
+      'Cache-Control': response.ok ? cacheControl : 'no-store',
+      ...corsHeaders,
     });
   } catch (error) {
     const isTimeout = error?.name === 'AbortError';

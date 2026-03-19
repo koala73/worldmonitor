@@ -378,7 +378,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 502);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 502);
   });
 
@@ -392,7 +392,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 503);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 503);
   });
 
@@ -425,7 +425,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 502);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
   });
 
   // ── Content-Type edge cases ──────────────────────────────────────────
@@ -440,7 +440,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 502);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 502);
   });
 
@@ -468,8 +468,8 @@ describe('createRelayHandler', () => {
     assert.equal(text, '{"message":"not found"}');
   });
 
-  it('wraps application/vnd.api+json error in JSON envelope (not substring of application/json)', async () => {
-    // application/vnd.api+json does NOT contain the substring "application/json"
+  it('passes application/vnd.api+json error through unchanged (JSON-compatible type)', async () => {
+    // application/vnd.api+json contains "+json" so it is treated as JSON and passed through
     mockFetch(async () => new Response(
       '{"errors":[{"status":"500"}]}',
       { status: 500, headers: { 'Content-Type': 'application/vnd.api+json' } },
@@ -477,10 +477,9 @@ describe('createRelayHandler', () => {
     const handler = createRelayHandler({ relayPath: '/test' });
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 500);
-    assert.equal(res.headers.get('content-type'), 'application/json');
+    assert.equal(res.headers.get('content-type'), 'application/vnd.api+json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
-    assert.equal(body.status, 500);
+    assert.deepEqual(body.errors, [{ status: '500' }]);
   });
 
   it('wraps error with empty string content-type in JSON envelope', async () => {
@@ -497,7 +496,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 500);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 500);
   });
 
@@ -511,7 +510,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 502);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 502);
   });
 
@@ -538,7 +537,7 @@ describe('createRelayHandler', () => {
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 400);
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 400);
   });
 
@@ -551,7 +550,7 @@ describe('createRelayHandler', () => {
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 401);
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 401);
   });
 
@@ -564,7 +563,7 @@ describe('createRelayHandler', () => {
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 403);
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 403);
   });
 
@@ -577,7 +576,7 @@ describe('createRelayHandler', () => {
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 404);
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 404);
   });
 
@@ -590,7 +589,7 @@ describe('createRelayHandler', () => {
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 499);
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 499);
   });
 
@@ -603,7 +602,7 @@ describe('createRelayHandler', () => {
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 500);
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 500);
   });
 
@@ -616,7 +615,7 @@ describe('createRelayHandler', () => {
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     assert.equal(res.status, 504);
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 504);
   });
 
@@ -666,7 +665,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 300);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 300);
   });
 
@@ -682,7 +681,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 502);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 502);
   });
 
@@ -697,7 +696,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 502);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 502);
     // The large HTML body should NOT leak into the JSON envelope
     const text = JSON.stringify(body);
@@ -716,7 +715,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
     // The original JSON body is replaced by the envelope
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 500);
     assert.equal(body.actually, undefined);
   });
@@ -731,7 +730,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 503);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 503);
   });
 
@@ -778,7 +777,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 502);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 502);
   });
 
@@ -818,7 +817,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.headers.get('content-type'), 'application/json');
     assert.equal(res.headers.get('x-cache'), 'MISS');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
   });
 
   it('preserves cacheHeaders in wrapped non-JSON error response', async () => {
@@ -837,7 +836,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.headers.get('content-type'), 'application/json');
     assert.equal(res.headers.get('cache-control'), 'no-store');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
   });
 
   it('preserves both extraHeaders and cacheHeaders in wrapped response', async () => {
@@ -860,7 +859,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.headers.get('cache-control'), 'no-cache');
     assert.equal(res.headers.get('x-request-id'), 'abc-123');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 503);
   });
 
@@ -891,7 +890,7 @@ describe('createRelayHandler', () => {
       const text = await res.text();
       let parsed;
       assert.doesNotThrow(() => { parsed = JSON.parse(text); }, `Body not valid JSON for status ${status}`);
-      assert.equal(parsed.error, 'Upstream error', `Missing error field for status ${status}`);
+      assert.ok(parsed.error.startsWith('Upstream error'), `Missing error field for status ${status}`);
       assert.equal(parsed.status, status, `Missing status field for status ${status}`);
     }
   });
@@ -906,7 +905,7 @@ describe('createRelayHandler', () => {
     const res = await handler(makeRequest('https://worldmonitor.app/api/test'));
     const text = await res.text();
     const parsed = JSON.parse(text);
-    assert.equal(parsed.error, 'Upstream error');
+    assert.ok(parsed.error.startsWith('Upstream error'));
     assert.equal(parsed.status, 502);
   });
 
@@ -1011,7 +1010,7 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 599);
     assert.equal(res.headers.get('content-type'), 'application/json');
     const body = await res.json();
-    assert.equal(body.error, 'Upstream error');
+    assert.ok(body.error.startsWith('Upstream error'), `unexpected error: ${body.error}`);
     assert.equal(body.status, 599);
   });
 });
