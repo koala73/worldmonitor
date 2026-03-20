@@ -245,7 +245,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     </div>
     <div class="us-data-mgmt-toast" id="usDataMgmtToast"></div>
   `;
-  html += `<a href="https://github.com/koala73/worldmonitor/discussions/94" target="_blank" rel="noopener noreferrer" class="us-discussion-link">
+  html += `<a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener noreferrer" class="us-discussion-link">
     <span class="us-discussion-dot"></span>
     <span>${t('components.community.joinDiscussion')}</span>
   </a>`;

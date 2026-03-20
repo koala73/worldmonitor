@@ -1264,11 +1264,19 @@ const MARKET_SYMBOLS = [
   '^DJI', '^GSPC', '^IXIC',
 ];
 
-const COMMODITY_SYMBOLS = ['^VIX', 'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F'];
+const _commodityCfg = requireShared('commodities.json');
+const COMMODITY_SYMBOLS = _commodityCfg.commodities.map(c => c.symbol);
 
 const SECTOR_SYMBOLS = ['XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC', 'SMH'];
 
-const YAHOO_ONLY = new Set(['^GSPC', '^DJI', '^IXIC', '^VIX', 'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F']);
+// Symbols that must come from Yahoo — Finnhub doesn't carry futures (=F) or major indices.
+// ^GSPC/^DJI/^IXIC live in MARKET_SYMBOLS (not COMMODITY_SYMBOLS) so they must be listed
+// explicitly; commodity ETFs (URA, LIT) also go through Yahoo since they have no Finnhub feed.
+const YAHOO_ONLY = new Set([
+  '^GSPC', '^DJI', '^IXIC',
+  ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=F') || s.startsWith('^')),
+  'URA', 'LIT',
+]);
 
 function fetchYahooChartDirect(symbol) {
   return new Promise((resolve) => {
@@ -1775,7 +1783,7 @@ async function startMarketDataSeedLoop() {
 // ─────────────────────────────────────────────────────────────
 const AVIATIONSTACK_API_KEY = process.env.AVIATIONSTACK_API || '';
 const AVIATION_SEED_INTERVAL_MS = 30 * 60 * 1000; // 30min
-const AVIATION_SEED_TTL = 3600; // 1h — survives 1 missed cycle
+const AVIATION_SEED_TTL = 10800; // 3h — 6x interval; survives ~5 consecutive missed pings
 const AVIATION_REDIS_KEY = 'aviation:delays:intl:v3';
 const AVIATION_BATCH_CONCURRENCY = 10;
 const AVIATION_MIN_FLIGHTS_FOR_CLOSURE = 10;
@@ -2044,7 +2052,7 @@ async function startAviationSeedLoop() {
 // so Vercel handler and map layer serve from cache (ICAO API times out from edge)
 // ─────────────────────────────────────────────────────────────
 const NOTAM_SEED_INTERVAL_MS = 30 * 60 * 1000; // 30min
-const NOTAM_SEED_TTL = 3600; // 1h — survives 1 missed cycle
+const NOTAM_SEED_TTL = 10800; // 3h — 6x interval; survives ~5 consecutive missed pings
 const NOTAM_REDIS_KEY = 'aviation:notam:closures:v2';
 const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
 const NOTAM_MONITORED_ICAO = [
@@ -3439,7 +3447,7 @@ function startCableHealthWarmPingLoop() {
 // ─────────────────────────────────────────────────────────────
 const WEATHER_SEED_INTERVAL_MS = 15 * 60 * 1000; // 15 min
 const WEATHER_REDIS_KEY = 'weather:alerts:v1';
-const WEATHER_CACHE_TTL = 1800; // 30m — must outlive the 15-min seed interval
+const WEATHER_CACHE_TTL = 5400; // 1.5h — 6x interval; survives ~5 consecutive missed pings
 let weatherSeedInFlight = false;
 
 async function seedWeatherAlerts() {
@@ -4471,25 +4479,23 @@ async function seedUsniFleet() {
   console.log('[USNI] Fetching fleet tracker...');
   const t0 = Date.now();
   try {
-    const proxyAuth = process.env.RESIDENTIAL_PROXY_AUTH || OREF_PROXY_AUTH;
-    if (!proxyAuth) { console.warn('[USNI] No proxy auth configured, skipping'); return; }
-
-    let raw;
-    try {
-      raw = orefCurlFetch(proxyAuth, USNI_URL);
-    } catch (e) {
-      console.warn(`[USNI] curl+proxy failed: ${e.message}, trying direct...`);
-      try {
-        const { execFileSync } = require('child_process');
-        raw = execFileSync('curl', ['-sS', '--compressed', '--max-time', '15',
-          '-H', 'Accept: application/json', '-H', `User-Agent: ${CHROME_UA}`, USNI_URL],
-          { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
-      } catch (e2) {
-        throw new Error(`All curl attempts failed: ${e2.message}`);
-      }
+    // USNI (WordPress) returns 403 from Railway datacenter IPs via Cloudflare.
+    // Route through the residential proxy when available; fall back to direct for dev.
+    const proxyAuth = process.env.OREF_PROXY_AUTH || OREF_PROXY_AUTH;
+    let wpData;
+    if (proxyAuth) {
+      const proxy = parseProxyUrl(`http://${proxyAuth}`);
+      const result = proxy ? await ytFetchViaProxy(USNI_URL, proxy) : null;
+      if (!result || !result.ok) throw new Error(`proxy HTTP ${result?.status ?? 'unavailable'}`);
+      wpData = JSON.parse(result.body);
+    } else {
+      const res = await fetch(USNI_URL, {
+        headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      wpData = await res.json();
     }
-
-    const wpData = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (!Array.isArray(wpData) || !wpData.length) throw new Error('No fleet tracker articles');
 
     const post = wpData[0];
@@ -4853,7 +4859,7 @@ const TRANSIT_COOLDOWN_MS = 30 * 60 * 1000;
 const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_DWELL_MS = 5 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
-const CHOKEPOINT_TRANSIT_TTL = 1200; // 20 min — must outlive the 10-min seed interval (2x)
+const CHOKEPOINT_TRANSIT_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
 const CHOKEPOINT_TRANSIT_INTERVAL_MS = 10 * 60 * 1000;
 
 const NAVAL_PREFIX_RE = /^(USS|USNS|HMS|HMAS|HMCS|INS|JS|ROKS|TCG|FS|BNS|RFS|PLAN|PLA|CGC|PNS|KRI|ITS|SNS|MMSI)/i;
@@ -5361,7 +5367,7 @@ setInterval(() => {
 
 // --- Pre-assembled Transit Summaries (Railway advantage: avoids large Redis reads on Vercel) ---
 const TRANSIT_SUMMARY_REDIS_KEY = 'supply_chain:transit-summaries:v1';
-const TRANSIT_SUMMARY_TTL = 1200; // 20 min — must outlive the 10-min seed interval (2x)
+const TRANSIT_SUMMARY_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
 const TRANSIT_SUMMARY_INTERVAL_MS = 10 * 60 * 1000;
 
 // Threat levels for anomaly detection.

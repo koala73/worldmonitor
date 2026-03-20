@@ -924,8 +924,8 @@
       "nuclear": "نووي"
     },
     "community": {
-      "joinDiscussion": "انضم إلى النقاش",
-      "openDiscussion": "فتح النقاش",
+      "joinDiscussion": "Join Discord",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "عدم العرض مجدداً",
       "sectionLabel": "المجتمع"
     },

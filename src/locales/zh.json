@@ -958,8 +958,8 @@
       "nuclear": "核设施"
     },
     "community": {
-      "joinDiscussion": "加入讨论",
-      "openDiscussion": "打开讨论",
+      "joinDiscussion": "Join Discord",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "不再显示",
       "sectionLabel": "社区"
     },

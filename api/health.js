@@ -90,7 +90,7 @@ const SEED_META = {
   naturalEvents:    { key: 'seed-meta:natural:events',          maxStaleMin: 120 },
   flightDelays:     { key: 'seed-meta:aviation:faa',            maxStaleMin: 60 },
   notamClosures:    { key: 'seed-meta:aviation:notam',          maxStaleMin: 90 },
-  predictions:      { key: 'seed-meta:prediction:markets',      maxStaleMin: 30 },
+  predictions:      { key: 'seed-meta:prediction:markets',      maxStaleMin: 90 },
   insights:         { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
   marketQuotes:     { key: 'seed-meta:market:stocks',         maxStaleMin: 30 },
   commodityQuotes:  { key: 'seed-meta:market:commodities',    maxStaleMin: 30 },

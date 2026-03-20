@@ -26,18 +26,23 @@ export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
 
 type CacheTier = 'fast' | 'medium' | 'slow' | 'slow-browser' | 'static' | 'daily' | 'no-store';
 
+// Browser-only cache: no `public` or `s-maxage` so Cloudflare (which ignores
+// Vary: Origin) does NOT cache these responses. CF sits in front of api.worldmonitor.app
+// and would otherwise pin ACAO: worldmonitor.app on the cached response, breaking CORS
+// for preview deployments. Vercel CDN caching is handled separately by CDN-Cache-Control.
 const TIER_HEADERS: Record<CacheTier, string> = {
-  fast: 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=600',
-  medium: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
-  slow: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',
-  'slow-browser': 'public, max-age=300, s-maxage=900, stale-while-revalidate=60, stale-if-error=1800',
-  static: 'public, s-maxage=7200, stale-while-revalidate=600, stale-if-error=14400',
-  daily: 'public, s-maxage=86400, stale-while-revalidate=7200, stale-if-error=172800',
+  fast: 'max-age=60, stale-while-revalidate=60, stale-if-error=600',
+  medium: 'max-age=120, stale-while-revalidate=120, stale-if-error=900',
+  slow: 'max-age=300, stale-while-revalidate=300, stale-if-error=3600',
+  'slow-browser': 'max-age=300, stale-while-revalidate=60, stale-if-error=1800',
+  static: 'max-age=600, stale-while-revalidate=600, stale-if-error=14400',
+  daily: 'max-age=3600, stale-while-revalidate=7200, stale-if-error=172800',
   'no-store': 'no-store',
 };
 
-// Cloudflare-specific cache TTLs — more aggressive than s-maxage since CF can
-// revalidate via ETag/If-None-Match without full payload transfer.
+// Vercel CDN-specific cache TTLs — CDN-Cache-Control overrides Cache-Control for
+// Vercel's own edge cache, so Vercel can still cache aggressively (and respects
+// Vary: Origin correctly) while CF sees no public s-maxage and passes through.
 const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
   fast: 'public, s-maxage=600, stale-while-revalidate=300, stale-if-error=1200',
   medium: 'public, s-maxage=1200, stale-while-revalidate=600, stale-if-error=1800',

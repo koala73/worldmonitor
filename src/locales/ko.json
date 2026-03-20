@@ -958,8 +958,8 @@
       "nuclear": "핵 시설"
     },
     "community": {
-      "joinDiscussion": "토론 참여",
-      "openDiscussion": "토론 열기",
+      "joinDiscussion": "Join Discord",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "다시 표시하지 않기",
       "sectionLabel": "커뮤니티"
     },

@@ -5518,17 +5518,22 @@ export class DeckGLMap {
   public highlightCountry(code: string): void {
     this.highlightedCountryCode = code;
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
-    if (!this.maplibreMap.getLayer('country-highlight-fill')) return;
-    const filter = ['==', ['get', 'ISO3166-1-Alpha-2'], code] as maplibregl.FilterSpecification;
-    this.maplibreMap.setFilter('country-highlight-fill', filter);
-    this.maplibreMap.setFilter('country-highlight-border', filter);
-    this.pulseCountryHighlight();
+    try {
+      if (!this.maplibreMap.getLayer('country-highlight-fill')) return;
+      const filter = ['==', ['get', 'ISO3166-1-Alpha-2'], code] as maplibregl.FilterSpecification;
+      this.maplibreMap.setFilter('country-highlight-fill', filter);
+      this.maplibreMap.setFilter('country-highlight-border', filter);
+      this.pulseCountryHighlight();
+    } catch { /* style not yet loaded */ }
   }
 
   public clearCountryHighlight(): void {
     this.highlightedCountryCode = null;
     if (this.countryPulseRaf) { cancelAnimationFrame(this.countryPulseRaf); this.countryPulseRaf = null; }
-    if (!this.maplibreMap || !this.maplibreMap.getLayer('country-highlight-fill')) return;
+    if (!this.maplibreMap) return;
+    try {
+      if (!this.maplibreMap.getLayer('country-highlight-fill')) return;
+    } catch { return; }
     const rest = this.getHighlightRestOpacity();
     const noMatch = ['==', ['get', 'ISO3166-1-Alpha-2'], ''] as maplibregl.FilterSpecification;
     this.maplibreMap.setFilter('country-highlight-fill', noMatch);
@@ -5545,10 +5550,9 @@ export class DeckGLMap {
     const start = performance.now();
     const duration = 3000;
     const step = (now: number) => {
-      if (!map.getLayer('country-highlight-fill')) {
-        this.countryPulseRaf = null;
-        return;
-      }
+      try {
+        if (!map.getLayer('country-highlight-fill')) { this.countryPulseRaf = null; return; }
+      } catch { this.countryPulseRaf = null; return; }
       const t = (now - start) / duration;
       if (t >= 1) {
         this.countryPulseRaf = null;

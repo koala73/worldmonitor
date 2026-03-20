@@ -958,8 +958,8 @@
       "nuclear": "Ядерный"
     },
     "community": {
-      "joinDiscussion": "Присоединиться к обсуждению",
-      "openDiscussion": "Открыть обсуждение",
+      "joinDiscussion": "Join Discord",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "Больше не показывать",
       "sectionLabel": "Сообщество"
     },

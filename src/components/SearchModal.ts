@@ -1,4 +1,5 @@
 import { escapeHtml } from '@/utils/sanitize';
+import { shuffle } from '@/utils';
 import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
@@ -389,7 +390,7 @@ export class SearchModal {
       { icon: '\u2699\uFE0F', key: 'commands.tips.settings', exampleKey: 'commands.tips.settingsExample' },
     ];
 
-    const shuffled = tips.sort(() => Math.random() - 0.5).slice(0, this.isMobile ? 2 : 4);
+    const shuffled = shuffle(tips).slice(0, this.isMobile ? 2 : 4);
 
     let html = `<div class="search-section-header">${t('modals.search.empty')}</div>`;
     shuffled.forEach((tip, i) => {
