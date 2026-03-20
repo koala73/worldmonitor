@@ -27,7 +27,7 @@ export const SEED_CATALOG = {
   'market-quotes':        { tier: 'hot',    intervalMin: 10,   ttlSec: 1800,   ttlSource: 'source',   requiredKeys: ['FINNHUB_API_KEY'],   metaKey: 'market:quotes' },
   'insights':             { tier: 'hot',    intervalMin: 15,   ttlSec: 1800,   ttlSource: 'source',   requiredKeys: [],                    metaKey: 'news:insights' },
   'military-flights':     { tier: 'hot',    intervalMin: 5,    ttlSec: 600,    ttlSource: 'source',   requiredKeys: [],                    metaKey: 'military:flights' },
-  'conflict-intel':       { tier: 'hot',    intervalMin: 10,   ttlSec: 900,    ttlSource: 'source',   requiredKeys: ['ACLED_ACCESS_TOKEN'], metaKey: 'conflict:acled-intel' },
+  'conflict-intel':       { tier: 'hot',    intervalMin: 10,   ttlSec: 900,    ttlSource: 'source',   requiredKeys: [],                    metaKey: 'conflict:acled-intel' }, // accepts ACLED_EMAIL+PASSWORD or ACLED_ACCESS_TOKEN
 
   // ── WARM (30-60 min) ───────────────────────────────────────────────
   'earthquakes':          { tier: 'warm',   intervalMin: 30,   ttlSec: 3600,   ttlSource: 'source',   requiredKeys: [],                    metaKey: 'seismology:earthquakes' },
