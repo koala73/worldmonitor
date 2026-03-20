@@ -2556,6 +2556,11 @@
     "refresh": "Refresh",
     "all": "All"
   },
+  "connectivity": {
+    "offlineCached": "Offline — showing cached data from {{freshness}}.",
+    "offlineUnavailable": "Offline — live data is currently unavailable.",
+    "cachedFallback": "Live data unavailable — showing cached data from {{freshness}}."
+  },
   "preferences": {
     "display": "Display",
     "intelligence": "Intelligence",
