@@ -150,6 +150,44 @@ export const COMMANDS: Command[] = [
   { id: 'panel:world-clock', keywords: ['clock', 'world clock', 'time zones', 'timezone'], label: 'Panel: World Clock', icon: '\u{1F570}\uFE0F', category: 'panels' },
   { id: 'panel:layoffs', keywords: ['layoffs', 'layoff tracker', 'job cuts', 'redundancies'], label: 'Panel: Layoffs Tracker', icon: '\u{1F4C9}', category: 'panels' },
   { id: 'panel:radiation-watch', keywords: ['radiation', 'nuclear', 'radnet', 'safecast', 'radiation watch'], label: 'Panel: Radiation Watch', icon: '\u2622\uFE0F', category: 'panels' },
+  { id: 'panel:thermal-escalation', keywords: ['thermal', 'thermal escalation', 'heat signature', 'infrared'], label: 'Panel: Thermal Escalation', icon: '\u{1F321}\uFE0F', category: 'panels' },
+  { id: 'panel:security', keywords: ['cybersecurity', 'security news', 'hacking', 'breaches', 'vulnerabilities'], label: 'Panel: Cybersecurity', icon: '\u{1F512}', category: 'panels' },
+
+  // Economic / price panels
+  { id: 'panel:consumer-prices', keywords: ['consumer prices', 'cpi', 'inflation', 'cost of living'], label: 'Panel: Consumer Prices', icon: '\u{1F6D2}', category: 'panels' },
+  { id: 'panel:grocery-basket', keywords: ['grocery', 'grocery basket', 'grocery index', 'food prices', 'supermarket'], label: 'Panel: Grocery Index', icon: '\u{1F96C}', category: 'panels' },
+  { id: 'panel:bigmac', keywords: ['bigmac', 'big mac', 'big mac index', 'purchasing power parity', 'ppp'], label: 'Panel: Big Mac Index', icon: '\u{1F354}', category: 'panels' },
+  { id: 'panel:national-debt', keywords: ['national debt', 'debt clock', 'government debt', 'deficit'], label: 'Panel: National Debt Clock', icon: '\u{1F4B8}', category: 'panels' },
+
+  // Crypto panels
+  { id: 'panel:crypto-heatmap', keywords: ['crypto sectors', 'crypto heatmap', 'altcoin sectors'], label: 'Panel: Crypto Sectors', icon: '\u{1F7E9}', category: 'panels' },
+  { id: 'panel:defi-tokens', keywords: ['defi', 'defi tokens', 'decentralized finance'], label: 'Panel: DeFi Tokens', icon: '\u{1FA99}', category: 'panels' },
+  { id: 'panel:ai-tokens', keywords: ['ai tokens', 'ai crypto', 'artificial intelligence tokens'], label: 'Panel: AI Tokens', icon: '\u{1F916}', category: 'panels' },
+  { id: 'panel:other-tokens', keywords: ['alt tokens', 'altcoins', 'other tokens', 'small cap crypto'], label: 'Panel: Alt Tokens', icon: '\u{1F4B9}', category: 'panels' },
+
+  // Tech variant panels
+  { id: 'panel:startups', keywords: ['startups', 'startup news', 'vc news'], label: 'Panel: Startups & VC', icon: '\u{1F680}', category: 'panels' },
+  { id: 'panel:vcblogs', keywords: ['vc blogs', 'venture capital essays', 'investor insights'], label: 'Panel: VC Insights', icon: '\u{1F4DD}', category: 'panels' },
+  { id: 'panel:unicorns', keywords: ['unicorns', 'unicorn tracker', 'billion dollar startups'], label: 'Panel: Unicorn Tracker', icon: '\u{1F984}', category: 'panels' },
+  { id: 'panel:accelerators', keywords: ['accelerators', 'demo day', 'yc', 'y combinator'], label: 'Panel: Accelerators & Demo Days', icon: '\u{1F3C6}', category: 'panels' },
+  { id: 'panel:funding', keywords: ['funding', 'venture capital', 'vc rounds', 'series a'], label: 'Panel: Funding & VC', icon: '\u{1F4B0}', category: 'panels' },
+  { id: 'panel:hardware', keywords: ['hardware', 'semiconductors', 'chips', 'nvidia', 'amd'], label: 'Panel: Semiconductors & Hardware', icon: '\u{1F4BE}', category: 'panels' },
+  { id: 'panel:cloud', keywords: ['cloud', 'aws', 'azure', 'gcp', 'infrastructure'], label: 'Panel: Cloud & Infrastructure', icon: '\u2601\uFE0F', category: 'panels' },
+  { id: 'panel:dev', keywords: ['developer', 'dev community', 'open source', 'github'], label: 'Panel: Developer Community', icon: '\u{1F9D1}\u200D\u{1F4BB}', category: 'panels' },
+  { id: 'panel:ipo', keywords: ['ipo', 'spac', 'earnings', 'mergers', 'acquisitions', 'm&a'], label: 'Panel: IPOs, Earnings & M&A', icon: '\u{1F4C4}', category: 'panels' },
+  { id: 'panel:producthunt', keywords: ['product hunt', 'new products', 'launches'], label: 'Panel: Product Hunt', icon: '\u{1F3AF}', category: 'panels' },
+  { id: 'panel:events', keywords: ['tech events', 'conferences', 'summits'], label: 'Panel: Tech Events', icon: '\u{1F4C5}', category: 'panels' },
+  { id: 'panel:regionalStartups', keywords: ['global startups', 'startup news', 'international startups'], label: 'Panel: Global Startup News', icon: '\u{1F30D}', category: 'panels' },
+
+  // Positive / happy panels
+  { id: 'panel:positive-feed', keywords: ['good news', 'positive news', 'optimistic', 'uplifting'], label: 'Panel: Good News Feed', icon: '\u{1F33F}', category: 'panels' },
+  { id: 'panel:breakthroughs', keywords: ['breakthroughs', 'science breakthroughs', 'discoveries'], label: 'Panel: Breakthroughs', icon: '\u{1F9EC}', category: 'panels' },
+  { id: 'panel:progress', keywords: ['human progress', 'progress', 'global progress'], label: 'Panel: Human Progress', icon: '\u{1F4C8}', category: 'panels' },
+  { id: 'panel:counters', keywords: ['live counters', 'counters', 'real time counters'], label: 'Panel: Live Counters', icon: '\u{1F522}', category: 'panels' },
+  { id: 'panel:spotlight', keywords: ['spotlight', 'hero', 'today hero', 'inspiring'], label: "Panel: Today's Hero", icon: '\u2B50', category: 'panels' },
+  { id: 'panel:digest', keywords: ['digest', '5 good things', 'good things', 'daily digest'], label: 'Panel: 5 Good Things', icon: '\u{1F4F0}', category: 'panels' },
+  { id: 'panel:species', keywords: ['conservation', 'wildlife', 'endangered species', 'conservation wins'], label: 'Panel: Conservation Wins', icon: '\u{1F43C}', category: 'panels' },
+  { id: 'panel:renewable', keywords: ['renewable energy', 'solar', 'wind energy', 'green energy'], label: 'Panel: Renewable Energy', icon: '\u2600\uFE0F', category: 'panels' },
 
   // View / settings
   { id: 'view:dark', keywords: ['dark', 'dark mode', 'night'], label: 'Switch to dark mode', icon: '\u{1F319}', category: 'view' },
