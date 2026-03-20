@@ -97,7 +97,7 @@ export class AlertPanel {
     this.container.innerHTML = `
       <div class="alert-panel" id="alertPanel">
         <div class="alert-panel-header">
-          <strong>Alerts</strong>
+          <strong>🔔 ALERTS</strong>
           <button id="alertMarkAllReadBtn" class="alert-mark-read">Mark all read</button>
         </div>
         <div id="alertList" class="alert-list"></div>

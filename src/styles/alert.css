@@ -5,12 +5,17 @@
   gap: 6px;
   padding: 7px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(248, 113, 113, 0.45);
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--text-primary);
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+}
+
+.alert-btn:hover {
+  background: #334155;
+  border-color: #64748b;
 }
 
 .alert-badge {
@@ -20,7 +25,7 @@
   display: none;
   align-items: center;
   justify-content: center;
-  background: #ef4444;
+  background: #dc2626;
   color: #fff;
   font-size: 11px;
   padding: 0 5px;
@@ -39,9 +44,9 @@
   max-height: min(82vh, 720px);
   overflow: auto;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: var(--panel-bg, #0f172a);
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.4);
+  border: 1px solid #475569;
+  background: #0f172a;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
   padding: 14px;
 }
 
@@ -57,10 +62,12 @@
 }
 
 .alert-mark-read {
-  border: 0;
-  background: transparent;
-  color: var(--text-secondary);
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #cbd5e1;
+  border-radius: 6px;
   cursor: pointer;
+  padding: 4px 8px;
 }
 
 .alert-list {
@@ -70,25 +77,30 @@
 }
 
 .alert-item {
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid #334155;
   border-radius: 8px;
   padding: 10px;
   cursor: pointer;
+  background: #0b1220;
 }
 
 .alert-item.unread {
-  border-left: 3px solid #169b62;
-  background: rgba(22, 155, 98, 0.08);
+  border-left: 3px solid #22c55e;
+  background: #0f1d17;
 }
 
 .alert-item-time {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: #94a3b8;
   margin-bottom: 4px;
 }
 
+.alert-item-title {
+  color: #e2e8f0;
+}
+
 .alert-item-title mark {
-  background: #fef08a;
+  background: #facc15;
   color: #111827;
   padding: 0 2px;
   border-radius: 2px;
@@ -96,17 +108,17 @@
 
 .alert-item-meta {
   margin-top: 6px;
-  color: var(--text-secondary);
+  color: #94a3b8;
   font-size: 12px;
 }
 
 .alert-empty {
-  color: var(--text-secondary);
+  color: #94a3b8;
   padding: 8px 0;
 }
 
 .alert-settings {
-  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  border-top: 1px solid #334155;
   padding-top: 10px;
   display: grid;
   gap: 10px;
@@ -114,7 +126,7 @@
 
 .alert-settings-title {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: #94a3b8;
 }
 
 .alert-settings-input-row {
@@ -126,20 +138,26 @@
 .alert-settings-input {
   height: 34px;
   border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  background: rgba(15, 23, 42, 0.4);
-  color: var(--text-primary);
+  border: 1px solid #334155;
+  background: #111827;
+  color: #e2e8f0;
   padding: 0 10px;
 }
 
 .alert-settings-add,
 .alert-preset-btn,
 .alert-keyword-delete {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: transparent;
-  color: var(--text-primary);
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
   border-radius: 6px;
   cursor: pointer;
+}
+
+.alert-settings-add:hover,
+.alert-preset-btn:hover,
+.alert-keyword-delete:hover {
+  background: #334155;
 }
 
 .alert-presets {
@@ -163,6 +181,7 @@
   align-items: center;
   justify-content: space-between;
   font-size: 13px;
+  color: #e2e8f0;
 }
 
 .alert-keyword-delete {

@@ -256,6 +256,7 @@ export class PanelLayoutManager implements AppModule {
             <div class="download-dropdown" id="downloadDropdown"></div>
           </div>`}
           <button class="brief-btn" id="briefTriggerBtn">📰 TODAY'S BRIEF</button>
+          <button class="alert-btn" id="alertTriggerBtn">🔔 ALERTS <span id="alertBadge" class="alert-badge"></span></button>
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
           ${this.ctx.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}

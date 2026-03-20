@@ -4,17 +4,18 @@
   gap: 6px;
   padding: 7px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(56, 189, 248, 0.5);
-  background: rgba(14, 165, 233, 0.16);
-  color: var(--text-primary);
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .brief-btn:hover {
-  background: rgba(14, 165, 233, 0.28);
+  background: #334155;
+  border-color: #64748b;
 }
 
 .daily-brief-overlay {
@@ -24,7 +25,7 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(2, 6, 23, 0.6);
+  background: rgba(2, 6, 23, 0.78);
   z-index: 2000;
 }
 
@@ -37,9 +38,9 @@
   max-height: min(80vh, 760px);
   overflow-y: auto;
   border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  background: var(--panel-bg, #0f172a);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  border: 1px solid #475569;
+  background: #0f172a;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
 }
 
 .daily-brief-header {
@@ -47,21 +48,24 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  border-bottom: 1px solid #334155;
 }
 
 .daily-brief-header h2 {
   margin: 0;
   font-size: 18px;
+  color: #e2e8f0;
 }
 
 .daily-brief-close {
-  border: 0;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 26px;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
+  padding: 2px 8px;
 }
 
 .daily-brief-content {
@@ -71,7 +75,7 @@
 }
 
 .daily-brief-date {
-  color: var(--text-secondary);
+  color: #94a3b8;
   font-size: 13px;
 }
 
@@ -83,25 +87,25 @@
 }
 
 .daily-brief-points li {
-  color: var(--text-primary);
+  color: #e2e8f0;
   line-height: 1.55;
 }
 
 .daily-brief-meta {
-  color: var(--text-secondary);
+  color: #94a3b8;
   font-size: 12px;
 }
 
 .daily-brief-state {
-  color: var(--text-secondary);
+  color: #94a3b8;
 }
 
 .daily-brief-retry {
   margin-left: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
+  border: 1px solid #475569;
   border-radius: 6px;
-  background: transparent;
-  color: var(--text-primary);
+  background: #1e293b;
+  color: #e2e8f0;
   cursor: pointer;
   padding: 2px 8px;
 }
