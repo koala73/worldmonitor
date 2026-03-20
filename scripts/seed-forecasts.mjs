@@ -3625,13 +3625,122 @@ function buildReportableInteractionLedger(interactionLedger = [], situationSimul
       const specificity = Number(item.actorSpecificity || 0);
       const confidence = Number(item.confidence || 0);
       const score = Number(item.score || 0);
+      const politicalChannel = item.strongestChannel === 'political_pressure';
+      const sharedActor = Boolean(item.sharedActor) || intersectCount(source.actorIds || [], target.actorIds || []) > 0;
+      const regionLink = Boolean(item.regionLink) || intersectCount(source.regions || [], target.regions || []) > 0;
       if (item.interactionType === 'actor_carryover' && specificity < 0.62) return false;
+      if (politicalChannel) {
+        if (!regionLink && !sharedActor) return false;
+        if (!regionLink && (!sharedActor || specificity < 0.82 || confidence < 0.68 || score < 5.4)) return false;
+        if (regionLink && confidence < 0.62 && score < 4.9) return false;
+      }
       if (confidence >= 0.72 && score >= 5) return true;
       if (directOverlap && confidence >= 0.58 && score >= 4.5) return true;
-      if (item.sharedActor && specificity >= 0.7 && confidence >= 0.56) return true;
+      if (sharedActor && specificity >= 0.7 && confidence >= 0.56) return true;
       return false;
     })
     .sort((a, b) => b.confidence - a.confidence || b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel));
+}
+
+function buildInteractionGroups(interactions = []) {
+  const groups = new Map();
+
+  for (const interaction of interactions || []) {
+    if (!interaction?.strongestChannel) continue;
+    const key = [
+      interaction.sourceSituationId,
+      interaction.targetSituationId,
+      interaction.strongestChannel,
+    ].join(':');
+    const group = groups.get(key) || {
+      sourceSituationId: interaction.sourceSituationId,
+      targetSituationId: interaction.targetSituationId,
+      strongestChannel: interaction.strongestChannel,
+      sourceLabel: interaction.sourceLabel,
+      targetLabel: interaction.targetLabel,
+      sourceFamilyId: interaction.sourceFamilyId,
+      sourceFamilyLabel: interaction.sourceFamilyLabel,
+      targetFamilyId: interaction.targetFamilyId,
+      targetFamilyLabel: interaction.targetFamilyLabel,
+      score: 0,
+      stages: new Set(),
+      sourceActors: new Set(),
+      targetActors: new Set(),
+      interactionTypes: new Set(),
+      confidenceTotal: 0,
+      confidenceCount: 0,
+      actorSpecificityTotal: 0,
+      actorSpecificityCount: 0,
+      directLinkCount: 0,
+      sharedActor: false,
+      regionLink: false,
+    };
+    group.score += Number(interaction.score || 0);
+    group.stages.add(interaction.stage);
+    if (interaction.sourceActorName) group.sourceActors.add(interaction.sourceActorName);
+    if (interaction.targetActorName) group.targetActors.add(interaction.targetActorName);
+    if (interaction.interactionType) group.interactionTypes.add(interaction.interactionType);
+    if (Number.isFinite(Number(interaction.confidence))) {
+      group.confidenceTotal += Number(interaction.confidence || 0);
+      group.confidenceCount += 1;
+    }
+    if (Number.isFinite(Number(interaction.actorSpecificity))) {
+      group.actorSpecificityTotal += Number(interaction.actorSpecificity || 0);
+      group.actorSpecificityCount += 1;
+    }
+    group.directLinkCount = Math.max(group.directLinkCount, Number(interaction.directLinkCount || 0));
+    group.sharedActor = group.sharedActor || Boolean(interaction.sharedActor);
+    group.regionLink = group.regionLink || Boolean(interaction.regionLink);
+    groups.set(key, group);
+  }
+
+  // Internal grouping helper for report/effect synthesis. We intentionally keep
+  // Sets on the grouped object because downstream callers use `.size` and do not
+  // serialize this structure directly.
+  return [...groups.values()].map((group) => ({
+    ...group,
+    avgConfidence: group.confidenceCount
+      ? +(group.confidenceTotal / group.confidenceCount).toFixed(3)
+      : 0,
+    avgActorSpecificity: group.actorSpecificityCount
+      ? +(group.actorSpecificityTotal / group.actorSpecificityCount).toFixed(3)
+      : 0,
+  }));
+}
+
+function computeReportableEffectConfidence(group, source, target, strongestChannelWeight) {
+  const structuralSharedActor = group.sharedActor || intersectCount(source?.actorIds || [], target?.actorIds || []) > 0;
+  const structuralRegionLink = group.regionLink || intersectCount(source?.regions || [], target?.regions || []) > 0;
+  const structuralDirectLinkCount = Math.max(
+    Number(group.directLinkCount || 0),
+    (structuralSharedActor ? 1 : 0) + (structuralRegionLink ? 1 : 0) + (strongestChannelWeight > 0 ? 1 : 0),
+  );
+  const normalizedScore = clamp01(Number(group.score || 0) / 8);
+  const directLinkScore = clamp01(structuralDirectLinkCount / 3);
+  const stageScore = clamp01((group.stages?.size || 0) / 3);
+  const avgConfidence = clamp01(group.confidenceCount ? Number(group.avgConfidence || 0) : Math.max(normalizedScore * 0.9, directLinkScore * 0.8));
+  const actorSpecificity = clamp01(group.actorSpecificityCount ? Number(group.avgActorSpecificity || 0) : (structuralSharedActor ? 0.78 : 0.62));
+  const channelWeight = clamp01(Number(strongestChannelWeight || 0) / 3);
+  // Weight hierarchy is deliberate:
+  // - interaction score and observed confidence dominate
+  // - direct structural linkage is next
+  // - stage diversity adds supporting context
+  // - actor specificity helps separate named/credible carryover from generic links
+  // - channel weight is informative but secondary
+  let confidence = (
+    normalizedScore * 0.28 +
+    directLinkScore * 0.2 +
+    stageScore * 0.14 +
+    avgConfidence * 0.2 +
+    actorSpecificity * 0.1 +
+    channelWeight * 0.08
+  );
+  if (structuralSharedActor) confidence += 0.04;
+  if (structuralRegionLink) confidence += 0.05;
+  if (group.strongestChannel === 'political_pressure' && !structuralRegionLink) confidence -= 0.14;
+  if (group.strongestChannel === 'political_pressure' && !structuralSharedActor) confidence -= 0.1;
+  if ((source?.dominantDomain || '') === 'political' && (target?.dominantDomain || '') !== 'political') confidence -= 0.05;
+  return +clamp01(confidence).toFixed(3);
 }
 
 function describeSimulationPosture(posture) {
@@ -3736,42 +3845,28 @@ function canEmitCrossSituationEffect(source, strongestChannel, strongestChannelW
   return true;
 }
 
+function buildInteractionWatchlist(interactions = []) {
+  return buildInteractionGroups(interactions)
+    .sort((a, b) => b.avgConfidence - a.avgConfidence || b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel))
+    .slice(0, 6)
+    .map((item) => ({
+      type: `interaction_${[...item.interactionTypes][0] || 'coupling'}`,
+      label: `${item.sourceLabel} -> ${item.targetLabel}`,
+      summary: `${item.sourceLabel} interacted with ${item.targetLabel} across ${(item.stages?.size || 0)} round(s) via ${item.strongestChannel.replace(/_/g, ' ')}, with ${(item.avgConfidence * 100).toFixed(0)}% report confidence and ${item.sourceActors.size + item.targetActors.size} named actors involved.`,
+    }));
+}
+
 function buildCrossSituationEffects(simulationState) {
   const simulations = Array.isArray(simulationState?.situationSimulations) ? simulationState.situationSimulations : [];
   const interactions = Array.isArray(simulationState?.reportableInteractionLedger)
     ? simulationState.reportableInteractionLedger
     : (Array.isArray(simulationState?.interactionLedger) ? simulationState.interactionLedger : []);
   const simulationIndex = new Map(simulations.map((item) => [item.situationId, item]));
-  const interactionGroups = new Map();
+  const interactionGroups = buildInteractionGroups(interactions);
 
-  for (const interaction of interactions) {
-    if (!interaction?.strongestChannel) continue;
-    const key = [
-      interaction.sourceSituationId,
-      interaction.targetSituationId,
-      interaction.strongestChannel,
-    ].join(':');
-    const group = interactionGroups.get(key) || {
-      sourceSituationId: interaction.sourceSituationId,
-      targetSituationId: interaction.targetSituationId,
-      strongestChannel: interaction.strongestChannel,
-      score: 0,
-      stages: new Set(),
-      sourceActors: new Set(),
-      targetActors: new Set(),
-      interactionTypes: new Set(),
-    };
-    group.score += Number(interaction.score || 0);
-    group.stages.add(interaction.stage);
-    if (interaction.sourceActorName) group.sourceActors.add(interaction.sourceActorName);
-    if (interaction.targetActorName) group.targetActors.add(interaction.targetActorName);
-    if (interaction.interactionType) group.interactionTypes.add(interaction.interactionType);
-    interactionGroups.set(key, group);
-  }
-
-  if (interactionGroups.size > 0) {
+  if (interactionGroups.length > 0) {
     const effects = [];
-    for (const group of interactionGroups.values()) {
+    for (const group of interactionGroups) {
       const source = simulationIndex.get(group.sourceSituationId);
       const target = simulationIndex.get(group.targetSituationId);
       if (!source || !target) continue;
@@ -3780,12 +3875,16 @@ function buildCrossSituationEffects(simulationState) {
       const relation = inferSystemEffectRelationFromChannel(group.strongestChannel, target.dominantDomain);
       if (!relation) continue;
       const strongestChannelWeight = (source.effectChannels || []).find((item) => item.type === group.strongestChannel)?.count || 0;
-      const hasDirectStructuralLink = (
-        intersectCount(source.regions || [], target.regions || []) > 0
-        || intersectCount(source.actorIds || [], target.actorIds || []) > 0
-      );
+      const hasRegionLink = group.regionLink || intersectCount(source.regions || [], target.regions || []) > 0;
+      const hasSharedActor = group.sharedActor || intersectCount(source.actorIds || [], target.actorIds || []) > 0;
+      const hasDirectStructuralLink = hasRegionLink || hasSharedActor;
       if (!canEmitCrossSituationEffect(source, group.strongestChannel, strongestChannelWeight, hasDirectStructuralLink)) continue;
       if (strongestChannelWeight < 2 && !hasDirectStructuralLink) continue;
+      if (
+        group.strongestChannel === 'political_pressure'
+        && !hasRegionLink
+        && (!hasSharedActor || computeReportableEffectConfidence(group, source, target, strongestChannelWeight) < 0.72 || (group.stages?.size || 0) < 2)
+      ) continue;
 
       const score = +(
         group.score
@@ -3793,6 +3892,9 @@ function buildCrossSituationEffects(simulationState) {
         + (group.interactionTypes.has('actor_carryover') ? 1.5 : 0)
       ).toFixed(3);
       if (score < 4.8) continue;
+      const confidence = computeReportableEffectConfidence(group, source, target, strongestChannelWeight);
+      if (confidence < 0.5) continue;
+      if (group.strongestChannel === 'political_pressure' && confidence < 0.72) continue;
 
       effects.push({
         sourceSituationId: source.situationId,
@@ -3806,13 +3908,14 @@ function buildCrossSituationEffects(simulationState) {
         channel: group.strongestChannel,
         relation,
         score,
-        summary: `${source.label} is likely to feed ${relation} into ${target.label}, reinforced by ${group.stages.size} round(s) of ${group.strongestChannel.replace(/_/g, ' ')} interactions and a ${describeSimulationPosture(source.posture)} posture at ${roundPct(source.postureScore)}.`,
+        confidence,
+        summary: `${source.label} is likely to feed ${relation} into ${target.label}, reinforced by ${group.stages.size} round(s) of ${group.strongestChannel.replace(/_/g, ' ')} interactions, ${(confidence * 100).toFixed(0)}% effect confidence, and a ${describeSimulationPosture(source.posture)} posture at ${roundPct(source.postureScore)}.`,
       });
     }
 
     return effects
-      .sort((a, b) => b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel) || a.targetLabel.localeCompare(b.targetLabel))
-      .slice(0, 8);
+      .sort((a, b) => b.confidence - a.confidence || b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel) || a.targetLabel.localeCompare(b.targetLabel))
+      .slice(0, 6);
   }
 
   const effects = [];
@@ -4230,15 +4333,7 @@ function buildWorldStateReport(worldState) {
       label: item.label,
       summary: `${item.label} resolved to a ${item.posture} posture after 3 rounds, with ${Math.round((item.postureScore || 0) * 100)}% final pressure and ${item.actorIds.length} active actors.`,
     }));
-  const interactionWatchlist = interactionLedger
-    .slice()
-    .sort((a, b) => b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel))
-    .slice(0, 6)
-    .map((item) => ({
-      type: `interaction_${item.interactionType}`,
-      label: `${item.sourceLabel} -> ${item.targetLabel}`,
-      summary: `${item.sourceActorName || 'An actor'} in ${item.sourceLabel} ${item.interactionType.replace(/_/g, ' ')} with ${item.targetActorName || 'another actor'} in ${item.targetLabel} during ${item.stage.replace('_', ' ')} via ${item.strongestChannel.replace(/_/g, ' ')}.`,
-    }));
+  const interactionWatchlist = buildInteractionWatchlist(interactionLedger);
   const replayWatchlist = replayTimeline
     .slice()
     .map((round) => ({
@@ -6526,6 +6621,8 @@ export {
   buildFallbackPerspectives,
   populateFallbackNarratives,
   buildCrossSituationEffects,
+  buildReportableInteractionLedger,
+  buildInteractionWatchlist,
   attachSituationContext,
   projectSituationClusters,
   refreshPublishedNarratives,

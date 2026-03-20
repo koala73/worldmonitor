@@ -7,7 +7,7 @@ import type {
   CableHealthStatus,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
-import { cachedFetchJsonWithMeta, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, setCachedJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
@@ -16,7 +16,9 @@ import { CHROME_UA } from '../../../_shared/constants';
 // ========================================================================
 
 const CACHE_KEY = 'cable-health-v1';
-const CACHE_TTL = 86400; // 24h — relay pings every 30min; long TTL ensures key survives relay hiccups without expiring from Redis
+const CACHE_TTL = 1800; // 30 min — matches warm-ping interval; ensures recencyWeight decay is recomputed each cycle
+const NGA_CACHE_KEY = 'cable-health-nga-warnings-v1';
+const NGA_CACHE_TTL = 86400; // 24h — raw NGA warnings are stable; long TTL survives relay downtime without hammering upstream
 
 // In-memory fallback: serves stale data when both Redis and NGA are down
 let fallbackCache: GetCableHealthResponse | null = null;
@@ -166,17 +168,17 @@ interface Signal {
 // NGA fetch
 // ========================================================================
 
-async function fetchNgaWarnings(): Promise<NgaWarning[]> {
+async function fetchNgaWarnings(): Promise<NgaWarning[] | null> {
   try {
     const res = await fetch(
       'https://msi.nga.mil/api/publications/broadcast-warn?output=json&status=A',
       { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
     );
-    if (!res.ok) return [];
+    if (!res.ok) return null; // fetch failed — don't cache, let sentinel TTL govern retry
     const data = await res.json();
     return Array.isArray(data) ? data : (data as { warnings?: NgaWarning[] })?.warnings ?? [];
   } catch {
-    return [];
+    return null; // network error — don't poison NGA cache with empty data
   }
 }
 
@@ -425,26 +427,25 @@ export async function getCableHealth(
   _req: GetCableHealthRequest,
 ): Promise<GetCableHealthResponse> {
   try {
-    const { data: result, source } = await cachedFetchJsonWithMeta<GetCableHealthResponse>(CACHE_KEY, CACHE_TTL, async () => {
-      const ngaData = await fetchNgaWarnings();
+    const result = await cachedFetchJson<GetCableHealthResponse>(CACHE_KEY, CACHE_TTL, async () => {
+      // NGA raw warnings cached 24h — expensive upstream call, data stable between pings.
+      // Computed response cached 30 min — recomputes recencyWeight decay on each warm-ping cycle.
+      // null from fetchNgaWarnings = fetch failed; cachedFetchJson stores sentinel (2 min) and
+      // returns null here, which causes this outer fetcher to return null, leaving cable-health-v1
+      // untouched so the previous valid computed response is served from fallbackCache.
+      const ngaData = await cachedFetchJson<NgaWarning[]>(NGA_CACHE_KEY, NGA_CACHE_TTL, fetchNgaWarnings);
+      if (ngaData === null) return null;
       const signals = processNgaSignals(ngaData);
       const cables = computeHealthMap(signals);
 
-      const response: GetCableHealthResponse = {
-        generatedAt: Date.now(),
-        cables,
-      };
-
-      return response;
+      return { generatedAt: Date.now(), cables };
     });
 
     if (result) {
-      if (source === 'fresh') {
-        const count = result.cables ? Object.keys(result.cables).length : 0;
-        // Write at least 1 so health.js doesn't report EMPTY/CRIT when NGA
-        // has no active warnings — zero disruptions is a valid healthy state.
-        setCachedJson('seed-meta:cable-health', { fetchedAt: Date.now(), recordCount: Math.max(count, 1) }, 604800).catch(() => {});
-      }
+      // Write seed-meta on every successful response (cache hit or fresh) so the
+      // 30-min warm-ping keeps seed-meta within the 90-min health.js stale window.
+      const count = result.cables ? Object.keys(result.cables).length : 0;
+      setCachedJson('seed-meta:cable-health', { fetchedAt: Date.now(), recordCount: Math.max(count, 1) }, 604800).catch(() => {});
       fallbackCache = result;
       return result;
     }
