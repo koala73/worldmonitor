@@ -256,18 +256,18 @@ export class App {
       // Merge in any panels from ALL_PANELS that didn't exist when settings were saved
       for (const key of Object.keys(ALL_PANELS)) {
         if (!(key in panelSettings)) {
-          const isDefault = (VARIANT_DEFAULTS[currentVariant] ?? []).includes(key);
-          panelSettings[key] = { ...getEffectivePanelConfig(key, currentVariant), enabled: isDefault };
+          const isDefault = (VARIANT_DEFAULTS[SITE_VARIANT] ?? []).includes(key);
+          panelSettings[key] = { ...getEffectivePanelConfig(key, SITE_VARIANT), enabled: isDefault };
         }
       }
 
       // One-time migration: expose all panels to existing users (previously variant-gated)
       const UNIFIED_MIGRATION_KEY = 'worldmonitor-unified-panels-v1';
       if (!localStorage.getItem(UNIFIED_MIGRATION_KEY)) {
-        const variantDefaults = new Set(VARIANT_DEFAULTS[currentVariant] ?? []);
+        const variantDefaults = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
         for (const key of Object.keys(ALL_PANELS)) {
           if (!(key in panelSettings)) {
-            panelSettings[key] = { ...getEffectivePanelConfig(key, currentVariant), enabled: variantDefaults.has(key) };
+            panelSettings[key] = { ...getEffectivePanelConfig(key, SITE_VARIANT), enabled: variantDefaults.has(key) };
           }
         }
         saveToStorage(STORAGE_KEYS.panels, panelSettings);

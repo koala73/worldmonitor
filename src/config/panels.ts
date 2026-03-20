@@ -2,6 +2,7 @@ import type { PanelConfig, MapLayers, DataSourceId } from '@/types';
 import { SITE_VARIANT } from './variant';
 // boundary-ignore: isDesktopRuntime is a pure env probe with no service dependencies
 import { isDesktopRuntime } from '@/services/runtime';
+import { getSecretState } from '@/services/runtime-config';
 
 const _desktop = isDesktopRuntime();
 
@@ -891,20 +892,10 @@ export function isPanelEntitled(key: string, config: PanelConfig): boolean {
   if (!config.premium) return true;
   const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief'];
   if (apiKeyPanels.includes(key)) {
-    try {
-      const { getSecretState } = require('@/services/runtime-config') as typeof import('@/services/runtime-config');
-      return getSecretState('WORLDMONITOR_API_KEY').present;
-    } catch {
-      return false;
-    }
+    return getSecretState('WORLDMONITOR_API_KEY').present;
   }
   if (config.premium === 'locked') {
-    try {
-      const { isDesktopRuntime } = require('@/services/runtime') as typeof import('@/services/runtime');
-      return isDesktopRuntime();
-    } catch {
-      return false;
-    }
+    return isDesktopRuntime();
   }
   return true;
 }

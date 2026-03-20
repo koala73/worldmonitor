@@ -55,7 +55,6 @@ import { escapeHtml } from '@/utils/sanitize';
 import {
   FEEDS,
   INTEL_SOURCES,
-  DEFAULT_PANELS,
   STORAGE_KEYS,
   SITE_VARIANT,
   ALL_PANELS,
@@ -596,7 +595,7 @@ export class PanelLayoutManager implements AppModule {
       const panelKey = this.ctx.panels[key] && !this.ctx.newsPanels[key] ? `${key}-news` : key;
       if (this.ctx.panels[panelKey]) continue;
       if (!this.ctx.panelSettings[panelKey] && !this.ctx.panelSettings[key]) continue;
-      const panelConfig = this.ctx.panelSettings[panelKey] ?? this.ctx.panelSettings[key] ?? DEFAULT_PANELS[panelKey] ?? DEFAULT_PANELS[key];
+      const panelConfig = this.ctx.panelSettings[panelKey] ?? this.ctx.panelSettings[key] ?? ALL_PANELS[panelKey] ?? ALL_PANELS[key];
       const label = panelConfig?.name ?? key.charAt(0).toUpperCase() + key.slice(1);
       const panel = new NewsPanel(panelKey, label);
       this.attachRelatedAssetHandlers(panel);

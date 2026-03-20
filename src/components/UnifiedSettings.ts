@@ -282,14 +282,14 @@ export class UnifiedSettings {
   }
 
   private getAvailablePanelCategories(): Array<{ key: string; label: string }> {
-    const panelKeys = new Set(Object.keys(this.config.getPanelSettings()));
+    const settings = this.config.getPanelSettings();
     const categories: Array<{ key: string; label: string }> = [
       { key: 'all', label: t('header.sourceRegionAll') }
     ];
 
     for (const [catKey, catDef] of Object.entries(PANEL_CATEGORY_MAP)) {
-      const hasPanel = catDef.panelKeys.some(pk => panelKeys.has(pk));
-      if (hasPanel) {
+      const hasEnabledPanel = catDef.panelKeys.some(pk => settings[pk]?.enabled);
+      if (hasEnabledPanel) {
         categories.push({ key: catKey, label: t(catDef.labelKey) });
       }
     }
@@ -341,8 +341,7 @@ export class UnifiedSettings {
     const entries = this.getVisiblePanelEntries();
     container.innerHTML = entries.map(([key, panel]) => {
       const changed = savedSettings[key]?.enabled !== panel.enabled;
-      const effectiveName = getEffectivePanelConfig(key, SITE_VARIANT).name;
-      const displayName = this.config.getLocalizedPanelName(key, effectiveName || panel.name);
+      const displayName = this.config.getLocalizedPanelName(key, getEffectivePanelConfig(key, SITE_VARIANT).name ?? panel.name);
       return `
         <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}${changed ? ' changed' : ''}" data-panel="${escapeHtml(key)}" aria-pressed="${panel.enabled}">
           <div class="panel-toggle-checkbox">${panel.enabled ? '\u2713' : ''}</div>
@@ -388,7 +387,7 @@ export class UnifiedSettings {
 
   private savePanelChanges(): void {
     if (!this.hasPendingPanelChanges()) return;
-    this.config.savePanelSettings(this.clonePanelSettings(this.draftPanelSettings));
+    this.config.savePanelSettings(Object.fromEntries(Object.entries(this.draftPanelSettings).map(([k, v]) => [k, { ...v }])));
     this.draftPanelSettings = this.clonePanelSettings();
     this.panelsJustSaved = true;
     this.renderPanelsTab();

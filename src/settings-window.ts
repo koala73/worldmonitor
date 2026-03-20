@@ -31,10 +31,10 @@ export function initSettingsWindow(): void {
     STORAGE_KEYS.panels,
     DEFAULT_PANELS
   );
-  const _variantDefaults = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
+  const variantDefaults = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
   for (const key of Object.keys(ALL_PANELS)) {
     if (!(key in panelSettings)) {
-      panelSettings[key] = { ...getEffectivePanelConfig(key, SITE_VARIANT), enabled: _variantDefaults.has(key) };
+      panelSettings[key] = { ...getEffectivePanelConfig(key, SITE_VARIANT), enabled: variantDefaults.has(key) };
     }
   }
 

@@ -1362,7 +1362,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadDailyMarketBrief(force = false): Promise<void> {
-    if (SITE_VARIANT !== 'finance' || !getSecretState('WORLDMONITOR_API_KEY').present) return;
+    if (!getSecretState('WORLDMONITOR_API_KEY').present) return;
     if (this.ctx.isDestroyed || this.ctx.inFlight.has('dailyMarketBrief')) return;
 
     this.ctx.inFlight.add('dailyMarketBrief');
