@@ -72,6 +72,12 @@ function mapEcsFlight(icao24: string, raw: EcsFlightRaw): WingbitsLiveFlight {
     operator: raw.operator ?? '',
     onGround: raw.onGround ?? raw.on_ground ?? false,
     lastSeen: String(raw.lastSeen ?? raw.last_seen ?? 0),
+    // Schedule fields — populated later by fetchSchedule
+    depIata: '', arrIata: '', depTimeUtc: '', arrTimeUtc: '',
+    depEstimatedUtc: '', arrEstimatedUtc: '', depDelayedMin: 0,
+    arrDelayedMin: 0, flightStatus: '', flightDurationMin: 0, arrTerminal: '',
+    // Photo fields — populated later by fetchPhoto
+    photoUrl: '', photoLink: '', photoCredit: '',
   };
 }
 
