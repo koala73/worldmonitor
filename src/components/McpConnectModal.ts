@@ -209,6 +209,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   connectBtn.addEventListener('click', async () => {
     const serverUrl = urlInput.value.trim();
     if (!serverUrl) return;
+    window.umami?.track('mcp-connect-attempt');
     connectStatus.textContent = t('mcp.connecting');
     connectStatus.className = 'mcp-connect-status mcp-status-loading';
     connectBtn.disabled = true;
@@ -224,6 +225,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       tools = data.tools ?? [];
       connectStatus.textContent = t('mcp.foundTools', { count: String(tools.length) });
       connectStatus.className = 'mcp-connect-status mcp-status-ok';
+      window.umami?.track('mcp-connect-success', { toolCount: tools.length });
       toolsSection.style.display = '';
       renderTools(tools);
     } catch (err) {
@@ -237,6 +239,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
 
   addBtn.addEventListener('click', () => {
     if (!selectedTool) return;
+    window.umami?.track('mcp-panel-add', { tool: selectedTool.name });
     argsError.style.display = 'none';
     let toolArgs: Record<string, unknown> = {};
     try {

@@ -290,9 +290,18 @@ export class EventHandlerManager implements AppModule {
       this.callbacks.updateSearchIndex();
       this.ctx.searchModal?.open();
     };
-    document.getElementById('searchBtn')?.addEventListener('click', openSearch);
-    document.getElementById('mobileSearchBtn')?.addEventListener('click', openSearch);
-    document.getElementById('searchMobileFab')?.addEventListener('click', openSearch);
+    document.getElementById('searchBtn')?.addEventListener('click', () => {
+      window.umami?.track('search-open', { source: 'desktop' });
+      openSearch();
+    });
+    document.getElementById('mobileSearchBtn')?.addEventListener('click', () => {
+      window.umami?.track('search-open', { source: 'mobile' });
+      openSearch();
+    });
+    document.getElementById('searchMobileFab')?.addEventListener('click', () => {
+      window.umami?.track('search-open', { source: 'fab' });
+      openSearch();
+    });
 
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();

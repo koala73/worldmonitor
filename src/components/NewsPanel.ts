@@ -144,6 +144,7 @@ export class NewsPanel extends Panel {
     this.updateSortButtonLabel();
     this.sortBtn.addEventListener('click', () => {
       this.sortMode = this.sortMode === 'relevance' ? 'newest' : 'relevance';
+      window.umami?.track('news-sort-toggle', { mode: this.sortMode });
       this.saveSortMode();
       this.updateSortButtonLabel();
       // Re-render with cached data
@@ -197,7 +198,10 @@ export class NewsPanel extends Panel {
     this.summaryBtn.className = 'panel-summarize-btn';
     this.summaryBtn.innerHTML = '✨';
     this.summaryBtn.title = t('components.newsPanel.summarize');
-    this.summaryBtn.addEventListener('click', () => this.handleSummarize());
+    this.summaryBtn.addEventListener('click', () => {
+      window.umami?.track('news-summarize', { panelId: this.panelId });
+      this.handleSummarize();
+    });
 
     // Insert before count element (use inherited this.header directly)
     const countEl = this.header.querySelector('.panel-count');

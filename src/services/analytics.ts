@@ -1,123 +1,131 @@
 /**
- * Analytics facade.
+ * Analytics facade — wired to Umami.
  *
- * PostHog has been removed from the application.
- * Vercel Analytics remains initialized in src/main.ts.
- * Event-level helpers are kept as no-ops to preserve existing call sites.
+ * All functions use window.umami?.track() so they are safe to call
+ * even if the Umami script has not loaded yet (e.g. ad blockers, SSR).
  */
 
 export async function initAnalytics(): Promise<void> {
-  // Intentionally no-op.
+  // No-op: Umami initialises itself via the script tag in index.html.
 }
 
-export function trackEvent(_name: string, _props?: Record<string, unknown>): void {
-  // Intentionally no-op.
+// ---------------------------------------------------------------------------
+// Generic (kept as no-ops — too noisy / not useful in Umami)
+// ---------------------------------------------------------------------------
+
+export function trackEvent(_name: string, _props?: Record<string, unknown>): void {}
+export function trackEventBeforeUnload(_name: string, _props?: Record<string, unknown>): void {}
+export function trackPanelView(_panelId: string): void {}
+export function trackApiKeysSnapshot(): void {}
+export function trackUpdateShown(_current: string, _remote: string): void {}
+export function trackUpdateClicked(_version: string): void {}
+export function trackUpdateDismissed(_version: string): void {}
+export function trackDownloadBannerDismissed(): void {}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+export function trackSearchUsed(queryLength: number, resultCount: number): void {
+  window.umami?.track('search-used', { queryLength, resultCount });
 }
 
-export function trackEventBeforeUnload(_name: string, _props?: Record<string, unknown>): void {
-  // Intentionally no-op.
+export function trackSearchResultSelected(resultType: string): void {
+  window.umami?.track('search-result-selected', { type: resultType });
 }
 
-export function trackPanelView(_panelId: string): void {
-  // Intentionally no-op.
+// ---------------------------------------------------------------------------
+// Country / map
+// ---------------------------------------------------------------------------
+
+export function trackCountrySelected(code: string, name: string, source: string): void {
+  window.umami?.track('country-selected', { code, name, source });
 }
 
-export function trackApiKeysSnapshot(): void {
-  // Intentionally no-op.
+export function trackCountryBriefOpened(countryCode: string): void {
+  window.umami?.track('country-brief-opened', { code: countryCode });
 }
 
-export function trackLLMUsage(_provider: string, _model: string, _cached: boolean): void {
-  // Intentionally no-op.
+export function trackMapLayerToggle(layerId: string, enabled: boolean, source: 'user' | 'programmatic'): void {
+  window.umami?.track('map-layer-toggle', { layerId, enabled, source });
 }
 
-export function trackLLMFailure(_lastProvider: string): void {
-  // Intentionally no-op.
+export function trackMapViewChange(view: string): void {
+  window.umami?.track('map-view-change', { view });
 }
 
-export function trackPanelResized(_panelId: string, _newSpan: number): void {
-  // Intentionally no-op.
+// ---------------------------------------------------------------------------
+// Panels
+// ---------------------------------------------------------------------------
+
+export function trackPanelToggled(panelId: string, enabled: boolean): void {
+  window.umami?.track('panel-toggle', { panelId, enabled });
 }
 
-export function trackVariantSwitch(_from: string, _to: string): void {
-  // Intentionally no-op.
+export function trackPanelResized(panelId: string, newSpan: number): void {
+  window.umami?.track('panel-resized', { panelId, span: newSpan });
 }
 
-export function trackMapLayerToggle(_layerId: string, _enabled: boolean, _source: 'user' | 'programmatic'): void {
-  // Intentionally no-op.
+// ---------------------------------------------------------------------------
+// App-wide settings
+// ---------------------------------------------------------------------------
+
+export function trackVariantSwitch(from: string, to: string): void {
+  window.umami?.track('variant-switch', { from, to });
 }
 
-export function trackCountryBriefOpened(_countryCode: string): void {
-  // Intentionally no-op.
+export function trackThemeChanged(theme: string): void {
+  window.umami?.track('theme-changed', { theme });
 }
 
-export function trackThemeChanged(_theme: string): void {
-  // Intentionally no-op.
+export function trackLanguageChange(language: string): void {
+  window.umami?.track('language-change', { language });
 }
 
-export function trackLanguageChange(_language: string): void {
-  // Intentionally no-op.
+export function trackFeatureToggle(featureId: string, enabled: boolean): void {
+  window.umami?.track('feature-toggle', { featureId, enabled });
 }
 
-export function trackFeatureToggle(_featureId: string, _enabled: boolean): void {
-  // Intentionally no-op.
+// ---------------------------------------------------------------------------
+// AI / LLM
+// ---------------------------------------------------------------------------
+
+export function trackLLMUsage(provider: string, model: string, cached: boolean): void {
+  window.umami?.track('llm-used', { provider, model, cached });
 }
 
-export function trackSearchUsed(_queryLength: number, _resultCount: number): void {
-  // Intentionally no-op.
+export function trackLLMFailure(lastProvider: string): void {
+  window.umami?.track('llm-failed', { provider: lastProvider });
 }
 
-export function trackMapViewChange(_view: string): void {
-  // Intentionally no-op.
+// ---------------------------------------------------------------------------
+// Webcams
+// ---------------------------------------------------------------------------
+
+export function trackWebcamSelected(webcamId: string, city: string, viewMode: string): void {
+  window.umami?.track('webcam-selected', { webcamId, city, viewMode });
 }
 
-export function trackCountrySelected(_code: string, _name: string, _source: string): void {
-  // Intentionally no-op.
+export function trackWebcamRegionFiltered(region: string): void {
+  window.umami?.track('webcam-region-filter', { region });
 }
 
-export function trackSearchResultSelected(_resultType: string): void {
-  // Intentionally no-op.
+// ---------------------------------------------------------------------------
+// Downloads / banners / findings
+// ---------------------------------------------------------------------------
+
+export function trackDownloadClicked(platform: string): void {
+  window.umami?.track('download-clicked', { platform });
 }
 
-export function trackPanelToggled(_panelId: string, _enabled: boolean): void {
-  // Intentionally no-op.
+export function trackCriticalBannerAction(action: string, theaterId: string): void {
+  window.umami?.track('critical-banner', { action, theaterId });
 }
 
-export function trackFindingClicked(_id: string, _source: string, _type: string, _priority: string): void {
-  // Intentionally no-op.
+export function trackFindingClicked(id: string, source: string, type: string, priority: string): void {
+  window.umami?.track('finding-clicked', { id, source, type, priority });
 }
 
-export function trackUpdateShown(_current: string, _remote: string): void {
-  // Intentionally no-op.
-}
-
-export function trackUpdateClicked(_version: string): void {
-  // Intentionally no-op.
-}
-
-export function trackUpdateDismissed(_version: string): void {
-  // Intentionally no-op.
-}
-
-export function trackCriticalBannerAction(_action: string, _theaterId: string): void {
-  // Intentionally no-op.
-}
-
-export function trackDownloadClicked(_platform: string): void {
-  // Intentionally no-op.
-}
-
-export function trackDownloadBannerDismissed(): void {
-  // Intentionally no-op.
-}
-
-export function trackWebcamSelected(_webcamId: string, _city: string, _viewMode: string): void {
-  // Intentionally no-op.
-}
-
-export function trackWebcamRegionFiltered(_region: string): void {
-  // Intentionally no-op.
-}
-
-export function trackDeeplinkOpened(_type: string, _target: string): void {
-  // Intentionally no-op.
+export function trackDeeplinkOpened(type: string, target: string): void {
+  window.umami?.track('deeplink-opened', { type, target });
 }

@@ -159,6 +159,7 @@ export class UnifiedSettings {
     this.overlay.classList.add('active');
     localStorage.setItem('wm-settings-open', '1');
     document.addEventListener('keydown', this.escapeHandler);
+    window.umami?.track('settings-open', { tab: tab ?? 'default' });
   }
 
   public close(): void {
