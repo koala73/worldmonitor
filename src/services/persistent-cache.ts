@@ -142,8 +142,8 @@ export async function getPersistentCache<T>(key: string): Promise<CacheEnvelope<
   }
 }
 
-export async function setPersistentCache<T>(key: string, data: T): Promise<void> {
-  const payload: CacheEnvelope<T> = { key, data, updatedAt: Date.now() };
+export async function setPersistentCache<T>(key: string, data: T, updatedAt = Date.now()): Promise<void> {
+  const payload: CacheEnvelope<T> = { key, data, updatedAt };
 
   if (isDesktopRuntime()) {
     try {

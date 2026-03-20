@@ -35,6 +35,23 @@ export function getHydratedData(key: string): unknown | undefined {
   return val;
 }
 
+export function markBootstrapAsLive(): void {
+  if (lastHydrationState.source === 'cached' || lastHydrationState.source === 'mixed') {
+    const now = Date.now();
+    lastHydrationState = {
+      source: 'live',
+      tiers: {
+        fast: lastHydrationState.tiers.fast.source !== 'none'
+          ? { source: 'live', updatedAt: now }
+          : { ...lastHydrationState.tiers.fast },
+        slow: lastHydrationState.tiers.slow.source !== 'none'
+          ? { source: 'live', updatedAt: now }
+          : { ...lastHydrationState.tiers.slow },
+      },
+    };
+  }
+}
+
 export function getBootstrapHydrationState(): BootstrapHydrationState {
   return {
     source: lastHydrationState.source,
@@ -114,6 +131,7 @@ async function fetchTier(tier: 'fast' | 'slow', signal: AbortSignal): Promise<Bo
 
   let mergedData = { ...liveData };
   let tierState: BootstrapTierHydrationState = { source: 'live', updatedAt: null };
+  let saveUpdatedAt: number | undefined;
 
   if (missingKeys.length > 0) {
     const cached = await readCachedTier(tier);
@@ -127,12 +145,13 @@ async function fetchTier(tier: 'fast' | 'slow', signal: AbortSignal): Promise<Bo
       }
       if (filledAny) {
         tierState = { source: 'mixed', updatedAt: cached.updatedAt };
+        saveUpdatedAt = cached.updatedAt; // preserve staleness: don't let cache write reset the age clock
       }
     }
   }
 
   populateCache(mergedData);
-  void setPersistentCache(getTierCacheKey(tier), mergedData).catch(() => {});
+  void setPersistentCache(getTierCacheKey(tier), mergedData, saveUpdatedAt).catch(() => {});
   return tierState;
 }
 
