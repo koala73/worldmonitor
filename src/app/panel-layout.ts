@@ -255,6 +255,7 @@ export class PanelLayoutManager implements AppModule {
             </button>
             <div class="download-dropdown" id="downloadDropdown"></div>
           </div>`}
+          <button class="brief-btn" id="briefTriggerBtn">📰 TODAY'S BRIEF</button>
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
           ${this.ctx.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}
@@ -316,6 +317,7 @@ export class PanelLayoutManager implements AppModule {
         <div class="mobile-menu-version">v${__APP_VERSION__}</div>
       </nav>
       <div class="market-ticker-container" id="marketTickerContainer"></div>
+      <div class="daily-brief-container" id="dailyBriefContainer"></div>
       ${showRegionSelector ? this.renderRegionSheet() : ''}
       <div class="main-content">
         <div class="map-section" id="mapSection">

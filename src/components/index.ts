@@ -63,3 +63,4 @@ export * from './EscalationCorrelationPanel';
 export * from './EconomicCorrelationPanel';
 export * from './DisasterCorrelationPanel';
 export * from './MarketTicker';
+export * from './DailyBrief';

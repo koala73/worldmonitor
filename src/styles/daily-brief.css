@@ -1,0 +1,128 @@
+.brief-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  background: rgba(14, 165, 233, 0.16);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.brief-btn:hover {
+  background: rgba(14, 165, 233, 0.28);
+}
+
+.daily-brief-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(2, 6, 23, 0.6);
+  z-index: 2000;
+}
+
+.daily-brief-overlay.open {
+  display: flex;
+}
+
+.daily-brief-panel {
+  width: min(720px, 100%);
+  max-height: min(80vh, 760px);
+  overflow-y: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: var(--panel-bg, #0f172a);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.daily-brief-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.daily-brief-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.daily-brief-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.daily-brief-content {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.daily-brief-date {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.daily-brief-points {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.daily-brief-points li {
+  color: var(--text-primary);
+  line-height: 1.55;
+}
+
+.daily-brief-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.daily-brief-state {
+  color: var(--text-secondary);
+}
+
+.daily-brief-retry {
+  margin-left: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+@media (max-width: 768px) {
+  .brief-btn {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+
+  .daily-brief-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .daily-brief-panel {
+    width: 100%;
+    max-height: 86vh;
+    border-radius: 16px 16px 0 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+  }
+}

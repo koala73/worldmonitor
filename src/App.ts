@@ -16,7 +16,7 @@ import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } fro
 import { startLearning } from '@/services/country-instability';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
 import type { ParsedMapUrlState } from '@/utils';
-import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner, MarketTicker } from '@/components';
+import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner, MarketTicker, DailyBrief } from '@/components';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
@@ -72,6 +72,7 @@ export class App {
 
   private modules: { destroy(): void }[] = [];
   private marketTicker: MarketTicker | null = null;
+  private dailyBrief: DailyBrief | null = null;
   private unsubAiFlow: (() => void) | null = null;
   private visiblePanelPrimed = new Set<string>();
   private visiblePanelPrimeRaf: number | null = null;
@@ -568,6 +569,13 @@ export class App {
       this.marketTicker = new MarketTicker(tickerContainer, { symbols: ['BTC', 'ETH', 'NDX'] });
       this.marketTicker.mount();
     }
+
+    const briefContainer = document.getElementById('dailyBriefContainer');
+    const briefTrigger = document.getElementById('briefTriggerBtn');
+    if (briefContainer && briefTrigger) {
+      this.dailyBrief = new DailyBrief(briefContainer, briefTrigger);
+      this.dailyBrief.mount();
+    }
     showProBanner(this.state.container);
 
     const mobileGeoCoords = await geoCoordsPromise;
@@ -715,6 +723,8 @@ export class App {
     this.unsubAiFlow?.();
     this.marketTicker?.destroy();
     this.marketTicker = null;
+    this.dailyBrief?.destroy();
+    this.dailyBrief = null;
     this.state.breakingBanner?.destroy();
     destroyBreakingNewsAlerts();
     this.state.map?.destroy();
