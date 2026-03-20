@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createLogger } from '../scripts/seed-utils/logger.mjs';
 import { parseFreshness, isFresh, buildMeta } from '../scripts/seed-utils/meta.mjs';
+import { forkSeeder } from '../scripts/seed-utils/runner.mjs';
 
 describe('logger', () => {
   it('prefixes messages with the given name', () => {
@@ -82,5 +83,39 @@ describe('meta', () => {
       assert.equal(meta.status, 'error');
       assert.equal(meta.error, 'HTTP 429');
     });
+  });
+});
+
+describe('runner', () => {
+  it('runs a script that exits 0 and reports success', async () => {
+    const result = await forkSeeder('test-ok', {
+      scriptPath: process.execPath,
+      args: ['-e', 'process.exit(0)'],
+      timeoutMs: 5000,
+    });
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.status, 'ok');
+    assert.equal(result.name, 'test-ok');
+    assert.ok(result.durationMs >= 0);
+  });
+
+  it('runs a script that exits 1 and reports error', async () => {
+    const result = await forkSeeder('test-fail', {
+      scriptPath: process.execPath,
+      args: ['-e', 'process.exit(1)'],
+      timeoutMs: 5000,
+    });
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.status, 'error');
+  });
+
+  it('kills a script that exceeds timeout', async () => {
+    const result = await forkSeeder('test-hang', {
+      scriptPath: process.execPath,
+      args: ['-e', 'setTimeout(() => {}, 60000)'],
+      timeoutMs: 500,
+    });
+    assert.equal(result.status, 'timeout');
+    assert.equal(result.exitCode, null);
   });
 });
