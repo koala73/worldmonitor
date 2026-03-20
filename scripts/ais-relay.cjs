@@ -4381,25 +4381,12 @@ async function seedUsniFleet() {
   console.log('[USNI] Fetching fleet tracker...');
   const t0 = Date.now();
   try {
-    const proxyAuth = process.env.RESIDENTIAL_PROXY_AUTH || OREF_PROXY_AUTH;
-    if (!proxyAuth) { console.warn('[USNI] No proxy auth configured, skipping'); return; }
-
-    let raw;
-    try {
-      raw = orefCurlFetch(proxyAuth, USNI_URL);
-    } catch (e) {
-      console.warn(`[USNI] curl+proxy failed: ${e.message}, trying direct...`);
-      try {
-        const { execFileSync } = require('child_process');
-        raw = execFileSync('curl', ['-sS', '--compressed', '--max-time', '15',
-          '-H', 'Accept: application/json', '-H', `User-Agent: ${CHROME_UA}`, USNI_URL],
-          { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
-      } catch (e2) {
-        throw new Error(`All curl attempts failed: ${e2.message}`);
-      }
-    }
-
-    const wpData = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const res = await fetch(USNI_URL, {
+      headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const wpData = await res.json();
     if (!Array.isArray(wpData) || !wpData.length) throw new Error('No fleet tracker articles');
 
     const post = wpData[0];
