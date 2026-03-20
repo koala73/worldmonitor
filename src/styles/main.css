@@ -136,6 +136,8 @@
   /* Tailwind green-600 (was #44ff88, 1.25:1) */
   --status-cached: #d97706;
   /* Tailwind amber-600 (was #ffaa00, 1.81:1) */
+  --status-unavailable: #dc2626;
+  /* Tailwind red-600 (was #ff4444, better contrast on light bg) */
   --green: #16a34a;
   /* Tailwind green-600 (was #44ff88) */
   --yellow: #d97706;
