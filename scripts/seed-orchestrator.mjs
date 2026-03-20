@@ -376,7 +376,7 @@ function scheduleSeeders(activeSeeders, url, token, state) {
 
         if (newCount < 2) {
           // First failure — retry after 60s
-          log.warn(`${seeder.name} failed, scheduling retry in 60s`);
+          log.warn(`${seeder.name} failed, scheduling retry in ${RETRY_DELAY_MS / 1000}s`);
           const retryTimer = setTimeout(async () => {
             if (state.shuttingDown) return;
             if (inFlight.has(seeder.name)) return; // overlap protection on retry too

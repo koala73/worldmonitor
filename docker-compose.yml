@@ -61,6 +61,8 @@ services:
       OLLAMA_MODEL: "${OLLAMA_MODEL:-}"
       CLOUDFLARE_R2_ACCOUNT_ID: "${CLOUDFLARE_R2_ACCOUNT_ID:-}"
       CLOUDFLARE_R2_TOKEN: "${CLOUDFLARE_R2_TOKEN:-}"
+      # Testing
+      SEED_TURBO: "${SEED_TURBO:-}"
     # Docker secrets (recommended for API keys — keeps them out of docker inspect).
     # Create secrets/ dir with one file per key, then uncomment below.
     # See SELF_HOSTING.md or docker-compose.override.yml for details.
