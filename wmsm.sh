@@ -11,6 +11,15 @@ REDIS_URL="${REDIS_URL:-http://localhost:8079}"
 REDIS_TOKEN="${REDIS_TOKEN:-wm-local-token}"
 CONTAINER="${WM_CONTAINER:-worldmonitor}"
 
+# Auto-detect container runtime: docker or podman
+if command -v docker >/dev/null 2>&1; then
+  DOCKER=docker
+elif command -v podman >/dev/null 2>&1; then
+  DOCKER=podman
+else
+  DOCKER=docker  # will fail at check_deps with helpful message
+fi
+
 # ── Catalog: name|tier|intervalMin|ttlSec|metaKey ─────────────────────────────
 # metaKey "null" means orchestrator writes seed-meta:orchestrator:{name}
 CATALOG=(
@@ -172,9 +181,9 @@ suggest_seeder() {
 
 check_deps() {
   local missing=()
-  command -v docker >/dev/null 2>&1 || missing+=("docker")
-  command -v curl   >/dev/null 2>&1 || missing+=("curl")
-  command -v jq     >/dev/null 2>&1 || missing+=("jq")
+  command -v "$DOCKER" >/dev/null 2>&1 || missing+=("docker or podman")
+  command -v curl      >/dev/null 2>&1 || missing+=("curl")
+  command -v jq        >/dev/null 2>&1 || missing+=("jq")
   if (( ${#missing[@]} > 0 )); then
     echo "❌ Missing required tools: ${missing[*]}"
     exit 1
@@ -182,9 +191,9 @@ check_deps() {
 }
 
 check_container() {
-  if ! docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null | grep -q true; then
+  if ! $DOCKER inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null | grep -q true; then
     echo "❌ Container '$CONTAINER' is not running"
-    echo "   Start it with: docker compose up -d"
+    echo "   Start it with: $DOCKER compose up -d"
     exit 1
   fi
 }
@@ -422,7 +431,7 @@ cmd_refresh() {
   local start_sec
   start_sec=$(date +%s)
 
-  if docker exec "$CONTAINER" node "scripts/seed-${target}.mjs"; then
+  if $DOCKER exec "$CONTAINER" node "scripts/seed-${target}.mjs"; then
     local dur=$(( $(date +%s) - start_sec ))
     echo "   ✅ Done in ${dur}s"
   else
@@ -477,7 +486,7 @@ cmd_refresh_all() {
         local sname="${tier_seeders[$idx]}"
         local start_sec
         start_sec=$(date +%s)
-        docker exec "$CONTAINER" node "scripts/seed-${sname}.mjs" >/dev/null 2>&1 &
+        $DOCKER exec "$CONTAINER" node "scripts/seed-${sname}.mjs" >/dev/null 2>&1 &
         pids+=($!)
         names+=("$sname")
         starts+=("$start_sec")
@@ -542,7 +551,7 @@ cmd_flush() {
 
   echo
   echo "🔄 Restarting orchestrator for cold start..."
-  docker restart "$CONTAINER" >/dev/null 2>&1
+  $DOCKER restart "$CONTAINER" >/dev/null 2>&1
   echo "   ✅ Container restarting — run ./wmsm.sh logs --follow to watch"
 }
 
@@ -551,13 +560,13 @@ cmd_logs() {
 
   case "$mode" in
     --follow|-f)
-      docker logs -f "$CONTAINER" 2>&1 | grep --line-buffered '\[orchestrator\]\|\[seed:'
+      $DOCKER logs -f "$CONTAINER" 2>&1 | grep --line-buffered '\[orchestrator\]\|\[seed:'
       ;;
     --all|-a)
-      docker logs "$CONTAINER" 2>&1
+      $DOCKER logs "$CONTAINER" 2>&1
       ;;
     *)
-      docker logs "$CONTAINER" 2>&1 | grep '\[orchestrator\]\|\[seed:'
+      $DOCKER logs "$CONTAINER" 2>&1 | grep '\[orchestrator\]\|\[seed:'
       ;;
   esac
 }
