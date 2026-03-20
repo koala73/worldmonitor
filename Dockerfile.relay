@@ -21,6 +21,9 @@ COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
 # Shared helper required by the relay (rss-allowed-domains.cjs)
 COPY shared/ ./shared/
 
+# Data files required by the relay (telegram-channels.json, etc.)
+COPY data/ ./data/
+
 EXPOSE 3004
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
