@@ -203,6 +203,7 @@ describe('forecast trace artifact builder', () => {
     assert.ok(Array.isArray(artifacts.worldState.simulationState?.replayTimeline));
     assert.ok(Array.isArray(artifacts.worldState.simulationState?.environmentSpec?.situations));
     assert.ok(Array.isArray(artifacts.worldState.simulationState?.memoryMutations?.situations));
+    assert.ok(Array.isArray(artifacts.worldState.simulationState?.causalGraph?.edges));
     assert.ok(Array.isArray(artifacts.worldState.simulationState?.causalReplay?.chains));
     assert.ok(Array.isArray(artifacts.worldState.report.situationWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.actorWatchlist));
@@ -213,6 +214,7 @@ describe('forecast trace artifact builder', () => {
     assert.ok(Array.isArray(artifacts.worldState.report.environmentWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.memoryWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.causalReplayWatchlist));
+    assert.ok(Array.isArray(artifacts.worldState.report.causalEdgeWatchlist));
     assert.ok(Array.isArray(artifacts.worldState.report.simulationOutcomeSummaries));
     assert.ok(Array.isArray(artifacts.worldState.report.crossSituationEffects));
     assert.ok(Array.isArray(artifacts.worldState.report.causalReplayChains));
@@ -1919,7 +1921,7 @@ describe('forecast run world state', () => {
       priorWorldStates: [priorWorldState],
     });
 
-    assert.equal(worldState.simulationState.version, 3);
+    assert.equal(worldState.simulationState.version, 4);
     assert.ok((worldState.simulationState.situationSimulations || []).every((item) => item.postureScore < 0.99));
   });
 

@@ -2892,7 +2892,7 @@ function summarizeSituationPressure(cluster, actors, branches) {
   return clampUnitInterval(((cluster.avgProbability || 0) * 0.5) + (signalWeight * 0.2) + (actorWeight * 0.15) + (branchWeight * 0.15));
 }
 
-const SIMULATION_STATE_VERSION = 3;
+const SIMULATION_STATE_VERSION = 4;
 
 const SIMULATION_DOMAIN_PROFILES = {
   conflict: {
@@ -3379,7 +3379,7 @@ function buildSimulationMemoryMutations(_worldState, simulationState, priorWorld
         .filter((item) => item.sourceSituationId === simulation.situationId || item.targetSituationId === simulation.situationId)
         .map((item) => item.strongestChannel)),
     ]).slice(0, 6);
-    const pressureMemory = +((
+    const pressureMemory = +clamp01((
       ((simulation.totalPressure || 0) * 0.45) +
       ((simulation.postureScore || 0) * 0.4) +
       (((simulation.rounds || []).reduce((sum, round) => sum + (round.netPressure || 0), 0) / Math.max((simulation.rounds || []).length, 1)) * 0.15)
@@ -3395,6 +3395,8 @@ function buildSimulationMemoryMutations(_worldState, simulationState, priorWorld
     return {
       situationId: simulation.situationId,
       label: simulation.label,
+      dominantRegion: simulation.dominantRegion,
+      dominantDomain: simulation.dominantDomain,
       posture: simulation.posture,
       postureScore: simulation.postureScore,
       pressureMemory,
@@ -3472,42 +3474,44 @@ function buildSimulationCausalReplayChains(simulationState) {
   const simulationsById = new Map((simulationState?.situationSimulations || []).map((item) => [item.situationId, item]));
   const actionLedger = simulationState?.actionLedger || [];
   const interactionGroups = buildInteractionGroups(simulationState?.reportableInteractionLedger || []);
-  const reportableEffects = Array.isArray(simulationState?.reportableEffects) ? simulationState.reportableEffects : [];
+  const causalEdges = Array.isArray(simulationState?.causalGraph?.edges)
+    ? simulationState.causalGraph.edges
+    : [];
   const chains = [];
 
-  for (const effect of reportableEffects) {
-    const source = simulationsById.get(effect.sourceSituationId);
-    const target = simulationsById.get(effect.targetSituationId);
+  for (const edge of causalEdges) {
+    const source = simulationsById.get(edge.sourceSituationId);
+    const target = simulationsById.get(edge.targetSituationId);
     const interactionGroup = interactionGroups.find((group) => (
-      group.sourceSituationId === effect.sourceSituationId
-      && group.targetSituationId === effect.targetSituationId
-      && group.strongestChannel === effect.channel
+      group.sourceSituationId === edge.sourceSituationId
+      && group.targetSituationId === edge.targetSituationId
+      && (group.strongestChannel === edge.primaryChannel || (edge.supportingChannels || []).includes(group.strongestChannel))
     )) || null;
     const trigger = (source?.pressureSignals || [])[0]?.type
       || source?.branchSeeds?.[0]?.kind
       || source?.dominantDomain
       || 'pressure';
     const leadAction = actionLedger.find((action) => (
-      action.situationId === effect.sourceSituationId
-      && (action.channels || []).includes(effect.channel)
-    )) || actionLedger.find((action) => action.situationId === effect.sourceSituationId) || null;
+      action.situationId === edge.sourceSituationId
+      && (action.channels || []).some((channel) => (edge.supportingChannels || []).includes(channel))
+    )) || actionLedger.find((action) => action.situationId === edge.sourceSituationId) || null;
     const stages = interactionGroup ? [...(interactionGroup.stages || [])].sort() : ['round_1', 'round_2', 'round_3'];
     chains.push({
-      chainId: `chain-${hashSituationKey([effect.sourceSituationId, effect.targetSituationId, effect.channel])}`,
+      chainId: `chain-${hashSituationKey([edge.sourceSituationId, edge.targetSituationId, edge.effectClass])}`,
       kind: 'cross_situation_effect',
-      sourceSituationId: effect.sourceSituationId,
-      sourceLabel: effect.sourceLabel,
-      targetSituationId: effect.targetSituationId,
-      targetLabel: effect.targetLabel,
+      sourceSituationId: edge.sourceSituationId,
+      sourceLabel: edge.sourceLabel,
+      targetSituationId: edge.targetSituationId,
+      targetLabel: edge.targetLabel,
       trigger,
       stages,
       actionSummary: leadAction?.summary || '',
       interactionSummary: interactionGroup
         ? `${interactionGroup.sourceLabel} -> ${interactionGroup.targetLabel} via ${interactionGroup.strongestChannel.replace(/_/g, ' ')}`
         : '',
-      outcomeSummary: effect.summary,
-      confidence: effect.confidence || interactionGroup?.avgConfidence || 0,
-      strongestChannel: effect.channel,
+      outcomeSummary: edge.summary,
+      confidence: edge.confidence || interactionGroup?.avgConfidence || 0,
+      strongestChannel: edge.primaryChannel,
     });
   }
 
@@ -3660,11 +3664,18 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
     reportableInteractionLedger,
     reportableEffects,
   }, priorWorldState);
+  const causalGraph = buildSimulationCausalGraph({
+    situationSimulations,
+    reportableInteractionLedger,
+    reportableEffects,
+    memoryMutations,
+  }, priorWorldState);
   const causalReplay = buildSimulationCausalReplayChains({
     situationSimulations,
     actionLedger,
     reportableInteractionLedger,
     reportableEffects,
+    causalGraph,
   });
 
   const postureCounts = summarizeTypeCounts(situationSimulations.map((item) => item.posture));
@@ -3703,6 +3714,7 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
     replayTimeline,
     environmentSpec,
     memoryMutations,
+    causalGraph,
     causalReplay,
     situationSimulations,
   };
@@ -4017,6 +4029,159 @@ function buildInteractionGroups(interactions = []) {
   }));
 }
 
+function buildCausalGraphKey(sourceSituationId, targetSituationId, effectClass) {
+  return `${sourceSituationId}:${targetSituationId}:${effectClass}`;
+}
+
+function buildSimulationCausalGraph(simulationState, priorWorldState = null) {
+  const simulations = Array.isArray(simulationState?.situationSimulations) ? simulationState.situationSimulations : [];
+  const reportableEffects = Array.isArray(simulationState?.reportableEffects) ? simulationState.reportableEffects : [];
+  const groupedInteractions = buildInteractionGroups(simulationState?.reportableInteractionLedger || []);
+  const linkMemory = new Map(
+    (simulationState?.memoryMutations?.links || []).map((item) => [
+      `${item.sourceSituationId}:${item.targetSituationId}:${item.strongestChannel}`,
+      item,
+    ]),
+  );
+  const priorCausalGraph = priorWorldState?.simulationState?.causalGraph?.version === SIMULATION_STATE_VERSION
+    ? priorWorldState.simulationState.causalGraph
+    : null;
+  const priorEdges = new Map((priorCausalGraph?.edges || []).map((edge) => [buildCausalGraphKey(edge.sourceSituationId, edge.targetSituationId, edge.effectClass), edge]));
+  const groupedEdges = new Map();
+
+  for (const effect of reportableEffects) {
+    const key = buildCausalGraphKey(effect.sourceSituationId, effect.targetSituationId, effect.effectClass);
+    const interactionMatches = groupedInteractions.filter((group) => (
+      group.sourceSituationId === effect.sourceSituationId
+      && group.targetSituationId === effect.targetSituationId
+      && (group.strongestChannel === effect.channel
+        || inferSystemEffectRelationFromChannel(group.strongestChannel, simulations.find((item) => item.situationId === effect.targetSituationId)?.dominantDomain) === effect.relation)
+    ));
+    const entry = groupedEdges.get(key) || {
+      edgeId: `edge-${hashSituationKey([effect.sourceSituationId, effect.targetSituationId, effect.effectClass])}`,
+      sourceSituationId: effect.sourceSituationId,
+      sourceLabel: effect.sourceLabel,
+      sourceFamilyId: effect.sourceFamilyId || '',
+      sourceFamilyLabel: effect.sourceFamilyLabel || '',
+      targetSituationId: effect.targetSituationId,
+      targetLabel: effect.targetLabel,
+      targetFamilyId: effect.targetFamilyId || '',
+      targetFamilyLabel: effect.targetFamilyLabel || '',
+      effectClass: effect.effectClass,
+      relations: new Set(),
+      channels: new Set(),
+      supportingChannels: new Set(),
+      stages: new Set(),
+      confidence: 0,
+      score: 0,
+      memorySupport: 0,
+      directLinkCount: 0,
+      sourcePosture: simulations.find((item) => item.situationId === effect.sourceSituationId)?.posture || '',
+      sourcePostureScore: simulations.find((item) => item.situationId === effect.sourceSituationId)?.postureScore || 0,
+      continuityStatus: 'new',
+      continuityDelta: 0,
+    };
+    entry.relations.add(effect.relation);
+    if (effect.channel) entry.channels.add(effect.channel);
+    entry.confidence = Math.max(entry.confidence, Number(effect.confidence || 0));
+    entry.score = Math.max(entry.score, Number(effect.score || 0));
+    for (const match of interactionMatches) {
+      entry.supportingChannels.add(match.strongestChannel);
+      for (const stage of match.stages || []) entry.stages.add(stage);
+      entry.directLinkCount = Math.max(entry.directLinkCount, Number(match.directLinkCount || 0));
+      const memory = linkMemory.get(`${match.sourceSituationId}:${match.targetSituationId}:${match.strongestChannel}`);
+      entry.memorySupport = Math.max(entry.memorySupport, Number(memory?.memoryStrength || 0));
+    }
+    groupedEdges.set(key, entry);
+  }
+
+  const edges = [...groupedEdges.values()].map((edge) => {
+    const channels = uniqueSortedStrings([...(edge.channels || []), ...(edge.supportingChannels || [])]);
+    const primaryChannel = channels
+      .slice()
+      .sort((left, right) => {
+        const leftPriority = EFFECT_CLASS_PRIORITY[classifyEffectClass(left)] || 0;
+        const rightPriority = EFFECT_CLASS_PRIORITY[classifyEffectClass(right)] || 0;
+        return rightPriority - leftPriority || left.localeCompare(right);
+      })[0] || '';
+    const prior = priorEdges.get(buildCausalGraphKey(edge.sourceSituationId, edge.targetSituationId, edge.effectClass)) || null;
+    const continuityDelta = prior
+      ? +(((edge.confidence + (edge.memorySupport * 0.35)) - ((prior.confidence || 0) + ((prior.memorySupport || 0) * 0.35))).toFixed(3))
+      : +(edge.confidence + (edge.memorySupport * 0.35)).toFixed(3);
+    const continuityStatus = !prior
+      ? 'new'
+      : continuityDelta >= 0.06
+        ? 'strengthening'
+        : continuityDelta <= -0.06
+          ? 'weakening'
+          : 'persistent';
+    return {
+      edgeId: edge.edgeId,
+      sourceSituationId: edge.sourceSituationId,
+      sourceLabel: edge.sourceLabel,
+      sourceFamilyId: edge.sourceFamilyId,
+      sourceFamilyLabel: edge.sourceFamilyLabel,
+      targetSituationId: edge.targetSituationId,
+      targetLabel: edge.targetLabel,
+      targetFamilyId: edge.targetFamilyId,
+      targetFamilyLabel: edge.targetFamilyLabel,
+      effectClass: edge.effectClass,
+      primaryChannel,
+      channel: primaryChannel,
+      supportingChannels: channels,
+      relation: [...edge.relations][0] || '',
+      supportingRelations: uniqueSortedStrings([...edge.relations]),
+      confidence: +edge.confidence.toFixed(3),
+      score: +edge.score.toFixed(3),
+      memorySupport: +edge.memorySupport.toFixed(3),
+      directLinkCount: edge.directLinkCount,
+      stageCount: edge.stages.size,
+      stages: [...edge.stages].sort(),
+      sourcePosture: edge.sourcePosture,
+      sourcePostureScore: edge.sourcePostureScore,
+      continuityStatus,
+      continuityDelta,
+      summary: `${edge.sourceLabel} is likely to feed ${[...edge.relations][0] || 'spillover pressure'} into ${edge.targetLabel}, reinforced by ${edge.stages.size || 1} stage(s), ${channels.join(', ') || 'mixed channels'}, ${(edge.confidence * 100).toFixed(0)}% effect confidence, and ${Math.round(edge.memorySupport * 100)}% memory support.`,
+    };
+  }).sort((a, b) => (
+    b.confidence - a.confidence
+    || b.memorySupport - a.memorySupport
+    || b.score - a.score
+    || a.sourceLabel.localeCompare(b.sourceLabel)
+    || a.targetLabel.localeCompare(b.targetLabel)
+  ));
+
+  const resolvedEdges = (priorCausalGraph?.edges || [])
+    .filter((prior) => !groupedEdges.has(buildCausalGraphKey(prior.sourceSituationId, prior.targetSituationId, prior.effectClass)))
+    .slice(0, 12)
+    .map((edge) => ({
+      edgeId: edge.edgeId,
+      sourceSituationId: edge.sourceSituationId,
+      sourceLabel: edge.sourceLabel,
+      targetSituationId: edge.targetSituationId,
+      targetLabel: edge.targetLabel,
+      effectClass: edge.effectClass,
+      primaryChannel: edge.primaryChannel,
+      continuityStatus: 'resolved',
+      confidence: edge.confidence,
+      memorySupport: edge.memorySupport || 0,
+    }));
+
+  const continuityCounts = summarizeTypeCounts(edges.map((edge) => edge.continuityStatus));
+  continuityCounts.resolved = resolvedEdges.length;
+  const summary = edges.length
+    ? `${edges.length} canonical causal edges were synthesized from reportable effects, with ${continuityCounts.new || 0} new, ${continuityCounts.persistent || 0} persistent, ${continuityCounts.strengthening || 0} strengthening, ${continuityCounts.weakening || 0} weakening, and ${continuityCounts.resolved || 0} resolved edges against prior simulation memory.`
+    : 'No canonical causal edges were synthesized from the current simulation output.';
+
+  return {
+    version: SIMULATION_STATE_VERSION,
+    summary,
+    continuityCounts,
+    edges: edges.slice(0, 12),
+    resolvedEdges,
+  };
+}
+
 function computeReportableEffectConfidence(group, source, target, strongestChannelWeight) {
   const structuralSharedActor = group.sharedActor || intersectCount(source?.actorIds || [], target?.actorIds || []) > 0;
   const structuralRegionLink = group.regionLink || intersectCount(source?.regions || [], target?.regions || []) > 0;
@@ -4261,13 +4426,34 @@ function canEmitCrossSituationEffect(source, strongestChannel, strongestChannelW
 }
 
 function buildInteractionWatchlist(interactions = []) {
-  return buildInteractionGroups(interactions)
-    .sort((a, b) => b.avgConfidence - a.avgConfidence || b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel))
+  const groupedPairs = new Map();
+  for (const item of buildInteractionGroups(interactions)) {
+    const key = `${item.sourceSituationId}:${item.targetSituationId}`;
+    const pair = groupedPairs.get(key) || {
+      sourceLabel: item.sourceLabel,
+      targetLabel: item.targetLabel,
+      channels: new Set(),
+      stages: new Set(),
+      interactionTypes: new Set(),
+      confidence: 0,
+      actorCount: 0,
+      score: 0,
+    };
+    pair.channels.add(item.strongestChannel);
+    for (const stage of item.stages || []) pair.stages.add(stage);
+    for (const type of item.interactionTypes || []) pair.interactionTypes.add(type);
+    pair.confidence = Math.max(pair.confidence, Number(item.avgConfidence || 0));
+    pair.actorCount = Math.max(pair.actorCount, item.sourceActors.size + item.targetActors.size);
+    pair.score = Math.max(pair.score, Number(item.score || 0));
+    groupedPairs.set(key, pair);
+  }
+  return [...groupedPairs.values()]
+    .sort((a, b) => b.confidence - a.confidence || b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel))
     .slice(0, 6)
     .map((item) => ({
       type: `interaction_${[...item.interactionTypes][0] || 'coupling'}`,
       label: `${item.sourceLabel} -> ${item.targetLabel}`,
-      summary: `${item.sourceLabel} interacted with ${item.targetLabel} across ${(item.stages?.size || 0)} round(s) via ${item.strongestChannel.replace(/_/g, ' ')}, with ${(item.avgConfidence * 100).toFixed(0)}% report confidence and ${item.sourceActors.size + item.targetActors.size} named actors involved.`,
+      summary: `${item.sourceLabel} interacted with ${item.targetLabel} across ${item.stages.size} round(s) via ${uniqueSortedStrings([...item.channels]).map((channel) => channel.replace(/_/g, ' ')).join(', ')}, with ${(item.confidence * 100).toFixed(0)}% report confidence and ${item.actorCount} named actors involved.`,
     }));
 }
 
@@ -4850,9 +5036,11 @@ function buildWorldStateReport(worldState) {
   const simulationSummary = worldState.simulationState?.summary || 'No simulation-state summary is available.';
   const simulationReportInputs = buildSimulationReportInputs(worldState);
   const simulationOutcomeSummaries = buildSituationOutcomeSummaries(worldState.simulationState);
-  const crossSituationEffects = Array.isArray(worldState.simulationState?.reportableEffects)
-    ? worldState.simulationState.reportableEffects
-    : buildCrossSituationEffects(worldState.simulationState, { mode: 'reportable' });
+  const crossSituationEffects = Array.isArray(worldState.simulationState?.causalGraph?.edges)
+    ? worldState.simulationState.causalGraph.edges
+    : (Array.isArray(worldState.simulationState?.reportableEffects)
+        ? worldState.simulationState.reportableEffects
+        : buildCrossSituationEffects(worldState.simulationState, { mode: 'reportable' }));
   const interactionLedger = Array.isArray(worldState.simulationState?.reportableInteractionLedger)
     ? worldState.simulationState.reportableInteractionLedger
     : (Array.isArray(worldState.simulationState?.interactionLedger) ? worldState.simulationState.interactionLedger : []);
@@ -4890,14 +5078,23 @@ function buildWorldStateReport(worldState) {
     .map((item) => ({
       type: `memory_${item.mutationType}`,
       label: item.label,
-      summary: `${item.label} carries a ${item.mutationType.replace(/_/g, ' ')} memory shift of ${Math.round(Math.abs(item.memoryDelta || 0) * 100)} points, with ${Math.round((item.pressureMemory || 0) * 100)}% retained pressure memory.`,
+      summary: `${item.label} shows a ${item.mutationType.replace(/_/g, ' ')} memory shift of ${Math.round(Math.abs(item.memoryDelta || 0) * 100)} points, with ${Math.round(clamp01(item.pressureMemory || 0) * 100)}% retained pressure memory.`,
     }));
   const causalReplayWatchlist = (worldState.simulationState?.causalReplay?.chains || [])
     .slice(0, 6)
     .map((chain) => ({
       type: `causal_${chain.kind}`,
       label: chain.targetLabel ? `${chain.sourceLabel} -> ${chain.targetLabel}` : chain.sourceLabel,
-      summary: `${chain.sourceLabel}${chain.targetLabel ? ` flowed into ${chain.targetLabel}` : ''} through ${chain.stages.length} stage(s), triggered by ${String(chain.trigger || 'pressure').replace(/_/g, ' ')}, ending in ${chain.outcomeSummary}`,
+      summary: chain.targetLabel
+        ? `${chain.sourceLabel} flowed into ${chain.targetLabel} through ${chain.stages.length} stage(s), triggered by ${String(chain.trigger || 'pressure').replace(/_/g, ' ')}, ending in ${chain.outcomeSummary}`
+        : `${chain.sourceLabel} moved through ${chain.stages.length} stage(s), triggered by ${String(chain.trigger || 'pressure').replace(/_/g, ' ')}, ending in ${chain.outcomeSummary}`,
+    }));
+  const causalEdgeWatchlist = (worldState.simulationState?.causalGraph?.edges || [])
+    .slice(0, 6)
+    .map((edge) => ({
+      type: `causal_edge_${edge.continuityStatus}`,
+      label: `${edge.sourceLabel} -> ${edge.targetLabel}`,
+      summary: `${edge.sourceLabel} now carries a ${String(edge.continuityStatus || 'new').replace(/_/g, ' ')} ${String(edge.effectClass || 'causal').replace(/_/g, ' ')} edge into ${edge.targetLabel}, led by ${String(edge.primaryChannel || 'mixed').replace(/_/g, ' ')} at ${(Number(edge.confidence || 0) * 100).toFixed(0)}% confidence and ${(Number(edge.memorySupport || 0) * 100).toFixed(0)}% memory support.`,
     }));
   const blockedEffectWatchlist = (worldState.simulationState?.blockedEffectSummary?.preview || []).slice(0, 4).map((item) => ({
     type: `blocked_effect_${item.reason}`,
@@ -4940,6 +5137,7 @@ function buildWorldStateReport(worldState) {
     environmentWatchlist,
     memoryWatchlist,
     causalReplayWatchlist,
+    causalEdgeWatchlist,
     blockedEffectWatchlist,
     simulationOutcomeSummaries,
     crossSituationEffects,
@@ -5487,11 +5685,13 @@ async function writeForecastTraceArtifacts(data, context = {}) {
   // the latest pointer and history list in separate Redis calls. If SET succeeds
   // but LPUSH/LTRIM fails or the history list is stale, continuity should still
   // see the most recent prior world state.
-  const [priorWorldStates, priorWorldStateFallback] = await Promise.all([
-    readForecastWorldStateHistory(storageConfig, WORLD_STATE_HISTORY_LIMIT),
-    readPreviousForecastWorldState(storageConfig),
-  ]);
-  const priorWorldState = priorWorldStates[0] ?? priorWorldStateFallback;
+  const [priorWorldStates, priorWorldStateFallback] = data?.priorWorldStates?.length || data?.priorWorldState
+    ? [data.priorWorldStates || [], data.priorWorldState || null]
+    : await Promise.all([
+      readForecastWorldStateHistory(storageConfig, WORLD_STATE_HISTORY_LIMIT),
+      readPreviousForecastWorldState(storageConfig),
+    ]);
+  const priorWorldState = data?.priorWorldState || (priorWorldStates[0] ?? priorWorldStateFallback);
   const artifacts = buildForecastTraceArtifacts({
     ...data,
     priorWorldState,
@@ -5829,7 +6029,54 @@ function getPublishSelectionTarget(predictions = []) {
   );
 }
 
-function computePublishSelectionScore(pred) {
+function buildPublishSelectionMemoryIndex(priorWorldState = null) {
+  const situationMemory = priorWorldState?.simulationState?.memoryMutations?.situations || [];
+  const causalEdges = priorWorldState?.simulationState?.causalGraph?.edges || [];
+  const bySituationLabel = new Map();
+  const byRegionDomain = new Map();
+  const edgeCounts = new Map();
+
+  for (const item of situationMemory) {
+    const labelKey = String(item.label || '').trim().toLowerCase();
+    if (labelKey && !bySituationLabel.has(labelKey)) bySituationLabel.set(labelKey, item);
+    const regionKey = String(item.dominantRegion || '').trim().toLowerCase();
+    const domainKey = item.dominantDomain || '';
+    if (regionKey && domainKey) {
+      const regionDomainKey = `${regionKey}:${domainKey}`;
+      if (!byRegionDomain.has(regionDomainKey)) byRegionDomain.set(regionDomainKey, item);
+    }
+  }
+
+  for (const edge of causalEdges) {
+    edgeCounts.set(edge.sourceSituationId, (edgeCounts.get(edge.sourceSituationId) || 0) + 1);
+    edgeCounts.set(edge.targetSituationId, (edgeCounts.get(edge.targetSituationId) || 0) + 1);
+  }
+
+  return { bySituationLabel, byRegionDomain, edgeCounts };
+}
+
+function getPublishSelectionMemoryHint(pred, memoryIndex = null) {
+  if (!memoryIndex) return null;
+  const labelKey = String(pred?.situationContext?.label || '').trim().toLowerCase();
+  const direct = labelKey ? memoryIndex.bySituationLabel.get(labelKey) : null;
+  if (direct) {
+    return {
+      memory: direct,
+      edgeCount: memoryIndex.edgeCounts.get(direct.situationId) || 0,
+      matchedBy: 'label',
+    };
+  }
+  const regionDomainKey = `${String(pred?.region || pred?.situationContext?.regions?.[0] || '').trim().toLowerCase()}:${pred?.domain || ''}`;
+  const fallback = regionDomainKey ? memoryIndex.byRegionDomain.get(regionDomainKey) : null;
+  if (!fallback) return null;
+  return {
+    memory: fallback,
+    edgeCount: memoryIndex.edgeCounts.get(fallback.situationId) || 0,
+    matchedBy: 'region_domain',
+  };
+}
+
+function computePublishSelectionScore(pred, memoryIndex = null) {
   const readiness = pred?.readiness?.overall ?? scoreForecastReadiness(pred).overall;
   const priority = typeof pred?.analysisPriority === 'number' ? pred.analysisPriority : computeAnalysisPriority(pred);
   const narrativeSource = pred?.traceMeta?.narrativeSource || 'fallback';
@@ -5838,6 +6085,24 @@ function computePublishSelectionScore(pred) {
   const signalBreadth = Math.min(1, ((pred.situationContext?.topSignals || []).length || 0) / 4);
   const domainLift = ['market', 'military', 'supply_chain', 'infrastructure'].includes(pred.domain) ? 0.02 : 0;
   const enrichedLift = narrativeSource.startsWith('llm_') ? 0.025 : 0;
+  const memoryHint = getPublishSelectionMemoryHint(pred, memoryIndex);
+  const pressureMemory = Number(memoryHint?.memory?.pressureMemory || 0);
+  const memoryDelta = Number(memoryHint?.memory?.memoryDelta || 0);
+  const edgeLift = Math.min(0.03, (Number(memoryHint?.edgeCount || 0) * 0.01));
+  const memoryLift = memoryHint
+    ? (
+      (Math.min(0.08, pressureMemory * 0.07))
+      + (memoryDelta > 0 ? Math.min(0.06, memoryDelta * 0.28) : Math.max(-0.03, memoryDelta * 0.14))
+      + edgeLift
+    )
+    : 0;
+  pred.publishSelectionMemory = memoryHint ? {
+    matchedBy: memoryHint.matchedBy,
+    situationId: memoryHint.memory?.situationId || '',
+    pressureMemory,
+    memoryDelta,
+    edgeCount: memoryHint.edgeCount || 0,
+  } : null;
   return +(
     (priority * 0.55) +
     (readiness * 0.2) +
@@ -5847,13 +6112,15 @@ function computePublishSelectionScore(pred) {
     (situationBreadth * 0.01) +
     (signalBreadth * 0.01) +
     domainLift +
-    enrichedLift
+    enrichedLift +
+    memoryLift
   ).toFixed(6);
 }
 
 function selectPublishedForecastPool(predictions, options = {}) {
   const eligible = (predictions || []).filter((pred) => (pred?.probability || 0) > (options.minProbability ?? PUBLISH_MIN_PROBABILITY));
   const targetCount = options.targetCount ?? getPublishSelectionTarget(eligible);
+  const memoryIndex = options.memoryIndex || null;
   const selected = [];
   const selectedIds = new Set();
   const familyCounts = new Map();
@@ -5861,7 +6128,7 @@ function selectPublishedForecastPool(predictions, options = {}) {
   const situationCounts = new Map();
   const domainCounts = new Map();
 
-  for (const pred of predictions || []) pred.publishSelectionScore = computePublishSelectionScore(pred);
+  for (const pred of predictions || []) pred.publishSelectionScore = computePublishSelectionScore(pred, memoryIndex);
 
   const ranked = eligible
     .slice()
@@ -5916,6 +6183,15 @@ function selectPublishedForecastPool(predictions, options = {}) {
     domainCounts.set(pred.domain, (domainCounts.get(pred.domain) || 0) + 1);
   }
 
+  const memoryAnchors = ranked.filter((pred) => (
+    Number(pred.publishSelectionMemory?.pressureMemory || 0) >= 0.55
+    || Number(pred.publishSelectionMemory?.edgeCount || 0) >= 1
+  ));
+  for (const pred of memoryAnchors) {
+    if (selected.length >= Math.min(targetCount, 2)) break;
+    if (canSelect(pred, 'fill')) take(pred);
+  }
+
   for (const familyId of orderedFamilyIds) {
     if (selected.length >= targetCount) break;
     const bucket = familyBuckets.get(familyId) || [];
@@ -5929,6 +6205,11 @@ function selectPublishedForecastPool(predictions, options = {}) {
     const selectedDomains = new Set(selected.filter((pred) => (pred.familyContext?.id || `solo:${pred.situationContext?.id || pred.id}`) === familyId).map((pred) => pred.domain));
     const choice = bucket.find((pred) => !selectedDomains.has(pred.domain) && canSelect(pred, 'diversity'));
     if (choice) take(choice);
+  }
+
+  for (const pred of memoryAnchors) {
+    if (selected.length >= targetCount) break;
+    if (canSelect(pred, 'fill')) take(pred);
   }
 
   for (const pred of ranked) {
@@ -6364,24 +6645,93 @@ function sanitizeForPrompt(text) {
   return (text || '').replace(/[\n\r]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
 }
 
-function parseLLMScenarios(text) {
+function extractStructuredLlmPayload(text) {
   const cleaned = text
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
     .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
+    .replace(/```json\s*/gi, '```')
     .trim();
-  // Try complete JSON array first
-  const match = cleaned.match(/\[[\s\S]*\]/);
-  if (match) {
-    try { return JSON.parse(match[0]); } catch { /* fall through to repair */ }
+  const candidates = [];
+  const fencedBlocks = [...cleaned.matchAll(/```([\s\S]*?)```/g)].map((match) => match[1].trim());
+  candidates.push(...fencedBlocks);
+  candidates.push(cleaned);
+
+  for (const candidate of candidates) {
+    const trimmed = candidate.trim();
+    if (!trimmed) continue;
+    const direct = tryParseStructuredCandidate(trimmed);
+    if (direct.items) return { items: direct.items, diagnostics: { stage: direct.stage, preview: sanitizeForPrompt(trimmed).slice(0, 220) } };
+    const firstArray = extractFirstJsonArray(trimmed);
+    if (firstArray) {
+      const arrayParsed = tryParseStructuredCandidate(firstArray);
+      if (arrayParsed.items) return { items: arrayParsed.items, diagnostics: { stage: arrayParsed.stage, preview: sanitizeForPrompt(firstArray).slice(0, 220) } };
+    }
   }
-  // Try truncated: find opening bracket and attempt repair
-  const bracketIdx = cleaned.indexOf('[');
-  if (bracketIdx === -1) return null;
-  const partial = cleaned.slice(bracketIdx);
-  for (const suffix of ['"}]', '}]', '"]', ']']) {
-    try { return JSON.parse(partial + suffix); } catch { /* next */ }
+  return {
+    items: null,
+    diagnostics: {
+      stage: 'no_json_array',
+      preview: sanitizeForPrompt(cleaned).slice(0, 220),
+    },
+  };
+}
+
+function extractFirstJsonArray(text) {
+  const start = text.indexOf('[');
+  if (start === -1) return '';
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '[') depth += 1;
+    if (char === ']') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
   }
-  return null;
+  return text.slice(start);
+}
+
+function tryParseStructuredCandidate(candidate) {
+  try {
+    const parsed = JSON.parse(candidate);
+    if (Array.isArray(parsed)) return { items: parsed, stage: 'direct_array' };
+    if (Array.isArray(parsed?.items)) return { items: parsed.items, stage: 'object_items' };
+    if (Array.isArray(parsed?.scenarios)) return { items: parsed.scenarios, stage: 'object_scenarios' };
+    if (Array.isArray(parsed?.predictions)) return { items: parsed.predictions, stage: 'object_predictions' };
+  } catch {
+    const bracketIdx = candidate.indexOf('[');
+    if (bracketIdx !== -1) {
+      const partial = candidate.slice(bracketIdx);
+      for (const suffix of ['"}]', '}]', '"]', ']']) {
+        try {
+          const repaired = JSON.parse(partial + suffix);
+          if (Array.isArray(repaired)) return { items: repaired, stage: 'repaired_array' };
+        } catch {
+          // continue
+        }
+      }
+    }
+  }
+  return { items: null, stage: 'unparsed' };
+}
+
+function parseLLMScenarios(text) {
+  return extractStructuredLlmPayload(text).items;
 }
 
 function hasEvidenceReference(text, candidate) {
@@ -6686,6 +7036,8 @@ async function enrichScenariosWithLLM(predictions) {
       perspectives: 0,
       cases: 0,
       rawItemCount: 0,
+      parseStage: '',
+      rawPreview: '',
       failureReason: '',
       succeeded: false,
     },
@@ -6697,6 +7049,8 @@ async function enrichScenariosWithLLM(predictions) {
       scenarios: 0,
       cases: 0,
       rawItemCount: 0,
+      parseStage: '',
+      rawPreview: '',
       failureReason: '',
       succeeded: false,
     },
@@ -6752,7 +7106,8 @@ async function enrichScenariosWithLLM(predictions) {
       console.log('  [LLM:combined] invoking provider');
       const result = await callForecastLLM(COMBINED_SYSTEM_PROMPT, buildUserPrompt(topWithPerspectives), { ...combinedLlmOptions, stage: 'combined' });
       if (result) {
-        const raw = parseLLMScenarios(result.text);
+        const parsed = extractStructuredLlmPayload(result.text);
+        const raw = parsed.items;
         const validScenarios = validateScenarios(raw, topWithPerspectives);
         const validPerspectives = validatePerspectives(raw, topWithPerspectives);
         const validCases = validateCaseNarratives(raw, topWithPerspectives);
@@ -6760,6 +7115,8 @@ async function enrichScenariosWithLLM(predictions) {
         enrichmentMeta.combined.provider = result.provider;
         enrichmentMeta.combined.model = result.model;
         enrichmentMeta.combined.rawItemCount = Array.isArray(raw) ? raw.length : 0;
+        enrichmentMeta.combined.parseStage = parsed.diagnostics?.stage || '';
+        enrichmentMeta.combined.rawPreview = parsed.diagnostics?.preview || '';
         enrichmentMeta.combined.scenarios = validScenarios.length;
         enrichmentMeta.combined.perspectives = validPerspectives.length;
         enrichmentMeta.combined.cases = validCases.length;
@@ -6813,6 +7170,7 @@ async function enrichScenariosWithLLM(predictions) {
           event: 'llm_combined', provider: result.provider, model: result.model,
           hash, count: topWithPerspectives.length,
           rawItems: Array.isArray(raw) ? raw.length : 0,
+          parseStage: enrichmentMeta.combined.parseStage || '',
           scenarios: validScenarios.length, perspectives: validPerspectives.length, cases: validCases.length,
           failureReason: enrichmentMeta.combined.failureReason || '',
           latencyMs: Math.round(Date.now() - t0), cached: false,
@@ -6871,13 +7229,16 @@ async function enrichScenariosWithLLM(predictions) {
       console.log('  [LLM:scenario] invoking provider');
       const result = await callForecastLLM(SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly), { ...scenarioLlmOptions, stage: 'scenario' });
       if (result) {
-        const raw = parseLLMScenarios(result.text);
+        const parsed = extractStructuredLlmPayload(result.text);
+        const raw = parsed.items;
         const valid = validateScenarios(raw, scenarioOnly);
         const validCases = validateCaseNarratives(raw, scenarioOnly);
         enrichmentMeta.scenario.source = 'live';
         enrichmentMeta.scenario.provider = result.provider;
         enrichmentMeta.scenario.model = result.model;
         enrichmentMeta.scenario.rawItemCount = Array.isArray(raw) ? raw.length : 0;
+        enrichmentMeta.scenario.parseStage = parsed.diagnostics?.stage || '';
+        enrichmentMeta.scenario.rawPreview = parsed.diagnostics?.preview || '';
         enrichmentMeta.scenario.scenarios = valid.length;
         enrichmentMeta.scenario.cases = validCases.length;
         enrichmentMeta.scenario.succeeded = valid.length > 0 || validCases.length > 0;
@@ -6908,7 +7269,7 @@ async function enrichScenariosWithLLM(predictions) {
 
         console.log(JSON.stringify({
           event: 'llm_scenario', provider: result.provider, model: result.model,
-          hash, count: scenarioOnly.length, rawItems: Array.isArray(raw) ? raw.length : 0, scenarios: valid.length, cases: validCases.length,
+          hash, count: scenarioOnly.length, rawItems: Array.isArray(raw) ? raw.length : 0, parseStage: enrichmentMeta.scenario.parseStage || '', scenarios: valid.length, cases: validCases.length,
           failureReason: enrichmentMeta.scenario.failureReason || '',
           latencyMs: Math.round(Date.now() - t0), cached: false,
         }));
@@ -6954,6 +7315,15 @@ async function enrichScenariosWithLLM(predictions) {
 // ── Main pipeline ──────────────────────────────────────────
 async function fetchForecasts() {
   await warmPingChokepoints();
+  const traceStorageConfig = resolveR2StorageConfig();
+  const [priorWorldStates, priorWorldStateFallback] = traceStorageConfig
+    ? await Promise.all([
+      readForecastWorldStateHistory(traceStorageConfig, WORLD_STATE_HISTORY_LIMIT),
+      readPreviousForecastWorldState(traceStorageConfig),
+    ])
+    : [[], null];
+  const priorWorldState = priorWorldStates[0] ?? priorWorldStateFallback;
+  const publishSelectionMemoryIndex = buildPublishSelectionMemoryIndex(priorWorldState);
 
   console.log('  Reading input data from Redis...');
   const inputs = await readInputKeys();
@@ -6999,7 +7369,9 @@ async function fetchForecasts() {
   const enrichmentMeta = await enrichScenariosWithLLM(predictions);
   populateFallbackNarratives(predictions);
 
-  const publishSelectionPool = selectPublishedForecastPool(predictions);
+  const publishSelectionPool = selectPublishedForecastPool(predictions, {
+    memoryIndex: publishSelectionMemoryIndex,
+  });
   const finalSelectionPool = [...publishSelectionPool];
   finalSelectionPool.targetCount = publishSelectionPool.targetCount || finalSelectionPool.length;
   const deferredCandidates = [...(publishSelectionPool.deferredCandidates || [])];
@@ -7031,6 +7403,8 @@ async function fetchForecasts() {
     situationFamilies: publishedSituationFamilies,
     fullRunSituationClusters,
     fullRunSituationFamilies,
+    priorWorldState,
+    priorWorldStates,
   };
 }
 
