@@ -88,7 +88,7 @@ const SEED_META = {
   gulfQuotes:       { key: 'seed-meta:market:gulf-quotes',      maxStaleMin: 30 },
   stablecoinMarkets:{ key: 'seed-meta:market:stablecoins',      maxStaleMin: 60 },
   naturalEvents:    { key: 'seed-meta:natural:events',          maxStaleMin: 360 }, // 2h cron; 3x interval; was 120 (TTL was 60min — panel went dark before health alarmed)
-  flightDelays:     { key: 'seed-meta:aviation:faa',            maxStaleMin: 60 },
+  flightDelays:     { key: 'seed-meta:aviation:faa',            maxStaleMin: 90 }, // CACHE_TTL=7200s; matches notamClosures from same cron
   notamClosures:    { key: 'seed-meta:aviation:notam',          maxStaleMin: 90 },
   predictions:      { key: 'seed-meta:prediction:markets',      maxStaleMin: 90 },
   insights:         { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
@@ -123,7 +123,7 @@ const SEED_META = {
   progressData:     { key: 'seed-meta:economic:worldbank-progress:v1',     maxStaleMin: 10080 },
   renewableEnergy:  { key: 'seed-meta:economic:worldbank-renewable:v1',    maxStaleMin: 10080 },
   intlDelays:       { key: 'seed-meta:aviation:intl',           maxStaleMin: 90 },
-  faaDelays:        { key: 'seed-meta:aviation:faa',            maxStaleMin: 60 },
+  faaDelays:        { key: 'seed-meta:aviation:faa',            maxStaleMin: 90 }, // same key as flightDelays; CACHE_TTL=7200s
   theaterPosture:   { key: 'seed-meta:theater-posture',         maxStaleMin: 60 },
   correlationCards: { key: 'seed-meta:correlation:cards',       maxStaleMin: 15 },
   portwatch:           { key: 'seed-meta:supply_chain:portwatch',            maxStaleMin: 720 },
