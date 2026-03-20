@@ -276,18 +276,19 @@ function safeEnd(res, statusCode, headers, body) {
   }
 }
 
+const WORLD_BANK_COUNTRY_ALLOWLIST = new Set([
+  'USA','CHN','JPN','DEU','KOR','GBR','IND','ISR','SGP','TWN',
+  'FRA','CAN','SWE','NLD','CHE','FIN','IRL','AUS','BRA','IDN',
+  'ARE','SAU','QAT','BHR','EGY','TUR','MYS','THA','VNM','PHL',
+  'ESP','ITA','POL','CZE','DNK','NOR','AUT','BEL','PRT','EST',
+  'MEX','ARG','CHL','COL','ZAF','NGA','KEN',
+]);
+
 function normalizeWorldBankCountryCodes(rawValue) {
-  const allowed = new Set([
-    'USA','CHN','JPN','DEU','KOR','GBR','IND','ISR','SGP','TWN',
-    'FRA','CAN','SWE','NLD','CHE','FIN','IRL','AUS','BRA','IDN',
-    'ARE','SAU','QAT','BHR','EGY','TUR','MYS','THA','VNM','PHL',
-    'ESP','ITA','POL','CZE','DNK','NOR','AUT','BEL','PRT','EST',
-    'MEX','ARG','CHL','COL','ZAF','NGA','KEN',
-  ]);
   const parts = String(rawValue || '')
     .split(/[;,]/g)
     .map((part) => part.trim().toUpperCase())
-    .filter((part) => /^[A-Z]{3}$/.test(part) && allowed.has(part));
+    .filter((part) => /^[A-Z]{3}$/.test(part) && WORLD_BANK_COUNTRY_ALLOWLIST.has(part));
   return parts.length > 0 ? parts.join(';') : null;
 }
 
@@ -6258,15 +6259,9 @@ function handleWorldBankRequest(req, res) {
 
   const countryList = normalizeWorldBankCountryCodes(country)
     || normalizeWorldBankCountryCodes(countries)
-    || [
-      'USA','CHN','JPN','DEU','KOR','GBR','IND','ISR','SGP','TWN',
-      'FRA','CAN','SWE','NLD','CHE','FIN','IRL','AUS','BRA','IDN',
-      'ARE','SAU','QAT','BHR','EGY','TUR','MYS','THA','VNM','PHL',
-      'ESP','ITA','POL','CZE','DNK','NOR','AUT','BEL','PRT','EST',
-      'MEX','ARG','CHL','COL','ZAF','NGA','KEN',
-    ].join(';');
+    || [...WORLD_BANK_COUNTRY_ALLOWLIST].join(';');
 
-  const startYear = currentYear - years;
+  const startYear = currentYear - Math.min(Math.max(1, years), 30);
 
   const wbUrl = `https://api.worldbank.org/v2/country/${countryList}/indicator/${encodeURIComponent(indicator)}?format=json&date=${startYear}:${currentYear}&per_page=1000`;
 

@@ -2,18 +2,17 @@ import type { StoryData } from './story-data';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { getCanonicalApiOrigin } from '@/services/runtime';
 
-const STORY_TYPES = new Set(['ciianalysis', 'convergence', 'brief'] as const);
+const VALID_STORY_TYPES = ['ciianalysis', 'convergence', 'brief'] as const;
+type StoryType = typeof VALID_STORY_TYPES[number];
 
 function sanitizeCountryCode(value: string): string {
   const code = String(value || '').trim().toUpperCase();
   return /^[A-Z]{2}$/.test(code) ? code : '';
 }
 
-function sanitizeStoryType(value: string | null): 'ciianalysis' | 'convergence' | 'brief' {
-  const type = String(value || 'ciianalysis').trim().toLowerCase();
-  return STORY_TYPES.has(type as 'ciianalysis' | 'convergence' | 'brief')
-    ? (type as 'ciianalysis' | 'convergence' | 'brief')
-    : 'ciianalysis';
+function sanitizeStoryType(value: string | null): StoryType {
+  const t = String(value || '').trim().toLowerCase();
+  return (VALID_STORY_TYPES as readonly string[]).includes(t) ? (t as StoryType) : 'ciianalysis';
 }
 
 // Deep link generator for story sharing
