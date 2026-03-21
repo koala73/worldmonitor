@@ -87,6 +87,30 @@ export const FEEDS: Record<string, Feed[]> = {
     { name: 'SaaStock', url: rss('https://news.google.com/rss/search?q="SaaStock"+Dublin+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
   ],
 
+  // 半导体产业新闻
+  ieSemiconductors: [
+    { 
+      name: 'Intel Ireland', 
+      url: rss('https://news.google.com/rss/search?q=Intel+Ireland+when:7d&hl=en-IE&gl=IE&ceid=IE:en') 
+    },
+    { 
+      name: 'Silicon Republic - Semiconductors', 
+      url: rss('https://www.siliconrepublic.com/tag/semiconductors/feed') 
+    },
+    { 
+      name: 'EU Chips Act Ireland', 
+      url: rss('https://news.google.com/rss/search?q=%22EU+Chips+Act%22+Ireland+when:14d&hl=en-IE&gl=IE&ceid=IE:en') 
+    },
+    { 
+      name: 'Semiconductor Industry Ireland', 
+      url: rss('https://news.google.com/rss/search?q=(semiconductor+OR+%22chip+manufacturing%22+OR+fab)+Ireland+when:14d&hl=en-IE&gl=IE&ceid=IE:en') 
+    },
+    { 
+      name: 'Analog Devices Ireland', 
+      url: rss('https://news.google.com/rss/search?q=%22Analog+Devices%22+(Ireland+OR+Limerick)+when:14d&hl=en-IE&gl=IE&ceid=IE:en') 
+    },
+  ],
+
   // 爱尔兰商业新闻（使用 Google News 搜索）
   ieBusiness: [
     { name: 'Irish Times Business', url: rss('https://news.google.com/rss/search?q=site:irishtimes.com+business+when:7d&hl=en-IE&gl=IE&ceid=IE:en') },
@@ -124,12 +148,13 @@ export const FEEDS: Record<string, Feed[]> = {
 export const PANELS: Record<string, PanelConfig> = {
   ieTech: { name: 'Irish Tech', enabled: true, priority: 1 },
   ieAcademic: { name: 'Academia', enabled: true, priority: 2 },
-  ieDeals: { name: 'Tech M&A', enabled: true, priority: 3 },
-  ieJobs: { name: 'Big Tech Jobs', enabled: true, priority: 4 },
-  startups: { name: 'Startups', enabled: true, priority: 5 },
-  ieSummits: { name: 'Summits', enabled: true, priority: 6 },
-  ieBusiness: { name: 'Business', enabled: true, priority: 7 },
-  ai: { name: 'AI/ML', enabled: true, priority: 8 },
+  ieSemiconductors: { name: 'Semiconductors', enabled: true, priority: 3 },
+  ieDeals: { name: 'Tech M&A', enabled: true, priority: 4 },
+  ieJobs: { name: 'Big Tech Jobs', enabled: true, priority: 5 },
+  startups: { name: 'Startups', enabled: true, priority: 6 },
+  ieSummits: { name: 'Summits', enabled: true, priority: 7 },
+  ieBusiness: { name: 'Business', enabled: true, priority: 8 },
+  ai: { name: 'AI/ML', enabled: true, priority: 9 },
 };
 
 // Ireland map layers (minimal for tech focus)

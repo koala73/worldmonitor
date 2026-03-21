@@ -74,6 +74,27 @@ describe('news-priority', () => {
       assert.equal(getNewsPriority(article), NewsPriority.P1);
     });
 
+    it('returns P1 for semiconductor industry news', () => {
+      const article = createNewsItem(
+        'Analog Devices Limerick hiring 200 engineers for 5G chips',
+      );
+      assert.equal(getNewsPriority(article), NewsPriority.P1);
+    });
+
+    it('returns P1 for EU Chips Act news', () => {
+      const article = createNewsItem(
+        'EU Chips Act allocates €43 billion for European semiconductor industry',
+      );
+      assert.equal(getNewsPriority(article), NewsPriority.P1);
+    });
+
+    it('returns P1 for Intel Leixlip news', () => {
+      const article = createNewsItem(
+        'Intel announces €4 billion expansion at Leixlip facility',
+      );
+      assert.equal(getNewsPriority(article), NewsPriority.P1);
+    });
+
     it('returns P2 for regular news', () => {
       const article = createNewsItem('New coffee shop opens in Dublin');
       assert.equal(getNewsPriority(article), NewsPriority.P2);
