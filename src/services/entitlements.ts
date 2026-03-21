@@ -1,11 +1,13 @@
 /**
  * Frontend entitlement service with reactive ConvexClient subscription.
  *
- * Lazy-loads ConvexClient to avoid impacting initial bundle size.
- * Subscribes to real-time entitlement updates via Convex WebSocket.
- * Falls back gracefully when VITE_CONVEX_URL is not configured or
- * ConvexClient is unavailable.
+ * Uses the shared ConvexClient singleton from convex-client.ts to avoid
+ * duplicate WebSocket connections. Subscribes to real-time entitlement
+ * updates via Convex WebSocket. Falls back gracefully when VITE_CONVEX_URL
+ * is not configured or ConvexClient is unavailable.
  */
+
+import { getConvexClient, getConvexApi } from './convex-client';
 
 export interface EntitlementState {
   planKey: string;
@@ -20,9 +22,7 @@ export interface EntitlementState {
   validUntil: number;
 }
 
-// Module-level state (typed as any to avoid importing ConvexClient at module level)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let client: any = null;
+// Module-level state
 let currentState: EntitlementState | null = null;
 const listeners = new Set<(state: EntitlementState | null) => void>();
 let initialized = false;
@@ -35,18 +35,18 @@ let initialized = false;
 export async function initEntitlementSubscription(userId: string): Promise<void> {
   if (initialized) return;
 
-  const convexUrl = import.meta.env.VITE_CONVEX_URL;
-  if (!convexUrl) {
-    console.log('[entitlements] No VITE_CONVEX_URL — skipping Convex subscription');
-    return;
-  }
-
   try {
-    // Lazy-load ConvexClient and generated api to keep initial bundle small
-    const { ConvexClient } = await import('convex/browser');
-    const { api } = await import('../../convex/_generated/api');
+    const client = await getConvexClient();
+    if (!client) {
+      console.log('[entitlements] No VITE_CONVEX_URL — skipping Convex subscription');
+      return;
+    }
 
-    client = new ConvexClient(convexUrl);
+    const api = await getConvexApi();
+    if (!api) {
+      console.log('[entitlements] Could not load Convex API — skipping subscription');
+      return;
+    }
 
     client.onUpdate(
       api.entitlements.getEntitlementsForUser,
