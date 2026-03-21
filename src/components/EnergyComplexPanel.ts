@@ -35,9 +35,15 @@ export class EnergyComplexPanel extends Panel {
   }
 
   private render(): void {
+    // Suppress EIA price cards when live tape already covers the same commodity
+    // to avoid showing two different prices for the same product (EIA is weekly/stale).
+    const tapeCoveredSymbols = new Set(this.tape.filter(d => d.price !== null).map(d => d.symbol));
+    const wtiInTape = tapeCoveredSymbols.has('CL=F');
+    const brentInTape = tapeCoveredSymbols.has('BZ=F');
+
     const metrics = [
-      this.analytics?.wtiPrice,
-      this.analytics?.brentPrice,
+      wtiInTape ? null : this.analytics?.wtiPrice,
+      brentInTape ? null : this.analytics?.brentPrice,
       this.analytics?.usProduction,
       this.analytics?.usInventory,
     ].filter(Boolean);
