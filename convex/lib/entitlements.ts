@@ -6,6 +6,7 @@
  */
 
 export type PlanFeatures = {
+  tier: number; // 0=free, 1=pro, 2=api, 3=enterprise — higher includes lower
   maxDashboards: number; // -1 = unlimited
   apiAccess: boolean;
   apiRateLimit: number; // requests per minute, 0 = no access
@@ -15,6 +16,7 @@ export type PlanFeatures = {
 
 /** Free tier defaults -- used as fallback for unknown plan keys. */
 export const FREE_FEATURES: PlanFeatures = {
+  tier: 0,
   maxDashboards: 3,
   apiAccess: false,
   apiRateLimit: 0,
@@ -32,6 +34,7 @@ export const PLAN_FEATURES: Record<string, PlanFeatures> = {
   free: FREE_FEATURES,
 
   pro_monthly: {
+    tier: 1,
     maxDashboards: 10,
     apiAccess: false,
     apiRateLimit: 0,
@@ -40,6 +43,7 @@ export const PLAN_FEATURES: Record<string, PlanFeatures> = {
   },
 
   pro_annual: {
+    tier: 1,
     maxDashboards: 10,
     apiAccess: false,
     apiRateLimit: 0,
@@ -48,6 +52,7 @@ export const PLAN_FEATURES: Record<string, PlanFeatures> = {
   },
 
   api_starter: {
+    tier: 2,
     maxDashboards: 25,
     apiAccess: true,
     apiRateLimit: 60,
@@ -56,6 +61,7 @@ export const PLAN_FEATURES: Record<string, PlanFeatures> = {
   },
 
   api_business: {
+    tier: 2,
     maxDashboards: 100,
     apiAccess: true,
     apiRateLimit: 300,
@@ -64,6 +70,7 @@ export const PLAN_FEATURES: Record<string, PlanFeatures> = {
   },
 
   enterprise: {
+    tier: 3,
     maxDashboards: -1,
     apiAccess: true,
     apiRateLimit: 1000,
