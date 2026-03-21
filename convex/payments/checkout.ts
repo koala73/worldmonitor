@@ -11,9 +11,9 @@ import { action } from "../_generated/server";
 import { DodoPayments } from "@dodopayments/convex";
 import { components } from "../_generated/api";
 
-const apiKey = process.env.DODO_PAYMENTS_API_KEY;
+const apiKey = process.env.DODO_API_KEY ?? process.env.DODO_PAYMENTS_API_KEY;
 if (!apiKey) {
-  console.warn("[checkout] DODO_PAYMENTS_API_KEY not set — checkout will fail");
+  console.warn("[checkout] DODO_API_KEY not set — checkout will fail");
 }
 
 const dodo = new DodoPayments(components.dodopayments, {
