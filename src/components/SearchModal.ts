@@ -285,6 +285,19 @@ export class SearchModal {
 
     const byType = new Map<SearchResultType, (SearchResult & { _score: number })[]>();
 
+    // Type-name browse: "flight" → show all flights, "country" → show all countries, etc.
+    const typeNameMatch = this.sources.find(s => s.type === query);
+    if (typeNameMatch) {
+      byType.set(typeNameMatch.type, typeNameMatch.items.map(item => ({
+        type: typeNameMatch.type,
+        id: item.id,
+        title: item.title,
+        subtitle: item.subtitle,
+        data: item.data,
+        _score: 1,
+      })) as (SearchResult & { _score: number })[]);
+    }
+
     for (const source of this.sources) {
       for (const item of source.items) {
         const titleLower = item.title.toLowerCase();
