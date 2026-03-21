@@ -1,0 +1,133 @@
+import { convexTest } from "convex-test";
+import { expect, test, describe } from "vitest";
+import schema from "../schema";
+import { api } from "../_generated/api";
+import { getFeaturesForPlan } from "../lib/entitlements";
+
+const modules = import.meta.glob("../**/*.ts");
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const NOW = Date.now();
+const FUTURE = NOW + 86400000 * 30; // 30 days from now
+const PAST = NOW - 86400000; // 1 day ago
+
+async function seedEntitlement(
+  t: ReturnType<typeof convexTest>,
+  overrides: {
+    userId?: string;
+    planKey?: string;
+    validUntil?: number;
+    updatedAt?: number;
+  } = {},
+) {
+  const planKey = overrides.planKey ?? "pro_monthly";
+  await t.run(async (ctx) => {
+    await ctx.db.insert("entitlements", {
+      userId: overrides.userId ?? "user-test",
+      planKey,
+      features: getFeaturesForPlan(planKey),
+      validUntil: overrides.validUntil ?? FUTURE,
+      updatedAt: overrides.updatedAt ?? NOW,
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("entitlement query", () => {
+  test("returns free-tier defaults for unknown userId", async () => {
+    const t = convexTest(schema, modules);
+
+    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+      userId: "user-nonexistent",
+    });
+
+    expect(result.planKey).toBe("free");
+    expect(result.features.tier).toBe(0);
+    expect(result.features.apiAccess).toBe(false);
+    expect(result.validUntil).toBe(0);
+  });
+
+  test("returns active entitlements for subscribed user", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedEntitlement(t, {
+      userId: "user-pro",
+      planKey: "pro_monthly",
+      validUntil: FUTURE,
+    });
+
+    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+      userId: "user-pro",
+    });
+
+    expect(result.planKey).toBe("pro_monthly");
+    expect(result.features.tier).toBe(1);
+    expect(result.features.apiAccess).toBe(false);
+  });
+
+  test("returns free-tier for expired entitlements", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedEntitlement(t, {
+      userId: "user-expired",
+      planKey: "pro_monthly",
+      validUntil: PAST,
+    });
+
+    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+      userId: "user-expired",
+    });
+
+    expect(result.planKey).toBe("free");
+    expect(result.features.tier).toBe(0);
+    expect(result.features.apiAccess).toBe(false);
+    expect(result.validUntil).toBe(0);
+  });
+
+  test("returns correct tier for api_starter plan", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedEntitlement(t, {
+      userId: "user-api",
+      planKey: "api_starter",
+      validUntil: FUTURE,
+    });
+
+    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+      userId: "user-api",
+    });
+
+    expect(result.features.tier).toBe(2);
+    expect(result.features.apiAccess).toBe(true);
+  });
+
+  test("returns correct tier for enterprise plan", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedEntitlement(t, {
+      userId: "user-enterprise",
+      planKey: "enterprise",
+      validUntil: FUTURE,
+    });
+
+    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+      userId: "user-enterprise",
+    });
+
+    expect(result.features.tier).toBe(3);
+    expect(result.features.apiAccess).toBe(true);
+    expect(result.features.prioritySupport).toBe(true);
+  });
+
+  test("getFeaturesForPlan falls back to free for unknown plan", () => {
+    const features = getFeaturesForPlan("nonexistent_plan");
+    expect(features.tier).toBe(0);
+    expect(features.apiAccess).toBe(false);
+  });
+});
