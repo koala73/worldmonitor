@@ -14,7 +14,7 @@
  * process.env (the module reads process.env.CONVEX_URL on import).
  */
 
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock the Redis dependency so the module loads without a real Redis connection
@@ -26,7 +26,6 @@ vi.mock("../_shared/redis", () => ({
 
 import {
   getRequiredTier,
-  checkEntitlement,
   _testCheckEntitlement,
 } from "../_shared/entitlement-check";
 
