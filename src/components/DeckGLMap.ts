@@ -214,7 +214,6 @@ function getOverlayColors() {
     cableDegraded: [255, 165, 0, 200] as [number, number, number, number],
     earthquake: [255, 100, 50, 200] as [number, number, number, number],
     vesselMilitary: [255, 100, 100, 220] as [number, number, number, number],
-    flightMilitary: [255, 50, 50, 220] as [number, number, number, number],
     protest: [255, 150, 0, 200] as [number, number, number, number],
     outage: [255, 50, 50, 180] as [number, number, number, number],
     weather: [100, 150, 255, 180] as [number, number, number, number],
@@ -307,7 +306,7 @@ function altitudeToColor(altFt: number): [number, number, number] {
       ];
     }
   }
-  return [last.r, last.g, last.b];
+  return [last.r, last.g, last.b]; // unreachable: exhaustive bracket search above satisfies TS
 }
 
 function ensureClosedRing(ring: [number, number][]): [number, number][] {
