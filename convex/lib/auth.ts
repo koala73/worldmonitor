@@ -15,13 +15,13 @@ const isDev =
  * TODO: Replace with real auth resolution when PR #1812 merges
  */
 export async function resolveUserId(
-  ctx: QueryCtx | MutationCtx | ActionCtx,
+  _ctx: QueryCtx | MutationCtx | ActionCtx,
 ): Promise<string | null> {
   if (isDev) {
     return DEV_USER_ID;
   }
   // TODO: Replace with real auth resolution when PR #1812 merges
-  // const identity = await ctx.auth.getUserIdentity();
+  // const identity = await _ctx.auth.getUserIdentity();
   // return identity?.subject ?? null;
   return null;
 }
