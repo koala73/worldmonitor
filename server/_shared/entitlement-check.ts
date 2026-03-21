@@ -103,16 +103,15 @@ export async function getEntitlements(userId: string): Promise<CachedEntitlement
 }
 
 /**
- * Checks whether the current request is allowed based on tier entitlements.
- *
- * Returns:
- *   - null if the request is allowed (unrestricted endpoint, no userId, sufficient tier, or fail-open)
- *   - a 403 Response if the user's tier is below the required tier
+ * Core entitlement check logic. Accepts a getEntitlementsFn parameter for
+ * testability (dependency injection). Production callers use checkEntitlement()
+ * which binds to the real getEntitlements.
  */
-export async function checkEntitlement(
+async function _checkEntitlementCore(
   request: Request,
   pathname: string,
   corsHeaders: Record<string, string>,
+  getEntitlementsFn: (userId: string) => Promise<CachedEntitlements | null>,
 ): Promise<Response | null> {
   const requiredTier = getRequiredTier(pathname);
   if (requiredTier === null) {
@@ -128,7 +127,7 @@ export async function checkEntitlement(
     return null;
   }
 
-  const ent = await getEntitlements(userId);
+  const ent = await getEntitlementsFn(userId);
   if (!ent) {
     // Cache miss + Convex failure -- fail-open (allow request)
     return null;
@@ -153,3 +152,25 @@ export async function checkEntitlement(
     },
   );
 }
+
+/**
+ * Checks whether the current request is allowed based on tier entitlements.
+ *
+ * Returns:
+ *   - null if the request is allowed (unrestricted endpoint, no userId, sufficient tier, or fail-open)
+ *   - a 403 Response if the user's tier is below the required tier
+ */
+export async function checkEntitlement(
+  request: Request,
+  pathname: string,
+  corsHeaders: Record<string, string>,
+): Promise<Response | null> {
+  return _checkEntitlementCore(request, pathname, corsHeaders, getEntitlements);
+}
+
+/**
+ * Testable version of checkEntitlement that accepts a custom getEntitlements
+ * function. Used in unit tests to inject mock entitlement data without needing
+ * to mock Redis or Convex.
+ */
+export const _testCheckEntitlement = _checkEntitlementCore;
