@@ -112,6 +112,7 @@
     "convex": "^1.32.0",
     "d3": "^7.9.0",
     "deck.gl": "^9.2.6",
+    "dodopayments-checkout": "^1.8.0",
     "dompurify": "^3.1.7",
     "fast-xml-parser": "^5.3.7",
     "globe.gl": "^2.45.0",
