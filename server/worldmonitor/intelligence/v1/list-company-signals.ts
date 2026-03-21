@@ -86,9 +86,13 @@ function slugFromDomain(domain: string): string {
   return domain.replace(/\.(com|io|co|org|net|ai|dev|app)$/, '').split('.').pop() || domain;
 }
 
+function hourBucket(): number {
+  return Math.floor(Date.now() / 3_600_000);
+}
+
 async function fetchHNSignals(companyName: string): Promise<CompanySignal[] | null> {
   return cachedFetchJson<CompanySignal[]>(
-    `intel:signals:hn:${encodeURIComponent(companyName.toLowerCase())}`,
+    `intel:signals:hn:${encodeURIComponent(companyName.toLowerCase())}:${hourBucket()}`,
     1800,
     async () => {
       const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 86400;
@@ -124,7 +128,7 @@ async function fetchHNSignals(companyName: string): Promise<CompanySignal[] | nu
 
 async function fetchGitHubSignals(orgName: string): Promise<CompanySignal[] | null> {
   return cachedFetchJson<CompanySignal[]>(
-    `intel:signals:gh:${encodeURIComponent(orgName.toLowerCase())}`,
+    `intel:signals:gh:${encodeURIComponent(orgName.toLowerCase())}:${hourBucket()}`,
     3600,
     async () => {
       const repos = await fetchJson<GitHubSignalRepo[]>(`https://api.github.com/orgs/${encodeURIComponent(orgName)}/repos?sort=created&per_page=10`);
@@ -157,7 +161,7 @@ async function fetchGitHubSignals(orgName: string): Promise<CompanySignal[] | nu
 
 async function fetchJobSignals(companyName: string): Promise<CompanySignal[] | null> {
   return cachedFetchJson<CompanySignal[]>(
-    `intel:signals:jobs:${encodeURIComponent(companyName.toLowerCase())}`,
+    `intel:signals:jobs:${encodeURIComponent(companyName.toLowerCase())}:${hourBucket()}`,
     1800,
     async () => {
       const sixtyDaysAgo = Math.floor(Date.now() / 1000) - 60 * 86400;

@@ -167,7 +167,7 @@ async function fetchGitHubTechStack(orgName: string): Promise<TechStackItem[] | 
 
 async function fetchSECData(companyName: string): Promise<SECResult | null> {
   return cachedFetchJson<SECResult>(
-    `intel:enrichment:sec:${encodeURIComponent(companyName.toLowerCase())}`,
+    `intel:enrichment:sec:${encodeURIComponent(companyName.toLowerCase())}:${getTodayISO()}`,
     3600,
     async () => {
       const url = `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(companyName)}&dateRange=custom&startdt=${getDateMonthsAgo(6)}&enddt=${getTodayISO()}&forms=10-K,10-Q,8-K&from=0&size=5`;

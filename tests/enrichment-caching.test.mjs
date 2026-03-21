@@ -213,6 +213,10 @@ describe('cachedFetchJson — import verification', () => {
     assert.ok(src.includes('intel:enrichment:gh-tech:'), 'must use gh-tech cache key');
     assert.ok(src.includes('intel:enrichment:sec:'), 'must use sec cache key');
     assert.ok(src.includes('intel:enrichment:hn:'), 'must use hn cache key');
+    assert.ok(
+      src.includes('intel:enrichment:sec:') && src.includes('getTodayISO()'),
+      'SEC cache key must include getTodayISO() daily bucket to track date-window changes',
+    );
   });
 
   it('list-company-signals.ts imports cachedFetchJson', async () => {
@@ -224,6 +228,10 @@ describe('cachedFetchJson — import verification', () => {
     assert.ok(src.includes('intel:signals:hn:'), 'must use signals:hn cache key');
     assert.ok(src.includes('intel:signals:gh:'), 'must use signals:gh cache key');
     assert.ok(src.includes('intel:signals:jobs:'), 'must use signals:jobs cache key');
+    assert.ok(
+      src.includes('hourBucket()'),
+      'all signal cache keys must include hourBucket() to prevent stale rolling-window results',
+    );
   });
 
   it('cache keys do not collide with existing bootstrap keys', async () => {
