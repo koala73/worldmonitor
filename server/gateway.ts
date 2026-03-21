@@ -16,6 +16,7 @@ import { validateApiKey } from '../api/_api-key.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
 import { drainResponseHeaders } from './_shared/response-headers';
+import { checkEntitlement, getRequiredTier } from './_shared/entitlement-check';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
 export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
@@ -244,9 +245,9 @@ export function createDomainGateway(
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    // API key validation
+    // API key validation (origin-aware — tier-gated endpoints always require a key)
     const keyCheck = validateApiKey(request, {
-      forceKey: PREMIUM_RPC_PATHS.has(pathname),
+      forceKey: getRequiredTier(pathname) !== null,
     });
     if (keyCheck.required && !keyCheck.valid) {
       if (PREMIUM_RPC_PATHS.has(pathname)) {
@@ -280,6 +281,10 @@ export function createDomainGateway(
         });
       }
     }
+
+    // Entitlement check — blocks tier-gated endpoints for users below required tier
+    const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
+    if (entitlementResponse) return entitlementResponse;
 
     // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback
     const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders);

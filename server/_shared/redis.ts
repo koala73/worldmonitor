@@ -69,7 +69,7 @@ export async function getCachedJson(key: string, raw = false): Promise<unknown |
   }
 }
 
-export async function setCachedJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+export async function setCachedJson(key: string, value: unknown, ttlSeconds: number, raw = false): Promise<void> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const { sidecarCacheSet } = await import('./sidecar-cache');
     sidecarCacheSet(key, value, ttlSeconds);
@@ -80,8 +80,9 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return;
   try {
+    const finalKey = raw ? key : prefixKey(key);
     // Atomic SET with EX — single call avoids race between SET and EXPIRE (C-3 fix)
-    await fetch(`${url}/set/${encodeURIComponent(prefixKey(key))}/${encodeURIComponent(JSON.stringify(value))}/EX/${ttlSeconds}`, {
+    await fetch(`${url}/set/${encodeURIComponent(finalKey)}/${encodeURIComponent(JSON.stringify(value))}/EX/${ttlSeconds}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
