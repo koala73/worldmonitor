@@ -1,6 +1,7 @@
 import { anyApi, httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { webhookHandler } from "./payments/webhookHandlers";
 
 const TRUSTED = [
   "https://worldmonitor.app",
@@ -441,6 +442,12 @@ http.route({
       return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { "Content-Type": "application/json" } });
     }
   }),
+});
+
+http.route({
+  path: "/dodopayments-webhook",
+  method: "POST",
+  handler: webhookHandler,
 });
 
 export default http;
