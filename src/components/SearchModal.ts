@@ -285,17 +285,24 @@ export class SearchModal {
 
     const byType = new Map<SearchResultType, (SearchResult & { _score: number })[]>();
 
-    // Type-name browse: "flight" → show all flights, "country" → show all countries, etc.
-    const typeNameMatch = this.sources.find(s => s.type === query);
-    if (typeNameMatch) {
-      byType.set(typeNameMatch.type, typeNameMatch.items.map(item => ({
-        type: typeNameMatch.type,
-        id: item.id,
-        title: item.title,
-        subtitle: item.subtitle,
-        data: item.data,
-        _score: 1,
-      })) as (SearchResult & { _score: number })[]);
+    // "flight {callsign}" prefix: route the callsign fragment directly to the flight source.
+    if (query.startsWith('flight ')) {
+      const callsign = query.slice(7).trim();
+      if (callsign.length > 0) {
+        const flightSource = this.sources.find(s => s.type === 'flight');
+        if (flightSource) {
+          byType.set('flight', flightSource.items
+            .filter(item => item.title.toLowerCase().includes(callsign))
+            .map(item => ({
+              type: 'flight' as SearchResultType,
+              id: item.id,
+              title: item.title,
+              subtitle: item.subtitle,
+              data: item.data,
+              _score: item.title.toLowerCase().startsWith(callsign) ? 2 : 1,
+            })) as (SearchResult & { _score: number })[]);
+        }
+      }
     }
 
     for (const source of this.sources) {
