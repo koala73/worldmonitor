@@ -10,6 +10,7 @@ import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
+import { isEntitled } from '@/services/entitlements';
 
 function showToast(msg: string): void {
   document.querySelector('.toast-notification')?.remove();
@@ -77,6 +78,11 @@ export class UnifiedSettings {
 
       if (target.closest('.unified-settings-close')) {
         this.close();
+        return;
+      }
+
+      if (target.closest('.upgrade-pro-cta')) {
+        this.handleUpgradeClick();
         return;
       }
 
@@ -237,6 +243,7 @@ export class UnifiedSettings {
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
+          ${this.renderUpgradeSection()}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
           <div class="unified-settings-region-wrapper">
@@ -300,6 +307,38 @@ export class UnifiedSettings {
 
     this.overlay.querySelectorAll('.unified-settings-tab-panel').forEach(el => {
       el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
+    });
+  }
+
+  private renderUpgradeSection(): string {
+    if (isEntitled()) {
+      return `
+        <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid #22c55e33;border-radius:6px;background:#22c55e0a;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <span style="color:#22c55e;font-weight:600;font-size:13px;">You're on Pro</span>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="upgrade-pro-section" style="margin-top:16px;padding:16px;border:1px solid #323232;border-radius:6px;background:#1a1a1a;">
+        <div style="font-weight:600;font-size:14px;color:#fff;margin-bottom:6px;">Upgrade to Pro</div>
+        <div style="font-size:12px;color:#909090;margin-bottom:12px;line-height:1.4;">Unlock all panels, AI analysis, and priority data refresh.</div>
+        <button class="upgrade-pro-cta" style="width:100%;padding:8px 16px;background:#22c55e;color:#0d0d0d;border:none;border-radius:4px;font-weight:600;font-size:13px;cursor:pointer;transition:background 0.15s;">Upgrade to Pro</button>
+      </div>
+    `;
+  }
+
+  private handleUpgradeClick(): void {
+    this.close();
+    if (this.config.isDesktopApp) {
+      window.open('https://worldmonitor.app/pro', '_blank');
+      return;
+    }
+    import('@/services/checkout').then(m => m.startCheckout('pdt_0NaysSFAQ0y30nJOJMBpg')).catch(() => {
+      window.open('https://worldmonitor.app/pro', '_blank');
     });
   }
 
