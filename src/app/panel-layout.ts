@@ -86,8 +86,11 @@ import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
 import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
-import { loadWidgets, saveWidget } from '@/services/widget-store';
+import { getProWidgetKey, loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
+import { initEntitlementSubscription, isEntitled, onEntitlementChange } from '@/services/entitlements';
+import { handleCheckoutReturn } from '@/services/checkout-return';
+import { initCheckoutOverlay, showCheckoutSuccess } from '@/services/checkout';
 import { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
@@ -134,6 +137,27 @@ export class PanelLayoutManager implements AppModule {
     this.applyTimeRangeFilterDebounced = debounce(() => {
       this.applyTimeRangeFilterToNewsPanels();
     }, 120);
+
+    // Detect post-checkout redirect params and show success banner
+    if (handleCheckoutReturn()) {
+      showCheckoutSuccess();
+    }
+
+    // Boot entitlement subscription if we have a user identifier.
+    const proKey = getProWidgetKey();
+    if (proKey) {
+      initEntitlementSubscription(proKey).catch(() => {});
+    }
+
+    // Initialize checkout overlay so payment success triggers the success banner
+    initCheckoutOverlay(() => showCheckoutSuccess());
+
+    // Listen for entitlement changes — panels will pick up new state on next page load
+    onEntitlementChange(() => {
+      if (isEntitled()) {
+        console.log('[entitlements] Subscription active — panels will unlock on next page load');
+      }
+    });
   }
 
   init(): void {
