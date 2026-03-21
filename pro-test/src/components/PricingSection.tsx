@@ -86,8 +86,12 @@ const TIERS: Tier[] = [
   },
 ];
 
+const CHECKOUT_DOMAIN = import.meta.env.VITE_DODO_ENVIRONMENT === 'live_mode'
+  ? 'https://checkout.dodopayments.com'
+  : 'https://test.checkout.dodopayments.com';
+
 function buildCheckoutUrl(productId: string, refCode?: string): string {
-  let url = `https://checkout.dodopayments.com/buy/${productId}?quantity=1`;
+  let url = `${CHECKOUT_DOMAIN}/buy/${productId}?quantity=1`;
   if (refCode) {
     url += `&referral_code=${encodeURIComponent(refCode)}`;
   }
