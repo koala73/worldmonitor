@@ -502,7 +502,8 @@
       "flightOnGround": "On ground",
       "flightAirborne": "FL{{fl}} · {{kts}} kts",
       "flightMilitary": "Military · {{type}} · FL{{fl}}",
-      "flightMilitaryOnGround": "Military · {{type}} · on ground"
+      "flightMilitaryOnGround": "Military · {{type}} · on ground",
+      "flightSearchHint": "Press Enter or click to look up live position"
     },
     "signal": {
       "title": "INTELLIGENCE FINDING",

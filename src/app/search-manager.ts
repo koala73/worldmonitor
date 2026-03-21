@@ -212,32 +212,35 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
 
     if (isProUser()) {
-      let flightLookupTimer: ReturnType<typeof setTimeout> | null = null;
-      this.ctx.searchModal.setOnQueryChange((rawInput) => {
-        if (!rawInput.startsWith('flight ')) return;
-        const callsign = rawInput.slice(7).trim().toUpperCase();
-        if (callsign.length < 2) return;
-        if (flightLookupTimer) clearTimeout(flightLookupTimer);
-        flightLookupTimer = setTimeout(() => {
-          fetchAircraftPositions({ callsign }).then((positions) => {
-            if (!this.ctx.searchModal) return;
-            this.ctx.searchModal.registerSource('flight', positions.map(p => {
-              const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
-              const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
-              return {
-                id: p.icao24,
-                title: (p.callsign || p.icao24).trim().toUpperCase(),
-                subtitle: p.onGround
-                  ? t('modals.search.flightOnGround')
-                  : fl !== null && kts !== null
-                    ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
-                    : fl !== null ? `FL${fl}` : t('modals.search.flightOnGround'),
-                data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
-              };
-            }));
-            this.ctx.searchModal.refreshSearch();
-          }).catch(() => {/* silent — stale results remain */});
-        }, 400);
+      this.ctx.searchModal.setOnFlightSearch((callsign) => {
+        fetchAircraftPositions({ callsign }).then((positions) => {
+          if (!this.ctx.searchModal) return;
+          // Deduplicate by callsign: keep the most recently observed entry per callsign.
+          const seen = new Map<string, PositionSample>();
+          for (const p of positions) {
+            const key = (p.callsign || p.icao24).trim().toUpperCase();
+            const existing = seen.get(key);
+            if (!existing || p.observedAt > existing.observedAt) {
+              seen.set(key, p);
+            }
+          }
+          const items = [...seen.values()].map(p => {
+            const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
+            const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
+            return {
+              id: p.icao24,
+              title: (p.callsign || p.icao24).trim().toUpperCase(),
+              subtitle: p.onGround
+                ? t('modals.search.flightOnGround')
+                : fl !== null && kts !== null
+                  ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
+                  : fl !== null ? `FL${fl}` : t('modals.search.flightOnGround'),
+              data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
+            };
+          });
+          this.ctx.searchModal.registerSource('flight', items);
+          this.ctx.searchModal.refreshSearch();
+        }).catch(() => {/* silent — show no results */});
       });
     }
 

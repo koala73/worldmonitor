@@ -93,6 +93,8 @@ export class SearchModal {
   private onSelect?: (result: SearchResult) => void;
   private onCommand?: (command: Command) => void;
   private onQueryChange?: (rawInput: string) => void;
+  private onFlightSearch?: (callsign: string) => void;
+  private currentFlightCallsign: string | null = null;
   private placeholder: string;
   private activePanelIds: Set<string> = new Set();
   private isMobile: boolean;
@@ -127,6 +129,10 @@ export class SearchModal {
     this.onQueryChange = callback;
   }
 
+  public setOnFlightSearch(callback: (callsign: string) => void): void {
+    this.onFlightSearch = callback;
+  }
+
   public refreshSearch(): void {
     if (this.overlay) this.handleSearch();
   }
@@ -144,6 +150,10 @@ export class SearchModal {
     }
     if (this.overlay) return;
     this.isMobile = isMobileDevice();
+    // Clear stale flight results from previous session so they don't bleed through.
+    const flightIdx = this.sources.findIndex(s => s.type === 'flight');
+    if (flightIdx >= 0) this.sources[flightIdx] = { type: 'flight', items: [] };
+    this.currentFlightCallsign = null;
     this.createModal();
     this.input?.focus();
     this.showingAllCommands = false;
@@ -167,6 +177,7 @@ export class SearchModal {
         this.results = [];
         this.commandResults = [];
         this.selectedIndex = 0;
+        this.currentFlightCallsign = null;
       };
       if (this.isMobile) {
         this.closeTimeoutId = setTimeout(() => {
@@ -297,20 +308,22 @@ export class SearchModal {
     const byType = new Map<SearchResultType, (SearchResult & { _score: number })[]>();
 
     // "flight {callsign}" prefix: use rawInput so a trailing space after "flight" is detected.
+    this.currentFlightCallsign = null;
     if (rawInput.startsWith('flight ')) {
-      const callsign = rawInput.slice(7).trim();
+      const callsign = rawInput.slice(7).trim().toUpperCase();
       if (callsign.length > 0) {
+        this.currentFlightCallsign = callsign;
         const flightSource = this.sources.find(s => s.type === 'flight');
-        if (flightSource) {
+        if (flightSource?.items.length) {
           byType.set('flight', flightSource.items
-            .filter(item => item.title.toLowerCase().includes(callsign))
+            .filter(item => item.title.toUpperCase().includes(callsign))
             .map(item => ({
               type: 'flight' as SearchResultType,
               id: item.id,
               title: item.title,
               subtitle: item.subtitle,
               data: item.data,
-              _score: item.title.toLowerCase().startsWith(callsign) ? 2 : 1,
+              _score: item.title.toUpperCase().startsWith(callsign) ? 2 : 1,
             })) as (SearchResult & { _score: number })[]);
         }
       }
@@ -548,6 +561,10 @@ export class SearchModal {
     if (!this.resultsList) return;
 
     if (this.commandResults.length === 0 && this.results.length === 0) {
+      if (this.currentFlightCallsign && this.onFlightSearch) {
+        this.renderFlightSearchTrigger(this.currentFlightCallsign);
+        return;
+      }
       this.resultsList.innerHTML = `
         <div class="search-empty">
           <div class="search-empty-icon">\u2205</div>
@@ -629,6 +646,34 @@ export class SearchModal {
     });
   }
 
+  private renderFlightSearchTrigger(callsign: string): void {
+    if (!this.resultsList) return;
+    this.resultsList.innerHTML = `
+      <div class="search-result-item selected" data-flight-trigger="${escapeHtml(callsign)}">
+        <span class="search-result-icon">\u2708\uFE0F</span>
+        <div class="search-result-content">
+          <div class="search-result-title">Search live flight <strong>${escapeHtml(callsign)}</strong></div>
+          <div class="search-result-subtitle">${escapeHtml(t('modals.search.flightSearchHint'))}</div>
+        </div>
+        <span class="search-result-type">${escapeHtml(t('modals.search.types.flight'))}</span>
+      </div>`;
+    this.resultsList.querySelector('[data-flight-trigger]')?.addEventListener('click', () => {
+      this.triggerFlightSearch(callsign);
+    });
+  }
+
+  private triggerFlightSearch(callsign: string): void {
+    if (!this.onFlightSearch || !this.resultsList) return;
+    this.resultsList.innerHTML = `
+      <div class="search-result-item">
+        <span class="search-result-icon">\u2708\uFE0F</span>
+        <div class="search-result-content">
+          <div class="search-result-title">Searching for <strong>${escapeHtml(callsign)}</strong>\u2026</div>
+        </div>
+      </div>`;
+    this.onFlightSearch(callsign);
+  }
+
   private renderChips(query?: string): void {
     if (!this.chipsContainer) return;
     if (query && query.length >= 1) {
@@ -685,6 +730,10 @@ export class SearchModal {
         break;
       case 'Enter':
         e.preventDefault();
+        if (this.currentFlightCallsign && this.onFlightSearch && this.results.length === 0 && this.commandResults.length === 0) {
+          this.triggerFlightSearch(this.currentFlightCallsign);
+          return;
+        }
         this.selectResult(this.selectedIndex);
         break;
       case 'Escape':
