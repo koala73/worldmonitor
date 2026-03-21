@@ -8,23 +8,7 @@
 
 import { v } from "convex/values";
 import { action } from "../_generated/server";
-import { DodoPayments } from "@dodopayments/convex";
-import { components } from "../_generated/api";
-
-const apiKey = process.env.DODO_API_KEY ?? process.env.DODO_PAYMENTS_API_KEY;
-if (!apiKey) {
-  console.warn("[checkout] DODO_API_KEY not set — checkout will fail");
-}
-
-const dodo = new DodoPayments(components.dodopayments, {
-  identify: async () => null, // Stub until Phase 18 auth
-  apiKey: apiKey ?? "",
-  environment: (process.env.DODO_PAYMENTS_ENVIRONMENT ?? "test_mode") as
-    | "test_mode"
-    | "live_mode",
-});
-
-const { checkout } = dodo.api();
+import { checkout } from "../lib/dodo";
 
 /**
  * Create a Dodo Payments checkout session and return the checkout URL.

@@ -172,6 +172,35 @@ export async function handleSubscriptionActive(
   }
 
   await upsertEntitlements(ctx, userId, planKey, currentPeriodEnd, eventTimestamp);
+
+  // Upsert customer record so portal session creation can find dodoCustomerId
+  const dodoCustomerId = data.customer?.customer_id;
+  const email = data.customer?.email ?? "";
+
+  if (dodoCustomerId) {
+    const existingCustomer = await ctx.db
+      .query("customers")
+      .withIndex("by_dodoCustomerId", (q) =>
+        q.eq("dodoCustomerId", dodoCustomerId),
+      )
+      .unique();
+
+    if (existingCustomer) {
+      await ctx.db.patch(existingCustomer._id, {
+        userId,
+        email,
+        updatedAt: eventTimestamp,
+      });
+    } else {
+      await ctx.db.insert("customers", {
+        userId,
+        dodoCustomerId,
+        email,
+        createdAt: eventTimestamp,
+        updatedAt: eventTimestamp,
+      });
+    }
+  }
 }
 
 /**
