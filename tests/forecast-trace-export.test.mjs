@@ -370,7 +370,7 @@ describe('forecast trace artifact builder', () => {
 });
 
 describe('market transmission macro state', () => {
-  it('uses FRED macro series to form world signals, rebalance market buckets, and keep market consequences selective', () => {
+  it('uses live-shaped macro and market payloads to form energy-aware world signals and keep market consequences selective', () => {
     const fredSeries = (seriesId, observations) => ({
       seriesId,
       title: seriesId,
@@ -407,6 +407,36 @@ describe('market transmission macro state', () => {
         commodityQuotes: {
           quotes: [
             { symbol: 'CL=F', name: 'WTI Crude Oil', price: 87.4, change: 3.1 },
+            { symbol: 'BZ=F', name: 'Brent Crude Oil', price: 92.8, change: 3.4 },
+            { symbol: 'NG=F', name: 'Natural Gas', price: 3.9, change: 4.6 },
+            { symbol: 'GC=F', name: 'Gold', price: 2450, change: 1.5 },
+          ],
+        },
+        bisExchangeRates: {
+          exchange: {
+            rates: [
+              { countryCode: 'TRY', countryName: 'Turkey', realChange: 3.2 },
+            ],
+          },
+        },
+        bisPolicyRates: {
+          policy: {
+            rates: [
+              { countryCode: 'BR', countryName: 'Brazil', rate: 11.25, previousRate: 10.75 },
+            ],
+          },
+          exchange: {
+            rates: [
+              { countryCode: 'MX', countryName: 'Mexico', realChange: 2.7 },
+            ],
+          },
+        },
+        correlationCards: {
+          military: [
+            { domain: 'military', title: 'Carrier posture and sanctions correlation' },
+          ],
+          markets: [
+            { domain: 'market', title: 'Economic sanctions and commodity correlation' },
           ],
         },
         fredSeries: {
@@ -443,12 +473,17 @@ describe('market transmission macro state', () => {
     assert.ok(signalTypes.has('yield_curve_stress'));
     assert.ok(signalTypes.has('inflation_impulse'));
     assert.ok(signalTypes.has('oil_macro_shock'));
+    assert.ok(signalTypes.has('global_crude_spread_stress'));
+    assert.ok(signalTypes.has('gas_supply_stress'));
+    assert.ok(signalTypes.has('safe_haven_bid'));
+    assert.ok(signalTypes.has('fx_stress'));
 
     const buckets = new Map((worldState.marketState?.buckets || []).map((bucket) => [bucket.id, bucket]));
     assert.ok((buckets.get('energy')?.pressureScore || 0) > 0.4);
     assert.ok((buckets.get('freight')?.pressureScore || 0) > 0.35);
     assert.ok((buckets.get('sovereign_risk')?.pressureScore || 0) > 0.25);
     assert.ok((buckets.get('rates_inflation')?.macroConfirmation || 0) > 0);
+    assert.ok((buckets.get('fx_stress')?.macroConfirmation || 0) > 0);
     assert.ok((buckets.get('energy')?.pressureScore || 0) >= (buckets.get('defense')?.pressureScore || 0));
 
     const marketConsequences = worldState.simulationState?.marketConsequences;

@@ -143,15 +143,22 @@ const MARKET_BUCKET_CONFIG = [
   {
     id: 'energy',
     label: 'Energy',
-    signalTypes: ['energy_supply_shock', 'commodity_repricing', 'inflation_impulse', 'oil_macro_shock'],
-    signalWeights: { energy_supply_shock: 1.15, commodity_repricing: 0.92, inflation_impulse: 0.56, oil_macro_shock: 1.2 },
+    signalTypes: ['energy_supply_shock', 'commodity_repricing', 'inflation_impulse', 'oil_macro_shock', 'global_crude_spread_stress', 'gas_supply_stress'],
+    signalWeights: {
+      energy_supply_shock: 1.15,
+      commodity_repricing: 0.92,
+      inflation_impulse: 0.56,
+      oil_macro_shock: 1.2,
+      global_crude_spread_stress: 1.16,
+      gas_supply_stress: 1.08,
+    },
     edgeWeight: 0.9,
   },
   {
     id: 'freight',
     label: 'Freight',
-    signalTypes: ['shipping_cost_shock', 'inflation_impulse'],
-    signalWeights: { shipping_cost_shock: 1.2, inflation_impulse: 0.58 },
+    signalTypes: ['shipping_cost_shock', 'inflation_impulse', 'global_crude_spread_stress', 'gas_supply_stress'],
+    signalWeights: { shipping_cost_shock: 1.2, inflation_impulse: 0.58, global_crude_spread_stress: 0.82, gas_supply_stress: 0.74 },
     edgeWeight: 1,
   },
   {
@@ -171,8 +178,16 @@ const MARKET_BUCKET_CONFIG = [
   {
     id: 'sovereign_risk',
     label: 'Sovereign Risk',
-    signalTypes: ['security_escalation', 'sovereign_stress', 'risk_off_rotation', 'yield_curve_stress', 'volatility_shock', 'labor_softness'],
-    signalWeights: { security_escalation: 0.74, sovereign_stress: 1.12, risk_off_rotation: 0.9, yield_curve_stress: 0.8, volatility_shock: 0.95, labor_softness: 0.74 },
+    signalTypes: ['security_escalation', 'sovereign_stress', 'risk_off_rotation', 'yield_curve_stress', 'volatility_shock', 'labor_softness', 'safe_haven_bid'],
+    signalWeights: {
+      security_escalation: 0.74,
+      sovereign_stress: 1.12,
+      risk_off_rotation: 0.9,
+      yield_curve_stress: 0.8,
+      volatility_shock: 0.95,
+      labor_softness: 0.74,
+      safe_haven_bid: 0.72,
+    },
     edgeWeight: 0.82,
   },
   {
@@ -185,8 +200,18 @@ const MARKET_BUCKET_CONFIG = [
   {
     id: 'rates_inflation',
     label: 'Rates and Inflation',
-    signalTypes: ['policy_rate_pressure', 'inflation_impulse', 'energy_supply_shock', 'shipping_cost_shock', 'yield_curve_stress', 'liquidity_withdrawal', 'oil_macro_shock'],
-    signalWeights: { policy_rate_pressure: 1.02, inflation_impulse: 1.06, energy_supply_shock: 0.72, shipping_cost_shock: 0.68, yield_curve_stress: 0.92, liquidity_withdrawal: 0.76, oil_macro_shock: 0.9 },
+    signalTypes: ['policy_rate_pressure', 'inflation_impulse', 'energy_supply_shock', 'shipping_cost_shock', 'yield_curve_stress', 'liquidity_withdrawal', 'oil_macro_shock', 'global_crude_spread_stress', 'gas_supply_stress'],
+    signalWeights: {
+      policy_rate_pressure: 1.02,
+      inflation_impulse: 1.06,
+      energy_supply_shock: 0.72,
+      shipping_cost_shock: 0.68,
+      yield_curve_stress: 0.92,
+      liquidity_withdrawal: 0.76,
+      oil_macro_shock: 0.9,
+      global_crude_spread_stress: 0.76,
+      gas_supply_stress: 0.7,
+    },
     edgeWeight: 0.78,
   },
   {
@@ -5886,6 +5911,9 @@ function extractEtfItems(payload) {
 }
 
 function extractRateItems(payload) {
+  if (Array.isArray(payload?.rates)) return payload.rates;
+  if (Array.isArray(payload?.policy?.rates)) return payload.policy.rates;
+  if (Array.isArray(payload?.exchange?.rates)) return payload.exchange.rates;
   return Array.isArray(payload?.rates) ? payload.rates : [];
 }
 
@@ -5896,7 +5924,47 @@ function extractShippingIndices(payload) {
 function extractCorrelationCards(payload) {
   if (Array.isArray(payload?.cards)) return payload.cards;
   if (Array.isArray(payload?.items)) return payload.items;
+  if (payload && typeof payload === 'object') {
+    const grouped = Object.values(payload)
+      .filter((value) => Array.isArray(value))
+      .flatMap((value) => value);
+    if (grouped.length > 0) return grouped;
+  }
   return [];
+}
+
+function classifyEnergyQuote(quote) {
+  const text = `${quote?.symbol || ''} ${quote?.name || ''}`.toLowerCase();
+  if (/bz=f|brent/.test(text)) return 'brent';
+  if (/cl=f|wti/.test(text)) return 'wti';
+  if (/ng=f|natural gas|natgas|lng/.test(text)) return 'gas';
+  if (/gc=f|gold|xau/.test(text)) return 'gold';
+  if (/oil|crude|gas|energy/.test(text)) return 'energy_generic';
+  return '';
+}
+
+function normalizeQuotePrice(quote) {
+  const price = Number(quote?.price ?? quote?.last ?? quote?.value);
+  return Number.isFinite(price) ? price : null;
+}
+
+function getEnergyQuoteMap(...quoteGroups) {
+  const quoteMap = new Map();
+  for (const group of quoteGroups) {
+    for (const quote of group || []) {
+      const kind = classifyEnergyQuote(quote);
+      if (!kind) continue;
+      const price = normalizeQuotePrice(quote);
+      const change = Number(quote?.change ?? 0);
+      quoteMap.set(kind, {
+        symbol: quote?.symbol || quote?.name || kind,
+        name: quote?.name || quote?.symbol || kind,
+        price,
+        change: Number.isFinite(change) ? change : 0,
+      });
+    }
+  }
+  return quoteMap;
 }
 
 function extractFredSeriesMap(payload) {
@@ -5983,6 +6051,7 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
   const bisPolicy = extractRateItems(inputs?.bisPolicyRates);
   const correlationCards = extractCorrelationCards(inputs?.correlationCards);
   const fredSeries = extractFredSeriesMap(inputs?.fredSeries);
+  const energyQuotes = getEnergyQuoteMap(commodityQuotes, gulfQuotes);
 
   for (const cp of chokepoints) {
     const region = resolveChokepointMarketRegion(cp) || cp.region || cp.name || '';
@@ -6033,9 +6102,11 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
   }
 
   for (const quote of commodityQuotes) {
+    const energyClass = classifyEnergyQuote(quote);
     const change = Math.abs(Number(quote.change || 0));
-    if (change < 1.8) continue;
-    const isEnergy = /cl=f|bz=f|ng=f|oil|crude|gas/i.test(`${quote.symbol || ''} ${quote.name || ''}`);
+    const minMove = energyClass === 'gold' ? 1.2 : 1.8;
+    if (change < minMove) continue;
+    const isEnergy = Boolean(energyClass) && energyClass !== 'gold';
     const type = isEnergy ? 'energy_supply_shock' : 'commodity_repricing';
     signals.push(buildWorldSignal(type, 'commodity_quotes', `${quote.name || quote.symbol} moved ${Number(quote.change || 0).toFixed(1)}%`, {
       sourceKey: quote.symbol || quote.name,
@@ -6045,6 +6116,26 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
       domains: ['market'],
       supportingEvidence: [`${quote.symbol || quote.name} price ${quote.price || 0}`],
     }));
+    if (energyClass === 'gas') {
+      signals.push(buildWorldSignal('gas_supply_stress', 'commodity_quotes', `${quote.name || quote.symbol} is signalling gas-market stress`, {
+        sourceKey: quote.symbol || quote.name,
+        region: 'Global',
+        strength: normalize(change, 1.8, 9),
+        confidence: 0.68,
+        domains: ['market', 'supply_chain'],
+        supportingEvidence: [`${quote.symbol || quote.name} moved ${Number(quote.change || 0).toFixed(1)}%`],
+      }));
+    }
+    if (energyClass === 'gold' && Number(quote.change || 0) >= 1.2) {
+      signals.push(buildWorldSignal('safe_haven_bid', 'commodity_quotes', `${quote.name || quote.symbol} is catching a safe-haven bid`, {
+        sourceKey: quote.symbol || quote.name,
+        region: 'Global',
+        strength: normalize(Number(quote.change || 0), 1.2, 4.5),
+        confidence: 0.58,
+        domains: ['market', 'political'],
+        supportingEvidence: [`${quote.name || quote.symbol} rose ${Number(quote.change || 0).toFixed(1)}%`],
+      }));
+    }
   }
 
   const negativeStocks = marketQuotes.filter((quote) => Number(quote.change || 0) <= -1.5).length;
@@ -6084,7 +6175,8 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
   }
 
   for (const quote of gulfQuotes) {
-    if (quote.type === 'oil' && Math.abs(Number(quote.change || 0)) >= 1.5) {
+    const energyClass = classifyEnergyQuote(quote);
+    if ((quote.type === 'oil' || energyClass === 'wti' || energyClass === 'brent' || energyClass === 'energy_generic') && Math.abs(Number(quote.change || 0)) >= 1.5) {
       signals.push(buildWorldSignal('energy_supply_shock', 'gulf_quotes', `${quote.name} moved ${Number(quote.change || 0).toFixed(1)}%`, {
         sourceKey: quote.symbol || quote.name,
         region: 'Middle East',
@@ -6092,6 +6184,35 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
         confidence: 0.68,
         domains: ['market'],
         supportingEvidence: [`${quote.name} ${Number(quote.change || 0).toFixed(1)}%`],
+      }));
+    }
+    if ((quote.type === 'gas' || energyClass === 'gas') && Math.abs(Number(quote.change || 0)) >= 1.8) {
+      signals.push(buildWorldSignal('gas_supply_stress', 'gulf_quotes', `${quote.name} moved ${Number(quote.change || 0).toFixed(1)}%`, {
+        sourceKey: quote.symbol || quote.name,
+        region: 'Middle East',
+        strength: normalize(Math.abs(Number(quote.change || 0)), 1.8, 8),
+        confidence: 0.7,
+        domains: ['market', 'supply_chain'],
+        supportingEvidence: [`${quote.name} ${Number(quote.change || 0).toFixed(1)}%`],
+      }));
+    }
+  }
+
+  const wtiQuote = energyQuotes.get('wti');
+  const brentQuote = energyQuotes.get('brent');
+  if (Number.isFinite(wtiQuote?.price) && Number.isFinite(brentQuote?.price)) {
+    const spread = Number(brentQuote.price) - Number(wtiQuote.price);
+    if (spread >= 3) {
+      signals.push(buildWorldSignal('global_crude_spread_stress', 'commodity_quotes', `Brent-WTI spread widened to ${spread.toFixed(1)}`, {
+        sourceKey: 'brent_wti_spread',
+        region: 'Global',
+        strength: normalizeSignalStrength(spread, 3, 12),
+        confidence: 0.78,
+        domains: ['market', 'supply_chain'],
+        supportingEvidence: [
+          `${brentQuote.name} ${Number(brentQuote.price).toFixed(1)}`,
+          `${wtiQuote.name} ${Number(wtiQuote.price).toFixed(1)}`,
+        ],
       }));
     }
   }
@@ -6322,6 +6443,23 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
       domains: ['market', 'supply_chain'],
       supportingEvidence: [`WTI is confirming energy transmission pressure`],
     }));
+  }
+
+  if (wtiQuote && Number.isFinite(oilLatest) && Number.isFinite(wtiQuote.price)) {
+    const oilDivergence = Math.abs(Number(wtiQuote.price) - Number(oilLatest));
+    if (oilDivergence >= 2.5) {
+      signals.push(buildWorldSignal('oil_macro_shock', 'cross_market_confirmation', `Spot and FRED WTI diverged by ${oilDivergence.toFixed(1)}`, {
+        sourceKey: 'wti_spot_fred_divergence',
+        region: 'Global',
+        strength: normalizeSignalStrength(oilDivergence, 2.5, 10),
+        confidence: 0.62,
+        domains: ['market'],
+        supportingEvidence: [
+          `Spot WTI ${Number(wtiQuote.price).toFixed(1)}`,
+          `FRED WTI ${oilLatest.toFixed(1)}`,
+        ],
+      }));
+    }
   }
 
   const gdpSeries = fredSeries.GDP;
