@@ -1,15 +1,20 @@
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import type { MutationCtx } from "../_generated/server";
+import {
+  handleSubscriptionActive,
+  handleSubscriptionRenewed,
+  handleSubscriptionOnHold,
+  handleSubscriptionCancelled,
+  handleSubscriptionPlanChanged,
+  handlePaymentEvent,
+} from "./subscriptionHelpers";
 
 /**
  * Idempotent webhook event processor.
  *
  * Receives parsed webhook data from the HTTP action handler,
  * deduplicates by webhook-id, records the event, and dispatches
- * to event-type-specific handlers.
- *
- * All handlers are stubs for now -- they will be implemented in Plan 03.
+ * to event-type-specific handlers from subscriptionHelpers.
  */
 export const processWebhookEvent = internalMutation({
   args: {
@@ -91,53 +96,3 @@ export const processWebhookEvent = internalMutation({
   },
 });
 
-// --- Stub handler functions (to be implemented in Plan 03) ---
-
-async function handleSubscriptionActive(
-  _ctx: MutationCtx,
-  data: unknown,
-  _timestamp: number,
-): Promise<void> {
-  console.log("TODO: implement subscription.active", data);
-}
-
-async function handleSubscriptionRenewed(
-  _ctx: MutationCtx,
-  data: unknown,
-  _timestamp: number,
-): Promise<void> {
-  console.log("TODO: implement subscription.renewed", data);
-}
-
-async function handleSubscriptionOnHold(
-  _ctx: MutationCtx,
-  data: unknown,
-  _timestamp: number,
-): Promise<void> {
-  console.log("TODO: implement subscription.on_hold", data);
-}
-
-async function handleSubscriptionCancelled(
-  _ctx: MutationCtx,
-  data: unknown,
-  _timestamp: number,
-): Promise<void> {
-  console.log("TODO: implement subscription.cancelled", data);
-}
-
-async function handleSubscriptionPlanChanged(
-  _ctx: MutationCtx,
-  data: unknown,
-  _timestamp: number,
-): Promise<void> {
-  console.log("TODO: implement subscription.plan_changed", data);
-}
-
-async function handlePaymentEvent(
-  _ctx: MutationCtx,
-  data: unknown,
-  eventType: string,
-  _timestamp: number,
-): Promise<void> {
-  console.log(`TODO: implement ${eventType}`, data);
-}
