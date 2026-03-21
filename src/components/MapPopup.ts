@@ -909,6 +909,12 @@ export class MapPopup {
         }
       }
 
+      // IATA callsign + airline name header
+      if (live.callsignIata) {
+        const name = live.airlineName ? ` <span style="font-size:12px;opacity:0.6;font-weight:400">${escapeHtml(live.airlineName)}</span>` : '';
+        parts.push(`<div style="font-weight:700;font-size:15px;margin:4px 0">${escapeHtml(live.callsignIata)}${name}</div>`);
+      }
+
       // Route (FROM → TO)
       if (live.depIata && live.arrIata) {
         const terminal = live.arrTerminal ? `<span style="font-size:10px;opacity:0.5;margin-left:4px">T${escapeHtml(live.arrTerminal)}</span>` : '';

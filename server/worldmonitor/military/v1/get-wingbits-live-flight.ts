@@ -7,6 +7,7 @@ import type {
 
 import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
+import { toIataCallsign } from '../../../_shared/airline-codes';
 
 const ECS_API_BASE = 'https://ecs-api.wingbits.com/v1/flights';
 const PLANESPOTTERS_API = 'https://api.planespotters.net/pub/photos/hex';
@@ -72,9 +73,11 @@ interface EcsFlightRaw {
 function mapEcsFlight(icao24: string, raw: EcsFlightRaw): WingbitsLiveFlight {
   const raTsMs = raw.ra ? new Date(raw.ra).getTime() : Number.NaN;
   const lastSeenTs = raw.lastSeen ?? raw.last_seen ?? (Number.isFinite(raTsMs) ? Math.floor(raTsMs / 1000) : 0);
+  const cs = raw.callsign ?? raw.f ?? '';
+  const iataInfo = toIataCallsign(cs);
   return {
     icao24: raw.icao24 ?? raw.h ?? icao24,
-    callsign: raw.callsign ?? raw.f ?? '',
+    callsign: cs,
     lat: raw.lat ?? raw.la ?? 0,
     lon: raw.lon ?? raw.lo ?? 0,
     altitude: raw.altitude ?? raw.ab ?? 0,
@@ -92,6 +95,9 @@ function mapEcsFlight(icao24: string, raw: EcsFlightRaw): WingbitsLiveFlight {
     arrDelayedMin: 0, flightStatus: '', flightDurationMin: 0, arrTerminal: '',
     // Photo fields — populated later by fetchPhoto
     photoUrl: '', photoLink: '', photoCredit: '',
+    // Airline — resolved from ICAO callsign prefix
+    callsignIata: iataInfo?.callsign ?? '',
+    airlineName: iataInfo?.name ?? '',
   };
 }
 
@@ -153,13 +159,22 @@ export async function getWingbitsLiveFlight(
     const flight = liveResult?.flight ?? null;
     if (!flight) return { flight: undefined };
 
-    const callsign = flight.callsign?.trim();
+    // Normalize callsign to uppercase to prevent duplicate cache keys (ECS may return mixed-case).
+    const callsign = flight.callsign?.trim().toUpperCase() || '';
+    const iataCs = flight.callsignIata || null;
     const [scheduleResult, photoResult] = await Promise.allSettled([
       callsign
         ? cachedFetchJson<{ schedule: EcsScheduleRaw | null }>(
             `military:wingbits-sched:v1:${callsign}`,
             SCHEDULE_CACHE_TTL,
-            async () => ({ schedule: await fetchSchedule(callsign) }),
+            async () => {
+              // Try ICAO callsign first; fall back to IATA if no result.
+              // Cache tradeoff: both attempts cached under ICAO key for 60s (source is opaque but acceptable).
+              const sched = await fetchSchedule(callsign);
+              if (sched) return { schedule: sched };
+              if (iataCs) return { schedule: await fetchSchedule(iataCs) };
+              return { schedule: null };
+            },
           )
         : Promise.resolve(null),
       cachedFetchJson<{ photo: PlanespottersPhoto | null }>(

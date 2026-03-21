@@ -269,6 +269,8 @@ export interface WingbitsLiveFlight {
   photoUrl: string;
   photoLink: string;
   photoCredit: string;
+  callsignIata: string;
+  airlineName: string;
 }
 
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";

@@ -1185,4 +1185,12 @@ components:
                 photoCredit:
                     type: string
                     description: Photographer credit name.
+                callsignIata:
+                    type: string
+                    description: |-
+                        Airline — resolved server-side from the ICAO callsign prefix.
+                         IATA-equivalent callsign (e.g. "EK528" for ICAO "UAE528"). Empty if no mapping.
+                airlineName:
+                    type: string
+                    description: Airline name (e.g. "Emirates"). Empty if no mapping.
             description: WingbitsLiveFlight contains real-time flight position data from the Wingbits ECS network.
