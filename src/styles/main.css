@@ -10761,6 +10761,8 @@ a.prediction-link:hover {
 
 .flight-photo img {
   width: 100%;
+  max-height: 160px;
+  object-fit: cover;
   display: block;
   border-radius: 4px;
 }

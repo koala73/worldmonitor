@@ -318,6 +318,20 @@ export class MapPopup {
     this.popup.style.top = `${top}px`;
   }
 
+  // Called after async content (e.g. Wingbits live data) makes the popup taller.
+  // Nudges the popup upward so it never extends below the viewport.
+  private clampPopupToViewport(): void {
+    if (!this.popup || this.isMobileSheet) return;
+    const rect = this.popup.getBoundingClientRect();
+    const bottomBuffer = 20;
+    const topBuffer = 60;
+    const overflow = rect.bottom - (window.innerHeight - bottomBuffer);
+    if (overflow > 0) {
+      const currentTop = Number.parseFloat(this.popup.style.top) || 0;
+      this.popup.style.top = `${Math.max(topBuffer, currentTop - overflow)}px`;
+    }
+  }
+
   private handleOutsideClick = (e: Event) => {
     if (this.popup && !this.popup.contains(e.target as Node)) {
       this.hide();
@@ -945,6 +959,7 @@ export class MapPopup {
         ${statsHtml}
         ${photoHtml}
       `;
+      this.clampPopupToViewport();
     } catch {
       if (section.isConnected) {
         section.innerHTML = '';
