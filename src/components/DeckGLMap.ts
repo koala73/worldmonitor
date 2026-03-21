@@ -4947,6 +4947,7 @@ export class DeckGLMap {
     const sw = bounds.getSouthWest();
     const ne = bounds.getNorthEast();
     const seq = ++this.aircraftFetchSeq;
+    this.setLayerLoading('flights', true);
     fetchAircraftPositions({
       swLat: sw.lat, swLon: sw.lng,
       neLat: ne.lat, neLon: ne.lng,
@@ -4959,9 +4960,11 @@ export class DeckGLMap {
         this.lastAircraftFetchCenter = [center.lng, center.lat];
         this.lastAircraftFetchZoom = this.maplibreMap!.getZoom();
       }
+      this.setLayerReady('flights', positions.length > 0);
       this.render();
     }).catch((err) => {
       console.error('[aircraft] fetch error', err);
+      this.setLayerLoading('flights', false);
     });
   }
 

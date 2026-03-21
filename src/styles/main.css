@@ -15078,6 +15078,15 @@ a.prediction-link:hover {
   animation: layer-loading 0.8s ease-in-out infinite;
 }
 
+.deckgl-layer-toggles .layer-toggle.loading .toggle-icon {
+  font-size: 0;
+}
+
+.deckgl-layer-toggles .layer-toggle.loading .toggle-icon::after {
+  content: '\23F3';
+  font-size: 12px;
+}
+
 .deckgl-layer-toggles .layer-toggle.has-data .toggle-label {
   color: var(--green);
 }
