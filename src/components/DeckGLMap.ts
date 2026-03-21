@@ -291,14 +291,15 @@ const ALTITUDE_COLOR_STOPS: Array<{ alt: number; r: number; g: number; b: number
 
 function altitudeToColor(altFt: number): [number, number, number] {
   const stops = ALTITUDE_COLOR_STOPS;
-  if (altFt <= stops[0]!.alt) return [stops[0]!.r, stops[0]!.g, stops[0]!.b];
+  const alt = Number.isFinite(altFt) ? altFt : 0;
+  if (alt <= stops[0]!.alt) return [stops[0]!.r, stops[0]!.g, stops[0]!.b];
   const last = stops[stops.length - 1]!;
-  if (altFt >= last.alt) return [last.r, last.g, last.b];
+  if (alt >= last.alt) return [last.r, last.g, last.b];
   for (let i = 1; i < stops.length; i++) {
     const hi = stops[i]!;
     const lo = stops[i - 1]!;
-    if (altFt <= hi.alt) {
-      const t = (altFt - lo.alt) / (hi.alt - lo.alt);
+    if (alt <= hi.alt) {
+      const t = (alt - lo.alt) / (hi.alt - lo.alt);
       return [
         Math.round(lo.r + (hi.r - lo.r) * t),
         Math.round(lo.g + (hi.g - lo.g) * t),
