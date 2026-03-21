@@ -185,6 +185,21 @@ export interface PositionSample {
   observedAt: number;
 }
 
+export interface GetYoutubeLiveStreamInfoRequest {
+  channel: string;
+  videoId: string;
+}
+
+export interface GetYoutubeLiveStreamInfoResponse {
+  videoId: string;
+  isLive: boolean;
+  channelExists: boolean;
+  channelName: string;
+  hlsUrl: string;
+  title: string;
+  error: string;
+}
+
 export interface SearchFlightPricesRequest {
   origin: string;
   destination: string;
@@ -316,6 +331,7 @@ export interface AviationServiceHandler {
   getCarrierOps(ctx: ServerContext, req: GetCarrierOpsRequest): Promise<GetCarrierOpsResponse>;
   getFlightStatus(ctx: ServerContext, req: GetFlightStatusRequest): Promise<GetFlightStatusResponse>;
   trackAircraft(ctx: ServerContext, req: TrackAircraftRequest): Promise<TrackAircraftResponse>;
+  getYoutubeLiveStreamInfo(ctx: ServerContext, req: GetYoutubeLiveStreamInfoRequest): Promise<GetYoutubeLiveStreamInfoResponse>;
   searchFlightPrices(ctx: ServerContext, req: SearchFlightPricesRequest): Promise<SearchFlightPricesResponse>;
   listAviationNews(ctx: ServerContext, req: ListAviationNewsRequest): Promise<ListAviationNewsResponse>;
 }
@@ -599,6 +615,54 @@ export function createAviationServiceRoutes(
 
           const result = await handler.trackAircraft(ctx, body);
           return new Response(JSON.stringify(result as TrackAircraftResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/aviation/v1/get-youtube-live-stream-info",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetYoutubeLiveStreamInfoRequest = {
+            channel: params.get("channel") ?? "",
+            videoId: params.get("video_id") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getYoutubeLiveStreamInfo", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getYoutubeLiveStreamInfo(ctx, body);
+          return new Response(JSON.stringify(result as GetYoutubeLiveStreamInfoResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

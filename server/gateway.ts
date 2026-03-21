@@ -132,6 +132,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/research/v1/list-hackernews-items': 'slow',
   '/api/intelligence/v1/get-risk-scores': 'slow',
   '/api/intelligence/v1/get-pizzint-status': 'slow',
+  '/api/intelligence/v1/classify-event': 'static',
   '/api/intelligence/v1/search-gdelt-documents': 'slow',
   '/api/infrastructure/v1/get-cable-health': 'slow',
   '/api/positive-events/v1/list-positive-geo-events': 'slow',
@@ -143,14 +144,22 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/forecast/v1/get-forecasts': 'medium',
   '/api/supply-chain/v1/get-chokepoint-status': 'medium',
   '/api/news/v1/list-feed-digest': 'slow',
-  '/api/intelligence/v1/classify-event': 'static',
   '/api/intelligence/v1/get-country-facts': 'daily',
   '/api/intelligence/v1/list-security-advisories': 'slow',
+  '/api/intelligence/v1/list-satellites': 'slow',
+  '/api/intelligence/v1/list-gps-interference': 'slow',
+  '/api/intelligence/v1/list-oref-alerts': 'fast',
+  '/api/intelligence/v1/list-telegram-feed': 'fast',
+  '/api/intelligence/v1/get-company-enrichment': 'slow',
+  '/api/intelligence/v1/list-company-signals': 'slow',
   '/api/news/v1/summarize-article-cache': 'slow',
 
   '/api/imagery/v1/search-imagery': 'static',
 
   '/api/infrastructure/v1/list-temporal-anomalies': 'medium',
+  '/api/infrastructure/v1/get-ip-geo': 'no-store',
+  '/api/infrastructure/v1/reverse-geocode': 'slow',
+  '/api/infrastructure/v1/get-bootstrap-data': 'no-store',
   '/api/webcam/v1/get-webcam-image': 'no-store',
   '/api/webcam/v1/list-webcams': 'no-store',
 
@@ -160,6 +169,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/consumer-prices/v1/list-consumer-price-movers': 'static',
   '/api/consumer-prices/v1/list-retailer-price-spreads': 'static',
   '/api/consumer-prices/v1/get-consumer-price-freshness': 'slow',
+
+  '/api/aviation/v1/get-youtube-live-stream-info': 'fast',
 };
 
 const PREMIUM_RPC_PATHS = new Set([

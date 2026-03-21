@@ -224,7 +224,7 @@ paths:
             tags:
                 - AviationService
             summary: TrackAircraft
-            description: TrackAircraft retrieves recent position data for an aircraft.
+            description: TrackAircraft retrieves live position stream for a specific aircraft hex.
             operationId: TrackAircraft
             parameters:
                 - name: icao24
@@ -274,6 +274,45 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/TrackAircraftResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/aviation/v1/get-youtube-live-stream-info:
+        get:
+            tags:
+                - AviationService
+            summary: GetYoutubeLiveStreamInfo
+            description: GetYoutubeLiveStreamInfo retrieves information about a YouTube live stream (status, title, etc).
+            operationId: GetYoutubeLiveStreamInfo
+            parameters:
+                - name: channel
+                  in: query
+                  description: YouTube channel handle or ID.
+                  required: false
+                  schema:
+                    type: string
+                - name: video_id
+                  in: query
+                  description: Specific video ID to check.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetYoutubeLiveStreamInfoResponse'
                 "400":
                     description: Validation error
                     content:
@@ -949,8 +988,6 @@ components:
                     description: IATA flight number (e.g., "TK1952").
                 date:
                     type: string
-                    maxLength: 10
-                    minLength: 10
                     description: Departure date in ISO 8601 format (e.g., "2026-03-05").
                 origin:
                     type: string
@@ -1063,6 +1100,41 @@ components:
                     format: int64
                     description: 'Observation time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: PositionSample represents a single aircraft position observation.
+        GetYoutubeLiveStreamInfoRequest:
+            type: object
+            properties:
+                channel:
+                    type: string
+                    description: YouTube channel handle or ID.
+                videoId:
+                    type: string
+                    description: Specific video ID to check.
+            description: GetYoutubeLiveStreamInfoRequest parameters for detecting live status.
+        GetYoutubeLiveStreamInfoResponse:
+            type: object
+            properties:
+                videoId:
+                    type: string
+                    description: Video ID of the live stream (if found).
+                isLive:
+                    type: boolean
+                    description: Whether the stream is currently live.
+                channelExists:
+                    type: boolean
+                    description: Whether the channel exists.
+                channelName:
+                    type: string
+                    description: Human-readable channel name.
+                hlsUrl:
+                    type: string
+                    description: HLS manifest URL (if available).
+                title:
+                    type: string
+                    description: Stream title.
+                error:
+                    type: string
+                    description: Optional error message.
+            description: GetYoutubeLiveStreamInfoResponse containing detection results.
         SearchFlightPricesRequest:
             type: object
             properties:
@@ -1078,8 +1150,6 @@ components:
                     description: Destination airport IATA code.
                 departureDate:
                     type: string
-                    maxLength: 10
-                    minLength: 10
                     description: Outbound departure date (ISO 8601).
                 returnDate:
                     type: string

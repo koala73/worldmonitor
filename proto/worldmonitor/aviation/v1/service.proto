@@ -3,14 +3,15 @@ syntax = "proto3";
 package worldmonitor.aviation.v1;
 
 import "sebuf/http/annotations.proto";
-import "worldmonitor/aviation/v1/list_airport_delays.proto";
 import "worldmonitor/aviation/v1/get_airport_ops_summary.proto";
-import "worldmonitor/aviation/v1/list_airport_flights.proto";
 import "worldmonitor/aviation/v1/get_carrier_ops.proto";
 import "worldmonitor/aviation/v1/get_flight_status.proto";
-import "worldmonitor/aviation/v1/track_aircraft.proto";
-import "worldmonitor/aviation/v1/search_flight_prices.proto";
+import "worldmonitor/aviation/v1/get_youtube_live_stream_info.proto";
+import "worldmonitor/aviation/v1/list_airport_delays.proto";
+import "worldmonitor/aviation/v1/list_airport_flights.proto";
 import "worldmonitor/aviation/v1/list_aviation_news.proto";
+import "worldmonitor/aviation/v1/search_flight_prices.proto";
+import "worldmonitor/aviation/v1/track_aircraft.proto";
 
 // AviationService provides APIs for flight delays, airport operations,
 // flight status, aircraft tracking, price search, and aviation news.
@@ -19,41 +20,73 @@ service AviationService {
 
   // ListAirportDelays retrieves current airport delay alerts.
   rpc ListAirportDelays(ListAirportDelaysRequest) returns (ListAirportDelaysResponse) {
-    option (sebuf.http.config) = {path: "/list-airport-delays", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/list-airport-delays"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // GetAirportOpsSummary returns operational health metrics for watched airports.
   rpc GetAirportOpsSummary(GetAirportOpsSummaryRequest) returns (GetAirportOpsSummaryResponse) {
-    option (sebuf.http.config) = {path: "/get-airport-ops-summary", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-airport-ops-summary"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // ListAirportFlights retrieves recent flights at a specific airport.
   rpc ListAirportFlights(ListAirportFlightsRequest) returns (ListAirportFlightsResponse) {
-    option (sebuf.http.config) = {path: "/list-airport-flights", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/list-airport-flights"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // GetCarrierOps returns delay and cancellation metrics grouped by carrier.
   rpc GetCarrierOps(GetCarrierOpsRequest) returns (GetCarrierOpsResponse) {
-    option (sebuf.http.config) = {path: "/get-carrier-ops", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-carrier-ops"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // GetFlightStatus looks up the current status of a specific flight.
   rpc GetFlightStatus(GetFlightStatusRequest) returns (GetFlightStatusResponse) {
-    option (sebuf.http.config) = {path: "/get-flight-status", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-flight-status"
+      method: HTTP_METHOD_GET
+    };
   }
 
-  // TrackAircraft retrieves recent position data for an aircraft.
+  // TrackAircraft retrieves live position stream for a specific aircraft hex.
   rpc TrackAircraft(TrackAircraftRequest) returns (TrackAircraftResponse) {
-    option (sebuf.http.config) = {path: "/track-aircraft", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/track-aircraft"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // GetYoutubeLiveStreamInfo retrieves information about a YouTube live stream (status, title, etc).
+  rpc GetYoutubeLiveStreamInfo(GetYoutubeLiveStreamInfoRequest) returns (GetYoutubeLiveStreamInfoResponse) {
+    option (sebuf.http.config) = {
+      path: "/get-youtube-live-stream-info"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // SearchFlightPrices searches for flight price offers on a route.
   rpc SearchFlightPrices(SearchFlightPricesRequest) returns (SearchFlightPricesResponse) {
-    option (sebuf.http.config) = {path: "/search-flight-prices", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/search-flight-prices"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // ListAviationNews retrieves filtered aviation news articles.
   rpc ListAviationNews(ListAviationNewsRequest) returns (ListAviationNewsResponse) {
-    option (sebuf.http.config) = {path: "/list-aviation-news", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/list-aviation-news"
+      method: HTTP_METHOD_GET
+    };
   }
 }

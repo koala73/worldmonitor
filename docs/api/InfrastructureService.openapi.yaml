@@ -101,7 +101,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetTemporalBaseline
-            description: GetTemporalBaseline checks current activity count against stored baseline for anomaly detection.
+            description: GetTemporalBaseline retrieves historical baseline data for a specific signal.
             operationId: GetTemporalBaseline
             parameters:
                 - name: type
@@ -130,6 +130,109 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetTemporalBaselineResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/get-ip-geo:
+        get:
+            tags:
+                - InfrastructureService
+            summary: GetIpGeo
+            description: GetIpGeo retrieves geographic information based on the caller's IP address.
+            operationId: GetIpGeo
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetIpGeoResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/reverse-geocode:
+        get:
+            tags:
+                - InfrastructureService
+            summary: ReverseGeocode
+            description: ReverseGeocode resolves geographic coordinates to a postal address/country.
+            operationId: ReverseGeocode
+            parameters:
+                - name: lat
+                  in: query
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: lon
+                  in: query
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ReverseGeocodeResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/get-bootstrap-data:
+        get:
+            tags:
+                - InfrastructureService
+            summary: GetBootstrapData
+            description: GetBootstrapData fetches multiple data points from the system cache in a single call.
+            operationId: GetBootstrapData
+            parameters:
+                - name: tier
+                  in: query
+                  description: Predefined tiers or specific keys.
+                  required: false
+                  schema:
+                    type: string
+                - name: keys
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBootstrapDataResponse'
                 "400":
                     description: Validation error
                     content:
@@ -500,6 +603,79 @@ components:
                     format: int32
                     description: Number of samples incorporated so far.
             description: BaselineStats contains the running statistics for a baseline key.
+        GetIpGeoRequest:
+            type: object
+            description: GetIpGeoRequest defined for future parameters (e.g., specific IP).
+        GetIpGeoResponse:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                region:
+                    type: string
+                    description: Region or city (if available).
+                city:
+                    type: string
+            description: GetIpGeoResponse contains geographic information derived from the request IP.
+        ReverseGeocodeRequest:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+            description: ReverseGeocodeRequest parameters for coordinate-to-address lookups.
+        ReverseGeocodeResponse:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: Human-readable country name.
+                code:
+                    type: string
+                    description: ISO country code.
+                displayName:
+                    type: string
+                    description: Full display name/address.
+                error:
+                    type: string
+                    description: Optional error message.
+            description: ReverseGeocodeResponse containing the resolved location details.
+        GetBootstrapDataRequest:
+            type: object
+            properties:
+                tier:
+                    type: string
+                    description: Predefined tiers or specific keys.
+                keys:
+                    type: array
+                    items:
+                        type: string
+            description: GetBootstrapDataRequest parameters for multi-key fetching.
+        GetBootstrapDataResponse:
+            type: object
+            properties:
+                data:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: Map of keys to JSON-encoded data strings.
+                missing:
+                    type: array
+                    items:
+                        type: string
+                        description: List of keys that were not found in cache.
+            description: GetBootstrapDataResponse containing pooled data objects.
+        DataEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
         RecordBaselineSnapshotRequest:
             type: object
             properties:

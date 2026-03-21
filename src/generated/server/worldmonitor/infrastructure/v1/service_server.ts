@@ -86,6 +86,37 @@ export interface BaselineStats {
   sampleCount: number;
 }
 
+export interface GetIpGeoRequest {
+}
+
+export interface GetIpGeoResponse {
+  country: string;
+  region: string;
+  city: string;
+}
+
+export interface ReverseGeocodeRequest {
+  lat: number;
+  lon: number;
+}
+
+export interface ReverseGeocodeResponse {
+  country: string;
+  code: string;
+  displayName: string;
+  error: string;
+}
+
+export interface GetBootstrapDataRequest {
+  tier: string;
+  keys: string[];
+}
+
+export interface GetBootstrapDataResponse {
+  data: Record<string, string>;
+  missing: string[];
+}
+
 export interface RecordBaselineSnapshotRequest {
   updates: BaselineUpdate[];
 }
@@ -197,6 +228,9 @@ export interface InfrastructureServiceHandler {
   listInternetOutages(ctx: ServerContext, req: ListInternetOutagesRequest): Promise<ListInternetOutagesResponse>;
   listServiceStatuses(ctx: ServerContext, req: ListServiceStatusesRequest): Promise<ListServiceStatusesResponse>;
   getTemporalBaseline(ctx: ServerContext, req: GetTemporalBaselineRequest): Promise<GetTemporalBaselineResponse>;
+  getIpGeo(ctx: ServerContext, req: GetIpGeoRequest): Promise<GetIpGeoResponse>;
+  reverseGeocode(ctx: ServerContext, req: ReverseGeocodeRequest): Promise<ReverseGeocodeResponse>;
+  getBootstrapData(ctx: ServerContext, req: GetBootstrapDataRequest): Promise<GetBootstrapDataResponse>;
   recordBaselineSnapshot(ctx: ServerContext, req: RecordBaselineSnapshotRequest): Promise<RecordBaselineSnapshotResponse>;
   getCableHealth(ctx: ServerContext, req: GetCableHealthRequest): Promise<GetCableHealthResponse>;
   listTemporalAnomalies(ctx: ServerContext, req: ListTemporalAnomaliesRequest): Promise<ListTemporalAnomaliesResponse>;
@@ -333,6 +367,139 @@ export function createInfrastructureServiceRoutes(
 
           const result = await handler.getTemporalBaseline(ctx, body);
           return new Response(JSON.stringify(result as GetTemporalBaselineResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/infrastructure/v1/get-ip-geo",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetIpGeoRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getIpGeo(ctx, body);
+          return new Response(JSON.stringify(result as GetIpGeoResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/infrastructure/v1/reverse-geocode",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ReverseGeocodeRequest = {
+            lat: Number(params.get("lat") ?? "0"),
+            lon: Number(params.get("lon") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("reverseGeocode", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.reverseGeocode(ctx, body);
+          return new Response(JSON.stringify(result as ReverseGeocodeResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/infrastructure/v1/get-bootstrap-data",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetBootstrapDataRequest = {
+            tier: params.get("tier") ?? "",
+            keys: params.get("keys") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getBootstrapData", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getBootstrapData(ctx, body);
+          return new Response(JSON.stringify(result as GetBootstrapDataResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

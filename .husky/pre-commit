@@ -1,2 +1,16 @@
+BRANCH=$(git branch --show-current)
+if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
+  PR_STATE=$(gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null)
+  if [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ]; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: PR for branch '$BRANCH' is $PR_STATE."
+    echo "Do NOT commit to a merged/closed PR branch — commits will be orphaned."
+    echo "Run: git checkout main && git pull && git checkout -b fix/new-branch"
+    echo "============================================================"
+    exit 1
+  fi
+fi
+
 echo "Running Unicode safety check (staged files)..."
 node scripts/check-unicode-safety.mjs --staged || exit 1

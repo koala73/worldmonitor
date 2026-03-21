@@ -1,50 +1,114 @@
 syntax = "proto3";
-
 package worldmonitor.intelligence.v1;
 
 import "sebuf/http/annotations.proto";
-import "worldmonitor/intelligence/v1/get_risk_scores.proto";
-import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
 import "worldmonitor/intelligence/v1/classify_event.proto";
-import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
-import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
 import "worldmonitor/intelligence/v1/deduct_situation.proto";
+import "worldmonitor/intelligence/v1/get_company_enrichment.proto";
 import "worldmonitor/intelligence/v1/get_country_facts.proto";
+import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
+import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
+import "worldmonitor/intelligence/v1/get_risk_scores.proto";
 import "worldmonitor/intelligence/v1/list_security_advisories.proto";
+import "worldmonitor/intelligence/v1/list_company_signals.proto";
+import "worldmonitor/intelligence/v1/list_gps_interference.proto";
+import "worldmonitor/intelligence/v1/list_oref_alerts.proto";
+import "worldmonitor/intelligence/v1/list_satellites.proto";
+import "worldmonitor/intelligence/v1/list_telegram_feed.proto";
+import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
 
-// IntelligenceService provides APIs for cross-domain intelligence synthesis including
-// risk scores, PizzINT monitoring, GDELT tension analysis, and AI-powered classification.
+// IntelligenceService provides APIs for technical and strategic intelligence.
 service IntelligenceService {
   option (sebuf.http.service_config) = {base_path: "/api/intelligence/v1"};
 
-  // GetRiskScores retrieves composite instability and strategic risk assessments.
+  // GetRiskScores retrieves composite risk scores and strategic assessments.
   rpc GetRiskScores(GetRiskScoresRequest) returns (GetRiskScoresResponse) {
-    option (sebuf.http.config) = {path: "/get-risk-scores", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-risk-scores"
+      method: HTTP_METHOD_GET
+    };
   }
 
-  // GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension pair data.
+  // GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension data.
   rpc GetPizzintStatus(GetPizzintStatusRequest) returns (GetPizzintStatusResponse) {
-    option (sebuf.http.config) = {path: "/get-pizzint-status", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-pizzint-status"
+      method: HTTP_METHOD_GET
+    };
   }
 
-  // ClassifyEvent classifies a real-world event using AI (Groq).
+  // ClassifyEvent analyzes a news event using AI models.
   rpc ClassifyEvent(ClassifyEventRequest) returns (ClassifyEventResponse) {
     option (sebuf.http.config) = {path: "/classify-event", method: HTTP_METHOD_GET};
   }
 
-  // GetCountryIntelBrief generates an AI intelligence brief for a country (OpenRouter).
+  // GetCountryIntelBrief generates a strategic brief for a specific country.
   rpc GetCountryIntelBrief(GetCountryIntelBriefRequest) returns (GetCountryIntelBriefResponse) {
-    option (sebuf.http.config) = {path: "/get-country-intel-brief", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/get-country-intel-brief"
+      method: HTTP_METHOD_GET
+    };
   }
 
-  // SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
+  // SearchGdeltDocuments searches the GDELT GKG API for relevant documentation.
   rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
-    option (sebuf.http.config) = {path: "/search-gdelt-documents", method: HTTP_METHOD_GET};
+    option (sebuf.http.config) = {
+      path: "/search-gdelt-documents"
+      method: HTTP_METHOD_GET
+    };
   }
 
-  // DeductSituation performs AI-powered situational analysis and deduction.
+  // DeductSituation performs broad situational analysis using LLMs.
   rpc DeductSituation(DeductSituationRequest) returns (DeductSituationResponse) {
     option (sebuf.http.config) = {path: "/deduct-situation"};
+  }
+
+  // ListSatellites retrieves current orbital positions and metadata.
+  rpc ListSatellites(ListSatellitesRequest) returns (ListSatellitesResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-satellites"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // ListGpsInterference retrieves detected GPS/GNSS interference data (jamming).
+  rpc ListGpsInterference(ListGpsInterferenceRequest) returns (ListGpsInterferenceResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-gps-interference"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // ListOrefAlerts retrieves Israeli Home Front Command alerts (Red Alerts).
+  rpc ListOrefAlerts(ListOrefAlertsRequest) returns (ListOrefAlertsResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-oref-alerts"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // ListTelegramFeed retrieves real-time OSINT messages from monitored Telegram channels.
+  rpc ListTelegramFeed(ListTelegramFeedRequest) returns (ListTelegramFeedResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-telegram-feed"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // GetCompanyEnrichment aggregates company data from multiple public sources (GitHub, SEC, HN).
+  rpc GetCompanyEnrichment(GetCompanyEnrichmentRequest) returns (GetCompanyEnrichmentResponse) {
+    option (sebuf.http.config) = {
+      path: "/get-company-enrichment"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // ListCompanySignals discovers activity signals for a company from public sources.
+  rpc ListCompanySignals(ListCompanySignalsRequest) returns (ListCompanySignalsResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-company-signals"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // GetCountryFacts retrieves factual country data from RestCountries and Wikipedia.

@@ -150,6 +150,199 @@ export interface DeductSituationResponse {
   provider: string;
 }
 
+export interface ListSatellitesRequest {
+  country: string;
+}
+
+export interface ListSatellitesResponse {
+  satellites: Satellite[];
+}
+
+export interface Satellite {
+  id: string;
+  name: string;
+  country: string;
+  type: string;
+  alt: number;
+  velocity: number;
+  inclination: number;
+  line1: string;
+  line2: string;
+}
+
+export interface ListGpsInterferenceRequest {
+  region: string;
+}
+
+export interface ListGpsInterferenceResponse {
+  hexes: GpsJamHex[];
+  stats?: GpsJamStats;
+  source: string;
+  fetchedAt: number;
+}
+
+export interface GpsJamHex {
+  h3: string;
+  lat: number;
+  lon: number;
+  level: InterferenceLevel;
+  npAvg: number;
+  sampleCount: number;
+  aircraftCount: number;
+}
+
+export interface GpsJamStats {
+  totalHexes: number;
+  highCount: number;
+  mediumCount: number;
+}
+
+export interface ListOrefAlertsRequest {
+  mode: Mode;
+}
+
+export interface ListOrefAlertsResponse {
+  configured: boolean;
+  alerts: OrefAlert[];
+  history: OrefWave[];
+  historyCount24h: number;
+  totalHistoryCount: number;
+  timestampMs: number;
+  error: string;
+}
+
+export interface OrefAlert {
+  id: string;
+  cat: string;
+  title: string;
+  data: string[];
+  desc: string;
+  timestampMs: number;
+}
+
+export interface OrefWave {
+  alerts: OrefAlert[];
+  timestampMs: number;
+}
+
+export interface ListTelegramFeedRequest {
+  limit: number;
+  topic: string;
+  channel: string;
+}
+
+export interface ListTelegramFeedResponse {
+  enabled: boolean;
+  messages: TelegramMessage[];
+  count: number;
+  error: string;
+}
+
+export interface TelegramMessage {
+  id: string;
+  channelId: string;
+  channelName: string;
+  text: string;
+  timestampMs: number;
+  mediaUrls: string[];
+  sourceUrl: string;
+  topic: string;
+}
+
+export interface GetCompanyEnrichmentRequest {
+  domain: string;
+  name: string;
+}
+
+export interface GetCompanyEnrichmentResponse {
+  company?: EnrichedCompany;
+  github?: EnrichedGithub;
+  techStack: TechStackItem[];
+  secFilings?: SecFilings;
+  hackerNewsMentions: HNMention[];
+  enrichedAtMs: number;
+  sources: string[];
+}
+
+export interface EnrichedCompany {
+  name: string;
+  domain: string;
+  description: string;
+  location: string;
+  website: string;
+  founded: number;
+}
+
+export interface EnrichedGithub {
+  publicRepos: number;
+  followers: number;
+  avatarUrl: string;
+}
+
+export interface TechStackItem {
+  name: string;
+  category: string;
+  confidence: number;
+}
+
+export interface SecFilings {
+  totalFilings: number;
+  recentFilings: SecFiling[];
+}
+
+export interface SecFiling {
+  form: string;
+  fileDate: string;
+  description: string;
+}
+
+export interface HNMention {
+  title: string;
+  url: string;
+  points: number;
+  comments: number;
+  createdAtMs: number;
+}
+
+export interface ListCompanySignalsRequest {
+  company: string;
+  domain: string;
+}
+
+export interface ListCompanySignalsResponse {
+  company: string;
+  domain: string;
+  signals: CompanySignal[];
+  summary?: SignalSummary;
+  discoveredAtMs: number;
+}
+
+export interface CompanySignal {
+  type: string;
+  title: string;
+  url: string;
+  source: string;
+  sourceTier: number;
+  timestampMs: number;
+  strength: string;
+  engagement?: SignalEngagement;
+}
+
+export interface SignalEngagement {
+  points: number;
+  comments: number;
+  stars: number;
+  forks: number;
+  mentions: number;
+}
+
+export interface SignalSummary {
+  totalSignals: number;
+  byType: Record<string, number>;
+  strongestSignal?: CompanySignal;
+  signalDiversity: number;
+}
+
 export interface GetCountryFactsRequest {
   countryCode: string;
 }
@@ -190,6 +383,10 @@ export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
 
 export type DataFreshness = "DATA_FRESHNESS_UNSPECIFIED" | "DATA_FRESHNESS_FRESH" | "DATA_FRESHNESS_STALE";
+
+export type InterferenceLevel = "INTERFERENCE_LEVEL_UNSPECIFIED" | "INTERFERENCE_LEVEL_LOW" | "INTERFERENCE_LEVEL_MEDIUM" | "INTERFERENCE_LEVEL_HIGH";
+
+export type Mode = "MODE_UNSPECIFIED" | "MODE_HISTORY";
 
 export interface FieldViolation {
   field: string;
@@ -242,6 +439,12 @@ export interface IntelligenceServiceHandler {
   getCountryIntelBrief(ctx: ServerContext, req: GetCountryIntelBriefRequest): Promise<GetCountryIntelBriefResponse>;
   searchGdeltDocuments(ctx: ServerContext, req: SearchGdeltDocumentsRequest): Promise<SearchGdeltDocumentsResponse>;
   deductSituation(ctx: ServerContext, req: DeductSituationRequest): Promise<DeductSituationResponse>;
+  listSatellites(ctx: ServerContext, req: ListSatellitesRequest): Promise<ListSatellitesResponse>;
+  listGpsInterference(ctx: ServerContext, req: ListGpsInterferenceRequest): Promise<ListGpsInterferenceResponse>;
+  listOrefAlerts(ctx: ServerContext, req: ListOrefAlertsRequest): Promise<ListOrefAlertsResponse>;
+  listTelegramFeed(ctx: ServerContext, req: ListTelegramFeedRequest): Promise<ListTelegramFeedResponse>;
+  getCompanyEnrichment(ctx: ServerContext, req: GetCompanyEnrichmentRequest): Promise<GetCompanyEnrichmentResponse>;
+  listCompanySignals(ctx: ServerContext, req: ListCompanySignalsRequest): Promise<ListCompanySignalsResponse>;
   getCountryFacts(ctx: ServerContext, req: GetCountryFactsRequest): Promise<GetCountryFactsResponse>;
   listSecurityAdvisories(ctx: ServerContext, req: ListSecurityAdvisoriesRequest): Promise<ListSecurityAdvisoriesResponse>;
 }
@@ -515,6 +718,292 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.deductSituation(ctx, body);
           return new Response(JSON.stringify(result as DeductSituationResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-satellites",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListSatellitesRequest = {
+            country: params.get("country") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listSatellites", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSatellites(ctx, body);
+          return new Response(JSON.stringify(result as ListSatellitesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-gps-interference",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListGpsInterferenceRequest = {
+            region: params.get("region") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listGpsInterference", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listGpsInterference(ctx, body);
+          return new Response(JSON.stringify(result as ListGpsInterferenceResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-oref-alerts",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListOrefAlertsRequest = {
+            mode: params.get("mode") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listOrefAlerts", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listOrefAlerts(ctx, body);
+          return new Response(JSON.stringify(result as ListOrefAlertsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-telegram-feed",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListTelegramFeedRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+            topic: params.get("topic") ?? "",
+            channel: params.get("channel") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listTelegramFeed", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listTelegramFeed(ctx, body);
+          return new Response(JSON.stringify(result as ListTelegramFeedResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-company-enrichment",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCompanyEnrichmentRequest = {
+            domain: params.get("domain") ?? "",
+            name: params.get("name") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCompanyEnrichment", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCompanyEnrichment(ctx, body);
+          return new Response(JSON.stringify(result as GetCompanyEnrichmentResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-company-signals",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListCompanySignalsRequest = {
+            company: params.get("company") ?? "",
+            domain: params.get("domain") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listCompanySignals", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listCompanySignals(ctx, body);
+          return new Response(JSON.stringify(result as ListCompanySignalsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

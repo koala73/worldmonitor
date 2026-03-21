@@ -15,7 +15,7 @@ const FRED_KEY_PREFIX = 'economic:fred:v1';
 const FRED_TTL = 3600;
 const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
-const MACRO_TTL = 1800;
+const MACRO_TTL = 21600; // 6h — survive extended Yahoo outages
 
 const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO'];
 
@@ -234,6 +234,31 @@ function smaCalc(prices, period) {
   return slice.reduce((s, v) => s + v, 0) / period;
 }
 
+async function fetchFinnhubCandles(endpoint, symbol) {
+  const apiKey = process.env.FINNHUB_API_KEY;
+  if (!apiKey) return [];
+  const to = Math.floor(Date.now() / 1000);
+  const from = to - 365 * 86400;
+  try {
+    const url = `https://finnhub.io/api/v1/${endpoint}?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${to}&token=${apiKey}`;
+    const data = await fetchJsonSafe(url, 10_000);
+    return data.s === 'ok' && Array.isArray(data.c) ? data.c.filter((v) => v != null) : [];
+  } catch { return []; }
+}
+
+async function fetchFredJpyFallback() {
+  const apiKey = process.env.FRED_API_KEY;
+  if (!apiKey) return [];
+  try {
+    const params = new URLSearchParams({ series_id: 'DEXJPUS', api_key: apiKey, file_type: 'json', sort_order: 'desc', limit: '250' });
+    const data = await fetchJsonSafe(`https://api.stlouisfed.org/fred/series/observations?${params}`, 10_000);
+    return (data.observations || [])
+      .map((o) => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : v; })
+      .filter(Boolean)
+      .reverse();
+  } catch { return []; }
+}
+
 async function fetchMacroSignals() {
   const yahooBase = 'https://query1.finance.yahoo.com/v8/finance/chart';
 
@@ -251,11 +276,30 @@ async function fetchMacroSignals() {
     fetchJsonSafe('https://mempool.space/api/v1/mining/hashrate/1m'),
   ]);
 
-  const jpyPrices = jpyChart ? extractClosePrices(jpyChart) : [];
-  const btcPrices = btcChart ? extractClosePrices(btcChart) : [];
-  const btcAligned = btcChart ? extractAlignedPriceVolume(btcChart) : [];
-  const qqqPrices = qqqChart ? extractClosePrices(qqqChart) : [];
-  const xlpPrices = xlpChart ? extractClosePrices(xlpChart) : [];
+  let jpyPrices = jpyChart ? extractClosePrices(jpyChart) : [];
+  if (jpyPrices.length === 0) {
+    console.log('  JPY: Yahoo unavailable, falling back to FRED DEXJPUS');
+    jpyPrices = await fetchFredJpyFallback();
+  }
+
+  let btcPrices = btcChart ? extractClosePrices(btcChart) : [];
+  let btcAligned = btcChart ? extractAlignedPriceVolume(btcChart) : [];
+  if (btcPrices.length === 0) {
+    console.log('  BTC: Yahoo unavailable, falling back to Finnhub crypto/candle');
+    btcPrices = await fetchFinnhubCandles('crypto/candle', 'BINANCE:BTCUSDT');
+  }
+
+  let qqqPrices = qqqChart ? extractClosePrices(qqqChart) : [];
+  if (qqqPrices.length === 0) {
+    console.log('  QQQ: Yahoo unavailable, falling back to Finnhub stock/candle');
+    qqqPrices = await fetchFinnhubCandles('stock/candle', 'QQQ');
+  }
+
+  let xlpPrices = xlpChart ? extractClosePrices(xlpChart) : [];
+  if (xlpPrices.length === 0) {
+    console.log('  XLP: Yahoo unavailable, falling back to Finnhub stock/candle');
+    xlpPrices = await fetchFinnhubCandles('stock/candle', 'XLP');
+  }
 
   const jpyRoc30 = rateOfChange(jpyPrices, 30);
   const liquidityStatus = jpyRoc30 !== null ? (jpyRoc30 < -2 ? 'SQUEEZE' : 'NORMAL') : 'UNKNOWN';

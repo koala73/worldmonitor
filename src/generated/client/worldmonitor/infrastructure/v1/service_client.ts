@@ -86,6 +86,37 @@ export interface BaselineStats {
   sampleCount: number;
 }
 
+export interface GetIpGeoRequest {
+}
+
+export interface GetIpGeoResponse {
+  country: string;
+  region: string;
+  city: string;
+}
+
+export interface ReverseGeocodeRequest {
+  lat: number;
+  lon: number;
+}
+
+export interface ReverseGeocodeResponse {
+  country: string;
+  code: string;
+  displayName: string;
+  error: string;
+}
+
+export interface GetBootstrapDataRequest {
+  tier: string;
+  keys: string[];
+}
+
+export interface GetBootstrapDataResponse {
+  data: Record<string, string>;
+  missing: string[];
+}
+
 export interface RecordBaselineSnapshotRequest {
   updates: BaselineUpdate[];
 }
@@ -276,6 +307,81 @@ export class InfrastructureServiceClient {
     }
 
     return await resp.json() as GetTemporalBaselineResponse;
+  }
+
+  async getIpGeo(req: GetIpGeoRequest, options?: InfrastructureServiceCallOptions): Promise<GetIpGeoResponse> {
+    let path = "/api/infrastructure/v1/get-ip-geo";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetIpGeoResponse;
+  }
+
+  async reverseGeocode(req: ReverseGeocodeRequest, options?: InfrastructureServiceCallOptions): Promise<ReverseGeocodeResponse> {
+    let path = "/api/infrastructure/v1/reverse-geocode";
+    const params = new URLSearchParams();
+    if (req.lat != null && req.lat !== 0) params.set("lat", String(req.lat));
+    if (req.lon != null && req.lon !== 0) params.set("lon", String(req.lon));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ReverseGeocodeResponse;
+  }
+
+  async getBootstrapData(req: GetBootstrapDataRequest, options?: InfrastructureServiceCallOptions): Promise<GetBootstrapDataResponse> {
+    let path = "/api/infrastructure/v1/get-bootstrap-data";
+    const params = new URLSearchParams();
+    if (req.tier != null && req.tier !== "") params.set("tier", String(req.tier));
+    if (req.keys != null && req.keys !== "") params.set("keys", String(req.keys));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetBootstrapDataResponse;
   }
 
   async recordBaselineSnapshot(req: RecordBaselineSnapshotRequest, options?: InfrastructureServiceCallOptions): Promise<RecordBaselineSnapshotResponse> {

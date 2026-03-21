@@ -185,6 +185,21 @@ export interface PositionSample {
   observedAt: number;
 }
 
+export interface GetYoutubeLiveStreamInfoRequest {
+  channel: string;
+  videoId: string;
+}
+
+export interface GetYoutubeLiveStreamInfoResponse {
+  videoId: string;
+  isLive: boolean;
+  channelExists: boolean;
+  channelName: string;
+  hlsUrl: string;
+  title: string;
+  error: string;
+}
+
 export interface SearchFlightPricesRequest {
   origin: string;
   destination: string;
@@ -474,6 +489,32 @@ export class AviationServiceClient {
     }
 
     return await resp.json() as TrackAircraftResponse;
+  }
+
+  async getYoutubeLiveStreamInfo(req: GetYoutubeLiveStreamInfoRequest, options?: AviationServiceCallOptions): Promise<GetYoutubeLiveStreamInfoResponse> {
+    let path = "/api/aviation/v1/get-youtube-live-stream-info";
+    const params = new URLSearchParams();
+    if (req.channel != null && req.channel !== "") params.set("channel", String(req.channel));
+    if (req.videoId != null && req.videoId !== "") params.set("video_id", String(req.videoId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetYoutubeLiveStreamInfoResponse;
   }
 
   async searchFlightPrices(req: SearchFlightPricesRequest, options?: AviationServiceCallOptions): Promise<SearchFlightPricesResponse> {

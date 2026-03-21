@@ -8,7 +8,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetRiskScores
-            description: GetRiskScores retrieves composite instability and strategic risk assessments.
+            description: GetRiskScores retrieves composite risk scores and strategic assessments.
             operationId: GetRiskScores
             parameters:
                 - name: region
@@ -41,7 +41,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetPizzintStatus
-            description: GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension pair data.
+            description: GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension data.
             operationId: GetPizzintStatus
             parameters:
                 - name: include_gdelt
@@ -74,7 +74,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ClassifyEvent
-            description: ClassifyEvent classifies a real-world event using AI (Groq).
+            description: ClassifyEvent analyzes a news event using AI models.
             operationId: ClassifyEvent
             parameters:
                 - name: title
@@ -125,7 +125,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryIntelBrief
-            description: GetCountryIntelBrief generates an AI intelligence brief for a country (OpenRouter).
+            description: GetCountryIntelBrief generates a strategic brief for a specific country.
             operationId: GetCountryIntelBrief
             parameters:
                 - name: country_code
@@ -158,7 +158,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: SearchGdeltDocuments
-            description: SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
+            description: SearchGdeltDocuments searches the GDELT GKG API for relevant documentation.
             operationId: SearchGdeltDocuments
             parameters:
                 - name: query
@@ -218,7 +218,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: DeductSituation
-            description: DeductSituation performs AI-powered situational analysis and deduction.
+            description: DeductSituation performs broad situational analysis using LLMs.
             operationId: DeductSituation
             requestBody:
                 content:
@@ -233,6 +233,225 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/DeductSituationResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-satellites:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListSatellites
+            description: ListSatellites retrieves current orbital positions and metadata.
+            operationId: ListSatellites
+            parameters:
+                - name: country
+                  in: query
+                  description: Filter by country code. Empty returns all.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSatellitesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-gps-interference:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListGpsInterference
+            description: ListGpsInterference retrieves detected GPS/GNSS interference data (jamming).
+            operationId: ListGpsInterference
+            parameters:
+                - name: region
+                  in: query
+                  description: Optional region filter.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListGpsInterferenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-oref-alerts:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListOrefAlerts
+            description: ListOrefAlerts retrieves Israeli Home Front Command alerts (Red Alerts).
+            operationId: ListOrefAlerts
+            parameters:
+                - name: mode
+                  in: query
+                  description: Mode selection. MODE_UNSPECIFIED defaults to active alerts.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListOrefAlertsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-telegram-feed:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListTelegramFeed
+            description: ListTelegramFeed retrieves real-time OSINT messages from monitored Telegram channels.
+            operationId: ListTelegramFeed
+            parameters:
+                - name: limit
+                  in: query
+                  description: Maximum number of messages to return (default 50).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: topic
+                  in: query
+                  description: Filter by topic keyword (e.g. "military", "cyber").
+                  required: false
+                  schema:
+                    type: string
+                - name: channel
+                  in: query
+                  description: Filter by specific channel ID or name.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListTelegramFeedResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-company-enrichment:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCompanyEnrichment
+            description: GetCompanyEnrichment aggregates company data from multiple public sources (GitHub, SEC, HN).
+            operationId: GetCompanyEnrichment
+            parameters:
+                - name: domain
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: name
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCompanyEnrichmentResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-company-signals:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListCompanySignals
+            description: ListCompanySignals discovers activity signals for a company from public sources.
+            operationId: ListCompanySignals
+            parameters:
+                - name: company
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: domain
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCompanySignalsResponse'
                 "400":
                     description: Validation error
                     content:
@@ -785,6 +1004,470 @@ components:
                     type: string
                 provider:
                     type: string
+        ListSatellitesRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: Filter by country code. Empty returns all.
+            description: ListSatellitesRequest specifies filters for orbital data.
+        ListSatellitesResponse:
+            type: object
+            properties:
+                satellites:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Satellite'
+            description: ListSatellitesResponse contains the current orbital snapshot.
+        Satellite:
+            type: object
+            properties:
+                id:
+                    type: string
+                    minLength: 1
+                    description: NORAD identifier (e.g., "25544").
+                name:
+                    type: string
+                    description: Name of the satellite.
+                country:
+                    type: string
+                    description: ISO country code of the operator/owner.
+                type:
+                    type: string
+                    description: Purpose category (e.g., "sar", "optical", "military").
+                alt:
+                    type: number
+                    format: double
+                    description: Orbital altitude in kilometers.
+                velocity:
+                    type: number
+                    format: double
+                    description: Velocity in km/s.
+                inclination:
+                    type: number
+                    format: double
+                    description: Orbital inclination in degrees.
+                line1:
+                    type: string
+                    description: TLE line 1.
+                line2:
+                    type: string
+                    description: TLE line 2.
+            required:
+                - id
+            description: Satellite represents an orbital asset tracked by WorldMonitor.
+        ListGpsInterferenceRequest:
+            type: object
+            properties:
+                region:
+                    type: string
+                    description: Optional region filter.
+            description: ListGpsInterferenceRequest specifies filters for GPS interference data.
+        ListGpsInterferenceResponse:
+            type: object
+            properties:
+                hexes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GpsJamHex'
+                stats:
+                    $ref: '#/components/schemas/GpsJamStats'
+                source:
+                    type: string
+                    description: Data source name.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Data fetch time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ListGpsInterferenceResponse contains GPS interference data and stats.
+        GpsJamHex:
+            type: object
+            properties:
+                h3:
+                    type: string
+                    minLength: 1
+                    description: H3 index of the hexagon.
+                lat:
+                    type: number
+                    format: double
+                    description: Centroid latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Centroid longitude.
+                level:
+                    type: string
+                    enum:
+                        - INTERFERENCE_LEVEL_UNSPECIFIED
+                        - INTERFERENCE_LEVEL_LOW
+                        - INTERFERENCE_LEVEL_MEDIUM
+                        - INTERFERENCE_LEVEL_HIGH
+                    description: InterferenceLevel represents the severity of detected signal interference.
+                npAvg:
+                    type: number
+                    format: double
+                    description: Average Navigation Precision (np) - lower means more interference.
+                sampleCount:
+                    type: integer
+                    format: int32
+                    description: Number of samples in this hex.
+                aircraftCount:
+                    type: integer
+                    format: int32
+                    description: Number of unique aircraft that reported in this hex.
+            required:
+                - h3
+            description: GpsJamHex represents a geographic hexagon with detected GPS interference.
+        GpsJamStats:
+            type: object
+            properties:
+                totalHexes:
+                    type: integer
+                    format: int32
+                highCount:
+                    type: integer
+                    format: int32
+                mediumCount:
+                    type: integer
+                    format: int32
+            description: GpsJamStats contains aggregate statistics for GPS interference.
+        ListOrefAlertsRequest:
+            type: object
+            properties:
+                mode:
+                    type: string
+                    enum:
+                        - MODE_UNSPECIFIED
+                        - MODE_HISTORY
+            description: Request to fetch Israeli Red Alerts (OREF).
+        ListOrefAlertsResponse:
+            type: object
+            properties:
+                configured:
+                    type: boolean
+                    description: Whether the OREF bridge is configured.
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OrefAlert'
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OrefWave'
+                historyCount24h:
+                    type: integer
+                    format: int32
+                    description: Number of alerts in the last 24 hours.
+                totalHistoryCount:
+                    type: integer
+                    format: int32
+                    description: Total alerts in the historical buffer.
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds of the response generation.. Warning: Values > 2^53 may lose precision in JavaScript'
+                error:
+                    type: string
+                    description: Optional error message from the relay.
+            description: OREF alert wave snapshot.
+        OrefAlert:
+            type: object
+            properties:
+                id:
+                    type: string
+                cat:
+                    type: string
+                title:
+                    type: string
+                data:
+                    type: array
+                    items:
+                        type: string
+                desc:
+                    type: string
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds for when the alert was issued.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: A single Red Alert event.
+        OrefWave:
+            type: object
+            properties:
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OrefAlert'
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds for this wave.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: A wave of alerts occurring at the same time.
+        ListTelegramFeedRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum number of messages to return (default 50).
+                topic:
+                    type: string
+                    description: Filter by topic keyword (e.g. "military", "cyber").
+                channel:
+                    type: string
+                    description: Filter by specific channel ID or name.
+            description: Request to fetch real-time Telegram OSINT feed.
+        ListTelegramFeedResponse:
+            type: object
+            properties:
+                enabled:
+                    type: boolean
+                    description: Whether the bridge is currently active.
+                messages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TelegramMessage'
+                count:
+                    type: integer
+                    format: int32
+                    description: Total count of messages in the current window.
+                error:
+                    type: string
+                    description: Detailed error message if the fetch failed.
+            description: OSINT feed containing validated Telegram messages.
+        TelegramMessage:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique message identifier.
+                channelId:
+                    type: string
+                    description: Identifier of the originating channel.
+                channelName:
+                    type: string
+                    description: Human-readable name of the channel.
+                text:
+                    type: string
+                    description: Sanitized message content.
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds for when the message was posted.. Warning: Values > 2^53 may lose precision in JavaScript'
+                mediaUrls:
+                    type: array
+                    items:
+                        type: string
+                        description: Direct links to associated media (images, videos).
+                sourceUrl:
+                    type: string
+                    description: Link to the original post on Telegram.
+                topic:
+                    type: string
+                    description: Auto-classified topic based on content.
+            description: Validated OSINT post from Telegram channels.
+        GetCompanyEnrichmentRequest:
+            type: object
+            properties:
+                domain:
+                    type: string
+                name:
+                    type: string
+            description: |-
+                Request to fetch enrichment data for a company.
+                 Requires either domain (e.g. "github.com") or name (e.g. "GitHub").
+        GetCompanyEnrichmentResponse:
+            type: object
+            properties:
+                company:
+                    $ref: '#/components/schemas/EnrichedCompany'
+                github:
+                    $ref: '#/components/schemas/EnrichedGithub'
+                techStack:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TechStackItem'
+                secFilings:
+                    $ref: '#/components/schemas/SecFilings'
+                hackerNewsMentions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/HNMention'
+                enrichedAtMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds when this data was fetched.. Warning: Values > 2^53 may lose precision in JavaScript'
+                sources:
+                    type: array
+                    items:
+                        type: string
+                        description: List of sources successfully reached (e.g. "github", "sec_edgar").
+            description: Aggregated company data from multiple public sources.
+        EnrichedCompany:
+            type: object
+            properties:
+                name:
+                    type: string
+                domain:
+                    type: string
+                description:
+                    type: string
+                location:
+                    type: string
+                website:
+                    type: string
+                founded:
+                    type: integer
+                    format: int32
+        EnrichedGithub:
+            type: object
+            properties:
+                publicRepos:
+                    type: integer
+                    format: int32
+                followers:
+                    type: integer
+                    format: int32
+                avatarUrl:
+                    type: string
+        TechStackItem:
+            type: object
+            properties:
+                name:
+                    type: string
+                category:
+                    type: string
+                confidence:
+                    type: number
+                    format: float
+        SecFilings:
+            type: object
+            properties:
+                totalFilings:
+                    type: integer
+                    format: int32
+                recentFilings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SecFiling'
+        SecFiling:
+            type: object
+            properties:
+                form:
+                    type: string
+                fileDate:
+                    type: string
+                description:
+                    type: string
+        HNMention:
+            type: object
+            properties:
+                title:
+                    type: string
+                url:
+                    type: string
+                points:
+                    type: integer
+                    format: int32
+                comments:
+                    type: integer
+                    format: int32
+                createdAtMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds when the post was created.. Warning: Values > 2^53 may lose precision in JavaScript'
+        ListCompanySignalsRequest:
+            type: object
+            properties:
+                company:
+                    type: string
+                domain:
+                    type: string
+            description: Request to discover and classify company signals (hiring, funding, tech changes).
+        ListCompanySignalsResponse:
+            type: object
+            properties:
+                company:
+                    type: string
+                domain:
+                    type: string
+                signals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CompanySignal'
+                summary:
+                    $ref: '#/components/schemas/SignalSummary'
+                discoveredAtMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds when signals were discovered.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: Discovered company signals with classification and engagement metrics.
+        CompanySignal:
+            type: object
+            properties:
+                type:
+                    type: string
+                    description: Classification type (e.g. "Hiring", "Product Launch", "Expansion").
+                title:
+                    type: string
+                url:
+                    type: string
+                source:
+                    type: string
+                sourceTier:
+                    type: integer
+                    format: int32
+                    description: Data quality tier (1 is authoritative, 5 is low confidence).
+                timestampMs:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds of the event occurrence.. Warning: Values > 2^53 may lose precision in JavaScript'
+                strength:
+                    type: string
+                    description: Qualitative strength of the signal (e.g. "Strong", "Emerging").
+                engagement:
+                    $ref: '#/components/schemas/SignalEngagement'
+        SignalEngagement:
+            type: object
+            properties:
+                points:
+                    type: integer
+                    format: int32
+                comments:
+                    type: integer
+                    format: int32
+                stars:
+                    type: integer
+                    format: int32
+                forks:
+                    type: integer
+                    format: int32
+                mentions:
+                    type: integer
+                    format: int32
+        SignalSummary:
+            type: object
+            properties:
+                totalSignals:
+                    type: integer
+                    format: int32
+                byType:
+                    type: object
+                    additionalProperties:
+                        type: integer
+                        format: int32
+                strongestSignal:
+                    $ref: '#/components/schemas/CompanySignal'
+                signalDiversity:
+                    type: integer
+                    format: int32
+        ByTypeEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: integer
+                    format: int32
         GetCountryFactsRequest:
             type: object
             properties:

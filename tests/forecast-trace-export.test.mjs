@@ -369,6 +369,93 @@ describe('forecast trace artifact builder', () => {
   });
 });
 
+describe('market transmission macro state', () => {
+  it('uses FRED macro series to form world signals, rebalance market buckets, and keep market consequences selective', () => {
+    const fredSeries = (seriesId, observations) => ({
+      seriesId,
+      title: seriesId,
+      observations: observations.map(([date, value]) => ({ date, value })),
+    });
+
+    const conflict = makePrediction('conflict', 'Middle East', 'Hormuz escalation risk', 0.73, 0.64, '7d', [
+      { type: 'cii', value: 'Regional posture elevated', weight: 0.4 },
+      { type: 'news', value: 'Hormuz pressure rising', weight: 0.25 },
+    ]);
+    buildForecastCase(conflict);
+
+    const supply = makePrediction('supply_chain', 'Red Sea', 'Red Sea freight disruption', 0.69, 0.61, '7d', [
+      { type: 'chokepoint', value: 'Red Sea disruption detected', weight: 0.45 },
+      { type: 'shipping', value: 'Freight costs rising', weight: 0.25 },
+    ]);
+    buildForecastCase(supply);
+
+    const political = makePrediction('political', 'United States', 'US sovereign risk repricing', 0.58, 0.56, '30d', [
+      { type: 'macro', value: 'Rates and volatility remain elevated', weight: 0.3 },
+    ]);
+    buildForecastCase(political);
+
+    populateFallbackNarratives([conflict, supply, political]);
+
+    const worldState = buildForecastRunWorldState({
+      predictions: [conflict, supply, political],
+      inputs: {
+        shippingRates: {
+          indices: [
+            { indexId: 'wci-red-sea', name: 'Red Sea Freight Index', changePct: 11.4, spikeAlert: true },
+          ],
+        },
+        commodityQuotes: {
+          quotes: [
+            { symbol: 'CL=F', name: 'WTI Crude Oil', price: 87.4, change: 3.1 },
+          ],
+        },
+        fredSeries: {
+          VIXCLS: fredSeries('VIXCLS', [['2026-02-01', 18.2], ['2026-03-01', 23.4]]),
+          FEDFUNDS: fredSeries('FEDFUNDS', [['2026-02-01', 4.25], ['2026-03-01', 4.50]]),
+          T10Y2Y: fredSeries('T10Y2Y', [['2025-12-01', 0.55], ['2026-03-01', 0.08]]),
+          CPIAUCSL: fredSeries('CPIAUCSL', [
+            ['2025-03-01', 312.0],
+            ['2025-04-01', 312.6],
+            ['2025-05-01', 313.1],
+            ['2025-06-01', 313.8],
+            ['2025-07-01', 314.4],
+            ['2025-08-01', 315.1],
+            ['2025-09-01', 315.8],
+            ['2025-10-01', 316.2],
+            ['2025-11-01', 317.0],
+            ['2025-12-01', 318.2],
+            ['2026-01-01', 319.3],
+            ['2026-02-01', 320.6],
+            ['2026-03-01', 321.8],
+          ]),
+          UNRATE: fredSeries('UNRATE', [['2025-12-01', 3.9], ['2026-03-01', 4.2]]),
+          DGS10: fredSeries('DGS10', [['2026-02-01', 4.02], ['2026-03-01', 4.21]]),
+          WALCL: fredSeries('WALCL', [['2025-12-01', 6950], ['2026-03-01', 6760]]),
+          M2SL: fredSeries('M2SL', [['2025-09-01', 21400], ['2026-03-01', 21880]]),
+          GDP: fredSeries('GDP', [['2025-10-01', 28900], ['2026-01-01', 28940]]),
+          DCOILWTICO: fredSeries('DCOILWTICO', [['2026-01-20', 74.8], ['2026-03-01', 86.6]]),
+        },
+      },
+    });
+
+    const signalTypes = new Set((worldState.worldSignals?.signals || []).map((item) => item.type));
+    assert.ok(signalTypes.has('volatility_shock'));
+    assert.ok(signalTypes.has('yield_curve_stress'));
+    assert.ok(signalTypes.has('inflation_impulse'));
+    assert.ok(signalTypes.has('oil_macro_shock'));
+
+    const buckets = new Map((worldState.marketState?.buckets || []).map((bucket) => [bucket.id, bucket]));
+    assert.ok((buckets.get('energy')?.pressureScore || 0) > 0.4);
+    assert.ok((buckets.get('freight')?.pressureScore || 0) > 0.35);
+    assert.ok((buckets.get('sovereign_risk')?.pressureScore || 0) > 0.25);
+    assert.ok((buckets.get('rates_inflation')?.macroConfirmation || 0) > 0);
+
+    const marketConsequences = worldState.simulationState?.marketConsequences;
+    assert.ok((marketConsequences?.internalCount || 0) >= (marketConsequences?.items?.length || 0));
+    assert.ok((marketConsequences?.items?.length || 0) <= 8);
+  });
+});
+
 describe('forecast run world state', () => {
   it('builds a canonical run-level world state artifact', () => {
     const a = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.74, 0.64, '7d', [

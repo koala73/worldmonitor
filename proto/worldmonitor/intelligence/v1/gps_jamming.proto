@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+
+// GpsJamHex represents a geographic hexagon with detected GPS interference.
+message GpsJamHex {
+  // H3 index of the hexagon.
+  string h3 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Centroid latitude.
+  double lat = 2;
+  // Centroid longitude.
+  double lon = 3;
+  // Interference level.
+  InterferenceLevel level = 4;
+  // Average Navigation Precision (np) - lower means more interference.
+  double np_avg = 5;
+  // Number of samples in this hex.
+  int32 sample_count = 6;
+  // Number of unique aircraft that reported in this hex.
+  int32 aircraft_count = 7;
+}
+
+// InterferenceLevel represents the severity of detected signal interference.
+enum InterferenceLevel {
+  INTERFERENCE_LEVEL_UNSPECIFIED = 0;
+  INTERFERENCE_LEVEL_LOW = 1;
+  INTERFERENCE_LEVEL_MEDIUM = 2;
+  INTERFERENCE_LEVEL_HIGH = 3;
+}
+
+// GpsJamStats contains aggregate statistics for GPS interference.
+message GpsJamStats {
+  int32 total_hexes = 1;
+  int32 high_count = 2;
+  int32 medium_count = 3;
+}

@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ReverseGeocodeRequest parameters for coordinate-to-address lookups.
+message ReverseGeocodeRequest {
+  double lat = 1 [(sebuf.http.query) = {name: "lat"}];
+  double lon = 2 [(sebuf.http.query) = {name: "lon"}];
+}
+
+// ReverseGeocodeResponse containing the resolved location details.
+message ReverseGeocodeResponse {
+  // Human-readable country name.
+  string country = 1;
+  // ISO country code.
+  string code = 2;
+  // Full display name/address.
+  string display_name = 3;
+  // Optional error message.
+  string error = 4;
+}

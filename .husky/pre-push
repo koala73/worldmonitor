@@ -7,7 +7,7 @@ fi
 echo "Checking PR status for current branch..."
 BRANCH=$(git branch --show-current)
 if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
-  PR_STATE=$(gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null)
+  PR_STATE=$(gh pr view "$BRANCH" --json state --jq '.state' 2>&1)
   if [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ]; then
     echo ""
     echo "============================================================"
@@ -17,6 +17,7 @@ if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; the
     echo "============================================================"
     exit 1
   fi
+  echo "  Branch PR state: ${PR_STATE:-unknown}"
 fi
 
 echo "Running type check..."

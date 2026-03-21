@@ -124,15 +124,78 @@ const MARKET_INPUT_KEYS = {
   correlationCards: 'correlation:cards-bootstrap:v1',
 };
 
+const FRED_MARKET_INPUT_KEYS = {
+  WALCL: 'economic:fred:v1:WALCL:0',
+  FEDFUNDS: 'economic:fred:v1:FEDFUNDS:0',
+  T10Y2Y: 'economic:fred:v1:T10Y2Y:0',
+  UNRATE: 'economic:fred:v1:UNRATE:0',
+  CPIAUCSL: 'economic:fred:v1:CPIAUCSL:0',
+  DGS10: 'economic:fred:v1:DGS10:0',
+  VIXCLS: 'economic:fred:v1:VIXCLS:0',
+  GDP: 'economic:fred:v1:GDP:0',
+  M2SL: 'economic:fred:v1:M2SL:0',
+  DCOILWTICO: 'economic:fred:v1:DCOILWTICO:0',
+};
+
+const FRED_MARKET_SERIES = Object.keys(FRED_MARKET_INPUT_KEYS);
+
 const MARKET_BUCKET_CONFIG = [
-  { id: 'energy', label: 'Energy', signalTypes: ['energy_supply_shock', 'commodity_repricing', 'inflation_impulse'] },
-  { id: 'freight', label: 'Freight', signalTypes: ['shipping_cost_shock', 'inflation_impulse'] },
-  { id: 'defense', label: 'Defense', signalTypes: ['security_escalation', 'defense_repricing'] },
-  { id: 'semis', label: 'Semiconductors', signalTypes: ['shipping_cost_shock', 'cyber_cost_repricing', 'infrastructure_capacity_loss'] },
-  { id: 'sovereign_risk', label: 'Sovereign Risk', signalTypes: ['security_escalation', 'sovereign_stress', 'risk_off_rotation'] },
-  { id: 'fx_stress', label: 'FX Stress', signalTypes: ['fx_stress', 'sovereign_stress', 'risk_off_rotation'] },
-  { id: 'rates_inflation', label: 'Rates and Inflation', signalTypes: ['policy_rate_pressure', 'inflation_impulse', 'energy_supply_shock', 'shipping_cost_shock'] },
-  { id: 'crypto_stablecoins', label: 'Crypto and Stablecoins', signalTypes: ['risk_off_rotation', 'fx_stress'] },
+  {
+    id: 'energy',
+    label: 'Energy',
+    signalTypes: ['energy_supply_shock', 'commodity_repricing', 'inflation_impulse', 'oil_macro_shock'],
+    signalWeights: { energy_supply_shock: 1.15, commodity_repricing: 0.92, inflation_impulse: 0.56, oil_macro_shock: 1.2 },
+    edgeWeight: 0.9,
+  },
+  {
+    id: 'freight',
+    label: 'Freight',
+    signalTypes: ['shipping_cost_shock', 'inflation_impulse'],
+    signalWeights: { shipping_cost_shock: 1.2, inflation_impulse: 0.58 },
+    edgeWeight: 1,
+  },
+  {
+    id: 'defense',
+    label: 'Defense',
+    signalTypes: ['security_escalation', 'defense_repricing'],
+    signalWeights: { security_escalation: 0.7, defense_repricing: 1.08 },
+    edgeWeight: 0.6,
+  },
+  {
+    id: 'semis',
+    label: 'Semiconductors',
+    signalTypes: ['shipping_cost_shock', 'cyber_cost_repricing', 'infrastructure_capacity_loss'],
+    signalWeights: { shipping_cost_shock: 0.84, cyber_cost_repricing: 1.02, infrastructure_capacity_loss: 0.9 },
+    edgeWeight: 0.7,
+  },
+  {
+    id: 'sovereign_risk',
+    label: 'Sovereign Risk',
+    signalTypes: ['security_escalation', 'sovereign_stress', 'risk_off_rotation', 'yield_curve_stress', 'volatility_shock', 'labor_softness'],
+    signalWeights: { security_escalation: 0.74, sovereign_stress: 1.12, risk_off_rotation: 0.9, yield_curve_stress: 0.8, volatility_shock: 0.95, labor_softness: 0.74 },
+    edgeWeight: 0.82,
+  },
+  {
+    id: 'fx_stress',
+    label: 'FX Stress',
+    signalTypes: ['fx_stress', 'sovereign_stress', 'risk_off_rotation', 'volatility_shock', 'policy_rate_pressure'],
+    signalWeights: { fx_stress: 1.15, sovereign_stress: 0.82, risk_off_rotation: 0.8, volatility_shock: 0.88, policy_rate_pressure: 0.72 },
+    edgeWeight: 0.72,
+  },
+  {
+    id: 'rates_inflation',
+    label: 'Rates and Inflation',
+    signalTypes: ['policy_rate_pressure', 'inflation_impulse', 'energy_supply_shock', 'shipping_cost_shock', 'yield_curve_stress', 'liquidity_withdrawal', 'oil_macro_shock'],
+    signalWeights: { policy_rate_pressure: 1.02, inflation_impulse: 1.06, energy_supply_shock: 0.72, shipping_cost_shock: 0.68, yield_curve_stress: 0.92, liquidity_withdrawal: 0.76, oil_macro_shock: 0.9 },
+    edgeWeight: 0.78,
+  },
+  {
+    id: 'crypto_stablecoins',
+    label: 'Crypto and Stablecoins',
+    signalTypes: ['risk_off_rotation', 'fx_stress', 'liquidity_expansion', 'liquidity_withdrawal'],
+    signalWeights: { risk_off_rotation: 0.74, fx_stress: 0.84, liquidity_expansion: 0.86, liquidity_withdrawal: 0.8 },
+    edgeWeight: 0.62,
+  },
 ];
 
 const REGION_MACRO_BUCKETS = {
@@ -266,6 +329,7 @@ async function warmPingChokepoints() {
 
 async function readInputKeys() {
   const { url, token } = getRedisCredentials();
+  const fredKeys = FRED_MARKET_SERIES.map((seriesId) => FRED_MARKET_INPUT_KEYS[seriesId]);
   const keys = [
     'risk:scores:sebuf:stale:v1',
     'temporal:anomalies:v1',
@@ -292,6 +356,7 @@ async function readInputKeys() {
     MARKET_INPUT_KEYS.bisPolicy,
     MARKET_INPUT_KEYS.shippingRates,
     MARKET_INPUT_KEYS.correlationCards,
+    ...fredKeys,
   ];
   const pipeline = keys.map(k => ['GET', k]);
   const resp = await fetch(`${url}/pipeline`, {
@@ -306,6 +371,9 @@ async function readInputKeys() {
   const parse = (i) => {
     try { return results[i]?.result ? JSON.parse(results[i].result) : null; } catch { return null; }
   };
+  const fredSeries = Object.fromEntries(
+    FRED_MARKET_SERIES.map((seriesId, offset) => [seriesId, parse(25 + offset)]).filter(([, value]) => value),
+  );
 
   return {
     ciiScores: parse(0),
@@ -333,6 +401,7 @@ async function readInputKeys() {
     bisPolicyRates: parse(22),
     shippingRates: parse(23),
     correlationCards: parse(24),
+    fredSeries,
   };
 }
 
@@ -3779,7 +3848,19 @@ function buildSimulationMarketConsequences(simulationState, marketState) {
         ((bucket.pressureScore || 0) * 0.3) +
         ((simulation.postureScore || 0) * 0.15)
       );
-      if (strength < 0.3) continue;
+      if (strength < 0.26) continue;
+      const confidence = clampUnitInterval(
+        ((simulation.marketContext?.topTransmissionConfidence || 0) * 0.4) +
+        ((bucket.confidence || 0) * 0.3) +
+        ((bucket.macroConfirmation || 0) * 0.15) +
+        ((simulation.avgConfidence || 0) * 0.15)
+      );
+      const reportableScore = clampUnitInterval(
+        (strength * 0.42) +
+        (confidence * 0.34) +
+        ((bucket.macroConfirmation || 0) * 0.16) +
+        Math.min(0.08, (simulation.marketContext?.linkedBucketIds || []).length * 0.04)
+      );
       consequences.push({
         id: `mktc-${hashSituationKey([simulation.situationId, bucketId])}`,
         situationId: simulation.situationId,
@@ -3792,11 +3873,9 @@ function buildSimulationMarketConsequences(simulationState, marketState) {
         targetBucketLabel: bucket.label,
         channel: simulation.marketContext?.topChannel || 'derived_transmission',
         strength: +strength.toFixed(3),
-        confidence: +clampUnitInterval(
-          ((simulation.marketContext?.topTransmissionConfidence || 0) * 0.45) +
-          ((bucket.confidence || 0) * 0.35) +
-          ((simulation.avgConfidence || 0) * 0.2)
-        ).toFixed(3),
+        confidence: +confidence.toFixed(3),
+        reportableScore: +reportableScore.toFixed(3),
+        macroConfirmation: Number(bucket.macroConfirmation || 0),
         summary: `${simulation.label} is exerting ${roundPct(strength)} pressure on ${bucket.label} via ${String(simulation.marketContext?.topChannel || 'derived transmission').replace(/_/g, ' ')}.`,
       });
     }
@@ -3805,18 +3884,57 @@ function buildSimulationMarketConsequences(simulationState, marketState) {
   const deduped = [];
   const seen = new Set();
   for (const item of consequences
-    .sort((a, b) => (b.strength + b.confidence) - (a.strength + a.confidence) || a.situationLabel.localeCompare(b.situationLabel))) {
+    .sort((a, b) => (b.reportableScore || 0) - (a.reportableScore || 0) || (b.strength + b.confidence) - (a.strength + a.confidence) || a.situationLabel.localeCompare(b.situationLabel))) {
     const key = `${item.situationId}:${item.targetBucketId}`;
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(item);
   }
 
+  const internalItems = deduped.slice(0, 32);
+  const reportableItems = [];
+  const usedBuckets = new Map();
+  const usedSituations = new Set();
+  for (const item of internalItems) {
+    const bucketCount = usedBuckets.get(item.targetBucketId) || 0;
+    const minScore = item.targetBucketId === 'energy' || item.targetBucketId === 'freight' || item.targetBucketId === 'sovereign_risk'
+      ? 0.4
+      : 0.52;
+    if ((item.reportableScore || 0) < minScore) continue;
+    if (
+      (item.macroConfirmation || 0) < 0.14
+      && ['energy', 'freight', 'sovereign_risk', 'rates_inflation', 'fx_stress'].includes(item.targetBucketId)
+      && !(
+        ['market', 'supply_chain'].includes(item.dominantDomain)
+        && (item.strength || 0) >= 0.4
+        && (item.confidence || 0) >= 0.4
+      )
+    ) continue;
+    if (usedSituations.has(item.situationId) && bucketCount >= 1) continue;
+    if (bucketCount >= 2) continue;
+    reportableItems.push(item);
+    usedSituations.add(item.situationId);
+    usedBuckets.set(item.targetBucketId, bucketCount + 1);
+    if (reportableItems.length >= 8) break;
+  }
+
+  if (reportableItems.length === 0) {
+    const fallback = internalItems.find((item) =>
+      ['market', 'supply_chain'].includes(item.dominantDomain)
+      && ['energy', 'freight', 'sovereign_risk', 'rates_inflation'].includes(item.targetBucketId)
+      && (item.reportableScore || 0) >= 0.3,
+    );
+    if (fallback) reportableItems.push(fallback);
+  }
+
   return {
-    summary: deduped.length
-      ? `${deduped.length} market consequences were derived from active situation-to-market transmission paths.`
+    summary: reportableItems.length
+      ? `${reportableItems.length} reportable market consequences were selected from ${internalItems.length} active situation-to-market transmission paths.`
       : 'No market consequences were derived from the current transmission graph.',
-    items: deduped.slice(0, 24),
+    internalCount: internalItems.length,
+    reportableCount: reportableItems.length,
+    internalItems,
+    items: reportableItems,
   };
 }
 
@@ -5643,6 +5761,45 @@ function extractCorrelationCards(payload) {
   return [];
 }
 
+function extractFredSeriesMap(payload) {
+  return payload && typeof payload === 'object' ? payload : {};
+}
+
+function extractFredObservations(series) {
+  return Array.isArray(series?.observations) ? series.observations : [];
+}
+
+function getFredLatestObservation(series) {
+  const observations = extractFredObservations(series);
+  return observations.length ? observations[observations.length - 1] : null;
+}
+
+function getFredLatestValue(series) {
+  const latest = getFredLatestObservation(series);
+  return Number.isFinite(Number(latest?.value)) ? Number(latest.value) : null;
+}
+
+function getFredLookbackValue(series, steps = 1) {
+  const observations = extractFredObservations(series);
+  if (observations.length <= steps) return null;
+  const value = Number(observations[observations.length - 1 - steps]?.value);
+  return Number.isFinite(value) ? value : null;
+}
+
+function getFredRelativeChange(series, steps = 1) {
+  const latest = getFredLatestValue(series);
+  const prior = getFredLookbackValue(series, steps);
+  if (!Number.isFinite(latest) || !Number.isFinite(prior) || prior === 0) return null;
+  return ((latest - prior) / Math.abs(prior)) * 100;
+}
+
+function getFredAbsoluteChange(series, steps = 1) {
+  const latest = getFredLatestValue(series);
+  const prior = getFredLookbackValue(series, steps);
+  if (!Number.isFinite(latest) || !Number.isFinite(prior)) return null;
+  return latest - prior;
+}
+
 function normalizeSignalStrength(value, min = 0, max = 1) {
   return +Math.max(0, Math.min(1, normalize(value, min, max))).toFixed(3);
 }
@@ -5687,6 +5844,7 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
   const bisExchange = extractRateItems(inputs?.bisExchangeRates);
   const bisPolicy = extractRateItems(inputs?.bisPolicyRates);
   const correlationCards = extractCorrelationCards(inputs?.correlationCards);
+  const fredSeries = extractFredSeriesMap(inputs?.fredSeries);
 
   for (const cp of chokepoints) {
     const region = resolveChokepointMarketRegion(cp) || cp.region || cp.name || '';
@@ -5872,6 +6030,164 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
     }));
   }
 
+  const vixSeries = fredSeries.VIXCLS;
+  const vixLatest = getFredLatestValue(vixSeries);
+  if (Number.isFinite(vixLatest) && vixLatest >= 18) {
+    signals.push(buildWorldSignal('volatility_shock', 'fred', `VIX moved to ${vixLatest.toFixed(1)}`, {
+      sourceKey: 'VIXCLS',
+      region: 'Global',
+      strength: normalizeSignalStrength(vixLatest, 17, 36),
+      confidence: 0.74,
+      domains: ['market'],
+      supportingEvidence: [`VIX latest ${vixLatest.toFixed(1)}`],
+    }));
+  }
+
+  const curveSeries = fredSeries.T10Y2Y;
+  const curveLatest = getFredLatestValue(curveSeries);
+  if (Number.isFinite(curveLatest) && curveLatest <= 0.4) {
+    signals.push(buildWorldSignal('yield_curve_stress', 'fred', `Yield-curve stress at ${curveLatest.toFixed(2)}`, {
+      sourceKey: 'T10Y2Y',
+      region: 'United States',
+      macroRegion: 'Americas',
+      strength: normalizeSignalStrength(0.45 - curveLatest, 0.05, 1.25),
+      confidence: 0.72,
+      domains: ['market', 'political'],
+      supportingEvidence: [`10Y-2Y spread ${curveLatest.toFixed(2)}`],
+    }));
+  }
+
+  const fedFundsSeries = fredSeries.FEDFUNDS;
+  const fedFundsLatest = getFredLatestValue(fedFundsSeries);
+  if (Number.isFinite(fedFundsLatest) && fedFundsLatest >= 3.25) {
+    signals.push(buildWorldSignal('policy_rate_pressure', 'fred', `Fed policy remains restrictive at ${fedFundsLatest.toFixed(2)}%`, {
+      sourceKey: 'FEDFUNDS',
+      region: 'United States',
+      macroRegion: 'Americas',
+      strength: normalizeSignalStrength(fedFundsLatest, 3.25, 6),
+      confidence: 0.74,
+      domains: ['market', 'political'],
+      supportingEvidence: [`Fed funds ${fedFundsLatest.toFixed(2)}%`],
+    }));
+  }
+
+  const dgs10Series = fredSeries.DGS10;
+  const dgs10Latest = getFredLatestValue(dgs10Series);
+  if (Number.isFinite(dgs10Latest) && dgs10Latest >= 4) {
+    signals.push(buildWorldSignal('policy_rate_pressure', 'fred', `10Y Treasury yield at ${dgs10Latest.toFixed(2)}%`, {
+      sourceKey: 'DGS10',
+      region: 'United States',
+      macroRegion: 'Americas',
+      strength: normalizeSignalStrength(dgs10Latest, 4, 5.5),
+      confidence: 0.68,
+      domains: ['market'],
+      supportingEvidence: [`10Y Treasury ${dgs10Latest.toFixed(2)}%`],
+    }));
+  }
+
+  const cpiSeries = fredSeries.CPIAUCSL;
+  const cpiYoY = getFredRelativeChange(cpiSeries, 12);
+  if (Number.isFinite(cpiYoY) && cpiYoY >= 2.4) {
+    signals.push(buildWorldSignal('inflation_impulse', 'fred', `Consumer inflation is running near ${cpiYoY.toFixed(1)}% year-on-year`, {
+      sourceKey: 'CPIAUCSL',
+      region: 'United States',
+      macroRegion: 'Americas',
+      strength: normalizeSignalStrength(cpiYoY, 2.4, 6.5),
+      confidence: 0.76,
+      domains: ['market', 'political'],
+      supportingEvidence: [`CPI year-on-year ${cpiYoY.toFixed(1)}%`],
+    }));
+  }
+
+  const unemploymentSeries = fredSeries.UNRATE;
+  const unemploymentLatest = getFredLatestValue(unemploymentSeries);
+  const unemploymentDelta = getFredAbsoluteChange(unemploymentSeries, 3);
+  if ((Number.isFinite(unemploymentLatest) && unemploymentLatest >= 4.1) || (Number.isFinite(unemploymentDelta) && unemploymentDelta >= 0.2)) {
+    signals.push(buildWorldSignal('labor_softness', 'fred', `Labor-market softness at ${Number(unemploymentLatest || 0).toFixed(1)}% unemployment`, {
+      sourceKey: 'UNRATE',
+      region: 'United States',
+      macroRegion: 'Americas',
+      strength: normalizeSignalStrength(Math.max(Number(unemploymentLatest || 0), (Number(unemploymentDelta || 0) * 10)), 4, 6.2),
+      confidence: 0.66,
+      domains: ['market', 'political'],
+      supportingEvidence: [
+        `Unemployment ${Number(unemploymentLatest || 0).toFixed(1)}%`,
+        Number.isFinite(unemploymentDelta) ? `3-month change ${unemploymentDelta.toFixed(1)} points` : '',
+      ].filter(Boolean),
+    }));
+  }
+
+  const walclSeries = fredSeries.WALCL;
+  const walclChange = getFredRelativeChange(walclSeries, 13);
+  if (Number.isFinite(walclChange) && Math.abs(walclChange) >= 1.5) {
+    const liquidityType = walclChange > 0 ? 'liquidity_expansion' : 'liquidity_withdrawal';
+    signals.push(buildWorldSignal(liquidityType, 'fred', walclChange > 0 ? 'Fed balance sheet expansion' : 'Fed balance sheet contraction', {
+      sourceKey: 'WALCL',
+      region: 'United States',
+      macroRegion: 'Americas',
+      strength: normalizeSignalStrength(Math.abs(walclChange), 1.5, 8),
+      confidence: 0.66,
+      domains: ['market'],
+      supportingEvidence: [`WALCL 13-week change ${walclChange.toFixed(1)}%`],
+    }));
+  }
+
+  const m2Series = fredSeries.M2SL;
+  const m2Change = getFredRelativeChange(m2Series, 6);
+  if (Number.isFinite(m2Change) && Math.abs(m2Change) >= 1.5) {
+    const liquidityType = m2Change > 0 ? 'liquidity_expansion' : 'liquidity_withdrawal';
+    signals.push(buildWorldSignal(liquidityType, 'fred', m2Change > 0 ? 'Money supply expansion' : 'Money supply contraction', {
+      sourceKey: 'M2SL',
+      region: 'United States',
+      macroRegion: 'Americas',
+      strength: normalizeSignalStrength(Math.abs(m2Change), 1.5, 8),
+      confidence: 0.6,
+      domains: ['market'],
+      supportingEvidence: [`M2 6-month change ${m2Change.toFixed(1)}%`],
+    }));
+  }
+
+  const oilSeries = fredSeries.DCOILWTICO;
+  const oilLatest = getFredLatestValue(oilSeries);
+  const oilChange = getFredRelativeChange(oilSeries, 20);
+  if ((Number.isFinite(oilLatest) && oilLatest >= 80) || (Number.isFinite(oilChange) && oilChange >= 8)) {
+    signals.push(buildWorldSignal('oil_macro_shock', 'fred', `WTI oil pressure at ${Number(oilLatest || 0).toFixed(1)}`, {
+      sourceKey: 'DCOILWTICO',
+      region: 'Middle East',
+      macroRegion: 'EMEA',
+      strength: normalizeSignalStrength(Math.max(Number(oilLatest || 0), Math.abs(Number(oilChange || 0)) * 4), 75, 110),
+      confidence: 0.8,
+      domains: ['market', 'supply_chain'],
+      supportingEvidence: [
+        Number.isFinite(oilLatest) ? `WTI ${oilLatest.toFixed(1)}` : '',
+        Number.isFinite(oilChange) ? `20-session change ${oilChange.toFixed(1)}%` : '',
+      ].filter(Boolean),
+    }));
+    signals.push(buildWorldSignal('energy_supply_shock', 'fred', `WTI crude is reinforcing energy stress at ${Number(oilLatest || 0).toFixed(1)}`, {
+      sourceKey: 'DCOILWTICO',
+      region: 'Middle East',
+      macroRegion: 'EMEA',
+      strength: normalizeSignalStrength(Math.max(Number(oilLatest || 0), Math.abs(Number(oilChange || 0)) * 4), 75, 110),
+      confidence: 0.72,
+      domains: ['market', 'supply_chain'],
+      supportingEvidence: [`WTI is confirming energy transmission pressure`],
+    }));
+  }
+
+  const gdpSeries = fredSeries.GDP;
+  const gdpChange = getFredRelativeChange(gdpSeries, 1);
+  if (Number.isFinite(gdpChange) && gdpChange <= 0.2) {
+    signals.push(buildWorldSignal('sovereign_stress', 'fred', 'Growth is slowing into sovereign-risk conditions', {
+      sourceKey: 'GDP',
+      region: 'United States',
+      macroRegion: 'Americas',
+      strength: normalizeSignalStrength(0.25 - gdpChange, 0.05, 1.5),
+      confidence: 0.58,
+      domains: ['market', 'political'],
+      supportingEvidence: [`Quarterly GDP change ${gdpChange.toFixed(2)}%`],
+    }));
+  }
+
   for (const pred of predictions) {
     if ((pred.domain === 'conflict' || pred.domain === 'military') && (pred.probability || 0) >= 0.55) {
       signals.push(buildWorldSignal('security_escalation', 'forecast', pred.title, {
@@ -6015,31 +6331,52 @@ function buildMarketState(worldSignals, transmissionGraph) {
   const buckets = MARKET_BUCKET_CONFIG.map((config) => {
     const bucketSignals = signals.filter((signal) => config.signalTypes.includes(signal.type));
     const bucketEdges = transmissionEdges.filter((edge) => edge.targetBucketId === config.id);
-    const pressureNumerator = bucketSignals.reduce((sum, signal) => sum + signal.strength, 0)
-      + bucketEdges.reduce((sum, edge) => sum + edge.strength, 0);
-    const confidenceNumerator = bucketSignals.reduce((sum, signal) => sum + signal.confidence, 0)
-      + bucketEdges.reduce((sum, edge) => sum + edge.confidence, 0);
-    const divisor = Math.max(1, bucketSignals.length + bucketEdges.length);
-    const pressureScore = +Math.min(1, pressureNumerator / divisor).toFixed(3);
-    const confidence = +Math.min(1, confidenceNumerator / divisor).toFixed(3);
+    const weightedSignals = bucketSignals.map((signal) => ({
+      ...signal,
+      bucketWeight: Number(config.signalWeights?.[signal.type] || 1),
+    }));
+    const macroSignals = weightedSignals.filter((signal) => signal.sourceType === 'fred' || signal.sourceType === 'bis_policy' || signal.sourceType === 'bis_exchange');
+    const pressureNumerator = weightedSignals.reduce((sum, signal) => sum + (signal.strength * signal.bucketWeight), 0)
+      + bucketEdges.reduce((sum, edge) => sum + (edge.strength * Number(config.edgeWeight || 1)), 0);
+    const confidenceNumerator = weightedSignals.reduce((sum, signal) => sum + (signal.confidence * signal.bucketWeight), 0)
+      + bucketEdges.reduce((sum, edge) => sum + (edge.confidence * Number(config.edgeWeight || 1)), 0);
+    const divisor = Math.max(
+      1,
+      weightedSignals.reduce((sum, signal) => sum + signal.bucketWeight, 0) + (bucketEdges.length * Number(config.edgeWeight || 1)),
+    );
+    const macroConfirmation = macroSignals.length
+      ? clampUnitInterval(macroSignals.reduce((sum, signal) => sum + signal.strength, 0) / macroSignals.length)
+      : 0;
+    const pressureScore = +Math.min(1, (pressureNumerator / divisor) + (macroConfirmation * 0.12)).toFixed(3);
+    const confidence = +Math.min(1, (confidenceNumerator / divisor) + Math.min(0.08, macroSignals.length * 0.02)).toFixed(3);
     return {
       id: config.id,
       label: config.label,
       pressureScore,
       confidence,
+      macroConfirmation: +macroConfirmation.toFixed(3),
       direction: pressureScore >= 0.6 ? 'elevated' : pressureScore >= 0.4 ? 'active' : 'contained',
-      topSignals: bucketSignals.slice(0, 3).map((signal) => ({
+      topSignals: weightedSignals
+        .slice()
+        .sort((a, b) => ((b.strength * b.bucketWeight) + b.confidence) - ((a.strength * a.bucketWeight) + a.confidence) || a.label.localeCompare(b.label))
+        .slice(0, 3)
+        .map((signal) => ({
         id: signal.id,
         type: signal.type,
         label: signal.label,
         strength: signal.strength,
+        bucketWeight: signal.bucketWeight,
       })),
-      topSituations: bucketEdges.slice(0, 3).map((edge) => ({
+      topSituations: bucketEdges
+        .slice()
+        .sort((a, b) => ((b.strength + b.confidence) * Number(config.edgeWeight || 1)) - ((a.strength + a.confidence) * Number(config.edgeWeight || 1)) || a.sourceLabel.localeCompare(b.sourceLabel))
+        .slice(0, 3)
+        .map((edge) => ({
         situationId: edge.sourceSituationId,
         label: edge.sourceLabel,
         strength: edge.strength,
       })),
-      summary: `${config.label} pressure is ${pressureScore >= 0.6 ? 'elevated' : pressureScore >= 0.4 ? 'active' : 'contained'}, led by ${bucketSignals[0]?.label || bucketEdges[0]?.sourceLabel || 'no major driver'}.`,
+      summary: `${config.label} pressure is ${pressureScore >= 0.6 ? 'elevated' : pressureScore >= 0.4 ? 'active' : 'contained'}, led by ${weightedSignals[0]?.label || bucketEdges[0]?.sourceLabel || 'no major driver'}${macroSignals.length ? ` with ${roundPct(macroConfirmation)} macro confirmation` : ''}.`,
     };
   }).filter((bucket) => bucket.pressureScore > 0 || bucket.topSignals.length > 0 || bucket.topSituations.length > 0);
 
@@ -6166,6 +6503,7 @@ function summarizeMarketInputCoverage(inputs = {}) {
     bisPolicy: extractRateItems(inputs.bisPolicyRates).length,
     shippingRates: extractShippingIndices(inputs.shippingRates).length,
     correlationCards: extractCorrelationCards(inputs.correlationCards).length,
+    fredSeries: Object.keys(extractFredSeriesMap(inputs.fredSeries)).length,
     militaryTheaters: Array.isArray(inputs?.militaryForecastInputs?.theaters) ? inputs.militaryForecastInputs.theaters.length : 0,
   };
   coverage.loadedSourceCount = Object.values(coverage).filter((count) => count > 0).length;
