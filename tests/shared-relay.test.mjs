@@ -58,14 +58,16 @@ function loadRelayFunctions() {
     if (!relaySecret) return headers;
     const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
     headers[relayHeader] = relaySecret;
-    headers.Authorization = `Bearer ${relaySecret}`;
+    if (relayHeader !== 'authorization') {
+      headers.Authorization = `Bearer ${relaySecret}`;
+    }
     return headers;
   };
 
   // Verify source file still matches expected logic shape
   assert.ok(src.includes('replace(/^ws(s?):\\/\\//'), 'relay.ts must use single-regex wss:// transform');
   assert.ok(src.includes('...extra'), 'relay.ts must spread extra before auth headers');
-  assert.ok(src.includes('Authorization = `Bearer ${relaySecret}`'), 'relay.ts must set Bearer auth');
+  assert.ok(src.includes("relayHeader !== 'authorization'"), 'relay.ts must guard against Authorization header collision');
 
   return { getRelayBaseUrl, getRelayHeaders };
 }
@@ -183,6 +185,17 @@ describe('getRelayHeaders — with auth', () => {
     const h = getRelayHeaders({ Accept: 'text/xml' });
     assert.equal(h['Accept'], 'text/xml');
     assert.equal(h['Authorization'], 'Bearer test-secret-abc');
+  });
+
+  it('RELAY_AUTH_HEADER=Authorization: sets only the direct secret, no Bearer duplicate', () => {
+    withEnv({ RELAY_AUTH_HEADER: 'Authorization' }, () => {
+      const h = getRelayHeaders();
+      // The relay checks req.headers['authorization'] as a direct value first.
+      // If we also set Authorization: Bearer secret, Undici merges both keys
+      // into "secret, Bearer secret" which fails the relay's direct-compare check.
+      assert.equal(h['authorization'], 'test-secret-abc', 'direct secret key must be set');
+      assert.equal(h['Authorization'], undefined, 'Bearer duplicate must NOT be set when relayHeader === authorization');
+    });
   });
 });
 

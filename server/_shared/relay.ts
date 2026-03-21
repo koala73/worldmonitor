@@ -16,6 +16,11 @@ export function getRelayHeaders(extra: Record<string, string> = {}): Record<stri
   if (!relaySecret) return headers;
   const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
   headers[relayHeader] = relaySecret;
-  headers.Authorization = `Bearer ${relaySecret}`;
+  // Only add a separate Authorization: Bearer header when relayHeader is not 'authorization'.
+  // If RELAY_AUTH_HEADER=Authorization, both keys normalize to the same HTTP header and
+  // Undici merges them into "secret, Bearer secret", which breaks the relay's direct-compare check.
+  if (relayHeader !== 'authorization') {
+    headers.Authorization = `Bearer ${relaySecret}`;
+  }
   return headers;
 }
