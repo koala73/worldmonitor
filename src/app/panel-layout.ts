@@ -150,6 +150,7 @@ export class PanelLayoutManager implements AppModule {
     if (proKey) {
       initEntitlementSubscription(proKey).catch(() => {});
       initSubscriptionWatch(proKey).catch(() => {});
+      initPaymentFailureBanner();
     }
 
     // Initialize checkout overlay so payment success triggers the success banner
