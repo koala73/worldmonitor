@@ -170,6 +170,24 @@ export function getRemoteApiBaseUrl(): string {
   return '';
 }
 
+export function getSseEndpointUrl(): string {
+  const configuredSseUrl = ENV.VITE_SSE_API_URL || ENV.VITE_WS_RELAY_URL;
+  if (configuredSseUrl) {
+    return `${normalizeBaseUrl(configuredSseUrl)}/sse`;
+  }
+
+  const remoteApi = getRemoteApiBaseUrl();
+  if (!remoteApi) return '/sse';
+  
+  try {
+    const u = new URL(remoteApi);
+    // Vercel apps map /sse to the relay via vercel.json rewrites, or it runs on the API origin directly
+    return `${u.origin}/sse`;
+  } catch {
+    return '/sse';
+  }
+}
+
 export function toRuntimeUrl(path: string): string {
   if (!path.startsWith('/')) {
     return path;
