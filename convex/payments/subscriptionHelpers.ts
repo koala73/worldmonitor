@@ -7,6 +7,7 @@
  */
 
 import { MutationCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,13 @@ export async function upsertEntitlements(
       updatedAt,
     });
   }
+
+  // Schedule Redis cache sync (fire-and-forget, 0ms delay)
+  await ctx.scheduler.runAfter(
+    0,
+    internal.payments.cacheActions.syncEntitlementCache,
+    { userId, planKey, features, validUntil },
+  );
 }
 
 // ---------------------------------------------------------------------------

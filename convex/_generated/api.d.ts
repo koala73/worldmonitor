@@ -14,6 +14,7 @@ import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_env from "../lib/env.js";
+import type * as payments_cacheActions from "../payments/cacheActions.js";
 import type * as payments_seedProductPlans from "../payments/seedProductPlans.js";
 import type * as payments_subscriptionHelpers from "../payments/subscriptionHelpers.js";
 import type * as payments_webhookHandlers from "../payments/webhookHandlers.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/entitlements": typeof lib_entitlements;
   "lib/env": typeof lib_env;
+  "payments/cacheActions": typeof payments_cacheActions;
   "payments/seedProductPlans": typeof payments_seedProductPlans;
   "payments/subscriptionHelpers": typeof payments_subscriptionHelpers;
   "payments/webhookHandlers": typeof payments_webhookHandlers;

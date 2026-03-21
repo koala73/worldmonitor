@@ -284,6 +284,28 @@ export async function getHashFieldsBatch(
   return result;
 }
 
+/**
+ * Deletes a single Redis key via Upstash REST API.
+ *
+ * @param key - The key to delete
+ * @param raw - When true, skips the environment prefix (use for global keys like entitlements)
+ */
+export async function deleteRedisKey(key: string, raw = false): Promise<void> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return;
+
+  try {
+    const finalKey = raw ? key : prefixKey(key);
+    await fetch(`${url}/del/${encodeURIComponent(finalKey)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.warn('[redis] deleteRedisKey failed:', errMsg(err));
+  }
+}
+
 export async function runRedisPipeline(
   commands: Array<Array<string | number>>,
   raw = false,
