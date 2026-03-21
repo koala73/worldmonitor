@@ -269,9 +269,9 @@ await runSeed('economic', 'bigmac', CANONICAL_KEY, () => fetchBigMacPrices(prevS
   ttlSeconds: CACHE_TTL,
   validateFn: (data) => data?.countries?.length > 0,
   recordCount: (data) => data?.countries?.filter(c => c.available).length || 0,
-  extraKeys: [{
+  extraKeys: prevSnapshot ? [{
     key: `${CANONICAL_KEY}:prev`,
-    transform: () => prevSnapshot,
+    transform: () => prevSnapshot,  // write PRE-overwrite snapshot; ignore new data
     ttl: CACHE_TTL * 2,
-  }],
+  }] : undefined,
 });

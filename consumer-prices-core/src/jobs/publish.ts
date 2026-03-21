@@ -72,20 +72,20 @@ export async function publishAll() {
   const markets = [...new Set(retailers.map((r) => r.marketCode))];
   const baskets = loadAllBasketConfigs();
 
-  // Determine freshness per market BEFORE writing
-  const marketFreshness: Record<string, boolean> = {};
+  // Build freshness snapshots first — used both to gate seed-meta and as the written payload
+  const marketFreshnessSnapshots: Record<string, Awaited<ReturnType<typeof buildFreshnessSnapshot>> | null> = {};
   for (const marketCode of markets) {
     try {
-      const freshness = await buildFreshnessSnapshot(marketCode);
-      // hasFreshData = at least one retailer scraped within last 2 hours
-      marketFreshness[marketCode] = freshness.overallFreshnessMin < 120;
+      marketFreshnessSnapshots[marketCode] = await buildFreshnessSnapshot(marketCode);
     } catch {
-      marketFreshness[marketCode] = false;
+      marketFreshnessSnapshots[marketCode] = null;
     }
   }
 
   for (const marketCode of markets) {
-    const advanceSeedMeta = marketFreshness[marketCode] ?? false;
+    const freshnessSnapshot = marketFreshnessSnapshots[marketCode];
+    // hasFreshData = at least one retailer scraped within last 2 hours
+    const advanceSeedMeta = freshnessSnapshot != null && freshnessSnapshot.overallFreshnessMin < 120;
     logger.info(`Publishing snapshots for market: ${marketCode} (freshData=${advanceSeedMeta})`);
 
     try {
@@ -105,8 +105,10 @@ export async function publishAll() {
     }
 
     try {
-      const freshness = await buildFreshnessSnapshot(marketCode);
-      await writeSnapshot(url, token, makeKey(['consumer-prices', 'freshness', marketCode]), freshness, TTL, advanceSeedMeta);
+      // Reuse already-built freshness snapshot — no second DB query
+      if (freshnessSnapshot != null) {
+        await writeSnapshot(url, token, makeKey(['consumer-prices', 'freshness', marketCode]), freshnessSnapshot, TTL, advanceSeedMeta);
+      }
     } catch (err) {
       logger.error(`freshness:${marketCode} failed: ${err}`);
     }
