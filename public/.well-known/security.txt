@@ -1,4 +1,4 @@
-Contact: mailto:elie@worldmonitor.app
+Contact: mailto:elie.habib@gmail.com
 Contact: https://github.com/eliehabib/worldmonitor/security/advisories
 Policy: https://github.com/eliehabib/worldmonitor/security/advisories
 Preferred-Languages: en
