@@ -545,7 +545,7 @@ export class SearchManager implements AppModule {
       })),
       ...military.map(f => ({
         id: f.hexCode,
-        title: f.callsign.trim().toUpperCase(),
+        title: (f.callsign || f.hexCode).trim().toUpperCase(),
         subtitle: f.onGround
           ? `Military · ${f.aircraftType} · on ground`
           : `Military · ${f.aircraftType} · FL${Math.round(f.altitude / 100)}`,

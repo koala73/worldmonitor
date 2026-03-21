@@ -6,8 +6,9 @@ import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widge
 import type { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
-import type { PanelConfig, MapLayers } from '@/types';
+import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
 import type { MapView } from '@/components';
+import type { PositionSample } from '@/services/aviation';
 import type { ClusteredEvent } from '@/types';
 import type { DashboardSnapshot } from '@/services/storage';
 import {
@@ -62,7 +63,7 @@ import { TvModeController } from '@/services/tv-mode';
 
 export interface EventHandlerCallbacks {
   updateSearchIndex: () => void;
-  updateFlightSource?: (adsb: import('@/services/aviation').PositionSample[], military: import('@/types').MilitaryFlight[]) => void;
+  updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
   flushStaleRefreshes: () => void;
   setHiddenSince: (ts: number) => void;
