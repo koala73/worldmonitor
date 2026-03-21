@@ -66,3 +66,4 @@ export * from './MarketTicker';
 export * from './DailyBrief';
 export * from './AlertPanel';
 export * from './AlertSettings';
+export * from './BreakingNewsTickerPanel';

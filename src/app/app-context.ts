@@ -56,6 +56,7 @@ export interface AppContext {
   searchModal: import('@/components').SearchModal | null;
   findingsBadge: import('@/components').IntelligenceGapBadge | null;
   breakingBanner: import('@/components/BreakingNewsBanner').BreakingNewsBanner | null;
+  breakingTicker: import('@/components/BreakingNewsTickerPanel').BreakingNewsTickerPanel | null;
   playbackControl: import('@/components').PlaybackControl | null;
   exportPanel: import('@/utils').ExportPanel | null;
   unifiedSettings: import('@/components/UnifiedSettings').UnifiedSettings | null;

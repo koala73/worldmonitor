@@ -16,7 +16,7 @@ import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } fro
 import { startLearning } from '@/services/country-instability';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
 import type { ParsedMapUrlState } from '@/utils';
-import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner, MarketTicker, DailyBrief, AlertPanel } from '@/components';
+import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner, BreakingNewsTickerPanel, MarketTicker, DailyBrief, AlertPanel } from '@/components';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
@@ -419,6 +419,7 @@ export class App {
       searchModal: null,
       findingsBadge: null,
       breakingBanner: null,
+      breakingTicker: null,
       playbackControl: null,
       exportPanel: null,
       unifiedSettings: null,
@@ -619,6 +620,7 @@ export class App {
     if (!this.state.isMobile) {
       initBreakingNewsAlerts();
       this.state.breakingBanner = new BreakingNewsBanner();
+      this.state.breakingTicker = new BreakingNewsTickerPanel();
     }
 
     // Phase 3: UI setup methods

@@ -1,5 +1,6 @@
 @import './rtl-overrides.css';
 @import './panels.css';
+@import './breaking-news-ticker.css';
 
 /* IrishTech Daily - 爱尔兰绿色主题 */
 :root {

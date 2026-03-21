@@ -10,9 +10,9 @@
  * - Click to open article
  * - Auto-hide when no high-priority news
  * - 5-minute refresh interval
+ * - Self-managed DOM container (inserted after header)
  */
 
-import { Panel } from './Panel';
 import type { NewsItem } from '@/types';
 import type { PriorityArticle } from '@/services/news-priority';
 import {
@@ -45,19 +45,42 @@ const PRIORITY_CONFIG = {
   },
 };
 
-export class BreakingNewsTickerPanel extends Panel {
+/**
+ * Standalone breaking news ticker component.
+ * Self-manages its DOM container and lifecycle.
+ */
+export class BreakingNewsTickerPanel {
+  private container: HTMLElement;
   private tickerTrack: HTMLElement | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private currentItems: PriorityArticle[] = [];
+  private boundOnRefreshRequest: () => void;
 
   constructor() {
-    super({
-      id: 'breaking-news-ticker',
-      title: 'Breaking News',
-      trackActivity: false,
-    });
+    // Create and insert container into DOM
+    this.container = document.createElement('div');
+    this.container.id = 'breaking-news-ticker-root';
+    this.container.className = 'breaking-news-ticker-root';
+    this.container.style.display = 'none'; // Hidden until we have items
+
+    // Insert after header
+    const header = document.querySelector('.app-header, header, .header');
+    if (header?.parentNode) {
+      header.parentNode.insertBefore(this.container, header.nextSibling);
+    } else {
+      // Fallback: insert at top of body
+      document.body.insertBefore(this.container, document.body.firstChild);
+    }
+
     this.createTickerDOM();
     this.startRefreshTimer();
+
+    // Listen for refresh requests
+    this.boundOnRefreshRequest = () => this.onRefreshRequest();
+    document.addEventListener(
+      'breaking-news-ticker:refresh-request',
+      this.boundOnRefreshRequest,
+    );
   }
 
   /**
@@ -83,9 +106,7 @@ export class BreakingNewsTickerPanel extends Panel {
     wrapper.appendChild(track);
     this.tickerTrack = track;
 
-    // Clear loading state and append
-    this.content.innerHTML = '';
-    this.content.appendChild(wrapper);
+    this.container.appendChild(wrapper);
   }
 
   /**
@@ -97,13 +118,13 @@ export class BreakingNewsTickerPanel extends Panel {
 
     if (!this.tickerTrack) return;
 
-    // Hide panel if no high-priority news
+    // Hide container if no high-priority news
     if (priorityItems.length === 0) {
-      this.element.style.display = 'none';
+      this.container.style.display = 'none';
       return;
     }
 
-    this.element.style.display = '';
+    this.container.style.display = '';
     this.renderItems(priorityItems);
   }
 
@@ -113,9 +134,7 @@ export class BreakingNewsTickerPanel extends Panel {
   private renderItems(items: PriorityArticle[]): void {
     if (!this.tickerTrack) return;
 
-    const itemsHtml = items
-      .map((item) => this.renderItem(item))
-      .join('');
+    const itemsHtml = items.map((item) => this.renderItem(item)).join('');
 
     // Double content for seamless infinite scroll
     this.tickerTrack.innerHTML = itemsHtml + itemsHtml;
@@ -174,10 +193,18 @@ export class BreakingNewsTickerPanel extends Panel {
   private inferCategory(title: string): string {
     const text = title.toLowerCase();
 
-    if (text.includes('funding') || text.includes('raises') || text.includes('series')) {
+    if (
+      text.includes('funding') ||
+      text.includes('raises') ||
+      text.includes('series')
+    ) {
       return 'Funding';
     }
-    if (text.includes('acquisition') || text.includes('acquires') || text.includes('m&a')) {
+    if (
+      text.includes('acquisition') ||
+      text.includes('acquires') ||
+      text.includes('m&a')
+    ) {
       return 'M&A';
     }
     if (text.includes('research') || text.includes('breakthrough')) {
@@ -206,10 +233,25 @@ export class BreakingNewsTickerPanel extends Panel {
   }
 
   /**
+   * Handle refresh request event (can be overridden by data loader)
+   */
+  private onRefreshRequest(): void {
+    // This is a placeholder - the actual data refresh is handled
+    // by the data loader listening to this event
+  }
+
+  /**
    * Get current items count (for testing)
    */
   public getItemCount(): number {
     return this.currentItems.length;
+  }
+
+  /**
+   * Get container element (for testing)
+   */
+  public getContainer(): HTMLElement {
+    return this.container;
   }
 
   /**
@@ -220,9 +262,13 @@ export class BreakingNewsTickerPanel extends Panel {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;
     }
-    if (this.tickerTrack) {
-      this.tickerTrack = null;
+    document.removeEventListener(
+      'breaking-news-ticker:refresh-request',
+      this.boundOnRefreshRequest,
+    );
+    if (this.container.parentNode) {
+      this.container.parentNode.removeChild(this.container);
     }
-    super.destroy();
+    this.tickerTrack = null;
   }
 }

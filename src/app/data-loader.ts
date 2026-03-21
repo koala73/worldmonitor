@@ -1057,6 +1057,9 @@ export class DataLoaderManager implements AppModule {
 
     this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
 
+    // Update breaking news ticker with high-priority news
+    this.ctx.breakingTicker?.setItems(this.ctx.allNews);
+
     this.updateMonitorResults();
 
     try {
