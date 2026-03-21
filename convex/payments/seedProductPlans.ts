@@ -11,31 +11,31 @@ import { mutation, query } from "../_generated/server";
 
 const PRODUCT_PLANS = [
   {
-    dodoProductId: "REPLACE_WITH_DODO_ID",
+    dodoProductId: "pdt_0NaysSFAQ0y30nJOJMBpg",
     planKey: "pro_monthly",
     displayName: "Pro Monthly",
     isActive: true,
   },
   {
-    dodoProductId: "REPLACE_WITH_DODO_ID",
+    dodoProductId: "pdt_0NaysWqJBx3laiCzDbQfr",
     planKey: "pro_annual",
     displayName: "Pro Annual",
     isActive: true,
   },
   {
-    dodoProductId: "REPLACE_WITH_DODO_ID",
+    dodoProductId: "pdt_0NaysZwxCyk9Satf1jbqU",
     planKey: "api_starter",
     displayName: "API Starter",
     isActive: true,
   },
   {
-    dodoProductId: "REPLACE_WITH_DODO_ID",
+    dodoProductId: "pdt_0NaysdZLwkMAPEVJQja5G",
     planKey: "api_business",
     displayName: "API Business",
     isActive: true,
   },
   {
-    dodoProductId: "REPLACE_WITH_DODO_ID",
+    dodoProductId: "pdt_0NaysgHSQTTqGjJdLtuWP",
     planKey: "enterprise",
     displayName: "Enterprise",
     isActive: true,
