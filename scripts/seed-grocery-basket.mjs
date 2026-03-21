@@ -257,7 +257,7 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
   for (const country of config.countries) {
     console.log(`\n  Processing ${country.flag} ${country.name} (${country.currency})...`);
     const fxRate = fxRates[country.currency] || FX_FALLBACKS[country.currency] || null;
-    const allowedHosts = country.sites.map(s => s.replace(/^www\./, ''));
+    const allowedHosts = country.sites.map(s => s.replace(/^www\./, '').split('/')[0]);
 
     // Process all items concurrently — 100ms stagger to respect EXA/Firecrawl rate limits
     const itemPrices = await Promise.all(config.items.map(async (item, idx) => {

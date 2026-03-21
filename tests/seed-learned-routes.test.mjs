@@ -31,6 +31,13 @@ describe('isAllowedRouteHost', () => {
   it('rejects empty string without throwing', () => {
     assert.equal(isAllowedRouteHost('', ['carrefouruae.com']), false);
   });
+
+  it('accepts noon.com URL when allowedHosts entry is path-bearing (noon.com/saudi-en stripped to noon.com)', () => {
+    // grocery-basket.json SA sites contains "noon.com/saudi-en" — must be stripped to bare hostname
+    // before comparison, otherwise no noon.com route ever matches and SA cache never stabilizes
+    const allowedHosts = ['noon.com/saudi-en', 'carrefour.com.sa'].map(s => s.split('/')[0]);
+    assert.equal(isAllowedRouteHost('https://noon.com/saudi-en/sugar', allowedHosts), true);
+  });
 });
 
 // ---------------------------------------------------------------------------
