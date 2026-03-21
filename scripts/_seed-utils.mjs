@@ -11,6 +11,22 @@ const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 
 export { CHROME_UA };
 
+// Canonical FX fallback rates — used when Yahoo Finance returns null/zero.
+// Single source of truth shared by seed-bigmac, seed-grocery-basket, seed-fx-rates.
+// EGP: 0.0192 is the most recently observed live rate (2026-03-21 seed run).
+export const SHARED_FX_FALLBACKS = {
+  USD: 1.0000, GBP: 1.2700, EUR: 1.0850, JPY: 0.0067, CHF: 1.1300,
+  CNY: 0.1380, INR: 0.0120, AUD: 0.6500, CAD: 0.7400, NZD: 0.5900,
+  BRL: 0.1900, MXN: 0.0490, ZAR: 0.0540, TRY: 0.0290, KRW: 0.0007,
+  SGD: 0.7400, HKD: 0.1280, TWD: 0.0310, THB: 0.0280, IDR: 0.000063,
+  NOK: 0.0920, SEK: 0.0930, DKK: 0.1450, PLN: 0.2450, CZK: 0.0430,
+  HUF: 0.0028, RON: 0.2200, PHP: 0.0173, VND: 0.000040, MYR: 0.2250,
+  PKR: 0.0036, ILS: 0.2750, ARS: 0.00084, COP: 0.000240, CLP: 0.00108,
+  UAH: 0.0240, NGN: 0.00062, KES: 0.0077,
+  AED: 0.2723, SAR: 0.2666, QAR: 0.2747, KWD: 3.2520,
+  BHD: 2.6525, OMR: 2.5974, JOD: 1.4104, EGP: 0.0192, LBP: 0.0000112,
+};
+
 export function loadSharedConfig(filename) {
   for (const base of [join(__seed_dirname, '..', 'shared'), join(__seed_dirname, 'shared')]) {
     const p = join(base, filename);
@@ -414,6 +430,80 @@ export async function processItemRoute({
   }
 
   return { localPrice, sourceSite, routeUpdate, routeDelete };
+}
+
+/**
+ * Shared FX rates cache — reads from Redis `shared:fx-rates:v1` (4h TTL).
+ * Falls back to fetching from Yahoo Finance if the key is missing/expired.
+ * All seeds needing currency conversion should call this instead of their own fetchFxRates().
+ *
+ * @param {Record<string, string>} fxSymbols  - map of { CCY: 'CCYUSD=X' }
+ * @param {Record<string, number>} fallbacks  - hardcoded rates to use if Yahoo fails
+ */
+export async function getSharedFxRates(fxSymbols, fallbacks) {
+  const SHARED_KEY = 'shared:fx-rates:v1';
+  const SHARED_TTL = 4 * 3600; // 4 hours
+  const { url, token } = getRedisCredentials();
+
+  // Try reading cached rates first
+  try {
+    const cached = await redisGet(url, token, SHARED_KEY);
+    if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
+      console.log('  FX rates: loaded from shared cache');
+      // Fill any missing currencies this seed needs using Yahoo or fallback
+      const missing = Object.keys(fxSymbols).filter(c => cached[c] == null);
+      if (missing.length === 0) return cached;
+      console.log(`  FX rates: fetching ${missing.length} missing currencies from Yahoo`);
+      const extra = await fetchYahooFxRates(
+        Object.fromEntries(missing.map(c => [c, fxSymbols[c]])),
+        fallbacks,
+      );
+      const merged = { ...cached, ...extra };
+      // Write back so subsequent seeds find the complete set
+      try {
+        await redisSet(url, token, SHARED_KEY, merged, SHARED_TTL);
+      } catch { /* best-effort */ }
+      return merged;
+    }
+  } catch {
+    // Cache read failed — fall through to live fetch
+  }
+
+  console.log('  FX rates: cache miss — fetching from Yahoo Finance');
+  const rates = await fetchYahooFxRates(fxSymbols, fallbacks);
+
+  // Write to shared cache (best-effort)
+  try {
+    await redisSet(url, token, SHARED_KEY, rates, SHARED_TTL);
+    console.log(`  FX rates: written to shared cache (TTL ${SHARED_TTL}s)`);
+  } catch {
+    console.warn('  FX rates: failed to write shared cache — continuing without it');
+  }
+
+  return rates;
+}
+
+export async function fetchYahooFxRates(fxSymbols, fallbacks) {
+  const rates = {};
+  for (const [currency, symbol] of Object.entries(fxSymbols)) {
+    if (currency === 'USD') { rates['USD'] = 1.0; continue; }
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!resp.ok) { rates[currency] = fallbacks[currency] ?? null; continue; }
+      const data = await resp.json();
+      const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      rates[currency] = (price != null && price > 0) ? price : (fallbacks[currency] ?? null);
+    } catch {
+      rates[currency] = fallbacks[currency] ?? null;
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
+  console.log('  FX rates fetched:', JSON.stringify(rates));
+  return rates;
 }
 
 /**

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, sleep, readSeedSnapshot } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, sleep, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -8,20 +8,15 @@ const CANONICAL_KEY = 'economic:bigmac:v1';
 const CACHE_TTL = 864000; // 10 days — weekly seed with 3-day cron-drift buffer
 const EXA_DELAY_MS = 150;
 
-const FX_FALLBACKS = {
-  // Middle East
-  AED: 0.2723, SAR: 0.2666, QAR: 0.2747, KWD: 3.2520,
-  BHD: 2.6525, OMR: 2.5974, JOD: 1.4104, EGP: 0.0204, LBP: 0.0000112,
-  // Major currencies
-  USD: 1.0000, GBP: 1.2700, EUR: 1.0850, JPY: 0.0067, CHF: 1.1300,
-  CNY: 0.1380, INR: 0.0120, AUD: 0.6500, CAD: 0.7400, NZD: 0.5900,
-  BRL: 0.1900, MXN: 0.0490, ZAR: 0.0540, TRY: 0.0290, KRW: 0.0007,
-  SGD: 0.7400, HKD: 0.1280, TWD: 0.0310, THB: 0.0280, IDR: 0.000063,
-  NOK: 0.0920, SEK: 0.0930, DKK: 0.1450, PLN: 0.2450, CZK: 0.0430,
-  HUF: 0.0028, RON: 0.2200, PHP: 0.0173, VND: 0.000040, MYR: 0.2250,
-  PKR: 0.0036, ILS: 0.2750, ARS: 0.00084, COP: 0.000240, CLP: 0.00108,
-  UAH: 0.0240, NGN: 0.00062, KES: 0.0077,
-};
+const FX_FALLBACKS = SHARED_FX_FALLBACKS;
+
+// WoW validation thresholds
+const MIN_WOW_AGE_MS = 6 * 24 * 60 * 60 * 1000; // 6 days minimum between snapshots
+const WOW_ANOMALY_THRESHOLD = 20; // % change that signals a data bug
+
+// USD price sanity range for a Big Mac globally
+const USD_MIN = 1.50;
+const USD_MAX = 12.00;
 
 const COUNTRIES = [
   // Americas
@@ -107,28 +102,6 @@ function matchPrice(text, url) {
   return null;
 }
 
-async function fetchFxRates() {
-  const rates = {};
-  for (const [currency, symbol] of Object.entries(FX_SYMBOLS)) {
-    try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
-      const resp = await fetch(url, {
-        headers: { 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!resp.ok) { rates[currency] = FX_FALLBACKS[currency] ?? null; continue; }
-      const data = await resp.json();
-      const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-      rates[currency] = (price != null && price > 0) ? price : (FX_FALLBACKS[currency] ?? null);
-    } catch {
-      rates[currency] = FX_FALLBACKS[currency] ?? null;
-    }
-    await sleep(100);
-  }
-  console.log('  FX rates fetched:', JSON.stringify(rates));
-  return rates;
-}
-
 async function searchExa(query, includeDomains = null) {
   const apiKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
   if (!apiKey) throw new Error('EXA_API_KEYS or EXA_API_KEY not set');
@@ -157,7 +130,7 @@ async function searchExa(query, includeDomains = null) {
 }
 
 async function fetchBigMacPrices(prevSnapshot) {
-  const fxRates = await fetchFxRates();
+  const fxRates = await getSharedFxRates(FX_SYMBOLS, FX_FALLBACKS);
   const results = [];
 
   for (const country of COUNTRIES) {
@@ -197,6 +170,14 @@ async function fetchBigMacPrices(prevSnapshot) {
     if (usdPrice === null) {
       usdPrice = localPrice !== null && fxRate ? +(localPrice * fxRate).toFixed(4) : null;
     }
+
+    // Sanity check: Big Mac USD price must be in a plausible global range
+    if (usdPrice !== null && (usdPrice < USD_MIN || usdPrice > USD_MAX)) {
+      console.warn(`  [PRICE] ANOMALY ${country.flag} ${country.name}: $${usdPrice} out of range [$${USD_MIN}-$${USD_MAX}] — dropping price`);
+      usdPrice = null;
+      localPrice = null;
+    }
+
     const status = localPrice !== null ? `${localPrice} ${country.currency} = $${usdPrice}` : 'N/A';
     console.log(`    Big Mac: ${status}`);
 
@@ -217,16 +198,52 @@ async function fetchBigMacPrices(prevSnapshot) {
   const cheapest = withData.length ? withData.reduce((a, b) => a.usdPrice < b.usdPrice ? a : b).code : '';
   const mostExpensive = withData.length ? withData.reduce((a, b) => a.usdPrice > b.usdPrice ? a : b).code : '';
 
-  // Compute WoW per country
-  const wowAvailable = prevSnapshot?.countries?.length > 0;
+  // Compute WoW per country — requires at least 6 days between snapshots
+  const prevAge = prevSnapshot?.fetchedAt ? Date.now() - new Date(prevSnapshot.fetchedAt).getTime() : 0;
+  const hasPrevData = prevSnapshot?.countries?.length > 0;
+  const prevTooRecent = prevAge > 0 && prevAge < MIN_WOW_AGE_MS;
+
+  if (hasPrevData && prevTooRecent) {
+    console.warn(`  [WoW] Skipping WoW — previous snapshot is only ${Math.round(prevAge / 3600000)}h old (need 144h+)`);
+  }
+
+  let wowAvailable = hasPrevData && !prevTooRecent;
+  let suspiciousCount = 0;
+  let suspiciousNames = '';
+
   if (wowAvailable) {
     const prevMap = Object.fromEntries(prevSnapshot.countries.map(c => [c.code, c.usdPrice]));
+    const rawWowValues = []; // unfiltered — used for global anomaly check
+
     for (const r of results) {
       if (r.usdPrice != null && prevMap[r.code] != null && prevMap[r.code] > 0) {
-        r.wowPct = +((r.usdPrice - prevMap[r.code]) / prevMap[r.code] * 100).toFixed(2);
+        const raw = +((r.usdPrice - prevMap[r.code]) / prevMap[r.code] * 100).toFixed(2);
+        rawWowValues.push(raw);
+        if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
+          console.warn(`  [WoW] ANOMALY ${r.flag} ${r.name}: ${raw}% (prev=$${prevMap[r.code]} now=$${r.usdPrice}) — hiding WoW for this country`);
+          suspiciousCount++;
+          suspiciousNames += (suspiciousNames ? ', ' : '') + `${r.name} ${raw}%`;
+          r.wowPct = null;
+        } else {
+          r.wowPct = raw;
+        }
       } else {
         r.wowPct = null;
       }
+    }
+
+    if (suspiciousCount > 0) {
+      console.error(`  [WoW] ADMIN ALERT: ${suspiciousCount} country/ies had anomalous WoW (>±${WOW_ANOMALY_THRESHOLD}%): ${suspiciousNames}`);
+    }
+
+    // Global check uses unfiltered average — individual filtering bounds each value to ≤20%
+    // so the filtered average can never exceed the threshold (dead check). Use raw values instead.
+    const rawAvg = rawWowValues.length > 0
+      ? +(rawWowValues.reduce((s, v) => s + v, 0) / rawWowValues.length).toFixed(2)
+      : 0;
+    if (Math.abs(rawAvg) > WOW_ANOMALY_THRESHOLD) {
+      console.error(`  [WoW] ADMIN ALERT: Global WoW raw avg ${rawAvg}% exceeds ±${WOW_ANOMALY_THRESHOLD}% — disabling WoW entirely, likely systematic data bug`);
+      wowAvailable = false;
     }
   }
 

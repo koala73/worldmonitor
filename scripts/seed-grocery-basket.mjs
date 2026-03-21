@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, readSeedSnapshot, bulkReadLearnedRoutes, bulkWriteLearnedRoutes, isAllowedRouteHost, processItemRoute } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, readSeedSnapshot, bulkReadLearnedRoutes, bulkWriteLearnedRoutes, isAllowedRouteHost, processItemRoute, getSharedFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -12,45 +12,8 @@ const EXA_DELAY_MS = 150;
 
 const FIRECRAWL_DELAY_MS = 500;
 
-// Hardcoded FX fallbacks — used when Yahoo Finance returns null/zero
-const FX_FALLBACKS = {
-  // Middle East (pegged)
-  AED: 0.2723, SAR: 0.2666, QAR: 0.2747, KWD: 3.2520,
-  BHD: 2.6525, OMR: 2.5974, JOD: 1.4104, EGP: 0.0192, LBP: 0.0000112,
-  // Major currencies
-  USD: 1.0000, GBP: 1.2700, EUR: 1.0850, JPY: 0.0067,
-  CNY: 0.1380, INR: 0.0120, AUD: 0.6500, CAD: 0.7400,
-  BRL: 0.1900, MXN: 0.0490, ZAR: 0.0540, TRY: 0.0290,
-  KRW: 0.0007, SGD: 0.7400, PKR: 0.0036,
-  // Emerging
-  NGN: 0.00062, KES: 0.0077, ARS: 0.00084, IDR: 0.000063, PHP: 0.0173,
-};
+const FX_FALLBACKS = SHARED_FX_FALLBACKS;
 
-async function fetchFxRates() {
-  const rates = {};
-  for (const [currency, symbol] of Object.entries(config.fxSymbols)) {
-    if (currency === 'USD') { rates['USD'] = 1.0; continue; }
-    try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
-      const resp = await fetch(url, {
-        headers: { 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!resp.ok) {
-        rates[currency] = FX_FALLBACKS[currency] || null;
-        continue;
-      }
-      const data = await resp.json();
-      const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-      rates[currency] = (price != null && price > 0) ? price : (FX_FALLBACKS[currency] ?? null);
-    } catch {
-      rates[currency] = FX_FALLBACKS[currency] || null;
-    }
-    await sleep(100);
-  }
-  console.log('  FX rates fetched:', JSON.stringify(rates));
-  return rates;
-}
 
 async function searchExa(query, sites, locationCode) {
   const apiKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
@@ -240,7 +203,7 @@ function extractPrice(result, expectedCurrency) {
 }
 
 async function fetchGroceryBasketPrices(prevSnapshot) {
-  const fxRates = await fetchFxRates();
+  const fxRates = await getSharedFxRates(config.fxSymbols, FX_FALLBACKS);
 
   const countriesResult = [];
 
