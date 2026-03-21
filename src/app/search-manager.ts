@@ -26,6 +26,7 @@ import { t } from '@/services/i18n';
 import { saveToStorage, setTheme } from '@/utils';
 import { CountryIntelManager } from '@/app/country-intel';
 import type { PositionSample } from '@/services/aviation';
+import { fetchAircraftPositions } from '@/services/aviation';
 import type { MilitaryFlight } from '@/types';
 import { isProUser } from '@/services/widget-store';
 
@@ -209,6 +210,36 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.setActivePanels(Object.keys(this.ctx.panels));
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
+
+    if (isProUser()) {
+      let flightLookupTimer: ReturnType<typeof setTimeout> | null = null;
+      this.ctx.searchModal.setOnQueryChange((rawInput) => {
+        if (!rawInput.startsWith('flight ')) return;
+        const callsign = rawInput.slice(7).trim().toUpperCase();
+        if (callsign.length < 2) return;
+        if (flightLookupTimer) clearTimeout(flightLookupTimer);
+        flightLookupTimer = setTimeout(() => {
+          fetchAircraftPositions({ callsign }).then((positions) => {
+            if (!this.ctx.searchModal) return;
+            this.ctx.searchModal.registerSource('flight', positions.map(p => {
+              const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
+              const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
+              return {
+                id: p.icao24,
+                title: (p.callsign || p.icao24).trim().toUpperCase(),
+                subtitle: p.onGround
+                  ? t('modals.search.flightOnGround')
+                  : fl !== null && kts !== null
+                    ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
+                    : fl !== null ? `FL${fl}` : t('modals.search.flightOnGround'),
+                data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
+              };
+            }));
+            this.ctx.searchModal.refreshSearch();
+          }).catch(() => {/* silent — stale results remain */});
+        }, 400);
+      });
+    }
 
     this.boundKeydownHandler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {

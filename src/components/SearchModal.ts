@@ -92,6 +92,7 @@ export class SearchModal {
   private recentSearches: string[] = [];
   private onSelect?: (result: SearchResult) => void;
   private onCommand?: (command: Command) => void;
+  private onQueryChange?: (rawInput: string) => void;
   private placeholder: string;
   private activePanelIds: Set<string> = new Set();
   private isMobile: boolean;
@@ -120,6 +121,14 @@ export class SearchModal {
 
   public setOnCommand(callback: (command: Command) => void): void {
     this.onCommand = callback;
+  }
+
+  public setOnQueryChange(callback: (rawInput: string) => void): void {
+    this.onQueryChange = callback;
+  }
+
+  public refreshSearch(): void {
+    if (this.overlay) this.handleSearch();
   }
 
   public setActivePanels(panelIds: string[]): void {
@@ -283,6 +292,7 @@ export class SearchModal {
     }
 
     this.commandResults = this.matchCommands(query);
+    this.onQueryChange?.(rawInput);
 
     const byType = new Map<SearchResultType, (SearchResult & { _score: number })[]>();
 
