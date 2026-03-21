@@ -271,7 +271,8 @@ export class SearchModal {
   }
 
   private handleSearch(): void {
-    const query = this.input?.value.trim().toLowerCase() || '';
+    const rawInput = this.input?.value.toLowerCase() || '';
+    const query = rawInput.trim();
 
     if (!query) {
       this.showingAllCommands = false;
@@ -285,9 +286,9 @@ export class SearchModal {
 
     const byType = new Map<SearchResultType, (SearchResult & { _score: number })[]>();
 
-    // "flight {callsign}" prefix: route the callsign fragment directly to the flight source.
-    if (query.startsWith('flight ')) {
-      const callsign = query.slice(7).trim();
+    // "flight {callsign}" prefix: use rawInput so a trailing space after "flight" is detected.
+    if (rawInput.startsWith('flight ')) {
+      const callsign = rawInput.slice(7).trim();
       if (callsign.length > 0) {
         const flightSource = this.sources.find(s => s.type === 'flight');
         if (flightSource) {
