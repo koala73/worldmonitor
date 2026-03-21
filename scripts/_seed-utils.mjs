@@ -442,10 +442,9 @@ export async function processItemRoute({
  */
 export async function getSharedFxRates(fxSymbols, fallbacks) {
   const SHARED_KEY = 'shared:fx-rates:v1';
-  const SHARED_TTL = 4 * 3600; // 4 hours
   const { url, token } = getRedisCredentials();
 
-  // Try reading cached rates first
+  // Try reading cached rates first (read-only — only seed-fx-rates.mjs writes this key)
   try {
     const cached = await redisGet(url, token, SHARED_KEY);
     if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
@@ -458,29 +457,14 @@ export async function getSharedFxRates(fxSymbols, fallbacks) {
         Object.fromEntries(missing.map(c => [c, fxSymbols[c]])),
         fallbacks,
       );
-      const merged = { ...cached, ...extra };
-      // Write back so subsequent seeds find the complete set
-      try {
-        await redisSet(url, token, SHARED_KEY, merged, SHARED_TTL);
-      } catch { /* best-effort */ }
-      return merged;
+      return { ...cached, ...extra };
     }
   } catch {
     // Cache read failed — fall through to live fetch
   }
 
   console.log('  FX rates: cache miss — fetching from Yahoo Finance');
-  const rates = await fetchYahooFxRates(fxSymbols, fallbacks);
-
-  // Write to shared cache (best-effort)
-  try {
-    await redisSet(url, token, SHARED_KEY, rates, SHARED_TTL);
-    console.log(`  FX rates: written to shared cache (TTL ${SHARED_TTL}s)`);
-  } catch {
-    console.warn('  FX rates: failed to write shared cache — continuing without it');
-  }
-
-  return rates;
+  return fetchYahooFxRates(fxSymbols, fallbacks);
 }
 
 export async function fetchYahooFxRates(fxSymbols, fallbacks) {

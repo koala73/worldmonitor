@@ -2,7 +2,7 @@
 
 /**
  * Dedicated FX rates seed — fetches all currencies used across bigmac + grocery-basket
- * and writes them to shared:fx-rates:v1 (4h TTL).
+ * and writes them to shared:fx-rates:v1 (25h TTL).
  *
  * Deploy as a Railway cron service (daily, e.g. "0 6 * * *") so downstream
  * weekly seeds always find a warm cache and make zero Yahoo FX calls themselves.
@@ -16,7 +16,7 @@ import { loadEnvFile, runSeed, fetchYahooFxRates, SHARED_FX_FALLBACKS } from './
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'shared:fx-rates:v1';
-const CACHE_TTL = 4 * 3600; // 4 hours
+const CACHE_TTL = 25 * 3600; // 25 hours — covers daily cron with 1h drift buffer
 
 // Union of all currencies used by bigmac + grocery-basket seeds
 const ALL_CURRENCIES = [
