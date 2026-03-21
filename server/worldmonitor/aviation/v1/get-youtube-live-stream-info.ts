@@ -5,6 +5,7 @@ import type {
   GetYoutubeLiveStreamInfoResponse,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
+import { CHROME_UA } from '../../../_shared/constants';
 
 interface YoutubeRelayPayload {
   videoId?: string;
@@ -83,7 +84,7 @@ export const getYoutubeLiveStreamInfo: AviationServiceHandler['getYoutubeLiveStr
         `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
         {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': CHROME_UA,
           },
           signal: AbortSignal.timeout(5_000),
         },
