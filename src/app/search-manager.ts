@@ -215,12 +215,9 @@ export class SearchManager implements AppModule {
       this.ctx.searchModal.setOnFlightSearch((callsign) => {
         fetchAircraftPositions({ callsign }).then((positions) => {
           if (!this.ctx.searchModal) return;
-          // Reject simulated fallback positions — they're fake data near (0°,0°) and should
-          // never appear in search results. Real sources use POSITION_SOURCE_OPENSKY etc.
-          const real = positions.filter(p => !p.source?.toLowerCase().includes('simulated'));
           // Deduplicate by callsign: keep the most recently observed entry per callsign.
           const seen = new Map<string, PositionSample>();
-          for (const p of real) {
+          for (const p of positions) {
             const key = (p.callsign || p.icao24).trim().toUpperCase();
             const existing = seen.get(key);
             if (!existing || p.observedAt > existing.observedAt) {

@@ -69,6 +69,11 @@ function buildCacheKey(req: TrackAircraftRequest): string {
     return 'aviation:track:all:v1';
 }
 
+// Response-level source values (TrackAircraftResponse.source):
+//   'opensky'           — data from OpenSky via relay
+//   'opensky-anonymous' — data from OpenSky public API (no auth, rate-limited)
+//   'wingbits'          — data from Wingbits via relay
+//   'none'              — all real sources returned empty or failed; positions = []
 export async function trackAircraft(
     _ctx: ServerContext,
     req: TrackAircraftRequest,

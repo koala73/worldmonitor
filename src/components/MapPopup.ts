@@ -26,7 +26,6 @@ function formatPositionSource(source: string): string {
   if (source === 'POSITION_SOURCE_OPENSKY') {
     return '<a href="https://opensky-network.org" target="_blank" rel="noopener" style="color:inherit">opensky-network.org</a>';
   }
-  if (source === 'POSITION_SOURCE_SIMULATED') return 'Simulated';
   return escapeHtml(source);
 }
 

@@ -88,6 +88,10 @@ function normalizeFlights(flights: AVSFlight[], now: number): FlightInstance[] {
 }
 
 
+// Response-level source values (ListAirportFlightsResponse.source):
+//   'aviationstack' — live data from AviationStack via relay
+//   'none'          — relay not configured; flights = []
+//   'error'         — relay fetch failed; flights = []
 export async function listAirportFlights(
     _ctx: ServerContext,
     req: ListAirportFlightsRequest,
