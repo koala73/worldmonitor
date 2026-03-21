@@ -137,7 +137,7 @@ async function buildTopCategories(basketId: string): Promise<WMCategorySnapshot[
          )
      )
      SELECT
-       t.category,
+       cats.category,
        MAX(CASE WHEN t.metric_key = 'essentials_index' THEN t.metric_value END) AS current_index,
        MAX(CASE WHEN lw.metric_key = 'essentials_index' THEN lw.metric_value END) AS prev_week_index,
        MAX(CASE WHEN t.metric_key = 'coverage_pct' THEN t.metric_value END) AS coverage_pct
