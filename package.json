@@ -60,11 +60,14 @@
     "desktop:package:macos:tech:sign": "node scripts/desktop-package.mjs --os macos --variant tech --sign",
     "desktop:package:windows:full:sign": "node scripts/desktop-package.mjs --os windows --variant full --sign",
     "desktop:package:windows:tech:sign": "node scripts/desktop-package.mjs --os windows --variant tech --sign",
-    "desktop:package": "node scripts/desktop-package.mjs"
+    "desktop:package": "node scripts/desktop-package.mjs",
+    "test:convex": "vitest run --config vitest.config.mts",
+    "test:convex:watch": "vitest --config vitest.config.mts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
     "@bufbuild/buf": "^1.66.0",
+    "@edge-runtime/vm": "^5.0.0",
     "@playwright/test": "^1.52.0",
     "@tauri-apps/cli": "^2.10.0",
     "@types/canvas-confetti": "^1.9.0",
@@ -78,6 +81,7 @@
     "@types/three": "^0.183.1",
     "@types/topojson-client": "^3.1.5",
     "@types/topojson-specification": "^1.0.5",
+    "convex-test": "^0.0.43",
     "cross-env": "^10.1.0",
     "esbuild": "^0.27.3",
     "h3-js": "^4.4.0",
@@ -85,7 +89,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.1.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.79.0",
