@@ -427,19 +427,65 @@ if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
 }
 
 if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWorker' in navigator) {
-  // Auto-reload when a NEW SW replaces an existing one (fixes stale HTML after deploys).
+  const showSwUpdateToast = (): void => {
+    document.querySelector('.update-toast')?.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'update-toast';
+    toast.innerHTML = `
+      <div class="update-toast-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-.49-4.9L23 10"/>
+        </svg>
+      </div>
+      <div class="update-toast-body">
+        <div class="update-toast-title">Update Available</div>
+        <div class="update-toast-detail">A new version is ready.</div>
+      </div>
+      <button class="update-toast-action" data-action="reload">Reload</button>
+      <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
+    `;
+
+    let dismissed = false;
+
+    const onHidden = (): void => {
+      if (!dismissed && document.visibilityState === 'hidden' && document.body.contains(toast)) {
+        window.location.reload();
+      }
+    };
+
+    toast.addEventListener('click', (e) => {
+      const action = (e.target as HTMLElement).closest<HTMLElement>('[data-action]')?.dataset.action;
+      if (action === 'reload') {
+        window.location.reload();
+      } else if (action === 'dismiss') {
+        dismissed = true;
+        document.removeEventListener('visibilitychange', onHidden);
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+      }
+    });
+
+    document.addEventListener('visibilitychange', onHidden);
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('visible')));
+  };
+
+  // Show an update toast when a NEW SW replaces an existing one (fixes stale HTML after deploys).
   // Skip on first visit: skipWaiting+clientsClaim fires controllerchange when the SW
-  // claims the page for the first time, causing a useless full reload on every new session.
+  // claims the page for the first time — no prior version to update from.
+  // If the user dismisses the toast, defer reload until the tab is hidden.
   let hadController = !!navigator.serviceWorker.controller;
-  let refreshing = false;
+  let updateToastShown = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController) {
       hadController = true;
       return;
     }
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
+    if (updateToastShown) return;
+    updateToastShown = true;
+    showSwUpdateToast();
   });
 
   const SW_UPDATE_SUCCESS_INTERVAL_MS = 60 * 60 * 1000;
