@@ -205,9 +205,13 @@ async function main() {
     }
   } catch (err) {
     console.error('[scrape] fatal:', err);
+    process.exitCode = 1;
   } finally {
     await closePool().catch(() => {});
   }
 }
 
-main().catch(() => {}).then(() => process.exit(0));
+// process.exit() is required to flush lingering Playwright/Chromium handles
+// that would otherwise prevent the process from exiting naturally.
+// process.exitCode preserves failure signaling set in the catch block above.
+main().catch(() => { process.exitCode = 1; }).then(() => process.exit(process.exitCode ?? 0));
