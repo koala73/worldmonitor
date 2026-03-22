@@ -144,7 +144,13 @@ export function buildMapUrl(
     expanded?: boolean;
   }
 ): string {
-  const url = new URL(baseUrl);
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    // window.location.origin can be "null" string in some in-app browsers / WebViews
+    url = new URL(window.location.href);
+  }
   const params = new URLSearchParams();
 
   if (state.center) {

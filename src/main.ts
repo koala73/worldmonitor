@@ -177,6 +177,7 @@ Sentry.init({
     /out of memory/,
     /Could not connect to the server/,
     /shaderSource must be an instance of WebGLShader/,
+    /WebGL2RenderingContext\.shaderSource: Argument 1 is not an object/,
     /Failed to initialize WebGL/,
     /opacityVertexArray\.length/,
     /Length of new data is \d+, which doesn't match current length of/,
@@ -246,6 +247,7 @@ Sentry.init({
     /^\w{1,2} is not a function\. \(In '\w{1,2}\(/,
     /null is not an object \(evaluating '\w+\.magnitude\.toFixed'\)/,
     /start offset of Int16Array should be a multiple of 2/,
+    /Cannot read properties of undefined \(reading 'then'\)/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
