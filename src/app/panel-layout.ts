@@ -86,10 +86,11 @@ import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
 import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
-import { getProWidgetKey, loadWidgets, saveWidget } from '@/services/widget-store';
+import { getProWidgetKey, isProUser, loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { initEntitlementSubscription, isEntitled, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { getUserId } from '@/services/user-identity';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
 import { initCheckoutOverlay, showCheckoutSuccess } from '@/services/checkout';
@@ -145,11 +146,11 @@ export class PanelLayoutManager implements AppModule {
       showCheckoutSuccess();
     }
 
-    // Boot entitlement subscription if we have a user identifier.
-    const proKey = getProWidgetKey();
-    if (proKey) {
-      initEntitlementSubscription(proKey).catch(() => {});
-      initSubscriptionWatch(proKey).catch(() => {});
+    // Boot entitlement + billing subscriptions if we have a user identifier.
+    const userId = getUserId();
+    if (userId) {
+      initEntitlementSubscription(userId).catch(() => {});
+      initSubscriptionWatch(userId).catch(() => {});
       initPaymentFailureBanner();
     }
 

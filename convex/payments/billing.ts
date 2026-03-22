@@ -19,13 +19,12 @@ import { resolveUserId } from "../lib/auth";
 // Shared SDK config (for direct API calls, not the Convex component)
 // ---------------------------------------------------------------------------
 
-const apiKey = process.env.DODO_API_KEY ?? process.env.DODO_PAYMENTS_API_KEY;
-const isLive = process.env.DODO_PAYMENTS_ENVIRONMENT === "live_mode";
-
 function getDodoClient(): DodoPayments {
+  const apiKey = process.env.DODO_API_KEY ?? process.env.DODO_PAYMENTS_API_KEY;
   if (!apiKey) {
     throw new Error("[billing] DODO_API_KEY not set — cannot call Dodo API");
   }
+  const isLive = process.env.DODO_PAYMENTS_ENVIRONMENT === "live_mode";
   return new DodoPayments({
     bearerToken: apiKey,
     ...(isLive ? {} : { environment: "test_mode" as const }),

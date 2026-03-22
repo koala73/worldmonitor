@@ -108,14 +108,11 @@ export async function upsertEntitlements(
 const FALLBACK_USER_ID = "test-user-001";
 
 /**
- * True when running against a local/dev Convex deployment.
- * Uses CONVEX_IS_DEV (set by `convex dev`) as primary signal,
- * with CONVEX_CLOUD_URL heuristic as fallback — same pattern as lib/auth.ts.
+ * True only when explicitly running `convex dev` (which sets CONVEX_IS_DEV).
+ * Never infer dev mode from missing env vars — that would make production
+ * behave like dev if CONVEX_CLOUD_URL happens to be unset.
  */
-const isDevDeployment =
-  process.env.CONVEX_IS_DEV === "true" ||
-  !process.env.CONVEX_CLOUD_URL ||
-  process.env.CONVEX_CLOUD_URL.includes("localhost");
+const isDevDeployment = process.env.CONVEX_IS_DEV === "true";
 
 /**
  * Resolves a Dodo product ID to a plan key via the productPlans table.

@@ -10,7 +10,7 @@
  */
 
 import { getConvexClient, getConvexApi } from './convex-client';
-import { getProWidgetKey } from './widget-store';
+import { getUserId } from './user-identity';
 
 export interface SubscriptionInfo {
   planKey: string;
@@ -122,7 +122,7 @@ export async function openBillingPortal(): Promise<void> {
       return;
     }
 
-    const userId = getProWidgetKey();
+    const userId = getUserId();
     if (!userId) {
       console.warn('[billing] No user ID found -- opening fallback portal');
       window.open('https://customer.dodopayments.com', '_blank');
@@ -156,7 +156,7 @@ export async function changePlan(newProductId: string): Promise<{ success: boole
       return { success: false };
     }
 
-    const userId = getProWidgetKey();
+    const userId = getUserId();
     if (!userId) {
       console.error('[billing] No user ID found -- cannot change plan');
       return { success: false };

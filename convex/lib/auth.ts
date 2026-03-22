@@ -3,33 +3,34 @@ import { QueryCtx, MutationCtx, ActionCtx } from "../_generated/server";
 const DEV_USER_ID = "test-user-001";
 
 /**
- * True when running against a local/dev Convex deployment.
- * Uses CONVEX_IS_DEV when available (set by `convex dev`),
- * falls back to CONVEX_CLOUD_URL heuristic.
+ * True only when explicitly running `convex dev` (which sets CONVEX_IS_DEV).
+ * Never infer dev mode from missing env vars — that would make production
+ * behave like dev if CONVEX_CLOUD_URL happens to be unset.
  */
-const isDev =
-  process.env.CONVEX_IS_DEV === "true" ||
-  !process.env.CONVEX_CLOUD_URL ||
-  process.env.CONVEX_CLOUD_URL.includes("localhost");
+const isDev = process.env.CONVEX_IS_DEV === "true";
 
 /**
  * Returns the current user's ID, or null if unauthenticated.
- * In development, returns a hardcoded test user ID.
+ *
+ * Resolution order:
+ *   1. Real auth identity from Clerk/Convex auth (ctx.auth.getUserIdentity)
+ *   2. Dev-only fallback to test-user-001 (only when CONVEX_IS_DEV=true)
  *
  * This is the sole entry point for resolving the current user —
  * no Convex function should call auth APIs directly.
- *
- * TODO: Replace with real auth resolution when PR #1812 merges
  */
 export async function resolveUserId(
-  _ctx: QueryCtx | MutationCtx | ActionCtx,
+  ctx: QueryCtx | MutationCtx | ActionCtx,
 ): Promise<string | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (identity?.subject) {
+    return identity.subject;
+  }
+
   if (isDev) {
     return DEV_USER_ID;
   }
-  // TODO: Replace with real auth resolution when PR #1812 merges
-  // const identity = await _ctx.auth.getUserIdentity();
-  // return identity?.subject ?? null;
+
   return null;
 }
 

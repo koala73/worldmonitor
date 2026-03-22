@@ -24,6 +24,7 @@ function makeSubscriptionPayload(overrides: Record<string, unknown> = {}) {
         email: "test@example.com",
         name: "Test User",
       },
+      metadata: { wm_user_id: "test-user-001" },
       previous_billing_date: "2026-03-21T00:00:00Z",
       next_billing_date: "2026-04-21T00:00:00Z",
       ...overrides,
@@ -50,6 +51,7 @@ function makePaymentPayload(
         email: "test@example.com",
         name: "Test User",
       },
+      metadata: { wm_user_id: "test-user-001" },
       ...overrides,
     },
   };
