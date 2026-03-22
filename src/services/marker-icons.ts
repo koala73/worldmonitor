@@ -13,10 +13,12 @@ export type MarkerShape = 'diamond' | 'square' | 'hexagon' | 'star';
  * Icon definition for deck.gl IconLayer
  */
 export interface IconDefinition {
+  id: string;
   url: string;
   width: number;
   height: number;
   mask: boolean;
+  anchorY: number;
 }
 
 /**
@@ -76,10 +78,12 @@ export function getMarkerIcon(shape: MarkerShape, tier: MarkerTier): IconDefinit
   if (!ICON_CACHE[key]) {
     const size = getMarkerSizeForTier(tier, shape);
     ICON_CACHE[key] = {
+      id: key,
       url: generateSvgDataUrl(shape, size),
       width: size,
       height: size,
       mask: true,
+      anchorY: size,
     };
   }
   return ICON_CACHE[key];
