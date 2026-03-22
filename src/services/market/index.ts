@@ -209,11 +209,14 @@ export async function fetchCryptoSectors(): Promise<CryptoSector[]> {
 // ========================================================================
 
 function toTokenData(q: ProtoCryptoQuote): TokenData {
+  // Bootstrap hydration delivers the raw seed shape ({change24h}) while the RPC
+  // handler normalises to the proto field name ({change}).  Handle both.
+  const raw = q as unknown as { change?: number; change24h?: number };
   return {
     name: q.name,
     symbol: q.symbol,
-    price: q.price,
-    change24h: q.change,
+    price: q.price ?? 0,
+    change24h: (raw.change ?? raw.change24h) ?? 0,
     change7d: q.change7d ?? 0,
   };
 }
