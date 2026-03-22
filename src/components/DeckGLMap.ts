@@ -338,6 +338,7 @@ export class DeckGLMap {
   private cyberThreats: CyberThreat[] = [];
   private aptGroups: import('@/types').APTGroup[] = [];
   private aptGroupsLoaded = false;
+  private aptGroupsLayerFailed = false;
   private iranEvents: IranEvent[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
@@ -800,7 +801,12 @@ export class DeckGLMap {
       onClick: (info: PickingInfo) => this.handleClick(info),
       pickingRadius: 10,
       useDevicePixels: window.devicePixelRatio > 2 ? 2 : true,
-      onError: (error: Error) => console.warn('[DeckGLMap] Render error (non-fatal):', error.message),
+      onError: (error: Error) => {
+        console.warn('[DeckGLMap] Render error (non-fatal):', error.message);
+        if (error.message.includes('apt-groups-layer')) {
+          this.aptGroupsLayerFailed = true;
+        }
+      },
     });
 
     this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
@@ -1574,7 +1580,7 @@ export class DeckGLMap {
     }
 
     // APT Groups layer — loaded lazily when cyberThreats layer is enabled
-    if (mapLayers.cyberThreats && SITE_VARIANT !== 'tech' && SITE_VARIANT !== 'happy' && this.aptGroups.length > 0) {
+    if (mapLayers.cyberThreats && SITE_VARIANT !== 'tech' && SITE_VARIANT !== 'happy' && this.aptGroups.length > 0 && !this.aptGroupsLayerFailed) {
       layers.push(this.createAPTGroupsLayer());
     }
 
