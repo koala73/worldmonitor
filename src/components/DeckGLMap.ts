@@ -10,6 +10,7 @@ import maplibregl from 'maplibre-gl';
 import { registerPMTilesProtocol, FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, getStyleForProvider, isLightMapTheme } from '@/config/basemap';
 import { IRELAND_SEMICONDUCTOR_HUBS } from '@/data/semiconductor-hubs';
 import { IRELAND_DATA_CENTERS, type IrelandDataCenter } from '@/data/data-centers-ireland';
+import { IRELAND_TECH_HQS, type IrelandTechHQ } from '@/data/tech-hqs-ireland';
 import Supercluster from 'supercluster';
 import type {
   MapLayers,
@@ -1550,6 +1551,9 @@ export class DeckGLMap {
       if (mapLayers.irelandDataCenters) {
         layers.push(this.createIrelandDataCentersLayer());
       }
+      if (mapLayers.irelandTechHQs) {
+        layers.push(this.createIrelandTechHQsLayer());
+      }
     }
 
     const irelandTechFallback = this.createIrelandTechFallbackLayer(mapLayers);
@@ -2751,6 +2755,26 @@ export class DeckGLMap {
     });
   }
 
+  /**
+   * Create Ireland tech HQs layer
+   * Shows EMEA headquarters of major tech companies (Google, Meta, Apple, etc.)
+   */
+  private createIrelandTechHQsLayer(): ScatterplotLayer<IrelandTechHQ> {
+    return new ScatterplotLayer<IrelandTechHQ>({
+      id: 'ireland-tech-hqs-layer',
+      data: IRELAND_TECH_HQS,
+      getPosition: (d) => [d.lng, d.lat],
+      getRadius: (d) => Math.min(25000, 10000 + (d.employees || 0) * 2),
+      getFillColor: [0, 122, 255, 235], // Blue for tech HQs
+      radiusMinPixels: 8,
+      radiusMaxPixels: 18,
+      stroked: true,
+      getLineColor: [255, 255, 255, 220] as [number, number, number, number],
+      lineWidthMinPixels: 1.5,
+      pickable: true,
+    });
+  }
+
   private createCloudRegionsLayer(): ScatterplotLayer {
     const isIreland = SITE_VARIANT === 'ireland';
     return new ScatterplotLayer({
@@ -3577,6 +3601,8 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.company)}<br/>${text(obj.business)}</div>` };
       case 'ireland-data-centers-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.operator)}${obj.capacity ? `<br/>${text(obj.capacity)}` : ''}</div>` };
+      case 'ireland-tech-hqs-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.company)}</strong><br/>${text(obj.location)}${obj.employees ? `<br/>${obj.employees.toLocaleString()}+ employees` : ''}</div>` };
       case 'tech-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.location)}</div>` };
       case 'irradiators-layer':
@@ -3931,6 +3957,7 @@ export class DeckGLMap {
       'cloud-regions-layer': 'cloudRegion',
       'semiconductor-hubs-layer': 'semiconductorHub',
       'ireland-data-centers-layer': 'irelandDataCenter',
+      'ireland-tech-hqs-layer': 'irelandTechHQ',
       'tech-events-layer': 'techEvent',
       'apt-groups-layer': 'apt',
       'minerals-layer': 'mineral',

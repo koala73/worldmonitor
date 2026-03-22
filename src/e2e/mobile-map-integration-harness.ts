@@ -120,6 +120,7 @@ const layers = {
   techEvents: false,
   semiconductorHubs: false,
   irelandDataCenters: false,
+  irelandTechHQs: false,
   stockExchanges: false,
   financialCenters: false,
   centralBanks: false,
