@@ -2802,6 +2802,69 @@ Output: [{"i":0,"l":"high","c":"conflict"}, ...]
 
 Focus: geopolitical events, conflicts, disasters, diplomacy. Classify by real-world severity and impact.`;
 
+const NEWS_THREAT_SUMMARY_KEY = 'news:threat:summary:v1';
+const NEWS_THREAT_SUMMARY_TTL = 1200; // 20 min — aligns with relay cadence
+
+// Country name → ISO2 for threat summary geo-attribution (inline to avoid ESM import)
+const THREAT_COUNTRY_NAME_TO_ISO2 = {
+  'afghanistan':'AF','albania':'AL','algeria':'DZ','angola':'AO','argentina':'AR',
+  'armenia':'AM','australia':'AU','austria':'AT','azerbaijan':'AZ','bahrain':'BH',
+  'bangladesh':'BD','belarus':'BY','belgium':'BE','bolivia':'BO','brazil':'BR',
+  'burkina faso':'BF','burma':'MM','cambodia':'KH','cameroon':'CM','canada':'CA',
+  'chad':'TD','chile':'CL','china':'CN','colombia':'CO','congo':'CG',
+  'costa rica':'CR','croatia':'HR','cuba':'CU','cyprus':'CY',
+  'czech republic':'CZ','czechia':'CZ',
+  'democratic republic of the congo':'CD','dr congo':'CD','drc':'CD',
+  'denmark':'DK','djibouti':'DJ','dominican republic':'DO',
+  'ecuador':'EC','egypt':'EG','el salvador':'SV','eritrea':'ER',
+  'estonia':'EE','ethiopia':'ET','finland':'FI','france':'FR',
+  'georgia':'GE','germany':'DE','ghana':'GH','greece':'GR',
+  'guatemala':'GT','guinea':'GN','haiti':'HT','honduras':'HN','hungary':'HU',
+  'iceland':'IS','india':'IN','indonesia':'ID','iran':'IR','iraq':'IQ',
+  'ireland':'IE','israel':'IL','italy':'IT','ivory coast':'CI',
+  'jamaica':'JM','japan':'JP','jordan':'JO','kazakhstan':'KZ',
+  'kenya':'KE','kosovo':'XK','kuwait':'KW','kyrgyzstan':'KG',
+  'laos':'LA','latvia':'LV','lebanon':'LB','libya':'LY','lithuania':'LT',
+  'mali':'ML','mauritania':'MR','mexico':'MX','moldova':'MD',
+  'mongolia':'MN','montenegro':'ME','morocco':'MA','mozambique':'MZ',
+  'myanmar':'MM','namibia':'NA','nepal':'NP','netherlands':'NL',
+  'new zealand':'NZ','nicaragua':'NI','niger':'NE','nigeria':'NG',
+  'north korea':'KP','north macedonia':'MK','norway':'NO',
+  'oman':'OM','pakistan':'PK','palestine':'PS','panama':'PA',
+  'paraguay':'PY','peru':'PE','philippines':'PH','poland':'PL',
+  'portugal':'PT','qatar':'QA','romania':'RO','russia':'RU','rwanda':'RW',
+  'saudi arabia':'SA','senegal':'SN','serbia':'RS','sierra leone':'SL',
+  'singapore':'SG','slovakia':'SK','slovenia':'SI','somalia':'SO',
+  'south africa':'ZA','south korea':'KR','south sudan':'SS','spain':'ES',
+  'sri lanka':'LK','sudan':'SD','sweden':'SE','switzerland':'CH',
+  'syria':'SY','taiwan':'TW','tajikistan':'TJ','tanzania':'TZ',
+  'thailand':'TH','togo':'TG','tunisia':'TN','turkey':'TR',
+  'turkmenistan':'TM','uganda':'UG','ukraine':'UA',
+  'united arab emirates':'AE','uae':'AE',
+  'united kingdom':'GB','uk':'GB','united states':'US','usa':'US',
+  'uruguay':'UY','uzbekistan':'UZ','venezuela':'VE','vietnam':'VN',
+  'yemen':'YE','zambia':'ZM','zimbabwe':'ZW',
+  // Key aliases
+  'tehran':'IR','moscow':'RU','beijing':'CN','kyiv':'UA','pyongyang':'KP',
+  'tel aviv':'IL','gaza':'IL','damascus':'SY','sanaa':'YE','houthi':'YE',
+  'kremlin':'RU','pentagon':'US','nato':'','irgc':'IR','hezbollah':'LB',
+  'hamas':'IL','taliban':'AF','riyadh':'SA','ankara':'TR',
+};
+// Sort by name length desc so longer multi-word names match first
+const THREAT_COUNTRY_NAME_ENTRIES = Object.entries(THREAT_COUNTRY_NAME_TO_ISO2)
+  .filter(([name, iso2]) => name.length >= 3 && iso2.length === 2)
+  .sort((a, b) => b[0].length - a[0].length)
+  .map(([name, iso2]) => ({ iso2, regex: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') }));
+
+function matchCountryNamesInText(text) {
+  const codes = new Set();
+  const lower = text.toLowerCase();
+  for (const { iso2, regex } of THREAT_COUNTRY_NAME_ENTRIES) {
+    if (regex.test(lower)) codes.add(iso2);
+  }
+  return [...codes];
+}
+
 function classifyCacheKey(title) {
   const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
   return `classify:sebuf:v1:${hash}`;
@@ -2945,11 +3008,28 @@ async function seedClassifyForVariant(variant) {
 
   const cached = await upstashMGet(cacheKeys);
   const misses = [];
+  // byCountry accumulates threat counts while title+level are in scope
+  const byCountry = {};
+  const emptyLevel = () => ({ critical: 0, high: 0, medium: 0, low: 0, info: 0 });
+
   for (let i = 0; i < titleArr.length; i++) {
-    if (!cached[i]) misses.push(titleArr[i]);
+    const hit = cached[i];
+    if (!hit) {
+      misses.push(titleArr[i]);
+      continue;
+    }
+    // Attribute cached hits while we still have the title
+    let parsed = hit;
+    if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { continue; } }
+    const level = parsed?.level;
+    if (!CLASSIFY_VALID_LEVELS.includes(level)) continue;
+    for (const code of matchCountryNamesInText(titleArr[i])) {
+      if (!byCountry[code]) byCountry[code] = emptyLevel();
+      byCountry[code][level]++;
+    }
   }
 
-  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0 };
+  if (misses.length === 0) return { total: titleArr.length, classified: 0, skipped: 0, byCountry };
 
   let classified = 0;
   let skipped = 0;
@@ -2977,6 +3057,11 @@ async function seedClassifyForVariant(variant) {
       classifiedSet.add(idx);
       await upstashSet(classifyCacheKey(chunk[idx]), { level, category, timestamp: Date.now() }, CLASSIFY_CACHE_TTL);
       classified++;
+      // Attribute newly classified title while it's still in scope
+      for (const code of matchCountryNamesInText(chunk[idx])) {
+        if (!byCountry[code]) byCountry[code] = emptyLevel();
+        byCountry[code][level]++;
+      }
     }
 
     for (let i = 0; i < chunk.length; i++) {
@@ -2987,7 +3072,7 @@ async function seedClassifyForVariant(variant) {
     }
   }
 
-  return { total: titleArr.length, classified, skipped };
+  return { total: titleArr.length, classified, skipped, byCountry };
 }
 
 async function seedClassify() {
@@ -3003,6 +3088,7 @@ async function seedClassify() {
 
     let totalClassified = 0;
     let totalSkipped = 0;
+    const mergedByCountry = {};
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
       if (v > 0) await new Promise((r) => setTimeout(r, CLASSIFY_VARIANT_STAGGER_MS));
       try {
@@ -3010,9 +3096,22 @@ async function seedClassify() {
         totalClassified += stats.classified;
         totalSkipped += stats.skipped;
         console.log(`[Classify] ${CLASSIFY_VARIANTS[v]}: ${stats.total} titles, ${stats.classified} classified, ${stats.skipped} skipped`);
+        // Merge per-country counts across variants (de-duplicate via Set not possible here — sum is a reasonable upper bound)
+        for (const [code, counts] of Object.entries(stats.byCountry || {})) {
+          if (!mergedByCountry[code]) mergedByCountry[code] = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+          for (const lvl of ['critical', 'high', 'medium', 'low', 'info']) {
+            mergedByCountry[code][lvl] += counts[lvl] || 0;
+          }
+        }
       } catch (e) {
         console.warn(`[Classify] ${CLASSIFY_VARIANTS[v]} error:`, e?.message || e);
       }
+    }
+
+    if (Object.keys(mergedByCountry).length > 0) {
+      await upstashSet(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: Date.now() }, NEWS_THREAT_SUMMARY_TTL);
+      await upstashSet('seed-meta:news:threat-summary', { fetchedAt: Date.now(), recordCount: Object.keys(mergedByCountry).length }, 604800);
+      console.log(`[Classify] Threat summary written for ${Object.keys(mergedByCountry).length} countries`);
     }
 
     await upstashSet('seed-meta:classify', { fetchedAt: Date.now(), recordCount: totalClassified }, 604800);

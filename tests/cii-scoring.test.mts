@@ -16,6 +16,7 @@ function emptyAux() {
     advisories: null as { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null,
     displacedByIso3: {} as Record<string, number>,
     newsTopStories: [] as Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>,
+    threatSummaryByCountry: null as Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null,
   };
 }
 
