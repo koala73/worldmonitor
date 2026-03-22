@@ -107,6 +107,7 @@ import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate 
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { getSecretState, isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
+import { isProUser } from '@/services/widget-store';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -243,7 +244,7 @@ export class DataLoaderManager implements AppModule {
   init(): void {
     this.boundMarketWatchlistHandler = () => {
       void this.loadMarkets().then(async () => {
-        if (getSecretState('WORLDMONITOR_API_KEY').present) {
+        if (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) {
           await this.loadStockAnalysis();
           await this.loadStockBacktest();
           await this.loadDailyMarketBrief(true);
@@ -521,7 +522,7 @@ export class DataLoaderManager implements AppModule {
 
     this.updateSearchIndex();
 
-    if (getSecretState('WORLDMONITOR_API_KEY').present) {
+    if (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) {
       await this.loadDailyMarketBrief();
     }
 
@@ -1365,7 +1366,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadDailyMarketBrief(force = false): Promise<void> {
-    if (!getSecretState('WORLDMONITOR_API_KEY').present) return;
+    if (!getSecretState('WORLDMONITOR_API_KEY').present && !isProUser()) return;
     if (this.ctx.isDestroyed || this.ctx.inFlight.has('dailyMarketBrief')) return;
 
     this.ctx.inFlight.add('dailyMarketBrief');
