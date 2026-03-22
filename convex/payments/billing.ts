@@ -83,8 +83,6 @@ export const getSubscriptionForUser = query({
       displayName: productPlan?.displayName ?? subscription.planKey,
       status: subscription.status,
       currentPeriodEnd: subscription.currentPeriodEnd,
-      dodoSubscriptionId: subscription.dodoSubscriptionId,
-      dodoProductId: subscription.dodoProductId,
     };
   },
 });
