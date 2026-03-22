@@ -10,10 +10,11 @@
  */
 
 import { v } from "convex/values";
-import { action, mutation, query, internalQuery } from "../_generated/server";
+import { internalAction, mutation, query, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
 import { resolveUserId, requireUserId } from "../lib/auth";
+import { getFeaturesForPlan } from "../lib/entitlements";
 
 // ---------------------------------------------------------------------------
 // Shared SDK config (for direct API calls, not the Convex component)
@@ -129,14 +130,15 @@ export const getActiveSubscription = internalQuery({
 /**
  * Creates a Dodo Customer Portal session and returns the portal URL.
  *
- * The portal allows customers to manage billing details, payment methods,
- * and view invoices directly through Dodo's hosted UI.
+ * Internal action — not callable from the browser directly. The frontend
+ * opens the fallback portal URL instead. Once Clerk auth is wired into
+ * the ConvexClient, this can be promoted to a public action with
+ * requireUserId(ctx) for auth gating.
  */
-export const getCustomerPortalUrl = action({
+export const getCustomerPortalUrl = internalAction({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    const authedUserId = await resolveUserId(ctx);
-    const userId = authedUserId ?? args.userId;
+    const userId = args.userId;
 
     const customer = await ctx.runQuery(
       internal.payments.billing.getCustomerByUserId,
@@ -160,11 +162,12 @@ export const getCustomerPortalUrl = action({
 /**
  * Changes the subscription plan for a user (upgrade or downgrade).
  *
- * Uses the direct Dodo SDK to call changePlan. The webhook
- * (subscription.plan_changed) will update Convex state and recompute
- * entitlements asynchronously.
+ * Internal action — not callable from the browser directly. Plan changes
+ * are delegated to the Dodo Customer Portal UI for now. Once Clerk auth
+ * is wired into the ConvexClient, this can be promoted to a public action
+ * with requireUserId(ctx) for auth gating.
  */
-export const changePlan = action({
+export const changePlan = internalAction({
   args: {
     userId: v.string(),
     newProductId: v.string(),
@@ -175,8 +178,7 @@ export const changePlan = action({
     ),
   },
   handler: async (ctx, args) => {
-    const authedUserId = await resolveUserId(ctx);
-    const userId = authedUserId ?? args.userId;
+    const userId = args.userId;
 
     const subscription = await ctx.runQuery(
       internal.payments.billing.getActiveSubscription,
@@ -231,29 +233,46 @@ export const claimSubscription = mutation({
       await ctx.db.patch(sub._id, { userId: realUserId });
     }
 
-    // Reassign entitlements
+    // Reassign entitlements — compare by tier first, then validUntil
     const entitlement = await ctx.db
       .query("entitlements")
       .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
       .unique();
+    let winningPlanKey: string | null = null;
+    let winningFeatures: ReturnType<typeof getFeaturesForPlan> | null = null;
+    let winningValidUntil: number | null = null;
     if (entitlement) {
-      // Check if the real user already has entitlements
       const existingEntitlement = await ctx.db
         .query("entitlements")
         .withIndex("by_userId", (q) => q.eq("userId", realUserId))
         .unique();
       if (existingEntitlement) {
-        // Keep the higher-tier entitlement
-        if (entitlement.validUntil > existingEntitlement.validUntil) {
+        // Compare by tier first, break ties with validUntil
+        const anonTier = entitlement.features?.tier ?? 0;
+        const existingTier = existingEntitlement.features?.tier ?? 0;
+        const anonWins =
+          anonTier > existingTier ||
+          (anonTier === existingTier && entitlement.validUntil > existingEntitlement.validUntil);
+        if (anonWins) {
+          winningPlanKey = entitlement.planKey;
+          winningFeatures = entitlement.features;
+          winningValidUntil = entitlement.validUntil;
           await ctx.db.patch(existingEntitlement._id, {
             planKey: entitlement.planKey,
             features: entitlement.features,
             validUntil: entitlement.validUntil,
             updatedAt: Date.now(),
           });
+        } else {
+          winningPlanKey = existingEntitlement.planKey;
+          winningFeatures = existingEntitlement.features;
+          winningValidUntil = existingEntitlement.validUntil;
         }
         await ctx.db.delete(entitlement._id);
       } else {
+        winningPlanKey = entitlement.planKey;
+        winningFeatures = entitlement.features;
+        winningValidUntil = entitlement.validUntil;
         await ctx.db.patch(entitlement._id, { userId: realUserId });
       }
     }
@@ -274,6 +293,29 @@ export const claimSubscription = mutation({
       .collect();
     for (const payment of payments) {
       await ctx.db.patch(payment._id, { userId: realUserId });
+    }
+
+    // Sync Redis cache: clear stale anon entry + write real user's entitlement
+    if (process.env.UPSTASH_REDIS_REST_URL) {
+      // Delete the anon ID's stale Redis cache entry
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.cacheActions.deleteEntitlementCache,
+        { userId: args.anonId },
+      );
+      // Sync the real user's entitlement to Redis
+      if (winningPlanKey && winningFeatures && winningValidUntil) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.payments.cacheActions.syncEntitlementCache,
+          {
+            userId: realUserId,
+            planKey: winningPlanKey,
+            features: winningFeatures,
+            validUntil: winningValidUntil,
+          },
+        );
+      }
     }
 
     return {

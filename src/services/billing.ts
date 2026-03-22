@@ -115,68 +115,27 @@ export function getSubscription(): SubscriptionInfo | null {
 
 /**
  * Open the Dodo Customer Portal in a new tab.
- * Falls back to the generic Dodo customer portal if the action fails.
+ *
+ * getCustomerPortalUrl is an internal action (not callable from browser)
+ * to prevent IDOR attacks before Clerk auth is wired. Falls back to the
+ * generic Dodo customer portal. Once Clerk auth lands and getCustomerPortalUrl
+ * is promoted to a public action, this will call it directly.
  */
 export async function openBillingPortal(): Promise<void> {
-  try {
-    const userId = getUserId();
-    if (!userId) {
-      console.warn('[billing] No user identity -- opening fallback portal');
-      window.open('https://customer.dodopayments.com', '_blank');
-      return;
-    }
-
-    const client = await getConvexClient();
-    const api = await getConvexApi();
-
-    if (!client || !api) {
-      console.warn('[billing] ConvexClient unavailable -- opening fallback portal');
-      window.open('https://customer.dodopayments.com', '_blank');
-      return;
-    }
-
-    const result = await client.action(api.payments.billing.getCustomerPortalUrl, { userId });
-
-    if (result && result.portal_url && result.portal_url.startsWith('https://')) {
-      window.open(result.portal_url, '_blank');
-    } else {
-      window.open('https://customer.dodopayments.com', '_blank');
-    }
-  } catch (err) {
-    console.warn('[billing] Failed to get portal URL, opening fallback:', err);
-    window.open('https://customer.dodopayments.com', '_blank');
-  }
+  // TODO: Once Clerk auth is wired, call getCustomerPortalUrl for personalized portal URL
+  window.open('https://customer.dodopayments.com', '_blank');
 }
 
 /**
  * Change the user's subscription plan.
- * Returns { success: true } on success, { success: false } on error.
+ *
+ * changePlan is an internal action (not callable from browser) to prevent
+ * IDOR attacks before Clerk auth is wired. Plan changes are handled via
+ * the Dodo Customer Portal for now. Once Clerk auth lands, this will call
+ * the action directly.
  */
-export async function changePlan(newProductId: string): Promise<{ success: boolean }> {
-  try {
-    const userId = getUserId();
-    if (!userId) {
-      console.error('[billing] No user identity -- cannot change plan');
-      return { success: false };
-    }
-
-    const client = await getConvexClient();
-    const api = await getConvexApi();
-
-    if (!client || !api) {
-      console.error('[billing] ConvexClient unavailable -- cannot change plan');
-      return { success: false };
-    }
-
-    const result = await client.action(api.payments.billing.changePlan, {
-      userId,
-      newProductId,
-      prorationMode: 'prorated_immediately',
-    });
-
-    return result ?? { success: false };
-  } catch (err) {
-    console.error('[billing] Failed to change plan:', err);
-    return { success: false };
-  }
+export async function changePlan(_newProductId: string): Promise<{ success: boolean }> {
+  // TODO: Once Clerk auth is wired, call changePlan action directly
+  console.warn('[billing] Plan changes are handled via the Dodo Customer Portal');
+  return { success: false };
 }

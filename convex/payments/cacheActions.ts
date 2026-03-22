@@ -69,3 +69,42 @@ export const syncEntitlementCache = internalAction({
     }
   },
 });
+
+/**
+ * Deletes a user's entitlement cache entry from Redis.
+ *
+ * Used by claimSubscription to clear the stale anonymous ID cache entry
+ * after reassigning records to the real authenticated user.
+ */
+export const deleteEntitlementCache = internalAction({
+  args: { userId: v.string() },
+  handler: async (_ctx, args) => {
+    const url = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    if (!url || !token) return;
+
+    const key = `entitlements:${args.userId}`;
+
+    try {
+      const resp = await fetch(
+        `${url}/del/${encodeURIComponent(key)}`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+
+      if (!resp.ok) {
+        console.warn(
+          `[cacheActions] Redis DEL failed: HTTP ${resp.status} for key ${key}`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        "[cacheActions] Redis cache delete failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  },
+});
