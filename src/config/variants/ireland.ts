@@ -109,6 +109,10 @@ export const FEEDS: Record<string, Feed[]> = {
       name: 'Analog Devices Ireland', 
       url: rss('https://news.google.com/rss/search?q=%22Analog+Devices%22+(Ireland+OR+Limerick)+when:14d&hl=en-IE&gl=IE&ceid=IE:en') 
     },
+    { 
+      name: 'Tyndall National Institute', 
+      url: rss('https://news.google.com/rss/search?q=%22Tyndall+National+Institute%22+OR+%22Tyndall+Cork%22+when:14d&hl=en-IE&gl=IE&ceid=IE:en') 
+    },
   ],
 
   // 爱尔兰商业新闻（使用 Google News 搜索）

@@ -95,6 +95,7 @@ const P1_KEYWORDS = [
   'chip manufacturing',
   'eu chips act',
   'leixlip',
+  'tyndall',
   'breakthrough',
   'research grant',
   'innovation hub',

@@ -68,4 +68,16 @@ export const IRELAND_SEMICONDUCTOR_HUBS: SemiconductorHub[] = [
     description:
       'Manufacturing of high-speed connectors for semiconductor and data center applications.',
   },
+  {
+    id: 'tyndall-cork',
+    name: 'Tyndall National Institute',
+    company: 'Irish Government Research Institute',
+    lat: 51.8969,
+    lng: -8.5094,
+    employees: 600,
+    business: 'Semiconductor & Photonics R&D',
+    website: 'https://www.tyndall.ie',
+    description:
+      "Europe's leading research center for micro/nano-electronics and photonics. Partners with Intel, Analog Devices, and EU Chips Act initiatives.",
+  },
 ];

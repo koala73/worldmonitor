@@ -81,6 +81,13 @@ describe('news-priority', () => {
       assert.equal(getNewsPriority(article), NewsPriority.P1);
     });
 
+    it('returns P1 for Tyndall Institute news', () => {
+      const article = createNewsItem(
+        'Tyndall National Institute partners with Intel on quantum chip research',
+      );
+      assert.equal(getNewsPriority(article), NewsPriority.P1);
+    });
+
     it('returns P0 for EU Chips Act grants', () => {
       const article = createNewsItem(
         'EU Chips Act grant allocates €1.2 billion to Ireland semiconductor projects',

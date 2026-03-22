@@ -6,8 +6,8 @@ import assert from 'node:assert';
 import { IRELAND_SEMICONDUCTOR_HUBS, type SemiconductorHub } from '../src/data/semiconductor-hubs.ts';
 
 describe('IRELAND_SEMICONDUCTOR_HUBS', () => {
-  it('contains 4 semiconductor facilities', () => {
-    assert.equal(IRELAND_SEMICONDUCTOR_HUBS.length, 4);
+  it('contains 5 semiconductor facilities', () => {
+    assert.equal(IRELAND_SEMICONDUCTOR_HUBS.length, 5);
   });
 
   it('all entries have required fields', () => {
@@ -47,5 +47,13 @@ describe('IRELAND_SEMICONDUCTOR_HUBS', () => {
     const ids = IRELAND_SEMICONDUCTOR_HUBS.map(h => h.id);
     const uniqueIds = new Set(ids);
     assert.equal(ids.length, uniqueIds.size, 'All IDs should be unique');
+  });
+
+  it('Tyndall National Institute is included', () => {
+    const tyndall = IRELAND_SEMICONDUCTOR_HUBS.find(h => h.id === 'tyndall-cork');
+    assert.ok(tyndall, 'Tyndall National Institute should be included');
+    assert.equal(tyndall?.company, 'Irish Government Research Institute');
+    assert.ok(tyndall?.employees >= 600, 'Tyndall should have 600+ employees');
+    assert.ok(tyndall?.lat > 51 && tyndall?.lat < 52.5, 'Tyndall should be in Cork area');
   });
 });
