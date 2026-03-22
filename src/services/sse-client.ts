@@ -1,8 +1,8 @@
-export type SseCallback<T = any> = (payload: T) => void;
+export type SseCallback<T = unknown> = (payload: T) => void;
 
 class SseClient {
   private eventSource: EventSource | null = null;
-  private listeners: Map<string, Set<SseCallback>> = new Map();
+  private listeners: Map<string, Set<SseCallback<unknown>>> = new Map();
   private isConnecting = false;
   private reconnectTimer: number | null = null;
   private retryCount = 0;
@@ -100,7 +100,7 @@ class SseClient {
   }
 
   private dispatch(eventType: string, rawData: string) {
-    let payload;
+    let payload: unknown;
     try {
       payload = JSON.parse(rawData);
     } catch {
@@ -119,12 +119,12 @@ class SseClient {
     }
   }
 
-  public subscribe<T = any>(eventType: string, callback: SseCallback<T>): () => void {
+  public subscribe<T = unknown>(eventType: string, callback: SseCallback<T>): () => void {
     if (!this.listeners.has(eventType)) {
       this.listeners.set(eventType, new Set());
       this.bindEventSourceListener(eventType);
     }
-    this.listeners.get(eventType)!.add(callback as SseCallback);
+    this.listeners.get(eventType)!.add(callback as SseCallback<unknown>);
 
     // Re-connect if disconnected (lazy initialization / resume)
     if (!this.eventSource && !this.isConnecting && !this.reconnectTimer) {
@@ -136,7 +136,7 @@ class SseClient {
     return () => {
       const cbs = this.listeners.get(eventType);
       if (cbs) {
-        cbs.delete(callback as SseCallback);
+        cbs.delete(callback as SseCallback<unknown>);
         if (cbs.size === 0) {
           this.listeners.delete(eventType);
           // If no listeners at all, disconnect EventSource to save bandwidth

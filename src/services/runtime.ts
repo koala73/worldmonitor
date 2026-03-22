@@ -2,6 +2,8 @@ import { SITE_VARIANT } from '@/config/variant';
 import { getClerkToken } from '@/services/clerk';
 import { detectDesktopRuntime } from '@/config/runtime';
 
+export { detectDesktopRuntime } from '@/config/runtime';
+
 const ENV = (() => {
   try {
     return import.meta.env ?? {};
