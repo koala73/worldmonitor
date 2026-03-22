@@ -4458,11 +4458,13 @@ export class DeckGLMap {
     const isLight = getCurrentTheme() === 'light';
     const legendItems = SITE_VARIANT === 'ireland'
       ? [
-        { shape: shapes.circle('rgb(0, 140, 255)'), label: 'Big Tech Offices (HQs)' },
-        { shape: shapes.circle('rgb(0, 209, 255)'), label: 'Startup & University AI Hubs' },
-        { shape: shapes.circle('rgb(255, 179, 0)'), label: 'Accelerators / Incubators' },
-        { shape: shapes.circle('rgb(153, 102, 255)'), label: 'Cloud Regions / Infrastructure' },
-        { shape: shapes.square('rgb(136, 68, 255)'), label: 'AI Data Centers' },
+        { shape: shapes.circle('rgb(138, 43, 226)'), label: '💾 Semiconductor Hubs' },
+        { shape: shapes.circle('rgb(66, 133, 244)'), label: '🏢 Data Centers (Ireland)' },
+        { shape: shapes.circle('rgb(0, 122, 255)'), label: '🏢 Tech HQs (EMEA)' },
+        { shape: shapes.circle('rgb(22, 155, 98)'), label: '🦄 Irish Unicorns' },
+        { shape: shapes.circle('rgb(0, 209, 255)'), label: '🚀 Startup Hubs' },
+        { shape: shapes.circle('rgb(153, 102, 255)'), label: '☁️ Cloud Regions' },
+        { shape: shapes.circle('rgb(255, 179, 0)'), label: '🔶 Accelerators' },
       ]
       : SITE_VARIANT === 'tech'
         ? [
