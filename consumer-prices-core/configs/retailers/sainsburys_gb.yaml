@@ -4,12 +4,11 @@ retailer:
   marketCode: gb
   currencyCode: GBP
   adapter: search
-  baseUrl: https://www.sainsburys.co.uk
+  baseUrl: https://groceries.sainsburys.co.uk
   enabled: true
 
   searchConfig:
     numResults: 5
-    urlPathContains: /shop/gb/groceries/
     queryTemplate: "{canonicalName} grocery {market} {currency} price"
 
   rateLimit:

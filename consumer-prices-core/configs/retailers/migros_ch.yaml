@@ -9,7 +9,6 @@ retailer:
 
   searchConfig:
     numResults: 5
-    urlPathContains: /de/produkt/
     queryTemplate: "{canonicalName} Lebensmittel {market} {currency} Preis"
 
   rateLimit:

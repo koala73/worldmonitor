@@ -5,7 +5,7 @@ retailer:
   currencyCode: KES
   adapter: search
   baseUrl: https://www.naivas.online
-  enabled: true
+  enabled: false
 
   searchConfig:
     numResults: 5

@@ -63,7 +63,6 @@ async function updateScrapeRun(
 }
 
 export async function scrapeRetailer(slug: string) {
-  initProviders(process.env as Record<string, string>);
 
   const config = loadRetailerConfig(slug);
   if (!config.enabled) {
@@ -202,22 +201,38 @@ export async function scrapeRetailer(slug: string) {
     [retailerId, isSuccess ? new Date() : null, status, Math.round(parseSuccessRate * 100) / 100],
   );
 
-  await teardownAll();
 }
 
 export async function scrapeAll() {
   initProviders(process.env as Record<string, string>);
   const configs = loadAllRetailerConfigs().filter((c) => c.enabled);
   logger.info(`Scraping ${configs.length} retailers`);
-  for (const c of configs) {
-    await scrapeRetailer(c.slug);
-  }
+
+  // Run retailers in parallel: each hits a different domain so rate limits don't conflict.
+  // Cap at 5 concurrent to avoid saturating Firecrawl's global request limits.
+  const CONCURRENCY = 5;
+  const queue = [...configs];
+  const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const cfg = queue.shift()!;
+      try {
+        await scrapeRetailer(cfg.slug);
+      } catch (err) {
+        logger.warn(`scrapeRetailer ${cfg.slug} failed: ${err}`);
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  await teardownAll();
 }
 
 async function main() {
   try {
     if (process.argv[2]) {
+      initProviders(process.env as Record<string, string>);
       await scrapeRetailer(process.argv[2]);
+      await teardownAll();
     } else {
       await scrapeAll();
     }
