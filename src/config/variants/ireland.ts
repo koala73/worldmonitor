@@ -196,6 +196,7 @@ const IRELAND_MAP_LAYERS: MapLayers = {
   semiconductorHubs: true, // 半导体设施
   irelandDataCenters: true, // 爱尔兰数据中心
   irelandTechHQs: true, // EMEA 科技公司总部
+  irishUnicorns: true, // 爱尔兰本土独角兽
   stockExchanges: false,
   financialCenters: false,
   centralBanks: false,

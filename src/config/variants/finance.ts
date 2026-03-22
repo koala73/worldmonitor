@@ -211,6 +211,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   semiconductorHubs: false,
   irelandDataCenters: false,
   irelandTechHQs: false,
+  irishUnicorns: false,
   // Finance-specific layers
   stockExchanges: true,
   financialCenters: true,
@@ -274,6 +275,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   semiconductorHubs: false,
   irelandDataCenters: false,
   irelandTechHQs: false,
+  irishUnicorns: false,
   // Finance layers (limited on mobile)
   stockExchanges: true,
   financialCenters: false,

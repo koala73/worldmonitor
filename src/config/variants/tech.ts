@@ -251,7 +251,8 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   techEvents: true,
   semiconductorHubs: false,
   irelandDataCenters: false,
-  irelandTechHQs: false, // Ireland variant only
+  irelandTechHQs: false,
+  irishUnicorns: false, // Ireland variant only
   // Finance layers (disabled in tech variant)
   stockExchanges: false,
   financialCenters: false,
@@ -315,6 +316,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   semiconductorHubs: false,
   irelandDataCenters: false,
   irelandTechHQs: false,
+  irishUnicorns: false,
   // Finance layers (disabled in tech variant)
   stockExchanges: false,
   financialCenters: false,

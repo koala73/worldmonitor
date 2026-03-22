@@ -11,6 +11,7 @@ import { registerPMTilesProtocol, FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, get
 import { IRELAND_SEMICONDUCTOR_HUBS } from '@/data/semiconductor-hubs';
 import { IRELAND_DATA_CENTERS, type IrelandDataCenter } from '@/data/data-centers-ireland';
 import { IRELAND_TECH_HQS, type IrelandTechHQ } from '@/data/tech-hqs-ireland';
+import { IRISH_UNICORNS, type IrishUnicorn } from '@/data/irish-unicorns';
 import Supercluster from 'supercluster';
 import type {
   MapLayers,
@@ -1554,6 +1555,9 @@ export class DeckGLMap {
       if (mapLayers.irelandTechHQs) {
         layers.push(this.createIrelandTechHQsLayer());
       }
+      if (mapLayers.irishUnicorns) {
+        layers.push(this.createIrishUnicornsLayer());
+      }
     }
 
     const irelandTechFallback = this.createIrelandTechFallbackLayer(mapLayers);
@@ -2775,6 +2779,36 @@ export class DeckGLMap {
     });
   }
 
+  /**
+   * Create Irish unicorns layer
+   * Shows local Irish tech companies with unicorn status or high growth
+   * Uses Irish green color scheme
+   */
+  private createIrishUnicornsLayer(): ScatterplotLayer<IrishUnicorn> {
+    return new ScatterplotLayer<IrishUnicorn>({
+      id: 'irish-unicorns-layer',
+      data: IRISH_UNICORNS,
+      getPosition: (d) => [d.lng, d.lat],
+      getRadius: (d) => {
+        if (d.category === 'unicorn') return 22000;
+        if (d.category === 'high-growth') return 18000;
+        return 14000; // emerging
+      },
+      getFillColor: (d) => {
+        // Irish green color scheme
+        if (d.category === 'unicorn') return [22, 155, 98, 235]; // Deep green
+        if (d.category === 'high-growth') return [52, 211, 153, 235]; // Medium green
+        return [110, 231, 183, 235]; // Light green for emerging
+      },
+      radiusMinPixels: 8,
+      radiusMaxPixels: 18,
+      stroked: true,
+      getLineColor: [255, 255, 255, 220] as [number, number, number, number],
+      lineWidthMinPixels: 1.5,
+      pickable: true,
+    });
+  }
+
   private createCloudRegionsLayer(): ScatterplotLayer {
     const isIreland = SITE_VARIANT === 'ireland';
     return new ScatterplotLayer({
@@ -3603,6 +3637,10 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.operator)}${obj.capacity ? `<br/>${text(obj.capacity)}` : ''}</div>` };
       case 'ireland-tech-hqs-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.company)}</strong><br/>${text(obj.location)}${obj.employees ? `<br/>${obj.employees.toLocaleString()}+ employees` : ''}</div>` };
+      case 'irish-unicorns-layer': {
+        const categoryLabel = obj.category === 'unicorn' ? '🦄 Unicorn' : obj.category === 'high-growth' ? '📈 High Growth' : '⭐ Emerging';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${categoryLabel}<br/>${text(obj.sector)}${obj.valuation ? `<br/>${text(obj.valuation)}` : ''}</div>` };
+      }
       case 'tech-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.location)}</div>` };
       case 'irradiators-layer':
@@ -3958,6 +3996,7 @@ export class DeckGLMap {
       'semiconductor-hubs-layer': 'semiconductorHub',
       'ireland-data-centers-layer': 'irelandDataCenter',
       'ireland-tech-hqs-layer': 'irelandTechHQ',
+      'irish-unicorns-layer': 'irishUnicorn',
       'tech-events-layer': 'techEvent',
       'apt-groups-layer': 'apt',
       'minerals-layer': 'mineral',
