@@ -4056,11 +4056,7 @@ export class DeckGLMap {
     this.container.appendChild(popup);
   }
 
-  private createLegend(): void {
-    const legend = document.createElement('div');
-    legend.className = 'map-legend deckgl-legend';
-
-    // SVG shapes for different marker types
+  private getLegendItems(): Array<{ shape: string; label: string }> {
     const shapes = {
       circle: (color: string) => `<svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="${color}"/></svg>`,
       triangle: (color: string) => `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="6,1 11,10 1,10" fill="${color}"/></svg>`,
@@ -4069,49 +4065,64 @@ export class DeckGLMap {
     };
 
     const isLight = getCurrentTheme() === 'light';
-    const legendItems = SITE_VARIANT === 'tech'
-      ? [
-        { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub') },
-        { shape: shapes.circle('rgb(100, 200, 255)'), label: t('components.deckgl.legend.techHQ') },
-        { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.accelerator') },
-        { shape: shapes.circle('rgb(150, 100, 255)'), label: t('components.deckgl.legend.cloudRegion') },
-        { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter') },
-      ]
-      : SITE_VARIANT === 'finance'
-        ? [
-          { shape: shapes.circle('rgb(255, 215, 80)'), label: t('components.deckgl.legend.stockExchange') },
-          { shape: shapes.circle('rgb(0, 220, 150)'), label: t('components.deckgl.legend.financialCenter') },
-          { shape: shapes.hexagon('rgb(255, 210, 80)'), label: t('components.deckgl.legend.centralBank') },
-          { shape: shapes.square('rgb(255, 150, 80)'), label: t('components.deckgl.legend.commodityHub') },
-          { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway') },
-        ]
-        : SITE_VARIANT === 'happy'
-          ? [
-            { shape: shapes.circle('rgb(34, 197, 94)'), label: 'Positive Event' },
-            { shape: shapes.circle('rgb(234, 179, 8)'), label: 'Breakthrough' },
-            { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Act of Kindness' },
-            { shape: shapes.circle('rgb(255, 100, 50)'), label: 'Natural Event' },
-            { shape: shapes.square('rgb(34, 180, 100)'), label: 'Happy Country' },
-            { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Species Recovery Zone' },
-            { shape: shapes.circle('rgb(255, 200, 50)'), label: 'Renewable Installation' },
-            { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft') },
-          ]
-          : [
-            { shape: shapes.circle('rgb(255, 68, 68)'), label: t('components.deckgl.legend.highAlert') },
-            { shape: shapes.circle('rgb(255, 165, 0)'), label: t('components.deckgl.legend.elevated') },
-            { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 255, 0)'), label: t('components.deckgl.legend.monitoring') },
-            { shape: shapes.triangle('rgb(68, 136, 255)'), label: t('components.deckgl.legend.base') },
-            { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 220, 0)'), label: t('components.deckgl.legend.nuclear') },
-            { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter') },
-            { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft') },
-          ];
+    if (SITE_VARIANT === 'tech') {
+      const techLegendItems: Array<{ shape: string; label: string; layer: keyof MapLayers }> = [
+        { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub'), layer: 'startupHubs' },
+        { shape: shapes.circle('rgb(100, 200, 255)'), label: t('components.deckgl.legend.techHQ'), layer: 'techHQs' },
+        { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.accelerator'), layer: 'accelerators' },
+        { shape: shapes.circle('rgb(150, 100, 255)'), label: t('components.deckgl.legend.cloudRegion'), layer: 'cloudRegions' },
+        { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter'), layer: 'datacenters' },
+      ];
+      return techLegendItems
+        .filter(({ layer }) => this.state.layers[layer])
+        .map(({ shape, label }) => ({ shape, label }));
+    }
 
+    if (SITE_VARIANT === 'finance') {
+      return [
+        { shape: shapes.circle('rgb(255, 215, 80)'), label: t('components.deckgl.legend.stockExchange') },
+        { shape: shapes.circle('rgb(0, 220, 150)'), label: t('components.deckgl.legend.financialCenter') },
+        { shape: shapes.hexagon('rgb(255, 210, 80)'), label: t('components.deckgl.legend.centralBank') },
+        { shape: shapes.square('rgb(255, 150, 80)'), label: t('components.deckgl.legend.commodityHub') },
+        { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway') },
+      ];
+    }
+
+    if (SITE_VARIANT === 'happy') {
+      return [
+        { shape: shapes.circle('rgb(34, 197, 94)'), label: 'Positive Event' },
+        { shape: shapes.circle('rgb(234, 179, 8)'), label: 'Breakthrough' },
+        { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Act of Kindness' },
+        { shape: shapes.circle('rgb(255, 100, 50)'), label: 'Natural Event' },
+        { shape: shapes.square('rgb(34, 180, 100)'), label: 'Happy Country' },
+        { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Species Recovery Zone' },
+        { shape: shapes.circle('rgb(255, 200, 50)'), label: 'Renewable Installation' },
+        { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft') },
+      ];
+    }
+
+    return [
+      { shape: shapes.circle('rgb(255, 68, 68)'), label: t('components.deckgl.legend.highAlert') },
+      { shape: shapes.circle('rgb(255, 165, 0)'), label: t('components.deckgl.legend.elevated') },
+      { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 255, 0)'), label: t('components.deckgl.legend.monitoring') },
+      { shape: shapes.triangle('rgb(68, 136, 255)'), label: t('components.deckgl.legend.base') },
+      { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 220, 0)'), label: t('components.deckgl.legend.nuclear') },
+      { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter') },
+      { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft') },
+    ];
+  }
+
+  private updateLegend(): void {
+    const legend = this.container.querySelector('.deckgl-legend') as HTMLDivElement | null;
+    if (!legend) return;
+
+    const legendItems = this.getLegendItems();
+    legend.style.display = legendItems.length === 0 && !this.state.layers.ciiChoropleth ? 'none' : '';
     legend.innerHTML = `
       <span class="legend-label-title">${t('components.deckgl.legend.title')}</span>
       ${legendItems.map(({ shape, label }) => `<span class="legend-item">${shape}<span class="legend-label">${label}</span></span>`).join('')}
     `;
 
-    // CII choropleth gradient legend (shown when layer is active)
     const ciiLegend = document.createElement('div');
     ciiLegend.className = 'cii-choropleth-legend';
     ciiLegend.id = 'ciiChoroplethLegend';
@@ -4126,8 +4137,13 @@ export class DeckGLMap {
       </div>
     `;
     legend.appendChild(ciiLegend);
+  }
 
+  private createLegend(): void {
+    const legend = document.createElement('div');
+    legend.className = 'map-legend deckgl-legend';
     this.container.appendChild(legend);
+    this.updateLegend();
   }
 
   // Public API methods (matching MapComponent interface)
@@ -4141,6 +4157,7 @@ export class DeckGLMap {
     }
     this.renderRafId = requestAnimationFrame(() => {
       this.renderRafId = null;
+      this.updateLegend();
       this.updateLayers();
     });
   }
