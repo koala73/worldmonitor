@@ -2,7 +2,7 @@
  * Marker Icons Service
  *
  * Provides icon definitions for deck.gl IconLayer.
- * Uses pre-cached icon objects for stable references.
+ * Uses inline SVG data URLs for reliable rendering.
  */
 
 import type { MarkerTier } from './marker-tier';
@@ -31,8 +31,34 @@ export function getMarkerIconName(shape: MarkerShape, tier: MarkerTier): string 
  * Get icon size based on tier
  */
 export function getMarkerSizeForTier(tier: MarkerTier, shape: MarkerShape = 'diamond'): number {
-  if (shape === 'star' && tier === 1) return 28; // Stars are slightly larger
+  if (shape === 'star' && tier === 1) return 28;
   return tier === 1 ? 24 : tier === 2 ? 16 : 12;
+}
+
+/**
+ * SVG path definitions for each shape
+ * All shapes are white filled for mask coloring
+ */
+const SVG_PATHS: Record<MarkerShape, string> = {
+  diamond: 'M12 2 L22 12 L12 22 L2 12 Z',
+  square: 'M3 3 H21 V21 H3 Z',
+  hexagon: 'M12 2 L21 7 L21 17 L12 22 L3 17 L3 7 Z',
+  star: 'M12 2 L14.5 9 L22 9 L16 14 L18.5 22 L12 17 L5.5 22 L8 14 L2 9 L9.5 9 Z',
+};
+
+/**
+ * Generate SVG data URL for a shape
+ */
+function generateSvgDataUrl(shape: MarkerShape, size: number): string {
+  const path = SVG_PATHS[shape];
+  // Scale path to fit size (original paths are designed for 24x24)
+  const scale = size / 24;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">
+    <g transform="scale(${scale})">
+      <path d="${path}" fill="white"/>
+    </g>
+  </svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
 }
 
 /**
@@ -50,7 +76,7 @@ export function getMarkerIcon(shape: MarkerShape, tier: MarkerTier): IconDefinit
   if (!ICON_CACHE[key]) {
     const size = getMarkerSizeForTier(tier, shape);
     ICON_CACHE[key] = {
-      url: `/icons/map-markers/${getMarkerIconName(shape, tier)}.svg`,
+      url: generateSvgDataUrl(shape, size),
       width: size,
       height: size,
       mask: true,
@@ -63,19 +89,15 @@ export function getMarkerIcon(shape: MarkerShape, tier: MarkerTier): IconDefinit
  * Icon mapping for IconLayer (legacy format, kept for tests)
  */
 export const MARKER_ICON_MAPPING: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> = {
-  // Diamond shapes
   'diamond-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
   'diamond-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
   'diamond-large': { x: 0, y: 0, width: 24, height: 24, mask: true },
-  // Square shapes
   'square-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
   'square-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
   'square-large': { x: 0, y: 0, width: 24, height: 24, mask: true },
-  // Hexagon shapes
   'hexagon-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
   'hexagon-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
   'hexagon-large': { x: 0, y: 0, width: 24, height: 24, mask: true },
-  // Star shapes
   'star-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
   'star-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
   'star-large': { x: 0, y: 0, width: 28, height: 28, mask: true },

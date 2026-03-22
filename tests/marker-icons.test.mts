@@ -101,7 +101,7 @@ describe('Marker Icons Service', () => {
   describe('getMarkerIcon', () => {
     it('returns cached icon definition with correct properties', () => {
       const icon = getMarkerIcon('diamond', 1);
-      assert.equal(icon.url, '/icons/map-markers/diamond-large.svg');
+      assert.ok(icon.url.startsWith('data:image/svg+xml;base64,'), 'URL should be a data URL');
       assert.equal(icon.width, 24);
       assert.equal(icon.height, 24);
       assert.equal(icon.mask, true);
@@ -124,6 +124,15 @@ describe('Marker Icons Service', () => {
       const diamondIcon = getMarkerIcon('diamond', 1);
       assert.equal(starIcon.width, 28);
       assert.equal(diamondIcon.width, 24);
+    });
+
+    it('generates valid SVG data URL', () => {
+      const icon = getMarkerIcon('diamond', 1);
+      const base64Part = icon.url.replace('data:image/svg+xml;base64,', '');
+      const decoded = atob(base64Part);
+      assert.ok(decoded.includes('<svg'), 'Should contain SVG element');
+      assert.ok(decoded.includes('<path'), 'Should contain path element');
+      assert.ok(decoded.includes('fill="white"'), 'Should have white fill for masking');
     });
   });
 });
