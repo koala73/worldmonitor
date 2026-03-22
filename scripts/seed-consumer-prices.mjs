@@ -4,18 +4,32 @@
  * Seed script: fetches compact snapshot payloads from consumer-prices-core
  * and writes them to Upstash Redis for WorldMonitor bootstrap hydration.
  *
- * Run manually: node scripts/seed-consumer-prices.mjs
+ * Run manually: node scripts/seed-consumer-prices.mjs --force
  *
  * IMPORTANT: This is a MANUAL FALLBACK script only.
  * Do NOT configure as a Railway cron. The consumer-prices-core publish.ts
  * pipeline (scrape → aggregate → publish) is the authoritative writer.
  * Running both as crons causes TTL conflict (this script: 10-60min TTLs,
  * publish.ts: 26h TTL) — whichever runs last wins.
+ *
+ * --force is required to prevent accidentally overwriting publish.ts TTLs
+ * when running interactively.
  */
 
 import { loadEnvFile, CHROME_UA, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
+
+const FORCE = process.argv.includes('--force');
+if (!FORCE) {
+  console.error(
+    '[consumer-prices] ERROR: --force flag required.\n' +
+    'This script overwrites Redis keys with short TTLs (10-60 min), stomping the\n' +
+    'authoritative publish.ts 26h TTLs. Only run manually when publish.ts is broken.\n' +
+    'Usage: node scripts/seed-consumer-prices.mjs --force',
+  );
+  process.exit(1);
+}
 
 const BASE_URL = process.env.CONSUMER_PRICES_CORE_BASE_URL;
 const API_KEY = process.env.CONSUMER_PRICES_CORE_API_KEY;

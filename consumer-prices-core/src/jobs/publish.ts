@@ -93,7 +93,7 @@ export async function publishAll() {
     const advanceSeedMeta =
       freshnessSnapshot != null &&
       freshnessSnapshot.retailers.some(
-        (r) => r.freshnessMin > 0 && r.freshnessMin < FRESH_DATA_THRESHOLD_MIN,
+        (r) => r.freshnessMin >= 0 && r.freshnessMin < FRESH_DATA_THRESHOLD_MIN,
       );
     logger.info(`Publishing snapshots for market: ${marketCode} (freshData=${advanceSeedMeta})`);
 

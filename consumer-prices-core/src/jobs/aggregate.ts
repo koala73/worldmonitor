@@ -227,9 +227,16 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
 
 export async function aggregateAll() {
   const configs = loadAllBasketConfigs();
+  let failed = 0;
   for (const c of configs) {
-    await aggregateBasket(c.slug, c.marketCode);
+    try {
+      await aggregateBasket(c.slug, c.marketCode);
+    } catch (err) {
+      logger.warn(`aggregateBasket ${c.slug}:${c.marketCode} failed: ${err}`);
+      failed++;
+    }
   }
+  if (failed > 0) throw new Error(`${failed}/${configs.length} basket(s) failed`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

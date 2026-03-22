@@ -94,6 +94,11 @@ export async function scrapeRetailer(slug: string) {
       const fetchResult = await adapter.fetchTarget(ctx, target);
       const products = await adapter.parseListing(ctx, fetchResult);
 
+      if (products.length === 0) {
+        logger.warn(`  [${target.id}] parsed 0 products — counting as error`);
+        errorsCount++;
+        continue;
+      }
       logger.info(`  [${target.id}] parsed ${products.length} products`);
 
       for (const product of products) {
