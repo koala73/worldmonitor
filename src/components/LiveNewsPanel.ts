@@ -350,7 +350,7 @@ export function saveChannelsToStorage(channels: LiveChannel[]): void {
 export class LiveNewsPanel extends Panel {
   private static apiPromise: Promise<void> | null = null;
   private channels: LiveChannel[] = [];
-  private activeChannel!: LiveChannel;
+  private activeChannel: LiveChannel | null = null;
   private channelSwitcher: HTMLElement | null = null;
   private isMuted = true;
   private isPlaying = true;
@@ -408,7 +408,7 @@ export class LiveNewsPanel extends Panel {
     this.playerElementId = `live-news-player-${Date.now()}`;
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
-    this.activeChannel = this.channels[0]!;
+    this.activeChannel = this.channels[0] ?? null;
     this.createLiveButton();
     this.createMuteButton();
     this.createChannelSwitcher();
@@ -431,6 +431,22 @@ export class LiveNewsPanel extends Panel {
 
     const label = document.createElement('div');
     label.style.cssText = 'color:var(--text-secondary);font-size:13px;';
+
+    if (!this.activeChannel) {
+      label.textContent = 'No live channels configured yet';
+      const manageBtn = document.createElement('button');
+      manageBtn.className = 'offline-retry';
+      manageBtn.textContent = t('components.liveNews.channelSettings') ?? 'Channel Settings';
+      manageBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openChannelManagementModal();
+      });
+      container.appendChild(label);
+      container.appendChild(manageBtn);
+      this.content.appendChild(container);
+      return;
+    }
+
     label.textContent = this.getChannelDisplayName(this.activeChannel);
 
     const playBtn = document.createElement('button');
@@ -470,6 +486,10 @@ export class LiveNewsPanel extends Panel {
 
   private triggerInit(): void {
     if (this.deferredInit) return;
+    if (!this.activeChannel) {
+      this.renderPlaceholder();
+      return;
+    }
     this.deferredInit = true;
     if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
     if (this.idleCallbackId !== null) {
@@ -521,12 +541,13 @@ export class LiveNewsPanel extends Panel {
       } else if (msg.type === 'yt-error') {
         this.clearBotCheckTimeout();
         const code = Number(msg.code ?? 0);
-        if (code === 153 && this.activeChannel.fallbackVideoId &&
-          this.activeChannel.videoId !== this.activeChannel.fallbackVideoId) {
-          this.activeChannel.videoId = this.activeChannel.fallbackVideoId;
+        const channel = this.activeChannel;
+        if (!channel) return;
+        if (code === 153 && channel.fallbackVideoId && channel.videoId !== channel.fallbackVideoId) {
+          channel.videoId = channel.fallbackVideoId;
           this.renderDesktopEmbed(true);
         } else {
-          this.showEmbedError(this.activeChannel, code);
+          this.showEmbedError(channel, code);
         }
       } else if (msg.type === 'yt-mute-state') {
         const muted = msg.muted === true;
@@ -790,7 +811,7 @@ export class LiveNewsPanel extends Panel {
   /** Creates a single channel tab button with click and drag handlers. */
   private createChannelButton(channel: LiveChannel): HTMLButtonElement {
     const btn = document.createElement('button');
-    btn.className = `live-channel-btn ${channel.id === this.activeChannel.id ? 'active' : ''}`;
+    btn.className = `live-channel-btn ${channel.id === this.activeChannel?.id ? 'active' : ''}`;
     btn.dataset.channelId = channel.id;
 
     btn.textContent = this.getChannelDisplayName(channel);
@@ -980,7 +1001,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private async switchChannel(channel: LiveChannel): Promise<void> {
-    if (channel.id === this.activeChannel.id) return;
+    if (channel.id === this.activeChannel?.id) return;
 
     this.activeChannel = channel;
 
@@ -1095,9 +1116,15 @@ export class LiveNewsPanel extends Panel {
   }
 
   private async renderDesktopEmbedAsync(force = false): Promise<void> {
-    const videoId = this.activeChannel.videoId;
+    const channel = this.activeChannel;
+    if (!channel) {
+      this.renderPlaceholder();
+      return;
+    }
+
+    const videoId = channel.videoId;
     if (!videoId) {
-      this.showOfflineMessage(this.activeChannel);
+      this.showOfflineMessage(channel);
       return;
     }
 
@@ -1145,7 +1172,7 @@ export class LiveNewsPanel extends Panel {
     const iframe = document.createElement('iframe');
     iframe.className = 'live-news-embed-frame';
     iframe.src = embedUrl;
-    iframe.title = `${this.activeChannel.name} live feed`;
+    iframe.title = `${channel.name} live feed`;
     iframe.style.width = '100%';
     iframe.style.height = '100%';
     iframe.style.border = '0';
@@ -1160,7 +1187,13 @@ export class LiveNewsPanel extends Panel {
   }
 
   private renderNativeHlsPlayer(): void {
-    const hlsUrl = this.getDirectHlsUrl(this.activeChannel.id) || this.getProxiedHlsUrl(this.activeChannel.id);
+    const channel = this.activeChannel;
+    if (!channel) {
+      this.renderPlaceholder();
+      return;
+    }
+
+    const hlsUrl = this.getDirectHlsUrl(channel.id) || this.getProxiedHlsUrl(channel.id);
     if (!hlsUrl || !(hlsUrl.startsWith('https://') || hlsUrl.startsWith('http://127.0.0.1'))) return;
 
     this.destroyPlayer();
@@ -1178,7 +1211,7 @@ export class LiveNewsPanel extends Panel {
     video.setAttribute('referrerpolicy', 'no-referrer');
     video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000';
 
-    const failedChannel = this.activeChannel;
+    const failedChannel = channel;
 
     video.addEventListener('error', () => {
       console.warn('[LiveNews] HLS error:', video.error?.code, video.error?.message, failedChannel.id, hlsUrl);
@@ -1188,7 +1221,7 @@ export class LiveNewsPanel extends Panel {
       this.hlsFailureCooldown.set(failedChannel.id, Date.now());
       failedChannel.hlsUrl = undefined;
 
-      if (this.activeChannel.id === failedChannel.id) {
+      if (this.activeChannel?.id === failedChannel.id) {
         this.ensurePlayerContainer();
         void this.initializePlayer();
       }
@@ -1222,7 +1255,7 @@ export class LiveNewsPanel extends Panel {
     this.nativeVideoElement = video;
     this.playerContainer.appendChild(video);
     this.isPlayerReady = true;
-    this.currentVideoId = this.activeChannel.videoId || null;
+    this.currentVideoId = channel.videoId || null;
 
     // WKWebView blocks autoplay without user gesture. Force muted play, then restore.
     if (this.isPlaying) {
@@ -1297,18 +1330,24 @@ export class LiveNewsPanel extends Panel {
   private async initializePlayer(): Promise<void> {
     if (!this.useDesktopEmbedProxy && !this.nativeVideoElement && this.player) return;
 
-    const useFallbackVideo = this.activeChannel.useFallbackOnly || this.forceFallbackVideoForNextInit;
+    const channel = this.activeChannel;
+    if (!channel) {
+      this.renderPlaceholder();
+      return;
+    }
+
+    const useFallbackVideo = channel.useFallbackOnly || this.forceFallbackVideoForNextInit;
     this.forceFallbackVideoForNextInit = false;
-    await this.resolveChannelVideo(this.activeChannel, useFallbackVideo);
+    await this.resolveChannelVideo(channel, useFallbackVideo);
     if (!this.element?.isConnected) return;
 
-    if (this.getDirectHlsUrl(this.activeChannel.id) || this.getProxiedHlsUrl(this.activeChannel.id)) {
+    if (this.getDirectHlsUrl(channel.id) || this.getProxiedHlsUrl(channel.id)) {
       this.renderNativeHlsPlayer();
       return;
     }
 
-    if (!this.activeChannel.videoId || !/^[\w-]{10,12}$/.test(this.activeChannel.videoId)) {
-      this.showOfflineMessage(this.activeChannel);
+    if (!channel.videoId || !/^[\w-]{10,12}$/.test(channel.videoId)) {
+      this.showOfflineMessage(channel);
       return;
     }
 
@@ -1353,7 +1392,7 @@ export class LiveNewsPanel extends Panel {
     try {
       this.player = new window.YT!.Player(this.playerElementId, {
       host: 'https://www.youtube.com',
-      videoId: this.activeChannel.videoId,
+      videoId: channel.videoId ?? '',
       playerVars: {
         autoplay: this.isPlaying ? 1 : 0,
         mute: this.isMuted ? 1 : 0,
@@ -1371,7 +1410,7 @@ export class LiveNewsPanel extends Panel {
         onReady: () => {
           this.clearBotCheckTimeout();
           this.isPlayerReady = true;
-          this.currentVideoId = this.activeChannel.videoId || null;
+          this.currentVideoId = this.activeChannel?.videoId || null;
           const iframe = this.player?.getIframe?.();
           if (iframe) iframe.referrerPolicy = 'strict-origin-when-cross-origin';
           const quality = getStreamQuality();
@@ -1382,12 +1421,17 @@ export class LiveNewsPanel extends Panel {
         onError: (event) => {
           this.clearBotCheckTimeout();
           const errorCode = Number(event?.data ?? 0);
+          const activeChannel = this.activeChannel;
+          if (!activeChannel) {
+            this.renderPlaceholder();
+            return;
+          }
 
           // Retry once with known fallback stream.
           if (
             errorCode === 153 &&
-            this.activeChannel.fallbackVideoId &&
-            this.activeChannel.videoId !== this.activeChannel.fallbackVideoId
+            activeChannel.fallbackVideoId &&
+            activeChannel.videoId !== activeChannel.fallbackVideoId
           ) {
             this.destroyPlayer();
             this.forceFallbackVideoForNextInit = true;
@@ -1406,7 +1450,7 @@ export class LiveNewsPanel extends Panel {
           }
 
           this.destroyPlayer();
-          this.showEmbedError(this.activeChannel, errorCode);
+          this.showEmbedError(activeChannel, errorCode);
         },
       },
     });
@@ -1439,6 +1483,11 @@ export class LiveNewsPanel extends Panel {
 
   private showBotCheckPrompt(): void {
     const channel = this.activeChannel;
+    if (!channel) {
+      this.renderPlaceholder();
+      return;
+    }
+
     const watchUrl = channel.videoId
       ? `https://www.youtube.com/watch?v=${encodeURIComponent(channel.videoId)}`
       : channel.handle
@@ -1506,9 +1555,15 @@ export class LiveNewsPanel extends Panel {
   }
 
   private syncPlayerState(): void {
+    const channel = this.activeChannel;
+    if (!channel) {
+      this.destroyPlayer();
+      return;
+    }
+
     // Native HLS <video> (desktop + web for CORS-enabled streams)
     if (this.nativeVideoElement) {
-      const videoId = this.activeChannel.videoId;
+      const videoId = channel.videoId;
       if (videoId && this.currentVideoId !== videoId) {
         // Channel changed — reinitialize
         void this.initializePlayer();
@@ -1519,7 +1574,7 @@ export class LiveNewsPanel extends Panel {
     }
 
     if (this.useDesktopEmbedProxy) {
-      const videoId = this.activeChannel.videoId;
+      const videoId = channel.videoId;
       if (videoId && this.currentVideoId !== videoId) {
         this.renderDesktopEmbed(true);
       } else {
@@ -1530,7 +1585,7 @@ export class LiveNewsPanel extends Panel {
 
     if (!this.player || !this.isPlayerReady) return;
 
-    const videoId = this.activeChannel.videoId;
+    const videoId = channel.videoId;
     if (!videoId) return;
 
     // Handle channel switch
@@ -1588,13 +1643,23 @@ export class LiveNewsPanel extends Panel {
 
   /** Reload channel list from storage (e.g. after edit in separate channel management window). */
   public refreshChannelsFromStorage(): void {
+    const previousChannelId = this.activeChannel?.id ?? null;
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();
-    if (!this.channels.some((c) => c.id === this.activeChannel.id)) {
-      this.activeChannel = this.channels[0]!;
-      void this.switchChannel(this.activeChannel);
-    }
+    this.activeChannel = this.channels.find((c) => c.id === previousChannelId) ?? this.channels[0] ?? null;
     this.refreshChannelSwitcher();
+
+    if (!this.activeChannel) {
+      this.destroyPlayer();
+      this.renderPlaceholder();
+      return;
+    }
+
+    if (this.deferredInit) {
+      void this.switchChannel(this.activeChannel);
+    } else {
+      this.renderPlaceholder();
+    }
   }
 
   public destroy(): void {

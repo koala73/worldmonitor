@@ -1412,7 +1412,7 @@ export class GlobeMap {
           this.layers[layer] = checked;
           this.flushLayerChannels(layer);
           this.onLayerChangeCb?.(layer, checked, 'user');
-          this.enforceLayerLimit();
+          this.enforceLayerLimit(true);
         }
       });
     });
@@ -1920,14 +1920,14 @@ export class GlobeMap {
   private layerWarningShown = false;
   private lastActiveLayerCount = 0;
 
-  private enforceLayerLimit(): void {
+  private enforceLayerLimit(shouldWarn = false): void {
     if (!this.layerTogglesEl) return;
     const WARN_THRESHOLD = 6;
     const activeCount = Array.from(this.layerTogglesEl.querySelectorAll<HTMLInputElement>('.layer-toggle input'))
       .filter(i => i.checked).length;
     const increasing = activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
-    if (activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
+    if (shouldWarn && activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
       this.layerWarningShown = true;
       showLayerWarning(WARN_THRESHOLD);
     } else if (activeCount < WARN_THRESHOLD) {

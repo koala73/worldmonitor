@@ -3862,7 +3862,7 @@ export class DeckGLMap {
             const ciiLeg = this.container.querySelector('#ciiChoroplethLegend') as HTMLElement | null;
             if (ciiLeg) ciiLeg.style.display = (input as HTMLInputElement).checked ? 'block' : 'none';
           }
-          this.enforceLayerLimit();
+          this.enforceLayerLimit(true);
         }
       });
     });
@@ -4885,7 +4885,7 @@ export class DeckGLMap {
   private layerWarningShown = false;
   private lastActiveLayerCount = 0;
 
-  private enforceLayerLimit(): void {
+  private enforceLayerLimit(shouldWarn = false): void {
     const WARN_THRESHOLD = 10;
     const togglesEl = this.container.querySelector('.deckgl-layer-toggles');
     if (!togglesEl) return;
@@ -4894,7 +4894,7 @@ export class DeckGLMap {
       .filter(i => i.checked).length;
     const increasing = activeCount > this.lastActiveLayerCount;
     this.lastActiveLayerCount = activeCount;
-    if (activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
+    if (shouldWarn && activeCount >= WARN_THRESHOLD && increasing && !this.layerWarningShown) {
       this.layerWarningShown = true;
       showLayerWarning(WARN_THRESHOLD);
     } else if (activeCount < WARN_THRESHOLD) {
