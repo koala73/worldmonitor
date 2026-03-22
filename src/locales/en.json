@@ -2708,6 +2708,8 @@
     "invalidJson": "Invalid JSON",
     "confirmDelete": "Remove this MCP panel?",
     "quickConnect": "Quick Connect",
-    "or": "or enter a custom server"
+    "or": "or enter a custom server",
+    "generatingVisualization": "Building visualization...",
+    "visualizationFailed": "Visualization failed"
   }
 }

@@ -2,8 +2,10 @@ import { Panel } from './Panel';
 import type { McpPanelSpec } from '@/services/mcp-store';
 import { t } from '@/services/i18n';
 import { h } from '@/utils/dom-utils';
-import { proxyUrl } from '@/utils/proxy';
+import { proxyUrl, widgetAgentUrl } from '@/utils/proxy';
 import { escapeHtml } from '@/utils/sanitize';
+import { isProWidgetEnabled, getWidgetAgentKey, getProWidgetKey } from '@/services/widget-store';
+import { wrapProWidgetHtml } from '@/utils/widget-sanitizer';
 
 type McpResult = {
   content?: Array<{ type: string; text?: string }>;
@@ -14,6 +16,9 @@ export class McpDataPanel extends Panel {
   private spec: McpPanelSpec;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private lastFetchedAt: number | null = null;
+  private lastJsonHash: string | null = null;
+  private cachedWidgetHtml: string | null = null;
+  private visualizing = false;
 
   constructor(spec: McpPanelSpec) {
     super({
@@ -104,12 +109,113 @@ export class McpDataPanel extends Panel {
   }
 
   private renderResult(result: McpResult): void {
+    const jsonData = this.extractJsonData(result);
+
+    if (jsonData !== null && isProWidgetEnabled()) {
+      const hash = JSON.stringify(jsonData).slice(0, 1000);
+      if (hash === this.lastJsonHash && this.cachedWidgetHtml) {
+        this.setContent(`
+          <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
+          <div class="mcp-panel-content mcp-panel-widget">${wrapProWidgetHtml(this.cachedWidgetHtml)}</div>
+        `);
+        return;
+      }
+      this.lastJsonHash = hash;
+      this.cachedWidgetHtml = null;
+      void this.autoVisualize(jsonData);
+      return;
+    }
+
     const meta = this.buildMetaLine();
     const content = this.extractText(result);
     this.setContent(`
       <div class="mcp-panel-meta">${meta}</div>
       <div class="mcp-panel-content">${content}</div>
     `);
+  }
+
+  private extractJsonData(result: McpResult): unknown | null {
+    if (Array.isArray(result.content)) {
+      for (const c of result.content as Array<{ type: string; text?: string }>) {
+        if (c.type === 'text' && c.text) {
+          const trimmed = c.text.trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            try { return JSON.parse(trimmed); } catch { /* not JSON */ }
+          }
+        }
+      }
+    }
+    const keys = Object.keys(result).filter(k => k !== 'content');
+    if (keys.length > 0) return result;
+    return null;
+  }
+
+  private async autoVisualize(jsonData: unknown): Promise<void> {
+    if (this.visualizing) return;
+    this.visualizing = true;
+
+    this.setContent(`
+      <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
+      <div class="mcp-panel-content mcp-panel-visualizing">
+        <div class="panel-loading-radar"><span class="panel-radar-sweep"></span><span class="panel-radar-dot"></span></div>
+        <span class="mcp-vis-label">${escapeHtml(t('mcp.generatingVisualization'))}</span>
+      </div>
+    `);
+
+    const preview = JSON.stringify(jsonData, null, 2).slice(0, 3000);
+    const prompt = `Create a compact, interactive data visualization widget for this ${this.spec.toolName} data. Choose the best format (charts, tables, cards). Data:\n${preview}`;
+
+    try {
+      const res = await fetch(widgetAgentUrl(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Widget-Key': getWidgetAgentKey(),
+          'X-Pro-Key': getProWidgetKey(),
+        },
+        body: JSON.stringify({ prompt, mode: 'create', tier: 'pro' }),
+        signal: AbortSignal.timeout(120_000),
+      });
+
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let resultHtml = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let event: { type: string; [k: string]: unknown };
+          try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (event.type === 'html_complete') {
+            resultHtml = String(event.html ?? '');
+          } else if (event.type === 'done') {
+            this.cachedWidgetHtml = resultHtml;
+            this.setContent(`
+              <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
+              <div class="mcp-panel-content mcp-panel-widget">${wrapProWidgetHtml(resultHtml)}</div>
+            `);
+          } else if (event.type === 'error') {
+            throw new Error(String(event.message ?? t('mcp.visualizationFailed')));
+          }
+        }
+      }
+    } catch (err) {
+      this.cachedWidgetHtml = null;
+      this.lastJsonHash = null;
+      const msg = err instanceof Error ? err.message : t('mcp.visualizationFailed');
+      this.showError(msg);
+    } finally {
+      this.visualizing = false;
+    }
   }
 
   private buildMetaLine(): string {
@@ -157,6 +263,8 @@ export class McpDataPanel extends Panel {
     const titleEl = this.header.querySelector('.panel-title');
     if (titleEl) titleEl.textContent = spec.title;
     this.clearRefreshTimer();
+    this.lastJsonHash = null;
+    this.cachedWidgetHtml = null;
     this.scheduleRefresh(true);
   }
 

@@ -33,6 +33,7 @@ import type { BigMacPanel } from '@/components/BigMacPanel';
 import type { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { getSecretState } from '@/services/runtime-config';
+import { isProUser } from '@/services/widget-store';
 import { BETA_MODE } from '@/config/beta';
 import { trackEvent, trackDeeplinkOpened } from '@/services/analytics';
 import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country-geometry';
@@ -278,7 +279,8 @@ export class App {
     if (shouldPrime('supply-chain')) {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
-    if (getSecretState('WORLDMONITOR_API_KEY').present) {
+    const _wmAccess = getSecretState('WORLDMONITOR_API_KEY').present || isProUser();
+    if (_wmAccess) {
       if (shouldPrime('stock-analysis')) {
         primeTask('stockAnalysis', () => this.dataLoader.loadStockAnalysis());
       }
@@ -973,19 +975,19 @@ export class App {
         'stock-analysis',
         () => this.dataLoader.loadStockAnalysis(),
         REFRESH_INTERVALS.stockAnalysis,
-        () => getSecretState('WORLDMONITOR_API_KEY').present && this.isPanelNearViewport('stock-analysis'),
+        () => (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) && this.isPanelNearViewport('stock-analysis'),
       );
       this.refreshScheduler.scheduleRefresh(
         'daily-market-brief',
         () => this.dataLoader.loadDailyMarketBrief(),
         REFRESH_INTERVALS.dailyMarketBrief,
-        () => getSecretState('WORLDMONITOR_API_KEY').present && this.isPanelNearViewport('daily-market-brief'),
+        () => (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) && this.isPanelNearViewport('daily-market-brief'),
       );
       this.refreshScheduler.scheduleRefresh(
         'stock-backtest',
         () => this.dataLoader.loadStockBacktest(),
         REFRESH_INTERVALS.stockBacktest,
-        () => getSecretState('WORLDMONITOR_API_KEY').present && this.isPanelNearViewport('stock-backtest'),
+        () => (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) && this.isPanelNearViewport('stock-backtest'),
       );
     }
 
