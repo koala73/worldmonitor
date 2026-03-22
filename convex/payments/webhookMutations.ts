@@ -15,6 +15,11 @@ import {
  * Receives parsed webhook data from the HTTP action handler,
  * deduplicates by webhook-id, records the event, and dispatches
  * to event-type-specific handlers from subscriptionHelpers.
+ *
+ * On handler failure, the event is recorded with status "failed"
+ * and the error is returned (not thrown) so the audit row persists.
+ * The HTTP handler uses the returned error to send a 500 response,
+ * which triggers Dodo's retry mechanism.
  */
 export const processWebhookEvent = internalMutation({
   args: {
@@ -35,7 +40,7 @@ export const processWebhookEvent = internalMutation({
       return;
     }
 
-    // 2. Record the event
+    // 2. Record the event (persists even if handler fails)
     const eventId = await ctx.db.insert("webhookEvents", {
       webhookId: args.webhookId,
       eventType: args.eventType,
@@ -84,15 +89,18 @@ export const processWebhookEvent = internalMutation({
           console.log(`Unhandled event type: ${args.eventType}`);
       }
     } catch (error) {
-      // 5. On handler failure, mark event as failed and re-throw
-      // so the HTTP handler returns 500 (triggering Dodo retry)
+      // Mark event as failed without rethrowing — this keeps the audit row
+      // durable (rethrow would roll back the entire transaction).
+      // The HTTP handler inspects the return value and sends 500 on error.
       await ctx.db.patch(eventId, {
         status: "failed",
         errorMessage:
           error instanceof Error ? error.message : String(error),
       });
-      throw error;
+      return {
+        error: true,
+        message: error instanceof Error ? error.message : String(error),
+      };
     }
   },
 });
-

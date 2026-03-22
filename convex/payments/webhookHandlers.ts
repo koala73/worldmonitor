@@ -49,7 +49,7 @@ export const webhookHandler = httpAction(async (ctx, request) => {
 
   // 5. Dispatch to internal mutation for idempotent processing
   try {
-    await ctx.runMutation(
+    const result = await ctx.runMutation(
       internal.payments.webhookMutations.processWebhookEvent,
       {
         webhookId,
@@ -60,6 +60,13 @@ export const webhookHandler = httpAction(async (ctx, request) => {
           : Date.now(),
       },
     );
+
+    // Mutation returns { error: true, message } on handler failure
+    // (without throwing, so the audit row is preserved)
+    if (result && typeof result === "object" && "error" in result) {
+      console.error("Webhook handler failed:", (result as { message?: string }).message);
+      return new Response("Internal processing error", { status: 500 });
+    }
   } catch (error) {
     console.error("Webhook processing failed:", error);
     return new Response("Internal processing error", { status: 500 });

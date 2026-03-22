@@ -10,7 +10,8 @@ const modules = import.meta.glob("../**/*.ts");
 // ---------------------------------------------------------------------------
 
 const BASE_TIMESTAMP = new Date("2026-03-21T10:00:00Z").getTime();
-const FALLBACK_USER_ID = "test-user-001";
+const TEST_USER_ID = "user_checkout_test_001";
+const TEST_CUSTOMER_ID = "cust_checkout_e2e";
 
 /**
  * Helper to call the seedProductPlans mutation and return plans list.
@@ -21,7 +22,25 @@ async function seedAndListPlans(t: ReturnType<typeof convexTest>) {
 }
 
 /**
+ * Helper to seed a customer record that maps dodoCustomerId to userId.
+ * This mirrors the production flow where checkout metadata or a prior
+ * subscription.active event populates the customers table.
+ */
+async function seedCustomer(t: ReturnType<typeof convexTest>) {
+  await t.run(async (ctx) => {
+    await ctx.db.insert("customers", {
+      userId: TEST_USER_ID,
+      dodoCustomerId: TEST_CUSTOMER_ID,
+      email: "test@example.com",
+      createdAt: BASE_TIMESTAMP,
+      updatedAt: BASE_TIMESTAMP,
+    });
+  });
+}
+
+/**
  * Helper to simulate a subscription webhook event.
+ * Includes wm_user_id in metadata (matching production checkout flow).
  */
 async function simulateSubscriptionWebhook(
   t: ReturnType<typeof convexTest>,
@@ -46,13 +65,16 @@ async function simulateSubscriptionWebhook(
           subscription_id: opts.subscriptionId,
           product_id: opts.productId,
           customer: {
-            customer_id: opts.customerId ?? "cust_checkout_e2e",
+            customer_id: opts.customerId ?? TEST_CUSTOMER_ID,
           },
           previous_billing_date:
             opts.previousBillingDate ?? new Date().toISOString(),
           next_billing_date:
             opts.nextBillingDate ??
             new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          metadata: {
+            wm_user_id: TEST_USER_ID,
+          },
         },
       },
       timestamp: opts.timestamp ?? BASE_TIMESTAMP,
@@ -95,12 +117,13 @@ describe("E2E checkout-to-entitlement contract", () => {
   test("checkout -> subscription.active webhook -> entitlements granted for pro_monthly", async () => {
     const t = convexTest(schema, modules);
 
-    // Step 1: Seed product plans
+    // Step 1: Seed product plans + customer mapping
     const plans = await seedAndListPlans(t);
+    await seedCustomer(t);
     const proMonthly = plans.find((p) => p.planKey === "pro_monthly");
     expect(proMonthly).toBeDefined();
 
-    // Step 2: Simulate subscription.active webhook
+    // Step 2: Simulate subscription.active webhook (with wm_user_id metadata)
     const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await simulateSubscriptionWebhook(t, {
       webhookId: "wh_checkout_e2e_001",
@@ -109,10 +132,10 @@ describe("E2E checkout-to-entitlement contract", () => {
       nextBillingDate: futureDate.toISOString(),
     });
 
-    // Step 3: Query entitlements (webhook handler falls back to test-user-001)
+    // Step 3: Query entitlements for the real user (not fallback)
     const entitlements = await t.query(
       api.entitlements.getEntitlementsForUser,
-      { userId: FALLBACK_USER_ID },
+      { userId: TEST_USER_ID },
     );
 
     // Step 4: Assert pro_monthly entitlements
@@ -125,8 +148,9 @@ describe("E2E checkout-to-entitlement contract", () => {
   test("checkout -> subscription.active webhook -> entitlements granted for api_starter", async () => {
     const t = convexTest(schema, modules);
 
-    // Step 1: Seed product plans
+    // Step 1: Seed product plans + customer mapping
     const plans = await seedAndListPlans(t);
+    await seedCustomer(t);
     const apiStarter = plans.find((p) => p.planKey === "api_starter");
     expect(apiStarter).toBeDefined();
 
@@ -142,7 +166,7 @@ describe("E2E checkout-to-entitlement contract", () => {
     // Step 3: Query entitlements
     const entitlements = await t.query(
       api.entitlements.getEntitlementsForUser,
-      { userId: FALLBACK_USER_ID },
+      { userId: TEST_USER_ID },
     );
 
     // Step 4: Assert api_starter entitlements
@@ -157,8 +181,9 @@ describe("E2E checkout-to-entitlement contract", () => {
   test("expired entitlements fall back to free tier", async () => {
     const t = convexTest(schema, modules);
 
-    // Step 1: Seed product plans
+    // Step 1: Seed product plans + customer mapping
     const plans = await seedAndListPlans(t);
+    await seedCustomer(t);
     const proMonthly = plans.find((p) => p.planKey === "pro_monthly");
     expect(proMonthly).toBeDefined();
 
@@ -177,7 +202,7 @@ describe("E2E checkout-to-entitlement contract", () => {
     // Step 3: Query entitlements -- should return free tier (expired)
     const entitlements = await t.query(
       api.entitlements.getEntitlementsForUser,
-      { userId: FALLBACK_USER_ID },
+      { userId: TEST_USER_ID },
     );
 
     // Step 4: Assert free tier defaults

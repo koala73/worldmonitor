@@ -81,8 +81,16 @@ export const PLAN_FEATURES: Record<string, PlanFeatures> = {
 
 /**
  * Returns the feature set for a given plan key.
- * Falls back to free tier defaults if the key is not recognized.
+ * Throws on unrecognized keys so misconfigured products fail loudly
+ * instead of silently downgrading paid users to free tier.
  */
 export function getFeaturesForPlan(planKey: string): PlanFeatures {
-  return PLAN_FEATURES[planKey] ?? FREE_FEATURES;
+  const features = PLAN_FEATURES[planKey];
+  if (!features) {
+    throw new Error(
+      `[entitlements] Unknown planKey "${planKey}". ` +
+        `Add it to PLAN_FEATURES in convex/lib/entitlements.ts.`,
+    );
+  }
+  return features;
 }

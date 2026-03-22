@@ -4,14 +4,19 @@
  * Centralizes the DodoPayments component instance and API exports
  * so that all Convex modules (checkout, billing, etc.) share the
  * same config and API key handling.
+ *
+ * Canonical env var: DODO_API_KEY (set in Convex dashboard).
  */
 
 import { DodoPayments } from "@dodopayments/convex";
 import { components } from "../_generated/api";
 
-const apiKey = process.env.DODO_API_KEY ?? process.env.DODO_PAYMENTS_API_KEY;
+const apiKey = process.env.DODO_API_KEY;
 if (!apiKey) {
-  console.warn("[dodo] DODO_API_KEY not set — Dodo operations will fail");
+  console.error(
+    "[dodo] DODO_API_KEY is not set — all Dodo operations will fail. " +
+      "Set it in the Convex dashboard environment variables.",
+  );
 }
 
 export const dodo = new DodoPayments(components.dodopayments, {

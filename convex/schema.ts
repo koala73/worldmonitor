@@ -132,7 +132,14 @@ export default defineSchema({
   entitlements: defineTable({
     userId: v.string(),
     planKey: v.string(),
-    features: v.any(),
+    features: v.object({
+      tier: v.number(),
+      maxDashboards: v.number(),
+      apiAccess: v.boolean(),
+      apiRateLimit: v.number(),
+      prioritySupport: v.boolean(),
+      exportFormats: v.array(v.string()),
+    }),
     validUntil: v.number(),
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),

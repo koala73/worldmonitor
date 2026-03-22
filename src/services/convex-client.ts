@@ -9,24 +9,26 @@
  * don't impact the initial bundle size.
  */
 
+import type { ConvexClient } from 'convex/browser';
+
+let client: ConvexClient | null = null;
+// The generated API type is complex and not worth importing statically
+// since this module's purpose is lazy-loading. Callers use `api.x.y` paths.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let client: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let apiRef: any = null;
+let apiRef: Record<string, any> | null = null;
 
 /**
  * Returns the shared ConvexClient instance, creating it on first call.
  * Returns null if VITE_CONVEX_URL is not configured.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getConvexClient(): Promise<any | null> {
+export async function getConvexClient(): Promise<ConvexClient | null> {
   if (client) return client;
 
   const convexUrl = import.meta.env.VITE_CONVEX_URL;
   if (!convexUrl) return null;
 
-  const { ConvexClient } = await import('convex/browser');
-  client = new ConvexClient(convexUrl);
+  const { ConvexClient: CC } = await import('convex/browser');
+  client = new CC(convexUrl);
   return client;
 }
 
@@ -35,7 +37,7 @@ export async function getConvexClient(): Promise<any | null> {
  * Returns null if the import fails.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getConvexApi(): Promise<any | null> {
+export async function getConvexApi(): Promise<Record<string, any> | null> {
   if (apiRef) return apiRef;
 
   const { api } = await import('../../convex/_generated/api');

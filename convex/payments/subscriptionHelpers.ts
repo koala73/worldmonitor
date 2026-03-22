@@ -11,6 +11,35 @@ import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
 
 // ---------------------------------------------------------------------------
+// Types for webhook payload data (narrowed from `any`)
+// ---------------------------------------------------------------------------
+
+interface DodoCustomer {
+  customer_id?: string;
+  email?: string;
+}
+
+interface DodoSubscriptionData {
+  subscription_id: string;
+  product_id: string;
+  customer?: DodoCustomer;
+  previous_billing_date?: string | number | Date;
+  next_billing_date?: string | number | Date;
+  cancelled_at?: string | number | Date;
+  metadata?: Record<string, string>;
+}
+
+interface DodoPaymentData {
+  payment_id: string;
+  customer?: DodoCustomer;
+  total_amount?: number;
+  amount?: number;
+  currency?: string;
+  subscription_id?: string;
+  metadata?: Record<string, string>;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -60,12 +89,16 @@ export async function upsertEntitlements(
     });
   }
 
-  // Schedule Redis cache sync (fire-and-forget, 0ms delay)
-  await ctx.scheduler.runAfter(
-    0,
-    internal.payments.cacheActions.syncEntitlementCache,
-    { userId, planKey, features, validUntil },
-  );
+  // Schedule Redis cache sync only when Redis is configured.
+  // Skipped in test environments (no UPSTASH_REDIS_REST_URL) to avoid
+  // convex-test "Write outside of transaction" errors from scheduled functions.
+  if (process.env.UPSTASH_REDIS_REST_URL) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.cacheActions.syncEntitlementCache,
+      { userId, planKey, features, validUntil },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -74,9 +107,15 @@ export async function upsertEntitlements(
 
 const FALLBACK_USER_ID = "test-user-001";
 
+/** True when running against a local/dev Convex deployment. */
+const isDevDeployment =
+  !process.env.CONVEX_CLOUD_URL ||
+  process.env.CONVEX_CLOUD_URL.includes("localhost");
+
 /**
  * Resolves a Dodo product ID to a plan key via the productPlans table.
- * Returns "unknown" if the product ID is not mapped.
+ * Throws if the product ID is not mapped — the webhook will be retried
+ * and the operator should add the missing product mapping.
  */
 async function resolvePlanKey(
   ctx: MutationCtx,
@@ -86,24 +125,58 @@ async function resolvePlanKey(
     .query("productPlans")
     .withIndex("by_dodoProductId", (q) => q.eq("dodoProductId", dodoProductId))
     .unique();
-  return mapping?.planKey ?? "unknown";
+  if (!mapping) {
+    throw new Error(
+      `[subscriptionHelpers] No productPlans mapping for dodoProductId="${dodoProductId}". ` +
+        `Add this product to the seed data and run seedProductPlans.`,
+    );
+  }
+  return mapping.planKey;
 }
 
 /**
- * Resolves a Dodo customer ID to an internal userId via the customers table.
- * Falls back to test user ID (auth stub -- Pitfall 6 from research).
+ * Resolves a user identity from webhook data using multiple sources:
+ *   1. Checkout metadata (wm_user_id) — most reliable, set during checkout
+ *   2. Customer table lookup by dodoCustomerId
+ *   3. Dev-only fallback to test-user-001
+ *
+ * Fails closed in production when no identity can be resolved.
  */
 async function resolveUserId(
   ctx: MutationCtx,
   dodoCustomerId: string,
+  metadata?: Record<string, string>,
 ): Promise<string> {
-  const customer = await ctx.db
-    .query("customers")
-    .withIndex("by_dodoCustomerId", (q) =>
-      q.eq("dodoCustomerId", dodoCustomerId),
-    )
-    .unique();
-  return customer?.userId ?? FALLBACK_USER_ID;
+  // 1. Checkout metadata — the identity bridge set during createCheckout
+  if (metadata?.wm_user_id) {
+    return metadata.wm_user_id;
+  }
+
+  // 2. Customer table lookup
+  if (dodoCustomerId) {
+    const customer = await ctx.db
+      .query("customers")
+      .withIndex("by_dodoCustomerId", (q) =>
+        q.eq("dodoCustomerId", dodoCustomerId),
+      )
+      .unique();
+    if (customer?.userId) {
+      return customer.userId;
+    }
+  }
+
+  // 3. Dev-only fallback
+  if (isDevDeployment) {
+    console.warn(
+      `[subscriptionHelpers] No user identity found for customer="${dodoCustomerId}" — using dev fallback "${FALLBACK_USER_ID}"`,
+    );
+    return FALLBACK_USER_ID;
+  }
+
+  throw new Error(
+    `[subscriptionHelpers] Cannot resolve userId for dodoCustomerId="${dodoCustomerId}" ` +
+      `and no wm_user_id in checkout metadata. Webhook will retry.`,
+  );
 }
 
 /**
@@ -123,8 +196,6 @@ function toEpochMs(value: unknown): number {
 // Subscription event handlers
 // ---------------------------------------------------------------------------
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 /**
  * Handles `subscription.active` -- a new subscription has been activated.
  *
@@ -132,11 +203,15 @@ function toEpochMs(value: unknown): number {
  */
 export async function handleSubscriptionActive(
   ctx: MutationCtx,
-  data: any,
+  data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
   const planKey = await resolvePlanKey(ctx, data.product_id);
-  const userId = await resolveUserId(ctx, data.customer?.customer_id ?? "");
+  const userId = await resolveUserId(
+    ctx,
+    data.customer?.customer_id ?? "",
+    data.metadata,
+  );
 
   const currentPeriodStart = toEpochMs(data.previous_billing_date);
   const currentPeriodEnd = toEpochMs(data.next_billing_date);
@@ -209,7 +284,7 @@ export async function handleSubscriptionActive(
  */
 export async function handleSubscriptionRenewed(
   ctx: MutationCtx,
-  data: any,
+  data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
   const existing = await ctx.db
@@ -256,7 +331,7 @@ export async function handleSubscriptionRenewed(
  */
 export async function handleSubscriptionOnHold(
   ctx: MutationCtx,
-  data: any,
+  data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
   const existing = await ctx.db
@@ -294,7 +369,7 @@ export async function handleSubscriptionOnHold(
  */
 export async function handleSubscriptionCancelled(
   ctx: MutationCtx,
-  data: any,
+  data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
   const existing = await ctx.db
@@ -334,7 +409,7 @@ export async function handleSubscriptionCancelled(
  */
 export async function handleSubscriptionPlanChanged(
   ctx: MutationCtx,
-  data: any,
+  data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
   const existing = await ctx.db
@@ -379,11 +454,15 @@ export async function handleSubscriptionPlanChanged(
  */
 export async function handlePaymentEvent(
   ctx: MutationCtx,
-  data: any,
+  data: DodoPaymentData,
   eventType: string,
   eventTimestamp: number,
 ): Promise<void> {
-  const userId = await resolveUserId(ctx, data.customer?.customer_id ?? "");
+  const userId = await resolveUserId(
+    ctx,
+    data.customer?.customer_id ?? "",
+    data.metadata,
+  );
 
   await ctx.db.insert("paymentEvents", {
     userId,

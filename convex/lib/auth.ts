@@ -1,9 +1,16 @@
 import { QueryCtx, MutationCtx, ActionCtx } from "../_generated/server";
 
 const DEV_USER_ID = "test-user-001";
+
+/**
+ * True when running against a local/dev Convex deployment.
+ * Uses CONVEX_IS_DEV when available (set by `convex dev`),
+ * falls back to CONVEX_CLOUD_URL heuristic.
+ */
 const isDev =
-  process.env.CONVEX_CLOUD_URL?.includes("localhost") ||
-  !process.env.CONVEX_CLOUD_URL;
+  process.env.CONVEX_IS_DEV === "true" ||
+  !process.env.CONVEX_CLOUD_URL ||
+  process.env.CONVEX_CLOUD_URL.includes("localhost");
 
 /**
  * Returns the current user's ID, or null if unauthenticated.

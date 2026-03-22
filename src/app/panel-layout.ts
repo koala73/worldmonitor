@@ -156,10 +156,11 @@ export class PanelLayoutManager implements AppModule {
     // Initialize checkout overlay so payment success triggers the success banner
     initCheckoutOverlay(() => showCheckoutSuccess());
 
-    // Listen for entitlement changes — panels will pick up new state on next page load
+    // Listen for entitlement changes — reload panels to pick up new gating state
     onEntitlementChange(() => {
       if (isEntitled()) {
-        console.log('[entitlements] Subscription active — panels will unlock on next page load');
+        console.log('[entitlements] Subscription active — reloading to unlock panels');
+        window.location.reload();
       }
     });
   }

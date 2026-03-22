@@ -849,7 +849,7 @@ export class Panel {
       ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' }).catch(() => window.open('https://worldmonitor.app/pro', '_blank')));
     } else {
       ctaBtn.addEventListener('click', () => {
-        import('@/services/checkout').then(m => m.startCheckout('pdt_0NaysSFAQ0y30nJOJMBpg')).catch(() => {
+        import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
           window.open('https://worldmonitor.app/pro', '_blank');
         });
       });

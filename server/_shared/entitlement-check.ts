@@ -47,6 +47,29 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
 };
 
 // ---------------------------------------------------------------------------
+// Module-level singletons (avoid per-request import + construction)
+// ---------------------------------------------------------------------------
+
+let _convexClientPromise: Promise<{ client: InstanceType<typeof import('convex/browser').ConvexHttpClient>; api: typeof import('../../convex/_generated/api').api } | null> | null = null;
+
+function getConvexSingleton() {
+  if (!_convexClientPromise) {
+    _convexClientPromise = (async () => {
+      const convexUrl = process.env.CONVEX_URL;
+      if (!convexUrl) return null;
+
+      const [{ ConvexHttpClient }, { api }] = await Promise.all([
+        import('convex/browser'),
+        import('../../convex/_generated/api'),
+      ]);
+
+      return { client: new ConvexHttpClient(convexUrl), api };
+    })();
+  }
+  return _convexClientPromise;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -79,14 +102,10 @@ export async function getEntitlements(userId: string): Promise<CachedEntitlement
     }
 
     // Convex fallback on cache miss or expired cache
-    const convexUrl = process.env.CONVEX_URL;
-    if (!convexUrl) return null;
+    const singleton = await getConvexSingleton();
+    if (!singleton) return null;
 
-    const { ConvexHttpClient } = await import('convex/browser');
-    const { api } = await import('../../convex/_generated/api');
-
-    const client = new ConvexHttpClient(convexUrl);
-    const result = await client.query(api.entitlements.getEntitlementsForUser, { userId });
+    const result = await singleton.client.query(singleton.api.entitlements.getEntitlementsForUser, { userId });
 
     if (result) {
       // Populate Redis cache for subsequent requests (1-hour TTL, raw key)

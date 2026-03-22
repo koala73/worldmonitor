@@ -20,13 +20,17 @@ import { checkout } from "../lib/dodo";
 export const createCheckout = action({
   args: {
     productId: v.string(),
+    userId: v.optional(v.string()),
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Build metadata for affiliate tracking (PROMO-02)
+    // Build metadata: userId for webhook identity bridge + affiliate tracking (PROMO-02)
     const metadata: Record<string, string> = {};
+    if (args.userId) {
+      metadata.wm_user_id = args.userId;
+    }
     if (args.referralCode) {
       metadata.affonso_referral = args.referralCode;
     }

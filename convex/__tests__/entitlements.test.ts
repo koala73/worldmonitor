@@ -125,9 +125,9 @@ describe("entitlement query", () => {
     expect(result.features.prioritySupport).toBe(true);
   });
 
-  test("getFeaturesForPlan falls back to free for unknown plan", () => {
-    const features = getFeaturesForPlan("nonexistent_plan");
-    expect(features.tier).toBe(0);
-    expect(features.apiAccess).toBe(false);
+  test("getFeaturesForPlan throws on unknown plan key", () => {
+    expect(() => getFeaturesForPlan("nonexistent_plan")).toThrow(
+      /Unknown planKey "nonexistent_plan"/,
+    );
   });
 });
