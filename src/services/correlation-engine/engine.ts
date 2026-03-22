@@ -85,6 +85,10 @@ export class CorrelationEngine {
     return this.cards.get(domain) ?? [];
   }
 
+  getAllCards(): ConvergenceCard[] {
+    return Array.from(this.cards.values()).flat();
+  }
+
   // ── Clustering ──────────────────────────────────────────────
 
   private clusterSignals(
