@@ -78,26 +78,72 @@ function parseEtfChartData(chart, ticker, issuer) {
   };
 }
 
+async function fetchAvBulkForEtfs(tickers, apiKey) {
+  if (tickers.length === 0) return new Map();
+  const results = new Map();
+  const url = `https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=${encodeURIComponent(tickers.join(','))}&apikey=${encodeURIComponent(apiKey)}`;
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) { console.warn(`  [AV] ETF bulk quotes HTTP ${resp.status}`); return results; }
+    const json = await resp.json();
+    if (!Array.isArray(json.data)) return results;
+    for (const item of json.data) {
+      const price = parseFloat(item.price);
+      const prevClose = parseFloat(item['previous close']);
+      const volume = parseInt(item.volume || '0', 10);
+      if (!Number.isFinite(price) || price <= 0) continue;
+      const priceChange = (Number.isFinite(prevClose) && prevClose > 0)
+        ? ((price - prevClose) / prevClose) * 100
+        : parseFloat((item['change percent'] || '0').replace('%', ''));
+      results.set(item.symbol, { price, priceChange: Number.isFinite(priceChange) ? priceChange : 0, volume, prevClose });
+    }
+  } catch (err) {
+    console.warn(`  [AV] ETF bulk quotes error: ${err.message}`);
+  }
+  return results;
+}
+
 async function fetchEtfFlows() {
   const etfs = [];
   let misses = 0;
+  const avKey = process.env.ALPHA_VANTAGE_API_KEY;
+  const covered = new Set();
 
+  // --- Primary: Alpha Vantage REALTIME_BULK_QUOTES ---
+  if (avKey) {
+    const tickers = ETF_LIST.map(e => e.ticker);
+    const avData = await fetchAvBulkForEtfs(tickers, avKey);
+    for (const { ticker, issuer } of ETF_LIST) {
+      const av = avData.get(ticker);
+      if (!av) continue;
+      const { price, priceChange, volume } = av;
+      const direction = priceChange > 0.1 ? 'inflow' : priceChange < -0.1 ? 'outflow' : 'neutral';
+      const estFlow = Math.round(volume * price * (priceChange > 0 ? 1 : -1) * 0.1);
+      etfs.push({ ticker, issuer, price: +price.toFixed(2), priceChange: +priceChange.toFixed(2), volume, avgVolume: volume, volumeRatio: 1, direction, estFlow });
+      covered.add(ticker);
+      console.log(`  [AV] ${ticker}: $${price.toFixed(2)} (${direction})`);
+    }
+  }
+
+  // --- Fallback: Yahoo (for any ETFs not covered by AV) ---
   for (let i = 0; i < ETF_LIST.length; i++) {
     const { ticker, issuer } = ETF_LIST[i];
+    if (covered.has(ticker)) continue;
     if (i > 0) await sleep(YAHOO_DELAY_MS);
 
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=5d&interval=1d`;
       const resp = await fetchYahooWithRetry(url, ticker);
-      if (!resp) {
-        misses++;
-        continue;
-      }
+      if (!resp) { misses++; continue; }
       const chart = await resp.json();
       const parsed = parseEtfChartData(chart, ticker, issuer);
       if (parsed) {
         etfs.push(parsed);
-        console.log(`  ${ticker}: $${parsed.price} (${parsed.direction})`);
+        covered.add(ticker);
+        console.log(`  [Yahoo] ${ticker}: $${parsed.price} (${parsed.direction})`);
       } else {
         misses++;
       }
@@ -142,7 +188,7 @@ function validate(data) {
 runSeed('market', 'etf-flows', CANONICAL_KEY, fetchEtfFlows, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'yahoo-chart-5d',
+  sourceVersion: 'alphavantage+yahoo-chart-5d',
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);
