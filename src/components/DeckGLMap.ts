@@ -2724,25 +2724,31 @@ export class DeckGLMap {
    * Shows major semiconductor facilities (Intel, Analog Devices, etc.)
    */
   private createSemiconductorHubsLayer(): ScatterplotLayer {
+    // Pulse animation for Tier 1 facilities
+    const pulse = 1.0 + 0.15 * Math.sin((this.pulseTime || Date.now()) / 1000);
+
     return new ScatterplotLayer({
       id: 'semiconductor-hubs-layer',
       data: IRELAND_SEMICONDUCTOR_HUBS,
       getPosition: (d) => [d.lng, d.lat],
       getRadius: (d) => {
         const tier = getSemiconductorTier(d.employees);
-        return getTierRadius(tier)[0];
+        const baseRadius = getTierRadius(tier)[0];
+        // Only Tier 1 facilities pulse
+        return tier === 1 ? baseRadius * pulse : baseRadius;
       },
       getFillColor: (d) => {
         const tier = getSemiconductorTier(d.employees);
         return getTierColor([138, 43, 226], tier); // Purple base
       },
       radiusMinPixels: 6,
-      radiusMaxPixels: 24,
+      radiusMaxPixels: 28,
       radiusScale: 1,
       stroked: true,
       getLineColor: [255, 255, 255, 220] as [number, number, number, number],
       lineWidthMinPixels: 2,
       pickable: true,
+      updateTriggers: { getRadius: this.pulseTime },
     });
   }
 
@@ -2751,13 +2757,18 @@ export class DeckGLMap {
    * Shows major cloud and colocation facilities (Google, Meta, Microsoft, AWS, Equinix)
    */
   private createIrelandDataCentersLayer(): ScatterplotLayer<IrelandDataCenter> {
+    // Pulse animation for Tier 1 facilities
+    const pulse = 1.0 + 0.15 * Math.sin((this.pulseTime || Date.now()) / 1000);
+
     return new ScatterplotLayer<IrelandDataCenter>({
       id: 'ireland-data-centers-layer',
       data: IRELAND_DATA_CENTERS,
       getPosition: (d) => [d.lng, d.lat],
       getRadius: (d) => {
         const tier = getDataCenterTier(d.operator);
-        return getTierRadius(tier)[0];
+        const baseRadius = getTierRadius(tier)[0];
+        // Only Tier 1 facilities pulse
+        return tier === 1 ? baseRadius * pulse : baseRadius;
       },
       getFillColor: (d) => {
         const tier = getDataCenterTier(d.operator);
@@ -2770,11 +2781,12 @@ export class DeckGLMap {
         return getTierColor([128, 128, 128], tier);
       },
       radiusMinPixels: 6,
-      radiusMaxPixels: 24,
+      radiusMaxPixels: 28,
       stroked: true,
       getLineColor: [255, 255, 255, 220] as [number, number, number, number],
       lineWidthMinPixels: 1.5,
       pickable: true,
+      updateTriggers: { getRadius: this.pulseTime },
     });
   }
 
@@ -2783,51 +2795,66 @@ export class DeckGLMap {
    * Shows EMEA headquarters of major tech companies (Google, Meta, Apple, etc.)
    */
   private createIrelandTechHQsLayer(): ScatterplotLayer<IrelandTechHQ> {
+    // Pulse animation for Tier 1 facilities
+    const pulse = 1.0 + 0.15 * Math.sin((this.pulseTime || Date.now()) / 1000);
+
     return new ScatterplotLayer<IrelandTechHQ>({
       id: 'ireland-tech-hqs-layer',
       data: IRELAND_TECH_HQS,
       getPosition: (d) => [d.lng, d.lat],
       getRadius: (d) => {
         const tier = getTechHQTier(d.employees);
-        return getTierRadius(tier)[0];
+        const baseRadius = getTierRadius(tier)[0];
+        // Only Tier 1 facilities pulse
+        return tier === 1 ? baseRadius * pulse : baseRadius;
       },
       getFillColor: (d) => {
         const tier = getTechHQTier(d.employees);
         return getTierColor([0, 122, 255], tier); // Blue base
       },
       radiusMinPixels: 6,
-      radiusMaxPixels: 24,
+      radiusMaxPixels: 28,
       stroked: true,
       getLineColor: [255, 255, 255, 220] as [number, number, number, number],
       lineWidthMinPixels: 1.5,
       pickable: true,
+      updateTriggers: { getRadius: this.pulseTime },
     });
   }
 
   /**
    * Create Irish unicorns layer
    * Shows local Irish tech companies with unicorn status or high growth
-   * Uses Irish green color scheme
+   * Uses Irish green color scheme with glow effect for Tier 1
    */
   private createIrishUnicornsLayer(): ScatterplotLayer<IrishUnicorn> {
+    // Stronger pulse for unicorns (star-like glow effect)
+    const pulse = 1.0 + 0.2 * Math.sin((this.pulseTime || Date.now()) / 800);
+
     return new ScatterplotLayer<IrishUnicorn>({
       id: 'irish-unicorns-layer',
       data: IRISH_UNICORNS,
       getPosition: (d) => [d.lng, d.lat],
       getRadius: (d) => {
         const tier = getUnicornTier(d.category);
-        return getTierRadius(tier)[0];
+        const baseRadius = getTierRadius(tier)[0];
+        // Tier 1 unicorns get stronger pulse (star glow effect)
+        return tier === 1 ? baseRadius * pulse : baseRadius;
       },
       getFillColor: (d) => {
         const tier = getUnicornTier(d.category);
-        return getTierColor([22, 155, 98], tier); // Irish green base
+        // Gold color for unicorns instead of green for more "star" feel
+        return tier === 1
+          ? getTierColor([245, 158, 11], tier) // Gold for Tier 1
+          : getTierColor([22, 155, 98], tier); // Irish green for others
       },
       radiusMinPixels: 6,
-      radiusMaxPixels: 24,
+      radiusMaxPixels: 32,
       stroked: true,
       getLineColor: [255, 255, 255, 220] as [number, number, number, number],
-      lineWidthMinPixels: 1.5,
+      lineWidthMinPixels: 2,
       pickable: true,
+      updateTriggers: { getRadius: this.pulseTime },
     });
   }
 
@@ -3199,6 +3226,9 @@ export class DeckGLMap {
   }
 
   private needsPulseAnimation(now = Date.now()): boolean {
+    // Ireland variant: always pulse for Tier 1 facilities
+    if (SITE_VARIANT === 'ireland') return true;
+
     return this.hasRecentNews(now)
       || this.hasRecentRiot(now)
       || this.hotspots.some(h => h.hasBreaking)
