@@ -1,0 +1,23 @@
+retailer:
+  slug: coop_ch
+  name: Coop Switzerland
+  marketCode: ch
+  currencyCode: CHF
+  adapter: search
+  baseUrl: https://www.coop.ch
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    urlPathContains: /de/food/
+    queryTemplate: "{canonicalName} Lebensmittel {market} {currency} Preis"
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

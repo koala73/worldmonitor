@@ -36,6 +36,8 @@ const MARKET_NAMES: Record<string, string> = {
   ng: 'Nigeria',
   ke: 'Kenya',
   za: 'South Africa',
+  ch: 'Switzerland',
+  br: 'Brazil',
 };
 
 /** Packaging/container words that are not product identity tokens. */

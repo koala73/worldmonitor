@@ -6,6 +6,7 @@
 import { query, closePool } from '../db/client.js';
 import { loadAllBasketConfigs } from '../config/loader.js';
 import { validateAll } from './validate.js';
+import { FX_RATES_TO_USD } from '../fx/rates.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[aggregate] ${msg}`, ...args),
@@ -257,6 +258,22 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
       100;
     await writeComputedIndex(basketId, null, category, 'essentials_index', catEssentials);
     await writeComputedIndex(basketId, null, category, 'coverage_pct', catCoverage);
+  }
+
+  // Absolute basket cost in USD for cross-country comparison
+  const byItemForTotal = new Map<string, BasketRow[]>();
+  for (const r of rows) {
+    if (!byItemForTotal.has(r.basketItemId)) byItemForTotal.set(r.basketItemId, []);
+    byItemForTotal.get(r.basketItemId)!.push(r);
+  }
+  let basketTotalLocal = 0;
+  for (const itemRows of byItemForTotal.values()) {
+    basketTotalLocal += itemRows.reduce((s, r) => s + r.price, 0) / itemRows.length;
+  }
+  const currencyCode = rows[0].currencyCode;
+  const fxRate = FX_RATES_TO_USD[currencyCode];
+  if (fxRate !== undefined) {
+    await writeComputedIndex(basketId, null, null, 'basket_total_usd', Math.round(basketTotalLocal * fxRate * 100) / 100);
   }
 
   logger.info(`${basketSlug}:${marketCode} essentials=${essentialsIndex.toFixed(2)} value=${valueIndex.toFixed(2)} coverage=${coveragePct.toFixed(1)}%`);
