@@ -49,7 +49,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   displacement:             def('displacement',             '&#128101;', 'displacementFlows',        'Displacement Flows'),
   climate:                  def('climate',                  '&#127787;', 'climateAnomalies',         'Climate Anomalies'),
   weather:                  def('weather',                  '&#9928;',   'weatherAlerts',            'Weather Alerts'),
-  outages:                  def('outages',                  '&#128225;', 'internetOutages',          'Internet Outages'),
+  outages:                  def('outages',                  '&#128225;', 'internetOutages',          'Internet Disruptions'),
   cyberThreats:             def('cyberThreats',             '&#128737;', 'cyberThreats',             'Cyber Threats'),
   natural:                  def('natural',                  '&#127755;', 'naturalEvents',            'Natural Events'),
   fires:                    def('fires',                    '&#128293;', 'fires',                    'Fires'),

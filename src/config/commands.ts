@@ -66,7 +66,7 @@ export const COMMANDS: Command[] = [
   { id: 'layer:cyber', keywords: ['cyber', 'cyber threats'], label: 'Toggle cyber threats', icon: '\u{1F6E1}\uFE0F', category: 'layers' },
   { id: 'layer:displacement', keywords: ['displacement', 'refugees', 'idp'], label: 'Toggle displacement flows', icon: '\u{1F3C3}', category: 'layers' },
   { id: 'layer:climate', keywords: ['climate', 'anomalies'], label: 'Toggle climate anomalies', icon: '\u{1F321}\uFE0F', category: 'layers' },
-  { id: 'layer:outages', keywords: ['outages', 'internet outages'], label: 'Toggle internet outages', icon: '\u{1F4E1}', category: 'layers' },
+  { id: 'layer:outages', keywords: ['outages', 'internet outages', 'internet disruptions', 'disruptions'], label: 'Toggle internet disruptions', icon: '\u{1F4E1}', category: 'layers' },
   { id: 'layer:tradeRoutes', keywords: ['trade routes', 'shipping lanes', 'trade'], label: 'Toggle trade routes', icon: '\u{1F6A2}', category: 'layers' },
   { id: 'layer:gps', keywords: ['gps', 'gps jamming', 'jamming', 'spoofing'], label: 'Toggle GPS jamming', icon: '\u{1F4E1}', category: 'layers' },
   { id: 'layer:satellites', keywords: ['satellites', 'orbital', 'surveillance', 'space'], label: 'Toggle orbital surveillance', icon: '\u{1F6F0}\uFE0F', category: 'layers' },
