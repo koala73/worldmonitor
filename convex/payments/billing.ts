@@ -10,10 +10,10 @@
  */
 
 import { v } from "convex/values";
-import { action, query, internalQuery } from "../_generated/server";
+import { action, mutation, query, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
-import { requireUserId } from "../lib/auth";
+import { resolveUserId, requireUserId } from "../lib/auth";
 
 // ---------------------------------------------------------------------------
 // Shared SDK config (for direct API calls, not the Convex component)
@@ -42,9 +42,14 @@ function getDodoClient(): DodoPayments {
  * Used by the frontend billing UI to show current plan status.
  */
 export const getSubscriptionForUser = query({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    // Prefer auth identity when available; fall back to client-provided userId.
+    // This pattern matches entitlements.ts/getEntitlementsForUser — both accept
+    // userId as a public arg because the ConvexClient has no auth wired yet.
+    // Once Clerk JWT is wired into ConvexClient.setAuth(), switch to requireUserId(ctx).
+    const authedUserId = await resolveUserId(ctx);
+    const userId = authedUserId ?? args.userId;
 
     // Fetch all subscriptions for user and prefer active/on_hold over cancelled/expired.
     // Avoids the bug where a cancelled sub created after an active one hides the active one.
@@ -128,9 +133,10 @@ export const getActiveSubscription = internalQuery({
  * and view invoices directly through Dodo's hosted UI.
  */
 export const getCustomerPortalUrl = action({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const authedUserId = await resolveUserId(ctx);
+    const userId = authedUserId ?? args.userId;
 
     const customer = await ctx.runQuery(
       internal.payments.billing.getCustomerByUserId,
@@ -160,6 +166,7 @@ export const getCustomerPortalUrl = action({
  */
 export const changePlan = action({
   args: {
+    userId: v.string(),
     newProductId: v.string(),
     prorationMode: v.union(
       v.literal("prorated_immediately"),
@@ -168,7 +175,8 @@ export const changePlan = action({
     ),
   },
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
+    const authedUserId = await resolveUserId(ctx);
+    const userId = authedUserId ?? args.userId;
 
     const subscription = await ctx.runQuery(
       internal.payments.billing.getActiveSubscription,
@@ -187,5 +195,94 @@ export const changePlan = action({
     });
 
     return { success: true };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Subscription claim (anon ID → authenticated user migration)
+// ---------------------------------------------------------------------------
+
+/**
+ * Claims subscription, entitlement, and customer records from an anonymous
+ * browser ID to the currently authenticated user.
+ *
+ * LIMITATION: Until Clerk auth is wired into the ConvexClient, anonymous
+ * purchases are keyed to a `crypto.randomUUID()` stored in localStorage
+ * (`wm-anon-id`). If the user clears storage, switches browsers, or later
+ * creates a real account, there is no automatic way to link the purchase.
+ *
+ * This mutation provides the migration path: once authenticated, the client
+ * calls claimSubscription(anonId) to reassign all payment records from the
+ * anonymous ID to the real user ID.
+ *
+ * @see https://github.com/koala73/worldmonitor/issues/2078
+ */
+export const claimSubscription = mutation({
+  args: { anonId: v.string() },
+  handler: async (ctx, args) => {
+    const realUserId = await requireUserId(ctx);
+
+    // Reassign subscriptions
+    const subs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
+      .collect();
+    for (const sub of subs) {
+      await ctx.db.patch(sub._id, { userId: realUserId });
+    }
+
+    // Reassign entitlements
+    const entitlement = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
+      .unique();
+    if (entitlement) {
+      // Check if the real user already has entitlements
+      const existingEntitlement = await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", realUserId))
+        .unique();
+      if (existingEntitlement) {
+        // Keep the higher-tier entitlement
+        if (entitlement.validUntil > existingEntitlement.validUntil) {
+          await ctx.db.patch(existingEntitlement._id, {
+            planKey: entitlement.planKey,
+            features: entitlement.features,
+            validUntil: entitlement.validUntil,
+            updatedAt: Date.now(),
+          });
+        }
+        await ctx.db.delete(entitlement._id);
+      } else {
+        await ctx.db.patch(entitlement._id, { userId: realUserId });
+      }
+    }
+
+    // Reassign customer records
+    const customers = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
+      .collect();
+    for (const customer of customers) {
+      await ctx.db.patch(customer._id, { userId: realUserId });
+    }
+
+    // Reassign payment events
+    const payments = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
+      .collect();
+    for (const payment of payments) {
+      await ctx.db.patch(payment._id, { userId: realUserId });
+    }
+
+    return {
+      claimed: {
+        subscriptions: subs.length,
+        entitlements: entitlement ? 1 : 0,
+        customers: customers.length,
+        payments: payments.length,
+      },
+    };
   },
 });

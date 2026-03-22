@@ -10,6 +10,20 @@
  *
  * This module is the "identity bridge" between checkout, billing,
  * entitlement subscriptions, and the auth provider.
+ *
+ * KNOWN LIMITATION — Anonymous ID persistence:
+ * Before Clerk auth is wired, purchases are keyed to a random UUID stored
+ * in localStorage (`wm-anon-id`). This ID is lost if the user clears
+ * storage, switches browsers/devices, or uses private browsing. Once lost,
+ * there is no automatic way to reconnect the purchase to the user.
+ *
+ * Migration path: After Clerk auth lands, the client should call
+ * `claimSubscription(anonId)` (convex/payments/billing.ts) on first
+ * authenticated session to reassign payment records from the anon ID to
+ * the real Clerk user ID. The anon ID should be read from localStorage
+ * before it is replaced by the real identity.
+ *
+ * @see https://github.com/koala73/worldmonitor/issues/2078
  */
 
 const LEGACY_PRO_KEY = 'wm-pro-key';

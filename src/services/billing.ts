@@ -10,6 +10,7 @@
  */
 
 import { getConvexClient, getConvexApi } from './convex-client';
+import { getUserId } from './user-identity';
 
 export interface SubscriptionInfo {
   planKey: string;
@@ -32,8 +33,14 @@ let unsubscribeConvex: (() => void) | null = null;
  * Idempotent -- calling multiple times is a no-op after the first.
  * Failures are logged but never thrown (dashboard must not break).
  */
-export async function initSubscriptionWatch(_userId?: string): Promise<void> {
+export async function initSubscriptionWatch(userId?: string): Promise<void> {
   if (initialized) return;
+
+  const resolvedUserId = userId ?? getUserId();
+  if (!resolvedUserId) {
+    console.warn('[billing] No user identity -- skipping subscription watch');
+    return;
+  }
 
   try {
     const client = await getConvexClient();
@@ -50,7 +57,7 @@ export async function initSubscriptionWatch(_userId?: string): Promise<void> {
 
     unsubscribeConvex = client.onUpdate(
       api.payments.billing.getSubscriptionForUser,
-      {},
+      { userId: resolvedUserId },
       (result: SubscriptionInfo | null) => {
         currentSubscription = result;
         subscriptionLoaded = true;
@@ -112,6 +119,13 @@ export function getSubscription(): SubscriptionInfo | null {
  */
 export async function openBillingPortal(): Promise<void> {
   try {
+    const userId = getUserId();
+    if (!userId) {
+      console.warn('[billing] No user identity -- opening fallback portal');
+      window.open('https://customer.dodopayments.com', '_blank');
+      return;
+    }
+
     const client = await getConvexClient();
     const api = await getConvexApi();
 
@@ -121,7 +135,7 @@ export async function openBillingPortal(): Promise<void> {
       return;
     }
 
-    const result = await client.action(api.payments.billing.getCustomerPortalUrl, {});
+    const result = await client.action(api.payments.billing.getCustomerPortalUrl, { userId });
 
     if (result && result.portal_url && result.portal_url.startsWith('https://')) {
       window.open(result.portal_url, '_blank');
@@ -140,6 +154,12 @@ export async function openBillingPortal(): Promise<void> {
  */
 export async function changePlan(newProductId: string): Promise<{ success: boolean }> {
   try {
+    const userId = getUserId();
+    if (!userId) {
+      console.error('[billing] No user identity -- cannot change plan');
+      return { success: false };
+    }
+
     const client = await getConvexClient();
     const api = await getConvexApi();
 
@@ -149,6 +169,7 @@ export async function changePlan(newProductId: string): Promise<{ success: boole
     }
 
     const result = await client.action(api.payments.billing.changePlan, {
+      userId,
       newProductId,
       prorationMode: 'prorated_immediately',
     });
