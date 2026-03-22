@@ -6,12 +6,34 @@
  *
  *   1. Clerk auth (when VITE_CLERK_PUBLISHABLE_KEY is configured)
  *   2. Legacy wm-pro-key from localStorage
+ *   3. Stable anonymous ID (auto-generated, persisted in localStorage)
  *
  * This module is the "identity bridge" between checkout, billing,
  * entitlement subscriptions, and the auth provider.
  */
 
 const LEGACY_PRO_KEY = 'wm-pro-key';
+const ANON_KEY = 'wm-anon-id';
+
+/**
+ * Returns (or creates) a stable anonymous ID for this browser.
+ * Persisted in localStorage so it survives page reloads.
+ * This guarantees createCheckout always has a wm_user_id for the
+ * webhook identity bridge, even before the user has authenticated.
+ */
+export function getOrCreateAnonId(): string {
+  try {
+    let id = localStorage.getItem(ANON_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(ANON_KEY, id);
+    }
+    return id;
+  } catch {
+    // SSR or restricted context — return a one-off UUID
+    return crypto.randomUUID();
+  }
+}
 
 /**
  * Returns the current user's ID, or null if no identity is available.
@@ -30,7 +52,8 @@ export function getUserId(): string | null {
     if (proKey) return proKey;
   } catch { /* SSR or restricted context */ }
 
-  return null;
+  // 3. Stable anonymous ID — always available
+  return getOrCreateAnonId();
 }
 
 /**

@@ -10,7 +10,6 @@
  */
 
 import { getConvexClient, getConvexApi } from './convex-client';
-import { getUserId } from './user-identity';
 
 export interface SubscriptionInfo {
   planKey: string;
@@ -33,7 +32,7 @@ let unsubscribeConvex: (() => void) | null = null;
  * Idempotent -- calling multiple times is a no-op after the first.
  * Failures are logged but never thrown (dashboard must not break).
  */
-export async function initSubscriptionWatch(userId: string): Promise<void> {
+export async function initSubscriptionWatch(_userId?: string): Promise<void> {
   if (initialized) return;
 
   try {
@@ -51,7 +50,7 @@ export async function initSubscriptionWatch(userId: string): Promise<void> {
 
     unsubscribeConvex = client.onUpdate(
       api.payments.billing.getSubscriptionForUser,
-      { userId },
+      {},
       (result: SubscriptionInfo | null) => {
         currentSubscription = result;
         subscriptionLoaded = true;
@@ -122,14 +121,7 @@ export async function openBillingPortal(): Promise<void> {
       return;
     }
 
-    const userId = getUserId();
-    if (!userId) {
-      console.warn('[billing] No user ID found -- opening fallback portal');
-      window.open('https://customer.dodopayments.com', '_blank');
-      return;
-    }
-
-    const result = await client.action(api.payments.billing.getCustomerPortalUrl, { userId });
+    const result = await client.action(api.payments.billing.getCustomerPortalUrl, {});
 
     if (result && result.portal_url && result.portal_url.startsWith('https://')) {
       window.open(result.portal_url, '_blank');
@@ -156,14 +148,7 @@ export async function changePlan(newProductId: string): Promise<{ success: boole
       return { success: false };
     }
 
-    const userId = getUserId();
-    if (!userId) {
-      console.error('[billing] No user ID found -- cannot change plan');
-      return { success: false };
-    }
-
     const result = await client.action(api.payments.billing.changePlan, {
-      userId,
       newProductId,
       prorationMode: 'prorated_immediately',
     });

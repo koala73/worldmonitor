@@ -13,7 +13,7 @@ import { v } from "convex/values";
 import { action, query, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
-import { resolveUserId } from "../lib/auth";
+import { requireUserId } from "../lib/auth";
 
 // ---------------------------------------------------------------------------
 // Shared SDK config (for direct API calls, not the Convex component)
@@ -42,12 +42,9 @@ function getDodoClient(): DodoPayments {
  * Used by the frontend billing UI to show current plan status.
  */
 export const getSubscriptionForUser = query({
-  args: { userId: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    // Auth: derive userId from authenticated session; accept client hint only as fallback
-    const authedUserId = await resolveUserId(ctx);
-    const userId = authedUserId ?? args.userId;
-    if (!userId) return null;
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
 
     // Fetch all subscriptions for user and prefer active/on_hold over cancelled/expired.
     // Avoids the bug where a cancelled sub created after an active one hides the active one.
@@ -131,14 +128,9 @@ export const getActiveSubscription = internalQuery({
  * and view invoices directly through Dodo's hosted UI.
  */
 export const getCustomerPortalUrl = action({
-  args: { userId: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    // Auth: derive userId from authenticated session; accept client hint only as fallback
-    const authedUserId = await resolveUserId(ctx);
-    const userId = authedUserId ?? args.userId;
-    if (!userId) {
-      throw new Error("Authentication required");
-    }
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
 
     const customer = await ctx.runQuery(
       internal.payments.billing.getCustomerByUserId,
@@ -168,7 +160,6 @@ export const getCustomerPortalUrl = action({
  */
 export const changePlan = action({
   args: {
-    userId: v.optional(v.string()),
     newProductId: v.string(),
     prorationMode: v.union(
       v.literal("prorated_immediately"),
@@ -177,12 +168,7 @@ export const changePlan = action({
     ),
   },
   handler: async (ctx, args) => {
-    // Auth: derive userId from authenticated session; accept client hint only as fallback
-    const authedUserId = await resolveUserId(ctx);
-    const userId = authedUserId ?? args.userId;
-    if (!userId) {
-      throw new Error("Authentication required");
-    }
+    const userId = await requireUserId(ctx);
 
     const subscription = await ctx.runQuery(
       internal.payments.billing.getActiveSubscription,

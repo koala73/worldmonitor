@@ -157,10 +157,17 @@ export class PanelLayoutManager implements AppModule {
     // Initialize checkout overlay so payment success triggers the success banner
     initCheckoutOverlay(() => showCheckoutSuccess());
 
-    // Listen for entitlement changes — reload panels to pick up new gating state
+    // Listen for entitlement changes — reload panels to pick up new gating state.
+    // Skip the initial snapshot to avoid a reload loop for users who already have
+    // premium via legacy signals (API key / wm-pro-key).
+    let skipInitialSnapshot = true;
     onEntitlementChange(() => {
+      if (skipInitialSnapshot) {
+        skipInitialSnapshot = false;
+        return;
+      }
       if (isEntitled()) {
-        console.log('[entitlements] Subscription active — reloading to unlock panels');
+        console.log('[entitlements] Subscription activated — reloading to unlock panels');
         window.location.reload();
       }
     });
