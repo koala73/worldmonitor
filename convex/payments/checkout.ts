@@ -9,6 +9,7 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { checkout } from "../lib/dodo";
+import { resolveUserId } from "../lib/auth";
 
 /**
  * Create a Dodo Payments checkout session and return the checkout URL.
@@ -26,10 +27,14 @@ export const createCheckout = action({
     referralCode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Auth: derive userId from authenticated session; accept client hint only as fallback
+    const authedUserId = await resolveUserId(ctx);
+    const userId = authedUserId ?? args.userId;
+
     // Build metadata: userId for webhook identity bridge + affiliate tracking (PROMO-02)
     const metadata: Record<string, string> = {};
-    if (args.userId) {
-      metadata.wm_user_id = args.userId;
+    if (userId) {
+      metadata.wm_user_id = userId;
     }
     if (args.referralCode) {
       metadata.affonso_referral = args.referralCode;

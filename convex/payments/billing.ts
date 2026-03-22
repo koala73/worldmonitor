@@ -2,17 +2,18 @@
  * Billing queries and actions for subscription management.
  *
  * Provides:
- * - getSubscriptionForUser: public query for frontend status display
+ * - getSubscriptionForUser: authenticated query for frontend status display
  * - getCustomerByUserId: internal query for portal session creation
  * - getActiveSubscription: internal query for plan change validation
- * - getCustomerPortalUrl: action to create a Dodo Customer Portal session
- * - changePlan: action to upgrade/downgrade subscription via Dodo SDK
+ * - getCustomerPortalUrl: authenticated action to create a Dodo Customer Portal session
+ * - changePlan: authenticated action to upgrade/downgrade subscription via Dodo SDK
  */
 
 import { v } from "convex/values";
 import { action, query, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
+import { resolveUserId } from "../lib/auth";
 
 // ---------------------------------------------------------------------------
 // Shared SDK config (for direct API calls, not the Convex component)
@@ -42,15 +43,32 @@ function getDodoClient(): DodoPayments {
  * Used by the frontend billing UI to show current plan status.
  */
 export const getSubscriptionForUser = query({
-  args: { userId: v.string() },
+  args: { userId: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const subscription = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .order("desc")
-      .first();
+    // Auth: derive userId from authenticated session; accept client hint only as fallback
+    const authedUserId = await resolveUserId(ctx);
+    const userId = authedUserId ?? args.userId;
+    if (!userId) return null;
 
-    if (!subscription) return null;
+    // Fetch all subscriptions for user and prefer active/on_hold over cancelled/expired.
+    // Avoids the bug where a cancelled sub created after an active one hides the active one.
+    const allSubs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+
+    if (allSubs.length === 0) return null;
+
+    const priorityOrder = ["active", "on_hold", "cancelled", "expired"];
+    allSubs.sort((a, b) => {
+      const pa = priorityOrder.indexOf(a.status);
+      const pb = priorityOrder.indexOf(b.status);
+      if (pa !== pb) return pa - pb; // active first
+      return b.updatedAt - a.updatedAt; // then most recently updated
+    });
+
+    // Safe: we checked length > 0 above
+    const subscription = allSubs[0]!;
 
     // Look up display name from productPlans
     const productPlan = await ctx.db
@@ -76,10 +94,11 @@ export const getSubscriptionForUser = query({
 export const getCustomerByUserId = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    // Use .first() instead of .unique() — defensive against duplicate customer rows
     return await ctx.db
       .query("customers")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .unique();
+      .first();
   },
 });
 
@@ -90,21 +109,15 @@ export const getCustomerByUserId = internalQuery({
 export const getActiveSubscription = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    const subscription = await ctx.db
+    // Find an active subscription (not cancelled, expired, or on_hold).
+    // on_hold subs have failed payment — don't allow plan changes on them.
+    const allSubs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .order("desc")
-      .first();
+      .collect();
 
-    if (!subscription) return null;
-    if (
-      subscription.status === "cancelled" ||
-      subscription.status === "expired"
-    ) {
-      return null;
-    }
-
-    return subscription;
+    const activeSub = allSubs.find((s) => s.status === "active");
+    return activeSub ?? null;
   },
 });
 
@@ -119,11 +132,18 @@ export const getActiveSubscription = internalQuery({
  * and view invoices directly through Dodo's hosted UI.
  */
 export const getCustomerPortalUrl = action({
-  args: { userId: v.string() },
+  args: { userId: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    // Auth: derive userId from authenticated session; accept client hint only as fallback
+    const authedUserId = await resolveUserId(ctx);
+    const userId = authedUserId ?? args.userId;
+    if (!userId) {
+      throw new Error("Authentication required");
+    }
+
     const customer = await ctx.runQuery(
       internal.payments.billing.getCustomerByUserId,
-      { userId: args.userId },
+      { userId },
     );
 
     if (!customer || !customer.dodoCustomerId) {
@@ -149,7 +169,7 @@ export const getCustomerPortalUrl = action({
  */
 export const changePlan = action({
   args: {
-    userId: v.string(),
+    userId: v.optional(v.string()),
     newProductId: v.string(),
     prorationMode: v.union(
       v.literal("prorated_immediately"),
@@ -158,9 +178,16 @@ export const changePlan = action({
     ),
   },
   handler: async (ctx, args) => {
+    // Auth: derive userId from authenticated session; accept client hint only as fallback
+    const authedUserId = await resolveUserId(ctx);
+    const userId = authedUserId ?? args.userId;
+    if (!userId) {
+      throw new Error("Authentication required");
+    }
+
     const subscription = await ctx.runQuery(
       internal.payments.billing.getActiveSubscription,
-      { userId: args.userId },
+      { userId },
     );
 
     if (!subscription) {

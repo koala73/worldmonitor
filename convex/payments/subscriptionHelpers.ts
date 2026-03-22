@@ -107,8 +107,13 @@ export async function upsertEntitlements(
 
 const FALLBACK_USER_ID = "test-user-001";
 
-/** True when running against a local/dev Convex deployment. */
+/**
+ * True when running against a local/dev Convex deployment.
+ * Uses CONVEX_IS_DEV (set by `convex dev`) as primary signal,
+ * with CONVEX_CLOUD_URL heuristic as fallback — same pattern as lib/auth.ts.
+ */
 const isDevDeployment =
+  process.env.CONVEX_IS_DEV === "true" ||
   !process.env.CONVEX_CLOUD_URL ||
   process.env.CONVEX_CLOUD_URL.includes("localhost");
 
@@ -159,7 +164,7 @@ async function resolveUserId(
       .withIndex("by_dodoCustomerId", (q) =>
         q.eq("dodoCustomerId", dodoCustomerId),
       )
-      .unique();
+      .first();
     if (customer?.userId) {
       return customer.userId;
     }
@@ -182,13 +187,20 @@ async function resolveUserId(
 /**
  * Safely converts a Dodo date value to epoch milliseconds.
  * Dodo may send strings or Date-like objects (Pitfall 5 from research).
+ *
+ * Warns on missing/invalid values to surface data issues instead of
+ * silently defaulting. Falls back to eventTimestamp (not Date.now())
+ * which is at least related to the webhook event.
  */
-function toEpochMs(value: unknown): number {
+function toEpochMs(value: unknown, fieldName?: string): number {
   if (typeof value === "number") return value;
   if (typeof value === "string" || value instanceof Date) {
-    const ms = new Date(value as string).getTime();
+    const ms = new Date(value).getTime();
     if (!Number.isNaN(ms)) return ms;
   }
+  console.warn(
+    `[subscriptionHelpers] toEpochMs: missing or invalid ${fieldName ?? "date"} value (${String(value)}) — falling back to Date.now()`,
+  );
   return Date.now();
 }
 
@@ -213,8 +225,8 @@ export async function handleSubscriptionActive(
     data.metadata,
   );
 
-  const currentPeriodStart = toEpochMs(data.previous_billing_date);
-  const currentPeriodEnd = toEpochMs(data.next_billing_date);
+  const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date");
+  const currentPeriodEnd = toEpochMs(data.next_billing_date, "next_billing_date");
 
   const existing = await ctx.db
     .query("subscriptions")
@@ -227,6 +239,8 @@ export async function handleSubscriptionActive(
     if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
     await ctx.db.patch(existing._id, {
       status: "active",
+      dodoProductId: data.product_id,
+      planKey,
       currentPeriodStart,
       currentPeriodEnd,
       rawPayload: data,
@@ -258,7 +272,7 @@ export async function handleSubscriptionActive(
       .withIndex("by_dodoCustomerId", (q) =>
         q.eq("dodoCustomerId", dodoCustomerId),
       )
-      .unique();
+      .first();
 
     if (existingCustomer) {
       await ctx.db.patch(existingCustomer._id, {
@@ -303,8 +317,8 @@ export async function handleSubscriptionRenewed(
 
   if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
 
-  const currentPeriodStart = toEpochMs(data.previous_billing_date);
-  const currentPeriodEnd = toEpochMs(data.next_billing_date);
+  const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date");
+  const currentPeriodEnd = toEpochMs(data.next_billing_date, "next_billing_date");
 
   await ctx.db.patch(existing._id, {
     status: "active",
@@ -356,7 +370,7 @@ export async function handleSubscriptionOnHold(
     updatedAt: eventTimestamp,
   });
 
-  console.log(
+  console.warn(
     `[subscriptionHelpers] Subscription ${data.subscription_id} on hold -- payment failure`,
   );
   // Do NOT revoke entitlements -- they remain valid until currentPeriodEnd
@@ -447,6 +461,43 @@ export async function handleSubscriptionPlanChanged(
 }
 
 /**
+ * Handles `subscription.expired` -- subscription has permanently expired
+ * (e.g., max payment retries exceeded).
+ *
+ * Revokes entitlements by setting validUntil to now, and marks subscription expired.
+ */
+export async function handleSubscriptionExpired(
+  ctx: MutationCtx,
+  data: DodoSubscriptionData,
+  eventTimestamp: number,
+): Promise<void> {
+  const existing = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_dodoSubscriptionId", (q) =>
+      q.eq("dodoSubscriptionId", data.subscription_id),
+    )
+    .unique();
+
+  if (!existing) {
+    console.warn(
+      `[subscriptionHelpers] Expiration for unknown subscription ${data.subscription_id} -- skipping`,
+    );
+    return;
+  }
+
+  if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
+
+  await ctx.db.patch(existing._id, {
+    status: "expired",
+    rawPayload: data,
+    updatedAt: eventTimestamp,
+  });
+
+  // Revoke entitlements by downgrading to free tier
+  await upsertEntitlements(ctx, existing.userId, "free", eventTimestamp, eventTimestamp);
+}
+
+/**
  * Handles `payment.succeeded` and `payment.failed` events.
  *
  * Records a payment event row. Does not alter subscription state --
@@ -475,4 +526,73 @@ export async function handlePaymentEvent(
     rawPayload: data,
     occurredAt: eventTimestamp,
   });
+}
+
+/**
+ * Handles `refund.succeeded` and `refund.failed` events.
+ *
+ * Records a payment event row with type "refund" for audit trail.
+ */
+export async function handleRefundEvent(
+  ctx: MutationCtx,
+  data: DodoPaymentData,
+  eventType: string,
+  eventTimestamp: number,
+): Promise<void> {
+  const userId = await resolveUserId(
+    ctx,
+    data.customer?.customer_id ?? "",
+    data.metadata,
+  );
+
+  await ctx.db.insert("paymentEvents", {
+    userId,
+    dodoPaymentId: data.payment_id,
+    type: "refund",
+    amount: data.total_amount ?? data.amount ?? 0,
+    currency: data.currency ?? "USD",
+    status: eventType === "refund.succeeded" ? "succeeded" : "failed",
+    dodoSubscriptionId: data.subscription_id ?? undefined,
+    rawPayload: data,
+    occurredAt: eventTimestamp,
+  });
+}
+
+/**
+ * Handles dispute events (opened, won, lost, closed).
+ *
+ * Records a payment event for audit trail. On dispute.lost,
+ * logs a warning since entitlement revocation may be needed.
+ */
+export async function handleDisputeEvent(
+  ctx: MutationCtx,
+  data: DodoPaymentData,
+  eventType: string,
+  eventTimestamp: number,
+): Promise<void> {
+  const userId = await resolveUserId(
+    ctx,
+    data.customer?.customer_id ?? "",
+    data.metadata,
+  );
+
+  const status = eventType.replace("dispute.", "");
+
+  await ctx.db.insert("paymentEvents", {
+    userId,
+    dodoPaymentId: data.payment_id,
+    type: "charge", // disputes are related to charges
+    amount: data.total_amount ?? data.amount ?? 0,
+    currency: data.currency ?? "USD",
+    status: `dispute_${status}`,
+    dodoSubscriptionId: data.subscription_id ?? undefined,
+    rawPayload: data,
+    occurredAt: eventTimestamp,
+  });
+
+  if (eventType === "dispute.lost") {
+    console.warn(
+      `[subscriptionHelpers] Dispute LOST for user ${userId}, payment ${data.payment_id} — manual entitlement review may be needed`,
+    );
+  }
 }

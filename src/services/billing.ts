@@ -10,6 +10,7 @@
  */
 
 import { getConvexClient, getConvexApi } from './convex-client';
+import { getProWidgetKey } from './widget-store';
 
 export interface SubscriptionInfo {
   planKey: string;
@@ -22,8 +23,10 @@ export interface SubscriptionInfo {
 
 // Module-level state
 let currentSubscription: SubscriptionInfo | null = null;
+let subscriptionLoaded = false;
 const listeners = new Set<(sub: SubscriptionInfo | null) => void>();
 let initialized = false;
+let unsubscribeConvex: (() => void) | null = null;
 
 /**
  * Initialize the subscription watch for a given user.
@@ -36,21 +39,22 @@ export async function initSubscriptionWatch(userId: string): Promise<void> {
   try {
     const client = await getConvexClient();
     if (!client) {
-      console.log('[billing] No VITE_CONVEX_URL -- skipping subscription watch');
+      console.warn('[billing] No VITE_CONVEX_URL -- skipping subscription watch');
       return;
     }
 
     const api = await getConvexApi();
     if (!api) {
-      console.log('[billing] Could not load Convex API -- skipping subscription watch');
+      console.warn('[billing] Could not load Convex API -- skipping subscription watch');
       return;
     }
 
-    client.onUpdate(
+    unsubscribeConvex = client.onUpdate(
       api.payments.billing.getSubscriptionForUser,
       { userId },
       (result: SubscriptionInfo | null) => {
         currentSubscription = result;
+        subscriptionLoaded = true;
         for (const cb of listeners) cb(result);
       },
     );
@@ -72,14 +76,28 @@ export function onSubscriptionChange(
 ): () => void {
   listeners.add(cb);
 
-  // Late subscribers get the current value immediately
-  if (currentSubscription !== null) {
+  // Late subscribers get the current value immediately (including null if loaded)
+  if (subscriptionLoaded) {
     cb(currentSubscription);
   }
 
   return () => {
     listeners.delete(cb);
   };
+}
+
+/**
+ * Tear down the subscription watch. Call from PanelLayout.destroy() for cleanup.
+ */
+export function destroySubscriptionWatch(): void {
+  if (unsubscribeConvex) {
+    unsubscribeConvex();
+    unsubscribeConvex = null;
+  }
+  initialized = false;
+  subscriptionLoaded = false;
+  currentSubscription = null;
+  listeners.clear();
 }
 
 /**
@@ -104,7 +122,7 @@ export async function openBillingPortal(): Promise<void> {
       return;
     }
 
-    const userId = localStorage.getItem('wm-pro-key') ?? '';
+    const userId = getProWidgetKey();
     if (!userId) {
       console.warn('[billing] No user ID found -- opening fallback portal');
       window.open('https://customer.dodopayments.com', '_blank');
@@ -113,7 +131,7 @@ export async function openBillingPortal(): Promise<void> {
 
     const result = await client.action(api.payments.billing.getCustomerPortalUrl, { userId });
 
-    if (result && result.portal_url) {
+    if (result && result.portal_url && result.portal_url.startsWith('https://')) {
       window.open(result.portal_url, '_blank');
     } else {
       window.open('https://customer.dodopayments.com', '_blank');
@@ -138,7 +156,7 @@ export async function changePlan(newProductId: string): Promise<{ success: boole
       return { success: false };
     }
 
-    const userId = localStorage.getItem('wm-pro-key') ?? '';
+    const userId = getProWidgetKey();
     if (!userId) {
       console.error('[billing] No user ID found -- cannot change plan');
       return { success: false };

@@ -7,7 +7,7 @@
 //   npx convex run payments/seedProductPlans:seedProductPlans
 //   npx convex run payments/seedProductPlans:listProductPlans
 
-import { mutation, query } from "../_generated/server";
+import { internalMutation, query } from "../_generated/server";
 
 const PRODUCT_PLANS = [
   {
@@ -47,7 +47,7 @@ const PRODUCT_PLANS = [
  * Idempotent: running twice will update existing records rather than
  * creating duplicates, thanks to the by_planKey index lookup.
  */
-export const seedProductPlans = mutation({
+export const seedProductPlans = internalMutation({
   args: {},
   handler: async (ctx) => {
     let created = 0;

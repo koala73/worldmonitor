@@ -47,26 +47,28 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     return new Response("Invalid webhook signature", { status: 401 });
   }
 
-  // 5. Dispatch to internal mutation for idempotent processing
+  // 5. Dispatch to internal mutation for idempotent processing.
+  //    Uses the validated payload directly (not a second JSON.parse) to avoid divergence.
+  //    On handler failure the mutation throws, rolling back partial writes.
+  //    We catch and return 500 so Dodo retries.
   try {
-    const result = await ctx.runMutation(
+    const eventTimestamp = payload.timestamp
+      ? payload.timestamp.getTime()
+      : Date.now();
+
+    if (!payload.timestamp) {
+      console.warn("[webhook] Missing payload.timestamp — falling back to Date.now(). Out-of-order detection may be unreliable.");
+    }
+
+    await ctx.runMutation(
       internal.payments.webhookMutations.processWebhookEvent,
       {
         webhookId,
         eventType: payload.type,
-        rawPayload: JSON.parse(body),
-        timestamp: payload.timestamp
-          ? payload.timestamp.getTime()
-          : Date.now(),
+        rawPayload: payload,
+        timestamp: eventTimestamp,
       },
     );
-
-    // Mutation returns { error: true, message } on handler failure
-    // (without throwing, so the audit row is preserved)
-    if (result && typeof result === "object" && "error" in result) {
-      console.error("Webhook handler failed:", (result as { message?: string }).message);
-      return new Response("Internal processing error", { status: 500 });
-    }
   } catch (error) {
     console.error("Webhook processing failed:", error);
     return new Response("Internal processing error", { status: 500 });
