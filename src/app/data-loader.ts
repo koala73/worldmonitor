@@ -2287,9 +2287,9 @@ export class DataLoaderManager implements AppModule {
 
   async loadFredData(): Promise<void> {
     const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
-    const cbInfo = getCircuitBreakerCooldownInfo('FRED Economic');
+    const cbInfo = getCircuitBreakerCooldownInfo('FRED Batch');
     if (cbInfo.onCooldown) {
-      economicPanel?.showRetrying(undefined, cbInfo.remainingSeconds);
+      economicPanel?.setFredRetrying(cbInfo.remainingSeconds);
       this.ctx.statusPanel?.updateApi('FRED', { status: 'error' });
       return;
     }
@@ -2298,20 +2298,20 @@ export class DataLoaderManager implements AppModule {
       economicPanel?.setLoading(true);
       const data = await fetchFredData();
 
-      const postInfo = getCircuitBreakerCooldownInfo('FRED Economic');
+      const postInfo = getCircuitBreakerCooldownInfo('FRED Batch');
       if (postInfo.onCooldown) {
-        economicPanel?.showRetrying(undefined, postInfo.remainingSeconds);
+        economicPanel?.setFredRetrying(postInfo.remainingSeconds);
         this.ctx.statusPanel?.updateApi('FRED', { status: 'error' });
         return;
       }
 
       if (data.length === 0) {
         if (!isFeatureAvailable('economicFred')) {
-          economicPanel?.showConfigError(t('components.economic.fredKeyMissing'));
+          economicPanel?.setFredError(t('components.economic.fredKeyMissing'));
           this.ctx.statusPanel?.updateApi('FRED', { status: 'error' });
           return;
         }
-        economicPanel?.showError(t('common.upstreamUnavailable'));
+        economicPanel?.setFredError(t('common.upstreamUnavailable'));
         this.ctx.statusPanel?.updateApi('FRED', { status: 'error' });
         return;
       }
@@ -2321,8 +2321,7 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordUpdate('economic', data.length);
     } catch {
       this.ctx.statusPanel?.updateApi('FRED', { status: 'error' });
-      economicPanel?.showError();
-      economicPanel?.setLoading(false);
+      economicPanel?.setFredError(t('common.failedToLoad'));
     }
   }
 

@@ -70,12 +70,16 @@ function getMacroPressure(data: FredSeries[]): {
   };
 }
 
+type FredLoadState = 'loading' | 'ok' | 'error' | 'retrying';
+
 export class EconomicPanel extends Panel {
   private fredData: FredSeries[] = [];
   private spendingData: SpendingSummary | null = null;
   private bisData: BisData | null = null;
   private lastUpdate: Date | null = null;
   private activeTab: TabId = 'indicators';
+  private fredState: FredLoadState = 'loading';
+  private fredErrorMsg = '';
 
   constructor() {
     super({
@@ -95,7 +99,23 @@ export class EconomicPanel extends Panel {
 
   public update(data: FredSeries[]): void {
     this.fredData = data;
+    this.fredState = 'ok';
+    this.fredErrorMsg = '';
     this.lastUpdate = new Date();
+    this.render();
+  }
+
+  public setFredError(message: string): void {
+    this.fredState = 'error';
+    this.fredErrorMsg = message;
+    this.render();
+  }
+
+  public setFredRetrying(remainingSeconds?: number): void {
+    this.fredState = 'retrying';
+    this.fredErrorMsg = remainingSeconds !== undefined
+      ? `${t('common.retrying')} (${remainingSeconds}s)`
+      : t('common.retrying');
     this.render();
   }
 
@@ -110,7 +130,10 @@ export class EconomicPanel extends Panel {
   }
 
   public setLoading(loading: boolean): void {
-    if (loading) this.showLoading();
+    if (loading) {
+      this.fredState = 'loading';
+      this.fredErrorMsg = '';
+    }
   }
 
   private render(): void {
@@ -175,6 +198,9 @@ export class EconomicPanel extends Panel {
     if (this.fredData.length === 0) {
       if (isDesktopRuntime() && !isFeatureAvailable('economicFred')) {
         return `<div class="economic-empty">${t('components.economic.fredKeyMissing')}</div>`;
+      }
+      if (this.fredState === 'error' || this.fredState === 'retrying') {
+        return `<div class="economic-empty">${escapeHtml(this.fredErrorMsg)}</div>`;
       }
       return `<div class="economic-empty">${t('components.economic.noIndicatorData')}</div>`;
     }
