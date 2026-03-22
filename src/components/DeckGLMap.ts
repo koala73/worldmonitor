@@ -12,6 +12,14 @@ import { IRELAND_SEMICONDUCTOR_HUBS } from '@/data/semiconductor-hubs';
 import { IRELAND_DATA_CENTERS, type IrelandDataCenter } from '@/data/data-centers-ireland';
 import { IRELAND_TECH_HQS, type IrelandTechHQ } from '@/data/tech-hqs-ireland';
 import { IRISH_UNICORNS, type IrishUnicorn } from '@/data/irish-unicorns';
+import {
+  getSemiconductorTier,
+  getDataCenterTier,
+  getTechHQTier,
+  getUnicornTier,
+  getTierRadius,
+  getTierColor,
+} from '@/services/marker-tier';
 import Supercluster from 'supercluster';
 import type {
   MapLayers,
@@ -2720,10 +2728,17 @@ export class DeckGLMap {
       id: 'semiconductor-hubs-layer',
       data: IRELAND_SEMICONDUCTOR_HUBS,
       getPosition: (d) => [d.lng, d.lat],
-      getRadius: 22000,
-      getFillColor: [138, 43, 226, 235], // Purple
-      radiusMinPixels: 10,
-      radiusMaxPixels: 20,
+      getRadius: (d) => {
+        const tier = getSemiconductorTier(d.employees);
+        return getTierRadius(tier)[0];
+      },
+      getFillColor: (d) => {
+        const tier = getSemiconductorTier(d.employees);
+        return getTierColor([138, 43, 226], tier); // Purple base
+      },
+      radiusMinPixels: 6,
+      radiusMaxPixels: 24,
+      radiusScale: 1,
       stroked: true,
       getLineColor: [255, 255, 255, 220] as [number, number, number, number],
       lineWidthMinPixels: 2,
@@ -2740,18 +2755,22 @@ export class DeckGLMap {
       id: 'ireland-data-centers-layer',
       data: IRELAND_DATA_CENTERS,
       getPosition: (d) => [d.lng, d.lat],
-      getRadius: 18000,
-      getFillColor: (d) => {
-        // Color by operator
-        if (d.operator.includes('Google')) return [66, 133, 244, 235]; // Google Blue
-        if (d.operator.includes('Meta')) return [24, 119, 242, 235]; // Meta Blue
-        if (d.operator.includes('Microsoft')) return [0, 164, 239, 235]; // Azure Blue
-        if (d.operator.includes('Amazon')) return [255, 153, 0, 235]; // AWS Orange
-        if (d.operator.includes('Equinix')) return [237, 28, 36, 235]; // Equinix Red
-        return [128, 128, 128, 235]; // Default Gray
+      getRadius: (d) => {
+        const tier = getDataCenterTier(d.operator);
+        return getTierRadius(tier)[0];
       },
-      radiusMinPixels: 9,
-      radiusMaxPixels: 18,
+      getFillColor: (d) => {
+        const tier = getDataCenterTier(d.operator);
+        // Color by operator with tier adjustment
+        if (d.operator.includes('Google')) return getTierColor([66, 133, 244], tier);
+        if (d.operator.includes('Meta')) return getTierColor([24, 119, 242], tier);
+        if (d.operator.includes('Microsoft')) return getTierColor([0, 164, 239], tier);
+        if (d.operator.includes('Amazon')) return getTierColor([255, 153, 0], tier);
+        if (d.operator.includes('Equinix')) return getTierColor([237, 28, 36], tier);
+        return getTierColor([128, 128, 128], tier);
+      },
+      radiusMinPixels: 6,
+      radiusMaxPixels: 24,
       stroked: true,
       getLineColor: [255, 255, 255, 220] as [number, number, number, number],
       lineWidthMinPixels: 1.5,
@@ -2768,10 +2787,16 @@ export class DeckGLMap {
       id: 'ireland-tech-hqs-layer',
       data: IRELAND_TECH_HQS,
       getPosition: (d) => [d.lng, d.lat],
-      getRadius: (d) => Math.min(25000, 10000 + (d.employees || 0) * 2),
-      getFillColor: [0, 122, 255, 235], // Blue for tech HQs
-      radiusMinPixels: 8,
-      radiusMaxPixels: 18,
+      getRadius: (d) => {
+        const tier = getTechHQTier(d.employees);
+        return getTierRadius(tier)[0];
+      },
+      getFillColor: (d) => {
+        const tier = getTechHQTier(d.employees);
+        return getTierColor([0, 122, 255], tier); // Blue base
+      },
+      radiusMinPixels: 6,
+      radiusMaxPixels: 24,
       stroked: true,
       getLineColor: [255, 255, 255, 220] as [number, number, number, number],
       lineWidthMinPixels: 1.5,
@@ -2790,18 +2815,15 @@ export class DeckGLMap {
       data: IRISH_UNICORNS,
       getPosition: (d) => [d.lng, d.lat],
       getRadius: (d) => {
-        if (d.category === 'unicorn') return 22000;
-        if (d.category === 'high-growth') return 18000;
-        return 14000; // emerging
+        const tier = getUnicornTier(d.category);
+        return getTierRadius(tier)[0];
       },
       getFillColor: (d) => {
-        // Irish green color scheme
-        if (d.category === 'unicorn') return [22, 155, 98, 235]; // Deep green
-        if (d.category === 'high-growth') return [52, 211, 153, 235]; // Medium green
-        return [110, 231, 183, 235]; // Light green for emerging
+        const tier = getUnicornTier(d.category);
+        return getTierColor([22, 155, 98], tier); // Irish green base
       },
-      radiusMinPixels: 8,
-      radiusMaxPixels: 18,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 24,
       stroked: true,
       getLineColor: [255, 255, 255, 220] as [number, number, number, number],
       lineWidthMinPixels: 1.5,
