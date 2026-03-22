@@ -114,47 +114,57 @@ export interface WMBasketSeriesSnapshot {
 // Private helpers
 // ---------------------------------------------------------------------------
 
-async function buildTopCategories(basketId: string): Promise<WMCategorySnapshot[]> {
+async function buildTopCategories(basketId: string, rangeDays = 7): Promise<WMCategorySnapshot[]> {
+  const lookbackDays = rangeDays - 1;
   const result = await query<{
     category: string;
     current_index: number | null;
-    prev_week_index: number | null;
+    prev_index: number | null;
     coverage_pct: number | null;
+    item_count: string;
   }>(
     `WITH today AS (
        SELECT category, metric_key, metric_value::float AS metric_value
        FROM computed_indices
        WHERE basket_id = $1 AND category IS NOT NULL AND retailer_id IS NULL AND metric_date = CURRENT_DATE
      ),
-     last_week AS (
+     prev_period AS (
        SELECT category, metric_key, metric_value::float AS metric_value
        FROM computed_indices
        WHERE basket_id = $1 AND category IS NOT NULL AND retailer_id IS NULL
          AND metric_date = (
            SELECT MAX(metric_date) FROM computed_indices
            WHERE basket_id = $1 AND category IS NOT NULL
-             AND metric_date < CURRENT_DATE - INTERVAL '6 days'
+             AND metric_date < CURRENT_DATE - ($2 || ' days')::INTERVAL
          )
+     ),
+     item_counts AS (
+       SELECT category, COUNT(*) AS item_count
+       FROM basket_items
+       WHERE basket_id = $1 AND active = true
+       GROUP BY category
      )
      SELECT
        cats.category,
        MAX(CASE WHEN t.metric_key = 'essentials_index' THEN t.metric_value END) AS current_index,
-       MAX(CASE WHEN lw.metric_key = 'essentials_index' THEN lw.metric_value END) AS prev_week_index,
-       MAX(CASE WHEN t.metric_key = 'coverage_pct' THEN t.metric_value END) AS coverage_pct
+       MAX(CASE WHEN pp.metric_key = 'essentials_index' THEN pp.metric_value END) AS prev_index,
+       MAX(CASE WHEN t.metric_key = 'coverage_pct' THEN t.metric_value END) AS coverage_pct,
+       COALESCE(ic.item_count, 0) AS item_count
      FROM (SELECT DISTINCT category FROM today) cats
      JOIN today t ON t.category = cats.category
-     LEFT JOIN last_week lw ON lw.category = cats.category AND lw.metric_key = t.metric_key
-     GROUP BY cats.category
+     LEFT JOIN prev_period pp ON pp.category = cats.category AND pp.metric_key = t.metric_key
+     LEFT JOIN item_counts ic ON ic.category = cats.category
+     GROUP BY cats.category, ic.item_count
      HAVING MAX(CASE WHEN t.metric_key = 'essentials_index' THEN 1 ELSE 0 END) = 1
      ORDER BY ABS(COALESCE(MAX(CASE WHEN t.metric_key = 'essentials_index' THEN t.metric_value END), 100) - 100) DESC
      LIMIT 8`,
-    [basketId],
+    [basketId, lookbackDays],
   );
 
   return result.rows.map((r) => {
     const cur = r.current_index ?? 100;
-    const prev = r.prev_week_index;
-    const wowPct = prev && prev > 0 ? Math.round(((cur - prev) / prev) * 100 * 10) / 10 : 0;
+    const prev = r.prev_index;
+    const changePct = prev && prev > 0 ? Math.round(((cur - prev) / prev) * 100 * 10) / 10 : 0;
     const slug = r.category
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -162,12 +172,12 @@ async function buildTopCategories(basketId: string): Promise<WMCategorySnapshot[
     return {
       slug,
       name: r.category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-      wowPct,
-      momPct: 0, // TODO: requires 30-day baseline per category
+      wowPct: rangeDays <= 7 ? changePct : 0,
+      momPct: rangeDays > 7 ? changePct : 0,
       currentIndex: Math.round(cur * 10) / 10,
-      sparkline: [], // TODO: requires per-category date series query
+      sparkline: [],
       coveragePct: Math.round((r.coverage_pct ?? 0) * 10) / 10,
-      itemCount: 0, // TODO: requires basket_items count query per category
+      itemCount: parseInt(r.item_count, 10),
     };
   });
 }
@@ -484,7 +494,7 @@ export async function buildFreshnessSnapshot(marketCode: string): Promise<WMFres
       ? Math.round(freshnessValues.reduce((a, b) => a + b, 0) / freshnessValues.length)
       : 0;
 
-  const stalledCount = retailers.filter((r) => r.freshnessMin === 0 || r.freshnessMin > 240).length;
+  const stalledCount = retailers.filter((r) => r.lastRunAt === '' || r.freshnessMin > 240).length;
 
   return {
     marketCode,
@@ -561,13 +571,14 @@ export interface WMCategoriesSnapshot {
 
 export async function buildCategoriesSnapshot(marketCode: string, range: string): Promise<WMCategoriesSnapshot> {
   const now = Date.now();
+  const days = parseInt(range.replace('d', ''), 10) || 7;
 
   const basketIdResult = await query<{ id: string }>(
     `SELECT b.id FROM baskets b WHERE b.market_code = $1 LIMIT 1`,
     [marketCode],
   );
   const basketId = basketIdResult.rows[0]?.id ?? null;
-  const categories = basketId ? await buildTopCategories(basketId) : [];
+  const categories = basketId ? await buildTopCategories(basketId, days) : [];
 
   return {
     marketCode,
