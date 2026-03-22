@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import type { StockAnalysisResult } from '@/services/stock-analysis';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import type { StockAnalysisHistory } from '@/services/stock-analysis-history';
@@ -28,7 +29,7 @@ function list(items: string[], tone: string): string {
 
 export class StockAnalysisPanel extends Panel {
   constructor() {
-    super({ id: 'stock-analysis', title: 'Premium Stock Analysis' });
+    super({ id: 'stock-analysis', title: 'Premium Stock Analysis', infoTooltip: t('components.stockAnalysis.infoTooltip') });
   }
 
   public renderAnalyses(items: StockAnalysisResult[], historyBySymbol: StockAnalysisHistory = {}, source: 'live' | 'cached' = 'live'): void {

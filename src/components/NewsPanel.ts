@@ -53,8 +53,8 @@ export class NewsPanel extends Panel {
   private lastHeadlineSignature = '';
   private isSummarizing = false;
 
-  constructor(id: string, title: string) {
-    super({ id, title, showCount: true, trackActivity: true });
+  constructor(id: string, title: string, infoTooltip?: string) {
+    super({ id, title, showCount: true, trackActivity: true, infoTooltip });
     this.sortMode = this.loadSortMode();
     this.createDeviationIndicator();
     this.createSortToggle();

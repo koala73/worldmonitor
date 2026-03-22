@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import type { StockBacktestResult } from '@/services/stock-backtest';
 import { escapeHtml } from '@/utils/sanitize';
 
@@ -15,7 +16,7 @@ function fmtPct(value: number): string {
 
 export class StockBacktestPanel extends Panel {
   constructor() {
-    super({ id: 'stock-backtest', title: 'Premium Backtesting' });
+    super({ id: 'stock-backtest', title: 'Premium Backtesting', infoTooltip: t('components.stockBacktest.infoTooltip') });
   }
 
   public renderBacktests(items: StockBacktestResult[], source: 'live' | 'cached' = 'live'): void {

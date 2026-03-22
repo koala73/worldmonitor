@@ -20394,20 +20394,6 @@ body.has-breaking-alert .panels-grid {
   flex-direction: column;
 }
 
-.mcp-panel-widget .wm-widget-shell {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 240px;
-}
-
-.mcp-panel-widget .wm-widget-body,
-.mcp-panel-widget .wm-widget-generated {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 10px;
-}
-
 .mcp-panel-widget iframe {
   width: 100%;
   min-height: 260px;

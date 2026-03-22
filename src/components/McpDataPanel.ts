@@ -19,6 +19,8 @@ export class McpDataPanel extends Panel {
   private lastJsonHash: string | null = null;
   private cachedWidgetHtml: string | null = null;
   private visualizing = false;
+  private pendingHash: string | null = null;
+  private destroyController = new AbortController();
 
   constructor(spec: McpPanelSpec) {
     super({
@@ -112,7 +114,7 @@ export class McpDataPanel extends Panel {
     const jsonData = this.extractJsonData(result);
 
     if (jsonData !== null && isProWidgetEnabled()) {
-      const hash = JSON.stringify(jsonData).slice(0, 1000);
+      const hash = JSON.stringify(jsonData).slice(0, 8192);
       if (hash === this.lastJsonHash && this.cachedWidgetHtml) {
         this.setContent(`
           <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
@@ -122,7 +124,7 @@ export class McpDataPanel extends Panel {
       }
       this.lastJsonHash = hash;
       this.cachedWidgetHtml = null;
-      void this.autoVisualize(jsonData);
+      void this.autoVisualize(jsonData, hash);
       return;
     }
 
@@ -145,14 +147,17 @@ export class McpDataPanel extends Panel {
         }
       }
     }
-    const keys = Object.keys(result).filter(k => k !== 'content');
-    if (keys.length > 0) return result;
+    // Only use result directly when content wrapper is absent
+    if (!Array.isArray(result.content) && Object.keys(result).length > 0) {
+      return result;
+    }
     return null;
   }
 
-  private async autoVisualize(jsonData: unknown): Promise<void> {
+  private async autoVisualize(jsonData: unknown, startHash: string): Promise<void> {
     if (this.visualizing) return;
     this.visualizing = true;
+    this.pendingHash = startHash;
 
     this.setContent(`
       <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
@@ -162,8 +167,12 @@ export class McpDataPanel extends Panel {
       </div>
     `);
 
+    const toolName = this.spec.toolName.slice(0, 100);
     const preview = JSON.stringify(jsonData, null, 2).slice(0, 3000);
-    const prompt = `Create a compact, interactive data visualization widget for this ${this.spec.toolName} data. Choose the best format (charts, tables, cards). Data:\n${preview}`;
+    const prompt = `Create a compact, interactive data visualization widget for this ${toolName} data. Choose the best format (charts, tables, cards). Data:\n${preview}`;
+
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), 120_000);
 
     try {
       const res = await fetch(widgetAgentUrl(), {
@@ -174,7 +183,9 @@ export class McpDataPanel extends Panel {
           'X-Pro-Key': getProWidgetKey(),
         },
         body: JSON.stringify({ prompt, mode: 'create', tier: 'pro' }),
-        signal: AbortSignal.timeout(120_000),
+        signal: this.destroyController.signal.aborted
+          ? this.destroyController.signal
+          : timeoutController.signal,
       });
 
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -183,6 +194,7 @@ export class McpDataPanel extends Panel {
       const decoder = new TextDecoder();
       let buf = '';
       let resultHtml = '';
+      let rendered = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -198,22 +210,44 @@ export class McpDataPanel extends Panel {
           if (event.type === 'html_complete') {
             resultHtml = String(event.html ?? '');
           } else if (event.type === 'done') {
-            this.cachedWidgetHtml = resultHtml;
-            this.setContent(`
-              <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
-              <div class="mcp-panel-content mcp-panel-widget">${wrapProWidgetHtml(resultHtml)}</div>
-            `);
+            // Only cache and render if data hasn't changed since we started
+            if (this.pendingHash === this.lastJsonHash) {
+              this.cachedWidgetHtml = resultHtml;
+              this.setContent(`
+                <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
+                <div class="mcp-panel-content mcp-panel-widget">${wrapProWidgetHtml(resultHtml)}</div>
+              `);
+              rendered = true;
+            }
           } else if (event.type === 'error') {
             throw new Error(String(event.message ?? t('mcp.visualizationFailed')));
           }
         }
       }
+
+      // Stream ended without 'done' — flush whatever html_complete gave us
+      if (!rendered) {
+        if (resultHtml && this.pendingHash === this.lastJsonHash) {
+          this.cachedWidgetHtml = resultHtml;
+          this.setContent(`
+            <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
+            <div class="mcp-panel-content mcp-panel-widget">${wrapProWidgetHtml(resultHtml)}</div>
+          `);
+        } else if (!resultHtml) {
+          this.cachedWidgetHtml = null;
+          this.lastJsonHash = null;
+          this.showError(t('mcp.visualizationFailed'));
+        }
+      }
     } catch (err) {
+      if ((err as { name?: string }).name === 'AbortError') return;
       this.cachedWidgetHtml = null;
       this.lastJsonHash = null;
       const msg = err instanceof Error ? err.message : t('mcp.visualizationFailed');
       this.showError(msg);
     } finally {
+      clearTimeout(timeoutId);
+      this.pendingHash = null;
       this.visualizing = false;
     }
   }
@@ -273,6 +307,7 @@ export class McpDataPanel extends Panel {
   }
 
   destroy(): void {
+    this.destroyController.abort();
     this.clearRefreshTimer();
     super.destroy();
   }

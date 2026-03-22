@@ -292,18 +292,18 @@ export class TokenListPanel extends Panel {
 
 export class DefiTokensPanel extends TokenListPanel {
   constructor() {
-    super({ id: 'defi-tokens', title: 'DeFi Tokens' });
+    super({ id: 'defi-tokens', title: 'DeFi Tokens', infoTooltip: t('components.defiTokens.infoTooltip') });
   }
 }
 
 export class AiTokensPanel extends TokenListPanel {
   constructor() {
-    super({ id: 'ai-tokens', title: 'AI Tokens' });
+    super({ id: 'ai-tokens', title: 'AI Tokens', infoTooltip: t('components.aiTokens.infoTooltip') });
   }
 }
 
 export class OtherTokensPanel extends TokenListPanel {
   constructor() {
-    super({ id: 'other-tokens', title: 'Alt Tokens' });
+    super({ id: 'other-tokens', title: 'Alt Tokens', infoTooltip: t('components.altTokens.infoTooltip') });
   }
 }

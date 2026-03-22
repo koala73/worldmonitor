@@ -224,6 +224,26 @@ const MARKET_BUCKET_CONFIG = [
 ];
 
 const CORE_MARKET_BUCKET_IDS = ['energy', 'freight', 'sovereign_risk', 'rates_inflation', 'fx_stress'];
+const MARKET_BUCKET_COVERAGE_KEYS = {
+  energy: ['commodities', 'gulfQuotes', 'fredSeries'],
+  freight: ['shippingRates', 'commodities', 'correlationCards'],
+  sovereign_risk: ['bisExchange', 'bisPolicy', 'fredSeries', 'correlationCards', 'etfFlows'],
+  rates_inflation: ['fredSeries', 'bisPolicy', 'commodities'],
+  fx_stress: ['bisExchange', 'bisPolicy', 'fredSeries'],
+  semis: ['stocks', 'sectors', 'correlationCards'],
+  crypto_stablecoins: ['crypto', 'stablecoins', 'etfFlows'],
+  defense: ['sectors', 'stocks', 'correlationCards'],
+};
+const MARKET_BUCKET_CRITICAL_SIGNAL_TYPES = {
+  energy: ['energy_supply_shock', 'gas_supply_stress', 'commodity_repricing', 'oil_macro_shock', 'global_crude_spread_stress'],
+  freight: ['shipping_cost_shock', 'energy_supply_shock', 'gas_supply_stress'],
+  sovereign_risk: ['sovereign_stress', 'policy_rate_pressure', 'shipping_cost_shock', 'energy_supply_shock'],
+  rates_inflation: ['policy_rate_pressure', 'inflation_impulse', 'shipping_cost_shock', 'energy_supply_shock', 'gas_supply_stress', 'commodity_repricing'],
+  fx_stress: ['fx_stress', 'sovereign_stress', 'policy_rate_pressure'],
+  semis: ['infrastructure_capacity_loss', 'shipping_cost_shock'],
+  crypto_stablecoins: ['sovereign_stress', 'fx_stress', 'liquidity_withdrawal'],
+  defense: ['defense_repricing', 'security_escalation', 'sovereign_stress'],
+};
 const MARKET_BUCKET_NEIGHBORS = {
   energy: ['freight', 'rates_inflation', 'sovereign_risk'],
   freight: ['rates_inflation', 'energy', 'sovereign_risk'],
@@ -4246,6 +4266,21 @@ function clampUnitInterval(value) {
   return Math.max(0, Math.min(1, Number(value) || 0));
 }
 
+function computeMarketBucketCoverageScore(bucketId, marketInputCoverage = {}) {
+  const keys = MARKET_BUCKET_COVERAGE_KEYS[bucketId] || [];
+  if (!keys.length) return 1;
+  const available = keys.filter((key) => Number(marketInputCoverage?.[key] || 0) > 0).length;
+  return +(available / keys.length).toFixed(3);
+}
+
+function computeCriticalBucketAlignment(bucketId, criticalSignalTypes = []) {
+  const supportedTypes = MARKET_BUCKET_CRITICAL_SIGNAL_TYPES[bucketId] || [];
+  if (!supportedTypes.length || !criticalSignalTypes.length) return 0;
+  const overlap = supportedTypes.filter((type) => criticalSignalTypes.includes(type)).length;
+  if (!overlap) return 0;
+  return +clampUnitInterval((overlap / Math.min(4, supportedTypes.length)) + Math.min(0.16, criticalSignalTypes.length * 0.035)).toFixed(3);
+}
+
 function intersectAny(left = [], right = []) {
   return left.some((item) => right.includes(item));
 }
@@ -4948,9 +4983,10 @@ function buildSimulationCausalReplayChains(simulationState) {
   };
 }
 
-function buildSimulationMarketConsequences(simulationState, marketState) {
+function buildSimulationMarketConsequences(simulationState, marketState, options = {}) {
   const simulations = Array.isArray(simulationState?.situationSimulations) ? simulationState.situationSimulations : [];
   const bucketMap = new Map((marketState?.buckets || []).map((bucket) => [bucket.id, bucket]));
+  const marketInputCoverage = options?.marketInputCoverage || null;
   const consequences = [];
   const blocked = [];
 
@@ -4966,26 +5002,40 @@ function buildSimulationMarketConsequences(simulationState, marketState) {
         const bucket = bucketMap.get(candidateBucketId);
         if (!bucket) continue;
         const direct = depth === 0;
+        const criticalSignalLift = Number(simulation.marketContext?.criticalSignalLift || 0);
+        const criticalSignalTypes = simulation.marketContext?.criticalSignalTypes || [];
+        const criticalAlignment = computeCriticalBucketAlignment(candidateBucketId, criticalSignalTypes);
+        const criticalLift = criticalSignalLift * criticalAlignment;
+        const coverageScore = computeMarketBucketCoverageScore(candidateBucketId, marketInputCoverage);
+        const effectiveMacroConfirmation = clampUnitInterval(
+          Math.max(
+            Number(bucket.macroConfirmation || 0),
+            Math.min(0.24, criticalLift * (direct ? 0.6 : 0.32)),
+          ),
+        );
         const adjacencyPenalty = direct ? 0 : 0.18 + ((depth - 1) * 0.05);
         const strength = clampUnitInterval(
           ((simulation.marketContext?.confirmationScore || 0) * (direct ? 0.34 : 0.22)) +
           ((simulation.marketContext?.topTransmissionStrength || 0) * (direct ? 0.24 : 0.18)) +
           ((bucket.pressureScore || 0) * (direct ? 0.28 : 0.24)) +
-          ((simulation.postureScore || 0) * 0.14) -
+          ((simulation.postureScore || 0) * 0.14) +
+          (criticalLift * (direct ? 0.16 : 0.08)) -
           adjacencyPenalty
         );
         if (strength < (direct ? 0.26 : 0.3)) continue;
         const confidence = clampUnitInterval(
           ((simulation.marketContext?.topTransmissionConfidence || 0) * 0.34) +
           ((bucket.confidence || 0) * 0.3) +
-          ((bucket.macroConfirmation || 0) * (direct ? 0.18 : 0.22)) +
-          ((simulation.avgConfidence || 0) * 0.12) -
+          (effectiveMacroConfirmation * (direct ? 0.18 : 0.22)) +
+          ((simulation.avgConfidence || 0) * 0.12) +
+          (criticalLift * (direct ? 0.12 : 0.06)) -
           (direct ? 0 : 0.05)
         );
         const reportableScore = clampUnitInterval(
           (strength * 0.4) +
           (confidence * 0.32) +
-          ((bucket.macroConfirmation || 0) * 0.18) +
+          (effectiveMacroConfirmation * 0.18) +
+          (criticalLift * (direct ? 0.12 : 0.04)) +
           Math.min(0.08, (simulation.marketContext?.linkedBucketIds || []).length * 0.04) -
           (direct ? 0 : 0.06)
         );
@@ -5006,6 +5056,10 @@ function buildSimulationMarketConsequences(simulationState, marketState) {
           confidence: +confidence.toFixed(3),
           reportableScore: +reportableScore.toFixed(3),
           macroConfirmation: Number(bucket.macroConfirmation || 0),
+          effectiveMacroConfirmation: +effectiveMacroConfirmation.toFixed(3),
+          coverageScore,
+          criticalAlignment: +criticalAlignment.toFixed(3),
+          criticalSignalLift: +criticalSignalLift.toFixed(3),
           summary: direct
             ? `${simulation.label} is exerting ${roundPct(strength)} pressure on ${bucket.label} via ${String(simulation.marketContext?.topChannel || 'derived transmission').replace(/_/g, ' ')}.`
             : `${simulation.label} is spilling ${roundPct(strength)} follow-on pressure from ${bucketMap.get(bucketId)?.label || bucketId} into ${bucket.label}.`,
@@ -5030,13 +5084,23 @@ function buildSimulationMarketConsequences(simulationState, marketState) {
   const usedSituations = new Set();
   for (const item of internalItems) {
     const bucketCount = usedBuckets.get(item.targetBucketId) || 0;
-    const minScore = MARKET_BUCKET_REPORTABLE_SCORE_FLOORS[item.targetBucketId] || 0.52;
+    const criticalFloorRelief = item.consequenceType === 'direct' && CORE_MARKET_BUCKET_IDS.includes(item.targetBucketId)
+      ? Math.min(0.08, (Number(item.criticalAlignment || 0) * Number(item.criticalSignalLift || 0)) * 0.14)
+      : 0;
+    const lowCoverageRelief = item.consequenceType === 'direct' && CORE_MARKET_BUCKET_IDS.includes(item.targetBucketId) && (item.coverageScore || 0) < 0.45
+      ? 0.03
+      : 0;
+    const minScore = Math.max(
+      0.34,
+      (MARKET_BUCKET_REPORTABLE_SCORE_FLOORS[item.targetBucketId] || 0.52) - criticalFloorRelief - lowCoverageRelief,
+    );
     if ((item.reportableScore || 0) < minScore) {
       blocked.push({ ...item, reason: 'low_reportable_score' });
       continue;
     }
     if (
-      (item.macroConfirmation || 0) < 0.14
+      (item.effectiveMacroConfirmation || item.macroConfirmation || 0) < 0.14
+      && (item.coverageScore || 0) >= 0.45
       && CORE_MARKET_BUCKET_IDS.includes(item.targetBucketId)
       && !(
         ['market', 'supply_chain'].includes(item.dominantDomain)
@@ -5082,7 +5146,8 @@ function buildSimulationMarketConsequences(simulationState, marketState) {
       && (item.reportableScore || 0) >= 0.3
       && (item.confidence || 0) >= 0.25
       && (
-        (item.macroConfirmation || 0) >= 0.1
+        (item.effectiveMacroConfirmation || item.macroConfirmation || 0) >= 0.1
+        || ((item.criticalAlignment || 0) >= 0.35 && (item.criticalSignalLift || 0) >= 0.5)
         || (item.strength || 0) >= 0.46
         || (item.consequenceType === 'direct' && (item.reportableScore || 0) >= 0.3)
       )
@@ -5127,6 +5192,7 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
     worldState?.marketTransmission,
     worldState?.marketState,
     simulationSources,
+    worldState?.marketInputCoverage,
   );
   const priorSimulationState = priorWorldState?.simulationState;
   const compatiblePriorSimulations = priorSimulationState?.version === SIMULATION_STATE_VERSION
@@ -5258,7 +5324,9 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
   });
   const marketConsequences = buildSimulationMarketConsequences({
     situationSimulations,
-  }, worldState?.marketState);
+  }, worldState?.marketState, {
+    marketInputCoverage: worldState?.marketInputCoverage,
+  });
 
   const postureCounts = summarizeTypeCounts(situationSimulations.map((item) => item.posture));
   const summary = situationSimulations.length
@@ -7883,7 +7951,7 @@ function buildMarketState(worldSignals, transmissionGraph) {
   };
 }
 
-function buildSituationMarketContextIndex(worldSignals, marketTransmission, marketState, sourceItems = []) {
+function buildSituationMarketContextIndex(worldSignals, marketTransmission, marketState, sourceItems = [], marketInputCoverage = null) {
   const signals = Array.isArray(worldSignals?.signals) ? worldSignals.signals : [];
   const edges = Array.isArray(marketTransmission?.edges) ? marketTransmission.edges : [];
   const bucketMap = new Map((marketState?.buckets || []).map((bucket) => [bucket.id, bucket]));
@@ -7902,6 +7970,7 @@ function buildSituationMarketContextIndex(worldSignals, marketTransmission, mark
     const linkedSignals = linkedSignalIds
       .map((signalId) => signals.find((signal) => signal.id === signalId))
       .filter(Boolean);
+    const criticalSignals = linkedSignals.filter((signal) => CRITICAL_NEWS_SOURCE_TYPES.has(signal.sourceType));
     const avgEdgeStrength = situationEdges.length
       ? situationEdges.reduce((sum, edge) => sum + Number(edge.strength || 0), 0) / situationEdges.length
       : 0;
@@ -7914,17 +7983,26 @@ function buildSituationMarketContextIndex(worldSignals, marketTransmission, mark
     const alignedSignalStrength = linkedSignals.length
       ? linkedSignals.reduce((sum, signal) => sum + Number(signal.strength || 0), 0) / linkedSignals.length
       : 0;
+    const criticalSignalStrength = criticalSignals.length
+      ? criticalSignals.reduce((sum, signal) => sum + ((Number(signal.strength || 0) * 0.62) + (Number(signal.confidence || 0) * 0.38)), 0) / criticalSignals.length
+      : 0;
+    const criticalSignalLift = clampUnitInterval(
+      (criticalSignalStrength * 0.78) +
+      Math.min(0.18, criticalSignals.length * 0.05),
+    );
     const confirmationScore = clampUnitInterval(
       (avgEdgeStrength * 0.28) +
       (avgEdgeConfidence * 0.22) +
       (avgBucketPressure * 0.3) +
       (alignedSignalStrength * 0.12) +
-      Math.min(0.08, linkedSignals.length * 0.02)
+      Math.min(0.08, linkedSignals.length * 0.02) +
+      (criticalSignalLift * 0.12)
     );
     const contradictionScore = clampUnitInterval(
       (linkedBuckets.length === 0 && ['market', 'supply_chain', 'conflict', 'political', 'military'].includes(source.dominantDomain || '') ? 0.18 : 0) +
       (linkedBuckets.length > 0 && avgBucketPressure < 0.22 ? 0.08 : 0) +
-      (linkedSignals.length === 0 && situationEdges.length > 0 ? 0.05 : 0)
+      (linkedSignals.length === 0 && situationEdges.length > 0 ? 0.05 : 0) -
+      Math.min(0.06, criticalSignalLift * 0.05)
     );
     const topBucket = linkedBuckets
       .slice()
@@ -7932,6 +8010,7 @@ function buildSituationMarketContextIndex(worldSignals, marketTransmission, mark
     const topEdge = situationEdges
       .slice()
       .sort((a, b) => (b.strength + b.confidence) - (a.strength + a.confidence) || a.targetLabel.localeCompare(b.targetLabel))[0];
+    const topBucketCoverageScore = topBucket ? computeMarketBucketCoverageScore(topBucket.id, marketInputCoverage) : 0;
 
     contexts.set(source.id, {
       situationId: source.id,
@@ -7947,9 +8026,13 @@ function buildSituationMarketContextIndex(worldSignals, marketTransmission, mark
       transmissionEdgeCount: situationEdges.length,
       confirmationScore: +confirmationScore.toFixed(3),
       contradictionScore: +contradictionScore.toFixed(3),
+      criticalSignalCount: criticalSignals.length,
+      criticalSignalLift: +criticalSignalLift.toFixed(3),
+      criticalSignalTypes: uniqueSortedStrings(criticalSignals.map((signal) => signal.type)),
       topBucketId: topBucket?.id || '',
       topBucketLabel: topBucket?.label || '',
       topBucketPressure: Number(topBucket?.pressureScore || 0),
+      topBucketCoverageScore,
       topChannel: topEdge?.channel || '',
       topTransmissionStrength: Number(topEdge?.strength || 0),
       topTransmissionConfidence: Number(topEdge?.confidence || 0),
@@ -7978,10 +8061,14 @@ function attachMarketSelectionContext(predictions = [], marketIndex = null) {
       topBucketId: context.topBucketId || '',
       topBucketLabel: context.topBucketLabel || '',
       topBucketPressure: Number(context.topBucketPressure || 0),
+      topBucketCoverageScore: Number(context.topBucketCoverageScore || 0),
       topChannel: context.topChannel || '',
       transmissionEdgeCount: Number(context.transmissionEdgeCount || 0),
       topTransmissionStrength: Number(context.topTransmissionStrength || 0),
       topTransmissionConfidence: Number(context.topTransmissionConfidence || 0),
+      criticalSignalCount: Number(context.criticalSignalCount || 0),
+      criticalSignalLift: Number(context.criticalSignalLift || 0),
+      criticalSignalTypes: context.criticalSignalTypes || [],
       consequenceSummary: context.consequenceSummary || '',
     } : null;
   }
@@ -8027,6 +8114,7 @@ function buildForecastRunWorldState(data) {
     situationClusters: Array.isArray(priorWorldState?.stateUnits) ? priorWorldState.stateUnits : [],
   });
   const stateSummary = buildStateUnitSummary(stateUnits, stateContinuity);
+  const marketInputCoverage = summarizeMarketInputCoverage(inputs);
   const reportContinuity = buildReportContinuity({
     situationClusters,
   }, data?.priorWorldStates || []);
@@ -8061,6 +8149,7 @@ function buildForecastRunWorldState(data) {
     worldSignals,
     marketState,
     marketTransmission,
+    marketInputCoverage,
     uncertainties: evidenceLedger.counter.slice(0, 10),
   };
   worldState.simulationState = buildSituationSimulationState(worldState, priorWorldState);
@@ -8861,11 +8950,17 @@ function computePublishSelectionScore(pred, memoryIndex = null) {
     : 0;
   const marketConfirmation = Number(pred.marketSelectionContext?.confirmationScore || 0);
   const marketContradiction = Number(pred.marketSelectionContext?.contradictionScore || 0);
+  const criticalSignalLift = Number(pred.marketSelectionContext?.criticalSignalLift || 0);
+  const criticalSignalCount = Number(pred.marketSelectionContext?.criticalSignalCount || 0);
   const topBucketId = pred.marketSelectionContext?.topBucketId || '';
   const marketTransmissionLift = Math.min(0.07,
     (marketConfirmation * 0.06) +
     Math.min(0.02, Number(pred.marketSelectionContext?.transmissionEdgeCount || 0) * 0.005) +
     Math.min(0.02, Number(pred.marketSelectionContext?.topBucketPressure || 0) * 0.03)
+  );
+  const criticalLift = Math.min(0.05,
+    (criticalSignalLift * 0.035) +
+    Math.min(0.015, criticalSignalCount * 0.004),
   );
   const marketPenalty = Math.min(0.04, marketContradiction * 0.05);
   const coreBucketLift = CORE_MARKET_BUCKET_IDS.includes(topBucketId)
@@ -8884,6 +8979,8 @@ function computePublishSelectionScore(pred, memoryIndex = null) {
   pred.publishSelectionMarket = pred.marketSelectionContext ? {
     confirmationScore: marketConfirmation,
     contradictionScore: marketContradiction,
+    criticalSignalLift,
+    criticalSignalCount,
     topBucketId: pred.marketSelectionContext.topBucketId || '',
     topBucketLabel: pred.marketSelectionContext.topBucketLabel || '',
     transmissionEdgeCount: pred.marketSelectionContext.transmissionEdgeCount || 0,
@@ -8899,11 +8996,28 @@ function computePublishSelectionScore(pred, memoryIndex = null) {
     domainLift +
     enrichedLift +
     memoryLift +
-    marketTransmissionLift -
+    marketTransmissionLift +
+    criticalLift -
     marketPenalty +
     coreBucketLift -
     defensePenalty
   ).toFixed(6);
+}
+
+function isHighLeverageStateFollowOn(pred) {
+  const marketConfirmation = Number(pred.marketSelectionContext?.confirmationScore || 0);
+  const criticalSignalLift = Number(pred.marketSelectionContext?.criticalSignalLift || 0);
+  const transmissionEdgeCount = Number(pred.marketSelectionContext?.transmissionEdgeCount || 0);
+  const topBucketId = pred.marketSelectionContext?.topBucketId || '';
+  const pressureMemory = Number(pred.publishSelectionMemory?.pressureMemory || 0);
+  const coreBucket = CORE_MARKET_BUCKET_IDS.includes(topBucketId);
+
+  if (pressureMemory >= 0.72) return true;
+  if (coreBucket && ['market', 'supply_chain', 'military', 'infrastructure'].includes(pred.domain)) {
+    if (marketConfirmation >= 0.56 || criticalSignalLift >= 0.54) return true;
+  }
+  if (transmissionEdgeCount >= 2 && (marketConfirmation >= 0.52 || criticalSignalLift >= 0.48)) return true;
+  return false;
 }
 
 function selectPublishedForecastPool(predictions, options = {}) {
@@ -8953,6 +9067,8 @@ function selectPublishedForecastPool(predictions, options = {}) {
     if (familyTotal >= Math.min(MAX_PUBLISHED_FORECASTS_PER_FAMILY, MAX_PRESELECTED_FORECASTS_PER_FAMILY)) return false;
     if (familyDomainTotal >= MAX_PUBLISHED_FORECASTS_PER_FAMILY_DOMAIN) return false;
     if (situationTotal >= MAX_PRESELECTED_FORECASTS_PER_SITUATION) return false;
+    if ((mode === 'state_anchor' || mode === 'diversity') && situationTotal >= 1) return false;
+    if (mode === 'fill' && situationTotal >= 1 && !isHighLeverageStateFollowOn(pred)) return false;
     if (mode === 'diversity') {
       const domainTotal = domainCounts.get(pred.domain) || 0;
       if (domainTotal >= 2 && !['market', 'military', 'supply_chain', 'infrastructure'].includes(pred.domain)) return false;
@@ -8976,8 +9092,18 @@ function selectPublishedForecastPool(predictions, options = {}) {
     Number(pred.publishSelectionMemory?.pressureMemory || 0) >= 0.55
     || Number(pred.publishSelectionMemory?.edgeCount || 0) >= 1
   ));
+  const stateAnchorMap = new Map();
+  for (const pred of ranked) {
+    const stateId = getForecastSelectionStateContext(pred)?.id || pred.id;
+    if (!stateAnchorMap.has(stateId)) stateAnchorMap.set(stateId, pred);
+  }
+  const stateAnchors = [...stateAnchorMap.values()]
+    .sort((a, b) => (b.publishSelectionScore || 0) - (a.publishSelectionScore || 0)
+      || (b.analysisPriority || 0) - (a.analysisPriority || 0)
+      || (b.probability || 0) - (a.probability || 0));
   const marketAnchors = ranked.filter((pred) => (
     Number(pred.marketSelectionContext?.confirmationScore || 0) >= 0.5
+    || Number(pred.marketSelectionContext?.criticalSignalLift || 0) >= 0.52
     || (
       Number(pred.marketSelectionContext?.topBucketPressure || 0) >= 0.5
       && Number(pred.marketSelectionContext?.transmissionEdgeCount || 0) >= 1
@@ -8987,23 +9113,28 @@ function selectPublishedForecastPool(predictions, options = {}) {
     CORE_MARKET_BUCKET_IDS.includes(pred.marketSelectionContext?.topBucketId || '')
     && (
       Number(pred.marketSelectionContext?.confirmationScore || 0) >= 0.46
+      || Number(pred.marketSelectionContext?.criticalSignalLift || 0) >= 0.5
       || (
         Number(pred.marketSelectionContext?.topTransmissionStrength || 0) >= 0.48
         && Number(pred.marketSelectionContext?.topBucketPressure || 0) >= 0.42
       )
     )
   ));
+  for (const pred of stateAnchors) {
+    if (selected.length >= Math.min(targetCount, stateAnchors.length)) break;
+    if (canSelect(pred, 'state_anchor')) take(pred);
+  }
   for (const pred of transmissionAnchors) {
     if (selected.length >= Math.min(targetCount, 2)) break;
-    if (canSelect(pred, 'fill')) take(pred);
+    if (canSelect(pred, 'state_anchor')) take(pred);
   }
   for (const pred of marketAnchors) {
     if (selected.length >= Math.min(targetCount, 2)) break;
-    if (canSelect(pred, 'fill')) take(pred);
+    if (canSelect(pred, 'state_anchor')) take(pred);
   }
   for (const pred of memoryAnchors) {
     if (selected.length >= Math.min(targetCount, 2)) break;
-    if (canSelect(pred, 'fill')) take(pred);
+    if (canSelect(pred, 'state_anchor')) take(pred);
   }
 
   for (const familyId of orderedFamilyIds) {
@@ -9039,6 +9170,11 @@ function selectPublishedForecastPool(predictions, options = {}) {
   for (const pred of ranked) {
     if (selected.length >= targetCount) break;
     if (canSelect(pred, 'fill')) take(pred);
+  }
+
+  for (const pred of ranked) {
+    if (selected.length >= targetCount) break;
+    if (canSelect(pred, 'backfill')) take(pred);
   }
 
   // Domain guarantee: data-driven detectors (military) structurally can't match LLM-enriched
@@ -10456,6 +10592,7 @@ export {
   buildFallbackPerspectives,
   populateFallbackNarratives,
   buildCrossSituationEffects,
+  buildSimulationMarketConsequences,
   buildReportableInteractionLedger,
   buildInteractionWatchlist,
   isCrossTheaterPair,

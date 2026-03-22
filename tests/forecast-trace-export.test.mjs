@@ -8,6 +8,7 @@ import {
   buildForecastTraceArtifacts,
   buildForecastRunWorldState,
   buildCrossSituationEffects,
+  buildSimulationMarketConsequences,
   buildReportableInteractionLedger,
   buildInteractionWatchlist,
   isCrossTheaterPair,
@@ -495,6 +496,90 @@ describe('market transmission macro state', () => {
     assert.ok((marketConsequences?.internalCount || 0) >= (marketConsequences?.items?.length || 0));
     assert.ok((marketConsequences?.items?.length || 0) <= 6);
     assert.ok((marketConsequences?.blockedCount || 0) >= 1);
+  });
+
+  it('promotes direct core-bucket market consequences when critical signals are strong even if macro coverage is incomplete', () => {
+    const consequences = buildSimulationMarketConsequences({
+      situationSimulations: [
+        {
+          situationId: 'state-hormuz',
+          label: 'Hormuz closure pressure',
+          familyId: 'fam-hormuz',
+          familyLabel: 'Maritime supply shock',
+          dominantDomain: 'conflict',
+          dominantRegion: 'Middle East',
+          postureScore: 0.68,
+          avgConfidence: 0.58,
+          marketContext: {
+            linkedBucketIds: ['energy'],
+            confirmationScore: 0.57,
+            topTransmissionStrength: 0.62,
+            topTransmissionConfidence: 0.56,
+            topChannel: 'route_blockage',
+            criticalSignalLift: 0.74,
+            criticalSignalTypes: ['energy_supply_shock', 'shipping_cost_shock', 'sovereign_stress'],
+          },
+        },
+      ],
+    }, {
+      buckets: [
+        {
+          id: 'energy',
+          label: 'Energy',
+          pressureScore: 0.42,
+          confidence: 0.46,
+          macroConfirmation: 0.04,
+        },
+      ],
+    }, {
+      marketInputCoverage: {
+        commodities: 14,
+        gulfQuotes: 12,
+        fredSeries: 0,
+        shippingRates: 0,
+        bisExchange: 0,
+        bisPolicy: 0,
+        correlationCards: 0,
+      },
+    });
+
+    assert.equal(consequences.items.length, 1);
+    assert.equal(consequences.items[0].targetBucketId, 'energy');
+    assert.ok((consequences.items[0].effectiveMacroConfirmation || 0) > 0.04);
+    assert.ok((consequences.items[0].criticalAlignment || 0) > 0.3);
+    assert.ok(!consequences.blocked.some((item) => item.reason === 'low_macro_confirmation'));
+  });
+});
+
+describe('publish selection', () => {
+  it('prefers unique state anchors before taking same-state follow-ons', () => {
+    const a = makePrediction('political', 'Middle East', 'State A political pressure', 0.71, 0.59, '7d', []);
+    const b = makePrediction('conflict', 'Middle East', 'State A conflict pressure', 0.69, 0.58, '7d', []);
+    const c = makePrediction('market', 'Red Sea', 'State B freight pressure', 0.63, 0.57, '7d', []);
+
+    for (const pred of [a, b, c]) {
+      pred.readiness = { overall: 0.74 };
+      pred.analysisPriority = 0.66;
+      pred.traceMeta = { narrativeSource: 'llm_combined' };
+    }
+
+    a.stateContext = { id: 'state-a', label: 'State A', dominantRegion: 'Middle East', dominantDomain: 'political', forecastCount: 3, topSignals: [{ type: 'sovereign_stress' }] };
+    b.stateContext = { id: 'state-a', label: 'State A', dominantRegion: 'Middle East', dominantDomain: 'conflict', forecastCount: 3, topSignals: [{ type: 'sovereign_stress' }] };
+    c.stateContext = { id: 'state-b', label: 'State B', dominantRegion: 'Red Sea', dominantDomain: 'market', forecastCount: 1, topSignals: [{ type: 'shipping_cost_shock' }] };
+
+    a.familyContext = { id: 'fam-a1', forecastCount: 1 };
+    b.familyContext = { id: 'fam-a2', forecastCount: 1 };
+    c.familyContext = { id: 'fam-b', forecastCount: 1 };
+
+    a.marketSelectionContext = { confirmationScore: 0.34, contradictionScore: 0, topBucketId: 'sovereign_risk', topBucketLabel: 'Sovereign Risk', topBucketPressure: 0.31, transmissionEdgeCount: 1, criticalSignalLift: 0.18, criticalSignalCount: 1, topChannel: 'political_pressure' };
+    b.marketSelectionContext = { confirmationScore: 0.36, contradictionScore: 0, topBucketId: 'sovereign_risk', topBucketLabel: 'Sovereign Risk', topBucketPressure: 0.34, transmissionEdgeCount: 1, criticalSignalLift: 0.2, criticalSignalCount: 1, topChannel: 'security_spillover' };
+    c.marketSelectionContext = { confirmationScore: 0.57, contradictionScore: 0, topBucketId: 'freight', topBucketLabel: 'Freight', topBucketPressure: 0.56, transmissionEdgeCount: 2, criticalSignalLift: 0.61, criticalSignalCount: 2, topChannel: 'shipping_cost_shock' };
+
+    const selected = selectPublishedForecastPool([a, b, c], { targetCount: 2 });
+    const selectedStateIds = selected.map((pred) => pred.stateContext?.id);
+
+    assert.deepEqual(selectedStateIds.sort(), ['state-a', 'state-b']);
+    assert.ok(selected.some((pred) => pred.id === c.id));
   });
 });
 
