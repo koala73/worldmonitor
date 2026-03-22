@@ -29,9 +29,11 @@ export async function listComtradeFlows(
 
     const flows: ComtradeFlowRecord[] = [];
     let fetchedAt = '';
+    let dataFound = false;
 
     for (const result of results) {
       if (!result) continue;
+      dataFound = true;
       const records = Array.isArray(result) ? result : (result as { flows?: ComtradeFlowRecord[]; fetchedAt?: string }).flows ?? [];
       if (!fetchedAt && (result as { fetchedAt?: string }).fetchedAt) {
         fetchedAt = (result as { fetchedAt: string }).fetchedAt;
@@ -42,7 +44,7 @@ export async function listComtradeFlows(
       }
     }
 
-    if (!flows.length) {
+    if (!dataFound) {
       return { flows: [], fetchedAt, upstreamUnavailable: true };
     }
 

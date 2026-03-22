@@ -50,24 +50,29 @@ async function fetchFlows(reporter, commodity) {
   const records = data?.data ?? [];
   if (!Array.isArray(records)) return [];
 
-  // Group by period to compute YoY
-  const byYear = new Map();
+  // Group by (flowCode, year) to keep exports and imports separate.
+  // Using just year as key caused the second flow direction (M after X) to
+  // silently overwrite the first, producing wrong YoY values.
+  const byFlowYear = new Map(); // key: `${flowCode}:${year}`
   for (const r of records) {
     const year = Number(r.period ?? r.refYear ?? r.refMonth?.slice(0, 4) ?? 0);
     if (!year) continue;
+    const flowCode = String(r.flowCode ?? r.rgDesc ?? 'X');
     const val = Number(r.primaryValue ?? r.cifvalue ?? r.fobvalue ?? 0);
     const wt = Number(r.netWgt ?? 0);
     const partnerCode = String(r.partnerCode ?? r.partner2Code ?? '000');
     const partnerName = String(r.partnerDesc ?? r.partner2Desc ?? 'World');
-    byYear.set(year, { year, val, wt, partnerCode, partnerName });
+    const mapKey = `${flowCode}:${year}`;
+    byFlowYear.set(mapKey, { year, flowCode, val, wt, partnerCode, partnerName });
   }
 
-  const years = Array.from(byYear.keys()).sort((a, b) => a - b);
+  // Derive the set of (flowCode, year) pairs sorted for YoY lookup.
+  const entries = Array.from(byFlowYear.values()).sort((a, b) => a.year - b.year || a.flowCode.localeCompare(b.flowCode));
   const flows = [];
 
-  for (const year of years) {
-    const cur = byYear.get(year);
-    const prev = byYear.get(year - 1);
+  for (const cur of entries) {
+    const prevKey = `${cur.flowCode}:${cur.year - 1}`;
+    const prev = byFlowYear.get(prevKey);
     const yoyChange = prev && prev.val > 0 ? (cur.val - prev.val) / prev.val : 0;
     const isAnomaly = Math.abs(yoyChange) > ANOMALY_THRESHOLD;
 
@@ -78,7 +83,7 @@ async function fetchFlows(reporter, commodity) {
       partnerName: cur.partnerName,
       cmdCode: commodity.code,
       cmdDesc: commodity.desc,
-      year,
+      year: cur.year,
       tradeValueUsd: cur.val,
       netWeightKg: cur.wt,
       yoyChange,
