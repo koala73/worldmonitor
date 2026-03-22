@@ -7,6 +7,7 @@ import {
   getMarkerIconName,
   getMarkerSizeForTier,
   getMarkerIconUrl,
+  getMarkerIcon,
   MARKER_ICON_MAPPING,
   type MarkerShape,
 } from '../src/services/marker-icons.ts';
@@ -94,6 +95,35 @@ describe('Marker Icons Service', () => {
       assert.equal(MARKER_ICON_MAPPING['diamond-large'].width, 24);
       assert.equal(MARKER_ICON_MAPPING['square-large'].width, 24);
       assert.equal(MARKER_ICON_MAPPING['hexagon-large'].width, 24);
+    });
+  });
+
+  describe('getMarkerIcon', () => {
+    it('returns cached icon definition with correct properties', () => {
+      const icon = getMarkerIcon('diamond', 1);
+      assert.equal(icon.url, '/icons/map-markers/diamond-large.svg');
+      assert.equal(icon.width, 24);
+      assert.equal(icon.height, 24);
+      assert.equal(icon.mask, true);
+    });
+
+    it('returns same object reference for same parameters (caching)', () => {
+      const icon1 = getMarkerIcon('square', 2);
+      const icon2 = getMarkerIcon('square', 2);
+      assert.strictEqual(icon1, icon2, 'Should return same cached object');
+    });
+
+    it('returns different objects for different parameters', () => {
+      const icon1 = getMarkerIcon('hexagon', 1);
+      const icon2 = getMarkerIcon('hexagon', 2);
+      assert.notStrictEqual(icon1, icon2);
+    });
+
+    it('star tier 1 has larger dimensions', () => {
+      const starIcon = getMarkerIcon('star', 1);
+      const diamondIcon = getMarkerIcon('diamond', 1);
+      assert.equal(starIcon.width, 28);
+      assert.equal(diamondIcon.width, 24);
     });
   });
 });

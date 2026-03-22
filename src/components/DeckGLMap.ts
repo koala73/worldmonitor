@@ -20,7 +20,7 @@ import {
   getTierColor,
 } from '@/services/marker-tier';
 import {
-  getMarkerIconUrl,
+  getMarkerIcon,
   getMarkerSizeForTier,
 } from '@/services/marker-icons';
 import Supercluster from 'supercluster';
@@ -2737,15 +2737,8 @@ export class DeckGLMap {
       id: 'semiconductor-hubs-layer',
       data: IRELAND_SEMICONDUCTOR_HUBS,
       getPosition: (d) => [d.lng, d.lat],
-      getIcon: (d) => {
-        const tier = getSemiconductorTier(d.employees);
-        return {
-          url: getMarkerIconUrl('diamond', tier),
-          width: getMarkerSizeForTier(tier, 'diamond'),
-          height: getMarkerSizeForTier(tier, 'diamond'),
-          mask: true, // Enables color tinting
-        };
-      },
+      // Use cached icon objects for stable references
+      getIcon: (d) => getMarkerIcon('diamond', getSemiconductorTier(d.employees)),
       getSize: (d) => {
         const tier = getSemiconductorTier(d.employees);
         const baseSize = getMarkerSizeForTier(tier, 'diamond');
@@ -2760,7 +2753,7 @@ export class DeckGLMap {
       sizeMinPixels: 8,
       sizeMaxPixels: 32,
       pickable: true,
-      updateTriggers: { getSize: this.pulseTime, getIcon: this.pulseTime },
+      updateTriggers: { getSize: this.pulseTime },
     });
   }
 
@@ -2776,15 +2769,8 @@ export class DeckGLMap {
       id: 'ireland-data-centers-layer',
       data: IRELAND_DATA_CENTERS,
       getPosition: (d) => [d.lng, d.lat],
-      getIcon: (d) => {
-        const tier = getDataCenterTier(d.operator);
-        return {
-          url: getMarkerIconUrl('square', tier),
-          width: getMarkerSizeForTier(tier, 'square'),
-          height: getMarkerSizeForTier(tier, 'square'),
-          mask: true,
-        };
-      },
+      // Use cached icon objects for stable references
+      getIcon: (d) => getMarkerIcon('square', getDataCenterTier(d.operator)),
       getSize: (d) => {
         const tier = getDataCenterTier(d.operator);
         const baseSize = getMarkerSizeForTier(tier, 'square');
@@ -2804,7 +2790,7 @@ export class DeckGLMap {
       sizeMinPixels: 8,
       sizeMaxPixels: 32,
       pickable: true,
-      updateTriggers: { getSize: this.pulseTime, getIcon: this.pulseTime },
+      updateTriggers: { getSize: this.pulseTime },
     });
   }
 
@@ -2820,15 +2806,8 @@ export class DeckGLMap {
       id: 'ireland-tech-hqs-layer',
       data: IRELAND_TECH_HQS,
       getPosition: (d) => [d.lng, d.lat],
-      getIcon: (d) => {
-        const tier = getTechHQTier(d.employees);
-        return {
-          url: getMarkerIconUrl('hexagon', tier),
-          width: getMarkerSizeForTier(tier, 'hexagon'),
-          height: getMarkerSizeForTier(tier, 'hexagon'),
-          mask: true,
-        };
-      },
+      // Use cached icon objects for stable references
+      getIcon: (d) => getMarkerIcon('hexagon', getTechHQTier(d.employees)),
       getSize: (d) => {
         const tier = getTechHQTier(d.employees);
         const baseSize = getMarkerSizeForTier(tier, 'hexagon');
@@ -2842,7 +2821,7 @@ export class DeckGLMap {
       sizeMinPixels: 8,
       sizeMaxPixels: 32,
       pickable: true,
-      updateTriggers: { getSize: this.pulseTime, getIcon: this.pulseTime },
+      updateTriggers: { getSize: this.pulseTime },
     });
   }
 
@@ -2859,15 +2838,8 @@ export class DeckGLMap {
       id: 'irish-unicorns-layer',
       data: IRISH_UNICORNS,
       getPosition: (d) => [d.lng, d.lat],
-      getIcon: (d) => {
-        const tier = getUnicornTier(d.category);
-        return {
-          url: getMarkerIconUrl('star', tier),
-          width: getMarkerSizeForTier(tier, 'star'),
-          height: getMarkerSizeForTier(tier, 'star'),
-          mask: true,
-        };
-      },
+      // Use cached icon objects for stable references
+      getIcon: (d) => getMarkerIcon('star', getUnicornTier(d.category)),
       getSize: (d) => {
         const tier = getUnicornTier(d.category);
         const baseSize = getMarkerSizeForTier(tier, 'star');
@@ -2885,7 +2857,7 @@ export class DeckGLMap {
       sizeMinPixels: 8,
       sizeMaxPixels: 36,
       pickable: true,
-      updateTriggers: { getSize: this.pulseTime, getIcon: this.pulseTime },
+      updateTriggers: { getSize: this.pulseTime },
     });
   }
 

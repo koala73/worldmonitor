@@ -1,22 +1,22 @@
 /**
  * Marker Icons Service
  *
- * Provides icon mapping for deck.gl IconLayer.
- * Uses white SVG icons that are colored via getColor accessor.
+ * Provides icon definitions for deck.gl IconLayer.
+ * Uses pre-cached icon objects for stable references.
  */
 
 import type { MarkerTier } from './marker-tier';
 
 export type MarkerShape = 'diamond' | 'square' | 'hexagon' | 'star';
 
-export interface IconMapping {
-  [key: string]: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    mask: boolean;
-  };
+/**
+ * Icon definition for deck.gl IconLayer
+ */
+export interface IconDefinition {
+  url: string;
+  width: number;
+  height: number;
+  mask: boolean;
 }
 
 /**
@@ -36,10 +36,33 @@ export function getMarkerSizeForTier(tier: MarkerTier, shape: MarkerShape = 'dia
 }
 
 /**
- * Icon mapping for IconLayer using individual SVG files
- * Each icon is a separate SVG that will be loaded from the icons folder
+ * Pre-cached icon definitions for stable references
+ * deck.gl IconLayer requires stable object references for getIcon
  */
-export const MARKER_ICON_MAPPING: IconMapping = {
+const ICON_CACHE: Record<string, IconDefinition> = {};
+
+/**
+ * Get cached icon definition for a specific shape and tier
+ * Returns the same object reference for the same parameters
+ */
+export function getMarkerIcon(shape: MarkerShape, tier: MarkerTier): IconDefinition {
+  const key = `${shape}-${tier}`;
+  if (!ICON_CACHE[key]) {
+    const size = getMarkerSizeForTier(tier, shape);
+    ICON_CACHE[key] = {
+      url: `/icons/map-markers/${getMarkerIconName(shape, tier)}.svg`,
+      width: size,
+      height: size,
+      mask: true,
+    };
+  }
+  return ICON_CACHE[key];
+}
+
+/**
+ * Icon mapping for IconLayer (legacy format, kept for tests)
+ */
+export const MARKER_ICON_MAPPING: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> = {
   // Diamond shapes
   'diamond-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
   'diamond-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
