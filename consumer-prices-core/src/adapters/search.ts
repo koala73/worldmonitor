@@ -14,31 +14,7 @@ import type { ExaProvider } from '../acquisition/exa.js';
 import type { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { RetailerConfig } from '../config/types.js';
 import type { AdapterContext, FetchResult, ParsedProduct, RetailerAdapter, Target } from './types.js';
-
-const MARKET_NAMES: Record<string, string> = {
-  ae: 'UAE',
-  sa: 'Saudi Arabia',
-  kw: 'Kuwait',
-  qa: 'Qatar',
-  bh: 'Bahrain',
-  om: 'Oman',
-  eg: 'Egypt',
-  gb: 'UK',
-  us: 'USA',
-  ca: 'Canada',
-  au: 'Australia',
-  de: 'Germany',
-  fr: 'France',
-  nl: 'Netherlands',
-  sg: 'Singapore',
-  in: 'India',
-  pk: 'Pakistan',
-  ng: 'Nigeria',
-  ke: 'Kenya',
-  za: 'South Africa',
-  ch: 'Switzerland',
-  br: 'Brazil',
-};
+import { MARKET_NAMES } from './market-names.js';
 
 /** Packaging/container words that are not product identity tokens. */
 const PACKAGING_WORDS = new Set(['pack', 'box', 'bag', 'container', 'bottle', 'can', 'jar', 'tin', 'set', 'kit', 'bundle']);
@@ -283,6 +259,8 @@ export class SearchAdapter implements RetailerAdapter {
         listPrice: null,
         promoPrice: null,
         promoText: null,
+        // inStock defaults to true when Firecrawl does not return the field.
+        // This is a conservative assumption — monitor for out-of-stock false positives.
         inStock: extracted.inStock ?? true,
         rawPayload: { extracted, basketSlug, itemCategory, canonicalName },
       },

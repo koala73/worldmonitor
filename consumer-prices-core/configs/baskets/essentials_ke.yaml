@@ -100,6 +100,15 @@ basket:
       minBaseQty: 900
       maxBaseQty: 1100
 
+    - id: cheese_processed_200g
+      category: dairy
+      canonicalName: Processed Cheese 200g
+      weight: 0.06
+      baseUnit: g
+      substitutionGroup: cheese_processed
+      minBaseQty: 150
+      maxBaseQty: 250
+
     - id: yogurt_500g
       category: dairy
       canonicalName: Plain Yogurt 500g

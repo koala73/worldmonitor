@@ -9,6 +9,7 @@ retailer:
 
   searchConfig:
     numResults: 5
+    urlPathContains: /product/
     queryTemplate: "{canonicalName} grocery organic {market} price"
 
   rateLimit:

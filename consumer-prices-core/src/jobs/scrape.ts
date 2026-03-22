@@ -144,10 +144,10 @@ export async function scrapeRetailer(slug: string) {
           rawPayloadJson: product.rawPayload,
         });
 
-        // For exa-search adapter: auto-create product → basket match since we
+        // For search-based adapters: auto-create product → basket match since we
         // searched for a specific basket item (no ambiguity in what was scraped).
         if (
-          config.adapter === 'exa-search' &&
+          (config.adapter === 'exa-search' || config.adapter === 'search') &&
           product.rawPayload.basketSlug &&
           product.rawPayload.canonicalName
         ) {

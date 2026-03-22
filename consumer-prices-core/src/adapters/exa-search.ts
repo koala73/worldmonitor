@@ -14,6 +14,8 @@
 import { loadAllBasketConfigs } from '../config/loader.js';
 import type { AdapterContext, FetchResult, ParsedProduct, RetailerAdapter, Target } from './types.js';
 import type { RetailerConfig } from '../config/types.js';
+import { MARKET_NAMES } from './market-names.js';
+import { isAllowedHost } from './search.js';
 
 const CHROME_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -39,16 +41,6 @@ const CURRENCY_MIN: Record<string, number> = {
   ZAR: 2,
   PKR: 20,
   LBP: 1000,
-};
-
-const MARKET_NAMES: Record<string, string> = {
-  ae: 'UAE',
-  sa: 'Saudi Arabia',
-  kw: 'Kuwait',
-  qa: 'Qatar',
-  bh: 'Bahrain',
-  om: 'Oman',
-  eg: 'Egypt',
 };
 
 const PRICE_PATTERNS = [
@@ -203,7 +195,7 @@ export class ExaSearchAdapter implements RetailerAdapter {
 
     if (!anyExaPrice && exaResults.length > 0 && this.firecrawlKey) {
       const firstUrl = exaResults[0].url;
-      if (firstUrl) {
+      if (firstUrl && isAllowedHost(firstUrl, domain)) {
         try {
           const fc = await this.firecrawlFetch(firstUrl);
           if (fc) {

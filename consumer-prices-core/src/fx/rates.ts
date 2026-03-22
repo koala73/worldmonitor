@@ -2,8 +2,13 @@
  * Static FX rates: local currency → USD.
  * Approximate mid-market rates, updated periodically.
  * Source: major central bank published rates / ECB reference rates.
- * Last updated: 2026-03
+ *
+ * Update RATES_DATE and rates together when refreshing. Pegged currencies
+ * (AED, SAR, QAR) are stable; floating currencies (BRL, KES, INR) can
+ * drift 20-30%/year — refresh quarterly.
  */
+export const RATES_DATE = '2026-03';
+
 export const FX_RATES_TO_USD: Record<string, number> = {
   USD: 1,
   AED: 0.2723,  // UAE dirham (fixed peg ~3.673)
