@@ -144,6 +144,7 @@ async function fetchSpain() {
 async function fetchMexico() {
   try {
     const url = 'https://api.datos.gob.mx/v2/precio.gasolina.publico?pageSize=1000';
+    console.log(`  [MX] API: ${url}`);
     const resp = await globalThis.fetch(url, {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(20000),
@@ -369,6 +370,8 @@ async function fetchBrazil() {
   }
 
   try {
+    console.log(`  [BR] gas CSV: ${GAS_URL}`);
+    console.log(`  [BR] dsl CSV: ${DSL_URL}`);
     // Use allSettled so a 429 on the diesel CSV doesn't discard gasoline data
     const [gasResult, dslResult] = await Promise.allSettled([
       globalThis.fetch(GAS_URL, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(30000) })
@@ -400,6 +403,7 @@ async function fetchNewZealand() {
   // Fuel: 'Regular Petrol' -> gasoline, 'Diesel' -> diesel. Unit: NZD/litre.
   const url = 'https://www.mbie.govt.nz/assets/Data-Files/Energy/Weekly-fuel-price-monitoring/weekly-table.csv';
   try {
+    console.log(`  [NZ] CSV: ${url}`);
     const resp = await globalThis.fetch(url, {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(20000),
