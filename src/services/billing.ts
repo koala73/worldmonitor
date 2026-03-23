@@ -17,8 +17,6 @@ export interface SubscriptionInfo {
   displayName: string;
   status: 'active' | 'on_hold' | 'cancelled' | 'expired';
   currentPeriodEnd: number; // epoch ms, renewal date
-  dodoSubscriptionId: string;
-  dodoProductId: string;
 }
 
 // Module-level state

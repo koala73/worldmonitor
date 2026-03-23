@@ -108,7 +108,7 @@ export async function startCheckout(
 
     const result = await client.action(api.payments.checkout.createCheckout, {
       productId,
-      userId: getUserId() ?? crypto.randomUUID(),
+      userId: getUserId(),
       returnUrl: window.location.origin,
       discountCode: options?.discountCode,
       referralCode: options?.referralCode,

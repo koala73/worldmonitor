@@ -19,10 +19,9 @@ import {
  * deduplicates by webhook-id, records the event, and dispatches
  * to event-type-specific handlers from subscriptionHelpers.
  *
- * On handler failure, the event is recorded with status "failed"
- * and the error is returned (not thrown) so the audit row persists.
- * The HTTP handler uses the returned error to send a 500 response,
- * which triggers Dodo's retry mechanism.
+ * On handler failure, the error is returned (not thrown) so Convex
+ * rolls back the transaction. The HTTP handler uses the returned
+ * error to send a 500 response, which triggers Dodo's retry mechanism.
  */
 export const processWebhookEvent = internalMutation({
   args: {

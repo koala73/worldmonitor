@@ -159,8 +159,7 @@ export default defineSchema({
     eventType: v.string(),
     rawPayload: v.any(),
     processedAt: v.number(),
-    status: v.union(v.literal("processed"), v.literal("failed")),
-    errorMessage: v.optional(v.string()),
+    status: v.literal("processed"),
   })
     .index("by_webhookId", ["webhookId"])
     .index("by_eventType", ["eventType"]),
