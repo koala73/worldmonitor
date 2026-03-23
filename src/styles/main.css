@@ -14770,16 +14770,18 @@ a.prediction-link:hover {
   position: absolute;
   bottom: 10px;
   left: 10px;
-  z-index: 100;
+  z-index: 1000;
   background: var(--panel-bg);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   max-width: 260px;
   max-height: 50vh;
-  display: flex;
+  display: flex !important; /* Ensure visibility on all screen sizes */
   flex-direction: column;
   overflow: hidden;
   flex-wrap: nowrap;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 .deckgl-layer-toggles .toggle-header {
@@ -15192,14 +15194,16 @@ a.prediction-link:hover {
   bottom: 8px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 100;
-  display: flex;
+  z-index: 1000;
+  display: flex !important; /* Ensure visibility on all screen sizes */
   align-items: center;
   gap: 12px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 5px 12px;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 .deckgl-legend .legend-label-title {
@@ -18970,10 +18974,21 @@ body.has-breaking-alert .panels-grid {
     height: 100% !important;
     min-height: 0;
     max-height: none;
-    overflow: hidden;
+    overflow: visible; /* Allow layer toggles and legend to be visible */
     display: flex;
     flex-direction: column;
     border-bottom: none;
+  }
+
+  /* Ensure map container clips content but layer controls remain visible */
+  .map-section .map-container {
+    overflow: hidden;
+  }
+
+  /* Ensure deck.gl controls are visible in ultra-wide layout */
+  .map-section .deckgl-layer-toggles,
+  .map-section .deckgl-legend {
+    z-index: 1001;
   }
 
   .map-section.pinned {
