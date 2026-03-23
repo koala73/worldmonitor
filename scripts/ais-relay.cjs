@@ -1142,7 +1142,8 @@ async function startUcdpSeedLoop() {
 // Satellite TLE Seed — CelesTrak NORAD elements → Redis
 // ─────────────────────────────────────────────────────────────
 const SAT_SEED_INTERVAL_MS = 7_200_000;
-const SAT_SEED_TTL = 14_400;
+const SAT_SEED_TTL = 21_600; // 6h — survives 3 missed cycles before data expires
+const SAT_RETRY_MS = 20 * 60 * 1000; // retry 20min after failure instead of waiting 120min
 const SAT_GROUPS = ['military', 'resource'];
 
 const SAT_NAME_FILTERS = [
@@ -1178,10 +1179,12 @@ function satClassify(name) {
 }
 
 let satSeedInFlight = false;
+let satRetryTimer = null;
 
 async function seedSatelliteTLEs() {
   if (satSeedInFlight) return;
   satSeedInFlight = true;
+  if (satRetryTimer) { clearTimeout(satRetryTimer); satRetryTimer = null; }
   const t0 = Date.now();
   try {
     const byNorad = new Map();
@@ -1237,7 +1240,9 @@ async function seedSatelliteTLEs() {
     }
 
     if (satellites.length === 0) {
-      console.warn('[Satellites] No matching TLEs found — skipping write');
+      console.warn('[Satellites] No matching TLEs found — extending existing key TTL, retrying in 20min');
+      try { await upstashExpire('intelligence:satellites:tle:v1', SAT_SEED_TTL); } catch {}
+      satRetryTimer = setTimeout(() => { seedSatelliteTLEs().catch(() => {}); }, SAT_RETRY_MS);
       return;
     }
 
@@ -1246,7 +1251,9 @@ async function seedSatelliteTLEs() {
     await upstashSet('seed-meta:intelligence:satellites', { fetchedAt: Date.now(), recordCount: satellites.length }, 604800);
     console.log(`[Satellites] Seeded ${satellites.length} TLEs (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
-    console.warn('[Satellites] Seed error:', e?.message || e);
+    console.warn('[Satellites] Seed error:', e?.message || e, '— extending existing key TTL, retrying in 20min');
+    try { await upstashExpire('intelligence:satellites:tle:v1', SAT_SEED_TTL); } catch {}
+    satRetryTimer = setTimeout(() => { seedSatelliteTLEs().catch(() => {}); }, SAT_RETRY_MS);
   } finally {
     satSeedInFlight = false;
   }
