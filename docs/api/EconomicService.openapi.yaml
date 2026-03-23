@@ -417,6 +417,46 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-bls-series:
+        get:
+            tags:
+                - EconomicService
+            summary: GetBlsSeries
+            description: GetBlsSeries retrieves BLS-only series not available on FRED (CES, LAUMT, CIU).
+            operationId: GetBlsSeries
+            parameters:
+                - name: series_id
+                  in: query
+                  description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                  required: false
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Maximum number of observations to return. Defaults to 60.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBlsSeriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1230,3 +1270,53 @@ components:
                     format: double
                 observedAt:
                     type: string
+        GetBlsSeriesRequest:
+            type: object
+            properties:
+                seriesId:
+                    type: string
+                    description: BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum number of observations to return. Defaults to 60.
+            description: GetBlsSeriesRequest specifies which BLS series to retrieve.
+        GetBlsSeriesResponse:
+            type: object
+            properties:
+                series:
+                    $ref: '#/components/schemas/BlsSeries'
+            description: GetBlsSeriesResponse contains the requested BLS series data.
+        BlsSeries:
+            type: object
+            properties:
+                seriesId:
+                    type: string
+                    description: BLS series ID (e.g. "CES0500000001").
+                title:
+                    type: string
+                    description: Human-readable series title.
+                units:
+                    type: string
+                    description: Unit of measure.
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BlsObservation'
+            description: BlsSeries is a BLS time series with metadata and observations.
+        BlsObservation:
+            type: object
+            properties:
+                year:
+                    type: string
+                    description: Year of the observation.
+                period:
+                    type: string
+                    description: Period code (e.g. "M01" for January, "A01" for annual).
+                periodName:
+                    type: string
+                    description: Human-readable period name.
+                value:
+                    type: string
+                    description: Observed value.
+            description: BlsObservation is a single BLS data point.

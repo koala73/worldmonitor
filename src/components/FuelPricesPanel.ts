@@ -66,16 +66,10 @@ export class FuelPricesPanel extends Panel {
         return `<td class="gb-cell ${cls}">$${fuel.usdPrice.toFixed(3)}${wowStr}</td>`;
       }
 
-      const sourceText = ((gas ?? dsl)?.source ?? '').replace(/^https?:\/\//, '').split('/')[0];
-      const sourceLabel = sourceText
-        ? `<td class="gb-cell fuel-source">${escapeHtml(sourceText)}</td>`
-        : `<td class="gb-cell gb-na">—</td>`;
-
       return `<tr>
         <td class="gb-item-name">${escapeHtml(c.flag)} ${escapeHtml(c.name)}</td>
         ${fuelCell(gas, cheapestGas, priceiestGas, c.code)}
         ${fuelCell(dsl, cheapestDsl, priciestDsl, c.code)}
-        ${sourceLabel}
       </tr>`;
     }).join('');
 
@@ -90,12 +84,11 @@ export class FuelPricesPanel extends Panel {
               <th class="gb-item-col">${t('panels.fuelPricesCountry')}</th>
               <th class="gb-cell">${t('panels.fuelPricesGasoline')}</th>
               <th class="gb-cell">${t('panels.fuelPricesDiesel')}</th>
-              <th class="gb-cell">${t('panels.fuelPricesSource')}</th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
-        ${updatedAt ? `<div class="gb-updated">${t('common.updatedAt')}: ${updatedAt}${countLabel}</div>` : ''}
+        ${updatedAt ? `<div class="gb-updated">${t('components.status.updatedAt', { time: updatedAt })}${countLabel}</div>` : ''}
       </div>
     `;
 

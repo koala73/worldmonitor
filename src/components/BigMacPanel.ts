@@ -90,7 +90,7 @@ export class BigMacPanel extends Panel {
             <tbody>${rows}</tbody>
           </table>
         </div>
-        ${updatedAt ? `<div class="gb-updated">${t('common.updatedAt')}: ${updatedAt}</div>` : ''}
+        ${updatedAt ? `<div class="gb-updated">${t('components.status.updatedAt', { time: updatedAt })}</div>` : ''}
       </div>
     `;
 

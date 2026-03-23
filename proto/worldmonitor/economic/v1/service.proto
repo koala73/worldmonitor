@@ -16,6 +16,7 @@ import "worldmonitor/economic/v1/list_grocery_basket_prices.proto";
 import "worldmonitor/economic/v1/list_bigmac_prices.proto";
 import "worldmonitor/economic/v1/get_national_debt.proto";
 import "worldmonitor/economic/v1/list_fuel_prices.proto";
+import "worldmonitor/economic/v1/get_bls_series.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -84,5 +85,10 @@ service EconomicService {
   // ListFuelPrices retrieves retail gasoline and diesel prices across 30+ countries.
   rpc ListFuelPrices(ListFuelPricesRequest) returns (ListFuelPricesResponse) {
     option (sebuf.http.config) = {path: "/list-fuel-prices", method: HTTP_METHOD_GET};
+  }
+
+  // GetBlsSeries retrieves BLS-only series not available on FRED (CES, LAUMT, CIU).
+  rpc GetBlsSeries(GetBlsSeriesRequest) returns (GetBlsSeriesResponse) {
+    option (sebuf.http.config) = {path: "/get-bls-series", method: HTTP_METHOD_GET};
   }
 }

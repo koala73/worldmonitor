@@ -739,6 +739,8 @@
       "vsPreviousWeek": "w porównaniu z poprzednim tygodniem",
       "in": "W",
       "centralBanks": "Central Banks",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
       "exchangeRate": "Exchange Rate",

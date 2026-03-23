@@ -99,7 +99,7 @@ export class GroceryBasketPanel extends Panel {
             <tbody>${rows}${totalRow}</tbody>
           </table>
         </div>
-        ${updatedAt ? `<div class="gb-updated">${t('common.updatedAt')}: ${updatedAt}</div>` : ''}
+        ${updatedAt ? `<div class="gb-updated">${t('components.status.updatedAt', { time: updatedAt })}</div>` : ''}
       </div>
     `;
 

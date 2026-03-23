@@ -340,6 +340,29 @@ export interface FuelPrice {
   observedAt: string;
 }
 
+export interface GetBlsSeriesRequest {
+  seriesId: string;
+  limit: number;
+}
+
+export interface GetBlsSeriesResponse {
+  series?: BlsSeries;
+}
+
+export interface BlsSeries {
+  seriesId: string;
+  title: string;
+  units: string;
+  observations: BlsObservation[];
+}
+
+export interface BlsObservation {
+  year: string;
+  period: string;
+  periodName: string;
+  value: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -700,6 +723,32 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as ListFuelPricesResponse;
+  }
+
+  async getBlsSeries(req: GetBlsSeriesRequest, options?: EconomicServiceCallOptions): Promise<GetBlsSeriesResponse> {
+    let path = "/api/economic/v1/get-bls-series";
+    const params = new URLSearchParams();
+    if (req.seriesId != null && req.seriesId !== "") params.set("series_id", String(req.seriesId));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetBlsSeriesResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

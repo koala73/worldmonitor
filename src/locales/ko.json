@@ -750,6 +750,8 @@
       "vsPreviousWeek": "전주 대비",
       "in": "지역",
       "centralBanks": "중앙은행",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS 정보 일시적으로 사용 불가 — 재시도 예정",
       "policyRate": "정책 금리",
       "exchangeRate": "환율",
