@@ -2850,19 +2850,26 @@ const THREAT_COUNTRY_NAME_TO_ISO2 = {
   'kremlin':'RU','pentagon':'US','nato':'','irgc':'IR','hezbollah':'LB',
   'hamas':'IL','taliban':'AF','riyadh':'SA','ankara':'TR',
 };
-// Sort by name length desc so longer multi-word names match first
+// Sort by name length desc so longer multi-word names match first (used for tie-breaking same position)
 const THREAT_COUNTRY_NAME_ENTRIES = Object.entries(THREAT_COUNTRY_NAME_TO_ISO2)
   .filter(([name, iso2]) => name.length >= 3 && iso2.length === 2)
   .sort((a, b) => b[0].length - a[0].length)
-  .map(([name, iso2]) => ({ iso2, regex: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') }));
+  .map(([name, iso2]) => ({ name, iso2, regex: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') }));
 
+// Returns the single primary affected country: the last country mentioned in document order.
+// "UK and US launch strikes on Yemen" → ['YE'] (not GB or US — they are actors, not the affected country).
 function matchCountryNamesInText(text) {
-  const codes = new Set();
   const lower = text.toLowerCase();
-  for (const { iso2, regex } of THREAT_COUNTRY_NAME_ENTRIES) {
-    if (regex.test(lower)) codes.add(iso2);
+  let lastPos = -1;
+  let lastIso2 = null;
+  for (const { name, iso2, regex } of THREAT_COUNTRY_NAME_ENTRIES) {
+    const idx = lower.search(regex);
+    if (idx !== -1 && idx > lastPos) {
+      lastPos = idx;
+      lastIso2 = iso2;
+    }
   }
-  return [...codes];
+  return lastIso2 ? [lastIso2] : [];
 }
 
 function classifyCacheKey(title) {
@@ -2970,7 +2977,7 @@ async function classifyFetchLlm(titles) {
 
 let classifyInFlight = false;
 
-async function seedClassifyForVariant(variant) {
+async function seedClassifyForVariant(variant, seenTitles) {
   const digestUrl = `https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=${variant}&lang=en`;
   let digest;
   try {
@@ -3023,6 +3030,8 @@ async function seedClassifyForVariant(variant) {
     if (typeof hit === 'string') { try { parsed = JSON.parse(hit); } catch { continue; } }
     const level = parsed?.level;
     if (!CLASSIFY_VALID_LEVELS.includes(level)) continue;
+    if (seenTitles.has(titleArr[i])) continue;
+    seenTitles.add(titleArr[i]);
     for (const code of matchCountryNamesInText(titleArr[i])) {
       if (!byCountry[code]) byCountry[code] = emptyLevel();
       byCountry[code][level]++;
@@ -3058,9 +3067,12 @@ async function seedClassifyForVariant(variant) {
       await upstashSet(classifyCacheKey(chunk[idx]), { level, category, timestamp: Date.now() }, CLASSIFY_CACHE_TTL);
       classified++;
       // Attribute newly classified title while it's still in scope
-      for (const code of matchCountryNamesInText(chunk[idx])) {
-        if (!byCountry[code]) byCountry[code] = emptyLevel();
-        byCountry[code][level]++;
+      if (!seenTitles.has(chunk[idx])) {
+        seenTitles.add(chunk[idx]);
+        for (const code of matchCountryNamesInText(chunk[idx])) {
+          if (!byCountry[code]) byCountry[code] = emptyLevel();
+          byCountry[code][level]++;
+        }
       }
     }
 
@@ -3089,14 +3101,14 @@ async function seedClassify() {
     let totalClassified = 0;
     let totalSkipped = 0;
     const mergedByCountry = {};
+    const seenTitles = new Set();
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
       if (v > 0) await new Promise((r) => setTimeout(r, CLASSIFY_VARIANT_STAGGER_MS));
       try {
-        const stats = await seedClassifyForVariant(CLASSIFY_VARIANTS[v]);
+        const stats = await seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles);
         totalClassified += stats.classified;
         totalSkipped += stats.skipped;
         console.log(`[Classify] ${CLASSIFY_VARIANTS[v]}: ${stats.total} titles, ${stats.classified} classified, ${stats.skipped} skipped`);
-        // Merge per-country counts across variants (de-duplicate via Set not possible here — sum is a reasonable upper bound)
         for (const [code, counts] of Object.entries(stats.byCountry || {})) {
           if (!mergedByCountry[code]) mergedByCountry[code] = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
           for (const lvl of ['critical', 'high', 'medium', 'low', 'info']) {
