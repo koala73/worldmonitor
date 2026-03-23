@@ -2111,9 +2111,10 @@ async function startAviationSeedLoop() {
 // NOTAM Closures Seed — Railway fetches ICAO NOTAMs → writes to Redis
 // so Vercel handler and map layer serve from cache (ICAO API times out from edge)
 // ─────────────────────────────────────────────────────────────
-const NOTAM_SEED_INTERVAL_MS = 30 * 60 * 1000; // 30min
-const NOTAM_SEED_TTL = 10800; // 3h — 6x interval; survives ~5 consecutive missed pings
+const NOTAM_SEED_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h — reduced from 30min to stay within ICAO free-tier quota (~1000 calls/month)
+const NOTAM_SEED_TTL = 21600; // 6h — 3x interval
 const NOTAM_RETRY_MS = 20 * 60 * 1000;
+const NOTAM_QUOTA_BACKOFF_MS = 24 * 60 * 60 * 1000; // 24h backoff when ICAO quota is exhausted
 const NOTAM_REDIS_KEY = 'aviation:notam:closures:v2';
 const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
 const NOTAM_MONITORED_ICAO = [
@@ -2135,6 +2136,7 @@ const NOTAM_MONITORED_ICAO = [
   'FAOR', 'DNMM', 'HKJK', 'GABS',
 ];
 
+// Returns: Array of NOTAMs on success, null on quota exhaustion, [] on other errors
 function fetchIcaoNotams() {
   return new Promise((resolve) => {
     if (!ICAO_API_KEY) return resolve([]);
@@ -2144,22 +2146,26 @@ function fetchIcaoNotams() {
       headers: { 'User-Agent': CHROME_UA },
       timeout: 30000,
     }, (resp) => {
-      if (resp.statusCode !== 200) {
-        console.warn(`[NOTAM-Seed] ICAO HTTP ${resp.statusCode}`);
-        resp.resume();
-        return resolve([]);
-      }
-      const ct = resp.headers['content-type'] || '';
-      if (ct.includes('text/html')) {
-        console.warn('[NOTAM-Seed] ICAO returned HTML (challenge page)');
-        resp.resume();
-        return resolve([]);
-      }
       const chunks = [];
       resp.on('data', (c) => chunks.push(c));
       resp.on('end', () => {
+        const body = Buffer.concat(chunks).toString();
+        // Detect quota exhaustion regardless of status code
+        if (/reach call limit/i.test(body) || /quota.?exceed/i.test(body)) {
+          console.warn('[NOTAM-Seed] ICAO quota exhausted ("Reach call limit") — backing off 24h');
+          return resolve(null);
+        }
+        if (resp.statusCode !== 200) {
+          console.warn(`[NOTAM-Seed] ICAO HTTP ${resp.statusCode}`);
+          return resolve([]);
+        }
+        const ct = resp.headers['content-type'] || '';
+        if (ct.includes('text/html')) {
+          console.warn('[NOTAM-Seed] ICAO returned HTML (challenge page)');
+          return resolve([]);
+        }
         try {
-          const data = JSON.parse(Buffer.concat(chunks).toString());
+          const data = JSON.parse(body);
           resolve(Array.isArray(data) ? data : []);
         } catch {
           console.warn('[NOTAM-Seed] Invalid JSON from ICAO');
@@ -2187,6 +2193,16 @@ async function seedNotamClosures() {
   const t0 = Date.now();
   try {
   const notams = await fetchIcaoNotams();
+
+  // null = quota exhausted — touch seed-meta so health.js stays green, back off 24h
+  if (notams === null) {
+    try { await upstashExpire(NOTAM_REDIS_KEY, NOTAM_SEED_TTL); } catch {}
+    try { await upstashSet('seed-meta:aviation:notam', { fetchedAt: Date.now(), recordCount: 0, quotaExhausted: true }, 604800); } catch {}
+    console.log('[NOTAM-Seed] Quota exhausted — extended TTL, wrote seed-meta, backing off 24h');
+    notamRetryTimer = setTimeout(() => { seedNotamClosures().catch(() => {}); }, NOTAM_QUOTA_BACKOFF_MS);
+    return;
+  }
+
   if (notams.length === 0) {
     try { await upstashExpire(NOTAM_REDIS_KEY, NOTAM_SEED_TTL); } catch {}
     console.log('[NOTAM-Seed] No NOTAMs received — refreshed data key TTL, retrying in 20min');
