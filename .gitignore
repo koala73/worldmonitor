@@ -22,6 +22,7 @@ CLAUDE.md
 skills/
 ideas/
 docs/internal/
+docs/ideation/
 internal/
 test-results/
 src-tauri/sidecar/node/*
