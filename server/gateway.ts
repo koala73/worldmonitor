@@ -175,12 +175,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/aviation/v1/get-youtube-live-stream-info': 'fast',
 };
 
-const PREMIUM_RPC_PATHS = new Set([
-  '/api/market/v1/analyze-stock',
-  '/api/market/v1/get-stock-analysis-history',
-  '/api/market/v1/backtest-stock',
-  '/api/market/v1/list-stored-stock-backtests',
-]);
+// Premium RPCs that require X-WorldMonitor-Key from non-browser origins.
+// Trusted browser origins (worldmonitor.app) are exempt: the client-side
+// isProUser() / WORLDMONITOR_API_KEY gate already controls panel visibility.
+const PREMIUM_RPC_PATHS = new Set<string>();
 
 /**
  * Creates a Vercel Edge handler for a single domain's routes.
