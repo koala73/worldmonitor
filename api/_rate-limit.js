@@ -22,9 +22,12 @@ function getRatelimit() {
 }
 
 function getClientIp(request) {
+  // With Cloudflare proxy -> Vercel, x-real-ip is the CF edge IP (shared
+  // across users). cf-connecting-ip is the actual client IP — prefer it.
+  // (Matches server/_shared/rate-limit.ts)
   return (
-    request.headers.get('x-real-ip') ||
     request.headers.get('cf-connecting-ip') ||
+    request.headers.get('x-real-ip') ||
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     '0.0.0.0'
   );
