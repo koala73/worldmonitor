@@ -22415,3 +22415,63 @@ body.map-width-resizing {
 .chat-action-chip:hover {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
+
+/* ── Payment / Upgrade UI ── */
+.upgrade-pro-section {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.upgrade-pro-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.upgrade-pro-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.upgrade-pro-cta {
+  width: 100%;
+  padding: 8px 16px;
+  background: var(--green);
+  color: var(--bg);
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.upgrade-pro-cta:hover { opacity: 0.85; }
+
+.upgrade-pro-status-line {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  padding-left: 16px;
+}
+
+.manage-billing-btn {
+  width: 100%;
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.manage-billing-btn:hover { color: var(--text); }

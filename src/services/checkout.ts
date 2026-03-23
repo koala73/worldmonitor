@@ -62,10 +62,13 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
 export function openCheckout(checkoutUrl: string): void {
   initCheckoutOverlay();
 
+  const isDark = document.documentElement.dataset.theme !== 'light';
+
   DodoPayments.Checkout.open({
     checkoutUrl,
     options: {
       manualRedirect: true,
+      theme: isDark ? 'dark' : 'light',
       themeConfig: {
         dark: {
           bgPrimary: '#0d0d0d',
@@ -76,6 +79,16 @@ export function openCheckout(checkoutUrl: string): void {
           buttonPrimary: '#22c55e',
           buttonPrimaryHover: '#16a34a',
           buttonTextPrimary: '#0d0d0d',
+        },
+        light: {
+          bgPrimary: '#ffffff',
+          bgSecondary: '#f8f9fa',
+          borderPrimary: '#d4d4d4',
+          textPrimary: '#1a1a1a',
+          textSecondary: '#555555',
+          buttonPrimary: '#16a34a',
+          buttonPrimaryHover: '#15803d',
+          buttonTextPrimary: '#ffffff',
         },
         radius: '4px',
       },

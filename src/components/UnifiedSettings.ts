@@ -344,17 +344,17 @@ export class UnifiedSettings {
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;"></span>
             <span style="color:${statusColor};font-weight:600;font-size:13px;">${escapeHtml(planName)}</span>
           </div>
-          ${statusLine ? `<div style="font-size:12px;color:#909090;margin-bottom:10px;padding-left:16px;">${escapeHtml(statusLine)}</div>` : ''}
-          <button class="manage-billing-btn" style="width:100%;padding:8px 16px;background:transparent;color:#909090;border:1px solid #323232;border-radius:4px;font-weight:600;font-size:13px;cursor:pointer;transition:color 0.15s;">Manage Billing</button>
+          ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
+          <button class="manage-billing-btn">Manage Billing</button>
         </div>
       `;
     }
 
     return `
-      <div class="upgrade-pro-section" style="margin-top:16px;padding:16px;border:1px solid #323232;border-radius:6px;background:#1a1a1a;">
-        <div style="font-weight:600;font-size:14px;color:#fff;margin-bottom:6px;">Upgrade to Pro</div>
-        <div style="font-size:12px;color:#909090;margin-bottom:12px;line-height:1.4;">Unlock all panels, AI analysis, and priority data refresh.</div>
-        <button class="upgrade-pro-cta" style="width:100%;padding:8px 16px;background:#22c55e;color:#0d0d0d;border:none;border-radius:4px;font-weight:600;font-size:13px;cursor:pointer;transition:background 0.15s;">Upgrade to Pro</button>
+      <div class="upgrade-pro-section">
+        <div class="upgrade-pro-title">Upgrade to Pro</div>
+        <div class="upgrade-pro-desc">Unlock all panels, AI analysis, and priority data refresh.</div>
+        <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;
   }
