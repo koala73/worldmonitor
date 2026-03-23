@@ -348,10 +348,17 @@ export class SearchAdapter implements RetailerAdapter {
       return [];
     }
 
+    // Require Firecrawl to return a real product name — using canonical name as rawTitle
+    // silently poisons the DB with unverifiable matches (e.g. extraction failures, wrong pages).
+    if (!extracted.productName) {
+      ctx.logger.warn(`  [search] ${canonicalName}: no productName from Firecrawl, rejecting ${productUrl}`);
+      return [];
+    }
+
     return [
       {
         sourceUrl: productUrl,
-        rawTitle: extracted.productName ?? canonicalName,
+        rawTitle: extracted.productName,
         rawBrand: null,
         rawSizeText: extracted.sizeText ?? null,
         imageUrl: null,

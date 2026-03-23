@@ -10,6 +10,7 @@ retailer:
   searchConfig:
     numResults: 5
     queryTemplate: "{canonicalName} ananinja saudi"
+    urlPathContains: /product/  # ananinja.com also indexes restaurant menus (/restaurants/); restrict to product pages
     inStockFromPrice: true  # ananinja.com is a price aggregator; Firecrawl misreads availability
 
   rateLimit:
