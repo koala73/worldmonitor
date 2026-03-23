@@ -2263,7 +2263,9 @@ Rules:
 - Prefer omission over weak guesses.
 - Keep strength and confidence between 0 and 1.
 - Keep summaries concise and evidence-grounded.
-- Return no prose outside the JSON object.`;
+- Return no prose outside the JSON object.
+- Do NOT wrap the JSON in markdown fences.
+- If a candidate has no plausible hypotheses, still include it with empty hypothesis arrays.`;
 }
 const CRITICAL_SIGNAL_PRIMARY_KINDS = new Set([
   'route_blockage',
@@ -3412,7 +3414,36 @@ ${candidatePackets.map((packet) => [
     `criticalSignalTypes=${(packet.criticalSignalTypes || []).join(',') || 'none'}`,
     'Evidence:',
     ...(packet.evidenceTable || []).map((entry) => `- ${entry.key} [${entry.kind}] ${sanitizeForPrompt(entry.text)}`),
-  ].join('\n')).join('\n\n')}`;
+  ].join('\n')).join('\n\n')}
+
+Return ONLY a single JSON object with a top-level "candidates" array.`;
+}
+
+function buildImpactExpansionRepairUserPrompt(candidatePackets = [], invalidOutput = '') {
+  return `${buildImpactExpansionUserPrompt(candidatePackets)}
+
+Your previous output was invalid. Rewrite it as STRICT JSON only with this exact top-level shape:
+{"candidates":[{"candidateIndex":0,"candidateStateId":"...","directHypotheses":[],"secondOrderHypotheses":[],"thirdOrderHypotheses":[]}]}
+
+Previous invalid output preview:
+${sanitizeForPrompt(invalidOutput).slice(0, 180)}`;
+}
+
+async function recoverImpactExpansionDrafts(candidatePackets = [], invalidOutput = '', llmOptions = {}) {
+  if (!Array.isArray(candidatePackets) || candidatePackets.length === 0) return null;
+  const result = await callForecastLLM(
+    buildImpactExpansionSystemPrompt(),
+    buildImpactExpansionRepairUserPrompt(candidatePackets, invalidOutput),
+    { ...llmOptions, stage: 'impact_expansion_recovery', temperature: 0 },
+  );
+  if (!result) return null;
+  const parsed = extractImpactExpansionPayload(result.text);
+  const extractedCandidates = sanitizeImpactExpansionDrafts(parsed.candidates, candidatePackets);
+  return {
+    result,
+    parsed,
+    extractedCandidates,
+  };
 }
 
 async function extractImpactExpansionBundle({
@@ -3486,7 +3517,7 @@ async function extractImpactExpansionBundle({
     ...getForecastLlmCallOptions('impact_expansion'),
     stage: 'impact_expansion',
     maxTokens: 1800,
-    temperature: 0.1,
+    temperature: 0,
   };
   const result = await callForecastLLM(
     buildImpactExpansionSystemPrompt(),
@@ -3509,6 +3540,27 @@ async function extractImpactExpansionBundle({
   bundle.rawPreview = parsed.diagnostics?.preview || '';
 
   if (extractedCandidates.length === 0) {
+    const recovery = await recoverImpactExpansionDrafts(candidatePackets, result.text, llmOptions);
+    if (recovery && recovery.extractedCandidates.length > 0) {
+      bundle.provider = recovery.result.provider;
+      bundle.model = recovery.result.model;
+      bundle.parseStage = `recovered_${recovery.parsed.diagnostics?.stage || 'unknown'}`;
+      bundle.rawPreview = recovery.parsed.diagnostics?.preview || bundle.rawPreview;
+      bundle.extractedCandidates = recovery.extractedCandidates;
+      bundle.extractedCandidateCount = recovery.extractedCandidates.length;
+      bundle.extractedHypothesisCount = recovery.extractedCandidates.reduce((sum, item) => sum
+        + (item.directHypotheses?.length || 0)
+        + (item.secondOrderHypotheses?.length || 0)
+        + (item.thirdOrderHypotheses?.length || 0), 0);
+      await redisSet(
+        url,
+        token,
+        cacheKey,
+        { candidates: recovery.extractedCandidates },
+        IMPACT_EXPANSION_CACHE_TTL_SECONDS,
+      );
+      return bundle;
+    }
     bundle.failureReason = parsed.candidates == null ? 'parse_failed' : 'validation_failed';
     return bundle;
   }
@@ -4059,6 +4111,32 @@ function applyTraceMeta(pred, patch) {
   };
 }
 
+const CANONICAL_NARRATIVE_MAX_LENGTH = 1200;
+const COMPACT_NARRATIVE_MAX_LENGTH = 220;
+
+function sanitizeForOutput(text, maxLength = CANONICAL_NARRATIVE_MAX_LENGTH) {
+  const normalized = (text || '')
+    .replace(/[\n\r]+/g, ' ')
+    .replace(/[<>{}\x00-\x1f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return '';
+  return normalized.slice(0, maxLength).trim();
+}
+
+function buildCompactNarrativeField(text, maxLength = COMPACT_NARRATIVE_MAX_LENGTH) {
+  const normalized = sanitizeForOutput(text, CANONICAL_NARRATIVE_MAX_LENGTH);
+  if (!normalized) return '';
+  if (normalized.length <= maxLength) return normalized;
+  const boundary = Math.max(
+    normalized.lastIndexOf(' ', maxLength - 3),
+    normalized.lastIndexOf('.', maxLength - 3),
+    normalized.lastIndexOf(',', maxLength - 3),
+  );
+  const cutoff = boundary >= Math.floor(maxLength * 0.6) ? boundary : maxLength - 3;
+  return `${normalized.slice(0, cutoff).trim()}...`;
+}
+
 function buildTraceRunPrefix(runId, generatedAt, basePrefix) {
   const iso = new Date(generatedAt || Date.now()).toISOString();
   const [datePart] = iso.split('T');
@@ -4102,8 +4180,10 @@ function buildForecastTraceRecord(pred, rank, simulationByForecastId = null) {
     priorProbability: pred.priorProbability,
     generationOrigin: pred.generationOrigin || 'legacy_detector',
     stateDerivedBackfill: !!pred.stateDerivedBackfill,
-    feedSummary: pred.feedSummary || '',
-    scenario: pred.scenario || '',
+    feedSummary: sanitizeForOutput(pred.feedSummary || ''),
+    feedSummaryShort: buildCompactNarrativeField(pred.feedSummary || ''),
+    scenario: sanitizeForOutput(pred.scenario || ''),
+    scenarioShort: buildCompactNarrativeField(pred.scenario || pred.feedSummary || ''),
     projections: pred.projections || null,
     calibration: pred.calibration || null,
     cascades: pred.cascades || [],
@@ -4135,9 +4215,9 @@ function slimForecastCaseForPublish(caseFile = null) {
     })),
     triggers: (caseFile.triggers || []).slice(0, 3),
     actorLenses: (caseFile.actorLenses || []).slice(0, 3),
-    baseCase: caseFile.baseCase || '',
-    escalatoryCase: caseFile.escalatoryCase || '',
-    contrarianCase: caseFile.contrarianCase || '',
+    baseCase: sanitizeForOutput(caseFile.baseCase || ''),
+    escalatoryCase: sanitizeForOutput(caseFile.escalatoryCase || ''),
+    contrarianCase: sanitizeForOutput(caseFile.contrarianCase || ''),
     changeSummary: caseFile.changeSummary || '',
     changeItems: (caseFile.changeItems || []).slice(0, 4),
     actors: (caseFile.actors || []).slice(0, 4).map((actor) => ({
@@ -4181,8 +4261,10 @@ function buildPublishedForecastPayload(pred) {
     generationOrigin: pred.generationOrigin || 'legacy_detector',
     stateDerivedBackfill: !!pred.stateDerivedBackfill,
     title: pred.title,
-    scenario: pred.scenario || '',
-    feedSummary: pred.feedSummary || '',
+    scenario: sanitizeForOutput(pred.scenario || ''),
+    scenarioShort: buildCompactNarrativeField(pred.scenario || pred.feedSummary || ''),
+    feedSummary: sanitizeForOutput(pred.feedSummary || ''),
+    feedSummaryShort: buildCompactNarrativeField(pred.feedSummary || ''),
     probability: Number(pred.probability || 0),
     confidence: Number(pred.confidence || 0),
     timeHorizon: pred.timeHorizon || '',
@@ -4624,6 +4706,24 @@ function extractRegionLinkTokens(values = []) {
     .filter((token) => token.length >= 3 && !REGION_LINK_NOISE_TOKENS.has(token)));
 }
 
+function isBroadNonMaritimePressureDomains(domains = []) {
+  return intersectAny(domains || [], ['cyber', 'political', 'infrastructure']);
+}
+
+function hasNonMaritimeMergeSpine({
+  macroOverlap = 0,
+  actorOverlap = 0,
+  bucketOverlap = 0,
+  channelOverlap = 0,
+  specificTokenOverlap = 0,
+} = {}) {
+  return (
+    macroOverlap > 0
+    || actorOverlap > 0
+    || (bucketOverlap > 0 && channelOverlap > 0 && specificTokenOverlap >= 2)
+  );
+}
+
 function buildSituationCandidate(prediction) {
   const regions = uniqueSortedStrings([prediction.region, ...(prediction.caseFile?.regions || [])]);
   const tokens = uniqueSortedStrings([
@@ -4696,6 +4796,17 @@ function shouldMergeSituationCandidate(candidate, cluster, score) {
     if (regionOverlap > 0 && (channelOverlap > 0 || signalOverlap > 0 || specificTokenOverlap >= 1)) return true;
     if (macroOverlap > 0 && bucketOverlap > 0 && (channelOverlap > 0 || signalOverlap >= 2 || specificTokenOverlap >= 2)) return true;
     if (signalOverlap >= 2 && specificTokenOverlap >= 2 && channelOverlap > 0) return true;
+    return false;
+  }
+
+  const broadPressureDomain = isBroadNonMaritimePressureDomains(candidate.domains) || isBroadNonMaritimePressureDomains(cluster.domains);
+  if (broadPressureDomain && regionOverlap === 0 && !hasNonMaritimeMergeSpine({
+    macroOverlap,
+    actorOverlap,
+    bucketOverlap,
+    channelOverlap,
+    specificTokenOverlap,
+  })) {
     return false;
   }
 
@@ -4946,6 +5057,17 @@ function shouldMergeSituationFamilyCandidate(candidate, family, score) {
     if (bucketOverlap === 0) return false;
     if (archetypeMatch && (channelOverlap > 0 || specificTokenOverlap > 0 || regionOverlap > 0)) return true;
     if (regionOverlap > 0 && signalOverlap > 0 && bucketOverlap > 0) return true;
+    return false;
+  }
+
+  const broadPressureDomain = isBroadNonMaritimePressureDomains(candidate.domains) || isBroadNonMaritimePressureDomains(family.domains);
+  if (broadPressureDomain && regionOverlap === 0 && !hasNonMaritimeMergeSpine({
+    macroOverlap,
+    actorOverlap,
+    bucketOverlap,
+    channelOverlap,
+    specificTokenOverlap,
+  })) {
     return false;
   }
 
@@ -5200,6 +5322,17 @@ function shouldMergeStateUnitCandidate(candidate, unit, score) {
     if (bucketOverlap === 0) return false;
     if (sameFamily && sameKind && (channelOverlap > 0 || signalOverlap > 0 || specificTokenOverlap > 0 || regionOverlap > 0)) return true;
     if (sameKind && macroOverlap > 0 && bucketOverlap > 0 && (channelOverlap > 0 || signalOverlap > 0 || specificTokenOverlap >= 2)) return true;
+    return false;
+  }
+
+  const broadPressureDomain = isBroadNonMaritimePressureDomains(candidate.domains) || isBroadNonMaritimePressureDomains(unit.domains);
+  if (broadPressureDomain && regionOverlap === 0 && !hasNonMaritimeMergeSpine({
+    macroOverlap,
+    actorOverlap,
+    bucketOverlap,
+    channelOverlap,
+    specificTokenOverlap,
+  })) {
     return false;
   }
 
@@ -6928,6 +7061,8 @@ function buildReportableInteractionLedger(interactionLedger = [], situationSimul
       Number(source.marketContext?.confirmationScore || 0),
       Number(target.marketContext?.confirmationScore || 0),
     );
+    const marketLinked = bucketOverlap > 0 || macroSupport >= 0.52;
+    const structuralLink = directOverlap || sharedActor || regionLink;
     const purelyPoliticalPair = source.dominantDomain === 'political' && target.dominantDomain === 'political';
 
     if (item.interactionType === 'actor_carryover' && specificity < 0.62) {
@@ -6970,7 +7105,11 @@ function buildReportableInteractionLedger(interactionLedger = [], situationSimul
         }
       }
     }
-    if (confidence >= 0.72 && score >= 5) {
+    if (!politicalChannel && !structuralLink && !marketLinked) {
+      blocked.push({ ...item, reason: 'no_structural_or_market_link' });
+      continue;
+    }
+    if (confidence >= 0.72 && score >= 5 && (directOverlap || marketLinked || (sharedActor && specificity >= 0.76))) {
       reportable.push(item);
       continue;
     }
@@ -6978,7 +7117,11 @@ function buildReportableInteractionLedger(interactionLedger = [], situationSimul
       reportable.push(item);
       continue;
     }
-    if (sharedActor && specificity >= 0.7 && confidence >= 0.56) {
+    if (sharedActor && specificity >= 0.76 && confidence >= 0.6 && (regionLink || marketLinked)) {
+      reportable.push(item);
+      continue;
+    }
+    if (!politicalChannel && marketLinked && confidence >= 0.66 && score >= 4.8 && (bucketOverlap > 0 || regionLink || sharedActor)) {
       reportable.push(item);
       continue;
     }
@@ -10717,7 +10860,7 @@ function shouldSuppressAsSituationDuplicate(current, kept, duplicateScore) {
   return false;
 }
 
-function summarizePublishFiltering(predictions) {
+function summarizePublishFiltering(predictions, selectedPredictions = [], publishedPredictions = []) {
   // Must be called after filterPublishedForecasts() has populated pred.publishDiagnostics.
   const reasonCounts = summarizeTypeCounts(
     predictions
@@ -10744,6 +10887,12 @@ function summarizePublishFiltering(predictions) {
       .filter((pred) => pred.publishDiagnostics?.reason === 'situation_family_cap' && pred.publishDiagnostics?.familyId)
       .map((pred) => pred.publishDiagnostics.familyId),
   );
+  const suppressedSupplyChainByReason = summarizeTypeCounts(
+    predictions
+      .filter((pred) => pred.domain === 'supply_chain')
+      .map((pred) => pred.publishDiagnostics?.reason)
+      .filter(Boolean),
+  );
 
   return {
     suppressedFamilySelection: reasonCounts.family_selection || 0,
@@ -10762,6 +10911,10 @@ function summarizePublishFiltering(predictions) {
     multiForecastFamilies: Object.values(familyCounts).filter((count) => count > 1).length,
     cappedSituations: cappedSituationIds.size,
     cappedFamilies: cappedFamilyIds.size,
+    candidateSupplyChainCount: predictions.filter((pred) => pred.domain === 'supply_chain').length,
+    selectedSupplyChainCount: selectedPredictions.filter((pred) => pred.domain === 'supply_chain').length,
+    publishedSupplyChainCount: publishedPredictions.filter((pred) => pred.domain === 'supply_chain').length,
+    suppressedSupplyChainByReason,
   };
 }
 
@@ -10916,6 +11069,48 @@ function isHighLeverageStateFollowOn(pred) {
   return false;
 }
 
+function classifyForecastStrategicRole(pred) {
+  const domain = pred?.domain || '';
+  const topBucketId = pred?.marketSelectionContext?.topBucketId || '';
+  const topChannel = pred?.marketSelectionContext?.topChannel || '';
+  const text = `${pred?.title || ''} ${pred?.feedSummary || ''} ${pred?.caseFile?.baseCase || ''}`.toLowerCase();
+  const logisticsText = /\b(shipping|freight|logistics|port|route|corridor|rerouting|throughput|transit|container|maritime|tanker|canal|strait)\b/;
+  if (domain === 'supply_chain') return 'logistics';
+  if (domain === 'market') {
+    if (topBucketId === 'freight' || topChannel === 'shipping_cost_shock' || logisticsText.test(text)) return 'logistics_adjacent';
+    return 'repricing';
+  }
+  return domain;
+}
+
+function isStrategicSupplyChainCandidate(pred) {
+  if (pred?.domain !== 'supply_chain') return false;
+  const stateKind = pred?.stateContext?.stateKind || '';
+  const topBucketId = pred?.marketSelectionContext?.topBucketId || '';
+  const topChannel = pred?.marketSelectionContext?.topChannel || '';
+  const text = `${pred?.title || ''} ${pred?.feedSummary || ''} ${pred?.caseFile?.baseCase || ''}`.toLowerCase();
+  return (
+    stateKind === 'maritime_disruption'
+    || topBucketId === 'freight'
+    || ['shipping_cost_shock', 'service_disruption', 'logistics_disruption'].includes(topChannel)
+    || /\b(shipping|freight|logistics|port|route|corridor|rerouting|throughput|transit|container|maritime|tanker|canal|strait)\b/.test(text)
+  );
+}
+
+function canCoexistAsDistinctStrategicFollowOn(pred, selected = []) {
+  if (!pred || !['market', 'supply_chain'].includes(pred.domain)) return false;
+  const predRole = classifyForecastStrategicRole(pred);
+  return (selected || []).some((item) => {
+    if (!item || item.id === pred.id || !['market', 'supply_chain'].includes(item.domain)) return false;
+    if (item.domain === pred.domain) return false;
+    const existingRole = classifyForecastStrategicRole(item);
+    return (
+      (pred.domain === 'supply_chain' && predRole === 'logistics' && existingRole === 'repricing')
+      || (pred.domain === 'market' && predRole === 'repricing' && existingRole === 'logistics')
+    );
+  });
+}
+
 function selectPublishedForecastPool(predictions, options = {}) {
   const eligible = (predictions || []).filter((pred) => (pred?.probability || 0) > (options.minProbability ?? PUBLISH_MIN_PROBABILITY));
   const targetCount = options.targetCount ?? getPublishSelectionTarget(eligible);
@@ -10960,11 +11155,13 @@ function selectPublishedForecastPool(predictions, options = {}) {
     const familyDomainTotal = familyDomainCounts.get(familyDomainKey) || 0;
     const situationId = getForecastSelectionStateContext(pred)?.id || pred.id;
     const situationTotal = situationCounts.get(situationId) || 0;
+    const selectedForSituation = selected.filter((item) => (getForecastSelectionStateContext(item)?.id || item.id) === situationId);
+    const distinctStrategicFollowOn = canCoexistAsDistinctStrategicFollowOn(pred, selectedForSituation);
     if (familyTotal >= Math.min(MAX_PUBLISHED_FORECASTS_PER_FAMILY, MAX_PRESELECTED_FORECASTS_PER_FAMILY)) return false;
     if (familyDomainTotal >= MAX_PUBLISHED_FORECASTS_PER_FAMILY_DOMAIN) return false;
     if (situationTotal >= MAX_PRESELECTED_FORECASTS_PER_SITUATION) return false;
-    if ((mode === 'state_anchor' || mode === 'diversity') && situationTotal >= 1) return false;
-    if (mode === 'fill' && situationTotal >= 1 && !isHighLeverageStateFollowOn(pred)) return false;
+    if ((mode === 'state_anchor' || mode === 'diversity') && situationTotal >= 1 && !distinctStrategicFollowOn) return false;
+    if (mode === 'fill' && situationTotal >= 1 && !distinctStrategicFollowOn && !isHighLeverageStateFollowOn(pred)) return false;
     if (mode === 'diversity') {
       const domainTotal = domainCounts.get(pred.domain) || 0;
       if (domainTotal >= 2 && !['market', 'military', 'supply_chain', 'infrastructure'].includes(pred.domain)) return false;
@@ -11084,6 +11281,10 @@ function selectPublishedForecastPool(predictions, options = {}) {
     for (const guaranteedDomain of ['military']) {
       if (selected.some((p) => p.domain === guaranteedDomain)) continue;
       const candidate = ranked.find((p) => p.domain === guaranteedDomain && canSelect(p, 'fill'));
+      if (candidate) take(candidate);
+    }
+    if (!selected.some((p) => p.domain === 'supply_chain')) {
+      const candidate = ranked.find((p) => isStrategicSupplyChainCandidate(p) && canSelect(p, 'backfill'));
       if (candidate) take(candidate);
     }
   }
@@ -11501,7 +11702,7 @@ function validatePerspectives(items, predictions) {
     if (typeof item.index !== 'number' || item.index < 0 || item.index >= predictions.length) return false;
     for (const key of ['strategic', 'regional', 'contrarian']) {
       if (typeof item[key] !== 'string') return false;
-      item[key] = sanitizeForPrompt(item[key]).slice(0, 300);
+      item[key] = sanitizeForOutput(item[key], 400);
       if (item[key].length < 20) return false;
     }
     return true;
@@ -11516,7 +11717,7 @@ function validateCaseNarratives(items, predictions) {
     let validCount = 0;
     for (const key of ['baseCase', 'escalatoryCase', 'contrarianCase']) {
       if (typeof item[key] !== 'string') continue;
-      const sanitized = sanitizeForPrompt(item[key]).slice(0, 500);
+      const sanitized = sanitizeForOutput(item[key], 500);
       if (sanitized.length < 20) continue;
       normalized[key] = sanitized;
       validCount += 1;
@@ -11660,7 +11861,7 @@ function validateScenarios(scenarios, predictions) {
       console.warn(`  [LLM] Scenario ${s.index} rejected: no evidence reference`);
       return false;
     }
-    s.scenario = sanitizeForPrompt(s.scenario).slice(0, 500);
+    s.scenario = sanitizeForOutput(s.scenario, 700);
     return true;
   });
 }
@@ -11673,7 +11874,16 @@ function getEnrichmentFailureReason({ result, raw, scenarios = 0, perspectives =
   return '';
 }
 
+let forecastLlmCallOverrideForTests = null;
+
+function __setForecastLlmCallOverrideForTests(override = null) {
+  forecastLlmCallOverrideForTests = typeof override === 'function' ? override : null;
+}
+
 async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
+  if (forecastLlmCallOverrideForTests) {
+    return await forecastLlmCallOverrideForTests(systemPrompt, userPrompt, options);
+  }
   const stage = options.stage || 'default';
   const providers = resolveForecastLlmProviders(options);
   const requestedOrder = Array.isArray(options.providerOrder) && options.providerOrder.length > 0
@@ -11790,17 +12000,23 @@ function buildFallbackBaseCase(pred) {
   const situation = pred.caseFile?.situationContext || pred.situationContext;
   const support = pred.caseFile?.supportingEvidence?.[0]?.summary || pred.signals?.[0]?.value || pred.title;
   const secondary = pred.caseFile?.supportingEvidence?.[1]?.summary || pred.signals?.[1]?.value;
-  // Situation-aware path takes priority so the situation label always appears in the narrative
+  const branch = pred.caseFile?.branches?.find(item => item.kind === 'base');
+  if (branch?.summary && branch?.outcome) {
+    const branchNarrative = buildNarrativeSentence(branch.summary, branch.outcome);
+    if (situation?.forecastCount > 1 && !branchNarrative.toLowerCase().includes((situation.label || '').toLowerCase())) {
+      return buildNarrativeSentence(
+        branch.summary,
+        `${branch.outcome} This remains part of ${buildSituationReference(situation)} across ${situation.forecastCount} related forecasts.`,
+      ).slice(0, 500);
+    }
+    return branchNarrative.slice(0, 500);
+  }
   if (situation?.forecastCount > 1) {
     const lead = `${support} is a leading signal inside ${buildSituationReference(situation)} across ${situation.forecastCount} related forecasts`;
     const follow = secondary
       ? `${secondary} keeps the base case near ${roundPct(pred.probability)} over the ${pred.timeHorizon}`
       : `The base case stays near ${roundPct(pred.probability)} over the ${pred.timeHorizon}, with ${pred.trend} momentum`;
     return buildNarrativeSentence(lead, follow).slice(0, 500);
-  }
-  const branch = pred.caseFile?.branches?.find(item => item.kind === 'base');
-  if (branch?.summary && branch?.outcome) {
-    return buildNarrativeSentence(branch.summary, branch.outcome).slice(0, 500);
   }
   const lead = `${support} is the clearest active driver behind this ${pred.domain} forecast in ${pred.region}.`;
   const follow = secondary
@@ -11848,10 +12064,27 @@ function buildFallbackScenario(pred) {
   return baseCase.slice(0, 500);
 }
 
-function buildFeedSummary(pred) {
+function buildDeterministicFeedSummary(pred) {
   const lead = pred.caseFile?.baseCase || pred.scenario || buildFallbackScenario(pred);
-  const compact = lead.replace(/\s+/g, ' ').trim();
-  if (compact) return compact.slice(0, 500);
+  const compact = sanitizeForOutput(lead, 500);
+  if (compact) return compact;
+  return `Base case for ${pred.title} remains live at ${roundPct(pred.probability)} over the ${pred.timeHorizon}.`;
+}
+
+function buildFeedSummary(pred) {
+  const narrativeSource = pred?.traceMeta?.narrativeSource || '';
+  const baseCase = pred.caseFile?.baseCase || '';
+  const scenario = pred.scenario || '';
+  const deterministicBaseCase = buildFallbackBaseCase(pred);
+  const shouldPreferScenario = (
+    /^llm_scenario/.test(narrativeSource)
+    || (isLlmNarrativeSource(narrativeSource) && scenario && (!baseCase || sanitizeForOutput(baseCase, 500) === sanitizeForOutput(deterministicBaseCase, 500)))
+  );
+  const lead = shouldPreferScenario
+    ? (scenario || baseCase || buildFallbackScenario(pred))
+    : (baseCase || scenario || buildFallbackScenario(pred));
+  const compact = sanitizeForOutput(lead, 500);
+  if (compact) return compact;
   return `Base case for ${pred.title} remains live at ${roundPct(pred.probability)} over the ${pred.timeHorizon}.`;
 }
 
@@ -11919,7 +12152,8 @@ function refreshPublishedNarratives(predictions) {
     if (!preserveNarratives || !pred.perspectives) {
       pred.perspectives = buildFallbackPerspectives(pred);
     }
-    if (!preserveNarratives || !pred.feedSummary) {
+    const deterministicFeedSummary = buildDeterministicFeedSummary(pred);
+    if (!preserveNarratives || !pred.feedSummary || sanitizeForOutput(pred.feedSummary, 500) === deterministicFeedSummary) {
       pred.feedSummary = buildFeedSummary(pred);
     }
   }
@@ -12090,7 +12324,10 @@ async function enrichScenariosWithLLM(predictions) {
           ...validPerspectives.map((item) => item.index),
           ...validCases.map((item) => item.index),
         ]);
-        applyLlmTraceMeta(topWithPerspectives, [...touchedCombinedIndexes], 'llm_combined', enrichmentMeta.combined.provider, enrichmentMeta.combined.model, false);
+        const combinedNarrativeSource = enrichmentMeta.combined.parseStage.startsWith('recovered_')
+          ? 'llm_combined_recovery'
+          : 'llm_combined';
+        applyLlmTraceMeta(topWithPerspectives, [...touchedCombinedIndexes], combinedNarrativeSource, enrichmentMeta.combined.provider, enrichmentMeta.combined.model, false);
 
         enrichmentMeta.combined.scenarios = validScenarios.length;
         enrichmentMeta.combined.perspectives = validPerspectives.length;
@@ -12394,7 +12631,7 @@ async function fetchForecasts() {
   const initiallyPublishedSituationClusters = publishArtifacts.filteredSituationClusters;
   const initiallyPublishedSituationFamilies = publishArtifacts.filteredSituationFamilies;
   const publishedPredictions = publishArtifacts.publishedPredictions;
-  const publishTelemetry = summarizePublishFiltering(predictions);
+  const publishTelemetry = summarizePublishFiltering(predictions, finalSelectionPool, publishedPredictions);
   const publishedSituationClusters = publishArtifacts.publishedSituationClusters;
   const publishedSituationFamilies = publishArtifacts.publishedSituationFamilies;
   const publishedStateUnits = publishArtifacts.publishedStateUnits;
@@ -12647,6 +12884,9 @@ export {
   extractCriticalNewsSignals,
   selectImpactExpansionCandidates,
   buildImpactExpansionCandidateHash,
+  recoverImpactExpansionDrafts,
+  extractImpactExpansionBundle,
   validateImpactHypotheses,
   materializeImpactExpansion,
+  __setForecastLlmCallOverrideForTests,
 };

@@ -263,6 +263,33 @@ describe('forecast trace artifact builder', () => {
     }
   });
 
+  it('stores full canonical narrative fields alongside compact short fields in trace artifacts', () => {
+    const pred = makePrediction('market', 'Strait of Hormuz', 'Energy repricing risk: Strait of Hormuz', 0.71, 0.64, '30d', [
+      { type: 'shipping_cost_shock', value: 'Strait of Hormuz rerouting is keeping freight costs elevated.', weight: 0.38 },
+    ]);
+    buildForecastCase(pred);
+    pred.scenario = 'Strait of Hormuz shipping disruption keeps freight and energy repricing active across the Gulf over the next 30d while LNG routes, tanker insurance costs, and importer hedging behavior continue to amplify the base path across multiple downstream markets and policy-sensitive sectors.';
+    pred.feedSummary = 'Strait of Hormuz disruption is still anchoring the main market path through higher freight, wider energy premia, and persistent rerouting pressure across Gulf-linked trade flows, even as participants avoid assuming a full corridor closure.';
+    pred.traceMeta = { narrativeSource: 'llm_combined' };
+
+    const artifacts = buildForecastTraceArtifacts(
+      {
+        generatedAt: Date.parse('2026-03-23T09:00:00Z'),
+        predictions: [pred],
+      },
+      { runId: 'trace-narrative-fields' },
+      { maxForecasts: 1 },
+    );
+
+    const traced = artifacts.forecasts[0].payload;
+    assert.ok(traced.scenario.length > 220);
+    assert.ok(traced.feedSummary.length > 220);
+    assert.ok(traced.scenarioShort.length < traced.scenario.length);
+    assert.ok(traced.feedSummaryShort.length < traced.feedSummary.length);
+    assert.match(traced.scenarioShort, /\.\.\.$/);
+    assert.match(traced.feedSummaryShort, /\.\.\.$/);
+  });
+
   it('stores all forecasts by default when no explicit max is configured', () => {
     const a = makePrediction('conflict', 'Iran', 'Escalation risk: Iran', 0.74, 0.64, '7d', []);
     const b = makePrediction('supply_chain', 'Red Sea', 'Shipping disruption: Red Sea', 0.68, 0.59, '7d', []);
@@ -1191,6 +1218,35 @@ describe('forecast run world state', () => {
     assert.ok(Array.isArray(worldState.report.simulationWatchlist));
     assert.ok(Array.isArray(worldState.report.simulationOutcomeSummaries));
     assert.ok(Array.isArray(worldState.report.crossSituationEffects));
+  });
+
+  it('keeps broad non-maritime pressure states from merging across regions without a real spine', () => {
+    const germanyCyber = makePrediction('cyber', 'Germany', 'Cyber pressure: Germany telecom networks', 0.58, 0.56, '14d', [
+      { type: 'cyber', value: 'Germany telecom intrusion pressure remains elevated.', weight: 0.38 },
+    ]);
+    const usCyber = makePrediction('cyber', 'United States', 'Cyber pressure: United States grid networks', 0.57, 0.55, '14d', [
+      { type: 'cyber', value: 'United States grid intrusion pressure remains elevated.', weight: 0.37 },
+    ]);
+
+    buildForecastCase(germanyCyber);
+    buildForecastCase(usCyber);
+    populateFallbackNarratives([germanyCyber, usCyber]);
+    germanyCyber.caseFile.actors = [{ id: 'actor-germany-cert', name: 'German CERT', role: 'defender' }];
+    usCyber.caseFile.actors = [{ id: 'actor-us-grid', name: 'US Grid Operators', role: 'defender' }];
+
+    const worldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-23T10:30:00Z'),
+      predictions: [germanyCyber, usCyber],
+    });
+
+    assert.equal(
+      worldState.situationClusters.some((cluster) => cluster.regions.includes('Germany') && cluster.regions.includes('United States')),
+      false,
+    );
+    assert.equal(
+      worldState.stateUnits.some((unit) => unit.regions.includes('Germany') && unit.regions.includes('United States')),
+      false,
+    );
   });
 
   it('reports full actor continuity counts even when previews are capped', () => {
@@ -2599,6 +2655,50 @@ describe('forecast run world state', () => {
     ], [source, target]);
 
     assert.equal(reportable.length, 0);
+  });
+
+  it('blocks non-political reportable interactions when they have neither structural nor market linkage', () => {
+    const source = {
+      situationId: 'sit-source',
+      label: 'Germany cyber situation',
+      dominantDomain: 'cyber',
+      regions: ['Germany'],
+      actorIds: ['actor-germany'],
+      marketContext: {
+        confirmationScore: 0.24,
+        linkedBucketIds: ['fx_stress'],
+      },
+    };
+    const target = {
+      situationId: 'sit-target',
+      label: 'Japan infrastructure situation',
+      dominantDomain: 'infrastructure',
+      regions: ['Japan'],
+      actorIds: ['actor-japan'],
+      marketContext: {
+        confirmationScore: 0.22,
+        linkedBucketIds: ['freight'],
+      },
+    };
+
+    const reportable = buildReportableInteractionLedger([
+      {
+        sourceSituationId: source.situationId,
+        targetSituationId: target.situationId,
+        sourceLabel: source.label,
+        targetLabel: target.label,
+        strongestChannel: 'service_disruption',
+        interactionType: 'regional_spillover',
+        score: 5.9,
+        confidence: 0.81,
+        actorSpecificity: 0.9,
+        sharedActor: false,
+        regionLink: false,
+      },
+    ], [source, target]);
+
+    assert.equal(reportable.length, 0);
+    assert.equal(reportable.blocked[0]?.reason, 'no_structural_or_market_link');
   });
 
   it('blocks cross-theater political effects even with shared-actor when actorSpec below 0.90', () => {
