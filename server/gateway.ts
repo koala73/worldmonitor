@@ -175,9 +175,13 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/aviation/v1/get-youtube-live-stream-info': 'fast',
 };
 
-// Premium RPCs that require X-WorldMonitor-Key from non-browser origins.
-// Trusted browser origins (worldmonitor.app) are exempt: the client-side
-// isProUser() / WORLDMONITOR_API_KEY gate already controls panel visibility.
+// TODO(payment-pr): PREMIUM_RPC_PATHS is intentionally empty until the payment/pro-user
+// system is implemented. The original set of stock analysis paths used forceKey=true,
+// which broke web pro users because isTrustedBrowserOrigin() is header-only (Origin can be
+// spoofed) and the web client has no mechanism to forward a server-validated entitlement.
+// When the payment PR lands, re-populate this set and have the web client send a
+// server-validated pro token (e.g. X-WorldMonitor-Key) so the entitlement check is
+// meaningful. Until then, access is gated client-side by isProUser() + WORLDMONITOR_API_KEY.
 const PREMIUM_RPC_PATHS = new Set<string>();
 
 /**

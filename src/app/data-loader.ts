@@ -377,6 +377,8 @@ export class DataLoaderManager implements AppModule {
       if (shouldLoadAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens'])) {
         tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
       }
+      // TODO(payment-pr): isProUser() checks localStorage/cookie only — not server-validated.
+      // Replace with a server-verified entitlement check once the payment system is in place.
       if ((getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) && shouldLoad('stock-analysis')) {
         tasks.push({ name: 'stockAnalysis', task: runGuarded('stockAnalysis', () => this.loadStockAnalysis()) });
       }
