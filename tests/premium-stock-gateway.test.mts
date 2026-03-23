@@ -35,7 +35,7 @@ describe('premium stock gateway enforcement', () => {
     }));
     assert.equal(browserNoKey.status, 401);
 
-    // Trusted browser origin with a valid key — also allowed
+    // Trusted browser origin with a valid key — allowed
     const browserWithKey = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: {
         Origin: 'https://worldmonitor.app',
@@ -50,7 +50,7 @@ describe('premium stock gateway enforcement', () => {
     }));
     assert.equal(unknownNoKey.status, 403);
 
-    // Public endpoint — always accessible from trusted origin
+    // Public endpoint — always accessible from trusted origin (no credentials needed)
     const publicAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
       headers: { Origin: 'https://worldmonitor.app' },
     }));

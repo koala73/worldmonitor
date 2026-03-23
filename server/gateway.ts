@@ -263,13 +263,9 @@ export function createDomainGateway(
 
     // API key validation — tier-gated endpoints require EITHER an API key OR a valid bearer token.
     // Authenticated users (sessionUserId present) bypass the API key requirement.
-    // Trusted browser origins (worldmonitor.app etc.) also bypass — the client-side
-    // isProUser() gate prevents free users from calling premium endpoints.
     const isTierGated = getRequiredTier(pathname) !== null;
-    const origin = request.headers.get('Origin') || '';
-    const isTrustedOrigin = Boolean(origin) && !isDisallowedOrigin(request);
     const keyCheck = validateApiKey(request, {
-      forceKey: isTierGated && !sessionUserId && !isTrustedOrigin,
+      forceKey: isTierGated && !sessionUserId,
     });
     if (keyCheck.required && !keyCheck.valid) {
       if (PREMIUM_RPC_PATHS.has(pathname)) {
