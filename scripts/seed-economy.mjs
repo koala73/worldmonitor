@@ -12,12 +12,12 @@ const KEYS = {
 };
 
 const FRED_KEY_PREFIX = 'economic:fred:v1';
-const FRED_TTL = 3600;
+const FRED_TTL = 93600; // 26h — survive daily cron scheduling drift
 const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
 const MACRO_TTL = 21600; // 6h — survive extended Yahoo outages
 
-const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'GSCPI'];
+const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US'];
 
 // ─── EIA Energy Prices (WTI + Brent) ───
 

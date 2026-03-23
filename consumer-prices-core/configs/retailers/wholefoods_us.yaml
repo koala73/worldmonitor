@@ -5,7 +5,11 @@ retailer:
   currencyCode: USD
   adapter: search
   baseUrl: https://www.wholefoodsmarket.com
-  enabled: true
+  # disabled 2026-03: WFM product pages require Amazon login. Without a session cookie,
+  # Firecrawl sees the auth modal (img-login-tomato.png / img-login-cheese.png) and
+  # extracts "tomato" or "cheese" as the product name for every product. No fix possible
+  # without Amazon auth. US basket covered by kroger_us + walmart_us.
+  enabled: false
 
   searchConfig:
     numResults: 5

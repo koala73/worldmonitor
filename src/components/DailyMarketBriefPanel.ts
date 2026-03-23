@@ -3,6 +3,7 @@ import { t } from '@/services/i18n';
 import type { DailyMarketBrief } from '@/services/daily-market-brief';
 import { describeFreshness } from '@/services/persistent-cache';
 import { escapeHtml } from '@/utils/sanitize';
+import { getChangeClass } from '@/utils';
 
 type BriefSource = 'live' | 'cached';
 
@@ -78,7 +79,7 @@ export class DailyMarketBriefPanel extends Panel {
                 </div>
                 <div style="text-align:right">
                   <div style="font-size:12px;font-weight:600">${escapeHtml(formatPrice(item.price))}</div>
-                  <div style="font-size:11px;color:var(--text-dim)">${escapeHtml(formatChange(item.change))}</div>
+                  <div class="${getChangeClass(item.change ?? 0)}" style="font-size:11px">${escapeHtml(formatChange(item.change))}</div>
                 </div>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -90,9 +91,6 @@ export class DailyMarketBriefPanel extends Panel {
           `).join('')}
         </div>
 
-        <div style="font-size:11px;color:var(--text-dim)">
-          ${escapeHtml(brief.fallback ? 'Rules-based brief' : `AI-assisted brief via ${brief.provider}${brief.model ? ` (${brief.model})` : ''}`)}
-        </div>
       </div>
     `;
 
