@@ -21094,7 +21094,7 @@ body.has-breaking-alert .panels-grid {
   vertical-align: top;
 }
 
-.gb-item-col { min-width: 100px; text-align: left; }
+.gb-table .gb-item-col { min-width: 100px; text-align: left; }
 
 .gb-country-header {
   text-align: center;
@@ -21105,7 +21105,7 @@ body.has-breaking-alert .panels-grid {
 
 .gb-country-name { font-size: 0.6rem; display: block; }
 
-.gb-item-name {
+.gb-table .gb-item-name {
   font-weight: 500;
   background: var(--overlay-subtle);
   position: sticky;
