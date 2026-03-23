@@ -5,6 +5,7 @@ import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
+import type { SemiconductorHub, IrelandDataCenter, IrelandTechHQ, IrishUnicorn } from '@/config/variants/ireland/data';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
@@ -145,7 +146,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | SemiconductorHub | IrelandDataCenter | IrelandTechHQ | IrishUnicorn;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -476,6 +477,14 @@ export class MapPopup {
         return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
       case 'radiation':
         return this.renderRadiationPopup(data.data as RadiationObservation);
+      case 'semiconductorHub':
+        return this.renderSemiconductorHubPopup(data.data as SemiconductorHub);
+      case 'irelandDataCenter':
+        return this.renderIrelandDataCenterPopup(data.data as IrelandDataCenter);
+      case 'irelandTechHQ':
+        return this.renderIrelandTechHQPopup(data.data as IrelandTechHQ);
+      case 'irishUnicorn':
+        return this.renderIrishUnicornPopup(data.data as IrishUnicorn);
       default:
         return '';
     }
@@ -525,6 +534,167 @@ export class MapPopup {
           </div>
         </div>
         <p class="popup-description">${escapeHtml(observation.country)} · z-score ${observation.zScore.toFixed(2)} · ${escapeHtml(observation.freshness)}${flags ? ` · ${escapeHtml(flags)}` : ''}</p>
+      </div>
+    `;
+  }
+
+  /**
+   * Render popup for semiconductor hub facilities
+   */
+  private renderSemiconductorHubPopup(hub: SemiconductorHub): string {
+    const tier = hub.employees >= 3000 ? 1 : hub.employees >= 1000 ? 2 : 3;
+    const tierLabel = tier === 1 ? 'Tier 1 (Major)' : tier === 2 ? 'Tier 2 (Medium)' : 'Tier 3 (Small)';
+    return `
+      <div class="popup-header tech">
+        <span class="popup-title">💎 ${escapeHtml(hub.name.toUpperCase())}</span>
+        <span class="popup-badge tech">${escapeHtml(tierLabel)}</span>
+        <button class="popup-close" aria-label="Close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Company</span>
+            <span class="stat-value">${escapeHtml(hub.company)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Employees</span>
+            <span class="stat-value">${hub.employees.toLocaleString()}+</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Business</span>
+            <span class="stat-value">${escapeHtml(hub.business)}</span>
+          </div>
+        </div>
+        ${hub.description ? `<p class="popup-description">${escapeHtml(hub.description)}</p>` : ''}
+        ${hub.website ? `<a class="popup-link" href="${sanitizeUrl(hub.website)}" target="_blank" rel="noopener">Visit Website →</a>` : ''}
+      </div>
+    `;
+  }
+
+  /**
+   * Render popup for Ireland data center facilities
+   */
+  private renderIrelandDataCenterPopup(dc: IrelandDataCenter): string {
+    const statusClass = dc.status === 'operational' ? 'medium' : dc.status === 'under-construction' ? 'low' : 'pending';
+    const statusLabel = dc.status.replace('-', ' ').toUpperCase();
+    return `
+      <div class="popup-header tech">
+        <span class="popup-title">🏢 ${escapeHtml(dc.name.toUpperCase())}</span>
+        <span class="popup-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
+        <button class="popup-close" aria-label="Close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Operator</span>
+            <span class="stat-value">${escapeHtml(dc.operator)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Location</span>
+            <span class="stat-value">${escapeHtml(dc.location)}</span>
+          </div>
+          ${dc.capacity ? `
+          <div class="popup-stat">
+            <span class="stat-label">Capacity</span>
+            <span class="stat-value">${escapeHtml(dc.capacity)}</span>
+          </div>
+          ` : ''}
+        </div>
+        ${dc.description ? `<p class="popup-description">${escapeHtml(dc.description)}</p>` : ''}
+        ${dc.website ? `<a class="popup-link" href="${sanitizeUrl(dc.website)}" target="_blank" rel="noopener">Visit Website →</a>` : ''}
+      </div>
+    `;
+  }
+
+  /**
+   * Render popup for Ireland tech HQ facilities
+   */
+  private renderIrelandTechHQPopup(hq: IrelandTechHQ): string {
+    const typeLabel = hq.type === 'emea-hq' ? 'EMEA HQ' : hq.type === 'european-hq' ? 'European HQ' : 'International HQ';
+    return `
+      <div class="popup-header tech">
+        <span class="popup-title">🏢 ${escapeHtml(hq.company.toUpperCase())}</span>
+        <span class="popup-badge tech">${escapeHtml(typeLabel)}</span>
+        <button class="popup-close" aria-label="Close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Location</span>
+            <span class="stat-value">${escapeHtml(hq.location)}</span>
+          </div>
+          ${hq.employees ? `
+          <div class="popup-stat">
+            <span class="stat-label">Employees</span>
+            <span class="stat-value">${hq.employees.toLocaleString()}+</span>
+          </div>
+          ` : ''}
+          ${hq.founded ? `
+          <div class="popup-stat">
+            <span class="stat-label">Est. in Ireland</span>
+            <span class="stat-value">${hq.founded}</span>
+          </div>
+          ` : ''}
+          ${hq.address ? `
+          <div class="popup-stat">
+            <span class="stat-label">Address</span>
+            <span class="stat-value">${escapeHtml(hq.address)}</span>
+          </div>
+          ` : ''}
+        </div>
+        ${hq.description ? `<p class="popup-description">${escapeHtml(hq.description)}</p>` : ''}
+        ${hq.website ? `<a class="popup-link" href="${sanitizeUrl(hq.website)}" target="_blank" rel="noopener">Visit Website →</a>` : ''}
+      </div>
+    `;
+  }
+
+  /**
+   * Render popup for Irish unicorn companies
+   */
+  private renderIrishUnicornPopup(unicorn: IrishUnicorn): string {
+    const categoryClass = unicorn.category === 'unicorn' ? 'high' : unicorn.category === 'high-growth' ? 'medium' : 'low';
+    const categoryLabel = unicorn.category === 'unicorn' ? '🦄 Unicorn' : unicorn.category === 'high-growth' ? '📈 High Growth' : '⭐ Emerging';
+    return `
+      <div class="popup-header tech">
+        <span class="popup-title">${escapeHtml(unicorn.name.toUpperCase())}</span>
+        <span class="popup-badge ${categoryClass}">${categoryLabel}</span>
+        <button class="popup-close" aria-label="Close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Sector</span>
+            <span class="stat-value">${escapeHtml(unicorn.sector)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Location</span>
+            <span class="stat-value">${escapeHtml(unicorn.location)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Founded</span>
+            <span class="stat-value">${unicorn.founded}</span>
+          </div>
+          ${unicorn.employees ? `
+          <div class="popup-stat">
+            <span class="stat-label">Employees</span>
+            <span class="stat-value">${unicorn.employees.toLocaleString()}+</span>
+          </div>
+          ` : ''}
+          ${unicorn.valuation ? `
+          <div class="popup-stat">
+            <span class="stat-label">Valuation</span>
+            <span class="stat-value">${escapeHtml(unicorn.valuation)}</span>
+          </div>
+          ` : ''}
+          ${unicorn.status ? `
+          <div class="popup-stat">
+            <span class="stat-label">Status</span>
+            <span class="stat-value">${escapeHtml(unicorn.status)}</span>
+          </div>
+          ` : ''}
+        </div>
+        ${unicorn.description ? `<p class="popup-description">${escapeHtml(unicorn.description)}</p>` : ''}
+        ${unicorn.website ? `<a class="popup-link" href="${sanitizeUrl(unicorn.website)}" target="_blank" rel="noopener">Visit Website →</a>` : ''}
       </div>
     `;
   }
