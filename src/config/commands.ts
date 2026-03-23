@@ -89,7 +89,6 @@ export const COMMANDS: Command[] = [
   { id: 'panel:live-news', keywords: ['news', 'live news', 'headlines'], label: 'Panel: Live News', icon: '\u{1F4F0}', category: 'panels' },
   { id: 'panel:intel', keywords: ['intel', 'intel feed'], label: 'Panel: Intel Feed', icon: '\u{1F50E}', category: 'panels' },
   { id: 'panel:gdelt-intel', keywords: ['gdelt', 'intelligence feed'], label: 'Panel: Live Intelligence', icon: '\u{1F50D}', category: 'panels' },
-  { id: 'panel:deduction', keywords: ['deduction', 'future', 'what if'], label: 'Panel: Deduct Situation', icon: '\u{1F9E0}', category: 'panels' },
   { id: 'panel:cii', keywords: ['cii', 'instability', 'country risk'], label: 'Panel: Country Instability', icon: '\u{1F3AF}', category: 'panels' },
   { id: 'panel:cascade', keywords: ['cascade', 'infrastructure cascade'], label: 'Panel: Infrastructure Cascade', icon: '\u{1F517}', category: 'panels' },
   { id: 'panel:strategic-risk', keywords: ['risk', 'strategic risk', 'threat level'], label: 'Panel: Strategic Risk', icon: '\u26A0\uFE0F', category: 'panels' },
@@ -179,6 +178,33 @@ export const COMMANDS: Command[] = [
   { id: 'panel:producthunt', keywords: ['product hunt', 'new products', 'launches'], label: 'Panel: Product Hunt', icon: '\u{1F3AF}', category: 'panels' },
   { id: 'panel:events', keywords: ['tech events', 'conferences', 'summits'], label: 'Panel: Tech Events', icon: '\u{1F4C5}', category: 'panels' },
   { id: 'panel:regionalStartups', keywords: ['global startups', 'startup news', 'international startups'], label: 'Panel: Global Startup News', icon: '\u{1F30D}', category: 'panels' },
+  { id: 'panel:github', keywords: ['github trending', 'trending repos', 'open source trending'], label: 'Panel: GitHub Trending', icon: '\u{1F431}', category: 'panels' },
+  { id: 'panel:internet-disruptions', keywords: ['internet disruptions', 'outages', 'internet outage', 'connectivity'], label: 'Panel: Internet Disruptions', icon: '\u{1F310}', category: 'panels' },
+  { id: 'panel:service-status', keywords: ['service status', 'uptime', 'status page', 'downtime'], label: 'Panel: Service Status', icon: '\u{1F7E2}', category: 'panels' },
+  { id: 'panel:regulation', keywords: ['ai regulation', 'tech regulation', 'financial regulation', 'policy'], label: 'Panel: Regulation', icon: '\u{1F4DC}', category: 'panels' },
+
+  // Finance variant panels
+  { id: 'panel:analysis', keywords: ['market analysis', 'equity analysis', 'technical analysis'], label: 'Panel: Market Analysis', icon: '\u{1F4CA}', category: 'panels' },
+  { id: 'panel:bonds', keywords: ['bonds', 'fixed income', 'treasuries', 'yield'], label: 'Panel: Fixed Income', icon: '\u{1F4B3}', category: 'panels' },
+  { id: 'panel:forex', keywords: ['forex', 'currencies', 'fx', 'exchange rates'], label: 'Panel: Forex & Currencies', icon: '\u{1F4B1}', category: 'panels' },
+  { id: 'panel:derivatives', keywords: ['derivatives', 'options', 'futures', 'swaps'], label: 'Panel: Derivatives & Options', icon: '\u{1F4C9}', category: 'panels' },
+  { id: 'panel:institutional', keywords: ['institutional', 'hedge funds', 'private equity', 'pe funds'], label: 'Panel: Hedge Funds & PE', icon: '\u{1F3E6}', category: 'panels' },
+  { id: 'panel:fintech', keywords: ['fintech', 'trading tech', 'financial technology', 'payments'], label: 'Panel: Fintech & Trading Tech', icon: '\u{1F4F2}', category: 'panels' },
+  { id: 'panel:gold-silver', keywords: ['gold', 'silver', 'precious metals', 'xau', 'xag'], label: 'Panel: Gold & Silver', icon: '\u{1F947}', category: 'panels' },
+  { id: 'panel:base-metals', keywords: ['base metals', 'copper', 'aluminum', 'zinc', 'nickel'], label: 'Panel: Base Metals', icon: '\u2692\uFE0F', category: 'panels' },
+  { id: 'panel:centralbanks', keywords: ['central banks', 'fed', 'ecb', 'boe', 'monetary policy'], label: 'Panel: Central Bank Watch', icon: '\u{1F3DB}\uFE0F', category: 'panels' },
+  { id: 'panel:markets-news', keywords: ['markets news', 'financial news', 'wall street', 'stock news'], label: 'Panel: Markets News', icon: '\u{1F4F0}', category: 'panels' },
+  { id: 'panel:economic-news', keywords: ['economic news', 'economy news', 'macro news', 'gdp news'], label: 'Panel: Economic News', icon: '\u{1F4F0}', category: 'panels' },
+  { id: 'panel:commodities-news', keywords: ['commodities news', 'commodity markets news', 'raw materials news'], label: 'Panel: Commodities News', icon: '\u{1F4F0}', category: 'panels' },
+  { id: 'panel:crypto-news', keywords: ['crypto news', 'bitcoin news', 'blockchain news', 'defi news'], label: 'Panel: Crypto News', icon: '\u{1F4F0}', category: 'panels' },
+  { id: 'panel:gccNews', keywords: ['gcc news', 'gulf news', 'saudi news', 'uae news', 'middle east business'], label: 'Panel: GCC Business News', icon: '\u{1F1F8}\u{1F1E6}', category: 'panels' },
+
+  // Commodity variant panels
+  { id: 'panel:commodity-news', keywords: ['commodity news', 'mining news', 'resource news'], label: 'Panel: Commodity News', icon: '\u{1F4F0}', category: 'panels' },
+  { id: 'panel:mining-news', keywords: ['mining news', 'mineral news', 'mining industry'], label: 'Panel: Mining News', icon: '\u26CF\uFE0F', category: 'panels' },
+  { id: 'panel:mining-companies', keywords: ['mining companies', 'miners', 'mining stocks'], label: 'Panel: Mining Companies', icon: '\u{1F3ED}', category: 'panels' },
+  { id: 'panel:critical-minerals', keywords: ['critical minerals', 'rare earth', 'lithium', 'cobalt', 'strategic minerals'], label: 'Panel: Critical Minerals', icon: '\u{1F48E}', category: 'panels' },
+  { id: 'panel:commodity-regulation', keywords: ['commodity regulation', 'mining regulation', 'resource policy'], label: 'Panel: Regulation & Policy', icon: '\u{1F4DC}', category: 'panels' },
 
   // Positive / happy panels
   { id: 'panel:positive-feed', keywords: ['good news', 'positive news', 'optimistic', 'uplifting'], label: 'Panel: Good News Feed', icon: '\u{1F33F}', category: 'panels' },
