@@ -61,12 +61,26 @@ const ALIAS_MAP = {
   'ottawa': 'CA', 'canadian': 'CA',
   'canberra': 'AU', 'australian': 'AU',
   // Geo regions / alliances used in headlines
-  'nato': 'XX', // multi-country, use special marker
-  'eu': 'EU',
-  'europe': 'EU',
+  // XX = supranational/multi-country marker; extractCountryCode() returns null for these
+  'nato': 'XX',
+  'eu': 'XX',
+  'europe': 'XX',
   'ukraine': 'UA',
   'taiwan': 'TW',
 };
+
+// Unigrams that are ambiguous in English news (person names, US states, etc.).
+// These fire too often as false positives when matched as bare words.
+// Bigram aliases (e.g. 'south africa') still work; only bare single-word matches are blocked.
+const UNIGRAM_STOPWORDS = new Set([
+  'chad',    // common English given name
+  'jordan',  // common English given name + US-adjacent context
+  'georgia', // US state
+  'niger',   // easily confused; 'nigerian' alias covers the country
+  'guinea',  // 'guinea' appears in many compound names (Equatorial Guinea, etc.)
+  'mali',    // common suffix in names (Somali, Bengali, etc.) — 'malian' is rare in headlines
+  'peru',    // low geopolitical frequency; false positives in product names
+]);
 
 // Build a merged lookup (alias map takes precedence over country-names.json)
 const LOOKUP = {};
@@ -96,6 +110,7 @@ export function extractCountryCode(text) {
   for (const word of words) {
     const clean = word.replace(/[^a-z]/g, '');
     if (clean.length < 2) continue;
+    if (UNIGRAM_STOPWORDS.has(clean)) continue;
     if (LOOKUP[clean] && LOOKUP[clean] !== 'XX') return LOOKUP[clean];
   }
   return null;
