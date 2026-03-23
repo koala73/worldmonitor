@@ -58,6 +58,7 @@ import {
   fetchNaturalEvents,
   fetchRecentAwards,
   fetchOilAnalytics,
+  fetchCrudeInventoriesRpc,
   fetchBisData,
   fetchBlsData,
   fetchCyberThreats,
@@ -2490,15 +2491,27 @@ export class DataLoaderManager implements AppModule {
   async loadOilAnalytics(): Promise<void> {
     const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
     try {
-      const data = await fetchOilAnalytics();
-      energyPanel?.updateAnalytics(data);
-      const hasData = !!(data.wtiPrice || data.brentPrice || data.usProduction || data.usInventory);
-      this.ctx.statusPanel?.updateApi('EIA', { status: hasData ? 'ok' : 'error' });
-      if (hasData) {
-        const metricCount = [data.wtiPrice, data.brentPrice, data.usProduction, data.usInventory].filter(Boolean).length;
-        dataFreshness.recordUpdate('oil', metricCount || 1);
+      const [data, crudeResp] = await Promise.allSettled([
+        fetchOilAnalytics(),
+        fetchCrudeInventoriesRpc(),
+      ]);
+      if (data.status === 'fulfilled') {
+        energyPanel?.updateAnalytics(data.value);
+        const hasData = !!(data.value.wtiPrice || data.value.brentPrice || data.value.usProduction || data.value.usInventory);
+        this.ctx.statusPanel?.updateApi('EIA', { status: hasData ? 'ok' : 'error' });
+        if (hasData) {
+          const metricCount = [data.value.wtiPrice, data.value.brentPrice, data.value.usProduction, data.value.usInventory].filter(Boolean).length;
+          dataFreshness.recordUpdate('oil', metricCount || 1);
+        } else {
+          dataFreshness.recordError('oil', 'Oil analytics returned no values');
+        }
       } else {
-        dataFreshness.recordError('oil', 'Oil analytics returned no values');
+        console.error('[App] Oil analytics failed:', data.reason);
+        this.ctx.statusPanel?.updateApi('EIA', { status: 'error' });
+        dataFreshness.recordError('oil', String(data.reason));
+      }
+      if (crudeResp.status === 'fulfilled' && crudeResp.value.weeks.length > 0) {
+        energyPanel?.updateCrudeInventories(crudeResp.value.weeks);
       }
     } catch (e) {
       console.error('[App] Oil analytics failed:', e);

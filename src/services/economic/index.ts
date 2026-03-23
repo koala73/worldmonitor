@@ -27,6 +27,8 @@ import {
   type GetNationalDebtResponse,
   type NationalDebtEntry,
   type GetBlsSeriesResponse,
+  type GetCrudeInventoriesResponse,
+  type CrudeInventoryWeek,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
@@ -68,6 +70,8 @@ const emptyFredBatchFallback: GetFredSeriesBatchResponse = { results: {}, fetche
 const fredBatchBreaker = createCircuitBreaker<GetFredSeriesBatchResponse>({ name: 'FRED Batch', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
 const emptyWbFallback: ListWorldBankIndicatorsResponse = { data: [], pagination: undefined };
 const emptyEiaFallback: GetEnergyPricesResponse = { prices: [] };
+const emptyCrudeFallback: GetCrudeInventoriesResponse = { weeks: [], latestPeriod: '' };
+const crudeBreaker = createCircuitBreaker<GetCrudeInventoriesResponse>({ name: 'EIA Crude Inventories', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
 const emptyCapacityFallback: GetEnergyCapacityResponse = { series: [] };
 const emptyBisPolicyFallback: GetBisPolicyRatesResponse = { rates: [] };
 const emptyBisEerFallback: GetBisExchangeRatesResponse = { rates: [] };
@@ -395,6 +399,22 @@ export function getTrendColor(trend: OilMetric['trend'], inverse = false): strin
     case 'up': return upColor;
     case 'down': return downColor;
     default: return getCSSColor('--text-dim');
+  }
+}
+
+// ========================================================================
+// EIA Crude Oil Inventories (WCRSTUS1) -- weekly stockpile data
+// ========================================================================
+
+export type { CrudeInventoryWeek };
+
+export async function fetchCrudeInventoriesRpc(): Promise<GetCrudeInventoriesResponse> {
+  try {
+    return await crudeBreaker.execute(async () => {
+      return client.getCrudeInventories({}, { signal: AbortSignal.timeout(20_000) });
+    }, emptyCrudeFallback);
+  } catch {
+    return emptyCrudeFallback;
   }
 }
 

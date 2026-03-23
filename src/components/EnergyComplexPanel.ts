@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import type { OilAnalytics } from '@/services/economic';
+import type { OilAnalytics, CrudeInventoryWeek } from '@/services/economic';
 import { formatOilValue, getTrendColor, getTrendIndicator } from '@/services/economic';
 import type { MarketData } from '@/types';
 import { t } from '@/services/i18n';
@@ -14,6 +14,7 @@ function hasAnalytics(data: OilAnalytics | null): boolean {
 export class EnergyComplexPanel extends Panel {
   private analytics: OilAnalytics | null = null;
   private tape: MarketData[] = [];
+  private crudeWeeks: CrudeInventoryWeek[] = [];
 
   constructor() {
     super({
@@ -31,6 +32,11 @@ export class EnergyComplexPanel extends Panel {
 
   public updateTape(data: MarketData[]): void {
     this.tape = data.filter((item) => item.price !== null);
+    this.render();
+  }
+
+  public updateCrudeInventories(weeks: CrudeInventoryWeek[]): void {
+    this.crudeWeeks = weeks;
     this.render();
   }
 
@@ -57,6 +63,12 @@ export class EnergyComplexPanel extends Panel {
     if (hasAnalytics(this.analytics)) footerParts.push('EIA');
     if (this.tape.length > 0) footerParts.push(t('components.energyComplex.liveTapeSource'));
 
+    const latestWeek = this.crudeWeeks[0] ?? null;
+    const wowChange = latestWeek?.weeklyChangeMb ?? null;
+    const wowSign = wowChange !== null && wowChange > 0 ? '+' : '';
+    const wowClass = wowChange === null ? '' : wowChange > 0 ? 'change-negative' : 'change-positive';
+    const crudeSparklineValues = this.crudeWeeks.slice().reverse().map(w => w.stocksMb);
+
     this.setContent(`
       <div class="energy-complex-content">
         ${metrics.length > 0 ? `
@@ -77,6 +89,19 @@ export class EnergyComplexPanel extends Panel {
                 </div>
               `;
             }).join('')}
+          </div>
+        ` : ''}
+        ${this.crudeWeeks.length > 0 ? `
+          <div class="energy-tape-section" style="margin-top:8px">
+            <div class="energy-section-title">US Crude Inventories (Mb)</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+              ${miniSparkline(crudeSparklineValues, wowChange, 80, 22)}
+              <div>
+                <span class="commodity-price">${escapeHtml(latestWeek ? latestWeek.stocksMb.toFixed(1) : '—')} Mb</span>
+                ${wowChange !== null ? `<span class="commodity-change ${escapeHtml(wowClass)}" style="margin-left:6px">${escapeHtml(wowSign + wowChange.toFixed(1))} WoW</span>` : ''}
+              </div>
+            </div>
+            <div class="indicator-date" style="margin-top:2px">${escapeHtml(latestWeek?.period ?? '')}</div>
           </div>
         ` : ''}
         ${this.tape.length > 0 ? `

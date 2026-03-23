@@ -9,6 +9,7 @@ const KEYS = {
   energyPrices: 'economic:energy:v1:all',
   energyCapacity: 'economic:capacity:v1:COL,SUN,WND:20',
   macroSignals: 'economic:macro-signals:v1',
+  crudeInventories: 'economic:crude-inventories:v1',
 };
 
 const FRED_KEY_PREFIX = 'economic:fred:v1';
@@ -16,6 +17,7 @@ const FRED_TTL = 93600; // 26h — survive daily cron scheduling drift
 const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
 const MACRO_TTL = 21600; // 6h — survive extended Yahoo outages
+const CRUDE_INVENTORIES_TTL = 864000; // 10 days — EIA publishes weekly
 
 const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30'];
 
@@ -402,27 +404,84 @@ async function fetchMacroSignals() {
   };
 }
 
+// ─── EIA Crude Oil Inventories (WCRSTUS1) ───
+
+async function fetchCrudeInventories() {
+  const apiKey = process.env.EIA_API_KEY;
+  if (!apiKey) throw new Error('Missing EIA_API_KEY');
+
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    'facets[series][]': 'WCRSTUS1',
+    frequency: 'weekly',
+    'data[]': 'value',
+    'sort[0][column]': 'period',
+    'sort[0][direction]': 'desc',
+    length: '9', // fetch 9 so the oldest of 8 has a prior week for weeklyChangeMb
+  });
+  const resp = await fetch(`https://api.eia.gov/v2/petroleum/stoc/wstk/data/?${params}`, {
+    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) throw new Error(`EIA WCRSTUS1: HTTP ${resp.status}`);
+  const data = await resp.json();
+  const rows = data.response?.data;
+  if (!rows || rows.length === 0) throw new Error('EIA WCRSTUS1: no data rows');
+
+  // rows are sorted newest-first; compute weeklyChangeMb for each week vs. next (older)
+  const weeks = [];
+  for (let i = 0; i < Math.min(rows.length, 9); i++) {
+    const row = rows[i];
+    const stocksMb = row.value != null ? parseFloat(String(row.value)) : null;
+    if (stocksMb == null || !Number.isFinite(stocksMb)) continue;
+    const period = row.period ?? '';
+
+    const olderRow = rows[i + 1];
+    let weeklyChangeMb = null;
+    if (olderRow?.value != null) {
+      const olderStocks = parseFloat(String(olderRow.value));
+      if (Number.isFinite(olderStocks)) weeklyChangeMb = +(stocksMb - olderStocks).toFixed(3);
+    }
+
+    weeks.push({
+      period,
+      stocksMb: +stocksMb.toFixed(3),
+      weeklyChangeMb,
+    });
+
+    if (weeks.length === 8) break; // only return 8 weeks to client
+  }
+
+  if (weeks.length === 0) throw new Error('EIA WCRSTUS1: could not parse any rows');
+  const latestPeriod = weeks[0]?.period ?? '';
+  console.log(`  Crude inventories: ${weeks.length} weeks, latest=${latestPeriod}`);
+  return { weeks, latestPeriod };
+}
+
 // ─── Main: seed all economic data ───
 // NOTE: runSeed() calls process.exit(0) after writing the primary key.
 // All secondary keys MUST be written inside fetchAll() before returning.
 
 async function fetchAll() {
-  const [energyPrices, energyCapacity, fredResults, macroSignals] = await Promise.allSettled([
+  const [energyPrices, energyCapacity, fredResults, macroSignals, crudeInventories] = await Promise.allSettled([
     fetchEnergyPrices(),
     fetchEnergyCapacity(),
     fetchFredSeries(),
     fetchMacroSignals(),
+    fetchCrudeInventories(),
   ]);
 
   const ep = energyPrices.status === 'fulfilled' ? energyPrices.value : null;
   const ec = energyCapacity.status === 'fulfilled' ? energyCapacity.value : null;
   const fr = fredResults.status === 'fulfilled' ? fredResults.value : null;
   const ms = macroSignals.status === 'fulfilled' ? macroSignals.value : null;
+  const ci = crudeInventories.status === 'fulfilled' ? crudeInventories.value : null;
 
   if (energyPrices.status === 'rejected') console.warn(`  EnergyPrices failed: ${energyPrices.reason?.message || energyPrices.reason}`);
   if (energyCapacity.status === 'rejected') console.warn(`  EnergyCapacity failed: ${energyCapacity.reason?.message || energyCapacity.reason}`);
   if (fredResults.status === 'rejected') console.warn(`  FRED failed: ${fredResults.reason?.message || fredResults.reason}`);
   if (macroSignals.status === 'rejected') console.warn(`  MacroSignals failed: ${macroSignals.reason?.message || macroSignals.reason}`);
+  if (crudeInventories.status === 'rejected') console.warn(`  CrudeInventories failed: ${crudeInventories.reason?.message || crudeInventories.reason}`);
 
   if (!ep && !fr && !ms) throw new Error('All economic fetches failed');
 
@@ -436,6 +495,8 @@ async function fetchAll() {
   }
 
   if (ms && !ms.unavailable && ms.totalCount > 0) await writeExtraKeyWithMeta(KEYS.macroSignals, ms, MACRO_TTL, ms.totalCount ?? 0);
+
+  if (ci?.weeks?.length > 0) await writeExtraKeyWithMeta(KEYS.crudeInventories, ci, CRUDE_INVENTORIES_TTL, ci.weeks.length);
 
   return ep || { prices: [] };
 }

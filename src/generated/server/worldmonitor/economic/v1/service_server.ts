@@ -387,6 +387,20 @@ export interface EconomicEvent {
   unit: string;
 }
 
+export interface GetCrudeInventoriesRequest {
+}
+
+export interface GetCrudeInventoriesResponse {
+  weeks: CrudeInventoryWeek[];
+  latestPeriod: string;
+}
+
+export interface CrudeInventoryWeek {
+  period: string;
+  stocksMb: number;
+  weeklyChangeMb?: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -447,6 +461,7 @@ export interface EconomicServiceHandler {
   listFuelPrices(ctx: ServerContext, req: ListFuelPricesRequest): Promise<ListFuelPricesResponse>;
   getBlsSeries(ctx: ServerContext, req: GetBlsSeriesRequest): Promise<GetBlsSeriesResponse>;
   getEconomicCalendar(ctx: ServerContext, req: GetEconomicCalendarRequest): Promise<GetEconomicCalendarResponse>;
+  getCrudeInventories(ctx: ServerContext, req: GetCrudeInventoriesRequest): Promise<GetCrudeInventoriesResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -1062,6 +1077,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getEconomicCalendar(ctx, body);
           return new Response(JSON.stringify(result as GetEconomicCalendarResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-crude-inventories",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetCrudeInventoriesRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCrudeInventories(ctx, body);
+          return new Response(JSON.stringify(result as GetCrudeInventoriesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
