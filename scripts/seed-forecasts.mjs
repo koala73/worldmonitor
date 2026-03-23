@@ -610,6 +610,8 @@ function makePrediction(domain, region, title, probability, confidence, timeHori
     priorProbability: 0,
     calibration: null,
     caseFile: null,
+    generationOrigin: 'legacy_detector',
+    stateDerivedBackfill: false,
     createdAt: now,
     updatedAt: now,
   };
@@ -857,6 +859,276 @@ function detectSupplyChainScenarios(inputs) {
   }
 
   return predictions;
+}
+
+function buildStateDomainCoverageIndex(predictions = []) {
+  const index = new Map();
+  for (const pred of predictions || []) {
+    const stateId = getForecastSelectionStateContext(pred)?.id || '';
+    if (!stateId) continue;
+    let entry = index.get(stateId);
+    if (!entry) {
+      entry = new Set();
+      index.set(stateId, entry);
+    }
+    entry.add(pred.domain);
+  }
+  return index;
+}
+
+function getStateDerivedBucketSignalTypes(domain, bucketId) {
+  if (domain === 'supply_chain') {
+    if (bucketId === 'freight') return ['shipping_cost_shock', 'infrastructure_capacity_loss', 'energy_supply_shock', 'gas_supply_stress'];
+    if (bucketId === 'energy') return ['shipping_cost_shock', 'energy_supply_shock', 'gas_supply_stress', 'global_crude_spread_stress'];
+    return [];
+  }
+  if (domain === 'market') {
+    if (bucketId === 'energy') return ['energy_supply_shock', 'commodity_repricing', 'oil_macro_shock', 'global_crude_spread_stress', 'gas_supply_stress'];
+    if (bucketId === 'sovereign_risk') return ['sovereign_stress', 'risk_off_rotation', 'yield_curve_stress', 'volatility_shock', 'safe_haven_bid'];
+    if (bucketId === 'rates_inflation') return ['policy_rate_pressure', 'inflation_impulse', 'energy_supply_shock', 'shipping_cost_shock', 'yield_curve_stress', 'oil_macro_shock', 'gas_supply_stress'];
+    if (bucketId === 'fx_stress') return ['fx_stress', 'sovereign_stress', 'risk_off_rotation', 'policy_rate_pressure', 'volatility_shock'];
+    return [];
+  }
+  return [];
+}
+
+function getStateDerivedAllowedBuckets(domain) {
+  if (domain === 'supply_chain') return ['freight', 'energy'];
+  if (domain === 'market') return ['energy', 'sovereign_risk', 'rates_inflation', 'fx_stress'];
+  return [];
+}
+
+function getStateDerivedMinimumScore(domain, bucketId) {
+  if (domain === 'supply_chain') {
+    if (bucketId === 'freight') return 0.4;
+    if (bucketId === 'energy') return 0.44;
+    return 0.45;
+  }
+  if (bucketId === 'energy') return 0.42;
+  if (bucketId === 'sovereign_risk') return 0.44;
+  if (bucketId === 'rates_inflation') return 0.47;
+  if (bucketId === 'fx_stress') return 0.48;
+  return 0.48;
+}
+
+function buildStateDerivedForecastTitle(domain, stateUnit, bucketId, bucketLabel) {
+  if (domain === 'supply_chain') {
+    if (bucketId === 'freight') return `Supply chain disruption risk from ${stateUnit.label}`;
+    if (bucketId === 'energy') return `Maritime energy flow disruption from ${stateUnit.label}`;
+    return `Supply chain stress from ${stateUnit.label}`;
+  }
+
+  if (bucketId === 'energy') return `Energy repricing risk from ${stateUnit.label}`;
+  if (bucketId === 'sovereign_risk') return `Sovereign risk repricing from ${stateUnit.label}`;
+  if (bucketId === 'rates_inflation') return `Inflation and rates pressure from ${stateUnit.label}`;
+  if (bucketId === 'fx_stress') return `FX stress from ${stateUnit.label}`;
+  return `${bucketLabel || 'Market'} repricing from ${stateUnit.label}`;
+}
+
+function computeStateDerivedBucketCandidate(domain, stateUnit, bucket, marketContext, linkedSignalTypes = [], marketInputCoverage = null) {
+  const supportedTypes = getStateDerivedBucketSignalTypes(domain, bucket.id);
+  if (!supportedTypes.length) return null;
+
+  const overlapTypes = supportedTypes.filter((type) => linkedSignalTypes.includes(type));
+  const channel = marketContext?.topChannel || '';
+  const channelMatch = channel && supportedTypes.includes(channel);
+  const signalMatchCount = overlapTypes.length + (channelMatch && !overlapTypes.includes(channel) ? 1 : 0);
+  const stateDomainMatch = intersectAny(stateUnit?.domains || [], domain === 'supply_chain'
+    ? ['supply_chain', 'market', 'conflict', 'infrastructure']
+    : ['market', 'supply_chain', 'conflict', 'political', 'infrastructure', 'cyber']);
+  const directBucket = bucket.id === (marketContext?.topBucketId || '');
+  const criticalAlignment = computeCriticalBucketAlignment(bucket.id, marketContext?.criticalSignalTypes || []);
+  const criticalLift = criticalAlignment * Number(marketContext?.criticalSignalLift || 0);
+  const coverageScore = computeMarketBucketCoverageScore(bucket.id, marketInputCoverage);
+  const supportScore = clampUnitInterval(
+    Math.min(0.42, signalMatchCount * 0.14) +
+    (channelMatch ? 0.12 : 0) +
+    (stateDomainMatch ? 0.07 : 0) +
+    (directBucket ? 0.06 : 0),
+  );
+
+  const eligible = signalMatchCount > 0 || (domain === 'supply_chain' && bucket.id === 'freight' && stateDomainMatch && directBucket);
+  if (!eligible) return null;
+
+  const score = clampUnitInterval(
+    (Number(marketContext?.confirmationScore || 0) * 0.28) +
+    (Number(bucket.pressureScore || 0) * 0.22) +
+    (Number(bucket.confidence || 0) * 0.14) +
+    (Number(marketContext?.topTransmissionStrength || 0) * 0.1) +
+    (Number(stateUnit?.avgProbability || 0) * 0.12) +
+    (Number(stateUnit?.avgConfidence || 0) * 0.08) +
+    (criticalLift * 0.14) +
+    (supportScore * 0.1) +
+    (CORE_MARKET_BUCKET_IDS.includes(bucket.id) && coverageScore < 0.45 ? 0.03 : 0),
+  );
+
+  return {
+    bucketId: bucket.id,
+    bucketLabel: bucket.label,
+    score: +score.toFixed(3),
+    coverageScore,
+    criticalAlignment: +criticalAlignment.toFixed(3),
+    criticalLift: +criticalLift.toFixed(3),
+    signalMatchCount,
+    supportScore: +supportScore.toFixed(3),
+    primarySignalType: overlapTypes[0] || channel || supportedTypes[0] || '',
+    minimumScore: getStateDerivedMinimumScore(domain, bucket.id),
+    fallbackScore: Math.max(0.3, getStateDerivedMinimumScore(domain, bucket.id) - 0.08 - (coverageScore < 0.45 ? 0.03 : 0)),
+  };
+}
+
+function buildStateDerivedForecast(stateUnit, domain, bucket, candidate, marketContext) {
+  const title = buildStateDerivedForecastTitle(domain, stateUnit, bucket.id, bucket.label);
+  const probability = clampUnitInterval(
+    (candidate.score * 0.56) +
+    (Number(bucket.pressureScore || 0) * 0.24) +
+    (Number(stateUnit?.avgProbability || 0) * 0.18),
+  );
+  const confidence = clampUnitInterval(
+    (candidate.score * 0.34) +
+    (Number(bucket.confidence || 0) * 0.28) +
+    (Number(marketContext?.confirmationScore || 0) * 0.22) +
+    (candidate.criticalLift * 0.12) +
+    (Number(stateUnit?.avgConfidence || 0) * 0.1),
+  );
+  const signals = [
+    {
+      type: candidate.primarySignalType || marketContext?.topChannel || 'derived_transmission',
+      value: `${bucket.label} pressure is ${roundPct(bucket.pressureScore || 0)} with ${roundPct(marketContext?.confirmationScore || 0)} state confirmation around ${stateUnit.label}.`,
+      weight: 0.42,
+    },
+    {
+      type: 'state_unit',
+      value: `${stateUnit.label} compresses ${stateUnit.situationCount || 0} clustered situations and ${stateUnit.forecastCount || 0} linked forecasts into one canonical state path.`,
+      weight: 0.26,
+    },
+    {
+      type: 'market_transmission',
+      value: `${stateUnit.label} is transmitting through ${(marketContext?.topChannel || 'derived transmission').replace(/_/g, ' ')} across ${marketContext?.transmissionEdgeCount || 0} edge(s) toward ${bucket.label}.`,
+      weight: 0.24,
+    },
+  ];
+  if ((marketContext?.criticalSignalCount || 0) > 0) {
+    signals.push({
+      type: 'critical_news_signal',
+      value: `${marketContext.criticalSignalCount} urgent critical signals are reinforcing ${bucket.label} pressure for ${stateUnit.label}.`,
+      weight: 0.2,
+    });
+  }
+
+  const prediction = makePrediction(
+    domain,
+    stateUnit?.dominantRegion || stateUnit?.regions?.[0] || '',
+    title,
+    probability,
+    confidence,
+    domain === 'supply_chain' ? '7d' : '30d',
+    signals,
+  );
+  prediction.generationOrigin = 'state_derived';
+  prediction.feedSummary = `${stateUnit.label} is carrying ${bucket.label.toLowerCase()} pressure through ${(marketContext?.topChannel || 'derived transmission').replace(/_/g, ' ')}.`;
+  prediction.caseFile = buildForecastCase(prediction);
+  return prediction;
+}
+
+function deriveStateDrivenForecasts({
+  existingPredictions = [],
+  stateUnits = [],
+  worldSignals = null,
+  marketTransmission = null,
+  marketState = null,
+  marketInputCoverage = null,
+} = {}) {
+  if (!Array.isArray(stateUnits) || stateUnits.length === 0) return [];
+
+  const marketIndex = buildSituationMarketContextIndex(
+    worldSignals,
+    marketTransmission,
+    marketState,
+    stateUnits,
+    marketInputCoverage,
+  );
+  const signalMap = new Map((worldSignals?.signals || []).map((signal) => [signal.id, signal]));
+  const bucketMap = new Map((marketState?.buckets || []).map((bucket) => [bucket.id, bucket]));
+  const existingDomainsByState = buildStateDomainCoverageIndex(existingPredictions);
+  const derived = [];
+  const fallbackByDomain = new Map();
+
+  for (const stateUnit of stateUnits) {
+    const marketContext = marketIndex?.bySituationId?.get(stateUnit.id) || null;
+    if (!marketContext || !(marketContext.linkedBucketIds || []).length) continue;
+    const existingDomains = existingDomainsByState.get(stateUnit.id) || new Set();
+    const linkedSignalTypes = uniqueSortedStrings(
+      (marketContext.linkedSignalIds || [])
+        .map((signalId) => signalMap.get(signalId)?.type)
+        .filter(Boolean),
+    );
+    const linkedBuckets = uniqueSortedStrings(marketContext.linkedBucketIds || [])
+      .map((bucketId) => bucketMap.get(bucketId))
+      .filter(Boolean)
+      .sort((left, right) => (
+        (right.id === marketContext.topBucketId ? 1 : 0) - (left.id === marketContext.topBucketId ? 1 : 0)
+        || (right.pressureScore + right.confidence) - (left.pressureScore + left.confidence)
+        || left.label.localeCompare(right.label)
+      ));
+
+    for (const domain of ['market', 'supply_chain']) {
+      if (existingDomains.has(domain)) continue;
+      let best = null;
+      for (const bucket of linkedBuckets) {
+        if (!getStateDerivedAllowedBuckets(domain).includes(bucket.id)) continue;
+        const candidate = computeStateDerivedBucketCandidate(
+          domain,
+          stateUnit,
+          bucket,
+          marketContext,
+          linkedSignalTypes,
+          marketInputCoverage,
+        );
+        if (!candidate) continue;
+        const record = {
+          stateUnit,
+          bucket,
+          marketContext,
+          candidate,
+          prediction: buildStateDerivedForecast(stateUnit, domain, bucket, candidate, marketContext),
+        };
+        if (
+          !best
+          || record.candidate.score > best.candidate.score
+          || (record.candidate.score === best.candidate.score && bucket.id === marketContext.topBucketId && best.bucket.id !== marketContext.topBucketId)
+        ) {
+          best = record;
+        }
+      }
+      if (!best) continue;
+      if (best.candidate.score >= best.candidate.minimumScore) {
+        derived.push(best.prediction);
+        existingDomains.add(domain);
+        existingDomainsByState.set(stateUnit.id, existingDomains);
+        continue;
+      }
+      const domainFallback = fallbackByDomain.get(domain);
+      if (!domainFallback || best.candidate.score > domainFallback.candidate.score) {
+        fallbackByDomain.set(domain, best);
+      }
+    }
+  }
+
+  for (const domain of ['market', 'supply_chain']) {
+    const existingCount = existingPredictions.filter((pred) => pred.domain === domain).length;
+    const derivedCount = derived.filter((pred) => pred.domain === domain).length;
+    if (existingCount + derivedCount > 0) continue;
+    const fallback = fallbackByDomain.get(domain);
+    if (!fallback || fallback.candidate.score < fallback.candidate.fallbackScore) continue;
+    fallback.prediction.stateDerivedBackfill = true;
+    derived.push(fallback.prediction);
+  }
+
+  return derived
+    .sort((a, b) => (Number(b.stateDerivedBackfill) - Number(a.stateDerivedBackfill))
+      || (b.probability * b.confidence) - (a.probability * a.confidence)
+      || a.title.localeCompare(b.title));
 }
 
 function detectPoliticalScenarios(inputs) {
@@ -3022,6 +3294,8 @@ function buildForecastTraceRecord(pred, rank, simulationByForecastId = null) {
     trend: pred.trend,
     timeHorizon: pred.timeHorizon,
     priorProbability: pred.priorProbability,
+    generationOrigin: pred.generationOrigin || 'legacy_detector',
+    stateDerivedBackfill: !!pred.stateDerivedBackfill,
     feedSummary: pred.feedSummary || '',
     scenario: pred.scenario || '',
     projections: pred.projections || null,
@@ -3098,6 +3372,8 @@ function buildPublishedForecastPayload(pred) {
     id: pred.id,
     domain: pred.domain,
     region: pred.region,
+    generationOrigin: pred.generationOrigin || 'legacy_detector',
+    stateDerivedBackfill: !!pred.stateDerivedBackfill,
     title: pred.title,
     scenario: pred.scenario || '',
     feedSummary: pred.feedSummary || '',
@@ -8209,11 +8485,23 @@ function pickTopCountEntries(countMap, limit = 5) {
 function summarizeForecastPopulation(predictions) {
   const domainCounts = Object.fromEntries(FORECAST_DOMAINS.map(domain => [domain, 0]));
   const highlightedDomainCounts = Object.fromEntries(FORECAST_DOMAINS.map(domain => [domain, 0]));
+  const legacyDetectorDomainCounts = Object.fromEntries(FORECAST_DOMAINS.map(domain => [domain, 0]));
+  const stateDerivedDomainCounts = Object.fromEntries(FORECAST_DOMAINS.map(domain => [domain, 0]));
+  const generationOriginCounts = {};
+  let stateDerivedBackfillCount = 0;
 
   for (const pred of predictions) {
     domainCounts[pred.domain] = (domainCounts[pred.domain] || 0) + 1;
     if ((pred.probability || 0) >= PANEL_MIN_PROBABILITY) {
       highlightedDomainCounts[pred.domain] = (highlightedDomainCounts[pred.domain] || 0) + 1;
+    }
+    const origin = pred.generationOrigin || 'legacy_detector';
+    generationOriginCounts[origin] = (generationOriginCounts[origin] || 0) + 1;
+    if (origin === 'state_derived') {
+      stateDerivedDomainCounts[pred.domain] = (stateDerivedDomainCounts[pred.domain] || 0) + 1;
+      if (pred.stateDerivedBackfill) stateDerivedBackfillCount++;
+    } else {
+      legacyDetectorDomainCounts[pred.domain] = (legacyDetectorDomainCounts[pred.domain] || 0) + 1;
     }
   }
 
@@ -8221,6 +8509,10 @@ function summarizeForecastPopulation(predictions) {
     forecastCount: predictions.length,
     domainCounts,
     highlightedDomainCounts,
+    legacyDetectorDomainCounts,
+    stateDerivedDomainCounts,
+    generationOriginCounts: summarizeTypeCounts(Object.entries(generationOriginCounts).flatMap(([origin, count]) => Array(count).fill(origin))),
+    stateDerivedBackfillCount,
     quietDomains: FORECAST_DOMAINS.filter(domain => (domainCounts[domain] || 0) === 0),
   };
 }
@@ -10341,17 +10633,49 @@ async function fetchForecasts() {
   computeTrends(predictions, prior);
   buildForecastCases(predictions);
   annotateForecastChanges(predictions, prior);
-  const fullRunPredictions = predictions.slice();
-  const fullRunSituationClusters = attachSituationContext(predictions);
-  const fullRunSituationFamilies = attachSituationFamilyContext(predictions, buildSituationFamilies(fullRunSituationClusters));
-  const fullRunStateUnits = attachStateContext(
+  let fullRunPredictions = predictions.slice();
+  let fullRunSituationClusters = attachSituationContext(predictions);
+  let fullRunSituationFamilies = attachSituationFamilyContext(predictions, buildSituationFamilies(fullRunSituationClusters));
+  let fullRunStateUnits = attachStateContext(
     predictions,
     buildCanonicalStateUnits(fullRunSituationClusters, fullRunSituationFamilies),
   );
-  const selectionWorldSignals = buildWorldSignals(inputs, predictions, fullRunSituationClusters);
-  const selectionMarketTransmission = buildMarketTransmissionGraph(selectionWorldSignals, fullRunSituationClusters);
-  const selectionMarketState = buildMarketState(selectionWorldSignals, selectionMarketTransmission);
+  let selectionWorldSignals = buildWorldSignals(inputs, predictions, fullRunSituationClusters);
+  let selectionMarketTransmission = buildMarketTransmissionGraph(selectionWorldSignals, fullRunSituationClusters);
+  let selectionMarketState = buildMarketState(selectionWorldSignals, selectionMarketTransmission);
   const selectionMarketInputCoverage = summarizeMarketInputCoverage(inputs);
+  const stateDerivedPredictions = deriveStateDrivenForecasts({
+    existingPredictions: predictions,
+    stateUnits: fullRunStateUnits,
+    worldSignals: selectionWorldSignals,
+    marketTransmission: selectionMarketTransmission,
+    marketState: selectionMarketState,
+    marketInputCoverage: selectionMarketInputCoverage,
+  });
+  if (stateDerivedPredictions.length > 0) {
+    const stateDerivedDomainCounts = summarizeTypeCounts(stateDerivedPredictions.map((pred) => pred.domain));
+    console.log(`  [stateDerived] Added ${stateDerivedPredictions.length} forecast(s) from canonical state units (${Object.entries(stateDerivedDomainCounts).map(([domain, count]) => `${domain}:${count}`).join(', ')})`);
+    attachNewsContext(stateDerivedPredictions, inputs.newsInsights, inputs.newsDigest);
+    calibrateWithMarkets(stateDerivedPredictions, inputs.predictionMarkets);
+    computeConfidence(stateDerivedPredictions);
+    computeProjections(stateDerivedPredictions);
+    resolveCascades(stateDerivedPredictions, cascadeRules);
+    discoverGraphCascades(stateDerivedPredictions, loadEntityGraph());
+    computeTrends(stateDerivedPredictions, prior);
+    buildForecastCases(stateDerivedPredictions);
+    annotateForecastChanges(stateDerivedPredictions, prior);
+    predictions.push(...stateDerivedPredictions);
+    fullRunPredictions = predictions.slice();
+    fullRunSituationClusters = attachSituationContext(predictions);
+    fullRunSituationFamilies = attachSituationFamilyContext(predictions, buildSituationFamilies(fullRunSituationClusters));
+    fullRunStateUnits = attachStateContext(
+      predictions,
+      buildCanonicalStateUnits(fullRunSituationClusters, fullRunSituationFamilies),
+    );
+    selectionWorldSignals = buildWorldSignals(inputs, predictions, fullRunSituationClusters);
+    selectionMarketTransmission = buildMarketTransmissionGraph(selectionWorldSignals, fullRunSituationClusters);
+    selectionMarketState = buildMarketState(selectionWorldSignals, selectionMarketTransmission);
+  }
   const marketSelectionIndex = buildSituationMarketContextIndex(
     selectionWorldSignals,
     selectionMarketTransmission,
@@ -10614,6 +10938,7 @@ export {
   PROJECTION_CURVES,
   normalizeChokepoints,
   normalizeGpsJamming,
+  deriveStateDrivenForecasts,
   detectUcdpConflictZones,
   detectCyberScenarios,
   detectGpsJammingScenarios,

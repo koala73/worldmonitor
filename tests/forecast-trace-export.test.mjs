@@ -17,6 +17,7 @@ import {
   projectSituationClusters,
   refreshPublishedNarratives,
   selectPublishedForecastPool,
+  deriveStateDrivenForecasts,
   extractNewsClusterItems,
   selectUrgentCriticalNewsCandidates,
   validateCriticalSignalFrames,
@@ -138,6 +139,10 @@ describe('forecast trace artifact builder', () => {
       cyber: 0,
       infrastructure: 0,
     });
+    assert.deepEqual(artifacts.summary.quality.fullRun.generationOriginCounts, {
+      legacy_detector: 2,
+    });
+    assert.equal(artifacts.summary.quality.fullRun.stateDerivedBackfillCount, 0);
     assert.deepEqual(artifacts.summary.quality.fullRun.highlightedDomainCounts, {
       conflict: 1,
       market: 0,
@@ -166,6 +171,9 @@ describe('forecast trace artifact builder', () => {
     assert.equal(artifacts.summary.quality.publish.suppressedSituationDomainCap, 1);
     assert.equal(artifacts.summary.quality.publish.cappedSituations, 1);
     assert.equal(artifacts.summary.quality.candidateRun.domainCounts.cyber, 1);
+    assert.deepEqual(artifacts.summary.quality.candidateRun.generationOriginCounts, {
+      legacy_detector: 3,
+    });
     assert.ok(artifacts.summary.quality.fullRun.quietDomains.includes('military'));
     assert.equal(artifacts.summary.quality.traced.topPromotionSignals[0].type, 'cii');
     assert.equal(artifacts.summary.worldStateSummary.scope, 'published');
@@ -580,6 +588,141 @@ describe('publish selection', () => {
 
     assert.deepEqual(selectedStateIds.sort(), ['state-a', 'state-b']);
     assert.ok(selected.some((pred) => pred.id === c.id));
+  });
+});
+
+describe('state-driven domain derivation', () => {
+  it('derives market and supply-chain forecasts from strong state transmission when legacy detectors miss', () => {
+    const base = makePrediction('conflict', 'Red Sea', 'Escalation risk: Red Sea maritime pressure', 0.72, 0.61, '7d', [
+      { type: 'shipping_cost_shock', value: 'Shipping costs are surging around the Red Sea corridor', weight: 0.4 },
+      { type: 'energy_supply_shock', value: 'Energy flows remain exposed to Red Sea disruption', weight: 0.35 },
+    ]);
+    base.stateContext = {
+      id: 'state-red-sea',
+      label: 'Red Sea maritime disruption state',
+      dominantRegion: 'Red Sea',
+      dominantDomain: 'conflict',
+      domains: ['conflict', 'infrastructure'],
+      topSignals: [{ type: 'shipping_cost_shock' }, { type: 'energy_supply_shock' }],
+    };
+
+    const derived = deriveStateDrivenForecasts({
+      existingPredictions: [base],
+      stateUnits: [
+        {
+          id: 'state-red-sea',
+          label: 'Red Sea maritime disruption state',
+          stateKind: 'transport_pressure',
+          dominantRegion: 'Red Sea',
+          dominantDomain: 'conflict',
+          regions: ['Red Sea'],
+          domains: ['conflict', 'infrastructure'],
+          actors: ['Regional shipping operators'],
+          branchKinds: ['base_case'],
+          signalTypes: ['shipping_cost_shock', 'energy_supply_shock', 'sovereign_stress'],
+          sourceSituationIds: ['sit-red-sea'],
+          situationIds: ['sit-red-sea'],
+          situationCount: 1,
+          forecastIds: [base.id],
+          forecastCount: 1,
+          avgProbability: 0.72,
+          avgConfidence: 0.61,
+          topSignals: [{ type: 'shipping_cost_shock', count: 3 }, { type: 'energy_supply_shock', count: 2 }],
+          sampleTitles: [base.title],
+        },
+      ],
+      worldSignals: {
+        signals: [
+          {
+            id: 'sig-ship',
+            type: 'shipping_cost_shock',
+            sourceType: 'critical_news',
+            region: 'Red Sea',
+            macroRegion: 'EMEA',
+            strength: 0.74,
+            confidence: 0.68,
+            label: 'Red Sea shipping costs are surging',
+          },
+          {
+            id: 'sig-energy',
+            type: 'energy_supply_shock',
+            sourceType: 'critical_news',
+            region: 'Red Sea',
+            macroRegion: 'EMEA',
+            strength: 0.71,
+            confidence: 0.64,
+            label: 'Red Sea energy flows are at risk',
+          },
+          {
+            id: 'sig-sovereign',
+            type: 'sovereign_stress',
+            sourceType: 'critical_news',
+            region: 'Red Sea',
+            macroRegion: 'EMEA',
+            strength: 0.58,
+            confidence: 0.6,
+            label: 'Regional sovereign stress is rising',
+          },
+        ],
+      },
+      marketTransmission: {
+        edges: [
+          {
+            sourceSituationId: 'state-red-sea',
+            sourceLabel: 'Red Sea maritime disruption state',
+            targetBucketId: 'freight',
+            targetLabel: 'Freight',
+            channel: 'shipping_cost_shock',
+            strength: 0.76,
+            confidence: 0.68,
+            supportingSignalIds: ['sig-ship', 'sig-energy'],
+          },
+          {
+            sourceSituationId: 'state-red-sea',
+            sourceLabel: 'Red Sea maritime disruption state',
+            targetBucketId: 'energy',
+            targetLabel: 'Energy',
+            channel: 'energy_supply_shock',
+            strength: 0.69,
+            confidence: 0.63,
+            supportingSignalIds: ['sig-energy', 'sig-ship'],
+          },
+        ],
+      },
+      marketState: {
+        buckets: [
+          {
+            id: 'freight',
+            label: 'Freight',
+            pressureScore: 0.78,
+            confidence: 0.69,
+            macroConfirmation: 0.02,
+          },
+          {
+            id: 'energy',
+            label: 'Energy',
+            pressureScore: 0.74,
+            confidence: 0.66,
+            macroConfirmation: 0.03,
+          },
+        ],
+      },
+      marketInputCoverage: {
+        commodities: 16,
+        gulfQuotes: 12,
+        shippingRates: 0,
+        fredSeries: 0,
+        bisExchange: 0,
+        bisPolicy: 0,
+        correlationCards: 0,
+      },
+    });
+
+    const derivedDomains = derived.map((pred) => pred.domain).sort();
+    assert.deepEqual(derivedDomains, ['market', 'supply_chain']);
+    assert.ok(derived.every((pred) => pred.generationOrigin === 'state_derived'));
+    assert.ok(derived.some((pred) => pred.title.includes('Energy repricing risk')));
+    assert.ok(derived.some((pred) => pred.title.includes('Supply chain disruption risk')));
   });
 });
 
