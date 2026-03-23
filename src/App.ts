@@ -10,6 +10,8 @@ import {
   ALL_PANELS,
   VARIANT_DEFAULTS,
   getEffectivePanelConfig,
+  FREE_MAX_PANELS,
+  FREE_MAX_SOURCES,
 } from '@/config';
 import { sanitizeLayersForVariant } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
@@ -39,7 +41,7 @@ import { trackEvent, trackDeeplinkOpened } from '@/services/analytics';
 import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country-geometry';
 import { initI18n, t } from '@/services/i18n';
 
-import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount } from '@/config/feeds';
+import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
 import { fetchBootstrapData, getBootstrapHydrationState, markBootstrapAsLive, type BootstrapHydrationState } from '@/services/bootstrap';
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
@@ -511,6 +513,22 @@ export class App {
       }
     }
 
+    // Enforce free-tier panel limit on every launch (handles legacy/downgraded users).
+    if (!isProUser()) {
+      const enabledKeys = Object.entries(panelSettings)
+        .filter(([, v]) => v.enabled)
+        .sort(([ka, a], [kb, b]) => (a.priority ?? 99) - (b.priority ?? 99) || ka.localeCompare(kb))
+        .map(([k]) => k);
+      if (enabledKeys.length > FREE_MAX_PANELS) {
+        const excess = enabledKeys.slice(FREE_MAX_PANELS);
+        for (const key of excess) {
+          panelSettings[key] = { ...panelSettings[key]!, enabled: false };
+        }
+        saveToStorage(STORAGE_KEYS.panels, panelSettings);
+        console.log(`[App] Free tier: trimmed ${excess.length} panel(s) to enforce ${FREE_MAX_PANELS}-panel limit`);
+      }
+    }
+
     const initialUrlState: ParsedMapUrlState | null = parseMapUrlState(window.location.search, mapLayers);
     if (initialUrlState.layers) {
       mapLayers = sanitizeLayersForVariant(initialUrlState.layers, currentVariant as MapVariant);
@@ -545,6 +563,26 @@ export class App {
     }
 
     const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+
+    // Enforce free-tier source limit on every launch (handles legacy/downgraded users).
+    if (!isProUser()) {
+      const allSourceNames = (() => {
+        const s = new Set<string>();
+        Object.values(FEEDS).forEach(feeds => feeds?.forEach(f => s.add(f.name)));
+        INTEL_SOURCES.forEach(f => s.add(f.name));
+        return Array.from(s).sort((a, b) => a.localeCompare(b));
+      })();
+      const enabledCount = allSourceNames.length - disabledSources.size;
+      if (enabledCount > FREE_MAX_SOURCES) {
+        const toDisable = enabledCount - FREE_MAX_SOURCES;
+        const currentlyEnabled = allSourceNames.filter(n => !disabledSources.has(n));
+        for (const name of currentlyEnabled.slice(FREE_MAX_SOURCES)) {
+          disabledSources.add(name);
+        }
+        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
+        console.log(`[App] Free tier: disabled ${toDisable} source(s) to enforce ${FREE_MAX_SOURCES}-source limit`);
+      }
+    }
 
     // Build shared state object
     this.state = {

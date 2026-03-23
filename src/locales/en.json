@@ -622,6 +622,8 @@
       }
     },
     "settingsWindow": {
+      "freePanelLimit": "Free plan: max {{max}} panels. Upgrade to PRO for unlimited.",
+      "freeSourceLimit": "Free plan: max {{max}} sources. Upgrade to PRO for unlimited.",
       "validating": "Validating API keys...",
       "saved": "Settings saved",
       "failed": "Save failed: {{error}}",

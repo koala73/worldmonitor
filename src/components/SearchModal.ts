@@ -271,7 +271,7 @@ export class SearchModal {
     if (query.length < 2) return [];
     const matched: CommandResult[] = [];
     for (const cmd of getAllCommands()) {
-      if (cmd.id.startsWith('panel:') && this.activePanelIds.size > 0) {
+      if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
         if (!this.activePanelIds.has(panelId)) continue;
       }
@@ -498,7 +498,7 @@ export class SearchModal {
 
     const allCommands = getAllCommands();
     const commands = allCommands.filter(cmd => {
-      if (cmd.id.startsWith('panel:') && this.activePanelIds.size > 0) {
+      if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
         if (!this.activePanelIds.has(panelId)) return false;
       }

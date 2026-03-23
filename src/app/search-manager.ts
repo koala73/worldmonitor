@@ -207,7 +207,9 @@ export class SearchManager implements AppModule {
 
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
-    this.ctx.searchModal.setActivePanels(Object.keys(this.ctx.panels));
+    this.ctx.searchModal.setActivePanels(
+      Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
+    );
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
 
@@ -606,7 +608,9 @@ export class SearchManager implements AppModule {
   updateSearchIndex(): void {
     if (!this.ctx.searchModal) return;
 
-    this.ctx.searchModal.setActivePanels(Object.keys(this.ctx.panels));
+    this.ctx.searchModal.setActivePanels(
+      Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
+    );
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
     const newsItems = this.ctx.allNews.slice(0, 500).map(n => ({
