@@ -6554,6 +6554,33 @@ a.prediction-link:hover {
   text-transform: uppercase;
 }
 
+.panel-toggle-item.pro-locked {
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.panel-toggle-item.pro-locked:hover {
+  opacity: 0.8;
+  border-color: var(--green);
+}
+
+.panel-toggle-item.pro-locked .panel-toggle-checkbox {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.panel-toggle-pro-badge {
+  margin-left: auto;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 4px;
+  border: 1px solid var(--green);
+  color: var(--green);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
 /* Sources Modal */
 .sources-modal {
   max-width: 600px;
