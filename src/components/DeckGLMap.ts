@@ -2746,7 +2746,7 @@ export class DeckGLMap {
       data: IRELAND_SEMICONDUCTOR_HUBS,
       getPosition: (d) => [d.lng, d.lat],
       // Use cached icon objects for stable references
-      getIcon: (d) => getMarkerIcon('diamond', getSemiconductorTier(d.employees)),
+      getIcon: (d) => getMarkerIcon('circle', getSemiconductorTier(d.employees)),
       getSize: (d) => {
         const tier = getSemiconductorTier(d.employees);
         const baseSize = getMarkerSizeForTier(tier, 'diamond');
@@ -2778,7 +2778,7 @@ export class DeckGLMap {
       data: IRELAND_DATA_CENTERS,
       getPosition: (d) => [d.lng, d.lat],
       // Use cached icon objects for stable references
-      getIcon: (d) => getMarkerIcon('square', getDataCenterTier(d.operator)),
+      getIcon: (d) => getMarkerIcon('circle', getDataCenterTier(d.operator)),
       getSize: (d) => {
         const tier = getDataCenterTier(d.operator);
         const baseSize = getMarkerSizeForTier(tier, 'square');
@@ -2815,10 +2815,10 @@ export class DeckGLMap {
       data: IRELAND_TECH_HQS,
       getPosition: (d) => [d.lng, d.lat],
       // Use cached icon objects for stable references
-      getIcon: (d) => getMarkerIcon('hexagon', getTechHQTier(d.employees)),
+      getIcon: (d) => getMarkerIcon('diamond', getTechHQTier(d.employees)),
       getSize: (d) => {
         const tier = getTechHQTier(d.employees);
-        const baseSize = getMarkerSizeForTier(tier, 'hexagon');
+        const baseSize = getMarkerSizeForTier(tier, 'diamond');
         return tier === 1 ? baseSize * pulse : baseSize;
       },
       getColor: (d) => {
@@ -2847,11 +2847,11 @@ export class DeckGLMap {
       data: IRISH_UNICORNS,
       getPosition: (d) => [d.lng, d.lat],
       // Use cached icon objects for stable references
-      getIcon: (d) => getMarkerIcon('star', getUnicornTier(d.category)),
+      getIcon: (d) => getMarkerIcon('triangle', getUnicornTier(d.category)),
       getSize: (d) => {
         const tier = getUnicornTier(d.category);
-        const baseSize = getMarkerSizeForTier(tier, 'star');
-        // Tier 1 unicorns get stronger pulse (star glow effect)
+        const baseSize = getMarkerSizeForTier(tier, 'triangle');
+        // Tier 1 unicorns get stronger pulse
         return tier === 1 ? baseSize * pulse : baseSize;
       },
       getColor: (d) => {
@@ -4523,13 +4523,13 @@ export class DeckGLMap {
     const isLight = getCurrentTheme() === 'light';
     const legendItems = isIrelandVariant()
       ? [
-        { shape: shapes.diamond('rgb(138, 43, 226)'), label: '💎 Semiconductor Hubs' },
-        { shape: shapes.square('rgb(66, 133, 244)'), label: '▪️ Data Centers (Ireland)' },
-        { shape: shapes.hexagon('rgb(0, 122, 255)'), label: '⬢ Tech HQs (EMEA)' },
-        { shape: shapes.star('rgb(245, 158, 11)'), label: '⭐ Irish Unicorns' },
-        { shape: shapes.circle('rgb(0, 209, 255)'), label: '🚀 Startup Hubs' },
-        { shape: shapes.circle('rgb(153, 102, 255)'), label: '☁️ Cloud Regions' },
-        { shape: shapes.circle('rgb(255, 179, 0)'), label: '🔶 Accelerators' },
+        { shape: shapes.circle('rgb(138, 43, 226)'), label: '⚫ Semiconductor Hubs' },
+        { shape: shapes.circle('rgb(66, 133, 244)'), label: '⚫ Data Centers (Ireland)' },
+        { shape: shapes.diamond('rgb(0, 122, 255)'), label: '💎 Tech HQs (EMEA)' },
+        { shape: shapes.triangle('rgb(245, 158, 11)'), label: '▲ Irish Unicorns' },
+        { shape: shapes.circle('rgb(0, 209, 255)'), label: '⚫ Startup Hubs' },
+        { shape: shapes.square('rgb(153, 102, 255)'), label: '▪️ Cloud Regions' },
+        { shape: shapes.diamond('rgb(255, 179, 0)'), label: '💎 Accelerators' },
       ]
       : SITE_VARIANT === 'tech'
         ? [

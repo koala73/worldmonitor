@@ -7,7 +7,7 @@
 
 import type { MarkerTier } from './marker-tier';
 
-export type MarkerShape = 'diamond' | 'square' | 'hexagon' | 'star';
+export type MarkerShape = 'circle' | 'diamond' | 'triangle' | 'square';
 
 /**
  * Icon definition for deck.gl IconLayer
@@ -32,20 +32,25 @@ export function getMarkerIconName(shape: MarkerShape, tier: MarkerTier): string 
 /**
  * Get icon size based on tier
  */
-export function getMarkerSizeForTier(tier: MarkerTier, shape: MarkerShape = 'diamond'): number {
-  if (shape === 'star' && tier === 1) return 28;
+export function getMarkerSizeForTier(tier: MarkerTier, _shape: MarkerShape = 'circle'): number {
   return tier === 1 ? 24 : tier === 2 ? 16 : 12;
 }
 
 /**
  * SVG path definitions for each shape
  * All shapes are white filled for mask coloring
+ *
+ * Shapes (4 total - simplified design):
+ * - circle: Core infrastructure (Semiconductor Hubs, Data Centers)
+ * - diamond: Professional/HQ (Tech HQs, Accelerators)
+ * - triangle: Growth/Unicorns (Irish Unicorns)
+ * - square: Foundation (Cloud Regions)
  */
 const SVG_PATHS: Record<MarkerShape, string> = {
+  circle: 'M12 2 A10 10 0 1 0 12 22 A10 10 0 1 0 12 2',
   diamond: 'M12 2 L22 12 L12 22 L2 12 Z',
+  triangle: 'M12 3 L22 21 L2 21 Z',
   square: 'M3 3 H21 V21 H3 Z',
-  hexagon: 'M12 2 L21 7 L21 17 L12 22 L3 17 L3 7 Z',
-  star: 'M12 2 L14.5 9 L22 9 L16 14 L18.5 22 L12 17 L5.5 22 L8 14 L2 9 L9.5 9 Z',
 };
 
 /**
@@ -93,18 +98,18 @@ export function getMarkerIcon(shape: MarkerShape, tier: MarkerTier): IconDefinit
  * Icon mapping for IconLayer (legacy format, kept for tests)
  */
 export const MARKER_ICON_MAPPING: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> = {
+  'circle-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
+  'circle-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
+  'circle-large': { x: 0, y: 0, width: 24, height: 24, mask: true },
   'diamond-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
   'diamond-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
   'diamond-large': { x: 0, y: 0, width: 24, height: 24, mask: true },
+  'triangle-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
+  'triangle-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
+  'triangle-large': { x: 0, y: 0, width: 24, height: 24, mask: true },
   'square-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
   'square-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
   'square-large': { x: 0, y: 0, width: 24, height: 24, mask: true },
-  'hexagon-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
-  'hexagon-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
-  'hexagon-large': { x: 0, y: 0, width: 24, height: 24, mask: true },
-  'star-small': { x: 0, y: 0, width: 12, height: 12, mask: true },
-  'star-medium': { x: 0, y: 0, width: 16, height: 16, mask: true },
-  'star-large': { x: 0, y: 0, width: 28, height: 28, mask: true },
 };
 
 /**
