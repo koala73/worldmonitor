@@ -2856,20 +2856,27 @@ const THREAT_COUNTRY_NAME_ENTRIES = Object.entries(THREAT_COUNTRY_NAME_TO_ISO2)
   .sort((a, b) => b[0].length - a[0].length)
   .map(([name, iso2]) => ({ name, iso2, regex: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') }));
 
-// Returns the single primary affected country: the last country mentioned in document order.
-// "UK and US launch strikes on Yemen" → ['YE'] (not GB or US — they are actors, not the affected country).
+// Returns the single primary affected country — the country appearing immediately after a
+// locative preposition or attack verb, which marks the grammatical object/affected entity.
+// Returns [] when no such pattern fires (no attribution is better than wrong attribution).
+// "UK and US launch strikes on Yemen" → ['YE']
+// "US strikes on Yemen condemned by Iran" → ['YE'] (Iran is a reactor, not affected)
+// "Yemen says UK and US strikes hit Hodeidah" → [] (Hodeidah is a city, skip)
+// "Russia invades Ukraine" → ['UA']
+const AFFECTED_PREFIX_RE = /\b(in|on|against|at|into|across|inside|targeting|toward[s]?|invad(?:es?|ed|ing)|attack(?:s|ed|ing)?|bomb(?:s|ed|ing)?|hit(?:s|ting)?|strik(?:es?|ing))\s+(?:the\s+)?/gi;
 function matchCountryNamesInText(text) {
   const lower = text.toLowerCase();
-  let lastPos = -1;
-  let lastIso2 = null;
-  for (const { name, iso2, regex } of THREAT_COUNTRY_NAME_ENTRIES) {
-    const idx = lower.search(regex);
-    if (idx !== -1 && idx > lastPos) {
-      lastPos = idx;
-      lastIso2 = iso2;
+  let match;
+  AFFECTED_PREFIX_RE.lastIndex = 0;
+  while ((match = AFFECTED_PREFIX_RE.exec(lower)) !== null) {
+    const afterPfx = lower.slice(match.index + match[0].length);
+    for (const { name, iso2 } of THREAT_COUNTRY_NAME_ENTRIES) {
+      if (afterPfx.startsWith(name) && (afterPfx.length === name.length || /\W/.test(afterPfx[name.length]))) {
+        return [iso2];
+      }
     }
   }
-  return lastIso2 ? [lastIso2] : [];
+  return [];
 }
 
 function classifyCacheKey(title) {
