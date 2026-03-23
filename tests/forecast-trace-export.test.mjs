@@ -796,6 +796,8 @@ describe('state-driven domain derivation', () => {
     assert.ok(derived.every((pred) => pred.generationOrigin === 'state_derived'));
     assert.ok(derived.some((pred) => pred.title.includes('Energy repricing risk')));
     assert.ok(derived.some((pred) => pred.title.includes('Supply chain disruption risk')));
+    assert.ok(derived.every((pred) => !pred.feedSummary.includes('pressure is')));
+    assert.ok(derived.every((pred) => !pred.feedSummary.endsWith('...')));
   });
 
   it('uses a state-derived backfill only when scores miss the main threshold but clear the fallback floor', () => {
