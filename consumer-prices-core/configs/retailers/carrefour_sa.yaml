@@ -5,7 +5,7 @@ retailer:
   currencyCode: SAR
   adapter: search
   baseUrl: https://www.carrefourksa.com/mafsau/en
-  enabled: false # disabled 2026-03-23: most products OOS, Exa finds correct URLs but Carrefour KSA shows no price for OOS items
+  enabled: true # re-enabled 2026-03-23: #2148 fixed OOS prompt (returns null price instead of carousel fallback); may have low coverage if most products still OOS
 
   searchConfig:
     numResults: 5
