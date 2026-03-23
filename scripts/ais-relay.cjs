@@ -1284,7 +1284,7 @@ const MARKET_SYMBOLS = [
   'AAPL', 'AMZN', 'AVGO', 'BAC', 'BRK-B', 'COST', 'GOOGL', 'HD',
   'JNJ', 'JPM', 'LLY', 'MA', 'META', 'MSFT', 'NFLX', 'NVO', 'NVDA',
   'ORCL', 'PG', 'TSLA', 'TSM', 'UNH', 'V', 'WMT', 'XOM',
-  '^DJI', '^GSPC', '^IXIC',
+  '^DJI', '^GSPC', '^IXIC', '^RUT',
 ];
 
 const _commodityCfg = requireShared('commodities.json');
@@ -1297,7 +1297,7 @@ const SECTOR_SYMBOLS = ['XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 
 // ^GSPC/^DJI/^IXIC live in MARKET_SYMBOLS (not COMMODITY_SYMBOLS) so they must be listed
 // explicitly; commodity ETFs (URA, LIT) also go through Yahoo since they have no Finnhub feed.
 const YAHOO_ONLY = new Set([
-  '^GSPC', '^DJI', '^IXIC',
+  '^GSPC', '^DJI', '^IXIC', '^RUT',
   ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=F') || s.startsWith('^')),
   'URA', 'LIT',
 ]);
@@ -3800,6 +3800,108 @@ async function startSpendingSeedLoop() {
   setInterval(() => {
     seedUsaSpending().catch((e) => console.warn('[Spending] Seed error:', e?.message || e));
   }, SPENDING_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
+// GSCPI seed — NY Fed Global Supply Chain Pressure Index
+// CSV fetched from newyorkfed.org (no API key required).
+// Published monthly; seeded daily to catch fresh releases.
+// Stored in FRED-compatible format under economic:fred:v1:GSCPI:0
+// so the existing GetFredSeriesBatch RPC serves it without changes.
+// ─────────────────────────────────────────────────────────────
+
+const GSCPI_SEED_TTL = 259200; // 72h — 3x 24h interval; survives 2 missed cycles
+const GSCPI_RETRY_MS = 20 * 60 * 1000; // 20min retry on failure
+const GSCPI_SEED_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
+const GSCPI_REDIS_KEY = 'economic:fred:v1:GSCPI:0'; // FRED-compatible key
+const GSCPI_CSV_URL = 'https://www.newyorkfed.org/medialibrary/research/interactives/data/gscpi/gscpi_interactive_data.csv';
+
+let gscpiSeedInFlight = false;
+let gscpiRetryTimer = null;
+
+function parseGscpiCsv(text) {
+  const MONTH_MAP = {
+    Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+    Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12',
+  };
+  const lines = text.trim().split('\n').filter(l => l.trim() && !l.startsWith(','));
+  const observations = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    const dateStr = cols[0]?.trim();
+    if (!dateStr) continue;
+    // Find last non-empty, non-#N/A value (latest vintage estimate)
+    let value = null;
+    for (let j = cols.length - 1; j >= 1; j--) {
+      const v = cols[j]?.trim();
+      if (v && v !== '#N/A' && v !== '') {
+        const num = parseFloat(v);
+        if (!isNaN(num)) { value = num; break; }
+      }
+    }
+    if (value === null) continue;
+    // Parse "31-Jan-2026" → "2026-01-01"
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) continue;
+    const mon = MONTH_MAP[parts[1]];
+    const year = parts[2];
+    if (!mon || !year) continue;
+    observations.push({ date: `${year}-${mon}-01`, value });
+  }
+  // Return oldest-first (FRED convention)
+  return observations.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function seedGscpi() {
+  if (gscpiSeedInFlight) return;
+  gscpiSeedInFlight = true;
+  if (gscpiRetryTimer) { clearTimeout(gscpiRetryTimer); gscpiRetryTimer = null; }
+  try {
+    const resp = await fetch(GSCPI_CSV_URL, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain' },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    const observations = parseGscpiCsv(text);
+    if (observations.length === 0) {
+      console.warn('[GSCPI] No data parsed — extending TTL, retrying in 20min');
+      try { await upstashExpire(GSCPI_REDIS_KEY, GSCPI_SEED_TTL); } catch {}
+      gscpiRetryTimer = setTimeout(() => { seedGscpi().catch(() => {}); }, GSCPI_RETRY_MS);
+      return;
+    }
+    const latest = observations[observations.length - 1];
+    const payload = {
+      series: {
+        series_id: 'GSCPI',
+        title: 'Global Supply Chain Pressure Index',
+        units: 'Standard Deviations',
+        frequency: 'Monthly',
+        observations,
+      },
+    };
+    await upstashSet(GSCPI_REDIS_KEY, payload, GSCPI_SEED_TTL);
+    await upstashSet('seed-meta:economic:gscpi', { fetchedAt: Date.now(), recordCount: observations.length }, 604800);
+    console.log(`[GSCPI] Seeded ${observations.length} months; latest ${latest.date} = ${latest.value.toFixed(2)}`);
+  } catch (e) {
+    console.warn('[GSCPI] Seed error:', e?.message, '— extending TTL, retrying in 20min');
+    try { await upstashExpire(GSCPI_REDIS_KEY, GSCPI_SEED_TTL); } catch {}
+    gscpiRetryTimer = setTimeout(() => { seedGscpi().catch(() => {}); }, GSCPI_RETRY_MS);
+  } finally {
+    gscpiSeedInFlight = false;
+  }
+}
+
+async function startGscpiSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[GSCPI] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log('[GSCPI] Seed loop starting (interval 24h)');
+  seedGscpi().catch((e) => console.warn('[GSCPI] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedGscpi().catch((e) => console.warn('[GSCPI] Seed error:', e?.message || e));
+  }, GSCPI_SEED_INTERVAL_MS).unref?.();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -8597,6 +8699,7 @@ server.listen(PORT, () => {
 
   startWeatherSeedLoop();
   startSpendingSeedLoop();
+  startGscpiSeedLoop();
   startWorldBankSeedLoop();
   startSatelliteSeedLoop();
   startTechEventsSeedLoop();
