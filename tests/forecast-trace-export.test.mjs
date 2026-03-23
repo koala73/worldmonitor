@@ -24,6 +24,9 @@ import {
   mapCriticalSignalFrameToSignals,
   extractCriticalNewsSignals,
   buildImpactExpansionCandidateHash,
+  buildImpactPathsForCandidate,
+  buildImpactExpansionBundleFromPaths,
+  selectDeepForecastCandidates,
   validateImpactHypotheses,
 } from '../scripts/seed-forecasts.mjs';
 
@@ -2238,6 +2241,59 @@ describe('forecast run world state', () => {
     assert.equal(worldState.report.interactionWatchlist.length, 0);
   });
 
+  it('keeps only the strongest reportable interaction per source target and channel in strict mode', () => {
+    const simulations = [
+      {
+        situationId: 'sit-a',
+        label: 'Hormuz maritime disruption state',
+        dominantDomain: 'supply_chain',
+        regions: ['Strait of Hormuz'],
+        actorIds: ['shared-actor'],
+        marketContext: { linkedBucketIds: ['freight', 'energy'], confirmationScore: 0.66 },
+      },
+      {
+        situationId: 'sit-b',
+        label: 'Persian Gulf market repricing state',
+        dominantDomain: 'market',
+        regions: ['Persian Gulf'],
+        actorIds: ['shared-actor'],
+        marketContext: { linkedBucketIds: ['energy'], confirmationScore: 0.69 },
+      },
+    ];
+
+    const ledger = buildReportableInteractionLedger([
+      {
+        sourceSituationId: 'sit-a',
+        targetSituationId: 'sit-b',
+        sourceLabel: 'Hormuz maritime disruption state',
+        targetLabel: 'Persian Gulf market repricing state',
+        strongestChannel: 'market_repricing',
+        interactionType: 'regional_spillover',
+        confidence: 0.8,
+        score: 6.1,
+        actorSpecificity: 0.9,
+        sharedActor: true,
+        regionLink: false,
+      },
+      {
+        sourceSituationId: 'sit-a',
+        targetSituationId: 'sit-b',
+        sourceLabel: 'Hormuz maritime disruption state',
+        targetLabel: 'Persian Gulf market repricing state',
+        strongestChannel: 'market_repricing',
+        interactionType: 'regional_spillover',
+        confidence: 0.79,
+        score: 5.9,
+        actorSpecificity: 0.9,
+        sharedActor: true,
+        regionLink: false,
+      },
+    ], simulations, { strictMode: true });
+
+    assert.equal(ledger.length, 1);
+    assert.equal(ledger[0].score, 6.1);
+  });
+
   it('does not emit reportable effects when no interactions promote into the reportable ledger', () => {
     const effects = buildCrossSituationEffects({
       situationSimulations: [
@@ -3554,6 +3610,121 @@ describe('impact expansion layer', () => {
     assert.equal(direct.rejectionReason, 'no_valid_evidence_refs');
     assert.equal(secondOrder.rejectionReason, 'missing_dependency');
     assert.equal(secondOrder.validationStatus, 'rejected');
+  });
+
+  it('only builds expanded paths from chains that include a second-order hypothesis', () => {
+    const directOnlyBundle = makeImpactExpansionBundle();
+    directOnlyBundle.extractedCandidates = [{
+      candidateIndex: 0,
+      candidateStateId: directOnlyBundle.candidatePackets[0].candidateStateId,
+      directHypotheses: [
+        {
+          variableKey: 'route_disruption',
+          channel: 'shipping_cost_shock',
+          targetBucket: 'freight',
+          region: 'Middle East',
+          macroRegion: 'EMEA',
+          countries: ['Qatar'],
+          assetsOrSectors: ['Shipping'],
+          commodity: 'lng',
+          dependsOnKey: '',
+          strength: 0.95,
+          confidence: 0.92,
+          analogTag: 'energy_corridor_blockage',
+          summary: 'Direct route disruption persists.',
+          evidenceRefs: ['E1', 'E2'],
+        },
+      ],
+      secondOrderHypotheses: [],
+      thirdOrderHypotheses: [],
+    }];
+    directOnlyBundle.extractedHypothesisCount = 1;
+
+    const directOnlyValidation = validateImpactHypotheses(directOnlyBundle);
+    const directOnlyPaths = buildImpactPathsForCandidate(directOnlyBundle.candidatePackets[0], directOnlyValidation);
+
+    assert.equal(directOnlyPaths.length, 1);
+    assert.equal(directOnlyPaths[0].type, 'base');
+
+    const chainedValidation = validateImpactHypotheses(makeImpactExpansionBundle());
+    const chainedPaths = buildImpactPathsForCandidate(makeImpactExpansionBundle().candidatePackets[0], chainedValidation);
+
+    assert.ok(chainedPaths.some((path) => path.type === 'expanded'));
+    assert.ok(chainedPaths.every((path) => path.type === 'base' || path.second));
+  });
+
+  it('selects only high-salience deep candidates from the ranked impact-expansion packets', () => {
+    const eligible = makeImpactCandidatePacket('state-eligible', 'Strait of Hormuz maritime disruption state', {
+      rankingScore: 0.71,
+      marketContext: {
+        ...makeImpactCandidatePacket().marketContext,
+        criticalSignalLift: 0.22,
+        topBucketPressure: 0.61,
+      },
+    });
+    const ineligible = makeImpactCandidatePacket('state-ineligible', 'Low-salience market repricing state', {
+      rankingScore: 0.59,
+      routeFacilityKey: '',
+      commodityKey: '',
+      marketContext: {
+        ...makeImpactCandidatePacket().marketContext,
+        criticalSignalLift: 0.12,
+        topBucketPressure: 0.44,
+        transmissionEdgeCount: 1,
+      },
+    });
+
+    const selected = selectDeepForecastCandidates([eligible, ineligible]);
+
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].candidateStateId, 'state-eligible');
+  });
+
+  it('preserves deep forecast metadata when trace artifacts are rebuilt from a deep world-state override', () => {
+    const prediction = makePrediction('market', 'Strait of Hormuz', 'Oil price impact from Strait of Hormuz disruption', 0.66, 0.58, '14d', [
+      { type: 'energy_supply_shock', value: 'Transit stress is building across the Strait of Hormuz.', weight: 0.4 },
+    ]);
+    buildForecastCase(prediction);
+    populateFallbackNarratives([prediction]);
+
+    const baseState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-23T12:00:00Z'),
+      predictions: [prediction],
+    });
+    const bundle = makeImpactExpansionBundle(baseState.stateUnits[0].id, baseState.stateUnits[0].label);
+    const validation = validateImpactHypotheses(bundle);
+    const paths = buildImpactPathsForCandidate(bundle.candidatePackets[0], validation).filter((path) => path.type === 'expanded');
+    const deepBundle = buildImpactExpansionBundleFromPaths(paths.slice(0, 1), bundle.candidatePackets);
+    const deepWorldState = buildForecastRunWorldState({
+      generatedAt: Date.parse('2026-03-23T12:00:00Z'),
+      predictions: [prediction],
+      inputs: { impactExpansionBundle: deepBundle },
+      forecastDepth: 'deep',
+      deepForecast: {
+        status: 'completed',
+        selectedStateIds: [bundle.candidatePackets[0].candidateStateId],
+        selectedPathCount: 1,
+      },
+    });
+
+    const artifacts = buildForecastTraceArtifacts({
+      generatedAt: Date.parse('2026-03-23T12:00:00Z'),
+      predictions: [prediction],
+      fullRunPredictions: [prediction],
+      forecastDepth: 'deep',
+      deepForecast: {
+        status: 'completed',
+        selectedStateIds: [bundle.candidatePackets[0].candidateStateId],
+        selectedPathCount: 1,
+      },
+      worldStateOverride: deepWorldState,
+      candidateWorldStateOverride: deepWorldState,
+    }, { runId: 'deep-run-1' });
+
+    assert.equal(artifacts.summary.forecastDepth, 'deep');
+    assert.equal(artifacts.summary.deepForecast.status, 'completed');
+    assert.equal(artifacts.summary.worldStateSummary.forecastDepth, 'deep');
+    assert.equal(artifacts.summary.worldStateSummary.deepForecastStatus, 'completed');
   });
 
   it('threads mapped expansion signals into simulation rounds without mutating observed world signals', () => {

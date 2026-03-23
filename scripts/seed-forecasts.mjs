@@ -22,6 +22,14 @@ const TRACE_RUNS_MAX = 50;
 const TRACE_REDIS_TTL_SECONDS = 60 * 24 * 60 * 60;
 const WORLD_STATE_HISTORY_LIMIT = 6;
 const FORECAST_REFRESH_REQUEST_KEY = 'forecast:refresh-request:v1';
+const FORECAST_DEEP_TASK_KEY_PREFIX = 'forecast:deep-task:v1';
+const FORECAST_DEEP_TASK_QUEUE_KEY = 'forecast:deep-task-queue:v1';
+const FORECAST_DEEP_LOCK_KEY_PREFIX = 'forecast:deep-lock:v1';
+const FORECAST_DEEP_TASK_TTL_SECONDS = 30 * 60;
+const FORECAST_DEEP_LOCK_TTL_SECONDS = 20 * 60;
+const FORECAST_DEEP_POLL_INTERVAL_MS = 30 * 1000;
+const FORECAST_DEEP_MAX_CANDIDATES = 3;
+const FORECAST_DEEP_RUN_PREFIX = 'seed-data/forecast-traces';
 const PUBLISH_MIN_PROBABILITY = 0;
 const PANEL_MIN_PROBABILITY = 0.1;
 const CANONICAL_PAYLOAD_SOFT_LIMIT_BYTES = 4 * 1024 * 1024;
@@ -50,6 +58,10 @@ const CYBER_PROB_VOLUME_WEIGHT = 0.5;       // weight of volume in probability f
 const CYBER_PROB_TYPE_WEIGHT = 0.15;        // weight of type diversity in probability formula
 const MAX_MILITARY_SURGE_AGE_MS = 3 * 60 * 60 * 1000;
 const MAX_MILITARY_BUNDLE_DRIFT_MS = 5 * 60 * 1000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const THEATER_IDS = [
   'iran-theater', 'taiwan-theater', 'baltic-theater',
@@ -3128,6 +3140,7 @@ function normalizeImpactHypothesisDraft(item = {}) {
     analogTag: String(item?.analogTag || '').trim().toLowerCase(),
     summary: sanitizeForPrompt(String(item?.summary || '')).slice(0, 260),
     evidenceRefs: uniqueSortedStrings((Array.isArray(item?.evidenceRefs) ? item.evidenceRefs : []).map((value) => String(value || '').trim().toUpperCase()).filter(Boolean)).slice(0, 4),
+    pathId: String(item?.pathId || '').trim(),
   };
 }
 
@@ -3384,6 +3397,26 @@ function selectImpactExpansionCandidates({
     }));
 }
 
+function isDeepForecastCandidate(packet = null) {
+  if (!packet) return false;
+  const rankingScore = Number(packet.rankingScore || 0);
+  const criticalSignalLift = Number(packet.marketContext?.criticalSignalLift || 0);
+  const topBucketPressure = Number(packet.marketContext?.topBucketPressure || 0);
+  const transmissionEdgeCount = Number(packet.marketContext?.transmissionEdgeCount || 0);
+  const specificity = Boolean(packet.routeFacilityKey || packet.commodityKey);
+  return rankingScore >= 0.62 && (
+    criticalSignalLift >= 0.18
+    || topBucketPressure >= 0.58
+    || (transmissionEdgeCount >= 2 && specificity)
+  );
+}
+
+function selectDeepForecastCandidates(selection = []) {
+  return (selection || [])
+    .filter((packet) => isDeepForecastCandidate(packet))
+    .slice(0, FORECAST_DEEP_MAX_CANDIDATES);
+}
+
 function buildImpactExpansionCandidateHash(candidatePackets = []) {
   return crypto.createHash('sha256')
     .update(JSON.stringify(candidatePackets.map((packet) => ({
@@ -3446,6 +3479,59 @@ async function recoverImpactExpansionDrafts(candidatePackets = [], invalidOutput
   };
 }
 
+async function extractSingleImpactExpansionCandidate(packet, llmOptions = {}) {
+  if (!packet) return null;
+  const batch = [packet];
+  const result = await callForecastLLM(
+    buildImpactExpansionSystemPrompt(),
+    buildImpactExpansionUserPrompt(batch),
+    { ...llmOptions, stage: 'impact_expansion_single', temperature: 0 },
+  );
+  if (!result) {
+    return {
+      extractedCandidate: null,
+      provider: '',
+      model: '',
+      parseStage: '',
+      rawPreview: '',
+      failureReason: 'call_failed',
+      parseMode: 'single',
+    };
+  }
+  const parsed = extractImpactExpansionPayload(result.text);
+  let extractedCandidates = sanitizeImpactExpansionDrafts(parsed.candidates, batch);
+  let parseMode = 'single';
+  let provider = result.provider;
+  let model = result.model;
+  let parseStage = parsed.diagnostics?.stage || '';
+  let rawPreview = parsed.diagnostics?.preview || '';
+  let failureReason = '';
+
+  if (extractedCandidates.length === 0) {
+    const recovery = await recoverImpactExpansionDrafts(batch, result.text, llmOptions);
+    if (recovery?.extractedCandidates?.length) {
+      extractedCandidates = recovery.extractedCandidates;
+      parseMode = 'single_repair';
+      provider = recovery.result.provider;
+      model = recovery.result.model;
+      parseStage = recovery.parsed.diagnostics?.stage || '';
+      rawPreview = recovery.parsed.diagnostics?.preview || rawPreview;
+    } else {
+      failureReason = parsed.candidates == null ? 'parse_failed' : 'validation_failed';
+    }
+  }
+
+  return {
+    extractedCandidate: extractedCandidates[0] || null,
+    provider,
+    model,
+    parseStage,
+    rawPreview,
+    failureReason,
+    parseMode,
+  };
+}
+
 async function extractImpactExpansionBundle({
   stateUnits = [],
   worldSignals = null,
@@ -3453,27 +3539,34 @@ async function extractImpactExpansionBundle({
   marketState = null,
   marketInputCoverage = null,
   priorWorldState = null,
+  candidatePackets = null,
 } = {}) {
   const priorStateUnits = Array.isArray(priorWorldState?.stateUnits) ? priorWorldState.stateUnits : [];
-  const candidatePackets = selectImpactExpansionCandidates({
-    stateUnits,
-    worldSignals,
-    marketTransmission,
-    marketState,
-    marketInputCoverage,
-    priorStateUnits,
-  });
+  const selectedCandidatePackets = Array.isArray(candidatePackets) && candidatePackets.length
+    ? candidatePackets.map((packet, index) => ({ ...packet, candidateIndex: index }))
+    : selectImpactExpansionCandidates({
+      stateUnits,
+      worldSignals,
+      marketTransmission,
+      marketState,
+      marketInputCoverage,
+      priorStateUnits,
+    });
   const bundle = {
     source: 'none',
     provider: '',
     model: '',
     parseStage: '',
+    parseMode: '',
     rawPreview: '',
-    failureReason: candidatePackets.length ? '' : 'no_candidates',
-    candidateCount: candidatePackets.length,
+    failureReason: selectedCandidatePackets.length ? '' : 'no_candidates',
+    candidateCount: selectedCandidatePackets.length,
     extractedCandidateCount: 0,
     extractedHypothesisCount: 0,
-    candidates: candidatePackets.map((packet) => ({
+    partialFailureCount: 0,
+    successfulCandidateCount: 0,
+    failedCandidatePreview: [],
+    candidates: selectedCandidatePackets.map((packet) => ({
       candidateIndex: packet.candidateIndex,
       candidateStateId: packet.candidateStateId,
       label: packet.candidateStateLabel,
@@ -3487,24 +3580,26 @@ async function extractImpactExpansionBundle({
       routeFacilityKey: packet.routeFacilityKey || '',
       commodityKey: packet.commodityKey || '',
     })),
-    candidatePackets,
+    candidatePackets: selectedCandidatePackets,
     extractedCandidates: [],
   };
 
-  if (candidatePackets.length === 0) return bundle;
+  if (selectedCandidatePackets.length === 0) return bundle;
 
   const { url, token } = getRedisCredentials();
-  const cacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash(candidatePackets)}`;
+  const cacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash(selectedCandidatePackets)}`;
   const cached = await redisGet(url, token, cacheKey);
   if (Array.isArray(cached?.candidates)) {
-    const extractedCandidates = sanitizeImpactExpansionDrafts(cached.candidates, candidatePackets);
+    const extractedCandidates = sanitizeImpactExpansionDrafts(cached.candidates, selectedCandidatePackets);
     if (extractedCandidates.length > 0) {
       bundle.source = 'cache';
       bundle.provider = 'cache';
       bundle.model = 'cache';
       bundle.parseStage = 'cache_candidates';
+      bundle.parseMode = 'cache';
       bundle.extractedCandidates = extractedCandidates;
       bundle.extractedCandidateCount = extractedCandidates.length;
+      bundle.successfulCandidateCount = extractedCandidates.length;
       bundle.extractedHypothesisCount = extractedCandidates.reduce((sum, item) => sum
         + (item.directHypotheses?.length || 0)
         + (item.secondOrderHypotheses?.length || 0)
@@ -3521,7 +3616,7 @@ async function extractImpactExpansionBundle({
   };
   const result = await callForecastLLM(
     buildImpactExpansionSystemPrompt(),
-    buildImpactExpansionUserPrompt(candidatePackets),
+    buildImpactExpansionUserPrompt(selectedCandidatePackets),
     llmOptions,
   );
 
@@ -3532,22 +3627,25 @@ async function extractImpactExpansionBundle({
   }
 
   const parsed = extractImpactExpansionPayload(result.text);
-  const extractedCandidates = sanitizeImpactExpansionDrafts(parsed.candidates, candidatePackets);
+  let extractedCandidates = sanitizeImpactExpansionDrafts(parsed.candidates, selectedCandidatePackets);
   bundle.source = 'live';
   bundle.provider = result.provider;
   bundle.model = result.model;
   bundle.parseStage = parsed.diagnostics?.stage || '';
+  bundle.parseMode = 'batch';
   bundle.rawPreview = parsed.diagnostics?.preview || '';
 
   if (extractedCandidates.length === 0) {
-    const recovery = await recoverImpactExpansionDrafts(candidatePackets, result.text, llmOptions);
+    const recovery = await recoverImpactExpansionDrafts(selectedCandidatePackets, result.text, llmOptions);
     if (recovery && recovery.extractedCandidates.length > 0) {
       bundle.provider = recovery.result.provider;
       bundle.model = recovery.result.model;
       bundle.parseStage = `recovered_${recovery.parsed.diagnostics?.stage || 'unknown'}`;
+      bundle.parseMode = 'batch_repair';
       bundle.rawPreview = recovery.parsed.diagnostics?.preview || bundle.rawPreview;
       bundle.extractedCandidates = recovery.extractedCandidates;
       bundle.extractedCandidateCount = recovery.extractedCandidates.length;
+      bundle.successfulCandidateCount = recovery.extractedCandidates.length;
       bundle.extractedHypothesisCount = recovery.extractedCandidates.reduce((sum, item) => sum
         + (item.directHypotheses?.length || 0)
         + (item.secondOrderHypotheses?.length || 0)
@@ -3562,21 +3660,71 @@ async function extractImpactExpansionBundle({
       return bundle;
     }
     bundle.failureReason = parsed.candidates == null ? 'parse_failed' : 'validation_failed';
-    return bundle;
+    extractedCandidates = [];
   }
 
-  bundle.extractedCandidates = extractedCandidates;
-  bundle.extractedCandidateCount = extractedCandidates.length;
-  bundle.extractedHypothesisCount = extractedCandidates.reduce((sum, item) => sum
+  const extractedByIndex = new Map(extractedCandidates.map((item) => [item.candidateIndex, item]));
+  const missingPackets = selectedCandidatePackets.filter((packet) => !extractedByIndex.has(packet.candidateIndex));
+  for (const packet of missingPackets) {
+    const singleCacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash([packet])}`;
+    const singleCached = await redisGet(url, token, singleCacheKey);
+    let extractedCandidate = null;
+    if (Array.isArray(singleCached?.candidates)) {
+      extractedCandidate = sanitizeImpactExpansionDrafts(singleCached.candidates, [packet])[0] || null;
+      if (extractedCandidate) {
+        bundle.parseMode = bundle.parseMode || 'single';
+      }
+    }
+    if (!extractedCandidate) {
+      const single = await extractSingleImpactExpansionCandidate(packet, llmOptions);
+      if (single?.extractedCandidate) {
+        extractedCandidate = single.extractedCandidate;
+        bundle.provider = bundle.provider || single.provider || '';
+        bundle.model = bundle.model || single.model || '';
+        bundle.parseMode = bundle.parseMode || single.parseMode || 'single';
+        bundle.parseStage = bundle.parseStage || single.parseStage || '';
+        bundle.rawPreview = bundle.rawPreview || single.rawPreview || '';
+        await redisSet(
+          url,
+          token,
+          singleCacheKey,
+          { candidates: [extractedCandidate] },
+          IMPACT_EXPANSION_CACHE_TTL_SECONDS,
+        );
+      } else {
+        bundle.partialFailureCount += 1;
+        bundle.failedCandidatePreview.push({
+          candidateIndex: packet.candidateIndex,
+          candidateStateId: packet.candidateStateId,
+          label: packet.candidateStateLabel,
+          reason: single?.failureReason || 'validation_failed',
+        });
+      }
+    }
+    if (extractedCandidate) extractedByIndex.set(packet.candidateIndex, extractedCandidate);
+  }
+
+  bundle.extractedCandidates = [...extractedByIndex.values()].sort((a, b) => a.candidateIndex - b.candidateIndex);
+  bundle.extractedCandidateCount = bundle.extractedCandidates.length;
+  bundle.successfulCandidateCount = bundle.extractedCandidateCount;
+  bundle.partialFailureCount = selectedCandidatePackets.length - bundle.extractedCandidateCount;
+  bundle.extractedHypothesisCount = bundle.extractedCandidates.reduce((sum, item) => sum
     + (item.directHypotheses?.length || 0)
     + (item.secondOrderHypotheses?.length || 0)
     + (item.thirdOrderHypotheses?.length || 0), 0);
+
+  if (bundle.extractedCandidateCount === 0 && !bundle.failureReason) {
+    bundle.failureReason = 'validation_failed';
+  }
+  if (bundle.extractedCandidateCount > 0) {
+    bundle.failureReason = '';
+  }
 
   await redisSet(
     url,
     token,
     cacheKey,
-    { candidates: extractedCandidates },
+    { candidates: bundle.extractedCandidates },
     IMPACT_EXPANSION_CACHE_TTL_SECONDS,
   );
   return bundle;
@@ -6734,7 +6882,9 @@ function buildSituationSimulationState(worldState, priorWorldState = null) {
 
   const actionLedger = buildSimulationActionLedger(situationSimulations);
   const interactionLedger = buildSimulationInteractionLedger(actionLedger, situationSimulations);
-  const reportableInteractionLedger = buildReportableInteractionLedger(interactionLedger, situationSimulations);
+  const reportableInteractionLedger = buildReportableInteractionLedger(interactionLedger, situationSimulations, {
+    strictMode: worldState?.forecastDepth === 'deep',
+  });
   const blockedInteractions = Array.isArray(reportableInteractionLedger.blocked) ? reportableInteractionLedger.blocked : [];
   const replayTimeline = buildSimulationReplayTimeline(situationSimulations, actionLedger, interactionLedger);
   const internalEffects = buildCrossSituationEffects({
@@ -7036,10 +7186,11 @@ function buildSimulationReplayTimeline(situationSimulations = [], actionLedger =
   });
 }
 
-function buildReportableInteractionLedger(interactionLedger = [], situationSimulations = []) {
+function buildReportableInteractionLedger(interactionLedger = [], situationSimulations = [], options = {}) {
   const simulationIndex = new Map((situationSimulations || []).map((item) => [item.situationId, item]));
   const reportable = [];
   const blocked = [];
+  const strictMode = !!options.strictMode;
 
   for (const item of (interactionLedger || [])) {
     const source = simulationIndex.get(item.sourceSituationId);
@@ -7065,7 +7216,7 @@ function buildReportableInteractionLedger(interactionLedger = [], situationSimul
     const structuralLink = directOverlap || sharedActor || regionLink;
     const purelyPoliticalPair = source.dominantDomain === 'political' && target.dominantDomain === 'political';
 
-    if (item.interactionType === 'actor_carryover' && specificity < 0.62) {
+    if (item.interactionType === 'actor_carryover' && specificity < (strictMode ? 0.7 : 0.62)) {
       blocked.push({ ...item, reason: 'low_actor_specificity' });
       continue;
     }
@@ -7109,27 +7260,67 @@ function buildReportableInteractionLedger(interactionLedger = [], situationSimul
       blocked.push({ ...item, reason: 'no_structural_or_market_link' });
       continue;
     }
-    if (confidence >= 0.72 && score >= 5 && (directOverlap || marketLinked || (sharedActor && specificity >= 0.76))) {
+    const genericConfidenceFloor = strictMode ? 0.72 : 0.72;
+    const genericScoreFloor = strictMode ? 5.2 : 5;
+    const crossTheaterConfidenceFloor = strictMode ? 0.78 : 0.72;
+    const crossTheaterScoreFloor = strictMode ? 5.8 : 5.7;
+    if (
+      crossTheater
+      && (politicalChannel || item.strongestChannel === 'market_repricing')
+      && !(sharedActor || (bucketOverlap > 0 && macroSupport >= 0.62))
+    ) {
+      blocked.push({ ...item, reason: 'cross_theater_without_shared_origin' });
+      continue;
+    }
+    if (
+      confidence >= (crossTheater && (politicalChannel || item.strongestChannel === 'market_repricing') ? crossTheaterConfidenceFloor : genericConfidenceFloor)
+      && score >= (crossTheater && (politicalChannel || item.strongestChannel === 'market_repricing') ? crossTheaterScoreFloor : genericScoreFloor)
+      && (directOverlap || marketLinked || (sharedActor && specificity >= 0.76))
+    ) {
       reportable.push(item);
       continue;
     }
-    if (directOverlap && confidence >= 0.58 && score >= 4.5) {
+    if (directOverlap && confidence >= (strictMode ? 0.64 : 0.58) && score >= (strictMode ? 4.9 : 4.5)) {
       reportable.push(item);
       continue;
     }
-    if (sharedActor && specificity >= 0.76 && confidence >= 0.6 && (regionLink || marketLinked)) {
+    if (sharedActor && specificity >= (strictMode ? 0.82 : 0.76) && confidence >= (strictMode ? 0.66 : 0.6) && (regionLink || marketLinked)) {
       reportable.push(item);
       continue;
     }
-    if (!politicalChannel && marketLinked && confidence >= 0.66 && score >= 4.8 && (bucketOverlap > 0 || regionLink || sharedActor)) {
+    if (!politicalChannel && marketLinked && confidence >= (strictMode ? 0.72 : 0.66) && score >= (strictMode ? 5.2 : 4.8) && (bucketOverlap > 0 || regionLink || sharedActor)) {
       reportable.push(item);
       continue;
     }
     blocked.push({ ...item, reason: directOverlap ? 'low_confidence' : 'score_below_threshold' });
   }
 
-  const ordered = reportable
-    .sort((a, b) => b.confidence - a.confidence || b.score - a.score || a.sourceLabel.localeCompare(b.sourceLabel));
+  const strongestByKey = new Map();
+  for (const item of reportable) {
+    const key = `${item.sourceSituationId}:${item.targetSituationId}:${item.strongestChannel}`;
+    const current = strongestByKey.get(key);
+    const leftStrength = (Number(item.score || 0) * Number(item.confidence || 0));
+    const rightStrength = current ? (Number(current.score || 0) * Number(current.confidence || 0)) : -1;
+    if (
+      !current
+      || leftStrength > rightStrength
+      || (leftStrength === rightStrength && Number(item.score || 0) > Number(current.score || 0))
+      || (leftStrength === rightStrength && Number(item.score || 0) === Number(current.score || 0) && Number(item.confidence || 0) > Number(current.confidence || 0))
+      || (leftStrength === rightStrength && Number(item.score || 0) === Number(current.score || 0) && Number(item.confidence || 0) === Number(current.confidence || 0) && String(item.sourceLabel || '').localeCompare(String(current.sourceLabel || '')) < 0)
+      || (leftStrength === rightStrength && Number(item.score || 0) === Number(current.score || 0) && Number(item.confidence || 0) === Number(current.confidence || 0) && String(item.sourceLabel || '') === String(current.sourceLabel || '') && String(item.targetLabel || '').localeCompare(String(current.targetLabel || '')) < 0)
+    ) {
+      strongestByKey.set(key, item);
+    }
+  }
+
+  const ordered = [...strongestByKey.values()]
+    .sort((a, b) => (
+      (Number(b.score || 0) * Number(b.confidence || 0)) - (Number(a.score || 0) * Number(a.confidence || 0))
+      || Number(b.score || 0) - Number(a.score || 0)
+      || Number(b.confidence || 0) - Number(a.confidence || 0)
+      || a.sourceLabel.localeCompare(b.sourceLabel)
+      || a.targetLabel.localeCompare(b.targetLabel)
+    ));
   ordered.blocked = blocked;
   ordered.blockedSummary = summarizeBlockedInteractions(blocked);
   return ordered;
@@ -9895,6 +10086,7 @@ function mapImpactHypothesesToWorldSignals(validation = null) {
         impactOrder: hypothesis.order,
         impactVariableKey: hypothesis.variableKey,
         impactCandidateStateId: candidate.candidateStateId || '',
+        impactPathId: hypothesis.pathId || '',
         impactAnalogTag: hypothesis.analogTag || '',
         dependsOnKey: hypothesis.dependsOnKey || '',
       },
@@ -10097,6 +10289,8 @@ function buildForecastRunWorldState(data) {
   const predictions = Array.isArray(data?.predictions) ? data.predictions : [];
   const inputs = data?.inputs || {};
   const priorWorldState = data?.priorWorldState || null;
+  const forecastDepth = data?.forecastDepth || 'fast';
+  const deepForecast = data?.deepForecast || null;
   const domainStates = buildForecastDomainStates(predictions);
   const regionalStates = buildForecastRegionalStates(predictions);
   const actorRegistry = buildForecastRunActorRegistry(predictions);
@@ -10135,6 +10329,8 @@ function buildForecastRunWorldState(data) {
     version: 1,
     generatedAt,
     generatedAtIso: new Date(generatedAt).toISOString(),
+    forecastDepth,
+    deepForecast,
     summary,
     domainStates,
     regionalStates,
@@ -10167,6 +10363,8 @@ function buildForecastRunWorldState(data) {
 function summarizeWorldStateSurface(worldState) {
   if (!worldState) return null;
   return {
+    forecastDepth: worldState.forecastDepth || 'fast',
+    deepForecastStatus: worldState.deepForecast?.status || '',
     forecastCount: Array.isArray(worldState.branchStates) ? new Set(worldState.branchStates.map((branch) => branch.forecastId)).size : 0,
     domainCount: worldState.domainStates?.length || 0,
     regionCount: worldState.regionalStates?.length || 0,
@@ -10198,6 +10396,407 @@ function summarizeWorldStateSurface(worldState) {
     simulationEnvironmentCount: worldState.simulationState?.environmentSpec?.situations?.length || 0,
     memoryMutationCount: worldState.simulationState?.memoryMutations?.situations?.length || 0,
     causalReplayCount: worldState.simulationState?.causalReplay?.chains?.length || 0,
+  };
+}
+
+function buildImpactPathScore(candidatePacket, direct, second, third) {
+  return +clampUnitInterval(
+    (Number(direct?.validationScore || 0) * 0.45) +
+    (Number(second?.validationScore || 0) * 0.25) +
+    (Number(third?.validationScore || 0) * 0.15) +
+    (Number(candidatePacket?.rankingScore || 0) * 0.10) +
+    ((candidatePacket?.routeFacilityKey || candidatePacket?.commodityKey) ? 0.05 : 0)
+  ).toFixed(3);
+}
+
+function buildImpactPathId(candidatePacket, direct, second, third) {
+  return `path-${hashSituationKey([
+    candidatePacket?.candidateStateId || '',
+    direct?.variableKey || 'base',
+    second?.variableKey || '',
+    third?.variableKey || '',
+  ])}`;
+}
+
+function buildImpactPathsForCandidate(candidatePacket, validation = null) {
+  if (!candidatePacket) return [];
+  const candidateMapped = (validation?.mapped || [])
+    .filter((item) => item.candidateIndex === candidatePacket.candidateIndex);
+  const directItems = candidateMapped.filter((item) => item.order === 'direct');
+  const secondItems = candidateMapped.filter((item) => item.order === 'second_order');
+  const thirdItems = candidateMapped.filter((item) => item.order === 'third_order');
+  const expanded = [];
+  const seen = new Set();
+
+  for (const second of secondItems) {
+    const direct = directItems.find((item) => item.variableKey === second.dependsOnKey);
+    if (!direct) continue;
+    const thirdMatches = thirdItems.filter((item) => item.dependsOnKey === second.variableKey);
+    if (thirdMatches.length === 0) {
+      const pathScore = buildImpactPathScore(candidatePacket, direct, second, null);
+      const key = `${direct.variableKey}:${second.variableKey}:`;
+      if (!seen.has(key) && pathScore >= 0.66) {
+        expanded.push({
+          pathId: buildImpactPathId(candidatePacket, direct, second, null),
+          candidateStateId: candidatePacket.candidateStateId,
+          candidateIndex: candidatePacket.candidateIndex,
+          type: 'expanded',
+          candidate: candidatePacket,
+          direct,
+          second,
+          third: null,
+          pathScore,
+          acceptanceScore: 0,
+        });
+        seen.add(key);
+      }
+      continue;
+    }
+    for (const third of thirdMatches) {
+      const pathScore = buildImpactPathScore(candidatePacket, direct, second, third);
+      const key = `${direct.variableKey}:${second.variableKey}:${third.variableKey}`;
+      if (seen.has(key) || pathScore < 0.66) continue;
+      expanded.push({
+        pathId: buildImpactPathId(candidatePacket, direct, second, third),
+        candidateStateId: candidatePacket.candidateStateId,
+        candidateIndex: candidatePacket.candidateIndex,
+        type: 'expanded',
+        candidate: candidatePacket,
+        direct,
+        second,
+        third,
+        pathScore,
+        acceptanceScore: 0,
+      });
+      seen.add(key);
+    }
+  }
+
+  const keptExpanded = [];
+  const usedDirectKeys = new Set();
+  for (const path of expanded
+    .sort((a, b) => b.pathScore - a.pathScore || a.pathId.localeCompare(b.pathId))) {
+    if (usedDirectKeys.has(path.direct?.variableKey || '')) continue;
+    keptExpanded.push(path);
+    usedDirectKeys.add(path.direct?.variableKey || '');
+    if (keptExpanded.length >= 2) break;
+  }
+
+  return [
+    {
+      pathId: buildImpactPathId(candidatePacket, null, null, null),
+      candidateStateId: candidatePacket.candidateStateId,
+      candidateIndex: candidatePacket.candidateIndex,
+      type: 'base',
+      candidate: candidatePacket,
+      direct: null,
+      second: null,
+      third: null,
+      pathScore: 0,
+      acceptanceScore: 0,
+    },
+    ...keptExpanded,
+  ];
+}
+
+function buildImpactExpansionBundleFromPaths(paths = [], candidatePackets = [], meta = {}) {
+  const byCandidate = new Map();
+  for (const path of paths || []) {
+    if (!path || path.type !== 'expanded') continue;
+    const entry = byCandidate.get(path.candidateIndex) || {
+      candidateIndex: path.candidateIndex,
+      candidateStateId: path.candidateStateId,
+      directHypotheses: [],
+      secondOrderHypotheses: [],
+      thirdOrderHypotheses: [],
+    };
+    if (path.direct) entry.directHypotheses.push({
+      variableKey: path.direct.variableKey,
+      channel: path.direct.channel,
+      targetBucket: path.direct.targetBucket,
+      region: path.direct.region,
+      macroRegion: path.direct.macroRegion,
+      countries: path.direct.countries || [],
+      assetsOrSectors: path.direct.assetsOrSectors || [],
+      commodity: path.direct.commodity || '',
+      dependsOnKey: path.direct.dependsOnKey || '',
+      strength: path.direct.strength,
+      confidence: path.direct.confidence,
+      analogTag: path.direct.analogTag || '',
+      summary: path.direct.summary || '',
+      evidenceRefs: path.direct.evidenceRefs || [],
+      pathId: path.pathId,
+    });
+    if (path.second) entry.secondOrderHypotheses.push({
+      variableKey: path.second.variableKey,
+      channel: path.second.channel,
+      targetBucket: path.second.targetBucket,
+      region: path.second.region,
+      macroRegion: path.second.macroRegion,
+      countries: path.second.countries || [],
+      assetsOrSectors: path.second.assetsOrSectors || [],
+      commodity: path.second.commodity || '',
+      dependsOnKey: path.second.dependsOnKey || '',
+      strength: path.second.strength,
+      confidence: path.second.confidence,
+      analogTag: path.second.analogTag || '',
+      summary: path.second.summary || '',
+      evidenceRefs: path.second.evidenceRefs || [],
+      pathId: path.pathId,
+    });
+    if (path.third) entry.thirdOrderHypotheses.push({
+      variableKey: path.third.variableKey,
+      channel: path.third.channel,
+      targetBucket: path.third.targetBucket,
+      region: path.third.region,
+      macroRegion: path.third.macroRegion,
+      countries: path.third.countries || [],
+      assetsOrSectors: path.third.assetsOrSectors || [],
+      commodity: path.third.commodity || '',
+      dependsOnKey: path.third.dependsOnKey || '',
+      strength: path.third.strength,
+      confidence: path.third.confidence,
+      analogTag: path.third.analogTag || '',
+      summary: path.third.summary || '',
+      evidenceRefs: path.third.evidenceRefs || [],
+      pathId: path.pathId,
+    });
+    byCandidate.set(path.candidateIndex, entry);
+  }
+  const extractedCandidates = [...byCandidate.values()].sort((a, b) => a.candidateIndex - b.candidateIndex);
+  return {
+    source: meta.source || 'deep_selected',
+    provider: meta.provider || '',
+    model: meta.model || '',
+    parseStage: meta.parseStage || 'accepted_paths',
+    parseMode: meta.parseMode || 'accepted_paths',
+    rawPreview: meta.rawPreview || '',
+    failureReason: meta.failureReason || '',
+    candidateCount: candidatePackets.length,
+    extractedCandidateCount: extractedCandidates.length,
+    extractedHypothesisCount: extractedCandidates.reduce((sum, item) => sum
+      + item.directHypotheses.length
+      + item.secondOrderHypotheses.length
+      + item.thirdOrderHypotheses.length, 0),
+    partialFailureCount: 0,
+    successfulCandidateCount: extractedCandidates.length,
+    failedCandidatePreview: [],
+    candidatePackets,
+    candidates: candidatePackets.map((packet) => ({
+      candidateIndex: packet.candidateIndex,
+      candidateStateId: packet.candidateStateId,
+      label: packet.candidateStateLabel,
+      stateKind: packet.stateKind,
+      dominantRegion: packet.dominantRegion,
+      rankingScore: packet.rankingScore,
+      topBucketId: packet.marketContext?.topBucketId || '',
+      topBucketLabel: packet.marketContext?.topBucketLabel || '',
+      topChannel: packet.marketContext?.topChannel || '',
+      transmissionEdgeCount: packet.marketContext?.transmissionEdgeCount || 0,
+      routeFacilityKey: packet.routeFacilityKey || '',
+      commodityKey: packet.commodityKey || '',
+    })),
+    extractedCandidates,
+  };
+}
+
+function filterCandidateTouchingItems(items = [], candidateStateId = '') {
+  return (items || []).filter((item) => (
+    item?.sourceSituationId === candidateStateId
+    || item?.targetSituationId === candidateStateId
+    || item?.situationId === candidateStateId
+  ));
+}
+
+function computeDeepReportableQualityScore(pathWorldState, candidateStateId) {
+  const interactionLedger = pathWorldState?.simulationState?.interactionLedger || [];
+  const reportableInteractionLedger = pathWorldState?.simulationState?.reportableInteractionLedger || [];
+  const blockedInteractions = Array.isArray(reportableInteractionLedger?.blocked) ? reportableInteractionLedger.blocked : [];
+  const reportableEffects = pathWorldState?.report?.crossSituationEffects || [];
+  const pathInteractions = filterCandidateTouchingItems(interactionLedger, candidateStateId);
+  const pathReportable = filterCandidateTouchingItems(reportableInteractionLedger, candidateStateId);
+  const pathBlocked = filterCandidateTouchingItems(blockedInteractions, candidateStateId);
+  const pathEffects = filterCandidateTouchingItems(reportableEffects, candidateStateId);
+  const pathReportableRate = pathReportable.length / Math.max(pathInteractions.length, 1);
+  const pathSelectivityScore = clampUnitInterval(1 - Math.abs(pathReportableRate - 0.4) / 0.4);
+  const avgReportableConfidence = pathReportable.length
+    ? clampUnitInterval(pathReportable.reduce((sum, item) => sum + Number(item.confidence || 0), 0) / pathReportable.length)
+    : 0;
+  const pathEffectSupport = clampUnitInterval(pathEffects.length / Math.max(pathReportable.length, 1));
+  const pathBlockedRate = clampUnitInterval(pathBlocked.length / Math.max(pathReportable.length + pathBlocked.length, 1));
+  return +clampUnitInterval(
+    (pathSelectivityScore * 0.45) +
+    (avgReportableConfidence * 0.35) +
+    (pathEffectSupport * 0.20) -
+    (pathBlockedRate * 0.20)
+  ).toFixed(3);
+}
+
+function computeDeepMarketCoherenceScore(pathWorldState, candidatePacket, path) {
+  const mappedHypotheses = [path.direct, path.second, path.third].filter(Boolean);
+  const mappedHypothesisAvg = mappedHypotheses.length
+    ? clampUnitInterval(mappedHypotheses.reduce((sum, item) => sum + Number(item.validationScore || 0), 0) / mappedHypotheses.length)
+    : 0;
+  const marketConsequences = pathWorldState?.simulationState?.marketConsequences?.items || [];
+  const blockedMarketConsequences = pathWorldState?.simulationState?.marketConsequences?.blocked || [];
+  const admissibleConsequenceCount = marketConsequences.filter((item) => item.situationId === candidatePacket.candidateStateId).length;
+  const blockedAdmissibilityCount = blockedMarketConsequences.filter((item) => (
+    item.situationId === candidatePacket.candidateStateId
+    && ['inadmissible_bucket_channel', 'weak_bucket_signal_support'].includes(item.reason)
+  )).length;
+  const admissibleRate = clampUnitInterval(admissibleConsequenceCount / Math.max(admissibleConsequenceCount + blockedAdmissibilityCount, 1));
+  const specificityBonus = (candidatePacket.routeFacilityKey || candidatePacket.commodityKey) ? 1 : 0;
+  const hypothesisBuckets = new Set(mappedHypotheses.map((item) => item.targetBucket));
+  const hypothesisChannels = new Set(mappedHypotheses.map((item) => item.channel));
+  const hasFreightRole = hypothesisBuckets.has('freight');
+  const hasMarketRole = [...hypothesisBuckets].some((bucket) => bucket !== 'freight');
+  const roleSeparationScore = (!hasFreightRole || !hasMarketRole || hypothesisChannels.size > 1) ? 1 : 0;
+  return +clampUnitInterval(
+    (mappedHypothesisAvg * 0.40) +
+    (admissibleRate * 0.35) +
+    (specificityBonus * 0.15) +
+    (roleSeparationScore * 0.10)
+  ).toFixed(3);
+}
+
+function computeDeepPathAcceptanceScore(candidatePacket, path, pathWorldState) {
+  const contradictionPenalty = clampUnitInterval(Number(candidatePacket?.marketContext?.contradictionScore || 0));
+  const reportableQualityScore = computeDeepReportableQualityScore(pathWorldState, candidatePacket.candidateStateId);
+  const marketCoherenceScore = computeDeepMarketCoherenceScore(pathWorldState, candidatePacket, path);
+  const acceptanceScore = +clampUnitInterval(
+    (Number(path.pathScore || 0) * 0.55) +
+    (reportableQualityScore * 0.20) +
+    (marketCoherenceScore * 0.15) -
+    (contradictionPenalty * 0.10)
+  ).toFixed(3);
+  return {
+    reportableQualityScore,
+    marketCoherenceScore,
+    contradictionPenalty,
+    acceptanceScore,
+  };
+}
+
+function annotateDeepForecastOrigins(worldState, acceptedPaths = []) {
+  const acceptedByState = new Map(
+    (acceptedPaths || [])
+      .filter((path) => path?.type === 'expanded')
+      .map((path) => [path.candidateStateId, path.pathId]),
+  );
+  if (acceptedByState.size === 0 || !worldState?.simulationState) return worldState;
+  const tagItems = (items = []) => {
+    for (const item of items) {
+      const sourcePathId = acceptedByState.get(item.sourceSituationId);
+      const targetPathId = acceptedByState.get(item.targetSituationId);
+      item.originPathId = sourcePathId || targetPathId || '';
+      item.originStateId = sourcePathId ? item.sourceSituationId : targetPathId ? item.targetSituationId : '';
+    }
+  };
+  tagItems(worldState.simulationState.reportableInteractionLedger || []);
+  tagItems(worldState.report?.crossSituationEffects || []);
+  return worldState;
+}
+
+function buildDeepWorldStateFromSnapshot(snapshot, priorWorldState, impactExpansionBundle, deepForecastMeta = {}) {
+  return buildForecastRunWorldState({
+    generatedAt: snapshot.generatedAt,
+    predictions: snapshot.fullRunPredictions || snapshot.predictions || [],
+    inputs: {
+      ...(snapshot.inputs || {}),
+      impactExpansionBundle,
+    },
+    priorWorldState,
+    priorWorldStates: priorWorldState ? [priorWorldState] : [],
+    situationClusters: snapshot.fullRunSituationClusters || undefined,
+    situationFamilies: snapshot.fullRunSituationFamilies || undefined,
+    stateUnits: snapshot.fullRunStateUnits || undefined,
+    forecastDepth: 'deep',
+    deepForecast: deepForecastMeta,
+  });
+}
+
+async function evaluateDeepForecastPaths(snapshot, priorWorldState, candidatePackets, bundle) {
+  const validation = validateImpactHypotheses(bundle);
+  if ((validation.mapped || []).length === 0) {
+    return {
+      status: 'completed_no_material_change',
+      selectedPaths: [],
+      rejectedPaths: [],
+      impactExpansionBundle: bundle,
+      deepWorldState: null,
+    };
+  }
+
+  const selectedPaths = [];
+  const rejectedPaths = [];
+  for (const candidatePacket of candidatePackets || []) {
+    const paths = buildImpactPathsForCandidate(candidatePacket, validation);
+    const expandedPaths = paths.filter((path) => path.type === 'expanded');
+    if (expandedPaths.length === 0) {
+      selectedPaths.push(paths[0]);
+      continue;
+    }
+    const evaluated = [];
+    for (const path of expandedPaths) {
+      const pathBundle = buildImpactExpansionBundleFromPaths([path], [candidatePacket], {
+        source: 'deep_path_eval',
+        parseStage: 'single_path',
+        parseMode: 'path_eval',
+      });
+      const pathWorldState = buildDeepWorldStateFromSnapshot(snapshot, priorWorldState, pathBundle, {
+        status: 'running',
+        selectedStateIds: [candidatePacket.candidateStateId],
+        eligibleStateCount: 1,
+      });
+      const scoring = computeDeepPathAcceptanceScore(candidatePacket, path, pathWorldState);
+      evaluated.push({
+        ...path,
+        ...scoring,
+      });
+    }
+    evaluated.sort((a, b) => b.acceptanceScore - a.acceptanceScore || b.pathScore - a.pathScore || a.pathId.localeCompare(b.pathId));
+    const accepted = evaluated.find((item) => item.acceptanceScore >= 0.6) || null;
+    if (accepted) {
+      selectedPaths.push(accepted);
+      rejectedPaths.push(...evaluated.filter((item) => item.pathId !== accepted.pathId));
+    } else {
+      selectedPaths.push(paths[0]);
+      rejectedPaths.push(...evaluated);
+    }
+  }
+
+  const acceptedExpanded = selectedPaths.filter((path) => path.type === 'expanded');
+  if (acceptedExpanded.length === 0) {
+    return {
+      status: 'completed_no_material_change',
+      selectedPaths,
+      rejectedPaths,
+      impactExpansionBundle: bundle,
+      deepWorldState: null,
+    };
+  }
+
+  const acceptedBundle = buildImpactExpansionBundleFromPaths(acceptedExpanded, candidatePackets, {
+    source: 'deep_selected',
+    parseStage: 'accepted_paths',
+    parseMode: 'accepted_paths',
+  });
+  const deepWorldState = annotateDeepForecastOrigins(
+    buildDeepWorldStateFromSnapshot(snapshot, priorWorldState, acceptedBundle, {
+      status: 'completed',
+      selectedStateIds: acceptedExpanded.map((path) => path.candidateStateId),
+      eligibleStateCount: candidatePackets.length,
+      selectedPathCount: acceptedExpanded.length,
+      replacedFastRun: true,
+    }),
+    acceptedExpanded,
+  );
+  return {
+    status: 'completed',
+    selectedPaths,
+    rejectedPaths,
+    impactExpansionBundle: acceptedBundle,
+    deepWorldState,
   };
 }
 
@@ -10321,7 +10920,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
   const predictions = Array.isArray(data?.predictions) ? data.predictions : [];
   const fullRunPredictions = Array.isArray(data?.fullRunPredictions) ? data.fullRunPredictions : predictions;
   const maxForecasts = config.maxForecasts || getTraceMaxForecasts(predictions.length);
-  const worldState = buildForecastRunWorldState({
+  const worldState = data?.worldStateOverride || buildForecastRunWorldState({
     generatedAt,
     predictions,
     inputs: data?.inputs || {},
@@ -10331,6 +10930,9 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     situationFamilies: data?.situationFamilies || undefined,
     stateUnits: data?.stateUnits || undefined,
     publishTelemetry: data?.publishTelemetry || null,
+    forecastDepth: data?.forecastDepth || 'fast',
+    deepForecast: data?.deepForecast || null,
+    impactExpansionBundle: data?.impactExpansionBundle || null,
   });
   const simulationByForecastId = new Map();
   for (const sim of (worldState.simulationState?.situationSimulations || [])) {
@@ -10346,7 +10948,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     data?.publishTelemetry || null,
     fullRunPredictions
   );
-  const candidateWorldState = fullRunPredictions !== predictions || data?.fullRunSituationClusters
+  const candidateWorldState = data?.candidateWorldStateOverride || (fullRunPredictions !== predictions || data?.fullRunSituationClusters
     ? buildForecastRunWorldState({
       generatedAt,
       predictions: fullRunPredictions,
@@ -10356,8 +10958,11 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
       situationClusters: data?.fullRunSituationClusters || undefined,
       situationFamilies: data?.fullRunSituationFamilies || undefined,
       publishTelemetry: data?.publishTelemetry || null,
+      forecastDepth: data?.forecastDepth || 'fast',
+      deepForecast: data?.deepForecast || null,
+      impactExpansionBundle: data?.impactExpansionBundle || null,
     })
-    : null;
+    : null);
   const prefix = buildTraceRunPrefix(
     context.runId || `run_${generatedAt}`,
     generatedAt,
@@ -10391,12 +10996,16 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     runId: manifest.runId,
     generatedAt: manifest.generatedAt,
     generatedAtIso: manifest.generatedAtIso,
+    forecastDepth: worldState.forecastDepth || 'fast',
+    deepForecast: worldState.deepForecast || null,
     forecastCount: manifest.forecastCount,
     tracedForecastCount: manifest.tracedForecastCount,
     triggerContext: manifest.triggerContext,
     quality,
     worldStateSummary: {
       scope: 'published',
+      forecastDepth: worldState.forecastDepth || 'fast',
+      deepForecastStatus: worldState.deepForecast?.status || '',
       summary: worldState.summary,
       reportSummary: worldState.report?.summary || '',
       reportContinuitySummary: worldState.reportContinuity?.summary || '',
@@ -10513,10 +11122,19 @@ async function writeForecastTracePointer(pointer) {
   await redisCommand(url, token, ['EXPIRE', TRACE_RUNS_KEY, TRACE_REDIS_TTL_SECONDS]);
 }
 
-async function readPreviousForecastWorldState(storageConfig) {
+async function readPreviousForecastTracePointer() {
   try {
     const { url, token } = getRedisCredentials();
-    const pointer = await redisGet(url, token, TRACE_LATEST_KEY);
+    return await redisGet(url, token, TRACE_LATEST_KEY);
+  } catch (err) {
+    console.warn(`  [Trace] Prior pointer read failed: ${err.message}`);
+    return null;
+  }
+}
+
+async function readPreviousForecastWorldState(storageConfig) {
+  try {
+    const pointer = await readPreviousForecastTracePointer();
     if (!pointer?.worldStateKey) return null;
     return await getR2JsonObject(storageConfig, pointer.worldStateKey);
   } catch (err) {
@@ -10605,6 +11223,8 @@ async function writeForecastTraceArtifacts(data, context = {}) {
     runId: artifacts.manifest.runId,
     generatedAt: artifacts.manifest.generatedAt,
     generatedAtIso: artifacts.manifest.generatedAtIso,
+    forecastDepth: artifacts.summary.forecastDepth || 'fast',
+    deepForecast: artifacts.summary.deepForecast || null,
     bucket: storageConfig.bucket,
     prefix: artifacts.prefix,
     manifestKey: artifacts.manifestKey,
@@ -10618,6 +11238,124 @@ async function writeForecastTraceArtifacts(data, context = {}) {
   };
   await writeForecastTracePointer(pointer);
   return pointer;
+}
+
+function buildDeepForecastSnapshotKey(runId, generatedAt, basePrefix = FORECAST_DEEP_RUN_PREFIX) {
+  const prefix = buildTraceRunPrefix(runId, generatedAt, basePrefix);
+  return `${prefix}/deep-snapshot.json`;
+}
+
+function buildDeepForecastTaskKey(runId) {
+  return `${FORECAST_DEEP_TASK_KEY_PREFIX}:${runId}`;
+}
+
+function buildDeepForecastLockKey(runId) {
+  return `${FORECAST_DEEP_LOCK_KEY_PREFIX}:${runId}`;
+}
+
+async function writeDeepForecastSnapshot(snapshot, _context = {}) {
+  const storageConfig = resolveR2StorageConfig();
+  if (!storageConfig || !snapshot?.runId) return null;
+  const snapshotKey = buildDeepForecastSnapshotKey(
+    snapshot.runId,
+    snapshot.generatedAt || Date.now(),
+    storageConfig.basePrefix || FORECAST_DEEP_RUN_PREFIX,
+  );
+  await putR2JsonObject(storageConfig, snapshotKey, snapshot, {
+    runid: String(snapshot.runId || ''),
+    kind: 'deep_snapshot',
+  });
+  return {
+    storageConfig,
+    snapshotKey,
+  };
+}
+
+async function enqueueDeepForecastTask(task) {
+  if (!task?.runId) return { queued: false, reason: 'missing_run_id' };
+  const { url, token } = getRedisCredentials();
+  const taskKey = buildDeepForecastTaskKey(task.runId);
+  const queued = await redisCommand(url, token, [
+    'SET',
+    taskKey,
+    JSON.stringify(task),
+    'EX',
+    FORECAST_DEEP_TASK_TTL_SECONDS,
+    'NX',
+  ]);
+  const accepted = queued?.result === 'OK';
+  if (!accepted) return { queued: false, reason: 'duplicate' };
+  await redisCommand(url, token, ['ZADD', FORECAST_DEEP_TASK_QUEUE_KEY, String(Number(task.createdAt || Date.now())), task.runId]);
+  await redisCommand(url, token, ['EXPIRE', FORECAST_DEEP_TASK_QUEUE_KEY, String(TRACE_REDIS_TTL_SECONDS)]);
+  return { queued: true, reason: '' };
+}
+
+async function listQueuedDeepForecastTasks(limit = 10) {
+  const { url, token } = getRedisCredentials();
+  const response = await redisCommand(url, token, [
+    'ZRANGE',
+    FORECAST_DEEP_TASK_QUEUE_KEY,
+    '0',
+    String(Math.max(0, limit - 1)),
+  ]);
+  return Array.isArray(response?.result) ? response.result : [];
+}
+
+async function claimDeepForecastTask(runId, workerId) {
+  if (!runId) return null;
+  const { url, token } = getRedisCredentials();
+  const lockKey = buildDeepForecastLockKey(runId);
+  const claim = await redisCommand(url, token, [
+    'SET',
+    lockKey,
+    workerId,
+    'EX',
+    String(FORECAST_DEEP_LOCK_TTL_SECONDS),
+    'NX',
+  ]);
+  if (claim?.result !== 'OK') return null;
+  const task = await redisGet(url, token, buildDeepForecastTaskKey(runId));
+  if (!task) {
+    await redisCommand(url, token, ['ZREM', FORECAST_DEEP_TASK_QUEUE_KEY, runId]);
+    await redisDel(url, token, lockKey);
+    return null;
+  }
+  return task;
+}
+
+async function completeDeepForecastTask(runId) {
+  if (!runId) return;
+  const { url, token } = getRedisCredentials();
+  await redisCommand(url, token, ['ZREM', FORECAST_DEEP_TASK_QUEUE_KEY, runId]);
+  await redisDel(url, token, buildDeepForecastTaskKey(runId));
+  await redisDel(url, token, buildDeepForecastLockKey(runId));
+}
+
+async function releaseDeepForecastTask(runId) {
+  if (!runId) return;
+  const { url, token } = getRedisCredentials();
+  await redisDel(url, token, buildDeepForecastLockKey(runId));
+}
+
+function buildDeepForecastSnapshotPayload(data = {}, context = {}) {
+  return {
+    version: 1,
+    runId: context.runId || '',
+    generatedAt: data.generatedAt || Date.now(),
+    generatedAtIso: new Date(data.generatedAt || Date.now()).toISOString(),
+    inputs: data.inputs || {},
+    predictions: data.predictions || [],
+    fullRunPredictions: data.fullRunPredictions || data.predictions || [],
+    fullRunSituationClusters: data.fullRunSituationClusters || [],
+    fullRunSituationFamilies: data.fullRunSituationFamilies || [],
+    fullRunStateUnits: data.fullRunStateUnits || [],
+    triggerContext: data.triggerContext || null,
+    enrichmentMeta: data.enrichmentMeta || null,
+    publishTelemetry: data.publishTelemetry || null,
+    deepForecast: data.deepForecast || null,
+    impactExpansionCandidates: data.impactExpansionCandidates || [],
+    priorWorldStateKey: data.priorWorldStateKey || '',
+  };
 }
 
 function buildChangeItems(pred, prev) {
@@ -12500,12 +13238,13 @@ async function enrichScenariosWithLLM(predictions) {
 async function fetchForecasts() {
   await warmPingChokepoints();
   const traceStorageConfig = resolveR2StorageConfig();
-  const [priorWorldStates, priorWorldStateFallback] = traceStorageConfig
+  const [priorWorldStates, priorWorldStateFallback, priorTracePointer] = traceStorageConfig
     ? await Promise.all([
       readForecastWorldStateHistory(traceStorageConfig, WORLD_STATE_HISTORY_LIMIT),
       readPreviousForecastWorldState(traceStorageConfig),
+      readPreviousForecastTracePointer(),
     ])
-    : [[], null];
+    : [[], null, null];
   const priorWorldState = priorWorldStates[0] ?? priorWorldStateFallback;
   const publishSelectionMemoryIndex = buildPublishSelectionMemoryIndex(priorWorldState);
 
@@ -12589,17 +13328,27 @@ async function fetchForecasts() {
     selectionMarketTransmission = buildMarketTransmissionGraph(selectionWorldSignals, fullRunSituationClusters);
     selectionMarketState = buildMarketState(selectionWorldSignals, selectionMarketTransmission);
   }
-  console.log('  Expanding state consequences for simulation...');
-  inputs.impactExpansionBundle = await extractImpactExpansionBundle({
-    inputs,
+  const impactExpansionCandidates = selectImpactExpansionCandidates({
     stateUnits: fullRunStateUnits,
     worldSignals: selectionWorldSignals,
     marketTransmission: selectionMarketTransmission,
     marketState: selectionMarketState,
     marketInputCoverage: selectionMarketInputCoverage,
-    priorWorldState,
+    priorStateUnits: Array.isArray(priorWorldState?.stateUnits) ? priorWorldState.stateUnits : [],
+    limit: FORECAST_DEEP_MAX_CANDIDATES,
   });
-  console.log(`  [ImpactExpansion] source=${inputs.impactExpansionBundle.source} candidates=${inputs.impactExpansionBundle.candidateCount} extracted=${inputs.impactExpansionBundle.extractedCandidateCount} hypotheses=${inputs.impactExpansionBundle.extractedHypothesisCount}${inputs.impactExpansionBundle.failureReason ? ` failure=${inputs.impactExpansionBundle.failureReason}` : ''}`);
+  const deepForecastCandidates = selectDeepForecastCandidates(impactExpansionCandidates);
+  const deepForecast = {
+    status: deepForecastCandidates.length > 0 ? 'queued' : 'skipped',
+    reason: deepForecastCandidates.length > 0 ? '' : 'not_eligible',
+    eligibleStateCount: deepForecastCandidates.length,
+    selectedStateIds: deepForecastCandidates.map((packet) => packet.candidateStateId),
+    selectedPathCount: 0,
+    failureReason: '',
+    completedAt: '',
+    replacedFastRun: false,
+    rejectedPathsPreview: [],
+  };
   const marketSelectionIndex = buildSituationMarketContextIndex(
     selectionWorldSignals,
     selectionMarketTransmission,
@@ -12653,6 +13402,9 @@ async function fetchForecasts() {
     fullRunSituationClusters,
     fullRunSituationFamilies,
     fullRunStateUnits,
+    impactExpansionCandidates,
+    deepForecast,
+    priorWorldStateKey: priorTracePointer?.worldStateKey || '',
     priorWorldState,
     priorWorldStates,
   };
@@ -12718,6 +13470,141 @@ function buildForecastTriggerContext(request = null) {
   };
 }
 
+function buildDeepForecastRejectedPreview(paths = []) {
+  return (paths || [])
+    .slice()
+    .sort((a, b) => Number(b.acceptanceScore || 0) - Number(a.acceptanceScore || 0) || Number(b.pathScore || 0) - Number(a.pathScore || 0))
+    .slice(0, 6)
+    .map((path) => ({
+      pathId: path.pathId,
+      candidateStateId: path.candidateStateId,
+      acceptanceScore: Number(path.acceptanceScore || 0),
+      pathScore: Number(path.pathScore || 0),
+      directVariableKey: path.direct?.variableKey || '',
+      secondVariableKey: path.second?.variableKey || '',
+      thirdVariableKey: path.third?.variableKey || '',
+    }));
+}
+
+async function processDeepForecastTask(task = {}) {
+  const storageConfig = resolveR2StorageConfig();
+  if (!storageConfig) return { status: 'skipped', reason: 'storage_not_configured' };
+  const snapshot = await getR2JsonObject(storageConfig, task.snapshotKey);
+  if (!snapshot?.runId) return { status: 'skipped', reason: 'missing_snapshot' };
+  const priorWorldState = task.priorWorldStateKey
+    ? await getR2JsonObject(storageConfig, task.priorWorldStateKey).catch(() => null)
+    : null;
+
+  const bundle = await extractImpactExpansionBundle({
+    candidatePackets: snapshot.impactExpansionCandidates || [],
+    priorWorldState,
+  });
+
+  const evaluation = await evaluateDeepForecastPaths(
+    snapshot,
+    priorWorldState,
+    snapshot.impactExpansionCandidates || [],
+    bundle,
+  );
+
+  const baseDeepForecast = {
+    ...(snapshot.deepForecast || {}),
+    completedAt: new Date().toISOString(),
+    failureReason: '',
+    rejectedPathsPreview: buildDeepForecastRejectedPreview(evaluation.rejectedPaths || []),
+    selectedPathCount: (evaluation.selectedPaths || []).filter((path) => path.type === 'expanded').length,
+    replacedFastRun: evaluation.status === 'completed',
+  };
+
+  const dataForWrite = {
+    ...snapshot,
+    priorWorldState,
+    priorWorldStates: priorWorldState ? [priorWorldState] : [],
+    impactExpansionBundle: evaluation.impactExpansionBundle || null,
+  };
+
+  if (evaluation.status === 'completed') {
+    const deepForecast = {
+      ...baseDeepForecast,
+      status: 'completed',
+      selectedStateIds: (evaluation.selectedPaths || []).filter((path) => path.type === 'expanded').map((path) => path.candidateStateId),
+    };
+    await writeForecastTraceArtifacts({
+      ...dataForWrite,
+      forecastDepth: 'deep',
+      deepForecast,
+      worldStateOverride: evaluation.deepWorldState,
+      candidateWorldStateOverride: evaluation.deepWorldState,
+    }, { runId: snapshot.runId });
+    return { status: 'completed', deepForecast };
+  }
+
+  const deepForecast = {
+    ...baseDeepForecast,
+    status: evaluation.status || 'completed_no_material_change',
+    selectedStateIds: snapshot.deepForecast?.selectedStateIds || [],
+  };
+  await writeForecastTraceArtifacts({
+    ...dataForWrite,
+    forecastDepth: 'deep',
+    deepForecast,
+  }, { runId: snapshot.runId });
+  return { status: deepForecast.status, deepForecast };
+}
+
+async function writeFailedDeepForecastArtifacts(task = {}, failureReason = '') {
+  const storageConfig = resolveR2StorageConfig();
+  if (!storageConfig || !task?.snapshotKey) return;
+  const snapshot = await getR2JsonObject(storageConfig, task.snapshotKey).catch(() => null);
+  if (!snapshot?.runId) return;
+  const deepForecast = {
+    ...(snapshot.deepForecast || {}),
+    status: 'failed',
+    failureReason: failureReason || 'deep_forecast_failed',
+    completedAt: new Date().toISOString(),
+    replacedFastRun: false,
+    rejectedPathsPreview: Array.isArray(snapshot.deepForecast?.rejectedPathsPreview) ? snapshot.deepForecast.rejectedPathsPreview : [],
+    selectedPathCount: 0,
+  };
+  await writeForecastTraceArtifacts({
+    ...snapshot,
+    forecastDepth: 'fast',
+    deepForecast,
+  }, { runId: snapshot.runId });
+}
+
+async function processNextDeepForecastTask(options = {}) {
+  const workerId = options.workerId || `worker-${process.pid}-${Date.now()}`;
+  const queuedRunIds = await listQueuedDeepForecastTasks(10);
+  for (const runId of queuedRunIds) {
+    const task = await claimDeepForecastTask(runId, workerId);
+    if (!task) continue;
+    try {
+      const result = await processDeepForecastTask(task);
+      await completeDeepForecastTask(runId);
+      return result;
+    } catch (err) {
+      console.warn(`  [DeepForecast] Task failed for ${runId}: ${err.message}`);
+      await writeFailedDeepForecastArtifacts(task, err.message).catch((writeErr) => {
+        console.warn(`  [DeepForecast] Failed to write failed-task artifacts for ${runId}: ${writeErr.message}`);
+      });
+      await completeDeepForecastTask(runId);
+      return { status: 'failed', reason: err.message, runId };
+    }
+  }
+  return { status: 'idle' };
+}
+
+async function runDeepForecastWorker({ once = false } = {}) {
+  for (;;) {
+    const result = await processNextDeepForecastTask();
+    if (once) return result;
+    if (result?.status === 'idle') {
+      await sleep(FORECAST_DEEP_POLL_INTERVAL_MS);
+    }
+  }
+}
+
 if (_isDirectRun) {
   const refreshRequest = await readForecastRefreshRequest();
   const triggerContext = buildForecastTriggerContext(refreshRequest);
@@ -12746,8 +13633,56 @@ if (_isDirectRun) {
       }
 
       try {
+        const runId = meta?.runId || `${Date.now()}`;
+        let deepForecast = data.deepForecast || {
+          status: 'skipped',
+          reason: 'not_eligible',
+          eligibleStateCount: 0,
+          selectedStateIds: [],
+          selectedPathCount: 0,
+          failureReason: '',
+          completedAt: '',
+          replacedFastRun: false,
+          rejectedPathsPreview: [],
+        };
+        if (deepForecast.status === 'queued' && (data.impactExpansionCandidates || []).length > 0) {
+          const snapshotPayload = buildDeepForecastSnapshotPayload({
+            ...data,
+            triggerContext,
+          }, { runId });
+          const snapshotWrite = await writeDeepForecastSnapshot(snapshotPayload, { runId });
+          if (snapshotWrite?.snapshotKey) {
+            const queueResult = await enqueueDeepForecastTask({
+              runId,
+              snapshotKey: snapshotWrite.snapshotKey,
+              fastPrefix: buildTraceRunPrefix(runId, data.generatedAt, snapshotWrite.storageConfig?.basePrefix || FORECAST_DEEP_RUN_PREFIX),
+              priorWorldStateKey: data.priorWorldStateKey || '',
+              selectedCandidateStateIds: deepForecast.selectedStateIds || [],
+              createdAt: Date.now(),
+              retryCount: 0,
+            });
+            if (!queueResult.queued) {
+              deepForecast = {
+                ...deepForecast,
+                status: queueResult.reason === 'duplicate' ? 'queued' : 'failed',
+                failureReason: queueResult.reason === 'duplicate' ? '' : (queueResult.reason || 'queue_failed'),
+              };
+            }
+          } else {
+            deepForecast = {
+              ...deepForecast,
+              status: 'failed',
+              failureReason: 'snapshot_write_failed',
+            };
+          }
+        }
         console.log('  [Trace] Starting R2 export...');
-        const pointer = await writeForecastTraceArtifacts(data, { runId: meta?.runId || `${Date.now()}` });
+        const pointer = await writeForecastTraceArtifacts({
+          ...data,
+          triggerContext,
+          forecastDepth: 'fast',
+          deepForecast,
+        }, { runId });
         if (pointer) {
           console.log(`  [Trace] Written: ${pointer.summaryKey} (${pointer.tracedForecastCount} forecasts)`);
         } else {
@@ -12883,10 +13818,19 @@ export {
   extractCriticalSignalBundle,
   extractCriticalNewsSignals,
   selectImpactExpansionCandidates,
+  selectDeepForecastCandidates,
   buildImpactExpansionCandidateHash,
   recoverImpactExpansionDrafts,
   extractImpactExpansionBundle,
+  buildImpactPathsForCandidate,
+  buildImpactExpansionBundleFromPaths,
+  evaluateDeepForecastPaths,
   validateImpactHypotheses,
   materializeImpactExpansion,
+  buildDeepForecastSnapshotPayload,
+  writeDeepForecastSnapshot,
+  enqueueDeepForecastTask,
+  processNextDeepForecastTask,
+  runDeepForecastWorker,
   __setForecastLlmCallOverrideForTests,
 };
