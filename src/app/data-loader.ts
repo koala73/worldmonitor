@@ -55,6 +55,7 @@ import {
   fetchRecentAwards,
   fetchOilAnalytics,
   fetchBisData,
+  fetchBlsData,
   fetchCyberThreats,
   drainTrendingSignals,
   fetchTradeRestrictions,
@@ -396,6 +397,7 @@ export class DataLoaderManager implements AppModule {
         tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
         tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
         tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
+        tasks.push({ name: 'bls', task: runGuarded('bls', () => this.loadBlsData()) });
       }
       if (shouldLoad('energy-complex')) {
         tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
@@ -2381,6 +2383,24 @@ export class DataLoaderManager implements AppModule {
       console.error('[App] BIS data failed:', e);
       this.ctx.statusPanel?.updateApi('BIS', { status: 'error' });
       dataFreshness.recordError('bis', String(e));
+    }
+  }
+
+  async loadBlsData(): Promise<void> {
+    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+    try {
+      const data = await fetchBlsData();
+      if (data.length > 0) {
+        economicPanel?.updateBls(data);
+        this.ctx.statusPanel?.updateApi('BLS-Series', { status: 'ok' });
+        dataFreshness.recordUpdate('bls', data.length);
+      } else {
+        this.ctx.statusPanel?.updateApi('BLS-Series', { status: 'error' });
+      }
+    } catch (e) {
+      console.error('[App] BLS data failed:', e);
+      this.ctx.statusPanel?.updateApi('BLS-Series', { status: 'error' });
+      dataFreshness.recordError('bls', String(e));
     }
   }
 

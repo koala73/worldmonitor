@@ -750,6 +750,8 @@
       "vsPreviousWeek": "в сравнение с предходната седмица",
       "in": "в",
       "centralBanks": "Централни банки",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS данни временно недостъпни - ще опитам отново",
       "policyRate": "Политически курс",
       "exchangeRate": "Валутен курс",
