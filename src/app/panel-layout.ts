@@ -55,6 +55,8 @@ import {
   DEFAULT_PANELS,
   STORAGE_KEYS,
   SITE_VARIANT,
+  getBrand,
+  getMapConfig,
 } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
@@ -67,9 +69,10 @@ import { isWidgetFeatureEnabled, isProWidgetEnabled, loadWidgets, saveWidget } f
 import type { CustomWidgetSpec } from '@/services/widget-store';
 
 
-// Brand names based on variant
-const BRAND_NAME = SITE_VARIANT === 'ireland' ? 'IRISHTECH DAILY' : 'WORLD MONITOR';
-const BRAND_LOGO = SITE_VARIANT === 'ireland' ? 'IRISHTECH' : 'MONITOR';
+// Brand names based on variant (config-driven)
+const brand = getBrand();
+const BRAND_NAME = brand.headerText;
+const BRAND_LOGO = brand.logoText;
 
 export interface PanelLayoutCallbacks {
   openCountryStory: (code: string, name: string) => void;
@@ -519,11 +522,14 @@ export class PanelLayoutManager implements AppModule {
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
     const preferGlobe = loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe';
     
-    // Ireland variant: zoom to Ireland by default (more zoomed out for context)
-    const isIreland = SITE_VARIANT === 'ireland';
-    const defaultZoom = isIreland ? (this.ctx.isMobile ? 3.5 : 4.5) : (this.ctx.isMobile ? 2.5 : 1.0);
-    const defaultPan = isIreland ? { x: 0, y: 0 } : { x: 0, y: 0 };
-    const defaultView = isIreland ? 'eu' : (this.ctx.isMobile ? this.ctx.resolvedLocation : 'global');
+    // Use variant-specific map config
+    const mapConfig = getMapConfig();
+    const hasCustomMap = !!mapConfig.bounds; // Ireland variant has bounds
+    const defaultZoom = hasCustomMap 
+      ? (this.ctx.isMobile ? (mapConfig.defaultZoom ?? 4.5) - 1 : mapConfig.defaultZoom ?? 4.5)
+      : (this.ctx.isMobile ? 2.5 : 1.0);
+    const defaultPan = { x: 0, y: 0 };
+    const defaultView = hasCustomMap ? 'eu' : (this.ctx.isMobile ? this.ctx.resolvedLocation : 'global');
     
     this.ctx.map = new MapContainer(mapContainer, {
       zoom: defaultZoom,

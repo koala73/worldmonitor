@@ -98,8 +98,6 @@ import {
   CLOUD_REGIONS,
   PORTS,
   SPACEPORTS,
-  IRELAND_BOUNDS,
-  IRELAND_MIN_ZOOM,
   APT_GROUPS,
   CRITICAL_MINERALS,
   STOCK_EXCHANGES,
@@ -110,6 +108,8 @@ import {
   MINING_SITES,
   PROCESSING_PLANTS,
   COMMODITY_PORTS as COMMODITY_GEO_PORTS,
+  getMapConfig,
+  isIrelandVariant,
 } from '@/config';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
@@ -192,6 +192,9 @@ const MAP_INTERACTION_MODE: MapInteractionMode =
 const HAPPY_DARK_STYLE = '/map-styles/happy-dark.json';
 const HAPPY_LIGHT_STYLE = '/map-styles/happy-light.json';
 const isHappyVariant = SITE_VARIANT === 'happy';
+
+// Map config from variant (config-driven)
+const variantMapConfig = getMapConfig();
 
 // Zoom thresholds for layer visibility and labels (matches old Map.ts)
 // Zoom-dependent layer visibility and labels
@@ -460,7 +463,7 @@ export class DeckGLMap {
       layers: { ...initialState.layers },
     };
     // For Ireland variant: filter hotspots to Ireland + UK region
-    if (SITE_VARIANT === 'ireland') {
+    if (isIrelandVariant()) {
       this.hotspots = INTEL_HOTSPOTS.filter(h => 
         h.lat >= 48 && h.lat <= 62 && h.lon >= -12 && h.lon <= 2
       );
@@ -557,7 +560,7 @@ export class DeckGLMap {
 
     const attribution = document.createElement('div');
     attribution.className = 'map-attribution';
-    attribution.innerHTML = (isHappyVariant || SITE_VARIANT === 'ireland')
+    attribution.innerHTML = (isHappyVariant || isIrelandVariant())
       ? '© <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
       : '© <a href="https://protomaps.com" target="_blank" rel="noopener">Protomaps</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
     wrapper.appendChild(attribution);
@@ -566,7 +569,7 @@ export class DeckGLMap {
   }
 
   private getEffectiveBasemapSelection(): { provider: 'auto' | 'pmtiles' | 'openfreemap' | 'carto'; theme: string } {
-    if (SITE_VARIANT === 'ireland') {
+    if (isIrelandVariant()) {
       // Force a cleaner, world-monitor-like visual style for Ireland variant
       return { provider: 'carto', theme: 'voyager' };
     }
@@ -614,11 +617,11 @@ export class DeckGLMap {
     const basemapEl = document.getElementById('deckgl-basemap');
     if (!basemapEl) return;
 
-    // Ireland variant: lock map to Ireland bounds
-    const isIrelandVariant = SITE_VARIANT === 'ireland';
-    const irelandMapOptions = isIrelandVariant ? {
-      maxBounds: [[IRELAND_BOUNDS.sw.lng, IRELAND_BOUNDS.sw.lat], [IRELAND_BOUNDS.ne.lng, IRELAND_BOUNDS.ne.lat]] as [[number, number], [number, number]],
-      minZoom: IRELAND_MIN_ZOOM,
+    // Variant-specific: lock map to bounds if configured
+    const mapBounds = variantMapConfig.bounds;
+    const variantMapOptions = mapBounds ? {
+      maxBounds: [[mapBounds.sw.lng, mapBounds.sw.lat], [mapBounds.ne.lng, mapBounds.ne.lat]] as [[number, number], [number, number]],
+      minZoom: variantMapConfig.minZoom ?? 1,
     } : {};
 
     this.maplibreMap = new maplibregl.Map({
@@ -629,7 +632,7 @@ export class DeckGLMap {
       renderWorldCopies: false,
       attributionControl: false,
       interactive: true,
-      ...irelandMapOptions,
+      ...variantMapOptions,
       ...(MAP_INTERACTION_MODE === 'flat'
         ? {
           maxPitch: 0,
@@ -657,7 +660,7 @@ export class DeckGLMap {
         renderWorldCopies: false,
         attributionControl: false,
         interactive: true,
-        ...irelandMapOptions,
+        ...variantMapOptions,
         ...(MAP_INTERACTION_MODE === 'flat'
           ? {
             maxPitch: 0,
@@ -1087,7 +1090,7 @@ export class DeckGLMap {
     const boundsKey = `${bbox[0].toFixed(4)}:${bbox[1].toFixed(4)}:${bbox[2].toFixed(4)}:${bbox[3].toFixed(4)}`;
     const layers = this.state.layers;
     const useProtests = layers.protests && this.protestSuperclusterSource.length > 0;
-    const useTechHQ = (SITE_VARIANT === 'tech' || SITE_VARIANT === 'ireland') && layers.techHQs;
+    const useTechHQ = (SITE_VARIANT === 'tech' || isIrelandVariant()) && layers.techHQs;
     const useTechEvents = SITE_VARIANT === 'tech' && layers.techEvents && this.techEvents.length > 0;
     const useDatacenterClusters = layers.datacenters && zoom < 5;
     const layerMask = `${Number(useProtests)}${Number(useTechHQ)}${Number(useTechEvents)}${Number(useDatacenterClusters)}`;
@@ -1546,7 +1549,7 @@ export class DeckGLMap {
     }
 
     // Tech-style layers (used by tech + ireland variants)
-    if (SITE_VARIANT === 'tech' || SITE_VARIANT === 'ireland') {
+    if (SITE_VARIANT === 'tech' || isIrelandVariant()) {
       if (mapLayers.startupHubs) {
         layers.push(this.createStartupHubsLayer());
       }
@@ -2694,7 +2697,7 @@ export class DeckGLMap {
 
   // Tech variant layers
   private createStartupHubsLayer(): ScatterplotLayer {
-    const isIreland = SITE_VARIANT === 'ireland';
+    const isIreland = isIrelandVariant();
     return new ScatterplotLayer({
       id: 'startup-hubs-layer',
       data: this.getVisibleStartupHubs(),
@@ -2711,7 +2714,7 @@ export class DeckGLMap {
   }
 
   private createAcceleratorsLayer(): ScatterplotLayer {
-    const isIreland = SITE_VARIANT === 'ireland';
+    const isIreland = isIrelandVariant();
     return new ScatterplotLayer({
       id: 'accelerators-layer',
       data: this.getVisibleAccelerators(),
@@ -2867,7 +2870,7 @@ export class DeckGLMap {
   }
 
   private createCloudRegionsLayer(): ScatterplotLayer {
-    const isIreland = SITE_VARIANT === 'ireland';
+    const isIreland = isIrelandVariant();
     return new ScatterplotLayer({
       id: 'cloud-regions-layer',
       data: this.getVisibleCloudRegions(),
@@ -2984,7 +2987,7 @@ export class DeckGLMap {
     const layers: Layer[] = [];
     const zoom = this.maplibreMap?.getZoom() || 2;
 
-    const isIreland = SITE_VARIANT === 'ireland';
+    const isIreland = isIrelandVariant();
     layers.push(new ScatterplotLayer<MapTechHQCluster>({
       id: 'tech-hq-clusters-layer',
       data: this.techHQClusters,
@@ -3023,7 +3026,7 @@ export class DeckGLMap {
       }));
     }
 
-    const labelZoomThreshold = SITE_VARIANT === 'ireland' ? 6 : 3;
+    const labelZoomThreshold = isIrelandVariant() ? 6 : 3;
     if (zoom >= labelZoomThreshold) {
       const singles = this.techHQClusters.filter(c => c.count === 1);
       if (singles.length > 0) {
@@ -3235,7 +3238,7 @@ export class DeckGLMap {
 
   private needsPulseAnimation(now = Date.now()): boolean {
     // Ireland variant: always pulse for Tier 1 facilities
-    if (SITE_VARIANT === 'ireland') return true;
+    if (isIrelandVariant()) return true;
 
     return this.hasRecentNews(now)
       || this.hasRecentRiot(now)
@@ -4518,7 +4521,7 @@ export class DeckGLMap {
     };
 
     const isLight = getCurrentTheme() === 'light';
-    const legendItems = SITE_VARIANT === 'ireland'
+    const legendItems = isIrelandVariant()
       ? [
         { shape: shapes.diamond('rgb(138, 43, 226)'), label: '💎 Semiconductor Hubs' },
         { shape: shapes.square('rgb(66, 133, 244)'), label: '▪️ Data Centers (Ireland)' },
@@ -5160,7 +5163,7 @@ export class DeckGLMap {
     const now = Date.now();
     
     // For Ireland variant: filter news to Ireland + UK region
-    const filteredData = SITE_VARIANT === 'ireland' 
+    const filteredData = isIrelandVariant() 
       ? data.filter(d => d.lat >= 48 && d.lat <= 62 && d.lon >= -12 && d.lon <= 2)
       : data;
     
@@ -5642,7 +5645,7 @@ export class DeckGLMap {
             'fill-opacity': 0,
           },
         });
-        const disableCountryOverlay = SITE_VARIANT === 'ireland';
+        const disableCountryOverlay = isIrelandVariant();
         this.maplibreMap.addLayer({
           id: 'country-hover-fill',
           type: 'fill',
@@ -5723,7 +5726,7 @@ export class DeckGLMap {
   private countryPulseRaf: number | null = null;
 
   private getHighlightRestOpacity(): { fill: number; border: number } {
-    if (SITE_VARIANT === 'ireland') {
+    if (isIrelandVariant()) {
       return { fill: 0, border: 0 };
     }
     const theme = isLightMapTheme(getMapTheme(getMapProvider())) ? 'light' : 'dark';
@@ -5757,7 +5760,7 @@ export class DeckGLMap {
 
   private pulseCountryHighlight(): void {
     if (this.countryPulseRaf) { cancelAnimationFrame(this.countryPulseRaf); this.countryPulseRaf = null; }
-    if (SITE_VARIANT === 'ireland') return;
+    if (isIrelandVariant()) return;
     const map = this.maplibreMap;
     if (!map) return;
     const rest = this.getHighlightRestOpacity();
@@ -5878,7 +5881,7 @@ export class DeckGLMap {
 
   private updateCountryLayerPaint(theme: 'dark' | 'light'): void {
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
-    const disableCountryOverlay = SITE_VARIANT === 'ireland';
+    const disableCountryOverlay = isIrelandVariant();
     const hoverOpacity = disableCountryOverlay ? 0 : (theme === 'light' ? 0.06 : 0.04);
     const highlightOpacity = disableCountryOverlay ? 0 : (theme === 'light' ? 0.12 : 0.08);
     const highlightBorderOpacity = disableCountryOverlay ? 0 : 0.5;

@@ -52,4 +52,39 @@ export interface VariantConfig {
   panels: Record<string, PanelConfig>;
   mapLayers: MapLayers;
   mobileMapLayers: MapLayers;
+
+  // Brand configuration (optional - defaults to World Monitor)
+  brand?: {
+    /** Display name (e.g. "IrishTech Daily") */
+    displayName: string;
+    /** Logo text (e.g. "IRISHTECH") */
+    logoText: string;
+    /** Header text (e.g. "IRISHTECH DAILY") */
+    headerText: string;
+  };
+
+  // Map configuration (optional - defaults to global view)
+  map?: {
+    /** Map center coordinates */
+    center?: { lat: number; lng: number };
+    /** Default zoom level */
+    defaultZoom?: number;
+    /** Minimum zoom level */
+    minZoom?: number;
+    /** Map bounds (SW/NE corners) */
+    bounds?: {
+      sw: { lng: number; lat: number };
+      ne: { lng: number; lat: number };
+    };
+  };
+
+  // Feature flags (optional)
+  features?: {
+    /** Use Ireland-specific relevance filter for data */
+    irelandRelevanceFilter?: boolean;
+    /** Disable country overlay on map */
+    disableCountryOverlay?: boolean;
+    /** Use expanded attribution text */
+    expandedAttribution?: boolean;
+  };
 }

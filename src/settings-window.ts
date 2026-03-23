@@ -1,4 +1,4 @@
-import { SITE_VARIANT } from '@/config/variant';
+import { getBrand } from '@/config';
 
 /**
  * Standalone settings window: panel toggles only.
@@ -26,7 +26,7 @@ export function initSettingsWindow(): void {
   if (!appEl) return;
 
   // This window shows only "which panels to display" (panel display settings).
-  document.title = `${t('header.settings')} - ${SITE_VARIANT === 'ireland' ? 'IrishTech Daily' : 'World Monitor'}`;
+  document.title = `${t('header.settings')} - ${getBrand().displayName}`;
 
   const panelSettings = loadFromStorage<Record<string, PanelConfig>>(
     STORAGE_KEYS.panels,

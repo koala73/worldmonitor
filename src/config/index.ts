@@ -6,7 +6,18 @@
 
 export { SITE_VARIANT } from './variant';
 
-// Ireland variant bounds and zoom limits
+// Variant configuration utilities (config-driven, avoids hardcoding)
+export {
+  getVariantConfig,
+  getBrand,
+  getMapConfig,
+  getFeatures,
+  isIrelandVariant,
+  getMinZoom,
+  getMapBounds,
+} from './variant-config';
+
+// Ireland variant bounds and zoom limits (for backwards compatibility)
 export { IRELAND_BOUNDS, IRELAND_MIN_ZOOM, IRELAND_CENTER, IRELAND_DEFAULT_ZOOM } from './variants/ireland';
 
 // Shared base configuration (always included)

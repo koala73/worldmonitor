@@ -10,9 +10,10 @@ import {
   SECTORS,
   COMMODITIES,
   MARKET_SYMBOLS,
-  SITE_VARIANT,
   LAYER_TO_SOURCE,
   DEFAULT_PANELS,
+  SITE_VARIANT,
+  getFeatures,
 } from '@/config';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
@@ -314,8 +315,8 @@ export class DataLoaderManager implements AppModule {
     // Desktop: server digest has fewer categories than client FEEDS config.
     // Enable per-feed RSS fallback so missing categories fetch directly.
     if (isDesktopRuntime()) return true;
-    // Ireland variant: always enable per-feed fallback since backend doesn't have Ireland-specific digests
-    if (SITE_VARIANT === 'ireland') return true;
+    // Variants with Ireland relevance filter: always enable per-feed fallback since backend doesn't have variant-specific digests
+    if (getFeatures().irelandRelevanceFilter) return true;
     return isFeatureEnabled('newsPerFeedFallback');
   }
 

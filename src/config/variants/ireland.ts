@@ -226,4 +226,26 @@ export const VARIANT_CONFIG: VariantConfig = {
   panels: PANELS,
   mapLayers: IRELAND_MAP_LAYERS,
   mobileMapLayers: IRELAND_MAP_LAYERS,
+
+  // Brand configuration
+  brand: {
+    displayName: 'IrishTech Daily',
+    logoText: 'IRISHTECH',
+    headerText: 'IRISHTECH DAILY',
+  },
+
+  // Map configuration
+  map: {
+    center: IRELAND_CENTER,
+    defaultZoom: IRELAND_DEFAULT_ZOOM,
+    minZoom: IRELAND_MIN_ZOOM,
+    bounds: IRELAND_BOUNDS,
+  },
+
+  // Feature flags
+  features: {
+    irelandRelevanceFilter: true,
+    disableCountryOverlay: true,
+    expandedAttribution: true,
+  },
 };
