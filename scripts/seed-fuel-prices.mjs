@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import xlsx from 'xlsx';
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -99,7 +100,7 @@ async function fetchSpain() {
     const url = 'https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/';
     const resp = await globalThis.fetch(url, {
       headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(60000),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
@@ -226,122 +227,103 @@ async function fetchUS_EIA() {
   }
 }
 
-// EU Oil Bulletin CSV: EUR per 1000 liters. URL rotates monthly — discover dynamically from the EC page.
+// EU Oil Bulletin XLSX: EUR per 1000 liters. EC dropped the CSV format; document ID is stable.
+// "Prices with taxes latest prices" — updated weekly in-place with the same document UUID.
+const EU_XLSX_URL = 'https://energy.ec.europa.eu/document/download/264c2d0f-f161-4ea3-a777-78faae59bea0_en';
+
 function parseEUPrice(raw) {
-  if (!raw || raw === '') return null;
-  const v = parseFloat(raw.replace(',', '.'));
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim().replace(/\s/g, '');
+  if (!s) return null;
+  // Handle both "1234.56" (xlsx default) and "1.234,56" / "1,234.56" with thousand separators
+  let normalized = s;
+  const dotIdx = s.lastIndexOf('.');
+  const commaIdx = s.lastIndexOf(',');
+  if (dotIdx > -1 && commaIdx > -1) {
+    normalized = dotIdx > commaIdx ? s.replace(/,/g, '') : s.replace(/\./g, '').replace(',', '.');
+  } else if (commaIdx > -1) {
+    normalized = s.replace(',', '.');
+  }
+  const v = parseFloat(normalized);
   return v > 0 ? +(v / 1000).toFixed(4) : null;
 }
 
-async function discoverEU_CSV_URLs() {
-  // Scrape the EC energy page to find the current CSV download link(s).
-  // URL pattern: /system/files/YYYY-MM/filename.csv
-  try {
-    const pageResp = await globalThis.fetch(
-      'https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en',
-      { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000) }
-    );
-    if (!pageResp.ok) throw new Error(`page HTTP ${pageResp.status}`);
-    const html = await pageResp.text();
-    const matches = [...html.matchAll(/\/system\/files\/\d{4}-\d{2}\/[^"'\s]+\.csv/gi)];
-    const discovered = [...new Set(matches.map(m => `https://energy.ec.europa.eu${m[0]}`))];
-    if (discovered.length) {
-      console.log(`  [EU] Discovered ${discovered.length} CSV URL(s) from EC page`);
-      return discovered;
-    }
-  } catch (err) {
-    console.warn(`  [EU] Page discovery failed: ${err.message} — falling back to known URLs`);
-  }
-  // Fallback: try known patterns for current + previous month
-  const now = new Date();
-  const fallbacks = [];
-  for (let monthOffset = 0; monthOffset <= 3; monthOffset++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - monthOffset, 1);
-    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    fallbacks.push(`https://energy.ec.europa.eu/system/files/${ym}/weekly_oil_bulletin_prices_history.csv`);
-  }
-  return fallbacks;
-}
-
 async function fetchEU_CSV() {
-  const EU_CSV_URLS = await discoverEU_CSV_URLs();
+  try {
+    console.log(`  [EU] Fetching XLSX from EC document store`);
+    const resp = await globalThis.fetch(EU_XLSX_URL, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-  for (const csvUrl of EU_CSV_URLS) {
-    try {
-      console.log(`  [EU] Trying CSV: ${csvUrl}`);
-      const resp = await globalThis.fetch(csvUrl, {
-        headers: { 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(30000),
-      });
-      if (!resp.ok) {
-        console.warn(`  [EU] HTTP ${resp.status} for ${csvUrl}`);
-        continue;
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const workbook = xlsx.read(buf, { type: 'buffer' });
+    console.log(`  [EU] XLSX sheets: ${workbook.SheetNames.join(', ')}`);
+
+    // Find the "with taxes" sheet, or fall back to first sheet
+    const sheetName = workbook.SheetNames.find(n => /with.tax/i.test(n))
+      ?? workbook.SheetNames.find(n => /price/i.test(n))
+      ?? workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    // raw: false → all cells as formatted strings; defval: '' for empty cells
+    const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+
+    // Find header row: first row (within first 10) containing "country"
+    let headerRowIdx = -1;
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      if (rows[i].some(cell => /^country$/i.test(String(cell).trim()))) {
+        headerRowIdx = i;
+        break;
       }
-      const text = await resp.text();
-      if (!text || text.length < 100) continue;
-
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) continue;
-
-      const header = lines[0].split(';').map(h => h.trim().replace(/^"|"$/g, ''));
-      const dateIdx = header.findIndex(h => /date/i.test(h));
-      const countryIdx = header.findIndex(h => /country/i.test(h));
-      const gasolIdx = header.findIndex(h => /euro.super.95/i.test(h) || /gasoline.95/i.test(h));
-      const dieselIdx = header.findIndex(h => /gas oil/i.test(h) || /gasoil/i.test(h));
-
-      if (dateIdx < 0 || countryIdx < 0) {
-        console.warn('  [EU] CSV header missing date or country column');
-        continue;
-      }
-
-      const rows = [];
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(';').map(c => c.trim().replace(/^"|"$/g, ''));
-        if (cols.length < Math.max(dateIdx, countryIdx) + 1) continue;
-        rows.push(cols);
-      }
-
-      if (rows.length === 0) continue;
-
-      const dates = rows.map(r => r[dateIdx]).filter(Boolean);
-      const maxDate = dates.sort().reverse()[0];
-      const latestRows = rows.filter(r => r[dateIdx] === maxDate);
-
-      const euResults = [];
-      for (const row of latestRows) {
-        const countryName = row[countryIdx];
-        const iso2 = EU_COUNTRY_MAP[countryName];
-        if (!iso2) continue;
-        const info = EU_COUNTRY_INFO[iso2];
-        if (!info) continue;
-
-        const gasRaw = gasolIdx >= 0 ? row[gasolIdx] : null;
-        const dslRaw = dieselIdx >= 0 ? row[dieselIdx] : null;
-
-        const gasPrice = parseEUPrice(gasRaw);
-        const dslPrice = parseEUPrice(dslRaw);
-
-        euResults.push({
-          code: iso2,
-          name: info.name,
-          currency: 'EUR', // EU Oil Bulletin prices are EUR-denominated even for non-euro members
-          flag: info.flag,
-          gasoline: gasPrice != null ? { localPrice: gasPrice, grade: 'E5', source: 'energy.ec.europa.eu', observedAt: maxDate } : null,
-          diesel: dslPrice != null ? { localPrice: dslPrice, grade: 'Diesel', source: 'energy.ec.europa.eu', observedAt: maxDate } : null,
-        });
-      }
-
-      if (euResults.length > 0) {
-        console.log(`  [EU] Parsed ${euResults.length} countries from ${csvUrl} (date=${maxDate})`);
-        return euResults;
-      }
-    } catch (err) {
-      console.warn(`  [EU] fetchEU_CSV error for ${csvUrl}: ${err.message}`);
     }
-  }
+    if (headerRowIdx < 0) {
+      console.warn(`  [EU] XLSX: no header row found. First 3 rows: ${rows.slice(0, 3).map(r => r.slice(0, 5).join('|')).join(' // ')}`);
+      return [];
+    }
 
-  console.warn('  [EU] All EU CSV URLs failed, returning []');
-  return [];
+    const header = rows[headerRowIdx].map(c => String(c).trim());
+    const countryIdx = header.findIndex(h => /^country$/i.test(h));
+    // Gasoline: "Euro-super 95" column (with taxes)
+    const gasolIdx = header.findIndex(h => /euro.super.95|95 e5|e5.95/i.test(h) || (/\b95\b/i.test(h) && !/98|100/i.test(h)));
+    // Diesel: "Gas oil automotive" or "Automotive gas oil"
+    const dieselIdx = header.findIndex(h => /gas.oil|gasoil|diesel/i.test(h));
+
+    if (gasolIdx < 0 || dieselIdx < 0) {
+      console.warn(`  [EU] XLSX: couldn't find price columns. Headers: ${header.join(' | ')}`);
+    }
+
+    const euResults = [];
+    const observedAt = new Date().toISOString().slice(0, 10);
+    for (let i = headerRowIdx + 1; i < rows.length; i++) {
+      const row = rows[i];
+      const countryName = String(row[countryIdx] ?? '').trim();
+      if (!countryName) continue;
+      const iso2 = EU_COUNTRY_MAP[countryName];
+      if (!iso2) continue;
+      const info = EU_COUNTRY_INFO[iso2];
+      if (!info) continue;
+
+      const gasPrice = gasolIdx >= 0 ? parseEUPrice(row[gasolIdx]) : null;
+      const dslPrice = dieselIdx >= 0 ? parseEUPrice(row[dieselIdx]) : null;
+
+      euResults.push({
+        code: iso2,
+        name: info.name,
+        currency: 'EUR',
+        flag: info.flag,
+        gasoline: gasPrice != null ? { localPrice: gasPrice, grade: 'E5', source: 'energy.ec.europa.eu', observedAt } : null,
+        diesel: dslPrice != null ? { localPrice: dslPrice, grade: 'Diesel', source: 'energy.ec.europa.eu', observedAt } : null,
+      });
+    }
+
+    console.log(`  [EU] Parsed ${euResults.length} countries from XLSX (sheet=${sheetName})`);
+    return euResults;
+  } catch (err) {
+    console.warn(`  [EU] fetchEU_XLSX error: ${err.message}`);
+    return [];
+  }
 }
 
 async function fetchBrazil() {
