@@ -101,7 +101,6 @@ const FRED_SERIES: FredConfig[] = [
   { id: 'FEDFUNDS', name: 'Fed Funds Rate', unit: '%', precision: 2 },
   { id: 'T10Y2Y', name: '10Y-2Y Spread', unit: '%', precision: 2 },
   { id: 'M2SL', name: 'M2 Supply', unit: '$T', precision: 1, scaleDivisor: 1000 },
-  { id: 'GSCPI', name: 'GSCPI', unit: '', precision: 2 },
   { id: 'UNRATE', name: 'Unemployment', unit: '%', precision: 1 },
   { id: 'CPIAUCSL', name: 'CPI Index', unit: '', precision: 1 },
   { id: 'DGS10', name: '10Y Treasury', unit: '%', precision: 2 },

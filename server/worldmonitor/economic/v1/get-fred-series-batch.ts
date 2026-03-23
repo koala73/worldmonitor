@@ -16,7 +16,7 @@ import { applyFredObservationLimit, fredSeedKey, normalizeFredLimit } from './_f
 
 const ALLOWED_SERIES = new Set<string>([
   'WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS',
-  'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'GSCPI',
+  'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US',
 ]);
 
 export async function getFredSeriesBatch(
