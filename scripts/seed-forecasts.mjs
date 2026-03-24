@@ -3172,6 +3172,9 @@ function normalizeImpactHypothesisDraft(item = {}) {
     hypothesisKey: rawHypothesisKey || rawVariableKey,
     description: sanitizeForPrompt(String(item?.description || item?.summary || '')).slice(0, 280),
     geography: sanitizeForPrompt(String(item?.geography || item?.region || '')).slice(0, 120),
+    // affectedAssets/assetsOrSectors: intentional bidirectional coalescing — v4 schema uses
+    // affectedAssets, legacy v3 uses assetsOrSectors. Both directions coalesce so cached
+    // v3 responses and live v4 responses are normalized to the same field.
     affectedAssets: uniqueSortedStrings((Array.isArray(item?.affectedAssets) ? item.affectedAssets : (Array.isArray(item?.assetsOrSectors) ? item.assetsOrSectors : [])).map((value) => String(value || '').trim()).filter(Boolean)).slice(0, 6),
     marketImpact: String(item?.marketImpact || item?.channel || '').trim().toLowerCase().slice(0, 40),
     causalLink: sanitizeForPrompt(String(item?.causalLink || '')).slice(0, 160),
@@ -3182,7 +3185,7 @@ function normalizeImpactHypothesisDraft(item = {}) {
     region: String(item?.region || item?.geography || '').trim(),
     macroRegion: String(item?.macroRegion || '').trim(),
     countries: uniqueSortedStrings((Array.isArray(item?.countries) ? item.countries : []).map((value) => String(value || '').trim()).filter(Boolean)).slice(0, 6),
-    assetsOrSectors: uniqueSortedStrings((Array.isArray(item?.assetsOrSectors) ? item.assetsOrSectors : (Array.isArray(item?.affectedAssets) ? item.affectedAssets : [])).map((value) => String(value || '').trim()).filter(Boolean)).slice(0, 6),
+    assetsOrSectors: uniqueSortedStrings((Array.isArray(item?.assetsOrSectors) ? item.assetsOrSectors : (Array.isArray(item?.affectedAssets) ? item.affectedAssets : [])).map((value) => String(value || '').trim()).filter(Boolean)).slice(0, 6), // mirror of affectedAssets (see above)
     commodity: String(item?.commodity || '').trim(),
     dependsOnKey: String(item?.dependsOnKey || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 80),
     strength: clampUnitInterval(Number(item?.strength ?? 0)),
@@ -3482,7 +3485,7 @@ function buildImpactExpansionCandidateHash(candidatePackets = [], learnedSection
         commodityKey: packet.commodityKey || '',
         version: IMPACT_EXPANSION_REGISTRY_VERSION,
       })),
-      learnedFingerprint: learnedSection.slice(0, 80),
+      learnedFingerprint: learnedSection,
     }))
     .digest('hex')
     .slice(0, 16);
@@ -3671,21 +3674,28 @@ async function extractImpactExpansionBundle({
     temperature: 0,
   };
 
-  const perCandidateResults = await Promise.all(
-    selectedCandidatePackets.map(async (packet) => {
-      const singleCacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash([packet], learnedSection)}`;
-      const singleCached = await redisGet(url, token, singleCacheKey);
-      if (Array.isArray(singleCached?.candidates)) {
-        const hits = sanitizeImpactExpansionDrafts(singleCached.candidates, [packet]);
-        if (hits.length > 0) return { extractedCandidate: hits[0], fromCache: true };
-      }
-      const single = await extractSingleImpactExpansionCandidate(packet, llmOptions, learnedSection);
-      if (single?.extractedCandidate) {
-        await redisSet(url, token, singleCacheKey, { candidates: [single.extractedCandidate] }, IMPACT_EXPANSION_CACHE_TTL_SECONDS);
-      }
-      return { ...single, fromCache: false };
-    }),
-  );
+  // Limit concurrent LLM calls to 3 to avoid hammering the provider rate limits.
+  const IMPACT_EXPANSION_CONCURRENCY = 3;
+  const perCandidateResults = [];
+  for (let i = 0; i < selectedCandidatePackets.length; i += IMPACT_EXPANSION_CONCURRENCY) {
+    const batch = selectedCandidatePackets.slice(i, i + IMPACT_EXPANSION_CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(async (packet) => {
+        const singleCacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash([packet], learnedSection)}`;
+        const singleCached = await redisGet(url, token, singleCacheKey);
+        if (Array.isArray(singleCached?.candidates)) {
+          const hits = sanitizeImpactExpansionDrafts(singleCached.candidates, [packet]);
+          if (hits.length > 0) return { extractedCandidate: hits[0], fromCache: true };
+        }
+        const single = await extractSingleImpactExpansionCandidate(packet, llmOptions, learnedSection);
+        if (single?.extractedCandidate) {
+          await redisSet(url, token, singleCacheKey, { candidates: [single.extractedCandidate] }, IMPACT_EXPANSION_CACHE_TTL_SECONDS);
+        }
+        return { ...single, fromCache: false };
+      }),
+    );
+    perCandidateResults.push(...batchResults);
+  }
 
   bundle.source = 'live';
   bundle.parseMode = 'per_candidate';
@@ -4418,18 +4428,19 @@ function buildImpactExpansionDebugPayload(data = {}, worldState = null, runId = 
   if (!bundle && (!Array.isArray(candidates) || candidates.length === 0)) return null;
   const rawValidation = data?.deepPathEvaluation?.validation || null;
 
-  const refinementResult = data?.refinementResult || { iterationCount: 0, committed: false };
   const perCandidateMappedCount = {};
   for (const h of (rawValidation?.mapped || [])) {
     const id = h.candidateStateId || 'unknown';
     perCandidateMappedCount[id] = (perCandidateMappedCount[id] || 0) + 1;
   }
   const qualityScore = scoreImpactExpansionQuality(rawValidation || {}, candidates);
+  // critiqueIterations is predicted from quality score (fire-and-forget refinement runs after
+  // the artifact write and its result is unavailable synchronously). 0 = quality already met,
+  // 1 = critique will fire on this run.
   const convergence = {
     converged: qualityScore.composite >= 0.80,
     finalComposite: qualityScore.composite,
-    critiqueIterations: refinementResult.iterationCount,
-    refinementCommitted: refinementResult.committed,
+    critiqueIterations: qualityScore.composite < 0.80 ? 1 : 0,
     perCandidateMappedCount,
   };
   const hypothesisValidation = rawValidation ? {
@@ -12956,7 +12967,25 @@ function validateCaseNarratives(items, predictions) {
 }
 
 function sanitizeForPrompt(text) {
-  return (text || '').replace(/[\n\r]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
+  return (text || '')
+    .replace(/[\n\r]/g, ' ')
+    .replace(/[<>{}\x00-\x1f]/g, '')
+    .replace(/\b(ignore|override|disregard|you must|new rule|from now on)\b[^.;]*/gi, '')
+    .slice(0, 200)
+    .trim();
+}
+
+// Sanitizes LLM-returned text before writing to Redis as a prompt section.
+// Strips lines containing directive injection phrases (e.g. "ignore all previous instructions").
+// Calling code applies PROMPT_LEARNED_MAX_CHARS length cap after this function.
+function sanitizeProposedLlmAddition(text) {
+  if (typeof text !== 'string') return '';
+  return text
+    .split('\n')
+    .filter((line) => !/\b(ignore|override|disregard|you must|new rule|from now on)\b/i.test(line))
+    .join('\n')
+    .replace(/[<>{}]/g, '')
+    .trim();
 }
 
 function extractStructuredLlmPayload(text) {
@@ -14044,21 +14073,17 @@ async function processDeepForecastTask(task = {}) {
     replacedFastRun: evaluation.status === 'completed',
   };
 
-  // Run refinement before artifact assembly so the result is recorded in the R2 debug payload.
-  const refinementResult = await runImpactExpansionPromptRefinement({
-    candidatePackets: snapshot.impactExpansionCandidates || [],
-    validation: evaluation.validation || {},
-    priorWorldState,
-  });
-
   const dataForWrite = {
     ...snapshot,
     priorWorldState,
     priorWorldStates: priorWorldState ? [priorWorldState] : [],
     impactExpansionBundle: evaluation.impactExpansionBundle || null,
     deepPathEvaluation: evaluation,
-    refinementResult: refinementResult || { iterationCount: 0, committed: false },
   };
+
+  // Compute convergence before artifact write so it can be returned to callers.
+  const debugPayload = buildImpactExpansionDebugPayload(dataForWrite, null, snapshot.runId || '');
+  const convergence = debugPayload?.convergence || null;
 
   if (evaluation.status === 'completed') {
     const deepForecast = {
@@ -14081,7 +14106,13 @@ async function processDeepForecastTask(task = {}) {
         completedAt: deepForecast.completedAt,
       },
     }, { runId: snapshot.runId });
-    return { status: 'completed', deepForecast };
+    // Fire-and-forget: non-blocking prompt self-improvement runs after artifact is written.
+    runImpactExpansionPromptRefinement({
+      candidatePackets: snapshot.impactExpansionCandidates || [],
+      validation: evaluation.validation || {},
+      priorWorldState,
+    }).catch((err) => console.warn('[PromptRefinement] Error:', err.message));
+    return { status: 'completed', deepForecast, convergence };
   }
 
   const deepForecast = {
@@ -14102,7 +14133,13 @@ async function processDeepForecastTask(task = {}) {
       completedAt: deepForecast.completedAt,
     },
   }, { runId: snapshot.runId });
-  return { status: deepForecast.status, deepForecast };
+  // Fire-and-forget: non-blocking prompt self-improvement runs after artifact is written.
+  runImpactExpansionPromptRefinement({
+    candidatePackets: snapshot.impactExpansionCandidates || [],
+    validation: evaluation.validation || {},
+    priorWorldState,
+  }).catch((err) => console.warn('[PromptRefinement] Error:', err.message));
+  return { status: deepForecast.status, deepForecast, convergence };
 }
 
 async function writeFailedDeepForecastArtifacts(task = {}, failureReason = '') {
@@ -14295,7 +14332,7 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
 
     // Rate-limit: skip if last attempt was < 30 min ago
     const lastAttemptRaw = await redisGet(url, token, PROMPT_LAST_ATTEMPT_KEY);
-    if (lastAttemptRaw && Date.now() - Number(lastAttemptRaw) < PROMPT_MIN_REFINEMENT_INTERVAL_MS) return { iterationCount: 0, committed: false };
+    if (lastAttemptRaw && Date.now() - Number(lastAttemptRaw) < PROMPT_MIN_REFINEMENT_INTERVAL_MS) return { iterationCount: 0, committed: false, exitReason: 'rate_limited' };
 
     const currentScore = scoreImpactExpansionQuality(validation, candidatePackets);
     const baselineRaw = await redisGet(url, token, PROMPT_BASELINE_KEY);
@@ -14319,7 +14356,7 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
         }, 30 * 24 * 3600);
         console.log(`  [PromptRefinement] Baseline updated: ${currentScore.composite.toFixed(3)}`);
       }
-      return { iterationCount: 0, committed: false };
+      return { iterationCount: 0, committed: false, exitReason: 'quality_met' };
     }
 
     // Below target — attempt refinement
@@ -14334,7 +14371,7 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
       buildImpactPromptCritiqueUserPrompt(currentScore, mapped, candidatePackets),
       { stage: 'prompt_critique', maxTokens: 700, temperature: 0.5 },
     );
-    if (!critiqueResult) return { iterationCount: 1, committed: false };
+    if (!critiqueResult) return { iterationCount: 1, committed: false, exitReason: 'error' };
 
     let critique;
     try {
@@ -14348,20 +14385,27 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
     } catch (e) {
       console.warn(`  [PromptRefinement] Could not parse critique JSON: ${e.message}`);
       console.warn(`  [PromptRefinement] Raw response (first 400 chars): ${critiqueResult.text?.slice(0, 400)}`);
-      return { iterationCount: 1, committed: false };
+      return { iterationCount: 1, committed: false, exitReason: 'error' };
     }
 
     if (!critique?.proposed_addition || (critique.confidence || 0) < 0.5) {
       console.warn('  [PromptRefinement] Critique confidence too low — skipping');
-      return { iterationCount: 1, committed: false };
+      return { iterationCount: 1, committed: false, exitReason: 'error' };
+    }
+
+    // Sanitize LLM-returned addition before writing to Redis to prevent prompt injection.
+    const sanitizedAddition = sanitizeProposedLlmAddition(critique.proposed_addition);
+    if (!sanitizedAddition) {
+      console.warn('  [PromptRefinement] Sanitized addition is empty — skipping');
+      return { iterationCount: 1, committed: false, exitReason: 'error' };
     }
 
     // Build candidate new learned section (trim if too long)
     let candidateSection = currentLearnedSection
-      ? `${currentLearnedSection}\n\n${critique.proposed_addition}`
-      : critique.proposed_addition;
+      ? `${currentLearnedSection}\n\n${sanitizedAddition}`
+      : sanitizedAddition;
     if (candidateSection.length > PROMPT_LEARNED_MAX_CHARS) {
-      candidateSection = critique.proposed_addition.slice(0, PROMPT_LEARNED_MAX_CHARS);
+      candidateSection = sanitizedAddition.slice(0, PROMPT_LEARNED_MAX_CHARS);
     }
 
     // Test the new prompt on the same candidates (bypasses cache via unique learnedSection)
@@ -14389,10 +14433,10 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
     } else {
       console.log(`  [PromptRefinement] Reverted: test ${testScore.composite.toFixed(3)} <= baseline ${currentBaseline.toFixed(3)}`);
     }
-    return { iterationCount: 1, committed: didCommit };
+    return { iterationCount: 1, committed: didCommit, exitReason: didCommit ? 'committed' : 'reverted' };
   } catch (err) {
     console.warn(`  [PromptRefinement] Error: ${err.message}`);
-    return { iterationCount: 0, committed: false };
+    return { iterationCount: 0, committed: false, exitReason: 'error' };
   }
 }
 
