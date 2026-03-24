@@ -12,7 +12,6 @@ const SOURCE_KEYS = [
   'thermal:escalation:v1',
   'intelligence:gpsjam:v2',
   'military:flights:v1',
-  'military:flights:stale:v1',
   'unrest:events:v1',
   'intelligence:advisories-bootstrap:v1',
   'market:stocks-bootstrap:v1',
@@ -113,28 +112,33 @@ const TYPE_CATEGORY = {
 };
 
 // Base severity weights for each signal type
+// Base severity weights per signal type. These are multiplied by a domain-
+// specific factor (e.g. anomaly score, % change) to produce severityScore.
+// Scoring thresholds: >=3.5 → CRITICAL, >=2.5 → HIGH, >=1.5 → MEDIUM, else LOW.
+// Higher weight = a weaker domain signal can still reach HIGH/CRITICAL.
+// Composite escalation starts at 4.0 and grows with categoryMap.size.
 const BASE_WEIGHT = {
-  CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION: 4.0,
-  CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE: 3.0,
-  CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE: 3.0,
-  CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING: 2.5,
-  CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE: 2.5,
-  CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER: 3.5,
-  CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE: 2.0,
-  CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK: 2.0,
-  CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION: 2.5,
-  CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION: 2.0,
-  CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE: 1.5,
-  CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT: 2.5,
-  CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY: 3.5,
-  CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE: 2.0,
-  CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION: 1.5,
-  CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE: 2.0,
-  CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION: 1.5,
-  CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS: 2.0,
-  CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME: 1.5,
-  CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 1.5,
-  CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE: 2.5,
+  CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION: 4.0,  // synthetic — grows with co-firing count
+  CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE: 3.0,          // high kinetic significance
+  CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE: 3.0,  // high kinetic significance
+  CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER: 3.5,     // active alert = direct threat
+  CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY: 3.5,      // catastrophic potential
+  CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING: 2.5,            // active EW operation
+  CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE: 2.5,           // civil instability
+  CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION: 2.5,       // active APT operation
+  CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT: 2.5, // immediate humanitarian
+  CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE: 2.5,       // composite CII deterioration
+  CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE: 2.0,              // financial stress indicator
+  CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK: 2.0,        // supply shock proxy
+  CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION: 2.0,    // logistics/trade impact
+  CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE: 2.0,  // operational disruption
+  CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE: 2.0,     // humanitarian — lagging
+  CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS: 2.0,          // broad market indicator
+  CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE: 1.5,        // policy action — slow burn
+  CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION: 1.5,    // environmental — regional
+  CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION: 1.5, // predictive — lower confidence
+  CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME: 1.5,        // environmental — regional
+  CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 1.5, // sentiment — lagging
 };
 
 function scoreTier(score) {
@@ -292,20 +296,23 @@ function extractOrefAlertCluster(d) {
   const payload = d['intelligence:advisories-bootstrap:v1'];
   if (!payload) return [];
   const advisories = Array.isArray(payload.advisories) ? payload.advisories : [];
-  const ilAdvisories = advisories.filter(a => String(a.country || '').toLowerCase() === 'israel' && a.level === 'do not travel');
-  if (ilAdvisories.length === 0) return [];
-  const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER'];
-  return [{
-    id: 'oref:middle-east',
-    type: 'CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER',
-    theater: 'Middle East',
-    summary: `Alert cluster: ${ilAdvisories.length} "Do Not Travel" advisories for Israel`,
-    severity: scoreTier(score),
-    severityScore: score,
-    detectedAt: Date.now(),
-    contributingTypes: [],
-    signalCount: 0,
-  }];
+  const critical = advisories.filter(a => String(a.level || '').toLowerCase() === 'do not travel');
+  if (critical.length === 0) return [];
+  return critical.slice(0, 3).map(a => {
+    const theater = normalizeTheater(a.region || a.country || '');
+    const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER'];
+    return {
+      id: `advisory:${(a.country || a.region || 'unknown').replace(/\s+/g, '-').toLowerCase()}`,
+      type: 'CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER',
+      theater,
+      summary: `"Do Not Travel" advisory: ${a.country || a.region || 'unknown'}${a.reason ? ` — ${a.reason}` : ''}`,
+      severity: scoreTier(score),
+      severityScore: score,
+      detectedAt: Date.now(),
+      contributingTypes: [],
+      signalCount: 0,
+    };
+  });
 }
 
 function extractVixSpike(d) {
@@ -800,7 +807,8 @@ async function aggregateCrossSourceSignals() {
     (b.severityScore - a.severityScore) || (b.detectedAt - a.detectedAt)
   );
 
-  const finalSignals = [...composites, ...sortedSignals];
+  const MAX_SIGNALS = 30;
+  const finalSignals = [...composites, ...sortedSignals].slice(0, MAX_SIGNALS);
 
   return {
     signals: finalSignals,

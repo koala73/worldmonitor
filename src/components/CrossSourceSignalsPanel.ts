@@ -95,6 +95,10 @@ export class CrossSourceSignalsPanel extends Panel {
       trackActivity: true,
       infoTooltip: 'Aggregates 15+ real-time data streams every 15 minutes. Ranks cross-domain signals by severity and detects composite escalation when 3 or more signal categories co-fire in the same theater.',
     });
+    // Inject keyframe once — used by the composite banner pulse dot
+    const style = document.createElement('style');
+    style.textContent = '@keyframes cross-source-pulse-dot{0%,100%{opacity:1}50%{opacity:.15}}';
+    document.head.appendChild(style);
     this.showLoading('Loading signal data...');
   }
 
@@ -164,13 +168,12 @@ export class CrossSourceSignalsPanel extends Panel {
       : '';
 
     const compositeNote = this.compositeCount > 0
-      ? `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--semantic-critical);padding:7px 10px;border:1px solid rgba(255,80,80,0.3);background:rgba(255,80,80,0.06);margin-bottom:8px"><div style="width:7px;height:7px;border-radius:50%;background:var(--semantic-critical);flex-shrink:0;animation:css-pulse-dot 2s ease-in-out infinite"></div>${this.compositeCount} composite escalation zone${this.compositeCount > 1 ? 's' : ''} detected</div>`
+      ? `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--semantic-critical);padding:7px 10px;border:1px solid rgba(255,80,80,0.3);background:rgba(255,80,80,0.06);margin-bottom:8px"><div style="width:7px;height:7px;border-radius:50%;background:var(--semantic-critical);flex-shrink:0;animation:cross-source-pulse-dot 2s ease-in-out infinite"></div>${this.compositeCount} composite escalation zone${this.compositeCount > 1 ? 's' : ''} detected</div>`
       : '';
 
     const signalRows = this.signals.map((s, i) => this.renderSignal(s, i)).join('');
 
     this.setContent(`
-      <style>@keyframes css-pulse-dot{0%,100%{opacity:1}50%{opacity:.15}}</style>
       <div style="display:flex;flex-direction:column;gap:6px">
         ${compositeNote}
         ${signalRows}
