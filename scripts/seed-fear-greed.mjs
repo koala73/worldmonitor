@@ -5,7 +5,18 @@ import { execFileSync } from 'child_process';
 
 loadEnvFile(import.meta.url);
 
-const _proxyAuth = process.env.OREF_PROXY_AUTH || '';
+// FEAR_GREED_PROXY_AUTH: explicit US-targeted proxy for CBOE/CNN (US financial endpoints).
+// Falls back to OREF_PROXY_AUTH with the country code swapped il→us, since OREF targets
+// Israel and Froxy returns 422 CONNECT when routing Israeli exits to US CDNs.
+function resolveUsProxy() {
+  if (process.env.FEAR_GREED_PROXY_AUTH) return process.env.FEAR_GREED_PROXY_AUTH;
+  const oref = process.env.OREF_PROXY_AUTH || '';
+  if (!oref) return '';
+  // Froxy format: user:password%3Bcountry%3B...@host:port  (semicolons URL-encoded)
+  // Swap %3Bil%3B → %3Bus%3B (Israel → United States)
+  return oref.replace(/%3Bil%3B/gi, '%3Bus%3B');
+}
+const _proxyAuth = resolveUsProxy();
 
 // Use curl instead of Node.js fetch for proxy requests — Node.js TLS fingerprint (JA3)
 // is blocked by CBOE CDN and CNN dataviz even through a residential proxy, but curl's
@@ -352,7 +363,8 @@ async function fetchAll() {
 
   // Source status summary — visible in Railway container logs
   const yahooCount = Object.values(yahoo).filter(Boolean).length;
-  console.log(`  Sources: Yahoo=${yahooCount}/${YAHOO_SYMBOLS.length} | CBOE totalPc=${cboe.totalPc ?? 'null'} equityPc=${cboe.equityPc ?? 'null'} | CNN=${cnn ? cnn.score : 'null'} | AAII bull=${aaii ? aaii.bull : 'null'} | Barchart=${barchartResult.status === 'fulfilled' ? (barchartResult.value ?? 'null') : 'err'} | proxy=${_proxyAuth ? 'yes' : 'no'}`);
+  const proxyCountry = _proxyAuth.match(/%3B([a-z]{2})%3B/i)?.[1] ?? (_proxyAuth ? 'yes' : 'no');
+  console.log(`  Sources: Yahoo=${yahooCount}/${YAHOO_SYMBOLS.length} | CBOE totalPc=${cboe.totalPc ?? 'null'} equityPc=${cboe.equityPc ?? 'null'} | CNN=${cnn ? cnn.score : 'null'} | AAII bull=${aaii ? aaii.bull : 'null'} | Barchart=${barchartResult.status === 'fulfilled' ? (barchartResult.value ?? 'null') : 'err'} | proxy=${proxyCountry}`);
 
   if (yahooResults.status === 'rejected') console.warn('  Yahoo batch failed:', yahooResults.reason?.message);
   if (cboeResult.status === 'rejected') console.warn('  CBOE failed:', cboeResult.reason?.message);
