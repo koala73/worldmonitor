@@ -23,6 +23,8 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "exclude": ["src/workers/ml.worker.ts"]
 }

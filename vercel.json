@@ -1,5 +1,4 @@
 {
-  "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
   "redirects": [
     { "source": "/docs", "destination": "/docs/documentation", "permanent": false }
