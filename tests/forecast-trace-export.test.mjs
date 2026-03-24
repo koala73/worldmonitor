@@ -36,6 +36,7 @@ import {
   validateImpactHypotheses,
   evaluateDeepForecastPaths,
   validateDeepForecastSnapshot,
+  buildCanonicalStateUnits,
   buildRegistryConstraintTable,
   IMPACT_VARIABLE_REGISTRY,
   MARKET_BUCKET_ALLOWED_CHANNELS,
@@ -4650,6 +4651,55 @@ describe('forecast replay lifecycle helpers', () => {
 
     assert.deepEqual(snapshot.marketSelectionIndex.bySituationId, serialized.bySituationId);
     assert.equal(snapshot.marketSelectionIndex.summary, marketSelectionIndex.summary);
+  });
+
+  it('buildCanonicalStateUnits disambiguates label collisions without dropping units', () => {
+    // Two supply_chain clusters in the same region with no semantic overlap:
+    // - stateKind overlap score: +2.5 (same stateKind)
+    // - region overlap score: +2.5 (1 shared region)
+    // - total: 5.0 < merge threshold 5.5 → NOT merged → two separate units
+    // Both resolve to label "Red Sea maritime disruption state" via formatStateUnitLabel.
+    // The fix must disambiguate rather than drop the lower-priority unit.
+    const clusterA = {
+      id: 'cluster-label-a', label: 'Red Sea shipping disruption',
+      dominantRegion: 'Red Sea', dominantDomain: 'supply_chain',
+      regions: ['Red Sea'], domains: ['supply_chain'],
+      actors: ['Houthi'], forecastIds: ['f1', 'f2'], forecastCount: 2,
+      avgProbability: 0.75, avgConfidence: 0.7,
+      topSignals: [{ type: 'shipping_cost_shock', count: 3 }],
+      sampleTitles: ['Red Sea shipping delay'], sourceStateIds: [],
+      macroRegions: ['EMEA'], marketBucketIds: ['freight'],
+      transmissionChannels: ['shipping_cost_shock'], branchKinds: [],
+    };
+    const clusterB = {
+      id: 'cluster-label-b', label: 'Red Sea oil export disruption',
+      dominantRegion: 'Red Sea', dominantDomain: 'supply_chain',
+      regions: ['Red Sea'], domains: ['supply_chain'],
+      actors: ['Iran'], forecastIds: ['f3', 'f4'], forecastCount: 2,
+      avgProbability: 0.65, avgConfidence: 0.6,
+      topSignals: [{ type: 'energy_supply_shock', count: 2 }],
+      sampleTitles: ['Iranian oil blockade'], sourceStateIds: [],
+      macroRegions: ['EMEA'], marketBucketIds: ['energy'],
+      transmissionChannels: ['oil_macro_shock'], branchKinds: [],
+    };
+    const units = buildCanonicalStateUnits([clusterA, clusterB], []);
+
+    // Both units must be preserved
+    assert.equal(units.length, 2, 'both units must be retained, not dropped');
+
+    // Labels must be unique
+    const labels = units.map((u) => u.label);
+    assert.equal(new Set(labels).size, 2, 'disambiguated labels must all be unique');
+
+    // The snapshot validator must pass (no duplicate labels)
+    const snapValidation = validateDeepForecastSnapshot({ fullRunStateUnits: units, deepForecast: { selectedStateIds: [] } });
+    assert.equal(snapValidation.duplicateStateLabels.length, 0, 'validator must see no duplicate labels after disambiguation');
+
+    // Higher-priority unit (higher avgProbability) keeps original label, lower one gets suffix
+    const sortedByPriority = [...units].sort((a, b) => b.forecastCount - a.forecastCount || b.avgProbability - a.avgProbability);
+    assert.ok(sortedByPriority[0].label === 'Red Sea maritime disruption state', 'highest-priority unit keeps clean label');
+    assert.ok(sortedByPriority[1].label !== 'Red Sea maritime disruption state', 'collision unit gets disambiguated label');
+    assert.ok(sortedByPriority[1].label.startsWith('Red Sea maritime disruption state'), 'disambiguated label keeps base');
   });
 
   it('flags invalid deep snapshots with unresolved selected state ids and duplicate labels', () => {

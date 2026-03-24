@@ -5866,7 +5866,18 @@ function buildCanonicalStateUnits(situationClusters = [], situationFamilies = []
   return units
     .map(finalizeStateUnit)
     .sort((a, b) => b.forecastCount - a.forecastCount || b.avgProbability - a.avgProbability || a.label.localeCompare(b.label))
-    .filter((unit) => !seenLabels.has(unit.label) && seenLabels.add(unit.label));
+    .map((unit) => {
+      if (!seenLabels.has(unit.label)) {
+        seenLabels.add(unit.label);
+        return unit;
+      }
+      // Two distinct units share a label (same leadRegion + stateKind but too semantically
+      // different to merge). Disambiguate rather than drop so no states or deep paths are lost.
+      const domainLabel = unit.dominantDomain ? `${unit.label} (${unit.dominantDomain})` : null;
+      const label = (domainLabel && !seenLabels.has(domainLabel)) ? domainLabel : `${unit.label} (${unit.id.slice(-4)})`;
+      seenLabels.add(label);
+      return { ...unit, label };
+    });
 }
 
 function buildSituationContinuitySummary(currentSituationClusters, priorWorldState = null) {
@@ -14471,6 +14482,7 @@ export {
   computeDeepMarketCoherenceScore,
   computeDeepPathAcceptanceScore,
   evaluateDeepForecastPaths,
+  buildCanonicalStateUnits,
   findDuplicateStateUnitLabels,
   validateDeepForecastSnapshot,
   validateImpactHypotheses,
