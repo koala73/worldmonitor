@@ -79,6 +79,13 @@ export function getAgentState(): AgentState | null {
 }
 
 /**
+ * Get the latest synthesized report (AI-readable document).
+ */
+export function getLatestReport(): import('./corpus/synthesizer').SynthesizedReport | null {
+  return runtime?.getLatestReport() ?? null;
+}
+
+/**
  * Subscribe to brief updates. Returns unsubscribe function.
  */
 export function onBriefUpdate(handler: (brief: IntelligenceBrief) => void): () => void {

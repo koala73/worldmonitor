@@ -103,7 +103,7 @@
 
 | Template | Trigger | Tasks | Priority |
 |----------|---------|-------|----------|
-| Full Intelligence Sweep | startup | 9 tools (all domains) | 0 (highest) |
+| Full Intelligence Sweep | startup | 11 tools (all domains + meteo + LLM synthesis) | 0 (highest) |
 | Market & Sector Analysis | schedule | 3 tools (sectors, earnings, macro) | 5 |
 | Crisis Region Focus | observation | 5 tools (conflict, military, infra) | 1 |
 | Deep Earnings Analysis | manual | 2 tools (earnings, sectors) | 3 |
@@ -149,14 +149,20 @@ src/agent/
 │   └── verifier.ts             # Rule execution engine
 ├── cascade/                    # (reserved for advanced collapse rules)
 ├── runtime/
-│   └── agent.ts                # Observe→Plan→Act→Reflect loop
+│   ├── agent.ts                # Observe→Plan→Act→Reflect loop
+│   └── status.ts               # Cyberpunk HUD renderer & status API
 ├── tools/
 │   ├── registry.ts             # Tool registration & execution
-│   ├── adapters.ts             # Existing service → Signal adapters
+│   ├── adapters.ts             # 9 existing service → Signal adapters
 │   ├── sp500-sectors.ts        # SP500 sector monitor (11 GICS sectors)
-│   └── earnings-capture.ts     # Earnings call capture monitor
+│   ├── earnings-capture.ts     # Earnings call capture monitor
+│   ├── llm-provider.ts         # LLM classification, briefs, synthesis
+│   └── meteo-supply-chain.ts   # Weather + shipping + agri + energy monitor
+├── corpus/
+│   ├── action-consequence.ts   # 20-entry causal DAG with chain traversal
+│   └── synthesizer.ts          # AI-readable report & sitrep generator
 ├── memory/
-│   └── store.ts                # 3-tier memory (session/episodic/longterm)
+│   └── store.ts                # 3-tier memory with tag index
 └── planner/
     └── decomposer.ts           # Goal templates & task scheduling
 ```

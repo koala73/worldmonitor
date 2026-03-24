@@ -4,7 +4,6 @@
  */
 
 import type {
-  Signal,
   PipelineContext,
   IntelligenceBrief,
   CollapseRule,
@@ -113,7 +112,7 @@ export class PipelineRunner {
       const filtered = filter(encoded, config.filter);
 
       const filterReport = this.verifier.verify(
-        PipelineStage.FILTER, context, filtered as Signal[], filtered
+        PipelineStage.FILTER, context, filtered, filtered
       );
       reports.push(filterReport);
 
@@ -131,7 +130,7 @@ export class PipelineRunner {
       const collapsed = collapse(filtered, config.collapseRules);
 
       const collapseReport = this.verifier.verify(
-        PipelineStage.COLLAPSE, context, filtered as Signal[], filtered, collapsed
+        PipelineStage.COLLAPSE, context, filtered, filtered, collapsed
       );
       reports.push(collapseReport);
 
@@ -148,7 +147,7 @@ export class PipelineRunner {
       const synthesis = synthesize(collapsed);
 
       const synthReport = this.verifier.verify(
-        PipelineStage.SYNTHESIZE, context, filtered as Signal[], filtered, collapsed
+        PipelineStage.SYNTHESIZE, context, filtered, filtered, collapsed
       );
       reports.push(synthReport);
 

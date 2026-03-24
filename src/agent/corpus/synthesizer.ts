@@ -93,8 +93,15 @@ export function synthesizeReport(brief: IntelligenceBrief): SynthesizedReport {
       sections.push(`      ${f.summary}`);
       sections.push(`      CONFIDENCE: ${(f.confidence * 100).toFixed(0)}% | SOURCES: ${f.sourceSignals.length} signals`);
 
-      // Trace causal consequences from finding tags
-      const findingTags = [...f.domains, ...f.regions.map(r => r.toLowerCase()), f.severity];
+      // Trace causal consequences — use domains + regions + severity + source signal tags
+      const findingTags = [
+        ...f.domains,
+        ...f.regions.map(r => r.toUpperCase()),
+        ...f.regions.map(r => r.toLowerCase()),
+        f.severity,
+        // Include source signal IDs to pick up tool-specific tags like 'shipping', 'hormuz'
+        ...f.sourceSignals.flatMap(id => id.split(':').slice(0, 2)),
+      ];
       const consequences = traceConsequences(findingTags, 'medium', 2);
       if (consequences.length > 0) {
         sections.push('      CONSEQUENCE_CHAIN:');

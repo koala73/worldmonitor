@@ -281,8 +281,8 @@ export class AgentRuntime {
       this.accumulatedSignals = [];
     }
 
-    // Check memory for recurring patterns
-    const recentMemory = this.memory.queryByTags(['escalation', 'critical'], 'session');
+    // Check memory for recurring high-severity patterns
+    const recentMemory = this.memory.queryByTags(['critical', 'high'], 'session');
     if (recentMemory.length >= 3) {
       observations.push({
         id: `obs-${Date.now()}-memory-pattern`,

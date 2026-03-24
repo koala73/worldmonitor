@@ -14,6 +14,7 @@ import type {
   Observation,
 } from '../types';
 import { agentBus } from '../bus/event-bus';
+import { getTool } from '../tools/registry';
 
 let goalCounter = 0;
 let taskCounter = 0;
@@ -141,8 +142,15 @@ export class GoalDecomposer {
     const template = GOAL_TEMPLATES.find(t => t.id === templateId);
     if (!template) throw new Error(`Unknown goal template: ${templateId}`);
 
+    // Validate all tools exist before creating goal
+    const missingTools = template.taskSpecs.filter(s => !getTool(s.toolId));
+    if (missingTools.length > 0) {
+      console.warn(`[Planner] Skipping unregistered tools: ${missingTools.map(t => t.toolId).join(', ')}`);
+    }
+    const validSpecs = template.taskSpecs.filter(s => getTool(s.toolId));
+
     const goalId = `goal-${++goalCounter}-${Date.now()}`;
-    const tasks: Task[] = template.taskSpecs.map((spec) => {
+    const tasks: Task[] = validSpecs.map((spec) => {
       const taskId = `task-${++taskCounter}`;
       const toolInput = overrides?.toolInputOverrides?.[spec.toolId]
         ? { ...spec.toolInput, ...overrides.toolInputOverrides[spec.toolId] }

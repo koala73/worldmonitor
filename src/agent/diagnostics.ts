@@ -19,7 +19,7 @@ import { INVARIANT_RULES } from './invariants/rules';
 import { EventBus } from './bus/event-bus';
 import { MemoryStore } from './memory/store';
 import { GoalDecomposer } from './planner/decomposer';
-import { createSignal } from './tools/registry';
+import { createSignal, registerTool, getTool } from './tools/registry';
 import { ACTION_CONSEQUENCE_CORPUS, CORPUS_STATS, getEntriesByTag, traceConsequences as traceCorpus } from './corpus/action-consequence';
 import { synthesizeReport as synthReport, synthesizeSitRep as synthSitRep } from './corpus/synthesizer';
 import type { IntelligenceBrief } from './types';
@@ -92,6 +92,16 @@ interface DiagnosticReport {
 }
 
 function getCount(c: { value: number }): number { return c.value; }
+
+/** Register a no-op tool for planner validation tests */
+function registerTestTool(id: string): void {
+  if (getTool(id)) return; // already registered
+  registerTool({
+    id, name: `test-${id}`, description: 'Test stub', domains: ['news'],
+    inputSchema: {}, outputDomain: 'news', concurrency: 1, timeout: 1000,
+    execute: async () => [],
+  });
+}
 
 function test(name: string, fn: () => boolean | string): TestResult {
   const start = performance.now();
@@ -332,7 +342,18 @@ export function runDiagnostics(): DiagnosticReport {
     return true;
   }));
 
-  // ── PLANNER TESTS ────────────────────────────────────────────────
+  // ── PLANNER TESTS (register mock tools first) ───────────────────
+  // Register minimal test tools so planner validation passes
+  const testToolIds = ['news.rss', 'conflict.acled', 'military.flights', 'cyber.threats',
+    'seismology.earthquakes', 'economic.macro', 'infrastructure.outages', 'unrest.events',
+    'intelligence.risk', 'meteo.supply-chain', 'llm.synthesize',
+    'market.sp500sectors', 'market.earnings'];
+  for (const tid of testToolIds) {
+    try {
+      registerTestTool(tid);
+    } catch { /* already registered from adapters */ }
+  }
+
   tests.push(test('PLANNER: creates goals from templates', () => {
     const planner = new GoalDecomposer();
     const goal = planner.createFromTemplate('gt-full-sweep');

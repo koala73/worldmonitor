@@ -152,6 +152,7 @@ export {
   startAgent,
   stopAgent,
   getLatestBrief,
+  getLatestReport,
   getAgentState,
   onBriefUpdate,
   onPhaseChange,
