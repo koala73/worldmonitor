@@ -12,7 +12,7 @@ const HISTORY_TTL = 7776000; // 90 days
 const FRED_PREFIX = 'economic:fred:v1';
 
 // --- Yahoo Finance fetching (19 symbols, 150ms gaps) ---
-const YAHOO_SYMBOLS = ['^GSPC','^VIX','^VIX9D','^VIX3M','^SKEW','^MMTH','^NYA','C:ISSU','GLD','TLT','SPY','RSP','DX-Y.NYB','HYG','LQD','XLK','XLF','XLE','XLV'];
+const YAHOO_SYMBOLS = ['^GSPC','^VIX','^VIX9D','^VIX3M','^SKEW','^MMTH','C:ISSU','GLD','TLT','SPY','RSP','DX-Y.NYB','XLK','XLF','XLE','XLV'];
 
 async function fetchYahooSymbol(symbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=3mo`;
@@ -154,11 +154,17 @@ function rsi(prices, period=14) {
   const rs = (gains/period)/(losses/period);
   return 100 - (100/(1+rs));
 }
-function fredLatest(obs) { return obs ? parseFloat(obs.at(-1)?.value ?? 'NaN') : null; }
+function fredLatest(obs) {
+  if (!obs) return null;
+  const v = parseFloat(obs.at(-1)?.value ?? 'NaN');
+  return Number.isFinite(v) ? v : null;
+}
 function fredNMonthsAgo(obs, months) {
   if (!obs) return null;
   const idx = obs.length - 1 - months;
-  return idx >= 0 ? parseFloat(obs[idx]?.value ?? 'NaN') : null;
+  if (idx < 0) return null;
+  const v = parseFloat(obs[idx]?.value ?? 'NaN');
+  return Number.isFinite(v) ? v : null;
 }
 function labelFromScore(s) {
   if (s <= 20) return 'Extreme Fear';
@@ -358,7 +364,7 @@ async function fetchAll() {
   const compositeLabel = labelFromScore(compositeScore);
 
   const fedRate = fredLatest(fedObs);
-  const fedRateStr = fedRate != null ? `${(fedRate - 0.25).toFixed(2)}-${fedRate.toFixed(2)}%` : null;
+  const fedRateStr = fedRate != null ? `${fedRate.toFixed(2)}%` : null;
 
   const payload = {
     timestamp: new Date().toISOString(),
