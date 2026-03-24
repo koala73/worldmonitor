@@ -15,16 +15,16 @@ function formatPrice(price: number, currency: string): string {
   return `${currency === 'USD' ? '$' : ''}${price.toFixed(2)}${currency && currency !== 'USD' ? ` ${currency}` : ''}`;
 }
 
-function stockSignalTone(signal: string): string {
+function stockSignalClass(signal: string): string {
   const normalized = signal.toLowerCase();
-  if (normalized.includes('buy')) return '#8df0b2';
-  if (normalized.includes('hold') || normalized.includes('watch')) return '#f4d06f';
-  return '#ff8c8c';
+  if (normalized.includes('buy')) return 'badge-bullish';
+  if (normalized.includes('hold') || normalized.includes('watch')) return 'badge-neutral';
+  return 'badge-bearish';
 }
 
-function list(items: string[], tone: string): string {
+function list(items: string[], cssClass: string): string {
   if (items.length === 0) return '';
-  return `<ul style="margin:8px 0 0;padding-left:18px;color:${tone};font-size:12px;line-height:1.5">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+  return `<ul class="${cssClass}" style="margin:8px 0 0;padding-left:18px;font-size:12px;line-height:1.5">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
 }
 
 export class StockAnalysisPanel extends Panel {
@@ -54,7 +54,7 @@ export class StockAnalysisPanel extends Panel {
   }
 
   private renderCard(item: StockAnalysisResult, history: StockAnalysisResult[]): string {
-    const tone = stockSignalTone(item.signal);
+    const tone = stockSignalClass(item.signal);
     const priorRuns = history.filter((entry) => entry.generatedAt !== item.generatedAt).slice(0, 3);
     const previous = priorRuns[0];
     const signalDelta = previous ? item.signalScore - previous.signalScore : null;
@@ -66,26 +66,26 @@ export class StockAnalysisPanel extends Panel {
     }).join('');
 
     return `
-      <section style="border:1px solid var(--border);background:rgba(255,255,255,0.03);padding:14px;display:flex;flex-direction:column;gap:10px">
+      <section class="signal-card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
           <div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <strong style="font-size:16px;letter-spacing:-0.02em">${escapeHtml(item.name || item.symbol)}</strong>
               <span style="font-size:11px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase">${escapeHtml(item.display || item.symbol)}</span>
-              <span style="font-size:11px;padding:3px 6px;border:1px solid ${tone};color:${tone};font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.08em">${escapeHtml(item.signal)}</span>
+              <span class="signal-badge ${tone}" style="font-family:var(--font-mono)">${escapeHtml(item.signal)}</span>
             </div>
             <div style="margin-top:6px;font-size:12px;color:var(--text-dim);line-height:1.5">${escapeHtml(item.summary)}</div>
           </div>
           <div style="text-align:right;min-width:110px">
             <div style="font-size:18px;font-weight:700">${escapeHtml(formatPrice(item.currentPrice, item.currency))}</div>
-            <div style="font-size:12px;color:${item.changePercent >= 0 ? '#8df0b2' : '#ff8c8c'}">${escapeHtml(formatChange(item.changePercent))}</div>
+            <div style="font-size:12px;color:${item.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)'}">${escapeHtml(formatChange(item.changePercent))}</div>
             <div style="margin-top:6px;font-size:11px;color:var(--text-dim)">Score ${escapeHtml(String(item.signalScore))} · ${escapeHtml(item.confidence)}</div>
           </div>
           ${history.length >= 2 ? (() => {
             const scores = history.slice(0, 6).reverse().map(e => e.signalScore);
             const last = scores[scores.length - 1] ?? 0;
             const prev = scores[scores.length - 2] ?? last;
-            return sparkline(scores, last >= prev ? '#8df0b2' : '#ff8c8c', 60, 20, 'display:block;margin-top:4px;align-self:flex-end');
+            return sparkline(scores, last >= prev ? 'var(--semantic-normal)' : 'var(--semantic-critical)', 60, 20, 'display:block;margin-top:4px;align-self:flex-end');
           })() : ''}
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;font-size:11px">
@@ -98,11 +98,11 @@ export class StockAnalysisPanel extends Panel {
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
           <div>
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Bullish Factors</div>
-            ${list(item.bullishFactors.slice(0, 3), '#8df0b2')}
+            ${list(item.bullishFactors.slice(0, 3), 'badge-bullish')}
           </div>
           <div>
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Risk Factors</div>
-            ${list(item.riskFactors.slice(0, 3), '#ffb0b0')}
+            ${list(item.riskFactors.slice(0, 3), 'badge-bearish')}
           </div>
         </div>
         <div style="font-size:12px;line-height:1.55;color:var(--text-dim)">
