@@ -54,6 +54,10 @@ import {
   fetchNaturalEvents,
   fetchRecentAwards,
   fetchOilAnalytics,
+  fetchReitQuotes,
+  fetchReitCorrelation,
+  fetchReitProperties,
+  fetchReitSocial,
   fetchBisData,
   fetchBlsData,
   fetchCyberThreats,
@@ -403,6 +407,13 @@ export class DataLoaderManager implements AppModule {
       }
       if (shouldLoad('energy-complex')) {
         tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
+      }
+
+      // REIT data (FINANCE variant)
+      if (SITE_VARIANT === 'finance') {
+        if (shouldLoad('reits') || shouldLoad('reit-correlation') || shouldLoad('reit-social')) {
+          tasks.push({ name: 'reits', task: runGuarded('reits', () => this.loadReits()) });
+        }
       }
 
       // Trade policy data (FULL and FINANCE only)
@@ -2373,6 +2384,53 @@ export class DataLoaderManager implements AppModule {
       console.error('[App] Oil analytics failed:', e);
       this.ctx.statusPanel?.updateApi('EIA', { status: 'error' });
       dataFreshness.recordError('oil', String(e));
+    }
+  }
+
+  async loadReits(): Promise<void> {
+    const reitsPanel = this.ctx.panels['reits'] as import('@/components/REITPanel').REITPanel | undefined;
+    const corrPanel = this.ctx.panels['reit-correlation'] as import('@/components/REITCorrelationPanel').REITCorrelationPanel | undefined;
+    const socialPanel = this.ctx.panels['reit-social'] as import('@/components/REITSocialPanel').REITSocialPanel | undefined;
+
+    try {
+      // Fetch all REIT data in parallel
+      const [quotesData, corrData, socialData, propsData] = await Promise.all([
+        fetchReitQuotes(),
+        fetchReitCorrelation(),
+        fetchReitSocial(),
+        fetchReitProperties(),
+      ]);
+
+      // Update REIT quotes panel
+      reitsPanel?.renderQuotes(
+        quotesData.quotes,
+        quotesData.regime,
+        quotesData.aiBriefing,
+        quotesData.sectorRotation,
+        quotesData.stale,
+      );
+
+      // Update correlation panel
+      corrPanel?.renderCorrelation(corrData);
+
+      // Update social panel
+      socialPanel?.renderSocial(socialData);
+
+      // Feed property data to map layer
+      this.callPanel('deckgl-map', 'setReitPropertyData', propsData.properties, propsData.exposureSummaries);
+
+      // Status updates
+      const hasQuotes = quotesData.quotes.length > 0;
+      this.ctx.statusPanel?.updateApi('REIT Quotes', { status: hasQuotes ? 'ok' : 'error' });
+      this.ctx.statusPanel?.updateApi('REIT Social', { status: socialData.stale ? 'error' : 'ok' });
+
+      if (hasQuotes) {
+        dataFreshness.recordUpdate('reits', quotesData.quotes.length);
+      }
+    } catch (e) {
+      console.error('[App] REIT data load failed:', e);
+      this.ctx.statusPanel?.updateApi('REIT Quotes', { status: 'error' });
+      dataFreshness.recordError('reits', String(e));
     }
   }
 

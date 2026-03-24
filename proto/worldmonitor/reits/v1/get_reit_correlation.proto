@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package worldmonitor.reits.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/reits/v1/list_reit_quotes.proto";
+
+// CorrelationCoefficient represents a Pearson correlation between a REIT sector and a FRED indicator.
+message CorrelationCoefficient {
+  // REIT sector name.
+  string sector = 1;
+  // FRED indicator ID (e.g., "FEDFUNDS", "DGS10").
+  string indicator_id = 2;
+  // Human-readable indicator name.
+  string indicator_name = 3;
+  // Pearson correlation coefficient (-1 to 1).
+  double coefficient = 4;
+  // Interpretation (e.g., "strong inverse", "moderate positive").
+  string interpretation = 5;
+}
+
+// FredIndicatorSnapshot captures a FRED indicator's current value and recent change.
+message FredIndicatorSnapshot {
+  // FRED series ID.
+  string series_id = 1;
+  // Human-readable name.
+  string name = 2;
+  // Current value.
+  double value = 3;
+  // Change description (e.g., "+25bps", "-0.3%").
+  string change_description = 4;
+  // Direction: "rising", "falling", "flat".
+  string direction = 5;
+}
+
+// GetReitCorrelationRequest has no required parameters — returns full correlation data.
+message GetReitCorrelationRequest {}
+
+// GetReitCorrelationResponse contains macro correlation data for the REIT market.
+message GetReitCorrelationResponse {
+  // Current values for the 4 tracked FRED indicators.
+  repeated FredIndicatorSnapshot indicators = 1;
+  // Per-sector correlation coefficients against each FRED indicator.
+  repeated CorrelationCoefficient correlations = 2;
+  // Current macro regime.
+  ReitRegime regime = 3;
+  // Per-sector rotation signals.
+  repeated SectorRotationSignal sector_rotation = 4;
+  // REIT-vs-Bond yield spread: average REIT dividend yield minus 10Y Treasury yield.
+  double yield_spread = 5;
+  // ISO timestamp of when correlation data was last computed.
+  string last_updated = 6;
+}

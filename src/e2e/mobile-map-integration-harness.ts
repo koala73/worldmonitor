@@ -138,6 +138,7 @@ const layers = {
   commodityPorts: false,
   webcams: false,
   weatherRadar: false,
+  reitProperties: false,
 };
 
 await initI18n();

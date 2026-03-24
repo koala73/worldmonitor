@@ -1,0 +1,513 @@
+openapi: 3.1.0
+info:
+    title: ReitsService API
+    version: 1.0.0
+paths:
+    /api/reits/v1/list-reit-quotes:
+        get:
+            tags:
+                - ReitsService
+            summary: ListReitQuotes
+            description: ListReitQuotes retrieves REIT stock quotes by sector with regime signal and AI briefing.
+            operationId: ListReitQuotes
+            parameters:
+                - name: sector
+                  in: query
+                  description: Filter by sector (e.g., "retail", "industrial"). Empty returns all sectors.
+                  required: false
+                  schema:
+                    type: string
+                - name: symbols
+                  in: query
+                  description: Filter by specific ticker symbols. Empty returns all symbols.
+                  required: false
+                  schema:
+                    type: string
+                - name: market
+                  in: query
+                  description: 'Filter by market: "us", "china". Empty returns all markets.'
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListReitQuotesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/reits/v1/get-reit-correlation:
+        get:
+            tags:
+                - ReitsService
+            summary: GetReitCorrelation
+            description: |-
+                GetReitCorrelation retrieves macro correlation data: FRED indicators, Pearson coefficients,
+                 regime classification, sector rotation signals, and REIT-vs-bond yield spread.
+            operationId: GetReitCorrelation
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetReitCorrelationResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/reits/v1/list-reit-properties:
+        get:
+            tags:
+                - ReitsService
+            summary: ListReitProperties
+            description: |-
+                ListReitProperties retrieves curated property locations for map rendering
+                 with per-REIT natural disaster exposure scores.
+            operationId: ListReitProperties
+            parameters:
+                - name: sector
+                  in: query
+                  description: Filter by sector. Empty returns all sectors.
+                  required: false
+                  schema:
+                    type: string
+                - name: reit_symbol
+                  in: query
+                  description: Filter by REIT symbol. Empty returns all REITs.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListReitPropertiesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/reits/v1/get-reit-social-sentiment:
+        get:
+            tags:
+                - ReitsService
+            summary: GetReitSocialSentiment
+            description: |-
+                GetReitSocialSentiment retrieves social health scores, review velocity trends,
+                 and tenant risk signals from Google Places and Yelp data.
+            operationId: GetReitSocialSentiment
+            parameters:
+                - name: reit_symbol
+                  in: query
+                  description: Filter by REIT symbol. Empty returns all REITs.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetReitSocialSentimentResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListReitQuotesRequest:
+            type: object
+            properties:
+                sector:
+                    type: string
+                    description: Filter by sector (e.g., "retail", "industrial"). Empty returns all sectors.
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                        description: Filter by specific ticker symbols. Empty returns all symbols.
+                market:
+                    type: string
+                    description: 'Filter by market: "us", "china". Empty returns all markets.'
+            description: ListReitQuotesRequest specifies optional filters for REIT quotes.
+        ListReitQuotesResponse:
+            type: object
+            properties:
+                quotes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ReitQuote'
+                regime:
+                    type: string
+                    enum:
+                        - REIT_REGIME_UNSPECIFIED
+                        - REIT_REGIME_FAVORABLE
+                        - REIT_REGIME_CAUTIOUS
+                        - REIT_REGIME_STRESS
+                        - REIT_REGIME_NEUTRAL
+                    description: Macro regime classification for the REIT market.
+                aiBriefing:
+                    type: string
+                    description: AI-generated morning briefing (3 paragraphs summarizing market + social + geo signals).
+                sectorRotation:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SectorRotationSignal'
+                stale:
+                    type: boolean
+                    description: True when upstream data was unavailable and cached data was returned.
+                lastUpdated:
+                    type: string
+                    description: ISO timestamp of when the data was last refreshed.
+            description: ListReitQuotesResponse contains REIT quotes plus market intelligence.
+        ReitQuote:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    minLength: 1
+                    description: Ticker symbol (e.g., "O", "SPG", "PLD").
+                name:
+                    type: string
+                    description: Human-readable name (e.g., "Realty Income").
+                sector:
+                    type: string
+                    description: REIT sector (e.g., "retail", "industrial", "office", "residential", "healthcare", "datacenter", "specialty", "mortgage").
+                price:
+                    type: number
+                    format: double
+                    description: Current price in USD.
+                change:
+                    type: number
+                    format: double
+                    description: Percentage change from previous close.
+                dividendYield:
+                    type: number
+                    format: double
+                    description: Annual dividend yield as a percentage.
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Sparkline data points (recent price history).
+                disasterExposureScore:
+                    type: number
+                    format: double
+                    description: Natural disaster exposure score (0-100, computed from property proximity to earthquakes/fires/hurricanes).
+                market:
+                    type: string
+                    description: 'Market identifier: "us" or "china".'
+            required:
+                - symbol
+            description: ReitQuote represents a REIT stock quote with sector classification and risk metrics.
+        SectorRotationSignal:
+            type: object
+            properties:
+                sector:
+                    type: string
+                    description: Sector name.
+                signal:
+                    type: string
+                    description: '"overweight" or "underweight".'
+                reason:
+                    type: string
+                    description: Brief rationale.
+            description: SectorRotationSignal indicates whether to overweight or underweight a REIT sector.
+        GetReitCorrelationRequest:
+            type: object
+            description: GetReitCorrelationRequest has no required parameters — returns full correlation data.
+        GetReitCorrelationResponse:
+            type: object
+            properties:
+                indicators:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FredIndicatorSnapshot'
+                correlations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CorrelationCoefficient'
+                regime:
+                    type: string
+                    enum:
+                        - REIT_REGIME_UNSPECIFIED
+                        - REIT_REGIME_FAVORABLE
+                        - REIT_REGIME_CAUTIOUS
+                        - REIT_REGIME_STRESS
+                        - REIT_REGIME_NEUTRAL
+                    description: Macro regime classification for the REIT market.
+                sectorRotation:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SectorRotationSignal'
+                yieldSpread:
+                    type: number
+                    format: double
+                    description: 'REIT-vs-Bond yield spread: average REIT dividend yield minus 10Y Treasury yield.'
+                lastUpdated:
+                    type: string
+                    description: ISO timestamp of when correlation data was last computed.
+            description: GetReitCorrelationResponse contains macro correlation data for the REIT market.
+        FredIndicatorSnapshot:
+            type: object
+            properties:
+                seriesId:
+                    type: string
+                    description: FRED series ID.
+                name:
+                    type: string
+                    description: Human-readable name.
+                value:
+                    type: number
+                    format: double
+                    description: Current value.
+                changeDescription:
+                    type: string
+                    description: Change description (e.g., "+25bps", "-0.3%").
+                direction:
+                    type: string
+                    description: 'Direction: "rising", "falling", "flat".'
+            description: FredIndicatorSnapshot captures a FRED indicator's current value and recent change.
+        CorrelationCoefficient:
+            type: object
+            properties:
+                sector:
+                    type: string
+                    description: REIT sector name.
+                indicatorId:
+                    type: string
+                    description: FRED indicator ID (e.g., "FEDFUNDS", "DGS10").
+                indicatorName:
+                    type: string
+                    description: Human-readable indicator name.
+                coefficient:
+                    type: number
+                    format: double
+                    description: Pearson correlation coefficient (-1 to 1).
+                interpretation:
+                    type: string
+                    description: Interpretation (e.g., "strong inverse", "moderate positive").
+            description: CorrelationCoefficient represents a Pearson correlation between a REIT sector and a FRED indicator.
+        ListReitPropertiesRequest:
+            type: object
+            properties:
+                sector:
+                    type: string
+                    description: Filter by sector. Empty returns all sectors.
+                reitSymbol:
+                    type: string
+                    description: Filter by REIT symbol. Empty returns all REITs.
+            description: ListReitPropertiesRequest specifies optional filters for property locations.
+        ListReitPropertiesResponse:
+            type: object
+            properties:
+                properties:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ReitProperty'
+                exposureSummaries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ReitExposureSummary'
+                lastUpdated:
+                    type: string
+                    description: ISO timestamp of when property data was last updated.
+            description: ListReitPropertiesResponse contains property locations and exposure summaries.
+        ReitProperty:
+            type: object
+            properties:
+                reitSymbol:
+                    type: string
+                    minLength: 1
+                    description: Parent REIT ticker symbol.
+                propertyName:
+                    type: string
+                    description: Property name (e.g., "King of Prussia Mall").
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude.
+                lng:
+                    type: number
+                    format: double
+                    description: Longitude.
+                sector:
+                    type: string
+                    description: REIT sector classification.
+                propertyType:
+                    type: string
+                    description: Property type (e.g., "regional_mall", "warehouse", "office_tower").
+                sqft:
+                    type: string
+                    format: int64
+                    description: Total square footage.
+                city:
+                    type: string
+                    description: City.
+                state:
+                    type: string
+                    description: US state abbreviation.
+                metro:
+                    type: string
+                    description: Metropolitan statistical area name.
+            required:
+                - reitSymbol
+            description: ReitProperty represents a physical property location owned by a REIT.
+        ReitExposureSummary:
+            type: object
+            properties:
+                reitSymbol:
+                    type: string
+                    description: REIT ticker symbol.
+                disasterExposureScore:
+                    type: number
+                    format: double
+                    description: Disaster exposure score (0-100).
+                seismicZoneCount:
+                    type: integer
+                    format: int32
+                    description: Number of properties in seismic zones.
+                wildfireRiskCount:
+                    type: integer
+                    format: int32
+                    description: Number of properties in wildfire risk areas.
+                hurricaneCorridorCount:
+                    type: integer
+                    format: int32
+                    description: Number of properties in hurricane corridors.
+            description: ReitExposureSummary provides per-REIT natural disaster exposure data.
+        GetReitSocialSentimentRequest:
+            type: object
+            properties:
+                reitSymbol:
+                    type: string
+                    description: Filter by REIT symbol. Empty returns all REITs.
+            description: GetReitSocialSentimentRequest specifies optional filters for social sentiment data.
+        GetReitSocialSentimentResponse:
+            type: object
+            properties:
+                sentiments:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ReitSocial'
+                stale:
+                    type: boolean
+                    description: True when social data is stale or unavailable (Google Places API down/budget exceeded).
+                lastUpdated:
+                    type: string
+                    description: ISO timestamp of when social data was last collected.
+                unavailableReason:
+                    type: string
+                    description: Human-readable message when data is unavailable.
+            description: GetReitSocialSentimentResponse contains social sentiment data for REITs.
+        ReitSocial:
+            type: object
+            properties:
+                reitSymbol:
+                    type: string
+                    minLength: 1
+                    description: REIT ticker symbol.
+                socialHealthScore:
+                    type: number
+                    format: double
+                    description: Composite social health score (0-10).
+                avgRating:
+                    type: number
+                    format: double
+                    description: Weighted average Google/Yelp rating (1-5 scale).
+                reviewVelocity:
+                    type: number
+                    format: double
+                    description: 'Review velocity: month-over-month percentage change in review count.'
+                positiveKeywords:
+                    type: array
+                    items:
+                        type: string
+                        description: Top positive keywords from recent reviews.
+                negativeKeywords:
+                    type: array
+                    items:
+                        type: string
+                        description: Top negative keywords from recent reviews.
+                tenantRiskSignals:
+                    type: array
+                    items:
+                        type: string
+                        description: 'Tenant risk signals (e.g., "Express: store closing mentions accelerating").'
+                sector:
+                    type: string
+                    description: REIT sector for filtering.
+            required:
+                - reitSymbol
+            description: ReitSocial represents social sentiment data for a single REIT.

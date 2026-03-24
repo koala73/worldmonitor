@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package worldmonitor.reits.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/reits/v1/reit_property.proto";
+
+// ListReitPropertiesRequest specifies optional filters for property locations.
+message ListReitPropertiesRequest {
+  // Filter by sector. Empty returns all sectors.
+  string sector = 1 [(sebuf.http.query) = { name: "sector" }];
+  // Filter by REIT symbol. Empty returns all REITs.
+  string reit_symbol = 2 [(sebuf.http.query) = { name: "reit_symbol" }];
+}
+
+// ReitExposureSummary provides per-REIT natural disaster exposure data.
+message ReitExposureSummary {
+  // REIT ticker symbol.
+  string reit_symbol = 1;
+  // Disaster exposure score (0-100).
+  double disaster_exposure_score = 2;
+  // Number of properties in seismic zones.
+  int32 seismic_zone_count = 3;
+  // Number of properties in wildfire risk areas.
+  int32 wildfire_risk_count = 4;
+  // Number of properties in hurricane corridors.
+  int32 hurricane_corridor_count = 5;
+}
+
+// ListReitPropertiesResponse contains property locations and exposure summaries.
+message ListReitPropertiesResponse {
+  // Property locations for map rendering.
+  repeated ReitProperty properties = 1;
+  // Per-REIT disaster exposure summaries.
+  repeated ReitExposureSummary exposure_summaries = 2;
+  // ISO timestamp of when property data was last updated.
+  string last_updated = 3;
+}

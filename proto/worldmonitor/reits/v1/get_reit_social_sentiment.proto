@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.reits.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/reits/v1/reit_social.proto";
+
+// GetReitSocialSentimentRequest specifies optional filters for social sentiment data.
+message GetReitSocialSentimentRequest {
+  // Filter by REIT symbol. Empty returns all REITs.
+  string reit_symbol = 1 [(sebuf.http.query) = { name: "reit_symbol" }];
+}
+
+// GetReitSocialSentimentResponse contains social sentiment data for REITs.
+message GetReitSocialSentimentResponse {
+  // Per-REIT social sentiment data. Excludes mortgage REITs (no physical properties).
+  repeated ReitSocial sentiments = 1;
+  // True when social data is stale or unavailable (Google Places API down/budget exceeded).
+  bool stale = 2;
+  // ISO timestamp of when social data was last collected.
+  string last_updated = 3;
+  // Human-readable message when data is unavailable.
+  string unavailable_reason = 4;
+}

@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package worldmonitor.reits.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/reits/v1/reit_quote.proto";
+
+// ListReitQuotesRequest specifies optional filters for REIT quotes.
+message ListReitQuotesRequest {
+  // Filter by sector (e.g., "retail", "industrial"). Empty returns all sectors.
+  string sector = 1 [(sebuf.http.query) = { name: "sector" }];
+  // Filter by specific ticker symbols. Empty returns all symbols.
+  repeated string symbols = 2 [(sebuf.http.query) = { name: "symbols" }];
+  // Filter by market: "us", "china". Empty returns all markets.
+  string market = 3 [(sebuf.http.query) = { name: "market" }];
+}
+
+// Macro regime classification for the REIT market.
+enum ReitRegime {
+  REIT_REGIME_UNSPECIFIED = 0;
+  REIT_REGIME_FAVORABLE = 1;
+  REIT_REGIME_CAUTIOUS = 2;
+  REIT_REGIME_STRESS = 3;
+  REIT_REGIME_NEUTRAL = 4;
+}
+
+// SectorRotationSignal indicates whether to overweight or underweight a REIT sector.
+message SectorRotationSignal {
+  // Sector name.
+  string sector = 1;
+  // "overweight" or "underweight".
+  string signal = 2;
+  // Brief rationale.
+  string reason = 3;
+}
+
+// ListReitQuotesResponse contains REIT quotes plus market intelligence.
+message ListReitQuotesResponse {
+  // The list of REIT quotes.
+  repeated ReitQuote quotes = 1;
+  // Current macro regime for the REIT market.
+  ReitRegime regime = 2;
+  // AI-generated morning briefing (3 paragraphs summarizing market + social + geo signals).
+  string ai_briefing = 3;
+  // Per-sector rotation signals.
+  repeated SectorRotationSignal sector_rotation = 4;
+  // True when upstream data was unavailable and cached data was returned.
+  bool stale = 5;
+  // ISO timestamp of when the data was last refreshed.
+  string last_updated = 6;
+}

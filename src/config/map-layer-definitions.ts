@@ -70,6 +70,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   centralBanks:             def('centralBanks',             '&#127974;', 'centralBanks',             'Central Banks'),
   commodityHubs:            def('commodityHubs',            '&#128230;', 'commodityHubs',            'Commodity Hubs'),
   gulfInvestments:          def('gulfInvestments',          '&#127760;', 'gulfInvestments',          'GCC Investments'),
+  reitProperties:           def('reitProperties',           '&#127970;', 'reitProperties',           'REIT Properties'),
   positiveEvents:           def('positiveEvents',           '&#127775;', 'positiveEvents',           'Positive Events'),
   kindness:                 def('kindness',                 '&#128154;', 'kindness',                 'Acts of Kindness'),
   happiness:                def('happiness',                '&#128522;', 'happiness',                'World Happiness'),
@@ -100,7 +101,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
   ],
   finance: [
     'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs',
-    'gulfInvestments', 'tradeRoutes', 'cables', 'pipelines',
+    'gulfInvestments', 'reitProperties', 'tradeRoutes', 'cables', 'pipelines',
     'outages', 'weather', 'economic', 'waterways',
     'natural', 'cyberThreats', 'dayNight', 'weatherRadar',
   ],

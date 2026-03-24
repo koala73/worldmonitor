@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package worldmonitor.reits.v1;
+
+import "buf/validate/validate.proto";
+
+// ReitQuote represents a REIT stock quote with sector classification and risk metrics.
+message ReitQuote {
+  // Ticker symbol (e.g., "O", "SPG", "PLD").
+  string symbol = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Human-readable name (e.g., "Realty Income").
+  string name = 2;
+  // REIT sector (e.g., "retail", "industrial", "office", "residential", "healthcare", "datacenter", "specialty", "mortgage").
+  string sector = 3;
+  // Current price in USD.
+  double price = 4;
+  // Percentage change from previous close.
+  double change = 5;
+  // Annual dividend yield as a percentage.
+  double dividend_yield = 6;
+  // Sparkline data points (recent price history).
+  repeated double sparkline = 7;
+  // Natural disaster exposure score (0-100, computed from property proximity to earthquakes/fires/hurricanes).
+  double disaster_exposure_score = 8;
+  // Market identifier: "us" or "china".
+  string market = 9;
+}

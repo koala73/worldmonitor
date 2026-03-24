@@ -170,6 +170,9 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   gccNews: { name: 'GCC Business News', enabled: true, priority: 2 },
   polymarket: { name: 'Predictions', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+  reits: { name: 'REIT Monitor', enabled: true, priority: 1 },
+  'reit-correlation': { name: 'REIT Macro', enabled: true, priority: 2 },
+  'reit-social': { name: 'REIT Social', enabled: true, priority: 2 },
 };
 
 // Finance-focused map layers
@@ -231,6 +234,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   commodityPorts: false,
   webcams: false,
   weatherRadar: false,
+  reitProperties: false,
 };
 
 // Mobile defaults for finance variant
@@ -292,6 +296,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   commodityPorts: false,
   webcams: false,
   weatherRadar: false,
+  reitProperties: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

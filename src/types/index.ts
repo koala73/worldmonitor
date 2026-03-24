@@ -33,7 +33,8 @@ export type DataSourceId =
   | 'gpsjam'
   | 'sanctions_pressure'
   | 'radiation'
-  | 'treasury_revenue';
+  | 'treasury_revenue'
+  | 'reits';
 
 // AppContext lives in src/app/app-context.ts because it references
 // components, services, and utils (top-level aggregate type).
@@ -651,6 +652,8 @@ export interface MapLayers {
   commodityPorts: boolean;
   webcams: boolean;
   weatherRadar: boolean;
+  // REIT property locations (finance variant)
+  reitProperties: boolean;
 }
 
 export interface AIDataCenter {

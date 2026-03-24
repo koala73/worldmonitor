@@ -189,6 +189,7 @@ const allLayersEnabled: MapLayers = {
   commodityPorts: false,
   webcams: false,
   weatherRadar: false,
+  reitProperties: false,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -245,6 +246,7 @@ const allLayersDisabled: MapLayers = {
   commodityPorts: false,
   webcams: false,
   weatherRadar: false,
+  reitProperties: false,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{

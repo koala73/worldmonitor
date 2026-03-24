@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package worldmonitor.reits.v1;
+
+import "buf/validate/validate.proto";
+
+// ReitProperty represents a physical property location owned by a REIT.
+message ReitProperty {
+  // Parent REIT ticker symbol.
+  string reit_symbol = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Property name (e.g., "King of Prussia Mall").
+  string property_name = 2;
+  // Latitude.
+  double lat = 3;
+  // Longitude.
+  double lng = 4;
+  // REIT sector classification.
+  string sector = 5;
+  // Property type (e.g., "regional_mall", "warehouse", "office_tower").
+  string property_type = 6;
+  // Total square footage.
+  int64 sqft = 7;
+  // City.
+  string city = 8;
+  // US state abbreviation.
+  string state = 9;
+  // Metropolitan statistical area name.
+  string metro = 10;
+}

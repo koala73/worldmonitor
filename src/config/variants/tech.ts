@@ -271,6 +271,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   commodityPorts: false,
   webcams: false,
   weatherRadar: false,
+  reitProperties: false,
 };
 
 // Mobile defaults for tech variant
@@ -332,6 +333,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   commodityPorts: false,
   webcams: false,
   weatherRadar: false,
+  reitProperties: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

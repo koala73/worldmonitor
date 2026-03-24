@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.reits.v1;
+
+import "buf/validate/validate.proto";
+
+// ReitSocial represents social sentiment data for a single REIT.
+message ReitSocial {
+  // REIT ticker symbol.
+  string reit_symbol = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Composite social health score (0-10).
+  double social_health_score = 2;
+  // Weighted average Google/Yelp rating (1-5 scale).
+  double avg_rating = 3;
+  // Review velocity: month-over-month percentage change in review count.
+  double review_velocity = 4;
+  // Top positive keywords from recent reviews.
+  repeated string positive_keywords = 5;
+  // Top negative keywords from recent reviews.
+  repeated string negative_keywords = 6;
+  // Tenant risk signals (e.g., "Express: store closing mentions accelerating").
+  repeated string tenant_risk_signals = 7;
+  // REIT sector for filtering.
+  string sector = 8;
+}

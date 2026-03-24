@@ -54,6 +54,10 @@ const BOOTSTRAP_KEYS = {
   otherTokens:       'market:other-tokens:v1',
   fredBatch:         'economic:fred:v1:FEDFUNDS:0',
   fearGreedIndex:    'market:fear-greed:v1',
+  reitQuotes:        'reits:quotes:v1',
+  reitCorrelation:   'reits:correlation:v1',
+  reitProperties:    'reits:properties:v1',
+  reitSocial:        'reits:social:v1',
 };
 
 const STANDALONE_KEYS = {
@@ -174,6 +178,10 @@ const SEED_META = {
   fredBatch:         { key: 'seed-meta:economic:fred:v1:FEDFUNDS:0', maxStaleMin: 1500 }, // daily cron
   gscpi:             { key: 'seed-meta:economic:gscpi',               maxStaleMin: 2880 }, // 24h interval; 2880min = 48h = 2x interval
   fearGreedIndex:    { key: 'seed-meta:market:fear-greed',            maxStaleMin: 720 }, // 6h cron; 720min = 12h = 2x interval
+  reitQuotes:        { key: 'seed-meta:reits:quotes',                 maxStaleMin: 60 },  // 30min cron; 60min = 2x interval
+  reitCorrelation:   { key: 'seed-meta:reits:correlation',            maxStaleMin: 120 }, // 1h cron; 120min = 2x interval
+  reitProperties:    { key: 'seed-meta:reits:properties',             maxStaleMin: 2880 }, // daily cron; 2880min = 48h = 2x interval
+  reitSocial:        { key: 'seed-meta:reits:social',                 maxStaleMin: 720 }, // 6h cron; 720min = 12h = 2x interval
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

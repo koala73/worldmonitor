@@ -79,6 +79,7 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   radiation: { name: 'Radiation Watch', requiredForRisk: false, panelId: 'radiation-watch' },
   gpsjam: { name: 'GPS/GNSS Interference', requiredForRisk: false, panelId: 'map' },
   treasury_revenue: { name: 'Treasury Customs Revenue', requiredForRisk: false, panelId: 'trade-policy' },
+  reits: { name: 'REIT Market Data', requiredForRisk: false, panelId: 'reits' },
 };
 
 class DataFreshnessTracker {
@@ -343,6 +344,7 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   radiation: 'Radiation monitoring degraded—EPA RadNet and Safecast observations unavailable',
   gpsjam: 'GPS/GNSS interference data unavailable—jamming zones undetected',
   treasury_revenue: 'US Treasury customs revenue data unavailable',
+  reits: 'REIT market data temporarily unavailable',
 };
 
 /**

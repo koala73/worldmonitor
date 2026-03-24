@@ -39,6 +39,9 @@ import {
   FearGreedPanel,
   ETFFlowsPanel,
   StablecoinPanel,
+  REITPanel,
+  REITCorrelationPanel,
+  REITSocialPanel,
   UcdpEventsPanel,
   InvestmentsPanel,
   TradePolicyPanel,
@@ -870,6 +873,11 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('fear-greed', () => new FearGreedPanel());
     this.createPanel('etf-flows', () => new ETFFlowsPanel());
     this.createPanel('stablecoins', () => new StablecoinPanel());
+
+    // REIT panels (finance variant)
+    this.createPanel('reits', () => new REITPanel());
+    this.createPanel('reit-correlation', () => new REITCorrelationPanel());
+    this.createPanel('reit-social', () => new REITSocialPanel());
 
     if (this.ctx.isDesktopApp) {
       const runtimeConfigPanel = new RuntimeConfigPanel({ mode: 'alert' });

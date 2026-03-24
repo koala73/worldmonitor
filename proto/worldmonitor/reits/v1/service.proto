@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package worldmonitor.reits.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/reits/v1/list_reit_quotes.proto";
+import "worldmonitor/reits/v1/get_reit_correlation.proto";
+import "worldmonitor/reits/v1/list_reit_properties.proto";
+import "worldmonitor/reits/v1/get_reit_social_sentiment.proto";
+
+// ReitsService provides APIs for REIT market intelligence, macro correlation,
+// property geolocation, and social sentiment analysis.
+service ReitsService {
+  option (sebuf.http.service_config) = {base_path: "/api/reits/v1"};
+
+  // ListReitQuotes retrieves REIT stock quotes by sector with regime signal and AI briefing.
+  rpc ListReitQuotes(ListReitQuotesRequest) returns (ListReitQuotesResponse) {
+    option (sebuf.http.config) = {path: "/list-reit-quotes", method: HTTP_METHOD_GET};
+  }
+
+  // GetReitCorrelation retrieves macro correlation data: FRED indicators, Pearson coefficients,
+  // regime classification, sector rotation signals, and REIT-vs-bond yield spread.
+  rpc GetReitCorrelation(GetReitCorrelationRequest) returns (GetReitCorrelationResponse) {
+    option (sebuf.http.config) = {path: "/get-reit-correlation", method: HTTP_METHOD_GET};
+  }
+
+  // ListReitProperties retrieves curated property locations for map rendering
+  // with per-REIT natural disaster exposure scores.
+  rpc ListReitProperties(ListReitPropertiesRequest) returns (ListReitPropertiesResponse) {
+    option (sebuf.http.config) = {path: "/list-reit-properties", method: HTTP_METHOD_GET};
+  }
+
+  // GetReitSocialSentiment retrieves social health scores, review velocity trends,
+  // and tenant risk signals from Google Places and Yelp data.
+  rpc GetReitSocialSentiment(GetReitSocialSentimentRequest) returns (GetReitSocialSentimentResponse) {
+    option (sebuf.http.config) = {path: "/get-reit-social-sentiment", method: HTTP_METHOD_GET};
+  }
+}
