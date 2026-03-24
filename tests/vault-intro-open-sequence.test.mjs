@@ -6,53 +6,48 @@ import path from 'node:path';
 const repoRoot = path.resolve(import.meta.dirname, '..');
 const src = readFileSync(path.join(repoRoot, 'src', 'app', 'vault-intro.ts'), 'utf8');
 
-test('vault intro overlay builds a dedicated 3D scene with interior light', () => {
+test('vault intro overlay builds a dedicated WebGL scene and stores refs needed for opening choreography', () => {
   assert.match(
     src,
-    /type OverlayRefs = DoorParts & \{\s+overlay: HTMLDivElement;\s+scene: HTMLDivElement;\s+interior: HTMLDivElement;/m,
-    'overlay refs should track the dedicated scene container and interior light layer',
+    /type OverlayRefs = \{\s+overlay:  HTMLDivElement;[\s\S]*vault:    VaultScene;/m,
+    'overlay refs should include the vault scene handle used by the runtime animation loop',
   );
   assert.match(
     src,
-    /const scene = document\.createElement\('div'\);[\s\S]*perspective:1400px;/m,
-    'overlay should create a perspective scene container for the vault door',
+    /const threeCanvas = document\.createElement\('canvas'\);[\s\S]*overlay\.appendChild\(threeCanvas\);/m,
+    'overlay should mount a dedicated canvas for the Three.js vault scene',
   );
   assert.match(
     src,
-    /const interior = document\.createElement\('div'\);[\s\S]*opacity:0;[\s\S]*z-index:0;/m,
-    'overlay should create a hidden interior light layer behind the door',
+    /const interiorLight = new THREE\.PointLight\(0xa0c0ff, 0, 22\);[\s\S]*scene\.add\(interiorLight\);/m,
+    'vault scene should include an interior light that starts dark and ramps during open',
   );
   assert.match(
     src,
-    /scene\.appendChild\(interior\);\s+scene\.appendChild\(parts\.root\);/m,
-    'interior light should sit behind the door inside the shared 3D scene',
-  );
-  assert.match(
-    src,
-    /overlay\.appendChild\(scene\);/m,
-    'interior light should sit behind the door inside the shared 3D scene',
+    /const vault = buildVaultScene\(threeCanvas, pbr\);[\s\S]*vault\.overlayEl = overlay;[\s\S]*return \{ overlay, scanBtn, quitBtn, statusEl, flashEl, state, vault \};/m,
+    'overlay builder should wire DOM refs and the vault scene together for lifecycle control',
   );
 });
 
 test('vault intro open sequence animates the full 3D choreography', () => {
   assert.match(
     src,
-    /p\.scene\.style\.animation = 'vi-seal-jitter \.34s ease both';/,
-    'open sequence should jitter the full scene before the heavy door swing',
+    /refs\.state\.boltRetractStart = performance\.now\(\);[\s\S]*refs\.state\.openStartTime = performance\.now\(\);/m,
+    'open sequence should time-gate the bolt retract phase before triggering door opening',
   );
   assert.match(
     src,
-    /Object\.assign\(p\.interior\.style, \{\s+transition: 'opacity 2\.2s ease 0\.15s',\s+opacity: '1',\s+\}\);/m,
-    'open sequence should reveal the interior light as the door opens',
+    /vs\.doorLeft\.position\.x\s*=\s*-ease \* 6\.0;[\s\S]*vs\.doorRight\.position\.x\s*=\s*ease \* 6\.0;/m,
+    'render loop should split left and right door halves apart during open',
   );
   assert.match(
     src,
-    /transformOrigin: 'left center',\s+transform: 'rotateY\(82deg\)',/m,
-    'door should swing open from the left hinge inside the 3D scene',
+    /vs\.camera\.position\.z = vs\.cameraStartZ - ease \* 5\.0;/m,
+    'camera should push forward through the opening',
   );
   assert.match(
     src,
-    /transition: 'transform 3\.0s cubic-bezier\(0\.2,0,0\.4,1\), opacity 2\.0s ease 0\.1s',\s+transform: 'scale\(1\.06\)',\s+opacity: '0',/m,
-    'overlay should dolly forward and fade after the door swing starts',
+    /interiorLight\.intensity = ease \* 28;[\s\S]*vs\.overlayEl\.style\.transition = 'opacity 1\.2s ease';[\s\S]*vs\.overlayEl\.style\.opacity = '0';/m,
+    'interior lighting and overlay fade should be driven by the open-progress curve',
   );
 });

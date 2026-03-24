@@ -131,3 +131,8 @@ Ghost Mode: polling ×5, analytics suppressed, notifications suppressed, dark cr
 - **Sector Heatmap**: Yahoo Finance blocked → needs Finnhub API key
 - **Fires panel**: Needs `NASA_FIRMS_API_KEY`
 - **Stablecoins**: "The string did not match the expected pattern" — WKWebView URL handling
+
+## Secret Scan Guardrail
+
+- This is a user-owned repo on GitHub, so non-provider patterns and validity checks are unavailable.
+- The compensating control is mandatory repo secret scan enforcement in hooks and CI. Keep `npm run secrets:scan:staged` and `npm run secrets:scan` active and passing.

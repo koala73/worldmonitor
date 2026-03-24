@@ -19,7 +19,7 @@ test('findMissingPackageLockVersions accepts valid package entries', () => {
   assert.deepEqual(failures, []);
 });
 
-test('findMissingPackageLockVersions reports package and dependency entries with empty versions', () => {
+test('findMissingPackageLockVersions skips optional package entries but still enforces dependency versions', () => {
   const failures = findMissingPackageLockVersions({
     packages: {
       '': { name: 'worldmonitor-macos', version: '2.5.25' },
@@ -33,8 +33,6 @@ test('findMissingPackageLockVersions reports package and dependency entries with
   });
 
   assert.deepEqual(failures, [
-    'packages.node_modules/@esbuild/linux-mips64el',
-    'packages.node_modules/@esbuild/win32-ia32',
     'dependencies.@esbuild/linux-mips64el',
     'dependencies.@esbuild/win32-ia32'
   ]);

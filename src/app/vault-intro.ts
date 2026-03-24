@@ -5,6 +5,10 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { GTAOPass }    from 'three/addons/postprocessing/GTAOPass.js';
+import { SMAAPass }    from 'three/addons/postprocessing/SMAAPass.js';
+import { OutputPass }  from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass }  from 'three/addons/postprocessing/ShaderPass.js';
 import { hasTauriInvokeBridge, invokeTauri } from '../services/tauri-bridge';
 
 const CMD            = 'plugin:biometry|authenticate';
@@ -234,61 +238,76 @@ function playAuthConfirmed(ctx: AudioContext): void {
   }
 }
 
-// Warm, competent American female voice: "Authenticated"
-// Prefers Ava/Allison Enhanced (macOS natural voices) over Samantha (robotic).
 function playVoiceAuthenticated(): void {
   if (!('speechSynthesis' in window)) return;
-
-  const speak = () => {
-    const utter = new SpeechSynthesisUtterance('Authenticated');
-    utter.rate   = 0.90;   // confident, natural pace
-    utter.pitch  = 0.92;   // slightly lower = warmer, less synthetic
-    utter.volume = 0.90;
-
-    const voices = window.speechSynthesis.getVoices();
-    const enVoices = voices.filter(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US'));
-
-    // Preference: warm natural American voices (Enhanced/Premium first)
-    const preferred = [
-      'Ava (Enhanced)', 'Ava',
-      'Allison (Enhanced)', 'Allison',
-      'Susan (Enhanced)', 'Susan',
-      'Samantha (Enhanced)',
-      'Nora', 'Aria',
-    ];
-    for (const name of preferred) {
-      const v = enVoices.find(vv => vv.name === name) ?? voices.find(vv => vv.name === name);
-      if (v) { utter.voice = v; break; }
-    }
-    // Fallback: any en-US voice that isn't Samantha or Victoria (too robotic)
-    if (!utter.voice) {
-      utter.voice = enVoices.find(v => !['Samantha', 'Victoria'].includes(v.name)) ?? null;
-    }
-
-    window.speechSynthesis.speak(utter);
-  };
-
-  if (window.speechSynthesis.getVoices().length > 0) {
-    speak();
-  } else {
-    window.speechSynthesis.addEventListener('voiceschanged', speak, { once: true });
-  }
+  const utter = new SpeechSynthesisUtterance('Authenticated');
+  utter.lang   = 'en-US';
+  utter.rate   = 1.0;
+  utter.pitch  = 1.0;
+  utter.volume = 1.0;
+  window.speechSynthesis.speak(utter);
 }
 
-// ── Fingerprint paths ─────────────────────────────────────────────────────────
+// ── Fingerprint ridge drawing ─────────────────────────────────────────────────
+// Loop-pattern fingerprint: horizontal ridges that arch upward at center.
+// This is the classic fingerprint silhouette — NOT concentric circles.
+// Noise is deterministic so pattern is stable across redraws.
 
-const FP_PATHS = [
-  'M 24 3 C 12 3 3 12 3 24 C 3 36 8 44 16 48',
-  'M 24 7 C 14 7 7 14 7 24 C 7 34 12 41 22 44',
-  'M 24 11 C 17 11 11 17 11 24 C 11 31 15 37 24 39',
-  'M 24 15 C 20 15 17 18 17 24 C 17 28 19 32 24 33',
-  'M 24 19 C 22 19 21 21 21 24 C 21 26 22 27 24 27 C 26 27 27 26 27 24 C 27 21 26 19 24 19',
-  'M 24 3 C 36 3 45 12 45 24 C 45 36 38 44 30 47',
-  'M 24 7 C 34 7 41 14 41 24 C 41 34 36 41 26 44',
-  'M 24 11 C 31 11 37 17 37 24 C 37 31 33 37 24 39',
-  'M 24 15 C 28 15 31 18 31 24 C 31 28 29 32 24 33',
-  'M 28 15 C 31 18 31 24 29 28',
-];
+function drawFingerprintRidges(
+  c: CanvasRenderingContext2D,
+  size: number,
+  alpha: number,
+  lineW: number,
+): void {
+  const cx = size * 0.5;
+  const cy = size * 0.5 + size * 0.016;
+  const padW = size * 0.78;
+  const padH = size * 0.80;
+  const ridgeCount = 28;
+  const STEPS = 80;
+
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  c.lineWidth = lineW;
+
+  for (let i = 0; i < ridgeCount; i++) {
+    const t = i / (ridgeCount - 1);              // 0 = top, 1 = bottom
+    const y0 = cy - padH * 0.5 + t * padH;
+
+    // Arch is tallest at the center, flattens toward top/bottom
+    const distFromCenter = Math.abs(t - 0.46) * 2;
+    const archH = padH * 0.145 * Math.max(0, 1 - distFromCenter * 0.62);
+
+    c.globalAlpha = alpha * (0.72 + (1 - distFromCenter) * 0.28);
+    c.beginPath();
+
+    for (let s = 0; s <= STEPS; s++) {
+      const tx = s / STEPS;                       // 0 = left edge, 1 = right edge
+      const x  = cx - padW * 0.5 + tx * padW;
+
+      // Primary arch
+      const arch = archH * Math.sin(tx * Math.PI);
+
+      // Deterministic organic wobble (3 harmonics, stable per ridge index)
+      const noise =
+        Math.sin(tx * 9  + i * 2.31) * padH * 0.0042 +
+        Math.sin(tx * 17 - i * 1.58) * padH * 0.0021 +
+        Math.sin(tx * 31 + i * 3.77) * padH * 0.0010;
+
+      const y = y0 - arch + noise;
+      if (s === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    }
+    c.stroke();
+  }
+
+  // Core delta — small enclosed loop at the apex of the arch pattern
+  const loopCy = cy - padH * 0.065;
+  c.globalAlpha = alpha * 0.82;
+  c.lineWidth = lineW;
+  c.beginPath();
+  c.ellipse(cx, loopCy, padW * 0.055, padH * 0.048, 0, 0, Math.PI * 2);
+  c.stroke();
+}
 
 // ── Scanner state ─────────────────────────────────────────────────────────────
 
@@ -318,26 +337,172 @@ function initState(): AnimState {
 
 // ── Environment map ───────────────────────────────────────────────────────────
 
+// ── Procedural surface textures ───────────────────────────────────────────────
+
+function createBumpMap(): THREE.CanvasTexture {
+  const size = 512;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d')!;
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, size, size);
+  const cx = size / 2, cy = size / 2;
+  const ringCount = 60;
+  for (let i = 1; i <= ringCount; i++) {
+    const r = (i / ringCount) * (size / 2 - 2);
+    const brightness = i % 2 === 0 ? 195 : 72;
+    ctx.strokeStyle = `rgb(${brightness},${brightness},${brightness})`;
+    ctx.lineWidth = Math.max(1, (size / 2 / ringCount) * 0.7);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  return new THREE.CanvasTexture(cv);
+}
+
+function createTurnedPlateTexture(): THREE.CanvasTexture {
+  const size = 1024;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d')!;
+  ctx.fillStyle = '#0d1720';
+  ctx.fillRect(0, 0, size, size);
+  const cx = size / 2, cy = size / 2;
+  // Concentric machining rings (lathe-turned surface)
+  for (let r = 1; r < size / 2; r += 1.6) {
+    const n = Math.random();
+    const lum = Math.floor(10 + n * 28);
+    ctx.strokeStyle = `rgba(${lum + 6},${lum + 14},${lum + 22},${0.12 + n * 0.50})`;
+    ctx.lineWidth = 0.7 + Math.random() * 0.9;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // Sparse radial scratches
+  for (let i = 0; i < 40; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r1 = 20 + Math.random() * size * 0.28;
+    const r2 = r1 + 20 + Math.random() * size * 0.12;
+    ctx.strokeStyle = `rgba(200,220,240,${0.015 + Math.random() * 0.03})`;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(angle) * r1, cy + Math.sin(angle) * r1);
+    ctx.lineTo(cx + Math.cos(angle) * r2, cy + Math.sin(angle) * r2);
+    ctx.stroke();
+  }
+  return new THREE.CanvasTexture(cv);
+}
+
+function createBrushedSteelTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const cv = document.createElement('canvas');
+  cv.width = size; cv.height = size;
+  const ctx = cv.getContext('2d')!;
+  ctx.fillStyle = '#0c1620';
+  ctx.fillRect(0, 0, size, size);
+  for (let y = 0; y < size; y++) {
+    const n = Math.random();
+    if (n > 0.45) {
+      const lum = Math.floor(n * 38);
+      ctx.strokeStyle = `rgba(${14 + lum},${24 + lum},${34 + lum},${0.25 + n * 0.55})`;
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(size, y + 0.5);
+      ctx.stroke();
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 3);
+  return tex;
+}
+
 function createEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
   const pmrem = new THREE.PMREMGenerator(renderer);
   pmrem.compileEquirectangularShader();
 
+  // 2048×1024 — maximum texel count for the sharpest possible chrome highlights.
+  // The physics of why chrome looks real: a VERY bright, VERY narrow source
+  // surrounded by near-total darkness. Without that contrast, metal looks plastic.
+  const W = 2048, H = 1024;
   const cv = document.createElement('canvas');
-  cv.width = 256; cv.height = 128;
+  cv.width = W; cv.height = H;
   const c = cv.getContext('2d')!;
 
-  const sky = c.createLinearGradient(0, 0, 0, 128);
-  sky.addColorStop(0,    '#8aaccc');
-  sky.addColorStop(0.20, '#263850');
-  sky.addColorStop(0.50, '#0c1220');
-  sky.addColorStop(1,    '#03040a');
-  c.fillStyle = sky; c.fillRect(0, 0, 256, 128);
+  // ── Base: near-total darkness (vault room) ────────────────────────────────
+  c.fillStyle = '#020408';
+  c.fillRect(0, 0, W, H);
 
-  const key = c.createRadialGradient(80, 8, 0, 80, 8, 60);
-  key.addColorStop(0,   'rgba(220,240,255,1.0)');
-  key.addColorStop(0.5, 'rgba(100,175,230,0.50)');
-  key.addColorStop(1,   'rgba(0,0,0,0)');
-  c.fillStyle = key; c.fillRect(0, 0, 256, 128);
+  // ── Upper dome: faint cool ambient (ceiling bounce) ───────────────────────
+  const dome = c.createLinearGradient(0, 0, 0, H * 0.22);
+  dome.addColorStop(0,   'rgba(38,58,88,1)');
+  dome.addColorStop(0.6, 'rgba(14,22,36,1)');
+  dome.addColorStop(1,   'rgba(2,4,8,1)');
+  c.fillStyle = dome;
+  c.fillRect(0, 0, W, H * 0.22);
+
+  // ── TWO ultra-narrow overhead fluorescent tubes ───────────────────────────
+  // Tube 1 — primary (4px wide, 70% of width centered)
+  const t1 = c.createLinearGradient(0, 0, 0, 6);
+  t1.addColorStop(0, 'rgba(255,255,255,1)');
+  t1.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = t1;
+  c.fillRect(W * 0.15, 0, W * 0.70, 6);
+
+  // Halo around tube 1 (soft fall-off so it bleeds into chrome naturally)
+  const t1halo = c.createLinearGradient(0, 0, 0, 28);
+  t1halo.addColorStop(0,   'rgba(200,228,255,0.80)');
+  t1halo.addColorStop(0.5, 'rgba(100,155,220,0.30)');
+  t1halo.addColorStop(1,   'rgba(0,0,0,0)');
+  c.fillStyle = t1halo;
+  c.fillRect(W * 0.15, 0, W * 0.70, 28);
+
+  // Tube 2 — secondary, slightly offset (two-tube fixture look)
+  const t2 = c.createLinearGradient(0, 6, 0, 12);
+  t2.addColorStop(0, 'rgba(230,245,255,0.55)');
+  t2.addColorStop(1, 'rgba(230,245,255,0)');
+  c.fillStyle = t2;
+  c.fillRect(W * 0.28, 4, W * 0.44, 8);
+
+  // Full-width very faint ceiling glow (reflects off the door from above)
+  const ceilGlow = c.createLinearGradient(0, 0, 0, 18);
+  ceilGlow.addColorStop(0,   'rgba(160,210,255,0.22)');
+  ceilGlow.addColorStop(1,   'rgba(0,0,0,0)');
+  c.fillStyle = ceilGlow;
+  c.fillRect(0, 0, W, 18);
+
+  // ── Left rim light (cool blue, simulates off-camera fill) ────────────────
+  const leftRim = c.createRadialGradient(W * 0.03, H * 0.28, 0, W * 0.03, H * 0.28, W * 0.22);
+  leftRim.addColorStop(0,   'rgba(80,140,210,0.52)');
+  leftRim.addColorStop(0.5, 'rgba(35,70,130,0.18)');
+  leftRim.addColorStop(1,   'rgba(0,0,0,0)');
+  c.fillStyle = leftRim;
+  c.fillRect(0, 0, W * 0.38, H);
+
+  // ── Right rim light (slightly cooler, dimmer) ─────────────────────────────
+  const rightRim = c.createRadialGradient(W * 0.97, H * 0.22, 0, W * 0.97, H * 0.22, W * 0.20);
+  rightRim.addColorStop(0,   'rgba(100,165,230,0.40)');
+  rightRim.addColorStop(0.6, 'rgba(45,85,145,0.12)');
+  rightRim.addColorStop(1,   'rgba(0,0,0,0)');
+  c.fillStyle = rightRim;
+  c.fillRect(W * 0.62, 0, W * 0.38, H);
+
+  // ── Equator band: subtle front reflection (vault face seen in chrome) ─────
+  // Chrome rings looking straight at the vault door see this band
+  const eqBand = c.createLinearGradient(0, H * 0.35, 0, H * 0.65);
+  eqBand.addColorStop(0,   'rgba(0,0,0,0)');
+  eqBand.addColorStop(0.5, 'rgba(12,18,28,0.55)');
+  eqBand.addColorStop(1,   'rgba(0,0,0,0)');
+  c.fillStyle = eqBand;
+  c.fillRect(W * 0.15, H * 0.35, W * 0.70, H * 0.30);
+
+  // ── Floor bounce: faint warm uptick (concrete floor below door) ───────────
+  const floor = c.createLinearGradient(0, H * 0.78, 0, H);
+  floor.addColorStop(0,   'rgba(0,0,0,0)');
+  floor.addColorStop(1,   'rgba(22,18,14,0.45)');
+  c.fillStyle = floor;
+  c.fillRect(0, H * 0.78, W, H * 0.22);
 
   const tex = new THREE.CanvasTexture(cv);
   tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -353,7 +518,18 @@ function injectStyles(): void {
   if (document.getElementById('vault-intro-css')) return;
   const s = document.createElement('style');
   s.id = 'vault-intro-css';
-  s.textContent = `@keyframes vi-fadein { from{opacity:0} to{opacity:1} }`;
+  s.textContent = `
+    @keyframes vi-fadein { from{opacity:0} to{opacity:1} }
+    .vi-vignette {
+      position:fixed; inset:0; pointer-events:none; z-index:10000;
+      background: radial-gradient(ellipse 78% 78% at 50% 50%,
+        transparent 30%, rgba(0,0,0,0.50) 70%, rgba(0,0,0,0.92) 100%);
+    }
+    .vi-grain {
+      position:fixed; inset:0; pointer-events:none; z-index:10001;
+      opacity:0.038; mix-blend-mode:overlay;
+    }
+  `;
   document.head.appendChild(s);
 }
 
@@ -365,13 +541,13 @@ function injectStyles(): void {
 
 function halfDisc(r: number, h: number, side: -1 | 1): THREE.BufferGeometry {
   const tStart = side === -1 ? Math.PI / 2 : -Math.PI / 2;
-  return new THREE.CylinderGeometry(r, r, h, 48, 1, false, tStart, Math.PI);
+  return new THREE.CylinderGeometry(r, r, h, 96, 1, false, tStart, Math.PI);
 }
 
 // TorusGeometry arc always starts at +X (right). Arc=PI gives top-half.
 // Rotate mesh.rotation.z = +PI/2 → left half; -PI/2 → right half.
 function halfTorus(r: number, tube: number): THREE.BufferGeometry {
-  return new THREE.TorusGeometry(r, tube, 18, 64, Math.PI);
+  return new THREE.TorusGeometry(r, tube, 36, 128, Math.PI);
 }
 function halfTorusMesh(r: number, tube: number, side: -1 | 1, mat: THREE.Material): THREE.Mesh {
   const m = new THREE.Mesh(halfTorus(r, tube), mat);
@@ -379,15 +555,45 @@ function halfTorusMesh(r: number, tube: number, side: -1 | 1, mat: THREE.Materia
   return m;
 }
 
+// ── PBR texture loader ────────────────────────────────────────────────────────
+
+interface VaultTextures {
+  diffuse:   THREE.Texture;
+  normal:    THREE.Texture;
+  roughness: THREE.Texture;
+  ao:        THREE.Texture;
+}
+
+async function loadVaultTextures(): Promise<VaultTextures | null> {
+  const loader = new THREE.TextureLoader();
+  const load = (path: string): Promise<THREE.Texture> =>
+    new Promise((res, rej) => loader.load(path, res, undefined, rej));
+  try {
+    const [diffuse, normal, roughness, ao] = await Promise.all([
+      load('/vault-tex/metal_plate_diff_1k.jpg'),
+      load('/vault-tex/metal_plate_nor_gl_1k.jpg'),
+      load('/vault-tex/metal_plate_rough_1k.jpg'),
+      load('/vault-tex/metal_plate_ao_1k.jpg'),
+    ]);
+    for (const t of [diffuse, normal, roughness, ao]) {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    }
+    return { diffuse, normal, roughness, ao };
+  } catch (e) {
+    console.warn('[vault-intro] PBR textures not available, using procedural fallback:', e);
+    return null;
+  }
+}
+
 // ── Three.js vault scene ──────────────────────────────────────────────────────
 
 // W bolt in doorLeft, E bolt in doorRight.  N/S slots null.
 interface BoltCfg { x: number; y: number; dx: number; dy: number; rz: number; }
 const BOLT_CFG: Array<BoltCfg | null> = [
-  null,                                                                      // N — removed
-  { x:  2.28, y: 0, dx:  1, dy: 0, rz: -Math.PI / 2 },                    // E (rightDoor)
-  null,                                                                      // S — removed
-  { x: -2.28, y: 0, dx: -1, dy: 0, rz:  Math.PI / 2 },                    // W (leftDoor)
+  { x:  0,    y:  2.42, dx:  0, dy:  1, rz:  0           },  // N (rightDoor)
+  { x:  1.84, y:  0,    dx:  1, dy:  0, rz: -Math.PI / 2 },  // E (rightDoor)
+  { x:  0,    y: -2.42, dx:  0, dy: -1, rz:  Math.PI     },  // S (leftDoor)
+  { x: -1.84, y:  0,    dx: -1, dy:  0, rz:  Math.PI / 2 },  // W (leftDoor)
 ];
 
 interface VaultScene {
@@ -412,51 +618,104 @@ interface VaultScene {
   overlayEl:     HTMLDivElement | null;
 }
 
-function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
+function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): VaultScene {
   const w = window.innerWidth;
   const h = window.innerHeight;
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.90;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.NeutralToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x040608);
-  scene.fog = new THREE.Fog(0x040608, 10, 24);
+  scene.background = new THREE.Color(0x06101a);
+  scene.fog = new THREE.Fog(0x06101a, 10, 24);
   scene.environment = createEnvMap(renderer);
-  scene.environmentIntensity = 0.55;
+  scene.environmentIntensity = 0.85;
 
-  const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 60);
-  const cameraStartZ = 6.0;
-  camera.position.set(0, -0.1, cameraStartZ);
-  camera.lookAt(0, 0, 0);
+  const camera = new THREE.PerspectiveCamera(42, w / h, 0.1, 60);
+  const cameraStartZ = 5.6;
+  camera.position.set(0, -0.35, cameraStartZ);
+  camera.lookAt(0, 0.2, 0);
 
-  // Half-resolution bloom for performance
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
+
+  // Ground Truth Ambient Occlusion — adds realistic contact shadows in crevices
+  const gtao = new GTAOPass(scene, camera, w, h);
+  composer.addPass(gtao);
+
+  // Bloom — stronger so fingerprint/LEDs glow visibly
   const bloom = new UnrealBloomPass(
     new THREE.Vector2(Math.round(w / 2), Math.round(h / 2)),
-    1.10,   // strength
-    0.55,   // radius
-    0.35,   // threshold
+    0.34,
+    0.38,
+    0.72,
   );
   composer.addPass(bloom);
 
-  // ── Lighting ─────────────────────────────────────────────────────────────
-  scene.add(new THREE.AmbientLight(0x06080e, 0.45));
+  // Chromatic aberration — lens colour fringing at the edges (cinematic)
+  const chromaPass = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, amount: { value: 0.0028 } },
+    vertexShader: [
+      'varying vec2 vUv;',
+      'void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    ].join('\n'),
+    fragmentShader: [
+      'uniform sampler2D tDiffuse;',
+      'uniform float amount;',
+      'varying vec2 vUv;',
+      'void main(){',
+      '  vec2 dir=normalize(vUv-0.5);',
+      '  float d=length(vUv-0.5);',
+      '  vec2 off=dir*d*amount;',
+      '  float r=texture2D(tDiffuse,vUv+off).r;',
+      '  float g=texture2D(tDiffuse,vUv    ).g;',
+      '  float b=texture2D(tDiffuse,vUv-off).b;',
+      '  gl_FragColor=vec4(r,g,b,1.0);',
+      '}',
+    ].join('\n'),
+  });
+  composer.addPass(chromaPass);
 
-  const key = new THREE.DirectionalLight(0xb0cce8, 3.8);
-  key.position.set(2, 6, 5);
+  // SMAA anti-aliasing — eliminates jagged edges on all ring geometry
+  composer.addPass(new SMAAPass());
+
+  // OutputPass — correct sRGB conversion at the very end of the chain
+  composer.addPass(new OutputPass());
+
+  // ── Lighting ─────────────────────────────────────────────────────────────
+  scene.add(new THREE.AmbientLight(0x050810, 0.12));
+
+  // Hard key light from upper-left — creates shadows in door recesses
+  const key = new THREE.DirectionalLight(0xd8eaff, 3.8);
+  key.position.set(-4, 10, 5);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.near = 1;
+  key.shadow.camera.far = 32;
+  key.shadow.camera.left   = -6;
+  key.shadow.camera.right  =  6;
+  key.shadow.camera.top    =  6;
+  key.shadow.camera.bottom = -6;
+  key.shadow.bias = -0.0005;
   scene.add(key);
 
-  const rimL = new THREE.DirectionalLight(0x3858a0, 1.6);
-  rimL.position.set(-6, 1, 2);
+  // Warm fill from lower-right (floor bounce off polished floor)
+  const fill = new THREE.DirectionalLight(0x503020, 0.9);
+  fill.position.set(5, -3, 3);
+  scene.add(fill);
+
+  // Cool rim from behind-left — edge glow on chrome
+  const rimL = new THREE.DirectionalLight(0x1a3060, 1.6);
+  rimL.position.set(-6, 1, -2);
   scene.add(rimL);
 
-  const ledLight = new THREE.PointLight(0x3080ff, 0.2, 5.5);
+  const ledLight = new THREE.PointLight(0x3070cc, 0.2, 5.5);
   ledLight.position.set(0, 0, 2.0);
   scene.add(ledLight);
 
@@ -468,100 +727,171 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
   buildRoom(scene);
 
   // ── Shared materials ─────────────────────────────────────────────────────
-  const steelMat = new THREE.MeshStandardMaterial({ color: 0x252d38, metalness: 0.78, roughness: 0.34 });
-  const chromeMat = new THREE.MeshStandardMaterial({ color: 0x5a6878, metalness: 0.93, roughness: 0.09 });
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0x030407, metalness: 0.60, roughness: 0.88 });
-  const boltMat = new THREE.MeshStandardMaterial({ color: 0x303a48, metalness: 0.88, roughness: 0.22 });
-  const pistonMat = new THREE.MeshStandardMaterial({ color: 0x485a6a, metalness: 0.92, roughness: 0.14 });
+  const turnedTex  = createTurnedPlateTexture();
+  const brushedTex = createBrushedSteelTexture();
 
-  // ── doorLeft & doorRight — half-geometry that slides apart ────────────────
+  // doorFaceMat: PBR textures when available, procedural fallback otherwise
+  const bumpTex = createBumpMap();
+  const doorFaceMat = pbr
+    ? new THREE.MeshPhysicalMaterial({
+        color:              0xd0d8e0,
+        map:                pbr.diffuse,
+        normalMap:          pbr.normal,
+        normalScale:        new THREE.Vector2(1.8, 1.8),
+        roughnessMap:       pbr.roughness,
+        roughness:          1.0,
+        aoMap:              pbr.ao,
+        aoMapIntensity:     1.2,
+        metalness:          0.92,
+        clearcoat:          0.25,
+        clearcoatRoughness: 0.18,
+      })
+    : new THREE.MeshPhysicalMaterial({
+        color: 0xffffff, map: turnedTex, bumpMap: bumpTex, bumpScale: 0.005,
+        metalness: 0.88, roughness: 0.28, clearcoat: 0.20, clearcoatRoughness: 0.22,
+      });
+  const steelMat    = new THREE.MeshPhysicalMaterial({ color: 0x1a2530, map: brushedTex, metalness: 0.86, roughness: 0.30, clearcoat: 0.15, clearcoatRoughness: 0.25 });
+  const chromeMat   = new THREE.MeshPhysicalMaterial({ color: 0x8899aa, metalness: 0.99, roughness: 0.02, clearcoat: 1.0,  clearcoatRoughness: 0.02 });
+  const darkMat     = new THREE.MeshPhysicalMaterial({ color: 0x030508, metalness: 0.55, roughness: 0.88, clearcoat: 0.0,  clearcoatRoughness: 0.5  });
+  const boltMat     = new THREE.MeshPhysicalMaterial({ color: 0x283240, metalness: 0.90, roughness: 0.18, clearcoat: 0.3,  clearcoatRoughness: 0.15 });
+  const pistonMat   = new THREE.MeshPhysicalMaterial({ color: 0x3a5060, metalness: 0.94, roughness: 0.10, clearcoat: 0.6,  clearcoatRoughness: 0.08 });
+
+  // ── doorLeft & doorRight — rectangular steel plate vault door ─────────────
   const doorLeft  = new THREE.Group();
   const doorRight = new THREE.Group();
   scene.add(doorLeft);
   scene.add(doorRight);
 
-  // Half discs (the circular face of the vault door)
-  for (const [grp, side] of [[doorLeft, -1], [doorRight, 1]] as [THREE.Group, -1|1][]) {
-    const disc = new THREE.Mesh(halfDisc(2.32, 0.28, side), steelMat);
-    disc.rotation.x = Math.PI / 2;
-    disc.position.z = -0.14;
-    grp.add(disc);
+  // Door dimensions — each half is 1.54 wide
+  const DW = 1.54;   // half-width
+  const DH = 4.20;   // full height
+  const DD = 0.56;   // thickness (depth)
 
-    // Outer collar half-ring
-    const collar = halfTorusMesh(2.32, 0.12, side, chromeMat);
-    collar.position.z = 0.06;
-    grp.add(collar);
-
-    // Decorative outer groove ring
-    const outerRing = halfTorusMesh(1.92, 0.036, side, chromeMat);
-    outerRing.position.z = 0.10;
-    grp.add(outerRing);
-
-    // LED groove ring
-    const ledGrooveRing = halfTorusMesh(1.56, 0.044, side, darkMat);
-    ledGrooveRing.position.z = 0.06;
-    grp.add(ledGrooveRing);
-
-    // Inner ring (between LED groove and scanner barrel)
-    const innerRing = halfTorusMesh(1.24, 0.034, side, chromeMat);
-    innerRing.position.z = 0.09;
-    grp.add(innerRing);
-
-    // Wing panel (one per side, simplified)
-    buildWingPanel(grp, side, steelMat, chromeMat, darkMat);
+  // Tile the PBR textures properly for BoxGeometry rectangular UVs
+  if (pbr) {
+    for (const t of [pbr.diffuse, pbr.normal, pbr.roughness, pbr.ao]) {
+      t.repeat.set(1.2, 2.2);
+    }
   }
 
-  // ── LEDs (12 total, split evenly left/right) ──────────────────────────────
-  const LED_COUNT  = 12;
-  const LED_RING_R = 1.56;
+  // Slightly darker chrome for raised bands (more contrast against bright chrome rings)
+  const bandMat = new THREE.MeshPhysicalMaterial({
+    color: 0x4a5a6a, metalness: 0.94, roughness: 0.14, clearcoat: 0.4, clearcoatRoughness: 0.12,
+  });
+
+  for (const [grp, side] of [[doorLeft, -1], [doorRight, 1]] as [THREE.Group, -1|1][]) {
+    const cx = side * DW * 0.5;
+
+    // ── Main steel plate body (BoxGeometry → rectangular UVs → PBR maps tile correctly) ──
+    const body = new THREE.Mesh(new THREE.BoxGeometry(DW, DH, DD), doorFaceMat);
+    body.position.set(cx, 0, 0);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    grp.add(body);
+
+    // ── Chrome outer edge (wall-facing side) ──
+    const outerEdge = new THREE.Mesh(
+      new THREE.BoxGeometry(0.042, DH + 0.04, DD + 0.016), chromeMat,
+    );
+    outerEdge.position.set(cx + side * (DW * 0.5 + 0.021), 0, 0);
+    grp.add(outerEdge);
+
+    // ── Thin chrome seam (center split line) ──
+    const seam = new THREE.Mesh(
+      new THREE.BoxGeometry(0.012, DH, DD + 0.008), chromeMat,
+    );
+    seam.position.set(cx - side * (DW * 0.5 - 0.006), 0, 0);
+    grp.add(seam);
+
+    // ── Top and bottom chrome caps ──
+    for (const sy of [-1, 1] as const) {
+      const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(DW + 0.042, 0.036, DD + 0.016), chromeMat,
+      );
+      cap.position.set(cx, sy * (DH * 0.5 + 0.018), 0);
+      grp.add(cap);
+    }
+
+    // ── Horizontal raised chrome bands (4 per half — mechanical look) ──
+    for (const by of [-1.45, -0.48, 0.48, 1.45]) {
+      const band = new THREE.Mesh(
+        new THREE.BoxGeometry(DW - 0.08, 0.018, DD * 0.065), bandMat,
+      );
+      band.position.set(cx, by, DD * 0.5 + 0.005);
+      grp.add(band);
+    }
+
+    // ── 3 locking pin cylinders on the split (inner) edge ──
+    for (let pi = 0; pi < 3; pi++) {
+      const py = (pi - 1) * (DH * 0.27);
+      const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.13, 10), chromeMat);
+      pin.rotation.z = Math.PI / 2;
+      pin.position.set(cx - side * (DW * 0.5 + 0.045), py, DD * 0.08);
+      grp.add(pin);
+    }
+
+    // ── Scanner mounting disc — half-circle on door face, split between halves ──
+    // Uses halfDisc so the two halves form a complete circle when door is closed.
+    const mountMat = new THREE.MeshPhysicalMaterial({
+      color: 0x2a3540, metalness: 0.92, roughness: 0.10, clearcoat: 0.5, clearcoatRoughness: 0.08,
+    });
+    const mount = new THREE.Mesh(halfDisc(0.75, 0.036, side), mountMat);
+    mount.rotation.x = Math.PI / 2;
+    mount.position.z = DD * 0.5 + 0.012;
+    grp.add(mount);
+
+    // ── Chrome groove ring around scanner mount ──
+    const groove = halfTorusMesh(0.75, 0.018, side, chromeMat);
+    groove.position.z = DD * 0.5 + 0.032;
+    grp.add(groove);
+  }
+
+  // ── Status LEDs — 4 per half, mounted along inner edge ───────────────────
   const ledMeshes: THREE.Mesh[] = [];
 
-  for (let i = 0; i < LED_COUNT; i++) {
-    const angle = (i / LED_COUNT) * Math.PI * 2 - Math.PI / 2;
-    const lx = Math.cos(angle) * LED_RING_R;
-    const ly = Math.sin(angle) * LED_RING_R;
-    // i=0..5 → rightDoor; i=6..11 → leftDoor
-    const grp = i < 6 ? doorRight : doorLeft;
+  for (const [grp, side] of [[doorLeft, -1], [doorRight, 1]] as [THREE.Group, -1|1][]) {
+    const ledX = side * (DW * 0.5 - 0.12);
+    for (const ledY of [-1.50, -0.50, 0.50, 1.50]) {
+      const housing = new THREE.Mesh(new THREE.BoxGeometry(0.088, 0.088, 0.018), darkMat);
+      housing.position.set(ledX, ledY, DD * 0.5 + 0.005);
+      grp.add(housing);
 
-    const housing = new THREE.Mesh(new THREE.BoxGeometry(0.096, 0.096, 0.022), darkMat);
-    housing.position.set(lx, ly, 0.068);
-    grp.add(housing);
-
-    const ledMat = new THREE.MeshStandardMaterial({
-      color: 0xb8d8ff,
-      emissive: new THREE.Color(0xb8d8ff),
-      emissiveIntensity: 2.5,
-      metalness: 0.05,
-      roughness: 0.5,
-    });
-    const led = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.065, 0.019), ledMat);
-    led.position.set(lx, ly, 0.080);
-    grp.add(led);
-    ledMeshes.push(led);
+      const ledMat = new THREE.MeshStandardMaterial({
+        color: 0xb8d8ff,
+        emissive: new THREE.Color(0xb8d8ff),
+        emissiveIntensity: 2.5,
+        metalness: 0, roughness: 0.5,
+      });
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.016, 0.020), ledMat);
+      led.position.set(ledX, ledY, DD * 0.5 + 0.016);
+      grp.add(led);
+      ledMeshes.push(led);
+    }
   }
 
   // ── Bolt arms (W in doorLeft, E in doorRight) ─────────────────────────────
   const boltGroups: Array<THREE.Group | null> = [null, null, null, null];
 
-  // E bolt → rightDoor (index 1)
+  // N/E bolts → rightDoor; S/W bolts → leftDoor
+  boltGroups[0] = buildBoltArm(doorRight, BOLT_CFG[0]!, boltMat, pistonMat, chromeMat);
   boltGroups[1] = buildBoltArm(doorRight, BOLT_CFG[1]!, boltMat, pistonMat, chromeMat);
-  // W bolt → doorLeft (index 3)
-  boltGroups[3] = buildBoltArm(doorLeft, BOLT_CFG[3]!, boltMat, pistonMat, chromeMat);
+  boltGroups[2] = buildBoltArm(doorLeft,  BOLT_CFG[2]!, boltMat, pistonMat, chromeMat);
+  boltGroups[3] = buildBoltArm(doorLeft,  BOLT_CFG[3]!, boltMat, pistonMat, chromeMat);
 
   // ── scannerGroup — stays centered, camera flies through it ───────────────
   const scannerGroup = new THREE.Group();
   scene.add(scannerGroup);
 
-  // Multi-ring scanner barrel (3 concentric chrome rings, stepped depth)
+  // Multi-ring scanner barrel — scaled to fit embedded-in-door aesthetic
   const barrelSteps = [
-    { r: 1.18, z: 0.09, rw: 0.050 },
-    { r: 0.94, z: -0.02, rw: 0.042 },
-    { r: 0.72, z: -0.12, rw: 0.034 },
-    { r: 0.54, z: -0.20, rw: 0.026 },
+    { r: 0.55, z: 0.09, rw: 0.028 },
+    { r: 0.43, z: -0.02, rw: 0.022 },
+    { r: 0.32, z: -0.10, rw: 0.018 },
+    { r: 0.22, z: -0.16, rw: 0.014 },
   ];
   for (let si = 0; si < barrelSteps.length; si++) {
     const step = barrelSteps[si]!;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(step.r, step.rw, 16, 64), chromeMat);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(step.r, step.rw, 32, 128), chromeMat);
     ring.position.z = step.z;
     scannerGroup.add(ring);
 
@@ -569,7 +899,7 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
       const next = barrelSteps[si + 1]!;
       const wallH = step.z - next.z;
       const wallR = (step.r + next.r) / 2 - 0.01;
-      const wall = new THREE.Mesh(new THREE.CylinderGeometry(wallR, wallR, wallH, 48, 1, true), steelMat);
+      const wall = new THREE.Mesh(new THREE.CylinderGeometry(wallR, wallR, wallH, 96, 1, true), steelMat);
       wall.rotation.x = Math.PI / 2;
       wall.position.z = (step.z + next.z) / 2;
       scannerGroup.add(wall);
@@ -578,11 +908,11 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
 
   // Dark scanner glass at deepest recess
   const scanFloor = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.50, 0.50, 0.04, 48),
+    new THREE.CylinderGeometry(0.20, 0.20, 0.04, 48),
     new THREE.MeshStandardMaterial({ color: 0x030208, metalness: 0.22, roughness: 0.94 }),
   );
   scanFloor.rotation.x = Math.PI / 2;
-  scanFloor.position.z = -0.24;
+  scanFloor.position.z = -0.20;
   scannerGroup.add(scanFloor);
 
   // Main scanner glow ring
@@ -590,41 +920,56 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
     color: 0x100c1c,
     metalness: 0.85,
     roughness: 0.14,
-    emissive: new THREE.Color(0x1a0308),
-    emissiveIntensity: 0.7,
+    emissive: new THREE.Color(0x3a0606),
+    emissiveIntensity: 1.0,
   });
-  const scannerRing = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.062, 22, 80), scannerRingMat);
+  const scannerRing = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.038, 36, 128), scannerRingMat);
   scannerRing.rotation.x = 0.16;
   scannerRing.position.z = 0.10;
   scannerGroup.add(scannerRing);
 
   // Rotating scan arc
   const scanArcMat = new THREE.MeshStandardMaterial({
-    color: 0x00d4ff,
-    emissive: new THREE.Color(0x00d4ff),
+    color: 0xff1a00,
+    emissive: new THREE.Color(0xff1a00),
     emissiveIntensity: 5.0,
     transparent: true,
     opacity: 0,
   });
-  const scanArc = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.010, 10, 72, Math.PI * 1.5), scanArcMat);
+  const scanArc = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.008, 10, 72, Math.PI * 1.5), scanArcMat);
   scanArc.position.z = 0.14;
   scannerGroup.add(scanArc);
 
-  // Piston rod (vertical, through center)
-  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.070, 0.070, 6.0, 18), pistonMat);
-  rod.position.set(0, 0, -0.02);
-  scannerGroup.add(rod);
+  // ── Sensor glass face ─────────────────────────────────────────────────────
+  const sensorGlassMat = new THREE.MeshPhysicalMaterial({
+    color: 0x040810,
+    metalness: 0.0,
+    roughness: 0.08,
+    transmission: 0.55,
+    thickness: 0.04,
+    ior: 1.5,
+    transparent: true,
+    opacity: 0.92,
+  });
+  const sensorDisc = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.20, 0.20, 0.018, 80),
+    sensorGlassMat,
+  );
+  sensorDisc.rotation.x = Math.PI / 2;
+  sensorDisc.position.z = 0.02;
+  scannerGroup.add(sensorDisc);
 
-  for (let j = -2; j <= 2; j++) {
-    const jRing = new THREE.Mesh(new THREE.TorusGeometry(0.072, 0.014, 9, 20), chromeMat);
-    jRing.rotation.x = Math.PI / 2;
-    jRing.position.set(0, j * 0.72, 0.0);
-    scannerGroup.add(jRing);
-  }
+  // Thin chrome bezel ring around the sensor
+  const sensorBezel = new THREE.Mesh(
+    new THREE.TorusGeometry(0.205, 0.010, 16, 96),
+    chromeMat,
+  );
+  sensorBezel.position.z = 0.03;
+  scannerGroup.add(sensorBezel);
 
   // ── Fingerprint plane ─────────────────────────────────────────────────────
   const fpCanvas = document.createElement('canvas');
-  fpCanvas.width = fpCanvas.height = 384;
+  fpCanvas.width = fpCanvas.height = 768;
   const fpTexture = new THREE.CanvasTexture(fpCanvas);
   fpTexture.colorSpace = THREE.SRGBColorSpace;
 
@@ -633,15 +978,24 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
     map: fpTexture,
     emissive: new THREE.Color(1, 1, 1),
     emissiveMap: fpTexture,
-    emissiveIntensity: 3.8,
+    emissiveIntensity: 3.0,
     transparent: true,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
     metalness: 0,
     roughness: 1,
   });
-  const fpMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.84), fpMat);
-  fpMesh.position.z = -0.20;
+  const fpMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), fpMat);
+  fpMesh.position.z = 0.06;
   scannerGroup.add(fpMesh);
+
+  // Enable shadows on all meshes in one pass
+  scene.traverse(obj => {
+    if (obj instanceof THREE.Mesh) {
+      obj.castShadow    = true;
+      obj.receiveShadow = true;
+    }
+  });
 
   // Pre-compile shaders to eliminate first-frame stutter
   renderer.compile(scene, camera);
@@ -657,71 +1011,6 @@ function buildVaultScene(canvas: HTMLCanvasElement): VaultScene {
   };
 }
 
-// ── Wing panel (simplified — 4 meshes per side) ───────────────────────────────
-
-function buildWingPanel(
-  grp: THREE.Group,
-  side: -1 | 1,
-  steel: THREE.MeshStandardMaterial,
-  chrome: THREE.MeshStandardMaterial,
-  dark: THREE.MeshStandardMaterial,
-): void {
-  const cx = side * (2.32 + 0.14 + 0.56);  // center x of wing
-  const wingW = 1.12;
-  const wingH = 4.80;
-  const wingD = 0.24;
-
-  // Body
-  const body = new THREE.Mesh(new THREE.BoxGeometry(wingW, wingH, wingD), steel);
-  body.position.set(cx, 0, -0.10);
-  grp.add(body);
-
-  // Chrome outer edge strip
-  const edgeX = cx + side * (wingW / 2 + 0.01);
-  const edge = new THREE.Mesh(new THREE.BoxGeometry(0.022, wingH + 0.02, wingD + 0.01), chrome);
-  edge.position.set(edgeX, 0, -0.10);
-  grp.add(edge);
-
-  // Top and bottom caps
-  for (const sy of [-1, 1] as const) {
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(wingW + 0.022, 0.020, wingD + 0.01), chrome);
-    cap.position.set(cx, sy * (wingH / 2 + 0.010), -0.10);
-    grp.add(cap);
-  }
-
-  // 3 raised machined panels (portrait, stacked vertically)
-  const panelW = wingW * 0.70;
-  const panelH = wingH / 3 * 0.72;
-  for (let pi = 0; pi < 3; pi++) {
-    const py = (pi - 1) * (wingH / 3);
-
-    // Recessed inset
-    const recess = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelH, 0.008), dark);
-    recess.position.set(cx, py, 0.012);
-    grp.add(recess);
-
-    // Chrome border
-    const border = new THREE.Mesh(new THREE.BoxGeometry(panelW + 0.036, panelH + 0.036, 0.016), chrome);
-    border.position.set(cx, py, 0.003);
-    grp.add(border);
-
-    // Raised steel face
-    const face = new THREE.Mesh(new THREE.BoxGeometry(panelW - 0.018, panelH - 0.018, 0.024), steel);
-    face.position.set(cx, py, 0.014);
-    grp.add(face);
-
-    // Small indicator LED
-    const indMat = new THREE.MeshStandardMaterial({
-      color: 0xb0ccff,
-      emissive: new THREE.Color(0xb0ccff),
-      emissiveIntensity: 2.0,
-      metalness: 0, roughness: 0.5,
-    });
-    const ind = new THREE.Mesh(new THREE.BoxGeometry(0.040, 0.016, 0.026), indMat);
-    ind.position.set(cx + side * (panelW / 2 - 0.04), py + panelH / 2 - 0.05, 0.025);
-    grp.add(ind);
-  }
-}
 
 // ── Bolt arm ──────────────────────────────────────────────────────────────────
 
@@ -784,27 +1073,52 @@ function buildRoom(scene: THREE.Scene): void {
     fl.position.set(0, 3.65, fz); scene.add(fl);
   }
 
-  // Vault frame collar around door opening
-  const recessMat = new THREE.MeshStandardMaterial({ color: 0x090e18, metalness: 0.84, roughness: 0.26 });
-  const frameCollar = new THREE.Mesh(new THREE.TorusGeometry(2.62, 0.50, 18, 96), recessMat);
-  frameCollar.position.z = -2.8; scene.add(frameCollar);
+  // Rectangular vault door frame (matches the rectangular door)
+  const recessMat = new THREE.MeshStandardMaterial({ color: 0x060c18, metalness: 0.88, roughness: 0.22 });
+  const FW = 3.28;  // frame inner width (matches door)
+  const FH = 4.28;  // frame inner height
+  const FT = 0.52;  // frame thickness
+  const FZ = -0.30; // z position
 
-  const tunnel = new THREE.Mesh(new THREE.CylinderGeometry(2.62, 2.62, 3.0, 64, 1, true), recessMat);
-  tunnel.rotation.x = Math.PI / 2; tunnel.position.z = -1.6; scene.add(tunnel);
+  // Top bar
+  const frameTop = new THREE.Mesh(new THREE.BoxGeometry(FW + FT * 2 + 0.1, FT, FT + 0.2), recessMat);
+  frameTop.position.set(0, FH / 2 + FT / 2, FZ); scene.add(frameTop);
+
+  // Bottom bar
+  const frameBot = new THREE.Mesh(new THREE.BoxGeometry(FW + FT * 2 + 0.1, FT, FT + 0.2), recessMat);
+  frameBot.position.set(0, -(FH / 2 + FT / 2), FZ); scene.add(frameBot);
+
+  // Left bar
+  const frameL = new THREE.Mesh(new THREE.BoxGeometry(FT, FH + FT * 2 + 0.1, FT + 0.2), recessMat);
+  frameL.position.set(-(FW / 2 + FT / 2), 0, FZ); scene.add(frameL);
+
+  // Right bar
+  const frameR = new THREE.Mesh(new THREE.BoxGeometry(FT, FH + FT * 2 + 0.1, FT + 0.2), recessMat);
+  frameR.position.set(FW / 2 + FT / 2, 0, FZ); scene.add(frameR);
+
+  // Rectangular tunnel extending back from frame
+  const tunnelDepth = 3.2;
+  for (const [, w, h, ox, oy] of [
+    ['top',    FW, FT, 0,               FH / 2 + FT / 2],
+    ['bottom', FW, FT, 0,             -(FH / 2 + FT / 2)],
+    ['left',   FT, FH, -(FW / 2 + FT / 2), 0],
+    ['right',  FT, FH,  FW / 2 + FT / 2,  0],
+  ] as [string, number, number, number, number][]) {
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(w, h, tunnelDepth), recessMat);
+    seg.position.set(ox, oy, -FZ - tunnelDepth / 2); scene.add(seg);
+  }
 }
 
 // ── Fingerprint texture update ────────────────────────────────────────────────
 
 let _lastFPState = '';
-let _lastFPAlpha = -1;
 
 function updateFingerprintTexture(vs: VaultScene, st: AnimState): void {
   const { fpCanvas, fpTexture } = vs;
-  // Skip redraw if nothing changed
-  const key = `${st.scanner}:${st.fingerAlpha.toFixed(2)}`;
-  if (key === _lastFPState && st.fingerAlpha === _lastFPAlpha) return;
+  const isScanning = st.scanner === 'warmup' || st.scanner === 'peak';
+  const key = `${st.scanner}:${st.fingerAlpha.toFixed(2)}${isScanning ? ':' + st.glowPhase.toFixed(2) : ''}`;
+  if (key === _lastFPState) return;
   _lastFPState = key;
-  _lastFPAlpha = st.fingerAlpha;
 
   const size = fpCanvas.width;
   const c = fpCanvas.getContext('2d')!;
@@ -813,45 +1127,52 @@ function updateFingerprintTexture(vs: VaultScene, st: AnimState): void {
   if (st.fingerAlpha < 0.01) { fpTexture.needsUpdate = true; return; }
 
   const isSuccess = st.scanner === 'success';
-  const isActive  = st.scanner === 'warmup' || st.scanner === 'peak';
-  const fpRGB = isSuccess ? '0,215,145' : (isActive ? '0,210,240' : '225,38,8');
+  const fpRGB = isSuccess ? '0,220,80' : '220,28,8';
 
-  const fpScale = 6.2;
-  const fpOX = size / 2 - 24 * fpScale;
-  const fpOY = size / 2 - 24 * fpScale;
+  const cx = size * 0.5;
+  const cy = size * 0.5 + size * 0.012;
+  const maxR = size * 0.425;
 
+  // ── Glow pass: blurred, lower alpha ──────────────────────────────────────
   c.save();
-  c.translate(fpOX, fpOY);
-  c.scale(fpScale, fpScale);
-
-  if (isActive || isSuccess) {
-    // Wide bloom halo
-    c.save(); c.filter = 'blur(14px)';
-    c.globalAlpha = st.fingerAlpha * 0.50;
-    c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 2.2; c.lineCap = 'round';
-    for (const d of FP_PATHS) c.stroke(new Path2D(d));
-    c.restore();
-
-    // Mid glow
-    c.save(); c.filter = 'blur(5px)';
-    c.globalAlpha = st.fingerAlpha * 0.80;
-    c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 1.4; c.lineCap = 'round';
-    for (const d of FP_PATHS) c.stroke(new Path2D(d));
-    c.restore();
-  } else {
-    // Idle: just one bloom pass for performance
-    c.save(); c.filter = 'blur(8px)';
-    c.globalAlpha = st.fingerAlpha * 0.60;
-    c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 1.8; c.lineCap = 'round';
-    for (const d of FP_PATHS) c.stroke(new Path2D(d));
-    c.restore();
-  }
-
-  // Crisp core line
-  c.globalAlpha = st.fingerAlpha;
-  c.strokeStyle = `rgba(${fpRGB},1)`; c.lineWidth = 0.55; c.lineCap = 'round';
-  for (const d of FP_PATHS) c.stroke(new Path2D(d));
+  // Clip to oval sensor shape so glow doesn't bleed outside
+  c.beginPath();
+  c.ellipse(cx, cy, maxR * 0.88, maxR, 0, 0, Math.PI * 2);
+  c.clip();
+  c.filter = 'blur(5px)';
+  c.strokeStyle = `rgba(${fpRGB},1)`;
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  drawFingerprintRidges(c, size, st.fingerAlpha * 0.40, 7.0);
   c.restore();
+
+  // ── Crisp core pass ───────────────────────────────────────────────────────
+  c.save();
+  c.beginPath();
+  c.ellipse(cx, cy, maxR * 0.88, maxR, 0, 0, Math.PI * 2);
+  c.clip();
+  c.filter = 'none';
+  c.strokeStyle = `rgba(${fpRGB},1)`;
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  drawFingerprintRidges(c, size, st.fingerAlpha, 2.6);
+  c.restore();
+
+  // ── Scan-line sweep (drawn outside clip, full width) ─────────────────────
+  if (isScanning) {
+    const scanY = (Math.sin(st.glowPhase * 1.4) + 1) * 0.5;
+    const lineY  = scanY * size;
+    const spread = size * 0.10;
+    const sg = c.createLinearGradient(0, lineY - spread, 0, lineY + spread);
+    sg.addColorStop(0,    'rgba(255,255,255,0)');
+    sg.addColorStop(0.45, `rgba(${fpRGB},0.18)`);
+    sg.addColorStop(0.5,  `rgba(255,255,255,0.55)`);
+    sg.addColorStop(0.55, `rgba(${fpRGB},0.18)`);
+    sg.addColorStop(1,    'rgba(255,255,255,0)');
+    c.globalAlpha = 1;
+    c.fillStyle = sg;
+    c.fillRect(0, lineY - spread, size, spread * 2);
+  }
 
   fpTexture.needsUpdate = true;
 }
@@ -865,7 +1186,6 @@ function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[],
 
   const isSuccess = st.scanner === 'success';
   const isActive  = st.scanner === 'warmup' || st.scanner === 'peak';
-  const isError   = st.scanner === 'error';
   const glow      = (Math.sin(st.glowPhase) + 1) * 0.5;
   const pulse     = isSuccess ? 0.20 : (0.50 + Math.sin(st.glowPhase * 1.2) * 0.30);
 
@@ -873,31 +1193,26 @@ function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[],
 
   // ── LEDs ──
   const ledColor = isSuccess
-    ? new THREE.Color(0.04, 0.90, 0.50)
-    : isError ? new THREE.Color(0.88, 0.16, 0.04)
-    : new THREE.Color(0.74, 0.90, 1.00);
-  const ledIntensity = 1.8 + pulse * 2.2;
+    ? new THREE.Color(0.04, 0.90, 0.30)
+    : new THREE.Color(0.88, 0.16, 0.04);
+  const ledIntensity = 0.7 + pulse * 0.4;
   for (const led of ledMeshes) {
     const m = led.material as THREE.MeshStandardMaterial;
     m.emissive.copy(ledColor);
     m.emissiveIntensity = ledIntensity;
   }
-  ledLight.color.copy(isSuccess ? new THREE.Color(0, 0.90, 0.48)
-    : isError ? new THREE.Color(0.90, 0.14, 0.04)
-    : new THREE.Color(0.22, 0.52, 1.00));
-  ledLight.intensity = isActive ? (0.9 + pulse * 1.4) : (isSuccess ? 0.8 : 0.20);
+  ledLight.color.copy(isSuccess
+    ? new THREE.Color(0, 0.90, 0.30)
+    : new THREE.Color(0.90, 0.14, 0.04));
+  ledLight.intensity = isSuccess ? 1.0 : (0.5 + pulse * 1.0);
 
   // ── Scanner ring ──
   const ringMat = scannerRing.material as THREE.MeshStandardMaterial;
   ringMat.emissive.copy(
-    isSuccess ? new THREE.Color(0, 0.82, 0.50)
-    : isActive ? new THREE.Color(0, 0.72, 1.00)
-    : isError  ? new THREE.Color(0.78, 0.10, 0.04)
-    : new THREE.Color(0.52, 0.07, 0.07),
+    isSuccess ? new THREE.Color(0, 0.82, 0.30)
+    : new THREE.Color(0.78, 0.10, 0.04),
   );
-  ringMat.emissiveIntensity = isActive
-    ? (1.2 + pulse * 1.8)
-    : (isSuccess ? 1.8 : (isError ? 1.4 : 0.30));
+  ringMat.emissiveIntensity = isSuccess ? 0.9 : (0.4 + pulse * 0.5);
   scannerRing.rotation.z += 0.0022;
 
   // ── Scan arc ──
@@ -949,6 +1264,8 @@ function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[],
       vs.overlayEl.dataset['fading'] = '1';
       vs.overlayEl.style.transition = 'opacity 1.2s ease';
       vs.overlayEl.style.opacity = '0';
+      document.querySelector('.vi-vignette')?.remove();
+      document.querySelector('.vi-grain')?.remove();
     }
   } else {
     vs.camera.position.y = -0.10 + Math.sin(st.glowPhase * 0.5) * 0.005;
@@ -970,7 +1287,7 @@ type OverlayRefs = {
   vault:    VaultScene;
 };
 
-function buildOverlay(): OverlayRefs {
+function buildOverlay(pbr: VaultTextures | null): OverlayRefs {
   injectStyles();
   const state = initState();
 
@@ -1026,7 +1343,32 @@ function buildOverlay(): OverlayRefs {
   quitBtn.addEventListener('mouseleave', () => { quitBtn.style.color = 'rgba(120,140,160,0.28)'; });
   overlay.appendChild(quitBtn);
 
-  const vault = buildVaultScene(threeCanvas);
+  const vignette = document.createElement('div');
+  vignette.className = 'vi-vignette';
+  document.body.appendChild(vignette);
+
+  // Film grain canvas — animates every 2 frames so it looks like real grain
+  const grainCanvas = document.createElement('canvas');
+  grainCanvas.className = 'vi-grain';
+  grainCanvas.width  = 384;
+  grainCanvas.height = 216;
+  document.body.appendChild(grainCanvas);
+  (function tickGrain(frame: number) {
+    if (!document.body.contains(grainCanvas)) return;
+    if (frame % 2 === 0) {
+      const gctx = grainCanvas.getContext('2d')!;
+      const id = gctx.createImageData(grainCanvas.width, grainCanvas.height);
+      for (let i = 0; i < id.data.length; i += 4) {
+        const v = (Math.random() * 255) | 0;
+        id.data[i] = id.data[i + 1] = id.data[i + 2] = v;
+        id.data[i + 3] = 255;
+      }
+      gctx.putImageData(id, 0, 0);
+    }
+    requestAnimationFrame(() => tickGrain(frame + 1));
+  })(0);
+
+  const vault = buildVaultScene(threeCanvas, pbr);
   vault.flashEl   = flashEl;
   vault.overlayEl = overlay;
 
@@ -1116,8 +1458,7 @@ async function playOpenSequence(
   await sleep(380);
 
   if (audioCtx) { playAuthConfirmed(audioCtx); playMotorWhine(audioCtx); playBoltRetracts(audioCtx); }
-  // Voice fires after the two beeps (360ms), coinciding with the chord swell
-  setTimeout(playVoiceAuthenticated, 360);
+  setTimeout(playVoiceAuthenticated, 50);
 
   refs.state.boltRetractStart = performance.now();
   await sleep(780);
@@ -1195,9 +1536,13 @@ async function runBiometricFlow(
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export async function runVaultIntro(appReady?: Promise<void>): Promise<boolean> {
-  const refs     = buildOverlay();
+  const pbr      = await loadVaultTextures();
+  const refs     = buildOverlay(pbr);
   const stopLoop = startLoop(refs);
   document.body.appendChild(refs.overlay);
+
+  // Pre-load voices list so speech fires instantly on auth
+  if ('speechSynthesis' in window) window.speechSynthesis.getVoices();
 
   const onResize = () => handleResize(refs);
   window.addEventListener('resize', onResize);

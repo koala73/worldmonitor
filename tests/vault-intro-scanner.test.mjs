@@ -6,25 +6,21 @@ import path from 'node:path';
 const repoRoot = path.resolve(import.meta.dirname, '..');
 const src = readFileSync(path.join(repoRoot, 'src', 'app', 'vault-intro.ts'), 'utf8');
 
-test('vault intro scanner does not stack hover listeners across retries', () => {
-  assert.match(
-    src,
-    /scannerBtn\.onmouseenter\s*=/,
-    'scanner hover behavior should be assigned through a single replaceable handler',
+test('vault intro scanner wiring is single-registration and retry-safe', () => {
+  const clickListenerMatches = src.match(/scanBtn\.addEventListener\('click'/g) ?? [];
+  assert.equal(
+    clickListenerMatches.length,
+    1,
+    'scanner should register one click listener when the flow starts',
   );
   assert.match(
     src,
-    /scannerBtn\.onmouseleave\s*=/,
-    'scanner hover leave behavior should be assigned through a single replaceable handler',
+    /setTimeout\(\(\) => void tryAuth\(false\), 900\);/,
+    'scanner should attempt one automatic authentication pass without rebinding listeners',
   );
-  assert.doesNotMatch(
+  assert.match(
     src,
-    /scannerBtn\.addEventListener\('mouseenter'/,
-    'scanner hover should not add a new mouseenter listener every time idle state is re-entered',
-  );
-  assert.doesNotMatch(
-    src,
-    /scannerBtn\.addEventListener\('mouseleave'/,
-    'scanner hover should not add a new mouseleave listener every time idle state is re-entered',
+    /setTimeout\(\(\) => \{ if \(!settled\) setIdle\(refs\.state\); \}, 1500\);/,
+    'retry path should reset scanner state without registering new DOM handlers',
   );
 });

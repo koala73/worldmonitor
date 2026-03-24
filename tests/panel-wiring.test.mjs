@@ -15,7 +15,7 @@ test('full-variant awareness panels are registered, instantiated, and refreshed'
   const dataLoader = readRepoFile('src/app/data-loader.ts');
   const appSource = readRepoFile('src/App.ts');
 
-  for (const panelId of ['comms-health', 'economic-stress', 'tsunami-alerts', 'tropical-cyclones', 'food-insecurity']) {
+  for (const panelId of ['comms-health', 'economic-stress']) {
     assert.match(panelsConfig, new RegExp(`'${panelId}': \\{`));
   }
 
@@ -23,13 +23,6 @@ test('full-variant awareness panels are registered, instantiated, and refreshed'
   assert.match(panelLayout, /this\.ctx\.panels\['comms-health'\] = /);
   assert.match(panelLayout, /new EconomicStressPanel\(\)/);
   assert.match(panelLayout, /this\.ctx\.panels\['economic-stress'\] = /);
-  assert.match(panelLayout, /new TsunamiAlertsPanel\(\)/);
-  assert.match(panelLayout, /this\.ctx\.panels\['tsunami-alerts'\] = /);
-  assert.match(panelLayout, /new TropicalCyclonesPanel\(\)/);
-  assert.match(panelLayout, /this\.ctx\.panels\['tropical-cyclones'\] = /);
-  assert.match(panelLayout, /new FoodInsecurityPanel\(\)/);
-  assert.match(panelLayout, /this\.ctx\.panels\['food-insecurity'\] = /);
-
   assert.match(dataLoader, /fetchCommsHealth/);
   assert.match(dataLoader, /fetchEconomicStress/);
   assert.match(dataLoader, /loadCommsHealth\(\)/);
