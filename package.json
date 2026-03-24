@@ -1,7 +1,7 @@
 {
   "name": "worldmonitor-macos",
   "private": true,
-  "version": "2.7.1",
+  "version": "2.7.2",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {

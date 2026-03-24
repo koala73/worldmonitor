@@ -9,7 +9,7 @@
 <dict>
   <!-- Shown as the labeled version string in Finder Get Info and Spotlight -->
   <key>CFBundleGetInfoString</key>
-  <string>World Monitor 2.7.1</string>
+  <string>World Monitor 2.7.2</string>
 
   <!-- Shown in the "More Info" section of Finder Get Info -->
   <key>NSHumanReadableCopyright</key>
