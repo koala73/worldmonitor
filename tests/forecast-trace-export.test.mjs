@@ -53,6 +53,8 @@ import {
   buildSimulationPackageFromDeepSnapshot,
   buildSimulationPackageKey,
   SIMULATION_PACKAGE_SCHEMA_VERSION,
+  SIMULATION_PACKAGE_LATEST_KEY,
+  writeSimulationPackage,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -5689,5 +5691,17 @@ describe('simulation package export', () => {
     assert.ok(pkg);
     const text = pkg.simulationRequirement['theater-1'];
     assert.ok(!text.includes('undefined'), `simulationRequirement must not contain "undefined": ${text}`);
+  });
+
+  // Phase 2: Redis existence key
+  it('SIMULATION_PACKAGE_LATEST_KEY is the canonical Redis existence key', () => {
+    assert.equal(SIMULATION_PACKAGE_LATEST_KEY, 'forecast:simulation-package:latest');
+  });
+
+  it('writeSimulationPackage returns null when R2 storage is not configured', async () => {
+    const snapshot = makeSnapshot();
+    // No storageConfig in context and no env vars set in test process — resolveR2StorageConfig returns null
+    const result = await writeSimulationPackage(snapshot, { storageConfig: null });
+    assert.equal(result, null);
   });
 });

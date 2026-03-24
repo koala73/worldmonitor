@@ -31,6 +31,7 @@ const FORECAST_DEEP_POLL_INTERVAL_MS = 30 * 1000;
 const FORECAST_DEEP_MAX_CANDIDATES = 3;
 const FORECAST_DEEP_RUN_PREFIX = 'seed-data/forecast-traces';
 const SIMULATION_PACKAGE_SCHEMA_VERSION = 'v1';
+const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
 const PUBLISH_MIN_PROBABILITY = 0;
 const PANEL_MIN_PROBABILITY = 0.1;
 const CANONICAL_PAYLOAD_SOFT_LIMIT_BYTES = 4 * 1024 * 1024;
@@ -12249,7 +12250,17 @@ async function writeSimulationPackage(snapshot, context = {}) {
     kind: 'simulation_package',
     schema_version: SIMULATION_PACKAGE_SCHEMA_VERSION,
   });
-  return { pkgKey, theaterCount: pkg.selectedTheaters.length };
+  const theaterCount = pkg.selectedTheaters.length;
+  const { url, token } = getRedisCredentials();
+  const generatedAt = snapshot.generatedAt || Date.now();
+  await redisCommand(url, token, [
+    'SET',
+    SIMULATION_PACKAGE_LATEST_KEY,
+    JSON.stringify({ runId: snapshot.runId, pkgKey, schemaVersion: SIMULATION_PACKAGE_SCHEMA_VERSION, theaterCount, generatedAt }),
+    'EX',
+    String(TRACE_REDIS_TTL_SECONDS),
+  ]);
+  return { pkgKey, theaterCount };
 }
 
 async function enqueueDeepForecastTask(task) {
@@ -15520,6 +15531,7 @@ export {
   buildSimulationPackageKey,
   writeSimulationPackage,
   SIMULATION_PACKAGE_SCHEMA_VERSION,
+  SIMULATION_PACKAGE_LATEST_KEY,
   enqueueDeepForecastTask,
   processNextDeepForecastTask,
   runDeepForecastWorker,

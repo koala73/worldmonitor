@@ -95,6 +95,7 @@ const STANDALONE_KEYS = {
   gscpi:                    'economic:fred:v1:GSCPI:0',
   marketImplications:       'intelligence:market-implications:v1',
   hormuzTracker:            'supply_chain:hormuz_tracker:v1',
+  simulationPackageLatest:  'forecast:simulation-package:latest',
 };
 
 const SEED_META = {
@@ -190,6 +191,7 @@ const ON_DEMAND_KEYS = new Set([
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   'militaryForecastInputs', // intermediate seed-to-seed pipeline key; only populated after seed-military-flights runs
   'marketImplications', // LLM-generated inside forecast cron; can fail silently on LLM errors — degrade to WARN not CRIT
+  'simulationPackageLatest', // written by writeSimulationPackage after deep forecast runs; only present after first successful deep run
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed).

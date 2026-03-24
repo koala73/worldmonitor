@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package worldmonitor.forecast.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetSimulationPackageRequest {
+  string run_id = 1 [(sebuf.http.query) = { name: "runId" }];
+}
+
+message GetSimulationPackageResponse {
+  bool found = 1;
+  string run_id = 2;
+  string pkg_key = 3;
+  string schema_version = 4;
+  int32 theater_count = 5;
+  int64 generated_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

@@ -165,8 +165,22 @@ export interface RouteDescriptor {
   handler: (req: Request) => Promise<Response>;
 }
 
+export interface GetSimulationPackageRequest {
+  runId: string;
+}
+
+export interface GetSimulationPackageResponse {
+  found: boolean;
+  runId: string;
+  pkgKey: string;
+  schemaVersion: string;
+  theaterCount: number;
+  generatedAt: number;
+}
+
 export interface ForecastServiceHandler {
   getForecasts(ctx: ServerContext, req: GetForecastsRequest): Promise<GetForecastsResponse>;
+  getSimulationPackage(ctx: ServerContext, req: GetSimulationPackageRequest): Promise<GetSimulationPackageResponse>;
 }
 
 export function createForecastServiceRoutes(
@@ -211,6 +225,39 @@ export function createForecastServiceRoutes(
               headers: { "Content-Type": "application/json" },
             });
           }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/forecast/v1/get-simulation-package",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetSimulationPackageRequest = {
+            runId: params.get("runId") ?? "",
+          };
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+          const result = await handler.getSimulationPackage(ctx, body);
+          return new Response(JSON.stringify(result as GetSimulationPackageResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
           if (options?.onError) {
             return options.onError(err, req);
           }
