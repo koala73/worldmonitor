@@ -3519,11 +3519,11 @@ async function recoverImpactExpansionDrafts(candidatePackets = [], invalidOutput
   };
 }
 
-async function extractSingleImpactExpansionCandidate(packet, llmOptions = {}) {
+async function extractSingleImpactExpansionCandidate(packet, llmOptions = {}, learnedSection = '') {
   if (!packet) return null;
   const batch = [packet];
   const result = await callForecastLLM(
-    buildImpactExpansionSystemPrompt(),
+    buildImpactExpansionSystemPrompt(learnedSection),
     buildImpactExpansionUserPrompt(batch),
     { ...llmOptions, stage: 'impact_expansion_single', temperature: 0 },
   );
@@ -3649,103 +3649,57 @@ async function extractImpactExpansionBundle({
     }
   }
 
+  // Per-candidate parallel calls: each candidate gets its own focused LLM call.
+  // This prevents the batch averaging problem where all candidates get the same generic chain.
   const llmOptions = {
     ...getForecastLlmCallOptions('impact_expansion'),
     stage: 'impact_expansion',
     maxTokens: 1800,
     temperature: 0,
   };
-  const result = await callForecastLLM(
-    buildImpactExpansionSystemPrompt(learnedSection),
-    buildImpactExpansionUserPrompt(selectedCandidatePackets),
-    llmOptions,
+
+  const perCandidateResults = await Promise.all(
+    selectedCandidatePackets.map(async (packet) => {
+      const singleCacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash([packet], learnedSection)}`;
+      const singleCached = await redisGet(url, token, singleCacheKey);
+      if (Array.isArray(singleCached?.candidates)) {
+        const hits = sanitizeImpactExpansionDrafts(singleCached.candidates, [packet]);
+        if (hits.length > 0) return { extractedCandidate: hits[0], fromCache: true };
+      }
+      const single = await extractSingleImpactExpansionCandidate(packet, llmOptions, learnedSection);
+      if (single?.extractedCandidate) {
+        await redisSet(url, token, singleCacheKey, { candidates: [single.extractedCandidate] }, IMPACT_EXPANSION_CACHE_TTL_SECONDS);
+      }
+      return { ...single, fromCache: false };
+    }),
   );
 
-  if (!result) {
-    bundle.source = 'failed';
-    bundle.failureReason = 'call_failed';
-    return bundle;
-  }
-
-  const parsed = extractImpactExpansionPayload(result.text);
-  let extractedCandidates = sanitizeImpactExpansionDrafts(parsed.candidates, selectedCandidatePackets);
   bundle.source = 'live';
-  bundle.provider = result.provider;
-  bundle.model = result.model;
-  bundle.parseStage = parsed.diagnostics?.stage || '';
-  bundle.parseMode = 'batch';
-  bundle.rawPreview = parsed.diagnostics?.preview || '';
-
-  if (extractedCandidates.length === 0) {
-    const recovery = await recoverImpactExpansionDrafts(selectedCandidatePackets, result.text, llmOptions);
-    if (recovery && recovery.extractedCandidates.length > 0) {
-      bundle.provider = recovery.result.provider;
-      bundle.model = recovery.result.model;
-      bundle.parseStage = `recovered_${recovery.parsed.diagnostics?.stage || 'unknown'}`;
-      bundle.parseMode = 'batch_repair';
-      bundle.rawPreview = recovery.parsed.diagnostics?.preview || bundle.rawPreview;
-      bundle.extractedCandidates = recovery.extractedCandidates;
-      bundle.extractedCandidateCount = recovery.extractedCandidates.length;
-      bundle.successfulCandidateCount = recovery.extractedCandidates.length;
-      bundle.extractedHypothesisCount = recovery.extractedCandidates.reduce((sum, item) => sum
-        + (item.directHypotheses?.length || 0)
-        + (item.secondOrderHypotheses?.length || 0)
-        + (item.thirdOrderHypotheses?.length || 0), 0);
-      await redisSet(
-        url,
-        token,
-        cacheKey,
-        { candidates: recovery.extractedCandidates },
-        IMPACT_EXPANSION_CACHE_TTL_SECONDS,
-      );
-      return bundle;
+  bundle.parseMode = 'per_candidate';
+  let extractedCandidates = [];
+  for (let i = 0; i < perCandidateResults.length; i++) {
+    const r = perCandidateResults[i];
+    const packet = selectedCandidatePackets[i];
+    if (r?.extractedCandidate) {
+      extractedCandidates.push(r.extractedCandidate);
+      if (!r.fromCache) {
+        bundle.provider = bundle.provider || r.provider || '';
+        bundle.model = bundle.model || r.model || '';
+        bundle.parseStage = bundle.parseStage || r.parseStage || '';
+        bundle.rawPreview = bundle.rawPreview || r.rawPreview || '';
+      }
+    } else {
+      bundle.partialFailureCount += 1;
+      bundle.failedCandidatePreview.push({
+        candidateIndex: packet.candidateIndex,
+        candidateStateId: packet.candidateStateId,
+        label: packet.candidateStateLabel,
+        reason: r?.failureReason || 'validation_failed',
+      });
     }
-    bundle.failureReason = parsed.candidates == null ? 'parse_failed' : 'validation_failed';
-    extractedCandidates = [];
   }
 
-  const extractedByIndex = new Map(extractedCandidates.map((item) => [item.candidateIndex, item]));
-  const missingPackets = selectedCandidatePackets.filter((packet) => !extractedByIndex.has(packet.candidateIndex));
-  for (const packet of missingPackets) {
-    const singleCacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash([packet])}`;
-    const singleCached = await redisGet(url, token, singleCacheKey);
-    let extractedCandidate = null;
-    if (Array.isArray(singleCached?.candidates)) {
-      extractedCandidate = sanitizeImpactExpansionDrafts(singleCached.candidates, [packet])[0] || null;
-      if (extractedCandidate) {
-        bundle.parseMode = bundle.parseMode || 'single';
-      }
-    }
-    if (!extractedCandidate) {
-      const single = await extractSingleImpactExpansionCandidate(packet, llmOptions);
-      if (single?.extractedCandidate) {
-        extractedCandidate = single.extractedCandidate;
-        bundle.provider = bundle.provider || single.provider || '';
-        bundle.model = bundle.model || single.model || '';
-        bundle.parseMode = bundle.parseMode || single.parseMode || 'single';
-        bundle.parseStage = bundle.parseStage || single.parseStage || '';
-        bundle.rawPreview = bundle.rawPreview || single.rawPreview || '';
-        await redisSet(
-          url,
-          token,
-          singleCacheKey,
-          { candidates: [extractedCandidate] },
-          IMPACT_EXPANSION_CACHE_TTL_SECONDS,
-        );
-      } else {
-        bundle.partialFailureCount += 1;
-        bundle.failedCandidatePreview.push({
-          candidateIndex: packet.candidateIndex,
-          candidateStateId: packet.candidateStateId,
-          label: packet.candidateStateLabel,
-          reason: single?.failureReason || 'validation_failed',
-        });
-      }
-    }
-    if (extractedCandidate) extractedByIndex.set(packet.candidateIndex, extractedCandidate);
-  }
-
-  bundle.extractedCandidates = [...extractedByIndex.values()].sort((a, b) => a.candidateIndex - b.candidateIndex);
+  bundle.extractedCandidates = extractedCandidates.sort((a, b) => a.candidateIndex - b.candidateIndex);
   bundle.extractedCandidateCount = bundle.extractedCandidates.length;
   bundle.successfulCandidateCount = bundle.extractedCandidateCount;
   bundle.partialFailureCount = selectedCandidatePackets.length - bundle.extractedCandidateCount;
