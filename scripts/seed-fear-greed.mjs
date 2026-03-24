@@ -68,8 +68,10 @@ async function fetchBarchartS5TH() {
     });
     if (!resp.ok) return null;
     const html = await resp.text();
-    const m = html.match(/"lastPrice"\s*:\s*"?([\d.]+)"?/);
-    return m ? parseFloat(m[1]) : null;
+    const block = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? html;
+    const m = block.match(/"lastPrice"\s*:\s*"?([\d.]+)"?/);
+    const val = m ? parseFloat(m[1]) : NaN;
+    return Number.isFinite(val) ? val : null;
   } catch { return null; }
 }
 
@@ -328,6 +330,7 @@ async function fetchAll() {
   if (cboeResult.status === 'rejected') console.warn('  CBOE failed:', cboeResult.reason?.message);
   if (cnnResult.status === 'rejected') console.warn('  CNN failed:', cnnResult.reason?.message);
   if (aaiiResult.status === 'rejected') console.warn('  AAII failed:', aaiiResult.reason?.message);
+  if (barchartResult.status === 'fulfilled' && barchartResult.value == null) console.warn('  Barchart $S5TH: unavailable (using RSP/SPY proxy if possible)');
 
   const [hyObs, igObs, m2Obs, walclObs, sofrObs, fedObs, curveObs, unrateObs, vixObs, dgs10Obs] = await Promise.all([
     readFred('BAMLH0A0HYM2'), readFred('BAMLC0A0CM'), readFred('M2SL'), readFred('WALCL'),
@@ -350,13 +353,18 @@ async function fetchAll() {
   const skewPrice = skew?.price ?? null;
   const sofrRate = fredLatest(sofrObs);
 
-  // pctAbove200d: Barchart $S5TH (exact) → RSP/SPY relative-strength proxy (fallback)
-  let pctAbove200d = barchartResult.status === 'fulfilled' ? barchartResult.value : null;
-  if (pctAbove200d == null && rsp?.closes?.length >= 5 && spy?.closes?.length >= 5) {
+  // pctAbove200dScore: Barchart $S5TH only — used for breadth scoring to avoid
+  // double-counting RSP/SPY (rspScore already captures that signal in scoreCategory).
+  const pctAbove200dScore = barchartResult.status === 'fulfilled' ? barchartResult.value : null;
+
+  // pctAbove200dDisplay: Barchart or RSP/SPY proxy — shown in header metric only.
+  // Proxy: (RSP/mean(RSP)) / (SPY/mean(SPY)) normalized to 0-100 over ±20% band.
+  let pctAbove200dDisplay = pctAbove200dScore;
+  if (pctAbove200dDisplay == null && rsp?.closes?.length >= 20 && spy?.closes?.length >= 20) {
     const mean = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
     const rspRatio = rsp.closes.at(-1) / mean(rsp.closes);
     const spyRatio = spy.closes.at(-1) / mean(spy.closes);
-    if (spyRatio > 0) pctAbove200d = Math.round(clamp((rspRatio / spyRatio - 0.9) / 0.2 * 100, 0, 100));
+    if (spyRatio > 0) pctAbove200dDisplay = Math.round(clamp((rspRatio / spyRatio - 0.8) / 0.4 * 100, 0, 100));
   }
   const cryptoFg = macro?.fearGreed?.score ?? macro?.signals?.fearGreed?.value ?? null;
 
@@ -370,7 +378,7 @@ async function fetchAll() {
     volatility: scoreCategory('volatility', { vix: vixLive, vix9d: vix9dPrice, vix3m: vix3mPrice }),
     positioning: scoreCategory('positioning', { totalPc: cboe.totalPc, equityPc: cboe.equityPc, skew: skewPrice }),
     trend: scoreCategory('trend', { prices: gspc?.closes ?? [] }),
-    breadth: scoreCategory('breadth', { mmthPrice: pctAbove200d, rspCloses: rsp?.closes, spyCloses: spy?.closes, advDecRatio }),
+    breadth: scoreCategory('breadth', { mmthPrice: pctAbove200dScore, rspCloses: rsp?.closes, spyCloses: spy?.closes, advDecRatio }),
     momentum: scoreCategory('momentum', { spxCloses: gspc?.closes, sectorCloses: { XLK: xlk?.closes, XLF: xlf?.closes, XLE: xle?.closes, XLV: xlv?.closes } }),
     liquidity: scoreCategory('liquidity', { m2Obs, walclObs, sofr: sofrRate }),
     credit: scoreCategory('credit', { hyObs, igObs }),
@@ -409,7 +417,7 @@ async function fetchAll() {
       putCall:  cboe.totalPc != null ? { value: cboe.totalPc } : null,
       vix:      vixLive != null ? { value: vixLive } : null,
       hySpread: hySpreadVal != null ? { value: hySpreadVal } : null,
-      pctAbove200d: pctAbove200d != null ? { value: pctAbove200d } : null,
+      pctAbove200d: pctAbove200dDisplay != null ? { value: pctAbove200dDisplay } : null,
       yield10y: fredLatest(dgs10Obs) != null ? { value: fredLatest(dgs10Obs) } : null,
       fedRate:  fedRateStr ? { value: fedRateStr } : null,
     },
