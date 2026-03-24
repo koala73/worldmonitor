@@ -11859,9 +11859,9 @@ async function writeDeepForecastSnapshot(snapshot, _context = {}) {
 function isMaritimeChokeEnergyCandidate(candidate) {
   const routeKey = candidate.routeFacilityKey || '';
   if (!routeKey || !Object.prototype.hasOwnProperty.call(CHOKEPOINT_MARKET_REGIONS, routeKey)) return false;
-  const buckets = new Set(candidate.marketBucketIds || []);
+  const bucketArr = candidate.marketBucketIds || [];
   const topBucket = candidate.marketContext?.topBucketId || '';
-  return buckets.has('energy') || buckets.has('freight') || topBucket === 'energy' || topBucket === 'freight'
+  return bucketArr.includes('energy') || bucketArr.includes('freight') || topBucket === 'energy' || topBucket === 'freight'
     || SIMULATION_ENERGY_COMMODITY_KEYS.has(candidate.commodityKey || '');
 }
 
@@ -11876,7 +11876,7 @@ function mapActorCategoryToEntityClass(category, domains = []) {
 
 function inferEntityClassFromName(name) {
   const s = name.toLowerCase();
-  if (/military|army|navy|air force|guard|force|houthi|irgc|revolutionary|armed/.test(s)) return 'military_or_security_actor';
+  if (/\b(military|army|navy|air\s+force|national\s+guard|houthi|irgc|revolutionary\s+guard|armed\s+forces?)\b/.test(s)) return 'military_or_security_actor';
   if (/central bank|fed |ecb |boe |opec|regulator|reserve bank/.test(s)) return 'regulator_or_central_bank';
   if (/shipping|tanker|port|logistics|freight|carrier|maersk|cosco/.test(s)) return 'logistics_operator';
   if (/exporter|importer|producer|supplier|aramco|national oil/.test(s)) return 'exporter_or_importer';
@@ -11886,14 +11886,17 @@ function inferEntityClassFromName(name) {
 }
 
 function buildSimulationRequirementText(theater, candidate) {
-  const route = theater.routeFacilityKey || theater.dominantRegion;
+  const label = sanitizeForPrompt(theater.label) || theater.dominantRegion || 'unknown theater';
+  const route = sanitizeForPrompt(theater.routeFacilityKey || theater.dominantRegion);
+  const stateKind = sanitizeForPrompt(theater.stateKind) || 'disruption';
   const commodity = theater.commodityKey ? ` (${theater.commodityKey.replace(/_/g, ' ')})` : '';
   const bucket = theater.topBucketId || 'market';
-  const channel = theater.topChannel ? ` via ${theater.topChannel.replace(/_/g, ' ')}` : '';
+  const rawChannel = theater.topChannel ? sanitizeForPrompt(theater.topChannel) : '';
+  const channel = rawChannel ? ` via ${rawChannel.replace(/_/g, ' ')}` : '';
   const macroRegion = theater.macroRegions?.[0] || theater.dominantRegion;
-  const critTypes = (candidate.criticalSignalTypes || []).slice(0, 3).map((t) => t.replace(/_/g, ' ')).join(', ');
+  const critTypes = (candidate.criticalSignalTypes || []).slice(0, 3).map((t) => sanitizeForPrompt(t).replace(/_/g, ' ')).join(', ');
   const signalContext = critTypes ? ` Active signals: ${critTypes}.` : '';
-  return `Simulate how a ${theater.label} (${theater.stateKind || 'disruption'} at ${route}${commodity}) propagates through state behavior, shipping behavior, ${macroRegion} importer response, and ${bucket} market sentiment${channel} over the next 72 hours.${signalContext}`;
+  return `Simulate how a ${label} (${stateKind} at ${route}${commodity}) propagates through state behavior, shipping behavior, ${macroRegion} importer response, and ${bucket} market sentiment${channel} over the next 72 hours.${signalContext}`;
 }
 
 function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegistry) {
@@ -11903,9 +11906,9 @@ function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegis
     if (!seen.has(key)) seen.set(key, entity);
   };
 
-  const allForecastIds = candidates.flatMap((c) => c.sourceSituationIds || []);
+  const allForecastIdSet = new Set(candidates.flatMap((c) => c.sourceSituationIds || []));
   for (const actor of (actorRegistry || [])) {
-    if (!intersectAny(actor.forecastIds || [], allForecastIds)) continue;
+    if (!(actor.forecastIds || []).some((id) => allForecastIdSet.has(id))) continue;
     addEntity(`registry:${actor.id}`, {
       entityId: actor.id,
       name: actor.name,
@@ -11920,7 +11923,7 @@ function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegis
 
   for (const candidate of candidates) {
     for (const actorName of (candidate.stateSummary?.actors || [])) {
-      const key = `su:${actorName}:${candidate.dominantRegion}`;
+      const key = `su:${actorName}:${candidate.candidateStateId}`;
       addEntity(key, {
         entityId: `${candidate.candidateStateId}:${actorName.toLowerCase().replace(/\W+/g, '_')}`,
         name: actorName,
@@ -11938,7 +11941,7 @@ function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegis
       const match = entry.text.match(/^(.+?)\s+remain the lead actors/i);
       if (!match) continue;
       for (const name of match[1].split(/,\s*/).filter(Boolean)) {
-        const key = `ev:${name}:${candidate.dominantRegion}`;
+        const key = `ev:${name}:${candidate.candidateStateId}`;
         addEntity(key, {
           entityId: `${candidate.candidateStateId}:${name.toLowerCase().replace(/\W+/g, '_')}`,
           name,
@@ -12005,7 +12008,7 @@ function buildSimulationPackageEventSeeds(selectedTheaters, candidates) {
           seedId: `seed-${++idx}`,
           theaterId: theater.theaterId,
           type: 'live_news',
-          summary: entry.text.slice(0, 200),
+          summary: sanitizeForPrompt(entry.text).slice(0, 200),
           evidenceRefs: [entry.key],
           timing: 'T+0h',
           strength: +Math.min(0.95, (candidate.rankingScore || 0.5)).toFixed(3),
@@ -12015,7 +12018,7 @@ function buildSimulationPackageEventSeeds(selectedTheaters, candidates) {
           seedId: `seed-${++idx}`,
           theaterId: theater.theaterId,
           type: 'observed_disruption',
-          summary: entry.text.slice(0, 200),
+          summary: sanitizeForPrompt(entry.text).slice(0, 200),
           evidenceRefs: [entry.key],
           timing: 'T+0h',
           strength: +Math.min(0.9, (Number(candidate.marketContext?.criticalSignalLift || 0) + 0.3)).toFixed(3),
@@ -12030,7 +12033,7 @@ function buildSimulationPackageEventSeeds(selectedTheaters, candidates) {
           seedId: `seed-${++idx}`,
           theaterId: theater.theaterId,
           type: 'observed_disruption',
-          summary: fallback.text.slice(0, 200),
+          summary: sanitizeForPrompt(fallback.text).slice(0, 200),
           evidenceRefs: [fallback.key],
           timing: 'T+0h',
           strength: +(candidate.rankingScore || 0.4).toFixed(3),
@@ -12104,6 +12107,9 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
 function buildSimulationPackageEvaluationTargets(selectedTheaters, candidates) {
   return selectedTheaters.map((theater) => {
     const candidate = candidates.find((c) => c.candidateStateId === theater.candidateStateId);
+    if (!candidate) {
+      console.warn(`[SimulationPackage] No candidate for theaterId=${theater.theaterId} (evaluationTargets)`);
+    }
     const route = theater.routeFacilityKey || theater.dominantRegion;
     const commodity = theater.commodityKey ? ` and ${theater.commodityKey.replace(/_/g, ' ')} flows` : '';
     const bucket = theater.topBucketId || 'market';
@@ -12176,7 +12182,7 @@ function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null
   const selectedTheaters = top.map((c, i) => ({
     theaterId: `theater-${i + 1}`,
     candidateStateId: c.candidateStateId,
-    label: c.candidateStateLabel,
+    label: c.candidateStateLabel || c.dominantRegion || 'unknown theater',
     stateKind: c.stateKind,
     dominantRegion: c.dominantRegion,
     macroRegions: c.macroRegions,
@@ -15289,7 +15295,7 @@ if (_isDirectRun) {
         }, { runId });
         const snapshotWrite = await writeDeepForecastSnapshot(snapshotPayload, { runId });
         if (snapshotWrite?.storageConfig && (data.impactExpansionCandidates || []).length > 0) {
-          writeSimulationPackage(snapshotPayload, { storageConfig: snapshotWrite.storageConfig })
+          writeSimulationPackage(snapshotPayload, { storageConfig: snapshotWrite.storageConfig, priorWorldState: data.priorWorldState || null })
             .catch((err) => console.warn(`  [SimulationPackage] Write failed: ${err.message}`));
         }
         if (deepForecast.status === 'queued' && (data.impactExpansionCandidates || []).length > 0) {
@@ -15509,6 +15515,7 @@ export {
   buildDeepForecastSnapshotPayload,
   writeDeepForecastSnapshot,
   isMaritimeChokeEnergyCandidate,
+  inferEntityClassFromName,
   buildSimulationPackageFromDeepSnapshot,
   buildSimulationPackageKey,
   writeSimulationPackage,
