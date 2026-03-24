@@ -431,6 +431,31 @@ export default async function handler(req) {
 
   const httpStatus = overall === 'HEALTHY' || overall === 'WARNING' ? 200 : 503;
 
+  if (httpStatus === 503) {
+    const critKeys = Object.entries(checks)
+      .filter(([, c]) => c.status === 'CRIT' || c.status === 'EMPTY')
+      .map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`);
+    console.log('[health] %s crits=[%s]', overall, critKeys.join(', '));
+    // Persist last failure snapshot to Redis (TTL 24h) for post-mortem inspection.
+    try {
+      const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+      const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+      if (redisUrl && redisToken) {
+        await fetch(`${redisUrl}/pipeline`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify([['SET', 'health:last-failure', JSON.stringify({
+            at: new Date(now).toISOString(),
+            status: overall,
+            critCount,
+            crits: critKeys,
+          }), 'EX', 86400]]),
+          signal: AbortSignal.timeout(3_000),
+        });
+      }
+    } catch { /* non-critical — never let snapshot write block the health response */ }
+  }
+
   const url = new URL(req.url);
   const compact = url.searchParams.get('compact') === '1';
 
