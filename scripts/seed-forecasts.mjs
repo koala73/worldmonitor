@@ -5828,7 +5828,7 @@ function buildCanonicalStateUnits(situationClusters = [], situationFamilies = []
   return units
     .map(finalizeStateUnit)
     .sort((a, b) => b.forecastCount - a.forecastCount || b.avgProbability - a.avgProbability || a.label.localeCompare(b.label))
-    .filter(((seen) => (unit) => !seen.has(unit.label) && seen.add(unit.label))(new Set()));
+    .filter(((seen) => (unit) => !seen.has(unit.id) && seen.add(unit.id))(new Set()));
 }
 
 function buildSituationContinuitySummary(currentSituationClusters, priorWorldState = null) {
@@ -14069,9 +14069,9 @@ function buildMarketImplicationsContext(inputs) {
     }
   }
 
-  const chokepoints = inputs.chokepoints;
-  if (Array.isArray(chokepoints) && chokepoints.length > 0) {
-    const atRisk = chokepoints.filter(c => c.riskLevel === 'HIGH' || c.riskLevel === 'CRITICAL').slice(0, 4);
+  const chokepoints = inputs.chokepoints?.routes || inputs.chokepoints?.chokepoints || [];
+  if (chokepoints.length > 0) {
+    const atRisk = chokepoints.filter(c => c.riskLevel === 'high' || c.riskLevel === 'critical').slice(0, 4);
     if (atRisk.length > 0) {
       parts.push(`[AT-RISK CHOKEPOINTS]\n${atRisk.map(c => `${c.name}: risk=${c.riskLevel} commodity=${c.commodity || 'N/A'}`).join('\n')}`);
     }
