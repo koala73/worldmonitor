@@ -110,8 +110,6 @@ const CAT_DISPLAY: Record<string, string> = {
 
 export class FearGreedPanel extends Panel {
   private data: FearGreedData | null = null;
-  private loading = true;
-  private error: string | null = null;
 
   constructor() {
     super({ id: 'fear-greed', title: t('panels.fearGreed'), showCount: false, infoTooltip: 'Composite sentiment index: 10 weighted categories (volatility, positioning, breadth, momentum, liquidity, credit, macro, cross-asset, sentiment, trend).' });
@@ -123,44 +121,33 @@ export class FearGreedPanel extends Panel {
       const mapped = mapSeedPayload(hydrated);
       if (mapped && mapped.compositeScore > 0) {
         this.data = mapped;
-        this.loading = false;
-        this.error = null;
         this.renderPanel();
         return true;
       }
     }
 
+    this.showLoading();
     try {
       const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
       const { getRpcBaseUrl } = await import('@/services/rpc-client');
       const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const resp = await client.getFearGreedIndex({});
       if (resp.unavailable) {
-        this.error = 'Fear & Greed index unavailable';
-        this.loading = false;
-        this.renderPanel();
+        this.showError(t('common.noDataShort'), () => void this.fetchData());
         return false;
       }
       this.data = resp as FearGreedData;
-      this.loading = false;
-      this.error = null;
       this.renderPanel();
       return true;
     } catch (e) {
-      this.error = e instanceof Error ? e.message : 'Failed to load';
-      this.loading = false;
-      this.renderPanel();
+      this.showError(e instanceof Error ? e.message : t('common.failedToLoad'), () => void this.fetchData());
       return false;
     }
   }
 
   private renderPanel(): void {
-    if (this.loading) {
-      this.setContent('<div class="panel-empty">Loading...</div>');
-      return;
-    }
-    if (this.error || !this.data) {
-      this.setContent(`<div class="panel-empty">${escapeHtml(this.error ?? 'Fear & Greed index unavailable')}</div>`);
+    if (!this.data) {
+      this.showError(t('common.noDataShort'), () => void this.fetchData());
       return;
     }
 
