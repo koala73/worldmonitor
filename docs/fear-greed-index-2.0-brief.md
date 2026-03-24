@@ -98,10 +98,19 @@ The weighted sum produces the composite index.
 | **Cross-Asset** | Cross-Asset | Yahoo Finance | GLD/TLT/SPY/DX-Y.NYB (computed) | JSON | HIGH — existing Yahoo pattern |
 | **SPX Trend** | Trend | Yahoo Finance | `^GSPC` (compute 20/50/200 DMA) | JSON | HIGH — existing Yahoo pattern |
 | **Breadth Proxy** | Breadth | Yahoo Finance | RSP vs SPY (equal-weight divergence) | JSON | HIGH — regular ETF symbol |
+| **% Above 200 DMA** | Breadth | Yahoo Finance | `^MMTH` via chart API (NOT ^MMTW which is 20-day) | JSON | MEDIUM — unofficial Yahoo symbol |
+| **NYSE Adv/Decline** | Breadth | Yahoo Finance | `C:ISSU` via chart API | JSON | MEDIUM — unofficial Yahoo symbol |
 | **NYSE Composite** | Breadth | Yahoo Finance | `^NYA` via chart API | JSON | HIGH — standard Yahoo symbol |
 | **HYG/LQD ETFs** | Credit | Yahoo Finance | HYG, LQD (credit ETF trend) | JSON | HIGH — regular ETF symbols |
 
 **Key insight**: Perplexity Computer Use = browser-based scraping. Every source above is a public URL with no login/key required. The CBOE CSVs are the goldmine — free daily put/call data that most people don't know about.
+
+**Bonus discoveries from research**:
+- `^MMTH` = actual Yahoo symbol for **% stocks above 200 DMA** (^MMTW is 20-day, not 200-day)
+- `C:ISSU` = Yahoo symbol for **NYSE Advance/Decline/Unchanged** data
+- CNN endpoint accepts date parameter: `production.dataviz.cnn.io/index/fearandgreed/graphdata/2026-03-20`
+- CBOE CSV files contain data back to 2003-2006 — full history included
+- AAII blocks bots but works in real browsers (which is why Perplexity Computer Use can scrape it)
 
 ### 🟡 PARTIALLY HAVE (Need Enhancement)
 
@@ -317,9 +326,12 @@ Already proven pattern in `seed-economy.mjs`. Uses `query1.finance.yahoo.com/v8/
 | 14 | `XLV` | 1y daily closes | Momentum | Healthcare sector |
 | 15 | `XLI` | 1y daily closes | Momentum | Industrials sector |
 | 16 | `XLU` | 1y daily closes | Momentum | Utilities (defensive) |
+| 17 | `RSP` | 1y daily closes | Breadth | Equal-weight S&P 500 vs SPY divergence |
+| 18 | `^MMTH` | 1y daily closes | Breadth | % of stocks above 200 DMA (direct!) |
+| 19 | `C:ISSU` | 1y daily | Breadth | NYSE advances/declines/unchanged |
 
-**Total Yahoo calls**: 16 × 150ms gap = ~2.4s sequential
-**Fallback**: Finnhub candle API (`stock/candle`) for each symbol
+**Total Yahoo calls**: 19 × 150ms gap = ~2.9s sequential
+**Fallback**: Finnhub candle API (`stock/candle`) for ETF symbols; breadth symbols Yahoo-only
 
 #### Group 2: FRED Series (already seeded, just READ from Redis)
 
@@ -463,13 +475,14 @@ const pcRatio = parseFloat(latest[4]); // P/C RATIO column
 
 | Source | Calls | Rate Limited? | Auth |
 |--------|-------|--------------|------|
-| Yahoo Finance | 17 (16 symbols + RSP) | 150ms gaps | None |
-| CNN dataviz | 1 | No | None |
-| AAII | 1 | No | None |
+| Yahoo Finance | 19 symbols | 150ms gaps | User-Agent only |
+| CBOE CDN | 2 (totalpc.csv + equitypc.csv) | No | None |
+| CNN dataviz | 1 | No | User-Agent only |
+| AAII | 1 | Blocks bots | User-Agent + scrape |
 | Redis reads | ~10 (FRED series pipeline) | No | Bearer token |
-| **Total** | **~29** | — | — |
+| **Total** | **~33** | — | — |
 
-**Estimated runtime**: ~5s (Yahoo sequential) + ~2s (CNN/AAII parallel) + ~1s (Redis) = **~8s per run**
+**Estimated runtime**: ~3s (Yahoo sequential) + ~2s (CBOE/CNN/AAII parallel) + ~1s (Redis) = **~6s per run**
 
 ### Output Schema (stored in Redis)
 
