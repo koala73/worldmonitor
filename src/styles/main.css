@@ -218,6 +218,71 @@ body {
   min-width: 100vw;
 }
 
+/* 可洛喵定制加载样式 - Kuroko Custom Loading */
+.kuroko-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  min-height: 200px;
+}
+
+.kuroko-text {
+  font-size: 28px;
+  font-weight: 700;
+  color: #ffb6c1;
+  margin-bottom: 12px;
+  text-shadow: 0 0 20px rgba(255, 182, 193, 0.5);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.kuroko-subtext {
+  font-size: 14px;
+  color: #87ceeb;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.02); opacity: 0.9; }
+}
+
+/* 可洛喵定制页脚 - Kuroko Custom Footer */
+.kuroko-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 16px;
+  background: linear-gradient(90deg, rgba(26, 26, 46, 0.9) 0%, rgba(22, 33, 62, 0.9) 100%);
+  border-top: 1px solid rgba(255, 182, 193, 0.3);
+  z-index: 9999;
+  font-size: 12px;
+}
+
+.kuroko-footer-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.kuroko-branding {
+  color: #ffb6c1;
+  font-weight: 600;
+}
+
+.kuroko-version {
+  color: #87ceeb;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
 /* Pause all animations when tab is hidden or idle */
 body.animations-paused *,
 body.animations-paused *::before,

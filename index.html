@@ -7,9 +7,9 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     <!-- Primary Meta Tags -->
-    <title>World Monitor - Real-Time Global Intelligence Dashboard</title>
-    <meta name="title" content="World Monitor - Real-Time Global Intelligence Dashboard" />
-    <meta name="description" content="AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. OSINT in one view." />
+    <title>World Monitor - 实时全球情报中心喵！</title>
+    <meta name="title" content="World Monitor - 实时全球情报中心喵！" />
+    <meta name="description" content="由可洛喵精心维护的AI驱动实时全球情报仪表板！集成新闻、市场、军事跟踪、基础设施监控和地理政治数据。OSINT，尽在一屏喵~ (^ω^)" />
     <meta name="keywords" content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
     <meta name="author" content="Elie Habib" />
     <meta name="theme-color" content="#0a0f0a" />
@@ -207,6 +207,10 @@
     <div id="app">
       <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
       <div class="skeleton-shell" aria-hidden="true">
+        <div class="kuroko-loading">
+          <div class="kuroko-text">正在启动世界监控喵！</div>
+          <div class="kuroko-subtext">Preparing world domination... ॿ</div>
+        </div>
         <div class="skeleton-header">
           <div class="skeleton-header-left">
             <div class="skeleton-pill" style="width:120px"></div>
@@ -237,6 +241,13 @@
         </div>
       </div>
     </div>
+    <!-- 可洛喵定制页脚 - Kuroko Custom Footer -->
+    <footer class="kuroko-footer" style="display:none;">
+      <div class="kuroko-footer-content">
+        <span class="kuroko-branding">Made with ❤ by 可洛喵</span>
+        <span class="kuroko-version">v2.0-kuroko-edition</span>
+      </div>
+    </footer>
     <aside id="country-deep-dive-panel" class="country-deep-dive" aria-label="Country Intelligence" aria-hidden="true">
       <div class="country-deep-dive-shell">
         <button id="deep-dive-close" class="panel-close" aria-label="Close">×</button>
