@@ -59,6 +59,7 @@ describe('Edge Function no node: built-ins', () => {
 describe('Legacy api/*.js endpoint allowlist', () => {
   const ALLOWED_LEGACY_ENDPOINTS = new Set([
     'ais-snapshot.js',
+    'alerts.js',
     'bootstrap.js',
     'brief.js',
     'cache-purge.js',
