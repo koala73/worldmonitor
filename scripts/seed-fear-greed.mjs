@@ -335,6 +335,10 @@ async function fetchAll() {
   const aaii = aaiiResult.status === 'fulfilled' ? aaiiResult.value : null;
   const macro = macroSignals.status === 'fulfilled' ? macroSignals.value : null;
 
+  // Source status summary — visible in Railway container logs
+  const yahooCount = Object.values(yahoo).filter(Boolean).length;
+  console.log(`  Sources: Yahoo=${yahooCount}/${YAHOO_SYMBOLS.length} | CBOE totalPc=${cboe.totalPc ?? 'null'} equityPc=${cboe.equityPc ?? 'null'} | CNN=${cnn ? cnn.score : 'null'} | AAII bull=${aaii ? aaii.bull : 'null'} | Barchart=${barchartResult.status === 'fulfilled' ? (barchartResult.value ?? 'null') : 'err'} | proxy=${_proxyAuth ? 'yes' : 'no'}`);
+
   if (yahooResults.status === 'rejected') console.warn('  Yahoo batch failed:', yahooResults.reason?.message);
   if (cboeResult.status === 'rejected') console.warn('  CBOE failed:', cboeResult.reason?.message);
   if (cnnResult.status === 'rejected') console.warn('  CNN failed:', cnnResult.reason?.message);
