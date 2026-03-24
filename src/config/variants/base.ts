@@ -31,6 +31,7 @@ export const REFRESH_INTERVALS = {
   cyberThreats: 10 * 60 * 1000,
   stockAnalysis: 15 * 60 * 1000,
   dailyMarketBrief: 60 * 60 * 1000,
+  marketImplications: 75 * 60 * 1000,
   stockBacktest: 4 * 60 * 60 * 1000,
   serviceStatus: 3 * 60 * 1000,
   stablecoins: 15 * 60 * 1000,

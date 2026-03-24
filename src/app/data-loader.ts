@@ -530,8 +530,10 @@ export class DataLoaderManager implements AppModule {
     this.updateSearchIndex();
 
     if (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) {
-      await this.loadDailyMarketBrief();
-      await this.loadMarketImplications();
+      await Promise.allSettled([
+        this.loadDailyMarketBrief(),
+        this.loadMarketImplications(),
+      ]);
     }
 
     const bootstrapTemporal = consumeServerAnomalies();

@@ -302,6 +302,9 @@ export class App {
       if (shouldPrime('daily-market-brief')) {
         primeTask('dailyMarketBrief', () => this.dataLoader.loadDailyMarketBrief());
       }
+      if (shouldPrime('market-implications')) {
+        primeTask('marketImplications', () => this.dataLoader.loadMarketImplications());
+      }
     }
 
     if (tasks.length > 0) {
@@ -1045,6 +1048,12 @@ export class App {
         () => this.dataLoader.loadStockBacktest(),
         REFRESH_INTERVALS.stockBacktest,
         () => (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) && this.isPanelNearViewport('stock-backtest'),
+      );
+      this.refreshScheduler.scheduleRefresh(
+        'market-implications',
+        () => this.dataLoader.loadMarketImplications(),
+        REFRESH_INTERVALS.marketImplications,
+        () => (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) && this.isPanelNearViewport('market-implications'),
       );
     }
 
