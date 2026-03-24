@@ -2252,8 +2252,8 @@ function buildRegistryConstraintTable() {
 // Derived from module-level constants — computed once and reused across all prompt calls.
 const IMPACT_EXPANSION_REGISTRY_CONSTRAINT_TABLE = buildRegistryConstraintTable();
 
-function buildImpactExpansionSystemPrompt() {
-  return `You are a consequence-expansion engine for a state-based geopolitical and market simulation model.
+function buildImpactExpansionSystemPrompt(learnedSection = '') {
+  const base = `You are a consequence-expansion engine for a state-based geopolitical and market simulation model.
 
 Return ONLY a JSON object with this shape:
 {
@@ -2306,6 +2306,7 @@ Rules:
 - Return no prose outside the JSON object.
 - Do NOT wrap the JSON in markdown fences.
 - If a candidate has no plausible hypotheses, still include it with empty hypothesis arrays.`;
+  return learnedSection ? `${base}\n\n--- LEARNED CHAIN EXAMPLES (auto-refined, do not override core rules) ---\n${learnedSection}` : base;
 }
 const CRITICAL_SIGNAL_PRIMARY_KINDS = new Set([
   'route_blockage',
@@ -3453,20 +3454,23 @@ function selectDeepForecastCandidates(selection = []) {
     .slice(0, FORECAST_DEEP_MAX_CANDIDATES);
 }
 
-function buildImpactExpansionCandidateHash(candidatePackets = []) {
+function buildImpactExpansionCandidateHash(candidatePackets = [], learnedSection = '') {
   return crypto.createHash('sha256')
-    .update(JSON.stringify(candidatePackets.map((packet) => ({
-      stateKind: packet.stateKind,
-      dominantRegion: packet.dominantRegion,
-      macroRegions: packet.macroRegions || [],
-      marketBucketIds: packet.marketBucketIds || [],
-      transmissionChannels: packet.transmissionChannels || [],
-      topSignalTypes: packet.topSignalTypes || [],
-      criticalSignalTypes: packet.criticalSignalTypes || [],
-      routeFacilityKey: packet.routeFacilityKey || '',
-      commodityKey: packet.commodityKey || '',
-      version: IMPACT_EXPANSION_REGISTRY_VERSION,
-    }))))
+    .update(JSON.stringify({
+      candidates: candidatePackets.map((packet) => ({
+        stateKind: packet.stateKind,
+        dominantRegion: packet.dominantRegion,
+        macroRegions: packet.macroRegions || [],
+        marketBucketIds: packet.marketBucketIds || [],
+        transmissionChannels: packet.transmissionChannels || [],
+        topSignalTypes: packet.topSignalTypes || [],
+        criticalSignalTypes: packet.criticalSignalTypes || [],
+        routeFacilityKey: packet.routeFacilityKey || '',
+        commodityKey: packet.commodityKey || '',
+        version: IMPACT_EXPANSION_REGISTRY_VERSION,
+      })),
+      learnedFingerprint: learnedSection.slice(0, 80),
+    }))
     .digest('hex')
     .slice(0, 16);
 }
@@ -3576,6 +3580,7 @@ async function extractImpactExpansionBundle({
   marketInputCoverage = null,
   priorWorldState = null,
   candidatePackets = null,
+  learnedSection = '',
 } = {}) {
   const priorStateUnits = Array.isArray(priorWorldState?.stateUnits) ? priorWorldState.stateUnits : [];
   const selectedCandidatePackets = Array.isArray(candidatePackets) && candidatePackets.length
@@ -3623,7 +3628,7 @@ async function extractImpactExpansionBundle({
   if (selectedCandidatePackets.length === 0) return bundle;
 
   const { url, token } = getRedisCredentials();
-  const cacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash(selectedCandidatePackets)}`;
+  const cacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash(selectedCandidatePackets, learnedSection)}`;
   const cached = await redisGet(url, token, cacheKey);
   if (Array.isArray(cached?.candidates)) {
     const extractedCandidates = sanitizeImpactExpansionDrafts(cached.candidates, selectedCandidatePackets);
@@ -3651,7 +3656,7 @@ async function extractImpactExpansionBundle({
     temperature: 0,
   };
   const result = await callForecastLLM(
-    buildImpactExpansionSystemPrompt(),
+    buildImpactExpansionSystemPrompt(learnedSection),
     buildImpactExpansionUserPrompt(selectedCandidatePackets),
     llmOptions,
   );
@@ -13983,9 +13988,14 @@ async function processDeepForecastTask(task = {}) {
     ? await getR2JsonObject(storageConfig, task.priorWorldStateKey).catch(() => null)
     : null;
 
+  // Read learned prompt section from Redis (auto-refined over time)
+  const { url: redisUrl, token: redisToken } = getRedisCredentials();
+  const learnedSection = (await redisGet(redisUrl, redisToken, PROMPT_LEARNED_KEY).catch(() => null)) || '';
+
   const bundle = await extractImpactExpansionBundle({
     candidatePackets: snapshot.impactExpansionCandidates || [],
     priorWorldState,
+    learnedSection,
   });
 
   const evaluation = await evaluateDeepForecastPaths(
@@ -14033,6 +14043,11 @@ async function processDeepForecastTask(task = {}) {
         completedAt: deepForecast.completedAt,
       },
     }, { runId: snapshot.runId });
+    await runImpactExpansionPromptRefinement({
+      candidatePackets: snapshot.impactExpansionCandidates || [],
+      validation: evaluation.validation || {},
+      priorWorldState,
+    });
     return { status: 'completed', deepForecast };
   }
 
@@ -14054,6 +14069,12 @@ async function processDeepForecastTask(task = {}) {
       completedAt: deepForecast.completedAt,
     },
   }, { runId: snapshot.runId });
+  // Non-blocking: self-improve prompt based on quality of this run's hypotheses
+  await runImpactExpansionPromptRefinement({
+    candidatePackets: snapshot.impactExpansionCandidates || [],
+    validation: evaluation.validation || {},
+    priorWorldState,
+  });
   return { status: deepForecast.status, deepForecast };
 }
 
@@ -14083,6 +14104,186 @@ async function writeFailedDeepForecastArtifacts(task = {}, failureReason = '') {
       completedAt: deepForecast.completedAt,
     },
   }, { runId: snapshot.runId });
+}
+
+// ---------------------------------------------------------------------------
+// Impact Expansion Prompt Self-Improvement (autoresearch-style loop)
+// Locked scorer + mutable learned section in Redis + rollback on regression
+// ---------------------------------------------------------------------------
+
+const PROMPT_LEARNED_KEY = 'forecast:prompt:impact-expansion:learned';
+const PROMPT_BASELINE_KEY = 'forecast:prompt:impact-expansion:baseline';
+const PROMPT_LAST_ATTEMPT_KEY = 'forecast:prompt:impact-expansion:last-attempt';
+const PROMPT_MIN_REFINEMENT_INTERVAL_MS = 30 * 60 * 1000; // 30 min between attempts
+const PROMPT_LEARNED_MAX_CHARS = 1600; // cap to avoid bloating the prompt
+
+function scoreImpactExpansionQuality(validation, candidatePackets = []) {
+  const mapped = validation?.mapped || [];
+  const hypotheses = validation?.hypotheses || [];
+  const nCandidates = Math.max(candidatePackets.length, 1);
+
+  // commodity specificity: % of mapped with non-empty commodity
+  const commodityRate = mapped.filter((h) => h.commodity && h.commodity !== '').length
+    / Math.max(mapped.length, 1);
+
+  // variable diversity: unique (variableKey:targetBucket) combos as fraction of (nCandidates×2)
+  const uniquePairs = new Set(mapped.map((h) => `${h.variableKey}:${h.targetBucket}`));
+  const diversityScore = Math.min(uniquePairs.size / (nCandidates * 2), 1.0);
+
+  // chain coverage: % of candidates with both direct AND second_order mapped
+  const byCandidate = {};
+  for (const h of mapped) {
+    if (!byCandidate[h.candidateIndex]) byCandidate[h.candidateIndex] = { direct: 0, second: 0 };
+    if (h.order === 'direct') byCandidate[h.candidateIndex].direct++;
+    if (h.order === 'second_order') byCandidate[h.candidateIndex].second++;
+  }
+  const chainCoverage = Object.values(byCandidate).filter((c) => c.direct > 0 && c.second > 0).length
+    / nCandidates;
+
+  // mapped rate
+  const mappedRate = mapped.length / Math.max(hypotheses.length, 1);
+
+  const composite = clampUnitInterval(
+    (commodityRate * 0.35)
+    + (diversityScore * 0.35)
+    + (chainCoverage * 0.20)
+    + (mappedRate * 0.10),
+  );
+  return { commodityRate, diversityScore, chainCoverage, mappedRate, composite, mappedCount: mapped.length };
+}
+
+function buildImpactPromptCritiqueSystemPrompt() {
+  return `You are a prompt engineer improving a geopolitical consequence-expansion LLM system.
+Analyze the quality metrics and sample hypotheses, then propose ONE targeted addition to the system prompt.
+
+Output ONLY valid JSON (no markdown fences):
+{
+  "diagnosis": "Primary failure mode in 1 sentence",
+  "failure_mode": "generic_chains | missing_commodity | low_diversity | missing_third_order",
+  "proposed_addition": "Exact text to append to the system prompt — 3 to 8 concrete example chains or rules",
+  "expected_metric": "commodity_rate | diversity_score | chain_coverage",
+  "confidence": 0.0
+}
+
+Rules for proposed_addition:
+- Use only variableKeys, channels, and targetBuckets that are valid per the constraint table
+- Include the stateKind context (supply_chain, military, sovereignty, weather) for each example
+- Format as: "For [stateKind] in [region]: [variableKey](direct,[channel],[bucket]) → [variableKey](second_order,[channel],[bucket]) → [variableKey](third_order,[channel],[bucket])"
+- Maximum 300 words — shorter is better
+- Do NOT repeat rules already in the base prompt`;
+}
+
+function buildImpactPromptCritiqueUserPrompt(qualityMetrics, mapped, candidatePackets) {
+  const sample = mapped.slice(0, 6).map((h) => (
+    `  [${h.order}][cand${h.candidateIndex}] ${h.variableKey} ch=${h.channel} bkt=${h.targetBucket} com=${h.commodity || 'none'} | ${(h.summary || '').slice(0, 80)}`
+  )).join('\n');
+  const candidates = candidatePackets.slice(0, 3).map((p) => (
+    `  [${p.candidateIndex}] stateKind=${p.stateKind} region=${p.dominantRegion} route=${p.routeFacilityKey || 'none'} commodity=${p.commodityKey || 'none'} signals=${(p.criticalSignalTypes || []).join(',') || 'none'}`
+  )).join('\n');
+  return `QUALITY METRICS:
+- Commodity specificity: ${(qualityMetrics.commodityRate * 100).toFixed(0)}% (target >50%)
+- Variable diversity: ${(qualityMetrics.diversityScore * 100).toFixed(0)}% (target >70%)
+- Chain coverage: ${(qualityMetrics.chainCoverage * 100).toFixed(0)}%
+- Composite score: ${qualityMetrics.composite.toFixed(3)}
+
+CANDIDATES:
+${candidates}
+
+SAMPLE HYPOTHESES (what the model produced):
+${sample || '  (none mapped)'}
+
+DIAGNOSIS TASK: The model generates generic chains (e.g. route_disruption → inflation_pass_through) for all situations regardless of specific context.
+Propose ONE concrete addition that would steer the model toward situation-specific chains with named commodities, routes, and geopolitically-appropriate consequences.`;
+}
+
+async function runImpactExpansionPromptRefinement({ candidatePackets, validation, priorWorldState }) {
+  try {
+    const { url, token } = getRedisCredentials();
+
+    // Rate-limit: skip if last attempt was < 30 min ago
+    const lastAttemptRaw = await redisGet(url, token, PROMPT_LAST_ATTEMPT_KEY);
+    if (lastAttemptRaw && Date.now() - Number(lastAttemptRaw) < PROMPT_MIN_REFINEMENT_INTERVAL_MS) return;
+
+    const currentScore = scoreImpactExpansionQuality(validation, candidatePackets);
+    const baselineRaw = await redisGet(url, token, PROMPT_BASELINE_KEY);
+    const baseline = typeof baselineRaw === 'object' && baselineRaw !== null ? baselineRaw : null;
+
+    // If quality is good and improving, just update baseline — no refinement needed
+    if (currentScore.composite >= 0.62) {
+      if (!baseline || currentScore.composite > (baseline.qualityScore || 0)) {
+        const learnedSection = (await redisGet(url, token, PROMPT_LEARNED_KEY)) || '';
+        await redisSet(url, token, PROMPT_BASELINE_KEY, {
+          qualityScore: currentScore.composite,
+          learnedSection,
+          timestamp: Date.now(),
+        }, 30 * 24 * 3600);
+        console.log(`  [PromptRefinement] Baseline updated: ${currentScore.composite.toFixed(3)}`);
+      }
+      return;
+    }
+
+    // Below target — attempt refinement
+    await redisSet(url, token, PROMPT_LAST_ATTEMPT_KEY, String(Date.now()), 3600);
+
+    const currentLearnedSection = (await redisGet(url, token, PROMPT_LEARNED_KEY)) || '';
+    const mapped = validation?.mapped || [];
+
+    console.log(`  [PromptRefinement] Quality ${currentScore.composite.toFixed(3)} below 0.62 — running critique`);
+    const critiqueResult = await callForecastLLM(
+      buildImpactPromptCritiqueSystemPrompt(),
+      buildImpactPromptCritiqueUserPrompt(currentScore, mapped, candidatePackets),
+      { stage: 'prompt_critique', maxTokens: 700, temperature: 0.5 },
+    );
+    if (!critiqueResult) return;
+
+    let critique;
+    try {
+      critique = JSON.parse(critiqueResult.text.replace(/```json[\s\S]*?```|```/g, '').trim());
+    } catch {
+      console.warn('  [PromptRefinement] Could not parse critique JSON');
+      return;
+    }
+
+    if (!critique?.proposed_addition || (critique.confidence || 0) < 0.5) {
+      console.warn('  [PromptRefinement] Critique confidence too low — skipping');
+      return;
+    }
+
+    // Build candidate new learned section (trim if too long)
+    let candidateSection = currentLearnedSection
+      ? `${currentLearnedSection}\n\n${critique.proposed_addition}`
+      : critique.proposed_addition;
+    if (candidateSection.length > PROMPT_LEARNED_MAX_CHARS) {
+      candidateSection = critique.proposed_addition.slice(0, PROMPT_LEARNED_MAX_CHARS);
+    }
+
+    // Test the new prompt on the same candidates (bypasses cache via unique learnedSection)
+    console.log(`  [PromptRefinement] Testing candidate addition: "${critique.diagnosis}"`);
+    const testBundle = await extractImpactExpansionBundle({
+      candidatePackets,
+      priorWorldState,
+      learnedSection: candidateSection,
+    });
+    const testValidation = validateImpactHypotheses(testBundle);
+    const testScore = scoreImpactExpansionQuality(testValidation, candidatePackets);
+
+    const currentBaseline = baseline?.qualityScore ?? currentScore.composite;
+    if (testScore.composite > currentBaseline) {
+      await redisSet(url, token, PROMPT_LEARNED_KEY, candidateSection, 30 * 24 * 3600);
+      await redisSet(url, token, PROMPT_BASELINE_KEY, {
+        qualityScore: testScore.composite,
+        learnedSection: candidateSection,
+        timestamp: Date.now(),
+        diagnosis: critique.diagnosis,
+        failureMode: critique.failure_mode,
+      }, 30 * 24 * 3600);
+      console.log(`  [PromptRefinement] Committed: ${currentBaseline.toFixed(3)} → ${testScore.composite.toFixed(3)} | ${critique.diagnosis}`);
+    } else {
+      console.log(`  [PromptRefinement] Reverted: test ${testScore.composite.toFixed(3)} <= baseline ${currentBaseline.toFixed(3)}`);
+    }
+  } catch (err) {
+    console.warn(`  [PromptRefinement] Error: ${err.message}`);
+  }
 }
 
 async function processNextDeepForecastTask(options = {}) {
@@ -14567,5 +14768,7 @@ export {
   enqueueDeepForecastTask,
   processNextDeepForecastTask,
   runDeepForecastWorker,
+  scoreImpactExpansionQuality,
+  runImpactExpansionPromptRefinement,
   __setForecastLlmCallOverrideForTests,
 };

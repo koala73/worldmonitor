@@ -44,6 +44,7 @@ import {
   extractImpactCommodityKey,
   IMPACT_VARIABLE_REGISTRY,
   MARKET_BUCKET_ALLOWED_CHANNELS,
+  scoreImpactExpansionQuality,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -5217,5 +5218,44 @@ describe('phase 2 scoring recalibration + prompt excellence', () => {
     // Original chokepoints must still work
     assert.equal(extractImpactRouteFacilityKey(['Strait of Hormuz tanker attack']), 'Strait of Hormuz');
     assert.equal(extractImpactRouteFacilityKey(['Suez Canal blockage ongoing']), 'Suez Canal');
+  });
+
+  it('T9: scoreImpactExpansionQuality — high commodity rate + chain coverage yields high composite', () => {
+    const candidatePackets = [{ candidateIndex: 0 }, { candidateIndex: 1 }];
+    const validation = {
+      hypotheses: [
+        { order: 'direct', variableKey: 'route_disruption', targetBucket: 'energy', validationStatus: 'mapped', commodity: 'LNG', candidateIndex: 0 },
+        { order: 'second_order', variableKey: 'inflation_pass_through', targetBucket: 'commodities', validationStatus: 'mapped', commodity: 'LNG', candidateIndex: 0 },
+        { order: 'direct', variableKey: 'supply_constraint', targetBucket: 'commodities', validationStatus: 'mapped', commodity: 'crude_oil', candidateIndex: 1 },
+        { order: 'second_order', variableKey: 'shipping_cost_spike', targetBucket: 'equity', validationStatus: 'mapped', commodity: 'crude_oil', candidateIndex: 1 },
+      ],
+      mapped: [],
+    };
+    validation.mapped = validation.hypotheses.filter(h => h.validationStatus === 'mapped');
+
+    const result = scoreImpactExpansionQuality(validation, candidatePackets);
+
+    assert.ok(result.commodityRate === 1.0, 'all mapped have commodity → commodityRate 1.0');
+    assert.ok(result.chainCoverage === 1.0, 'both candidates have direct+second → chainCoverage 1.0');
+    assert.ok(result.composite > 0.7, `composite should be high (got ${result.composite})`);
+    assert.equal(result.mappedCount, 4);
+  });
+
+  it('T10: scoreImpactExpansionQuality — no commodity + no chain coverage yields low composite', () => {
+    const candidatePackets = [{ candidateIndex: 0 }, { candidateIndex: 1 }];
+    const validation = {
+      hypotheses: [
+        { order: 'direct', variableKey: 'route_disruption', targetBucket: 'energy', validationStatus: 'mapped', commodity: '', candidateIndex: 0 },
+        { order: 'direct', variableKey: 'supply_constraint', targetBucket: 'commodities', validationStatus: 'mapped', commodity: '', candidateIndex: 1 },
+      ],
+      mapped: [],
+    };
+    validation.mapped = validation.hypotheses.filter(h => h.validationStatus === 'mapped');
+
+    const result = scoreImpactExpansionQuality(validation, candidatePackets);
+
+    assert.equal(result.commodityRate, 0, 'no commodity keys → commodityRate 0');
+    assert.equal(result.chainCoverage, 0, 'no second_order → chainCoverage 0');
+    assert.ok(result.composite < 0.4, `composite should be low (got ${result.composite})`);
   });
 });
