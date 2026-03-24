@@ -1525,12 +1525,19 @@ export class PanelLayoutManager implements AppModule {
       const bottomGrid = document.getElementById('mapBottomGrid');
       if (bottomGrid && this.getEffectiveUltraWide() && this.bottomSetMemory.has(key)) {
         this.insertByOrder(bottomGrid, el, key);
-        return;
+      } else {
+        const grid = document.getElementById('panelsGrid');
+        if (!grid) return;
+        this.insertByOrder(grid, el, key);
       }
 
-      const grid = document.getElementById('panelsGrid');
-      if (!grid) return;
-      this.insertByOrder(grid, el, key);
+      // applyPanelSettings() already ran at startup before this lazy promise resolved.
+      // If the user had this panel disabled, it must be hidden immediately after insertion
+      // or it reappears until the next applyPanelSettings() call.
+      const savedConfig = this.ctx.panelSettings[key];
+      if (savedConfig && !savedConfig.enabled) {
+        this.ctx.panels[key]?.hide();
+      }
     }).catch((err) => {
       console.error(`[panel] failed to lazy-load "${key}"`, err);
     });
