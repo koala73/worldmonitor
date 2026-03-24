@@ -23,7 +23,6 @@ test('full-variant awareness panels are registered, instantiated, and refreshed'
   assert.match(panelLayout, /this\.ctx\.panels\['comms-health'\] = /);
   assert.match(panelLayout, /new EconomicStressPanel\(\)/);
   assert.match(panelLayout, /this\.ctx\.panels\['economic-stress'\] = /);
-
   assert.match(dataLoader, /fetchCommsHealth/);
   assert.match(dataLoader, /fetchEconomicStress/);
   assert.match(dataLoader, /loadCommsHealth\(\)/);

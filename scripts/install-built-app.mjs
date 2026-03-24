@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { cp, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,12 +12,16 @@ const DEFAULT_APP_PATH = path.join(repoRoot, 'src-tauri', 'target', 'release', '
 const DEFAULT_INSTALL_PATH = path.join(os.homedir(), 'Applications', 'World Monitor.app');
 const EXPECTED_BUNDLE_ID = 'com.bradleybond.worldmonitor';
 
+const DEFAULT_SYNC_STATE_FILE = path.join(os.homedir(), '.worldmonitor-main-sync', 'state.json');
+
 function parseArgs(argv) {
   const options = {
     appPath: DEFAULT_APP_PATH,
     installPath: DEFAULT_INSTALL_PATH,
     expectedSha256: '',
     relaunch: false,
+    localSha: '',         // git SHA of the locally built commit
+    stateFile: DEFAULT_SYNC_STATE_FILE,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -51,6 +55,24 @@ function parseArgs(argv) {
     }
     if (arg === '--relaunch') {
       options.relaunch = true;
+      continue;
+    }
+    if (arg === '--local-sha') {
+      options.localSha = argv[i + 1] ?? '';
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('--local-sha=')) {
+      options.localSha = arg.slice('--local-sha='.length);
+      continue;
+    }
+    if (arg === '--state-file') {
+      options.stateFile = argv[i + 1] ?? '';
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('--state-file=')) {
+      options.stateFile = arg.slice('--state-file='.length);
       continue;
     }
     throw new Error(`Unknown argument: ${arg}`);
@@ -90,10 +112,21 @@ export async function hashDirectory(dirPath) {
   return hash.digest('hex');
 }
 
+export function getInfoPlistPath(appPath) {
+  return path.join(appPath, 'Contents', 'Info.plist');
+}
+
 export async function verifyAppBundle(appPath, expectedSha256 = '') {
   await stat(appPath);
   runCommand('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath]);
-  const bundleId = runCommand('defaults', ['read', path.join(appPath, 'Contents', 'Info'), 'CFBundleIdentifier']);
+  const bundleId = runCommand('plutil', [
+    '-extract',
+    'CFBundleIdentifier',
+    'raw',
+    '-o',
+    '-',
+    getInfoPlistPath(appPath),
+  ]);
   if (bundleId !== EXPECTED_BUNDLE_ID) {
     throw new Error(`Unexpected bundle identifier: ${bundleId}`);
   }
@@ -142,6 +175,16 @@ async function installAppBundle(sourceApp, installPath) {
   }
 }
 
+// Write the locally-built git SHA into the sync state file so the canonical
+// main-sync agent knows a local build is installed and can avoid overwriting it.
+async function writeLocalBuildSha(stateFile, localSha, installPath) {
+  if (!localSha) return;
+  let existing = {};
+  try { existing = JSON.parse(await readFile(stateFile, 'utf8')); } catch { /* new file */ }
+  await mkdir(path.dirname(stateFile), { recursive: true });
+  await writeFile(stateFile, `${JSON.stringify({ ...existing, localBuildSha: localSha, localInstalledAt: new Date().toISOString(), installPath }, null, 2)}\n`);
+}
+
 function stopRunningApp() {
   spawnSync('osascript', ['-e', 'tell application "World Monitor" to quit'], { stdio: 'ignore' });
 }
@@ -159,8 +202,9 @@ async function main() {
     await verifyAppBundle(stagedSource, options.expectedSha256);
     stopRunningApp();
     await installAppBundle(stagedSource, options.installPath);
+    await writeLocalBuildSha(options.stateFile, options.localSha, options.installPath);
     if (options.relaunch) relaunchApp(options.installPath);
-    console.log(`[install-built-app] Installed ${options.installPath}`);
+    console.log(`[install-built-app] Installed ${options.installPath}${options.localSha ? ` (local build ${options.localSha.slice(0, 8)})` : ''}`);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

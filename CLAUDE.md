@@ -61,8 +61,6 @@ Always commit with: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
   - desktop publish job runs in the `release` environment
   - release tags must be treated as immutable once created
 - If GitHub policy and local repo files drift, fix the policy gap as well; do not only patch the repo.
-- This repository is a user-owned repo on GitHub, so GitHub cannot enable non-provider patterns or secret validity checks here.
-- Treat `npm run secrets:scan` and `npm run secrets:scan:staged` as mandatory compensating controls. Do not weaken or bypass the local hook or CI `Secret Scan` workflow.
 
 ## Architecture
 
@@ -133,3 +131,8 @@ Ghost Mode: polling ×5, analytics suppressed, notifications suppressed, dark cr
 - **Sector Heatmap**: Yahoo Finance blocked → needs Finnhub API key
 - **Fires panel**: Needs `NASA_FIRMS_API_KEY`
 - **Stablecoins**: "The string did not match the expected pattern" — WKWebView URL handling
+
+## Secret Scan Guardrail
+
+- This is a user-owned repo on GitHub, so non-provider patterns and validity checks are unavailable.
+- The compensating control is mandatory repo secret scan enforcement in hooks and CI. Keep `npm run secrets:scan:staged` and `npm run secrets:scan` active and passing.

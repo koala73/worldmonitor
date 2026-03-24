@@ -29,6 +29,9 @@ import {
   DisplacementPanel,
   ClimateAnomalyPanel,
   PopulationExposurePanel,
+  TsunamiAlertsPanel,
+  TropicalCyclonesPanel,
+  FoodInsecurityPanel,
   InvestmentsPanel,
   TradePolicyPanel,
   SupplyChainPanel,
@@ -810,6 +813,9 @@ export class PanelLayoutManager implements AppModule {
       const nwsAlertsPanel = new NWSAlertsPanel();
       this.ctx.panels['nws-alerts'] = nwsAlertsPanel;
 
+      this.ctx.panels['tsunami-alerts'] = new TsunamiAlertsPanel();
+      this.ctx.panels['tropical-cyclones'] = new TropicalCyclonesPanel();
+      this.ctx.panels['food-insecurity'] = new FoodInsecurityPanel();
       this.ctx.panels['comms-health'] = new CommsHealthPanel();
       this.ctx.panels['economic-stress'] = new EconomicStressPanel();
 

@@ -27,8 +27,8 @@ const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
 
 export const xmlParser = new XMLParser({
   ignoreAttributes: true,
-  isArray: (_name: string, jPathOrMatcher) => {
-    const jpath = typeof jPathOrMatcher === 'string' ? jPathOrMatcher : jPathOrMatcher.toString();
+  isArray: (_name, jPathOrMatcher) => {
+    const jpath = String(jPathOrMatcher);
     // Force arrays for list items regardless of count to prevent single-item-as-object bug
     return /\.(Ground_Delay|Ground_Stop|Delay|Airport)$/.test(jpath);
   },

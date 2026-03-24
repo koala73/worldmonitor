@@ -1,7 +1,7 @@
 {
   "name": "worldmonitor-macos",
   "private": true,
-  "version": "2.7.1",
+  "version": "2.7.2",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -50,6 +50,8 @@
     "test:e2e:visual:update:tech": "cross-env VITE_VARIANT=tech playwright test -g \"matches golden screenshots per layer and zoom\" --update-snapshots",
     "test:e2e:visual:update": "npm run test:e2e:visual:update:full && npm run test:e2e:visual:update:tech",
     "desktop:dev": "npm run version:sync && cross-env VITE_DESKTOP_RUNTIME=1 tauri dev -f devtools",
+    "vault-tex:download": "node scripts/download-vault-textures.mjs",
+    "predesktop:build:full": "node scripts/download-vault-textures.mjs",
     "desktop:build:full": "node scripts/desktop-package.mjs --os macos --variant full",
     "desktop:build:tech": "node scripts/desktop-package.mjs --os macos --variant tech",
     "desktop:build:finance": "node scripts/desktop-package.mjs --os macos --variant finance",
@@ -66,7 +68,8 @@
     "desktop:package:macos:finance:sign": "node scripts/desktop-package.mjs --os macos --variant finance --sign",
     "desktop:package:windows:full:sign": "node scripts/desktop-package.mjs --os windows --variant full --sign",
     "desktop:package:windows:tech:sign": "node scripts/desktop-package.mjs --os windows --variant tech --sign",
-    "desktop:package": "node scripts/desktop-package.mjs"
+    "desktop:package": "node scripts/desktop-package.mjs",
+    "postdesktop:build:full": "node scripts/local-install.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
@@ -93,6 +96,7 @@
     "@deck.gl/layers": "^9.2.6",
     "@deck.gl/mapbox": "^9.2.6",
     "@sentry/browser": "^10.39.0",
+    "@types/three": "^0.183.1",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.1",
     "@vercel/analytics": "^1.6.1",
@@ -110,6 +114,7 @@
     "papaparse": "^5.5.3",
     "posthog-js": "^1.360.2",
     "telegram": "^2.26.22",
+    "three": "^0.183.2",
     "topojson-client": "^3.1.0",
     "ws": "^8.19.0",
     "youtubei.js": "^16.0.1"

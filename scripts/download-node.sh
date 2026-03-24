@@ -218,12 +218,14 @@ if [[ ! -f "${SOURCE_NODE}" ]]; then
 fi
 
 mkdir -p "${DEST_DIR}"
-cp "${SOURCE_NODE}" "${DEST_DIR}/${OUTPUT_NAME}"
+TMP_OUTPUT="${DEST_DIR}/${OUTPUT_NAME}.tmp"
+mv "${SOURCE_NODE}" "${TMP_OUTPUT}"
 if [[ -f "${SOURCE_LICENSE}" ]]; then
   cp "${SOURCE_LICENSE}" "${DEST_DIR}/LICENSE"
 fi
 if [[ "${OUTPUT_NAME}" != "node.exe" ]]; then
-  chmod +x "${DEST_DIR}/${OUTPUT_NAME}"
+  chmod +x "${TMP_OUTPUT}"
 fi
+mv -f "${TMP_OUTPUT}" "${DEST_DIR}/${OUTPUT_NAME}"
 
 echo "[download-node] Bundled Node.js v${NODE_VERSION} for ${TARGET} at ${DEST_DIR}/${OUTPUT_NAME}"

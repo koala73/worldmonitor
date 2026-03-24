@@ -23,8 +23,8 @@ import type {
 const xmlParser = new XMLParser({
   ignoreAttributes: false, // CRITICAL: arXiv uses attributes for category term, link href/rel
   attributeNamePrefix: '@_',
-  isArray: (_name: string, jPathOrMatcher) => {
-    const jpath = typeof jPathOrMatcher === 'string' ? jPathOrMatcher : jPathOrMatcher.toString();
+  isArray: (_name, jPathOrMatcher) => {
+    const jpath = String(jPathOrMatcher);
     return /\.(entry|author|category|link)$/.test(jpath);
   },
 });

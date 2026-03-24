@@ -6,6 +6,19 @@ All notable changes to World Monitor are documented here.
 
 ---
 
+## [2.7.2] - 2026-03-24
+
+### Fixed
+
+- CI typecheck compatibility for XML parser callbacks in aviation and arXiv ingestion paths, preventing release pipeline failures against stricter callback signatures.
+- Release docs no longer pin stale download/version strings in README and docs badges.
+
+### Changed
+
+- Added release-doc sync regression coverage so docs and changelog stay aligned with `package.json` version updates.
+
+---
+
 ## [2.7.0] - 2026-03-16
 
 ### Fixed
