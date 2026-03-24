@@ -1,5 +1,5 @@
----
-title: "feat: Server-Side User Preferences Sync + Notification Delivery Channels"
+
+itle: "feat: Server-Side User Preferences Sync + Notification Delivery Channels"
 type: feat
 status: active
 date: 2026-03-24
@@ -31,6 +31,7 @@ This plan migrates user preferences to Convex-backed server storage for signed-i
 **PR #1812 (`feat/better-auth`) or its rework must be merged before any work on this plan begins.**
 
 What is needed from the Clerk migration:
+
 - `clerk.ts` and `auth-state.ts` expose `user.id` (Clerk user ID) and a signed JWT (template `convex`) to all frontend code
 - `server/auth-session.ts` validates the `convex` JWT at the edge using `jose` + JWKS cache
 - `convex/auth.config.ts` has Clerk as the sole JWT provider
@@ -177,8 +178,8 @@ Railway notification-delivery service (new)
    function decrypt(stored) { /* parse version, select key, decrypt */ }
    ```
 
-**Research insights:**
-- `v.any()` stores JavaScript objects natively — no `JSON.parse/stringify` overhead, full type preservation. DO NOT use `v.string()` for the prefs blob.
+ `v.any()` stores JavaScript objects natively — no `JSON.parse/stringify` overhead, full type preservation. DO NOT use `v.string()` for the prefs blob.
+
 - `ctx.auth.getUserIdentity()` in Convex mutations extracts `identity.subject` (Clerk userId). This is the ONLY correct source of userId — never accept it from mutation args.
 - Convex CORS requires **paired OPTIONS + main routes**. `Authorization` must be in `Access-Control-Allow-Headers`. CORS headers must appear on ALL responses including 4xx.
 
@@ -255,8 +256,8 @@ telegramPairingTokens: defineTable({
  .index("by_user", ["userId"]),
 ```
 
-**Schema design notes:**
-- `by_enabled` index on `alertRules` is essential — without it, the notification relay does a full table scan every time an event arrives.
+ `by_enabled` index on `alertRules` is essential — without it, the notification relay does a full table scan every time an event arrives.
+
 - `notificationChannels` uses a discriminated union so TypeScript narrows correctly in mutation handlers. `chatId` is only present on telegram rows; `webhookEnvelope` only on slack rows.
 - `syncVersion` is server-owned and server-incremented. The client supplies `expectedSyncVersion` as a precondition guard (see mutation below) — prevents silent overwrites from concurrent tabs.
 - `schemaVersion` at document level (not inside the blob) enables version-aware reads without parsing blob content.
@@ -299,8 +300,8 @@ export const claimPairingToken = mutation({ ... })  // ATOMIC: check used+expiry
 
 **Note:** `undefined` values are stripped by Convex during serialization. Use `null` as the sentinel for "cleared field" in all preference objects.
 
-**Acceptance criteria — Phase 1:**
-- [ ] `convex/schema.ts` has all four new tables with indexes including `by_enabled`
+ [ ] `convex/schema.ts` has all four new tables with indexes including `by_enabled`
+
 - [ ] `convex/userPreferences.ts` exports all 8 mutations/queries
 - [ ] `convex/auth.config.ts` uses native Clerk integration (no `jose`)
 - [ ] `npx convex dev` applies schema without errors
@@ -319,8 +320,8 @@ export const claimPairingToken = mutation({ ... })  // ATOMIC: check used+expiry
 
 **Feature flag gate:** `VITE_CLOUD_PREFS_ENABLED` must be `true`. Follow `src/config/beta.ts` pattern. This allows Phase 2 to be merged and deployed before PR #1812 lands; flip flag when Clerk is verified in production.
 
-**Key files:**
-- `src/utils/settings-persistence.ts` — add `syncToCloud()` / `syncFromCloud()` with `schemaVersion` migration
+ `src/utils/settings-persistence.ts` — add `syncToCloud()` / `syncFromCloud()` with `schemaVersion` migration
+
 - `src/services/auth-state.ts` — hook `initAuthState()` to call `syncFromCloud()` on sign-in
 - `src/App.ts` — hook preference write events to trigger debounced `syncToCloud()`
 
@@ -384,8 +385,8 @@ function applyMigrations(data: Record<string, unknown>, fromVersion: number): Re
 | `wm-last-sync-at` | `number` | Server-returned Unix ms of last confirmed sync write (set ONLY after server success — never `Date.now()`) |
 | `wm-cloud-sync-state` | `'synced' \| 'pending' \| 'syncing' \| 'conflict' \| 'offline' \| 'signed-out' \| 'error'` | UI indicator |
 
-**Acceptance criteria — Phase 2:**
-- [ ] Sign in on Device A → panel layout from Device B (pre-seeded in Convex) loads correctly without blocking first paint
+ [ ] Sign in on Device A → panel layout from Device B (pre-seeded in Convex) loads correctly without blocking first paint
+
 - [ ] Change watchlist on Device A → sign in on Device B → watchlist matches Device A
 - [ ] Tab close with pending debounce → prefs flushed via `sendBeacon`
 - [ ] Sign out → prefs preserved locally (localStorage not cleared)
@@ -405,8 +406,8 @@ function applyMigrations(data: Record<string, unknown>, fromVersion: number): Re
 
 **Goal:** Users can link Telegram, Slack, and email (auto from Clerk) in Preferences → Notifications. Alert rule preferences can be configured per-variant.
 
-**New UI surfaces:**
-- `src/components/NotificationSettingsPanel.ts` — new panel inside Settings modal
+ `src/components/NotificationSettingsPanel.ts` — new panel inside Settings modal
+
 - `src/services/notification-channels.ts` — channel state management (wraps Convex queries/mutations)
 
 #### Telegram pairing flow
@@ -429,11 +430,13 @@ function applyMigrations(data: Record<string, unknown>, fromVersion: number): Re
    g. Returns HTTP 200 always (non-200 triggers Telegram retry storm)
 6. Frontend: useQuery(api.notifications.getPairingStatus) auto-updates via WebSocket push
    (NO setInterval polling — Convex is already push-based over WebSockets)
-7. On verified=true: shows "Connected ✓" with disconnect button
-```
 
-**setWebhook configuration (required before deploy):**
-```javascript
+
+``
+
+
+
+``javascript
 await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -458,18 +461,20 @@ await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`, {
    d. Store webhookEnvelope in notificationChannels (NEVER store plaintext)
    e. Send test message: "WorldMonitor connected ✓" (verifies webhook is live)
    f. If test message returns 200/ok: set verified=true
-5. Webhook URL is NEVER returned to the client after saving — UI shows "Connected ✓" or "Disconnected" only
-```
+
+
+``
 
 #### Email linking flow
 
 ```
+
 1. Email is auto-populated from Clerk user profile at channel-linking time
    Source: getCurrentClerkUser().primaryEmailAddress (src/services/clerk.ts:130)
 2. Only Clerk-verified email addresses accepted (emailAddress.verification.status === 'verified')
 3. Cached in notificationChannels.email at link time — NOT fetched from Clerk API at send time
-4. User does not need to enter anything — email is pre-filled and shown as read-only
-```
+
+``
 
 #### Alert rules UI
 
@@ -481,8 +486,8 @@ For each variant the user has accessed:
 Rate limit display: "Max 5 alerts/hour per event type" (clarify: per-channel-send, not per-event)
 ```
 
-**Acceptance criteria — Phase 3:**
-- [ ] Telegram pairing completes end-to-end in < 60 seconds
+ [ ] Telegram pairing completes end-to-end in < 60 seconds
+
 - [ ] `X-Telegram-Bot-Api-Secret-Token` verified with `timingSafeEqual()` on every webhook call
 - [ ] Group chat `/start` commands are rejected (chat.type !== 'private')
 - [ ] Expired pairing token (> 15 min) shows clear error "Link expired — please start over"
@@ -501,8 +506,8 @@ Rate limit display: "Max 5 alerts/hour per event type" (clarify: per-channel-sen
 
 **Goal:** A new Railway service (`notification-relay`) listens for breaking events and delivers to user channels.
 
-**New files:**
-- `relay/notification-relay.cjs` — new Railway service (follows `ais-relay.cjs` pattern)
+ `relay/notification-relay.cjs` — new Railway service (follows `ais-relay.cjs` pattern)
+
 - `scripts/_seed-utils.mjs` — add `PUBLISH` call inside `atomicPublish()` for event-driven delivery
 
 #### Event-driven architecture (replaces 60s poll)
@@ -627,8 +632,8 @@ async function sendSlack(webhookEnvelope, text) {
 }
 ```
 
-**New env vars required:**
-- `TELEGRAM_BOT_TOKEN` — @WorldMonitorBot token (Railway + Convex env)
+ `TELEGRAM_BOT_TOKEN` — @WorldMonitorBot token (Railway + Convex env)
+
 - `TELEGRAM_WEBHOOK_SECRET` — secret for `X-Telegram-Bot-Api-Secret-Token` (Convex env, separate from token)
 - `ENCRYPTION_KEY_V1` — 32-byte base64 for AES-256-GCM (Railway env; NEVER in Convex)
 - `CLERK_JWT_ISSUER_DOMAIN` — Convex auth config (already in Clerk migration)
