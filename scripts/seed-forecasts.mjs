@@ -14136,27 +14136,49 @@ function scoreImpactExpansionQuality(validation, candidatePackets = []) {
   const hypotheses = validation?.hypotheses || [];
   const nCandidates = Math.max(candidatePackets.length, 1);
 
-  // commodity specificity: % of mapped with non-empty commodity
+  // Direct hypotheses only — these are the root causes, one per candidate.
+  // We measure breadth at the direct level because that's where the LLM's commodity/geography
+  // choice is most determinative. Second-order terms inherit context from their direct parent.
+  const directMapped = mapped.filter((h) => h.order === 'direct');
+
+  // directCommodityDiversity: unique commodities among direct hypotheses, normalized by nCandidates.
+  // Penalizes "10 implications from 1 commodity" — if all 3 directs use crude_oil → 1/3 = 0.33.
+  // Different from commodityRate (which only checks presence). This measures cross-candidate breadth.
+  const uniqueDirectCommodities = new Set(
+    directMapped.map((h) => (h.commodity || '').toLowerCase().trim()).filter(Boolean),
+  );
+  const directCommodityDiversity = Math.min(uniqueDirectCommodities.size / nCandidates, 1.0);
+
+  // directGeoDiversity: unique primary geographies among direct hypotheses, normalized by nCandidates.
+  // Takes the first segment of the geography string to avoid over-splitting compound geos
+  // (e.g. "Red Sea, Suez Canal, Cape of Good Hope" → "red sea" matches a bare "Red Sea" entry).
+  const uniqueDirectGeos = new Set(
+    directMapped.map((h) => {
+      const geo = (h.geography || h.region || '').split(',')[0].trim().toLowerCase();
+      return geo.length >= 4 ? geo : '';
+    }).filter(Boolean),
+  );
+  const directGeoDiversity = Math.min(uniqueDirectGeos.size / nCandidates, 1.0);
+
+  // candidateSpreadScore: are implications evenly distributed across candidates?
+  // Uses a normalized inverse-HHI so that concentration in one candidate (10 implications vs 0 for others)
+  // scores near 0. Perfectly even distribution scores 1.0.
+  const totalMapped = Math.max(mapped.length, 1);
+  const candidateCounts = {};
+  for (const h of mapped) {
+    candidateCounts[h.candidateIndex] = (candidateCounts[h.candidateIndex] || 0) + 1;
+  }
+  const hhi = Object.values(candidateCounts).reduce((sum, c) => sum + (c / totalMapped) ** 2, 0);
+  const minHHI = 1 / nCandidates;
+  const candidateSpreadScore = nCandidates <= 1 ? 1.0 : clampUnitInterval((1 - hhi) / (1 - minHHI));
+
+  // commodity presence: % of mapped with any non-empty commodity (basic presence check)
   const commodityRate = mapped.filter((h) => h.commodity && h.commodity !== '').length
-    / Math.max(mapped.length, 1);
-
-  // commodity diversity: unique distinct commodities across mapped, normalized by nCandidates.
-  // Penalizes runs where every candidate produces the same commodity (e.g. all crude_oil).
-  // Score: min(uniqueCommodities / nCandidates, 1.0). 3 candidates all crude_oil → 1/3 = 0.33.
-  const uniqueCommodities = new Set(mapped.map((h) => (h.commodity || '').toLowerCase().trim()).filter(Boolean));
-  const commodityDiversity = Math.min(uniqueCommodities.size / nCandidates, 1.0);
-
-  // geography specificity: % of mapped with non-empty geography (free-form) or region (legacy)
-  const geographyRate = mapped.filter((h) => (h.geography || h.region || '').trim().length >= 4).length
     / Math.max(mapped.length, 1);
 
   // asset coverage: % of mapped with at least 1 affectedAssets entry
   const assetRate = mapped.filter((h) => (h.affectedAssets || h.assetsOrSectors || []).length > 0).length
     / Math.max(mapped.length, 1);
-
-  // hypothesis diversity: unique effective keys as fraction of (nCandidates×2)
-  const uniquePairs = new Set(mapped.map((h) => `${h.hypothesisKey || h.variableKey}:${h.order}`));
-  const diversityScore = Math.min(uniquePairs.size / (nCandidates * 2), 1.0);
 
   // chain coverage: % of candidates with both direct AND second_order mapped
   const byCandidate = {};
@@ -14171,18 +14193,36 @@ function scoreImpactExpansionQuality(validation, candidatePackets = []) {
   // mapped rate
   const mappedRate = mapped.length / Math.max(hypotheses.length, 1);
 
-  // commodityDiversity is the highest-weight term: 3 candidates all crude_oil → 0.33 → composite ~0.75
-  // This reliably triggers the critique loop when the LLM defaults to the same commodity for all runs.
+  // Weight rationale:
+  // directCommodityDiversity (0.35): primary signal — each candidate must bring different commodity.
+  //   3 candidates all crude_oil → 0.33 → composite ~0.77 → critique fires.
+  // directGeoDiversity (0.20): each candidate must bring different geography at root-cause level.
+  // candidateSpreadScore (0.15): implications must be spread across candidates, not concentrated.
+  //   1 candidate with 10 implications → low spread → critique fires.
+  // chainCoverage (0.15): each candidate must have direct+second_order pair.
+  // commodityRate (0.08): basic presence — all mapped should name a commodity.
+  // assetRate (0.04): all mapped should name affected assets.
+  // mappedRate (0.03): utilization — all hypotheses should clear the floor.
   const composite = clampUnitInterval(
-    (commodityDiversity * 0.35)
-    + (geographyRate * 0.20)
-    + (diversityScore * 0.15)
-    + (chainCoverage * 0.10)
-    + (commodityRate * 0.10)
-    + (assetRate * 0.05)
-    + (mappedRate * 0.05),
+    (directCommodityDiversity * 0.35)
+    + (directGeoDiversity * 0.20)
+    + (candidateSpreadScore * 0.15)
+    + (chainCoverage * 0.15)
+    + (commodityRate * 0.08)
+    + (assetRate * 0.04)
+    + (mappedRate * 0.03),
   );
-  return { commodityRate, commodityDiversity, geographyRate, assetRate, diversityScore, chainCoverage, mappedRate, composite, mappedCount: mapped.length };
+  return {
+    directCommodityDiversity,
+    directGeoDiversity,
+    candidateSpreadScore,
+    commodityRate,
+    assetRate,
+    chainCoverage,
+    mappedRate,
+    composite,
+    mappedCount: mapped.length,
+  };
 }
 
 function buildImpactPromptCritiqueSystemPrompt() {
@@ -14213,11 +14253,13 @@ function buildImpactPromptCritiqueUserPrompt(qualityMetrics, mapped, candidatePa
   const candidates = candidatePackets.slice(0, 3).map((p) => (
     `  [${p.candidateIndex}] stateKind=${p.stateKind} region=${p.dominantRegion} route=${p.routeFacilityKey || 'none'} commodity=${p.commodityKey || 'none'} signals=${(p.criticalSignalTypes || []).join(',') || 'none'}`
   )).join('\n');
-  const uniqueCommoditiesInSample = [...new Set(mapped.map((h) => h.commodity || 'none').filter((c) => c !== 'none'))];
+  const directMapped = mapped.filter((h) => h.order === 'direct');
+  const uniqueDirectComs = [...new Set(directMapped.map((h) => h.commodity || '').filter(Boolean))];
+  const uniqueDirectGeos = [...new Set(directMapped.map((h) => (h.geography || h.region || '').split(',')[0].trim()).filter(Boolean))];
   return `QUALITY METRICS:
-- Commodity diversity: ${(qualityMetrics.commodityDiversity * 100).toFixed(0)}% (target >80%) — unique commodities: ${uniqueCommoditiesInSample.join(', ') || 'none'}
-- Geography specificity: ${(qualityMetrics.geographyRate * 100).toFixed(0)}% (target >80%)
-- Key diversity: ${(qualityMetrics.diversityScore * 100).toFixed(0)}% (target >70%)
+- Direct commodity diversity: ${(qualityMetrics.directCommodityDiversity * 100).toFixed(0)}% (target >80%) — unique: ${uniqueDirectComs.join(', ') || 'none'}
+- Direct geography diversity: ${(qualityMetrics.directGeoDiversity * 100).toFixed(0)}% (target >80%) — unique: ${uniqueDirectGeos.join(', ') || 'none'}
+- Candidate spread: ${(qualityMetrics.candidateSpreadScore * 100).toFixed(0)}% (target >80%) — are implications evenly distributed across candidates?
 - Chain coverage: ${(qualityMetrics.chainCoverage * 100).toFixed(0)}%
 - Composite score: ${qualityMetrics.composite.toFixed(3)}
 
@@ -14227,9 +14269,11 @@ ${candidates}
 SAMPLE HYPOTHESES (what the model produced):
 ${sample || '  (none mapped)'}
 
-DIAGNOSIS TASK: If commodity_diversity is low, the model is defaulting to the same commodity (e.g. crude_oil) for all candidates regardless of their geopolitical context.
-If generic_chains, the model ignores candidate-specific signals and produces template chains.
-Propose ONE concrete addition that would steer the model toward situation-specific chains where each candidate gets the commodity, route, and consequence type that actually fits its geopolitical context.`;
+DIAGNOSIS TASK:
+- If commodity_monoculture: all candidates default to the same commodity (e.g. crude_oil) despite different geopolitical contexts. Each candidate should produce the commodity that fits ITS specific situation.
+- If low_diversity or low spread: implications are concentrated in one candidate while others get none. Propose guidance so each candidate generates its own direct+second_order pair.
+- If generic_chains: ignores candidate-specific signals and produces template chains regardless of context.
+Propose ONE concrete addition that forces each candidate to be analyzed on its own geopolitical merits with the specific commodity, route, and market consequence that fit that candidate's signals.`;
 }
 
 async function runImpactExpansionPromptRefinement({ candidatePackets, validation, priorWorldState }) {
@@ -14244,8 +14288,8 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
     const baselineRaw = await redisGet(url, token, PROMPT_BASELINE_KEY);
     const baseline = typeof baselineRaw === 'object' && baselineRaw !== null ? baselineRaw : null;
 
-    const { commodityRate, commodityDiversity, geographyRate, diversityScore, chainCoverage, mappedRate, mappedCount } = currentScore;
-    console.log(`  [PromptRefinement] Quality breakdown — composite=${currentScore.composite.toFixed(3)} comDiversity=${commodityDiversity.toFixed(2)} geo=${geographyRate.toFixed(2)} keyDiversity=${diversityScore.toFixed(2)} chain=${chainCoverage.toFixed(2)} commodityRate=${commodityRate.toFixed(2)} mapped=${mappedCount}`);
+    const { directCommodityDiversity, directGeoDiversity, candidateSpreadScore, chainCoverage, commodityRate, mappedCount } = currentScore;
+    console.log(`  [PromptRefinement] Quality breakdown — composite=${currentScore.composite.toFixed(3)} comDiversity=${directCommodityDiversity.toFixed(2)} geoDiversity=${directGeoDiversity.toFixed(2)} spread=${candidateSpreadScore.toFixed(2)} chain=${chainCoverage.toFixed(2)} comRate=${commodityRate.toFixed(2)} mapped=${mappedCount}`);
     for (const h of (validation?.mapped || [])) {
       console.log(`    [${h.order}] key=${h.hypothesisKey || h.variableKey || '?'} geo="${h.geography || h.region || ''}" com="${h.commodity || ''}" assets=${(h.affectedAssets || h.assetsOrSectors || []).length} score=${h.validationScore?.toFixed(3) || '?'}`);
     }

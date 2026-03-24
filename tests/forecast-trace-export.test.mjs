@@ -5240,7 +5240,8 @@ describe('phase 2 scoring recalibration + prompt excellence', () => {
     const result = scoreImpactExpansionQuality(validation, candidatePackets);
 
     assert.ok(result.commodityRate === 1.0, 'all mapped have commodity → commodityRate 1.0');
-    assert.ok(result.commodityDiversity === 1.0, '2 candidates × 2 unique commodities (LNG, crude_oil) → commodityDiversity 1.0');
+    assert.ok(result.directCommodityDiversity === 1.0, '2 candidates × 2 unique direct commodities (LNG, crude_oil) → directCommodityDiversity 1.0');
+    assert.ok(result.candidateSpreadScore === 1.0, '2 candidates × 2 hypotheses each → perfectly even spread');
     assert.ok(result.chainCoverage === 1.0, 'both candidates have direct+second → chainCoverage 1.0');
     assert.ok(result.composite > 0.7, `composite should be high (got ${result.composite})`);
     assert.equal(result.mappedCount, 4);
