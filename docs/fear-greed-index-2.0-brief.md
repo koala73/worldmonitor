@@ -81,25 +81,27 @@ The weighted sum produces the composite index.
 | Supply Chain Pressure | FRED (GSCPI) | EconomicService | Monthly |
 | BIS Policy Rates | BIS API | EconomicService | Quarterly |
 
-### ❌ MISSING — Need to Add
+### ❌ MISSING — Need to Add (ALL FREE, no API keys needed)
 
-| Data Point | Category | Possible Free Source | Priority |
-|-----------|----------|---------------------|----------|
-| **AAII Bull/Bear Survey** | Sentiment | AAII website scrape or data feed | HIGH |
-| **CNN Fear & Greed Index** | Sentiment | CNN API endpoint (undocumented) | HIGH |
-| **Put/Call Ratio (CBOE)** | Positioning | FRED (not available) / CBOE / Yahoo | HIGH |
-| **% Stocks > 200 DMA** | Breadth | Barchart / finviz scrape / computed | HIGH |
-| **Advance/Decline Ratio** | Breadth | NYSE data / Yahoo Finance | HIGH |
-| **New 52-week Highs/Lows** | Breadth | NYSE data / finviz | MEDIUM |
-| **VIX Term Structure** | Volatility | CBOE (VIX futures) / Yahoo (VIX9D, VIX3M, VIX6M) | MEDIUM |
-| **Options Skew** | Positioning | CBOE Skew Index (SKEW) via FRED or Yahoo | MEDIUM |
-| **Sector Momentum (RSI)** | Momentum | Computed from Yahoo price data | MEDIUM |
-| **Credit Default Swap indices** | Credit | ICE/Markit (paid) or proxy via ETFs (HYG, LQD) | LOW |
-| **IG Spread** | Credit | FRED (BAMLC0A0CM) | MEDIUM |
-| **Gold/USD Correlation** | Cross-Asset | Computed from Yahoo (GLD, DXY) | MEDIUM |
-| **Bond/Equity Correlation** | Cross-Asset | Computed from Yahoo (TLT, SPY) | MEDIUM |
-| **Economic Surprise Index** | Macro | Citi ECSI (paid) or proxy | LOW |
-| **Funding Rates / Liquidity** | Liquidity | Treasury repo rates / FRED (SOFR) | MEDIUM |
+| Data Point | Category | Free Source | Endpoint | Format | Reliability |
+|-----------|----------|------------|----------|--------|-------------|
+| **CNN Fear & Greed** | Sentiment | CNN dataviz API | `https://production.dataviz.cnn.io/index/fearandgreed/graphdata` | JSON | HIGH — stable for years, widely used |
+| **AAII Bull/Bear** | Sentiment | AAII public page | `https://www.aaii.com/sentimentsurvey` (scrape) | HTML | MEDIUM — weekly update, scrape needed |
+| **Put/Call Ratio** | Positioning | CBOE CDN | `https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/totalpc.csv` | CSV | HIGH — daily CSV, no auth |
+| **Equity Put/Call** | Positioning | CBOE CDN | `https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/equitypc.csv` | CSV | HIGH — daily CSV, no auth |
+| **CBOE SKEW Index** | Positioning | Yahoo Finance | `^SKEW` via chart API | JSON | HIGH — standard Yahoo symbol |
+| **VIX 9-Day** | Volatility | Yahoo Finance | `^VIX9D` via chart API | JSON | HIGH — standard Yahoo symbol |
+| **VIX 3-Month** | Volatility | Yahoo Finance | `^VIX3M` via chart API | JSON | HIGH — standard Yahoo symbol |
+| **IG Spread (OAS)** | Credit | FRED | `BAMLC0A0CM` series | JSON | HIGH — add to existing FRED_SERIES |
+| **SOFR Rate** | Liquidity | FRED | `SOFR` series | JSON | HIGH — add to existing FRED_SERIES |
+| **Sector RSI** | Momentum | Yahoo Finance | XLK/XLF/XLE/XLV/XLI/XLU (computed) | JSON | HIGH — existing Yahoo pattern |
+| **Cross-Asset** | Cross-Asset | Yahoo Finance | GLD/TLT/SPY/DX-Y.NYB (computed) | JSON | HIGH — existing Yahoo pattern |
+| **SPX Trend** | Trend | Yahoo Finance | `^GSPC` (compute 20/50/200 DMA) | JSON | HIGH — existing Yahoo pattern |
+| **Breadth Proxy** | Breadth | Yahoo Finance | RSP vs SPY (equal-weight divergence) | JSON | HIGH — regular ETF symbol |
+| **NYSE Composite** | Breadth | Yahoo Finance | `^NYA` via chart API | JSON | HIGH — standard Yahoo symbol |
+| **HYG/LQD ETFs** | Credit | Yahoo Finance | HYG, LQD (credit ETF trend) | JSON | HIGH — regular ETF symbols |
+
+**Key insight**: Perplexity Computer Use = browser-based scraping. Every source above is a public URL with no login/key required. The CBOE CSVs are the goldmine — free daily put/call data that most people don't know about.
 
 ### 🟡 PARTIALLY HAVE (Need Enhancement)
 
@@ -264,9 +266,14 @@ score = weighted combination with mean reversion
 
 | Effort Level | Items |
 |-------------|-------|
-| **Easy** (already have data) | VIX score, HY/IG credit, Fed rate, yield curve, M2/Fed BS, trend (need MA calc) |
-| **Medium** (free API/computed) | Put/call ratio, VIX term structure, SKEW, sector momentum, cross-asset correlations, % > 200 DMA |
-| **Hard** (scraping/unreliable) | AAII survey, CNN F&G, advance/decline line, new highs/lows, economic surprise |
+| **Easy** (already have data, just read Redis) | VIX, HY spread, Fed rate, yield curve, M2, Fed BS, unemployment, crypto F&G |
+| **Easy** (add to existing FRED_SERIES array) | IG spread (BAMLC0A0CM), SOFR |
+| **Easy** (Yahoo Finance, existing pattern) | SPX trend/MAs, VIX9D/VIX3M term structure, SKEW, sector RSI, cross-asset (GLD/TLT/DXY), breadth proxy (RSP), NYSE composite |
+| **Easy** (free CSV, no auth) | CBOE put/call ratios (totalpc.csv, equitypc.csv) |
+| **Easy** (free JSON API) | CNN Fear & Greed (production.dataviz.cnn.io) |
+| **Medium** (HTML scrape, weekly) | AAII Bull/Bear survey |
+
+**Everything is free. Zero paid sources needed. Zero new API keys.**
 
 ---
 
@@ -375,47 +382,57 @@ const url = 'https://www.aaii.com/files/surveys/sentiment.xls';
 **Reliability**: Medium — may need HTML scraping, XLS breaks sometimes
 **Fallback**: Weight CNN F&G more heavily if AAII unavailable
 
-#### Group 6: Market Breadth — % Stocks Above 200 DMA (NEW)
+#### Group 6: Market Breadth (NEW — multiple free signals)
 
 ```javascript
-// Option A: Yahoo Finance screener (undocumented but stable)
-// Query S&P 500 stocks, filter by 200-day MA relationship
-// Complex — requires fetching all 500 stocks
+// Signal 1: RSP vs SPY divergence (breadth proxy)
+// RSP = Invesco S&P 500 Equal Weight ETF
+// If RSP outperforms SPY → broad participation (healthy breadth)
+// If SPY outperforms RSP → narrow leadership (poor breadth)
+// Already in Yahoo Finance calls above (symbols RSP, SPY)
 
-// Option B: Use Barchart market breadth data
-const url = 'https://www.barchart.com/stocks/market-breadth';
-// Scrape: Advance/Decline ratio, % above 200 DMA, new highs/lows
+// Signal 2: SPX distance from 200 DMA
+// SPX price vs SMA200 → already computed in trend section
+// pctAbove200d ≈ (SPX / SMA200 - 1) * 100 as rough proxy
 
-// Option C: Pre-computed via sector ETFs (APPROXIMATE)
-// Fetch RSP (equal-weight S&P) vs SPY ratio as breadth proxy
-// If RSP/SPY rising → broad participation (healthy breadth)
+// Signal 3: NYSE Composite (^NYA) breadth
+// Already in Yahoo Finance calls above
+// Compare NYSE Composite ROC vs SPX ROC → breadth divergence
+
+// Signal 4 (FUTURE): Actual % stocks above 200 DMA from StockAnalysis
+// https://stockanalysis.com/markets/breadth/ — scrape if needed later
 ```
 
-**Best approach**: Option C (RSP vs SPY) as proxy — no scraping, just add `RSP` to Yahoo calls.
-**Supplement**: Add `^ADL` (NYSE Advance/Decline Line) from Yahoo if available.
-
+**Best approach**: RSP/SPY + SPX/SMA200 + NYSE divergence — 3 signals, all from existing Yahoo calls
 **Category**: Breadth
-**Fallback**: Use SPX % from 200 DMA as single-input breadth score
+**Reliability**: HIGH — no scraping needed, pure Yahoo Finance data
 
-#### Group 7: Put/Call Ratio (NEW)
+#### Group 7: Put/Call Ratio — CBOE CDN CSVs (NEW — FREE, no auth)
 
 ```javascript
-// CBOE total equity put/call ratio
-// Option A: Yahoo Finance
-const url = 'https://query1.finance.yahoo.com/v8/finance/chart/^PCALL?range=3mo&interval=1d';
-// May not work — Yahoo sometimes blocks index symbols
+// CBOE publishes daily put/call ratio CSVs on their CDN — no auth, no scraping
+const CBOE_URLS = {
+  total: 'https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/totalpc.csv',
+  equity: 'https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/equitypc.csv',
+  index: 'https://cdn.cboe.com/resources/options/volume_and_call_put_ratios/indexpc.csv',
+};
 
-// Option B: Proxy from CBOE website
-const url = 'https://www.cboe.com/us/options/market_statistics/daily/';
-// HTML scrape: total P/C ratio, equity P/C ratio, index P/C ratio
-
-// Option C: FRED series (if available)
-// CBOE doesn't publish to FRED, but check CBOEPCR (discontinued)
+// CSV format: DATE,CALLS,PUTS,TOTAL,P/C RATIO
+// Parse last row for current day, last 30 rows for history
+const resp = await fetch(CBOE_URLS.equity, {
+  headers: { 'User-Agent': CHROME_UA },
+  signal: AbortSignal.timeout(8000),
+});
+const csv = await resp.text();
+const rows = csv.trim().split('\n').slice(1); // skip header
+const latest = rows[rows.length - 1].split(',');
+const pcRatio = parseFloat(latest[4]); // P/C RATIO column
 ```
 
-**Best approach**: Try Yahoo `^PCALL` first, fallback to hardcoded "neutral" (0.85)
+**Extracts**: Daily total P/C ratio, equity P/C ratio, index P/C ratio + 1yr history
 **Category**: Positioning
-**Reliability**: Low-Medium — this is the hardest free source to get
+**Reliability**: HIGH — CBOE CDN, free public data, no auth needed
+**This is the goldmine source — most F&G clones use this**
 
 #### Group 8: Crypto Fear & Greed (already in macro-signals)
 
