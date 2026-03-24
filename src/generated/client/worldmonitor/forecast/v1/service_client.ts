@@ -132,6 +132,8 @@ export interface GetSimulationPackageResponse {
   schemaVersion: string;
   theaterCount: number;
   generatedAt: number;
+  note: string;
+  error: string;
 }
 
 export interface FieldViolation {

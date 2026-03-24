@@ -48,6 +48,7 @@ paths:
             parameters:
                 - name: runId
                   in: query
+                  description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
                   required: false
                   schema:
                     type: string
@@ -363,6 +364,7 @@ components:
             properties:
                 runId:
                     type: string
+                    description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
         GetSimulationPackageResponse:
             type: object
             properties:
@@ -380,4 +382,14 @@ components:
                 generatedAt:
                     type: integer
                     format: int64
-                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
+                note:
+                    type: string
+                    description: |-
+                        Populated when req.runId was supplied but does not match the returned package's runId.
+                         Indicates that per-run filtering is not yet active and the latest package was returned instead.
+                error:
+                    type: string
+                    description: |-
+                        Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
+                         Value: "redis_unavailable" on Redis errors.
