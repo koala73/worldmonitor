@@ -99,12 +99,14 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
 };
 
 const ALLOWED_ENV_KEYS = new Set([
+  'WORLDMONITOR_API_KEY',
   'ANTHROPIC_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'FRED_API_KEY', 'EIA_API_KEY',
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'ACLED_EMAIL', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
-  'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WTO_API_KEY', 'THREATFOX_API_KEY',
+  'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WTO_API_KEY', 'AVIATIONSTACK_API',
+  'ICAO_API_KEY', 'THREATFOX_API_KEY',
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -997,6 +999,12 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 
     case 'WTO_API_KEY':
       return ok('WTO API key stored (live verification not available in sidecar)');
+
+    case 'WORLDMONITOR_API_KEY':
+      if (!/^[A-Za-z0-9_-]{16,}$/.test(value)) {
+        return fail('WorldMonitor key must be at least 16 URL-safe characters');
+      }
+      return ok('WorldMonitor API key stored');
 
       default:
         return ok('Key stored');
@@ -2691,31 +2699,10 @@ export async function createLocalApiServer(options = {}) {
         await tryListen(context.port);
       } catch (err) {
         if (err?.code === 'EADDRINUSE') {
-          // Port is occupied — likely an orphaned sidecar from a previous session
-          // (e.g. force-quit left a child process alive). Kill it and reclaim the port
-          // so the new session token stays consistent.
-          let reclaimed = false;
-          try {
-            const { execFileSync } = await import('node:child_process');
-            const raw = execFileSync('lsof',
-              ['-t', '-i', `TCP:${context.port}`, '-sTCP:LISTEN'],
-              { timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }
-            ).toString().trim();
-            const pids = raw.split('\n').map(s => parseInt(s, 10)).filter(n => n && n !== process.pid);
-            for (const pid of pids) {
-              try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
-            }
-            context.logger.log(`[local-api] reclaimed port ${context.port} from orphan pid(s): ${pids.join(',')}`);
-            // Give the OS ~500 ms to fully release the socket before rebinding.
-            await new Promise(r => setTimeout(r, 500));
-            await tryListen(context.port);
-            reclaimed = true;
-          } catch (reclaimErr) {
-            context.logger.log(`[local-api] port reclaim failed (${reclaimErr.message}), falling back to OS-assigned port`);
-          }
-          if (!reclaimed) {
-            await tryListen(0);
-          }
+          // Never kill arbitrary listeners on occupied ports. Bind to an
+          // OS-assigned port and publish it via service-status/port file.
+          context.logger.log(`[local-api] port ${context.port} already in use; falling back to OS-assigned port`);
+          await tryListen(0);
         } else {
           throw err;
         }

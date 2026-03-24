@@ -271,6 +271,12 @@ export function installRuntimeFetchPatch(): void {
     return tokenRefreshPromise;
   }
 
+  async function getWorldMonitorCloudApiKey(): Promise<string | null> {
+    const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
+    const key = getRuntimeConfigSnapshot().secrets.WORLDMONITOR_API_KEY?.value?.trim();
+    return key && key.length > 0 ? key : null;
+  }
+
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
     const debug = localStorage.getItem('wm-debug-log') === '1';
@@ -310,6 +316,11 @@ export function installRuntimeFetchPatch(): void {
       const cloudUrl = `${getRemoteApiBaseUrl()}${target}`;
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
       const cloudHeaders = new Headers(init?.headers);
+      const cloudApiKey = await getWorldMonitorCloudApiKey();
+      if (!cloudApiKey) {
+        throw new Error(`Cloud fallback blocked for ${target}: WORLDMONITOR_API_KEY missing`);
+      }
+      cloudHeaders.set('X-WorldMonitor-Key', cloudApiKey);
       return nativeFetch(cloudUrl, { ...init, headers: cloudHeaders });
     };
 

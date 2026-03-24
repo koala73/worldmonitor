@@ -19,7 +19,7 @@ test('findMissingPackageLockVersions accepts valid package entries', () => {
   assert.deepEqual(failures, []);
 });
 
-test('findMissingPackageLockVersions skips optional package entries but still enforces dependency versions', () => {
+test('findMissingPackageLockVersions ignores optional package entries but still reports dependency entries with empty versions', () => {
   const failures = findMissingPackageLockVersions({
     packages: {
       '': { name: 'worldmonitor-macos', version: '2.5.25' },

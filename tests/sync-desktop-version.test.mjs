@@ -54,3 +54,20 @@ version = "9.9.9"
   assert.match(result.updatedLock, /name = "worldmonitor-macos"\nversion = "2.7.0"/);
   assert.match(result.updatedLock, /name = "worldmonitor-macos-helper"\nversion = "9.9.9"/);
 });
+
+test('updateCargoLockVersion parses Cargo.lock blocks with CRLF line endings', () => {
+  const cargoLock = `[[package]]\r
+name = "worldmonitor-macos"\r
+version = "2.6.1"\r
+\r
+[[package]]\r
+name = "serde"\r
+version = "1.0.0"\r
+`;
+
+  const result = updateCargoLockVersion(cargoLock, 'worldmonitor-macos', '2.7.0');
+
+  assert.equal(result.changed, true);
+  assert.equal(result.currentVersion, '2.6.1');
+  assert.match(result.updatedLock, /name = "worldmonitor-macos"\r?\nversion = "2.7.0"/);
+});

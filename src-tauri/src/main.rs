@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{BufWriter, Write};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use keyring::Entry;
@@ -34,7 +34,8 @@ const MENU_HELP_OPEN_LOGS_ID: &str = "help.open_logs";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
-const SUPPORTED_SECRET_KEYS: [&str; 25] = [
+const SUPPORTED_SECRET_KEYS: [&str; 26] = [
+    "WORLDMONITOR_API_KEY",
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "FRED_API_KEY",
@@ -65,6 +66,7 @@ const SUPPORTED_SECRET_KEYS: [&str; 25] = [
 // Rate-limit native notifications: no more than 1 per 30 seconds across all threads.
 static NOTIFICATION_LAST_SENT: Mutex<Option<Instant>> = Mutex::new(None);
 const NOTIFICATION_RATE_LIMIT: Duration = Duration::from_secs(30);
+const MIN_CACHE_FLUSH_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Default)]
 struct LocalApiState {
@@ -84,8 +86,10 @@ struct SecretsCache {
 /// Instead, load once into RAM and serialize writes to preserve ordering.
 struct PersistentCache {
     data: Mutex<Map<String, Value>>,
-    dirty: Mutex<bool>,
-    write_lock: Mutex<()>,
+    revision: AtomicU64,
+    flushed_revision: AtomicU64,
+    flush_scheduled: Mutex<bool>,
+    last_flush_at: Mutex<Option<Instant>>,
 }
 
 impl SecretsCache {
@@ -156,8 +160,10 @@ impl PersistentCache {
         };
         PersistentCache {
             data: Mutex::new(data),
-            dirty: Mutex::new(false),
-            write_lock: Mutex::new(()),
+            revision: AtomicU64::new(0),
+            flushed_revision: AtomicU64::new(0),
+            flush_scheduled: Mutex::new(false),
+            last_flush_at: Mutex::new(None),
         }
     }
 
@@ -167,27 +173,107 @@ impl PersistentCache {
     }
 
     /// Flush to disk only if dirty. Returns Ok(true) if written.
-    fn flush(&self, path: &Path) -> Result<bool, String> {
-        let _write_guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
-
-        let is_dirty = {
-            let dirty = self.dirty.lock().unwrap_or_else(|e| e.into_inner());
-            *dirty
-        };
-        if !is_dirty {
+    fn flush(&self, path: &Path, force: bool) -> Result<bool, String> {
+        if self.revision.load(Ordering::Acquire) == self.flushed_revision.load(Ordering::Acquire) {
             return Ok(false);
         }
 
-        let data = self.data.lock().unwrap_or_else(|e| e.into_inner());
-        let serialized = serde_json::to_string(&Value::Object(data.clone()))
+        if !force {
+            let last_flush_at = self.last_flush_at.lock().unwrap_or_else(|e| e.into_inner());
+            if last_flush_at
+                .as_ref()
+                .map(|at| at.elapsed() < MIN_CACHE_FLUSH_INTERVAL)
+                .unwrap_or(false)
+            {
+                return Ok(false);
+            }
+        }
+
+        let (snapshot, snapshot_revision) = {
+            let data = self.data.lock().unwrap_or_else(|e| e.into_inner());
+            let snapshot = data.clone();
+            let snapshot_revision = self.revision.load(Ordering::Acquire);
+            (snapshot, snapshot_revision)
+        };
+
+        if snapshot_revision == self.flushed_revision.load(Ordering::Acquire) {
+            return Ok(false);
+        }
+
+        let tmp_path = path.with_extension("json.tmp");
+        let tmp_file = File::create(&tmp_path)
+            .map_err(|e| format!("Failed to create cache temp file {}: {e}", tmp_path.display()))?;
+        let mut writer = BufWriter::new(tmp_file);
+        serde_json::to_writer(&mut writer, &snapshot)
             .map_err(|e| format!("Failed to serialize cache: {e}"))?;
-        drop(data);
-        std::fs::write(path, serialized)
-            .map_err(|e| format!("Failed to write cache {}: {e}", path.display()))?;
-        let mut dirty = self.dirty.lock().unwrap_or_else(|e| e.into_inner());
-        *dirty = false;
+        writer
+            .flush()
+            .map_err(|e| format!("Failed to flush cache temp file {}: {e}", tmp_path.display()))?;
+
+        #[cfg(windows)]
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+
+        std::fs::rename(&tmp_path, path).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            format!(
+                "Failed to replace cache {} from {}: {e}",
+                path.display(),
+                tmp_path.display()
+            )
+        })?;
+        self.flushed_revision.store(snapshot_revision, Ordering::Release);
+        let mut last_flush_at = self.last_flush_at.lock().unwrap_or_else(|e| e.into_inner());
+        *last_flush_at = Some(Instant::now());
         Ok(true)
     }
+}
+
+fn schedule_cache_flush(app: &AppHandle) {
+    let should_spawn = match app.try_state::<PersistentCache>() {
+        Some(cache) => {
+            let mut scheduled = cache.flush_scheduled.lock().unwrap_or_else(|e| e.into_inner());
+            if *scheduled {
+                false
+            } else {
+                *scheduled = true;
+                true
+            }
+        }
+        None => false,
+    };
+    if !should_spawn {
+        return;
+    }
+
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(750));
+
+        let flush_result = if let Ok(path) = cache_file_path(&app_handle) {
+            if let Some(cache) = app_handle.try_state::<PersistentCache>() {
+                cache.flush(&path, false)
+            } else {
+                Ok(false)
+            }
+        } else {
+            Ok(false)
+        };
+
+        if let Some(cache) = app_handle.try_state::<PersistentCache>() {
+            {
+                let mut scheduled = cache.flush_scheduled.lock().unwrap_or_else(|e| e.into_inner());
+                *scheduled = false;
+            }
+
+            if flush_result.is_ok() {
+                if cache.revision.load(Ordering::Acquire) != cache.flushed_revision.load(Ordering::Acquire) {
+                    schedule_cache_flush(&app_handle);
+                }
+            }
+        }
+    });
 }
 
 #[derive(Serialize)]
@@ -401,17 +487,14 @@ fn read_cache_entry(webview: Webview, cache: tauri::State<'_, PersistentCache>, 
 }
 
 #[tauri::command]
-fn delete_cache_entry(webview: Webview, cache: tauri::State<'_, PersistentCache>, key: String) -> Result<(), String> {
+fn delete_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, PersistentCache>, key: String) -> Result<(), String> {
     require_trusted_window(webview.label())?;
     {
         let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
         data.remove(&key);
+        cache.revision.fetch_add(1, Ordering::AcqRel);
     }
-    {
-        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
-        *dirty = true;
-    }
-    // Disk flush deferred to exit handler (cache.flush) — avoids blocking main thread
+    schedule_cache_flush(&app);
     Ok(())
 }
 
@@ -420,28 +503,12 @@ fn write_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, P
     require_trusted_window(webview.label())?;
     let parsed_value: Value = serde_json::from_str(&value)
         .map_err(|e| format!("Invalid cache payload JSON: {e}"))?;
-    let _write_guard = cache.write_lock.lock().unwrap_or_else(|e| e.into_inner());
     {
         let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
         data.insert(key, parsed_value);
+        cache.revision.fetch_add(1, Ordering::AcqRel);
     }
-    {
-        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
-        *dirty = true;
-    }
-
-    // Flush synchronously under write lock so concurrent writes cannot reorder.
-    let path = cache_file_path(&app)?;
-    let data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
-    let serialized = serde_json::to_string(&Value::Object(data.clone()))
-        .map_err(|e| format!("Failed to serialize cache: {e}"))?;
-    drop(data);
-    std::fs::write(&path, &serialized)
-        .map_err(|e| format!("Failed to write cache {}: {e}", path.display()))?;
-    {
-        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
-        *dirty = false;
-    }
+    schedule_cache_flush(&app);
     Ok(())
 }
 
@@ -1838,7 +1905,7 @@ fn main() {
                     // Flush in-memory cache to disk before quitting
                     if let Ok(path) = cache_file_path(app) {
                         if let Some(cache) = app.try_state::<PersistentCache>() {
-                            let _ = cache.flush(&path);
+                            let _ = cache.flush(&path, true);
                         }
                     }
                     stop_local_api(app);

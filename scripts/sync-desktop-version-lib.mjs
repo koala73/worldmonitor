@@ -74,7 +74,7 @@ export function updatePackageLockVersion(packageLock, targetVersion) {
 
 export function updateCargoLockVersion(cargoLock, packageName, targetVersion) {
   const escapedPackageName = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const packageBlockRegex = new RegExp(`(\\[\\[package\\]\\]\\nname = "${escapedPackageName}"\\nversion = ")([^"]+)(")`, 'm');
+  const packageBlockRegex = new RegExp(`(\\[\\[package\\]\\]\\r?\\nname = "${escapedPackageName}"\\r?\\nversion = ")([^"]+)(")`, 'm');
   const versionMatch = cargoLock.match(packageBlockRegex);
   if (!versionMatch) {
     throw new Error(`Could not find ${packageName} package version in src-tauri/Cargo.lock`);
