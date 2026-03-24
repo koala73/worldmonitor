@@ -44,7 +44,7 @@ const FRED_PREFIX = 'economic:fred:v1';
 const YAHOO_SYMBOLS = ['^GSPC','^VIX','^VIX9D','^VIX3M','^SKEW','C:ISSU','GLD','TLT','SPY','RSP','DX-Y.NYB','XLK','XLF','XLE','XLV'];
 
 async function fetchYahooSymbol(symbol) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=3mo`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y`;
   const headers = { 'User-Agent': CHROME_UA, Accept: 'application/json' };
   try {
     // Use curl+proxy when available — Railway container IPs are periodically blocked by Yahoo.
@@ -271,7 +271,8 @@ function scoreCategory(name, inputs) {
     case 'volatility': {
       const { vix, vix9d, vix3m } = inputs;
       if (vix == null) return { score: 50, inputs };
-      const vixScore = clamp(100 - ((vix - 12) / 28) * 100, 0, 100);
+      // VIX range 12–35: neutral at ~23.5 (historical avg ~19-20). Old range 12-40 centered neutral at VIX=26 — too permissive.
+      const vixScore = clamp(100 - ((vix - 12) / 23) * 100, 0, 100);
       const termScore = (vix9d != null && vix3m != null) ? (vix / vix3m < 1 ? 70 : 30) : 50;
       const termStructure = (vix9d != null && vix3m != null) ? (vix / vix3m < 1 ? 'contango' : 'backwardation') : 'unknown';
       return { score: Math.round(vixScore * 0.7 + termScore * 0.3), inputs: { vix, vix9d, vix3m, termStructure } };
