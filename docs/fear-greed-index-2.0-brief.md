@@ -221,7 +221,7 @@ score = weighted combination with mean reversion
 |--------|--------|---------|----------|
 | SPX 20/50/200 DMA | ^GSPC closes | `smaCalc(prices, period)` | Trend |
 | SPX ROC 20d | ^GSPC closes | `rateOfChange(prices, 20)` | Momentum |
-| VIX Term Structure | ^VIX, ^VIX9D, ^VIX3M | `VIX/VIX3M` ratio (<1 = contango) | Volatility |
+| VIX Term Structure | ^VIX, ^VIX9D, ^VIX3M | `VIX/VIX3M` ratio (&lt;1 = contango) | Volatility |
 | Sector RSI (14d) | XLK/XLF/XLE/XLV | Standard RSI formula | Momentum |
 | Cross-asset 30d returns | GLD, TLT, SPY, DXY | `rateOfChange(prices, 30)` | Cross-Asset |
 | M2 YoY change | M2SL | `(latest - 12mo_ago) / 12mo_ago` | Liquidity |
