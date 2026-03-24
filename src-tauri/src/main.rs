@@ -9,7 +9,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use keyring::Entry;
@@ -86,8 +86,8 @@ struct SecretsCache {
 /// Instead, load once into RAM and serialize writes to preserve ordering.
 struct PersistentCache {
     data: Mutex<Map<String, Value>>,
-    dirty: Mutex<bool>,
-    write_lock: Mutex<()>,
+    revision: AtomicU64,
+    flushed_revision: AtomicU64,
     flush_scheduled: Mutex<bool>,
     last_flush_at: Mutex<Option<Instant>>,
 }
@@ -160,8 +160,8 @@ impl PersistentCache {
         };
         PersistentCache {
             data: Mutex::new(data),
-            dirty: Mutex::new(false),
-            write_lock: Mutex::new(()),
+            revision: AtomicU64::new(0),
+            flushed_revision: AtomicU64::new(0),
             flush_scheduled: Mutex::new(false),
             last_flush_at: Mutex::new(None),
         }
@@ -174,13 +174,7 @@ impl PersistentCache {
 
     /// Flush to disk only if dirty. Returns Ok(true) if written.
     fn flush(&self, path: &Path, force: bool) -> Result<bool, String> {
-        let _write_guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
-
-        let is_dirty = {
-            let dirty = self.dirty.lock().unwrap_or_else(|e| e.into_inner());
-            *dirty
-        };
-        if !is_dirty {
+        if self.revision.load(Ordering::Acquire) == self.flushed_revision.load(Ordering::Acquire) {
             return Ok(false);
         }
 
@@ -195,17 +189,26 @@ impl PersistentCache {
             }
         }
 
-        let data = self.data.lock().unwrap_or_else(|e| e.into_inner());
+        let (snapshot, snapshot_revision) = {
+            let data = self.data.lock().unwrap_or_else(|e| e.into_inner());
+            let snapshot = data.clone();
+            let snapshot_revision = self.revision.load(Ordering::Acquire);
+            (snapshot, snapshot_revision)
+        };
+
+        if snapshot_revision == self.flushed_revision.load(Ordering::Acquire) {
+            return Ok(false);
+        }
+
         let tmp_path = path.with_extension("json.tmp");
         let tmp_file = File::create(&tmp_path)
             .map_err(|e| format!("Failed to create cache temp file {}: {e}", tmp_path.display()))?;
         let mut writer = BufWriter::new(tmp_file);
-        serde_json::to_writer(&mut writer, &*data)
+        serde_json::to_writer(&mut writer, &snapshot)
             .map_err(|e| format!("Failed to serialize cache: {e}"))?;
         writer
             .flush()
             .map_err(|e| format!("Failed to flush cache temp file {}: {e}", tmp_path.display()))?;
-        drop(data);
 
         #[cfg(windows)]
         if path.exists() {
@@ -220,9 +223,7 @@ impl PersistentCache {
                 tmp_path.display()
             )
         })?;
-        let mut dirty = self.dirty.lock().unwrap_or_else(|e| e.into_inner());
-        *dirty = false;
-        drop(dirty);
+        self.flushed_revision.store(snapshot_revision, Ordering::Release);
         let mut last_flush_at = self.last_flush_at.lock().unwrap_or_else(|e| e.into_inner());
         *last_flush_at = Some(Instant::now());
         Ok(true)
@@ -267,11 +268,7 @@ fn schedule_cache_flush(app: &AppHandle) {
             }
 
             if flush_result.is_ok() {
-                let is_dirty = {
-                    let dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
-                    *dirty
-                };
-                if is_dirty {
+                if cache.revision.load(Ordering::Acquire) != cache.flushed_revision.load(Ordering::Acquire) {
                     schedule_cache_flush(&app_handle);
                 }
             }
@@ -492,16 +489,11 @@ fn read_cache_entry(webview: Webview, cache: tauri::State<'_, PersistentCache>, 
 #[tauri::command]
 fn delete_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, PersistentCache>, key: String) -> Result<(), String> {
     require_trusted_window(webview.label())?;
-    let _write_guard = cache.write_lock.lock().unwrap_or_else(|e| e.into_inner());
     {
         let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
         data.remove(&key);
+        cache.revision.fetch_add(1, Ordering::AcqRel);
     }
-    {
-        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
-        *dirty = true;
-    }
-    drop(_write_guard);
     schedule_cache_flush(&app);
     Ok(())
 }
@@ -511,16 +503,11 @@ fn write_cache_entry(webview: Webview, app: AppHandle, cache: tauri::State<'_, P
     require_trusted_window(webview.label())?;
     let parsed_value: Value = serde_json::from_str(&value)
         .map_err(|e| format!("Invalid cache payload JSON: {e}"))?;
-    let _write_guard = cache.write_lock.lock().unwrap_or_else(|e| e.into_inner());
     {
         let mut data = cache.data.lock().unwrap_or_else(|e| e.into_inner());
         data.insert(key, parsed_value);
+        cache.revision.fetch_add(1, Ordering::AcqRel);
     }
-    {
-        let mut dirty = cache.dirty.lock().unwrap_or_else(|e| e.into_inner());
-        *dirty = true;
-    }
-    drop(_write_guard);
     schedule_cache_flush(&app);
     Ok(())
 }
