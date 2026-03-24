@@ -5196,11 +5196,11 @@ describe('phase 2 scoring recalibration + prompt excellence', () => {
     assert.equal(gd.acceptanceThreshold, 0.50);
   });
 
-  it('T7: prompt v3 contains all required guidance strings', () => {
+  it('T7: prompt v4 contains all required guidance strings', () => {
     const prompt = buildImpactExpansionSystemPrompt();
     assert.ok(prompt.includes('at least 2 evidence keys'),
       'prompt must mention 2-evidence requirement');
-    assert.ok(prompt.includes('MUST be the exact variableKey string'),
+    assert.ok(prompt.includes('MUST be the exact hypothesisKey of one of your direct'),
       'prompt must have dependsOnKey exactness rule');
     assert.ok(prompt.includes('strength 0.82-0.95'),
       'prompt must include confidence calibration guidance');
