@@ -92,6 +92,7 @@ const STANDALONE_KEYS = {
   tariffTrendsUs:           'trade:tariffs:v1:840:all:10',
   militaryForecastInputs:   'military:forecast-inputs:stale:v1',
   gscpi:                    'economic:fred:v1:GSCPI:0',
+  marketImplications:       'intelligence:market-implications:v1',
 };
 
 const SEED_META = {
@@ -171,6 +172,7 @@ const SEED_META = {
   otherTokens:       { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
   fredBatch:         { key: 'seed-meta:economic:fred:v1:FEDFUNDS:0', maxStaleMin: 1500 }, // daily cron
   gscpi:             { key: 'seed-meta:economic:gscpi',               maxStaleMin: 2880 }, // 24h interval; 2880min = 48h = 2x interval
+  marketImplications: { key: 'seed-meta:intelligence:market-implications', maxStaleMin: 150 }, // 75min TTL; 150min = 2x interval
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
