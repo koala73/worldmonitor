@@ -53,20 +53,22 @@ function isValidKey(key, validKeys) {
   return matched && validKeys.length > 0;
 }
 
-function extractOriginFromReferer(referer) {
-  if (!referer) return '';
-  try {
-    return new URL(referer).origin;
-  } catch {
-    return '';
-  }
+function hasTrustedBrowserFetchMetadata(req) {
+  const fetchSite = (req.headers.get('Sec-Fetch-Site') || '').toLowerCase();
+  const fetchMode = (req.headers.get('Sec-Fetch-Mode') || '').toLowerCase();
+  if (!['same-origin', 'same-site'].includes(fetchSite)) return false;
+  if (fetchMode && !['cors', 'same-origin', 'navigate', 'no-cors'].includes(fetchMode)) return false;
+  return true;
+}
+
+function isTrustedBrowserRequest(req, origin) {
+  if (!isTrustedBrowserOrigin(origin)) return false;
+  return hasTrustedBrowserFetchMetadata(req);
 }
 
 export function validateApiKey(req) {
   const key = req.headers.get('X-WorldMonitor-Key');
-  // Same-origin browser requests don't send Origin (per CORS spec).
-  // Fall back to Referer to identify trusted same-origin callers.
-  const origin = req.headers.get('Origin') || extractOriginFromReferer(req.headers.get('Referer')) || '';
+  const origin = req.headers.get('Origin') || '';
 
   // Parse valid keys once for this request.
   const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
@@ -78,8 +80,8 @@ export function validateApiKey(req) {
     return { valid: true, required: true };
   }
 
-  // Trusted browser origin (worldmonitor.app, Vercel previews, localhost dev) — no key needed
-  if (isTrustedBrowserOrigin(origin)) {
+  // Trusted browser origin requests can skip the key when browser fetch metadata is present.
+  if (isTrustedBrowserRequest(req, origin)) {
     if (key && !isValidKey(key, validKeys)) return { valid: false, required: true, error: 'Invalid API key' };
     return { valid: true, required: false };
   }

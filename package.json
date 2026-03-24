@@ -42,7 +42,7 @@
     "test:e2e": "npm run test:e2e:runtime && npm run test:e2e:full && npm run test:e2e:tech && npm run test:e2e:finance",
     "test:data": "tsx --test tests/*.test.mjs tests/*.test.mts",
     "test:feeds": "node scripts/validate-rss-feeds.mjs",
-    "test:sidecar": "node --test src-tauri/sidecar/local-api-server.test.mjs api/_cors.test.mjs api/youtube/embed.test.mjs api/cyber-threats.test.mjs api/usni-fleet.test.mjs scripts/ais-relay-rss.test.cjs api/loaders-xml-wms-regression.test.mjs",
+    "test:sidecar": "node --test src-tauri/sidecar/local-api-server.test.mjs api/_cors.test.mjs api/_api-key.test.mjs api/youtube/embed.test.mjs api/cyber-threats.test.mjs api/usni-fleet.test.mjs scripts/ais-relay-rss.test.cjs api/loaders-xml-wms-regression.test.mjs",
     "test:e2e:visual:full": "cross-env VITE_VARIANT=full playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual:tech": "cross-env VITE_VARIANT=tech playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual": "npm run test:e2e:visual:full && npm run test:e2e:visual:tech",
@@ -101,7 +101,7 @@
     "convex": "^1.32.0",
     "d3": "^7.9.0",
     "deck.gl": "^9.2.6",
-    "fast-xml-parser": "^5.3.7",
+    "fast-xml-parser": "^5.5.9",
     "i18next": "^25.8.10",
     "i18next-browser-languagedetector": "^8.2.1",
     "lz-string": "^1.5.0",
@@ -115,7 +115,7 @@
     "youtubei.js": "^16.0.1"
   },
   "overrides": {
-    "fast-xml-parser": "^5.3.7",
+    "fast-xml-parser": "^5.5.9",
     "serialize-javascript": "^7.0.3"
   },
   "author": "Bradley Bond (https://github.com/bradleybond512)",

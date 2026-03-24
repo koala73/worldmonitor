@@ -2,6 +2,7 @@ import { getApiBaseUrl, isDesktopRuntime } from './runtime';
 import { invokeTauri } from './tauri-bridge';
 
 export type RuntimeSecretKey =
+  | 'WORLDMONITOR_API_KEY'
   | 'ANTHROPIC_API_KEY'
   | 'GROQ_API_KEY'
   | 'OPENROUTER_API_KEY'
@@ -30,6 +31,7 @@ export type RuntimeSecretKey =
   | 'THREATFOX_API_KEY';
 
 export type RuntimeFeatureId =
+  | 'cloudApiFallbackAuth'
   | 'aiClaude'
   | 'aiGroq'
   | 'aiOpenRouter'
@@ -84,6 +86,7 @@ function getSidecarSecretValidateUrl(): string {
 }
 
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
+  cloudApiFallbackAuth: true,
   aiClaude: true,
   aiGroq: true,
   aiOpenRouter: true,
@@ -112,6 +115,14 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
+  {
+    id: 'cloudApiFallbackAuth',
+    name: 'Cloud fallback API authentication',
+    description: 'Desktop cloud fallback requests use X-WorldMonitor-Key for Vercel API trust boundary validation.',
+    requiredSecrets: [],
+    desktopRequiredSecrets: ['WORLDMONITOR_API_KEY'],
+    fallback: 'Cloud fallback to worldmonitor.app is blocked without a World Monitor API key.',
+  },
   {
     id: 'aiOllama',
     name: 'Ollama local summarization',
@@ -342,6 +353,13 @@ export interface SecretVerificationResult {
 export function validateSecret(key: RuntimeSecretKey, value: string): { valid: boolean; hint?: string } {
   const trimmed = value.trim();
   if (!trimmed) return { valid: false, hint: 'Value is required' };
+
+  if (key === 'WORLDMONITOR_API_KEY') {
+    if (!/^[A-Za-z0-9_-]{16,}$/.test(trimmed)) {
+      return { valid: false, hint: 'Must be at least 16 URL-safe characters' };
+    }
+    return { valid: true };
+  }
 
   if (URL_SECRET_KEYS.has(key)) {
     try {

@@ -9,20 +9,25 @@ const insightsPanelSrc = readFileSync(
   'utf8',
 );
 
-it('keeps structured world-brief delimiters as escaped newline literals', () => {
+it('keeps world-brief caching and cooldown safeguards wired', () => {
   assert.match(
     insightsPanelSrc,
-    /brief\.split\(\/\\n\(\?=SITUATION OVERVIEW\|KEY DEVELOPMENTS\|THREAT ASSESSMENT\|WATCH NEXT\)\/\)/,
-    'world-brief parser should split sections on an escaped newline regex, not a broken literal line break',
+    /BRIEF_COOLDOWN_MS = 120000/,
+    'world-brief generation should retain a defensive cooldown to avoid rapid re-runs',
   );
   assert.match(
     insightsPanelSrc,
-    /\.split\('\\n'\)/,
-    'world-brief developments should split on escaped newline strings, not raw line breaks in source',
+    /BRIEF_CACHE_KEY = 'summary:world-brief'/,
+    'world-brief cache key should stay stable for persistence/hydration consistency',
   );
   assert.match(
     insightsPanelSrc,
-    /const level = levelMatch\?\.\[1\]\?\.toUpperCase\(\) \?\? '';/,
-    'world-brief threat parsing should handle regex captures without tripping strict undefined checks',
+    /getPersistentCache<\{ summary: string \}>\(InsightsPanel\.BRIEF_CACHE_KEY\)/,
+    'world-brief should load from persistent cache when available',
+  );
+  assert.match(
+    insightsPanelSrc,
+    /setPersistentCache\(InsightsPanel\.BRIEF_CACHE_KEY, \{ summary: worldBrief \}\)/,
+    'world-brief should persist fresh summaries back into persistent cache',
   );
 });

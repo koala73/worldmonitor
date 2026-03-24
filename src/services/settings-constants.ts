@@ -1,6 +1,7 @@
 import type { RuntimeSecretKey, RuntimeFeatureId } from './runtime-config';
 
 export const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
+  WORLDMONITOR_API_KEY: 'https://worldmonitor.app',
   ANTHROPIC_API_KEY: 'https://console.anthropic.com/settings/keys',
   GROQ_API_KEY: 'https://console.groq.com/keys',
   OPENROUTER_API_KEY: 'https://openrouter.ai/settings/keys',
@@ -38,6 +39,7 @@ export const PLAINTEXT_KEYS = new Set<RuntimeSecretKey>([
 export const MASKED_SENTINEL = '__WM_MASKED__';
 
 export const HUMAN_LABELS: Record<RuntimeSecretKey, string> = {
+  WORLDMONITOR_API_KEY: 'World Monitor Cloud API Key',
   ANTHROPIC_API_KEY: 'Anthropic (Claude) API Key',
   GROQ_API_KEY: 'Groq API Key',
   OPENROUTER_API_KEY: 'OpenRouter API Key',
@@ -91,7 +93,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: 'security',
     label: 'Security & Threats',
-    features: ['internetOutages', 'acledConflicts', 'acledAirstrikes', 'abuseChThreatIntel', 'alienvaultOtxThreatIntel', 'abuseIpdbThreatIntel', 'threatfoxThreatIntel', 'openPhishThreatIntel', 'spamhausDrop', 'cisaKev'],
+    features: ['cloudApiFallbackAuth', 'internetOutages', 'acledConflicts', 'acledAirstrikes', 'abuseChThreatIntel', 'alienvaultOtxThreatIntel', 'abuseIpdbThreatIntel', 'threatfoxThreatIntel', 'openPhishThreatIntel', 'spamhausDrop', 'cisaKev'],
   },
   {
     id: 'tracking',
