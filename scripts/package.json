@@ -1,6 +1,6 @@
 {
   "name": "worldmonitor-railway-relay",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Railway relay: AIS/OpenSky + RSS proxy + Telegram OSINT poller",
   "main": "ais-relay.cjs",
   "scripts": {

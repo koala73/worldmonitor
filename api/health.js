@@ -186,6 +186,7 @@ const ON_DEMAND_KEYS = new Set([
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   'militaryForecastInputs', // intermediate seed-to-seed pipeline key; only populated after seed-military-flights runs
+  'marketImplications', // LLM-generated inside forecast cron; can fail silently on LLM errors — degrade to WARN not CRIT
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed).

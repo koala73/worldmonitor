@@ -36,6 +36,14 @@ import {
   validateImpactHypotheses,
   evaluateDeepForecastPaths,
   validateDeepForecastSnapshot,
+  buildCanonicalStateUnits,
+  buildRegistryConstraintTable,
+  buildImpactExpansionSystemPrompt,
+  extractImpactExpansionPayload,
+  extractImpactRouteFacilityKey,
+  extractImpactCommodityKey,
+  IMPACT_VARIABLE_REGISTRY,
+  MARKET_BUCKET_ALLOWED_CHANNELS,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -3325,6 +3333,64 @@ describe('cross-theater gate', () => {
   });
 });
 
+describe('impact expansion payload parsing', () => {
+  // Gemini wraps responses in ```json fences AND omits outer {} braces,
+  // producing '"candidates": [...]' inside the fenced block.
+  // Verified on production run 1774322111327-kj6f91 (parseStage: no_json_object).
+  it('parses Gemini-style fenced response with missing outer braces (wrapped_candidates)', () => {
+    const geminiFencedNoBraces = `\`\`\`json
+  "candidates": [
+    {
+      "candidateIndex": 0,
+      "candidateStateId": "state-abc",
+      "directHypotheses": [],
+      "secondOrderHypotheses": [],
+      "thirdOrderHypotheses": []
+    }
+  ]
+\`\`\``;
+    const result = extractImpactExpansionPayload(geminiFencedNoBraces);
+    assert.ok(Array.isArray(result.candidates), 'must parse candidates');
+    assert.equal(result.candidates.length, 1);
+    assert.equal(result.candidates[0].candidateStateId, 'state-abc');
+    assert.equal(result.diagnostics.stage, 'wrapped_candidates');
+  });
+
+  it('still parses well-formed fenced response (object_candidates)', () => {
+    const wellFormed = `\`\`\`json
+{
+  "candidates": [
+    {
+      "candidateIndex": 0,
+      "candidateStateId": "state-xyz",
+      "directHypotheses": [],
+      "secondOrderHypotheses": [],
+      "thirdOrderHypotheses": []
+    }
+  ]
+}
+\`\`\``;
+    const result = extractImpactExpansionPayload(wellFormed);
+    assert.ok(Array.isArray(result.candidates));
+    assert.equal(result.candidates[0].candidateStateId, 'state-xyz');
+    assert.equal(result.diagnostics.stage, 'object_candidates');
+  });
+
+  it('still parses bare JSON without fences (object_candidates)', () => {
+    const bare = `{"candidates":[{"candidateIndex":0,"candidateStateId":"state-bare","directHypotheses":[],"secondOrderHypotheses":[],"thirdOrderHypotheses":[]}]}`;
+    const result = extractImpactExpansionPayload(bare);
+    assert.ok(Array.isArray(result.candidates));
+    assert.equal(result.candidates[0].candidateStateId, 'state-bare');
+    assert.equal(result.diagnostics.stage, 'object_candidates');
+  });
+
+  it('returns no_json_object for genuinely unparseable response', () => {
+    const result = extractImpactExpansionPayload('Sorry, I cannot help with that.');
+    assert.equal(result.candidates, null);
+    assert.equal(result.diagnostics.stage, 'no_json_object');
+  });
+});
+
 describe('impact expansion layer', () => {
   function makeImpactCandidatePacket(stateId = 'state-1', label = 'Strait of Hormuz maritime disruption state', overrides = {}) {
     return {
@@ -3963,6 +4029,171 @@ describe('impact expansion layer', () => {
     assert.equal(worldState.simulationState.expandedSignalUsageByRound.round_2.mappedCount, 2);
     assert.equal(worldState.simulationState.expandedSignalUsageByRound.round_3.mappedCount, 2);
   });
+
+  it('evaluateDeepForecastPaths includes validation on the mapped=0 early-return path', async () => {
+    const candidatePacket = makeImpactCandidatePacket('state-a1', 'Test maritime disruption state');
+    const invalidBundle = {
+      source: 'live',
+      provider: 'test',
+      model: 'test-model',
+      parseStage: 'object_candidates',
+      rawPreview: '',
+      failureReason: '',
+      candidateCount: 1,
+      extractedCandidateCount: 1,
+      extractedHypothesisCount: 1,
+      candidates: [],
+      candidatePackets: [candidatePacket],
+      extractedCandidates: [{
+        candidateIndex: 0,
+        candidateStateId: 'state-a1',
+        directHypotheses: [{
+          variableKey: 'route_disruption',
+          channel: 'sovereign_stress',
+          targetBucket: 'sovereign_risk',
+          region: 'Middle East',
+          macroRegion: 'EMEA',
+          countries: ['Qatar'],
+          assetsOrSectors: [],
+          commodity: '',
+          dependsOnKey: '',
+          strength: 0.8,
+          confidence: 0.8,
+          analogTag: '',
+          summary: 'Invalid channel for route_disruption.',
+          evidenceRefs: ['E1', 'E2'],
+        }],
+        secondOrderHypotheses: [],
+        thirdOrderHypotheses: [],
+      }],
+    };
+    const evaluation = await evaluateDeepForecastPaths({
+      generatedAt: Date.now(),
+      predictions: [],
+      fullRunStateUnits: [{ id: 'state-a1', label: 'Test maritime disruption state' }],
+    }, null, invalidBundle.candidatePackets, invalidBundle);
+
+    assert.equal(evaluation.status, 'completed_no_material_change');
+    assert.ok(evaluation.validation, 'validation must be present on mapped=0 path');
+    assert.equal((evaluation.validation.mapped || []).length, 0);
+    assert.ok(evaluation.validation.rejectionReasonCounts.unsupported_variable_channel >= 1);
+    assert.ok(evaluation.validation.hypotheses.every((h) => typeof h.candidateIndex === 'number' && typeof h.candidateStateId === 'string'));
+  });
+
+  it('evaluateDeepForecastPaths includes validation on paths beyond the mapped=0 early return', async () => {
+    // validation is present on all three return paths; this fixture exercises the success or
+    // no-expanded-accepted path depending on scoring. We assert mapped > 0 to confirm we
+    // are past the first (mapped=0) early return, and that validation shape is correct.
+    const prediction = makePrediction('supply_chain', 'Red Sea', 'Shipping disruption: Red Sea', 0.68, 0.6, '7d', [
+      { type: 'shipping_cost_shock', value: 'Shipping costs rising around Red Sea.', weight: 0.5 },
+    ]);
+    buildForecastCase(prediction);
+    populateFallbackNarratives([prediction]);
+    const baseState = buildForecastRunWorldState({ generatedAt: Date.parse('2026-03-23T12:00:00Z'), predictions: [prediction] });
+    const stateUnit = baseState.stateUnits[0];
+    const bundle = makeImpactExpansionBundle(stateUnit.id, stateUnit.label, {
+      dominantRegion: stateUnit.dominantRegion || 'Red Sea',
+      macroRegions: stateUnit.macroRegions || ['EMEA'],
+      countries: stateUnit.regions || ['Red Sea'],
+      marketBucketIds: stateUnit.marketBucketIds || ['energy', 'freight', 'rates_inflation'],
+      transmissionChannels: stateUnit.transmissionChannels || ['shipping_cost_shock', 'gas_supply_stress'],
+    });
+    const evaluation = await evaluateDeepForecastPaths({
+      generatedAt: Date.parse('2026-03-23T12:00:00Z'),
+      predictions: [prediction],
+      fullRunStateUnits: baseState.stateUnits,
+    }, null, bundle.candidatePackets, bundle);
+
+    assert.ok(evaluation.validation, 'validation must be present');
+    assert.ok((evaluation.validation.mapped || []).length > 0, 'fixture must produce mapped hypotheses (past mapped=0 early return)');
+    assert.ok(Array.isArray(evaluation.validation.hypotheses));
+    assert.ok(evaluation.validation.hypotheses.every((h) => typeof h.candidateIndex === 'number' && typeof h.candidateStateId === 'string'));
+  });
+
+  it('buildForecastTraceArtifacts surfaces hypothesisValidation in impactExpansionDebug', () => {
+    const candidatePacket = makeImpactCandidatePacket('state-b', 'Strait of Hormuz maritime disruption state');
+    const bundle = makeImpactExpansionBundle('state-b', 'Strait of Hormuz maritime disruption state');
+    const rawValidation = validateImpactHypotheses(bundle);
+
+    const invalidHypothesis = {
+      variableKey: 'route_disruption',
+      channel: 'sovereign_stress',
+      targetBucket: 'sovereign_risk',
+      region: 'Middle East',
+      macroRegion: 'EMEA',
+      countries: [],
+      assetsOrSectors: [],
+      commodity: '',
+      dependsOnKey: '',
+      strength: 0.7,
+      confidence: 0.7,
+      analogTag: '',
+      summary: 'Invalid.',
+      evidenceRefs: ['E1', 'E2'],
+      candidateIndex: 0,
+      candidateStateId: 'state-b',
+      candidateStateLabel: 'Strait of Hormuz maritime disruption state',
+      order: 'direct',
+      rejectionReason: 'unsupported_variable_channel',
+    };
+    const validationWithRejection = {
+      ...rawValidation,
+      hypotheses: [...rawValidation.hypotheses, invalidHypothesis],
+      rejectionReasonCounts: { ...rawValidation.rejectionReasonCounts, unsupported_variable_channel: 1 },
+    };
+
+    const artifacts = buildForecastTraceArtifacts({
+      generatedAt: Date.parse('2026-03-24T12:00:00Z'),
+      predictions: [],
+      impactExpansionBundle: bundle,
+      impactExpansionCandidates: [candidatePacket],
+      deepPathEvaluation: {
+        status: 'completed_no_material_change',
+        selectedPaths: [],
+        rejectedPaths: [],
+        impactExpansionBundle: bundle,
+        deepWorldState: null,
+        validation: validationWithRejection,
+      },
+    }, { runId: 'test-debug-b' });
+
+    assert.ok(artifacts.impactExpansionDebug, 'impactExpansionDebug must be present');
+    assert.ok(artifacts.impactExpansionDebug.hypothesisValidation, 'hypothesisValidation must be present');
+    assert.ok(typeof artifacts.impactExpansionDebug.hypothesisValidation.totalHypotheses === 'number');
+    assert.ok(typeof artifacts.impactExpansionDebug.hypothesisValidation.validatedCount === 'number');
+    assert.ok(typeof artifacts.impactExpansionDebug.hypothesisValidation.mappedCount === 'number');
+    assert.ok(typeof artifacts.impactExpansionDebug.hypothesisValidation.rejectionReasonCounts === 'object');
+    assert.ok(artifacts.impactExpansionDebug.hypothesisValidation.rejectionReasonCounts.unsupported_variable_channel >= 1);
+    const rejected = artifacts.impactExpansionDebug.hypothesisValidation.rejectedHypotheses;
+    assert.ok(Array.isArray(rejected));
+    assert.ok(rejected.length >= 1);
+    assert.ok(typeof rejected[0].candidateIndex === 'number');
+    assert.ok(typeof rejected[0].candidateStateId === 'string');
+    assert.ok(typeof rejected[0].variableKey === 'string');
+    assert.ok(typeof rejected[0].rejectionReason === 'string');
+  });
+
+  it('buildRegistryConstraintTable output matches IMPACT_VARIABLE_REGISTRY and MARKET_BUCKET_ALLOWED_CHANNELS', () => {
+    const table = buildRegistryConstraintTable();
+    for (const [key, spec] of Object.entries(IMPACT_VARIABLE_REGISTRY)) {
+      assert.ok(table.includes(key), `table must mention variableKey ${key}`);
+      for (const channel of spec.allowedChannels || []) {
+        assert.ok(table.includes(channel), `table must mention channel ${channel} for ${key}`);
+      }
+      for (const bucket of spec.targetBuckets || []) {
+        assert.ok(table.includes(bucket), `table must mention bucket ${bucket} for ${key}`);
+      }
+      for (const order of spec.orderAllowed || []) {
+        assert.ok(table.includes(order), `table must mention order ${order} for ${key}`);
+      }
+    }
+    for (const [bucket, channels] of Object.entries(MARKET_BUCKET_ALLOWED_CHANNELS)) {
+      assert.ok(table.includes(bucket), `table must mention bucket ${bucket}`);
+      for (const ch of channels) {
+        assert.ok(table.includes(ch), `table must mention channel ${ch} for bucket ${bucket}`);
+      }
+    }
+  });
 });
 
 describe('critical news signal extraction', () => {
@@ -4484,6 +4715,55 @@ describe('forecast replay lifecycle helpers', () => {
     assert.equal(snapshot.marketSelectionIndex.summary, marketSelectionIndex.summary);
   });
 
+  it('buildCanonicalStateUnits disambiguates label collisions without dropping units', () => {
+    // Two supply_chain clusters in the same region with no semantic overlap:
+    // - stateKind overlap score: +2.5 (same stateKind)
+    // - region overlap score: +2.5 (1 shared region)
+    // - total: 5.0 < merge threshold 5.5 → NOT merged → two separate units
+    // Both resolve to label "Red Sea maritime disruption state" via formatStateUnitLabel.
+    // The fix must disambiguate rather than drop the lower-priority unit.
+    const clusterA = {
+      id: 'cluster-label-a', label: 'Red Sea shipping disruption',
+      dominantRegion: 'Red Sea', dominantDomain: 'supply_chain',
+      regions: ['Red Sea'], domains: ['supply_chain'],
+      actors: ['Houthi'], forecastIds: ['f1', 'f2'], forecastCount: 2,
+      avgProbability: 0.75, avgConfidence: 0.7,
+      topSignals: [{ type: 'shipping_cost_shock', count: 3 }],
+      sampleTitles: ['Red Sea shipping delay'], sourceStateIds: [],
+      macroRegions: ['EMEA'], marketBucketIds: ['freight'],
+      transmissionChannels: ['shipping_cost_shock'], branchKinds: [],
+    };
+    const clusterB = {
+      id: 'cluster-label-b', label: 'Red Sea oil export disruption',
+      dominantRegion: 'Red Sea', dominantDomain: 'supply_chain',
+      regions: ['Red Sea'], domains: ['supply_chain'],
+      actors: ['Iran'], forecastIds: ['f3', 'f4'], forecastCount: 2,
+      avgProbability: 0.65, avgConfidence: 0.6,
+      topSignals: [{ type: 'energy_supply_shock', count: 2 }],
+      sampleTitles: ['Iranian oil blockade'], sourceStateIds: [],
+      macroRegions: ['EMEA'], marketBucketIds: ['energy'],
+      transmissionChannels: ['oil_macro_shock'], branchKinds: [],
+    };
+    const units = buildCanonicalStateUnits([clusterA, clusterB], []);
+
+    // Both units must be preserved
+    assert.equal(units.length, 2, 'both units must be retained, not dropped');
+
+    // Labels must be unique
+    const labels = units.map((u) => u.label);
+    assert.equal(new Set(labels).size, 2, 'disambiguated labels must all be unique');
+
+    // The snapshot validator must pass (no duplicate labels)
+    const snapValidation = validateDeepForecastSnapshot({ fullRunStateUnits: units, deepForecast: { selectedStateIds: [] } });
+    assert.equal(snapValidation.duplicateStateLabels.length, 0, 'validator must see no duplicate labels after disambiguation');
+
+    // Higher-priority unit (higher avgProbability) keeps original label, lower one gets suffix
+    const sortedByPriority = [...units].sort((a, b) => b.forecastCount - a.forecastCount || b.avgProbability - a.avgProbability);
+    assert.ok(sortedByPriority[0].label === 'Red Sea maritime disruption state', 'highest-priority unit keeps clean label');
+    assert.ok(sortedByPriority[1].label !== 'Red Sea maritime disruption state', 'collision unit gets disambiguated label');
+    assert.ok(sortedByPriority[1].label.startsWith('Red Sea maritime disruption state'), 'disambiguated label keeps base');
+  });
+
   it('flags invalid deep snapshots with unresolved selected state ids and duplicate labels', () => {
     const validation = validateDeepForecastSnapshot({
       fullRunStateUnits: [
@@ -4626,5 +4906,317 @@ describe('forecast replay lifecycle helpers', () => {
     assert.equal(diff.publishedDomainDelta.supply_chain, 3);
     assert.ok(diff.addedTopForecastTitles.includes('Supply chain stress from Strait of Hormuz disruption state'));
     assert.ok(diff.removedTopForecastTitles.includes('FX stress from Germany cyber pressure state'));
+  });
+});
+
+describe('phase 2 scoring recalibration + prompt excellence', () => {
+  // Builds a minimal bundle with controlled quality inputs for scoring tests.
+  // Uses a generic (non-Hormuz) candidate to simulate the typical low-specificity case.
+  function makeGenericBundle({
+    specificityScore = 0.2,
+    rankingScore = 0.70,
+    continuityScore = 0.5,
+    evidenceRefs = ['E1', 'E2'],
+    directEvidenceRefs,       // override evidenceRefs for direct only
+    secondEvidenceRefs,       // override evidenceRefs for second_order only
+    directStrength = 0.75,
+    directConfidence = 0.75,
+    secondStrength = 0.75,
+    secondConfidence = 0.75,
+    directDependsOnKey = '',
+    secondDependsOnKey = 'route_disruption',
+  } = {}) {
+    const packet = {
+      candidateIndex: 0,
+      candidateStateId: 'state-generic',
+      candidateStateLabel: 'Baltic Sea shipping pressure state',
+      stateKind: 'maritime_disruption',
+      dominantRegion: 'Northern Europe',
+      macroRegions: ['EMEA'],
+      countries: ['Northern Europe'],
+      marketBucketIds: ['freight', 'rates_inflation'],
+      transmissionChannels: ['shipping_cost_shock'],
+      topSignalTypes: ['shipping_cost_shock'],
+      criticalSignalTypes: ['shipping_cost_shock'],
+      routeFacilityKey: '',
+      commodityKey: '',
+      specificityScore,
+      continuityMode: 'persistent',
+      continuityScore,
+      rankingScore,
+      evidenceTable: [
+        { key: 'E1', kind: 'state_summary', text: 'Baltic Sea shipping pressure is active.' },
+        { key: 'E2', kind: 'headline', text: 'Baltic freight rates are climbing on route uncertainty.' },
+      ],
+      marketContext: {
+        topBucketId: 'freight',
+        topBucketLabel: 'Freight',
+        topBucketPressure: 0.55,
+        confirmationScore: 0.40,
+        contradictionScore: 0.08,
+        topChannel: 'shipping_cost_shock',
+        topTransmissionStrength: 0.52,
+        topTransmissionConfidence: 0.48,
+        transmissionEdgeCount: 2,
+        criticalSignalLift: 0.30,
+        criticalSignalTypes: ['shipping_cost_shock'],
+        linkedBucketIds: ['freight', 'rates_inflation'],
+        consequenceSummary: 'Baltic Sea is transmitting into Freight through shipping cost shock.',
+      },
+    };
+    const extracted = {
+      candidateIndex: 0,
+      candidateStateId: 'state-generic',
+      directHypotheses: [{
+        variableKey: 'route_disruption',
+        channel: 'shipping_cost_shock',
+        targetBucket: 'freight',
+        region: 'Northern Europe',
+        macroRegion: 'EMEA',
+        countries: ['Northern Europe'],
+        assetsOrSectors: [],
+        commodity: '',
+        dependsOnKey: directDependsOnKey,
+        strength: directStrength,
+        confidence: directConfidence,
+        analogTag: '',
+        summary: 'Route disruption is transmitting through shipping cost shock.',
+        evidenceRefs: directEvidenceRefs !== undefined ? directEvidenceRefs : evidenceRefs,
+      }],
+      secondOrderHypotheses: [{
+        variableKey: 'inflation_pass_through',
+        channel: 'inflation_impulse',
+        targetBucket: 'rates_inflation',
+        region: 'Northern Europe',
+        macroRegion: 'EMEA',
+        countries: ['Northern Europe'],
+        assetsOrSectors: [],
+        commodity: '',
+        dependsOnKey: secondDependsOnKey,
+        strength: secondStrength,
+        confidence: secondConfidence,
+        analogTag: '',
+        summary: 'Freight cost shock is feeding through to inflation.',
+        evidenceRefs: secondEvidenceRefs !== undefined ? secondEvidenceRefs : evidenceRefs,
+      }],
+      thirdOrderHypotheses: [],
+    };
+    return { candidatePackets: [packet], extractedCandidates: [extracted] };
+  }
+
+  it('T1: second_order with moderate LLM quality and 2 evidence refs reaches mapped', () => {
+    const bundle = makeGenericBundle({
+      specificityScore: 0.2,
+      rankingScore: 0.70,
+      continuityScore: 0.50,
+      directStrength: 0.75,
+      directConfidence: 0.75,
+      secondStrength: 0.75,
+      secondConfidence: 0.75,
+      evidenceRefs: ['E1', 'E2'],
+    });
+    const validation = validateImpactHypotheses(bundle);
+    const secondOrder = validation.hypotheses.find((h) => h.order === 'second_order');
+    assert.ok(secondOrder, 'must have a second_order hypothesis');
+    assert.equal(secondOrder.validationStatus, 'mapped',
+      `second_order should be mapped but got ${secondOrder.validationStatus} (score=${secondOrder.validationScore})`);
+  });
+
+  it('T2: second_order with only 1 evidence ref does NOT reach mapped', () => {
+    const bundle = makeGenericBundle({
+      specificityScore: 0.2,
+      rankingScore: 0.70,
+      continuityScore: 0.50,
+      directStrength: 0.75,
+      directConfidence: 0.75,
+      secondStrength: 0.75,
+      secondConfidence: 0.75,
+      evidenceRefs: ['E1'],  // only 1 ref
+    });
+    const validation = validateImpactHypotheses(bundle);
+    const secondOrder = validation.hypotheses.find((h) => h.order === 'second_order');
+    assert.ok(secondOrder, 'must have a second_order hypothesis');
+    assert.notEqual(secondOrder.validationStatus, 'mapped',
+      `second_order with 1 ref should NOT be mapped but got ${secondOrder.validationStatus} (score=${secondOrder.validationScore})`);
+  });
+
+  it('T3: mapped second_order with only trace_only parent is downgraded to trace_only', () => {
+    // Direct: low specificityScore (0.2), low rankingScore (0.4), low continuityScore (0.1),
+    // low strength/confidence (0.30/0.30), and only 1 evidence ref (evidenceSupport=0).
+    // baseScore = 0.4*0.12 + 0.30*0.16 + 0.30*0.14 + 0 + 0.12 + 0.10 + 0 + 0.2*0.08 + 0.1*0.05
+    //           = 0.048 + 0.048 + 0.042 + 0 + 0.12 + 0.10 + 0 + 0.016 + 0.005 = 0.379 < 0.58 → trace_only
+    // Second_order: same low candidate salience but high strength/confidence (0.95/0.92), 2 refs.
+    // baseScore = 0.4*0.12 + 0.95*0.16 + 0.92*0.14 + 1 + 0.12 + 0.10 + 0 + 0.2*0.08 + 0.1*0.05
+    //           = 0.048 + 0.152 + 0.129 + 0.140 + 0.12 + 0.10 + 0 + 0.016 + 0.005 = 0.710
+    // validationScore = 0.710 * 0.88 = 0.625 >= 0.58 → would normally be mapped
+    // But parent direct is trace_only → invariant downgrades second_order to trace_only.
+    const bundle = makeGenericBundle({
+      specificityScore: 0.2,
+      rankingScore: 0.40,
+      continuityScore: 0.10,
+      directStrength: 0.30,
+      directConfidence: 0.30,
+      directEvidenceRefs: ['E1'],   // 1 ref → evidenceSupport=0 → direct trace_only
+      secondStrength: 0.95,
+      secondConfidence: 0.92,
+      secondEvidenceRefs: ['E1', 'E2'],  // 2 refs → evidenceSupport=1 → second_order would be mapped
+    });
+    const validation = validateImpactHypotheses(bundle);
+    const directHyp = validation.hypotheses.find((h) => h.order === 'direct');
+    const secondOrder = validation.hypotheses.find((h) => h.order === 'second_order');
+    assert.ok(directHyp, 'must have a direct hypothesis');
+    assert.ok(secondOrder, 'must have a second_order hypothesis');
+    assert.notEqual(directHyp.validationStatus, 'mapped',
+      `direct should be trace_only due to 1 ref + low inputs, got ${directHyp.validationStatus} (score=${directHyp.validationScore})`);
+    assert.notEqual(secondOrder.validationStatus, 'mapped',
+      `second_order should be downgraded to trace_only when parent direct is not mapped, got ${secondOrder.validationStatus} (score=${secondOrder.validationScore})`);
+  });
+
+  it('T4: expanded path is generated when both direct and second_order are mapped', () => {
+    // Use the Hormuz fixture (high quality) to confirm path builds under new thresholds.
+    // Previously this was the ONLY scenario that worked; now generic candidates should also work (T1).
+    const bundle = makeGenericBundle({
+      specificityScore: 0.5,
+      rankingScore: 0.80,
+      continuityScore: 0.80,
+      directStrength: 0.85,
+      directConfidence: 0.85,
+      secondStrength: 0.82,
+      secondConfidence: 0.80,
+      evidenceRefs: ['E1', 'E2'],
+    });
+    const validation = validateImpactHypotheses(bundle);
+    const packet = bundle.candidatePackets[0];
+    const paths = buildImpactPathsForCandidate(packet, validation);
+    const expanded = paths.filter((p) => p.type === 'expanded');
+    assert.ok(expanded.length > 0, `expected at least 1 expanded path but got ${expanded.length}`);
+    assert.ok(expanded[0].pathScore >= 0.50,
+      `pathScore ${expanded[0].pathScore} must be >= 0.50`);
+  });
+
+  it('T5: scoringBreakdown in debug artifact includes ALL hypotheses with scoring factors', () => {
+    const bundle = makeGenericBundle({
+      specificityScore: 0.5,
+      rankingScore: 0.80,
+      continuityScore: 0.70,
+      directStrength: 0.85,
+      directConfidence: 0.85,
+      secondStrength: 0.82,
+      secondConfidence: 0.80,
+      evidenceRefs: ['E1', 'E2'],
+    });
+    const rawValidation = validateImpactHypotheses(bundle);
+
+    // Inject a structurally rejected hypothesis to ensure scoringBreakdown covers all statuses
+    const invalidHyp = {
+      variableKey: 'route_disruption',
+      channel: 'sovereign_stress',   // invalid: sovereign_stress not allowed for route_disruption
+      targetBucket: 'sovereign_risk',
+      region: 'Northern Europe',
+      macroRegion: 'EMEA',
+      countries: [],
+      assetsOrSectors: [],
+      commodity: '',
+      dependsOnKey: '',
+      strength: 0.7,
+      confidence: 0.7,
+      analogTag: '',
+      summary: 'Invalid combination.',
+      evidenceRefs: ['E1', 'E2'],
+      candidateIndex: 0,
+      candidateStateId: 'state-generic',
+      candidateStateLabel: 'Baltic Sea shipping pressure state',
+      order: 'direct',
+      rejectionReason: 'unsupported_variable_channel',
+      validationScore: 0,
+      validationStatus: 'rejected',
+      candidateSalience: 0,
+      specificitySupport: 0,
+      evidenceSupport: 0,
+      continuitySupport: 0,
+    };
+    const enrichedValidation = {
+      ...rawValidation,
+      hypotheses: [...rawValidation.hypotheses, invalidHyp],
+    };
+
+    const artifacts = buildForecastTraceArtifacts({
+      generatedAt: Date.parse('2026-03-24T12:00:00Z'),
+      predictions: [],
+      impactExpansionBundle: bundle,
+      impactExpansionCandidates: bundle.candidatePackets,
+      deepPathEvaluation: {
+        status: 'completed_no_material_change',
+        selectedPaths: [],
+        rejectedPaths: [],
+        impactExpansionBundle: bundle,
+        deepWorldState: null,
+        validation: enrichedValidation,
+      },
+    }, { runId: 'test-scoring-breakdown' });
+
+    const hv = artifacts.impactExpansionDebug?.hypothesisValidation;
+    assert.ok(hv, 'hypothesisValidation must be present');
+    assert.ok(Array.isArray(hv.scoringBreakdown), 'scoringBreakdown must be an array');
+    assert.ok(hv.scoringBreakdown.length === enrichedValidation.hypotheses.length,
+      `scoringBreakdown length ${hv.scoringBreakdown.length} must equal total hypothesis count ${enrichedValidation.hypotheses.length}`);
+    for (const entry of hv.scoringBreakdown) {
+      assert.ok(typeof entry.validationScore === 'number', 'entry must have validationScore');
+      assert.ok(typeof entry.validationStatus === 'string', 'entry must have validationStatus');
+      assert.ok(typeof entry.candidateSalience === 'number', 'entry must have candidateSalience');
+      assert.ok(typeof entry.specificitySupport === 'number', 'entry must have specificitySupport');
+      assert.ok(typeof entry.evidenceSupport === 'number', 'entry must have evidenceSupport');
+    }
+  });
+
+  it('T6: gateDetails in debug artifact records active thresholds', () => {
+    const bundle = makeGenericBundle({});
+    const validation = validateImpactHypotheses(bundle);
+
+    const artifacts = buildForecastTraceArtifacts({
+      generatedAt: Date.parse('2026-03-24T12:00:00Z'),
+      predictions: [],
+      impactExpansionBundle: bundle,
+      impactExpansionCandidates: bundle.candidatePackets,
+      deepPathEvaluation: {
+        status: 'completed_no_material_change',
+        selectedPaths: [],
+        rejectedPaths: [],
+        impactExpansionBundle: bundle,
+        deepWorldState: null,
+        validation,
+      },
+    }, { runId: 'test-gate-details' });
+
+    const gd = artifacts.impactExpansionDebug?.gateDetails;
+    assert.ok(gd, 'gateDetails must be present');
+    assert.equal(gd.secondOrderMappedFloor, 0.58);
+    assert.equal(gd.secondOrderMultiplier, 0.88);
+    assert.equal(gd.pathScoreThreshold, 0.50);
+    assert.equal(gd.acceptanceThreshold, 0.60);
+  });
+
+  it('T7: prompt v3 contains all required guidance strings', () => {
+    const prompt = buildImpactExpansionSystemPrompt();
+    assert.ok(prompt.includes('at least 2 evidence keys'),
+      'prompt must mention 2-evidence requirement');
+    assert.ok(prompt.includes('MUST be the exact variableKey string'),
+      'prompt must have dependsOnKey exactness rule');
+    assert.ok(prompt.includes('strength 0.82-0.95'),
+      'prompt must include confidence calibration guidance');
+    assert.ok(prompt.includes('direct+second_order pair is the core unit'),
+      'prompt must describe pair structure');
+  });
+
+  it('T8: new chokepoints are detected by extractImpactRouteFacilityKey', () => {
+    assert.equal(extractImpactRouteFacilityKey(['Baltic Sea shipping disruption']), 'Baltic Sea');
+    assert.equal(extractImpactRouteFacilityKey(['Danish Straits closure impacts Scandinavian trade']), 'Danish Straits');
+    assert.equal(extractImpactRouteFacilityKey(['Strait of Gibraltar blockade scenario']), 'Strait of Gibraltar');
+    assert.equal(extractImpactRouteFacilityKey(['Panama Canal drought cuts transit']), 'Panama Canal');
+    assert.equal(extractImpactRouteFacilityKey(['Lombok Strait alternative route pressure']), 'Lombok Strait');
+    assert.equal(extractImpactRouteFacilityKey(['Cape of Good Hope rerouting surge']), 'Cape of Good Hope');
+    // Original chokepoints must still work
+    assert.equal(extractImpactRouteFacilityKey(['Strait of Hormuz tanker attack']), 'Strait of Hormuz');
+    assert.equal(extractImpactRouteFacilityKey(['Suez Canal blockage ongoing']), 'Suez Canal');
   });
 });

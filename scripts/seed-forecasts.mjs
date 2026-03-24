@@ -120,6 +120,12 @@ const CHOKEPOINT_MARKET_REGIONS = {
   'Strait of Malacca': 'South China Sea',
   'Kerch Strait': 'Black Sea',
   'Bosporus Strait': 'Black Sea',
+  'Baltic Sea': 'Northern Europe',
+  'Danish Straits': 'Northern Europe',
+  'Strait of Gibraltar': 'Mediterranean',
+  'Panama Canal': 'Central America',
+  'Lombok Strait': 'Southeast Asia',
+  'Cape of Good Hope': 'Southern Africa',
 };
 
 const MARKET_INPUT_KEYS = {
@@ -371,7 +377,7 @@ const FORECAST_DOMAINS = [
   'infrastructure',
 ];
 const MARKET_CLUSTER_DOMAINS = new Set(['market', 'supply_chain']);
-const IMPACT_EXPANSION_REGISTRY_VERSION = 'v1';
+const IMPACT_EXPANSION_REGISTRY_VERSION = 'v3';
 const IMPACT_EXPANSION_MAX_CANDIDATES = 6;
 const IMPACT_EXPANSION_CACHE_TTL_SECONDS = 30 * 60;
 const IMPACT_EXPANSION_ORDERS = ['direct', 'second_order', 'third_order'];
@@ -2228,6 +2234,24 @@ const CRITICAL_SIGNAL_LLM_MAX_ITEMS = 8;
 const CRITICAL_SIGNAL_CACHE_TTL_SECONDS = 20 * 60;
 const IMPACT_EXPANSION_SOURCE_TYPE = 'impact_expansion';
 
+function buildRegistryConstraintTable() {
+  // Format assumes all registry keys, channels, and bucket names are snake_case identifiers
+  // (no brackets, commas, or equals signs). If that changes, add escaping here.
+  const varLines = Object.entries(IMPACT_VARIABLE_REGISTRY).map(([key, spec]) => {
+    const channels = (spec.allowedChannels || []).join(',');
+    const buckets = (spec.targetBuckets || []).join(',');
+    const orders = (spec.orderAllowed || []).join(',');
+    return `${key}: channels=[${channels}] buckets=[${buckets}] orders=[${orders}]`;
+  });
+  const bucketLines = Object.entries(MARKET_BUCKET_ALLOWED_CHANNELS).map(([bucket, channels]) => {
+    return `${bucket}: [${channels.join(',')}]`;
+  });
+  return `Variable constraints (each row: variableKey → allowed channels, targetBuckets, orderAllowed):\n${varLines.join('\n')}\n\nBucket-channel constraints (each targetBucket only accepts these channels):\n${bucketLines.join('\n')}`;
+}
+
+// Derived from module-level constants — computed once and reused across all prompt calls.
+const IMPACT_EXPANSION_REGISTRY_CONSTRAINT_TABLE = buildRegistryConstraintTable();
+
 function buildImpactExpansionSystemPrompt() {
   return `You are a consequence-expansion engine for a state-based geopolitical and market simulation model.
 
@@ -2262,18 +2286,22 @@ ImpactHypothesis:
   "evidenceRefs": string[]
 }
 
+${IMPACT_EXPANSION_REGISTRY_CONSTRAINT_TABLE}
+
 Rules:
-- Use ONLY these variableKey values: ${IMPACT_VARIABLE_KEYS.join(', ')}.
-- Use ONLY these channel values: ${uniqueSortedStrings(IMPACT_VARIABLE_KEYS.flatMap((key) => IMPACT_VARIABLE_CHANNELS[key] || [])).join(', ')}.
-- Use ONLY these targetBucket values: ${[...IMPACT_EXPANSION_TARGET_BUCKETS].join(', ')}.
+- Each hypothesis must use a (variableKey, channel, targetBucket) triple that is VALID per the constraint table above. Both conditions must hold: (1) the channel must be in the variableKey's channels list, and (2) the targetBucket must accept that channel per the bucket-channel constraints.
+- Causal ordering: variables with orders=[direct,second_order] are root causes (shipping/energy disruptions). Variables with orders=[second_order,third_order] are downstream consequences. Example chain: route_disruption(direct,freight) → inflation_pass_through(second_order,rates_inflation) → sovereign_funding_stress(third_order,sovereign_risk).
+- direct hypotheses go in directHypotheses. second_order in secondOrderHypotheses. third_order in thirdOrderHypotheses. Match the orderAllowed for each variableKey.
+- dependsOnKey: For second_order, MUST be the exact variableKey string of one of your direct hypotheses for this same candidate (e.g., if your direct uses variableKey "route_disruption", your second_order dependsOnKey MUST be "route_disruption"). For third_order, set to the variableKey of a second_order in this response. For direct, leave as empty string "".
+- If you cannot construct a second_order that depends on an existing direct hypothesis in your response, omit the second_order entirely rather than leaving dependsOnKey empty or guessing.
+- Structure: For each candidate, generate at minimum: (1) one direct hypothesis with the strongest channel, then (2) one second_order consequence with dependsOnKey set to the direct's variableKey. This direct+second_order pair is the core unit. Additional hypotheses are optional and only if well-evidenced.
 - Use ONLY these analogTag values: ${IMPACT_EXPANSION_ANALOG_TAGS.join(', ')}.
 - Cite evidence ONLY with exact E# keys from the candidate packet.
+- Each hypothesis MUST reference at least 2 evidence keys. A hypothesis with fewer than 2 references will receive no evidence credit in scoring and cannot drive expanded paths.
 - Never invent events, routes, facilities, commodities, or countries beyond the candidate packet.
-- direct hypotheses are immediate consequences.
-- second_order hypotheses must depend on a direct hypothesis via dependsOnKey.
-- third_order hypotheses must depend on a second_order hypothesis via dependsOnKey.
 - Prefer omission over weak guesses.
 - Keep strength and confidence between 0 and 1.
+- Score calibration: For well-evidenced direct disruptions with named routes or commodities, assign strength 0.82-0.95 and confidence 0.80-0.92. For second_order consequences with clear causal link, assign strength 0.72-0.85 and confidence 0.70-0.82. For speculative or weakly-evidenced connections, assign 0.45-0.65. Do NOT assign 0.70 uniformly — differentiate based on evidence quality.
 - Keep summaries concise and evidence-grounded.
 - Return no prose outside the JSON object.
 - Do NOT wrap the JSON in markdown fences.
@@ -3070,6 +3098,14 @@ function tryParseImpactExpansionCandidate(candidate) {
     const parsed = JSON.parse(candidate);
     if (Array.isArray(parsed?.candidates)) return { candidates: parsed.candidates, stage: 'object_candidates' };
     if (Array.isArray(parsed)) return { candidates: parsed, stage: 'direct_array' };
+  } catch {
+    // continue
+  }
+  // Gemini sometimes returns '"candidates": [...]' without outer braces (especially when
+  // wrapping in a markdown code fence). Try wrapping in {} to recover.
+  try {
+    const wrapped = JSON.parse(`{${candidate}}`);
+    if (Array.isArray(wrapped?.candidates)) return { candidates: wrapped.candidates, stage: 'wrapped_candidates' };
   } catch {
     // continue
   }
@@ -4408,6 +4444,42 @@ function buildImpactExpansionDebugPayload(data = {}, worldState = null, runId = 
   const bundle = data?.impactExpansionBundle || null;
   const candidates = data?.impactExpansionCandidates || bundle?.candidatePackets || [];
   if (!bundle && (!Array.isArray(candidates) || candidates.length === 0)) return null;
+  const rawValidation = data?.deepPathEvaluation?.validation || null;
+  const hypothesisValidation = rawValidation ? {
+    totalHypotheses: (rawValidation.hypotheses || []).length,
+    validatedCount: (rawValidation.validated || []).length,
+    mappedCount: (rawValidation.mapped || []).length,
+    rejectionReasonCounts: rawValidation.rejectionReasonCounts || {},
+    // rejectedHypotheses kept for backwards compatibility — only structurally-rejected items.
+    rejectedHypotheses: (rawValidation.hypotheses || [])
+      .filter((item) => item.rejectionReason)
+      .map((item) => ({
+        candidateIndex: item.candidateIndex,
+        candidateStateId: item.candidateStateId,
+        variableKey: item.variableKey,
+        channel: item.channel,
+        targetBucket: item.targetBucket,
+        order: item.order,
+        rejectionReason: item.rejectionReason,
+      })),
+    // scoringBreakdown includes ALL hypotheses (mapped, trace_only, rejected) with their input
+    // scoring factors. Use this for iterative prompt/threshold calibration.
+    scoringBreakdown: (rawValidation.hypotheses || []).map((item) => ({
+      candidateIndex: item.candidateIndex,
+      candidateStateId: item.candidateStateId,
+      variableKey: item.variableKey,
+      channel: item.channel,
+      targetBucket: item.targetBucket,
+      order: item.order,
+      validationScore: item.validationScore,
+      validationStatus: item.validationStatus,
+      rejectionReason: item.rejectionReason || '',
+      candidateSalience: item.candidateSalience,
+      specificitySupport: item.specificitySupport,
+      continuitySupport: item.continuitySupport,
+      evidenceSupport: item.evidenceSupport,
+    })),
+  } : null;
   return {
     runId,
     generatedAt: data?.generatedAt || Date.now(),
@@ -4417,6 +4489,14 @@ function buildImpactExpansionDebugPayload(data = {}, worldState = null, runId = 
     impactExpansionBundle: bundle,
     candidatePackets: candidates,
     impactExpansionSummary: worldState?.impactExpansion || null,
+    hypothesisValidation,
+    // gateDetails records the active thresholds at time of execution for self-documenting artifacts.
+    gateDetails: {
+      secondOrderMappedFloor: 0.58,
+      secondOrderMultiplier: 0.88,
+      pathScoreThreshold: 0.50,
+      acceptanceThreshold: 0.60,
+    },
     selectedPaths: (data?.deepPathEvaluation?.selectedPaths || []).map(summarizeImpactPathScore).filter(Boolean),
     rejectedPaths: (data?.deepPathEvaluation?.rejectedPaths || []).map(summarizeImpactPathScore).filter(Boolean),
   };
@@ -5825,10 +5905,22 @@ function buildCanonicalStateUnits(situationClusters = [], situationFamilies = []
     }
   }
 
+  const seenLabels = new Set();
   return units
     .map(finalizeStateUnit)
     .sort((a, b) => b.forecastCount - a.forecastCount || b.avgProbability - a.avgProbability || a.label.localeCompare(b.label))
-    .filter(((seen) => (unit) => !seen.has(unit.label) && seen.add(unit.label))(new Set()));
+    .map((unit) => {
+      if (!seenLabels.has(unit.label)) {
+        seenLabels.add(unit.label);
+        return unit;
+      }
+      // Two distinct units share a label (same leadRegion + stateKind but too semantically
+      // different to merge). Disambiguate rather than drop so no states or deep paths are lost.
+      const domainLabel = unit.dominantDomain ? `${unit.label} (${unit.dominantDomain})` : null;
+      const label = (domainLabel && !seenLabels.has(domainLabel)) ? domainLabel : `${unit.label} (${unit.id.slice(-4)})`;
+      seenLabels.add(label);
+      return { ...unit, label };
+    });
 }
 
 function buildSituationContinuitySummary(currentSituationClusters, priorWorldState = null) {
@@ -10114,7 +10206,7 @@ function getImpactValidationFloors(order = 'direct') {
     return { internal: 0.66, mapped: 0.74, multiplier: 0.72 };
   }
   if (order === 'second_order') {
-    return { internal: 0.58, mapped: 0.66, multiplier: 0.85 };
+    return { internal: 0.50, mapped: 0.58, multiplier: 0.88 };
   }
   return { internal: 0.5, mapped: 0.58, multiplier: 1 };
 }
@@ -10207,7 +10299,9 @@ function validateImpactHypotheses(bundle = null) {
         ? clampUnitInterval(IMPACT_ANALOG_PRIORS[hypothesis.analogTag].confidenceMultiplier - 1.0)
         : 0;
       const candidateSalience = clampUnitInterval(Number(candidate.rankingScore || 0));
-      const evidenceSupport = clampUnitInterval((hypothesis.evidenceRefs || []).length / 2);
+      // Two or more evidence references are required for full evidence credit.
+      // A hypothesis with only one reference receives no evidence contribution and cannot reach mapped.
+      const evidenceSupport = (hypothesis.evidenceRefs || []).length >= 2 ? 1 : 0;
       const specificitySupport = clampUnitInterval(Number(candidate.specificityScore || 0));
       const continuitySupport = clampUnitInterval(Number(candidate.continuityScore || 0));
       const contradictionPenalty = clampUnitInterval(Number(candidate.marketContext?.contradictionScore || 0));
@@ -10252,6 +10346,30 @@ function validateImpactHypotheses(bundle = null) {
         if (hypothesis.order === 'direct') validatedDirectKeys.add(hypothesis.variableKey);
         if (hypothesis.order === 'second_order') validatedSecondOrderKeys.add(hypothesis.variableKey);
       }
+    }
+  }
+
+  // Invariant: a mapped second_order must have a mapped direct parent; a mapped third_order must
+  // have a mapped second_order parent. validatedDirectKeys/validatedSecondOrderKeys above include
+  // trace_only items, so a second_order could pass the missing_dependency check against a trace_only
+  // direct yet still fail to build a path (buildImpactPathsForCandidate only uses validation.mapped).
+  // Downgrade such orphaned mapped items to trace_only so the debug artifact reflects reality.
+  const mappedDirectKeySet = new Set(
+    results.filter((r) => r.order === 'direct' && r.validationStatus === 'mapped').map((r) => r.variableKey),
+  );
+  for (const item of results) {
+    if (item.order === 'second_order' && item.validationStatus === 'mapped'
+        && item.dependsOnKey && !mappedDirectKeySet.has(item.dependsOnKey)) {
+      item.validationStatus = 'trace_only';
+    }
+  }
+  const mappedSecondKeySet = new Set(
+    results.filter((r) => r.order === 'second_order' && r.validationStatus === 'mapped').map((r) => r.variableKey),
+  );
+  for (const item of results) {
+    if (item.order === 'third_order' && item.validationStatus === 'mapped'
+        && item.dependsOnKey && !mappedSecondKeySet.has(item.dependsOnKey)) {
+      item.validationStatus = 'trace_only';
     }
   }
 
@@ -10649,7 +10767,7 @@ function buildImpactPathsForCandidate(candidatePacket, validation = null) {
     if (thirdMatches.length === 0) {
       const pathScore = buildImpactPathScore(candidatePacket, direct, second, null);
       const key = `${direct.variableKey}:${second.variableKey}:`;
-      if (!seen.has(key) && pathScore >= 0.66) {
+      if (!seen.has(key) && pathScore >= 0.50) {
         expanded.push({
           pathId: buildImpactPathId(candidatePacket, direct, second, null),
           candidateStateId: candidatePacket.candidateStateId,
@@ -10669,7 +10787,7 @@ function buildImpactPathsForCandidate(candidatePacket, validation = null) {
     for (const third of thirdMatches) {
       const pathScore = buildImpactPathScore(candidatePacket, direct, second, third);
       const key = `${direct.variableKey}:${second.variableKey}:${third.variableKey}`;
-      if (seen.has(key) || pathScore < 0.66) continue;
+      if (seen.has(key) || pathScore < 0.50) continue;
       expanded.push({
         pathId: buildImpactPathId(candidatePacket, direct, second, third),
         candidateStateId: candidatePacket.candidateStateId,
@@ -10967,6 +11085,7 @@ async function evaluateDeepForecastPaths(snapshot, priorWorldState, candidatePac
       rejectedPaths: [],
       impactExpansionBundle: bundle,
       deepWorldState: null,
+      validation,
     };
   }
 
@@ -11016,6 +11135,7 @@ async function evaluateDeepForecastPaths(snapshot, priorWorldState, candidatePac
       rejectedPaths,
       impactExpansionBundle: bundle,
       deepWorldState: null,
+      validation,
     };
   }
 
@@ -11040,6 +11160,7 @@ async function evaluateDeepForecastPaths(snapshot, priorWorldState, candidatePac
     rejectedPaths,
     impactExpansionBundle: acceptedBundle,
     deepWorldState,
+    validation,
   };
 }
 
@@ -14405,6 +14526,8 @@ export {
   loadEntityGraph,
   discoverGraphCascades,
   MARITIME_REGIONS,
+  IMPACT_VARIABLE_REGISTRY,
+  MARKET_BUCKET_ALLOWED_CHANNELS,
   MARKET_TAG_TO_REGION,
   resolveCountryName,
   loadCountryCodes,
@@ -14418,6 +14541,11 @@ export {
   extractCriticalNewsSignals,
   selectImpactExpansionCandidates,
   selectDeepForecastCandidates,
+  buildRegistryConstraintTable,
+  buildImpactExpansionSystemPrompt,
+  extractImpactExpansionPayload,
+  extractImpactRouteFacilityKey,
+  extractImpactCommodityKey,
   buildImpactExpansionCandidateHash,
   recoverImpactExpansionDrafts,
   extractImpactExpansionBundle,
@@ -14427,6 +14555,7 @@ export {
   computeDeepMarketCoherenceScore,
   computeDeepPathAcceptanceScore,
   evaluateDeepForecastPaths,
+  buildCanonicalStateUnits,
   findDuplicateStateUnitLabels,
   validateDeepForecastSnapshot,
   validateImpactHypotheses,
