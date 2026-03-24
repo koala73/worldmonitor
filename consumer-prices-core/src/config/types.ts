@@ -53,6 +53,7 @@ export const SearchConfigSchema = z.object({
   numResults: z.number().default(3),
   queryTemplate: z.string().optional(),
   urlPathContains: z.string().optional(),
+  inStockFromPrice: z.boolean().default(false),
 });
 
 export const RetailerConfigSchema = z.object({

@@ -281,7 +281,7 @@
     "gulfIndices": "걸프 지수",
     "gulfCurrencies": "걸프 통화",
     "gulfOil": "걸프 석유",
-    "bigmac": "Updated Big Mac Index"
+    "bigmac": "Real Big Mac Index"
   },
   "commands": {
     "prefixes": {
@@ -750,6 +750,8 @@
       "vsPreviousWeek": "전주 대비",
       "in": "지역",
       "centralBanks": "중앙은행",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS 정보 일시적으로 사용 불가 — 재시도 예정",
       "policyRate": "정책 금리",
       "exchangeRate": "환율",
@@ -1531,7 +1533,7 @@
       "noEventsIn7Days": "7일간 사건 없음"
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>GDELT 인텔리전스</strong> 실시간 글로벌 뉴스 모니터링:<ul><li>선별된 주제 카테고리 (분쟁, 사이버 등)</li><li>100개 이상 언어의 기사를 번역</li><li>15분마다 업데이트</li></ul>출처: GDELT Project (gdeltproject.org)"
+      "infoTooltip": "<strong>뉴스 인텔리전스</strong> 실시간 글로벌 뉴스 모니터링:<ul><li>선별된 주제 카테고리 (분쟁, 사이버 등)</li><li>100개 이상 언어의 기사를 번역</li><li>15분마다 업데이트</li><li>14-day media tone &amp; volume trend per topic</li></ul>출처: GDELT Project (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "모니터링 중인 Telegram OSINT 채널의 실시간 신호",
@@ -1732,7 +1734,7 @@
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
     },
     "bigmac": {
-      "infoTooltip": "<strong>Updated Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
     },
     "defiTokens": {
       "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."

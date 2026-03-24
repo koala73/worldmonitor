@@ -14,6 +14,8 @@ import { listOrefAlerts } from './list-oref-alerts';
 import { listTelegramFeed } from './list-telegram-feed';
 import { getCompanyEnrichment } from './get-company-enrichment';
 import { listCompanySignals } from './list-company-signals';
+import { getGdeltTopicTimeline } from './get-gdelt-topic-timeline';
+import { listMarketImplications } from './list-market-implications';
 
 export const intelligenceHandler: IntelligenceServiceHandler = {
   getRiskScores,
@@ -30,4 +32,6 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   listTelegramFeed,
   getCompanyEnrichment,
   listCompanySignals,
+  getGdeltTopicTimeline,
+  listMarketImplications,
 };

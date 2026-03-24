@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package worldmonitor.trade.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ListComtradeFlowsRequest filters strategic commodity trade flows.
+message ListComtradeFlowsRequest {
+  // UN Comtrade reporter code (e.g. "842" = US, "156" = China). Empty returns all reporters.
+  string reporter_code = 1 [(sebuf.http.query) = { name: "reporter_code" }];
+  // HS commodity code (e.g. "2709" = crude oil). Empty returns all commodities.
+  string cmd_code = 2 [(sebuf.http.query) = { name: "cmd_code" }];
+  // If true, only return flows with a year-over-year change exceeding 30%.
+  bool anomalies_only = 3 [(sebuf.http.query) = { name: "anomalies_only" }];
+}
+
+// ComtradeFlowRecord is a single bilateral commodity flow record.
+message ComtradeFlowRecord {
+  // UN Comtrade reporter code.
+  string reporter_code = 1;
+  // Reporter country name.
+  string reporter_name = 2;
+  // Partner country code ("000" = world total).
+  string partner_code = 3;
+  // Partner country name.
+  string partner_name = 4;
+  // HS commodity code.
+  string cmd_code = 5;
+  // Commodity description.
+  string cmd_desc = 6;
+  // Reporting year.
+  int32 year = 7;
+  // Trade value in USD.
+  double trade_value_usd = 8;
+  // Net weight in kg.
+  double net_weight_kg = 9;
+  // Year-over-year change (ratio, e.g. 0.35 = +35%).
+  double yoy_change = 10;
+  // True if the YoY change exceeds the anomaly threshold (30%).
+  bool is_anomaly = 11;
+}
+
+// ListComtradeFlowsResponse contains strategic commodity trade flows.
+message ListComtradeFlowsResponse {
+  // Trade flow records.
+  repeated ComtradeFlowRecord flows = 1;
+  // ISO 8601 timestamp when data was seeded.
+  string fetched_at = 2;
+  // True if seeded data is missing or stale.
+  bool upstream_unavailable = 3;
+}

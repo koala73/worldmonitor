@@ -553,7 +553,7 @@ export class InsightsPanel extends Panel {
         badges.push('<span class="insight-badge alert">⚠ ALERT</span>');
       }
 
-      const VALID_THREAT_LEVELS = ['critical', 'high', 'elevated', 'moderate'];
+      const VALID_THREAT_LEVELS = ['critical', 'high', 'elevated', 'moderate', 'medium', 'low', 'info'];
       if (story.threatLevel === 'critical' || story.threatLevel === 'high') {
         const safeThreat = VALID_THREAT_LEVELS.includes(story.threatLevel) ? story.threatLevel : 'moderate';
         badges.push(`<span class="insight-badge velocity ${safeThreat}">${escapeHtml(story.category)}</span>`);

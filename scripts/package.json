@@ -1,6 +1,6 @@
 {
   "name": "worldmonitor-railway-relay",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Railway relay: AIS/OpenSky + RSS proxy + Telegram OSINT poller",
   "main": "ais-relay.cjs",
   "scripts": {
@@ -9,11 +9,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.79.0",
+    "xlsx": "^0.18.5",
     "@aws-sdk/client-s3": "^3.1009.0",
     "sax": "^1.6.0",
     "h3-js": "^4.2.1",
     "telegram": "^2.22.2",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "undici": "^7.0.0"
   },
   "engines": {
     "node": ">=20"

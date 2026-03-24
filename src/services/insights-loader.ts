@@ -4,12 +4,14 @@ export interface ServerInsightStory {
   primaryTitle: string;
   primarySource: string;
   primaryLink: string;
+  pubDate: string;
   sourceCount: number;
   importanceScore: number;
   velocity: { level: string; sourcesPerHour: number };
   isAlert: boolean;
   category: string;
   threatLevel: string;
+  countryCode: string | null;
 }
 
 export interface ServerInsights {

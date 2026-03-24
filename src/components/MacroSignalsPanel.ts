@@ -145,9 +145,13 @@ export class MacroSignalsPanel extends Panel {
       this.error = null;
       this.loading = false;
       this.renderPanel();
+      void this.refreshFromRpc();
       return true;
     }
+    return this.refreshFromRpc();
+  }
 
+  private async refreshFromRpc(): Promise<boolean> {
     try {
       const res = await economicClient.getMacroSignals({});
       if (!this.element?.isConnected) return false;
@@ -156,12 +160,15 @@ export class MacroSignalsPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return false;
       if (!this.element?.isConnected) return false;
-      console.warn('[MacroSignals] Fetch error:', err);
-      this.error = t('common.noDataShort');
+      if (!this.data) {
+        console.warn('[MacroSignals] Fetch error:', err);
+        this.error = t('common.noDataShort');
+      } else {
+        return false;
+      }
     }
     this.loading = false;
     this.renderPanel();
-
     const ts = this.data?.timestamp ?? '';
     const changed = ts !== this.lastTimestamp;
     this.lastTimestamp = ts;

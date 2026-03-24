@@ -49,7 +49,7 @@ async function getBasketRows(basketSlug: string, marketCode: string): Promise<Ba
             po.observed_at
      FROM baskets b
      JOIN basket_items bi ON bi.basket_id = b.id AND bi.active = true
-     JOIN product_matches pm ON pm.basket_item_id = bi.id AND pm.match_status IN ('auto','approved')
+     JOIN product_matches pm ON pm.basket_item_id = bi.id AND pm.match_status IN ('auto','approved') AND pm.pin_disabled_at IS NULL
      JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
      JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
      JOIN LATERAL (
@@ -81,6 +81,8 @@ async function getBaselinePrices(basketItemIds: string[], baseDate: string): Pro
      FROM price_observations po
      JOIN product_matches pm ON pm.retailer_product_id = po.retailer_product_id
      WHERE pm.basket_item_id = ANY($1)
+       AND pm.match_status IN ('auto', 'approved')
+       AND pm.pin_disabled_at IS NULL
        AND po.in_stock = true
        AND DATE_TRUNC('day', po.observed_at) = $2::date
      GROUP BY pm.basket_item_id`,
@@ -228,18 +230,23 @@ export async function aggregateBasket(basketSlug: string, marketCode: string) {
     const existing = itemMap.get(r.basketItemId);
     if (existing === undefined || r.price < existing) itemMap.set(r.basketItemId, r.price);
   }
+  const MIN_SPREAD_ITEMS = 4;
   const retailerSlugs = [...byRetailerItem.keys()];
   if (retailerSlugs.length >= 2) {
     // Find basket items covered by every retailer
     const commonItemIds = [...byRetailerItem.get(retailerSlugs[0])!.keys()].filter((itemId) =>
       retailerSlugs.every((slug) => byRetailerItem.get(slug)!.has(itemId)),
     );
-    if (commonItemIds.length > 0) {
+    if (commonItemIds.length >= MIN_SPREAD_ITEMS) {
       const retailerTotals = retailerSlugs.map((slug) =>
         commonItemIds.reduce((sum, id) => sum + byRetailerItem.get(slug)!.get(id)!, 0),
       );
       const spreadPct = ((Math.max(...retailerTotals) - Math.min(...retailerTotals)) / Math.min(...retailerTotals)) * 100;
       await writeComputedIndex(basketId, null, null, 'retailer_spread_pct', Math.round(spreadPct * 10) / 10);
+    } else {
+      // Insufficient overlap — write explicit 0 to prevent stale noisy value persisting
+      await writeComputedIndex(basketId, null, null, 'retailer_spread_pct', 0);
+      logger.info(`${basketSlug}: spread suppressed (${commonItemIds.length}/${MIN_SPREAD_ITEMS} common items)`);
     }
   }
 

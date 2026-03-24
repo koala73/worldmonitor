@@ -382,7 +382,7 @@ export async function buildRetailerSpreadSnapshot(
               MAX(po.observed_at) AS last_observed_at
        FROM baskets b
        JOIN basket_items bi ON bi.basket_id = b.id AND bi.active = true
-       JOIN product_matches pm ON pm.basket_item_id = bi.id AND pm.match_status IN ('auto','approved')
+       JOIN product_matches pm ON pm.basket_item_id = bi.id AND pm.match_status IN ('auto','approved') AND pm.pin_disabled_at IS NULL
        JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
        JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
        JOIN LATERAL (
@@ -436,8 +436,10 @@ export async function buildRetailerSpreadSnapshot(
     }
   }
 
+  const MIN_SPREAD_ITEMS = 4;
+  const commonItemCount = retailers.length > 0 ? retailers[0].itemCount : 0;
   const spreadPct =
-    retailers.length >= 2
+    retailers.length >= 2 && commonItemCount >= MIN_SPREAD_ITEMS
       ? Math.round(
           ((retailers[retailers.length - 1].basketTotal - retailers[0].basketTotal) /
             retailers[0].basketTotal) *

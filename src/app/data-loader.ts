@@ -19,6 +19,10 @@ import {
   fetchCategoryFeeds,
   getFeedFailures,
   fetchMultipleStocks,
+  fetchCommodityQuotes,
+  fetchSectors,
+  warmCommodityCache,
+  warmSectorCache,
   fetchCrypto,
   fetchCryptoSectors,
   fetchDefiTokens,
@@ -55,11 +59,13 @@ import {
   fetchRecentAwards,
   fetchOilAnalytics,
   fetchBisData,
+  fetchBlsData,
   fetchCyberThreats,
   drainTrendingSignals,
   fetchTradeRestrictions,
   fetchTariffTrends,
   fetchTradeFlows,
+  fetchComtradeFlows,
   fetchTradeBarriers,
   fetchCustomsRevenue,
   fetchShippingRates,
@@ -114,7 +120,7 @@ import { t, getCurrentLanguage } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
 import { ingestHeadlines } from '@/services/trending-keywords';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
-import type { GetSectorSummaryResponse, ListMarketQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import {
@@ -165,6 +171,7 @@ import {
 import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
 import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
+import { fetchMarketImplications } from '@/services/market-implications';
 
 const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
   THREAT_LEVEL_UNSPECIFIED: 'info',
@@ -377,6 +384,8 @@ export class DataLoaderManager implements AppModule {
       if (shouldLoadAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens'])) {
         tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
       }
+      // TODO(payment-pr): isProUser() checks localStorage/cookie only — not server-validated.
+      // Replace with a server-verified entitlement check once the payment system is in place.
       if ((getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) && shouldLoad('stock-analysis')) {
         tasks.push({ name: 'stockAnalysis', task: runGuarded('stockAnalysis', () => this.loadStockAnalysis()) });
       }
@@ -394,6 +403,7 @@ export class DataLoaderManager implements AppModule {
         tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
         tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
         tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
+        tasks.push({ name: 'bls', task: runGuarded('bls', () => this.loadBlsData()) });
       }
       if (shouldLoad('energy-complex')) {
         tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
@@ -524,7 +534,10 @@ export class DataLoaderManager implements AppModule {
     this.updateSearchIndex();
 
     if (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) {
-      await this.loadDailyMarketBrief();
+      await Promise.allSettled([
+        this.loadDailyMarketBrief(),
+        this.loadMarketImplications(),
+      ]);
     }
 
     const bootstrapTemporal = consumeServerAnomalies();
@@ -1245,25 +1258,22 @@ export class DataLoaderManager implements AppModule {
       // Sector heatmap: always attempt loading regardless of market rate-limit status
       const hydratedSectors = getHydratedData('sectors') as GetSectorSummaryResponse | undefined;
       const heatmapPanel = this.ctx.panels['heatmap'] as HeatmapPanel | undefined;
+      const sectorNameMap = new Map(SECTORS.map((s) => [s.symbol, s.name]));
+      const toHeatmapItem = (s: { symbol: string; name: string; change: number }) => ({
+        symbol: s.symbol,
+        name: sectorNameMap.get(s.symbol) ?? s.name,
+        change: s.change,
+      });
       if (hydratedSectors?.sectors?.length) {
-        const mapped = hydratedSectors.sectors.map((s) => ({ name: s.name, change: s.change }));
-        heatmapPanel?.renderHeatmap(mapped);
-      } else if (!stocksResult.skipped) {
-        const sectorsResult = await fetchMultipleStocks(
-          SECTORS.map((s) => ({ ...s, display: s.name })),
-          {
-            onBatch: (partialSectors) => {
-              heatmapPanel?.renderHeatmap(
-                partialSectors.map((s) => ({ name: s.name, change: s.change }))
-              );
-            },
-          }
-        );
-        heatmapPanel?.renderHeatmap(
-          sectorsResult.data.map((s) => ({ name: s.name, change: s.change }))
-        );
+        warmSectorCache(hydratedSectors);
+        heatmapPanel?.renderHeatmap(hydratedSectors.sectors.map(toHeatmapItem));
       } else {
-        this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
+        const sectorsResp = await fetchSectors();
+        if (sectorsResp.sectors.length > 0) {
+          heatmapPanel?.renderHeatmap(sectorsResp.sectors.map(toHeatmapItem));
+        } else if (stocksResult.skipped) {
+          this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
+        }
       }
 
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
@@ -1275,12 +1285,15 @@ export class DataLoaderManager implements AppModule {
 
       if (commoditiesPanel || energyPanel) {
         // Hydrate commodities from bootstrap (same pattern as sectors/markets)
-        const hydratedCommodities = getHydratedData('commodityQuotes') as ListMarketQuotesResponse | undefined;
+        const hydratedCommodities = getHydratedData('commodityQuotes') as ListCommodityQuotesResponse | undefined;
         const skipFetch = stocksResult.rateLimited && stocksResult.data.length === 0;
         let metalsLoaded = skipFetch;
         let energyLoaded = skipFetch;
 
         if (!(metalsLoaded && energyLoaded) && hydratedCommodities?.quotes?.length) {
+          // Warm the circuit-breaker cache so SWR serves stale data if the
+          // first scheduled live call fails (bootstrap hydration bypasses the RPC).
+          warmCommodityCache(hydratedCommodities);
           const symbolMetaMap = new Map(COMMODITIES.map((s) => [s.symbol, s]));
           const data = hydratedCommodities.quotes.map((q) => ({
             symbol: q.symbol,
@@ -1303,14 +1316,13 @@ export class DataLoaderManager implements AppModule {
         }
 
         for (let attempt = 0; attempt < 1 && (!metalsLoaded || !energyLoaded); attempt++) {
-          const commoditiesResult = await fetchMultipleStocks(COMMODITIES, {
+          const commoditiesResult = await fetchCommodityQuotes(COMMODITIES, {
             onBatch: (partial) => {
               const commodityMapped = filterCommodityTape(partial).map(mapCommodity);
               const energyMapped = filterEnergyTape(partial);
               if (commoditiesPanel) commoditiesPanel.renderCommodities(commodityMapped);
               energyPanel?.updateTape(energyMapped);
             },
-            useCommodityBreaker: true,
           });
           const commodityMapped = filterCommodityTape(commoditiesResult.data).map(mapCommodity);
           const energyMapped = filterEnergyTape(commoditiesResult.data);
@@ -1413,6 +1425,28 @@ export class DataLoaderManager implements AppModule {
       this.callPanel('daily-market-brief', 'showError', 'Failed to build daily market brief. Retrying later.');
     } finally {
       this.ctx.inFlight.delete('dailyMarketBrief');
+    }
+  }
+
+  async loadMarketImplications(): Promise<void> {
+    if (!getSecretState('WORLDMONITOR_API_KEY').present && !isProUser()) return;
+    if (this.ctx.isDestroyed || this.ctx.inFlight.has('marketImplications')) return;
+    this.ctx.inFlight.add('marketImplications');
+    try {
+      const data = await fetchMarketImplications();
+      if (!data) {
+        this.callPanel('market-implications', 'showUnavailable');
+        return;
+      }
+      if (data.degraded || data.cards.length === 0) {
+        this.callPanel('market-implications', 'showUnavailable');
+        return;
+      }
+      this.callPanel('market-implications', 'renderImplications', data, 'live');
+    } catch {
+      this.callPanel('market-implications', 'showUnavailable');
+    } finally {
+      this.ctx.inFlight.delete('marketImplications');
     }
   }
 
@@ -2382,17 +2416,36 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  async loadBlsData(): Promise<void> {
+    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+    try {
+      const data = await fetchBlsData();
+      if (data.length > 0) {
+        economicPanel?.updateBls(data);
+        this.ctx.statusPanel?.updateApi('BLS-Series', { status: 'ok' });
+        dataFreshness.recordUpdate('bls', data.length);
+      } else {
+        this.ctx.statusPanel?.updateApi('BLS-Series', { status: 'error' });
+      }
+    } catch (e) {
+      console.error('[App] BLS data failed:', e);
+      this.ctx.statusPanel?.updateApi('BLS-Series', { status: 'error' });
+      dataFreshness.recordError('bls', String(e));
+    }
+  }
+
   async loadTradePolicy(): Promise<void> {
     const tradePanel = this.ctx.panels['trade-policy'] as TradePolicyPanel | undefined;
     if (!tradePanel) return;
 
     try {
-      const [restrictions, tariffs, flows, barriers, revenue] = await Promise.allSettled([
+      const [restrictions, tariffs, flows, barriers, revenue, comtrade] = await Promise.allSettled([
         fetchTradeRestrictions([], 50),
         fetchTariffTrends('840', '156', '', 10),
         fetchTradeFlows('840', '156', 10),
         fetchTradeBarriers([], '', 50),
         fetchCustomsRevenue(),
+        fetchComtradeFlows(),
       ]);
 
       const r = restrictions.status === 'fulfilled' ? restrictions.value : null;
@@ -2400,12 +2453,14 @@ export class DataLoaderManager implements AppModule {
       const fl = flows.status === 'fulfilled' ? flows.value : null;
       const ba = barriers.status === 'fulfilled' ? barriers.value : null;
       const rev = revenue.status === 'fulfilled' ? revenue.value : null;
+      const ct = comtrade.status === 'fulfilled' ? comtrade.value : null;
 
       if (r) tradePanel.updateRestrictions(r);
       if (ta) tradePanel.updateTariffs(ta);
       if (fl) tradePanel.updateFlows(fl);
       if (ba) tradePanel.updateBarriers(ba);
       if (rev) tradePanel.updateRevenue(rev);
+      if (ct) tradePanel.updateComtradeFlows(ct);
 
       const wtoItems = (r?.restrictions?.length ?? 0) + (ta?.datapoints?.length ?? 0) + (fl?.flows?.length ?? 0) + (ba?.barriers?.length ?? 0);
       const anyUnavailable = r?.upstreamUnavailable || ta?.upstreamUnavailable || fl?.upstreamUnavailable || ba?.upstreamUnavailable;

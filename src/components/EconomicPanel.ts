@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
 import type { FredSeries, BisData } from '@/services/economic';
+import { BLS_METRO_IDS } from '@/services/economic';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
@@ -9,7 +10,7 @@ import { formatAwardAmount, getAwardTypeIcon } from '@/services/usa-spending';
 import { getCSSColor } from '@/utils';
 import { sparkline } from '@/utils/sparkline';
 
-type TabId = 'indicators' | 'spending' | 'centralBanks';
+type TabId = 'indicators' | 'spending' | 'centralBanks' | 'labor';
 
 function formatSeriesValue(series: FredSeries): string {
   if (series.value === null) return 'N/A';
@@ -74,6 +75,7 @@ type FredLoadState = 'loading' | 'ok' | 'error' | 'retrying';
 
 export class EconomicPanel extends Panel {
   private fredData: FredSeries[] = [];
+  private blsData: FredSeries[] = [];
   private spendingData: SpendingSummary | null = null;
   private bisData: BisData | null = null;
   private lastUpdate: Date | null = null;
@@ -129,6 +131,11 @@ export class EconomicPanel extends Panel {
     this.render();
   }
 
+  public updateBls(data: FredSeries[]): void {
+    this.blsData = data;
+    this.render();
+  }
+
   public setLoading(loading: boolean): void {
     if (loading) {
       this.fredState = 'loading';
@@ -139,6 +146,7 @@ export class EconomicPanel extends Panel {
   private render(): void {
     const hasSpending = this.spendingData && this.spendingData.awards?.length > 0;
     const hasBis = this.bisData && this.bisData.policyRates?.length > 0;
+    const hasBls = this.blsData.length > 0;
 
     const tabsHtml = `
       <div class="panel-tabs">
@@ -155,6 +163,11 @@ export class EconomicPanel extends Panel {
             ${t('components.economic.centralBanks')}
           </button>
         ` : ''}
+        ${hasBls ? `
+          <button class="panel-tab ${this.activeTab === 'labor' ? 'active' : ''}" data-tab="labor">
+            ${t('components.economic.laborMarket')}
+          </button>
+        ` : ''}
       </div>
     `;
 
@@ -168,6 +181,9 @@ export class EconomicPanel extends Panel {
         break;
       case 'centralBanks':
         contentHtml = this.renderCentralBanks();
+        break;
+      case 'labor':
+        contentHtml = this.renderLabor();
         break;
     }
 
@@ -191,6 +207,7 @@ export class EconomicPanel extends Panel {
       case 'indicators': return 'FRED';
       case 'spending': return 'USASpending.gov';
       case 'centralBanks': return 'BIS';
+      case 'labor': return 'BLS';
     }
   }
 
@@ -374,5 +391,44 @@ export class EconomicPanel extends Panel {
     }
 
     return policyHtml + eerHtml + creditHtml;
+  }
+
+  private renderLabor(): string {
+    if (this.blsData.length === 0) {
+      return `<div class="economic-empty">${t('components.economic.noIndicatorData')}</div>`;
+    }
+
+    const national = this.blsData.filter(s => !BLS_METRO_IDS.has(s.id));
+    const metro = this.blsData.filter(s => BLS_METRO_IDS.has(s.id));
+
+    const seriesRow = (series: FredSeries): string => `
+      <div class="economic-indicator" data-series="${escapeHtml(series.id)}">
+        <div class="indicator-header">
+          <span class="indicator-name">${escapeHtml(series.name)}</span>
+          <span class="indicator-id">${escapeHtml(series.id)}</span>
+        </div>
+        <div class="indicator-value">
+          <span class="value">${escapeHtml(formatSeriesValue(series))}</span>
+          <span class="change ${getSeriesChangeClass(series.change)}">${escapeHtml(formatSeriesChange(series))}</span>
+        </div>
+        <div class="indicator-date">${escapeHtml(series.date)}</div>
+        ${sparkline(series.observations?.map(o => o.value) ?? [], series.change !== null && series.change >= 0 ? '#4caf50' : '#f44336', 120, 28, 'display:block;margin:2px 0')}
+      </div>`;
+
+    return `
+      <div class="economic-content-macro">
+        <div class="economic-indicators">
+          ${national.map(seriesRow).join('')}
+        </div>
+        ${metro.length > 0 ? `
+          <div class="bis-section">
+            <div class="bis-section-title">${t('components.economic.metroUnemployment')}</div>
+            <div class="economic-indicators">
+              ${metro.map(seriesRow).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
   }
 }

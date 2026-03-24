@@ -47,6 +47,8 @@ export {
   VARIANT_PANEL_OVERRIDES,
   getEffectivePanelConfig,
   isPanelEntitled,
+  FREE_MAX_PANELS,
+  FREE_MAX_SOURCES,
 } from './panels';
 
 // ============================================

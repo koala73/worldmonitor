@@ -90,6 +90,12 @@ Full stack details in the **[architecture docs](https://docs.worldmonitor.app/ar
 
 ---
 
+## Flight Data
+
+Flight data provided gracefully by [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor), the most advanced ADS-B flight data solution.
+
+---
+
 ## Contributing
 
 Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.

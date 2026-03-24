@@ -281,7 +281,7 @@
     "gulfIndices": "Индекси на залива",
     "gulfCurrencies": "Валути на залива",
     "gulfOil": "Нефт на залива",
-    "bigmac": "Updated Big Mac Index"
+    "bigmac": "Real Big Mac Index"
   },
   "commands": {
     "prefixes": {
@@ -750,6 +750,8 @@
       "vsPreviousWeek": "в сравнение с предходната седмица",
       "in": "в",
       "centralBanks": "Централни банки",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS данни временно недостъпни - ще опитам отново",
       "policyRate": "Политически курс",
       "exchangeRate": "Валутен курс",
@@ -1531,7 +1533,7 @@
       "noEventsIn7Days": "Няма събития в 7 дни"
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>GDELT разузнаване</strong> Мониториране на новини в реално време:<ul><li>Кураторски тематични категории (конфликти, кибер и т.н.)</li><li>Статии от 100+ езици преведени</li><li>Актуализира всеки 15 минути</li></ul>Източник: GDELT Project (gdeltproject.org)"
+      "infoTooltip": "<strong>Новинно разузнаване</strong> Мониториране на новини в реално време:<ul><li>Кураторски тематични категории (конфликти, кибер и т.н.)</li><li>Статии от 100+ езици преведени</li><li>Актуализира всеки 15 минути</li><li>14-day media tone &amp; volume trend per topic</li></ul>Източник: GDELT Project (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "Сигнали в реално време от мониторни Telegram OSINT канали",
@@ -1732,7 +1734,7 @@
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
     },
     "bigmac": {
-      "infoTooltip": "<strong>Updated Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
     },
     "defiTokens": {
       "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."

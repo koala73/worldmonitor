@@ -61,7 +61,8 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
        WHERE retailer_product_id = rp.id AND in_stock = true
        ORDER BY observed_at DESC LIMIT 1
      ) po ON true
-     WHERE pm.match_status IN ('auto', 'approved', 'review')`,
+     WHERE pm.match_status IN ('auto', 'approved', 'review')
+       AND pm.pin_disabled_at IS NULL`,
     [basketSlug, marketCode],
   );
 

@@ -5,6 +5,7 @@ import type {
   GetTradeFlowsResponse,
   GetTradeBarriersResponse,
   GetCustomsRevenueResponse,
+  ListComtradeFlowsResponse,
   TariffDataPoint,
   EffectiveTariffRate,
 } from '@/services/trade';
@@ -13,7 +14,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 
-type TabId = 'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue';
+type TabId = 'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue' | 'comtrade';
 
 export class TradePolicyPanel extends Panel {
   private restrictionsData: GetTradeRestrictionsResponse | null = null;
@@ -21,6 +22,7 @@ export class TradePolicyPanel extends Panel {
   private flowsData: GetTradeFlowsResponse | null = null;
   private barriersData: GetTradeBarriersResponse | null = null;
   private revenueData: GetCustomsRevenueResponse | null = null;
+  private comtradeData: ListComtradeFlowsResponse | null = null;
   private activeTab: TabId = 'restrictions';
 
   constructor() {
@@ -56,6 +58,11 @@ export class TradePolicyPanel extends Panel {
     this.render();
   }
 
+  public updateComtradeFlows(data: ListComtradeFlowsResponse): void {
+    this.comtradeData = data;
+    this.render();
+  }
+
   public updateRevenue(data: GetCustomsRevenueResponse): void {
     this.revenueData = data;
     if (isDesktopRuntime() && !isFeatureAvailable('wtoTrade') && this.activeTab !== 'revenue') {
@@ -70,13 +77,14 @@ export class TradePolicyPanel extends Panel {
     const hasFlows = wtoAvailable && this.flowsData && this.flowsData.flows?.length > 0;
     const hasBarriers = wtoAvailable && this.barriersData && this.barriersData.barriers?.length > 0;
     const hasRevenue = this.revenueData && this.revenueData.months?.length > 0;
+    const hasComtrade = this.comtradeData && this.comtradeData.flows?.length > 0;
 
-    if (!wtoAvailable && !hasRevenue) {
+    if (!wtoAvailable && !hasRevenue && !hasComtrade) {
       this.setContent(`<div class="economic-empty">${t('components.tradePolicy.apiKeyMissing')}</div>`);
       return;
     }
 
-    if (!wtoAvailable && this.activeTab !== 'revenue') {
+    if (!wtoAvailable && this.activeTab !== 'revenue' && this.activeTab !== 'comtrade') {
       this.activeTab = 'revenue';
     }
 
@@ -97,6 +105,9 @@ export class TradePolicyPanel extends Panel {
         ${hasRevenue ? `<button class="panel-tab ${this.activeTab === 'revenue' ? 'active' : ''}" data-tab="revenue">
           ${t('components.tradePolicy.revenue')}
         </button>` : ''}
+        ${hasComtrade ? `<button class="panel-tab ${this.activeTab === 'comtrade' ? 'active' : ''}" data-tab="comtrade">
+          ${t('components.tradePolicy.strategicFlows')}
+        </button>` : ''}
       </div>
     `;
 
@@ -108,14 +119,17 @@ export class TradePolicyPanel extends Panel {
       ? (this.flowsData?.flows?.length ?? 0) > 0
       : this.activeTab === 'barriers'
       ? (this.barriersData?.barriers?.length ?? 0) > 0
+      : this.activeTab === 'comtrade'
+      ? (this.comtradeData?.flows?.length ?? 0) > 0
       : (this.revenueData?.months?.length ?? 0) > 0;
     const activeData = this.activeTab === 'restrictions' ? this.restrictionsData
       : this.activeTab === 'tariffs' ? this.tariffsData
       : this.activeTab === 'flows' ? this.flowsData
       : this.activeTab === 'barriers' ? this.barriersData
+      : this.activeTab === 'comtrade' ? this.comtradeData
       : this.revenueData;
     const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
-      ? `<div class="economic-warning">${this.activeTab === 'revenue' ? t('components.tradePolicy.treasuryUnavailable') : t('components.tradePolicy.upstreamUnavailable')}</div>`
+      ? `<div class="economic-warning">${this.activeTab === 'revenue' ? t('components.tradePolicy.treasuryUnavailable') : this.activeTab === 'comtrade' ? t('components.tradePolicy.comtradeUnavailable') : t('components.tradePolicy.upstreamUnavailable')}</div>`
       : '';
 
     let contentHtml = '';
@@ -125,9 +139,11 @@ export class TradePolicyPanel extends Panel {
       case 'flows': contentHtml = this.renderFlows(); break;
       case 'barriers': contentHtml = this.renderBarriers(); break;
       case 'revenue': contentHtml = this.renderRevenue(); break;
+      case 'comtrade': contentHtml = this.renderComtradeFlows(); break;
     }
 
-    const source = this.activeTab === 'revenue' ? t('components.tradePolicy.sourceTreasury')
+    const source = this.activeTab === 'comtrade' ? t('components.tradePolicy.sourceComtrade')
+      : this.activeTab === 'revenue' ? t('components.tradePolicy.sourceTreasury')
       : (this.activeTab === 'tariffs' || this.activeTab === 'restrictions') && this.tariffsData?.effectiveTariffRate?.sourceName
       ? `${t('components.tradePolicy.sourceWto')} / ${this.tariffsData.effectiveTariffRate.sourceName}`
       : t('components.tradePolicy.sourceWto');
@@ -429,6 +445,65 @@ export class TradePolicyPanel extends Panel {
             <th>${t('components.tradePolicy.colFytd')}</th>
           </tr>
         </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  private renderComtradeFlows(): string {
+    const flows = this.comtradeData?.flows;
+    if (!flows?.length) {
+      return `<div class="economic-empty">${t('components.tradePolicy.noComtradeData')}</div>`;
+    }
+
+    // Show world-total rows only (partnerCode "000"), deduplicated to latest year per reporter+commodity.
+    // Two-step dedup: (1) within same (reporter, cmd, year) keep max tradeValueUsd (exports vs imports);
+    // (2) then keep latest year per (reporter, cmd).
+    const worldTotals = flows.filter(f => f.partnerCode === '000');
+    const byYearDominant = new Map<string, typeof flows[0]>();
+    for (const f of worldTotals) {
+      const key = `${f.reporterCode}:${f.cmdCode}:${f.year}`;
+      const existing = byYearDominant.get(key);
+      if (!existing || f.tradeValueUsd > existing.tradeValueUsd) byYearDominant.set(key, f);
+    }
+    const latest = new Map<string, typeof flows[0]>();
+    for (const f of byYearDominant.values()) {
+      const key = `${f.reporterCode}:${f.cmdCode}`;
+      const existing = latest.get(key);
+      if (!existing || f.year > existing.year) latest.set(key, f);
+    }
+
+    const sorted = [...latest.values()].sort((a, b) => {
+      if (a.isAnomaly !== b.isAnomaly) return a.isAnomaly ? -1 : 1;
+      return Math.abs(b.yoyChange) - Math.abs(a.yoyChange);
+    });
+
+    const rows = sorted.map(f => {
+      const yoySign = f.yoyChange >= 0 ? '▲' : '▼';
+      const yoyClass = f.yoyChange >= 0 ? 'change-positive' : 'change-negative';
+      const yoyPct = `${yoySign} ${Math.abs(f.yoyChange * 100).toFixed(0)}%`;
+      const valueStr = f.tradeValueUsd >= 1e9
+        ? `$${(f.tradeValueUsd / 1e9).toFixed(1)}B`
+        : `$${(f.tradeValueUsd / 1e6).toFixed(0)}M`;
+      const anomalyBadge = f.isAnomaly
+        ? `<span class="trade-anomaly-badge">${t('components.tradePolicy.anomalyBadge')}</span>`
+        : '';
+      return `<tr class="${f.isAnomaly ? 'trade-anomaly-row' : ''}">
+        <td>${escapeHtml(f.reporterName)}${anomalyBadge}</td>
+        <td>${escapeHtml(f.cmdDesc)}</td>
+        <td>${valueStr} <span class="trade-flow-year">${f.year}</span></td>
+        <td class="${yoyClass}">${yoyPct}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="trade-tariffs-table">
+      <table>
+        <thead><tr>
+          <th>${t('components.tradePolicy.colReporter')}</th>
+          <th>${t('components.tradePolicy.colCommodity')}</th>
+          <th>${t('components.tradePolicy.colTradeValue')}</th>
+          <th>${t('components.tradePolicy.yoyChange')}</th>
+        </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;

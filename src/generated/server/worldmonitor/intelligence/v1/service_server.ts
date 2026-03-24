@@ -378,6 +378,45 @@ export interface SecurityAdvisoryItem {
   country: string;
 }
 
+export interface GetGdeltTopicTimelineRequest {
+  topic: string;
+}
+
+export interface GetGdeltTopicTimelineResponse {
+  topic: string;
+  tone: GdeltTimelinePoint[];
+  vol: GdeltTimelinePoint[];
+  fetchedAt: string;
+  error: string;
+}
+
+export interface GdeltTimelinePoint {
+  date: string;
+  value: number;
+}
+
+export interface ListMarketImplicationsRequest {
+}
+
+export interface ListMarketImplicationsResponse {
+  cards: MarketImplicationCard[];
+  degraded: boolean;
+  emptyReason: string;
+  generatedAt: string;
+}
+
+export interface MarketImplicationCard {
+  ticker: string;
+  name: string;
+  direction: string;
+  timeframe: string;
+  confidence: string;
+  title: string;
+  narrative: string;
+  riskCaveat: string;
+  driver: string;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -447,6 +486,8 @@ export interface IntelligenceServiceHandler {
   listCompanySignals(ctx: ServerContext, req: ListCompanySignalsRequest): Promise<ListCompanySignalsResponse>;
   getCountryFacts(ctx: ServerContext, req: GetCountryFactsRequest): Promise<GetCountryFactsResponse>;
   listSecurityAdvisories(ctx: ServerContext, req: ListSecurityAdvisoriesRequest): Promise<ListSecurityAdvisoriesResponse>;
+  getGdeltTopicTimeline(ctx: ServerContext, req: GetGdeltTopicTimelineRequest): Promise<GetGdeltTopicTimelineResponse>;
+  listMarketImplications(ctx: ServerContext, req: ListMarketImplicationsRequest): Promise<ListMarketImplicationsResponse>;
 }
 
 export function createIntelligenceServiceRoutes(
@@ -1088,6 +1129,90 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.listSecurityAdvisories(ctx, body);
           return new Response(JSON.stringify(result as ListSecurityAdvisoriesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-gdelt-topic-timeline",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetGdeltTopicTimelineRequest = {
+            topic: params.get("topic") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getGdeltTopicTimeline", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getGdeltTopicTimeline(ctx, body);
+          return new Response(JSON.stringify(result as GetGdeltTopicTimelineResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-market-implications",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListMarketImplicationsRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listMarketImplications(ctx, body);
+          return new Response(JSON.stringify(result as ListMarketImplicationsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

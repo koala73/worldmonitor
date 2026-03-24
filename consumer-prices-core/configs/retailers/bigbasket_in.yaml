@@ -11,6 +11,7 @@ retailer:
     numResults: 5
     urlPathContains: /pd/
     queryTemplate: "{canonicalName} grocery {market} {currency} price"
+    inStockFromPrice: true  # BigBasket gates on delivery pincode, not product availability
 
   rateLimit:
     requestsPerMinute: 10

@@ -123,7 +123,7 @@ Sentry.init({
     /(?:AbortError: )?The user aborted a request/,
     /\w+ is not a function.*\/uv\/service\//,
     /__isInQueue__/,
-    /^(?:LIDNotify(?:Id)?|onWebViewAppeared|onGetWiFiBSSID) is not defined$/,
+    /^(?:LIDNotify(?:Id)?|onWebViewAppeared|onGetWiFiBSSID|onHide|onShow|onReady|tapAt|removeHighlight) is not defined$/,
     /signal timed out/,
     /Se requiere plan premium/,
     /hybridExecute is not defined/,
@@ -195,7 +195,7 @@ Sentry.init({
     /Can't find variable: caches/,
     /crypto\.randomUUID is not a function/,
     /ucapi is not defined/,
-    /Identifier '(?:script|reportPage|element)' has already been declared/,
+    /Identifier '(?:script|reportPage|element|Shop)' has already been declared/,
     /getAttribute is not a function.*getAttribute\("role"\)/,
     /^TypeError: Internal error$/,
     /SCDynimacBridge/,
@@ -248,6 +248,10 @@ Sentry.init({
     /null is not an object \(evaluating '\w+\.magnitude\.toFixed'\)/,
     /start offset of Int16Array should be a multiple of 2/,
     /Cannot read properties of undefined \(reading 'then'\)/,
+    /^(?:Error: )?uncaught exception: undefined$/,
+    /Can't find variable: ss_bootstrap_config/,
+    /undefined is not an object \(evaluating '[a-z]\.includes'\)/,
+    /^"use strict" is not a function$/,
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -293,6 +297,8 @@ Sentry.init({
     if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
     // Suppress errors originating from UV proxy (Ultraviolet service worker)
     if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
+    // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script)
+    if (frames.length > 0 && frames.every(f => !f.filename || /\/x-plugin-script\//.test(f.filename))) return null;
     // Suppress YouTube IFrame widget API internal errors
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
     // Suppress Sentry beacon XHR transport errors (readyState on aborted XHR — not our code)

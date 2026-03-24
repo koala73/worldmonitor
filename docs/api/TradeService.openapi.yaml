@@ -213,6 +213,51 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/trade/v1/list-comtrade-flows:
+        get:
+            tags:
+                - TradeService
+            summary: ListComtradeFlows
+            description: List UN Comtrade strategic commodity flows with anomaly detection.
+            operationId: ListComtradeFlows
+            parameters:
+                - name: reporter_code
+                  in: query
+                  description: UN Comtrade reporter code (e.g. "842" = US, "156" = China). Empty returns all reporters.
+                  required: false
+                  schema:
+                    type: string
+                - name: cmd_code
+                  in: query
+                  description: HS commodity code (e.g. "2709" = crude oil). Empty returns all commodities.
+                  required: false
+                  schema:
+                    type: string
+                - name: anomalies_only
+                  in: query
+                  description: If true, only return flows with a year-over-year change exceeding 30%.
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListComtradeFlowsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -541,3 +586,71 @@ components:
                     type: number
                     format: double
             description: Monthly US customs duties revenue from Treasury MTS data.
+        ListComtradeFlowsRequest:
+            type: object
+            properties:
+                reporterCode:
+                    type: string
+                    description: UN Comtrade reporter code (e.g. "842" = US, "156" = China). Empty returns all reporters.
+                cmdCode:
+                    type: string
+                    description: HS commodity code (e.g. "2709" = crude oil). Empty returns all commodities.
+                anomaliesOnly:
+                    type: boolean
+                    description: If true, only return flows with a year-over-year change exceeding 30%.
+            description: ListComtradeFlowsRequest filters strategic commodity trade flows.
+        ListComtradeFlowsResponse:
+            type: object
+            properties:
+                flows:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ComtradeFlowRecord'
+                fetchedAt:
+                    type: string
+                    description: ISO 8601 timestamp when data was seeded.
+                upstreamUnavailable:
+                    type: boolean
+                    description: True if seeded data is missing or stale.
+            description: ListComtradeFlowsResponse contains strategic commodity trade flows.
+        ComtradeFlowRecord:
+            type: object
+            properties:
+                reporterCode:
+                    type: string
+                    description: UN Comtrade reporter code.
+                reporterName:
+                    type: string
+                    description: Reporter country name.
+                partnerCode:
+                    type: string
+                    description: Partner country code ("000" = world total).
+                partnerName:
+                    type: string
+                    description: Partner country name.
+                cmdCode:
+                    type: string
+                    description: HS commodity code.
+                cmdDesc:
+                    type: string
+                    description: Commodity description.
+                year:
+                    type: integer
+                    format: int32
+                    description: Reporting year.
+                tradeValueUsd:
+                    type: number
+                    format: double
+                    description: Trade value in USD.
+                netWeightKg:
+                    type: number
+                    format: double
+                    description: Net weight in kg.
+                yoyChange:
+                    type: number
+                    format: double
+                    description: Year-over-year change (ratio, e.g. 0.35 = +35%).
+                isAnomaly:
+                    type: boolean
+                    description: True if the YoY change exceeds the anomaly threshold (30%).
+            description: ComtradeFlowRecord is a single bilateral commodity flow record.

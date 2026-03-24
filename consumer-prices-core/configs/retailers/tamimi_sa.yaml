@@ -5,11 +5,12 @@ retailer:
   currencyCode: SAR
   adapter: search
   baseUrl: https://tamimimarkets.com
-  enabled: true
+  enabled: false # disabled 2026-03-23: 0/12 products after query tweak, Firecrawl can't extract tamimimarkets.com
 
   searchConfig:
     numResults: 5
-    queryTemplate: "{canonicalName} grocery {market} {currency} price"
+    queryTemplate: "{canonicalName} tamimi markets"
+    urlPathContains: /product
 
   rateLimit:
     requestsPerMinute: 10

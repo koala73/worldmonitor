@@ -11,6 +11,8 @@ import {
   type GetTradeFlowsResponse,
   type GetTradeBarriersResponse,
   type GetCustomsRevenueResponse,
+  type ListComtradeFlowsResponse,
+  type ComtradeFlowRecord,
   type TradeRestriction,
   type TariffDataPoint,
   type EffectiveTariffRate,
@@ -23,13 +25,14 @@ import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
 
 // Re-export types for consumers
-export type { TradeRestriction, TariffDataPoint, EffectiveTariffRate, TradeFlowRecord, TradeBarrier, CustomsRevenueMonth };
+export type { TradeRestriction, TariffDataPoint, EffectiveTariffRate, TradeFlowRecord, TradeBarrier, CustomsRevenueMonth, ComtradeFlowRecord };
 export type {
   GetTradeRestrictionsResponse,
   GetTariffTrendsResponse,
   GetTradeFlowsResponse,
   GetTradeBarriersResponse,
   GetCustomsRevenueResponse,
+  ListComtradeFlowsResponse,
 };
 
 const client = new TradeServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
@@ -39,12 +42,14 @@ const tariffsBreaker = createCircuitBreaker<GetTariffTrendsResponse>({ name: 'WT
 const flowsBreaker = createCircuitBreaker<GetTradeFlowsResponse>({ name: 'WTO Flows', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const barriersBreaker = createCircuitBreaker<GetTradeBarriersResponse>({ name: 'WTO Barriers', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const revenueBreaker = createCircuitBreaker<GetCustomsRevenueResponse>({ name: 'Treasury Revenue', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+const comtradeBreaker = createCircuitBreaker<ListComtradeFlowsResponse>({ name: 'Comtrade Flows', cacheTtlMs: 6 * 60 * 60 * 1000, persistCache: true });
 
 const emptyRestrictions: GetTradeRestrictionsResponse = { restrictions: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyTariffs: GetTariffTrendsResponse = { datapoints: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyFlows: GetTradeFlowsResponse = { flows: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyBarriers: GetTradeBarriersResponse = { barriers: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyRevenue: GetCustomsRevenueResponse = { months: [], fetchedAt: '', upstreamUnavailable: false };
+const emptyComtrade: ListComtradeFlowsResponse = { flows: [], fetchedAt: '', upstreamUnavailable: false };
 
 export async function fetchTradeRestrictions(countries: string[] = [], limit = 50): Promise<GetTradeRestrictionsResponse> {
   if (!isFeatureAvailable('wtoTrade')) return emptyRestrictions;
@@ -99,5 +104,15 @@ export async function fetchCustomsRevenue(): Promise<GetCustomsRevenueResponse> 
     }, emptyRevenue, { shouldCache: r => (r.months?.length ?? 0) > 0 });
   } catch {
     return emptyRevenue;
+  }
+}
+
+export async function fetchComtradeFlows(): Promise<ListComtradeFlowsResponse> {
+  try {
+    return await comtradeBreaker.execute(async () => {
+      return client.listComtradeFlows({ reporterCode: '', cmdCode: '', anomaliesOnly: false });
+    }, emptyComtrade, { shouldCache: r => (r.flows?.length ?? 0) > 0 });
+  } catch {
+    return emptyComtrade;
   }
 }

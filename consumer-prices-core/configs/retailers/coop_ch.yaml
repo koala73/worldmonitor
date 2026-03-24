@@ -5,7 +5,8 @@ retailer:
   currencyCode: CHF
   adapter: search
   baseUrl: https://www.coop.ch
-  enabled: true
+  # disabled 2026-03: Exa returns competitor domain URLs (domain bleed) for CH queries; 0/12 every run.
+  enabled: false
 
   searchConfig:
     numResults: 5

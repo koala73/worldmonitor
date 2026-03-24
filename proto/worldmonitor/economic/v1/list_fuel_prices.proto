@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message FuelPrice {
+  double usd_price = 1;
+  double local_price = 2;
+  string grade = 3;
+  string source = 4;
+  bool available = 5;
+  double wow_pct = 6;
+  string observed_at = 7;
+}
+
+message FuelCountryPrice {
+  string code = 1;
+  string name = 2;
+  string currency = 3;
+  string flag = 4;
+  FuelPrice gasoline = 5;
+  FuelPrice diesel = 6;
+  double fx_rate = 7;
+}
+
+message ListFuelPricesRequest {}
+
+message ListFuelPricesResponse {
+  repeated FuelCountryPrice countries = 1;
+  string fetched_at = 2;
+  string cheapest_gasoline = 3;
+  string cheapest_diesel = 4;
+  string most_expensive_gasoline = 5;
+  string most_expensive_diesel = 6;
+  bool wow_available = 7;
+  string prev_fetched_at = 8;
+  int32 source_count = 9;
+  int32 country_count = 10;
+}

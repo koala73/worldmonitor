@@ -281,7 +281,7 @@
     "gulfIndices": "Indicii Golfului",
     "gulfCurrencies": "Monede din Golf",
     "gulfOil": "Petrolul din Golf",
-    "bigmac": "Updated Big Mac Index"
+    "bigmac": "Real Big Mac Index"
   },
   "commands": {
     "prefixes": {
@@ -750,6 +750,8 @@
       "vsPreviousWeek": "față de săptămâna anterioară",
       "in": "în",
       "centralBanks": "Băncile Centrale",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "Datele BIS sunt temporar indisponibile - se va reîncerca",
       "policyRate": "Rata de politică monetară",
       "exchangeRate": "Cursul de schimb",
@@ -1531,7 +1533,7 @@
       "noEventsIn7Days": "Niciun eveniment în 7 zile"
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>GDELT Intelligence</strong> Monitorizare în timp real a știrilor globale:<ul><li>Categorii de subiecte selectate (conflicte, cibernetice etc.)</li><li>Articole din peste 100 de limbi traduse</li><li>Actualizări la fiecare 15 minute</li></ul>Sursa: Proiectul GDELT (gdeltproject.org)"
+      "infoTooltip": "<strong>News Intelligence</strong> Monitorizare în timp real a știrilor globale:<ul><li>Categorii de subiecte selectate (conflicte, cibernetice etc.)</li><li>Articole din peste 100 de limbi traduse</li><li>Actualizări la fiecare 15 minute</li><li>14-day media tone &amp; volume trend per topic</li></ul>Sursa: Proiectul GDELT (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "Semnale în timp real de la canalele monitorizate Telegram OSINT",
@@ -1732,7 +1734,7 @@
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
     },
     "bigmac": {
-      "infoTooltip": "<strong>Updated Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
     },
     "defiTokens": {
       "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."

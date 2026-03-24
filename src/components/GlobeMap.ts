@@ -1163,7 +1163,7 @@ export class GlobeMap {
     } else if (d._kind === 'newsLocation') {
       const tc = d.threatLevel === 'critical' ? '#ff2020'
                : d.threatLevel === 'high'     ? '#ff6600'
-               : d.threatLevel === 'elevated' ? '#ffaa00'
+               : (d.threatLevel === 'elevated' || d.threatLevel === 'medium') ? '#ffaa00'
                : '#44aaff';
       el.innerHTML = `
         <div style="position:relative;width:16px;height:16px;">
@@ -1319,7 +1319,7 @@ export class GlobeMap {
       'padding:8px 12px',
       'border-radius:3px',
       'font-size:11px',
-      'font-family:monospace',
+      'font-family:var(--font-mono)',
       'color:#d4d4d4',
       'max-width:280px',
       'z-index:1000',
@@ -1519,7 +1519,7 @@ export class GlobeMap {
              `<br><span style="opacity:.7;">${esc(d.name)}</span>` +
              `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
     } else if (d._kind === 'newsLocation') {
-      const tc = d.threatLevel === 'critical' ? '#ff2020' : d.threatLevel === 'high' ? '#ff6600' : d.threatLevel === 'elevated' ? '#ffaa00' : '#44aaff';
+      const tc = d.threatLevel === 'critical' ? '#ff2020' : d.threatLevel === 'high' ? '#ff6600' : (d.threatLevel === 'elevated' || d.threatLevel === 'medium') ? '#ffaa00' : '#44aaff';
       html = `<span style="color:${tc};font-weight:bold;">📰 ${esc(d.title.slice(0, 60))}</span>` +
              `<br><span style="opacity:.5;">${esc(d.threatLevel)}</span>`;
     } else if (d._kind === 'satellite') {

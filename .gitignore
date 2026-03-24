@@ -22,6 +22,7 @@ CLAUDE.md
 skills/
 ideas/
 docs/internal/
+docs/ideation/
 internal/
 test-results/
 src-tauri/sidecar/node/*
@@ -46,6 +47,7 @@ scripts/data/pizzint-partial.json
 scripts/data/gpsjam-latest.json
 scripts/data/mirta-raw.geojson
 scripts/data/osm-military-raw.json
+scripts/data/forecast-replays/
 
 # Iran events data (sensitive, not for public repo)
 scripts/data/iran-events-latest.json

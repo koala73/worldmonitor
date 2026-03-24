@@ -80,6 +80,7 @@ describe('Legacy api/*.js endpoint allowlist', () => {
     'seed-health.js',
     'story.js',
     'telegram-feed.js',
+    'sanctions-entity-search.js',
     'version.js',
   ]);
 

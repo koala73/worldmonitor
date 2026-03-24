@@ -263,15 +263,14 @@ function buildRiskWatch(items: DailyMarketBriefItem[], headlines: NewsItem[]): s
   return 'Risk watch is centered on macro follow-through, index breadth, and any abrupt reversal in the strongest names.';
 }
 
-function buildSummaryInputs(items: DailyMarketBriefItem[], headlines: NewsItem[]): string[] {
-  const marketLines = items.map((item) => {
+function buildSummaryInputs(items: DailyMarketBriefItem[], headlines: NewsItem[]): { headlines: string[]; marketContext: string } {
+  const marketContext = items.map((item) => {
     const change = formatSignedPercent(item.change);
-    const price = typeof item.price === 'number' ? ` at ${item.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '';
-    return `${item.name} (${item.display}) is ${change}${price}; stance is ${item.stance}.`;
-  });
+    return `${item.name} (${item.display}) ${change}`;
+  }).join(', ');
 
   const headlineLines = headlines.slice(0, 6).map((item) => item.title.trim()).filter(Boolean);
-  return [...marketLines, ...headlineLines];
+  return { headlines: headlineLines, marketContext };
 }
 
 export function shouldRefreshDailyBrief(
@@ -337,19 +336,19 @@ export async function buildDailyMarketBrief(options: BuildDailyMarketBriefOption
     };
   }
 
-  const summaryInputs = buildSummaryInputs(items, relevantHeadlines);
+  const { headlines: summaryHeadlines, marketContext } = buildSummaryInputs(items, relevantHeadlines);
   let summary = buildRuleSummary(items, relevantHeadlines.length);
   let provider = 'rules';
   let model = '';
   let fallback = true;
 
-  if (summaryInputs.length >= 2) {
+  if (summaryHeadlines.length >= 1) {
     try {
       const summaryProvider = options.summarize || await getDefaultSummarizer();
       const generated = await summaryProvider(
-        summaryInputs,
+        summaryHeadlines,
         undefined,
-        'Daily market briefing for a tracked watchlist',
+        `Market context: ${marketContext}`,
         'en',
       );
       if (generated?.summary) {

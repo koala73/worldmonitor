@@ -15,7 +15,7 @@ import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
 import { upsertCanonicalProduct } from '../db/queries/products.js';
-import { getBasketItemId, upsertProductMatch } from '../db/queries/matches.js';
+import { getBasketItemId, getPinnedUrlsForRetailer, upsertProductMatch } from '../db/queries/matches.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[scrape] ${msg}`, ...args),
@@ -29,13 +29,13 @@ async function sleep(ms: number) {
 
 async function getOrCreateRetailer(slug: string, config: ReturnType<typeof loadRetailerConfig>) {
   const result = await query<{ id: string }>(
-    `INSERT INTO retailers (slug, name, market_code, country_code, currency_code, adapter_key, base_url)
-     VALUES ($1,$2,$3,$3,$4,$5,$6)
+    `INSERT INTO retailers (slug, name, market_code, country_code, currency_code, adapter_key, base_url, active)
+     VALUES ($1,$2,$3,$3,$4,$5,$6,$7)
      ON CONFLICT (slug) DO UPDATE SET
        name = EXCLUDED.name, adapter_key = EXCLUDED.adapter_key,
-       base_url = EXCLUDED.base_url, updated_at = NOW()
+       base_url = EXCLUDED.base_url, active = EXCLUDED.active, updated_at = NOW()
      RETURNING id`,
-    [slug, config.name, config.marketCode, config.currencyCode, config.adapter, config.baseUrl],
+    [slug, config.name, config.marketCode, config.currencyCode, config.adapter, config.baseUrl, config.enabled],
   );
   return result.rows[0].id;
 }
@@ -62,8 +62,25 @@ async function updateScrapeRun(
   );
 }
 
+async function handlePinError(productId: string, matchId: string, targetId: string) {
+  const { rows } = await query<{ c: string }>(
+    `UPDATE retailer_products SET pin_error_count = pin_error_count + 1
+     WHERE id = $1 RETURNING pin_error_count AS c`,
+    [productId],
+  );
+  const count = parseInt(rows[0]?.c ?? '0', 10);
+  if (count >= 3) {
+    await query(`UPDATE product_matches SET pin_disabled_at = NOW() WHERE id = $1`, [matchId]);
+    logger.info(`  [pin] soft-disabled stale pin for ${targetId} (${count}x errors)`);
+  }
+}
+
 export async function scrapeRetailer(slug: string) {
   const config = loadRetailerConfig(slug);
+
+  // Always sync active state from YAML to DB, even for disabled retailers.
+  const retailerId = await getOrCreateRetailer(slug, config);
+
   if (!config.enabled) {
     logger.info(`${slug} is disabled, skipping`);
     return;
@@ -79,10 +96,11 @@ export async function scrapeRetailer(slug: string) {
     if (!fcKey) throw new Error(`search adapter requires FIRECRAWL_API_KEY (retailer: ${slug})`);
   }
 
-  const retailerId = await getOrCreateRetailer(slug, config);
   const runId = await createScrapeRun(retailerId);
-
   logger.info(`Run ${runId} started for ${slug}`);
+
+  const pinnedUrls = await getPinnedUrlsForRetailer(retailerId);
+  logger.info(`${slug}: ${pinnedUrls.size} pins loaded`);
 
   const adapter =
     config.adapter === 'search'
@@ -90,7 +108,7 @@ export async function scrapeRetailer(slug: string) {
       : config.adapter === 'exa-search'
       ? new ExaSearchAdapter(exaKey, process.env.FIRECRAWL_API_KEY)
       : new GenericPlaywrightAdapter();
-  const ctx: AdapterContext = { config, runId, logger };
+  const ctx: AdapterContext = { config, runId, logger, retailerId, pinnedUrls };
 
   const targets = await adapter.discoverTargets(ctx);
   logger.info(`Discovered ${targets.length} targets`);
@@ -103,6 +121,9 @@ export async function scrapeRetailer(slug: string) {
 
   for (const target of targets) {
     pagesAttempted++;
+    const isDirect = target.metadata?.direct === true;
+    const pinnedProductId = target.metadata?.pinnedProductId as string | undefined;
+    const pinnedMatchId = target.metadata?.matchId as string | undefined;
     try {
       const fetchResult = await adapter.fetchTarget(ctx, target);
       const products = await adapter.parseListing(ctx, fetchResult);
@@ -110,11 +131,19 @@ export async function scrapeRetailer(slug: string) {
       if (products.length === 0) {
         logger.warn(`  [${target.id}] parsed 0 products — counting as error`);
         errorsCount++;
+        if (isDirect && pinnedProductId && pinnedMatchId) {
+          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+        }
         continue;
       }
       logger.info(`  [${target.id}] parsed ${products.length} products`);
 
       for (const product of products) {
+        // wasDirectHit=true only when the pin URL itself was successfully used.
+        // fetchTarget sets direct:false in the payload when it falls back to Exa,
+        // so this correctly distinguishes "pin worked" from "pin failed, Exa used instead".
+        const wasDirectHit = isDirect && product.rawPayload.direct === true;
+
         const productId = await upsertRetailerProduct({
           retailerId,
           retailerSku: product.retailerSku,
@@ -144,9 +173,39 @@ export async function scrapeRetailer(slug: string) {
           rawPayloadJson: product.rawPayload,
         });
 
-        // For search-based adapters: auto-create product → basket match since we
-        // searched for a specific basket item (no ambiguity in what was scraped).
+        // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
+        if (wasDirectHit && pinnedProductId && pinnedMatchId) {
+          if (product.inStock) {
+            await query(
+              `UPDATE retailer_products SET consecutive_out_of_stock = 0, pin_error_count = 0 WHERE id = $1`,
+              [pinnedProductId],
+            );
+          } else {
+            const { rows } = await query<{ c: string }>(
+              `UPDATE retailer_products
+               SET consecutive_out_of_stock = consecutive_out_of_stock + 1
+               WHERE id = $1 RETURNING consecutive_out_of_stock AS c`,
+              [pinnedProductId],
+            );
+            const count = parseInt(rows[0]?.c ?? '0', 10);
+            if (count >= 3) {
+              await query(`UPDATE product_matches SET pin_disabled_at = NOW() WHERE id = $1`, [pinnedMatchId]);
+              logger.info(`  [pin] soft-disabled stale pin for ${target.id} (${count}x out-of-stock)`);
+            }
+          }
+        }
+
+        // When a pinned target fell back to Exa (isDirect but !wasDirectHit),
+        // increment pin_error_count so the old broken pin eventually gets disabled.
+        if (isDirect && !wasDirectHit && pinnedProductId && pinnedMatchId) {
+          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+        }
+
+        // For search-based adapters: auto-create product → basket match.
+        // Skip only when the pin URL was used directly — the match already exists.
+        // Allow when this is a fresh Exa discovery (including Exa fallback from a broken pin).
         if (
+          !wasDirectHit &&
           (config.adapter === 'exa-search' || config.adapter === 'search') &&
           product.rawPayload.basketSlug &&
           product.rawPayload.canonicalName
@@ -179,6 +238,9 @@ export async function scrapeRetailer(slug: string) {
     } catch (err) {
       errorsCount++;
       logger.error(`  [${target.id}] failed: ${err}`);
+      if (isDirect && pinnedProductId && pinnedMatchId) {
+        await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+      }
     }
 
     if (pagesAttempted < targets.length) await sleep(delay);
@@ -209,8 +271,10 @@ export async function scrapeAll() {
   // registry via fetchWithFallback). SearchAdapter and ExaSearchAdapter construct their own
   // provider instances directly from env vars and bypass the registry.
   initProviders(process.env as Record<string, string>);
-  const configs = loadAllRetailerConfigs().filter((c) => c.enabled);
-  logger.info(`Scraping ${configs.length} retailers`);
+  // Iterate ALL configs (including disabled) so getOrCreateRetailer syncs active=false to DB.
+  // scrapeRetailer() returns early after the upsert for disabled retailers.
+  const configs = loadAllRetailerConfigs();
+  logger.info(`Syncing ${configs.length} retailers (${configs.filter((c) => c.enabled).length} enabled)`);
 
   // Run retailers in parallel: each hits a different domain so rate limits don't conflict.
   // Cap at 5 concurrent to avoid saturating Firecrawl's global request limits.

@@ -18,6 +18,33 @@ if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; the
     exit 1
   fi
   echo "  Branch PR state: ${PR_STATE:-unknown}"
+
+  # Guard against branch contamination from a dirty local main.
+  # A feature/fix branch should never have more than 20 commits — if it does,
+  # the branch was likely created from a local main that had unmerged feature branches.
+  COMMIT_COUNT=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
+  if [ "$COMMIT_COUNT" -gt 20 ]; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: Branch '$BRANCH' is $COMMIT_COUNT commits ahead of origin/main."
+    echo "This usually means it was branched from a dirty local main."
+    echo "Fix: create branches from a worktree or use: git checkout -b <name> origin/main"
+    echo "============================================================"
+    exit 1
+  fi
+fi
+
+echo "Checking scripts/package-lock.json sync..."
+if git diff --name-only origin/main -- scripts/package.json | grep -q .; then
+  if ! git diff --name-only origin/main -- scripts/package-lock.json | grep -q .; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: scripts/package.json was modified but scripts/package-lock.json was not committed."
+    echo "Run: cd scripts && npm install && cd .."
+    echo "Then: git add scripts/package-lock.json && git commit --amend --no-edit"
+    echo "============================================================"
+    exit 1
+  fi
 fi
 
 echo "Running type check..."
@@ -33,6 +60,9 @@ done
 
 echo "Running Unicode safety check..."
 node scripts/check-unicode-safety.mjs || exit 1
+
+echo "Running architectural boundary check..."
+npm run lint:boundaries || exit 1
 
 echo "Running edge function bundle check..."
 for f in api/*.js; do

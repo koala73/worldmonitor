@@ -13,6 +13,15 @@
     { "symbol": "RB=F", "name": "Gasoline RBOB", "display": "GASOLINE" },
     { "symbol": "HO=F", "name": "Heating Oil", "display": "HEATING OIL" },
     { "symbol": "URA", "name": "Uranium (Global X)", "display": "URANIUM" },
-    { "symbol": "LIT", "name": "Lithium & Battery", "display": "LITHIUM" }
+    { "symbol": "LIT", "name": "Lithium & Battery", "display": "LITHIUM" },
+    { "symbol": "MTF=F", "name": "Newcastle Coal", "display": "COAL" },
+    { "symbol": "ZW=F", "name": "Wheat", "display": "WHEAT" },
+    { "symbol": "ZC=F", "name": "Corn", "display": "CORN" },
+    { "symbol": "ZS=F", "name": "Soybeans", "display": "SOYBEANS" },
+    { "symbol": "ZR=F", "name": "Rough Rice", "display": "RICE" },
+    { "symbol": "KC=F", "name": "Coffee", "display": "COFFEE" },
+    { "symbol": "SB=F", "name": "Sugar No. 11", "display": "SUGAR" },
+    { "symbol": "CC=F", "name": "Cocoa", "display": "COCOA" },
+    { "symbol": "CT=F", "name": "Cotton", "display": "COTTON" }
   ]
 }

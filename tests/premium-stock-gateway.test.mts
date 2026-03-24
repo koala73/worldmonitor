@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe('premium stock gateway enforcement', () => {
-  it('requires a World Monitor key for premium stock RPCs even from trusted browser origins', async () => {
+  it('allows trusted browser origins without a key (client-side isProUser gate controls access)', async () => {
     const handler = createDomainGateway([
       {
         method: 'GET',
@@ -27,19 +27,28 @@ describe('premium stock gateway enforcement', () => {
 
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
 
-    const premiumBlocked = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+    // Trusted browser origin (worldmonitor.app) — no key needed; isProUser() is the client-side gate
+    const browserNoKey = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
-    assert.equal(premiumBlocked.status, 401);
+    assert.equal(browserNoKey.status, 200);
 
-    const premiumAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+    // Trusted browser origin with a valid key — also allowed
+    const browserWithKey = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: {
         Origin: 'https://worldmonitor.app',
         'X-WorldMonitor-Key': 'real-key-123',
       },
     }));
-    assert.equal(premiumAllowed.status, 200);
+    assert.equal(browserWithKey.status, 200);
 
+    // Unknown origin — blocked (403 from isDisallowedOrigin before key check)
+    const unknownNoKey = await handler(new Request('https://external.example.com/api/market/v1/analyze-stock?symbol=AAPL', {
+      headers: { Origin: 'https://external.example.com' },
+    }));
+    assert.equal(unknownNoKey.status, 403);
+
+    // Public endpoint — always accessible from trusted origin
     const publicAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
       headers: { Origin: 'https://worldmonitor.app' },
     }));

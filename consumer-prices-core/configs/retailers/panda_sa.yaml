@@ -1,0 +1,22 @@
+retailer:
+  slug: panda_sa
+  name: Panda Saudi Arabia
+  marketCode: sa
+  currencyCode: SAR
+  adapter: search
+  baseUrl: https://www.panda.sa/en
+  enabled: false # disabled 2026-03-23: panda.sa not indexed by Exa (0 domain matches for 10/12 items)
+
+  searchConfig:
+    numResults: 5
+    queryTemplate: "{canonicalName} panda supermarket saudi"
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

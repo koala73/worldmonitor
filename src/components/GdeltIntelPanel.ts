@@ -2,20 +2,25 @@ import { Panel } from './Panel';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { h, replaceChildren } from '@/utils/dom-utils';
+import { miniSparkline } from '@/utils/sparkline';
 import {
   getIntelTopics,
   fetchTopicIntelligence,
+  fetchTopicTimeline,
   formatArticleDate,
   extractDomain,
   type GdeltArticle,
   type IntelTopic,
   type TopicIntelligence,
+  type TopicTimeline,
 } from '@/services/gdelt-intel';
 
 export class GdeltIntelPanel extends Panel {
   private activeTopic: IntelTopic = getIntelTopics()[0]!;
   private topicData = new Map<string, TopicIntelligence>();
+  private timelineData = new Map<string, TopicTimeline>();
   private tabsEl: HTMLElement | null = null;
+  private summaryEl: HTMLElement | null = null;
 
   constructor() {
     super({
@@ -59,6 +64,7 @@ export class GdeltIntelPanel extends Panel {
 
     const cached = this.topicData.get(topic.id);
     if (cached && Date.now() - cached.fetchedAt.getTime() < 5 * 60 * 1000) {
+      this.renderTopicSummary(this.timelineData.get(topic.id) ?? null);
       this.renderArticles(cached.articles);
     } else {
       this.loadActiveTopic();
@@ -70,9 +76,14 @@ export class GdeltIntelPanel extends Panel {
     this.showLoading();
 
     try {
-      const data = await fetchTopicIntelligence(topic);
+      const [data, timeline] = await Promise.all([
+        fetchTopicIntelligence(topic),
+        fetchTopicTimeline(topic.id),
+      ]);
       if (!this.element?.isConnected || topic.id !== this.activeTopic.id) return;
       this.topicData.set(topic.id, data);
+      if (timeline) this.timelineData.set(topic.id, timeline);
+      this.renderTopicSummary(timeline);
       this.renderArticles(data.articles ?? []);
       this.setCount(data.articles?.length ?? 0);
     } catch (error) {
@@ -81,6 +92,35 @@ export class GdeltIntelPanel extends Panel {
       console.error('[GdeltIntelPanel] Load error:', error);
       this.showError(t('common.failedIntelFeed'), () => this.loadActiveTopic());
     }
+  }
+
+  private renderTopicSummary(timeline: TopicTimeline | null | undefined): void {
+    this.summaryEl?.remove();
+    this.summaryEl = null;
+    if (!timeline || (timeline.tone.length < 2 && timeline.vol.length < 2)) return;
+
+    const toneVals = timeline.tone.map(p => p.value);
+    const volVals = timeline.vol.map(p => p.value);
+    const lastTone = toneVals[toneVals.length - 1] ?? 0;
+    const toneChange = lastTone >= 0 ? 1 : -1;
+    const toneBadgeClass = lastTone < -1.5 ? 'negative' : lastTone > 1.5 ? 'positive' : '';
+    const tonePrefix = lastTone < -1.5 ? '▼ ' : lastTone > 1.5 ? '▲ ' : '';
+
+    const toneGroup = h('div', { className: 'gdelt-trend-group' });
+    toneGroup.innerHTML = miniSparkline(toneVals, toneChange, 60, 18);
+    toneGroup.appendChild(h('span', { className: `gdelt-trend-value ${toneBadgeClass}`.trim() }, `${tonePrefix}${lastTone.toFixed(1)}`));
+    toneGroup.appendChild(h('span', { className: 'gdelt-trend-label' }, 'Tone'));
+
+    const volGroup = h('div', { className: 'gdelt-trend-group' });
+    if (volVals.length >= 2) {
+      volGroup.innerHTML = miniSparkline(volVals, 1, 60, 18);
+      const lastVol = volVals[volVals.length - 1] ?? 0;
+      volGroup.appendChild(h('span', { className: 'gdelt-trend-value' }, String(Math.round(lastVol))));
+      volGroup.appendChild(h('span', { className: 'gdelt-trend-label' }, 'Volume'));
+    }
+
+    this.summaryEl = h('div', { className: 'gdelt-topic-summary' }, toneGroup, volGroup);
+    this.content.insertAdjacentElement('beforebegin', this.summaryEl);
   }
 
   private renderArticles(articles: GdeltArticle[]): void {
@@ -122,6 +162,7 @@ export class GdeltIntelPanel extends Panel {
 
   public async refreshAll(): Promise<void> {
     this.topicData.clear();
+    this.timelineData.clear();
     await this.loadActiveTopic();
   }
 }

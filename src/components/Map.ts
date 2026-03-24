@@ -2880,7 +2880,7 @@ export class MapComponent {
       'padding:8px 12px',
       'border-radius:3px',
       'font-size:11px',
-      'font-family:monospace',
+      'font-family:var(--font-mono)',
       'color:#d4d4d4',
       'max-width:240px',
       'z-index:1000',

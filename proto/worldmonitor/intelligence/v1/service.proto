@@ -16,6 +16,8 @@ import "worldmonitor/intelligence/v1/list_oref_alerts.proto";
 import "worldmonitor/intelligence/v1/list_satellites.proto";
 import "worldmonitor/intelligence/v1/list_telegram_feed.proto";
 import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
+import "worldmonitor/intelligence/v1/get_gdelt_topic_timeline.proto";
+import "worldmonitor/intelligence/v1/list_market_implications.proto";
 
 // IntelligenceService provides APIs for technical and strategic intelligence.
 service IntelligenceService {
@@ -119,5 +121,15 @@ service IntelligenceService {
   // ListSecurityAdvisories retrieves pre-seeded travel and health advisories.
   rpc ListSecurityAdvisories(ListSecurityAdvisoriesRequest) returns (ListSecurityAdvisoriesResponse) {
     option (sebuf.http.config) = {path: "/list-security-advisories", method: HTTP_METHOD_GET};
+  }
+
+  // GetGdeltTopicTimeline retrieves tone and volume timelines for a GDELT intel topic.
+  rpc GetGdeltTopicTimeline(GetGdeltTopicTimelineRequest) returns (GetGdeltTopicTimelineResponse) {
+    option (sebuf.http.config) = {path: "/get-gdelt-topic-timeline", method: HTTP_METHOD_GET};
+  }
+
+  // ListMarketImplications returns AI-generated trade-implication cards from live world state.
+  rpc ListMarketImplications(ListMarketImplicationsRequest) returns (ListMarketImplicationsResponse) {
+    option (sebuf.http.config) = {path: "/list-market-implications", method: HTTP_METHOD_GET};
   }
 }

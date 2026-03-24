@@ -54,11 +54,14 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   sanctionsPressure: 'sanctions:pressure:v1',
   groceryBasket:     'economic:grocery-basket:v1',
   bigmac:            'economic:bigmac:v1',
+  fuelPrices:        'economic:fuel-prices:v1',
   cryptoSectors:    'market:crypto-sectors:v1',
   defiTokens:       'market:defi-tokens:v1',
   aiTokens:         'market:ai-tokens:v1',
   otherTokens:      'market:other-tokens:v1',
   nationalDebt:     'economic:national-debt:v1',
+  marketImplications: 'intelligence:market-implications:v1',
+  fearGreedIndex:   'market:fear-greed:v1',
 };
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
@@ -83,9 +86,12 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   consumerPricesMovers: 'slow', consumerPricesSpread: 'slow',
   groceryBasket: 'slow',
   bigmac: 'slow',
+  fuelPrices: 'slow',
   cryptoSectors: 'slow',
   defiTokens: 'slow',
   aiTokens: 'slow',
   otherTokens: 'slow',
   nationalDebt: 'slow',
+  marketImplications: 'slow',
+  fearGreedIndex: 'slow',
 };

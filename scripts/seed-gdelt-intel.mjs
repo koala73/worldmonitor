@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, sleep, verifySeedKey } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, sleep, verifySeedKey, writeExtraKey } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'intelligence:gdelt-intel:v1';
 const CACHE_TTL = 86400; // 24h — intentionally much longer than the 2h cron so verifySeedKey always has a prior snapshot to merge from when GDELT 429s all topics
+const TIMELINE_TTL = 43200; // 12h = 2× cron interval; tone/vol must survive until next 6h run
 const GDELT_DOC_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
 const INTER_TOPIC_DELAY_MS = 20_000; // 20s between topics on success
 const POST_EXHAUST_DELAY_MS = 120_000; // 2min extra cooldown after a topic exhausts all retries
@@ -68,6 +69,34 @@ async function fetchTopicArticles(topic) {
   };
 }
 
+function normalizeTimeline(data, mode) {
+  const raw = data?.timeline ?? data?.data ?? [];
+  return raw.map((pt) => ({
+    date: String(pt.date || pt.datetime || ''),
+    value: typeof pt.value === 'number' ? pt.value : (typeof pt[mode] === 'number' ? pt[mode] : 0),
+  })).filter((pt) => pt.date);
+}
+
+async function fetchTopicTimeline(topic, mode) {
+  const url = new URL(GDELT_DOC_API);
+  url.searchParams.set('query', topic.query);
+  url.searchParams.set('mode', mode);
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('timespan', '14d');
+
+  try {
+    const resp = await fetch(url.toString(), {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return normalizeTimeline(data, mode === 'TimelineTone' ? 'tone' : 'value');
+  } catch {
+    return [];
+  }
+}
+
 async function fetchWithRetry(topic, maxRetries = 3) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -94,6 +123,14 @@ async function fetchAllTopics() {
     console.log(`  Fetching ${INTEL_TOPICS[i].id}...`);
     const result = await fetchWithRetry(INTEL_TOPICS[i]);
     console.log(`    ${result.articles.length} articles`);
+    // Fetch tone/vol timelines in parallel — best-effort, 429s silently return []
+    const [tone, vol] = await Promise.all([
+      fetchTopicTimeline(INTEL_TOPICS[i], 'TimelineTone'),
+      fetchTopicTimeline(INTEL_TOPICS[i], 'TimelineVol'),
+    ]);
+    result._tone = tone;
+    result._vol = vol;
+    console.log(`    timeline: ${tone.length} tone pts, ${vol.length} vol pts`);
     topics.push(result);
     // After a topic exhausts all retries, give GDELT a longer cooldown before hitting
     // it again with the next topic — the rate limit window for popular queries exceeds 50s
@@ -132,11 +169,37 @@ function validate(data) {
   return populated.length >= 3; // at least 3 of 6 topics must have articles; partial 429s handled by per-topic merge above
 }
 
-runSeed('intelligence', 'gdelt-intel', CANONICAL_KEY, fetchAllTopics, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'gdelt-doc-v2',
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+// Strip private fields (_tone, _vol, exhausted) before writing to the canonical Redis key.
+function publishTransform(data) {
+  return {
+    ...data,
+    topics: (data.topics ?? []).map(({ _tone: _t, _vol: _v, exhausted: _e, ...rest }) => rest),
+  };
+}
+
+// Write per-topic tone/vol timeline keys (1h TTL) — separate from the 24h canonical key.
+async function afterPublish(data, _meta) {
+  for (const topic of data.topics ?? []) {
+    const fetchedAt = topic.fetchedAt ?? data.fetchedAt;
+    if (Array.isArray(topic._tone) && topic._tone.length > 0) {
+      await writeExtraKey(`gdelt:intel:tone:${topic.id}`, { data: topic._tone, fetchedAt }, TIMELINE_TTL);
+    }
+    if (Array.isArray(topic._vol) && topic._vol.length > 0) {
+      await writeExtraKey(`gdelt:intel:vol:${topic.id}`, { data: topic._vol, fetchedAt }, TIMELINE_TTL);
+    }
+  }
+}
+
+if (process.argv[1]?.endsWith('seed-gdelt-intel.mjs')) {
+  runSeed('intelligence', 'gdelt-intel', CANONICAL_KEY, fetchAllTopics, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'gdelt-doc-v2',
+    publishTransform,
+    afterPublish,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(0);
+  });
+}
