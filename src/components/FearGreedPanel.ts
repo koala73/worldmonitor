@@ -205,8 +205,8 @@ export class FearGreedPanel extends Panel {
     const html = `
       <div style="padding:12px 14px">
         <div style="text-align:center;margin-bottom:12px">
-          <div style="font-size:56px;font-weight:700;line-height:1;color:${color}">${score}</div>
-          <div style="font-size:16px;font-weight:600;color:${color};margin:4px 0">${label}</div>
+          <div style="font-size:36px;font-weight:700;line-height:1;color:${color}">${score}</div>
+          <div style="font-size:13px;font-weight:600;color:${color};margin:4px 0">${label}</div>
           ${deltaHtml}
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:rgba(255,255,255,0.04);border-radius:8px;padding:4px;margin-bottom:12px">
