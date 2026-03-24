@@ -23,6 +23,7 @@ import './tools/adapters';
 import './tools/sp500-sectors';
 import './tools/earnings-capture';
 import './tools/llm-provider';
+import './tools/meteo-supply-chain';
 
 // ============================================================================
 // BRIDGE STATE

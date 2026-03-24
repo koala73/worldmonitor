@@ -20,6 +20,9 @@ import { EventBus } from './bus/event-bus';
 import { MemoryStore } from './memory/store';
 import { GoalDecomposer } from './planner/decomposer';
 import { createSignal } from './tools/registry';
+import { ACTION_CONSEQUENCE_CORPUS, CORPUS_STATS, getEntriesByTag, traceConsequences as traceCorpus } from './corpus/action-consequence';
+import { synthesizeReport as synthReport, synthesizeSitRep as synthSitRep } from './corpus/synthesizer';
+import type { IntelligenceBrief } from './types';
 
 // ============================================================================
 // TEST DATA GENERATORS
@@ -396,6 +399,59 @@ export function runDiagnostics(): DiagnosticReport {
     if (!sig.id.startsWith('news:')) return `Bad ID prefix: ${sig.id}`;
     if (sig.domain !== 'news') return 'Wrong domain';
     if (sig.severity !== 'medium') return 'Wrong severity';
+    return true;
+  }));
+
+  // ── CORPUS & SYNTHESIZER TESTS ─────────────────────────────────
+  tests.push(test('CORPUS: action-consequence entries loaded', () => {
+    if (ACTION_CONSEQUENCE_CORPUS.length < 15) return `Only ${ACTION_CONSEQUENCE_CORPUS.length} entries`;
+    if (CORPUS_STATS.totalConsequences < 30) return `Only ${CORPUS_STATS.totalConsequences} consequences`;
+    return true;
+  }));
+
+  tests.push(test('CORPUS: tag index resolves correctly', () => {
+    const results = getEntriesByTag('conflict');
+    if (results.length === 0) return 'No entries for conflict tag';
+    return true;
+  }));
+
+  tests.push(test('CORPUS: causal trace follows chains', () => {
+    const trace = traceCorpus(['conflict', 'maritime', 'hormuz'], 'medium');
+    if (trace.length === 0) return 'No consequences traced for Hormuz scenario';
+    const hasChain = trace.some((t: { depth: number }) => t.depth > 0);
+    if (!hasChain) return 'No second-order effects found';
+    return true;
+  }));
+
+  tests.push(test('SYNTHESIZER: generates report from brief', () => {
+    const collapsed = collapse(filter(encode(ingest(syntheticBatch()))));
+    const syn = synthesize(collapsed);
+    const brief: IntelligenceBrief = {
+      id: 'test-brief', timestamp: Date.now(), threatLevel: syn.overallThreatLevel,
+      findings: syn.findings, focalPoints: syn.focalPoints,
+      recommendations: ['Test rec'], pipelineRunId: 'test-run',
+      signalCount: 6, domainsCovered: ['conflict' as SignalDomain, 'military' as SignalDomain],
+    };
+    const report = synthReport(brief);
+    if (!report.document) return 'Empty document';
+    if (!report.document.includes('[INTELLIGENCE REPORT')) return 'Missing header';
+    if (!report.document.includes('[FINDINGS]')) return 'Missing findings section';
+    if (report.meta.wordCount < 20) return `Too short: ${report.meta.wordCount} words`;
+    return true;
+  }));
+
+  tests.push(test('SYNTHESIZER: generates compact sitrep', () => {
+    const collapsed = collapse(filter(encode(ingest(syntheticBatch()))));
+    const syn = synthesize(collapsed);
+    const brief: IntelligenceBrief = {
+      id: 'test-brief', timestamp: Date.now(), threatLevel: syn.overallThreatLevel,
+      findings: syn.findings, focalPoints: syn.focalPoints,
+      recommendations: [], pipelineRunId: 'test-run',
+      signalCount: 6, domainsCovered: ['conflict' as SignalDomain],
+    };
+    const sitrep = synthSitRep(brief);
+    if (!sitrep.startsWith('SITREP')) return 'Missing SITREP prefix';
+    if (!sitrep.includes('THREAT=')) return 'Missing threat level';
     return true;
   }));
 

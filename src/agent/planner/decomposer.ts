@@ -68,6 +68,7 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
       { toolId: 'infrastructure.outages', toolInput: {}, priority: 'medium', description: 'Fetch outages' },
       { toolId: 'unrest.events', toolInput: {}, priority: 'medium', description: 'Fetch unrest events' },
       { toolId: 'intelligence.risk', toolInput: {}, priority: 'high', description: 'Compute risk scores' },
+      { toolId: 'meteo.supply-chain', toolInput: {}, priority: 'medium', description: 'Monitor weather impact on supply chains' },
       { toolId: 'llm.synthesize', toolInput: {}, priority: 'low', description: 'Generate narrative synthesis via local Llama' },
     ],
   },

@@ -21,6 +21,7 @@ import { GoalDecomposer } from '../planner/decomposer';
 import { executeTool } from '../tools/registry';
 import { agentBus } from '../bus/event-bus';
 import type { IngestInput } from '../pipeline/stages';
+import { synthesizeReport, synthesizeSitRep } from '../corpus/synthesizer';
 
 // ============================================================================
 // AGENT CONFIGURATION
@@ -68,6 +69,7 @@ export class AgentRuntime {
   private config: AgentConfig;
   private cycleTimer: ReturnType<typeof setInterval> | null = null;
   private lastBrief: IntelligenceBrief | null = null;
+  private lastReport: import('../corpus/synthesizer').SynthesizedReport | null = null;
   private accumulatedSignals: Signal[] = [];
   private running = false;
 
@@ -153,6 +155,13 @@ export class AgentRuntime {
    */
   getPipeline(): PipelineRunner {
     return this.pipeline;
+  }
+
+  /**
+   * Get the latest synthesized report (AI-readable document).
+   */
+  getLatestReport(): import('../corpus/synthesizer').SynthesizedReport | null {
+    return this.lastReport;
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -399,11 +408,22 @@ export class AgentRuntime {
         });
       }
 
+      // Synthesize structured report + sitrep for AI consumption
+      this.lastReport = synthesizeReport(brief);
+      const sitrep = synthesizeSitRep(brief);
+
+      // Store sitrep in memory for cross-cycle context
+      this.memory.store('session', sitrep, {
+        tags: ['sitrep', brief.threatLevel, ...brief.domainsCovered],
+        regions: [...new Set(brief.findings.flatMap(f => f.regions))],
+        importance: brief.threatLevel === 'critical' ? 95 : brief.threatLevel === 'high' ? 80 : 50,
+      });
+
       reflections.push({
         id: `reflect-${Date.now()}-pipeline`,
         timestamp: Date.now(),
-        insight: `Pipeline produced ${brief.findings.length} findings, ${brief.focalPoints.length} focal points. Threat level: ${brief.threatLevel}`,
-        context: [pipelineResult.runId],
+        insight: `Pipeline produced ${brief.findings.length} findings, ${brief.focalPoints.length} focal points. Threat level: ${brief.threatLevel}. Report: ${this.lastReport.id}`,
+        context: [pipelineResult.runId, this.lastReport.id],
         persist: brief.threatLevel === 'critical' || brief.threatLevel === 'high',
       });
     }

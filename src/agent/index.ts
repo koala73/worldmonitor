@@ -121,6 +121,28 @@ export {
 } from './runtime/status';
 export type { StatusSnapshot } from './runtime/status';
 
+// Action-Consequence Corpus
+export {
+  ACTION_CONSEQUENCE_CORPUS,
+  getEntryById,
+  getEntriesByTag,
+  getEntriesByTags,
+  traceConsequences,
+  CORPUS_STATS,
+} from './corpus/action-consequence';
+export type { CausalEntry, Consequence } from './corpus/action-consequence';
+
+// Corpus Synthesizer
+export {
+  synthesizeReport,
+  synthesizeSitRep,
+  synthesizeCausalTrace,
+} from './corpus/synthesizer';
+export type { SynthesizedReport, ReportMeta } from './corpus/synthesizer';
+
+// Meteorological Supply Chain (registered via side-effect import in bridge.ts)
+export { SHIPPING_LANES, AGRI_ZONES, ENERGY_NODES } from './tools/meteo-supply-chain';
+
 // Diagnostics
 export { runDiagnostics } from './diagnostics';
 
