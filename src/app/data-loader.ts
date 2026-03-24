@@ -104,6 +104,7 @@ import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchThermalEscalations } from '@/services/thermal-escalation';
+import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
@@ -508,6 +509,9 @@ export class DataLoaderManager implements AppModule {
     }
     if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
       tasks.push({ name: 'thermalEscalation', task: runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
+    }
+    if (SITE_VARIANT !== 'happy' && shouldLoad('cross-source-signals')) {
+      tasks.push({ name: 'crossSourceSignals', task: runGuarded('crossSourceSignals', () => this.loadCrossSourceSignals()) });
     }
 
     // Stagger startup: run tasks in small batches to avoid hammering upstreams
@@ -2843,6 +2847,16 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordUpdate('thermal-escalation' as DataSourceId, result.clusters.length);
     } catch (error) {
       console.error('[App] Thermal escalation fetch failed:', error);
+    }
+  }
+
+  async loadCrossSourceSignals(): Promise<void> {
+    try {
+      const result = await fetchCrossSourceSignals();
+      this.callPanel('cross-source-signals', 'setData', result);
+      dataFreshness.recordUpdate('cross-source-signals' as DataSourceId, result.signals?.length ?? 0);
+    } catch (error) {
+      console.error('[App] Cross-source signals fetch failed:', error);
     }
   }
 }

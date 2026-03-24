@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, getRedisCredentials, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -27,6 +27,9 @@ const SOURCE_KEYS = [
   'displacement:summary:v1:2025',
   'forecast:predictions:v2',
   'intelligence:gdelt-intel:v1',
+  'gdelt:intel:tone:military',
+  'gdelt:intel:tone:nuclear',
+  'gdelt:intel:tone:maritime',
   'weather:alerts:v1',
   'risk:scores:sebuf:stale:v1',
 ];
@@ -180,7 +183,7 @@ function extractThermalSpike(d) {
     const theater = normalizeTheater(c.region || c.name || '');
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE'] * Math.min(3, safeNum(c.anomalyScore) || 1.5);
     signals.push({
-      id: `thermal:${c.id || c.name || Math.random().toString(36).slice(2)}`,
+      id: `thermal:${c.id || (c.name || c.region || 'unknown').replace(/\s+/g, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE',
       theater,
       summary: `Thermal spike detected: ${c.name || c.region || 'unknown'} — anomaly score ${safeNum(c.anomalyScore).toFixed(1)}`,
@@ -337,7 +340,7 @@ function extractCommodityShock(d) {
     const theater = (q.symbol === 'OIL' || q.symbol === 'CL=F' || q.display?.includes('Oil')) ? 'Persian Gulf' : 'Global Markets';
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK'] * Math.min(2, Math.abs(change) / 5);
     signals.push({
-      id: `commodity:${(q.symbol || q.display || Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/gi, '-').toLowerCase()}`,
+      id: `commodity:${(q.symbol || q.display || 'unknown').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK',
       theater,
       summary: `Commodity shock: ${q.display || q.symbol} ${change > 0 ? '+' : ''}${change.toFixed(1)}% — ${Math.abs(change) > 10 ? 'extreme' : 'significant'} move`,
@@ -434,7 +437,7 @@ function extractEarthquakeSignificant(d) {
     const mag = safeNum(q.magnitude);
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT'] * (mag >= 7.5 ? 2 : mag >= 7.0 ? 1.5 : 1.2);
     return {
-      id: `quake:${q.id || q.code || Math.random().toString(36).slice(2)}`,
+      id: `quake:${q.id || q.code || `${String(q.latitude || '0')}-${String(q.longitude || '0')}-${mag.toFixed(1)}`}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT',
       theater,
       summary: `M${mag.toFixed(1)} earthquake — ${q.place || theater}`,
@@ -457,7 +460,7 @@ function extractRadiationAnomaly(d) {
     const theater = normalizeTheater(a.country || a.region || a.location || '');
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY'];
     return {
-      id: `radiation:${a.id || a.stationId || Math.random().toString(36).slice(2)}`,
+      id: `radiation:${a.id || a.stationId || (a.location || a.stationName || 'unknown').replace(/\s+/g, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY',
       theater,
       summary: `Radiation anomaly: ${a.location || a.stationName || 'unknown station'} — ${a.value || 'elevated'} reading`,
@@ -563,7 +566,7 @@ function extractForecastDeterioration(d) {
     const theater = normalizeTheater(p.region || p.country || p.theater || '');
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION'] * Math.min(2, 1 + safeNum(p.probability));
     return {
-      id: `forecast:${p.id || Math.random().toString(36).slice(2)}`,
+      id: `forecast:${p.id || (p.title || p.label || theater).replace(/\s+/g, '-').toLowerCase().slice(0, 40)}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION',
       theater,
       summary: `Forecast deterioration: ${p.title || p.label || 'Geopolitical risk'} — ${Math.round(safeNum(p.probability) * 100)}% probability`,
@@ -627,31 +630,55 @@ function extractWeatherExtreme(d) {
   return signals.slice(0, 2);
 }
 
-const MILITARY_TONE_WORDS = ['military', 'nuclear', 'missile', 'attack', 'drone', 'strike', 'conflict', 'war', 'maritime', 'naval'];
+const GDELT_TONE_TOPICS = ['military', 'nuclear', 'maritime'];
 
 function extractMediaToneDeterioration(d) {
-  const payload = d['intelligence:gdelt-intel:v1'];
-  if (!payload) return [];
-  const topics = Array.isArray(payload.topics) ? payload.topics : [];
   const signals = [];
-  for (const topic of topics) {
-    const title = String(topic.label || topic.topic || '').toLowerCase();
-    if (!MILITARY_TONE_WORDS.some(w => title.includes(w))) continue;
-    const avgTone = safeNum(topic.avgTone || topic.tone);
-    if (avgTone > -3) continue; // Only fire on clearly negative tone
-    const theater = normalizeTheater(topic.region || topic.country || '');
-    const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION'] * Math.min(2, Math.abs(avgTone) / 3);
+  for (const topic of GDELT_TONE_TOPICS) {
+    const tonePayload = d[`gdelt:intel:tone:${topic}`];
+    if (!tonePayload) continue;
+    const series = Array.isArray(tonePayload.data) ? tonePayload.data : [];
+    if (series.length < 3) continue;
+    const last3 = series.slice(-3);
+    const vals = last3.map(p => safeNum(p.value));
+    const isDeclinig = vals[0] > vals[1] && vals[1] > vals[2];
+    const finalVal = vals[2];
+    if (!isDeclinig || finalVal >= -1.5) continue;
+    const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION'] * Math.min(2, Math.abs(finalVal) / 3);
     signals.push({
-      id: `gdelt-tone:${(topic.id || topic.label || Math.random().toString(36).slice(2)).replace(/\s+/g, '-').toLowerCase().slice(0, 40)}`,
+      id: `gdelt-tone:${topic}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION',
-      theater,
-      summary: `Media tone deterioration: "${topic.label || topic.topic}" — avg tone ${avgTone.toFixed(1)}`,
+      theater: topic === 'maritime' ? 'Global' : 'Global',
+      summary: `Media tone deterioration: ${topic} coverage tone ${finalVal.toFixed(2)} (3-point declining trend)`,
       severity: scoreTier(score),
       severityScore: score,
       detectedAt: Date.now(),
       contributingTypes: [],
       signalCount: 0,
     });
+  }
+  // Fallback: bundled gdelt-intel topics array if per-topic keys unavailable
+  if (signals.length === 0) {
+    const payload = d['intelligence:gdelt-intel:v1'];
+    const topics = Array.isArray(payload?.topics) ? payload.topics : [];
+    for (const topic of topics) {
+      const avgTone = safeNum(topic.avgTone || topic.tone);
+      if (avgTone > -3) continue;
+      const theater = normalizeTheater(topic.region || topic.country || '');
+      const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION'] * Math.min(2, Math.abs(avgTone) / 3);
+      signals.push({
+        id: `gdelt-tone:${(topic.id || topic.label || 'unknown').replace(/\s+/g, '-').toLowerCase().slice(0, 40)}`,
+        type: 'CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION',
+        theater,
+        summary: `Media tone deterioration: "${topic.label || topic.topic}" avg tone ${avgTone.toFixed(1)}`,
+        severity: scoreTier(score),
+        severityScore: score,
+        detectedAt: Date.now(),
+        contributingTypes: [],
+        signalCount: 0,
+      });
+      if (signals.length >= 2) break;
+    }
   }
   return signals.slice(0, 2);
 }
@@ -666,7 +693,7 @@ function extractRiskScoreSpike(d) {
     const theater = normalizeTheater(s.region || '');
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE'] * Math.min(2, safeNum(s.combinedScore) / 60);
     return {
-      id: `risk:${(s.region || Math.random().toString(36).slice(2)).replace(/\s+/g, '-').toLowerCase()}`,
+      id: `risk:${(s.region || 'unknown').replace(/\s+/g, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE',
       theater,
       summary: `Risk score spike: ${s.region || 'unknown'} CII score ${safeNum(s.combinedScore).toFixed(0)} — trend ${s.trend === 'TREND_DIRECTION_RISING' ? 'rising' : 'elevated'}`,
@@ -788,20 +815,20 @@ function validate(data) {
   return Array.isArray(data?.signals);
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
-
 runSeed('intelligence', 'cross-source-signals', CANONICAL_KEY, aggregateCrossSourceSignals, {
   ttlSeconds: CACHE_TTL,
   validateFn: validate,
   sourceVersion: 'cross-source-v1',
   recordCount: (data) => data.signals?.length ?? 0,
   afterPublish: async (data) => {
-    await writeExtraKeyWithMeta(
-      CANONICAL_KEY,
-      data,
-      CACHE_TTL,
-      data.signals?.length ?? 0,
-      'seed-meta:intelligence:cross-source-signals',
-    ).catch(err => console.warn(`  writeExtraKeyWithMeta failed: ${err.message}`));
+    const { url, token } = getRedisCredentials();
+    const metaKey = 'seed-meta:intelligence:cross-source-signals';
+    const meta = { fetchedAt: Date.now(), recordCount: data.signals?.length ?? 0 };
+    await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', 86400 * 7]),
+      signal: AbortSignal.timeout(5_000),
+    }).catch(err => console.warn(`  seed-meta write failed: ${err.message}`));
   },
 });

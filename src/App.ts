@@ -286,6 +286,10 @@ export class App {
     if (shouldPrime('supply-chain')) {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
+    if (shouldPrime('cross-source-signals')) {
+      primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
+    }
+
     const _wmAccess = getSecretState('WORLDMONITOR_API_KEY').present || isProUser();
     if (_wmAccess) {
       if (shouldPrime('stock-analysis')) {
@@ -1091,6 +1095,13 @@ export class App {
       this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => this.isPanelNearViewport('trade-policy'));
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
     }
+
+    this.refreshScheduler.scheduleRefresh(
+      'cross-source-signals',
+      () => this.dataLoader.loadCrossSourceSignals(),
+      REFRESH_INTERVALS.crossSourceSignals,
+      () => this.isPanelNearViewport('cross-source-signals'),
+    );
 
     // Telegram Intel (near real-time, 60s refresh)
     this.refreshScheduler.scheduleRefresh(

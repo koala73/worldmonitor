@@ -19,11 +19,11 @@ interface CrossSourceSignalsData {
   compositeCount: number;
 }
 
-const SEVERITY_CLASS: Record<string, string> = {
-  CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL: 'css-critical',
-  CROSS_SOURCE_SIGNAL_SEVERITY_HIGH: 'css-high',
-  CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM: 'css-medium',
-  CROSS_SOURCE_SIGNAL_SEVERITY_LOW: 'css-low',
+const SEVERITY_COLOR: Record<string, string> = {
+  CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL: 'var(--semantic-critical)',
+  CROSS_SOURCE_SIGNAL_SEVERITY_HIGH: '#ff8c8c',
+  CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM: 'var(--yellow)',
+  CROSS_SOURCE_SIGNAL_SEVERITY_LOW: 'var(--text-dim)',
 };
 
 const SEVERITY_LABEL: Record<string, string> = {
@@ -39,7 +39,7 @@ const TYPE_LABEL: Record<string, string> = {
   CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING: 'GPS JAM',
   CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE: 'MIL FLTX',
   CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE: 'UNREST',
-  CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER: 'OREF',
+  CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER: 'ADVISORY',
   CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE: 'VIX',
   CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK: 'COMDTY',
   CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION: 'CYBER',
@@ -91,26 +91,26 @@ export class CrossSourceSignalsPanel extends Panel {
 
   private renderSignal(sig: CrossSourceSignal, index: number): string {
     const isComposite = sig.type === 'CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION';
-    const sevClass = SEVERITY_CLASS[sig.severity] ?? 'css-low';
+    const sevColor = SEVERITY_COLOR[sig.severity] ?? 'var(--text-dim)';
     const typeLabel = TYPE_LABEL[sig.type] ?? sig.type.replace('CROSS_SOURCE_SIGNAL_TYPE_', '');
     const age = this.ageSuffix(sig.detectedAt);
-    const compositeClass = isComposite ? ' css-composite' : '';
+    const compositeBorder = isComposite ? `border-left:3px solid ${sevColor};padding-left:11px;` : '';
 
     const contributors = isComposite && sig.contributingTypes.length > 0
-      ? `<div class="css-contributors">${escapeHtml(sig.contributingTypes.slice(0, 5).join(' · '))}</div>`
+      ? `<div style="margin-top:4px;font-size:10px;color:var(--text-dim);letter-spacing:0.06em">${escapeHtml(sig.contributingTypes.slice(0, 5).join(' · '))}</div>`
       : '';
 
     return `
-      <div class="css-signal${compositeClass}">
-        <div class="css-rank">${index + 1}</div>
-        <div class="css-content">
-          <div class="css-header">
-            <span class="css-badge css-badge-type">${escapeHtml(typeLabel)}</span>
-            <span class="css-badge ${sevClass}">${escapeHtml(SEVERITY_LABEL[sig.severity] ?? '')}</span>
-            <span class="css-theater">${escapeHtml(sig.theater)}</span>
-            <span class="css-age">${escapeHtml(age)}</span>
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--border);background:rgba(255,255,255,0.02);${compositeBorder}">
+        <div style="font-size:13px;font-weight:700;color:var(--text-dim);min-width:20px;text-align:right;flex-shrink:0">${index + 1}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-size:10px;padding:2px 5px;border:1px solid var(--border);color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.08em">${escapeHtml(typeLabel)}</span>
+            <span style="font-size:10px;padding:2px 5px;border:1px solid ${sevColor};color:${sevColor};font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.08em">${escapeHtml(SEVERITY_LABEL[sig.severity] ?? '')}</span>
+            <span style="font-size:11px;color:var(--text-dim)">${escapeHtml(sig.theater)}</span>
+            <span style="font-size:10px;color:var(--text-dim);margin-left:auto">${escapeHtml(age)}</span>
           </div>
-          <div class="css-summary">${escapeHtml(sig.summary)}</div>
+          <div style="font-size:12px;line-height:1.5;color:var(--text)">${escapeHtml(sig.summary)}</div>
           ${contributors}
         </div>
       </div>
@@ -119,7 +119,7 @@ export class CrossSourceSignalsPanel extends Panel {
 
   private render(): void {
     if (this.signals.length === 0) {
-      this.setContent('<div class="panel-empty">No cross-source signals detected.</div>');
+      this.setContent('<div style="padding:16px 0;text-align:center;font-size:12px;color:var(--text-dim)">No cross-source signals detected.</div>');
       return;
     }
 
@@ -128,18 +128,16 @@ export class CrossSourceSignalsPanel extends Panel {
       : '';
 
     const compositeNote = this.compositeCount > 0
-      ? `<div class="css-composite-note">${this.compositeCount} composite escalation zone${this.compositeCount > 1 ? 's' : ''} detected</div>`
+      ? `<div style="font-size:12px;color:var(--semantic-critical);padding:6px 8px;border:1px solid rgba(var(--semantic-critical-rgb,255,80,80),0.3);background:rgba(var(--semantic-critical-rgb,255,80,80),0.06);margin-bottom:8px">${this.compositeCount} composite escalation zone${this.compositeCount > 1 ? 's' : ''} detected</div>`
       : '';
 
     const signalRows = this.signals.map((s, i) => this.renderSignal(s, i)).join('');
 
     this.setContent(`
-      <div class="css-panel">
+      <div style="display:flex;flex-direction:column;gap:6px">
         ${compositeNote}
-        <div class="css-list">
-          ${signalRows}
-        </div>
-        ${evalTime ? `<div class="css-footer">${escapeHtml(evalTime)}</div>` : ''}
+        ${signalRows}
+        ${evalTime ? `<div style="font-size:10px;color:var(--text-dim);padding-top:8px;border-top:1px solid var(--border);text-align:center">${escapeHtml(evalTime)}</div>` : ''}
       </div>
     `);
   }
