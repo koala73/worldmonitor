@@ -1,3 +1,4 @@
+import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
 import {
@@ -13,6 +14,8 @@ export type { ListCrossSourceSignalsResponse };
 const EMPTY: ListCrossSourceSignalsResponse = { signals: [], evaluatedAt: 0, compositeCount: 0 };
 
 export async function fetchCrossSourceSignals(): Promise<ListCrossSourceSignalsResponse> {
+  const hydrated = getHydratedData('crossSourceSignals') as ListCrossSourceSignalsResponse | undefined;
+  if (hydrated?.signals?.length) return hydrated;
   return breaker.execute(async () => {
     return await client.listCrossSourceSignals({}, { signal: AbortSignal.timeout(15_000) });
   }, EMPTY);

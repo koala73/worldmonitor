@@ -24,7 +24,7 @@ const SOURCE_KEYS = [
   'radiation:observations:v1',
   'infra:outages:v1',
   'wildfire:fires:v1',
-  'displacement:summary:v1:2025',
+  `displacement:summary:v1:${new Date().getFullYear()}`,
   'forecast:predictions:v2',
   'intelligence:gdelt-intel:v1',
   'gdelt:intel:tone:military',
@@ -533,8 +533,7 @@ function extractWildfireEscalation(d) {
 }
 
 function extractDisplacementSurge(d) {
-  const year = new Date().getFullYear();
-  const payload = d[`displacement:summary:v1:${year}`] || d['displacement:summary:v1:2025'];
+  const payload = d[`displacement:summary:v1:${new Date().getFullYear()}`];
   if (!payload) return [];
   const crises = Array.isArray(payload.crises) ? payload.crises : (Array.isArray(payload) ? payload : []);
   const surges = crises.filter(c => safeNum(c.newDisplacements) > 50000 || c.trend === 'rising');
@@ -641,14 +640,14 @@ function extractMediaToneDeterioration(d) {
     if (series.length < 3) continue;
     const last3 = series.slice(-3);
     const vals = last3.map(p => safeNum(p.value));
-    const isDeclinig = vals[0] > vals[1] && vals[1] > vals[2];
+    const isDeclining = vals[0] > vals[1] && vals[1] > vals[2];
     const finalVal = vals[2];
-    if (!isDeclinig || finalVal >= -1.5) continue;
+    if (!isDeclining || finalVal >= -1.5) continue;
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION'] * Math.min(2, Math.abs(finalVal) / 3);
     signals.push({
       id: `gdelt-tone:${topic}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION',
-      theater: topic === 'maritime' ? 'Global' : 'Global',
+      theater: topic === 'maritime' ? 'Indo-Pacific' : 'Global',
       summary: `Media tone deterioration: ${topic} coverage tone ${finalVal.toFixed(2)} (3-point declining trend)`,
       severity: scoreTier(score),
       severityScore: score,
