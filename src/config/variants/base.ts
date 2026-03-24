@@ -31,11 +31,13 @@ export const REFRESH_INTERVALS = {
   cyberThreats: 10 * 60 * 1000,
   stockAnalysis: 15 * 60 * 1000,
   dailyMarketBrief: 60 * 60 * 1000,
+  marketImplications: 75 * 60 * 1000,
   stockBacktest: 4 * 60 * 60 * 1000,
   serviceStatus: 3 * 60 * 1000,
   stablecoins: 15 * 60 * 1000,
   etfFlows: 15 * 60 * 1000,
   macroSignals: 15 * 60 * 1000,
+  fearGreed: 30 * 60 * 1000,
   strategicPosture: 15 * 60 * 1000,
   strategicRisk: 5 * 60 * 1000,
   temporalBaseline: 10 * 60 * 1000,
@@ -48,6 +50,7 @@ export const REFRESH_INTERVALS = {
   intelligence: 15 * 60 * 1000,
   correlationEngine: 5 * 60 * 1000,
   crossSourceSignals: 15 * 60 * 1000,
+  hormuzTracker: 60 * 60 * 1000, // 1h — data updates daily
 };
 
 // Monitor colors - shared

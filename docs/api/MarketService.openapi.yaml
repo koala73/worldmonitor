@@ -523,6 +523,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/market/v1/get-fear-greed-index:
+        get:
+            tags:
+                - MarketService
+            summary: GetFearGreedIndex
+            description: GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
+            operationId: GetFearGreedIndex
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFearGreedIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1354,3 +1380,84 @@ components:
                     items:
                         $ref: '#/components/schemas/CryptoQuote'
             description: ListOtherTokensResponse contains other token price data.
+        GetFearGreedIndexRequest:
+            type: object
+        GetFearGreedIndexResponse:
+            type: object
+            properties:
+                compositeScore:
+                    type: number
+                    format: double
+                compositeLabel:
+                    type: string
+                previousScore:
+                    type: number
+                    format: double
+                seededAt:
+                    type: string
+                sentiment:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                volatility:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                positioning:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                trend:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                breadth:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                momentum:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                liquidity:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                credit:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                macro:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                crossAsset:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                vix:
+                    type: number
+                    format: double
+                hySpread:
+                    type: number
+                    format: double
+                yield10y:
+                    type: number
+                    format: double
+                putCallRatio:
+                    type: number
+                    format: double
+                pctAbove200d:
+                    type: number
+                    format: double
+                cnnFearGreed:
+                    type: number
+                    format: double
+                cnnLabel:
+                    type: string
+                aaiiBull:
+                    type: number
+                    format: double
+                aaiiBear:
+                    type: number
+                    format: double
+                fedRate:
+                    type: string
+                unavailable:
+                    type: boolean
+        FearGreedCategory:
+            type: object
+            properties:
+                score:
+                    type: number
+                    format: double
+                weight:
+                    type: number
+                    format: double
+                contribution:
+                    type: number
+                    format: double
+                degraded:
+                    type: boolean
+                inputsJson:
+                    type: string

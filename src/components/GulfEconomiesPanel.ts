@@ -39,6 +39,10 @@ export class GulfEconomiesPanel extends Panel {
       if (hydrated?.quotes?.length) {
         if (!this.element?.isConnected) return;
         this.renderGulf(hydrated);
+        void client.listGulfQuotes({}).then(data => {
+          if (!this.element?.isConnected || !data.quotes?.length) return;
+          this.renderGulf(data);
+        }).catch(() => {});
         return;
       }
       const data = await client.listGulfQuotes({});

@@ -581,6 +581,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-market-implications:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListMarketImplications
+            description: ListMarketImplications returns AI-generated trade-implication cards from live world state.
+            operationId: ListMarketImplications
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListMarketImplicationsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1725,3 +1751,39 @@ components:
                     format: int32
                     description: 'For COMPOSITE_ESCALATION: number of co-firing signals in theater.'
             description: CrossSourceSignal represents a single detected cross-domain signal event.
+        ListMarketImplicationsRequest:
+            type: object
+        ListMarketImplicationsResponse:
+            type: object
+            properties:
+                cards:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MarketImplicationCard'
+                degraded:
+                    type: boolean
+                emptyReason:
+                    type: string
+                generatedAt:
+                    type: string
+        MarketImplicationCard:
+            type: object
+            properties:
+                ticker:
+                    type: string
+                name:
+                    type: string
+                direction:
+                    type: string
+                timeframe:
+                    type: string
+                confidence:
+                    type: string
+                title:
+                    type: string
+                narrative:
+                    type: string
+                riskCaveat:
+                    type: string
+                driver:
+                    type: string

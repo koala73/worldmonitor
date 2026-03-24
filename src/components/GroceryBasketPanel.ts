@@ -19,6 +19,10 @@ export class GroceryBasketPanel extends Panel {
       if (hydrated?.countries?.length) {
         if (!this.element?.isConnected) return;
         this.renderBasket(hydrated);
+        void client.listGroceryBasketPrices({}).then(data => {
+          if (!this.element?.isConnected || !data.countries?.length) return;
+          this.renderBasket(data);
+        }).catch(() => {});
         return;
       }
       const data = await client.listGroceryBasketPrices({});

@@ -19,6 +19,7 @@ import "worldmonitor/market/v1/list_crypto_sectors.proto";
 import "worldmonitor/market/v1/list_defi_tokens.proto";
 import "worldmonitor/market/v1/list_ai_tokens.proto";
 import "worldmonitor/market/v1/list_other_tokens.proto";
+import "worldmonitor/market/v1/get_fear_greed_index.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -102,5 +103,10 @@ service MarketService {
   // ListOtherTokens retrieves other/trending crypto token prices and changes.
   rpc ListOtherTokens(ListOtherTokensRequest) returns (ListOtherTokensResponse) {
     option (sebuf.http.config) = {path: "/list-other-tokens", method: HTTP_METHOD_GET};
+  }
+
+  // GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
+  rpc GetFearGreedIndex(GetFearGreedIndexRequest) returns (GetFearGreedIndexResponse) {
+    option (sebuf.http.config) = {path: "/get-fear-greed-index", method: HTTP_METHOD_GET};
   }
 }

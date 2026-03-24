@@ -16,6 +16,7 @@ import { getCompanyEnrichment } from './get-company-enrichment';
 import { listCompanySignals } from './list-company-signals';
 import { getGdeltTopicTimeline } from './get-gdelt-topic-timeline';
 import { listCrossSourceSignals } from './list-cross-source-signals';
+import { listMarketImplications } from './list-market-implications';
 
 export const intelligenceHandler: IntelligenceServiceHandler = {
   getRiskScores,
@@ -34,4 +35,5 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   listCompanySignals,
   getGdeltTopicTimeline,
   listCrossSourceSignals,
+  listMarketImplications,
 };

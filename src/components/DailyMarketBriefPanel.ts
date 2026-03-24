@@ -40,7 +40,7 @@ function formatChange(change: number | null): string {
 
 export class DailyMarketBriefPanel extends Panel {
   constructor() {
-    super({ id: 'daily-market-brief', title: 'Daily Market Brief', infoTooltip: t('components.dailyMarketBrief.infoTooltip') });
+    super({ id: 'daily-market-brief', title: 'Daily Market Brief', infoTooltip: t('components.dailyMarketBrief.infoTooltip'), premium: 'locked' });
   }
 
   public renderBrief(brief: DailyMarketBrief, source: BriefSource = 'live'): void {

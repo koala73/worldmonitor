@@ -59,6 +59,9 @@ function evaluateForecastRunArtifacts(artifacts = {}) {
   const publishedSupplyChainCount = Number(summary?.quality?.traced?.domainCounts?.supply_chain || 0);
   const mappedSignalCount = Number(worldState?.impactExpansion?.mappedSignalCount || summary?.worldStateSummary?.impactExpansionMappedSignalCount || 0);
   const eligibleStateCount = Number(summary?.deepForecast?.eligibleStateCount || runStatus?.eligibleStateIds?.length || 0);
+  const convergence = artifacts.impactExpansionDebug?.convergence || null;
+  const convergenceQualityMet = convergence === null ? true : convergence.converged === true;
+  const convergenceFinalComposite = convergence?.finalComposite ?? null;
 
   const checks = [
     buildCheck('run_status_present', !!runStatus, 'error'),
@@ -80,6 +83,10 @@ function evaluateForecastRunArtifacts(artifacts = {}) {
     buildCheck('eligible_high_value_deep_run_materializes_mapped_signals', eligibleStateCount === 0 || !hasHighValueDeepCandidate(snapshot) || mappedSignalCount > 0, 'error', {
       eligibleStateCount,
       mappedSignalCount,
+    }),
+    buildCheck('convergence_quality_met', convergenceQualityMet, 'warn', {
+      convergenceFinalComposite,
+      convergenceThreshold: 0.80,
     }),
   ];
 

@@ -416,6 +416,28 @@ export interface CrossSourceSignal {
   signalCount: number;
 }
 
+export interface ListMarketImplicationsRequest {
+}
+
+export interface ListMarketImplicationsResponse {
+  cards: MarketImplicationCard[];
+  degraded: boolean;
+  emptyReason: string;
+  generatedAt: string;
+}
+
+export interface MarketImplicationCard {
+  ticker: string;
+  name: string;
+  direction: string;
+  timeframe: string;
+  confidence: string;
+  title: string;
+  narrative: string;
+  riskCaveat: string;
+  driver: string;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -882,6 +904,29 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as ListCrossSourceSignalsResponse;
+  }
+
+  async listMarketImplications(req: ListMarketImplicationsRequest, options?: IntelligenceServiceCallOptions): Promise<ListMarketImplicationsResponse> {
+    let path = "/api/intelligence/v1/list-market-implications";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListMarketImplicationsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

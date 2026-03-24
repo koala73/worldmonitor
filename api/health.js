@@ -54,6 +54,7 @@ const BOOTSTRAP_KEYS = {
   aiTokens:          'market:ai-tokens:v1',
   otherTokens:       'market:other-tokens:v1',
   fredBatch:         'economic:fred:v1:FEDFUNDS:0',
+  fearGreedIndex:    'market:fear-greed:v1',
 };
 
 const STANDALONE_KEYS = {
@@ -93,6 +94,9 @@ const STANDALONE_KEYS = {
   tariffTrendsUs:           'trade:tariffs:v1:840:all:10',
   militaryForecastInputs:   'military:forecast-inputs:stale:v1',
   gscpi:                    'economic:fred:v1:GSCPI:0',
+  marketImplications:       'intelligence:market-implications:v1',
+  hormuzTracker:            'supply_chain:hormuz_tracker:v1',
+  simulationPackageLatest:  'forecast:simulation-package:latest',
 };
 
 const SEED_META = {
@@ -173,6 +177,8 @@ const SEED_META = {
   otherTokens:       { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
   fredBatch:         { key: 'seed-meta:economic:fred:v1:FEDFUNDS:0', maxStaleMin: 1500 }, // daily cron
   gscpi:             { key: 'seed-meta:economic:gscpi',               maxStaleMin: 2880 }, // 24h interval; 2880min = 48h = 2x interval
+  fearGreedIndex:    { key: 'seed-meta:market:fear-greed',            maxStaleMin: 720 }, // 6h cron; 720min = 12h = 2x interval
+  hormuzTracker:     { key: 'seed-meta:supply_chain:hormuz_tracker',  maxStaleMin: 2880 }, // daily cron; 2880min = 48h = 2x interval
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
@@ -186,11 +192,13 @@ const ON_DEMAND_KEYS = new Set([
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   'militaryForecastInputs', // intermediate seed-to-seed pipeline key; only populated after seed-military-flights runs
+  'marketImplications', // LLM-generated inside forecast cron; can fail silently on LLM errors — degrade to WARN not CRIT
+  'simulationPackageLatest', // written by writeSimulationPackage after deep forecast runs; only present after first successful deep run
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed).
 // The key must still exist in Redis; only the record count can be 0.
-const EMPTY_DATA_OK_KEYS = new Set(['notamClosures', 'faaDelays', 'gpsjam']);
+const EMPTY_DATA_OK_KEYS = new Set(['notamClosures', 'faaDelays', 'gpsjam', 'positiveGeoEvents']);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
 // Theater posture uses live → stale → backup fallback chain.
@@ -432,6 +440,21 @@ export default async function handler(req) {
   else overall = 'UNHEALTHY';
 
   const httpStatus = overall === 'HEALTHY' || overall === 'WARNING' ? 200 : 503;
+
+  if (httpStatus === 503) {
+    const problemKeys = Object.entries(checks)
+      .filter(([, c]) => c.status === 'EMPTY' || c.status === 'EMPTY_DATA' || c.status === 'STALE_SEED')
+      .map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`);
+    console.log('[health] %s crits=[%s]', overall, problemKeys.join(', '));
+    // Persist last failure snapshot to Redis (TTL 24h) for post-mortem inspection.
+    // Fire-and-forget — must not block or add latency to the health response.
+    void redisPipeline([['SET', 'health:last-failure', JSON.stringify({
+      at: new Date(now).toISOString(),
+      status: overall,
+      critCount,
+      crits: problemKeys,
+    }), 'EX', 86400]]).catch(() => {});
+  }
 
   const url = new URL(req.url);
   const compact = url.searchParams.get('compact') === '1';

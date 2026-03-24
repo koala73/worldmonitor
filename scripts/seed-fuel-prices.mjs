@@ -537,7 +537,7 @@ async function fetchUK_ModeA() {
   }];
 }
 
-const prevSnapshot = await readSeedSnapshot(CANONICAL_KEY);
+const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
 
 const fxSymbols = {};
 for (const ccy of ['MYR', 'EUR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BGN', 'BRL', 'NZD', 'GBP']) {
@@ -636,7 +636,8 @@ if (wowAvailable) {
     const prev = prevMap.get(country.code);
     if (!prev) continue;
 
-    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0) {
+    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0
+        && country.gasoline.observedAt !== prev.gasoline?.observedAt) {
       const raw = +((country.gasoline.usdPrice - prev.gasoline.usdPrice) / prev.gasoline.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} gasoline: ${raw}% — omitting`);
@@ -644,7 +645,8 @@ if (wowAvailable) {
         country.gasoline.wowPct = raw;
       }
     }
-    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0) {
+    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0
+        && country.diesel.observedAt !== prev.diesel?.observedAt) {
       const raw = +((country.diesel.usdPrice - prev.diesel.usdPrice) / prev.diesel.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} diesel: ${raw}% — omitting`);
@@ -693,9 +695,9 @@ await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
   ttlSeconds: CACHE_TTL,
   validateFn: (d) => d?.countries?.length >= 1,
   recordCount: (d) => d?.countries?.length || 0,
-  extraKeys: prevSnapshot ? [{
+  extraKeys: [{
     key: `${CANONICAL_KEY}:prev`,
-    transform: () => prevSnapshot,
+    transform: () => data,
     ttl: CACHE_TTL * 2,
-  }] : undefined,
+  }],
 });

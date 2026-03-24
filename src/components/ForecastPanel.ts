@@ -17,6 +17,16 @@ const DOMAIN_LABELS: Record<string, string> = {
   infrastructure: 'Infra',
 };
 
+const DOMAIN_COLORS: Record<string, string> = {
+  conflict:       '#e05252',
+  market:         '#d29922',
+  supply_chain:   '#58a6ff',
+  political:      '#bc8cff',
+  military:       '#f85149',
+  cyber:          '#bc8cff',
+  infrastructure: '#3fb950',
+};
+
 let _styleInjected = false;
 function injectStyles(): void {
   if (_styleInjected) return;
@@ -27,35 +37,80 @@ function injectStyles(): void {
     .fc-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-color, #333); }
     .fc-filter { background: transparent; border: 1px solid var(--border-color, #444); color: var(--text-secondary, #aaa); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; }
     .fc-filter.fc-active { background: var(--accent-color, #3b82f6); color: #fff; border-color: var(--accent-color, #3b82f6); }
-    .fc-list { padding: 4px 0; }
-    .fc-card { padding: 6px 10px; border-bottom: 1px solid var(--border-color, #222); }
-    .fc-card:hover { background: var(--hover-bg, rgba(255,255,255,0.03)); }
-    .fc-header { display: flex; justify-content: space-between; align-items: center; }
-    .fc-title { font-weight: 600; color: var(--text-primary, #eee); }
-    .fc-prob { font-weight: 700; font-size: 14px; }
-    .fc-prob.high { color: #ef4444; }
-    .fc-prob.medium { color: #f59e0b; }
-    .fc-prob.low { color: #22c55e; }
-    .fc-meta { color: var(--text-secondary, #888); font-size: 11px; margin-top: 2px; }
-    .fc-trend-rising { color: #ef4444; }
-    .fc-trend-falling { color: #22c55e; }
-    .fc-trend-stable { color: var(--text-secondary, #888); }
-    .fc-signals { margin-top: 4px; }
+
+    /* 2-col grid */
+    .fc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; padding: 8px; }
+
+    /* prediction market card */
+    .fc-card {
+      background: var(--panel-bg, #161b22);
+      border: 1px solid var(--border-color, #30363d);
+      border-radius: 4px;
+      padding: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .fc-card:hover { border-color: #40464f; }
+
+    /* card top row: title + category tag */
+    .fc-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .fc-title { font-weight: 600; color: var(--text-primary, #e6edf3); font-size: 12px; line-height: 1.4; flex: 1; }
+
+    /* domain / category tag */
+    .fc-cat-tag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      margin-top: 1px;
+      font-weight: 500;
+    }
+
+    /* YES / NO outcome pills */
+    .fc-outcomes { display: flex; gap: 6px; }
+    .fc-outcome {
+      flex: 1;
+      border-radius: 3px;
+      padding: 7px 8px;
+      text-align: center;
+      border: 1px solid transparent;
+    }
+    .fc-outcome-yes { background: rgba(63,185,80,0.1); border-color: rgba(63,185,80,0.28); }
+    .fc-outcome-no  { background: rgba(224,82,82,0.08); border-color: rgba(224,82,82,0.2); }
+    .fc-outcome-label { font-size: 10px; color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+    .fc-outcome-pct { font-size: 20px; font-weight: 700; line-height: 1; }
+    .fc-outcome-yes .fc-outcome-pct { color: #3fb950; }
+    .fc-outcome-pct-mid { color: #d29922 !important; }
+    .fc-outcome-pct-low { color: #e05252 !important; }
+    .fc-outcome-no  .fc-outcome-pct { color: #e05252; }
+
+    /* bottom meta row */
+    .fc-card-bottom { display: flex; align-items: center; justify-content: space-between; }
+    .fc-region { font-size: 10px; color: var(--text-secondary, #7d8590); }
+    .fc-trend { font-size: 11px; font-weight: 600; }
+    .fc-trend-rising  { color: #3fb950; }
+    .fc-trend-falling { color: #e05252; }
+    .fc-trend-stable  { color: var(--text-secondary, #7d8590); }
+
+    /* toggle row (Analysis / Signals) */
+    .fc-toggle-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .fc-toggle { cursor: pointer; color: var(--text-secondary, #7d8590); font-size: 11px; }
+    .fc-toggle:hover { color: var(--text-primary, #e6edf3); }
+
+    /* expandable detail sections — unchanged */
+    .fc-hidden { display: none; }
+    .fc-signals { margin-top: 2px; }
     .fc-signal { color: var(--text-secondary, #999); font-size: 11px; padding: 1px 0; }
     .fc-signal::before { content: ''; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #666); margin-right: 6px; vertical-align: middle; }
     .fc-cascade { font-size: 11px; color: var(--accent-color, #3b82f6); margin-top: 3px; }
-    .fc-summary { font-size: 11px; color: var(--text-primary, #d7d7d7); margin: 6px 0 4px; line-height: 1.45; }
-    .fc-scenario { font-size: 11px; color: var(--text-primary, #ccc); margin: 4px 0; font-style: italic; }
-    .fc-hidden { display: none; }
-    .fc-toggle-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
-    .fc-toggle { cursor: pointer; color: var(--text-secondary, #888); font-size: 11px; }
-    .fc-toggle:hover { color: var(--text-primary, #eee); }
+    .fc-summary { font-size: 11px; color: var(--text-primary, #d7d7d7); line-height: 1.45; }
     .fc-calibration { font-size: 10px; color: var(--text-secondary, #777); margin-top: 2px; }
-    .fc-bar { height: 3px; border-radius: 1.5px; margin-top: 3px; background: var(--border-color, #333); }
-    .fc-bar-fill { height: 100%; border-radius: 1.5px; }
     .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
-    .fc-projections { font-size: 10px; color: var(--text-secondary, #777); margin-top: 3px; font-variant-numeric: tabular-nums; }
-    .fc-detail { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color, #2a2a2a); }
+    .fc-detail { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border-color, #2a2a2a); }
     .fc-detail-grid { display: grid; gap: 8px; }
     .fc-section { display: grid; gap: 4px; }
     .fc-section-title { color: var(--text-secondary, #888); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
@@ -68,6 +123,7 @@ function injectStyles(): void {
     .fc-perspectives { margin-top: 2px; }
     .fc-perspective { font-size: 11px; color: var(--text-secondary, #999); padding: 2px 0; line-height: 1.4; }
     .fc-perspective strong { color: var(--text-primary, #ccc); font-weight: 600; }
+    .fc-scenario { font-style: italic; }
   `;
   document.head.appendChild(style);
 }
@@ -138,11 +194,23 @@ export class ForecastPanel extends Panel {
   }
 
   private renderCard(f: Forecast): string {
-    const pct = Math.round((f.probability || 0) * 100);
-    const probClass = pct > 60 ? 'high' : pct > 35 ? 'medium' : 'low';
-    const probColor = pct > 60 ? '#ef4444' : pct > 35 ? '#f59e0b' : '#22c55e';
-    const trendIcon = f.trend === 'rising' ? '&#x25B2;' : f.trend === 'falling' ? '&#x25BC;' : '&#x2500;';
-    const trendClass = `fc-trend-${f.trend || 'stable'}`;
+    const pct    = Math.round((f.probability || 0) * 100);
+    const noPct  = 100 - pct;
+    const domain = f.domain || 'conflict';
+    const catColor = DOMAIN_COLORS[domain] || '#7d8590';
+    const catLabel = DOMAIN_LABELS[domain] || domain;
+
+    // YES pill color: green ≥60%, yellow 40-59%, red <40%
+    const yesPctClass = pct >= 60 ? '' : pct >= 40 ? 'fc-outcome-pct-mid' : 'fc-outcome-pct-low';
+    // YES pill background adjusts for mid/low
+    const yesOutcomeStyle = pct >= 60
+      ? ''
+      : pct >= 40
+        ? 'background:rgba(210,153,34,0.1);border-color:rgba(210,153,34,0.28);'
+        : 'background:rgba(224,82,82,0.1);border-color:rgba(224,82,82,0.28);';
+
+    const trendSymbol = f.trend === 'rising' ? '↑' : f.trend === 'falling' ? '↓' : '→';
+    const trendClass  = `fc-trend fc-trend-${f.trend || 'stable'}`;
 
     const signalsHtml = (f.signals || []).map(s =>
       `<div class="fc-signal">${escapeHtml(s.value)}</div>`
@@ -152,31 +220,35 @@ export class ForecastPanel extends Panel {
       ? `<div class="fc-cascade">Cascades: ${f.cascades.map(c => escapeHtml(c.domain)).join(', ')}</div>`
       : '';
 
-    const summaryHtml = (f.feedSummary || f.scenario)
-      ? `<div class="fc-summary">${escapeHtml(f.feedSummary || f.scenario)}</div>`
-      : '';
-
     const calibrationHtml = f.calibration?.marketTitle
       ? `<div class="fc-calibration">Market: ${escapeHtml(f.calibration.marketTitle)} (${Math.round((f.calibration.marketPrice || 0) * 100)}%)</div>`
-      : '';
-
-    const proj = f.projections;
-    const projectionsHtml = proj
-      ? `<div class="fc-projections">24h: ${Math.round(proj.h24 * 100)}% | 7d: ${Math.round(proj.d7 * 100)}% | 30d: ${Math.round(proj.d30 * 100)}%</div>`
       : '';
 
     const detailHtml = this.renderDetail(f);
 
     return `
       <div class="fc-card">
-        <div class="fc-header">
-          <span class="fc-title"><span class="${trendClass}">${trendIcon}</span> ${escapeHtml(f.title)}</span>
-          <span class="fc-prob ${probClass}">${pct}%</span>
+        <div class="fc-card-top">
+          <span class="fc-title">${escapeHtml(f.title)}</span>
+          <span class="fc-cat-tag" style="background:${catColor}1f;color:${catColor};border:1px solid ${catColor}47">${escapeHtml(catLabel)}</span>
         </div>
-        <div class="fc-bar"><div class="fc-bar-fill" style="width:${pct}%;background:${probColor}"></div></div>
-        ${projectionsHtml}
-        <div class="fc-meta">${escapeHtml(f.region)} | ${escapeHtml(f.timeHorizon || '7d')} | <span class="${trendClass}">${f.trend || 'stable'}</span></div>
-        ${summaryHtml}
+
+        <div class="fc-outcomes">
+          <div class="fc-outcome fc-outcome-yes" style="${yesOutcomeStyle}">
+            <div class="fc-outcome-label">YES</div>
+            <div class="fc-outcome-pct ${yesPctClass}">${pct}%</div>
+          </div>
+          <div class="fc-outcome fc-outcome-no">
+            <div class="fc-outcome-label">NO</div>
+            <div class="fc-outcome-pct">${noPct}%</div>
+          </div>
+        </div>
+
+        <div class="fc-card-bottom">
+          <span class="fc-region">${escapeHtml(f.region)}</span>
+          <span class="${trendClass}">${trendSymbol} ${f.trend || 'stable'}</span>
+        </div>
+
         <div class="fc-toggle-row">
           <span class="fc-toggle" data-fc-toggle="detail">Analysis</span>
           <span class="fc-toggle" data-fc-toggle="signals">Signals (${(f.signals || []).length})</span>

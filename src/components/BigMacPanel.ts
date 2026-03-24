@@ -19,6 +19,10 @@ export class BigMacPanel extends Panel {
       if (hydrated?.countries?.length) {
         if (!this.element?.isConnected) return;
         this.renderIndex(hydrated);
+        void client.listBigMacPrices({}).then(data => {
+          if (!this.element?.isConnected || !data.countries?.length) return;
+          this.renderIndex(data);
+        }).catch(() => {});
         return;
       }
       const data = await client.listBigMacPrices({});

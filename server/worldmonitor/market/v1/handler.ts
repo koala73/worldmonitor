@@ -29,6 +29,7 @@ import { listCryptoSectors } from './list-crypto-sectors';
 import { listDefiTokens } from './list-defi-tokens';
 import { listAiTokens } from './list-ai-tokens';
 import { listOtherTokens } from './list-other-tokens';
+import { getFearGreedIndex } from './get-fear-greed-index';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
@@ -47,4 +48,5 @@ export const marketHandler: MarketServiceHandler = {
   listDefiTokens,
   listAiTokens,
   listOtherTokens,
+  getFearGreedIndex,
 };

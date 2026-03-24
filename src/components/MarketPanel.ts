@@ -138,7 +138,7 @@ export class HeatmapPanel extends Panel {
     super({ id: 'heatmap', title: t('panels.heatmap'), infoTooltip: t('components.heatmap.infoTooltip') });
   }
 
-  public renderHeatmap(data: Array<{ name: string; change: number | null }>): void {
+  public renderHeatmap(data: Array<{ symbol?: string; name: string; change: number | null }>): void {
     if (data.length === 0) {
       this.showRetrying(t('common.failedSectorData'));
       return;
@@ -147,17 +147,19 @@ export class HeatmapPanel extends Panel {
     const html =
       '<div class="heatmap">' +
       data
-        .map(
-          (sector) => {
-            const change = sector.change ?? 0;
-            return `
+        .map((sector) => {
+          const change = sector.change ?? 0;
+          const tickerHtml = sector.symbol
+            ? `<div class="sector-ticker">${escapeHtml(sector.symbol)}</div>`
+            : '';
+          return `
         <div class="heatmap-cell ${getHeatmapClass(change)}">
-          <div class="sector-name">${escapeHtml(sector.name)}</div>
+          ${tickerHtml}
           <div class="sector-change ${getChangeClass(change)}">${formatChange(change)}</div>
+          <div class="sector-name">${escapeHtml(sector.name)}</div>
         </div>
       `;
-          }
-        )
+        })
         .join('') +
       '</div>';
 

@@ -145,9 +145,13 @@ export class MacroSignalsPanel extends Panel {
       this.error = null;
       this.loading = false;
       this.renderPanel();
+      void this.refreshFromRpc();
       return true;
     }
+    return this.refreshFromRpc();
+  }
 
+  private async refreshFromRpc(): Promise<boolean> {
     try {
       const res = await economicClient.getMacroSignals({});
       if (!this.element?.isConnected) return false;
@@ -156,12 +160,15 @@ export class MacroSignalsPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return false;
       if (!this.element?.isConnected) return false;
-      console.warn('[MacroSignals] Fetch error:', err);
-      this.error = t('common.noDataShort');
+      if (!this.data) {
+        console.warn('[MacroSignals] Fetch error:', err);
+        this.error = t('common.noDataShort');
+      } else {
+        return false;
+      }
     }
     this.loading = false;
     this.renderPanel();
-
     const ts = this.data?.timestamp ?? '';
     const changed = ts !== this.lastTimestamp;
     this.lastTimestamp = ts;
@@ -193,6 +200,7 @@ export class MacroSignalsPanel extends Panel {
       <div class="macro-signals-container">
         <div class="macro-verdict ${verdictClass}">
           <span class="verdict-label">${t('components.macroSignals.overall')}</span>
+          <span style="font-size:9px;background:rgba(247,147,26,0.15);color:#f7931a;border:1px solid rgba(247,147,26,0.3);padding:1px 5px;border-radius:3px;font-weight:700;letter-spacing:0.04em;vertical-align:middle">&#x20bf; BTC</span>
           <span class="verdict-value">${d.verdict === 'BUY' ? t('components.macroSignals.verdict.buy') : d.verdict === 'CASH' ? t('components.macroSignals.verdict.cash') : escapeHtml(d.verdict)}</span>
           <span class="verdict-detail">${t('components.macroSignals.bullish', { count: String(d.bullishCount), total: String(d.totalCount) })}</span>
         </div>

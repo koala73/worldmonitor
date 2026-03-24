@@ -1248,7 +1248,7 @@ describe('forecast llm overrides', () => {
     const candidateStateId = baseState.stateUnits[0]?.id || 'state-0';
 
     __setForecastLlmCallOverrideForTests(async (_systemPrompt, _userPrompt, options = {}) => {
-      if (options.stage === 'impact_expansion') {
+      if (options.stage === 'impact_expansion_single') {
         return {
           provider: 'test',
           model: 'impact-model',
@@ -1305,7 +1305,7 @@ describe('forecast llm overrides', () => {
       assert.equal(bundle.failureReason, '');
       assert.equal(bundle.extractedCandidateCount, 1);
       assert.equal(bundle.extractedHypothesisCount, 1);
-      assert.match(bundle.parseStage, /^recovered_/);
+      assert.equal(bundle.parseMode, 'per_candidate');
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -281,7 +281,7 @@
     "gulfIndices": "걸프 지수",
     "gulfCurrencies": "걸프 통화",
     "gulfOil": "걸프 석유",
-    "bigmac": "Updated Big Mac Index"
+    "bigmac": "Real Big Mac Index"
   },
   "commands": {
     "prefixes": {
@@ -1734,7 +1734,7 @@
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
     },
     "bigmac": {
-      "infoTooltip": "<strong>Updated Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
     },
     "defiTokens": {
       "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."

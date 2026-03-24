@@ -279,6 +279,7 @@
   "panels": {
     "liveNews": "Live News",
     "markets": "Markets",
+    "marketImplications": "AI Market Implications",
     "map": "Global Situation",
     "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
@@ -314,7 +315,7 @@
     "layoffs": "Layoffs Tracker",
     "monitors": "My Monitors",
     "satelliteFires": "Fires",
-    "macroSignals": "Market Regime",
+    "macroSignals": "BTC Regime",
     "etfFlows": "BTC ETF Tracker",
     "stablecoins": "Stablecoins",
     "deduction": "Deduct Situation",
@@ -357,7 +358,7 @@
     "gulfEconomies": "Gulf Economies",
     "groceryBasket": "Grocery Index",
     "groceryItem": "Item",
-    "bigmac": "Updated Big Mac Index",
+    "bigmac": "Real Big Mac Index",
     "bigmacDesc": "Big Mac prices across Middle East countries (Big Mac Index)",
     "bigmacWow": "WoW",
     "bigmacCountry": "Country",
@@ -372,7 +373,8 @@
     "gulfCurrencies": "Gulf Currencies",
     "gulfOil": "Gulf Oil",
     "airlineIntel": "✈️ Airline Intelligence",
-    "consumerPrices": "Consumer Prices"
+    "consumerPrices": "Consumer Prices",
+    "fearGreed": "Fear & Greed"
   },
   "commands": {
     "prefixes": {
@@ -1049,6 +1051,9 @@
       "vol24h": "24h Vol",
       "chg24h": "24h Chg",
       "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
+    },
+    "marketImplications": {
+      "infoTooltip": "<strong>AI Market Implications</strong> LLM-generated trade signals derived from live geopolitical, commodity, and macro state after each forecast cycle.<ul><li><strong>Direction</strong>: LONG / SHORT / HEDGE with confidence rating</li><li><strong>Timeframe</strong>: 1W, 2W, 1M, or 3M horizon</li><li><strong>Driver</strong>: Key catalyst behind the signal</li><li><strong>Risk</strong>: Caveat or invalidation condition</li></ul><em>For informational purposes only. Not investment advice.</em>"
     },
     "status": {
       "dataFeeds": "Data Feeds",
@@ -1840,7 +1845,7 @@
         "momentum": "Momentum",
         "fearGreed": "Fear & Greed"
       },
-      "infoTooltip": "<strong>Market Regime</strong> Composite signal dashboard for positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
+      "infoTooltip": "<strong>BTC Regime</strong> Composite signal dashboard for Bitcoin positioning and risk appetite:<ul><li><strong>Liquidity</strong>: Net Fed liquidity proxy</li><li><strong>Flow</strong>: BTC vs QQQ 5-day returns</li><li><strong>Regime</strong>: QQQ vs XLP rotation (risk-on/off)</li><li><strong>BTC Trend</strong>: Price vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: 30-day network hash change</li><li><strong>Fear & Greed</strong>: Market sentiment index</li></ul>This panel is for regime and positioning, not broad macro data."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> AI-generated probability estimates for geopolitical and economic events:<ul><li>Cross-domain coverage: conflict, markets, supply chain, cyber, political</li><li>Each forecast shows estimated probability, confidence level, and time horizon</li><li>Calibrated against prediction market baselines where available</li></ul>Forecasts update as new intelligence signals arrive. Filter by domain using the tabs above."
@@ -1897,7 +1902,7 @@
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
     },
     "bigmac": {
-      "infoTooltip": "<strong>Updated Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
     },
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Retail pump prices for gasoline and diesel across 30+ countries, normalized to USD/liter for comparison. Prices are sourced from official government open-data programs and updated weekly. Cheapest and most expensive countries are highlighted. WoW change shown when prior week data is available.",
