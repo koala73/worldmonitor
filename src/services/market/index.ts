@@ -9,6 +9,8 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   MarketServiceClient,
   type ListMarketQuotesResponse,
+  type ListCommodityQuotesResponse,
+  type GetSectorSummaryResponse,
   type ListCryptoQuotesResponse,
   type ListCryptoSectorsResponse,
   type CryptoSector,
@@ -27,7 +29,8 @@ import { getHydratedData } from '@/services/bootstrap';
 const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
 const MARKET_QUOTES_CACHE_TTL_MS = 5 * 60 * 1000;
 const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
-const commodityBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Commodity Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
+const commodityBreaker = createCircuitBreaker<ListCommodityQuotesResponse>({ name: 'Commodity Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
+const sectorBreaker = createCircuitBreaker<GetSectorSummaryResponse>({ name: 'Sector Summary', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes', persistCache: true });
 const cryptoSectorsBreaker = createCircuitBreaker<ListCryptoSectorsResponse>({ name: 'Crypto Sectors', persistCache: true });
 const defiBreaker = createCircuitBreaker<ListDefiTokensResponse>({ name: 'DeFi Tokens', persistCache: true });
@@ -35,6 +38,8 @@ const aiBreaker = createCircuitBreaker<ListAiTokensResponse>({ name: 'AI Tokens'
 const otherBreaker = createCircuitBreaker<ListOtherTokensResponse>({ name: 'Other Tokens', persistCache: true });
 
 const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false };
+const emptyCommodityFallback: ListCommodityQuotesResponse = { quotes: [] };
+const emptySectorFallback: GetSectorSummaryResponse = { sectors: [] };
 const emptyCryptoFallback: ListCryptoQuotesResponse = { quotes: [] };
 const emptyCryptoSectorsFallback: ListCryptoSectorsResponse = { sectors: [] };
 const emptyDefiTokensFallback: ListDefiTokensResponse = { tokens: [] };
@@ -87,7 +92,7 @@ function symbolSetKey(symbols: string[]): string {
 
 export async function fetchMultipleStocks(
   symbols: Array<{ symbol: string; name: string; display: string }>,
-  options: { onBatch?: (results: MarketData[]) => void; useCommodityBreaker?: boolean } = {},
+  options: { onBatch?: (results: MarketData[]) => void } = {},
 ): Promise<MarketFetchResult> {
   // Preserve exact requested symbols for cache keys and request payloads so
   // case-distinct instruments do not collapse into one cache entry.
@@ -110,8 +115,7 @@ export async function fetchMultipleStocks(
   const allSymbolStrings = [...symbolMetaMap.keys()];
   const setKey = symbolSetKey(allSymbolStrings);
 
-  const breaker = options.useCommodityBreaker ? commodityBreaker : stockBreaker;
-  const resp = await breaker.execute(async () => {
+  const resp = await stockBreaker.execute(async () => {
     return client.listMarketQuotes({ symbols: allSymbolStrings });
   }, emptyStockFallback, {
     cacheKey: setKey,
@@ -149,6 +153,53 @@ export async function fetchStockQuote(
 ): Promise<MarketData> {
   const result = await fetchMultipleStocks([{ symbol, name, display }]);
   return result.data[0] || { symbol, name, display, price: null, change: null };
+}
+
+// ========================================================================
+// Commodities -- uses listCommodityQuotes (reads market:commodities-bootstrap:v1)
+// ========================================================================
+
+export async function fetchCommodityQuotes(
+  commodities: Array<{ symbol: string; name: string; display: string }>,
+  options: { onBatch?: (results: MarketData[]) => void } = {},
+): Promise<MarketFetchResult> {
+  const symbols = commodities.map((c) => c.symbol);
+  const meta = new Map(commodities.map((c) => [c.symbol, c]));
+  const cacheKey = [...symbols].sort().join(',');
+
+  const resp = await commodityBreaker.execute(async () => {
+    return client.listCommodityQuotes({ symbols });
+  }, emptyCommodityFallback, {
+    cacheKey,
+    shouldCache: (r: ListCommodityQuotesResponse) => r.quotes.length > 0,
+  });
+
+  const results: MarketData[] = resp.quotes.map((q) => {
+    const m = meta.get(q.symbol);
+    return {
+      symbol: q.symbol,
+      name: m?.name ?? q.name,
+      display: m?.display ?? q.display ?? q.symbol,
+      price: q.price,
+      change: q.change,
+      sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
+    };
+  });
+
+  if (results.length > 0) options.onBatch?.(results);
+  return { data: results };
+}
+
+// ========================================================================
+// Sectors -- uses getSectorSummary (reads market:sectors:v1)
+// ========================================================================
+
+export async function fetchSectors(): Promise<GetSectorSummaryResponse> {
+  return sectorBreaker.execute(async () => {
+    return client.getSectorSummary({ period: '' });
+  }, emptySectorFallback, {
+    shouldCache: (r: GetSectorSummaryResponse) => r.sectors.length > 0,
+  });
 }
 
 // ========================================================================

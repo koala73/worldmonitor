@@ -7,7 +7,6 @@ import type { TimeRange } from '@/components';
 import {
   FEEDS,
   INTEL_SOURCES,
-  SECTORS,
   COMMODITIES,
   MARKET_SYMBOLS,
   SITE_VARIANT,
@@ -19,6 +18,8 @@ import {
   fetchCategoryFeeds,
   getFeedFailures,
   fetchMultipleStocks,
+  fetchCommodityQuotes,
+  fetchSectors,
   fetchCrypto,
   fetchCryptoSectors,
   fetchDefiTokens,
@@ -1255,24 +1256,14 @@ export class DataLoaderManager implements AppModule {
       const hydratedSectors = getHydratedData('sectors') as GetSectorSummaryResponse | undefined;
       const heatmapPanel = this.ctx.panels['heatmap'] as HeatmapPanel | undefined;
       if (hydratedSectors?.sectors?.length) {
-        const mapped = hydratedSectors.sectors.map((s) => ({ name: s.name, change: s.change }));
-        heatmapPanel?.renderHeatmap(mapped);
-      } else if (!stocksResult.skipped) {
-        const sectorsResult = await fetchMultipleStocks(
-          SECTORS.map((s) => ({ ...s, display: s.name })),
-          {
-            onBatch: (partialSectors) => {
-              heatmapPanel?.renderHeatmap(
-                partialSectors.map((s) => ({ name: s.name, change: s.change }))
-              );
-            },
-          }
-        );
-        heatmapPanel?.renderHeatmap(
-          sectorsResult.data.map((s) => ({ name: s.name, change: s.change }))
-        );
+        heatmapPanel?.renderHeatmap(hydratedSectors.sectors.map((s) => ({ name: s.name, change: s.change })));
       } else {
-        this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
+        const sectorsResp = await fetchSectors();
+        if (sectorsResp.sectors.length > 0) {
+          heatmapPanel?.renderHeatmap(sectorsResp.sectors.map((s) => ({ name: s.name, change: s.change })));
+        } else if (stocksResult.skipped) {
+          this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
+        }
       }
 
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
@@ -1312,14 +1303,13 @@ export class DataLoaderManager implements AppModule {
         }
 
         for (let attempt = 0; attempt < 1 && (!metalsLoaded || !energyLoaded); attempt++) {
-          const commoditiesResult = await fetchMultipleStocks(COMMODITIES, {
+          const commoditiesResult = await fetchCommodityQuotes(COMMODITIES, {
             onBatch: (partial) => {
               const commodityMapped = filterCommodityTape(partial).map(mapCommodity);
               const energyMapped = filterEnergyTape(partial);
               if (commoditiesPanel) commoditiesPanel.renderCommodities(commodityMapped);
               energyPanel?.updateTape(energyMapped);
             },
-            useCommodityBreaker: true,
           });
           const commodityMapped = filterCommodityTape(commoditiesResult.data).map(mapCommodity);
           const energyMapped = filterEnergyTape(commoditiesResult.data);
