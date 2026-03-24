@@ -46,6 +46,8 @@ import {
   MARKET_BUCKET_ALLOWED_CHANNELS,
   scoreImpactExpansionQuality,
   buildImpactExpansionDebugPayload,
+  filterNewsHeadlinesByState,
+  buildImpactExpansionEvidenceTable,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -5323,5 +5325,113 @@ describe('phase 2 scoring recalibration + prompt excellence', () => {
     assert.equal(counts['state-A'], 2, 'state-A has 2 mapped hypotheses');
     assert.equal(counts['state-B'], 1, 'state-B has 1 mapped hypothesis');
     assert.ok(!counts['state-C'], 'state-C not present (0 mapped)');
+  });
+});
+
+// ─── Live News Evidence Injection ────────────────────────────────────────────
+
+describe('filterNewsHeadlinesByState', () => {
+  const makeState = (overrides = {}) => ({
+    id: 'test-state',
+    label: 'Hormuz Strait Closure',
+    stateKind: 'escalation',
+    dominantRegion: 'Iran',
+    sampleTitles: ['Iran threatens Hormuz closure'],
+    signalTypes: ['route_disruption'],
+    commodityKey: 'crude_oil',
+    ...overrides,
+  });
+
+  const makeInsights = (stories = []) => ({ topStories: stories, generatedAt: '2026-03-24T00:00:00Z' });
+  const makeDigest = (items = []) => ({ categories: { energy: { items } } });
+
+  it('T-news-1: returns empty array when both news inputs are null', () => {
+    const result = filterNewsHeadlinesByState(makeState(), null, null);
+    assert.deepEqual(result, []);
+  });
+
+  it('T-news-2: LNG alert headline scores above threshold and is returned for Hormuz state', () => {
+    const insights = makeInsights([
+      { title: 'Qatar LNG tankers rerouted away from Hormuz strait', isAlert: true, sourceCount: 3 },
+    ]);
+    const result = filterNewsHeadlinesByState(makeState(), insights, null);
+    assert.ok(result.length > 0, 'should return at least one headline');
+    assert.ok(result[0].includes('LNG') || result[0].includes('Qatar'), `expected LNG headline, got: ${result[0]}`);
+  });
+
+  it('T-news-3: non-matching headline (sports) is not returned', () => {
+    const insights = makeInsights([
+      { title: 'Football World Cup final set for next week', isAlert: false, sourceCount: 1 },
+      { title: 'Tennis star wins grand slam championship', isAlert: false, sourceCount: 1 },
+    ]);
+    const result = filterNewsHeadlinesByState(makeState(), insights, null);
+    assert.deepEqual(result, [], 'sports headlines should score below threshold');
+  });
+
+  it('T-news-4: returns at most 3 headlines even when more qualify', () => {
+    const stories = [
+      { title: 'LNG tanker seized in Hormuz strait', isAlert: true, sourceCount: 5 },
+      { title: 'Gas export terminal shut by Iran sanctions embargo', isAlert: true, sourceCount: 4 },
+      { title: 'LNG prices spike as Strait of Hormuz route blocked', isAlert: true, sourceCount: 3 },
+      { title: 'Crude oil tanker attack in Hormuz shipping lane', isAlert: true, sourceCount: 6 },
+    ];
+    const result = filterNewsHeadlinesByState(makeState(), makeInsights(stories), null);
+    assert.ok(result.length <= 3, `should return at most 3 headlines, got ${result.length}`);
+    assert.ok(result.length > 0, 'should return at least one headline');
+  });
+});
+
+describe('buildImpactExpansionEvidenceTable — live_news injection', () => {
+  const makeMinimalState = () => ({
+    id: 's1',
+    label: 'Red Sea Disruption',
+    stateKind: 'escalation',
+    dominantRegion: 'Yemen',
+    sampleTitles: ['Houthi attacks Red Sea shipping'],
+    topSignals: [{ type: 'shipping_cost_shock', count: 3 }],
+    actors: ['Houthi'],
+  });
+  const makeMarket = () => ({
+    topBucketLabel: 'Freight',
+    topBucketPressure: 0.7,
+    consequenceSummary: 'Shipping costs rising sharply.',
+  });
+  const makeContinuity = () => ({ summary: 'Disruption ongoing for 4 weeks.', continuityScore: 0.5, continuityMode: 'sustained' });
+
+  it('T-news-4b: with 3 newsItems, evidence table has 11 entries and last 3 have kind=live_news', () => {
+    const newsItems = ['Dire fertiliser shortage worsens', 'LNG tankers rerouted via Cape', 'Wheat prices hit 2-year high'];
+    const table = buildImpactExpansionEvidenceTable(makeMinimalState(), makeMarket(), makeContinuity(), newsItems);
+    assert.ok(table.length <= 11, `cap is 11, got ${table.length}`);
+    const liveEntries = table.filter((e) => e.kind === 'live_news');
+    assert.equal(liveEntries.length, 3, 'should have 3 live_news entries');
+    assert.ok(table.every((e, i) => e.key === `E${i + 1}`), 'keys should be E1..EN sequentially');
+  });
+
+  it('T-news-4c: with no newsItems, evidence table behaves identically to before (cap 8)', () => {
+    const table = buildImpactExpansionEvidenceTable(makeMinimalState(), makeMarket(), makeContinuity(), []);
+    assert.ok(table.length <= 8, `no-news cap should be ≤8, got ${table.length}`);
+    assert.ok(table.every((e) => e.kind !== 'live_news'), 'no live_news entries when newsItems is empty');
+  });
+});
+
+describe('IMPACT_COMMODITY_LEXICON — extended entries', () => {
+  it('T-lex-1: extractImpactCommodityKey returns lng for LNG-specific text', () => {
+    // "tanker" matches crude_oil first, so use LNG-specific terms (ras laffan, north field, liquefied natural gas)
+    assert.equal(extractImpactCommodityKey(['Qatar LNG exports halted from Ras Laffan']), 'lng');
+    assert.equal(extractImpactCommodityKey(['liquefied natural gas shipments disrupted']), 'lng');
+    assert.equal(extractImpactCommodityKey(['North Field expansion project at risk']), 'lng');
+  });
+
+  it('T-lex-2: extractImpactCommodityKey returns food_grains for wheat shortage text', () => {
+    const result = extractImpactCommodityKey(['wheat shortage threatening food security in Egypt']);
+    assert.equal(result, 'food_grains');
+  });
+
+  it('T-lex-3: extractImpactCommodityKey returns fertilizer for fertiliser/nitrogen/ammonia text', () => {
+    assert.equal(extractImpactCommodityKey(['fertiliser shortage due to Hormuz crisis']), 'fertilizer');
+    assert.equal(extractImpactCommodityKey(['nitrogen fertilizer prices spike']), 'fertilizer');
+    assert.equal(extractImpactCommodityKey(['ammonia plant shutting down']), 'fertilizer');
+    assert.equal(extractImpactCommodityKey(['phosphate exports halted']), 'fertilizer');
+    assert.equal(extractImpactCommodityKey(['NPK supply disrupted']), 'fertilizer');
   });
 });

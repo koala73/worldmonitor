@@ -447,8 +447,10 @@ const IMPACT_COMMODITY_LEXICON = [
   { key: 'lng', pattern: /\b(lng|liquefied natural gas|ras laffan|north field|south pars)\b/i },
   { key: 'natural_gas', pattern: /\b(gas|natgas|pipeline gas)\b/i },
   { key: 'refined_products', pattern: /\b(refined products|diesel|gasoline|jet fuel|fuel oil|naphtha|petrol)\b/i },
-  { key: 'fertilizer', pattern: /\b(fertilizer|ammonia|urea|potash)\b/i },
+  { key: 'fertilizer', pattern: /\b(fertilizer|fertiliser|ammonia|urea|potash|nitrogen|phosphate|npk)\b/i },
   { key: 'petrochemicals', pattern: /\b(petrochemical|petrochemicals|ethylene|propylene|methanol)\b/i },
+  { key: 'food_grains', pattern: /\b(wheat|grain|rice|corn|maize|food security|famine|cereal|bread|flour)\b/i },
+  { key: 'shipping_freight', pattern: /\b(freight rate|charter rate|baltic dry|bulk carrier|dry bulk|tanker rate|hire rate)\b/i },
 ];
 const IMPACT_FACILITY_RE = /\b(lng|terminal|refinery|pipeline|port|field|depot)\b/i;
 const IMPACT_VARIABLE_REGISTRY = {
@@ -3305,7 +3307,45 @@ function extractImpactCommodityKey(texts = []) {
   return '';
 }
 
-function buildImpactExpansionEvidenceTable(stateUnit, marketContext, continuityRecord) {
+/**
+ * Returns up to `limit` live news headline strings relevant to the given candidate state.
+ * Scores each headline by alert status, commodity match, energy/route/sanctions signals,
+ * and source count. Minimum score to include: 2. Returns sanitized strings.
+ * Pure function — no I/O, no side effects.
+ */
+function filterNewsHeadlinesByState(stateUnit, newsInsights, newsDigest, limit = 3) {
+  if (!newsInsights && !newsDigest) return [];
+  const items = extractNewsClusterItems(newsInsights, newsDigest);
+  if (!items.length) return [];
+
+  const commodityKey = stateUnit.commodityKey || extractImpactCommodityKey([
+    stateUnit.label,
+    ...(stateUnit.sampleTitles || []),
+    (stateUnit.signalTypes || []).join(' '),
+  ]);
+  const lexEntry = IMPACT_COMMODITY_LEXICON.find((e) => e.key === commodityKey);
+
+  const scored = items.map((item) => {
+    const text = `${item.title || ''} ${item.summary || ''}`;
+    let score = 0;
+    if (item.isAlert) score += 3;
+    if (CRITICAL_NEWS_LNG_RE.test(text)) score += 2;
+    if (lexEntry && lexEntry.pattern.test(text)) score += 2;
+    if (CRITICAL_NEWS_ENERGY_RE.test(text)) score += 1;
+    if (CRITICAL_NEWS_ROUTE_RE.test(text)) score += 1;
+    if (CRITICAL_NEWS_SANCTIONS_RE.test(text)) score += 1;
+    score += Math.min(Number(item.sourceCount || 0), 3);
+    return { title: item.title || '', score };
+  });
+
+  return scored
+    .filter((s) => s.score >= 2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((s) => sanitizeForPrompt(s.title));
+}
+
+function buildImpactExpansionEvidenceTable(stateUnit, marketContext, continuityRecord, newsItems = []) {
   const evidence = [];
   const pushEvidence = (kind, text) => {
     const value = sanitizeForPrompt(text).slice(0, 220);
@@ -3329,7 +3369,10 @@ function buildImpactExpansionEvidenceTable(stateUnit, marketContext, continuityR
   if (continuityRecord?.summary) pushEvidence('continuity', continuityRecord.summary);
   if ((stateUnit.actors || []).length > 0) pushEvidence('actor', `${stateUnit.actors.slice(0, 4).join(', ')} remain the lead actors in this state.`);
 
-  return evidence.slice(0, 8);
+  // Inject live news headlines as additional evidence (up to 3, appended after existing slots)
+  for (const headline of newsItems.slice(0, 3)) pushEvidence('live_news', headline);
+
+  return evidence.slice(0, 11);  // raised cap: 8 structural + up to 3 live_news
 }
 
 function buildImpactExpansionSpecificity(stateUnit, marketContext) {
@@ -3388,11 +3431,15 @@ function computeImpactExpansionRankingScore(marketContext, continuityRecord, spe
   ).toFixed(3);
 }
 
-function buildImpactExpansionCandidate(stateUnit, marketContext, priorStateUnits = []) {
+function buildImpactExpansionCandidate(stateUnit, marketContext, priorStateUnits = [],
+                                        newsInsights = null, newsDigest = null) {
   if (!stateUnit || !marketContext) return null;
   const continuityRecord = buildImpactExpansionContinuityRecord(stateUnit, priorStateUnits);
   const specificity = buildImpactExpansionSpecificity(stateUnit, marketContext);
   if (!isImpactExpansionCandidateEligible(stateUnit, marketContext, continuityRecord, specificity)) return null;
+  // Attach commodityKey so filterNewsHeadlinesByState can use it without re-extracting
+  const stateUnitWithCommodity = { ...stateUnit, commodityKey: specificity.commodityKey };
+  const newsItems = filterNewsHeadlinesByState(stateUnitWithCommodity, newsInsights, newsDigest, 3);
   return {
     candidateStateId: stateUnit.id,
     candidateStateLabel: stateUnit.label,
@@ -3415,7 +3462,7 @@ function buildImpactExpansionCandidate(stateUnit, marketContext, priorStateUnits
     continuityMode: continuityRecord.continuityMode,
     continuityScore: +continuityRecord.continuityScore.toFixed(3),
     rankingScore: computeImpactExpansionRankingScore(marketContext, continuityRecord, specificity.specificityScore),
-    evidenceTable: buildImpactExpansionEvidenceTable(stateUnit, marketContext, continuityRecord),
+    evidenceTable: buildImpactExpansionEvidenceTable(stateUnit, marketContext, continuityRecord, newsItems),
     marketContext: {
       topBucketId: marketContext.topBucketId || '',
       topBucketLabel: marketContext.topBucketLabel || '',
@@ -3451,6 +3498,8 @@ function selectImpactExpansionCandidates({
   marketInputCoverage = null,
   priorStateUnits = [],
   limit = IMPACT_EXPANSION_MAX_CANDIDATES,
+  newsInsights = null,
+  newsDigest = null,
 } = {}) {
   if (!Array.isArray(stateUnits) || stateUnits.length === 0) return [];
   const marketIndex = buildSituationMarketContextIndex(
@@ -3465,6 +3514,8 @@ function selectImpactExpansionCandidates({
       stateUnit,
       marketIndex.bySituationId.get(stateUnit.id) || null,
       priorStateUnits,
+      newsInsights,
+      newsDigest,
     ))
     .filter(Boolean)
     .sort((left, right) => (
@@ -13882,6 +13933,8 @@ async function fetchForecasts() {
     marketInputCoverage: selectionMarketInputCoverage,
     priorStateUnits: Array.isArray(priorWorldState?.stateUnits) ? priorWorldState.stateUnits : [],
     limit: FORECAST_DEEP_MAX_CANDIDATES,
+    newsInsights: inputs.newsInsights || null,
+    newsDigest: inputs.newsDigest || null,
   });
   const deepForecastCandidates = selectDeepForecastCandidates(impactExpansionCandidates);
   const deepForecast = {
@@ -14920,6 +14973,8 @@ export {
   mapCriticalSignalFrameToSignals,
   extractCriticalSignalBundle,
   extractCriticalNewsSignals,
+  filterNewsHeadlinesByState,
+  buildImpactExpansionEvidenceTable,
   selectImpactExpansionCandidates,
   selectDeepForecastCandidates,
   buildRegistryConstraintTable,
