@@ -14235,7 +14235,7 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
     const { commodityRate, diversityScore, chainCoverage, mappedRate, mappedCount } = currentScore;
     console.log(`  [PromptRefinement] Quality breakdown — composite=${currentScore.composite.toFixed(3)} commodity=${commodityRate.toFixed(2)} diversity=${diversityScore.toFixed(2)} chain=${chainCoverage.toFixed(2)} mappedRate=${mappedRate.toFixed(2)} mapped=${mappedCount}`);
     for (const h of (validation?.mapped || [])) {
-      console.log(`    [${h.order}] ${h.variableKey} → ${h.targetBucket} | commodity="${h.commodity || ''}" | score=${h.validationScore?.toFixed(3) || '?'}`);
+      console.log(`    [${h.order}] key=${h.hypothesisKey || h.variableKey || '?'} geo="${h.geography || h.region || ''}" com="${h.commodity || ''}" assets=${(h.affectedAssets || h.assetsOrSectors || []).length} score=${h.validationScore?.toFixed(3) || '?'}`);
     }
 
     // If quality is good and improving, just update baseline — no refinement needed
