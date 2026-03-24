@@ -4501,6 +4501,7 @@ function buildImpactExpansionDebugPayload(data = {}, worldState = null, runId = 
       secondOrderMultiplier: 0.88,
       pathScoreThreshold: 0.50,
       acceptanceThreshold: 0.50,
+      refinementQualityThreshold: 0.80,
     },
     selectedPaths: (data?.deepPathEvaluation?.selectedPaths || []).map(summarizeImpactPathScore).filter(Boolean),
     rejectedPaths: (data?.deepPathEvaluation?.rejectedPaths || []).map(summarizeImpactPathScore).filter(Boolean),
@@ -14208,8 +14209,15 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
     const baselineRaw = await redisGet(url, token, PROMPT_BASELINE_KEY);
     const baseline = typeof baselineRaw === 'object' && baselineRaw !== null ? baselineRaw : null;
 
+    const { commodityRate, diversityScore, chainCoverage, mappedRate, mappedCount } = currentScore;
+    console.log(`  [PromptRefinement] Quality breakdown — composite=${currentScore.composite.toFixed(3)} commodity=${commodityRate.toFixed(2)} diversity=${diversityScore.toFixed(2)} chain=${chainCoverage.toFixed(2)} mappedRate=${mappedRate.toFixed(2)} mapped=${mappedCount}`);
+    for (const h of (validation?.mapped || [])) {
+      console.log(`    [${h.order}] ${h.variableKey} → ${h.targetBucket} | commodity="${h.commodity || ''}" | score=${h.validationScore?.toFixed(3) || '?'}`);
+    }
+
     // If quality is good and improving, just update baseline — no refinement needed
-    if (currentScore.composite >= 0.62) {
+    // 0.80 threshold: fires when diversity is poor (0.50) even if commodity/chain are good
+    if (currentScore.composite >= 0.80) {
       if (!baseline || currentScore.composite > (baseline.qualityScore || 0)) {
         const learnedSection = (await redisGet(url, token, PROMPT_LEARNED_KEY)) || '';
         await redisSet(url, token, PROMPT_BASELINE_KEY, {
@@ -14228,7 +14236,7 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
     const currentLearnedSection = (await redisGet(url, token, PROMPT_LEARNED_KEY)) || '';
     const mapped = validation?.mapped || [];
 
-    console.log(`  [PromptRefinement] Quality ${currentScore.composite.toFixed(3)} below 0.62 — running critique`);
+    console.log(`  [PromptRefinement] Quality ${currentScore.composite.toFixed(3)} below 0.80 — running critique (diversity=${currentScore.diversityScore.toFixed(2)})`);
     const critiqueResult = await callForecastLLM(
       buildImpactPromptCritiqueSystemPrompt(),
       buildImpactPromptCritiqueUserPrompt(currentScore, mapped, candidatePackets),
@@ -14238,9 +14246,16 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
 
     let critique;
     try {
-      critique = JSON.parse(critiqueResult.text.replace(/```json[\s\S]*?```|```/g, '').trim());
-    } catch {
-      console.warn('  [PromptRefinement] Could not parse critique JSON');
+      // Extract JSON from response: strip code fences, find first { ... } block
+      const raw = critiqueResult.text;
+      const stripped = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const jsonStart = stripped.indexOf('{');
+      const jsonEnd = stripped.lastIndexOf('}');
+      if (jsonStart === -1 || jsonEnd === -1) throw new Error('no JSON object found');
+      critique = JSON.parse(stripped.slice(jsonStart, jsonEnd + 1));
+    } catch (e) {
+      console.warn(`  [PromptRefinement] Could not parse critique JSON: ${e.message}`);
+      console.warn(`  [PromptRefinement] Raw response (first 400 chars): ${critiqueResult.text?.slice(0, 400)}`);
       return;
     }
 
