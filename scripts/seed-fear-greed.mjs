@@ -41,7 +41,7 @@ const FEAR_GREED_TTL = 64800; // 18h = 3x 6h interval
 const FRED_PREFIX = 'economic:fred:v1';
 
 // --- Yahoo Finance fetching (15 symbols, 150ms gaps) ---
-const YAHOO_SYMBOLS = ['^GSPC','^VIX','^VIX9D','^VIX3M','^SKEW','C:ISSU','GLD','TLT','SPY','RSP','DX-Y.NYB','XLK','XLF','XLE','XLV'];
+const YAHOO_SYMBOLS = ['^GSPC','^VIX','^VIX9D','^VIX3M','^SKEW','GLD','TLT','SPY','RSP','DX-Y.NYB','XLK','XLF','XLE','XLV','XLY','XLP','XLI','XLB','XLU','XLRE','XLC'];
 
 async function fetchYahooSymbol(symbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y`;
@@ -320,7 +320,7 @@ function scoreCategory(name, inputs) {
       const { m2Obs, walclObs, sofr } = inputs;
       const m2Latest = fredLatest(m2Obs), m2Ago = fredNMonthsAgo(m2Obs, 12);
       const m2Yoy = (m2Latest && m2Ago && m2Ago !== 0) ? ((m2Latest - m2Ago) / m2Ago) * 100 : null;
-      const walclLatest = fredLatest(walclObs), walclAgo = fredNMonthsAgo(walclObs, 1);
+      const walclLatest = fredLatest(walclObs), walclAgo = fredNMonthsAgo(walclObs, 4);
       const fedBsMom = (walclLatest && walclAgo && walclAgo !== 0) ? ((walclLatest - walclAgo) / walclAgo) * 100 : null;
       // M2 YoY: normal annual growth is 4-6%; use 5x multiplier so 5% YoY ≈ 75 (not pegged at 100 like 10x was)
       const m2Score = m2Yoy != null ? clamp(m2Yoy * 5 + 50, 0, 100) : 50;
@@ -407,10 +407,11 @@ async function fetchAll() {
   const vix9d = yahoo['^VIX9D'];
   const vix3m = yahoo['^VIX3M'];
   const skew = yahoo['^SKEW'];
-  const cissu = yahoo['C:ISSU'];
   const gld = yahoo['GLD'], tlt = yahoo['TLT'], spy = yahoo['SPY'], rsp = yahoo['RSP'];
   const dxy = yahoo['DX-Y.NYB'];
   const xlk = yahoo['XLK'], xlf = yahoo['XLF'], xle = yahoo['XLE'], xlv = yahoo['XLV'];
+  const xly = yahoo['XLY'], xlp = yahoo['XLP'], xli = yahoo['XLI'], xlb = yahoo['XLB'];
+  const xlu = yahoo['XLU'], xlre = yahoo['XLRE'], xlc = yahoo['XLC'];
 
   const vixLive = vixData?.price ?? fredLatest(vixObs);
   const vix9dPrice = vix9d?.price ?? null;
@@ -424,18 +425,13 @@ async function fetchAll() {
   const pctAbove200d = barchartResult.status === 'fulfilled' ? barchartResult.value : null;
   const cryptoFg = macro?.fearGreed?.score ?? macro?.signals?.fearGreed?.value ?? null;
 
-  let advDecRatio = null;
-  if (cissu?.price != null) {
-    advDecRatio = cissu.price > 0 ? Math.min(cissu.price / 100, 2.0) : null;
-  }
-
   const cats = {
     sentiment: scoreCategory('sentiment', { cnnFg: cnn?.score ?? null, aaiBull: aaii?.bull ?? null, aaiBear: aaii?.bear ?? null, cryptoFg }),
     volatility: scoreCategory('volatility', { vix: vixLive, vix9d: vix9dPrice, vix3m: vix3mPrice }),
     positioning: scoreCategory('positioning', { totalPc: cboe.totalPc, equityPc: cboe.equityPc, skew: skewPrice }),
     trend: scoreCategory('trend', { prices: gspc?.closes ?? [] }),
-    breadth: scoreCategory('breadth', { mmthPrice: pctAbove200d, rspCloses: rsp?.closes, spyCloses: spy?.closes, advDecRatio }),
-    momentum: scoreCategory('momentum', { spxCloses: gspc?.closes, sectorCloses: { XLK: xlk?.closes, XLF: xlf?.closes, XLE: xle?.closes, XLV: xlv?.closes } }),
+    breadth: scoreCategory('breadth', { mmthPrice: pctAbove200d, rspCloses: rsp?.closes, spyCloses: spy?.closes, advDecRatio: null }),
+    momentum: scoreCategory('momentum', { spxCloses: gspc?.closes, sectorCloses: { XLK: xlk?.closes, XLF: xlf?.closes, XLE: xle?.closes, XLV: xlv?.closes, XLY: xly?.closes, XLP: xlp?.closes, XLI: xli?.closes, XLB: xlb?.closes, XLU: xlu?.closes, XLRE: xlre?.closes, XLC: xlc?.closes } }),
     liquidity: scoreCategory('liquidity', { m2Obs, walclObs, sofr: sofrRate }),
     credit: scoreCategory('credit', { hyObs, igObs }),
     macro: scoreCategory('macro', { fedObs, curveObs, unrateObs }),
