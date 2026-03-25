@@ -14,6 +14,7 @@ tags: [code-review, performance, simulation-runner, llm]
 ## Findings
 
 **F-1 (HIGH):** Token budget vs. prompt size analysis:
+
 - Static template text: ~350 tokens
 - 10 entities at ~20 tokens each: ~200 tokens
 - 8 event seeds at ~25 tokens each: ~200 tokens

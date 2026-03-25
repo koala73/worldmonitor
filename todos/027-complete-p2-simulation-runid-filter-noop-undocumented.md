@@ -24,6 +24,7 @@ message GetSimulationOutcomeRequest {
 Generated `docs/api/ForecastService.openapi.yaml` has the `runId` parameter with no `description` field.
 
 **F-2:** Agent trigger-and-verify workflow is unreliable without per-run lookup:
+
 1. Agent calls `POST /api/forecast/v1/trigger-simulation` (when it exists) → gets `runId=A`
 2. Agent polls `GET /api/forecast/v1/get-simulation-outcome?runId=A`
 3. Run B completes first, writes `found: true, runId: B` to Redis
