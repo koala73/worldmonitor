@@ -164,50 +164,32 @@ export class ConsumerPricesPanel extends Panel {
 
     const { market, basket, range } = this.settings;
 
-    try {
-      if (market === 'all') {
-        const results = await fetchAllMarketsOverview();
-        if (!this.element?.isConnected) { this.loading = false; return; }
-        if (results.every((r) => r.upstreamUnavailable)) {
-          this.loading = false;
-          this.showError(undefined, () => void this.fetchData());
-          return;
-        }
-        this.allMarkets = results;
-        this.loading = false;
-        this.render();
-        return;
-      }
-
-      const [overview, categories, movers, spread, freshness] = await Promise.all([
-        fetchConsumerPriceOverview(market, basket),
-        fetchConsumerPriceCategories(market, basket, range),
-        fetchConsumerPriceMovers(market, range),
-        fetchRetailerPriceSpreads(market, basket),
-        fetchConsumerPriceFreshness(market),
-      ]);
-
+    if (market === 'all') {
+      const results = await fetchAllMarketsOverview();
       if (!this.element?.isConnected) { this.loading = false; return; }
-
-      // Services swallow transport failures and return upstreamUnavailable:true.
-      // Check here so the panel shows the radar error state instead of the seeding placeholder.
-      if (overview.upstreamUnavailable) {
-        this.loading = false;
-        this.showError(undefined, () => void this.fetchData());
-        return;
-      }
-
-      this.overview = overview;
-      this.categories = categories;
-      this.movers = movers;
-      this.spread = spread;
-      this.freshness = freshness;
+      this.allMarkets = results;
       this.loading = false;
       this.render();
-    } catch (err) {
-      this.loading = false;
-      this.showError(undefined, () => void this.fetchData());
+      return;
     }
+
+    const [overview, categories, movers, spread, freshness] = await Promise.all([
+      fetchConsumerPriceOverview(market, basket),
+      fetchConsumerPriceCategories(market, basket, range),
+      fetchConsumerPriceMovers(market, range),
+      fetchRetailerPriceSpreads(market, basket),
+      fetchConsumerPriceFreshness(market),
+    ]);
+
+    if (!this.element?.isConnected) { this.loading = false; return; }
+
+    this.overview = overview;
+    this.categories = categories;
+    this.movers = movers;
+    this.spread = spread;
+    this.freshness = freshness;
+    this.loading = false;
+    this.render();
   }
 
   private render(): void {
