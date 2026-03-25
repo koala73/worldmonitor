@@ -46,14 +46,16 @@ export function initSettingsWindow(): void {
       ([key]) => (key !== 'runtime-config' || isDesktopApp) && (!key.startsWith('cw-') || isProUser())
     );
     const panelHtml = panelEntries
-      .map(
-        ([key, panel]) => `
-        <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${key}">
+      .map(([key, panel]) => {
+        const escapedPanelKey = escapeHtml(key);
+        const escapedPanelName = escapeHtml(getLocalizedPanelName(key, panel.name));
+        return `
+        <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${escapedPanelKey}">
           <div class="panel-toggle-checkbox">${panel.enabled ? '✓' : ''}</div>
-          <span class="panel-toggle-label">${getLocalizedPanelName(key, panel.name)}</span>
+          <span class="panel-toggle-label">${escapedPanelName}</span>
         </div>
-      `
-      )
+      `;
+      })
       .join('');
 
     const grid = document.getElementById('panelToggles');
