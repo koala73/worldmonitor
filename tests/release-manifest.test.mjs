@@ -48,3 +48,15 @@ test('release manifest verification reports missing and unexpected assets', () =
     ['Unexpected release asset: unexpected.txt'],
   );
 });
+
+test('release manifest verification treats dot-vs-space app names as equivalent', () => {
+  assert.deepEqual(
+    verifyDownloadedAssets(
+      {
+        assets: [{ name: 'World Monitor_2.7.3_x64.dmg' }],
+      },
+      ['/tmp/World.Monitor_2.7.3_x64.dmg'],
+    ),
+    [],
+  );
+});

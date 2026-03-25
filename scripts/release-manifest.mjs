@@ -151,6 +151,10 @@ export function isReleaseArtifactName(fileName, version) {
   return RELEASE_FILE_SUFFIXES.some((suffix) => fileName.endsWith(suffix)) && fileName.includes(version);
 }
 
+export function canonicalReleaseAssetName(fileName) {
+  return fileName.replace(/^World[ .]Monitor(?=_)/, 'World Monitor');
+}
+
 async function listFilesRecursive(rootDir) {
   const entries = await readdir(rootDir, { withFileTypes: true });
   const files = [];
@@ -246,19 +250,29 @@ export function combineReleaseManifests(manifests) {
 }
 
 export function verifyDownloadedAssets(manifest, downloadedFiles) {
-  const expectedNames = new Set(manifest.assets.map((asset) => asset.name));
-  const actualNames = new Set(downloadedFiles.map((filePath) => path.basename(filePath)));
+  const expectedByCanonical = new Map(
+    manifest.assets.map((asset) => [canonicalReleaseAssetName(asset.name), asset.name])
+  );
+  const actualByCanonical = new Map();
+  for (const filePath of downloadedFiles) {
+    const name = path.basename(filePath);
+    if (name === 'release-manifest.json') continue;
+    const canonical = canonicalReleaseAssetName(name);
+    if (!actualByCanonical.has(canonical)) {
+      actualByCanonical.set(canonical, name);
+    }
+  }
   const errors = [];
 
-  for (const name of expectedNames) {
-    if (!actualNames.has(name)) {
-      errors.push(`Missing release asset: ${name}`);
+  for (const [canonical, expectedName] of expectedByCanonical) {
+    if (!actualByCanonical.has(canonical)) {
+      errors.push(`Missing release asset: ${expectedName}`);
     }
   }
 
-  for (const name of actualNames) {
-    if (!expectedNames.has(name) && name !== 'release-manifest.json') {
-      errors.push(`Unexpected release asset: ${name}`);
+  for (const [canonical, actualName] of actualByCanonical) {
+    if (!expectedByCanonical.has(canonical)) {
+      errors.push(`Unexpected release asset: ${actualName}`);
     }
   }
 
@@ -289,9 +303,13 @@ async function verifyMode(options) {
   const manifest = JSON.parse(await readFile(options.output, 'utf8'));
   const downloadedFiles = await listFilesRecursive(options.downloadDir);
   const errors = verifyDownloadedAssets(manifest, downloadedFiles);
+  const downloadedByName = new Map(downloadedFiles.map((filePath) => [path.basename(filePath), filePath]));
+  const downloadedByCanonical = new Map(
+    downloadedFiles.map((filePath) => [canonicalReleaseAssetName(path.basename(filePath)), filePath])
+  );
 
   for (const asset of manifest.assets) {
-    const filePath = downloadedFiles.find((candidate) => path.basename(candidate) === asset.name);
+    const filePath = downloadedByName.get(asset.name) ?? downloadedByCanonical.get(canonicalReleaseAssetName(asset.name));
     if (!filePath) continue;
     const actualHash = await sha256File(filePath);
     if (actualHash !== asset.sha256) {
