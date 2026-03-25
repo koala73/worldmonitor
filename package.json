@@ -116,7 +116,7 @@
     "telegram": "^2.26.22",
     "three": "^0.183.2",
     "topojson-client": "^3.1.0",
-    "ws": "^8.19.0",
+    "ws": "^8.20.0",
     "youtubei.js": "^16.0.1"
   },
   "overrides": {
