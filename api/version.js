@@ -1,45 +1,27 @@
-// Non-sebuf: returns XML/HTML, stays as standalone Vercel function
-export const config = { runtime: 'edge' };
+import { fetchLatestRelease } from './_github-release.js';
+import { jsonResponse } from './_json-response.js';
 
-const RELEASES_URL = 'https://api.github.com/repos/koala73/worldmonitor/releases/latest';
+export const config = { runtime: 'edge' };
 
 export default async function handler() {
   try {
-    const res = await fetch(RELEASES_URL, {
-      headers: {
-        'Accept': 'application/vnd.github+json',
-        'User-Agent': 'WorldMonitor-Version-Check',
-      },
-    });
-
-    if (!res.ok) {
-      return new Response(JSON.stringify({ error: 'upstream' }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const release = await fetchLatestRelease('WorldMonitor-Version-Check');
+    if (!release) {
+      return jsonResponse({ error: 'upstream' }, 502);
     }
-
-    const release = await res.json();
     const tag = release.tag_name ?? '';
     const version = tag.replace(/^v/, '');
 
-    return new Response(JSON.stringify({
+    return jsonResponse({
       version,
       tag,
       url: release.html_url,
       prerelease: release.prerelease ?? false,
-    }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600',
-        'Access-Control-Allow-Origin': '*',
-      },
+    }, 200, {
+      'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600',
+      'Access-Control-Allow-Origin': '*',
     });
   } catch {
-    return new Response(JSON.stringify({ error: 'fetch_failed' }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'fetch_failed' }, 502);
   }
 }

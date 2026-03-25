@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+message MarketImplicationCard {
+  string ticker = 1;
+  string name = 2;
+  string direction = 3;
+  string timeframe = 4;
+  string confidence = 5;
+  string title = 6;
+  string narrative = 7;
+  string risk_caveat = 8;
+  string driver = 9;
+}
+
+message ListMarketImplicationsRequest {}
+
+message ListMarketImplicationsResponse {
+  repeated MarketImplicationCard cards = 1;
+  bool degraded = 2;
+  string empty_reason = 3;
+  string generated_at = 4;
+}

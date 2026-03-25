@@ -13,6 +13,8 @@ import {
   getCacheKey,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { isProviderAvailable } from '../../../_shared/llm-health';
+import { sanitizeHeadlinesLight, sanitizeHeadlines, sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 
 // ======================================================================
 // Reasoning preamble detection
@@ -37,14 +39,23 @@ export async function summarizeArticle(
 ): Promise<SummarizeArticleResponse> {
   const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
 
-  // Input sanitization (M-14 fix): limit headline count and length
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
   const MAX_GEO_CONTEXT_LEN = 2000;
-  const headlines = (req.headlines || [])
-    .slice(0, MAX_HEADLINES)
-    .map(h => typeof h === 'string' ? h.slice(0, MAX_HEADLINE_LEN) : '');
-  const sanitizedGeoContext = typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '';
+
+  // Bounded raw headlines — used for cache key so browser/server keys agree.
+  // Only structural patterns stripped (delimiters, control chars); semantic
+  // phrases kept intact to avoid mangling legitimate security news headlines.
+  const headlines = sanitizeHeadlinesLight(
+    (req.headlines || [])
+      .slice(0, MAX_HEADLINES)
+      .map(h => typeof h === 'string' ? h.slice(0, MAX_HEADLINE_LEN) : ''),
+  );
+
+  // geoContext gets full injection sanitization — it is free-form user text.
+  const sanitizedGeoContext = sanitizeForPrompt(
+    typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '',
+  );
 
   // Provider credential check
   const skipReasons: Record<string, string> = {
@@ -59,13 +70,12 @@ export async function summarizeArticle(
       summary: '',
       model: '',
       provider: provider,
-      cached: false,
       tokens: 0,
       fallback: true,
-      skipped: true,
-      reason: skipReasons[provider] || `Unknown provider: ${provider}`,
       error: '',
       errorType: '',
+      status: 'SUMMARIZE_STATUS_SKIPPED',
+      statusDetail: skipReasons[provider] || `Unknown provider: ${provider}`,
     };
   }
 
@@ -77,13 +87,12 @@ export async function summarizeArticle(
       summary: '',
       model: '',
       provider: provider,
-      cached: false,
       tokens: 0,
       fallback: false,
-      skipped: false,
-      reason: '',
       error: 'Headlines array required',
       errorType: 'ValidationError',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Headlines array required',
     };
   }
 
@@ -96,8 +105,15 @@ export async function summarizeArticle(
       cacheKey,
       CACHE_TTL_SECONDS,
       async () => {
-        const uniqueHeadlines = deduplicateHeadlines(headlines.slice(0, 5));
-        const { systemPrompt, userPrompt } = buildArticlePrompts(headlines, uniqueHeadlines, {
+        // Health gate inside fetcher — only runs on cache miss
+        if (!(await isProviderAvailable(apiUrl))) return null;
+        // Full injection sanitization applied at prompt-build time only.
+        // Headlines are re-sanitized here (not at cache-key time) so that
+        // the cache key stays aligned with the browser while the actual
+        // prompt is protected against semantic injection phrases.
+        const promptHeadlines = sanitizeHeadlines(headlines);
+        const uniqueHeadlines = deduplicateHeadlines(promptHeadlines.slice(0, 5));
+        const { systemPrompt, userPrompt } = buildArticlePrompts(promptHeadlines, uniqueHeadlines, {
           mode,
           geoContext: sanitizedGeoContext,
           variant,
@@ -118,7 +134,7 @@ export async function summarizeArticle(
             top_p: 0.9,
             ...extraBody,
           }),
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(25_000),
         });
 
         if (!response.ok) {
@@ -164,17 +180,17 @@ export async function summarizeArticle(
     );
 
     if (result?.summary) {
+      const isCached = source === 'cache';
       return {
         summary: result.summary,
         model: result.model || model,
-        provider: source === 'cache' ? 'cache' : provider,
-        cached: source === 'cache',
-        tokens: source === 'cache' ? 0 : (result.tokens || 0),
+        provider: isCached ? 'cache' : provider,
+        tokens: isCached ? 0 : (result.tokens || 0),
         fallback: false,
-        skipped: false,
-        reason: '',
         error: '',
         errorType: '',
+        status: isCached ? 'SUMMARIZE_STATUS_CACHED' : 'SUMMARIZE_STATUS_SUCCESS',
+        statusDetail: '',
       };
     }
 
@@ -182,13 +198,12 @@ export async function summarizeArticle(
       summary: '',
       model: '',
       provider: provider,
-      cached: false,
       tokens: 0,
       fallback: true,
-      skipped: false,
-      reason: '',
       error: 'Empty response',
       errorType: '',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Empty response',
     };
 
   } catch (err: unknown) {
@@ -198,13 +213,12 @@ export async function summarizeArticle(
       summary: '',
       model: '',
       provider: provider,
-      cached: false,
       tokens: 0,
       fallback: true,
-      skipped: false,
-      reason: '',
       error: error.message,
       errorType: error.name,
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: `${error.name}: ${error.message}`,
     };
   }
 }

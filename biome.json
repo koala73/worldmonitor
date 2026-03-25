@@ -1,0 +1,92 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"ignoreUnknown": true
+	},
+	"formatter": {
+		"enabled": false
+	},
+	"overrides": [
+		{
+			"includes": ["src/generated/**"],
+			"linter": { "enabled": false }
+		}
+	],
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"correctness": {
+				"noUnusedVariables": "off",
+				"noUnusedImports": "off",
+				"noUndeclaredVariables": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noAssignInExpressions": "off",
+				"noDoubleEquals": "warn",
+				"noConsole": "off",
+				"noFallthroughSwitchClause": "error",
+				"noGlobalAssign": "error",
+				"noRedeclare": "error",
+				"noVar": "error",
+				"noControlCharactersInRegex": "off",
+				"noTemplateCurlyInString": "off",
+				"noEmptyBlock": "off",
+				"noImplicitAnyLet": "off",
+				"useIterableCallbackReturn": "off",
+				"noDocumentCookie": "off",
+				"noDuplicateProperties": "off",
+				"noPrototypeBuiltins": "off",
+				"noConfusingVoidType": "off"
+			},
+			"style": {
+				"noNonNullAssertion": "off",
+				"useConst": "warn",
+				"useTemplate": "off",
+				"useDefaultParameterLast": "warn",
+				"noParameterAssign": "off",
+				"useNodejsImportProtocol": "off",
+				"noUnusedTemplateLiteral": "off",
+				"useImportType": "off",
+				"useArrayLiterals": "warn",
+				"noDescendingSpecificity": "off"
+			},
+			"complexity": {
+				"noForEach": "off",
+				"noImportantStyles": "off",
+				"useLiteralKeys": "off",
+				"useFlatMap": "warn",
+				"noUselessSwitchCase": "warn",
+				"noUselessConstructor": "warn",
+				"noStaticOnlyClass": "off",
+				"noArguments": "error",
+				"noBannedTypes": "off",
+				"noExcessiveCognitiveComplexity": {
+					"level": "warn",
+					"options": {
+						"maxAllowedComplexity": 50
+					}
+				}
+			},
+			"performance": {
+				"noDelete": "off",
+				"noAccumulatingSpread": "warn"
+			},
+			"security": {
+				"noDangerouslySetInnerHtml": "off"
+			}
+		}
+	},
+	"javascript": {
+		"globals": ["globalThis"]
+	},
+	"assist": {
+		"enabled": false
+	}
+}

@@ -1,17 +1,14 @@
 /**
- * Progress data service -- fetches World Bank indicator data for the
+ * Progress data service -- displays World Bank indicator data for the
  * "Human Progress" panel showing long-term positive trends.
  *
- * Uses the existing getIndicatorData() RPC from the economic service
- * (World Bank API via sebuf proxy). All 4 indicators use country code
- * "1W" (World aggregate).
- *
- * papaparse is installed for potential OWID CSV fallback but is NOT
- * used in the primary flow -- World Bank covers all 4 indicators.
+ * Data is pre-seeded by seed-wb-indicators.mjs on Railway and read
+ * from bootstrap/Redis. Never calls WB API from the frontend.
  */
 
-import { getIndicatorData } from '@/services/economic';
 import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 
 // ---- Types ----
 
@@ -96,58 +93,68 @@ const breaker = createCircuitBreaker<ProgressDataSet[]>({
   persistCache: true,
 });
 
-// ---- Data Fetching ----
+// ---- Seed data shape (from seed-wb-indicators.mjs) ----
+
+interface SeedProgressIndicator {
+  id: string;
+  code: string;
+  data: ProgressDataPoint[];
+  invertTrend: boolean;
+}
+
+// ---- Data Fetching (from Railway seed via bootstrap) ----
+
+function buildDataSet(indicator: ProgressIndicator, data: ProgressDataPoint[]): ProgressDataSet {
+  if (data.length === 0) return fallbackDataSet(indicator);
+  const oldestValue = data[0]!.value;
+  const latestValue = data[data.length - 1]!.value;
+  const rawChangePercent = oldestValue !== 0
+    ? ((latestValue - oldestValue) / Math.abs(oldestValue)) * 100
+    : 0;
+  const changePercent = indicator.invertTrend ? -rawChangePercent : rawChangePercent;
+  return {
+    indicator,
+    data,
+    latestValue,
+    oldestValue,
+    changePercent: Math.round(changePercent * 10) / 10,
+  };
+}
+
+function buildSeedMap(seeds: SeedProgressIndicator[]): Map<string, SeedProgressIndicator> {
+  const map = new Map<string, SeedProgressIndicator>();
+  for (const s of seeds) {
+    map.set(s.id, s);
+    map.set(s.code, s);
+  }
+  return map;
+}
+
+function resolveFromSeeds(seedMap: Map<string, SeedProgressIndicator>): ProgressDataSet[] {
+  return PROGRESS_INDICATORS.map(indicator => {
+    const seed = seedMap.get(indicator.id) || seedMap.get(indicator.code);
+    return seed?.data?.length ? buildDataSet(indicator, seed.data) : fallbackDataSet(indicator);
+  });
+}
 
 async function fetchProgressDataFresh(): Promise<ProgressDataSet[]> {
-  const results = await Promise.all(
-    PROGRESS_INDICATORS.map(async (indicator): Promise<ProgressDataSet> => {
-      try {
-        const response = await getIndicatorData(indicator.code, {
-          countries: ['1W'],
-          years: indicator.years,
-        });
+  // 1. Try bootstrap hydration cache (first page load)
+  const hydrated = getHydratedData('progressData') as SeedProgressIndicator[] | undefined;
+  if (hydrated?.length) return resolveFromSeeds(buildSeedMap(hydrated));
 
-        const countryData = response.byCountry['WLD'];
-        if (!countryData || countryData.values.length === 0) {
-          return fallbackDataSet(indicator);
-        }
+  // 2. Fallback: fetch from bootstrap endpoint directly
+  try {
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=progressData'), {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (resp.ok) {
+      const { data } = (await resp.json()) as { data: { progressData?: SeedProgressIndicator[] } };
+      if (data.progressData?.length) return resolveFromSeeds(buildSeedMap(data.progressData));
+    }
+  } catch { /* fall through to fallback */ }
 
-        const data: ProgressDataPoint[] = countryData.values
-          .filter(v => v.value != null && Number.isFinite(v.value))
-          .map(v => ({
-            year: parseInt(v.year, 10),
-            value: v.value,
-          }))
-          .filter(d => !isNaN(d.year))
-          .sort((a, b) => a.year - b.year);
-
-        if (data.length === 0) {
-          return fallbackDataSet(indicator);
-        }
-
-        const oldestValue = data[0]!.value;
-        const latestValue = data[data.length - 1]!.value;
-
-        const rawChangePercent = oldestValue !== 0
-          ? ((latestValue - oldestValue) / Math.abs(oldestValue)) * 100
-          : 0;
-        const changePercent = indicator.invertTrend
-          ? -rawChangePercent
-          : rawChangePercent;
-
-        return {
-          indicator,
-          data,
-          latestValue,
-          oldestValue,
-          changePercent: Math.round(changePercent * 10) / 10,
-        };
-      } catch {
-        return fallbackDataSet(indicator);
-      }
-    }),
-  );
-  return results;
+  // 3. Static fallback
+  return PROGRESS_INDICATORS.map(fallbackDataSet);
 }
 
 /**

@@ -20,9 +20,13 @@ export interface AlertSettings {
 }
 
 const SETTINGS_KEY = 'wm-breaking-alerts-v1';
+const DEDUPE_KEY = 'wm-breaking-alerts-dedupe';
 const RECENCY_GATE_MS = 15 * 60 * 1000;
 const PER_EVENT_COOLDOWN_MS = 30 * 60 * 1000;
 const GLOBAL_COOLDOWN_MS = 60 * 1000;
+// Suppress RSS-based alerts during initial feed fetch after app load.
+// OREF siren alerts bypass this — real-time sirens must never be delayed.
+const STARTUP_GRACE_MS = 10 * 1000;
 
 const DEFAULT_SETTINGS: AlertSettings = {
   enabled: true,
@@ -36,6 +40,7 @@ let lastGlobalAlertMs = 0;
 let lastGlobalAlertLevel: 'critical' | 'high' | null = null;
 let storageListener: ((e: StorageEvent) => void) | null = null;
 let cachedSettings: AlertSettings | null = null;
+let initTimestamp = 0;
 
 function simpleHash(str: string): string {
   let hash = 0;
@@ -63,6 +68,32 @@ function makeAlertKey(headline: string, source: string, link?: string): string {
   return simpleHash(parts);
 }
 
+// ─── Persist dedup map to localStorage ─────────────────────────────────────
+// Prevents the same article from re-firing on every page load/refresh.
+
+function loadDedupeMap(): void {
+  try {
+    const raw = localStorage.getItem(DEDUPE_KEY);
+    if (!raw) return;
+    const entries: Array<[string, number]> = JSON.parse(raw);
+    const now = Date.now();
+    for (const [key, ts] of entries) {
+      if (now - ts < PER_EVENT_COOLDOWN_MS) {
+        dedupeMap.set(key, ts);
+      }
+    }
+  } catch {}
+}
+
+function saveDedupeMap(): void {
+  try {
+    const entries = [...dedupeMap.entries()];
+    localStorage.setItem(DEDUPE_KEY, JSON.stringify(entries));
+  } catch {}
+}
+
+// ─── Settings ──────────────────────────────────────────────────────────────
+
 export function getAlertSettings(): AlertSettings {
   if (cachedSettings) return cachedSettings;
   try {
@@ -86,8 +117,14 @@ export function updateAlertSettings(partial: Partial<AlertSettings>): void {
   } catch {}
 }
 
+// ─── Gate checks ───────────────────────────────────────────────────────────
+
 function isRecent(pubDate: Date): boolean {
   return pubDate.getTime() >= (Date.now() - RECENCY_GATE_MS);
+}
+
+function isInStartupGrace(): boolean {
+  return initTimestamp > 0 && (Date.now() - initTimestamp) < STARTUP_GRACE_MS;
 }
 
 function pruneDedupeMap(): void {
@@ -114,12 +151,19 @@ function dispatchAlert(alert: BreakingAlert): void {
   dedupeMap.set(alert.id, Date.now());
   lastGlobalAlertMs = Date.now();
   lastGlobalAlertLevel = alert.threatLevel;
+  saveDedupeMap();
   document.dispatchEvent(new CustomEvent('wm:breaking-news', { detail: alert }));
 }
 
 export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
   const settings = getAlertSettings();
   if (!settings.enabled) return;
+
+  // During startup grace period, suppress RSS alerts so the initial feed fetch
+  // doesn't surface stale articles as "breaking". Articles with updated pubDate
+  // (e.g. CBS "updated 2m ago" on a hours-old story) would otherwise fire every
+  // time the app is opened.
+  if (isInStartupGrace()) return;
 
   let best: BreakingAlert | null = null;
 
@@ -189,6 +233,8 @@ export function dispatchOrefBreakingAlert(alerts: OrefAlert[]): void {
 }
 
 export function initBreakingNewsAlerts(): void {
+  initTimestamp = Date.now();
+  loadDedupeMap();
   storageListener = (e: StorageEvent) => {
     if (e.key === SETTINGS_KEY) {
       cachedSettings = null;
@@ -206,4 +252,5 @@ export function destroyBreakingNewsAlerts(): void {
   cachedSettings = null;
   lastGlobalAlertMs = 0;
   lastGlobalAlertLevel = null;
+  initTimestamp = 0;
 }

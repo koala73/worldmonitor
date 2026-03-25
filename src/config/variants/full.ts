@@ -53,6 +53,9 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 // Map layers for geopolitical view
 export const DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
+  satellites: false,
+
+
   conflicts: true,
   bases: true,
   cables: false,
@@ -63,7 +66,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: true,
   weather: true,
-  economic: true,
+  economic: false,
   waterways: true,
   outages: true,
   cyberThreats: false,
@@ -71,7 +74,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   protests: false,
   flights: false,
   military: false,
-  natural: true,
+  natural: false,
   spaceports: false,
   minerals: false,
   fires: false,
@@ -97,13 +100,23 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   speciesRecovery: false,
   renewableInstallations: false,
   tradeRoutes: false,
-  iranAttacks: false,
+  iranAttacks: true,
+  ciiChoropleth: false,
   dayNight: false,
+  // Commodity variant layers (disabled in full variant)
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: false,
+  webcams: false,
+  weatherRadar: false,
 };
 
 // Mobile-specific defaults for geopolitical
 export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   gpsJamming: false,
+  satellites: false,
+
+
   conflicts: true,
   bases: false,
   cables: false,
@@ -148,8 +161,15 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   speciesRecovery: false,
   renewableInstallations: false,
   tradeRoutes: false,
-  iranAttacks: false,
+  iranAttacks: true,
+  ciiChoropleth: false,
   dayNight: false,
+  // Commodity variant layers (disabled in full variant)
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: false,
+  webcams: false,
+  weatherRadar: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

@@ -1,3 +1,63 @@
+export type DataSourceId =
+  | 'acled'
+  | 'opensky'
+  | 'wingbits'
+  | 'ais'
+  | 'usgs'
+  | 'gdelt'
+  | 'gdelt_doc'
+  | 'rss'
+  | 'polymarket'
+  | 'predictions'
+  | 'pizzint'
+  | 'outages'
+  | 'cyber_threats'
+  | 'weather'
+  | 'economic'
+  | 'oil'
+  | 'spending'
+  | 'firms'
+  | 'acled_conflict'
+  | 'ucdp'
+  | 'hapi'
+  | 'ucdp_events'
+  | 'unhcr'
+  | 'climate'
+  | 'worldpop'
+  | 'giving'
+  | 'bis'
+  | 'bls'
+  | 'wto_trade'
+  | 'supply_chain'
+  | 'security_advisories'
+  | 'gpsjam'
+  | 'sanctions_pressure'
+  | 'radiation'
+  | 'treasury_revenue';
+
+// AppContext lives in src/app/app-context.ts because it references
+// components, services, and utils (top-level aggregate type).
+
+export type HappyContentCategory =
+  | 'science-health'
+  | 'nature-wildlife'
+  | 'humanity-kindness'
+  | 'innovation-tech'
+  | 'climate-wins'
+  | 'culture-community';
+
+export interface TechHQ {
+  id: string;
+  company: string;
+  city: string;
+  country: string;
+  lat: number;
+  lon: number;
+  type: 'faang' | 'unicorn' | 'public';
+  employees?: number;
+  marketCap?: string;
+}
+
 export interface DeductContextDetail {
   query?: string;
   geoContext: string;
@@ -16,7 +76,19 @@ export interface Feed {
   lang?: string;             // ISO 2-letter code for filtering
 }
 
-export type { ThreatClassification, ThreatLevel, EventCategory } from '@/services/threat-classifier';
+export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+export type EventCategory =
+  | 'conflict' | 'protest' | 'disaster' | 'diplomatic' | 'economic'
+  | 'terrorism' | 'cyber' | 'health' | 'environmental' | 'military'
+  | 'crime' | 'infrastructure' | 'tech' | 'general';
+
+export interface ThreatClassification {
+  level: ThreatLevel;
+  category: EventCategory;
+  confidence: number;
+  source: 'keyword' | 'ml' | 'llm';
+}
 
 export interface NewsItem {
   source: string;
@@ -26,14 +98,12 @@ export interface NewsItem {
   isAlert: boolean;
   monitorColor?: string;
   tier?: number;
-  threat?: import('@/services/threat-classifier').ThreatClassification;
+  threat?: ThreatClassification;
   lat?: number;
   lon?: number;
   locationName?: string;
   lang?: string;
-  // Happy variant: positive content category
-  happyCategory?: import('@/services/positive-classifier').HappyContentCategory;
-  // Image URL extracted from RSS media/enclosure tags
+  happyCategory?: HappyContentCategory;
   imageUrl?: string;
 }
 
@@ -62,7 +132,7 @@ export interface ClusteredEvent {
   isAlert: boolean;
   monitorColor?: string;
   velocity?: VelocityMetrics;
-  threat?: import('@/services/threat-classifier').ThreatClassification;
+  threat?: ThreatClassification;
   lat?: number;
   lon?: number;
   lang?: string;
@@ -115,6 +185,14 @@ export interface CryptoData {
   price: number;
   change: number;
   sparkline?: number[];
+}
+
+export interface TokenData {
+  name: string;
+  symbol: string;
+  price: number;
+  change24h: number;
+  change7d: number;
 }
 
 export type EscalationTrend = 'escalating' | 'stable' | 'de-escalating';
@@ -207,6 +285,12 @@ export interface APTGroup {
   sponsor: string;
   lat: number;
   lon: number;
+  mitreId?: string;
+  mitreUrl?: string;
+  description?: string;
+  tactics?: string[];
+  targetSectors?: string[];
+  active?: boolean;
 }
 
 export type CyberThreatType = 'c2_server' | 'malware_host' | 'phishing' | 'malicious_url';
@@ -245,6 +329,7 @@ export interface ConflictZone {
   description?: string;
   keyDevelopments?: string[];
 }
+
 
 // UCDP Georeferenced Events
 export type UcdpEventType = 'state-based' | 'non-state' | 'one-sided';
@@ -497,6 +582,7 @@ export interface PanelConfig {
   name: string;
   enabled: boolean;
   priority?: number;
+  premium?: 'locked' | 'enhanced';
 }
 
 export interface MapLayers {
@@ -508,6 +594,7 @@ export interface MapLayers {
   ais: boolean;
   nuclear: boolean;
   irradiators: boolean;
+  radiationWatch?: boolean;
   sanctions: boolean;
   weather: boolean;
   economic: boolean;
@@ -551,8 +638,19 @@ export interface MapLayers {
   iranAttacks: boolean;
   // GPS/GNSS interference layer
   gpsJamming: boolean;
+  // Satellite orbital tracking + imagery footprints
+  satellites: boolean;
+
+  // CII choropleth layer
+  ciiChoropleth: boolean;
   // Overlay layers
   dayNight: boolean;
+  // Commodity variant layers
+  miningSites: boolean;
+  processingPlants: boolean;
+  commodityPorts: boolean;
+  webcams: boolean;
+  weatherRadar: boolean;
 }
 
 export interface AIDataCenter {
@@ -808,6 +906,7 @@ export interface MilitaryVessel {
   note?: string;
   usniRegion?: string;
   usniDeploymentStatus?: USNIDeploymentStatus;
+  usniHomePort?: string;
   usniStrikeGroup?: string;
   usniActivityDescription?: string;
   usniArticleUrl?: string;
@@ -937,6 +1036,26 @@ export type NaturalEventCategory =
   | 'waterColor'
   | 'manmade';
 
+export const NATURAL_EVENT_CATEGORIES: ReadonlySet<NaturalEventCategory> = new Set<NaturalEventCategory>([
+  'severeStorms', 'wildfires', 'volcanoes', 'earthquakes', 'floods', 'landslides',
+  'drought', 'dustHaze', 'snow', 'tempExtremes', 'seaLakeIce', 'waterColor', 'manmade',
+]);
+
+export interface ForecastPoint {
+  lat: number;
+  lon: number;
+  hour: number;
+  windKt: number;
+  category: number;
+}
+
+export interface PastTrackPoint {
+  lat: number;
+  lon: number;
+  windKt: number;
+  timestamp: number;
+}
+
 export interface NaturalEvent {
   id: string;
   title: string;
@@ -951,6 +1070,18 @@ export interface NaturalEvent {
   sourceUrl?: string;
   sourceName?: string;
   closed: boolean;
+  stormId?: string;
+  stormName?: string;
+  basin?: string;
+  stormCategory?: number;
+  classification?: string;
+  windKt?: number;
+  pressureMb?: number;
+  movementDir?: number;
+  movementSpeedKt?: number;
+  forecastTrack?: ForecastPoint[];
+  conePolygon?: number[][][];
+  pastTrack?: PastTrackPoint[];
 }
 
 // Infrastructure Cascade Types
@@ -1025,8 +1156,18 @@ export interface CascadeResult {
   }[];
 }
 
-// Re-export port types
-export type { Port, PortType } from '@/config/ports';
+export type PortType = 'container' | 'oil' | 'lng' | 'naval' | 'mixed' | 'bulk';
+
+export interface Port {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  country: string;
+  type: PortType;
+  rank?: number;
+  note: string;
+}
 
 // AI Regulation Types
 export type RegulationType = 'comprehensive' | 'sectoral' | 'voluntary' | 'proposed';
@@ -1271,7 +1412,7 @@ export interface MapTechHQCluster {
   lat: number;
   lon: number;
   count: number;
-  items: import('@/config/tech-geo').TechHQ[];
+  items: TechHQ[];
   city: string;
   country: string;
   primaryType: 'faang' | 'unicorn' | 'public';
@@ -1310,4 +1451,30 @@ export interface MapDatacenterCluster {
   existingCount?: number;
   plannedCount?: number;
   sampled?: boolean;
+}
+
+export interface CountryBriefSignals {
+  criticalNews: number;
+  protests: number;
+  militaryFlights: number;
+  militaryVessels: number;
+  outages: number;
+  aisDisruptions: number;
+  satelliteFires: number;
+  radiationAnomalies: number;
+  temporalAnomalies: number;
+  cyberThreats: number;
+  earthquakes: number;
+  displacementOutflow: number;
+  climateStress: number;
+  conflictEvents: number;
+  activeStrikes: number;
+  orefSirens: number;
+  orefHistory24h: number;
+  aviationDisruptions: number;
+  travelAdvisories: number;
+  travelAdvisoryMaxLevel: string | null;
+  gpsJammingHexes: number;
+  isTier1: boolean;
+  thermalEscalations: number;
 }

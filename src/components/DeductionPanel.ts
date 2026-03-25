@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { marked } from 'marked';
@@ -6,7 +7,7 @@ import DOMPurify from 'dompurify';
 import type { NewsItem, DeductContextDetail } from '@/types';
 import { buildNewsContext } from '@/utils/news-context';
 
-const client = new IntelligenceServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const COOLDOWN_MS = 5_000;
 
@@ -64,25 +65,7 @@ export class DeductionPanel extends Panel {
 
         replaceChildren(this.content, container);
 
-        if (!document.getElementById('deduction-panel-styles')) {
-            const style = document.createElement('style');
-            style.id = 'deduction-panel-styles';
-            style.textContent = `
-        .deduction-panel-content { display: flex; flex-direction: column; gap: 12px; padding: 8px; height: 100%; overflow-y: auto; }
-        .deduction-form { display: flex; flex-direction: column; gap: 8px; }
-        .deduction-input, .deduction-geo-input { width: 100%; padding: 8px; background: var(--bg-secondary, #2a2a2a); border: 1px solid var(--border-color, #444); color: var(--text-primary, #fff); border-radius: 4px; font-family: inherit; resize: vertical; }
-        .deduction-submit-btn { padding: 8px 16px; background: var(--accent-color, #3b82f6); color: white; border: none; border-radius: 4px; cursor: pointer; align-self: flex-end; font-weight: 500; }
-        .deduction-submit-btn:hover { background: var(--accent-hover, #2563eb); }
-        .deduction-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .deduction-result { flex: 1; margin-top: 8px; line-height: 1.5; font-size: 0.9em; color: var(--text-primary, #ddd); }
-        .deduction-result.loading { opacity: 0.7; font-style: italic; }
-        .deduction-result.error { color: var(--semantic-critical, #ef4444); }
-        .deduction-result h3 { margin-top: 12px; margin-bottom: 4px; font-size: 1.1em; color: var(--text-bright, #fff); }
-        .deduction-result ul { padding-left: 20px; margin-top: 4px; }
-        .deduction-result li { margin-bottom: 4px; }
-            `;
-            document.head.appendChild(style);
-        }
+        /* Styles moved to panels.css (PERF-012) */
 
         this.contextHandler = ((e: CustomEvent<DeductContextDetail>) => {
             const { query, geoContext, autoSubmit } = e.detail;
@@ -97,7 +80,7 @@ export class DeductionPanel extends Panel {
             this.show();
 
             this.element.animate([
-                { backgroundColor: 'var(--accent-hover, #2563eb)' },
+                { backgroundColor: 'var(--overlay-heavy, rgba(255,255,255,.2))' },
                 { backgroundColor: 'transparent' }
             ], { duration: 800, easing: 'ease-out' });
 
@@ -140,10 +123,12 @@ export class DeductionPanel extends Panel {
                 query,
                 geoContext,
             });
+            if (!this.element?.isConnected) return;
 
             this.resultContainer.className = 'deduction-result';
             if (resp.analysis) {
                 const parsed = await marked.parse(resp.analysis);
+                if (!this.element?.isConnected) return;
                 this.resultContainer.innerHTML = DOMPurify.sanitize(parsed);
 
                 const meta = h('div', { style: 'margin-top: 12px; font-size: 0.75em; color: #888;' },
@@ -154,12 +139,15 @@ export class DeductionPanel extends Panel {
                 this.resultContainer.textContent = 'No analysis available for this query.';
             }
         } catch (err) {
+            if (!this.element?.isConnected) return;
             console.error('[DeductionPanel] Error:', err);
             this.resultContainer.className = 'deduction-result error';
             this.resultContainer.textContent = 'An error occurred while analyzing the situation.';
         } finally {
             this.isSubmitting = false;
-            setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+            if (this.element?.isConnected) {
+                setTimeout(() => { this.submitBtn.disabled = false; }, COOLDOWN_MS);
+            }
         }
     }
 }

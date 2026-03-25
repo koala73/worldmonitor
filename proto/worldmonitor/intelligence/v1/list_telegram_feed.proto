@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// Request to fetch real-time Telegram OSINT feed.
+message ListTelegramFeedRequest {
+  // Maximum number of messages to return (default 50).
+  int32 limit = 1 [(sebuf.http.query) = {name: "limit"}];
+  // Filter by topic keyword (e.g. "military", "cyber").
+  string topic = 2 [(sebuf.http.query) = {name: "topic"}];
+  // Filter by specific channel ID or name.
+  string channel = 3 [(sebuf.http.query) = {name: "channel"}];
+}
+
+// OSINT feed containing validated Telegram messages.
+message ListTelegramFeedResponse {
+  // Whether the bridge is currently active.
+  bool enabled = 1;
+  // Collection of messages matching the criteria.
+  repeated TelegramMessage messages = 2;
+  // Total count of messages in the current window.
+  int32 count = 3;
+  // Detailed error message if the fetch failed.
+  string error = 4;
+}
+
+// Validated OSINT post from Telegram channels.
+message TelegramMessage {
+  // Unique message identifier.
+  string id = 1;
+  // Identifier of the originating channel.
+  string channel_id = 2;
+  // Human-readable name of the channel.
+  string channel_name = 3;
+  // Sanitized message content.
+  string text = 4;
+  
+  // Unix timestamp in milliseconds for when the message was posted.
+  int64 timestamp_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  
+  // Direct links to associated media (images, videos).
+  repeated string media_urls = 6;
+  // Link to the original post on Telegram.
+  string source_url = 7;
+  // Auto-classified topic based on content.
+  string topic = 8;
+}

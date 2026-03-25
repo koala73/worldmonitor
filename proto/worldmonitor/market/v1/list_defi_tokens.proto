@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/market/v1/market_quote.proto";
+
+// ListDefiTokensRequest retrieves DeFi token prices.
+message ListDefiTokensRequest {
+}
+
+// ListDefiTokensResponse contains DeFi token price data.
+message ListDefiTokensResponse {
+  // The list of DeFi token quotes.
+  repeated CryptoQuote tokens = 1;
+}

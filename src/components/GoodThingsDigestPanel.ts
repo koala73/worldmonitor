@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import type { NewsItem } from '@/types';
 import { generateSummary } from '@/services/summarization';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
 
 /**
  * GoodThingsDigestPanel -- Displays the top 5 positive stories of the day,
@@ -34,7 +35,7 @@ export class GoodThingsDigestPanel extends Panel {
     const top5 = items.slice(0, 5);
 
     if (top5.length === 0) {
-      this.content.innerHTML = '<p class="digest-placeholder">No stories available</p>';
+      this.content.innerHTML = `<p class="digest-placeholder">${escapeHtml(t('components.goodThingsDigest.noStories'))}</p>`;
       this.cardElements = [];
       return;
     }
@@ -56,7 +57,7 @@ export class GoodThingsDigestPanel extends Panel {
             ${escapeHtml(item.title)}
           </a>
           <span class="digest-card-source">${escapeHtml(item.source)}</span>
-          <p class="digest-card-summary digest-card-summary--loading">Summarizing\u2026</p>
+          <p class="digest-card-summary digest-card-summary--loading">${escapeHtml(t('components.goodThingsDigest.summarizing'))}</p>
         </div>
       `;
       list.appendChild(card);
@@ -67,7 +68,7 @@ export class GoodThingsDigestPanel extends Panel {
     // Summarize in parallel with progressive updates
     const signal = this.summaryAbort.signal;
     await Promise.allSettled(top5.map(async (item, idx) => {
-      if (signal.aborted) return;
+      if (signal.aborted || !this.element?.isConnected) return;
       try {
         // Pass [title, source] as two headlines to satisfy generateSummary's
         // minimum length requirement (headlines.length >= 2).
@@ -76,11 +77,11 @@ export class GoodThingsDigestPanel extends Panel {
           undefined,
           item.locationName,
         );
-        if (signal.aborted) return;
+        if (signal.aborted || !this.element?.isConnected) return;
         const summary = result?.summary ?? item.title.slice(0, 200);
         this.updateCardSummary(idx, summary);
       } catch {
-        if (!signal.aborted) {
+        if (!signal.aborted && this.element?.isConnected) {
           this.updateCardSummary(idx, item.title.slice(0, 200));
         }
       }

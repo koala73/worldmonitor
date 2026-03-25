@@ -526,6 +526,53 @@ export const USNI_REGION_COORDINATES: Record<string, { lat: number; lon: number 
   'Bangor': { lat: 47.73, lon: -122.71 },
   'Djibouti': { lat: 11.55, lon: 43.15 },
   'Singapore': { lat: 1.35, lon: 103.82 },
+  // Additional homeports / shipyards
+  'Newport News': { lat: 37.00, lon: -76.43 },      // Huntington Ingalls / NNSY — carrier RCOH
+  'Puget Sound': { lat: 47.57, lon: -122.63 },       // alias for Bremerton / PSNS
+  'Naval Station Kitsap': { lat: 47.57, lon: -122.63 },
+  'Kitsap': { lat: 47.57, lon: -122.63 },
+  'Portsmouth': { lat: 43.07, lon: -70.76 },         // Portsmouth Naval Shipyard (Kittery, ME — submarine)
+  'Groton': { lat: 41.35, lon: -72.09 },             // Naval Submarine Base New London
+  'New London': { lat: 41.35, lon: -72.09 },
+  'Pascagoula': { lat: 30.37, lon: -88.55 },         // Ingalls shipbuilding
+  'Jacksonville': { lat: 30.39, lon: -81.40 },       // NAS Jax / Mayport area
+  'Pensacola': { lat: 30.35, lon: -87.30 },
+  'Corpus Christi': { lat: 27.80, lon: -97.40 },
+  'Deveselu': { lat: 44.10, lon: 24.09 },            // NATO BMD site, Romania
+};
+
+/**
+ * Fallback homeport lookup keyed by normalized hull number (e.g. "CVN-68").
+ * Used when deploymentStatus === 'in-port' but the USNI article text doesn't
+ * explicitly name the port.  Only covers ships whose homeports are stable and
+ * well-documented; keep this list concise — Option A (parsed homePort text)
+ * is preferred and this is the fallback.
+ * Last verified: March 2026 (USNI Fleet Tracker)
+ */
+export const HULL_HOMEPORT: Record<string, string> = {
+  // Aircraft Carriers
+  'CVN-68': 'Bremerton',        // USS Nimitz — Naval Station Kitsap / PSNS RCOH
+  'CVN-69': 'Norfolk',          // USS Dwight D. Eisenhower
+  'CVN-70': 'San Diego',        // USS Carl Vinson
+  'CVN-71': 'San Diego',        // USS Theodore Roosevelt
+  'CVN-72': 'Everett',          // USS Abraham Lincoln — Naval Station Everett
+  'CVN-73': 'Norfolk',          // USS George Washington — returned from Newport News RCOH
+  'CVN-74': 'Bremerton',        // USS John C. Stennis — PSNS RCOH
+  'CVN-75': 'Norfolk',          // USS Harry S. Truman
+  'CVN-76': 'San Diego',        // USS Ronald Reagan — returning from Yokosuka
+  'CVN-77': 'Norfolk',          // USS George H.W. Bush
+  'CVN-78': 'Norfolk',          // USS Gerald R. Ford
+  'CVN-79': 'Norfolk',          // USS John F. Kennedy — commissioning
+  // Amphibious Assault
+  'LHD-1': 'Norfolk',           // USS Wasp
+  'LHD-2': 'Sasebo',            // USS Essex — forward deployed Japan
+  'LHD-3': 'Norfolk',           // USS Kearsarge
+  'LHD-4': 'San Diego',         // USS Boxer
+  'LHD-5': 'Norfolk',           // USS Bataan
+  'LHD-7': 'Norfolk',           // USS Iwo Jima
+  'LHD-8': 'San Diego',         // USS Makin Island
+  'LHA-6': 'San Diego',         // USS America
+  'LHA-7': 'San Diego',         // USS Tripoli
 };
 
 export function normalizeUSNIRegion(regionText: string): string {
@@ -624,7 +671,7 @@ export function isKnownMilitaryHex(hexCode: string): { operator: MilitaryOperato
  */
 export function getNearbyHotspot(lat: number, lon: number): typeof MILITARY_HOTSPOTS[number] | undefined {
   for (const hotspot of MILITARY_HOTSPOTS) {
-    const distance = Math.sqrt(Math.pow(lat - hotspot.lat, 2) + Math.pow(lon - hotspot.lon, 2));
+    const distance = Math.sqrt((lat - hotspot.lat) ** 2 + (lon - hotspot.lon) ** 2);
     if (distance <= hotspot.radius) {
       return hotspot;
     }

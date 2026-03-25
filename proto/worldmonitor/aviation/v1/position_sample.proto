@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "sebuf/http/annotations.proto";
+
+// PositionSource identifies the provider of aircraft position data.
+enum PositionSource {
+  // Unspecified source.
+  POSITION_SOURCE_UNSPECIFIED = 0;
+  // OpenSky Network ADS-B data.
+  POSITION_SOURCE_OPENSKY = 1;
+  // Wingbits ADS-B data.
+  POSITION_SOURCE_WINGBITS = 2;
+  // Simulated position data for demo mode.
+  POSITION_SOURCE_SIMULATED = 3;
+}
+
+// PositionSample represents a single aircraft position observation.
+message PositionSample {
+  // ICAO 24-bit transponder address (hex, e.g., "4b1805").
+  string icao24 = 1;
+  // ATC callsign (e.g., "THY7CX").
+  string callsign = 2;
+  // Latitude in decimal degrees.
+  double lat = 3;
+  // Longitude in decimal degrees.
+  double lon = 4;
+  // Barometric altitude in metres.
+  double altitude_m = 5;
+  // Ground speed in knots.
+  double ground_speed_kts = 6;
+  // True track over ground in degrees (0 = North, clockwise).
+  double track_deg = 7;
+  // Vertical rate in metres per second (positive = climbing).
+  double vertical_rate = 8;
+  // Whether the aircraft is on the ground.
+  bool on_ground = 9;
+  // Position data source.
+  PositionSource source = 10;
+  // Observation time as Unix epoch milliseconds.
+  int64 observed_at = 11 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

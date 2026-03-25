@@ -5,7 +5,14 @@ package worldmonitor.prediction.v1;
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
-// PredictionMarket represents a prediction market contract from Polymarket.
+// Source platform for prediction market data.
+enum MarketSource {
+  MARKET_SOURCE_UNSPECIFIED = 0;
+  MARKET_SOURCE_POLYMARKET = 1;
+  MARKET_SOURCE_KALSHI = 2;
+}
+
+// PredictionMarket represents a prediction market contract.
 message PredictionMarket {
   // Unique market identifier or slug.
   string id = 1 [
@@ -21,10 +28,13 @@ message PredictionMarket {
   ];
   // Trading volume in USD.
   double volume = 4 [(buf.validate.field).double.gte = 0];
-  // URL to the Polymarket market page.
+  // URL to the market page.
   string url = 5;
   // Market close time, as Unix epoch milliseconds. Zero if no expiry.
   int64 closes_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Market category (e.g., "Politics", "Crypto", "Sports").
   string category = 7;
+  // Source platform (Polymarket, Kalshi, etc.).
+  MarketSource source = 8;
+  reserved 9;
 }

@@ -8,6 +8,9 @@ import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTA
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
+import { track } from '@/services/analytics';
+
+type SortMode = 'relevance' | 'newest';
 
 /** Threshold for enabling virtual scrolling */
 const VIRTUAL_SCROLL_THRESHOLD = 15;
@@ -37,6 +40,12 @@ export class NewsPanel extends Panel {
   private boundScrollHandler: (() => void) | null = null;
   private boundClickHandler: (() => void) | null = null;
 
+  // Sort mode toggle (#107)
+  private sortMode!: SortMode;
+  private sortBtn: HTMLButtonElement | null = null;
+  private lastRawClusters: ClusteredEvent[] | null = null;
+  private lastRawItems: NewsItem[] | null = null;
+
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
   private summaryContainer: HTMLElement | null = null;
@@ -44,12 +53,15 @@ export class NewsPanel extends Panel {
   private lastHeadlineSignature = '';
   private isSummarizing = false;
 
-  constructor(id: string, title: string) {
-    super({ id, title, showCount: true, trackActivity: true });
+  constructor(id: string, title: string, infoTooltip?: string) {
+    super({ id, title, showCount: true, trackActivity: true, infoTooltip });
+    this.sortMode = this.loadSortMode();
     this.createDeviationIndicator();
+    this.createSortToggle();
     this.createSummarizeButton();
     this.setupActivityTracking();
     this.initWindowedList();
+    this.setupContentDelegation();
   }
 
   private initWindowedList(): void {
@@ -111,6 +123,62 @@ export class NewsPanel extends Panel {
     }
   }
 
+  // --- Sort toggle (#107) ---
+  private get sortStorageKey(): string {
+    return `wm_sort_${SITE_VARIANT}_${this.panelId}`;
+  }
+
+  private loadSortMode(): SortMode {
+    try {
+      const v = localStorage.getItem(this.sortStorageKey);
+      return v === 'newest' ? 'newest' : 'relevance';
+    } catch { return 'relevance'; }
+  }
+
+  private saveSortMode(): void {
+    try { localStorage.setItem(this.sortStorageKey, this.sortMode); } catch { /* storage full */ }
+  }
+
+  private createSortToggle(): void {
+    this.sortBtn = document.createElement('button');
+    this.sortBtn.className = 'panel-sort-btn';
+    this.updateSortButtonLabel();
+    this.sortBtn.addEventListener('click', () => {
+      this.sortMode = this.sortMode === 'relevance' ? 'newest' : 'relevance';
+      track('news-sort-toggle', { mode: this.sortMode });
+      this.saveSortMode();
+      this.updateSortButtonLabel();
+      // Re-render with cached data
+      if (this.lastRawClusters) {
+        this.renderClusters(this.lastRawClusters);
+      } else if (this.lastRawItems) {
+        this.renderFlat(this.lastRawItems);
+      }
+    });
+
+    const countEl = this.header.querySelector('.panel-count');
+    if (countEl) {
+      this.header.insertBefore(this.sortBtn, countEl);
+    } else {
+      this.header.appendChild(this.sortBtn);
+    }
+  }
+
+  private updateSortButtonLabel(): void {
+    if (!this.sortBtn) return;
+    // SVG icons for cross-platform consistency
+    const icon = this.sortMode === 'newest'
+      ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"/><polyline points="8,4 8,8 11,10"/></svg>'
+      : '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8M4 7l4 4 4-4"/><line x1="3" y1="14" x2="13" y2="14"/></svg>';
+    const label = this.sortMode === 'newest'
+      ? t('components.newsPanel.sortNewest') || 'Newest'
+      : t('components.newsPanel.sortRelevance') || 'Relevance';
+    const tooltip = `${t('components.newsPanel.sortBy') || 'Sort by'}: ${label}`;
+    this.sortBtn.innerHTML = icon;
+    this.sortBtn.title = tooltip;
+    this.sortBtn.setAttribute('aria-label', tooltip);
+  }
+
   private createSummarizeButton(): void {
     // Create summary container (inserted between header and content)
     this.summaryContainer = document.createElement('div');
@@ -118,12 +186,23 @@ export class NewsPanel extends Panel {
     this.summaryContainer.style.display = 'none';
     this.element.insertBefore(this.summaryContainer, this.content);
 
+    // Event delegation: handle close button clicks inside summaryContainer
+    // regardless of how many times innerHTML is replaced by showSummary()
+    this.summaryContainer.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.panel-summary-close')) {
+        this.hideSummary();
+      }
+    });
+
     // Create summarize button
     this.summaryBtn = document.createElement('button');
     this.summaryBtn.className = 'panel-summarize-btn';
     this.summaryBtn.innerHTML = '✨';
     this.summaryBtn.title = t('components.newsPanel.summarize');
-    this.summaryBtn.addEventListener('click', () => this.handleSummarize());
+    this.summaryBtn.addEventListener('click', () => {
+      track('news-summarize', { panelId: this.panelId });
+      this.handleSummarize();
+    });
 
     // Insert before count element (use inherited this.header directly)
     const countEl = this.header.querySelector('.panel-count');
@@ -158,6 +237,7 @@ export class NewsPanel extends Panel {
 
     try {
       const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, this.panelId, currentLang);
+      if (!this.element?.isConnected) return;
       if (this.lastHeadlineSignature !== sigAtStart) {
         this.hideSummary();
         return;
@@ -166,16 +246,19 @@ export class NewsPanel extends Panel {
         this.setCachedSummary(cacheKey, result.summary);
         this.showSummary(result.summary);
       } else {
-        this.summaryContainer.innerHTML = '<div class="panel-summary-error">Could not generate summary</div>';
+        this.summaryContainer.innerHTML = `<div class="panel-summary-error">${t('components.newsPanel.summaryError')}</div>`;
         setTimeout(() => this.hideSummary(), 3000);
       }
     } catch {
-      this.summaryContainer.innerHTML = '<div class="panel-summary-error">Summary failed</div>';
+      if (!this.element?.isConnected) return;
+      this.summaryContainer.innerHTML = `<div class="panel-summary-error">${t('components.newsPanel.summaryFailed')}</div>`;
       setTimeout(() => this.hideSummary(), 3000);
     } finally {
       this.isSummarizing = false;
-      this.summaryBtn.innerHTML = '✨';
-      this.summaryBtn.disabled = false;
+      if (this.summaryBtn) {
+        this.summaryBtn.innerHTML = '✨';
+        this.summaryBtn.disabled = false;
+      }
     }
   }
 
@@ -194,6 +277,7 @@ export class NewsPanel extends Panel {
 
     try {
       const translated = await translateText(text, currentLang);
+      if (!this.element?.isConnected) return;
       if (translated) {
         titleEl.textContent = translated;
         titleEl.dataset.original = originalText;
@@ -205,23 +289,26 @@ export class NewsPanel extends Panel {
         // Shake animation or error state could be added here
       }
     } catch (e) {
+      if (!this.element?.isConnected) return;
       console.error('Translation failed', e);
       element.innerHTML = '文';
     } finally {
-      element.style.pointerEvents = 'auto';
+      if (element.isConnected) {
+        element.style.pointerEvents = 'auto';
+      }
     }
   }
 
   private showSummary(summary: string): void {
-    if (!this.summaryContainer) return;
+    if (!this.summaryContainer || !this.element?.isConnected) return;
     this.summaryContainer.style.display = 'block';
     this.summaryContainer.innerHTML = `
       <div class="panel-summary-content">
         <span class="panel-summary-text">${escapeHtml(summary)}</span>
-        <button class="panel-summary-close" title="${t('components.newsPanel.close')}">×</button>
+        <button class="panel-summary-close" title="${t('components.newsPanel.close')}" aria-label="${t('components.newsPanel.close')}">×</button>
       </div>
     `;
-    this.summaryContainer.querySelector('.panel-summary-close')?.addEventListener('click', () => this.hideSummary());
+    // Close button click is handled via event delegation on summaryContainer (set up in constructor)
   }
 
   private hideSummary(): void {
@@ -284,6 +371,12 @@ export class NewsPanel extends Panel {
     this.deviationEl.title = `z-score: ${zScore} (vs 7-day avg)`;
   }
 
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.lastRawClusters = null;
+    this.lastRawItems = null;
+    super.showError(message, onRetry, autoRetrySeconds);
+  }
+
   public renderNews(items: NewsItem[]): void {
     if (items.length === 0) {
       this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
@@ -305,6 +398,8 @@ export class NewsPanel extends Panel {
 
   public renderFilteredEmpty(message: string): void {
     this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
+    this.lastRawClusters = null;
+    this.lastRawItems = null;
     this.setDataBadge('live');
     this.setCount(0);
     this.relatedAssetContext.clear();
@@ -329,15 +424,24 @@ export class NewsPanel extends Panel {
   }
 
   private renderFlat(items: NewsItem[]): void {
-    this.setCount(items.length);
-    this.currentHeadlines = items
+    this.lastRawItems = items;
+
+    let sorted: NewsItem[];
+    if (this.sortMode === 'newest') {
+      sorted = [...items].sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+    } else {
+      sorted = items;
+    }
+
+    this.setCount(sorted.length);
+    this.currentHeadlines = sorted
       .slice(0, 5)
       .map(item => item.title)
       .filter((title): title is string => typeof title === 'string' && title.trim().length > 0);
 
     this.updateHeadlineSignature();
 
-    const html = items
+    const html = sorted
       .map(
         (item) => `
       <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
@@ -360,8 +464,16 @@ export class NewsPanel extends Panel {
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
-    // Sort by threat priority, then by time within same level
+    this.lastRawClusters = clusters;
+    this.lastRawItems = null;
+
+    // Sort based on user preference (#107)
     const sorted = [...clusters].sort((a, b) => {
+      if (this.sortMode === 'newest') {
+        // Pure chronological, newest first
+        return b.lastUpdated.getTime() - a.lastUpdated.getTime();
+      }
+      // Default: threat priority first, then recency within same level
       const pa = THREAT_PRIORITY[a.threat?.level ?? 'info'];
       const pb = THREAT_PRIORITY[b.threat?.level ?? 'info'];
       if (pb !== pa) return pb - pa;
@@ -415,7 +527,6 @@ export class NewsPanel extends Panel {
         .map(p => this.renderClusterHtmlSafely(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
         .join('');
       this.setContent(html);
-      this.bindRelatedAssetEvents();
     }
   }
 
@@ -563,48 +674,53 @@ export class NewsPanel extends Panel {
     `;
   }
 
-  private bindRelatedAssetEvents(): void {
-    const containers = this.content.querySelectorAll<HTMLDivElement>('.related-assets');
-    containers.forEach((container) => {
-      const clusterId = container.dataset.clusterId;
-      if (!clusterId) return;
-      const context = this.relatedAssetContext.get(clusterId);
-      if (!context) return;
+  private setupContentDelegation(): void {
+    this.content.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
 
-      container.addEventListener('mouseenter', () => {
-        this.onRelatedAssetsFocus?.(context.assets, context.origin.label);
-      });
-
-      container.addEventListener('mouseleave', () => {
-        this.onRelatedAssetsClear?.();
-      });
-    });
-
-    const assetButtons = this.content.querySelectorAll<HTMLButtonElement>('.related-asset');
-    assetButtons.forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const clusterId = button.dataset.clusterId;
-        const assetId = button.dataset.assetId;
-        const assetType = button.dataset.assetType as RelatedAsset['type'] | undefined;
+      const assetBtn = target.closest<HTMLElement>('.related-asset');
+      if (assetBtn) {
+        e.stopPropagation();
+        const clusterId = assetBtn.dataset.clusterId;
+        const assetId = assetBtn.dataset.assetId;
+        const assetType = assetBtn.dataset.assetType as RelatedAsset['type'] | undefined;
         if (!clusterId || !assetId || !assetType) return;
         const context = this.relatedAssetContext.get(clusterId);
         const asset = context?.assets.find(item => item.id === assetId && item.type === assetType);
-        if (asset) {
-          this.onRelatedAssetClick?.(asset);
-        }
-      });
+        if (asset) this.onRelatedAssetClick?.(asset);
+        return;
+      }
+
+      const translateBtn = target.closest<HTMLElement>('.item-translate-btn');
+      if (translateBtn) {
+        e.stopPropagation();
+        const text = translateBtn.dataset.text;
+        if (text) this.handleTranslate(translateBtn, text);
+        return;
+      }
     });
 
-    // Translation buttons
-    const translateBtns = this.content.querySelectorAll<HTMLElement>('.item-translate-btn');
-    translateBtns.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const text = btn.dataset.text;
-        if (text) this.handleTranslate(btn, text);
-      });
+    this.content.addEventListener('mouseover', (e) => {
+      const container = (e.target as HTMLElement).closest<HTMLElement>('.related-assets');
+      if (!container) return;
+      const related = (e as MouseEvent).relatedTarget as Node | null;
+      if (related && container.contains(related)) return;
+      const context = this.relatedAssetContext.get(container.dataset.clusterId ?? '');
+      if (context) this.onRelatedAssetsFocus?.(context.assets, context.origin.label);
     });
+
+    this.content.addEventListener('mouseout', (e) => {
+      const container = (e.target as HTMLElement).closest<HTMLElement>('.related-assets');
+      if (!container) return;
+      const related = (e as MouseEvent).relatedTarget as Node | null;
+      if (related && container.contains(related)) return;
+      this.onRelatedAssetsClear?.();
+    });
+  }
+
+  private bindRelatedAssetEvents(): void {
+    // Event delegation is set up in setupContentDelegation() — this is now a no-op
+    // kept for WindowedList callback compatibility
   }
 
   private getLocalizedAssetLabel(type: RelatedAsset['type']): string {
@@ -616,6 +732,58 @@ export class NewsPanel extends Panel {
       nuclear: 'modals.countryBrief.infra.nuclear',
     };
     return t(keyMap[type]);
+  }
+
+  /**
+   * Returns true if this panel contains a news item with the given link
+   * (either as a cluster primary or secondary article).
+   */
+  public hasNewsItem(link: string): boolean {
+    if (this.lastRawClusters) {
+      return this.lastRawClusters.some(
+        c => c.primaryLink === link || c.allItems.some(i => i.link === link)
+      );
+    }
+    if (this.lastRawItems) {
+      return this.lastRawItems.some(i => i.link === link);
+    }
+    return false;
+  }
+
+  /**
+   * Scroll the panel to the item with the given link and flash-highlight it.
+   * For virtual-scrolled panels, renders the containing chunk first.
+   */
+  public scrollToNewsItem(link: string): void {
+    // In clustered mode, scroll via windowedList so off-screen chunks are rendered first
+    if (this.lastRawClusters && this.windowedList) {
+      const found = this.windowedList.scrollToItem(
+        (p: { cluster: ClusteredEvent }) =>
+          p.cluster.primaryLink === link || p.cluster.allItems.some((i: { link: string }) => i.link === link)
+      );
+      if (found) {
+        setTimeout(() => {
+          const el = this.content.querySelector(`[data-news-id="${CSS.escape(link)}"]`)
+            ?? this.content.querySelector(`a[href="${CSS.escape(link)}"]`);
+          if (el) this.flashHighlight(el);
+        }, 350);
+        return;
+      }
+    }
+    // Flat mode or small lists rendered directly in DOM
+    const el = this.content.querySelector(`[data-news-id="${CSS.escape(link)}"]`)
+      ?? this.content.querySelector(`a[href="${CSS.escape(link)}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.flashHighlight(el);
+    }
+  }
+
+  private flashHighlight(el: Element): void {
+    el.classList.remove('search-highlight');
+    void (el as HTMLElement).offsetWidth;
+    el.classList.add('search-highlight');
+    setTimeout(() => el.classList.remove('search-highlight'), 3100);
   }
 
   /**

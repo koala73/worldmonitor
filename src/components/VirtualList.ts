@@ -39,6 +39,7 @@ export class VirtualList {
   private visibleEnd = 0;
   private scrollRAF: number | null = null;
   private isDestroyed = false;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(options: VirtualListOptions) {
     this.container = options.container;
@@ -70,12 +71,12 @@ export class VirtualList {
 
     // Handle resize
     if (typeof ResizeObserver !== 'undefined') {
-      const resizeObserver = new ResizeObserver(() => {
+      this.resizeObserver = new ResizeObserver(() => {
         if (!this.isDestroyed) {
           this.updateVisibleRange();
         }
       });
-      resizeObserver.observe(this.viewport);
+      this.resizeObserver.observe(this.viewport);
     }
   }
 
@@ -123,6 +124,10 @@ export class VirtualList {
       cancelAnimationFrame(this.scrollRAF);
     }
     this.viewport.removeEventListener('scroll', this.handleScroll);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
     this.itemPool = [];
     this.container.innerHTML = '';
   }
@@ -388,6 +393,27 @@ export class WindowedList<T> {
     element.innerHTML = html;
     element.classList.add('rendered');
     this.renderedChunks.add(chunkIndex);
+  }
+
+  /**
+   * Scroll to the first item matching the predicate, rendering its chunk if needed.
+   * Returns true if found.
+   */
+  scrollToItem(predicate: (item: T) => boolean): boolean {
+    const index = this.items.findIndex(predicate);
+    if (index === -1) return false;
+
+    const chunkIndex = Math.floor(index / this.chunkSize);
+    const chunkEl = this.chunkElements.get(chunkIndex);
+    if (!chunkEl) return false;
+
+    if (!this.renderedChunks.has(chunkIndex)) {
+      this.renderChunk(chunkIndex);
+      this.onRendered?.();
+    }
+
+    chunkEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
   }
 
   /**

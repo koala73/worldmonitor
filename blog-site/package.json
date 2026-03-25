@@ -1,0 +1,24 @@
+{
+  "name": "blog-site",
+  "type": "module",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "generate:og": "node scripts/generate-og-images.mjs",
+    "build": "npm run generate:og && astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/rss": "^4.0.16",
+    "@astrojs/sitemap": "^3.7.1",
+    "astro": "^6.0.0",
+    "fast-xml-builder": "^1.1.0",
+    "gray-matter": "^4.0.3",
+    "satori": "^0.25.0",
+    "sharp": "^0.34.5"
+  }
+}

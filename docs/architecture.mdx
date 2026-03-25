@@ -1,0 +1,925 @@
+---
+title: "Design Philosophy"
+description: "Design principles, intelligence tradecraft, algorithmic decisions, and implementation patterns behind World Monitor."
+---
+
+> **Looking for the system reference?** See [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md) for deployment topology, directory layout, caching layers, CI/CD, and contributor how-to guides.
+
+---
+
+## Design Principles
+
+| Principle                           | Implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Speed over perfection**           | Keyword classifier is instant; LLM refines asynchronously. Users never wait.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Assume failure**                  | Per-feed circuit breakers with 5-minute cooldowns. AI fallback chain: Ollama (local) → Groq → OpenRouter → browser-side T5. Redis cache failures degrade to in-memory fallback with stale-on-error. Negative caching (5-minute backoff after upstream failures) prevents hammering downed APIs. Every edge function returns stale cached data when upstream APIs are down. **Cache stampede prevention** — `cachedFetchJson` uses an in-flight promise map to coalesce concurrent cache misses into a single upstream fetch: the first request creates and registers a Promise, all concurrent requests for the same key await that same Promise rather than independently hitting the upstream. Rate-sensitive APIs (Yahoo Finance) use staggered sequential requests with 150ms inter-request delays to avoid 429 throttling. UCDP conflict data uses automatic version discovery (probing multiple API versions in parallel), discovered-version caching (1-hour TTL), and stale-on-error fallback. |
+| **Show what you can't see**         | Intelligence gap tracker explicitly reports data source outages rather than silently hiding them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Browser-first compute**           | Analysis (clustering, instability scoring, surge detection) runs client-side — no backend compute dependency for core intelligence.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Local-first geolocation**         | Country detection uses browser-side ray-casting against GeoJSON polygons rather than network reverse-geocoding. Sub-millisecond response, zero API dependency, works offline. Network geocoding is a fallback, not the primary path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Multi-signal correlation**        | No single data source is trusted alone. Focal points require convergence across news + military + markets + protests before escalating to critical.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Geopolitical grounding**          | Hard-coded conflict zones, baseline country risk, and strategic chokepoints prevent statistical noise from generating false alerts in low-data regions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Defense in depth**                | CORS origin allowlist, domain-allowlisted RSS proxy, server-side API key isolation, token-authenticated desktop sidecar, input sanitization with output encoding, IP rate limiting on AI endpoints.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Cache everything, trust nothing** | Three-tier caching (in-memory → Redis → upstream) with versioned cache keys and stale-on-error fallback. Every API response includes `X-Cache` header for debugging. CDN layer (`s-maxage`) absorbs repeated requests before they reach edge functions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Bandwidth efficiency**            | Gzip compression on all relay responses (80% reduction). Content-hash static assets with 1-year immutable cache. Staggered polling intervals prevent synchronized API storms. Animations and polling pause on hidden tabs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Baseline-aware alerting**         | Trending keyword detection uses rolling 2-hour windows against 7-day baselines with per-term spike multipliers, cooldowns, and source diversity requirements — surfacing genuine surges while suppressing noise.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Contract-first APIs**             | Every API endpoint starts as a `.proto` definition with field validation, HTTP annotations, and examples. Code generation produces typed TypeScript clients and servers, eliminating schema drift. Breaking changes are caught automatically at CI time.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Run anywhere**                    | Same codebase produces five specialized variants (geopolitical, tech, finance, commodity, happy) from a single Vercel deployment and deploys to Vercel (web), Railway (relay), Tauri (desktop), and PWA (installable). Desktop sidecar mirrors all cloud API handlers locally. Service worker caches map tiles for offline use while keeping intelligence data always-fresh (NetworkOnly).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Graceful degradation**            | Every feature degrades gracefully when dependencies are unavailable. Missing API keys skip the associated data source — they don't crash the app. Failed upstream APIs serve stale cached data. Browser-side ML works without any server. The dashboard is useful with zero API keys configured (static layers, map, ML models all work offline).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Multi-source corroboration**      | Critical intelligence signals use multiple independent sources to reduce single-source bias. Protest data merges ACLED + GDELT with Haversine deduplication. Country risk blends news velocity + military activity + unrest events + baseline risk. Disaster data merges USGS + GDACS + NASA EONET on a 0.1° geographic grid.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **No framework overhead**           | Vanilla TypeScript with direct DOM manipulation, event delegation, and custom `Panel`/`VirtualList` classes. No virtual DOM diffing, no framework runtime, no adapter libraries. The entire application shell weighs less than React's runtime. Browser standards (Web Workers, IndexedDB, Intersection Observer, ResizeObserver, CustomEvent) serve as the reactivity and component model.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Type-safe data flow**             | Discriminated union markers (`_kind` field), proto-generated typed clients/servers, and exhaustive `switch` matching ensure compile-time safety across 15+ marker types, 24 service domains, and 49 map layers. Adding a new data type produces compiler errors at every unhandled site.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+
+### Intelligence Analysis Tradecraft
+
+The dashboard's design draws from established intelligence analysis methodology, adapted for automated open-source intelligence:
+
+**Structured Analytic Techniques (SATs)** — rather than presenting raw data, the system applies structured frameworks to reduce cognitive bias. The Country Instability Index decomposes "instability" into four weighted components (unrest, conflict, security, information velocity) — forcing analysts to consider each dimension independently rather than anchoring on the most salient headline. The Strategic Risk Score similarly decomposes geopolitical risk into convergence, CII, infrastructure, theater, and breaking news components.
+
+**Analysis of Competing Hypotheses (ACH)** — the multi-source corroboration requirement (news + military + markets + protests before escalating to critical) is an automated form of ACH. No single data stream can drive a critical alert alone — the system requires convergence across independent streams, reducing the impact of single-source reporting errors or propaganda campaigns.
+
+**Intelligence gap awareness** — professional intelligence assessments always note what they *don't* know. The data freshness tracker explicitly reports "what can't be seen" — 31 sources with status categorization (fresh, stale, very_stale, no_data, error, disabled). Two sources (GDELT, RSS) are flagged as `requiredForRisk`, meaning their absence directly degrades CII scoring quality. When a critical data source goes down, the system displays the gap prominently rather than silently omitting it, preventing false confidence from incomplete data.
+
+**Source credibility weighting** — the 4-tier source hierarchy (wire services → major outlets → specialty → aggregators) mirrors intelligence community source evaluation (A–F reliability, 1–6 confidence). State-affiliated sources are included for completeness but tagged with propaganda risk indicators, enabling analysts to factor in editorial bias. Higher-tier sources carry more weight in focal point detection and alert generation.
+
+**Temporal context** — Welford's online baseline computation provides the temporal context that raw counts lack. "50 military flights" is meaningless without knowing that the average for this day of week and month is 15 — making the observation 3.3σ above normal. The system automatically provides this context for every signal type.
+
+**Kill chain awareness** — the Breaking News Alert Pipeline's 5-origin design mirrors the intelligence kill chain concept. RSS alerts provide initial detection; keyword spikes confirm emerging narratives; hotspot escalation and military surge provide corroborating signals; OREF sirens provide ground truth. Each origin adds confidence to the assessment.
+
+### Algorithmic Design Decisions
+
+Several non-obvious algorithmic choices are worth explaining:
+
+**Logarithmic vs. linear protest scoring** — Democracies experience routine protests that don't indicate instability (France's yellow vest movement, US campus protests). Authoritarian states rarely see public protest, so each event is significant. The CII uses `log(protestCount)` for democracies and linear scaling for authoritarian states, preventing democratic noise from drowning genuine authoritarian unrest signals.
+
+**Welford's online algorithm for baselines** — Traditional mean/variance computation requires storing all historical data points. Welford's method maintains a running mean and M2 (sum of squared deviations) that can be updated with each new observation in O(1) time and O(1) space. This makes it feasible to track baselines for hundreds of event-type × region × weekday × month combinations in Redis without storing raw observations.
+
+**H3 hexagonal grid for GPS jamming** — Hexagonal grids (H3 resolution 4, ~22km edge length) are used instead of rectangular lat/lon cells because hexagons have uniform adjacency (6 neighbors vs. 4/8 for squares), equal area at any latitude, and no meridian convergence distortion. This matters for interference zone detection where spatial uniformity affects clustering accuracy.
+
+**Cosine-latitude-corrected distance** — Cable health matching and several proximity calculations use equirectangular approximation with `cos(lat)` longitude correction instead of full Haversine. At the distances involved (50–600km), the error is &lt;0.5% while being ~10x faster — important when computing distances against 500+ infrastructure assets per event.
+
+**Negative caching** — When an upstream API returns an error, the system caches the failure state for a defined period (5 minutes for UCDP, 30 seconds for Polymarket queue rejections) rather than retrying immediately. This prevents thundering-herd effects where hundreds of concurrent users all hammer a downed API, and it provides clear signal to the intelligence gap tracker that a source is unavailable.
+
+**O(1) inflection suffix matching** — The keyword-matching pipeline checks every word in every ingested headline against a set of English inflection suffixes (`-ing`, `-ed`, `-tion`, `-ment`, etc.) for morphological normalization. The suffix list was converted from an `Array` (O(n) `.some()` scan per word) to a `Set` (O(1) `.has()` lookup), eliminating a linear scan executed on every word of every headline — a meaningful hot-path optimization given the system processes thousands of headlines per refresh cycle.
+
+**Stack-safe array operations** — The `Math.min(...array)` and `Math.max(...array)` spread patterns are limited by V8's argument stack (~65,535 entries). With large news clusters (common during breaking events), the spread silently overflows and returns `Infinity` / `-Infinity`, corrupting `firstSeen` and `lastUpdated` timestamps. These are replaced with `Array.prototype.reduce` loops that operate in O(1) stack space regardless of array size.
+
+---
+
+## TypeScript Architecture
+
+### Vanilla TypeScript Architecture
+
+World Monitor is written in vanilla TypeScript — no frontend framework (React, Vue, Svelte, Angular) is used. This is a deliberate architectural decision, not an oversight.
+
+**Why no framework:**
+
+- **Bundle size** — the dashboard loads dozens of data layers, map renderers, ML models, and live video streams. Every kilobyte of framework overhead competes with actual intelligence data. The entire application shell (panel system, routing, state management) compiles to less JavaScript than React's runtime alone
+- **DOM control** — the panel system manipulates `innerHTML` directly with debounced content replacement (`setContent()`) and event delegation on stable container elements. Framework virtual DOM diffing would fight this pattern, adding overhead without benefit — the dashboard doesn't have the fine-grained reactive state updates that frameworks optimize for
+- **WebView compatibility** — the Tauri desktop app runs in WKWebView (macOS) and WebKitGTK (Linux), which have idiosyncratic behavior around drag-and-drop, clipboard, autoplay, and memory management. Direct DOM manipulation makes it possible to work around these platform quirks without fighting framework abstractions
+- **Long-term simplicity** — no framework version upgrades, no breaking API migrations, no adapter libraries. The codebase depends on browser standards (DOM, Web Workers, IndexedDB, Intersection Observer, ResizeObserver) that are stable across engine updates
+
+**What fills the framework gap:**
+
+| Concern | Solution |
+| --- | --- |
+| Component model | `Panel` base class with lifecycle methods (`render`, `destroy`), debounced content updates, and event delegation |
+| State management | `localStorage` for user preferences, `CustomEvent` dispatch for inter-panel communication (`wm:breaking-news`, `wm:deduct-context`, `theme-changed`, `ai-flow-changed`), and a centralized signal aggregator for intelligence state |
+| Routing | URL query parameters (`?view=`, `?c=`, `?layers=`) parsed at startup; `history.pushState` for shareable deep links |
+| Reactivity | `SmartPollLoop` and `RefreshScheduler` classes with named refresh runners, visibility-aware scheduling, and in-flight deduplication |
+| Virtual scrolling | Custom `VirtualList` with DOM element pooling, top/bottom spacer divs, and `requestAnimationFrame`-batched scroll handling |
+
+### Discriminated Union Marker System
+
+All map markers — across both the globe.gl and deck.gl engines — carry a `_kind` discriminant field that identifies their type at runtime. Rather than using class inheritance (which requires `instanceof` checks and prevents marker data from being plain serializable objects), each marker is a plain TypeScript object with a literal `_kind` string:
+
+```typescript
+type MapMarker =
+  | { _kind: 'conflict'; lat: number; lon: number; severity: string; ... }
+  | { _kind: 'flight'; lat: number; lon: number; callsign: string; ... }
+  | { _kind: 'vessel'; lat: number; lon: number; mmsi: number; ... }
+  | { _kind: 'protest'; lat: number; lon: number; crowd_size: number; ... }
+  // ... 15+ additional marker kinds
+```
+
+This enables exhaustive `switch` matching in the rendering pipeline — the TypeScript compiler verifies that every marker kind is handled, and adding a new kind produces compile errors at every unhandled site. Marker data can be serialized to/from JSON (for IndexedDB persistence and Web Worker transfer) without custom serialization logic. The same marker objects flow through clustering, tooltip generation, and layer filtering without type casting.
+
+### Panel Event Delegation Pattern
+
+The `Panel` base class uses a debounced `setContent(html)` method (150ms delay) to batch rapid DOM updates. This creates a subtle but critical problem: any event listeners attached to elements inside the panel's `innerHTML` are destroyed when the debounce fires and replaces the content.
+
+The solution is **event delegation** — all click, change, and input handlers are bound to the stable outer `this.content` container element (which is never replaced, only its `innerHTML` changes), using `event.target.closest('.selector')` to match the intended element:
+
+```typescript
+// WRONG — listener destroyed on next setContent()
+this.content.querySelector('.btn')?.addEventListener('click', handler);
+
+// CORRECT — survives innerHTML replacement
+this.content.addEventListener('click', (e) => {
+  if (e.target.closest('.btn')) handler(e);
+});
+```
+
+This pattern is enforced project-wide across all panel subclasses. In E2E tests, element references also go stale after the debounced render — test code must re-query the DOM after each render cycle rather than holding onto cached element references.
+
+---
+
+## API & Data Pipeline
+
+> **CORS** — all API endpoints enforce an origin allowlist. See [CORS.md](/cors) for the allowed origins, implementation details, and how to add CORS to new endpoints.
+
+### Proto-First API Contracts
+
+The entire API surface is defined in Protocol Buffer (`.proto`) files using [sebuf](https://github.com/SebastienMelki/sebuf) HTTP annotations. Code generation produces TypeScript clients, server handler stubs, and OpenAPI 3.1.0 documentation from a single source of truth — eliminating request/response schema drift between frontend and backend.
+
+**24 service domains** cover every data vertical:
+
+| Domain           | RPCs                                             |
+| ---------------- | ------------------------------------------------ |
+| `aviation`       | Airport delays (FAA, AviationStack, ICAO NOTAM)  |
+| `climate`        | Climate anomalies                                |
+| `conflict`       | ACLED events, UCDP events, humanitarian summaries|
+| `cyber`          | Cyber threat IOCs                                |
+| `displacement`   | Population displacement, exposure data           |
+| `economic`       | Energy prices, FRED series, macro signals, World Bank, BIS policy rates, exchange rates, credit-to-GDP |
+| `infrastructure` | Internet outages, service statuses, temporal baselines |
+| `intelligence`   | Event classification, country briefs, risk scores|
+| `maritime`       | Vessel snapshots, navigational warnings          |
+| `market`         | Stock indices, crypto/commodity quotes, ETF flows|
+| `military`       | Aircraft details, theater posture, USNI fleet    |
+| `news`           | News items, article summarization                |
+| `prediction`     | Prediction markets                               |
+| `research`       | arXiv papers, HackerNews, tech events            |
+| `seismology`     | Earthquakes                                      |
+| `supply-chain`   | Chokepoint disruption scores, shipping rates, critical mineral concentration |
+| `trade`          | WTO trade restrictions, tariff trends, trade flows, trade barriers |
+| `unrest`         | Protest/unrest events                            |
+| `wildfire`       | Fire detections                                  |
+| `giving`         | Donation platform volumes, crypto giving, ODA    |
+| `positive-events`| Positive news classification, conservation data  |
+
+**Code generation pipeline** — a `Makefile` drives `buf generate` with three custom sebuf protoc plugins:
+
+1. `protoc-gen-ts-client` → typed fetch-based client classes (`src/generated/client/`)
+2. `protoc-gen-ts-server` → handler interfaces and route descriptors (`src/generated/server/`)
+3. `protoc-gen-openapiv3` → OpenAPI 3.1.0 specs in YAML and JSON (`docs/api/`)
+
+Proto definitions include `buf.validate` field constraints (e.g., latitude ∈ [−90, 90]), so request validation is generated automatically — handlers receive pre-validated data. Breaking changes are caught at CI time via `buf breaking` against the main branch.
+
+**Edge gateway** — a single Vercel Edge Function (`api/[domain]/v1/[rpc].ts`) imports all 22 `createServiceRoutes()` functions into a flat `Map<string, handler>` router. Every RPC is a POST endpoint at a static path (e.g., `POST /api/aviation/v1/list-airport-delays`), with CORS enforcement, a top-level error boundary that hides internal details on 5xx responses, and rate-limit support (`retryAfter` on 429). The same router runs locally via a Vite dev-server plugin (`sebufApiPlugin` in `vite.config.ts`) with HMR invalidation on handler changes.
+
+### Bootstrap Hydration
+
+The dashboard eliminates cold-start latency by pre-fetching 38 commonly needed datasets in a single Redis pipeline call before any panel renders. On page load, the client fires two parallel requests — a **fast tier** and a **slow tier** — to the `/api/bootstrap` edge function, both with an 800ms abort timeout to avoid blocking first paint.
+
+```
+Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
+                             │    earthquakes, outages, serviceStatuses,
+                             │    macroSignals, chokepoints, marketQuotes,
+                             │    commodityQuotes, positiveGeoEvents,
+                             │    riskScores, flightDelays, insights,
+                             │    predictions, iranEvents
+                             │
+                             └─ /api/bootstrap?tier=slow  (s-maxage=7200)
+                                  bisPolicy, bisExchange, bisCredit,
+                                  minerals, giving, sectors, etfFlows,
+                                  shippingRates, wildfires, climateAnomalies,
+                                  cyberThreats, techReadiness, theaterPosture,
+                                  naturalEvents, cryptoQuotes, gulfQuotes,
+                                  stablecoinMarkets, unrestEvents, ucdpEvents
+```
+
+The edge function reads all keys in a single Upstash Redis pipeline — one HTTP round-trip for up to 38 keys. Results are stored in an in-memory `hydrationCache` Map. When panels initialize, they call `getHydratedData(key)` which returns the pre-fetched data and evicts it from the cache (one-time read) to free memory. Panels that find hydrated data skip their initial API call entirely, rendering instantly with pre-loaded content. Panels that mount after the hydration data has been consumed fall back to their normal fetch cycle.
+
+**Negative sentinel caching** — when a Redis key contains no data, the bootstrap endpoint stores a `__WM_NEG__` sentinel in the response rather than omitting the key. This allows consumers to distinguish between "data not yet loaded" (key absent from hydration) and "data source has no content" (negative sentinel), preventing unnecessary RPC fallback calls for empty data sources.
+
+**Per-tier CDN caching** — the fast tier uses `s-maxage=1200` (20 min) with `stale-while-revalidate=300` for near-real-time data like earthquakes and market quotes. The slow tier uses `s-maxage=7200` (2 hours) with `stale-while-revalidate=1800` for infrequently changing data like BIS policy rates and climate anomalies. Both tiers include `stale-if-error` directives to serve cached responses when the origin is temporarily unreachable.
+
+**Selective fetching** — clients can request a custom subset of keys via `?keys=earthquakes,flightDelays,insights` for targeted hydration, enabling partial bootstrap recovery when a specific panel needs re-initialization.
+
+This converts 38 independent API calls (each with its own DNS lookup, TLS handshake, and Redis round-trip) into exactly 2, cutting first-meaningful-paint time by 2–4 seconds on typical connections.
+
+### SmartPollLoop — Adaptive Data Refresh
+
+The `SmartPollLoop` is the core refresh orchestration primitive used by all data-fetching panels. Rather than fixed-interval polling, it adapts to network conditions, tab visibility, panel visibility, and failure history:
+
+**Adaptive behaviors**:
+
+- **Exponential backoff** — consecutive failures multiply the poll interval by a configurable `backoffMultiplier` (default 2×), up to 4× the base interval. A single successful fetch resets the multiplier to 1×
+- **Hidden-tab throttle** — when `document.visibilityState` is `hidden`, the poll interval is multiplied by a `hiddenMultiplier` (default 5×). A panel polling every 60s in the foreground slows to every 5 minutes when the tab is backgrounded
+- **Manual trigger** — `handle.triggerNow()` forces an immediate poll regardless of the current interval, used when users explicitly request a refresh or when a related panel's data changes
+- **Attempt tracking** — a consecutive failure counter feeds into circuit breaker integration. After `maxAttempts` failures, the poll loop stops entirely and the circuit breaker serves cached data
+- **Reason tagging** — each poll carries a `SmartPollReason` (`'interval'`, `'resume'`, `'manual'`, `'startup'`) so handlers can adjust behavior (e.g., `startup` polls may fetch larger datasets)
+
+**Panel integration** — panels create a `SmartPollLoop` in their constructor with their base interval and callback, call `handle.start()` on mount, and `handle.stop()` on destroy. The loop is paused automatically when the panel is collapsed or scrolled out of view (via Intersection Observer), and resumed when it reappears.
+
+### Railway Seed Data Pipeline
+
+21 Railway cron jobs continuously refresh the Redis cache with pre-computed data from external APIs. Seeds run on configurable schedules (typically every 5–15 minutes) and write both a canonical domain key (for RPC handler lookups) and a bootstrap key (for page-load hydration). This dual-key strategy ensures that bootstrap hydration and RPC handlers always agree on data format and freshness.
+
+| Seed Script | Data Source | Update Frequency | Bootstrap Key |
+| --- | --- | --- | --- |
+| `seed-earthquakes` | USGS M4.5+ | 5 min | `seismology:earthquakes:v1` |
+| `seed-market-quotes` | Yahoo Finance (staggered batches) | 5 min | `market:stocks-bootstrap:v1` |
+| `seed-commodity-quotes` | Yahoo Finance (WTI, Brent, metals) | 5 min | `market:commodities-bootstrap:v1` |
+| `seed-crypto-quotes` | CoinGecko (BTC, ETH, SOL, XRP+) | 5 min | `market:crypto:v1` |
+| `seed-cyber-threats` | Feodo, URLhaus, C2Intel, OTX, AbuseIPDB | 10 min | `cyber:threats-bootstrap:v2` |
+| `seed-internet-outages` | Cloudflare Radar | 5 min | `infra:outages:v1` |
+| `seed-fire-detections` | NASA FIRMS VIIRS | 10 min | `wildfire:fires:v1` |
+| `seed-climate-anomalies` | Open-Meteo ERA5 | 15 min | `climate:anomalies:v1` |
+| `seed-natural-events` | USGS + GDACS + NASA EONET | 10 min | `natural:events:v1` |
+| `seed-airport-delays` | FAA + AviationStack + ICAO NOTAM | 10 min | `aviation:delays-bootstrap:v1` |
+| `seed-insights` | Groq LLM world brief + top stories | 10 min | `news:insights:v1` |
+| `seed-prediction-markets` | Polymarket Gamma API | 10 min | `prediction:markets-bootstrap:v1` |
+| `seed-etf-flows` | Yahoo Finance (IBIT, FBTC, GBTC+) | 15 min | `market:etf-flows:v1` |
+| `seed-stablecoin-markets` | CoinGecko (USDT, USDC, DAI+) | 10 min | `market:stablecoins:v1` |
+| `seed-gulf-quotes` | Yahoo Finance (Tadawul, DFM, ADX) | 10 min | `market:gulf-quotes:v1` |
+| `seed-unrest-events` | ACLED protests + GDELT | 45 min | `unrest:events:v1` |
+| `seed-ucdp-events` | UCDP GED API | 15 min | `conflict:ucdp-events:v1` |
+| `seed-iran-events` | LiveUAMap geocoded events | 10 min | `conflict:iran-events:v1` |
+| `seed-displacement-summary` | UNHCR / IOM | 30 min | N/A |
+| `seed-military-bases` | Curated 210+ base database | Daily | N/A |
+| `seed-wb-indicators` | World Bank tech readiness | Daily | `economic:worldbank-techreadiness:v1` |
+| `seed-forecasts` | Groq LLM + multi-domain signals | 15 min | `forecast:predictions:v2` |
+| `seed-conflict-intel` | ACLED + HAPI + PizzINT + GDELT | 15 min | `conflict:acled:v1:all:0:0` |
+| `seed-economy` | EIA energy + FRED macro + spending | 15 min | N/A (extra keys) |
+| `seed-supply-chain-trade` | FRED shipping + WTO + US Treasury | 6 hours | `supply_chain:shipping:v2` |
+| `seed-security-advisories` | 24 gov RSS feeds via relay proxy | 1 hour | `intelligence:advisories-bootstrap:v1` |
+| `seed-usni-fleet` | USNI News WP-JSON (curl for JA3 bypass) | 6 hours | `usni-fleet:sebuf:v1` |
+| `seed-gdelt-intel` | GDELT 2.0 Doc API (8 topics) | 1 hour | `intelligence:gdelt-intel:v1` |
+| `seed-research` | arXiv + HN + tech events + GitHub | 6 hours | N/A (extra keys) |
+| `seed-correlation` | Cross-domain correlation engine | 5 min | `correlation:cards-bootstrap:v1` |
+| `seed-gpsjam` | GPSJam.org H3 interference hexes | 6 hours | N/A |
+| `seed-aviation` | Airport ops summaries + aviation news | 15 min | N/A (warm-ping) |
+
+Seeds use `cachedFetchJson` with in-flight promise coalescing — if a seed run overlaps with a previous run still writing, the concurrent write is deduplicated. Each seed script is self-contained (single `.mjs` file, no build step), runs on Node.js 20+, and connects to Upstash Redis via REST API. Failed seed runs log errors but never corrupt existing cached data — the previous cache entry persists until a successful run replaces it.
+
+---
+
+## Edge Functions & Deployment
+
+### Edge Function Architecture
+
+World Monitor uses 60+ Vercel Edge Functions as a lightweight API layer, split into two generations. Legacy endpoints in `api/*.js` each handle a single data source concern — proxying, caching, or transforming external APIs. The newer proto-first endpoints use **per-domain thin entry points** — 22 separate edge functions, each importing only its own handler module. This replaced the original monolithic gateway that loaded all 22 domains on every cold start. Each domain's function tree-shakes to include only its dependencies, reducing cold-start time by ~85% (sub-100ms for most endpoints vs. 500ms+ with the monolithic handler). A shared `server/gateway.ts` provides common routing logic. Both generations coexist, with new features built proto-first. This architecture avoids a monolithic backend while keeping API keys server-side:
+
+- **RSS Proxy** — domain-allowlisted proxy for 435+ feeds, preventing CORS issues and hiding origin servers. Feeds from domains that block Vercel IPs are automatically routed through the Railway relay.
+- **AI Pipeline** — Groq and OpenRouter edge functions with Redis deduplication, so identical headlines across concurrent users only trigger one LLM call. The classify-event endpoint pauses its queue on 500 errors to avoid wasting API quota.
+- **Data Adapters** — GDELT, ACLED, OpenSky, USGS, NASA FIRMS, FRED, Yahoo Finance, CoinGecko, mempool.space, BIS, WTO, and others each have dedicated edge functions that normalize responses into consistent schemas
+- **Market Intelligence** — macro signals, ETF flows, and stablecoin monitors compute derived analytics server-side (VWAP, SMA, peg deviation, flow estimates) and cache results in Redis
+- **Temporal Baseline** — Welford's algorithm state is persisted in Redis across requests, building statistical baselines without a traditional database
+- **Custom Scrapers** — sources without RSS feeds (FwdStart, GitHub Trending, tech events) are scraped and transformed into RSS-compatible formats
+- **Finance Geo Data** — stock exchanges (92), financial centers (19), central banks (13), and commodity hubs (10) are served as static typed datasets with market caps, GFCI rankings, trading hours, and commodity specializations
+- **BIS Integration** — policy rates, real effective exchange rates, and credit-to-GDP ratios from the Bank for International Settlements, cached with 30-minute TTL
+- **WTO Trade Policy** — trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers from the World Trade Organization
+- **Supply Chain Intelligence** — maritime chokepoint disruption scores (cross-referencing NGA warnings + AIS data), FRED shipping freight indices with spike detection, and critical mineral supply concentration via Herfindahl-Hirschman Index analysis
+- **Company Enrichment** — `/api/enrichment/company` aggregates GitHub organization data, inferred tech stack (derived from repository language distributions weighted by star count), SEC EDGAR public filings (10-K, 10-Q, 8-K), and Hacker News mentions into a single response. `/api/enrichment/signals` surfaces real-time company activity signals — funding events, hiring surges, executive changes, and expansion announcements — sourced from Hacker News and GitHub, each classified by signal type and scored for strength based on engagement, comment volume, and recency
+
+All edge functions include circuit breaker logic and return cached stale data when upstream APIs are unavailable, ensuring the dashboard never shows blank panels.
+
+### Cold-Start Optimization — Per-Domain Edge Function Split
+
+The original monolithic edge gateway (`api/[domain]/v1/[rpc].ts`) imported all 24 service domain handlers into a single function. When any RPC was called, the edge runtime loaded the entire handler graph — initializing Redis clients, parsing configuration, and importing utility modules for all 24 domains even though only 1 was needed.
+
+This was split into 24 per-domain thin entry points, each importing only its own handler module. The shared gateway (`server/gateway.ts`) provides common routing logic, but each domain's edge function tree-shakes to include only its dependencies.
+
+**Impact**: Cold-start time dropped by ~85% — a market quote request no longer loads the cyber threat intelligence parser, the OREF alert handler, or the climate anomaly detector. On Vercel's edge runtime, this translates to sub-100ms cold starts for most endpoints, compared to 500ms+ with the monolithic handler.
+
+### Single-Deployment Variant Consolidation
+
+All five dashboard variants (World Monitor, Tech Monitor, Finance Monitor, Commodity Monitor, Happy Monitor) serve from a **single Vercel deployment**. The variant is determined at runtime by hostname detection:
+
+| Hostname | Variant |
+| --- | --- |
+| `tech.worldmonitor.app` | `tech` |
+| `finance.worldmonitor.app` | `finance` |
+| `commodity.worldmonitor.app` | `commodity` |
+| `happy.worldmonitor.app` | `happy` |
+| `worldmonitor.app` (default) | `full` |
+
+On the desktop app, the variant is stored in `localStorage['worldmonitor-variant']` and can be switched without rebuilding. The variant selector in the header bar navigates between deployed domains on the web or toggles the localStorage value on desktop.
+
+This architecture replaced the original multi-deployment approach (separate Vercel projects per variant) and provides several advantages:
+
+- **Instant switching** — users toggle variants in the header bar without a full page navigation or DNS lookup
+- **Shared CDN cache** — the static SPA assets are identical across variants; only runtime configuration differs. CDN cache hit rates are 4× higher than with separate deployments
+- **Single CI pipeline** — one build, one deployment, one set of edge functions. No cross-deployment configuration drift
+- **Social bot routing** — the OG image endpoint generates variant-specific preview cards based on the requesting hostname, so sharing a Tech Monitor link produces tech-branded social previews
+
+---
+
+## Real-Time Systems
+
+### AIS Relay Backpressure Architecture
+
+The AIS vessel tracking relay maintains a persistent WebSocket connection to AISStream.io that can deliver hundreds of position reports per second during peak maritime traffic. Without flow control, a slow consumer (e.g., a client on a poor network) would cause unbounded memory growth in the relay's message queue.
+
+The relay implements a **three-watermark backpressure system**:
+
+| Watermark | Threshold | Behavior |
+| --- | --- | --- |
+| **Low** | 1,000 messages | Normal operation — all messages queued |
+| **High** | 4,000 messages | Warning state — oldest messages evicted to make room |
+| **Hard cap** | 8,000 messages | Overflow — new messages dropped until queue drains below high watermark |
+
+Additionally, the relay caps the total tracked vessel count at 20,000 positions (the most recent position per MMSI). A secondary **density cell** system aggregates positions into 2°×2° geographic grid cells (max 5,000 cells) for overview visualization when the full vessel list exceeds rendering capacity.
+
+Vessel history trails are capped at 30 position points per vessel. When a new position arrives, the oldest trail point is evicted. This creates a "comet tail" visualization showing recent movement direction without unbounded memory growth.
+
+The relay also implements HMAC authentication between the frontend and relay server, preventing unauthorized clients from consuming the expensive AIS data feed.
+
+### ONNX Runtime Capability Detection
+
+The browser-side ML pipeline (embeddings, NER, sentiment, summarization) uses ONNX Runtime Web for inference. Model execution speed varies dramatically across browsers and devices depending on available hardware acceleration.
+
+The system uses a cascading capability detection strategy at initialization:
+
+```
+WebGPU (fastest)  →  WebGL (fast)  →  WASM + SIMD (baseline)
+```
+
+1. **WebGPU** — checked via `navigator.gpu` presence. Provides GPU-accelerated inference with the lowest latency. Available in Chrome 113+ and Edge 113+
+2. **WebGL** — fallback when WebGPU is unavailable. Uses the existing GPU via WebGL compute shaders. Available in all modern browsers
+3. **WASM + SIMD** — CPU-only fallback. `SharedArrayBuffer` and WASM SIMD availability are probed. SIMD provides ~2–4x speedup over plain WASM for vector operations
+
+A `deviceMemory` API guard excludes the ML pipeline entirely on low-memory devices (mobile phones with &lt;4GB RAM), preventing out-of-memory crashes from loading 384-dimensional float32 embedding models alongside the map renderer and live video streams.
+
+---
+
+## Map & Visualization
+
+### Geopolitical Boundary Overlays
+
+The map supports typed geopolitical boundary polygons with associated metadata. Each boundary carries a `boundaryType` discriminant (`demilitarized`, `ceasefire`, `disputed`, `armistice`) that controls rendering style and popup content.
+
+**Korean DMZ** — the first boundary implemented is the Korean Demilitarized Zone, defined as a 43-point closed-ring polygon derived from OpenStreetMap Way 369265305 and the Korean Armistice Agreement Article I demarcation line. On the flat map, it renders as a `GeoJsonLayer` with a translucent blue fill and labeled tooltip. On the 3D globe, it renders as `polygonsData` under the conflicts layer. The boundary has a dedicated help entry and layer toggle, and is enabled by default on the `full` variant only.
+
+The boundary system is designed to be extensible — additional geopolitical boundaries (Line of Control in Kashmir, Golan Heights, Northern Cyprus Green Line) can be added to the `GEOPOLITICAL_BOUNDARIES` constant with appropriate typing and will render automatically on both map engines.
+
+### CII Choropleth Heatmap
+
+The Country Instability Index can be projected as a full-coverage choropleth layer on both map engines, painting every country's polygon in a five-stop color gradient based on its live CII score (0–100):
+
+| Score Range | Level     | Color     |
+| ----------- | --------- | --------- |
+| 0–30        | Low       | Green     |
+| 31–50       | Normal    | Yellow    |
+| 51–65       | Elevated  | Orange    |
+| 66–80       | High      | Red       |
+| 81–100      | Critical  | Dark Red  |
+
+On the **flat map** (deck.gl), a `GeoJsonLayer` maps ISO 3166-1 alpha-2 country codes to fixed RGBA values via the `getLevel()` threshold function. Updates are triggered by a monotonic version counter (`ciiScoresVersion`) — the layer compares the counter on each render pass and only recomputes fill colors when it increments, avoiding O(n) data spreads.
+
+On the **3D globe** (globe.gl), CII country polygons merge into the same `polygonsData` array as geopolitical boundaries. A `_kind` discriminant (`'boundary' | 'cii'`) in each polygon object lets a single `.polygonCapColor()` callback dispatch rendering logic for both types. CII polygons render at `polygonAltitude: 0.002` (below the `0.006` altitude used by conflict-zone outlines), preventing visual Z-fighting.
+
+Countries GeoJSON is lazy-loaded from a shared `getCountriesGeoJson()` function, cached after first fetch, and shared between the CII layer and the country-detection ray-casting service.
+
+### Unified Layer Toggle Catalog
+
+All 49 map layer toggle definitions — icon, localization key, fallback display label, and supported renderer types — are consolidated in a single shared registry (`src/config/map-layer-definitions.ts`). Each entry declares which map renderers support it via a `renderers: MapRenderer[]` field (e.g., `dayNight` is flat-only, `ciiChoropleth` is both flat and globe), preventing the two map components from showing inconsistent layer options.
+
+A `def()` factory function reduces per-entry boilerplate. Variant-specific layer ordering (`VARIANT_LAYER_ORDER`) defines the display sequence for each of the five dashboard variants without duplicating the definitions themselves. Adding a new map layer requires a single registry entry — both the flat map and 3D globe derive their toggle panels from this catalog automatically.
+
+---
+
+## Bandwidth & Caching
+
+### Vercel CDN Headers
+
+Every API edge function includes `Cache-Control` headers that enable Vercel's CDN to serve cached responses without hitting the origin:
+
+| Data Type              | `s-maxage`   | `stale-while-revalidate` | Rationale                        |
+| ---------------------- | ------------ | ------------------------ | -------------------------------- |
+| Classification results | 3600s (1h)   | 600s (10min)             | Headlines don't reclassify often |
+| Country intelligence   | 3600s (1h)   | 600s (10min)             | Briefs change slowly             |
+| Risk scores            | 300s (5min)  | 60s (1min)               | Near real-time, low latency      |
+| Market data            | 3600s (1h)   | 600s (10min)             | Intraday granularity sufficient  |
+| Fire detection         | 600s (10min) | 120s (2min)              | VIIRS updates every ~12 hours    |
+| Economic indicators    | 3600s (1h)   | 600s (10min)             | Monthly/quarterly releases       |
+
+Static assets use content-hash filenames with 1-year immutable cache headers. The service worker file (`sw.js`) is never cached (`max-age=0, must-revalidate`) to ensure update detection.
+
+### Client-Side Circuit Breakers
+
+Every data-fetching panel uses a circuit breaker that prevents cascading failures from bringing down the entire dashboard. The pattern works at two levels:
+
+**Per-feed circuit breakers** (RSS) — each RSS feed URL has an independent failure counter. After 2 consecutive failures, the feed enters a 5-minute cooldown during which no fetch attempts are made. The feed automatically re-enters the pool after the cooldown expires. This prevents a single misconfigured or downed feed from consuming fetch budget and slowing the entire news refresh cycle.
+
+**Per-panel circuit breakers** (data panels) — panels that fetch from API endpoints use IndexedDB-backed persistent caches (`worldmonitor_persistent_cache` store) with TTL envelopes. When a fetch succeeds, the result is stored with an expiration timestamp. On subsequent loads, the circuit breaker serves the cached result immediately and attempts a background refresh. If the background refresh fails, the stale cached data continues to display — panels never go blank due to transient API failures. Cache entries survive page reloads and browser restarts.
+
+The circuit breaker degrades gracefully across storage tiers: IndexedDB (primary, up to device quota) → localStorage fallback (5MB limit) → in-memory Map (session-only). When device storage quota is exhausted (common on mobile Safari), a global `_storageQuotaExceeded` flag disables all further writes while reads continue normally.
+
+### Brotli Pre-Compression (Build-Time)
+
+`vite build` now emits pre-compressed Brotli artifacts (`*.br`) for static assets larger than 1KB (JS, CSS, HTML, SVG, JSON, XML, TXT, WASM). This reduces transfer size by roughly 20–30% vs gzip-only delivery when the edge can serve Brotli directly.
+
+For the Hetzner Nginx origin, enable static compressed file serving so `dist/*.br` files are returned without runtime recompression:
+
+```nginx
+gzip on;
+gzip_static on;
+
+brotli on;
+brotli_static on;
+```
+
+Cloudflare will negotiate Brotli automatically for compatible clients when the origin/edge has Brotli assets available.
+
+### Railway Relay Compression
+
+All relay server responses pass through `gzipSync` when the client accepts gzip and the payload exceeds 1KB. Sidecar API responses prefer Brotli and use gzip fallback with proper `Content-Encoding`/`Vary` headers for the same threshold. This applies to OpenSky aircraft JSON, RSS XML feeds, UCDP event data, AIS snapshots, and health checks — reducing wire size by approximately 50–80%.
+
+### In-Flight Request Deduplication
+
+When multiple connected clients poll simultaneously (common with the relay's multi-tenant WebSocket architecture), identical upstream requests are deduplicated at the relay level. The first request for a given resource key (e.g., an RSS feed URL or OpenSky bounding box) creates a Promise stored in an in-flight Map. All concurrent requests for the same key await that single Promise rather than stampeding the upstream API. Subsequent requests are served from cache with an `X-Cache: DEDUP` header. This prevents scenarios like 53 concurrent RSS cache misses or 5 simultaneous OpenSky requests for the same geographic region — all resolved by a single upstream fetch.
+
+### Adaptive Refresh Scheduling
+
+Rather than polling at fixed intervals, the dashboard uses an adaptive refresh scheduler that responds to network conditions, tab visibility, and data freshness:
+
+- **Exponential backoff on failure** — when a refresh fails or returns no new data, the next poll interval doubles, up to a maximum of 4× the base interval. A successful fetch with new data resets the multiplier to 1×
+- **Hidden-tab throttle** — when `document.visibilityState` is `hidden`, all poll intervals are multiplied by 10×. A tab polling every 60 seconds in the foreground slows to every 10 minutes in the background, dramatically reducing wasted requests from inactive tabs
+- **Jitter** — each computed interval is randomized by ±10% to prevent synchronized API storms when multiple tabs or users share the same server. Without jitter, two tabs opened at the same time would poll in lockstep indefinitely
+- **Stale flush on visibility restore** — when a hidden tab becomes visible, the scheduler identifies all refresh tasks whose data is older than their base interval and re-runs them immediately, staggered 150ms apart to avoid a request burst. This ensures users returning to a background tab see fresh data within seconds
+- **In-flight deduplication** — concurrent calls to the same named refresh are collapsed; only one is allowed in-flight at a time
+- **Conditional registration** — refresh tasks can include a `condition` function that is evaluated before each poll; tasks whose conditions are no longer met (e.g., a panel that has been collapsed) skip their fetch cycle entirely
+
+### Frontend Polling Intervals
+
+Panels refresh at staggered intervals to avoid synchronized API storms:
+
+| Panel                              | Interval    | Rationale                      |
+| ---------------------------------- | ----------- | ------------------------------ |
+| AIS maritime snapshot              | 10s         | Real-time vessel positions     |
+| Service status                     | 60s         | Health check cadence           |
+| Market signals / ETF / Stablecoins | 180s (3min) | Market hours granularity       |
+| Risk scores / Theater posture      | 300s (5min) | Composite scores change slowly |
+
+All animations and polling pause when the tab is hidden or after 2 minutes of inactivity, preventing wasted requests from background tabs.
+
+### Caching Architecture
+
+Every external API call passes through a three-tier cache with stale-on-error fallback:
+
+```
+Request → [1] In-Memory Cache → [2] Redis (Upstash) → [3] Upstream API
+                                                             │
+            ◄──── stale data served on error ────────────────┘
+```
+
+| Tier                | Scope                      | TTL                | Purpose                                       |
+| ------------------- | -------------------------- | ------------------ | --------------------------------------------- |
+| **In-memory**       | Per edge function instance | Varies (60s–900s)  | Eliminates Redis round-trips for hot paths    |
+| **Redis (Upstash)** | Cross-user, cross-instance | Varies (120s–900s) | Deduplicates API calls across all visitors    |
+| **Upstream**        | Source of truth            | N/A                | External API (Yahoo Finance, CoinGecko, etc.) |
+
+Cache keys are versioned (`opensky:v2:lamin=...`, `macro-signals:v2:default`) so schema changes don't serve stale formats. Every response includes an `X-Cache` header (`HIT`, `REDIS-HIT`, `MISS`, `REDIS-STALE`, `REDIS-ERROR-FALLBACK`) for debugging.
+
+**Shared caching layer** — all sebuf handler implementations share a unified Upstash Redis caching module (`_upstash-cache.js`) with a consistent API: `getCachedOrFetch(cacheKey, ttlSeconds, fetchFn)`. This eliminates per-handler caching boilerplate and ensures every RPC endpoint benefits from the three-tier strategy. Cache keys include request-varying parameters (e.g., requested symbols, country codes, bounding boxes) to prevent cache contamination across callers with different inputs. On desktop, the same module runs in the sidecar with an in-memory + persistent file backend when Redis is unavailable.
+
+**In-flight promise deduplication** — the `cachedFetchJson` function in `server/_shared/redis.ts` maintains an in-memory `Map<string, Promise>` of active upstream requests. When a cache miss occurs, the first caller's fetch creates and registers a Promise in the map. All concurrent callers for the same cache key await that single Promise rather than independently hitting the upstream API. This eliminates the "thundering herd" problem where multiple edge function instances simultaneously race to refill an expired cache entry — a scenario that previously caused 50+ concurrent upstream requests during the ~15-second refill window for popular endpoints.
+
+**Negative caching** — when an upstream API returns an error, the system caches a sentinel value (`__WM_NEG__`) for 120 seconds rather than leaving the cache empty. This prevents a failure cascade where hundreds of concurrent requests all independently discover the cache is empty and simultaneously hammer the downed API. The negative sentinel is transparent to consumers — `cachedFetchJson` returns `null` for negative-cached keys, and panels fall back to stale data or show an appropriate empty state. Longer negative TTLs are used for specific APIs: UCDP uses 5-minute backoff, Polymarket queue rejections use 30-second backoff.
+
+The AI summarization pipeline adds content-based deduplication: headlines are hashed and checked against Redis before calling Groq, so the same breaking news viewed by 1,000 concurrent users triggers exactly one LLM call.
+
+---
+
+## Error Tracking
+
+### Sentry Error Noise Filtering
+
+The Sentry SDK initialization includes a `beforeSend` hook and `ignoreErrors` list that suppress known unactionable error sources — Three.js WebGL traversal crashes occurring entirely in minified code with no source-mapped frames, cross-origin Web Worker construction failures from browser extensions, iOS media element crashes, and jQuery `$` injection by extensions. The Three.js filter specifically avoids blanket suppression: it only drops events where *all* stack frames are anonymous or from the minified bundle. If even one frame has a source-mapped `.ts` filename, the event is kept for investigation.
+
+### Error Tracking & Production Hardening
+
+Sentry captures unhandled exceptions and promise rejections in production, with environment-aware routing (production on `worldmonitor.app`, preview on `*.vercel.app`, disabled on localhost and Tauri desktop).
+
+The configuration includes 30+ `ignoreErrors` patterns that suppress noise from:
+
+- **Third-party WebView injections** — Twitter, Facebook, and Instagram in-app browsers inject scripts that reference undefined variables (`CONFIG`, `currentInset`)
+- **Browser extensions** — Chrome/Firefox extensions that fail `importScripts` or violate CSP policies
+- **WebGL context loss** — transient GPU crashes in MapLibre/deck.gl that self-recover
+- **iOS Safari quirks** — IndexedDB connection drops on background tab kills, `NotAllowedError` from autoplay policies
+- **Network transients** — `TypeError: Failed to fetch`, `TypeError: Load failed`, `TypeError: cancelled`
+- **MapLibre internal crashes** — null-access in style layers, light, and placement that originate from the map chunk
+
+A custom `beforeSend` hook provides second-stage filtering: it suppresses single-character error messages (minification artifacts), `Importing a module script failed` errors from browser extensions (identified by `chrome-extension:` or `moz-extension:` in the stack trace), and MapLibre internal null-access crashes when the stack trace originates from map chunk files.
+
+**Chunk reload guard** — after deployments, users with stale browser tabs may encounter `vite:preloadError` events when dynamically imported chunks have new content-hash filenames. The guard listens for this event and performs a one-shot page reload, using `sessionStorage` to prevent infinite reload loops. If the reload succeeds (app initializes fully), the guard flag is cleared. This recovers gracefully from stale-asset 404s without requiring users to manually refresh.
+
+**Storage quota management** — when a device's localStorage or IndexedDB quota is exhausted (common on mobile Safari with its 5MB limit), a global `_storageQuotaExceeded` flag disables all further write attempts across both the persistent cache (IndexedDB + localStorage fallback) and the utility `saveToStorage()` function. The flag is set on the first `DOMException` with `name === 'QuotaExceededError'` or `code === 22`, and prevents cascading errors from repeated failed writes. Read operations continue normally — cached data remains accessible, only new writes are suppressed.
+
+Transactions are sampled at 10% to balance observability with cost. Release tracking (`worldmonitor@{version}`) enables regression detection across deployments.
+
+---
+
+## Fault Tolerance
+
+External APIs are unreliable. Rate limits, outages, and network errors are inevitable. The system implements **circuit breaker** patterns to maintain availability.
+
+### Circuit Breaker Pattern
+
+Each external service is wrapped in a circuit breaker that tracks failures:
+
+```
+Normal → Failure #1 → Failure #2 → OPEN (cooldown)
+                                      ↓
+                              5 minutes pass
+                                      ↓
+                                   CLOSED
+```
+
+**Behavior during cooldown:**
+
+- New requests return cached data (if available)
+- UI shows "temporarily unavailable" status
+- No API calls are made (prevents hammering)
+
+### Protected Services
+
+| Service | Cooldown | Cache TTL |
+|---------|----------|-----------|
+| Yahoo Finance | 5 min | 10 min |
+| Polymarket | 5 min | 10 min |
+| USGS Earthquakes | 5 min | 10 min |
+| NWS Weather | 5 min | 10 min |
+| FRED Economic | 5 min | 10 min |
+| Cloudflare Radar | 5 min | 10 min |
+| ACLED | 5 min | 10 min |
+| GDELT | 5 min | 10 min |
+| FAA Status | 5 min | 5 min |
+| RSS Feeds | 5 min per feed | 10 min |
+
+RSS feeds use per-feed circuit breakers—one failing feed doesn't affect others.
+
+### Graceful Degradation
+
+When a service enters cooldown:
+
+1. Cached data continues to display (stale but available)
+2. Status panel shows service health
+3. Automatic recovery when cooldown expires
+4. No user intervention required
+
+---
+
+## System Health Monitoring
+
+The status panel (accessed via the health indicator in the header) provides real-time visibility into data source status and system health.
+
+### Health Indicator
+
+The header displays a system health badge:
+
+| State | Visual | Meaning |
+|-------|--------|---------|
+| **Healthy** | Green dot | All data sources operational |
+| **Degraded** | Yellow dot | Some sources in cooldown |
+| **Unhealthy** | Red dot | Multiple sources failing |
+
+Click the indicator to expand the full status panel.
+
+### Data Source Status
+
+The status panel lists all data feeds with their current state:
+
+| Status | Icon | Description |
+|--------|------|-------------|
+| **Active** | ● Green | Fetching data normally |
+| **Cooldown** | ● Yellow | Temporarily paused (circuit breaker) |
+| **Disabled** | ○ Gray | Layer not enabled |
+| **Error** | ● Red | Persistent failure |
+
+### Per-Feed Information
+
+Each feed entry shows:
+
+- **Source name** - The data provider
+- **Last update** - Time since last successful fetch
+- **Next refresh** - Countdown to next scheduled fetch
+- **Cooldown remaining** - Time until circuit breaker resets (if in cooldown)
+
+### Why This Matters
+
+External APIs are unreliable. The status panel helps you understand:
+
+- **Data freshness** - Is the news feed current or stale?
+- **Coverage gaps** - Which sources are currently unavailable?
+- **Recovery timeline** - When will failed sources retry?
+
+This transparency enables informed interpretation of the dashboard data.
+
+---
+
+## Data Freshness Tracking
+
+Beyond simple "online/offline" status, the system tracks fine-grained freshness for each data source to indicate data reliability and staleness.
+
+### Freshness Levels
+
+| Status | Color | Criteria | Meaning |
+|--------|-------|----------|---------|
+| **Fresh** | Green | Updated within expected interval | Data is current |
+| **Aging** | Yellow | 1-2× expected interval elapsed | Data may be slightly stale |
+| **Stale** | Orange | 2-4× expected interval elapsed | Data is outdated |
+| **Critical** | Red | >4× expected interval elapsed | Data unreliable |
+| **Disabled** | Gray | Layer toggled off | Not fetching |
+
+### Source-Specific Thresholds
+
+Each data source has calibrated freshness expectations:
+
+| Source | Expected Interval | "Fresh" Threshold |
+|--------|------------------|-------------------|
+| News feeds | 5 minutes | &lt;10 minutes |
+| Stock quotes | 1 minute | &lt;5 minutes |
+| Earthquakes | 5 minutes | &lt;15 minutes |
+| Weather | 10 minutes | &lt;30 minutes |
+| Flight delays | 10 minutes | &lt;20 minutes |
+| AIS vessels | Real-time | &lt;1 minute |
+
+### Visual Indicators
+
+The status panel displays freshness for each source:
+
+- **Colored dot** indicates freshness level
+- **Time since update** shows exact staleness
+- **Next refresh countdown** shows when data will update
+
+### Why This Matters
+
+Understanding data freshness is critical for decision-making:
+
+- A "fresh" earthquake feed means recent events are displayed
+- A "stale" news feed means you may be missing breaking stories
+- A "critical" AIS stream means vessel positions are unreliable
+
+This visibility enables appropriate confidence calibration when interpreting the dashboard.
+
+### Core vs. Optional Sources
+
+Data sources are classified by their importance to risk assessment:
+
+| Classification | Sources | Impact |
+|----------------|---------|--------|
+| **Core** | GDELT, RSS feeds | Required for meaningful risk scores |
+| **Optional** | ACLED, Military, AIS, Weather, Economic | Enhance but not required |
+
+The Strategic Risk Overview panel adapts its display based on core source availability:
+
+| Status | Display Mode | Behavior |
+|--------|--------------|----------|
+| **Sufficient** | Full data view | All metrics shown with confidence |
+| **Limited** | Limited data view | Shows "Limited Data" warning banner |
+| **Insufficient** | Insufficient data view | "Insufficient Data" message, no risk score |
+
+### Freshness-Aware Risk Assessment
+
+The composite risk score is adjusted based on data freshness:
+
+```
+If core sources fresh:
+  → Full confidence in risk score
+  → "All data sources active" indicator
+
+If core sources stale:
+  → Display warning: "Limited Data - [active sources]"
+  → Score shown but flagged as potentially unreliable
+
+If core sources unavailable:
+  → "Insufficient data for risk assessment"
+  → No score displayed
+```
+
+This prevents false "all clear" signals when the system actually lacks data to make that determination.
+
+---
+
+## Conditional Data Loading
+
+API calls are expensive. The system only fetches data for **enabled layers**, reducing unnecessary network traffic and rate limit consumption.
+
+### Layer-Aware Loading
+
+When a layer is toggled OFF:
+
+- No API calls for that data source
+- No refresh interval scheduled
+- WebSocket connections closed (for AIS)
+
+When a layer is toggled ON:
+
+- Data is fetched immediately
+- Refresh interval begins
+- Loading indicator shown on toggle button
+
+### Unconfigured Services
+
+Some data sources require API keys (AIS relay, Cloudflare Radar). If credentials are not configured:
+
+- The layer toggle is hidden entirely
+- No failed requests pollute the console
+- Users see only functional layers
+
+This prevents confusion when deploying without full API access.
+
+---
+
+## Performance Optimizations
+
+The dashboard processes thousands of data points in real-time. Several techniques keep the UI responsive even with heavy data loads.
+
+### Web Worker for Analysis
+
+CPU-intensive operations run in a dedicated Web Worker to avoid blocking the main thread:
+
+| Operation | Complexity | Worker? |
+|-----------|------------|---------|
+| News clustering (Jaccard) | O(n²) | Yes |
+| Correlation detection | O(n × m) | Yes |
+| DOM rendering | O(n) | Main thread |
+
+The worker manager implements:
+
+- **Lazy initialization**: Worker spawns on first use
+- **10-second ready timeout**: Rejects if worker fails to initialize
+- **30-second request timeout**: Prevents hanging on stuck operations
+- **Automatic cleanup**: Terminates worker on fatal errors
+
+### Virtual Scrolling
+
+Large lists (100+ news items) use virtualized rendering:
+
+**Fixed-Height Mode** (VirtualList):
+
+- Only renders items visible in viewport + 3-item overscan buffer
+- Element pooling—reuses DOM nodes rather than creating new ones
+- Invisible spacers maintain scroll position without rendering all items
+
+**Variable-Height Mode** (WindowedList):
+
+- Chunk-based rendering (10 items per chunk)
+- Renders chunks on-scroll with 1-chunk buffer
+- CSS containment for performance isolation
+
+This reduces DOM node count from thousands to ~30, dramatically improving scroll performance.
+
+### Request Deduplication
+
+Identical requests within a short window are deduplicated:
+
+- Market quotes batch multiple symbols into single API call
+- Concurrent layer toggles don't spawn duplicate fetches
+- `Promise.allSettled` ensures one failing request doesn't block others
+
+### Efficient Data Updates
+
+When refreshing data:
+
+- **Incremental updates**: Only changed items trigger re-renders
+- **Stale-while-revalidate**: Old data displays while fetch completes
+- **Delta compression**: Baselines store 7-day/30-day deltas, not raw history
+
+---
+
+## Cross-Module Integration
+
+Intelligence modules don't operate in isolation. Data flows between systems to enable composite analysis.
+
+### Data Flow Architecture
+
+```
+News Feeds → Clustering → Velocity Analysis → Hotspot Correlation
+                ↓                                    ↓
+         Topic Extraction                    CII Information Score
+                ↓                                    ↓
+         Keyword Monitors              Strategic Risk Overview
+                                                     ↑
+Military Flights → Near-Hotspot Detection ──────────┤
+                                                     ↑
+AIS Vessels → Chokepoint Monitoring ────────────────┤
+                                                     ↑
+ACLED/GDELT → Protest Events ───────────────────────┤
+                       ↓
+                CII Unrest Score
+```
+
+### Module Dependencies
+
+| Consumer Module | Data Source | Integration |
+|----------------|-------------|-------------|
+| **CII Unrest Score** | ACLED, GDELT protests | Event count, fatalities |
+| **CII Security Score** | Military flights, vessels | Activity near hotspots |
+| **CII Information Score** | News clusters | Velocity, keyword matches |
+| **Strategic Risk** | CII, Convergence, Cascade | Composite scoring |
+| **Related Assets** | News location inference | Pipeline/cable proximity |
+| **Geographic Convergence** | All geo-located events | Multi-type clustering |
+
+### Alert Propagation
+
+When a threshold is crossed:
+
+1. **Source module** generates alert (e.g., CII spike)
+2. **Alert merges** with related alerts (same country/region)
+3. **Strategic Risk** receives composite alert
+4. **UI updates** header badge and panel indicators
+
+This ensures a single escalation (e.g., Ukraine military flights + protests + news spike) surfaces as one coherent signal rather than three separate alerts.
+
+---
+
+## Service Status Monitoring
+
+The Service Status panel tracks the operational health of external services that WorldMonitor users may depend on.
+
+### Monitored Services
+
+| Service | Status Endpoint | Parser |
+|---------|-----------------|--------|
+| Anthropic (Claude) | status.claude.com | Statuspage.io |
+| OpenAI | status.openai.com | Statuspage.io |
+| Vercel | vercel-status.com | Statuspage.io |
+| Cloudflare | cloudflarestatus.com | Statuspage.io |
+| AWS | health.aws.amazon.com | Custom |
+| GitHub | githubstatus.com | Statuspage.io |
+
+### Status Levels
+
+| Status | Color | Meaning |
+|--------|-------|---------|
+| **Operational** | Green | All systems functioning normally |
+| **Degraded** | Yellow | Partial outage or performance issues |
+| **Partial Outage** | Orange | Some components unavailable |
+| **Major Outage** | Red | Significant service disruption |
+
+### Why This Matters
+
+External service outages can affect:
+
+- AI summarization (Groq, OpenRouter outages)
+- Deployment pipelines (Vercel, GitHub outages)
+- API availability (Cloudflare, AWS outages)
+
+Monitoring these services provides context when dashboard features behave unexpectedly.
+
+---
+
+## Refresh Intervals
+
+Different data sources update at different frequencies based on volatility and API constraints.
+
+### Polling Schedule
+
+| Data Type | Interval | Rationale |
+|-----------|----------|-----------|
+| **News feeds** | 5 min | Balance freshness vs. rate limits |
+| **Stock quotes** | 1 min | Market hours require near-real-time |
+| **Crypto prices** | 1 min | 24/7 markets, high volatility |
+| **Predictions** | 5 min | Probabilities shift slowly |
+| **Earthquakes** | 5 min | USGS updates every 5 min |
+| **Weather alerts** | 10 min | NWS alert frequency |
+| **Flight delays** | 10 min | FAA status update cadence |
+| **Internet outages** | 60 min | BGP events are rare |
+| **Economic data** | 30 min | FRED data rarely changes intraday |
+| **Military tracking** | 5 min | Activity patterns need timely updates |
+| **PizzINT** | 10 min | Foot traffic changes slowly |
+
+### Real-Time Streams
+
+AIS vessel tracking uses WebSocket for true real-time:
+
+- **Connection**: Persistent WebSocket to Railway relay
+- **Messages**: Position updates as vessels transmit
+- **Reconnection**: Automatic with exponential backoff (5s → 10s → 20s)
+
+### User Control
+
+Time range selector affects displayed data, not fetch frequency:
+
+| Selection | Effect |
+|-----------|--------|
+| **1 hour** | Show only events from last 60 minutes |
+| **6 hours** | Show events from last 6 hours |
+| **24 hours** | Show events from last day |
+| **7 days** | Show all recent events |
+
+Historical filtering is client-side—all data is fetched but filtered for display.
+
+---
+
+## Design Philosophy
+
+**Information density over aesthetics.** Every pixel should convey signal. The dark interface minimizes eye strain during extended monitoring sessions. Panels are collapsible, draggable, and hideable—customize to show only what matters.
+
+**Authority matters.** Not all sources are equal. Wire services and official government channels are prioritized over aggregators and blogs. When multiple sources report the same story, the most authoritative source is displayed as primary.
+
+**Correlation over accumulation.** Raw news feeds are noise. The value is in clustering related stories, detecting velocity changes, and identifying cross-source patterns. A single "Broadcom +2.5% explained by AI chip news" signal is more valuable than showing both data points separately.
+
+**Signal, not noise.** Deduplication is aggressive. The same market move doesn't generate repeated alerts. Signals include confidence scores so you can prioritize attention. Alert fatigue is the enemy of situational awareness.
+
+**Knowledge-first matching.** Simple keyword matching produces false positives. The entity knowledge base understands that AVGO is Broadcom, that Broadcom competes with Nvidia, and that both are in semiconductors. This semantic layer transforms naive string matching into intelligent correlation.
+
+**Fail gracefully.** External APIs are unreliable. Circuit breakers prevent cascading failures. Cached data displays during outages. The status panel shows exactly what's working and what isn't—no silent failures.
+
+**Local-first.** No accounts, no cloud sync. All preferences and history stored locally. The only network traffic is fetching public data. Your monitoring configuration is yours alone.
+
+**Compute where it matters.** CPU-intensive operations (clustering, correlation) run in Web Workers to keep the UI responsive. The main thread handles only rendering and user interaction.

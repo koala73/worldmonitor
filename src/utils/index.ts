@@ -53,12 +53,14 @@ export function getHeatmapClass(change: number): string {
 export function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
   delay: number
-): (...args: Parameters<T>) => void {
+): ((...args: Parameters<T>) => void) & { cancel(): void } {
   let timeoutId: ReturnType<typeof setTimeout>;
-  return (...args: Parameters<T>) => {
+  const debounced = (...args: Parameters<T>) => {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(() => fn(...args), delay);
   };
+  debounced.cancel = () => { clearTimeout(timeoutId); };
+  return debounced;
 }
 
 export function throttle<T extends (...args: unknown[]) => void>(
@@ -76,15 +78,16 @@ export function throttle<T extends (...args: unknown[]) => void>(
   };
 }
 
-export function rafSchedule<T extends (...args: unknown[]) => void>(fn: T): (...args: Parameters<T>) => void {
+export function rafSchedule<T extends (...args: unknown[]) => void>(fn: T): ((...args: Parameters<T>) => void) & { cancel(): void } {
   // Frame-synchronized scheduling for visual updates; batches repeated calls into one render frame.
   let scheduled = false;
+  let rafId = 0;
   let lastArgs: Parameters<T> | null = null;
-  return (...args: Parameters<T>) => {
+  const wrapped = (...args: Parameters<T>) => {
     lastArgs = args;
     if (!scheduled) {
       scheduled = true;
-      requestAnimationFrame(() => {
+      rafId = requestAnimationFrame(() => {
         scheduled = false;
         if (lastArgs) {
           fn(...lastArgs);
@@ -93,6 +96,12 @@ export function rafSchedule<T extends (...args: unknown[]) => void>(fn: T): (...
       });
     }
   };
+  wrapped.cancel = () => {
+    cancelAnimationFrame(rafId);
+    scheduled = false;
+    lastArgs = null;
+  };
+  return wrapped;
 }
 
 export function loadFromStorage<T>(key: string, defaultValue: T): T {
@@ -112,25 +121,8 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
   return defaultValue;
 }
 
-let _storageQuotaExceeded = false;
-
-export function isStorageQuotaExceeded(): boolean {
-  return _storageQuotaExceeded;
-}
-
-export function isQuotaError(e: unknown): boolean {
-  return e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22);
-}
-
-export function markStorageQuotaExceeded(): void {
-  if (!_storageQuotaExceeded) {
-    _storageQuotaExceeded = true;
-    console.warn('[Storage] Quota exceeded — disabling further writes');
-  }
-}
-
 export function saveToStorage<T>(key: string, value: T): void {
-  if (_storageQuotaExceeded) return;
+  if (isStorageQuotaExceeded()) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
@@ -143,7 +135,7 @@ export function saveToStorage<T>(key: string, value: T): void {
 }
 
 export function generateId(): string {
-  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return `id-${crypto.randomUUID()}`;
 }
 
 /** Breakpoint (px): below this width the app uses the simplified mobile layout. Must match CSS @media (max-width: …). */
@@ -163,7 +155,26 @@ export function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-export { proxyUrl, fetchWithProxy } from './proxy';
+export function toUniqueSorted(items: string[]): string[] {
+  return Array.from(new Set(items)).sort();
+}
+
+export function toUniqueSortedLowercase(items: string[]): string[] {
+  return toUniqueSorted(items.map((item) => item.toLowerCase()));
+}
+
+export function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = a[i] as T;
+    a[i] = a[j] as T;
+    a[j] = tmp;
+  }
+  return a;
+}
+
+export { proxyUrl, fetchWithProxy, rssProxyUrl } from './proxy';
 export { exportToJSON, exportToCSV, ExportPanel } from './export';
 export { buildMapUrl, parseMapUrlState } from './urlState';
 export type { ParsedMapUrlState } from './urlState';
@@ -171,7 +182,10 @@ export { CircuitBreaker, createCircuitBreaker, getCircuitBreakerStatus, getCircu
 export type { CircuitBreakerOptions } from './circuit-breaker';
 export * from './analysis-constants';
 export { getCSSColor, invalidateColorCache } from './theme-colors';
-export { getStoredTheme, getCurrentTheme, setTheme, applyStoredTheme } from './theme-manager';
-export type { Theme } from './theme-manager';
+export { getStoredTheme, getCurrentTheme, setTheme, applyStoredTheme, getThemePreference, setThemePreference } from './theme-manager';
+export type { Theme, ThemePreference } from './theme-manager';
+export { toFlagEmoji } from './country-flag';
 
 import { getCurrentLanguage } from '../services/i18n';
+import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';
+export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded };

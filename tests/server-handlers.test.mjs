@@ -198,9 +198,9 @@ describe('getVesselSnapshot caching (HIGH-1)', () => {
     assert.match(src, /let inFlightRequest/);
   });
 
-  it('has 10-second TTL cache', () => {
-    assert.match(src, /SNAPSHOT_CACHE_TTL_MS\s*=\s*10[_]?000/,
-      'TTL should be 10 seconds (10000ms)');
+  it('has 5-minute TTL cache', () => {
+    assert.match(src, /SNAPSHOT_CACHE_TTL_MS\s*=\s*300[_]?000/,
+      'TTL should be 5 minutes (300000ms)');
   });
 
   it('checks cache before calling relay', () => {
@@ -229,4 +229,55 @@ describe('getVesselSnapshot caching (HIGH-1)', () => {
 
   // NOTE: Full integration test (mocking fetch, verifying cache hits) requires
   // a TypeScript-capable test runner. This structural test verifies the pattern.
+});
+
+// ========================================================================
+// getSimulationOutcome handler — structural tests
+// ========================================================================
+
+describe('getSimulationOutcome handler', () => {
+  const src = readSrc('server/worldmonitor/forecast/v1/get-simulation-outcome.ts');
+
+  it('returns found:false (NOT_FOUND) when pointer is absent', () => {
+    // The handler must define a NOT_FOUND sentinel with found: false
+    assert.match(src, /found:\s*false/,
+      'NOT_FOUND constant should set found: false');
+    // And return it when the pointer is missing
+    assert.match(src, /return\s+NOT_FOUND/,
+      'Should return NOT_FOUND when key is absent');
+  });
+
+  it('uses isOutcomePointer type guard before accessing pointer fields', () => {
+    assert.match(src, /isOutcomePointer\(raw\)/,
+      'Should use isOutcomePointer type guard on getRawJson result');
+    // Guard must check string and number fields — not just truthy
+    assert.match(src, /typeof\s+o\[.runId.\]\s*===\s*'string'/,
+      'Type guard should verify runId is a string');
+    assert.match(src, /typeof\s+o\[.theaterCount.\]\s*===\s*'number'/,
+      'Type guard should verify theaterCount is a number');
+  });
+
+  it('returns found:true with all pointer fields on success', () => {
+    assert.match(src, /found:\s*true/,
+      'Success path should return found: true');
+    // Must propagate all pointer fields
+    assert.match(src, /outcomeKey:\s*pointer\.outcomeKey/,
+      'Success path should include outcomeKey from pointer');
+    assert.match(src, /theaterCount:\s*pointer\.theaterCount/,
+      'Success path should include theaterCount from pointer');
+  });
+
+  it('populates note when runId supplied but does not match pointer runId', () => {
+    assert.match(src, /req\.runId.*pointer\.runId/,
+      'Should compare req.runId with pointer.runId for note');
+    assert.match(src, /runId filter not yet active/,
+      'Note text should explain the Phase 3 deferral');
+  });
+
+  it('returns redis_unavailable error string on Redis failure', () => {
+    assert.match(src, /redis_unavailable/,
+      'Should return redis_unavailable on catch');
+    assert.match(src, /markNoCacheResponse.*catch|catch[\s\S]*?markNoCacheResponse/,
+      'Should mark no-cache on error to avoid caching error state');
+  });
 });

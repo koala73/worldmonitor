@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message GetCountryFactsRequest {
+  string country_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "country_code"}
+  ];
+}
+
+message GetCountryFactsResponse {
+  string head_of_state = 1;
+  string head_of_state_title = 2;
+  string wikipedia_summary = 3;
+  string wikipedia_thumbnail_url = 4;
+  int64 population = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string capital = 6;
+  repeated string languages = 7;
+  repeated string currencies = 8;
+  double area_sq_km = 9;
+  string country_name = 10;
+}

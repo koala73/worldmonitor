@@ -1,4 +1,5 @@
 import { createRelayHandler } from './_relay.js';
+import { jsonResponse } from './_json-response.js';
 
 export const config = { runtime: 'edge' };
 
@@ -13,14 +14,11 @@ export default createRelayHandler({
   cacheHeaders: () => ({
     'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=120, stale-if-error=900',
   }),
-  fallback: (_req, corsHeaders) => new Response(JSON.stringify({
+  fallback: (_req, corsHeaders) => jsonResponse({
     configured: false,
     alerts: [],
     historyCount24h: 0,
     timestamp: new Date().toISOString(),
     error: 'No data source available',
-  }), {
-    status: 503,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders },
-  }),
+  }, 503, corsHeaders),
 });

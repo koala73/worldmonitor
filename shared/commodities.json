@@ -1,0 +1,27 @@
+{
+  "commodities": [
+    { "symbol": "^VIX", "name": "VIX", "display": "VIX" },
+    { "symbol": "GC=F", "name": "Gold", "display": "GOLD" },
+    { "symbol": "SI=F", "name": "Silver", "display": "SILVER" },
+    { "symbol": "HG=F", "name": "Copper", "display": "COPPER" },
+    { "symbol": "PL=F", "name": "Platinum", "display": "PLATINUM" },
+    { "symbol": "PA=F", "name": "Palladium", "display": "PALLADIUM" },
+    { "symbol": "ALI=F", "name": "Aluminum", "display": "ALUMINUM" },
+    { "symbol": "CL=F", "name": "Crude Oil WTI", "display": "OIL" },
+    { "symbol": "BZ=F", "name": "Brent Crude", "display": "BRENT" },
+    { "symbol": "NG=F", "name": "Natural Gas", "display": "NATGAS" },
+    { "symbol": "RB=F", "name": "Gasoline RBOB", "display": "GASOLINE" },
+    { "symbol": "HO=F", "name": "Heating Oil", "display": "HEATING OIL" },
+    { "symbol": "URA", "name": "Uranium (Global X)", "display": "URANIUM" },
+    { "symbol": "LIT", "name": "Lithium & Battery", "display": "LITHIUM" },
+    { "symbol": "MTF=F", "name": "Newcastle Coal", "display": "COAL" },
+    { "symbol": "ZW=F", "name": "Wheat", "display": "WHEAT" },
+    { "symbol": "ZC=F", "name": "Corn", "display": "CORN" },
+    { "symbol": "ZS=F", "name": "Soybeans", "display": "SOYBEANS" },
+    { "symbol": "ZR=F", "name": "Rough Rice", "display": "RICE" },
+    { "symbol": "KC=F", "name": "Coffee", "display": "COFFEE" },
+    { "symbol": "SB=F", "name": "Sugar No. 11", "display": "SUGAR" },
+    { "symbol": "CC=F", "name": "Cocoa", "display": "COCOA" },
+    { "symbol": "CT=F", "name": "Cotton", "display": "COTTON" }
+  ]
+}

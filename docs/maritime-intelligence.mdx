@@ -1,0 +1,94 @@
+---
+title: "Maritime Intelligence"
+description: "Real-time vessel tracking with chokepoint monitoring, traffic density analysis, dark ship detection, and WebSocket-based AIS data streaming."
+---
+The Ships layer provides real-time vessel tracking and maritime domain awareness through AIS (Automatic Identification System) data, monitoring critical chokepoints, detecting anomalous vessel behavior, and streaming position updates over WebSocket connections.
+
+## Chokepoint Monitoring
+
+The system monitors 13 strategic waterways where disruptions could impact global trade, powered by three data sources: IMF PortWatch (weekly vessel transit counts), AISStream (real-time 24h crossing counter), and CorridorRisk (risk intelligence).
+
+| Chokepoint | Strategic Importance |
+|------------|---------------------|
+| **Strait of Hormuz** | 20% of global oil transits; Iran control |
+| **Suez Canal** | Europe-Asia shipping; single point of failure |
+| **Strait of Malacca** | Primary Asia-Pacific oil route |
+| **Bab el-Mandeb** | Red Sea access; Yemen/Houthi activity |
+| **Panama Canal** | Americas east-west transit |
+| **Taiwan Strait** | Semiconductor supply chain; PLA activity |
+| **Cape of Good Hope** | Suez bypass route for VLCCs |
+| **Strait of Gibraltar** | Atlantic-Mediterranean gateway; NATO chokepoint |
+| **Bosporus Strait** | Black Sea access; includes Dardanelles corridor; Montreux Convention |
+| **Korea Strait** | Japan-Korea trade; busiest East Asia corridor |
+| **Dover Strait** | World's busiest shipping lane |
+| **Kerch Strait** | Russia-controlled; Ukraine grain via Azov restricted |
+| **Lombok Strait** | Malacca bypass for large tankers |
+
+Each chokepoint card shows real-time transit counts (tanker vs cargo), week-over-week change, and an expandable 180-day time-series chart rendered with TradingView lightweight-charts.
+
+## Density Analysis
+
+Vessel positions are aggregated into a 2-degree grid to calculate traffic density. Each cell tracks:
+
+- Current vessel count
+- Historical baseline (30-minute rolling window)
+- Change percentage from baseline
+
+Density changes of +/-30% trigger alerts, indicating potential congestion, diversions, or blockades.
+
+## Dark Ship Detection
+
+The system monitors for AIS gaps, vessels that stop transmitting their position. An AIS gap exceeding 60 minutes in monitored regions may indicate:
+
+- Sanctions evasion (ship-to-ship transfers)
+- Illegal fishing
+- Military activity
+- Equipment failure
+
+Vessels reappearing after gaps are flagged for the duration of the session.
+
+## WebSocket Architecture
+
+AIS data flows through a WebSocket relay for real-time updates without polling:
+
+```
+AISStream -> WebSocket Relay -> Browser
+              (ws://relay)
+```
+
+The connection automatically reconnects on disconnection with a 30-second backoff. When the Ships layer is disabled, the WebSocket disconnects to conserve resources.
+
+## Railway Relay Architecture
+
+Some APIs block requests from cloud providers (Vercel, AWS, Cloudflare Workers). A Railway relay server provides authenticated access:
+
+```
+Browser -> Railway Relay -> External APIs
+           (Node.js)      (AIS, OpenSky, RSS)
+```
+
+**Relay Functions**:
+
+| Endpoint | Purpose | Authentication |
+|----------|---------|----------------|
+| `/` (WebSocket) | AIS vessel stream | AISStream API key |
+| `/opensky` | Military aircraft | OAuth2 Bearer token |
+| `/rss` | Blocked RSS feeds | None (user-agent spoofing) |
+| `/health` | Status check | None |
+
+**Environment Variables** (Railway):
+
+- `AISSTREAM_API_KEY` - AIS data access
+- `OPENSKY_CLIENT_ID` - OAuth2 client ID
+- `OPENSKY_CLIENT_SECRET` - OAuth2 client secret
+
+**Why Railway?**
+
+- Residential IP ranges (not blocked like cloud providers)
+- WebSocket support for persistent connections
+- Global edge deployment for low latency
+- Free tier sufficient for moderate traffic
+
+The relay is stateless; it simply authenticates and proxies requests. All caching and processing happens client-side or in Vercel Edge Functions.
+
+See also [Finance Data - Chokepoints](/finance-data) for disruption scoring methodology.

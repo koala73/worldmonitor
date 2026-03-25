@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   CyberServiceClient,
   type CyberThreat as ProtoCyberThreat,
@@ -11,10 +12,11 @@ import type {
   CyberThreatIndicatorType,
 } from '@/types';
 import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Client + Circuit Breaker ----
 
-const client = new CyberServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new CyberServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListCyberThreatsResponse>({ name: 'Cyber Threats', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 const emptyFallback: ListCyberThreatsResponse = { threats: [], pagination: undefined };
@@ -82,6 +84,9 @@ function clampInt(rawValue: number | undefined, fallback: number, min: number, m
 }
 
 export async function fetchCyberThreats(options: { limit?: number; days?: number } = {}): Promise<CyberThreat[]> {
+  const hydrated = getHydratedData('cyberThreats') as { threats?: ProtoCyberThreat[] } | undefined;
+  if (hydrated?.threats?.length) return hydrated.threats.map(toCyberThreat);
+
   const limit = clampInt(options.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
   const days = clampInt(options.days, DEFAULT_DAYS, 1, MAX_DAYS);
   const now = Date.now();

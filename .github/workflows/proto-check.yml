@@ -1,0 +1,64 @@
+name: Proto Generation Check
+
+on:
+  pull_request:
+    paths:
+      - 'proto/**'
+      - 'src/generated/**'
+      - 'docs/api/**'
+      - 'Makefile'
+      - '.github/workflows/proto-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  proto-freshness:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Cache Go binaries (buf, protoc plugins)
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
+        with:
+          path: ~/go/bin
+          key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: Install buf and protoc plugins
+        run: make install-buf install-plugins
+        env:
+          GOPROXY: direct
+          GOPRIVATE: github.com/SebastienMelki
+
+      - name: Run proto generation
+        run: make generate
+
+      - name: Verify generated code is up to date
+        run: |
+          if ! git diff --exit-code src/generated/ docs/api/; then
+            echo ""
+            echo "============================================================"
+            echo "ERROR: Proto-generated code is out of date."
+            echo "Run 'make generate' locally and commit the updated files."
+            echo "============================================================"
+            exit 1
+          fi
+
+          UNTRACKED=$(git ls-files --others --exclude-standard src/generated/ docs/api/)
+          if [ -n "$UNTRACKED" ]; then
+            echo ""
+            echo "============================================================"
+            echo "ERROR: Untracked generated files found:"
+            echo "$UNTRACKED"
+            echo "Run 'make generate' locally and commit the new files."
+            echo "============================================================"
+            exit 1
+          fi
+
+          echo "Proto-generated code is up to date."

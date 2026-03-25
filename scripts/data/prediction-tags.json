@@ -1,0 +1,24 @@
+{
+  "geopolitical": [
+    "politics", "geopolitics", "elections", "world",
+    "ukraine", "china", "middle-east", "europe",
+    "economy", "fed", "inflation"
+  ],
+  "tech": [
+    "ai", "tech", "crypto", "science",
+    "elon-musk", "business", "economy"
+  ],
+  "finance": [
+    "economy", "fed", "inflation", "interest-rates", "recession",
+    "trade", "tariffs", "debt-ceiling",
+    "crypto", "business", "markets"
+  ],
+  "excludeKeywords": [
+    "nba", "nfl", "mlb", "nhl", "fifa", "world cup", "super bowl", "championship",
+    "playoffs", "oscar", "grammy", "emmy", "box office", "movie", "album", "song",
+    "streamer", "influencer", "celebrity", "kardashian",
+    "bachelor", "reality tv", "mvp", "touchdown", "home run", "goal scorer",
+    "academy award", "bafta", "golden globe", "cannes", "sundance",
+    "documentary", "feature film", "tv series", "season finale"
+  ]
+}

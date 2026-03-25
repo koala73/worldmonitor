@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/aviation/v1/airport_delay.proto";
+
+// GetAirportOpsSummaryRequest specifies which airports to summarize.
+message GetAirportOpsSummaryRequest {
+  // IATA airport codes to query (e.g., ["IST", "ESB", "LHR"]).
+  repeated string airports = 1 [
+    (sebuf.http.query) = { name: "airports" },
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 20
+  ];
+}
+
+// AirportOpsSummary contains operational health metrics for a single airport.
+message AirportOpsSummary {
+  // IATA airport code.
+  string iata = 1;
+  // ICAO airport code.
+  string icao = 2;
+  // Airport name.
+  string name = 3;
+  // IANA timezone (e.g., "Europe/Istanbul").
+  string timezone = 4;
+  // Percentage of flights currently delayed (0-100).
+  double delay_pct = 5;
+  // Average delay in minutes across delayed flights.
+  int32 avg_delay_minutes = 6;
+  // Cancellation rate as a percentage (0-100).
+  double cancellation_rate = 7;
+  // Total flights in the observation window.
+  int32 total_flights = 8;
+  // Whether the airport is currently closed.
+  bool closure_status = 9;
+  // Active NOTAM summary flags (e.g., "RWY 06/24 CLSD", "LOW VIS OPS").
+  repeated string notam_flags = 10;
+  // Overall severity assessment.
+  FlightDelaySeverity severity = 11;
+  // Top reasons for delays.
+  repeated string top_delay_reasons = 12;
+  // Data source identifier.
+  string source = 13;
+  // Last update time as Unix epoch milliseconds.
+  int64 updated_at = 14 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// GetAirportOpsSummaryResponse contains operational summaries for requested airports.
+message GetAirportOpsSummaryResponse {
+  // Operational summaries, one per requested airport.
+  repeated AirportOpsSummary summaries = 1;
+  // Whether the response was served from cache.
+  bool cache_hit = 2;
+}

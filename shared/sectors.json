@@ -1,0 +1,16 @@
+{
+  "sectors": [
+    { "symbol": "XLK", "name": "Technology" },
+    { "symbol": "XLF", "name": "Financials" },
+    { "symbol": "XLE", "name": "Energy" },
+    { "symbol": "XLV", "name": "Health Care" },
+    { "symbol": "XLY", "name": "Consumer Disc." },
+    { "symbol": "XLI", "name": "Industrials" },
+    { "symbol": "XLP", "name": "Con. Staples" },
+    { "symbol": "XLU", "name": "Utilities" },
+    { "symbol": "XLB", "name": "Materials" },
+    { "symbol": "XLRE", "name": "Real Estate" },
+    { "symbol": "XLC", "name": "Comm. Svcs" },
+    { "symbol": "SMH", "name": "Semiconductors" }
+  ]
+}

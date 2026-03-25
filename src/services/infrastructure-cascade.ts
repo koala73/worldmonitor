@@ -7,8 +7,8 @@ import type {
   CascadeImpactLevel,
   UnderseaCable,
   Pipeline,
+  Port,
 } from '@/types';
-import type { Port } from '@/config/ports';
 import { UNDERSEA_CABLES, STRATEGIC_WATERWAYS } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
 import { PORTS } from '@/config/ports';

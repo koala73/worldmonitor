@@ -323,15 +323,15 @@
 }
 
 /* ==========================================================
-   Happy Tab Styles — Rounded tabs
+   Happy Tab Styles — Rounded boxed tabs (intentionally different)
    ========================================================== */
-[data-variant="happy"] .disp-tab,
-[data-variant="happy"] .ucdp-tab {
+[data-variant="happy"] .panel-tab {
+  border: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
   border-radius: 8px;
 }
 
-[data-variant="happy"] .disp-tab-active,
-[data-variant="happy"] .ucdp-tab-active {
+[data-variant="happy"] .panel-tab.active {
   background: color-mix(in srgb, var(--semantic-high) 12%, transparent);
   border-color: var(--semantic-high);
   color: var(--semantic-high);

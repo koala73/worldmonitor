@@ -44,13 +44,241 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface GetAirportOpsSummaryRequest {
+  airports: string[];
+}
+
+export interface GetAirportOpsSummaryResponse {
+  summaries: AirportOpsSummary[];
+  cacheHit: boolean;
+}
+
+export interface AirportOpsSummary {
+  iata: string;
+  icao: string;
+  name: string;
+  timezone: string;
+  delayPct: number;
+  avgDelayMinutes: number;
+  cancellationRate: number;
+  totalFlights: number;
+  closureStatus: boolean;
+  notamFlags: string[];
+  severity: FlightDelaySeverity;
+  topDelayReasons: string[];
+  source: string;
+  updatedAt: number;
+}
+
+export interface ListAirportFlightsRequest {
+  airport: string;
+  direction: FlightDirection;
+  limit: number;
+}
+
+export interface ListAirportFlightsResponse {
+  flights: FlightInstance[];
+  totalAvailable: number;
+  source: string;
+  updatedAt: number;
+}
+
+export interface FlightInstance {
+  flightNumber: string;
+  date: string;
+  operatingCarrier?: Carrier;
+  origin?: AirportRef;
+  destination?: AirportRef;
+  scheduledDeparture: number;
+  estimatedDeparture: number;
+  actualDeparture: number;
+  scheduledArrival: number;
+  estimatedArrival: number;
+  actualArrival: number;
+  status: FlightInstanceStatus;
+  delayMinutes: number;
+  cancelled: boolean;
+  diverted: boolean;
+  gate: string;
+  terminal: string;
+  aircraftIcao24: string;
+  aircraftType: string;
+  codeshareFlightNumbers: string[];
+  source: string;
+  updatedAt: number;
+}
+
+export interface Carrier {
+  iataCode: string;
+  icaoCode: string;
+  name: string;
+}
+
+export interface AirportRef {
+  iata: string;
+  icao: string;
+  name: string;
+  timezone: string;
+}
+
+export interface GetCarrierOpsRequest {
+  airports: string[];
+  minFlights: number;
+}
+
+export interface GetCarrierOpsResponse {
+  carriers: CarrierOpsSummary[];
+  source: string;
+  updatedAt: number;
+}
+
+export interface CarrierOpsSummary {
+  carrier?: Carrier;
+  airport: string;
+  totalFlights: number;
+  delayedCount: number;
+  cancelledCount: number;
+  avgDelayMinutes: number;
+  delayPct: number;
+  cancellationRate: number;
+  updatedAt: number;
+}
+
+export interface GetFlightStatusRequest {
+  flightNumber: string;
+  date: string;
+  origin: string;
+}
+
+export interface GetFlightStatusResponse {
+  flights: FlightInstance[];
+  source: string;
+  cacheHit: boolean;
+}
+
+export interface TrackAircraftRequest {
+  icao24: string;
+  callsign: string;
+  swLat: number;
+  swLon: number;
+  neLat: number;
+  neLon: number;
+}
+
+export interface TrackAircraftResponse {
+  positions: PositionSample[];
+  source: string;
+  updatedAt: number;
+}
+
+export interface PositionSample {
+  icao24: string;
+  callsign: string;
+  lat: number;
+  lon: number;
+  altitudeM: number;
+  groundSpeedKts: number;
+  trackDeg: number;
+  verticalRate: number;
+  onGround: boolean;
+  source: PositionSource;
+  observedAt: number;
+}
+
+export interface GetYoutubeLiveStreamInfoRequest {
+  channel: string;
+  videoId: string;
+}
+
+export interface GetYoutubeLiveStreamInfoResponse {
+  videoId: string;
+  isLive: boolean;
+  channelExists: boolean;
+  channelName: string;
+  hlsUrl: string;
+  title: string;
+  error: string;
+}
+
+export interface SearchFlightPricesRequest {
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate: string;
+  adults: number;
+  cabin: CabinClass;
+  nonstopOnly: boolean;
+  maxResults: number;
+  currency: string;
+  market: string;
+}
+
+export interface SearchFlightPricesResponse {
+  quotes: PriceQuote[];
+  provider: string;
+  isDemoMode: boolean;
+  updatedAt: number;
+  isIndicative: boolean;
+}
+
+export interface PriceQuote {
+  id: string;
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate: string;
+  carrier?: Carrier;
+  priceAmount: number;
+  currency: string;
+  cabin: CabinClass;
+  stops: number;
+  durationMinutes: number;
+  bookingUrl: string;
+  provider: string;
+  isIndicative: boolean;
+  observedAt: number;
+  checkoutRef: string;
+  expiresAt: number;
+}
+
+export interface ListAviationNewsRequest {
+  entities: string[];
+  windowHours: number;
+  maxItems: number;
+}
+
+export interface ListAviationNewsResponse {
+  items: AviationNewsItem[];
+  source: string;
+  updatedAt: number;
+}
+
+export interface AviationNewsItem {
+  id: string;
+  title: string;
+  url: string;
+  sourceName: string;
+  publishedAt: number;
+  snippet: string;
+  matchedEntities: string[];
+  imageUrl: string;
+}
+
 export type AirportRegion = "AIRPORT_REGION_UNSPECIFIED" | "AIRPORT_REGION_AMERICAS" | "AIRPORT_REGION_EUROPE" | "AIRPORT_REGION_APAC" | "AIRPORT_REGION_MENA" | "AIRPORT_REGION_AFRICA";
+
+export type CabinClass = "CABIN_CLASS_UNSPECIFIED" | "CABIN_CLASS_ECONOMY" | "CABIN_CLASS_PREMIUM_ECONOMY" | "CABIN_CLASS_BUSINESS" | "CABIN_CLASS_FIRST";
 
 export type FlightDelaySeverity = "FLIGHT_DELAY_SEVERITY_UNSPECIFIED" | "FLIGHT_DELAY_SEVERITY_NORMAL" | "FLIGHT_DELAY_SEVERITY_MINOR" | "FLIGHT_DELAY_SEVERITY_MODERATE" | "FLIGHT_DELAY_SEVERITY_MAJOR" | "FLIGHT_DELAY_SEVERITY_SEVERE";
 
-export type FlightDelaySource = "FLIGHT_DELAY_SOURCE_UNSPECIFIED" | "FLIGHT_DELAY_SOURCE_FAA" | "FLIGHT_DELAY_SOURCE_EUROCONTROL" | "FLIGHT_DELAY_SOURCE_COMPUTED";
+export type FlightDelaySource = "FLIGHT_DELAY_SOURCE_UNSPECIFIED" | "FLIGHT_DELAY_SOURCE_FAA" | "FLIGHT_DELAY_SOURCE_EUROCONTROL" | "FLIGHT_DELAY_SOURCE_COMPUTED" | "FLIGHT_DELAY_SOURCE_AVIATIONSTACK" | "FLIGHT_DELAY_SOURCE_NOTAM";
 
 export type FlightDelayType = "FLIGHT_DELAY_TYPE_UNSPECIFIED" | "FLIGHT_DELAY_TYPE_GROUND_STOP" | "FLIGHT_DELAY_TYPE_GROUND_DELAY" | "FLIGHT_DELAY_TYPE_DEPARTURE_DELAY" | "FLIGHT_DELAY_TYPE_ARRIVAL_DELAY" | "FLIGHT_DELAY_TYPE_GENERAL" | "FLIGHT_DELAY_TYPE_CLOSURE";
+
+export type FlightDirection = "FLIGHT_DIRECTION_UNSPECIFIED" | "FLIGHT_DIRECTION_DEPARTURE" | "FLIGHT_DIRECTION_ARRIVAL" | "FLIGHT_DIRECTION_BOTH";
+
+export type FlightInstanceStatus = "FLIGHT_INSTANCE_STATUS_UNSPECIFIED" | "FLIGHT_INSTANCE_STATUS_SCHEDULED" | "FLIGHT_INSTANCE_STATUS_BOARDING" | "FLIGHT_INSTANCE_STATUS_DEPARTED" | "FLIGHT_INSTANCE_STATUS_AIRBORNE" | "FLIGHT_INSTANCE_STATUS_LANDED" | "FLIGHT_INSTANCE_STATUS_ARRIVED" | "FLIGHT_INSTANCE_STATUS_CANCELLED" | "FLIGHT_INSTANCE_STATUS_DIVERTED" | "FLIGHT_INSTANCE_STATUS_UNKNOWN";
+
+export type PositionSource = "POSITION_SOURCE_UNSPECIFIED" | "POSITION_SOURCE_OPENSKY" | "POSITION_SOURCE_WINGBITS" | "POSITION_SOURCE_SIMULATED";
 
 export interface FieldViolation {
   field: string;
@@ -126,6 +354,228 @@ export class AviationServiceClient {
     }
 
     return await resp.json() as ListAirportDelaysResponse;
+  }
+
+  async getAirportOpsSummary(req: GetAirportOpsSummaryRequest, options?: AviationServiceCallOptions): Promise<GetAirportOpsSummaryResponse> {
+    let path = "/api/aviation/v1/get-airport-ops-summary";
+    const params = new URLSearchParams();
+    if (req.airports != null && req.airports !== "") params.set("airports", String(req.airports));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetAirportOpsSummaryResponse;
+  }
+
+  async listAirportFlights(req: ListAirportFlightsRequest, options?: AviationServiceCallOptions): Promise<ListAirportFlightsResponse> {
+    let path = "/api/aviation/v1/list-airport-flights";
+    const params = new URLSearchParams();
+    if (req.airport != null && req.airport !== "") params.set("airport", String(req.airport));
+    if (req.direction != null && req.direction !== "") params.set("direction", String(req.direction));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListAirportFlightsResponse;
+  }
+
+  async getCarrierOps(req: GetCarrierOpsRequest, options?: AviationServiceCallOptions): Promise<GetCarrierOpsResponse> {
+    let path = "/api/aviation/v1/get-carrier-ops";
+    const params = new URLSearchParams();
+    if (req.airports != null && req.airports !== "") params.set("airports", String(req.airports));
+    if (req.minFlights != null && req.minFlights !== 0) params.set("min_flights", String(req.minFlights));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCarrierOpsResponse;
+  }
+
+  async getFlightStatus(req: GetFlightStatusRequest, options?: AviationServiceCallOptions): Promise<GetFlightStatusResponse> {
+    let path = "/api/aviation/v1/get-flight-status";
+    const params = new URLSearchParams();
+    if (req.flightNumber != null && req.flightNumber !== "") params.set("flight_number", String(req.flightNumber));
+    if (req.date != null && req.date !== "") params.set("date", String(req.date));
+    if (req.origin != null && req.origin !== "") params.set("origin", String(req.origin));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetFlightStatusResponse;
+  }
+
+  async trackAircraft(req: TrackAircraftRequest, options?: AviationServiceCallOptions): Promise<TrackAircraftResponse> {
+    let path = "/api/aviation/v1/track-aircraft";
+    const params = new URLSearchParams();
+    if (req.icao24 != null && req.icao24 !== "") params.set("icao24", String(req.icao24));
+    if (req.callsign != null && req.callsign !== "") params.set("callsign", String(req.callsign));
+    if (req.swLat != null && req.swLat !== 0) params.set("sw_lat", String(req.swLat));
+    if (req.swLon != null && req.swLon !== 0) params.set("sw_lon", String(req.swLon));
+    if (req.neLat != null && req.neLat !== 0) params.set("ne_lat", String(req.neLat));
+    if (req.neLon != null && req.neLon !== 0) params.set("ne_lon", String(req.neLon));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as TrackAircraftResponse;
+  }
+
+  async getYoutubeLiveStreamInfo(req: GetYoutubeLiveStreamInfoRequest, options?: AviationServiceCallOptions): Promise<GetYoutubeLiveStreamInfoResponse> {
+    let path = "/api/aviation/v1/get-youtube-live-stream-info";
+    const params = new URLSearchParams();
+    if (req.channel != null && req.channel !== "") params.set("channel", String(req.channel));
+    if (req.videoId != null && req.videoId !== "") params.set("video_id", String(req.videoId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetYoutubeLiveStreamInfoResponse;
+  }
+
+  async searchFlightPrices(req: SearchFlightPricesRequest, options?: AviationServiceCallOptions): Promise<SearchFlightPricesResponse> {
+    let path = "/api/aviation/v1/search-flight-prices";
+    const params = new URLSearchParams();
+    if (req.origin != null && req.origin !== "") params.set("origin", String(req.origin));
+    if (req.destination != null && req.destination !== "") params.set("destination", String(req.destination));
+    if (req.departureDate != null && req.departureDate !== "") params.set("departure_date", String(req.departureDate));
+    if (req.returnDate != null && req.returnDate !== "") params.set("return_date", String(req.returnDate));
+    if (req.adults != null && req.adults !== 0) params.set("adults", String(req.adults));
+    if (req.cabin != null && req.cabin !== "") params.set("cabin", String(req.cabin));
+    if (req.nonstopOnly) params.set("nonstop_only", String(req.nonstopOnly));
+    if (req.maxResults != null && req.maxResults !== 0) params.set("max_results", String(req.maxResults));
+    if (req.currency != null && req.currency !== "") params.set("currency", String(req.currency));
+    if (req.market != null && req.market !== "") params.set("market", String(req.market));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchFlightPricesResponse;
+  }
+
+  async listAviationNews(req: ListAviationNewsRequest, options?: AviationServiceCallOptions): Promise<ListAviationNewsResponse> {
+    let path = "/api/aviation/v1/list-aviation-news";
+    const params = new URLSearchParams();
+    if (req.entities != null && req.entities !== "") params.set("entities", String(req.entities));
+    if (req.windowHours != null && req.windowHours !== 0) params.set("window_hours", String(req.windowHours));
+    if (req.maxItems != null && req.maxItems !== 0) params.set("max_items", String(req.maxItems));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListAviationNewsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

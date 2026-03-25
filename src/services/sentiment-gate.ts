@@ -28,7 +28,7 @@ export async function filterBySentiment(
     const override = localStorage.getItem('positive-threshold');
     if (override) {
       const parsed = parseFloat(override);
-      if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+      if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 1) {
         threshold = parsed;
       }
     }

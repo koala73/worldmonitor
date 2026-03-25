@@ -137,6 +137,9 @@ app.style.margin = '0 auto';
 
 const allLayersEnabled: MapLayers = {
   gpsJamming: true,
+  satellites: false,
+
+
   conflicts: true,
   bases: true,
   cables: true,
@@ -179,11 +182,20 @@ const allLayersEnabled: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: true,
   iranAttacks: false,
+  ciiChoropleth: false,
   dayNight: true,
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: false,
+  webcams: false,
+  weatherRadar: false,
 };
 
 const allLayersDisabled: MapLayers = {
   gpsJamming: false,
+  satellites: false,
+
+
   conflicts: false,
   bases: false,
   cables: false,
@@ -226,7 +238,13 @@ const allLayersDisabled: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  ciiChoropleth: false,
   dayNight: false,
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: false,
+  webcams: false,
+  weatherRadar: false,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{
@@ -902,7 +920,7 @@ const seedAllDynamicData = (): void => {
   const cableAdvisories: CableAdvisory[] = [
     {
       id: 'e2e-cable-adv-1',
-      cableId: 'sea-me-we-5',
+      cableId: 'seamewe_5',
       title: 'Harness Cable Fault',
       severity: 'fault',
       description: 'Fiber disruption under investigation.',
@@ -918,7 +936,7 @@ const seedAllDynamicData = (): void => {
     {
       id: 'e2e-repair-1',
       name: 'Harness Repair Vessel',
-      cableId: 'sea-me-we-5',
+      cableId: 'seamewe_5',
       status: 'enroute',
       lat: 12.5,
       lon: 45.1,
@@ -942,7 +960,7 @@ const seedAllDynamicData = (): void => {
       severity: 'major',
       avgDelayMinutes: 48,
       reason: 'Severe weather',
-      source: 'computed',
+      source: 'aviationstack',
       updatedAt: new Date('2026-02-01T11:00:00.000Z'),
     },
   ];

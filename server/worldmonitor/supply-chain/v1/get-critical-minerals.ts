@@ -11,7 +11,7 @@ import { MINERAL_PRODUCTION_2024 } from './_minerals-data';
 // @ts-expect-error — .mjs module, no declaration file
 import { computeHHI, riskRating } from './_scoring.mjs';
 
-const REDIS_CACHE_KEY = 'supply_chain:minerals:v1';
+const REDIS_CACHE_KEY = 'supply_chain:minerals:v2';
 const REDIS_CACHE_TTL = 86400;
 
 function buildMineralsData(): CriticalMineral[] {
@@ -30,7 +30,7 @@ function buildMineralsData(): CriticalMineral[] {
 
     const producers: MineralProducer[] = entries
       .sort((a, b) => b.productionTonnes - a.productionTonnes)
-      .slice(0, 5)
+      .slice(0, 3)
       .map(e => ({
         country: e.country,
         countryCode: e.countryCode,

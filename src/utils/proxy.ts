@@ -1,8 +1,38 @@
-import { isDesktopRuntime, toRuntimeUrl } from '../services/runtime';
+import { isDesktopRuntime, toApiUrl, toRuntimeUrl } from '../services/runtime';
 import { getPersistentCache, setPersistentCache } from '../services/persistent-cache';
 
 const isDev = import.meta.env.DEV;
 const RESPONSE_CACHE_PREFIX = 'api-response:';
+
+// RSS proxy: route directly to Railway relay via Cloudflare CDN when enabled.
+// Feature flag controls rollout; default off for safe staged deployment.
+const RSS_DIRECT_TO_RELAY = import.meta.env.VITE_RSS_DIRECT_TO_RELAY === 'true';
+const RSS_PROXY_BASE = isDev
+  ? '' // Dev uses Vite's rssProxyPlugin
+  : RSS_DIRECT_TO_RELAY
+    ? 'https://proxy.worldmonitor.app'
+    : '';
+
+// Widget agent always goes directly to Railway relay.
+// Desktop: sidecar buffers via arrayBuffer() which destroys SSE streaming, so we bypass it.
+const WIDGET_RELAY_BASE = 'https://proxy.worldmonitor.app';
+export function widgetAgentUrl(): string {
+  if (isDev) return '/widget-agent';
+  return `${WIDGET_RELAY_BASE}/widget-agent`;
+}
+
+export function widgetAgentHealthUrl(): string {
+  if (isDev) return '/widget-agent/health';
+  return `${WIDGET_RELAY_BASE}/widget-agent/health`;
+}
+
+export function rssProxyUrl(feedUrl: string): string {
+  if (isDesktopRuntime()) return proxyUrl(feedUrl);
+  if (RSS_PROXY_BASE) {
+    return `${RSS_PROXY_BASE}/rss?url=${encodeURIComponent(feedUrl)}`;
+  }
+  return `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
+}
 
 type CachedResponsePayload = {
   url: string;
@@ -24,11 +54,11 @@ export function proxyUrl(localPath: string): string {
     return localPath;
   }
 
-  return localPath;
+  return toApiUrl(localPath);
 }
 
 function shouldPersistResponse(url: string): boolean {
-  return typeof url === 'string' && (url.startsWith('/api/') || url.includes('/api/'));
+  return url.startsWith('/api/');
 }
 
 function buildResponseCacheKey(url: string): string {

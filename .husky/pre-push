@@ -1,3 +1,52 @@
+# Ensure dependencies are installed (worktrees start with no node_modules)
+if [ ! -d node_modules ]; then
+  echo "node_modules missing, running npm install..."
+  npm install --prefer-offline || exit 1
+fi
+
+echo "Checking PR status for current branch..."
+BRANCH=$(git branch --show-current)
+if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
+  PR_STATE=$(gh pr view "$BRANCH" --json state --jq '.state' 2>&1)
+  if [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ]; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: PR for branch '$BRANCH' is $PR_STATE."
+    echo "Do NOT push to a merged/closed PR branch — commits will be orphaned."
+    echo "Run: git checkout main && git pull && git checkout -b fix/new-branch"
+    echo "============================================================"
+    exit 1
+  fi
+  echo "  Branch PR state: ${PR_STATE:-unknown}"
+
+  # Guard against branch contamination from a dirty local main.
+  # A feature/fix branch should never have more than 20 commits — if it does,
+  # the branch was likely created from a local main that had unmerged feature branches.
+  COMMIT_COUNT=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
+  if [ "$COMMIT_COUNT" -gt 20 ]; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: Branch '$BRANCH' is $COMMIT_COUNT commits ahead of origin/main."
+    echo "This usually means it was branched from a dirty local main."
+    echo "Fix: create branches from a worktree or use: git checkout -b <name> origin/main"
+    echo "============================================================"
+    exit 1
+  fi
+fi
+
+echo "Checking scripts/package-lock.json sync..."
+if git diff --name-only origin/main -- scripts/package.json | grep -q .; then
+  if ! git diff --name-only origin/main -- scripts/package-lock.json | grep -q .; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: scripts/package.json was modified but scripts/package-lock.json was not committed."
+    echo "Run: cd scripts && npm install && cd .."
+    echo "Then: git add scripts/package-lock.json && git commit --amend --no-edit"
+    echo "============================================================"
+    exit 1
+  fi
+fi
+
 echo "Running type check..."
 npm run typecheck || exit 1
 
@@ -8,6 +57,68 @@ echo "Running CJS syntax check..."
 for f in scripts/*.cjs; do
   [ -f "$f" ] && node -c "$f" || exit 1
 done
+
+echo "Running Unicode safety check..."
+node scripts/check-unicode-safety.mjs || exit 1
+
+echo "Running architectural boundary check..."
+npm run lint:boundaries || exit 1
+
+echo "Running edge function bundle check..."
+for f in api/*.js; do
+  case "$(basename "$f")" in _*) continue;; esac
+  npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null 2>/dev/null || {
+    echo "ERROR: esbuild failed to bundle $f — this will break Vercel deployment"
+    npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null
+    exit 1
+  }
+done
+
+echo "Running unit tests..."
+npm run test:data || exit 1
+
+echo "Running edge function tests..."
+node --test tests/edge-functions.test.mjs || exit 1
+
+echo "Running markdown lint..."
+npm run lint:md || exit 1
+
+echo "Running MDX lint (Mintlify compatibility)..."
+node --test tests/mdx-lint.test.mjs || exit 1
+
+echo "Running proto freshness check..."
+if git diff --name-only origin/main -- proto/ src/generated/ docs/api/ Makefile | grep -q .; then
+  if command -v buf >/dev/null 2>&1 || [ -x "$HOME/go/bin/buf" ]; then
+    export PATH="$HOME/go/bin:$PATH"
+  fi
+  if command -v buf &>/dev/null && command -v protoc-gen-ts-client &>/dev/null; then
+    make generate
+    if ! git diff --exit-code src/generated/ docs/api/; then
+      echo ""
+      echo "============================================================"
+      echo "ERROR: Proto-generated code is out of date."
+      echo "Run 'make generate' locally and commit the updated files."
+      echo "============================================================"
+      exit 1
+    fi
+    UNTRACKED=$(git ls-files --others --exclude-standard src/generated/ docs/api/)
+    if [ -n "$UNTRACKED" ]; then
+      echo ""
+      echo "============================================================"
+      echo "ERROR: Untracked generated files found:"
+      echo "$UNTRACKED"
+      echo "Run 'make generate' locally and commit the new files."
+      echo "============================================================"
+      exit 1
+    fi
+    echo "Proto-generated code is up to date."
+  else
+    echo "WARNING: buf or protoc plugins not installed, skipping proto freshness check."
+    echo "  Install with: make install-buf install-plugins"
+  fi
+else
+  echo "No proto-related changes, skipping."
+fi
 
 echo "Running version sync check..."
 npm run version:check || exit 1

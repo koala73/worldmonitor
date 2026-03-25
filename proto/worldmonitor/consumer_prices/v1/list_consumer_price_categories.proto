@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package worldmonitor.consumer_prices.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/consumer_prices/v1/consumer_prices_data.proto";
+
+// ListConsumerPriceCategoriesRequest parameters for category listing.
+message ListConsumerPriceCategoriesRequest {
+  // market_code is the ISO 3166-1 alpha-2 market identifier.
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  // basket_slug selects the basket scope.
+  string basket_slug = 2 [(sebuf.http.query) = { name: "basket_slug" }];
+  // range is one of "7d", "30d", "90d", "180d".
+  string range = 3 [(sebuf.http.query) = { name: "range" }];
+}
+
+// ListConsumerPriceCategoriesResponse holds category-level price snapshots.
+message ListConsumerPriceCategoriesResponse {
+  // market_code echoes the requested market.
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  // as_of is the Unix millisecond timestamp of the snapshot.
+  int64 as_of = 2;
+  // range echoes the requested range.
+  string range = 3 [(sebuf.http.query) = { name: "range" }];
+  // categories holds all category snapshots, sorted by absolute mom_pct descending.
+  repeated CategorySnapshot categories = 4;
+  // upstream_unavailable is true when the companion service could not be reached.
+  bool upstream_unavailable = 5;
+}

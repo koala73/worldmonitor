@@ -210,6 +210,159 @@ export interface BisCreditToGdp {
   date: string;
 }
 
+export interface GetFredSeriesBatchRequest {
+  seriesIds: string[];
+  limit: number;
+}
+
+export interface GetFredSeriesBatchResponse {
+  results: Record<string, FredSeries>;
+  fetched: number;
+  requested: number;
+}
+
+export interface ListGroceryBasketPricesRequest {
+}
+
+export interface ListGroceryBasketPricesResponse {
+  countries: CountryBasket[];
+  fetchedAt: string;
+  cheapestCountry: string;
+  mostExpensiveCountry: string;
+  upstreamUnavailable: boolean;
+  wowAvgPct: number;
+  wowAvailable: boolean;
+  prevFetchedAt: string;
+}
+
+export interface CountryBasket {
+  code: string;
+  name: string;
+  currency: string;
+  flag: string;
+  totalUsd: number;
+  fxRate: number;
+  items: GroceryItemPrice[];
+  wowPct: number;
+}
+
+export interface GroceryItemPrice {
+  itemId: string;
+  itemName: string;
+  unit: string;
+  localPrice: number;
+  usdPrice: number;
+  currency: string;
+  sourceSite: string;
+  available: boolean;
+}
+
+export interface ListBigMacPricesRequest {
+}
+
+export interface ListBigMacPricesResponse {
+  countries: BigMacCountryPrice[];
+  fetchedAt: string;
+  cheapestCountry: string;
+  mostExpensiveCountry: string;
+  wowAvgPct: number;
+  wowAvailable: boolean;
+  prevFetchedAt: string;
+}
+
+export interface BigMacCountryPrice {
+  code: string;
+  name: string;
+  currency: string;
+  flag: string;
+  localPrice: number;
+  usdPrice: number;
+  fxRate: number;
+  sourceSite: string;
+  available: boolean;
+  wowPct: number;
+}
+
+export interface GetNationalDebtRequest {
+}
+
+export interface GetNationalDebtResponse {
+  entries: NationalDebtEntry[];
+  seededAt: string;
+  unavailable: boolean;
+}
+
+export interface NationalDebtEntry {
+  iso3: string;
+  debtUsd: number;
+  gdpUsd: number;
+  debtToGdp: number;
+  annualGrowth: number;
+  perSecondRate: number;
+  perDayRate: number;
+  baselineTs: string;
+  source: string;
+}
+
+export interface ListFuelPricesRequest {
+}
+
+export interface ListFuelPricesResponse {
+  countries: FuelCountryPrice[];
+  fetchedAt: string;
+  cheapestGasoline: string;
+  cheapestDiesel: string;
+  mostExpensiveGasoline: string;
+  mostExpensiveDiesel: string;
+  wowAvailable: boolean;
+  prevFetchedAt: string;
+  sourceCount: number;
+  countryCount: number;
+}
+
+export interface FuelCountryPrice {
+  code: string;
+  name: string;
+  currency: string;
+  flag: string;
+  gasoline?: FuelPrice;
+  diesel?: FuelPrice;
+  fxRate: number;
+}
+
+export interface FuelPrice {
+  usdPrice: number;
+  localPrice: number;
+  grade: string;
+  source: string;
+  available: boolean;
+  wowPct: number;
+  observedAt: string;
+}
+
+export interface GetBlsSeriesRequest {
+  seriesId: string;
+  limit: number;
+}
+
+export interface GetBlsSeriesResponse {
+  series?: BlsSeries;
+}
+
+export interface BlsSeries {
+  seriesId: string;
+  title: string;
+  units: string;
+  observations: BlsObservation[];
+}
+
+export interface BlsObservation {
+  year: string;
+  period: string;
+  periodName: string;
+  value: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -263,6 +416,12 @@ export interface EconomicServiceHandler {
   getBisPolicyRates(ctx: ServerContext, req: GetBisPolicyRatesRequest): Promise<GetBisPolicyRatesResponse>;
   getBisExchangeRates(ctx: ServerContext, req: GetBisExchangeRatesRequest): Promise<GetBisExchangeRatesResponse>;
   getBisCredit(ctx: ServerContext, req: GetBisCreditRequest): Promise<GetBisCreditResponse>;
+  getFredSeriesBatch(ctx: ServerContext, req: GetFredSeriesBatchRequest): Promise<GetFredSeriesBatchResponse>;
+  listGroceryBasketPrices(ctx: ServerContext, req: ListGroceryBasketPricesRequest): Promise<ListGroceryBasketPricesResponse>;
+  listBigMacPrices(ctx: ServerContext, req: ListBigMacPricesRequest): Promise<ListBigMacPricesResponse>;
+  getNationalDebt(ctx: ServerContext, req: GetNationalDebtRequest): Promise<GetNationalDebtResponse>;
+  listFuelPrices(ctx: ServerContext, req: ListFuelPricesRequest): Promise<ListFuelPricesResponse>;
+  getBlsSeries(ctx: ServerContext, req: GetBlsSeriesRequest): Promise<GetBlsSeriesResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -591,6 +750,245 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getBisCredit(ctx, body);
           return new Response(JSON.stringify(result as GetBisCreditResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/economic/v1/get-fred-series-batch",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetFredSeriesBatchRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getFredSeriesBatch", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getFredSeriesBatch(ctx, body);
+          return new Response(JSON.stringify(result as GetFredSeriesBatchResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/list-grocery-basket-prices",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListGroceryBasketPricesRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listGroceryBasketPrices(ctx, body);
+          return new Response(JSON.stringify(result as ListGroceryBasketPricesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/list-bigmac-prices",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListBigMacPricesRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listBigMacPrices(ctx, body);
+          return new Response(JSON.stringify(result as ListBigMacPricesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-national-debt",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetNationalDebtRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getNationalDebt(ctx, body);
+          return new Response(JSON.stringify(result as GetNationalDebtResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/list-fuel-prices",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListFuelPricesRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listFuelPrices(ctx, body);
+          return new Response(JSON.stringify(result as ListFuelPricesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-bls-series",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetBlsSeriesRequest = {
+            seriesId: params.get("series_id") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getBlsSeries", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getBlsSeries(ctx, body);
+          return new Response(JSON.stringify(result as GetBlsSeriesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

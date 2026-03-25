@@ -1,0 +1,10 @@
+{
+  "ids": ["tether", "usd-coin", "dai", "first-digital-usd", "ethena-usde"],
+  "coinpaprika": {
+    "tether": "usdt-tether",
+    "usd-coin": "usdc-usd-coin",
+    "dai": "dai-dai",
+    "first-digital-usd": "fdusd-first-digital-usd",
+    "ethena-usde": "usde-ethena-usde"
+  }
+}

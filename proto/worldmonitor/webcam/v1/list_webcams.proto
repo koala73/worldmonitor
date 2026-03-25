@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package worldmonitor.webcam.v1;
+
+import "sebuf/http/annotations.proto";
+
+message ListWebcamsRequest {
+  int32 zoom = 1 [(sebuf.http.query) = {name: "zoom"}];
+  double bound_w = 2 [(sebuf.http.query) = {name: "bound_w"}];
+  double bound_s = 3 [(sebuf.http.query) = {name: "bound_s"}];
+  double bound_e = 4 [(sebuf.http.query) = {name: "bound_e"}];
+  double bound_n = 5 [(sebuf.http.query) = {name: "bound_n"}];
+}
+
+message WebcamEntry {
+  string webcam_id = 1;
+  string title = 2;
+  double lat = 3;
+  double lng = 4;
+  string category = 5;
+  string country = 6;
+}
+
+message WebcamCluster {
+  double lat = 1;
+  double lng = 2;
+  int32 count = 3;
+  repeated string categories = 4;
+}
+
+message ListWebcamsResponse {
+  repeated WebcamEntry webcams = 1;
+  repeated WebcamCluster clusters = 2;
+  int32 total_in_view = 3;
+}

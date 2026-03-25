@@ -1,0 +1,119 @@
+basket:
+  slug: essentials-sg
+  name: Essentials Basket Singapore
+  marketCode: sg
+  methodology: fixed
+  baseDate: "2025-01-01"
+  description: >
+    Core household essentials tracked weekly across Singapore grocery retailers.
+    Weighted to reflect a typical household of 4 in Singapore.
+    Does not represent official CPI. Tracks consumer price pressure only.
+
+  items:
+    - id: eggs_10
+      category: eggs
+      canonicalName: Fresh Eggs 10 Pack
+      weight: 0.12
+      baseUnit: ct
+      substitutionGroup: eggs
+      minBaseQty: 8
+      maxBaseQty: 12
+
+    - id: milk_1l
+      category: dairy
+      canonicalName: Fresh Full Cream Milk 1L
+      weight: 0.10
+      baseUnit: ml
+      substitutionGroup: milk_full_fat
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: bread_white
+      category: bread
+      canonicalName: White Sandwich Bread 400g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: bread_white
+      minBaseQty: 350
+      maxBaseQty: 450
+
+    - id: rice_jasmine_5kg
+      category: rice
+      canonicalName: Jasmine Rice 5kg
+      weight: 0.10
+      baseUnit: g
+      substitutionGroup: rice_jasmine
+      minBaseQty: 4500
+      maxBaseQty: 5500
+
+    - id: cooking_oil_sunflower_2l
+      category: cooking_oil
+      canonicalName: Sunflower Oil 2L
+      weight: 0.08
+      baseUnit: ml
+      substitutionGroup: cooking_oil_sunflower
+      minBaseQty: 1800
+      maxBaseQty: 2200
+
+    - id: chicken_whole_1kg
+      category: chicken
+      canonicalName: Whole Chicken Fresh 1kg
+      weight: 0.12
+      baseUnit: g
+      substitutionGroup: chicken_whole
+      minBaseQty: 800
+      maxBaseQty: 1200
+
+    - id: tomatoes_500g
+      category: tomatoes
+      canonicalName: Cherry Tomatoes 500g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: tomatoes
+      minBaseQty: 400
+      maxBaseQty: 600
+
+    - id: onions_500g
+      category: onions
+      canonicalName: Yellow Onions 500g
+      weight: 0.06
+      baseUnit: g
+      substitutionGroup: onions
+      minBaseQty: 400
+      maxBaseQty: 600
+
+    - id: water_1_5l
+      category: water
+      canonicalName: Mineral Water 1.5L
+      weight: 0.07
+      baseUnit: ml
+      substitutionGroup: water_still
+      minBaseQty: 1300
+      maxBaseQty: 1700
+
+    - id: sugar_1kg
+      category: sugar
+      canonicalName: White Sugar 1kg
+      weight: 0.06
+      baseUnit: g
+      substitutionGroup: sugar_white
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: cheese_200g
+      category: dairy
+      canonicalName: Processed Cheese Slices 200g
+      weight: 0.06
+      baseUnit: g
+      substitutionGroup: cheese_processed
+      minBaseQty: 150
+      maxBaseQty: 250
+
+    - id: yogurt_500g
+      category: dairy
+      canonicalName: Plain Yogurt 500g
+      weight: 0.07
+      baseUnit: g
+      substitutionGroup: yogurt_plain
+      minBaseQty: 450
+      maxBaseQty: 550

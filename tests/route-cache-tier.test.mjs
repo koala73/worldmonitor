@@ -18,9 +18,15 @@ function extractGetRoutes() {
         walk(full);
       } else if (entry === 'service_server.ts') {
         const src = readFileSync(full, 'utf-8');
+        // Match both object literal { method: "GET", path: "/..." }
+        // and factory call makeHandler(..., "/...") which is hardcoded as GET
         const re = /method:\s*"GET",[\s\S]*?path:\s*"([^"]+)"/g;
+        const re2 = /makeHandler\s*\(\s*"[^"]+",\s*"([^"]+)"/g;
         let m;
         while ((m = re.exec(src)) !== null) {
+          routes.push(m[1]);
+        }
+        while ((m = re2.exec(src)) !== null) {
           routes.push(m[1]);
         }
       }
@@ -34,7 +40,7 @@ function extractGetRoutes() {
 function extractCacheTierKeys() {
   const gatewayPath = join(root, 'server', 'gateway.ts');
   const src = readFileSync(gatewayPath, 'utf-8');
-  const re = /'\/(api\/[^']+)':\s*'(fast|medium|slow|static|no-store)'/g;
+  const re = /'\/(api\/[^']+)':\s*'(fast|medium|slow|slow-browser|static|daily|no-store)'/g;
   const entries = {};
   let m;
   while ((m = re.exec(src)) !== null) {
@@ -77,5 +83,12 @@ describe('RPC_CACHE_TIER route parity', () => {
       /RPC_CACHE_TIER\[pathname\]\s*\?\?\s*'medium'/,
       'Gateway still has medium default fallback — ensure all routes are explicit',
     );
+  });
+
+  it('slow-browser tier includes max-age, slow tier does not', () => {
+    const gatewaySrc = readFileSync(join(root, 'server', 'gateway.ts'), 'utf-8');
+    assert.match(gatewaySrc, /slow-browser.*max-age/s, 'slow-browser tier must include max-age');
+    const slowLine = gatewaySrc.match(/^\s+slow: 'public.*'/m)?.[0] ?? '';
+    assert.ok(!slowLine.includes('max-age'), 'slow tier must NOT include max-age');
   });
 });

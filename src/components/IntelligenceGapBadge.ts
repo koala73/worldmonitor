@@ -141,7 +141,7 @@ export class IntelligenceFindingsBadge {
   private playSound(): void {
     if (this.audioEnabled && this.audio) {
       this.audio.currentTime = 0;
-      this.audio.play().catch(() => {});
+      this.audio.play()?.catch(() => {});
     }
   }
 
@@ -419,6 +419,7 @@ export class IntelligenceFindingsBadge {
     }
     if (alert.type === 'convergence') return t('components.intelligenceFindings.insights.convergence');
     if (alert.type === 'cascade') return t('components.intelligenceFindings.insights.cascade');
+    if (alert.type === 'radiation') return 'Elevated radiation readings warrant validation against recent baseline and nearby industrial or environmental activity';
     return t('components.intelligenceFindings.insights.review');
   }
 
@@ -442,6 +443,7 @@ export class IntelligenceFindingsBadge {
       // Unified alerts
       cii_spike: '🔴',
       cascade: '⚡',
+      radiation: '☢️',
       composite: '🔗',
     };
     return icons[type] || '📌';
@@ -499,7 +501,7 @@ export class IntelligenceFindingsBadge {
       <div class="findings-modal">
         <div class="findings-modal-header">
           <span class="findings-modal-title">🎯 ${t('components.intelligenceFindings.all', { count: String(this.findings.length) })}</span>
-          <button class="findings-modal-close">×</button>
+          <button class="findings-modal-close" aria-label="Close">×</button>
         </div>
         <div class="findings-modal-content">
           ${findingsHtml}

@@ -1,7 +1,8 @@
+import { fetchLatestRelease } from './_github-release.js';
+
 // Non-sebuf: returns XML/HTML, stays as standalone Vercel function
 export const config = { runtime: 'edge' };
 
-const RELEASES_URL = 'https://api.github.com/repos/koala73/worldmonitor/releases/latest';
 const RELEASES_PAGE = 'https://github.com/koala73/worldmonitor/releases/latest';
 
 const PLATFORM_PATTERNS = {
@@ -48,18 +49,10 @@ export default async function handler(req) {
   }
 
   try {
-    const res = await fetch(RELEASES_URL, {
-      headers: {
-        'Accept': 'application/vnd.github+json',
-        'User-Agent': 'WorldMonitor-Download-Redirect',
-      },
-    });
-
-    if (!res.ok) {
+    const release = await fetchLatestRelease('WorldMonitor-Download-Redirect');
+    if (!release) {
       return Response.redirect(RELEASES_PAGE, 302);
     }
-
-    const release = await res.json();
     const matcher = PLATFORM_PATTERNS[platform];
     const assets = Array.isArray(release.assets) ? release.assets : [];
     const asset = variant

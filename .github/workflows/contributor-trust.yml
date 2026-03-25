@@ -1,0 +1,47 @@
+name: Contributor Trust
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+jobs:
+  check:
+    # Skip for repo members/owners/collaborators
+    if: |
+      github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' ||
+      github.event.pull_request.author_association == 'FIRST_TIMER' ||
+      github.event.pull_request.author_association == 'CONTRIBUTOR' ||
+      github.event.pull_request.author_association == 'NONE'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Check contributor trust
+        id: brin
+        run: |
+          AUTHOR="${{ github.event.pull_request.user.login }}"
+          RESPONSE=$(curl -sf --max-time 10 "https://api.brin.sh/contributor/${AUTHOR}" 2>/dev/null || true)
+          if [ -z "$RESPONSE" ]; then
+            echo "verdict=unavailable" >> "$GITHUB_OUTPUT"
+          else
+            VERDICT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); v=d.get('verdict',''); print(v if v in ('safe','caution','suspicious','dangerous') else 'unavailable')" 2>/dev/null || echo "unavailable")
+            echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply trust label
+        if: |
+          steps.brin.outputs.verdict == 'safe' ||
+          steps.brin.outputs.verdict == 'caution' ||
+          steps.brin.outputs.verdict == 'suspicious' ||
+          steps.brin.outputs.verdict == 'dangerous'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          BRIN_VERDICT: ${{ steps.brin.outputs.verdict }}
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: [`trust:${process.env.BRIN_VERDICT}`],
+            });

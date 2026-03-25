@@ -59,7 +59,7 @@ const tauriBin = path.join('node_modules', '.bin', process.platform === 'win32' 
 
 if (!existsSync(tauriBin)) {
   console.error(
-    `Local Tauri CLI not found at ${tauriBin}. Run \"npm ci\" to install dependencies before desktop packaging.`
+    `Local Tauri CLI not found at ${tauriBin}. Run "npm ci" to install dependencies before desktop packaging.`
   );
   process.exit(1);
 }

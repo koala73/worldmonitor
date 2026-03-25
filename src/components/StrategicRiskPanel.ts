@@ -75,7 +75,7 @@ export class StrategicRiskPanel extends Panel {
       await this.refresh();
     } catch (error) {
       console.error('[StrategicRiskPanel] Init error:', error);
-      this.showError(t('common.failedRiskOverview'));
+      this.showError(t('common.failedRiskOverview'), () => void this.refresh());
     }
   }
 
@@ -126,12 +126,13 @@ export class StrategicRiskPanel extends Panel {
     );
     this.alerts = getRecentAlerts(24);
 
-    // Try to get cached scores during learning mode
+    // Try to get cached scores during learning mode OR when data sources are insufficient
     const { inLearning } = getLearningProgress();
     this.usedCachedScores = false;
-    if (inLearning) {
+    if (inLearning || this.freshnessSummary.overallStatus === 'insufficient') {
       const cached = await fetchCachedRiskScores(this.signal);
-      if (cached && cached.strategicRisk) {
+      if (!this.element?.isConnected) return false;
+      if (cached?.strategicRisk) {
         this.usedCachedScores = true;
         console.log('[StrategicRiskPanel] Using cached scores from backend');
       }
@@ -208,6 +209,8 @@ export class StrategicRiskPanel extends Panel {
       case 'convergence': return '🎯';
       case 'cii_spike': return '📊';
       case 'cascade': return '🔗';
+      case 'sanctions': return '🚫';
+      case 'radiation': return '☢️';
       case 'composite': return '⚠️';
       default: return '📍';
     }
@@ -410,7 +413,7 @@ export class StrategicRiskPanel extends Panel {
         <div class="risk-section-title">${t('components.strategicRisk.recentAlerts', { count: String(this.alerts.length) })}</div>
         <div class="risk-alerts">
           ${displayAlerts.map(alert => {
-      const hasLocation = alert.location && alert.location.lat && alert.location.lon;
+      const hasLocation = alert.location?.lat && alert.location.lon;
       const clickableClass = hasLocation ? 'risk-alert-clickable' : '';
       const locationAttrs = hasLocation
         ? `data-lat="${alert.location!.lat}" data-lon="${alert.location!.lon}"`
@@ -449,23 +452,26 @@ export class StrategicRiskPanel extends Panel {
   private render(): void {
     this.freshnessSummary = dataFreshness.getSummary();
 
-    if (!this.overview) {
-      this.showLoading();
-      return;
-    }
+    try {
+      if (!this.overview) {
+        this.showLoading();
+        return;
+      }
 
-    // Render full data view — partial data is handled gracefully by CII baselines
-    // Only show insufficient state if zero sources after 60s (true failure)
-    let html: string;
-    const uptime = performance.now();
-    if (this.freshnessSummary.overallStatus === 'insufficient' && uptime > 60_000) {
-      html = this.renderInsufficientData();
-    } else {
-      html = this.renderFullData();
-    }
+      // Render full data view — partial data is handled gracefully by CII baselines
+      // Only show insufficient state if zero sources after 60s (true failure)
+      const uptime = performance.now();
+      const html =
+        this.freshnessSummary.overallStatus === 'insufficient' && uptime > 60_000 && !this.usedCachedScores
+          ? this.renderInsufficientData()
+          : this.renderFullData();
 
-    this.content.innerHTML = html;
-    this.attachEventListeners();
+      this.content.innerHTML = html;
+      this.attachEventListeners();
+    } catch (e: unknown) {
+      console.error('[StrategicRiskPanel] Render error:', e);
+      this.showError(t('common.failedRiskOverview'), () => this.refresh());
+    }
   }
 
   private attachEventListeners(): void {
@@ -505,7 +511,7 @@ export class StrategicRiskPanel extends Panel {
       item.addEventListener('click', () => {
         const lat = parseFloat((item as HTMLElement).dataset.lat || '0');
         const lon = parseFloat((item as HTMLElement).dataset.lon || '0');
-        if (this.onLocationClick && !isNaN(lat) && !isNaN(lon)) {
+        if (this.onLocationClick && !Number.isNaN(lat) && !Number.isNaN(lon)) {
           this.onLocationClick(lat, lon);
         }
       });
@@ -517,7 +523,7 @@ export class StrategicRiskPanel extends Panel {
       alert.addEventListener('click', () => {
         const lat = parseFloat((alert as HTMLElement).dataset.lat || '0');
         const lon = parseFloat((alert as HTMLElement).dataset.lon || '0');
-        if (this.onLocationClick && !isNaN(lat) && !isNaN(lon)) {
+        if (this.onLocationClick && !Number.isNaN(lat) && !Number.isNaN(lon)) {
           this.onLocationClick(lat, lon);
         }
       });

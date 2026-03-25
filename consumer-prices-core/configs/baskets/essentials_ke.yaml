@@ -1,0 +1,119 @@
+basket:
+  slug: essentials-ke
+  name: Essentials Basket Kenya
+  marketCode: ke
+  methodology: fixed
+  baseDate: "2025-01-01"
+  description: >
+    Core household essentials tracked weekly across Kenyan grocery retailers.
+    Weighted to reflect a typical urban household of 4 in Kenya.
+    Does not represent official CPI. Tracks consumer price pressure only.
+
+  items:
+    - id: eggs_12
+      category: eggs
+      canonicalName: Fresh Eggs 12 Pack
+      weight: 0.12
+      baseUnit: ct
+      substitutionGroup: eggs
+      minBaseQty: 10
+      maxBaseQty: 15
+
+    - id: milk_1l
+      category: dairy
+      canonicalName: Fresh Full Cream Milk 1L
+      weight: 0.12
+      baseUnit: ml
+      substitutionGroup: milk_full_fat
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: bread_white
+      category: bread
+      canonicalName: White Sliced Bread 400g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: bread_white
+      minBaseQty: 350
+      maxBaseQty: 450
+
+    - id: rice_1kg
+      category: rice
+      canonicalName: Long Grain Rice 1kg
+      weight: 0.10
+      baseUnit: g
+      substitutionGroup: rice_white
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: cooking_oil_1l
+      category: cooking_oil
+      canonicalName: Cooking Oil 1L
+      weight: 0.09
+      baseUnit: ml
+      substitutionGroup: cooking_oil
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: chicken_whole_1kg
+      category: chicken
+      canonicalName: Whole Chicken Fresh 1kg
+      weight: 0.12
+      baseUnit: g
+      substitutionGroup: chicken_whole
+      minBaseQty: 800
+      maxBaseQty: 1200
+
+    - id: tomatoes_1kg
+      category: tomatoes
+      canonicalName: Tomatoes Fresh 1kg
+      weight: 0.09
+      baseUnit: g
+      substitutionGroup: tomatoes
+      minBaseQty: 800
+      maxBaseQty: 1200
+
+    - id: onions_1kg
+      category: onions
+      canonicalName: Red Onions 1kg
+      weight: 0.07
+      baseUnit: g
+      substitutionGroup: onions
+      minBaseQty: 800
+      maxBaseQty: 1200
+
+    - id: water_1_5l
+      category: water
+      canonicalName: Drinking Water 1.5L
+      weight: 0.06
+      baseUnit: ml
+      substitutionGroup: water_still
+      minBaseQty: 1300
+      maxBaseQty: 1700
+
+    - id: sugar_1kg
+      category: sugar
+      canonicalName: White Sugar 1kg
+      weight: 0.07
+      baseUnit: g
+      substitutionGroup: sugar_white
+      minBaseQty: 900
+      maxBaseQty: 1100
+
+    - id: cheese_processed_200g
+      category: dairy
+      canonicalName: Processed Cheese 200g
+      weight: 0.06
+      baseUnit: g
+      substitutionGroup: cheese_processed
+      minBaseQty: 150
+      maxBaseQty: 250
+
+    - id: yogurt_500g
+      category: dairy
+      canonicalName: Plain Yogurt 500g
+      weight: 0.08
+      baseUnit: g
+      substitutionGroup: yogurt_plain
+      minBaseQty: 450
+      maxBaseQty: 550

@@ -114,8 +114,8 @@ function mergeSemanticallySimilarClusters(
 
     // Calculate merged timestamps
     const allDates = allItems.map(i => i.pubDate.getTime());
-    const firstSeen = new Date(Math.min(...allDates));
-    const lastUpdated = new Date(Math.max(...allDates));
+    const firstSeen = new Date(allDates.reduce((min, d) => d < min ? d : min));
+    const lastUpdated = new Date(allDates.reduce((max, d) => d > max ? d : max));
 
     const mergedCluster: ClusteredEvent = {
       id: primary.id,

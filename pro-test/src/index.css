@@ -1,0 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", "Inter", sans-serif;
+
+  --color-wm-bg: #050505;
+  --color-wm-card: #111111;
+  --color-wm-border: #222222;
+  --color-wm-green: #4ade80;
+  --color-wm-blue: #60a5fa;
+  --color-wm-text: #f3f4f6;
+  --color-wm-muted: #9ca3af;
+}
+
+body {
+  background-color: var(--color-wm-bg);
+  color: var(--color-wm-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.glass-panel {
+  background: rgba(17, 17, 17, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-wm-border);
+}
+
+.data-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1px;
+  background: var(--color-wm-border);
+  border: 1px solid var(--color-wm-border);
+}
+
+.data-cell {
+  background: var(--color-wm-bg);
+  padding: 1.5rem;
+}
+
+.text-glow {
+  text-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
+}
+
+.border-glow {
+  box-shadow: 0 0 20px rgba(74, 222, 128, 0.1);
+}
+
+/* Marquee animation */
+.marquee-track {
+  display: flex;
+  animation: marquee 45s linear infinite;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}

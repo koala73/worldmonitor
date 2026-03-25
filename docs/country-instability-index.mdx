@@ -1,0 +1,180 @@
+---
+title: "Country Instability Index"
+description: "Real-time stability scoring for 24 strategically significant countries, combining unrest, security, and information signals into a dynamic instability metric."
+---
+The Country Instability Index maintains a real-time instability score for strategically significant countries. Rather than relying on static risk ratings, the CII dynamically reflects current conditions based on multiple input streams.
+
+## Monitored Countries (Tier 1)
+
+| Region | Countries |
+|--------|-----------|
+| **Americas** | United States, Venezuela, Brazil, Mexico, Cuba |
+| **Europe** | Germany, France, United Kingdom, Poland |
+| **Eastern Europe** | Russia, Ukraine |
+| **Middle East** | Iran, Israel, Saudi Arabia, United Arab Emirates, Turkey, Syria, Yemen |
+| **Asia-Pacific** | China, Taiwan, North Korea, India, Pakistan, Myanmar |
+
+## Three Component Scores
+
+Each country's CII is computed from three weighted components:
+
+| Component | Weight | Data Sources | What It Measures |
+|-----------|--------|--------------|------------------|
+| **Unrest** | 40% | ACLED protests, GDELT events | Civil unrest intensity, fatalities, event severity |
+| **Security** | 30% | Military flights, naval vessels | Unusual military activity patterns |
+| **Information** | 30% | News velocity, alert clusters | Media attention intensity and acceleration |
+
+## Scoring Algorithm
+
+```
+Unrest Score:
+  base = min(50, protest_count × 8)
+  fatality_boost = min(30, total_fatalities × 5)
+  severity_boost = min(20, high_severity_count × 10)
+  unrest = min(100, base + fatality_boost + severity_boost)
+
+Security Score:
+  flight_score = min(50, military_flights × 3)
+  vessel_score = min(30, naval_vessels × 5)
+  security = min(100, flight_score + vessel_score)
+
+Information Score:
+  base = min(40, news_count × 5)
+  velocity_boost = min(40, avg_velocity × 10)
+  alert_boost = 20 if any_alert else 0
+  information = min(100, base + velocity_boost + alert_boost)
+
+Final CII = round(unrest × 0.4 + security × 0.3 + information × 0.3)
+```
+
+## Scoring Bias Prevention
+
+Raw news volume creates a natural bias: English-language media generates far more coverage of the US, UK, and Western Europe than conflict zones. Without correction, stable democracies would consistently score higher than actual crisis regions.
+
+### Log Scaling for High-Volume Countries
+
+Countries with high media coverage receive logarithmic dampening on their unrest and information scores:
+
+```
+if (newsVolume > threshold):
+  dampingFactor = 1 / (1 + log10(newsVolume / threshold))
+  score = rawScore × dampingFactor
+```
+
+This ensures the US receiving 50 news mentions about routine political activity doesn't outscore Ukraine with 10 mentions about active combat.
+
+### Conflict Zone Floor Scores
+
+Active conflict zones have minimum score floors that prevent them from appearing stable during data gaps or low-coverage periods:
+
+| Country | Floor | Rationale |
+|---------|-------|-----------|
+| Ukraine | 55 | Active war with Russia |
+| Syria | 50 | Ongoing civil war |
+| Yemen | 50 | Ongoing civil war |
+| Myanmar | 45 | Military coup, civil conflict |
+| Israel | 45 | Active Gaza conflict |
+
+The floor applies *after* the standard calculation. If the computed score exceeds the floor, the computed score is used. This prevents false "all clear" signals while preserving sensitivity to actual escalations.
+
+## Instability Levels
+
+| Level | Score Range | Visual | Meaning |
+|-------|-------------|--------|---------|
+| **Critical** | 81-100 | Red | Active crisis or major escalation |
+| **High** | 66-80 | Orange | Significant instability requiring close monitoring |
+| **Elevated** | 51-65 | Yellow | Above-normal activity patterns |
+| **Normal** | 31-50 | Gray | Baseline geopolitical activity |
+| **Low** | 0-30 | Green | Unusually quiet period |
+
+## Trend Detection
+
+The CII tracks 24-hour changes to identify trajectory:
+
+- **Rising**: Score increased by ≥5 points (escalating situation)
+- **Stable**: Change within ±5 points (steady state)
+- **Falling**: Score decreased by ≥5 points (de-escalation)
+
+## Contextual Score Boosts
+
+Beyond the base component scores, several contextual factors can boost a country's CII score (up to a combined maximum of 23 additional points):
+
+| Boost Type | Max Points | Condition | Purpose |
+|------------|------------|-----------|---------|
+| **Hotspot Activity** | 10 | Events near defined hotspots | Captures localized escalation |
+| **News Urgency** | 5 | Information component ≥50 | High media attention indicator |
+| **Focal Point** | 8 | AI focal point detection on country | Multi-source convergence indicator |
+
+**Hotspot Boost Calculation**:
+
+- Hotspot activity (0-100) scaled by 1.5x then capped at 10
+- Zero boost for countries with no associated hotspot activity
+
+**News Urgency Boost Tiers**:
+
+- Information ≥70: +5 points
+- Information ≥50: +3 points
+- Information &lt;50: +0 points
+
+**Focal Point Boost Tiers**:
+
+- Critical urgency: +8 points
+- Elevated urgency: +4 points
+- Normal urgency: +0 points
+
+These boosts are designed to elevate scores only when corroborating evidence exists. A country must have both high base scores AND contextual signals to reach extreme levels.
+
+See [Geographic Convergence](/geographic-convergence) for the full algorithm.
+
+## Server-Side Pre-Computation
+
+To eliminate the "cold start" problem where new users would see blank data during the Learning Mode warmup, CII scores are **pre-computed server-side** via the `/api/risk-scores` endpoint. See the [Server-Side Risk Score API](/strategic-risk#server-side-risk-score-api) section for details.
+
+## Learning Mode (15-Minute Warmup)
+
+On dashboard startup, the CII system enters **Learning Mode**, a 15-minute calibration period where scores are calculated but alerts are suppressed. This prevents the flood of false-positive alerts that would otherwise occur as the system establishes baseline values.
+
+**Note**: Server-side pre-computation now provides immediate scores to new users. Learning Mode primarily affects client-side dynamic adjustments and alert generation rather than initial score display.
+
+**Why 15 minutes?** Real-world testing showed that CII scores stabilize after approximately 10-20 minutes of data collection. The 15-minute window provides sufficient time for:
+
+- Multiple refresh cycles across all data sources
+- Trend detection to establish direction (rising/stable/falling)
+- Cross-source correlation to normalize bias
+
+### Visual Indicators
+
+During Learning Mode, the dashboard provides clear visual feedback:
+
+| Location | Indicator |
+|----------|-----------|
+| **CII Panel** | Yellow banner with progress bar and countdown timer |
+| **Strategic Risk Overview** | "Learning Mode - Xm until reliable" status |
+| **Score Display** | Scores shown at 60% opacity (dimmed) |
+
+### Behavior
+
+```
+Minutes 0-15: Learning Mode Active
+  - CII scores calculated and displayed (dimmed)
+  - Trend detection active (stores baseline)
+  - All CII-related alerts suppressed
+  - Progress bar fills as time elapses
+
+After 15 minutes: Learning Complete
+  - Full opacity scores
+  - Alert generation enabled (threshold ≥10 point change)
+  - "All data sources active" status shown
+```
+
+This ensures users understand that early scores are provisional while preventing alert fatigue during the calibration period.
+
+## Keyword Attribution
+
+Countries are matched to data via keyword lists:
+
+- **Russia**: `russia`, `moscow`, `kremlin`, `putin`
+- **China**: `china`, `beijing`, `xi jinping`, `prc`
+- **Taiwan**: `taiwan`, `taipei`
+
+This enables attribution of news and events to specific countries even when formal country codes aren't present in the source data.

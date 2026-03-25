@@ -181,9 +181,6 @@ components:
                 provider:
                     type: string
                     description: Provider that produced the result (or "cache").
-                cached:
-                    type: boolean
-                    description: Whether the result came from Redis cache.
                 tokens:
                     type: integer
                     format: int32
@@ -191,18 +188,24 @@ components:
                 fallback:
                     type: boolean
                     description: Whether the client should try the next provider in the fallback chain.
-                skipped:
-                    type: boolean
-                    description: Whether this provider was skipped (credentials missing).
-                reason:
-                    type: string
-                    description: Human-readable skip/error reason.
                 error:
                     type: string
                     description: Error message if the request failed.
                 errorType:
                     type: string
                     description: Error type/name (e.g. "TypeError").
+                status:
+                    type: string
+                    enum:
+                        - SUMMARIZE_STATUS_UNSPECIFIED
+                        - SUMMARIZE_STATUS_SUCCESS
+                        - SUMMARIZE_STATUS_CACHED
+                        - SUMMARIZE_STATUS_SKIPPED
+                        - SUMMARIZE_STATUS_ERROR
+                    description: SummarizeStatus indicates the outcome of a summarization request.
+                statusDetail:
+                    type: string
+                    description: Human-readable detail for non-success statuses (skip reason, etc.).
             description: SummarizeArticleResponse contains the LLM summarization result.
         GetSummarizeArticleCacheRequest:
             type: object
@@ -232,7 +235,9 @@ components:
                     type: object
                     additionalProperties:
                         type: string
-                    description: Per-feed status (ok/error/timeout)
+                    description: |-
+                        Per-feed status — only non-ok states emitted; absent key implies ok.
+                         Values: empty (feed returned 0 items), timeout (timed out during fetch).
                 generatedAt:
                     type: string
                     description: ISO 8601 timestamp of when this digest was generated

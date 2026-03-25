@@ -1,0 +1,23 @@
+retailer:
+  slug: tamimi_sa
+  name: Tamimi Markets Saudi Arabia
+  marketCode: sa
+  currencyCode: SAR
+  adapter: search
+  baseUrl: https://tamimimarkets.com
+  enabled: false # disabled 2026-03-23: 0/12 products after query tweak, Firecrawl can't extract tamimimarkets.com
+
+  searchConfig:
+    numResults: 5
+    queryTemplate: "{canonicalName} tamimi markets"
+    urlPathContains: /product
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

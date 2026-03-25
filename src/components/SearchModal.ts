@@ -1,7 +1,9 @@
 import { escapeHtml } from '@/utils/sanitize';
+import { shuffle } from '@/utils';
 import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
-import { COMMANDS, type Command } from '@/config/commands';
+import { getAllCommands, type Command } from '@/config/commands';
+import { isMobileDevice } from '@/utils';
 
 interface CommandResult {
   command: Command;
@@ -38,8 +40,11 @@ function resolveCommandLabel(cmd: Command): string {
     }
     case 'country':
       return `${t('commands.prefixes.brief')}: ${cmd.label}`;
-    default:
-      return cmd.label;
+    default: {
+      const i18nKey = `commands.labels.${cmd.id.replace(':', '.')}`;
+      const resolved = t(i18nKey, { defaultValue: '' });
+      return resolved || cmd.label;
+    }
   }
 }
 
@@ -48,7 +53,7 @@ function resolveCategoryLabel(cmd: Command): string {
   return key ? t(key, { defaultValue: cmd.category }) : cmd.category;
 }
 
-export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub';
+export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub' | 'flight';
 
 export interface SearchResult {
   type: SearchResultType;
@@ -77,6 +82,9 @@ export class SearchModal {
   private overlay: HTMLElement | null = null;
   private input: HTMLInputElement | null = null;
   private resultsList: HTMLElement | null = null;
+  private chipsContainer: HTMLElement | null = null;
+  private closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private viewportHandler: (() => void) | null = null;
   private sources: SearchableSource[] = [];
   private results: SearchResult[] = [];
   private commandResults: CommandResult[] = [];
@@ -84,12 +92,20 @@ export class SearchModal {
   private recentSearches: string[] = [];
   private onSelect?: (result: SearchResult) => void;
   private onCommand?: (command: Command) => void;
+  private onQueryChange?: (rawInput: string) => void;
+  private onFlightSearch?: (callsign: string) => void;
+  private currentFlightCallsign: string | null = null;
+  private flightSearchFired = false;
   private placeholder: string;
   private activePanelIds: Set<string> = new Set();
+  private isMobile: boolean;
+  /** When true, results area shows the full command list (opt-in). Sourced from getAllCommands(); no separate list to maintain. */
+  private showingAllCommands = false;
 
   constructor(container: HTMLElement, options?: SearchModalOptions) {
     this.container = container;
     this.placeholder = options?.placeholder || t('modals.search.placeholder');
+    this.isMobile = isMobileDevice();
     this.loadRecentSearches();
   }
 
@@ -110,26 +126,70 @@ export class SearchModal {
     this.onCommand = callback;
   }
 
+  public setOnQueryChange(callback: (rawInput: string) => void): void {
+    this.onQueryChange = callback;
+  }
+
+  public setOnFlightSearch(callback: (callsign: string) => void): void {
+    this.onFlightSearch = callback;
+  }
+
+  public refreshSearch(): void {
+    if (this.overlay) this.handleSearch();
+  }
+
   public setActivePanels(panelIds: string[]): void {
     this.activePanelIds = new Set(panelIds);
   }
 
   public open(): void {
+    if (this.closeTimeoutId) {
+      clearTimeout(this.closeTimeoutId);
+      this.closeTimeoutId = null;
+      this.overlay?.remove();
+      this.overlay = null;
+    }
     if (this.overlay) return;
+    this.isMobile = isMobileDevice();
+    // Clear stale flight results from previous session so they don't bleed through.
+    const flightIdx = this.sources.findIndex(s => s.type === 'flight');
+    if (flightIdx >= 0) this.sources[flightIdx] = { type: 'flight', items: [] };
+    this.currentFlightCallsign = null;
+    this.flightSearchFired = false;
     this.createModal();
     this.input?.focus();
+    this.showingAllCommands = false;
     this.showRecentOrEmpty();
+    if (this.isMobile) this.renderChips();
   }
 
   public close(): void {
+    if (this.viewportHandler && window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', this.viewportHandler);
+      this.viewportHandler = null;
+    }
     if (this.overlay) {
-      this.overlay.remove();
-      this.overlay = null;
-      this.input = null;
-      this.resultsList = null;
-      this.results = [];
-      this.commandResults = [];
-      this.selectedIndex = 0;
+      this.overlay.classList.remove('open');
+      const remove = () => {
+        this.overlay?.remove();
+        this.overlay = null;
+        this.input = null;
+        this.resultsList = null;
+        this.chipsContainer = null;
+        this.results = [];
+        this.commandResults = [];
+        this.selectedIndex = 0;
+        this.currentFlightCallsign = null;
+        this.flightSearchFired = false;
+      };
+      if (this.isMobile) {
+        this.closeTimeoutId = setTimeout(() => {
+          this.closeTimeoutId = null;
+          remove();
+        }, 300);
+      } else {
+        remove();
+      }
     }
   }
 
@@ -139,68 +199,142 @@ export class SearchModal {
 
   private createModal(): void {
     this.overlay = document.createElement('div');
-    this.overlay.className = 'search-overlay';
-    this.overlay.innerHTML = `
-      <div class="search-modal">
-        <div class="search-header">
-          <span class="search-icon">⌘</span>
-          <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
-          <kbd class="search-kbd">ESC</kbd>
-        </div>
-        <div class="search-results"></div>
-        <div class="search-footer">
-          <span><kbd>↑↓</kbd> ${t('modals.search.navigate')}</span>
-          <span><kbd>↵</kbd> ${t('modals.search.select')}</span>
-          <span><kbd>esc</kbd> ${t('modals.search.close')}</span>
-        </div>
-      </div>
-    `;
 
-    this.overlay.addEventListener('click', (e) => {
-      if (e.target === this.overlay) this.close();
-    });
+    if (this.isMobile) {
+      this.overlay.className = 'search-overlay search-mobile';
+      this.overlay.innerHTML = `
+        <div class="search-sheet">
+          <div class="search-sheet-handle"></div>
+          <div class="search-sheet-header">
+            <span class="search-sheet-icon">\u{1F50D}</span>
+            <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
+            <button class="search-sheet-cancel" aria-label="Close">\u00D7</button>
+          </div>
+          <div class="search-sheet-chips"></div>
+          <div class="search-results"></div>
+        </div>
+      `;
+
+      this.overlay.addEventListener('click', (e) => {
+        if (e.target === this.overlay) this.close();
+      });
+
+      this.overlay.querySelector('.search-sheet-cancel')?.addEventListener('click', () => this.close());
+
+      this.chipsContainer = this.overlay.querySelector('.search-sheet-chips');
+
+      this.container.appendChild(this.overlay);
+      requestAnimationFrame(() => this.overlay?.classList.add('open'));
+
+      const sheet = this.overlay.querySelector('.search-sheet') as HTMLElement | null;
+      if (sheet && window.visualViewport) {
+        const vv = window.visualViewport;
+        this.viewportHandler = () => {
+          if (!sheet.isConnected) return;
+          sheet.style.maxHeight = `${vv.height * 0.85}px`;
+        };
+        vv.addEventListener('resize', this.viewportHandler);
+      }
+    } else {
+      this.overlay.className = 'search-overlay';
+      this.overlay.innerHTML = `
+        <div class="search-modal">
+          <div class="search-header">
+            <span class="search-icon">\u2318</span>
+            <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
+            <kbd class="search-kbd">ESC</kbd>
+          </div>
+          <div class="search-results"></div>
+          <div class="search-footer">
+            <span><kbd>\u2191\u2193</kbd> ${t('modals.search.navigate')}</span>
+            <span><kbd>\u21B5</kbd> ${t('modals.search.select')}</span>
+            <span><kbd>esc</kbd> ${t('modals.search.close')}</span>
+          </div>
+        </div>
+      `;
+
+      this.overlay.addEventListener('click', (e) => {
+        if (e.target === this.overlay) this.close();
+      });
+
+      this.container.appendChild(this.overlay);
+    }
 
     this.input = this.overlay.querySelector('.search-input');
     this.resultsList = this.overlay.querySelector('.search-results');
 
     this.input?.addEventListener('input', () => this.handleSearch());
     this.input?.addEventListener('keydown', (e) => this.handleKeydown(e));
-
-    this.container.appendChild(this.overlay);
   }
 
   private matchCommands(query: string): CommandResult[] {
     if (query.length < 2) return [];
     const matched: CommandResult[] = [];
-    for (const cmd of COMMANDS) {
-      if (cmd.id.startsWith('panel:') && this.activePanelIds.size > 0) {
+    for (const cmd of getAllCommands()) {
+      if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
         if (!this.activePanelIds.has(panelId)) continue;
       }
-      for (const keyword of cmd.keywords) {
-        if (keyword.includes(query) || (keyword.length >= 3 && query.includes(keyword))) {
-          const isExact = keyword === query;
-          const isPrefix = keyword.startsWith(query);
-          matched.push({ command: cmd, score: isExact ? 3 : isPrefix ? 2 : 1 });
-          break;
+      const label = resolveCommandLabel(cmd).toLowerCase();
+      const allTerms = [...cmd.keywords, label];
+      let bestScore = 0;
+      for (const term of allTerms) {
+        if (term.includes(query) || (term.length >= 3 && query.includes(term))) {
+          const isExact = term === query;
+          const isPrefix = term.startsWith(query);
+          const score = isExact ? 3 : isPrefix ? 2 : 1;
+          if (score > bestScore) bestScore = score;
         }
+      }
+      if (bestScore > 0) {
+        matched.push({ command: cmd, score: bestScore });
       }
     }
     return matched.sort((a, b) => b.score - a.score).slice(0, MAX_COMMANDS);
   }
 
   private handleSearch(): void {
-    const query = this.input?.value.trim().toLowerCase() || '';
+    const rawInput = this.input?.value.toLowerCase() || '';
+    const query = rawInput.trim();
 
     if (!query) {
+      this.showingAllCommands = false;
       this.commandResults = [];
       this.showRecentOrEmpty();
+      if (this.isMobile) this.renderChips();
       return;
     }
 
-    this.commandResults = this.matchCommands(query);
+    this.onQueryChange?.(rawInput);
 
     const byType = new Map<SearchResultType, (SearchResult & { _score: number })[]>();
+
+    // "flight {callsign}" prefix: bypass command matching entirely — "flight ek36" contains
+    // substrings like "light" that spuriously match unrelated commands (e.g. "Switch to light mode").
+    this.currentFlightCallsign = null;
+    this.flightSearchFired = false;
+    if (rawInput.startsWith('flight ') && this.onFlightSearch) {
+      const callsign = rawInput.slice(7).trim().toUpperCase();
+      if (callsign.length > 0) {
+        this.currentFlightCallsign = callsign;
+        this.commandResults = [];
+        const flightSource = this.sources.find(s => s.type === 'flight');
+        if (flightSource?.items.length) {
+          byType.set('flight', flightSource.items
+            .filter(item => item.title.toUpperCase().includes(callsign))
+            .map(item => ({
+              type: 'flight' as SearchResultType,
+              id: item.id,
+              title: item.title,
+              subtitle: item.subtitle,
+              data: item.data,
+              _score: item.title.toUpperCase().startsWith(callsign) ? 2 : 1,
+            })) as (SearchResult & { _score: number })[]);
+        }
+      }
+    } else {
+      this.commandResults = this.matchCommands(query);
+    }
 
     for (const source of this.sources) {
       for (const item of source.items) {
@@ -225,29 +359,37 @@ export class SearchModal {
     }
 
     const priority: SearchResultType[] = [
+      'flight',
       'news', 'prediction', 'market', 'earthquake', 'outage',
       'conflict', 'hotspot', 'country',
       'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
       'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator'
     ];
 
+    const maxResults = this.isMobile ? 5 : MAX_RESULTS;
     this.results = [];
     for (const type of priority) {
       const matches = byType.get(type) || [];
       matches.sort((a, b) => b._score - a._score);
-      const limit = type === 'news' ? 6 : type === 'country' ? 4 : 3;
+      const limit = this.isMobile ? 2 : (type === 'news' ? 6 : type === 'country' ? 4 : 3);
       this.results.push(...matches.slice(0, limit));
-      if (this.results.length >= MAX_RESULTS) break;
+      if (this.results.length >= maxResults) break;
     }
-    this.results = this.results.slice(0, MAX_RESULTS);
+    this.results = this.results.slice(0, maxResults);
 
     trackSearchUsed(query.length, this.results.length + this.commandResults.length);
     this.selectedIndex = 0;
     this.renderResults();
+    if (this.isMobile) this.renderChips(query);
   }
 
   private showRecentOrEmpty(): void {
     this.results = [];
+
+    if (this.showingAllCommands) {
+      this.renderAllCommandsList();
+      return;
+    }
 
     if (this.recentSearches.length > 0) {
       this.renderRecent();
@@ -282,33 +424,39 @@ export class SearchModal {
         this.handleSearch();
       });
 
-      this.resultsList!.appendChild(item);
+      this.resultsList?.appendChild(item);
     });
+
+    this.appendSeeAllCommandsLink();
   }
 
   private renderEmpty(): void {
     if (!this.resultsList) return;
 
-    const tips: { icon: string; key: string; example: string }[] = [
-      { icon: '\u{1F30D}', key: 'commands.tips.map', example: 'iran' },
-      { icon: '\u{1F4CB}', key: 'commands.tips.panel', example: 'news' },
-      { icon: '\u{1F4C4}', key: 'commands.tips.brief', example: 'brief china' },
-      { icon: '\u{1F6E1}\uFE0F', key: 'commands.tips.layers', example: 'military layers' },
-      { icon: '\u23F1\uFE0F', key: 'commands.tips.time', example: '24h' },
-      { icon: '\u2699\uFE0F', key: 'commands.tips.settings', example: 'dark mode' },
+    const tips: { icon: string; key: string; exampleKey: string }[] = [
+      { icon: '\u{1F30D}', key: 'commands.tips.map', exampleKey: 'commands.tips.mapExample' },
+      { icon: '\u{1F4CB}', key: 'commands.tips.panel', exampleKey: 'commands.tips.panelExample' },
+      { icon: '\u{1F4C4}', key: 'commands.tips.brief', exampleKey: 'commands.tips.briefExample' },
+      { icon: '\u{1F6E1}\uFE0F', key: 'commands.tips.layers', exampleKey: 'commands.tips.layersExample' },
+      { icon: '\u23F1\uFE0F', key: 'commands.tips.time', exampleKey: 'commands.tips.timeExample' },
+      { icon: '\u2699\uFE0F', key: 'commands.tips.settings', exampleKey: 'commands.tips.settingsExample' },
     ];
+    if (this.sources.some(s => s.type === 'flight')) {
+      tips.push({ icon: '\u2708\uFE0F', key: 'commands.tips.flight', exampleKey: 'commands.tips.flightExample' });
+    }
 
-    const shuffled = tips.sort(() => Math.random() - 0.5).slice(0, 4);
+    const shuffled = shuffle(tips).slice(0, this.isMobile ? 2 : 4);
 
     let html = `<div class="search-section-header">${t('modals.search.empty')}</div>`;
     shuffled.forEach((tip, i) => {
+      const example = t(tip.exampleKey);
       html += `
-        <div class="search-result-item tip-item${i === 0 ? ' selected' : ''}" data-tip-example="${escapeHtml(tip.example)}">
+        <div class="search-result-item tip-item${i === 0 ? ' selected' : ''}" data-tip-example="${escapeHtml(example)}">
           <span class="search-result-icon">${tip.icon}</span>
           <div class="search-result-content">
             <div class="search-result-title">${escapeHtml(t(tip.key))}</div>
           </div>
-          <kbd class="search-tip-example">${escapeHtml(tip.example)}</kbd>
+          <kbd class="search-tip-example">${escapeHtml(example)}</kbd>
         </div>`;
     });
 
@@ -323,6 +471,93 @@ export class SearchModal {
         }
       });
     });
+
+    this.appendSeeAllCommandsLink();
+  }
+
+  private appendSeeAllCommandsLink(): void {
+    if (!this.resultsList) return;
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'search-all-commands-link';
+    link.textContent = t('modals.search.seeAllCommands');
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.showingAllCommands = true;
+      this.renderAllCommandsList();
+    });
+    const wrap = document.createElement('div');
+    wrap.className = 'search-all-commands-wrap';
+    wrap.appendChild(link);
+    this.resultsList.appendChild(wrap);
+  }
+
+  /** Renders the full command list by category. Commands are sourced from getAllCommands(); no separate list to maintain. */
+  private renderAllCommandsList(): void {
+    if (!this.resultsList) return;
+
+    const allCommands = getAllCommands();
+    const commands = allCommands.filter(cmd => {
+      if (cmd.id.startsWith('panel:')) {
+        const panelId = cmd.id.slice(6);
+        if (!this.activePanelIds.has(panelId)) return false;
+      }
+      return true;
+    });
+
+    const categoryOrder: Command['category'][] = ['navigate', 'layers', 'panels', 'view', 'actions', 'country'];
+    const byCategory = new Map<Command['category'], Command[]>();
+    for (const cat of categoryOrder) byCategory.set(cat, []);
+    for (const cmd of commands) {
+      const list = byCategory.get(cmd.category);
+      if (list) list.push(cmd);
+    }
+
+    let html = `
+      <div class="search-section-header search-command-list-back">
+        <a href="#" class="search-all-commands-back">${escapeHtml(t('modals.search.hideCommandList'))}</a>
+      </div>`;
+
+    for (const category of categoryOrder) {
+      const list = byCategory.get(category) || [];
+      if (list.length === 0) continue;
+      const first = list[0];
+      if (!first) continue;
+      const label = resolveCategoryLabel(first);
+      html += `<details class="search-command-category" open>`;
+      html += `<summary class="search-command-category-summary">${escapeHtml(label)}</summary>`;
+      html += `<div class="search-command-category-list">`;
+      for (const cmd of list) {
+        html += `
+          <div class="search-result-item command-item" data-command="${escapeHtml(cmd.id)}">
+            <span class="search-result-icon">${escapeHtml(cmd.icon)}</span>
+            <div class="search-result-content">
+              <div class="search-result-title">${escapeHtml(resolveCommandLabel(cmd))}</div>
+            </div>
+          </div>`;
+      }
+      html += `</div></details>`;
+    }
+
+    this.resultsList.innerHTML = html;
+
+    const backLink = this.resultsList.querySelector('.search-all-commands-back');
+    backLink?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.showingAllCommands = false;
+      this.showRecentOrEmpty();
+    });
+
+    this.resultsList.querySelectorAll('.search-command-category .command-item').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = (el as HTMLElement).dataset.command;
+        const command = getAllCommands().find(c => c.id === id);
+        if (command) {
+          this.onCommand?.(command);
+          this.close();
+        }
+      });
+    });
   }
 
   private get totalResultCount(): number {
@@ -333,6 +568,18 @@ export class SearchModal {
     if (!this.resultsList) return;
 
     if (this.commandResults.length === 0 && this.results.length === 0) {
+      if (this.currentFlightCallsign && this.onFlightSearch) {
+        if (this.flightSearchFired) {
+          this.resultsList.innerHTML = `
+            <div class="search-empty">
+              <div class="search-empty-icon">\u2708\uFE0F</div>
+              <div>${escapeHtml(t('modals.search.flightNotFound', { callsign: this.currentFlightCallsign }))}</div>
+            </div>`;
+        } else {
+          this.renderFlightSearchTrigger(this.currentFlightCallsign);
+        }
+        return;
+      }
       this.resultsList.innerHTML = `
         <div class="search-empty">
           <div class="search-empty-icon">\u2205</div>
@@ -367,13 +614,14 @@ export class SearchModal {
       financialcenter: '\u{1F4B0}',
       centralbank: '\u{1F3E6}',
       commodityhub: '\u{1F4E6}',
+      flight: '✈',
     };
 
     let html = '';
     let globalIndex = 0;
 
     if (this.commandResults.length > 0) {
-      html += '<div class="search-section-header">Commands</div>';
+      html += `<div class="search-section-header">${t('modals.search.commands')}</div>`;
       for (const { command } of this.commandResults) {
         html += `
           <div class="search-result-item command-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${command.id}">
@@ -386,7 +634,7 @@ export class SearchModal {
         globalIndex++;
       }
       if (this.results.length > 0) {
-        html += '<div class="search-section-header">Results</div>';
+        html += `<div class="search-section-header">${t('modals.search.results')}</div>`;
       }
     }
 
@@ -407,8 +655,71 @@ export class SearchModal {
 
     this.resultsList.querySelectorAll('.search-result-item').forEach((el) => {
       el.addEventListener('click', () => {
-        const index = parseInt((el as HTMLElement).dataset.index || '0');
+        const index = parseInt((el as HTMLElement).dataset.index || '0', 10);
         this.selectResult(index);
+      });
+    });
+  }
+
+  private renderFlightSearchTrigger(callsign: string): void {
+    if (!this.resultsList) return;
+    this.resultsList.innerHTML = `
+      <div class="search-result-item selected" data-flight-trigger="${escapeHtml(callsign)}">
+        <span class="search-result-icon">\u2708\uFE0F</span>
+        <div class="search-result-content">
+          <div class="search-result-title">Search live flight <strong>${escapeHtml(callsign)}</strong></div>
+          <div class="search-result-subtitle">${escapeHtml(t('modals.search.flightSearchHint'))}</div>
+        </div>
+        <span class="search-result-type">${escapeHtml(t('modals.search.types.flight'))}</span>
+      </div>`;
+    this.resultsList.querySelector('[data-flight-trigger]')?.addEventListener('click', () => {
+      this.triggerFlightSearch(callsign);
+    });
+  }
+
+  private triggerFlightSearch(callsign: string): void {
+    if (!this.onFlightSearch || !this.resultsList) return;
+    this.flightSearchFired = true;
+    this.resultsList.innerHTML = `
+      <div class="search-result-item">
+        <span class="search-result-icon">\u2708\uFE0F</span>
+        <div class="search-result-content">
+          <div class="search-result-title">Searching for <strong>${escapeHtml(callsign)}</strong>\u2026</div>
+        </div>
+      </div>`;
+    this.onFlightSearch(callsign);
+  }
+
+  private renderChips(query?: string): void {
+    if (!this.chipsContainer) return;
+    if (query && query.length >= 1) {
+      this.chipsContainer.innerHTML = '';
+      return;
+    }
+
+    const chips: { label: string; value: string }[] = [];
+    const commands = getAllCommands();
+    const navCmds = commands.filter(c => c.id.startsWith('country:'));
+    for (const cmd of navCmds.slice(0, 6)) {
+      chips.push({ label: cmd.label, value: cmd.label.toLowerCase() });
+    }
+    const actionCmds = commands.filter(c => c.category === 'actions' || c.category === 'view');
+    for (const cmd of actionCmds.slice(0, 4)) {
+      const label = resolveCommandLabel(cmd);
+      chips.push({ label, value: label.toLowerCase() });
+    }
+
+    this.chipsContainer.innerHTML = chips.map(c =>
+      `<button class="search-chip" data-value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</button>`
+    ).join('');
+
+    this.chipsContainer.querySelectorAll('.search-chip').forEach(el => {
+      el.addEventListener('click', () => {
+        const val = (el as HTMLElement).dataset.value || '';
+        if (this.input) {
+          this.input.value = val;
+          this.handleSearch();
+        }
       });
     });
   }
@@ -435,6 +746,10 @@ export class SearchModal {
         break;
       case 'Enter':
         e.preventDefault();
+        if (this.currentFlightCallsign && this.onFlightSearch && this.results.length === 0 && this.commandResults.length === 0) {
+          this.triggerFlightSearch(this.currentFlightCallsign);
+          return;
+        }
         this.selectResult(this.selectedIndex);
         break;
       case 'Escape':

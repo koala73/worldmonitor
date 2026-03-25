@@ -28,6 +28,7 @@ const VESSEL_STALE_TIME = 60 * 60 * 1000; // 1 hour - consider vessel stale
 // Tracking state
 let isTracking = false;
 let messageCount = 0;
+let historyCleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
 // Circuit breaker
 const breaker = createCircuitBreaker<{ vessels: MilitaryVessel[]; clusters: MilitaryVesselCluster[] }>({
@@ -35,6 +36,14 @@ const breaker = createCircuitBreaker<{ vessels: MilitaryVessel[]; clusters: Mili
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
   cacheTtlMs: 10 * 60 * 1000,
+  persistCache: true,
+  revivePersistedData: (data) => ({
+    ...data,
+    vessels: data.vessels.map((v: MilitaryVessel) => ({
+      ...v,
+      lastAisUpdate: v.lastAisUpdate instanceof Date ? v.lastAisUpdate : new Date(v.lastAisUpdate as unknown as string),
+    })),
+  }),
 });
 
 // Strategic chokepoints for naval monitoring
@@ -295,7 +304,7 @@ function getVesselTypeFromAis(shipType: number): MilitaryVesselType | undefined 
  */
 function getNearbyBase(lat: number, lon: number): string | undefined {
   for (const base of NAVAL_BASES) {
-    const distance = Math.sqrt(Math.pow(lat - base.lat, 2) + Math.pow(lon - base.lon, 2));
+    const distance = Math.sqrt((lat - base.lat) ** 2 + (lon - base.lon) ** 2);
     if (distance <= 0.5) { // Within ~50km
       return base.name;
     }
@@ -308,7 +317,7 @@ function getNearbyBase(lat: number, lon: number): string | undefined {
  */
 function getNearbyChokepoint(lat: number, lon: number): string | undefined {
   for (const chokepoint of NAVAL_CHOKEPOINTS) {
-    const distance = Math.sqrt(Math.pow(lat - chokepoint.lat, 2) + Math.pow(lon - chokepoint.lon, 2));
+    const distance = Math.sqrt((lat - chokepoint.lat) ** 2 + (lon - chokepoint.lon) ** 2);
     if (distance <= chokepoint.radius) {
       return chokepoint.name;
     }
@@ -450,7 +459,7 @@ function clusterVessels(vessels: MilitaryVessel[]): MilitaryVesselCluster[] {
   for (const hotspot of MILITARY_HOTSPOTS) {
     const nearbyVessels = vessels.filter((v) => {
       if (processed.has(v.id)) return false;
-      const distance = Math.sqrt(Math.pow(v.lat - hotspot.lat, 2) + Math.pow(v.lon - hotspot.lon, 2));
+      const distance = Math.sqrt((v.lat - hotspot.lat) ** 2 + (v.lon - hotspot.lon) ** 2);
       return distance <= hotspot.radius;
     });
 
@@ -489,7 +498,15 @@ function clusterVessels(vessels: MilitaryVessel[]): MilitaryVesselCluster[] {
 
 // Initialize cleanup interval
 if (typeof window !== 'undefined') {
-  setInterval(cleanup, HISTORY_CLEANUP_INTERVAL);
+  historyCleanupIntervalId = setInterval(cleanup, HISTORY_CLEANUP_INTERVAL);
+}
+
+/** Stop the periodic history cleanup (for teardown / testing). */
+export function stopVesselHistoryCleanup(): void {
+  if (historyCleanupIntervalId) {
+    clearInterval(historyCleanupIntervalId);
+    historyCleanupIntervalId = null;
+  }
 }
 
 /**
@@ -499,9 +516,11 @@ if (typeof window !== 'undefined') {
 export function initMilitaryVesselStream(): void {
   if (isTracking) return;
 
-  // Invalidate ALL caches when stream starts - fresh data should be read
+  // Invalidate in-memory caches when stream starts — real-time AIS data
+  // replaces them within seconds. Do NOT clear persistent storage here:
+  // a concurrent execute() may be hydrating from it to serve instant data.
   vesselCache = null;
-  breaker.clearCache();  // Clear circuit breaker's 5-minute cache too!
+  breaker.clearMemoryCache();
 
   // Register callback with shared AIS stream
   registerAisCallback(processAisPosition);
@@ -607,7 +626,7 @@ export function getVesselByMmsi(mmsi: string): MilitaryVessel | undefined {
 export function getVesselsNearLocation(lat: number, lon: number, radiusDeg: number = 2): MilitaryVessel[] {
   const result: MilitaryVessel[] = [];
   for (const vessel of trackedVessels.values()) {
-    const distance = Math.sqrt(Math.pow(vessel.lat - lat, 2) + Math.pow(vessel.lon - lon, 2));
+    const distance = Math.sqrt((vessel.lat - lat) ** 2 + (vessel.lon - lon) ** 2);
     if (distance <= radiusDeg) {
       result.push(vessel);
     }

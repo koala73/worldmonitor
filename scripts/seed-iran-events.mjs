@@ -1,227 +1,242 @@
 #!/usr/bin/env node
 
-import { readFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed } from './_seed-utils.mjs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+loadEnvFile(import.meta.url);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const REDIS_KEY = 'conflict:iran-events:v1';
+const CANONICAL_KEY = 'conflict:iran-events:v1';
 
 const LOCATION_COORDS = {
-  'tehran': { lat: 35.6892, lon: 51.3890, name: 'Tehran, Iran' },
-  'isfahan': { lat: 32.6546, lon: 51.6680, name: 'Isfahan, Iran' },
-  'shiraz': { lat: 29.5918, lon: 52.5837, name: 'Shiraz, Iran' },
-  'bushehr': { lat: 28.9684, lon: 50.8385, name: 'Bushehr, Iran' },
-  'karaj': { lat: 35.8400, lon: 50.9391, name: 'Karaj, Iran' },
-  'zanjan': { lat: 36.6736, lon: 48.4787, name: 'Zanjan, Iran' },
-  'sanandaj': { lat: 35.3219, lon: 46.9862, name: 'Sanandaj, Iran' },
-  'chabahar': { lat: 25.2919, lon: 60.6430, name: 'Chabahar, Iran' },
-  'marand': { lat: 38.4319, lon: 45.7742, name: 'Marand, Iran' },
-  'minab': { lat: 27.1061, lon: 57.0801, name: 'Minab, Iran' },
-  'kish': { lat: 26.5396, lon: 53.9801, name: 'Kish Island, Iran' },
-  'tel aviv': { lat: 32.0853, lon: 34.7818, name: 'Tel Aviv, Israel' },
-  'haifa': { lat: 32.7940, lon: 34.9896, name: 'Haifa, Israel' },
-  'israel': { lat: 31.7683, lon: 35.2137, name: 'Israel' },
-  'sharon': { lat: 32.3500, lon: 34.8833, name: 'Sharon, Israel' },
-  'dubai': { lat: 25.2048, lon: 55.2708, name: 'Dubai, UAE' },
-  'abu dhabi': { lat: 24.4539, lon: 54.3773, name: 'Abu Dhabi, UAE' },
-  'palm jumeirah': { lat: 25.1124, lon: 55.1390, name: 'Palm Jumeirah, Dubai' },
-  'burj khalifa': { lat: 25.1972, lon: 55.2744, name: 'Burj Khalifa, Dubai' },
-  'doha': { lat: 25.2854, lon: 51.5310, name: 'Doha, Qatar' },
-  'qatar': { lat: 25.3548, lon: 51.1839, name: 'Qatar' },
-  'bahrain': { lat: 26.0667, lon: 50.5577, name: 'Bahrain' },
-  'manama': { lat: 26.2285, lon: 50.5860, name: 'Manama, Bahrain' },
-  'riyadh': { lat: 24.7136, lon: 46.6753, name: 'Riyadh, Saudi Arabia' },
-  'saudi': { lat: 24.7136, lon: 46.6753, name: 'Saudi Arabia' },
-  'kuwait': { lat: 29.3759, lon: 47.9774, name: 'Kuwait' },
-  'ali al salem': { lat: 29.3467, lon: 47.5211, name: 'Ali Al Salem Air Base, Kuwait' },
-  'erbil': { lat: 36.1912, lon: 44.0119, name: 'Erbil, Iraq' },
-  'baghdad': { lat: 33.3152, lon: 44.3661, name: 'Baghdad, Iraq' },
-  'jurf al-sakhr': { lat: 32.8500, lon: 44.1000, name: 'Jurf al-Sakhr, Iraq' },
-  'iraq': { lat: 33.3152, lon: 44.3661, name: 'Iraq' },
-  'jordan': { lat: 31.9454, lon: 35.9284, name: 'Jordan' },
-  'daraa': { lat: 32.6189, lon: 36.1021, name: 'Daraa, Syria' },
-  'syria': { lat: 34.8021, lon: 38.9968, name: 'Syria' },
-  'lebanon': { lat: 33.8547, lon: 35.8623, name: 'Lebanon' },
-  'hormuz': { lat: 26.5944, lon: 56.4667, name: 'Strait of Hormuz' },
-  'iran': { lat: 32.4279, lon: 53.6880, name: 'Iran' },
-  'uae': { lat: 24.4539, lon: 54.3773, name: 'UAE' },
-  'united arab emirates': { lat: 24.4539, lon: 54.3773, name: 'UAE' },
-  'oman': { lat: 23.5880, lon: 58.3829, name: 'Oman' },
-  'egypt': { lat: 30.0444, lon: 31.2357, name: 'Egypt' },
-  'turkey': { lat: 39.9334, lon: 32.8597, name: 'Turkey' },
-  'china': { lat: 39.9042, lon: 116.4074, name: 'China' },
-  'pakistan': { lat: 33.6844, lon: 73.0479, name: 'Pakistan' },
-  'afghanistan': { lat: 34.5553, lon: 69.2075, name: 'Afghanistan' },
-  'kurdistan': { lat: 36.1912, lon: 44.0119, name: 'Kurdistan, Iraq' },
-  'duhok': { lat: 36.8669, lon: 42.9503, name: 'Duhok, Iraq' },
-  'hawler': { lat: 36.1912, lon: 44.0119, name: 'Hawler (Erbil), Iraq' },
-  'beersheba': { lat: 31.2518, lon: 34.7913, name: 'Beersheba, Israel' },
-  "be'er sheva": { lat: 31.2518, lon: 34.7913, name: "Be'er Sheva, Israel" },
-  'beer sheva': { lat: 31.2518, lon: 34.7913, name: "Be'er Sheva, Israel" },
-  'beit shemesh': { lat: 31.7465, lon: 34.9866, name: 'Beit Shemesh, Israel' },
-  'negev': { lat: 30.8500, lon: 34.7818, name: 'Negev, Israel' },
-  'cyprus': { lat: 34.7071, lon: 33.0226, name: 'Cyprus' },
-  'akrotiri': { lat: 34.5839, lon: 32.9568, name: 'Akrotiri, Cyprus' },
-  'dhekelia': { lat: 34.9833, lon: 33.7167, name: 'Dhekelia, Cyprus' },
-  'paphos': { lat: 34.7720, lon: 32.4297, name: 'Paphos, Cyprus' },
-  'bandar abbas': { lat: 27.1865, lon: 56.2808, name: 'Bandar Abbas, Iran' },
-  'kerman': { lat: 30.2839, lon: 57.0834, name: 'Kerman, Iran' },
-  'lorestan': { lat: 33.4963, lon: 48.3558, name: 'Lorestan, Iran' },
-  'mahabad': { lat: 36.7631, lon: 45.7222, name: 'Mahabad, Iran' },
-  'shahinshahr': { lat: 32.8631, lon: 51.5505, name: 'Shahinshahr, Iran' },
-  'fars': { lat: 29.1043, lon: 53.0450, name: 'Fars Province, Iran' },
-  'natanz': { lat: 33.5131, lon: 51.9164, name: 'Natanz, Iran' },
-  'beirut': { lat: 33.8938, lon: 35.5018, name: 'Beirut, Lebanon' },
-  'baalbek': { lat: 34.0047, lon: 36.2110, name: 'Baalbek, Lebanon' },
-  'ras tanura': { lat: 26.6444, lon: 50.0555, name: 'Ras Tanura, Saudi Arabia' },
-  'aramco': { lat: 26.3927, lon: 50.0993, name: 'Aramco, Saudi Arabia' },
-  'ras al khaimah': { lat: 25.7895, lon: 55.9432, name: 'Ras Al Khaimah, UAE' },
-  'muscat': { lat: 23.5880, lon: 58.3829, name: 'Muscat, Oman' },
-  'ras laffan': { lat: 25.9170, lon: 51.5360, name: 'Ras Laffan, Qatar' },
-  'quneitra': { lat: 33.1260, lon: 35.8240, name: 'Quneitra, Syria' },
+  'tehran':        { lat: 35.6892, lon: 51.3890 },
+  'isfahan':       { lat: 32.6546, lon: 51.6680 },
+  'shiraz':        { lat: 29.5918, lon: 52.5837 },
+  'mashhad':       { lat: 36.2605, lon: 59.6168 },
+  'tabriz':        { lat: 38.0800, lon: 46.2919 },
+  'ahvaz':         { lat: 31.3183, lon: 48.6706 },
+  'kermanshah':    { lat: 34.3142, lon: 47.0650 },
+  'urmia':         { lat: 37.5527, lon: 45.0761 },
+  'bushehr':       { lat: 28.9234, lon: 50.8203 },
+  'bandar abbas':  { lat: 27.1865, lon: 56.2808 },
+  'erbil':         { lat: 36.1912, lon: 44.0119 },
+  'baghdad':       { lat: 33.3152, lon: 44.3661 },
+  'basra':         { lat: 30.5085, lon: 47.7804 },
+  'mosul':         { lat: 36.3350, lon: 43.1189 },
+  'tel aviv':      { lat: 32.0853, lon: 34.7818 },
+  'israel':        { lat: 31.7683, lon: 35.2137 },
+  'negev':         { lat: 30.8, lon: 34.8 },
+  'manama':        { lat: 26.2285, lon: 50.5860 },
+  'bahrain':       { lat: 26.0667, lon: 50.5577 },
+  'kuwait':        { lat: 29.3759, lon: 47.9774 },
+  'dubai':         { lat: 25.2048, lon: 55.2708 },
+  'abu dhabi':     { lat: 24.4539, lon: 54.3773 },
+  'fujairah':      { lat: 25.1288, lon: 56.3265 },
+  'qatar':         { lat: 25.2854, lon: 51.5310 },
+  'doha':          { lat: 25.2854, lon: 51.5310 },
+  'jordan':        { lat: 31.9454, lon: 35.9284 },
+  'irbid':         { lat: 32.5560, lon: 35.8500 },
+  'syria':         { lat: 34.8021, lon: 38.9968 },
+  'daraa':         { lat: 32.6189, lon: 36.1021 },
+  'cyprus':        { lat: 34.7071, lon: 33.0226 },
+  'akrotiri':      { lat: 34.5839, lon: 32.9879 },
+  'hormuz':        { lat: 27.0, lon: 56.5 },
+  'strait of hormuz': { lat: 26.5, lon: 56.3 },
+  'parchin':       { lat: 35.5167, lon: 51.7667 },
+  'mehrabad':      { lat: 35.6892, lon: 51.3134 },
+  'paveh':         { lat: 35.0442, lon: 46.3558 },
+  'poldokhtar':    { lat: 33.1517, lon: 47.7133 },
+  'azadi':         { lat: 35.6997, lon: 51.3380 },
+  'kohak':         { lat: 35.6000, lon: 51.5000 },
+  'zibashir':      { lat: 29.55, lon: 52.55 },
+  'jam':           { lat: 27.82, lon: 52.35 },
+  'london':        { lat: 51.5074, lon: -0.1278 },
+  'azerbaijan':    { lat: 40.4093, lon: 49.8671 },
+  'baku':          { lat: 40.4093, lon: 49.8671 },
+  'gibraltar':     { lat: 36.1408, lon: -5.3536 },
+  'iran':          { lat: 32.4279, lon: 53.6880 },
+  'iraq':          { lat: 33.2232, lon: 43.6793 },
+  'saudi':         { lat: 24.7136, lon: 46.6753 },
+  'uae':           { lat: 24.4539, lon: 54.3773 },
+  'al udeid':      { lat: 25.1173, lon: 51.3150 },
+  'jomhouri':      { lat: 35.6850, lon: 51.4050 },
+  'jurf al-sakhar': { lat: 32.9500, lon: 44.1000 },
+  'haji omeran':   { lat: 36.6500, lon: 45.0500 },
+  'nineveh':       { lat: 36.3500, lon: 43.1500 },
+  'rashidiya':     { lat: 36.4000, lon: 43.1000 },
+  'gaza':          { lat: 31.3547, lon: 34.3088 },
+  'riyadh':        { lat: 24.7136, lon: 46.6753 },
+  'sulaimaniyah':  { lat: 35.5613, lon: 45.4306 },
+  'sulaimani':     { lat: 35.5613, lon: 45.4306 },
+  'haifa':         { lat: 32.7940, lon: 34.9896 },
+  'karaj':         { lat: 35.8400, lon: 50.9391 },
+  'shahran':       { lat: 35.7900, lon: 51.2900 },
+  'kouhak':        { lat: 35.6200, lon: 51.4800 },
+  'hamadan':       { lat: 34.7988, lon: 48.5146 },
+  'hamedan':       { lat: 34.7988, lon: 48.5146 },
+  'yazd':          { lat: 31.8974, lon: 54.3569 },
+  'kish':          { lat: 26.5400, lon: 53.9800 },
+  'qazvin':        { lat: 36.2688, lon: 50.0041 },
+  'najafabad':     { lat: 32.6340, lon: 51.3670 },
+  'malayer':       { lat: 34.2968, lon: 48.8234 },
+  'mehran':        { lat: 33.1222, lon: 46.1646 },
+  'aqaba':         { lat: 29.5267, lon: 35.0078 },
+  'eilat':         { lat: 29.5577, lon: 34.9519 },
+  'choman':        { lat: 36.6269, lon: 44.8856 },
+  'baqer shahr':   { lat: 35.5400, lon: 51.3900 },
+  'jubail':        { lat: 27.0046, lon: 49.6225 },
+  'shaybah':       { lat: 22.5200, lon: 54.0000 },
+  'al dhafra':     { lat: 24.2500, lon: 54.5500 },
+  'juffair':       { lat: 26.2167, lon: 50.6000 },
+  'qeshm':         { lat: 26.9500, lon: 56.2700 },
+  'pakdasht':      { lat: 35.4747, lon: 51.6856 },
+  'tasluja':       { lat: 35.5100, lon: 45.3700 },
+  'al-kharj':      { lat: 24.1500, lon: 47.3100 },
+  'petah tikva':   { lat: 32.0841, lon: 34.8878 },
+  'beersheba':     { lat: 31.2518, lon: 34.7913 },
+  'oman':          { lat: 23.5880, lon: 58.3829 },
+  'oslo':          { lat: 59.9139, lon: 10.7522 },
+  'norway':        { lat: 59.9139, lon: 10.7522 },
+  'aghdasiyeh':    { lat: 35.7900, lon: 51.4500 },
+  'rey':           { lat: 35.5959, lon: 51.4350 },
+  'beirut':        { lat: 33.8938, lon: 35.5018 },
+  'azraq':         { lat: 31.8300, lon: 36.8300 },
+  'yehud':         { lat: 32.0333, lon: 34.8833 },
+  'sitra':         { lat: 26.1547, lon: 50.6028 },
+  'sanandaj':      { lat: 35.3219, lon: 46.9862 },
+  'ma\'ameer':     { lat: 26.0500, lon: 50.5200 },
+  'northern cyprus': { lat: 35.1856, lon: 33.3823 },
+  'borujerd':      { lat: 33.8973, lon: 48.7516 },
+  'lamerd':        { lat: 27.3373, lon: 53.1831 },
+  'chabahar':      { lat: 25.2919, lon: 60.6430 },
+  'shahrekord':    { lat: 32.3256, lon: 50.8644 },
+  'parand':        { lat: 35.4870, lon: 51.0050 },
+  'rabat karim':   { lat: 35.4700, lon: 51.0700 },
+  'shahriar':      { lat: 35.6569, lon: 51.0592 },
+  'punak':         { lat: 35.7600, lon: 51.3600 },
+  'bonab':         { lat: 37.3404, lon: 46.0561 },
+  'ghaniabad':     { lat: 35.4500, lon: 51.6500 },
+  'beit shemesh':  { lat: 31.7469, lon: 34.9876 },
+  'bnei brak':     { lat: 32.0833, lon: 34.8333 },
+  'quneitra':      { lat: 33.1260, lon: 35.8240 },
+  'khan arnabeh':  { lat: 33.1450, lon: 35.8600 },
+  'ruwais':        { lat: 24.1100, lon: 52.7300 },
+  'mehrshahr':     { lat: 35.8300, lon: 50.9700 },
+  'qaim':          { lat: 34.3800, lon: 41.0400 },
+  'prince sultan': { lat: 24.0625, lon: 47.5808 },
+  'ramat david':   { lat: 32.6650, lon: 35.1792 },
+  'vietnam':       { lat: 14.0583, lon: 108.2772 },
+  'south korea':   { lat: 35.9078, lon: 127.7669 },
+  'ilam':          { lat: 33.6374, lon: 46.4227 },
+  'kerman':        { lat: 30.2839, lon: 57.0834 },
+  'lorestan':      { lat: 33.4941, lon: 48.3530 },
+  'jerusalem':     { lat: 31.7683, lon: 35.2137 },
+  'fardis':        { lat: 35.7230, lon: 50.9875 },
+  'marivan':       { lat: 35.5269, lon: 46.1761 },
+  'salalah':       { lat: 17.0151, lon: 54.0924 },
+  'palmachim':     { lat: 31.8970, lon: 34.7000 },
+  'umm qasr':      { lat: 30.0362, lon: 47.9298 },
+  'al-siba':       { lat: 29.8700, lon: 48.6100 },
+  'taleghan':      { lat: 36.1700, lon: 50.7600 },
+  'persian gulf':  { lat: 27.0000, lon: 51.5000 },
+  'eastern province': { lat: 26.4207, lon: 50.0888 },
+  'empty quarter': { lat: 22.5200, lon: 54.0000 },
+  'ovadia':        { lat: 31.4700, lon: 34.5300 },
+  'shin bet':      { lat: 31.7683, lon: 35.2137 },
+  'kharg':         { lat: 29.2635, lon: 50.3273 },
+  'qom':           { lat: 34.6401, lon: 50.8764 },
+  'andisheh':      { lat: 35.7050, lon: 51.0000 },
+  'ankara':        { lat: 39.9334, lon: 32.8597 },
+  'minab':         { lat: 27.1452, lon: 57.0812 },
+  'asaluyeh':      { lat: 27.4834, lon: 52.6121 },
+  'south pars':    { lat: 27.5000, lon: 52.5000 },
+  'al-ahmadi':     { lat: 29.0769, lon: 48.0839 },
+  'mina al-ahmadi': { lat: 29.0769, lon: 48.0839 },
+  'mina abdullah': { lat: 28.9600, lon: 48.1600 },
 };
 
-const CATEGORY_SEVERITY = {
-  'cat1': 'critical',
-  'cat2': 'medium',
-  'cat5': 'low',
-  'cat6': 'high',
-  'cat7': 'medium',
-  'cat9': 'low',
-  'cat10': 'high',
-  'cat11': 'high',
+const CATEGORY_MAP = {
+  cat1: 'military',
+  cat2: 'international',
+  cat6: 'political',
+  cat7: 'civil',
+  cat9: 'intelligence',
+  cat10: 'airstrike',
+  cat11: 'defense',
 };
 
-function geocodeFromTitle(title) {
+function geolocate(title) {
   const lower = title.toLowerCase();
-  for (const [keyword, coords] of Object.entries(LOCATION_COORDS)) {
-    if (lower.includes(keyword)) {
-      return coords;
-    }
+  for (const [name, coords] of Object.entries(LOCATION_COORDS)) {
+    if (lower.includes(name)) return { ...coords, locationName: name };
   }
-  return { lat: 32.4279, lon: 53.6880, name: 'Iran' };
+  return { lat: 32.4279, lon: 53.6880, locationName: 'Iran' };
 }
 
-function loadEnvFile() {
-  // Try worktree first, then main repo
-  let envPath = join(__dirname, '..', '.env.local');
-  if (!existsSync(envPath)) {
-    envPath = join('/Users/eliehabib/Documents/GitHub/worldmonitor', '.env.local');
-  }
-  if (!existsSync(envPath)) return;
-  const lines = readFileSync(envPath, 'utf8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    let val = trimmed.slice(eqIdx + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    if (!process.env[key]) {
-      process.env[key] = val;
-    }
-  }
+function categorizeSeverity(title) {
+  const lower = title.toLowerCase();
+  if (/killed|dead|casualties|death toll|wounded/.test(lower)) return 'critical';
+  if (/airstrike|bombing|missile|explosion|struck|destroyed/.test(lower)) return 'high';
+  if (/intercept|defense|sirens|alert/.test(lower)) return 'elevated';
+  return 'moderate';
 }
 
-function maskToken(token) {
-  if (!token || token.length < 8) return '***';
-  return token.slice(0, 4) + '***' + token.slice(-4);
+function parseRelativeTime(timeStr) {
+  const now = Date.now();
+  const match = timeStr.match(/(\d+)\s+hours?\s+ago/);
+  if (match) return now - parseInt(match[1], 10) * 3600_000;
+  const minMatch = timeStr.match(/(\d+)\s+min/);
+  if (minMatch) return now - parseInt(minMatch[1], 10) * 60_000;
+  if (/a day ago/.test(timeStr)) return now - 86400_000;
+  const dayMatch = timeStr.match(/(\d+)\s+days?\s+ago/);
+  if (dayMatch) return now - parseInt(dayMatch[1], 10) * 86400_000;
+  return now;
 }
 
-async function main() {
-  loadEnvFile();
-
-  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-
-  if (!redisUrl || !redisToken) {
-    console.error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
-    process.exit(1);
-  }
-
-  const dataPath = join(__dirname, 'data', 'iran-events-latest.json');
-  if (!existsSync(dataPath)) {
-    console.error(`Data file not found: ${dataPath}`);
-    process.exit(1);
-  }
+async function fetchIranEvents() {
+  const dataPath = process.argv[2] || join(__dirname, 'data', 'iran-events-latest.json');
+  console.log(`  Reading from: ${dataPath}`);
 
   const raw = JSON.parse(readFileSync(dataPath, 'utf8'));
-  const filtered = raw.filter(e => e.id && e.title);
+  const events = raw.filter(e => e.id && e.title);
 
-  console.log(`=== Iran Events Import ===`);
-  console.log(`  Redis:     ${redisUrl}`);
-  console.log(`  Token:     ${maskToken(redisToken)}`);
-  console.log(`  Raw:       ${raw.length} entries`);
-  console.log(`  Valid:     ${filtered.length} entries (after filtering empty)`);
-  console.log();
+  console.log(`  Raw events: ${events.length}`);
 
-  const events = filtered.map(e => {
-    const geo = geocodeFromTitle(e.title);
+  const mapped = events.map(e => {
+    const geo = geolocate(e.title);
+    const cat = CATEGORY_MAP[e.category] || 'general';
     return {
       id: e.id,
-      title: e.title,
-      category: e.category || 'cat1',
+      title: e.title.slice(0, 500),
+      category: cat,
       sourceUrl: e.link || '',
       latitude: geo.lat,
       longitude: geo.lon,
-      locationName: geo.name,
-      timestamp: Date.now(),
-      severity: CATEGORY_SEVERITY[e.category] || 'medium',
+      locationName: geo.locationName,
+      timestamp: parseRelativeTime(e.time || ''),
+      severity: categorizeSeverity(e.title),
     };
   });
 
-  const payload = {
-    events,
+  mapped.sort((a, b) => b.timestamp - a.timestamp);
+
+  return {
+    events: mapped,
     scrapedAt: Date.now(),
   };
-
-  console.log(`  Mapped ${events.length} events with geocoding`);
-  console.log(`  Sample: ${events[0]?.title?.slice(0, 60)}... → ${events[0]?.locationName}`);
-  console.log();
-
-  const body = JSON.stringify(['SET', REDIS_KEY, JSON.stringify(payload)]);
-  const resp = await fetch(`${redisUrl}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${redisToken}`,
-      'Content-Type': 'application/json',
-    },
-    body,
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    console.error(`Redis SET failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
-    process.exit(1);
-  }
-
-  const result = await resp.json();
-  console.log(`  Redis SET result:`, result);
-
-  // Verify
-  const getResp = await fetch(`${redisUrl}/get/${encodeURIComponent(REDIS_KEY)}`, {
-    headers: { Authorization: `Bearer ${redisToken}` },
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (getResp.ok) {
-    const getData = await getResp.json();
-    if (getData.result) {
-      const parsed = JSON.parse(getData.result);
-      console.log(`\n  Verified: ${parsed.events?.length} events in Redis`);
-      console.log(`  scrapedAt: ${new Date(parsed.scrapedAt).toISOString()}`);
-    }
-  }
-
-  console.log('\n=== Done ===');
 }
 
-main().catch(err => {
-  console.error('FATAL:', err.message || err);
-  process.exit(1);
+function validate(data) {
+  return Array.isArray(data?.events) && data.events.length >= 1;
+}
+
+runSeed('conflict', 'iran-events', CANONICAL_KEY, fetchIranEvents, {
+  validateFn: validate,
+  ttlSeconds: 172800,
+  sourceVersion: 'liveuamap-manual-v1',
+}).catch((err) => {
+  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+  process.exit(0);
 });

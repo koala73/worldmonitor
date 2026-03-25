@@ -36,6 +36,7 @@ export interface GetTariffTrendsResponse {
   datapoints: TariffDataPoint[];
   fetchedAt: string;
   upstreamUnavailable: boolean;
+  effectiveTariffRate?: EffectiveTariffRate;
 }
 
 export interface TariffDataPoint {
@@ -46,6 +47,14 @@ export interface TariffDataPoint {
   tariffRate: number;
   boundRate: number;
   indicatorCode: string;
+}
+
+export interface EffectiveTariffRate {
+  sourceName: string;
+  sourceUrl: string;
+  observationPeriod: string;
+  updatedAt: string;
+  tariffRate: number;
 }
 
 export interface GetTradeFlowsRequest {
@@ -93,6 +102,50 @@ export interface TradeBarrier {
   status: string;
   dateDistributed: string;
   sourceUrl: string;
+}
+
+export interface GetCustomsRevenueRequest {
+}
+
+export interface GetCustomsRevenueResponse {
+  months: CustomsRevenueMonth[];
+  fetchedAt: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface CustomsRevenueMonth {
+  recordDate: string;
+  fiscalYear: number;
+  calendarYear: number;
+  calendarMonth: number;
+  monthlyAmountBillions: number;
+  fytdAmountBillions: number;
+}
+
+export interface ListComtradeFlowsRequest {
+  reporterCode: string;
+  cmdCode: string;
+  anomaliesOnly: boolean;
+}
+
+export interface ListComtradeFlowsResponse {
+  flows: ComtradeFlowRecord[];
+  fetchedAt: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface ComtradeFlowRecord {
+  reporterCode: string;
+  reporterName: string;
+  partnerCode: string;
+  partnerName: string;
+  cmdCode: string;
+  cmdDesc: string;
+  year: number;
+  tradeValueUsd: number;
+  netWeightKg: number;
+  yoyChange: number;
+  isAnomaly: boolean;
 }
 
 export interface FieldViolation {
@@ -249,6 +302,56 @@ export class TradeServiceClient {
     }
 
     return await resp.json() as GetTradeBarriersResponse;
+  }
+
+  async getCustomsRevenue(req: GetCustomsRevenueRequest, options?: TradeServiceCallOptions): Promise<GetCustomsRevenueResponse> {
+    let path = "/api/trade/v1/get-customs-revenue";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCustomsRevenueResponse;
+  }
+
+  async listComtradeFlows(req: ListComtradeFlowsRequest, options?: TradeServiceCallOptions): Promise<ListComtradeFlowsResponse> {
+    let path = "/api/trade/v1/list-comtrade-flows";
+    const params = new URLSearchParams();
+    if (req.reporterCode != null && req.reporterCode !== "") params.set("reporter_code", String(req.reporterCode));
+    if (req.cmdCode != null && req.cmdCode !== "") params.set("cmd_code", String(req.cmdCode));
+    if (req.anomaliesOnly) params.set("anomalies_only", String(req.anomaliesOnly));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListComtradeFlowsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

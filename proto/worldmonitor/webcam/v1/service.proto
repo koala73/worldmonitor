@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package worldmonitor.webcam.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/webcam/v1/list_webcams.proto";
+import "worldmonitor/webcam/v1/get_webcam_image.proto";
+
+service WebcamService {
+  option (sebuf.http.service_config) = {base_path: "/api/webcam/v1"};
+
+  rpc ListWebcams(ListWebcamsRequest) returns (ListWebcamsResponse) {
+    option (sebuf.http.config) = {path: "/list-webcams", method: HTTP_METHOD_GET};
+  }
+  rpc GetWebcamImage(GetWebcamImageRequest) returns (GetWebcamImageResponse) {
+    option (sebuf.http.config) = {path: "/get-webcam-image", method: HTTP_METHOD_GET};
+  }
+}

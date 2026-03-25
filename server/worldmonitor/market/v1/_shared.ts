@@ -1,7 +1,12 @@
 /**
  * Shared helpers, types, and constants for the market service handler RPCs.
  */
-import { CHROME_UA, yahooGate } from '../../../_shared/constants';
+import { CHROME_UA, finnhubGate, yahooGate } from '../../../_shared/constants';
+import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+export { getRelayBaseUrl, getRelayHeaders };
+import cryptoConfig from '../../../../shared/crypto.json';
+import stablecoinConfig from '../../../../shared/stablecoins.json';
+export { parseStringArray } from '../../../_shared/parse-string-array';
 
 // ========================================================================
 // Constants
@@ -9,21 +14,28 @@ import { CHROME_UA, yahooGate } from '../../../_shared/constants';
 
 export const UPSTREAM_TIMEOUT_MS = 10_000;
 
+export function sanitizeSymbol(raw: string): string {
+  return raw.trim().replace(/\s+/g, '').slice(0, 32).toUpperCase();
+}
+
 export async function fetchYahooQuotesBatch(
   symbols: string[],
 ): Promise<{ results: Map<string, { price: number; change: number; sparkline: number[] }>; rateLimited: boolean }> {
   const results = new Map<string, { price: number; change: number; sparkline: number[] }>();
   let rateLimitHits = 0;
+  let consecutiveFails = 0;
   for (let i = 0; i < symbols.length; i++) {
     const q = await fetchYahooQuote(symbols[i]!);
     if (q) {
       results.set(symbols[i]!, q);
+      consecutiveFails = 0;
     } else {
       rateLimitHits++;
+      consecutiveFails++;
     }
-    if (rateLimitHits >= 3 && results.size === 0) break;
+    if (consecutiveFails >= 5) break;
   }
-  return { results, rateLimited: rateLimitHits >= 3 && results.size === 0 };
+  return { results, rateLimited: rateLimitHits > symbols.length / 2 };
 }
 
 // Yahoo-only symbols: indices and futures not on Finnhub free tier
@@ -32,13 +44,7 @@ export const YAHOO_ONLY_SYMBOLS = new Set([
   'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F',
 ]);
 
-// Known crypto IDs and their metadata
-export const CRYPTO_META: Record<string, { name: string; symbol: string }> = {
-  bitcoin: { name: 'Bitcoin', symbol: 'BTC' },
-  ethereum: { name: 'Ethereum', symbol: 'ETH' },
-  solana: { name: 'Solana', symbol: 'SOL' },
-  ripple: { name: 'XRP', symbol: 'XRP' },
-};
+export const CRYPTO_META: Record<string, { name: string; symbol: string }> = cryptoConfig.meta;
 
 // ========================================================================
 // Types
@@ -64,6 +70,13 @@ export interface CoinGeckoMarketItem {
   current_price: number;
   price_change_percentage_24h: number;
   sparkline_in_7d?: { price: number[] };
+  // Extended fields (present from both CoinGecko and CoinPaprika fallback)
+  price_change_percentage_7d_in_currency?: number;
+  market_cap?: number;
+  total_volume?: number;
+  symbol?: string;
+  name?: string;
+  image?: string;
 }
 
 // ========================================================================
@@ -75,18 +88,26 @@ export async function fetchFinnhubQuote(
   apiKey: string,
 ): Promise<{ symbol: string; price: number; changePercent: number } | null> {
   try {
+    await finnhubGate();
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
     const resp = await fetch(url, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'X-Finnhub-Token': apiKey },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.warn(`[Finnhub] ${symbol} HTTP ${resp.status}`);
+      return null;
+    }
 
     const data = await resp.json() as { c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; t: number };
-    if (data.c === 0 && data.h === 0 && data.l === 0) return null;
+    if (data.c === 0 && data.h === 0 && data.l === 0) {
+      console.warn(`[Finnhub] ${symbol} returned zeros (market closed or invalid)`);
+      return null;
+    }
 
     return { symbol, price: data.c, changePercent: data.dp };
-  } catch {
+  } catch (err) {
+    console.warn(`[Finnhub] ${symbol} error:`, (err as Error).message);
     return null;
   }
 }
@@ -123,34 +144,63 @@ export async function fetchFinnhubQuote(
 //   5. get-macro-signals.ts needs chart data (1y range) — use /stable/historical-price-eod/light
 // ========================================================================
 
+function parseYahooChartResponse(data: YahooChartResponse): { price: number; change: number; sparkline: number[] } | null {
+  const result = data.chart?.result?.[0];
+  const meta = result?.meta;
+  if (!meta) return null;
+
+  const price = meta.regularMarketPrice;
+  const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+  const change = ((price - prevClose) / prevClose) * 100;
+
+  const closes = result.indicators?.quote?.[0]?.close;
+  const sparkline = closes?.filter((v): v is number => v != null) || [];
+
+  return { price, change, sparkline };
+}
+
 export async function fetchYahooQuote(
   symbol: string,
 ): Promise<{ price: number; change: number; sparkline: number[] } | null> {
+  // Try direct Yahoo first
   try {
     await yahooGate();
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
     const resp = await fetch(url, {
-      headers: {
-        'User-Agent': CHROME_UA,
-      },
+      headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return null;
+    if (resp.ok) {
+      const data: YahooChartResponse = await resp.json();
+      const parsed = parseYahooChartResponse(data);
+      if (parsed) return parsed;
+    } else {
+      console.warn(`[Yahoo] ${symbol} direct HTTP ${resp.status}`);
+    }
+  } catch (err) {
+    console.warn(`[Yahoo] ${symbol} direct error:`, (err as Error).message);
+  }
 
+  // Fallback: Railway relay (different IP, not rate-limited by Yahoo)
+  const relayBase = getRelayBaseUrl();
+  if (!relayBase) {
+    console.warn(`[Yahoo] ${symbol} relay skipped: WS_RELAY_URL not set`);
+    return null;
+  }
+  try {
+    const relayUrl = `${relayBase}/yahoo-chart?symbol=${encodeURIComponent(symbol)}`;
+    const resp = await fetch(relayUrl, {
+      headers: getRelayHeaders(),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      console.warn(`[Yahoo] ${symbol} relay HTTP ${resp.status}: ${await resp.text().catch(() => '')}`);
+      return null;
+    }
     const data: YahooChartResponse = await resp.json();
-    const result = data.chart.result[0];
-    const meta = result?.meta;
-    if (!meta) return null;
-
-    const price = meta.regularMarketPrice;
-    const prevClose = meta.chartPreviousClose || meta.previousClose || price;
-    const change = ((price - prevClose) / prevClose) * 100;
-
-    const closes = result.indicators?.quote?.[0]?.close;
-    const sparkline = closes?.filter((v): v is number => v != null) || [];
-
-    return { price, change, sparkline };
-  } catch {
+    return parseYahooChartResponse(data);
+  } catch (err) {
+    console.warn(`[Yahoo] ${symbol} relay error:`, (err as Error).message);
     return null;
   }
 }
@@ -162,9 +212,19 @@ export async function fetchYahooQuote(
 export async function fetchCoinGeckoMarkets(
   ids: string[],
 ): Promise<CoinGeckoMarketItem[]> {
-  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+  const apiKey = process.env.COINGECKO_API_KEY;
+  const baseUrl = apiKey
+    ? 'https://pro-api.coingecko.com/api/v3'
+    : 'https://api.coingecko.com/api/v3';
+  const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': CHROME_UA,
+  };
+  if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
+
   const resp = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
+    headers,
     signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
   if (!resp.ok) {
@@ -177,4 +237,79 @@ export async function fetchCoinGeckoMarkets(
     throw new Error(`CoinGecko returned non-array: ${JSON.stringify(data).slice(0, 200)}`);
   }
   return data;
+}
+
+// ========================================================================
+// CoinPaprika fallback fetcher
+// ========================================================================
+
+// CoinGecko ID → CoinPaprika ID mapping (shared ids + stablecoin-specific)
+const COINPAPRIKA_ID_MAP: Record<string, string> = {
+  ...cryptoConfig.coinpaprika,
+  ...stablecoinConfig.coinpaprika,
+};
+
+interface CoinPaprikaTicker {
+  id: string;
+  name: string;
+  symbol: string;
+  quotes: {
+    USD: {
+      price: number;
+      volume_24h: number;
+      market_cap: number;
+      percent_change_24h: number;
+      percent_change_7d: number;
+    };
+  };
+}
+
+export async function fetchCoinPaprikaMarkets(
+  geckoIds: string[],
+): Promise<CoinGeckoMarketItem[]> {
+  const paprikaIds = geckoIds.map(id => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
+  if (paprikaIds.length === 0) throw new Error('No CoinPaprika ID mapping for requested coins');
+
+  const resp = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
+    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
+  if (!resp.ok) throw new Error(`CoinPaprika HTTP ${resp.status}`);
+
+  const allTickers: CoinPaprikaTicker[] = await resp.json();
+  const paprikaSet = new Set(paprikaIds);
+  const matched = allTickers.filter(t => paprikaSet.has(t.id));
+
+  const reverseMap = new Map(Object.entries(COINPAPRIKA_ID_MAP).map(([g, p]) => [p, g]));
+
+  return matched.map(t => {
+    const q = t.quotes.USD;
+    return {
+      id: reverseMap.get(t.id) || t.id,
+      current_price: q.price,
+      price_change_percentage_24h: q.percent_change_24h,
+      price_change_percentage_7d_in_currency: q.percent_change_7d,
+      market_cap: q.market_cap,
+      total_volume: q.volume_24h,
+      symbol: t.symbol.toLowerCase(),
+      name: t.name,
+      image: '',
+      sparkline_in_7d: undefined,
+    };
+  });
+}
+
+// ========================================================================
+// Unified crypto market fetcher: CoinGecko → CoinPaprika fallback
+// ========================================================================
+
+export async function fetchCryptoMarkets(
+  ids: string[],
+): Promise<CoinGeckoMarketItem[]> {
+  try {
+    return await fetchCoinGeckoMarkets(ids);
+  } catch (err) {
+    console.warn(`[CoinGecko] Failed, falling back to CoinPaprika:`, (err as Error).message);
+    return fetchCoinPaprikaMarkets(ids);
+  }
 }

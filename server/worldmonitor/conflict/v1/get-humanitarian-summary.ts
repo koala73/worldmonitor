@@ -15,19 +15,10 @@ import type {
 
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
+import { ISO2_TO_ISO3 } from './_shared';
 
 const REDIS_CACHE_KEY = 'conflict:humanitarian:v1';
 const REDIS_CACHE_TTL = 21600; // 6 hr — monthly humanitarian data
-
-const ISO2_TO_ISO3: Record<string, string> = {
-  US: 'USA', RU: 'RUS', CN: 'CHN', UA: 'UKR', IR: 'IRN',
-  IL: 'ISR', TW: 'TWN', KP: 'PRK', SA: 'SAU', TR: 'TUR',
-  PL: 'POL', DE: 'DEU', FR: 'FRA', GB: 'GBR', IN: 'IND',
-  PK: 'PAK', SY: 'SYR', YE: 'YEM', MM: 'MMR', VE: 'VEN',
-  AF: 'AFG', SD: 'SDN', SS: 'SSD', SO: 'SOM', CD: 'COD',
-  ET: 'ETH', IQ: 'IRQ', CO: 'COL', NG: 'NGA', PS: 'PSE',
-  BR: 'BRA', AE: 'ARE',
-};
 
 interface HapiCountryAgg {
   iso3: string;

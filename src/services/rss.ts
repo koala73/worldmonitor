@@ -7,6 +7,7 @@ import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import { dataFreshness } from './data-freshness';
 import { ingestHeadlines } from './trending-keywords';
 import { getCurrentLanguage } from './i18n';
+import { parseFeedDateOrNow } from './feed-date';
 import { canQueueAiClassification, AI_CLASSIFY_MAX_PER_FEED } from './ai-classify-queue';
 import { mlWorker } from './ml-worker';
 import { isHeadlineMemoryEnabled } from './ai-flow-settings';
@@ -213,9 +214,9 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
   }
 
   try {
-    let url = typeof feed.url === 'string' ? feed.url : feed.url['en'];
+    let url = typeof feed.url === 'string' ? feed.url : feed.url.en;
     if (typeof feed.url !== 'string') {
-      url = feed.url[currentLang] || feed.url['en'] || Object.values(feed.url)[0] || '';
+      url = feed.url[currentLang] || feed.url.en || Object.values(feed.url)[0] || '';
     }
 
     if (!url) throw new Error(`No URL found for feed ${feed.name}`);
@@ -253,8 +254,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
         const pubDateStr = isAtom
           ? (item.querySelector('published')?.textContent || item.querySelector('updated')?.textContent || '')
           : (item.querySelector('pubDate')?.textContent || '');
-        const parsedDate = pubDateStr ? new Date(pubDateStr) : new Date();
-        const pubDate = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+        const pubDate = parseFeedDateOrNow(pubDateStr);
         const threat = classifyByKeyword(title, SITE_VARIANT);
         const isAlert = threat.level === 'critical' || threat.level === 'high';
         const geoMatches = inferGeoHubsFromTitle(title);

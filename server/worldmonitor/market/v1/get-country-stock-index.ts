@@ -9,7 +9,7 @@ import type {
   GetCountryStockIndexResponse,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { UPSTREAM_TIMEOUT_MS, type YahooChartResponse } from './_shared';
-import { CHROME_UA } from '../../../_shared/constants';
+import { CHROME_UA, yahooGate } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 // ========================================================================
@@ -71,7 +71,7 @@ const COUNTRY_INDEX: Record<string, { symbol: string; name: string }> = {
 const REDIS_CACHE_KEY = 'market:stock-index:v1';
 const REDIS_CACHE_TTL = 1800; // 30 min — weekly data, slow-moving
 
-let stockIndexCache: Record<string, { data: GetCountryStockIndexResponse; ts: number }> = {};
+const stockIndexCache: Record<string, { data: GetCountryStockIndexResponse; ts: number }> = {};
 const STOCK_INDEX_CACHE_TTL = 3_600_000; // 1 hour (in-memory fallback)
 
 // ========================================================================
@@ -102,6 +102,7 @@ export async function getCountryStockIndex(
     const encodedSymbol = encodeURIComponent(index.symbol);
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodedSymbol}?range=1mo&interval=1d`;
 
+    await yahooGate();
     const res = await fetch(yahooUrl, {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),

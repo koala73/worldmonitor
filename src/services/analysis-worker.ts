@@ -169,21 +169,18 @@ class AnalysisWorkerManager {
     return `req-${++this.requestIdCounter}-${Date.now()}`;
   }
 
-  /**
-   * Cluster news articles using Web Worker.
-   * Runs O(n²) Jaccard similarity off the main thread.
-   */
-  async clusterNews(items: NewsItem[]): Promise<ClusteredEvent[]> {
-    await this.waitForReady();
-
+  private request<T>(
+    type: 'cluster' | 'correlation',
+    payload: Record<string, unknown>,
+    timeoutMs: number,
+    timeoutMessage: string
+  ): Promise<T> {
     return new Promise((resolve, reject) => {
       const id = this.generateId();
-
-      // Set timeout (30 seconds - clustering can take a while for large datasets)
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(new Error('Clustering request timed out'));
-      }, 30000);
+        reject(new Error(timeoutMessage));
+      }, timeoutMs);
 
       this.pendingRequests.set(id, {
         resolve: resolve as (value: unknown) => void,
@@ -192,12 +189,25 @@ class AnalysisWorkerManager {
       });
 
       this.worker!.postMessage({
-        type: 'cluster',
+        type,
         id,
-        items,
-        sourceTiers: SOURCE_TIERS,
+        ...payload,
       });
     });
+  }
+
+  /**
+   * Cluster news articles using Web Worker.
+   * Runs O(n²) Jaccard similarity off the main thread.
+   */
+  async clusterNews(items: NewsItem[]): Promise<ClusteredEvent[]> {
+    await this.waitForReady();
+    return this.request<ClusteredEvent[]>(
+      'cluster',
+      { items, sourceTiers: SOURCE_TIERS },
+      30000,
+      'Clustering request timed out'
+    );
   }
 
   /**
@@ -210,31 +220,17 @@ class AnalysisWorkerManager {
     markets: MarketData[]
   ): Promise<CorrelationSignal[]> {
     await this.waitForReady();
-
-    return new Promise((resolve, reject) => {
-      const id = this.generateId();
-
-      // Set timeout (10 seconds should be plenty for correlation)
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error('Correlation analysis request timed out'));
-      }, 10000);
-
-      this.pendingRequests.set(id, {
-        resolve: resolve as (value: unknown) => void,
-        reject,
-        timeout,
-      });
-
-      this.worker!.postMessage({
-        type: 'correlation',
-        id,
+    return this.request<CorrelationSignal[]>(
+      'correlation',
+      {
         clusters,
         predictions,
         markets,
         sourceTypes: SOURCE_TYPES as Record<string, SourceType>,
-      });
-    });
+      },
+      10000,
+      'Correlation analysis request timed out'
+    );
   }
 
   /**

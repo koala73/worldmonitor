@@ -1,12 +1,14 @@
 import { Panel } from './Panel';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { ListGulfQuotesResponse, GulfQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { getHydratedData } from '@/services/bootstrap';
 
-const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
 
 function renderSection(title: string, quotes: GulfQuote[]): string {
   if (quotes.length === 0) return '';
@@ -27,36 +29,36 @@ function renderSection(title: string, quotes: GulfQuote[]): string {
 }
 
 export class GulfEconomiesPanel extends Panel {
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
-
   constructor() {
-    super({ id: 'gulf-economies', title: t('panels.gulfEconomies') });
-    setTimeout(() => void this.fetchData(), 8_000);
-  }
-
-  destroy(): void {
-    if (this.pollTimer) clearInterval(this.pollTimer);
-    super.destroy();
+    super({ id: 'gulf-economies', title: t('panels.gulfEconomies'), infoTooltip: t('components.gulfEconomies.infoTooltip') });
   }
 
   public async fetchData(): Promise<void> {
     try {
+      const hydrated = getHydratedData('gulfQuotes') as ListGulfQuotesResponse | undefined;
+      if (hydrated?.quotes?.length) {
+        if (!this.element?.isConnected) return;
+        this.renderGulf(hydrated);
+        void client.listGulfQuotes({}).then(data => {
+          if (!this.element?.isConnected || !data.quotes?.length) return;
+          this.renderGulf(data);
+        }).catch(() => {});
+        return;
+      }
       const data = await client.listGulfQuotes({});
+      if (!this.element?.isConnected) return;
       this.renderGulf(data);
     } catch (err) {
       if (this.isAbortError(err)) return;
-      this.showError(t('common.failedMarketData'));
-    }
-
-    if (!this.pollTimer) {
-      this.pollTimer = setInterval(() => void this.fetchData(), 60_000);
+      if (!this.element?.isConnected) return;
+      this.showError(t('common.failedMarketData'), () => void this.fetchData());
     }
   }
 
   private renderGulf(data: ListGulfQuotesResponse): void {
-    if (!data.quotes.length) {
+    if (!data.quotes?.length) {
       const msg = data.rateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData');
-      this.showError(msg);
+      this.showError(msg, () => void this.fetchData());
       return;
     }
 

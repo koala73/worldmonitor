@@ -6,6 +6,8 @@ import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
 import { CIIPanel } from '@/components';
 import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
+import { getAllowedLayerKeys } from '@/config/map-layer-definitions';
+import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
 import { CURATED_COUNTRIES } from '@/config/countries';
@@ -23,6 +25,10 @@ import { trackSearchResultSelected, trackCountrySelected } from '@/services/anal
 import { t } from '@/services/i18n';
 import { saveToStorage, setTheme } from '@/utils';
 import { CountryIntelManager } from '@/app/country-intel';
+import type { PositionSample } from '@/services/aviation';
+import { fetchAircraftPositions } from '@/services/aviation';
+import type { MilitaryFlight } from '@/types';
+import { isProUser } from '@/services/widget-store';
 
 export interface SearchManagerCallbacks {
   openCountryBriefByCode: (code: string, country: string) => void;
@@ -32,6 +38,7 @@ export class SearchManager implements AppModule {
   private ctx: AppContext;
   private callbacks: SearchManagerCallbacks;
   private boundKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private highlightTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
 
   constructor(ctx: AppContext, callbacks: SearchManagerCallbacks) {
     this.ctx = ctx;
@@ -200,9 +207,44 @@ export class SearchManager implements AppModule {
 
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
-    this.ctx.searchModal.setActivePanels(Object.keys(this.ctx.panels));
+    this.ctx.searchModal.setActivePanels(
+      Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
+    );
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
+
+    if (isProUser()) {
+      this.ctx.searchModal.setOnFlightSearch((callsign) => {
+        fetchAircraftPositions({ callsign }).then((positions) => {
+          if (!this.ctx.searchModal) return;
+          // Deduplicate by callsign: keep the most recently observed entry per callsign.
+          const seen = new Map<string, PositionSample>();
+          for (const p of positions) {
+            const key = (p.callsign || p.icao24).trim().toUpperCase();
+            const existing = seen.get(key);
+            if (!existing || p.observedAt > existing.observedAt) {
+              seen.set(key, p);
+            }
+          }
+          const items = [...seen.values()].map(p => {
+            const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
+            const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
+            return {
+              id: p.icao24,
+              title: (p.callsign || p.icao24).trim().toUpperCase(),
+              subtitle: p.onGround
+                ? t('modals.search.flightOnGround')
+                : fl !== null && kts !== null
+                  ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
+                  : fl !== null ? `FL${fl}` : t('modals.search.flightOnGround'),
+              data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
+            };
+          });
+          this.ctx.searchModal.registerSource('flight', items);
+          this.ctx.searchModal.refreshSearch();
+        }).catch(() => {/* silent — show no results */});
+      });
+    }
 
     this.boundKeydownHandler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -223,8 +265,20 @@ export class SearchManager implements AppModule {
     switch (result.type) {
       case 'news': {
         const item = result.data as NewsItem;
-        this.scrollToPanel('politics');
-        this.highlightNewsItem(item.link);
+        // Find which panel contains this item (may not always be 'politics')
+        let targetPanelId = 'politics';
+        let targetPanel = this.ctx.newsPanels['politics'] ?? null;
+        for (const [panelId, panel] of Object.entries(this.ctx.newsPanels)) {
+          if (panel.hasNewsItem(item.link)) {
+            targetPanelId = panelId;
+            targetPanel = panel;
+            break;
+          }
+        }
+        this.scrollToPanel(targetPanelId);
+        if (targetPanel) {
+          setTimeout(() => targetPanel!.scrollToNewsItem(item.link), 300);
+        }
         break;
       }
       case 'hotspot': {
@@ -378,6 +432,13 @@ export class SearchManager implements AppModule {
         this.callbacks.openCountryBriefByCode(code, name);
         break;
       }
+      case 'flight': {
+        const { lat, lon, layer } = result.data as { kind: string; lat: number; lon: number; layer: keyof MapLayers };
+        this.ctx.map?.enableLayer(layer);
+        this.ctx.mapLayers[layer] = true;
+        setTimeout(() => { this.ctx.map?.setCenter(lat, lon, 9); }, 300);
+        break;
+      }
     }
   }
 
@@ -397,9 +458,11 @@ export class SearchManager implements AppModule {
         break;
 
       case 'layers': {
+        const allowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
         if (action === 'all') {
-          for (const key of Object.keys(this.ctx.mapLayers))
-            this.ctx.mapLayers[key as keyof MapLayers] = true;
+          for (const key of Object.keys(this.ctx.mapLayers)) {
+            this.ctx.mapLayers[key as keyof MapLayers] = allowed.has(key as keyof MapLayers);
+          }
         } else if (action === 'none') {
           for (const key of Object.keys(this.ctx.mapLayers))
             this.ctx.mapLayers[key as keyof MapLayers] = false;
@@ -408,8 +471,9 @@ export class SearchManager implements AppModule {
           if (preset) {
             for (const key of Object.keys(this.ctx.mapLayers))
               this.ctx.mapLayers[key as keyof MapLayers] = false;
-            for (const layer of preset)
-              this.ctx.mapLayers[layer] = true;
+            for (const layer of preset) {
+              if (allowed.has(layer)) this.ctx.mapLayers[layer] = true;
+            }
           }
         }
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
@@ -420,6 +484,8 @@ export class SearchManager implements AppModule {
       case 'layer': {
         const layerKey = (LAYER_KEY_MAP[action] || action) as keyof MapLayers;
         if (!(layerKey in this.ctx.mapLayers)) return;
+        const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
+        if (!variantAllowed.has(layerKey)) return;
         this.ctx.mapLayers[layerKey] = !this.ctx.mapLayers[layerKey];
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
         if (this.ctx.mapLayers[layerKey]) {
@@ -489,25 +555,64 @@ export class SearchManager implements AppModule {
     const panel = document.querySelector(`[data-panel="${panelId}"]`);
     if (panel) {
       panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      panel.classList.add('flash-highlight');
-      setTimeout(() => panel.classList.remove('flash-highlight'), 1500);
+      this.applyHighlight(panel);
     }
   }
 
-  private highlightNewsItem(itemId: string): void {
-    setTimeout(() => {
-      const item = document.querySelector(`[data-news-id="${CSS.escape(itemId)}"]`);
-      if (item) {
-        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        item.classList.add('flash-highlight');
-        setTimeout(() => item.classList.remove('flash-highlight'), 1500);
-      }
-    }, 100);
+  private applyHighlight(el: Element): void {
+    const prev = this.highlightTimers.get(el);
+    if (prev) clearTimeout(prev);
+    el.classList.remove('search-highlight');
+    void (el as HTMLElement).offsetWidth;
+    el.classList.add('search-highlight');
+    this.highlightTimers.set(el, setTimeout(() => {
+      el.classList.remove('search-highlight');
+      this.highlightTimers.delete(el);
+    }, 3100));
+  }
+
+  updateFlightSource(adsb: PositionSample[], military: MilitaryFlight[]): void {
+    if (!this.ctx.searchModal || !isProUser()) return;
+    const items = [
+      ...adsb.map(p => {
+        const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
+        const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
+        return {
+          id: p.icao24,
+          title: (p.callsign || p.icao24).trim().toUpperCase(),
+          subtitle: p.onGround
+            ? t('modals.search.flightOnGround')
+            : fl !== null && kts !== null
+              ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
+              : fl !== null
+                ? `FL${fl}`
+                : t('modals.search.flightOnGround'),
+          data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
+        };
+      }),
+      ...military.map(f => {
+        const fl = Number.isFinite(f.altitude) ? Math.round(f.altitude / 100) : null;
+        return {
+          id: f.hexCode,
+          title: (f.callsign || f.hexCode).trim().toUpperCase(),
+          subtitle: f.onGround
+            ? t('modals.search.flightMilitaryOnGround', { type: f.aircraftType })
+            : fl !== null
+              ? t('modals.search.flightMilitary', { type: f.aircraftType, fl: String(fl) })
+              : t('modals.search.flightMilitaryOnGround', { type: f.aircraftType }),
+          data: { kind: 'military' as const, lat: f.lat, lon: f.lon, layer: 'military' as const },
+        };
+      }),
+    ];
+    this.ctx.searchModal.registerSource('flight', items);
   }
 
   updateSearchIndex(): void {
     if (!this.ctx.searchModal) return;
 
+    this.ctx.searchModal.setActivePanels(
+      Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
+    );
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
     const newsItems = this.ctx.allNews.slice(0, 500).map(n => ({
@@ -539,7 +644,7 @@ export class SearchManager implements AppModule {
   }
 
   private buildCountrySearchItems(): { id: string; title: string; subtitle: string; data: { code: string; name: string } }[] {
-    const panelScores = (this.ctx.panels['cii'] as CIIPanel | undefined)?.getScores() ?? [];
+    const panelScores = (this.ctx.panels.cii as CIIPanel | undefined)?.getScores() ?? [];
     const scores = panelScores.length > 0 ? panelScores : calculateCII();
     const ciiByCode = new Map(scores.map((score) => [score.code, score]));
     return Object.entries(TIER1_COUNTRIES).map(([code, name]) => {

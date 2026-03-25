@@ -12,11 +12,22 @@ import * as d3 from 'd3';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import { getCSSColor } from '@/utils';
 import { replaceChildren } from '@/utils/dom-utils';
+import { getLocale } from '@/services/i18n';
 
 const SPARKLINE_MARGIN = { top: 4, right: 8, bottom: 16, left: 8 };
 const SPARKLINE_HEIGHT = 50;
 
-const NUMBER_FORMAT = new Intl.NumberFormat('en-US');
+let _numFmtLocale = '';
+let _numFmt: Intl.NumberFormat = new Intl.NumberFormat('en-US');
+
+function getNumberFormat(): Intl.NumberFormat {
+  const locale = getLocale();
+  if (locale !== _numFmtLocale) {
+    _numFmtLocale = locale;
+    _numFmt = new Intl.NumberFormat(locale);
+  }
+  return _numFmt;
+}
 
 /** SVG placeholder for broken images -- nature leaf icon on soft green bg */
 const FALLBACK_IMAGE_SVG = 'data:image/svg+xml,' + encodeURIComponent(
@@ -247,7 +258,7 @@ export class SpeciesComebackPanel extends Panel {
       .attr('text-anchor', 'start')
       .attr('font-size', '9px')
       .attr('fill', 'var(--text-dim, #999)')
-      .text(`${first.year}: ${NUMBER_FORMAT.format(first.value)}`);
+      .text(`${first.year}: ${getNumberFormat().format(first.value)}`);
 
     // End label (last data point)
     const last = data[data.length - 1]!;
@@ -257,7 +268,7 @@ export class SpeciesComebackPanel extends Panel {
       .attr('text-anchor', 'end')
       .attr('font-size', '9px')
       .attr('fill', 'var(--text-dim, #999)')
-      .text(`${last.year}: ${NUMBER_FORMAT.format(last.value)}`);
+      .text(`${last.year}: ${getNumberFormat().format(last.value)}`);
   }
 
   /**

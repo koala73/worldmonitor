@@ -18,6 +18,7 @@ import {
 import { invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
+import { fetchOllamaModels as fetchOllamaModelsFromService } from '@/services/ollama-models';
 import { t } from '@/services/i18n';
 import { trackFeatureToggle } from '@/services/analytics';
 import { SIGNUP_URLS, PLAINTEXT_KEYS, MASKED_SENTINEL } from '@/services/settings-constants';
@@ -33,6 +34,7 @@ export class RuntimeConfigPanel extends Panel {
   private readonly mode: 'full' | 'alert';
   private readonly buffered: boolean;
   private readonly featureFilter?: RuntimeFeatureId[];
+  private hiddenByUser = false;
   private pendingSecrets = new Map<RuntimeSecretKey, string>();
   private validatedKeys = new Map<RuntimeSecretKey, boolean>();
   private validationMessages = new Map<RuntimeSecretKey, string>();
@@ -156,6 +158,25 @@ export class RuntimeConfigPanel extends Panel {
     this.unsubscribe = null;
   }
 
+  private setEffectiveVisibility(visible: boolean): void {
+    if (visible) super.show();
+    else super.hide();
+  }
+
+  public override show(): void {
+    this.hiddenByUser = false;
+    if (this.mode === 'alert') {
+      this.render();
+    } else {
+      this.setEffectiveVisibility(true);
+    }
+  }
+
+  public override hide(): void {
+    this.hiddenByUser = true;
+    this.setEffectiveVisibility(false);
+  }
+
   private captureUnsavedInputs(): void {
     if (!this.buffered) return;
     this.content.querySelectorAll<HTMLInputElement>('input[data-secret]').forEach((input) => {
@@ -193,31 +214,37 @@ export class RuntimeConfigPanel extends Panel {
     const features = this.getFilteredFeatures();
 
     if (desktop && this.mode === 'alert') {
+      if (this.hiddenByUser) {
+        this.setEffectiveVisibility(false);
+        return;
+      }
+
       const totalFeatures = RUNTIME_FEATURES.length;
       const availableFeatures = RUNTIME_FEATURES.filter((feature) => isFeatureAvailable(feature.id)).length;
       const missingFeatures = Math.max(0, totalFeatures - availableFeatures);
       const configuredCount = Object.keys(snapshot.secrets).length;
+      const alertState = configuredCount > 0
+        ? (missingFeatures > 0 ? 'some' : 'configured')
+        : 'needsKeys';
 
       if (missingFeatures === 0 && configuredCount >= totalFeatures) {
-        this.hide();
+        this.setEffectiveVisibility(false);
         return;
       }
 
-      const alertTitle = configuredCount > 0
-        ? (missingFeatures > 0 ? t('modals.runtimeConfig.alertTitle.some') : t('modals.runtimeConfig.alertTitle.configured'))
-        : t('modals.runtimeConfig.alertTitle.needsKeys');
+      const alertTitle = t(`modals.runtimeConfig.alertTitle.${alertState}`);
       const alertClass = missingFeatures > 0 ? 'warn' : 'ok';
 
-      this.show();
+      this.setEffectiveVisibility(true);
       this.content.innerHTML = `
-        <section class="runtime-alert runtime-alert-${alertClass}">
+        <section class="runtime-alert runtime-alert-${alertClass}" data-alert-state="${alertState}">
           <h3>${alertTitle}</h3>
           <p>
             ${availableFeatures}/${totalFeatures} ${t('modals.runtimeConfig.summary.available')}${configuredCount > 0 ? ` · ${configuredCount} ${t('modals.runtimeConfig.summary.secrets')}` : ''}.
           </p>
           <p class="runtime-alert-skip">${t('modals.runtimeConfig.skipSetup')}</p>
-          <button type="button" class="runtime-open-settings-btn" data-open-settings>
-            ${t('modals.runtimeConfig.openSettings')}
+          <button type="button" class="runtime-early-access-btn" data-early-access>
+            ${t('modals.runtimeConfig.reserveEarlyAccess')}
           </button>
         </section>
       `;
@@ -342,10 +369,13 @@ export class RuntimeConfigPanel extends Panel {
     if (!isDesktopRuntime()) return;
 
     if (this.mode === 'alert') {
-      this.content.querySelector<HTMLButtonElement>('[data-open-settings]')?.addEventListener('click', () => {
-        void invokeTauri<void>('open_settings_window_command').catch((error) => {
-          console.warn('[runtime-config] Failed to open settings window', error);
-        });
+      this.content.querySelector<HTMLButtonElement>('[data-early-access]')?.addEventListener('click', () => {
+        const url = 'https://www.worldmonitor.app/pro';
+        if (isDesktopRuntime()) {
+          void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
+        } else {
+          window.open(url, '_blank');
+        }
       });
       return;
     }
@@ -487,13 +517,6 @@ export class RuntimeConfigPanel extends Panel {
     }
   }
 
-  private static makeTimeout(ms: number): AbortSignal {
-    if (typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms);
-    const ctrl = new AbortController();
-    setTimeout(() => ctrl.abort(), ms);
-    return ctrl.signal;
-  }
-
   private showManualModelInput(select: HTMLSelectElement): void {
     const manual = select.parentElement?.querySelector<HTMLInputElement>('input[data-model-manual]');
     if (!manual) return;
@@ -514,7 +537,7 @@ export class RuntimeConfigPanel extends Panel {
   private async fetchOllamaModels(select: HTMLSelectElement): Promise<void> {
     const snapshot = getRuntimeConfigSnapshot();
     const ollamaUrl = this.pendingSecrets.get('OLLAMA_API_URL')
-      || snapshot.secrets['OLLAMA_API_URL']?.value
+      || snapshot.secrets.OLLAMA_API_URL?.value
       || '';
     if (!ollamaUrl) {
       select.innerHTML = '<option value="" disabled selected>Set Ollama URL first</option>';
@@ -522,33 +545,13 @@ export class RuntimeConfigPanel extends Panel {
     }
 
     const currentModel = this.pendingSecrets.get('OLLAMA_MODEL')
-      || snapshot.secrets['OLLAMA_MODEL']?.value
+      || snapshot.secrets.OLLAMA_MODEL?.value
       || '';
 
     try {
-      // Try Ollama-native /api/tags first, fall back to OpenAI-compatible /v1/models
-      let models: string[] = [];
-      try {
-        const res = await fetch(new URL('/api/tags', ollamaUrl).toString(), {
-          signal: RuntimeConfigPanel.makeTimeout(5000),
-        });
-        if (res.ok) {
-          const data = await res.json() as { models?: Array<{ name: string }> };
-          models = (data.models?.map(m => m.name) || []).filter(n => !n.includes('embed'));
-        }
-      } catch { /* Ollama endpoint not available, try OpenAI format */ }
+      const models = await fetchOllamaModelsFromService(ollamaUrl);
 
-      if (models.length === 0) {
-        try {
-          const res = await fetch(new URL('/v1/models', ollamaUrl).toString(), {
-            signal: RuntimeConfigPanel.makeTimeout(5000),
-          });
-          if (res.ok) {
-            const data = await res.json() as { data?: Array<{ id: string }> };
-            models = (data.data?.map(m => m.id) || []).filter(n => !n.includes('embed'));
-          }
-        } catch { /* OpenAI endpoint also unavailable */ }
-      }
+      if (!select.isConnected) return;
 
       if (models.length === 0) {
         // No models discovered — show manual text input as fallback

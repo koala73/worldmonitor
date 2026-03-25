@@ -7,9 +7,12 @@
  * All data now flows through the EconomicServiceClient RPC.
  */
 
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   EconomicServiceClient,
+  ApiError,
   type GetFredSeriesResponse,
+  type GetFredSeriesBatchResponse,
   type ListWorldBankIndicatorsResponse,
   type WorldBankCountryData as ProtoWorldBankCountryData,
   type GetEnergyPricesResponse,
@@ -21,29 +24,36 @@ import {
   type BisPolicyRate,
   type BisExchangeRate,
   type BisCreditToGdp,
+  type GetNationalDebtResponse,
+  type NationalDebtEntry,
+  type GetBlsSeriesResponse,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
 import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 
 // ---- Client + Circuit Breakers ----
 
-const client = new EconomicServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
-const fredBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<GetFredSeriesResponse>>>();
+const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const WB_BREAKERS_WARN_THRESHOLD = 50;
+const wbBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<ListWorldBankIndicatorsResponse>>>();
 
-function getFredBreaker(seriesId: string) {
-  if (!fredBreakers.has(seriesId)) {
-    fredBreakers.set(seriesId, createCircuitBreaker<GetFredSeriesResponse>({
-      name: `FRED:${seriesId}`,
-      cacheTtlMs: 15 * 60 * 1000,
+function getWbBreaker(indicatorCode: string) {
+  if (!wbBreakers.has(indicatorCode)) {
+    if (wbBreakers.size >= WB_BREAKERS_WARN_THRESHOLD) {
+      console.warn(`[wb] breaker pool at ${wbBreakers.size} — unexpected growth, investigate getWbBreaker callers`);
+    }
+    wbBreakers.set(indicatorCode, createCircuitBreaker<ListWorldBankIndicatorsResponse>({
+      name: `WB:${indicatorCode}`,
+      cacheTtlMs: 30 * 60 * 1000,
       persistCache: true,
     }));
   }
-  return fredBreakers.get(seriesId)!;
+  return wbBreakers.get(indicatorCode)!;
 }
-const wbBreaker = createCircuitBreaker<ListWorldBankIndicatorsResponse>({ name: 'World Bank', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const eiaBreaker = createCircuitBreaker<GetEnergyPricesResponse>({ name: 'EIA Energy', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
 const capacityBreaker = createCircuitBreaker<GetEnergyCapacityResponse>({ name: 'EIA Capacity', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
@@ -51,7 +61,11 @@ const bisPolicyBreaker = createCircuitBreaker<GetBisPolicyRatesResponse>({ name:
 const bisEerBreaker = createCircuitBreaker<GetBisExchangeRatesResponse>({ name: 'BIS EER', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const bisCreditBreaker = createCircuitBreaker<GetBisCreditResponse>({ name: 'BIS Credit', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
-const emptyFredFallback: GetFredSeriesResponse = { series: undefined };
+const emptyBlsFallback: GetBlsSeriesResponse = { series: undefined };
+const blsBreaker = createCircuitBreaker<FredSeries[]>({ name: 'BLS Batch', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
+
+const emptyFredBatchFallback: GetFredSeriesBatchResponse = { results: {}, fetched: 0, requested: 0 };
+const fredBatchBreaker = createCircuitBreaker<GetFredSeriesBatchResponse>({ name: 'FRED Batch', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
 const emptyWbFallback: ListWorldBankIndicatorsResponse = { data: [], pagination: undefined };
 const emptyEiaFallback: GetEnergyPricesResponse = { prices: [] };
 const emptyCapacityFallback: GetEnergyCapacityResponse = { series: [] };
@@ -72,6 +86,7 @@ export interface FredSeries {
   changePercent: number | null;
   date: string;
   unit: string;
+  observations: Array<{ date: string; value: number }>;
 }
 
 interface FredConfig {
@@ -79,76 +94,169 @@ interface FredConfig {
   name: string;
   unit: string;
   precision: number;
+  scaleDivisor?: number;
 }
 
 const FRED_SERIES: FredConfig[] = [
-  { id: 'WALCL', name: 'Fed Total Assets', unit: '$B', precision: 0 },
+  { id: 'VIXCLS', name: 'VIX', unit: '', precision: 2 },
+  { id: 'BAMLH0A0HYM2', name: 'HY Spread', unit: '%', precision: 2 },
+  { id: 'ICSA', name: 'Jobless Claims', unit: '', precision: 0 },
+  { id: 'MORTGAGE30US', name: '30Y Mortgage', unit: '%', precision: 2 },
   { id: 'FEDFUNDS', name: 'Fed Funds Rate', unit: '%', precision: 2 },
   { id: 'T10Y2Y', name: '10Y-2Y Spread', unit: '%', precision: 2 },
+  { id: 'M2SL', name: 'M2 Supply', unit: '$T', precision: 1, scaleDivisor: 1000 },
   { id: 'UNRATE', name: 'Unemployment', unit: '%', precision: 1 },
   { id: 'CPIAUCSL', name: 'CPI Index', unit: '', precision: 1 },
   { id: 'DGS10', name: '10Y Treasury', unit: '%', precision: 2 },
-  { id: 'VIXCLS', name: 'VIX', unit: '', precision: 2 },
+  { id: 'WALCL', name: 'Fed Total Assets', unit: '$T', precision: 1, scaleDivisor: 1000 },
 ];
 
-async function fetchSingleFredSeries(config: FredConfig): Promise<FredSeries | null> {
-  const resp = await getFredBreaker(config.id).execute(async () => {
-    return client.getFredSeries({ seriesId: config.id, limit: 120 });
-  }, emptyFredFallback);
+function toDisplayValue(value: number, config: FredConfig): number {
+  return value / (config.scaleDivisor ?? 1);
+}
 
-  const obs = resp.series?.observations;
-  if (!obs || obs.length === 0) return null;
-
-  if (obs.length >= 2) {
-    const latest = obs[obs.length - 1]!;
-    const previous = obs[obs.length - 2]!;
-    const change = latest.value - previous.value;
-    const changePercent = (change / previous.value) * 100;
-
-    let displayValue = latest.value;
-    if (config.id === 'WALCL') displayValue = latest.value / 1000;
-
-    return {
-      id: config.id,
-      name: config.name,
-      value: Number(displayValue.toFixed(config.precision)),
-      previousValue: Number(previous.value.toFixed(config.precision)),
-      change: Number(change.toFixed(config.precision)),
-      changePercent: Number(changePercent.toFixed(2)),
-      date: latest.date,
-      unit: config.unit,
-    };
-  }
-
-  const latest = obs[0]!;
-  let displayValue = latest.value;
-  if (config.id === 'WALCL') displayValue = latest.value / 1000;
-
-  return {
-    id: config.id,
-    name: config.name,
-    value: Number(displayValue.toFixed(config.precision)),
-    previousValue: null,
-    change: null,
-    changePercent: null,
-    date: latest.date,
-    unit: config.unit,
-  };
+function roundValue(value: number, precision: number): number {
+  return Number(value.toFixed(precision));
 }
 
 export async function fetchFredData(): Promise<FredSeries[]> {
   if (!isFeatureAvailable('economicFred')) return [];
 
-  const results = await Promise.all(FRED_SERIES.map(fetchSingleFredSeries));
-  return results.filter((r): r is FredSeries => r !== null);
+  const resp = await fredBatchBreaker.execute(async () => {
+    try {
+      return await client.getFredSeriesBatch(
+        { seriesIds: FRED_SERIES.map((c) => c.id), limit: 120 },
+        { signal: AbortSignal.timeout(30_000) },
+      );
+    } catch (err: unknown) {
+      // 404 deploy-skew fallback: batch endpoint not yet deployed, use per-item calls
+      if (err instanceof ApiError && err.statusCode === 404) {
+        const items = await Promise.all(FRED_SERIES.map((c) =>
+          client.getFredSeries({ seriesId: c.id, limit: 120 }, { signal: AbortSignal.timeout(20_000) })
+            .catch(() => ({ series: undefined }) as GetFredSeriesResponse),
+        ));
+        const fallbackResults: Record<string, NonNullable<GetFredSeriesResponse['series']>> = {};
+        for (const item of items) {
+          if (item.series) fallbackResults[item.series.seriesId] = item.series;
+        }
+        return { results: fallbackResults, fetched: Object.keys(fallbackResults).length, requested: FRED_SERIES.length };
+      }
+      throw err;
+    }
+  }, emptyFredBatchFallback);
+
+  const out: FredSeries[] = [];
+  for (const config of FRED_SERIES) {
+    const series = resp.results[config.id];
+    if (!series) continue;
+    const obs = series.observations;
+    if (!obs || obs.length === 0) continue;
+
+    if (obs.length >= 2) {
+      const latest = obs[obs.length - 1]!;
+      const previous = obs[obs.length - 2]!;
+      const latestDisplayValue = toDisplayValue(latest.value, config);
+      const previousDisplayValue = toDisplayValue(previous.value, config);
+      const change = latestDisplayValue - previousDisplayValue;
+      const changePercent = previous.value !== 0
+        ? ((latest.value - previous.value) / previous.value) * 100
+        : null;
+
+      out.push({
+        id: config.id, name: config.name,
+        value: roundValue(latestDisplayValue, config.precision),
+        previousValue: roundValue(previousDisplayValue, config.precision),
+        change: roundValue(change, config.precision),
+        changePercent: changePercent !== null ? Number(changePercent.toFixed(2)) : null,
+        date: latest.date, unit: config.unit,
+        observations: obs.slice(-30).map(o => ({ date: o.date, value: toDisplayValue(o.value, config) })),
+      });
+    } else {
+      const latest = obs[0]!;
+      const displayValue = toDisplayValue(latest.value, config);
+      out.push({
+        id: config.id, name: config.name,
+        value: roundValue(displayValue, config.precision),
+        previousValue: null, change: null, changePercent: null,
+        date: latest.date, unit: config.unit,
+        observations: obs.map(o => ({ date: o.date, value: toDisplayValue(o.value, config) })),
+      });
+    }
+  }
+  return out;
 }
 
 export function getFredStatus(): string {
-  for (const breaker of fredBreakers.values()) {
-    const status = breaker.getStatus();
-    if (status !== 'ok') return status;
-  }
-  return fredBreakers.size > 0 ? 'ok' : 'no data';
+  return fredBatchBreaker.getStatus();
+}
+
+// ========================================================================
+// BLS -- direct series not available on FRED (metro unemployment, ECI)
+// ========================================================================
+
+interface BlsConfig {
+  id: string;
+  name: string;
+  unit: string;
+  precision: number;
+}
+
+const BLS_SERIES: BlsConfig[] = [
+  { id: 'CES0500000001', name: 'Private Payrolls', unit: 'K', precision: 0 },
+  { id: 'CIU1010000000000A', name: 'Employment Cost Index', unit: '', precision: 1 },
+  { id: 'LAUMT064748000000003', name: 'SF Unemployment', unit: '%', precision: 1 },
+  { id: 'LAUMT253590000000003', name: 'Boston Unemployment', unit: '%', precision: 1 },
+  { id: 'LAUMT357340000000003', name: 'NYC Unemployment', unit: '%', precision: 1 },
+];
+
+export const BLS_METRO_IDS = new Set(['LAUMT064748000000003', 'LAUMT253590000000003', 'LAUMT357340000000003']);
+
+export async function fetchBlsData(): Promise<FredSeries[]> {
+  return blsBreaker.execute(async () => {
+    const results = await Promise.allSettled(
+      BLS_SERIES.map(cfg =>
+        client.getBlsSeries({ seriesId: cfg.id, limit: 60 }, { signal: AbortSignal.timeout(15_000) })
+          .catch(() => emptyBlsFallback),
+      ),
+    );
+
+    const out: FredSeries[] = [];
+    for (let i = 0; i < BLS_SERIES.length; i++) {
+      const cfg = BLS_SERIES[i]!;
+      const result = results[i];
+      if (result?.status !== 'fulfilled') continue;
+      const series = result.value.series;
+      if (!series || series.observations.length === 0) continue;
+
+      const obs = series.observations;
+      const observations = obs.map(o => ({
+        date: `${o.year}-${o.period}`,
+        value: parseFloat(o.value),
+      })).filter(o => Number.isFinite(o.value));
+
+      if (observations.length === 0) continue;
+
+      const latest = observations[observations.length - 1]!;
+      const previous = observations.length >= 2 ? observations[observations.length - 2] : null;
+      const change = previous ? Number((latest.value - previous.value).toFixed(cfg.precision)) : null;
+      const changePercent = previous && previous.value !== 0
+        ? Number(((latest.value - previous.value) / previous.value * 100).toFixed(2))
+        : null;
+
+      const lastObs = obs[obs.length - 1]!;
+      const displayDate = lastObs.periodName ? `${lastObs.periodName} ${lastObs.year}` : latest.date;
+
+      out.push({
+        id: cfg.id, name: cfg.name,
+        value: Number(latest.value.toFixed(cfg.precision)),
+        previousValue: previous ? Number(previous.value.toFixed(cfg.precision)) : null,
+        change, changePercent,
+        date: displayDate, unit: cfg.unit,
+        observations: observations.slice(-30),
+      });
+    }
+    return out;
+  }, [] as FredSeries[]);
 }
 
 export function getChangeClass(change: number | null): string {
@@ -158,10 +266,32 @@ export function getChangeClass(change: number | null): string {
   return '';
 }
 
+function getFractionDigits(value: number): number {
+  const text = String(value);
+  const decimal = text.split('.')[1];
+  return decimal ? decimal.length : 0;
+}
+
+function formatValueWithUnit(value: number, unit: string): string {
+  const digits = getFractionDigits(value);
+  const formatted = value.toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  if (!unit) return formatted;
+  if (unit.startsWith('$')) return `$${formatted}${unit.slice(1)}`;
+  return `${formatted}${unit}`;
+}
+
+export function formatFredValue(value: number | null, unit: string): string {
+  if (value === null) return 'N/A';
+  return formatValueWithUnit(value, unit);
+}
+
 export function formatChange(change: number | null, unit: string): string {
   if (change === null) return 'N/A';
-  const sign = change >= 0 ? '+' : '';
-  return `${sign}${change}${unit}`;
+  const sign = change > 0 ? '+' : change < 0 ? '-' : '';
+  return `${sign}${formatValueWithUnit(Math.abs(change), unit)}`;
 }
 
 // ========================================================================
@@ -213,7 +343,7 @@ export async function checkEiaStatus(): Promise<boolean> {
   if (!isFeatureAvailable('energyEia')) return false;
   try {
     const resp = await eiaBreaker.execute(async () => {
-      return client.getEnergyPrices({ commodities: ['wti'] });
+      return client.getEnergyPrices({ commodities: ['wti'] }, { signal: AbortSignal.timeout(20_000) });
     }, emptyEiaFallback);
     return resp.prices.length > 0;
   } catch {
@@ -230,7 +360,7 @@ export async function fetchOilAnalytics(): Promise<OilAnalytics> {
 
   try {
     const resp = await eiaBreaker.execute(async () => {
-      return client.getEnergyPrices({ commodities: [] }); // all commodities
+      return client.getEnergyPrices({ commodities: [] }, { signal: AbortSignal.timeout(20_000) }); // all commodities
     }, emptyEiaFallback);
 
     const byId = new Map<string, ProtoEnergyPrice>();
@@ -297,7 +427,7 @@ export async function fetchEnergyCapacityRpc(
       return client.getEnergyCapacity({
         energySources: energySources ?? [],
         years: years ?? 0,
-      });
+      }, { signal: AbortSignal.timeout(20_000) });
     }, emptyCapacityFallback);
   } catch {
     return emptyCapacityFallback;
@@ -429,14 +559,14 @@ export async function getIndicatorData(
 ): Promise<WorldBankResponse> {
   const { countries, years = 5 } = options;
 
-  const resp = await wbBreaker.execute(async () => {
+  const resp = await getWbBreaker(indicator).execute(async () => {
     return client.listWorldBankIndicators({
       indicatorCode: indicator,
       countryCode: countries?.join(';') || '',
       year: years,
       pageSize: 0,
       cursor: '',
-    });
+    }, { signal: AbortSignal.timeout(20_000) });
   }, emptyWbFallback);
 
   return buildWorldBankResponse(indicator, resp.data);
@@ -480,71 +610,44 @@ export interface TechReadinessScore {
 export async function getTechReadinessRankings(
   countries?: string[],
 ): Promise<TechReadinessScore[]> {
-  const [internet, mobile, broadband, rdSpend] = await Promise.all([
-    getIndicatorData('IT.NET.USER.ZS', { countries, years: 5 }),
-    getIndicatorData('IT.CEL.SETS.P2', { countries, years: 5 }),
-    getIndicatorData('IT.NET.BBND.P2', { countries, years: 5 }),
-    getIndicatorData('GB.XPD.RSDV.GD.ZS', { countries, years: 7 }),
-  ]);
+  // Fast path: bootstrap-hydrated data available on first page load
+  const hydrated = getHydratedData('techReadiness') as TechReadinessScore[] | undefined;
+  if (hydrated?.length && !countries) return hydrated;
 
-  const allCountries = new Set<string>();
-  [internet, mobile, broadband, rdSpend].forEach((data) => {
-    Object.keys(data.latestByCountry).forEach((c) => allCountries.add(c));
-  });
-
-  const normalize = (val: number | undefined, max: number): number | null => {
-    if (val === undefined || val === null) return null;
-    return Math.min(100, (val / max) * 100);
-  };
-
-  const scores: TechReadinessScore[] = [];
-
-  for (const countryCode of allCountries) {
-    const components = {
-      internet: normalize(internet.latestByCountry[countryCode]?.value, 100),
-      mobile: normalize(mobile.latestByCountry[countryCode]?.value, 150),
-      broadband: normalize(broadband.latestByCountry[countryCode]?.value, 50),
-      rdSpend: normalize(rdSpend.latestByCountry[countryCode]?.value, 5),
-    };
-
-    const weights = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
-    let totalWeight = 0;
-    let weightedSum = 0;
-
-    for (const [key, weight] of Object.entries(weights)) {
-      const val = components[key as keyof typeof components];
-      if (val !== null) {
-        weightedSum += val * weight;
-        totalWeight += weight;
+  // Fallback: fetch the pre-computed seed key directly from bootstrap endpoint.
+  // Data is seeded by seed-wb-indicators.mjs — never call WB API from frontend.
+  try {
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=techReadiness'), {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (resp.ok) {
+      const { data } = (await resp.json()) as { data: { techReadiness?: TechReadinessScore[] } };
+      if (data.techReadiness?.length) {
+        const scores = countries
+          ? data.techReadiness.filter(s => countries.includes(s.country))
+          : data.techReadiness;
+        return scores;
       }
     }
+  } catch { /* fall through */ }
 
-    const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
-    const countryName =
-      internet.latestByCountry[countryCode]?.name ||
-      mobile.latestByCountry[countryCode]?.name ||
-      countryCode;
-
-    scores.push({
-      country: countryCode,
-      countryName,
-      score: Math.round(score * 10) / 10,
-      rank: 0,
-      components,
-    });
-  }
-
-  scores.sort((a, b) => b.score - a.score);
-  scores.forEach((s, i) => { s.rank = i + 1; });
-
-  return scores;
+  return [];
 }
 
 export async function getCountryComparison(
   indicator: string,
-  countryCodes: string[],
+  _countryCodes: string[],
 ): Promise<WorldBankResponse> {
-  return getIndicatorData(indicator, { countries: countryCodes, years: 10 });
+  // All WB data is now pre-seeded by seed-wb-indicators.mjs.
+  // This function is unused but kept for API compat.
+  return {
+    indicator,
+    indicatorName: TECH_INDICATORS[indicator] || indicator,
+    metadata: { page: 0, pages: 0, total: 0 },
+    byCountry: {},
+    latestByCountry: {},
+    timeSeries: [],
+  };
 }
 
 // ========================================================================
@@ -552,6 +655,49 @@ export async function getCountryComparison(
 // ========================================================================
 
 export type { BisPolicyRate, BisExchangeRate, BisCreditToGdp };
+export type { NationalDebtEntry };
+
+// ========================================================================
+// National Debt Clock
+// ========================================================================
+
+// No persistCache: IndexedDB hydration on first call can deadlock in some browsers,
+// causing the panel to hang indefinitely on "Loading debt data from IMF..."
+const nationalDebtBreaker = createCircuitBreaker<GetNationalDebtResponse>({ name: 'National Debt', cacheTtlMs: 6 * 60 * 60 * 1000 });
+const emptyNationalDebtFallback: GetNationalDebtResponse = { entries: [], seededAt: '', unavailable: true };
+
+export async function getNationalDebtData(): Promise<GetNationalDebtResponse> {
+  const hydrated = getHydratedData('nationalDebt') as GetNationalDebtResponse | undefined;
+  if (hydrated?.entries?.length) return hydrated;
+
+  // Race all fetch paths against a hard 20s deadline so the panel never hangs.
+  return Promise.race([
+    _fetchNationalDebt(),
+    new Promise<GetNationalDebtResponse>(resolve =>
+      setTimeout(() => resolve(emptyNationalDebtFallback), 20_000),
+    ),
+  ]);
+}
+
+async function _fetchNationalDebt(): Promise<GetNationalDebtResponse> {
+  try {
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=nationalDebt'), {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (resp.ok) {
+      const { data } = (await resp.json()) as { data: { nationalDebt?: GetNationalDebtResponse } };
+      if (data.nationalDebt?.entries?.length) return data.nationalDebt;
+    }
+  } catch { /* fall through to RPC */ }
+
+  try {
+    return await nationalDebtBreaker.execute(async () => {
+      return client.getNationalDebt({}, { signal: AbortSignal.timeout(12_000) });
+    }, emptyNationalDebtFallback);
+  } catch {
+    return emptyNationalDebtFallback;
+  }
+}
 
 export interface BisData {
   policyRates: BisPolicyRate[];
@@ -569,14 +715,14 @@ export async function fetchBisData(): Promise<BisData> {
 
   try {
     const [policy, eer, credit] = await Promise.all([
-      hPolicy ? Promise.resolve(hPolicy) : bisPolicyBreaker.execute(() => client.getBisPolicyRates({}), emptyBisPolicyFallback),
-      hEer ? Promise.resolve(hEer) : bisEerBreaker.execute(() => client.getBisExchangeRates({}), emptyBisEerFallback),
-      hCredit ? Promise.resolve(hCredit) : bisCreditBreaker.execute(() => client.getBisCredit({}), emptyBisCreditFallback),
+      hPolicy?.rates?.length ? Promise.resolve(hPolicy) : bisPolicyBreaker.execute(() => client.getBisPolicyRates({}, { signal: AbortSignal.timeout(20_000) }), emptyBisPolicyFallback),
+      hEer?.rates?.length ? Promise.resolve(hEer) : bisEerBreaker.execute(() => client.getBisExchangeRates({}, { signal: AbortSignal.timeout(20_000) }), emptyBisEerFallback),
+      hCredit?.entries?.length ? Promise.resolve(hCredit) : bisCreditBreaker.execute(() => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }), emptyBisCreditFallback),
     ]);
     return {
-      policyRates: policy.rates,
-      exchangeRates: eer.rates,
-      creditToGdp: credit.entries,
+      policyRates: policy.rates ?? [],
+      exchangeRates: eer.rates ?? [],
+      creditToGdp: credit.entries ?? [],
       fetchedAt: new Date(),
     };
   } catch {

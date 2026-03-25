@@ -713,7 +713,7 @@ test.describe('desktop runtime routing guardrails', () => {
         return {
           fetchedCount: seenCountryCodes.size,
           usIso2: us?.iso2 ?? null,
-          hasIso3Field: !!us && Object.prototype.hasOwnProperty.call(us, 'iso3'),
+          hasIso3Field: !!us && Object.hasOwn(us, 'iso3'),
         };
       } finally {
         window.fetch = originalFetch;

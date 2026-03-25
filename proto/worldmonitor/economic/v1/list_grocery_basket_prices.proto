@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GroceryItemPrice {
+  string item_id = 1;
+  string item_name = 2;
+  string unit = 3;
+  double local_price = 4;
+  double usd_price = 5;
+  string currency = 6;
+  string source_site = 7;
+  bool available = 8;
+}
+
+message CountryBasket {
+  string code = 1;
+  string name = 2;
+  string currency = 3;
+  string flag = 4;
+  double total_usd = 5;
+  double fx_rate = 6;
+  repeated GroceryItemPrice items = 7;
+  double wow_pct = 8;            // WoW % change in total_usd
+}
+
+message ListGroceryBasketPricesRequest {}
+
+message ListGroceryBasketPricesResponse {
+  repeated CountryBasket countries = 1;
+  string fetched_at = 2;
+  string cheapest_country = 3;
+  string most_expensive_country = 4;
+  bool upstream_unavailable = 5;
+  double wow_avg_pct = 6;
+  bool wow_available = 7;
+  string prev_fetched_at = 8;
+}

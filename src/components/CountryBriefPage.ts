@@ -5,14 +5,15 @@ import type { CountryScore } from '@/services/country-instability';
 import type { NewsItem } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType } from '@/types';
-import type { CountryBriefSignals } from '@/app/app-context';
+import type { CountryBriefSignals } from '@/types';
 import type { CountryBriefPanel, CountryIntelData, StockIndexData } from '@/components/CountryBriefPanel';
 import { getNearbyInfrastructure, haversineDistanceKm } from '@/services/related-assets';
 import { PORTS } from '@/config/ports';
-import type { Port } from '@/config/ports';
+import type { Port } from '@/types';
 import { exportCountryBriefJSON, exportCountryBriefCSV } from '@/utils/export';
 import type { CountryBriefExport } from '@/utils/export';
 import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
+import { toFlagEmoji } from '@/utils/country-flag';
 
 type BriefAssetType = AssetType | 'port';
 
@@ -60,8 +61,6 @@ export class CountryBriefPage implements CountryBriefPanel {
   private onCloseCallback?: () => void;
   private onShareStory?: (code: string, name: string) => void;
   private onExportImage?: (code: string, name: string) => void;
-  private boundExportMenuClose: (() => void) | null = null;
-  private boundCitationClick: ((e: Event) => void) | null = null;
   private abortController: AbortController = new AbortController();
 
   constructor() {
@@ -69,24 +68,103 @@ export class CountryBriefPage implements CountryBriefPanel {
     this.overlay.className = 'country-brief-overlay';
     document.body.appendChild(this.overlay);
 
+    // Single delegated click handler for all interactive elements.
+    // This prevents listener accumulation when show()/showLoading() replace innerHTML.
     this.overlay.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).classList.contains('country-brief-overlay')) this.hide();
+      const target = e.target as HTMLElement;
+
+      // Click on overlay background to close
+      if (target.classList.contains('country-brief-overlay')) {
+        this.hide();
+        return;
+      }
+
+      // Close button
+      if (target.closest('.cb-close')) {
+        this.hide();
+        return;
+      }
+
+      // Link share button (copy URL to clipboard)
+      const linkShareBtn = target.closest('.cb-link-share-btn') as HTMLButtonElement | null;
+      if (linkShareBtn) {
+        if (!this.currentCode || !this.currentName) return;
+        const url = `${window.location.origin}/?c=${this.currentCode}`;
+        navigator.clipboard.writeText(url).then(() => {
+          const orig = linkShareBtn.innerHTML;
+          linkShareBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+          setTimeout(() => { linkShareBtn.innerHTML = orig; }, 1500);
+        }).catch(() => {});
+        return;
+      }
+
+      // Share button
+      if (target.closest('.cb-share-btn')) {
+        if (this.onShareStory && this.currentCode && this.currentName) {
+          this.onShareStory(this.currentCode, this.currentName);
+        }
+        return;
+      }
+
+      // Print button
+      if (target.closest('.cb-print-btn')) {
+        window.print();
+        return;
+      }
+
+      // Export button (toggle menu)
+      if (target.closest('.cb-export-btn')) {
+        e.stopPropagation();
+        const exportMenu = this.overlay.querySelector('.cb-export-menu');
+        exportMenu?.classList.toggle('hidden');
+        return;
+      }
+
+      // Export option buttons
+      const exportOption = target.closest('.cb-export-option') as HTMLElement | null;
+      if (exportOption) {
+        const format = exportOption.dataset.format;
+        if (format === 'image') {
+          if (this.onExportImage && this.currentCode && this.currentName) {
+            this.onExportImage(this.currentCode, this.currentName);
+          }
+        } else if (format === 'pdf') {
+          this.exportPdf();
+        } else if (format === 'json' || format === 'csv') {
+          this.exportBrief(format);
+        }
+        const exportMenu = this.overlay.querySelector('.cb-export-menu');
+        exportMenu?.classList.add('hidden');
+        return;
+      }
+
+      // Citation links
+      if (target.classList.contains('cb-citation')) {
+        e.preventDefault();
+        const href = target.getAttribute('href');
+        if (href) {
+          const el = this.overlay.querySelector(href);
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el?.classList.add('cb-news-highlight');
+          setTimeout(() => el?.classList.remove('cb-news-highlight'), 2000);
+        }
+        return;
+      }
+
+      // Clicking anywhere else closes the export menu if open
+      const exportMenu = this.overlay.querySelector('.cb-export-menu');
+      if (exportMenu && !exportMenu.classList.contains('hidden')) {
+        exportMenu.classList.add('hidden');
+      }
     });
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.overlay.classList.contains('active')) this.hide();
     });
   }
 
   private countryFlag(code: string): string {
-    try {
-      return code
-        .toUpperCase()
-        .split('')
-        .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
-        .join('');
-    } catch {
-      return '🌍';
-    }
+    return toFlagEmoji(code, '🌍');
   }
 
   private levelColor(level: string): string {
@@ -163,6 +241,7 @@ export class CountryBriefPage implements CountryBriefPanel {
     if (signals.outages > 0) chips.push(`<span class="signal-chip outage">🌐 ${signals.outages} ${t('modals.countryBrief.signals.outages')}</span>`);
     if (signals.aisDisruptions > 0) chips.push(`<span class="signal-chip outage">🚢 ${signals.aisDisruptions} AIS Disruptions</span>`);
     if (signals.satelliteFires > 0) chips.push(`<span class="signal-chip climate">🔥 ${signals.satelliteFires} Satellite Fires</span>`);
+    if (signals.radiationAnomalies > 0) chips.push(`<span class="signal-chip outage">☢️ ${signals.radiationAnomalies} Radiation Anomalies</span>`);
     if (signals.temporalAnomalies > 0) chips.push(`<span class="signal-chip outage">⏱️ ${signals.temporalAnomalies} Temporal Anomalies</span>`);
     if (signals.cyberThreats > 0) chips.push(`<span class="signal-chip conflict">🛡️ ${signals.cyberThreats} Cyber Threats</span>`);
     if (signals.earthquakes > 0) chips.push(`<span class="signal-chip quake">🌍 ${signals.earthquakes} ${t('modals.countryBrief.signals.earthquakes')}</span>`);
@@ -221,7 +300,57 @@ export class CountryBriefPage implements CountryBriefPanel {
           </div>
         </div>
       </div>`;
-    this.overlay.querySelector('.cb-close')?.addEventListener('click', () => this.hide());
+    // Close button click is handled via event delegation on the overlay (set up in constructor)
+    this.overlay.classList.add('active');
+  }
+
+  public showGeoError(onRetry: () => void): void {
+    this.currentCode = '__error__';
+    this.overlay.textContent = '';
+
+    const page = document.createElement('div');
+    page.className = 'country-brief-page';
+
+    const header = document.createElement('div');
+    header.className = 'cb-header';
+    const headerLeft = document.createElement('div');
+    headerLeft.className = 'cb-header-left';
+    const flag = document.createElement('span');
+    flag.className = 'cb-flag';
+    flag.textContent = '\u26A0\uFE0F';
+    const title = document.createElement('span');
+    title.className = 'cb-country-name';
+    title.textContent = t('countryBrief.geocodeFailed');
+    headerLeft.append(flag, title);
+    const headerRight = document.createElement('div');
+    headerRight.className = 'cb-header-right';
+    const closeX = document.createElement('button');
+    closeX.className = 'cb-close';
+    closeX.setAttribute('aria-label', t('components.newsPanel.close'));
+    closeX.textContent = '\u00D7';
+    headerRight.append(closeX);
+    header.append(headerLeft, headerRight);
+
+    const body = document.createElement('div');
+    body.className = 'cb-body';
+    const errorWrap = document.createElement('div');
+    errorWrap.className = 'cb-geo-error';
+    const actions = document.createElement('div');
+    actions.className = 'cb-geo-error-actions';
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'cb-geo-retry-btn';
+    retryBtn.textContent = t('countryBrief.retryBtn');
+    retryBtn.addEventListener('click', () => onRetry(), { once: true });
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'cb-geo-close-btn';
+    closeBtn.textContent = t('countryBrief.closeBtn');
+    closeBtn.addEventListener('click', () => this.hide(), { once: true });
+    actions.append(retryBtn, closeBtn);
+    errorWrap.append(actions);
+    body.append(errorWrap);
+
+    page.append(header, body);
+    this.overlay.append(page);
     this.overlay.classList.add('active');
   }
 
@@ -256,6 +385,9 @@ export class CountryBriefPage implements CountryBriefPanel {
             ${tierBadge}
           </div>
           <div class="cb-header-right">
+            <button class="cb-link-share-btn" title="${t('components.countryBrief.shareLink')}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+            </button>
             <button class="cb-share-btn" title="${t('components.countryBrief.shareStory')}">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
             </button>
@@ -346,58 +478,8 @@ export class CountryBriefPage implements CountryBriefPanel {
         </div>
       </div>`;
 
-    this.overlay.querySelector('.cb-close')?.addEventListener('click', () => this.hide());
-    this.overlay.querySelector('.cb-share-btn')?.addEventListener('click', () => {
-      if (this.onShareStory && this.currentCode && this.currentName) {
-        this.onShareStory(this.currentCode, this.currentName);
-      }
-    });
-    this.overlay.querySelector('.cb-print-btn')?.addEventListener('click', () => {
-      window.print();
-    });
-
-    const exportBtn = this.overlay.querySelector('.cb-export-btn');
-    const exportMenu = this.overlay.querySelector('.cb-export-menu');
-    exportBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      exportMenu?.classList.toggle('hidden');
-    });
-    this.overlay.querySelectorAll('.cb-export-option').forEach(opt => {
-      opt.addEventListener('click', () => {
-        const format = (opt as HTMLElement).dataset.format;
-        if (format === 'image') {
-          if (this.onExportImage && this.currentCode && this.currentName) {
-            this.onExportImage(this.currentCode, this.currentName);
-          }
-        } else if (format === 'pdf') {
-          this.exportPdf();
-        } else {
-          this.exportBrief(format as 'json' | 'csv');
-        }
-        exportMenu?.classList.add('hidden');
-      });
-    });
-    // Remove previous overlay-level listeners to prevent accumulation
-    if (this.boundExportMenuClose) this.overlay.removeEventListener('click', this.boundExportMenuClose);
-    if (this.boundCitationClick) this.overlay.removeEventListener('click', this.boundCitationClick);
-
-    this.boundExportMenuClose = () => exportMenu?.classList.add('hidden');
-    this.overlay.addEventListener('click', this.boundExportMenuClose);
-
-    this.boundCitationClick = (e: Event) => {
-      const target = e.target as HTMLElement;
-      if (target.classList.contains('cb-citation')) {
-        e.preventDefault();
-        const href = target.getAttribute('href');
-        if (href) {
-          const el = this.overlay.querySelector(href);
-          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el?.classList.add('cb-news-highlight');
-          setTimeout(() => el?.classList.remove('cb-news-highlight'), 2000);
-        }
-      }
-    };
-    this.overlay.addEventListener('click', this.boundCitationClick);
+    // All button click handlers (close, share, print, export, citation, link-share) are handled
+    // via event delegation on the overlay (set up in constructor)
 
     this.overlay.classList.add('active');
   }
@@ -612,6 +694,7 @@ export class CountryBriefPage implements CountryBriefPanel {
         outages: this.currentSignals.outages,
         aisDisruptions: this.currentSignals.aisDisruptions,
         satelliteFires: this.currentSignals.satelliteFires,
+        radiationAnomalies: this.currentSignals.radiationAnomalies,
         temporalAnomalies: this.currentSignals.temporalAnomalies,
         cyberThreats: this.currentSignals.cyberThreats,
         earthquakes: this.currentSignals.earthquakes,
@@ -669,9 +752,13 @@ export class CountryBriefPage implements CountryBriefPanel {
     </head><body>${header ? header.outerHTML : ''}${content.outerHTML}</body></html>`);
     doc.close();
 
-    iframe.contentWindow!.onafterprint = () => document.body.removeChild(iframe);
+    if (iframe.contentWindow) {
+      iframe.contentWindow.onafterprint = () => document.body.removeChild(iframe);
+    }
     setTimeout(() => {
-      iframe.contentWindow!.print();
+      if (iframe.contentWindow) {
+        iframe.contentWindow.print();
+      }
       setTimeout(() => { if (iframe.parentNode) document.body.removeChild(iframe); }, 5000);
     }, 300);
   }

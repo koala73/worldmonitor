@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   MaritimeServiceClient,
   type AisDensityZone as ProtoDensityZone,
@@ -8,10 +9,11 @@ import { createCircuitBreaker } from '@/utils';
 import type { AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
 import { dataFreshness } from '../data-freshness';
 import { isFeatureAvailable } from '../runtime-config';
+import { startSmartPollLoop, toApiUrl, type SmartPollLoopHandle } from '../runtime';
 
 // ---- Proto fallback (desktop safety when relay URL is unavailable) ----
 
-const client = new MaritimeServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new MaritimeServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const snapshotBreaker = createCircuitBreaker<GetVesselSnapshotResponse>({ name: 'Maritime Snapshot', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const emptySnapshotFallback: GetVesselSnapshotResponse = { snapshot: undefined };
 
@@ -111,7 +113,7 @@ const lastCallbackTimestampByMmsi = new Map<string, number>();
 
 // ---- Polling State ----
 
-let pollInterval: ReturnType<typeof setInterval> | null = null;
+let pollLoop: SmartPollLoopHandle | null = null;
 let inFlight = false;
 let isPolling = false;
 let lastPollAt = 0;
@@ -134,7 +136,7 @@ const MAX_CALLBACK_TRACKED_VESSELS = 20000;
 
 // ---- Raw Relay URL (for candidate reports path) ----
 
-const SNAPSHOT_PROXY_URL = '/api/ais-snapshot';
+const SNAPSHOT_PROXY_URL = toApiUrl('/api/ais-snapshot');
 const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
 const DIRECT_RAILWAY_SNAPSHOT_URL = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/ais/snapshot'
@@ -176,39 +178,39 @@ function parseSnapshot(data: unknown): {
 
 // ---- Hybrid Fetch Strategy ----
 
-async function fetchRawRelaySnapshot(includeCandidates: boolean): Promise<unknown> {
+async function fetchRawRelaySnapshot(includeCandidates: boolean, signal?: AbortSignal): Promise<unknown> {
   const query = `?candidates=${includeCandidates ? 'true' : 'false'}`;
 
   try {
-    const proxied = await fetch(`${SNAPSHOT_PROXY_URL}${query}`, { headers: { Accept: 'application/json' } });
+    const proxied = await fetch(`${SNAPSHOT_PROXY_URL}${query}`, { headers: { Accept: 'application/json' }, signal });
     if (proxied.ok) return proxied.json();
   } catch { /* Proxy unavailable -- fall through */ }
 
   // Local development fallback only.
   if (isLocalhost && DIRECT_RAILWAY_SNAPSHOT_URL) {
     try {
-      const railway = await fetch(`${DIRECT_RAILWAY_SNAPSHOT_URL}${query}`, { headers: { Accept: 'application/json' } });
+      const railway = await fetch(`${DIRECT_RAILWAY_SNAPSHOT_URL}${query}`, { headers: { Accept: 'application/json' }, signal });
       if (railway.ok) return railway.json();
     } catch { /* Railway unavailable -- fall through */ }
   }
 
   if (isLocalhost) {
-    const local = await fetch(`${LOCAL_SNAPSHOT_FALLBACK}${query}`, { headers: { Accept: 'application/json' } });
+    const local = await fetch(`${LOCAL_SNAPSHOT_FALLBACK}${query}`, { headers: { Accept: 'application/json' }, signal });
     if (local.ok) return local.json();
   }
 
   throw new Error('AIS raw relay snapshot unavailable');
 }
 
-async function fetchSnapshotPayload(includeCandidates: boolean): Promise<unknown> {
+async function fetchSnapshotPayload(includeCandidates: boolean, signal?: AbortSignal): Promise<unknown> {
   if (includeCandidates) {
     // Candidate reports are only available on the raw relay endpoint.
-    return fetchRawRelaySnapshot(true);
+    return fetchRawRelaySnapshot(true, signal);
   }
 
   try {
     // Prefer direct relay path to avoid normal web traffic double-hop via Vercel.
-    return await fetchRawRelaySnapshot(false);
+    return await fetchRawRelaySnapshot(false, signal);
   } catch (rawError) {
     // Desktop fallback: use proto route when relay URL/local relay is unavailable.
     const response = await snapshotBreaker.execute(async () => {
@@ -294,17 +296,15 @@ function emitCandidateReports(reports: SnapshotCandidateReport[]): void {
 
 // ---- Polling ----
 
-async function pollSnapshot(force = false): Promise<void> {
+async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> {
   if (!isAisConfigured()) return;
-  // Skip polling when tab is hidden to avoid wasting relay bandwidth.
-  // The interval keeps running so polling resumes instantly on focus.
-  if (!force && isClientRuntime && document.hidden) return;
   if (inFlight && !force) return;
+  if (signal?.aborted) return;
 
   inFlight = true;
   try {
     const includeCandidates = shouldIncludeCandidates();
-    const payload = await fetchSnapshotPayload(includeCandidates);
+    const payload = await fetchSnapshotPayload(includeCandidates, signal);
     const snapshot = parseSnapshot(payload);
     if (!snapshot) throw new Error('Invalid snapshot payload');
 
@@ -340,38 +340,13 @@ function startPolling(): void {
   if (isPolling || !isAisConfigured()) return;
   isPolling = true;
   void pollSnapshot(true);
-  pollInterval = setInterval(() => {
-    void pollSnapshot(false);
-  }, SNAPSHOT_POLL_INTERVAL_MS);
-}
-
-function pausePolling(): void {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
-}
-
-function resumePolling(): void {
-  if (!isPolling || pollInterval) return;
-  // Avoid overlapping relay requests if a poll is already in flight.
-  if (!inFlight) {
-    void pollSnapshot(false);
-  }
-  pollInterval = setInterval(() => {
-    void pollSnapshot(false);
-  }, SNAPSHOT_POLL_INTERVAL_MS);
-}
-
-// Pause AIS polling when the browser tab is hidden to avoid wasting
-// Railway relay bandwidth on backgrounded tabs.
-if (isClientRuntime) {
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      pausePolling();
-    } else {
-      resumePolling();
-    }
+  pollLoop?.stop();
+  pollLoop = startSmartPollLoop(({ signal }) => pollSnapshot(false, signal), {
+    intervalMs: SNAPSHOT_POLL_INTERVAL_MS,
+    // AIS relay traffic is high-cost; pause entirely in hidden tabs.
+    pauseWhenHidden: true,
+    refreshOnVisible: true,
+    runImmediately: false,
   });
 }
 
@@ -394,10 +369,8 @@ export function initAisStream(): void {
 }
 
 export function disconnectAisStream(): void {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
+  pollLoop?.stop();
+  pollLoop = null;
   isPolling = false;
   inFlight = false;
   latestStatus.connected = false;

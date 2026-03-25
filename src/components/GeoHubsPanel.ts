@@ -43,6 +43,7 @@ export class GeoHubsPanel extends Panel {
         lowColor: getCSSColor('--text-dim'),
       }),
     });
+    this.setupDelegatedListeners();
   }
 
   public setOnHubClick(handler: (hub: GeoHubActivity) => void): void {
@@ -105,19 +106,22 @@ export class GeoHubsPanel extends Panel {
     }).join('');
 
     this.setContent(html);
-    this.bindEvents();
   }
 
-  private bindEvents(): void {
-    const items = this.content.querySelectorAll<HTMLDivElement>('.geo-hub-item');
-    items.forEach((item) => {
-      item.addEventListener('click', () => {
-        const hubId = item.dataset.hubId;
-        const hub = this.activities.find(a => a.hubId === hubId);
-        if (hub && this.onHubClick) {
-          this.onHubClick(hub);
-        }
-      });
+  /**
+   * Attach a single delegated click listener on the container so that
+   * re-renders (which replace innerHTML) never accumulate listeners.
+   */
+  private setupDelegatedListeners(): void {
+    this.content.addEventListener('click', (e: Event) => {
+      const target = e.target as HTMLElement;
+      const item = target.closest<HTMLDivElement>('.geo-hub-item');
+      if (!item) return;
+      const hubId = item.dataset.hubId;
+      const hub = this.activities.find(a => a.hubId === hubId);
+      if (hub && this.onHubClick) {
+        this.onHubClick(hub);
+      }
     });
   }
 }

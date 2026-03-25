@@ -14,10 +14,10 @@ import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@
 import { t } from '@/services/i18n';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getAiFlowSettings, isAnyAiProviderEnabled, subscribeAiFlowChange } from '@/services/ai-flow-settings';
+import { getServerInsights, type ServerInsights, type ServerInsightStory } from '@/services/insights-loader';
 import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
 
 export class InsightsPanel extends Panel {
-  private isHidden = false;
   private lastBriefUpdate = 0;
   private cachedBrief: string | null = null;
   private lastMissedStories: AnalyzedHeadline[] = [];
@@ -38,12 +38,8 @@ export class InsightsPanel extends Panel {
       infoTooltip: t('components.insights.infoTooltip'),
     });
 
-    if (isMobileDevice()) {
-      this.hide();
-      this.isHidden = true;
-    }
-
     // Web-only: subscribe to AI flow changes so toggling providers re-runs analysis
+    // Skip on mobile — only server-side insights are used there (no client-side AI)
     if (!isDesktopRuntime() && !isMobileDevice()) {
       this.aiFlowUnsubscribe = subscribeAiFlowChange((changedKey) => {
         if (changedKey === 'mapNewsFlash') return;
@@ -257,11 +253,16 @@ export class InsightsPanel extends Panel {
   }
 
   public async updateInsights(clusters: ClusteredEvent[]): Promise<void> {
-    if (this.isHidden) return;
-
     this.lastClusters = clusters;
     this.updateGeneration++;
     const thisGeneration = this.updateGeneration;
+
+    // Try server-side pre-computed insights first (instant, works even without clusters)
+    const serverInsights = getServerInsights();
+    if (serverInsights) {
+      await this.updateFromServer(serverInsights, clusters, thisGeneration);
+      return;
+    }
 
     if (clusters.length === 0) {
       this.setDataBadge('unavailable');
@@ -269,6 +270,74 @@ export class InsightsPanel extends Panel {
       return;
     }
 
+    // Fallback: full client-side pipeline (skip on mobile — too heavy)
+    if (isMobileDevice()) {
+      this.setDataBadge('unavailable');
+      this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
+      return;
+    }
+    await this.updateFromClient(clusters, thisGeneration);
+  }
+
+  private async updateFromServer(
+    serverInsights: ServerInsights,
+    clusters: ClusteredEvent[],
+    thisGeneration: number,
+  ): Promise<void> {
+    const totalSteps = 2;
+
+    try {
+      // Clear stale ML-detected stories when clusters are empty (e.g. clustering
+      // failed) so unrelated missed stories don't render next to server insights
+      if (clusters.length === 0) {
+        this.lastMissedStories = [];
+      }
+
+      // Step 1: Signal aggregation (client-side, depends on real-time map data)
+      this.setProgress(1, totalSteps, 'Loading server insights...');
+
+      let signalSummary: ReturnType<typeof signalAggregator.getSummary>;
+      let focalSummary: ReturnType<typeof focalPointDetector.analyze>;
+
+      if (SITE_VARIANT === 'full') {
+        if (this.lastMilitaryFlights.length > 0) {
+          const postures = getTheaterPostureSummaries(this.lastMilitaryFlights);
+          signalAggregator.ingestTheaterPostures(postures);
+        }
+        signalSummary = signalAggregator.getSummary();
+        this.lastConvergenceZones = signalSummary.convergenceZones;
+        focalSummary = focalPointDetector.analyze(clusters, signalSummary);
+        this.lastFocalPoints = focalSummary.focalPoints;
+        if (focalSummary.focalPoints.length > 0) {
+          ingestNewsForCII(clusters);
+          window.dispatchEvent(new CustomEvent('focal-points-ready'));
+        }
+      } else {
+        this.lastConvergenceZones = [];
+        this.lastFocalPoints = [];
+      }
+
+      if (this.updateGeneration !== thisGeneration) return;
+
+      // Step 2: Sentiment analysis on server story titles (fast browser ML)
+      this.setProgress(2, totalSteps, t('components.insights.analyzingSentiment'));
+      const titles = serverInsights.topStories.slice(0, 5).map(s => s.primaryTitle);
+      let sentiments: Array<{ label: string; score: number }> | null = null;
+      if (mlWorker.isAvailable) {
+        sentiments = await mlWorker.classifySentiment(titles).catch(() => null);
+      }
+
+      if (this.updateGeneration !== thisGeneration) return;
+
+      this.setDataBadge('live');
+      this.renderServerInsights(serverInsights, sentiments);
+    } catch (error) {
+      console.error('[InsightsPanel] Server path error, falling back:', error);
+      await this.updateFromClient(clusters, thisGeneration);
+    }
+  }
+
+  private async updateFromClient(clusters: ClusteredEvent[], thisGeneration: number): Promise<void> {
     // Web-only: if no AI providers enabled, show disabled state
     if (!isDesktopRuntime() && !isAnyAiProviderEnabled()) {
       this.setDataBadge('unavailable');
@@ -363,13 +432,12 @@ export class InsightsPanel extends Panel {
       if (this.updateGeneration !== thisGeneration) return;
 
       // Step 3: Generate World Brief (with cooldown)
-      const loadedFromPersistentCache = await this.loadBriefFromCache();
+      await this.loadBriefFromCache();
       if (this.updateGeneration !== thisGeneration) return;
 
       let worldBrief = this.cachedBrief;
       const now = Date.now();
 
-      let usedCachedBrief = loadedFromPersistentCache;
       if (!worldBrief || now - this.lastBriefUpdate > InsightsPanel.BRIEF_COOLDOWN_MS) {
         this.setProgress(3, totalSteps, t('components.insights.generatingBrief'));
 
@@ -390,15 +458,13 @@ export class InsightsPanel extends Panel {
           worldBrief = result.summary;
           this.cachedBrief = worldBrief;
           this.lastBriefUpdate = now;
-          usedCachedBrief = false;
           void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: worldBrief });
         }
       } else {
-        usedCachedBrief = true;
         this.setProgress(3, totalSteps, 'Using cached brief...');
       }
 
-      this.setDataBadge(worldBrief ? (usedCachedBrief ? 'cached' : 'live') : 'unavailable');
+      this.setDataBadge(worldBrief ? 'live' : 'unavailable');
 
       // Step 4: Wait for parallel analysis to complete
       this.setProgress(4, totalSteps, 'Multi-perspective analysis...');
@@ -409,7 +475,7 @@ export class InsightsPanel extends Panel {
       this.renderInsights(importantClusters, sentiments, worldBrief);
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
-      this.setContent('<div class="insights-error">Analysis failed - retrying...</div>');
+      this.showError();
     }
   }
 
@@ -438,6 +504,90 @@ export class InsightsPanel extends Panel {
       </div>
       ${missedHtml}
     `);
+  }
+
+  private renderServerInsights(
+    insights: ServerInsights,
+    sentiments: Array<{ label: string; score: number }> | null,
+  ): void {
+    const briefHtml = insights.worldBrief ? this.renderWorldBrief(insights.worldBrief) : '';
+    const focalPointsHtml = this.renderFocalPoints();
+    const convergenceHtml = this.renderConvergenceZones();
+    const sentimentOverview = this.renderSentimentOverview(sentiments);
+    const storiesHtml = this.renderServerStories(insights.topStories, sentiments);
+    const statsHtml = this.renderServerStats(insights);
+    const missedHtml = this.renderMissedStories();
+
+    this.setContent(`
+      ${briefHtml}
+      ${focalPointsHtml}
+      ${convergenceHtml}
+      ${sentimentOverview}
+      ${statsHtml}
+      <div class="insights-section">
+        <div class="insights-section-title">BREAKING & CONFIRMED</div>
+        ${storiesHtml}
+      </div>
+      ${missedHtml}
+    `);
+  }
+
+  private renderServerStories(
+    stories: ServerInsightStory[],
+    sentiments: Array<{ label: string; score: number }> | null,
+  ): string {
+    return stories.map((story, i) => {
+      const sentiment = sentiments?.[i];
+      const sentimentClass = sentiment?.label === 'negative' ? 'negative' :
+        sentiment?.label === 'positive' ? 'positive' : 'neutral';
+
+      const badges: string[] = [];
+
+      if (story.sourceCount >= 3) {
+        badges.push(`<span class="insight-badge confirmed">✓ ${story.sourceCount} sources</span>`);
+      } else if (story.sourceCount >= 2) {
+        badges.push(`<span class="insight-badge multi">${story.sourceCount} sources</span>`);
+      }
+
+      if (story.isAlert) {
+        badges.push('<span class="insight-badge alert">⚠ ALERT</span>');
+      }
+
+      const VALID_THREAT_LEVELS = ['critical', 'high', 'elevated', 'moderate', 'medium', 'low', 'info'];
+      if (story.threatLevel === 'critical' || story.threatLevel === 'high') {
+        const safeThreat = VALID_THREAT_LEVELS.includes(story.threatLevel) ? story.threatLevel : 'moderate';
+        badges.push(`<span class="insight-badge velocity ${safeThreat}">${escapeHtml(story.category)}</span>`);
+      }
+
+      return `
+        <div class="insight-story">
+          <div class="insight-story-header">
+            <span class="insight-sentiment-dot ${sentimentClass}"></span>
+            <span class="insight-story-title">${escapeHtml(story.primaryTitle.slice(0, 100))}${story.primaryTitle.length > 100 ? '...' : ''}</span>
+          </div>
+          ${badges.length > 0 ? `<div class="insight-badges">${badges.join('')}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  private renderServerStats(insights: ServerInsights): string {
+    return `
+      <div class="insights-stats">
+        <div class="insight-stat">
+          <span class="insight-stat-value">${insights.multiSourceCount}</span>
+          <span class="insight-stat-label">Multi-source</span>
+        </div>
+        <div class="insight-stat">
+          <span class="insight-stat-value">${insights.fastMovingCount}</span>
+          <span class="insight-stat-label">Fast-moving</span>
+        </div>
+        <div class="insight-stat">
+          <span class="insight-stat-value">${insights.clusterCount}</span>
+          <span class="insight-stat-label">Clusters</span>
+        </div>
+      </div>
+    `;
   }
 
   private renderWorldBrief(brief: string): string {
@@ -690,6 +840,7 @@ export class InsightsPanel extends Panel {
     } catch {
       // Best effort; fallback regeneration still works from memory reset.
     }
+    if (!this.element?.isConnected) return;
 
     if (!isAnyAiProviderEnabled()) {
       this.setDataBadge('unavailable');
@@ -697,13 +848,9 @@ export class InsightsPanel extends Panel {
       return;
     }
 
-    if (this.lastClusters.length > 0) {
-      void this.updateInsights(this.lastClusters);
-      return;
-    }
-
-    this.setDataBadge('unavailable');
-    this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
+    // Re-run full updateInsights which checks server insights first,
+    // then falls back to client-side clustering
+    void this.updateInsights(this.lastClusters);
   }
 
   public override destroy(): void {

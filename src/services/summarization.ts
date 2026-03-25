@@ -8,10 +8,12 @@
  */
 
 import { mlWorker } from './ml-worker';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { SITE_VARIANT } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { isFeatureAvailable, type RuntimeFeatureId } from './runtime-config';
 import { trackLLMUsage, trackLLMFailure } from './analytics';
+import { getCurrentLanguage } from './i18n';
 import { NewsServiceClient, type SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { buildSummaryCacheKey } from '@/utils/summary-cache-key';
@@ -34,10 +36,17 @@ export interface SummarizeOptions {
 
 // ── Sebuf client (replaces direct fetch to /api/{provider}-summarize) ──
 
-const newsClient = new NewsServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const newsClient = new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization', cacheTtlMs: 0 });
 
-const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: '', model: '', cached: false, skipped: false, fallback: true, tokens: 0, reason: '', error: '', errorType: '' };
+const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({
+  name: 'SummaryResult',
+  cacheTtlMs: 2 * 60 * 60 * 1000,
+  persistCache: true,
+  maxCacheEntries: 32,
+});
+
+const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: '', model: '', fallback: true, tokens: 0, error: '', errorType: '', status: 'SUMMARIZE_STATUS_UNSPECIFIED', statusDetail: '' };
 
 // ── Provider definitions ──
 
@@ -78,12 +87,12 @@ async function tryApiProvider(
     }, emptySummaryFallback);
 
     // Provider skipped (credentials missing) or signaled fallback
-    if (resp.skipped || resp.fallback) return null;
+    if (resp.status === 'SUMMARIZE_STATUS_SKIPPED' || resp.fallback) return null;
 
     const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';
     if (!summary) return null;
 
-    const cached = Boolean(resp.cached);
+    const cached = resp.status === 'SUMMARIZE_STATUS_CACHED';
     const resultProvider = cached ? 'cache' : providerDef.provider;
     return {
       summary,
@@ -106,12 +115,15 @@ async function tryBrowserT5(headlines: string[], modelId?: string): Promise<Summ
     }
     lastAttemptedProvider = 'browser';
 
+    const lang = getCurrentLanguage();
     const combinedText = headlines.slice(0, 5).map(h => h.slice(0, 80)).join('. ');
-    const prompt = `Summarize the most important headline in 2 concise sentences (under 60 words): ${combinedText}`;
+    const prompt = lang === 'fr'
+      ? `Résumez le titre le plus important en 2 phrases concises (moins de 60 mots) : ${combinedText}`
+      : `Summarize the most important headline in 2 concise sentences (under 60 words): ${combinedText}`;
 
     const [summary] = await mlWorker.summarize([prompt], modelId);
 
-    if (!summary || summary.length < 20 || summary.toLowerCase().includes('summarize')) {
+    if (!summary || summary.length < 20 || summary.toLowerCase().includes('summarize') || summary.toLowerCase().includes('résumez')) {
       return null;
     }
 
@@ -162,18 +174,27 @@ export async function generateSummary(
     return null;
   }
 
-  lastAttemptedProvider = 'none';
-  const result = await generateSummaryInternal(headlines, onProgress, geoContext, lang, options);
+  const optionsSuffix = options?.skipCloudProviders || options?.skipBrowserFallback
+    ? `:opts${options.skipCloudProviders ? 'C' : ''}${options.skipBrowserFallback ? 'B' : ''}`
+    : '';
+  const cacheKey = buildSummaryCacheKey(headlines, 'brief', geoContext, SITE_VARIANT, lang) + optionsSuffix;
 
-  // Track at generateSummary return only (not inside tryApiProvider) to avoid
-  // double-counting beta comparison traffic. Only the winning provider is recorded.
-  if (result) {
-    trackLLMUsage(result.provider, result.model, result.cached);
-  } else {
-    trackLLMFailure(lastAttemptedProvider);
-  }
+  return summaryResultBreaker.execute(
+    async () => {
+      lastAttemptedProvider = 'none';
+      const result = await generateSummaryInternal(headlines, onProgress, geoContext, lang, options);
 
-  return result;
+      if (result) {
+        trackLLMUsage(result.provider, result.model, result.cached);
+      } else {
+        trackLLMFailure(lastAttemptedProvider);
+      }
+
+      return result;
+    },
+    null,
+    { cacheKey, shouldCache: (result) => result !== null },
+  );
 }
 
 async function generateSummaryInternal(
@@ -292,7 +313,7 @@ export async function translateText(
         });
       }, emptySummaryFallback);
 
-      if (resp.fallback || resp.skipped) continue;
+      if (resp.fallback || resp.status === 'SUMMARIZE_STATUS_SKIPPED') continue;
       const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';
       if (summary) return summary;
     } catch (e) {

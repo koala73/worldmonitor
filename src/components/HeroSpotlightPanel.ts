@@ -69,7 +69,7 @@ export class HeroSpotlightPanel extends Panel {
         btn.addEventListener('click', () => {
           const lat = Number(btn.getAttribute('data-lat'));
           const lon = Number(btn.getAttribute('data-lon'));
-          if (!isNaN(lat) && !isNaN(lon)) {
+          if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
             this.onLocationRequest?.(lat, lon);
           }
         });

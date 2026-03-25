@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package worldmonitor.consumer_prices.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/consumer_prices/v1/consumer_prices_data.proto";
+
+// GetConsumerPriceOverviewRequest parameters for the overview RPC.
+message GetConsumerPriceOverviewRequest {
+  // market_code is the ISO 3166-1 alpha-2 market identifier (e.g. "ae").
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  // basket_slug selects which basket to use (e.g. "essentials-ae").
+  string basket_slug = 2 [(sebuf.http.query) = { name: "basket_slug" }];
+}
+
+// GetConsumerPriceOverviewResponse contains headline basket and coverage metrics.
+message GetConsumerPriceOverviewResponse {
+  // market_code echoes the requested market.
+  string market_code = 1;
+  // as_of is the Unix millisecond timestamp of the snapshot.
+  int64 as_of = 2;
+  // currency_code is the ISO 4217 currency for price values.
+  string currency_code = 3;
+  // essentials_index is the fixed basket index value (base = 100).
+  double essentials_index = 4;
+  // value_basket_index is the value basket index value (base = 100).
+  double value_basket_index = 5;
+  // wow_pct is the week-over-week percentage change in the essentials index.
+  double wow_pct = 6;
+  // mom_pct is the month-over-month percentage change in the essentials index.
+  double mom_pct = 7;
+  // retailer_spread_pct is the basket cost spread between cheapest and most expensive retailer.
+  double retailer_spread_pct = 8;
+  // coverage_pct is the fraction of basket items with current observations.
+  double coverage_pct = 9;
+  // freshness_lag_min is the average minutes since last observation across all retailers.
+  int32 freshness_lag_min = 10;
+  // top_categories holds the top category movers.
+  repeated CategorySnapshot top_categories = 11;
+  // upstream_unavailable is true when the companion service could not be reached.
+  bool upstream_unavailable = 12;
+}

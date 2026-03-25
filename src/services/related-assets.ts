@@ -11,7 +11,7 @@ import {
   PIPELINES,
 } from '@/config';
 
-const MAX_DISTANCE_KM = 600;
+const MAX_DISTANCE_KM = 300;
 const MAX_ASSETS_PER_TYPE = 3;
 
 const ASSET_KEYWORDS: Record<AssetType, string[]> = {

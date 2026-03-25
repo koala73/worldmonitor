@@ -1,9 +1,20 @@
 import { invalidateColorCache } from './theme-colors';
 
 export type Theme = 'dark' | 'light';
+export type ThemePreference = 'auto' | 'dark' | 'light';
 
 const STORAGE_KEY = 'worldmonitor-theme';
 const DEFAULT_THEME: Theme = 'dark';
+
+function resolveThemeColor(theme: Theme, variant: string | undefined): string {
+  if (theme === 'dark') return variant === 'happy' ? '#1A2332' : '#0a0f0a';
+  return variant === 'happy' ? '#FAFAF5' : '#f8f9fa';
+}
+
+function updateThemeMetaColor(theme: Theme, variant = document.documentElement.dataset.variant): void {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (meta) meta.content = resolveThemeColor(theme, variant);
+}
 
 /**
  * Read the stored theme preference from localStorage.
@@ -17,6 +28,44 @@ export function getStoredTheme(): Theme {
     // localStorage unavailable (e.g., sandboxed iframe, private browsing)
   }
   return DEFAULT_THEME;
+}
+
+export function getThemePreference(): ThemePreference {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'auto' || stored === 'dark' || stored === 'light') return stored;
+  } catch { /* noop */ }
+  return 'auto';
+}
+
+function resolveAutoTheme(): Theme {
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)').matches) {
+    return 'light';
+  }
+  return 'dark';
+}
+
+let autoMediaQuery: MediaQueryList | null = null;
+let autoMediaHandler: (() => void) | null = null;
+
+function teardownAutoListener(): void {
+  if (autoMediaQuery && autoMediaHandler) {
+    autoMediaQuery.removeEventListener('change', autoMediaHandler);
+    autoMediaQuery = null;
+    autoMediaHandler = null;
+  }
+}
+
+export function setThemePreference(pref: ThemePreference): void {
+  try { localStorage.setItem(STORAGE_KEY, pref); } catch { /* noop */ }
+  teardownAutoListener();
+  const effective: Theme = pref === 'auto' ? resolveAutoTheme() : pref;
+  setTheme(effective);
+  if (pref === 'auto' && typeof window !== 'undefined' && window.matchMedia) {
+    autoMediaQuery = window.matchMedia('(prefers-color-scheme: light)');
+    autoMediaHandler = () => setTheme(resolveAutoTheme());
+    autoMediaQuery.addEventListener('change', autoMediaHandler);
+  }
 }
 
 /**
@@ -40,11 +89,7 @@ export function setTheme(theme: Theme): void {
   } catch {
     // localStorage unavailable
   }
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) {
-    const variant = document.documentElement.dataset.variant;
-    meta.content = theme === 'dark' ? (variant === 'happy' ? '#1A2332' : '#0a0f0a') : (variant === 'happy' ? '#FAFAF5' : '#f8f9fa');
-  }
+  updateThemeMetaColor(theme);
   window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
 }
 
@@ -62,11 +107,12 @@ export function applyStoredTheme(): void {
   // Check raw localStorage to distinguish "no preference" from "explicitly chose dark"
   let raw: string | null = null;
   try { raw = localStorage.getItem(STORAGE_KEY); } catch { /* noop */ }
-  const hasExplicitPreference = raw === 'dark' || raw === 'light';
+  const hasExplicitPreference = raw === 'dark' || raw === 'light' || raw === 'auto';
 
   let effective: Theme;
-  if (hasExplicitPreference) {
-    // User made an explicit choice — respect it regardless of variant
+  if (raw === 'auto') {
+    effective = resolveAutoTheme();
+  } else if (hasExplicitPreference) {
     effective = raw as Theme;
   } else {
     // No stored preference: happy defaults to light, others to dark
@@ -74,12 +120,5 @@ export function applyStoredTheme(): void {
   }
 
   document.documentElement.dataset.theme = effective;
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) {
-    if (effective === 'dark') {
-      meta.content = variant === 'happy' ? '#1A2332' : '#0a0f0a';
-    } else {
-      meta.content = variant === 'happy' ? '#FAFAF5' : '#f8f9fa';
-    }
-  }
+  updateThemeMetaColor(effective, variant);
 }

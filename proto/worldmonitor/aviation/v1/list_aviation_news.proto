@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/aviation/v1/aviation_news_item.proto";
+
+// ListAviationNewsRequest specifies filters for aviation news retrieval.
+message ListAviationNewsRequest {
+  // Entities to filter by (airline names, airport codes, route strings).
+  repeated string entities = 1 [
+    (sebuf.http.query) = { name: "entities" },
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 10
+  ];
+  // Time window in hours to look back (1-168).
+  int32 window_hours = 2 [
+    (sebuf.http.query) = { name: "window_hours" },
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 168
+  ];
+  // Maximum number of news items to return (1-50).
+  int32 max_items = 3 [
+    (sebuf.http.query) = { name: "max_items" },
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 50
+  ];
+}
+
+// ListAviationNewsResponse contains filtered aviation news items.
+message ListAviationNewsResponse {
+  // News items matching the entity filters.
+  repeated AviationNewsItem items = 1;
+  // Data source identifier.
+  string source = 2;
+  // Last update time as Unix epoch milliseconds.
+  int64 updated_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

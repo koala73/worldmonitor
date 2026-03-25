@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+
+// CryptoSector represents performance data for a crypto market sector.
+message CryptoSector {
+  // Sector identifier.
+  string id = 1;
+  // Sector display name.
+  string name = 2;
+  // Average 24h percentage change across sector tokens.
+  double change = 3;
+}
+
+// ListCryptoSectorsRequest retrieves crypto sector performance.
+message ListCryptoSectorsRequest {
+}
+
+// ListCryptoSectorsResponse contains crypto sector performance data.
+message ListCryptoSectorsResponse {
+  // The list of crypto sectors with their performance.
+  repeated CryptoSector sectors = 1;
+}

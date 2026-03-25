@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package worldmonitor.natural.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/natural/v1/list_natural_events.proto";
+
+service NaturalService {
+  option (sebuf.http.service_config) = {base_path: "/api/natural/v1"};
+
+  rpc ListNaturalEvents(ListNaturalEventsRequest) returns (ListNaturalEventsResponse) {
+    option (sebuf.http.config) = {path: "/list-natural-events", method: HTTP_METHOD_GET};
+  }
+}

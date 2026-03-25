@@ -7,7 +7,7 @@ const DESKTOP_ORIGIN_PATTERNS = [
 
 const BROWSER_ORIGIN_PATTERNS = [
   /^https:\/\/(.*\.)?worldmonitor\.app$/,
-  /^https:\/\/worldmonitor-[a-z0-9-]+\.vercel\.app$/,
+  /^https:\/\/worldmonitor-[a-z0-9-]+-elie-[a-z0-9]+\.vercel\.app$/,
   ...(process.env.NODE_ENV === 'production' ? [] : [
     /^https?:\/\/localhost(:\d+)?$/,
     /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
@@ -31,7 +31,8 @@ function extractOriginFromReferer(referer) {
   }
 }
 
-export function validateApiKey(req) {
+export function validateApiKey(req, options = {}) {
+  const forceKey = options.forceKey === true;
   const key = req.headers.get('X-WorldMonitor-Key');
   // Same-origin browser requests don't send Origin (per CORS spec).
   // Fall back to Referer to identify trusted same-origin callers.
@@ -47,11 +48,14 @@ export function validateApiKey(req) {
 
   // Trusted browser origin (worldmonitor.app, Vercel previews, localhost dev) — no key needed
   if (isTrustedBrowserOrigin(origin)) {
+    if (forceKey && !key) {
+      return { valid: false, required: true, error: 'API key required' };
+    }
     if (key) {
       const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
       if (!validKeys.includes(key)) return { valid: false, required: true, error: 'Invalid API key' };
     }
-    return { valid: true, required: false };
+    return { valid: true, required: forceKey };
   }
 
   // Explicit key provided from unknown origin — validate it

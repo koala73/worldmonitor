@@ -552,7 +552,7 @@ export function foreignPresenceToSignal(alert: ForeignPresenceAlert): {
   const newsContext = focalPointDetector.getNewsCorrelationContext(relevantCountries);
 
   // Build enhanced description with news correlation
-  let description = `${alert.aircraftCount} ${alert.operatorCountry} aircraft detected in ${alert.region.name}. ` +
+  const description = `${alert.aircraftCount} ${alert.operatorCountry} aircraft detected in ${alert.region.name}. ` +
     `${aircraftList}. Callsigns: ${callsigns.slice(0, 4).join(', ')}${callsigns.length > 4 ? '...' : ''}`;
 
   // Check for critical focal points in affected region

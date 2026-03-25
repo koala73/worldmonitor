@@ -435,7 +435,7 @@ function main() {
     }
   }
 
-  let pass1Entries = [...byOsmId.values()];
+  const pass1Entries = [...byOsmId.values()];
   const pass1Dropped = merged.length - pass1Entries.length;
   console.log(`  Pass 1: ${pass1Dropped} duplicates removed, ${pass1Entries.length} remaining`);
 

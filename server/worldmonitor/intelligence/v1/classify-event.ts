@@ -7,8 +7,8 @@ import type {
 
 import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
-import { UPSTREAM_TIMEOUT_MS, GROQ_API_URL, GROQ_MODEL, hashString } from './_shared';
-import { CHROME_UA } from '../../../_shared/constants';
+import { UPSTREAM_TIMEOUT_MS, buildClassifyCacheKey } from './_shared';
+import { callLlm } from '../../../_shared/llm';
 
 // ========================================================================
 // Constants
@@ -40,24 +40,14 @@ export async function classifyEvent(
   ctx: ServerContext,
   req: ClassifyEventRequest,
 ): Promise<ClassifyEventResponse> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
-
   // Input sanitization (M-14 fix): limit title length
   const MAX_TITLE_LEN = 500;
   const title = typeof req.title === 'string' ? req.title.slice(0, MAX_TITLE_LEN) : '';
   if (!title) { markNoCacheResponse(ctx.request); return { classification: undefined }; }
 
-  const cacheKey = `classify:sebuf:v1:${hashString(title.toLowerCase())}`;
+  const cacheKey = await buildClassifyCacheKey(title);
 
-  let cached: { level: string; category: string; timestamp: number } | null = null;
-  try {
-    cached = await cachedFetchJson<{ level: string; category: string; timestamp: number }>(
-      cacheKey,
-      CLASSIFY_CACHE_TTL,
-      async () => {
-        try {
-          const systemPrompt = `You classify news headlines into threat level and category. Return ONLY valid JSON, no other text.
+  const systemPrompt = `You classify news headlines into threat level and category. Return ONLY valid JSON, no other text.
 
 Levels: critical, high, medium, low, info
 Categories: conflict, protest, disaster, diplomatic, economic, terrorism, cyber, health, environmental, military, crime, infrastructure, tech, general
@@ -66,41 +56,46 @@ Focus: geopolitical events, conflicts, disasters, diplomacy. Classify by real-wo
 
 Return: {"level":"...","category":"..."}`;
 
-          const resp = await fetch(GROQ_API_URL, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-            body: JSON.stringify({
-              model: GROQ_MODEL,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: title },
-              ],
-              temperature: 0,
-              max_tokens: 50,
-            }),
-            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-          });
+  let cached: { level: string; category: string; timestamp: number } | null = null;
+  try {
+    cached = await cachedFetchJson<{ level: string; category: string; timestamp: number }>(
+      cacheKey,
+      CLASSIFY_CACHE_TTL,
+      async () => {
+        let validatedResult: { level: string; category: string } | null = null;
 
-          if (!resp.ok) return null;
-          const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-          const raw = data.choices?.[0]?.message?.content?.trim();
-          if (!raw) return null;
+        const result = await callLlm({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: title },
+          ],
+          temperature: 0,
+          maxTokens: 50,
+          timeoutMs: UPSTREAM_TIMEOUT_MS,
+          validate: (content) => {
+            try {
+              let parsed: { level?: string; category?: string };
+              try {
+                parsed = JSON.parse(content);
+              } catch {
+                const jsonMatch = content.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) return false;
+                parsed = JSON.parse(jsonMatch[0]);
+              }
+              const level = VALID_LEVELS.includes(parsed.level ?? '') ? parsed.level! : null;
+              const category = VALID_CATEGORIES.includes(parsed.category ?? '') ? parsed.category! : null;
+              if (!level || !category) return false;
+              validatedResult = { level, category };
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        });
 
-          let parsed: { level?: string; category?: string };
-          try {
-            parsed = JSON.parse(raw);
-          } catch {
-            return null;
-          }
-
-          const level = VALID_LEVELS.includes(parsed.level ?? '') ? parsed.level! : null;
-          const category = VALID_CATEGORIES.includes(parsed.category ?? '') ? parsed.category! : null;
-          if (!level || !category) return null;
-
-          return { level, category, timestamp: Date.now() };
-        } catch {
-          return null;
-        }
+        if (!result || !validatedResult) return null;
+        const vr = validatedResult as { level: string; category: string };
+        return { level: vr.level, category: vr.category, timestamp: Date.now() };
       },
     );
   } catch {

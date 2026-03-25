@@ -9,7 +9,7 @@ AI-powered real-time global intelligence dashboard aggregating news, markets, ge
 ![D3.js](https://img.shields.io/badge/D3.js-F9A03C?style=flat&logo=d3.js&logoColor=white)
 ![Version](https://img.shields.io/badge/version-2.1.4-blue)
 
-![World Monitor Dashboard](../new-world-monitor.png)
+![World Monitor Dashboard](images/new-world-monitor.png)
 
 ## Platform Variants
 
@@ -3151,7 +3151,7 @@ This ensures the dashboard always displays meaningful data even during upstream 
 
 ## Service Status Monitoring
 
-The Service Status panel tracks the operational health of external services that WorldMonitor users may depend on.
+The Service Status panel tracks the operational health of external services that World Monitor users may depend on.
 
 ### Monitored Services
 

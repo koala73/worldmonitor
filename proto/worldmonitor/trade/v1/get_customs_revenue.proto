@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package worldmonitor.trade.v1;
+
+import "worldmonitor/trade/v1/trade_data.proto";
+
+message GetCustomsRevenueRequest {}
+
+message GetCustomsRevenueResponse {
+  repeated CustomsRevenueMonth months = 1;
+  string fetched_at = 2;
+  bool upstream_unavailable = 3;
+}

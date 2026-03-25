@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.consumer_prices.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/consumer_prices/v1/consumer_prices_data.proto";
+
+// GetConsumerPriceFreshnessRequest parameters for the freshness RPC.
+message GetConsumerPriceFreshnessRequest {
+  // market_code is the ISO 3166-1 alpha-2 market identifier.
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+}
+
+// GetConsumerPriceFreshnessResponse describes feed health for all retailers.
+message GetConsumerPriceFreshnessResponse {
+  // market_code echoes the requested market.
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  // as_of is the Unix millisecond timestamp of the snapshot.
+  int64 as_of = 2;
+  // retailers holds per-retailer freshness data.
+  repeated RetailerFreshnessInfo retailers = 3;
+  // overall_freshness_min is the average freshness lag across all retailers.
+  int32 overall_freshness_min = 4;
+  // stalled_count is the number of retailers with no recent successful scrape.
+  int32 stalled_count = 5;
+  // upstream_unavailable is true when the companion service could not be reached.
+  bool upstream_unavailable = 6;
+}

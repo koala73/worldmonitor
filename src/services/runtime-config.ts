@@ -4,6 +4,9 @@ import { invokeTauri } from './tauri-bridge';
 export type RuntimeSecretKey =
   | 'GROQ_API_KEY'
   | 'OPENROUTER_API_KEY'
+  | 'EXA_API_KEYS'
+  | 'BRAVE_API_KEYS'
+  | 'SERPAPI_API_KEYS'
   | 'FRED_API_KEY'
   | 'EIA_API_KEY'
   | 'CLOUDFLARE_API_TOKEN'
@@ -30,6 +33,9 @@ export type RuntimeSecretKey =
 export type RuntimeFeatureId =
   | 'aiGroq'
   | 'aiOpenRouter'
+  | 'stockNewsSearchExa'
+  | 'stockNewsSearchBrave'
+  | 'stockNewsSearchSerpApi'
   | 'economicFred'
   | 'energyEia'
   | 'internetOutages'
@@ -40,6 +46,7 @@ export type RuntimeFeatureId =
   | 'wingbitsEnrichment'
   | 'aisRelay'
   | 'openskyRelay'
+  | 'militaryFlights'
   | 'finnhubMarkets'
   | 'nasaFirms'
   | 'aiOllama'
@@ -73,6 +80,9 @@ const TOGGLES_STORAGE_KEY = 'worldmonitor-runtime-feature-toggles';
 function getSidecarEnvUpdateUrl(): string {
   return `${getApiBaseUrl()}/api/local-env-update`;
 }
+function getSidecarEnvUpdateBatchUrl(): string {
+  return `${getApiBaseUrl()}/api/local-env-update-batch`;
+}
 function getSidecarSecretValidateUrl(): string {
   return `${getApiBaseUrl()}/api/local-validate-secret`;
 }
@@ -80,6 +90,9 @@ function getSidecarSecretValidateUrl(): string {
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiGroq: true,
   aiOpenRouter: true,
+  stockNewsSearchExa: true,
+  stockNewsSearchBrave: true,
+  stockNewsSearchSerpApi: true,
   economicFred: true,
   energyEia: true,
   internetOutages: true,
@@ -91,6 +104,7 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   wingbitsEnrichment: true,
   aisRelay: true,
   openskyRelay: true,
+  militaryFlights: true,
   finnhubMarkets: true,
   nasaFirms: true,
   aiOllama: true,
@@ -122,6 +136,27 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     description: 'Secondary LLM provider for AI summary fallback.',
     requiredSecrets: ['OPENROUTER_API_KEY'],
     fallback: 'Falls back to local browser model only.',
+  },
+  {
+    id: 'stockNewsSearchExa',
+    name: 'Exa stock-news search',
+    description: 'Primary targeted stock-news search provider for premium analysis enrichment.',
+    requiredSecrets: ['EXA_API_KEYS'],
+    fallback: 'Falls back to Brave, then SerpAPI, then Google News RSS.',
+  },
+  {
+    id: 'stockNewsSearchBrave',
+    name: 'Brave stock-news search',
+    description: 'Fallback targeted stock-news provider for premium analysis enrichment.',
+    requiredSecrets: ['BRAVE_API_KEYS'],
+    fallback: 'Falls back to SerpAPI, then Google News RSS.',
+  },
+  {
+    id: 'stockNewsSearchSerpApi',
+    name: 'SerpAPI stock-news search',
+    description: 'Additional targeted stock-news provider for premium analysis enrichment.',
+    requiredSecrets: ['SERPAPI_API_KEYS'],
+    fallback: 'Falls back to Google News RSS.',
   },
   {
     id: 'economicFred',
@@ -196,11 +231,18 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   },
   {
     id: 'openskyRelay',
-    name: 'OpenSky military flights',
-    description: 'OpenSky OAuth credentials for military flight data.',
+    name: 'OpenSky military flights (legacy)',
+    description: 'OpenSky OAuth credentials for military flight data (legacy direct proxy).',
     requiredSecrets: ['VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET'],
     desktopRequiredSecrets: ['OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET'],
     fallback: 'Military flights fall back to limited/no data.',
+  },
+  {
+    id: 'militaryFlights',
+    name: 'Military flight tracking',
+    description: 'Military flight data via Redis-backed edge handler (no credentials needed).',
+    requiredSecrets: [],
+    fallback: 'Military flights panel is disabled.',
   },
   {
     id: 'finnhubMarkets',
@@ -240,8 +282,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   {
     id: 'aviationStack',
     name: 'AviationStack flight delays',
-    description: 'Real-time international airport delay data from AviationStack API.',
-    requiredSecrets: ['AVIATIONSTACK_API'],
+    description: 'Real-time international airport delay data via Railway relay (seed loop + proxy).',
+    requiredSecrets: ['WS_RELAY_URL'],
     fallback: 'Non-US airports use simulated delay data.',
   },
   {
@@ -537,24 +579,29 @@ export async function loadDesktopSecrets(): Promise<void> {
   if (!isDesktopRuntime()) return;
 
   try {
-    // Single batch call to read all keychain secrets at once.
-    // This triggers only ONE macOS Keychain prompt instead of 18 individual ones.
     const allSecrets = await invokeTauri<Record<string, string>>('get_all_secrets');
 
-    const syncResults = await Promise.allSettled(
-      Object.entries(allSecrets).filter(([, value]) => value && value.trim().length > 0).map(async ([key, value]) => {
+    const entries: { key: string; value: string }[] = [];
+    for (const [key, value] of Object.entries(allSecrets)) {
+      if (value && value.trim().length > 0) {
         runtimeConfig.secrets[key as RuntimeSecretKey] = { value, source: 'vault' };
-        try {
-          await pushSecretToSidecar(key as RuntimeSecretKey, value);
-        } catch (error) {
-          console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
-        }
-      })
-    );
+        entries.push({ key, value });
+      }
+    }
 
-    const failures = syncResults.filter((r) => r.status === 'rejected');
-    if (failures.length > 0) {
-      console.warn(`[runtime-config] ${failures.length} key(s) failed to sync to sidecar`);
+    if (entries.length > 0) {
+      try {
+        await pushSecretBatchToSidecar(entries);
+      } catch (batchErr) {
+        console.warn('[runtime-config] Batch env update failed, falling back to individual pushes', batchErr);
+        await Promise.allSettled(
+          entries.map(({ key, value }) =>
+            pushSecretToSidecar(key as RuntimeSecretKey, value).catch((error) => {
+              console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
+            })
+          )
+        );
+      }
     }
 
     notifyConfigChanged();
@@ -562,5 +609,23 @@ export async function loadDesktopSecrets(): Promise<void> {
     console.warn('[runtime-config] Failed to load desktop secrets from vault', error);
   } finally {
     secretsReadyResolve();
+  }
+}
+
+async function pushSecretBatchToSidecar(entries: { key: string; value: string }[]): Promise<void> {
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  const token = await getLocalApiToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(getSidecarEnvUpdateBatchUrl(), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ entries }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Batch env update failed (${response.status})`);
   }
 }

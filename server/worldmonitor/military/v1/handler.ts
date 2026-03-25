@@ -7,6 +7,7 @@ import { getAircraftDetailsBatch } from './get-aircraft-details-batch';
 import { getWingbitsStatus } from './get-wingbits-status';
 import { getUSNIFleetReport } from './get-usni-fleet-report';
 import { listMilitaryBases } from './list-military-bases';
+import { getWingbitsLiveFlight } from './get-wingbits-live-flight';
 
 export const militaryHandler: MilitaryServiceHandler = {
   listMilitaryFlights,
@@ -16,4 +17,5 @@ export const militaryHandler: MilitaryServiceHandler = {
   getWingbitsStatus,
   getUSNIFleetReport,
   listMilitaryBases,
+  getWingbitsLiveFlight,
 };

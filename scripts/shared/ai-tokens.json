@@ -1,0 +1,22 @@
+{
+  "ids": ["bittensor","render-token","fetch-ai","akash-network","ocean-protocol","singularitynet","grass","virtual-protocol","ai16z","griffain"],
+  "meta": {
+    "bittensor": { "name": "Bittensor", "symbol": "TAO" },
+    "render-token": { "name": "Render", "symbol": "RENDER" },
+    "fetch-ai": { "name": "Fetch.ai", "symbol": "FET" },
+    "akash-network": { "name": "Akash Network", "symbol": "AKT" },
+    "ocean-protocol": { "name": "Ocean Protocol", "symbol": "OCEAN" },
+    "singularitynet": { "name": "SingularityNET", "symbol": "AGIX" },
+    "grass": { "name": "Grass", "symbol": "GRASS" },
+    "virtual-protocol": { "name": "Virtuals Protocol", "symbol": "VIRTUAL" },
+    "ai16z": { "name": "ai16z", "symbol": "AI16Z" },
+    "griffain": { "name": "Griffain", "symbol": "GRIFFAIN" }
+  },
+  "coinpaprika": {
+    "bittensor": "tao-bittensor",
+    "fetch-ai": "fet-fetch-ai",
+    "akash-network": "akt-akash-network",
+    "ocean-protocol": "ocean-ocean-protocol",
+    "singularitynet": "agix-singularitynet"
+  }
+}

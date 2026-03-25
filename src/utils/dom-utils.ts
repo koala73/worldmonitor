@@ -63,7 +63,11 @@ export function rawHtml(html: string): DocumentFragment {
 const SAFE_TAGS = new Set([
   'strong', 'em', 'b', 'i', 'br', 'p', 'ul', 'ol', 'li', 'span', 'div', 'a',
 ]);
-const SAFE_ATTRS = new Set(['style', 'class', 'href', 'target', 'rel']);
+const SAFE_ATTRS = new Set(['class', 'href', 'target', 'rel', 'style']);
+
+// Only permit `color` declarations using hex, rgb(), named colors, or CSS vars.
+// Blocks url(), expression(), javascript:, data: and other CSS injection vectors.
+const SAFE_STYLE_RE = /^color:\s*(#[0-9a-fA-F]{3,8}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|[a-zA-Z]+|var\(--[\w-]+\))\s*;?\s*$/;
 
 /** Like rawHtml() but strips tags and attributes not in the allowlist. */
 export function safeHtml(html: string): DocumentFragment {
@@ -91,6 +95,13 @@ export function safeHtml(html: string): DocumentFragment {
           const href = el.getAttribute('href') || '';
           if (!/^https?:\/\//i.test(href) && !href.startsWith('/') && !href.startsWith('#')) {
             el.removeAttribute('href');
+          }
+        }
+        // Sanitize style to color-only values; strip anything else (url(), expression(), etc.)
+        if (el.hasAttribute('style')) {
+          const style = el.getAttribute('style') || '';
+          if (!SAFE_STYLE_RE.test(style.trim())) {
+            el.removeAttribute('style');
           }
         }
         walk(el);

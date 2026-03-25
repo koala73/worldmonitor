@@ -23,7 +23,34 @@ function prefixKey(key: string): string {
   return `${cachedPrefix}${key}`;
 }
 
+/**
+ * Like getCachedJson but throws on Redis/network failures instead of returning null.
+ * Always uses the raw (unprefixed) key — callers that write via seed scripts (which bypass
+ * the prefix system) must use this to read the same key they wrote.
+ */
+export async function getRawJson(key: string): Promise<unknown | null> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const { sidecarCacheGet } = await import('./sidecar-cache');
+    return sidecarCacheGet(key);
+  }
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) throw new Error('Redis credentials not configured');
+  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
+  });
+  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = (await resp.json()) as { result?: string };
+  return data.result ? JSON.parse(data.result) : null;
+}
+
 export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const { sidecarCacheGet } = await import('./sidecar-cache');
+    return sidecarCacheGet(key);
+  }
+
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
@@ -43,6 +70,12 @@ export async function getCachedJson(key: string, raw = false): Promise<unknown |
 }
 
 export async function setCachedJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const { sidecarCacheSet } = await import('./sidecar-cache');
+    sidecarCacheSet(key, value, ttlSeconds);
+    return;
+  }
+
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return;
@@ -249,4 +282,40 @@ export async function getHashFieldsBatch(
     console.warn('[redis] getHashFieldsBatch failed:', errMsg(err));
   }
   return result;
+}
+
+export async function runRedisPipeline(
+  commands: Array<Array<string | number>>,
+  raw = false,
+): Promise<Array<{ result?: unknown }>> {
+  if (commands.length === 0) return [];
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return [];
+
+  const pipeline = commands.map((command) => {
+    const [verb, ...rest] = command;
+    if (raw || rest.length === 0 || typeof rest[0] !== 'string') {
+      return command.map((part) => String(part));
+    }
+    return [String(verb), prefixKey(rest[0]), ...rest.slice(1).map((part) => String(part))];
+  });
+
+  try {
+    const resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(pipeline),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      console.warn(`[redis] runRedisPipeline HTTP ${resp.status}`);
+      return [];
+    }
+    return await resp.json() as Array<{ result?: unknown }>;
+  } catch (err) {
+    console.warn('[redis] runRedisPipeline failed:', errMsg(err));
+    return [];
+  }
 }

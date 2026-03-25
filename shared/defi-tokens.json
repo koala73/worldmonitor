@@ -1,0 +1,24 @@
+{
+  "ids": ["aave","uniswap","jupiter-exchange-solana","pendle","maker","lido-dao","hyperliquid","raydium","aerodrome-finance","curve-dao-token"],
+  "meta": {
+    "aave": { "name": "Aave", "symbol": "AAVE" },
+    "uniswap": { "name": "Uniswap", "symbol": "UNI" },
+    "jupiter-exchange-solana": { "name": "Jupiter", "symbol": "JUP" },
+    "pendle": { "name": "Pendle", "symbol": "PENDLE" },
+    "maker": { "name": "Maker", "symbol": "MKR" },
+    "lido-dao": { "name": "Lido DAO", "symbol": "LDO" },
+    "hyperliquid": { "name": "Hyperliquid", "symbol": "HYPE" },
+    "raydium": { "name": "Raydium", "symbol": "RAY" },
+    "aerodrome-finance": { "name": "Aerodrome", "symbol": "AERO" },
+    "curve-dao-token": { "name": "Curve DAO", "symbol": "CRV" }
+  },
+  "coinpaprika": {
+    "aave": "aave-aave",
+    "uniswap": "uni-uniswap",
+    "pendle": "pendle-pendle",
+    "maker": "mkr-maker",
+    "lido-dao": "ldo-lido-dao",
+    "raydium": "ray-raydium",
+    "curve-dao-token": "crv-curve-dao-token"
+  }
+}

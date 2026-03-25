@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.radiation.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/radiation/v1/list_radiation_observations.proto";
+
+// RadiationService provides normalized environmental radiation readings.
+service RadiationService {
+  option (sebuf.http.service_config) = {base_path: "/api/radiation/v1"};
+
+  // ListRadiationObservations retrieves normalized EPA RadNet and Safecast readings.
+  rpc ListRadiationObservations(ListRadiationObservationsRequest) returns (ListRadiationObservationsResponse) {
+    option (sebuf.http.config) = {path: "/list-radiation-observations", method: HTTP_METHOD_GET};
+  }
+}

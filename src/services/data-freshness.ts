@@ -5,39 +5,9 @@
  */
 
 import { getCSSColor } from '@/utils';
+import type { DataSourceId } from '@/types';
 
-export type DataSourceId =
-  | 'acled'      // Protests/conflicts
-  | 'opensky'    // Military flights
-  | 'wingbits'   // Aircraft enrichment
-  | 'ais'        // Vessel tracking
-  | 'usgs'       // Earthquakes
-  | 'gdelt'      // News velocity
-  | 'gdelt_doc'  // GDELT Doc protest intelligence
-  | 'rss'        // RSS feeds
-  | 'polymarket' // Prediction markets
-  | 'predictions' // Predictions feed
-  | 'pizzint'    // PizzINT monitoring
-  | 'outages'    // Internet outages
-  | 'cyber_threats' // Cyber threat IOC layer
-  | 'weather'    // Weather alerts
-  | 'economic'   // Economic indicators (FRED)
-  | 'oil'        // EIA oil analytics
-  | 'spending'        // USASpending.gov
-  | 'firms'          // NASA FIRMS satellite fires
-  | 'acled_conflict' // ACLED battles/explosions/violence
-  | 'ucdp'           // UCDP conflict classification
-  | 'hapi'           // HDX HAPI aggregated conflict data
-  | 'ucdp_events'    // UCDP georeferenced conflict events
-  | 'unhcr'          // UNHCR displacement data
-  | 'climate'        // Climate anomaly data (Open-Meteo)
-  | 'worldpop'       // WorldPop population exposure
-  | 'giving'         // Global giving activity data
-  | 'bis'            // BIS central bank data
-  | 'wto_trade'      // WTO trade policy data
-  | 'supply_chain'   // Supply chain disruption intelligence
-  | 'security_advisories'  // Government travel/security advisories
-  | 'gpsjam';              // GPS/GNSS interference
+export type { DataSourceId } from '@/types';
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
 
@@ -101,10 +71,14 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   worldpop: { name: 'Population Exposure', requiredForRisk: false, panelId: 'population-exposure' },
   giving: { name: 'Global Giving Activity', requiredForRisk: false, panelId: 'giving' },
   bis: { name: 'BIS Central Banks', requiredForRisk: false, panelId: 'economic' },
+  bls: { name: 'BLS Labor Market', requiredForRisk: false, panelId: 'economic' },
   wto_trade: { name: 'WTO Trade Policy', requiredForRisk: false, panelId: 'trade-policy' },
   supply_chain: { name: 'Supply Chain Intelligence', requiredForRisk: false, panelId: 'supply-chain' },
   security_advisories: { name: 'Security Advisories', requiredForRisk: false, panelId: 'security-advisories' },
+  sanctions_pressure: { name: 'Sanctions Pressure', requiredForRisk: false, panelId: 'sanctions-pressure' },
+  radiation: { name: 'Radiation Watch', requiredForRisk: false, panelId: 'radiation-watch' },
   gpsjam: { name: 'GPS/GNSS Interference', requiredForRisk: false, panelId: 'map' },
+  treasury_revenue: { name: 'Treasury Customs Revenue', requiredForRisk: false, panelId: 'trade-policy' },
 };
 
 class DataFreshnessTracker {
@@ -234,8 +208,8 @@ class DataFreshnessTracker {
       errorSources: errorSources.length,
       overallStatus,
       coveragePercent,
-      oldestUpdate: updates.length > 0 ? new Date(Math.min(...updates)) : null,
-      newestUpdate: updates.length > 0 ? new Date(Math.max(...updates)) : null,
+      oldestUpdate: updates.length > 0 ? new Date(updates.reduce((min, d) => d < min ? d : min, updates[0]!)) : null,
+      newestUpdate: updates.length > 0 ? new Date(updates.reduce((max, d) => d > max ? d : max, updates[0]!)) : null,
     };
   }
 
@@ -361,10 +335,14 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   worldpop: 'Population exposure data unavailable—affected population unknown',
   giving: 'Global giving activity data unavailable',
   bis: 'Central bank policy data may be stale—BIS feed unavailable',
+  bls: 'Labor market data unavailable—BLS feed not yet seeded',
   wto_trade: 'Trade policy intelligence unavailable—WTO data not updating',
   supply_chain: 'Supply chain disruption status unavailable—chokepoint monitoring offline',
   security_advisories: 'Government travel advisory data unavailable—security alerts may be missed',
+  sanctions_pressure: 'Structured sanctions pressure unavailable\u2014OFAC designation visibility reduced',
+  radiation: 'Radiation monitoring degraded—EPA RadNet and Safecast observations unavailable',
   gpsjam: 'GPS/GNSS interference data unavailable—jamming zones undetected',
+  treasury_revenue: 'US Treasury customs revenue data unavailable',
 };
 
 /**

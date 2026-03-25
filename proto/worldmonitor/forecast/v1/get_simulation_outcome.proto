@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package worldmonitor.forecast.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetSimulationOutcomeRequest {
+  // IMPORTANT: Currently a no-op. Always returns the latest available outcome regardless of runId.
+  // Per-run lookup is reserved for Phase 3. Check the response 'note' field when runId is supplied
+  // and you need to detect a mismatch between requested and returned run.
+  string run_id = 1 [(sebuf.http.query) = { name: "runId" }];
+}
+
+message GetSimulationOutcomeResponse {
+  bool found = 1;
+  string run_id = 2;
+  string outcome_key = 3;
+  string schema_version = 4;
+  int32 theater_count = 5;
+  // Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.
+  int64 generated_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Populated when req.runId was supplied but does not match the returned outcome's runId.
+  // Indicates that per-run filtering is not yet active and the latest outcome was returned instead.
+  string note = 7;
+  // Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
+  // Value: "redis_unavailable" on Redis errors.
+  string error = 8;
+}

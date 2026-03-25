@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   UnrestServiceClient,
   type UnrestEvent,
@@ -5,10 +6,11 @@ import {
 } from '@/generated/client/worldmonitor/unrest/v1/service_client';
 import type { SocialUnrestEvent, ProtestSeverity, ProtestEventType, ProtestSource } from '@/types';
 import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Client + Circuit Breaker ----
 
-const client = new UnrestServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new UnrestServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const unrestBreaker = createCircuitBreaker<ListUnrestEventsResponse>({
   name: 'Unrest Events',
   cacheTtlMs: 10 * 60 * 1000,
@@ -98,6 +100,22 @@ const emptyFallback: ListUnrestEventsResponse = {
 };
 
 export async function fetchProtestEvents(): Promise<ProtestData> {
+  const hydrated = getHydratedData('unrestEvents') as ListUnrestEventsResponse | undefined;
+  if (hydrated?.events?.length) {
+    const events = hydrated.events.map(toSocialUnrestEvent);
+    const byCountry = new Map<string, SocialUnrestEvent[]>();
+    for (const event of events) {
+      const existing = byCountry.get(event.country) || [];
+      existing.push(event);
+      byCountry.set(event.country, existing);
+    }
+    const acledCount = events.filter(e => e.sourceType === 'acled').length;
+    const gdeltCount = events.filter(e => e.sourceType === 'gdelt').length;
+    if (acledCount > 0) acledConfigured = true;
+    else if (gdeltCount > 0) acledConfigured = false;
+    return { events, byCountry, highSeverityCount: events.filter(e => e.severity === 'high').length, sources: { acled: acledCount, gdelt: gdeltCount } };
+  }
+
   const resp = await unrestBreaker.execute(async () => {
     return client.listUnrestEvents({
       country: '',

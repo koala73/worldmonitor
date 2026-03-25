@@ -1,18 +1,8 @@
-export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
-
-export type EventCategory =
-  | 'conflict' | 'protest' | 'disaster' | 'diplomatic' | 'economic'
-  | 'terrorism' | 'cyber' | 'health' | 'environmental' | 'military'
-  | 'crime' | 'infrastructure' | 'tech' | 'general';
-
-export interface ThreatClassification {
-  level: ThreatLevel;
-  category: EventCategory;
-  confidence: number;
-  source: 'keyword' | 'ml' | 'llm';
-}
+export type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
+import type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 
 import { getCSSColor } from '@/utils';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 
 /** @deprecated Use getThreatColor() instead for runtime CSS variable reads */
 export const THREAT_COLORS: Record<ThreatLevel, string> = {
@@ -388,8 +378,16 @@ import {
   ApiError,
   type ClassifyEventResponse,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
 
-const classifyClient = new IntelligenceServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const classifyClient = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+
+const classifyBreaker = createCircuitBreaker<ThreatClassification | null>({
+  name: 'AIClassify',
+  cacheTtlMs: 6 * 60 * 60 * 1000,
+  persistCache: true,
+  maxCacheEntries: 256,
+});
 
 const VALID_LEVELS: Record<string, ThreatLevel> = {
   critical: 'critical', high: 'high', medium: 'medium', low: 'low', info: 'info',
@@ -423,10 +421,13 @@ const STAGGER_JITTER_MS = 200;
 const MIN_GAP_MS = 2000;
 const MAX_RETRIES = 2;
 const MAX_QUEUE_LENGTH = 100;
+const BASE_PAUSE_MS = 60_000;
+const MAX_PAUSE_MS = 300_000;
 let batchPaused = false;
 let batchInFlight = false;
 let batchTimer: ReturnType<typeof setTimeout> | null = null;
 let lastRequestAt = 0;
+let consecutive429s = 0;
 const batchQueue: BatchJob[] = [];
 
 async function waitForGap(): Promise<void> {
@@ -460,23 +461,36 @@ function flushBatch(): void {
           const resp = await classifyClient.classifyEvent({
             title: job.title, description: '', source: '', country: '',
           });
+          consecutive429s = 0;
           job.resolve(toThreat(resp));
         } catch (err) {
           if (err instanceof ApiError && (err.statusCode === 401 || err.statusCode === 429 || err.statusCode >= 500)) {
             batchPaused = true;
-            const delay = err.statusCode === 401 ? 120_000 : err.statusCode === 429 ? 60_000 : 30_000;
-            console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s`);
+            let delay: number;
+            if (err.statusCode === 401) {
+              delay = 120_000;
+            } else if (err.statusCode === 429) {
+              consecutive429s++;
+              delay = Math.min(BASE_PAUSE_MS * 2 ** (consecutive429s - 1), MAX_PAUSE_MS);
+            } else {
+              delay = 30_000;
+            }
+            console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s (backoff #${consecutive429s})`);
             const remaining = batch.slice(i + 1);
-            // Failed job: increment attempts, requeue if under limit
             if ((job.attempts ?? 0) < MAX_RETRIES) {
               job.attempts = (job.attempts ?? 0) + 1;
               batchQueue.unshift(job);
             } else {
               job.resolve(null);
             }
-            // Remaining jobs never hit the API — requeue without burning attempts
             for (let j = remaining.length - 1; j >= 0; j--) {
               batchQueue.unshift(remaining[j]!);
+            }
+            // On repeated 429s, drop excess queue to avoid hammering on resume
+            if (consecutive429s >= 2 && batchQueue.length > BATCH_SIZE) {
+              const dropped = batchQueue.splice(BATCH_SIZE);
+              for (const d of dropped) d.resolve(null);
+              console.warn(`[Classify] Dropped ${dropped.length} queued items after repeated 429s`);
             }
             batchInFlight = false;
             setTimeout(() => { batchPaused = false; scheduleBatch(); }, delay);
@@ -503,7 +517,7 @@ function scheduleBatch(): void {
   }
 }
 
-export function classifyWithAI(
+function classifyWithAIUncached(
   title: string,
   variant: string
 ): Promise<ThreatClassification | null> {
@@ -516,6 +530,18 @@ export function classifyWithAI(
     batchQueue.push({ title, variant, resolve });
     scheduleBatch();
   });
+}
+
+export function classifyWithAI(
+  title: string,
+  variant: string,
+): Promise<ThreatClassification | null> {
+  const cacheKey = title.trim().toLowerCase().replace(/\s+/g, ' ');
+  return classifyBreaker.execute(
+    () => classifyWithAIUncached(title, variant),
+    null,
+    { cacheKey, shouldCache: (result) => result !== null },
+  );
 }
 
 export function aggregateThreats(

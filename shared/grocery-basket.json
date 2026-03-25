@@ -1,0 +1,373 @@
+{
+  "items": [
+    {
+      "id": "sugar",
+      "name": "Sugar",
+      "query": "white granulated sugar 1kg",
+      "unit": "1kg"
+    },
+    {
+      "id": "salt",
+      "name": "Salt",
+      "query": "table salt 1kg",
+      "unit": "1kg"
+    },
+    {
+      "id": "rice",
+      "name": "Rice",
+      "query": "white rice 1kg",
+      "unit": "1kg"
+    },
+    {
+      "id": "pasta",
+      "name": "Pasta",
+      "query": "spaghetti pasta 500g",
+      "unit": "500g"
+    },
+    {
+      "id": "potatoes",
+      "name": "Potatoes",
+      "query": "potatoes 1kg",
+      "unit": "1kg"
+    },
+    {
+      "id": "oil",
+      "name": "Cooking Oil",
+      "query": "sunflower cooking oil 1L",
+      "unit": "1L"
+    },
+    {
+      "id": "flour",
+      "name": "Flour",
+      "query": "all purpose wheat flour 1kg",
+      "unit": "1kg"
+    },
+    {
+      "id": "eggs",
+      "name": "Eggs",
+      "query": "fresh eggs 12 pack",
+      "unit": "12pc"
+    },
+    {
+      "id": "milk",
+      "name": "Milk",
+      "query": "fresh whole milk 1L",
+      "unit": "1L"
+    },
+    {
+      "id": "bread",
+      "name": "Bread",
+      "query": "white bread loaf 400g",
+      "unit": "loaf"
+    }
+  ],
+  "countries": [
+    {
+      "code": "US",
+      "name": "United States",
+      "currency": "USD",
+      "flag": "🇺🇸",
+      "sites": [
+        "walmart.com",
+        "kroger.com",
+        "target.com"
+      ]
+    },
+    {
+      "code": "GB",
+      "name": "United Kingdom",
+      "currency": "GBP",
+      "flag": "🇬🇧",
+      "sites": [
+        "tesco.com",
+        "asda.com",
+        "sainsburys.co.uk"
+      ]
+    },
+    {
+      "code": "DE",
+      "name": "Germany",
+      "currency": "EUR",
+      "flag": "🇩🇪",
+      "sites": [
+        "kaufland.de",
+        "rewe.de",
+        "lidl.de",
+        "aldi.de",
+        "penny.de",
+        "edeka.de"
+      ]
+    },
+    {
+      "code": "FR",
+      "name": "France",
+      "currency": "EUR",
+      "flag": "🇫🇷",
+      "sites": [
+        "carrefour.fr",
+        "e-leclerc.com"
+      ]
+    },
+    {
+      "code": "JP",
+      "name": "Japan",
+      "currency": "JPY",
+      "flag": "🇯🇵",
+      "sites": [
+        "kakaku.com",
+        "price.com"
+      ]
+    },
+    {
+      "code": "CN",
+      "name": "China",
+      "currency": "CNY",
+      "flag": "🇨🇳",
+      "sites": [
+        "jd.com",
+        "tmall.com"
+      ]
+    },
+    {
+      "code": "IN",
+      "name": "India",
+      "currency": "INR",
+      "flag": "🇮🇳",
+      "sites": [
+        "bigbasket.com",
+        "jiomart.com",
+        "amazon.in",
+        "dmartmart.com",
+        "blinkit.com"
+      ]
+    },
+    {
+      "code": "AU",
+      "name": "Australia",
+      "currency": "AUD",
+      "flag": "🇦🇺",
+      "sites": [
+        "woolworths.com.au",
+        "coles.com.au"
+      ]
+    },
+    {
+      "code": "CA",
+      "name": "Canada",
+      "currency": "CAD",
+      "flag": "🇨🇦",
+      "sites": [
+        "walmart.ca",
+        "realcanadiansuperstore.ca",
+        "loblaws.ca"
+      ]
+    },
+    {
+      "code": "BR",
+      "name": "Brazil",
+      "currency": "BRL",
+      "flag": "🇧🇷",
+      "sites": [
+        "carrefour.com.br",
+        "extra.com.br"
+      ]
+    },
+    {
+      "code": "MX",
+      "name": "Mexico",
+      "currency": "MXN",
+      "flag": "🇲🇽",
+      "sites": [
+        "walmart.com.mx",
+        "soriana.com",
+        "chedraui.com.mx",
+        "mercadolibre.com.mx",
+        "superama.com.mx",
+        "lacomer.com.mx"
+      ]
+    },
+    {
+      "code": "ZA",
+      "name": "South Africa",
+      "currency": "ZAR",
+      "flag": "🇿🇦",
+      "sites": [
+        "checkers.co.za",
+        "picknpay.co.za",
+        "shoprite.co.za",
+        "woolworths.co.za",
+        "spar.co.za"
+      ]
+    },
+    {
+      "code": "TR",
+      "name": "Turkey",
+      "currency": "TRY",
+      "flag": "🇹🇷",
+      "sites": [
+        "migros.com.tr",
+        "carrefoursa.com",
+        "a101.com.tr",
+        "bim.com.tr",
+        "sok.com.tr"
+      ]
+    },
+    {
+      "code": "NG",
+      "name": "Nigeria",
+      "currency": "NGN",
+      "flag": "🇳🇬",
+      "sites": [
+        "jumia.com.ng",
+        "konga.com",
+        "market.jumia.com.ng",
+        "supermart.ng"
+      ]
+    },
+    {
+      "code": "KR",
+      "name": "South Korea",
+      "currency": "KRW",
+      "flag": "🇰🇷",
+      "sites": [
+        "coupang.com",
+        "emart.com",
+        "danawa.com"
+      ]
+    },
+    {
+      "code": "SG",
+      "name": "Singapore",
+      "currency": "SGD",
+      "flag": "🇸🇬",
+      "sites": [
+        "fairprice.com.sg",
+        "lazada.com.sg"
+      ]
+    },
+    {
+      "code": "PK",
+      "name": "Pakistan",
+      "currency": "PKR",
+      "flag": "🇵🇰",
+      "sites": [
+        "daraz.pk",
+        "naheedsuper.com",
+        "alfatah.com.pk",
+        "metro.com.pk",
+        "imtiaz.com.pk"
+      ]
+    },
+    {
+      "code": "AE",
+      "name": "UAE",
+      "currency": "AED",
+      "flag": "🇦🇪",
+      "sites": [
+        "carrefouruae.com",
+        "luluhypermarket.com",
+        "noon.com"
+      ]
+    },
+    {
+      "code": "SA",
+      "name": "Saudi Arabia",
+      "currency": "SAR",
+      "flag": "🇸🇦",
+      "sites": [
+        "noon.com/saudi-en",
+        "carrefour.com.sa",
+        "panda.com.sa",
+        "danube.com.sa"
+      ]
+    },
+    {
+      "code": "EG",
+      "name": "Egypt",
+      "currency": "EGP",
+      "flag": "🇪🇬",
+      "sites": [
+        "carrefouregypt.com",
+        "spinneys.com.eg",
+        "seoudi.com"
+      ]
+    },
+    {
+      "code": "KE",
+      "name": "Kenya",
+      "currency": "KES",
+      "flag": "🇰🇪",
+      "sites": [
+        "naivas.co.ke",
+        "carrefour.ke",
+        "jumia.co.ke"
+      ]
+    },
+    {
+      "code": "AR",
+      "name": "Argentina",
+      "currency": "ARS",
+      "flag": "🇦🇷",
+      "sites": [
+        "carrefour.com.ar",
+        "cotodigital.com.ar",
+        "dia.com.ar",
+        "jumbo.com.ar",
+        "walmart.com.ar",
+        "disco.com.ar"
+      ]
+    },
+    {
+      "code": "ID",
+      "name": "Indonesia",
+      "currency": "IDR",
+      "flag": "🇮🇩",
+      "sites": [
+        "shopee.co.id",
+        "tokopedia.com",
+        "blibli.com",
+        "bukalapak.com",
+        "lazada.co.id"
+      ]
+    },
+    {
+      "code": "PH",
+      "name": "Philippines",
+      "currency": "PHP",
+      "flag": "🇵🇭",
+      "sites": [
+        "robinsons-supermarket.com.ph",
+        "landers.com.ph",
+        "lazada.com.ph",
+        "metromart.com",
+        "shopee.com.ph",
+        "sm-markets.com"
+      ]
+    }
+  ],
+  "fxSymbols": {
+    "USD": "USDUSD=X",
+    "GBP": "GBPUSD=X",
+    "EUR": "EURUSD=X",
+    "JPY": "JPYUSD=X",
+    "CNY": "CNYUSD=X",
+    "INR": "INRUSD=X",
+    "AUD": "AUDUSD=X",
+    "CAD": "CADUSD=X",
+    "BRL": "BRLUSD=X",
+    "MXN": "MXNUSD=X",
+    "ZAR": "ZARUSD=X",
+    "TRY": "TRYUSD=X",
+    "NGN": "NGNUSD=X",
+    "KRW": "KRWUSD=X",
+    "SGD": "SGDUSD=X",
+    "PKR": "PKRUSD=X",
+    "AED": "AEDUSD=X",
+    "SAR": "SARUSD=X",
+    "EGP": "EGPUSD=X",
+    "KES": "KESUSD=X",
+    "ARS": "ARSUSD=X",
+    "IDR": "IDRUSD=X",
+    "PHP": "PHPUSD=X"
+  }
+}

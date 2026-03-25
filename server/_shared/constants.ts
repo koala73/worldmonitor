@@ -1,5 +1,10 @@
 export const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+export function clampInt(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(value as number)));
+}
+
 /**
  * Global Yahoo Finance request gate.
  * Ensures minimum spacing between ANY Yahoo requests across all handlers.
@@ -18,4 +23,24 @@ export function yahooGate(): Promise<void> {
     yahooLastRequest = Date.now();
   });
   return yahooQueue;
+}
+
+/**
+ * Global Finnhub request gate.
+ * Free-tier Finnhub keys are sensitive to burst concurrency; spacing requests
+ * reduces 429 cascades that otherwise spill into Yahoo fallback.
+ */
+let finnhubLastRequest = 0;
+const FINNHUB_MIN_GAP_MS = 350;
+let finnhubQueue: Promise<void> = Promise.resolve();
+
+export function finnhubGate(): Promise<void> {
+  finnhubQueue = finnhubQueue.then(async () => {
+    const elapsed = Date.now() - finnhubLastRequest;
+    if (elapsed < FINNHUB_MIN_GAP_MS) {
+      await new Promise<void>(r => setTimeout(r, FINNHUB_MIN_GAP_MS - elapsed));
+    }
+    finnhubLastRequest = Date.now();
+  });
+  return finnhubQueue;
 }

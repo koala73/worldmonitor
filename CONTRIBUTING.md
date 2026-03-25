@@ -29,7 +29,7 @@ World Monitor is a real-time OSINT dashboard built with **Vanilla TypeScript** (
 | **TypeScript** | All code — frontend, edge functions, and handlers |
 | **Vite** | Build tool and dev server |
 | **Sebuf** | Proto-first HTTP RPC framework for typed API contracts |
-| **Protobuf / Buf** | Service and message definitions across 17 domains |
+| **Protobuf / Buf** | Service and message definitions across 22 domains |
 | **MapLibre GL** | Base map rendering (tiles, globe mode, camera) |
 | **deck.gl** | WebGL overlay layers (scatterplot, geojson, arcs, heatmaps) |
 | **d3** | Charts, sparklines, and data visualization |
@@ -256,6 +256,15 @@ For endpoints that deal with non-JSON payloads (XML feeds, binary data, HTML emb
 - Must have a permissive license or be public government data
 - Should update at least daily for real-time relevance
 - Must include geographic coordinates or be geo-locatable
+
+### Country boundary overrides
+
+Country outlines are loaded from `public/data/countries.geojson`. Optional higher-resolution overrides (sourced from [Natural Earth](https://www.naturalearthdata.com/)) are served from R2 CDN. The app loads overrides after the main file and replaces geometry for any country whose `ISO3166-1-Alpha-2` (or `ISO_A2`) matches. To refresh boundary overrides from Natural Earth, run:
+
+```bash
+node scripts/fetch-country-boundary-overrides.mjs
+rclone copy public/data/country-boundary-overrides.geojson r2:worldmonitor-maps/
+```
 
 ## Adding RSS Feeds
 

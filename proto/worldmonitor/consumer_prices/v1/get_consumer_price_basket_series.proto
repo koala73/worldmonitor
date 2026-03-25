@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package worldmonitor.consumer_prices.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/consumer_prices/v1/consumer_prices_data.proto";
+
+// GetConsumerPriceBasketSeriesRequest parameters for time series data.
+message GetConsumerPriceBasketSeriesRequest {
+  // market_code is the ISO 3166-1 alpha-2 market identifier.
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  // basket_slug selects the basket (e.g. "essentials-ae").
+  string basket_slug = 2 [(sebuf.http.query) = { name: "basket_slug" }];
+  // range is one of "7d", "30d", "90d", "180d".
+  string range = 3 [(sebuf.http.query) = { name: "range" }];
+}
+
+// GetConsumerPriceBasketSeriesResponse contains the basket index time series.
+message GetConsumerPriceBasketSeriesResponse {
+  // market_code echoes the requested market.
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  // basket_slug echoes the requested basket.
+  string basket_slug = 2 [(sebuf.http.query) = { name: "basket_slug" }];
+  // as_of is the Unix millisecond timestamp of the snapshot.
+  int64 as_of = 3;
+  // currency_code is the ISO 4217 currency code.
+  string currency_code = 4;
+  // range echoes the requested range.
+  string range = 5;
+  // essentials_series is the fixed basket index series.
+  repeated BasketPoint essentials_series = 6;
+  // value_series is the value basket index series.
+  repeated BasketPoint value_series = 7;
+  // upstream_unavailable is true when the companion service could not be reached.
+  bool upstream_unavailable = 8;
+}

@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// CrossSourceSignalType enumerates all monitored cross-domain signal categories.
+enum CrossSourceSignalType {
+  CROSS_SOURCE_SIGNAL_TYPE_UNSPECIFIED = 0;
+  CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION = 1;
+  CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE = 2;
+  CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING = 3;
+  CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE = 4;
+  CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE = 5;
+  CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER = 6;
+  CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE = 7;
+  CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK = 8;
+  CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION = 9;
+  CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION = 10;
+  CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE = 11;
+  CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT = 12;
+  CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY = 13;
+  CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE = 14;
+  CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION = 15;
+  CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE = 16;
+  CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION = 17;
+  CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS = 18;
+  CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME = 19;
+  CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION = 20;
+  CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE = 21;
+}
+
+// CrossSourceSignalSeverity indicates the urgency tier of a detected signal.
+enum CrossSourceSignalSeverity {
+  CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED = 0;
+  CROSS_SOURCE_SIGNAL_SEVERITY_LOW = 1;
+  CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM = 2;
+  CROSS_SOURCE_SIGNAL_SEVERITY_HIGH = 3;
+  CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL = 4;
+}
+
+// CrossSourceSignal represents a single detected cross-domain signal event.
+message CrossSourceSignal {
+  // Unique signal identifier.
+  string id = 1;
+  // Signal type category.
+  CrossSourceSignalType type = 2;
+  // Theater / geographic context (e.g. "Eastern Europe", "Red Sea", "Global Markets").
+  string theater = 3;
+  // Human-readable summary of the signal.
+  string summary = 4;
+  // Computed severity tier.
+  CrossSourceSignalSeverity severity = 5;
+  // Raw severity score used for ranking (higher = more severe).
+  double severity_score = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Detection timestamp (Unix epoch milliseconds).
+  int64 detected_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // For COMPOSITE_ESCALATION: list of contributing signal type names.
+  repeated string contributing_types = 8;
+  // For COMPOSITE_ESCALATION: number of co-firing signals in theater.
+  int32 signal_count = 9;
+}
+
+// ListCrossSourceSignalsRequest has no required parameters (returns all signals).
+message ListCrossSourceSignalsRequest {}
+
+// ListCrossSourceSignalsResponse contains ranked cross-domain signals.
+message ListCrossSourceSignalsResponse {
+  // Signals sorted by severity descending, then detectedAt descending.
+  repeated CrossSourceSignal signals = 1;
+  // Timestamp when the aggregator last ran (Unix epoch milliseconds).
+  int64 evaluated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Total number of composite escalation zones detected.
+  int32 composite_count = 3;
+}

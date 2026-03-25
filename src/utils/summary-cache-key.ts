@@ -26,7 +26,7 @@ export function buildSummaryCacheKey(
 ): string {
   const canon = canonicalizeSummaryInputs(headlines, geoContext);
   const sorted = canon.headlines.slice(0, MAX_HEADLINES_FOR_KEY).sort().join('|');
-  const geoHash = canon.geoContext ? ':g' + hashString(canon.geoContext).slice(0, 6) : '';
+  const geoHash = canon.geoContext ? ':g' + hashString(canon.geoContext) : '';
   const hash = hashString(`${mode}:${sorted}`);
   const normalizedVariant = typeof variant === 'string' && variant ? variant.toLowerCase() : 'full';
   const normalizedLang = typeof lang === 'string' && lang ? lang.toLowerCase() : 'en';

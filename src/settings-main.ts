@@ -1,6 +1,7 @@
 import './styles/main.css';
 import './styles/settings-window.css';
 import { SettingsManager } from '@/services/settings-manager';
+import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
 import {
   SETTINGS_CATEGORIES,
   HUMAN_LABELS,
@@ -25,11 +26,12 @@ import {
   type RuntimeFeatureId,
   type RuntimeSecretKey,
 } from '@/services/runtime-config';
-import { getApiBaseUrl, getRemoteApiBaseUrl, isDesktopRuntime, resolveLocalApiPort } from '@/services/runtime';
+import { getApiBaseUrl, isDesktopRuntime, resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import { tryInvokeTauri, invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
 import { initI18n, t } from '@/services/i18n';
 import { applyStoredTheme } from '@/utils/theme-manager';
+import { applyFont } from '@/services/font-settings';
 import { trackFeatureToggle } from '@/services/analytics';
 
 let activeSection = 'overview';
@@ -189,8 +191,6 @@ function renderOverview(area: HTMLElement): void {
   const wmState = getSecretState('WORLDMONITOR_API_KEY');
   const wmStatusText = wmState.present ? 'Active' : 'Not set';
   const wmStatusClass = wmState.present ? 'ok' : 'warn';
-  const alreadyRegistered = false; // Force-show form for email testing
-
   const catCards = SETTINGS_CATEGORIES.map(cat => {
     const { ready: catReady, total: catTotal } = getFeatureStatusCounts(cat);
     const cls = catReady === catTotal ? 'ov-cat-ok' : catReady > 0 ? 'ov-cat-partial' : 'ov-cat-warn';
@@ -238,18 +238,11 @@ function renderOverview(area: HTMLElement): void {
       <section class="wm-section">
         <h2 class="wm-section-title">${t('modals.settingsWindow.worldMonitor.register.title')}</h2>
         <p class="wm-section-desc">${t('modals.settingsWindow.worldMonitor.register.description')}</p>
-        ${alreadyRegistered ? `
-        <p class="wm-reg-status ok">${t('modals.settingsWindow.worldMonitor.register.alreadyRegistered')}</p>
-        ` : `
         <div class="wm-register-row">
-          <input type="email" class="wm-input wm-email" data-wm-email
-            placeholder="${t('modals.settingsWindow.worldMonitor.register.emailPlaceholder')}" />
-          <button type="button" class="wm-submit-btn" data-wm-register>
+          <button type="button" class="wm-submit-btn" data-wm-open-pro>
             ${t('modals.settingsWindow.worldMonitor.register.submitBtn')}
           </button>
         </div>
-        <p class="wm-reg-status" data-wm-reg-status></p>
-        `}
       </section>
     </div>
   `;
@@ -270,47 +263,9 @@ function initOverviewListeners(area: HTMLElement): void {
     }
   });
 
-  area.querySelector('[data-wm-register]')?.addEventListener('click', async () => {
-    const emailInput = area.querySelector<HTMLInputElement>('[data-wm-email]');
-    const regStatus = area.querySelector<HTMLElement>('[data-wm-reg-status]');
-    const btn = area.querySelector<HTMLButtonElement>('[data-wm-register]');
-    if (!emailInput || !regStatus || !btn) return;
-
-    const email = emailInput.value.trim();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      regStatus.textContent = t('modals.settingsWindow.worldMonitor.register.invalidEmail');
-      regStatus.className = 'wm-reg-status error';
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = t('modals.settingsWindow.worldMonitor.register.submitting');
-
-    try {
-      const base = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
-      const res = await fetch(`${base}/api/register-interest`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, source: 'desktop-settings' }),
-      });
-      const data = await res.json() as { status?: string; error?: string };
-      if (data.status === 'already_registered' || data.status === 'registered') {
-        localStorage.setItem('wm-waitlist-registered', '1');
-        regStatus.textContent = data.status === 'already_registered'
-          ? t('modals.settingsWindow.worldMonitor.register.alreadyRegistered')
-          : t('modals.settingsWindow.worldMonitor.register.success');
-        regStatus.className = 'wm-reg-status ok';
-      } else {
-        regStatus.textContent = data.error || t('modals.settingsWindow.worldMonitor.register.error');
-        regStatus.className = 'wm-reg-status error';
-      }
-    } catch {
-      regStatus.textContent = t('modals.settingsWindow.worldMonitor.register.error');
-      regStatus.className = 'wm-reg-status error';
-    } finally {
-      btn.disabled = false;
-      btn.textContent = t('modals.settingsWindow.worldMonitor.register.submitBtn');
-    }
+  area.querySelector('[data-wm-open-pro]')?.addEventListener('click', () => {
+    const url = 'https://worldmonitor.app/pro';
+    void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
   });
 
   area.querySelectorAll<HTMLButtonElement>('.settings-ov-cat[data-section]').forEach(btn => {
@@ -630,6 +585,18 @@ function renderDebug(area: HTMLElement): void {
       <button id="openLogsBtn" type="button">Open Logs Folder</button>
       <button id="openSidecarLogBtn" type="button">Open API Log</button>
     </div>
+    <section class="debug-data-section">
+      <h3>Data Management</h3>
+      <div class="debug-data-actions">
+        <button type="button" class="settings-btn settings-btn-secondary" id="exportSettingsBtn">
+          ${t('components.settings.exportSettings')}
+        </button>
+        <button type="button" class="settings-btn settings-btn-secondary" id="importSettingsBtn">
+          ${t('components.settings.importSettings')}
+        </button>
+        <input type="file" id="importSettingsInput" accept=".json" style="display: none;" />
+      </div>
+    </section>
     <section class="settings-diagnostics" id="diagnosticsSection">
       <header class="diag-header">
         <h2>Diagnostics</h2>
@@ -656,6 +623,39 @@ function renderDebug(area: HTMLElement): void {
 
   area.querySelector('#openSidecarLogBtn')?.addEventListener('click', () => {
     void invokeDesktopAction('open_sidecar_log_file', t('modals.settingsWindow.openApiLog'));
+  });
+
+  area.querySelector('#exportSettingsBtn')?.addEventListener('click', () => {
+    exportSettings();
+  });
+
+  const importInput = area.querySelector<HTMLInputElement>('#importSettingsInput');
+  area.querySelector('#importSettingsBtn')?.addEventListener('click', () => {
+    importInput?.click();
+  });
+
+  importInput?.addEventListener('change', async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    try {
+      const result: ImportResult = await importSettings(file);
+      setActionStatus(t('components.settings.importSuccess', { count: String(result.keysImported) }), 'ok');
+    } catch (err: unknown) {
+      if (err instanceof DOMException) {
+        if (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+          setActionStatus(t('components.settings.importFailed') + ': storage limit reached', 'error');
+        } else if (err.name === 'SecurityError') {
+          setActionStatus(t('components.settings.importFailed') + ': storage blocked', 'error');
+        } else {
+          setActionStatus(`${t('components.settings.importFailed')}: ${err.message || err.name}`, 'error');
+        }
+      } else if (err instanceof Error && err.message) {
+        setActionStatus(`${t('components.settings.importFailed')}: ${err.message}`, 'error');
+      } else {
+        setActionStatus(t('components.settings.importFailed'), 'error');
+      }
+    }
+    importInput.value = '';
   });
 
   initDiagnostics();
@@ -732,22 +732,27 @@ function initDiagnostics(): void {
     if (trafficCount) trafficCount.textContent = '(0)';
   });
 
-  let refreshInterval: ReturnType<typeof setInterval> | null = null;
+  let refreshPollLoop: SmartPollLoopHandle | null = null;
 
   function startAutoRefresh(): void {
     stopAutoRefresh();
-    refreshInterval = setInterval(() => void refreshTrafficLog(), 3000);
+    refreshPollLoop = startSmartPollLoop(() => refreshTrafficLog(), {
+      intervalMs: 3000,
+      pauseWhenHidden: true,
+      refreshOnVisible: true,
+      runImmediately: true,
+      jitterFraction: 0,
+    });
   }
 
   function stopAutoRefresh(): void {
-    if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+    if (refreshPollLoop) { refreshPollLoop.stop(); refreshPollLoop = null; }
   }
 
   autoRefreshToggle?.addEventListener('change', () => {
     if (autoRefreshToggle.checked) startAutoRefresh(); else stopAutoRefresh();
   });
 
-  void refreshTrafficLog();
   startAutoRefresh();
 
   _diagCleanup = stopAutoRefresh;
@@ -846,6 +851,7 @@ function handleSearch(query: string): void {
 async function initSettingsWindow(): Promise<void> {
   await initI18n();
   applyStoredTheme();
+  applyFont();
 
   try { await resolveLocalApiPort(); } catch { /* use default */ }
 

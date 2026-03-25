@@ -20,6 +20,15 @@ const VALID_KINDS = new Set([
 const COUNTRY_RE = /^[A-Z]{2}$/;
 
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
+const MAX_FILTER_LENGTH = 20;
+
+function normalizeOptionalFilter(
+  value: string | undefined,
+  transform: (input: string) => string,
+): string {
+  if (!value) return '';
+  return transform(value).trim().slice(0, MAX_FILTER_LENGTH);
+}
 
 function getBboxGridStep(zoom: number): number {
   if (zoom < 5) return 5;
@@ -119,9 +128,9 @@ export async function listMilitaryBases(
     const neLon = Math.max(-180, Math.min(180, req.neLon));
     const zoom = Math.max(0, Math.min(22, req.zoom || 3));
 
-    const typeFilter = req.type ? req.type.toLowerCase().trim().slice(0, 20) : '';
-    const kindFilter = req.kind ? req.kind.toLowerCase().trim().slice(0, 20) : '';
-    const countryFilter = req.country ? req.country.toUpperCase().trim().slice(0, 20) : '';
+    const typeFilter = normalizeOptionalFilter(req.type, v => v.toLowerCase());
+    const kindFilter = normalizeOptionalFilter(req.kind, v => v.toLowerCase());
+    const countryFilter = normalizeOptionalFilter(req.country, v => v.toUpperCase());
 
     if (typeFilter && !VALID_TYPES.has(typeFilter)) return empty;
     if (kindFilter && !VALID_KINDS.has(kindFilter)) return empty;

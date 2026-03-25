@@ -49,12 +49,15 @@ describe('DIRECT_HLS_MAP integrity', () => {
     }
   });
 
-  it('every mapped channel has a fallbackVideoId', () => {
+  it('every mapped channel has a fallbackVideoId or hlsUrl', () => {
     for (const { id } of hlsMapEntries) {
       const channelDef = liveNewsSrc.match(new RegExp(`id:\\s*'${id}'[^}]*}`));
       assert.ok(channelDef, `Channel '${id}' definition not found`);
-      assert.match(channelDef[0], /fallbackVideoId:\s*'[^']+'/,
-        `Channel '${id}' in DIRECT_HLS_MAP lacks fallbackVideoId`);
+      const hasFallback = /fallbackVideoId:\s*'[^']+'/.test(channelDef[0]);
+      const hasHlsUrl = /hlsUrl:\s*'[^']+'/.test(channelDef[0]);
+      const hasHandle = /handle:\s*'[^']+'/.test(channelDef[0]);
+      assert.ok(hasFallback || hasHlsUrl || hasHandle,
+        `Channel '${id}' in DIRECT_HLS_MAP lacks fallbackVideoId, hlsUrl, and handle`);
     }
   });
 
@@ -64,9 +67,9 @@ describe('DIRECT_HLS_MAP integrity', () => {
     }
   });
 
-  it('all HLS URLs end with .m3u8', () => {
+  it('all HLS URLs contain .m3u8', () => {
     for (const { id, url } of hlsMapEntries) {
-      assert.ok(url.endsWith('.m3u8'), `HLS URL for '${id}' does not end with .m3u8: ${url}`);
+      assert.ok(url.includes('.m3u8'), `HLS URL for '${id}' does not contain .m3u8: ${url}`);
     }
   });
 
@@ -351,23 +354,28 @@ describe('sidecar youtube-embed endpoint', () => {
 // ── 10. Optional channels with fallbackVideoId ──
 
 describe('optional channels fallback coverage', () => {
-  const highPriorityOptional = ['livenow-fox', 'abc-news', 'nbc-news', 'wion'];
+  const highPriorityOptional = ['abc-news', 'nbc-news', 'wion', 'rt'];
 
   for (const id of highPriorityOptional) {
-    it(`${id} has fallbackVideoId`, () => {
+    it(`${id} has a fallback path`, () => {
       const match = liveNewsSrc.match(new RegExp(`id:\\s*'${id}'[^}]*}`));
       assert.ok(match, `Channel '${id}' not found in OPTIONAL_LIVE_CHANNELS`);
-      assert.match(match[0], /fallbackVideoId:\s*'[A-Za-z0-9_-]{11}'/,
-        `Optional channel '${id}' must have a valid 11-char fallbackVideoId`);
+      const hasFallback = /fallbackVideoId:\s*'[A-Za-z0-9_-]{11}'/.test(match[0]);
+      const hasHlsUrl = /hlsUrl:\s*'[^']+'/.test(match[0]);
+      const hasHandle = /handle:\s*'[^']+'/.test(match[0]);
+      assert.ok(hasFallback || hasHlsUrl || hasHandle,
+        `Optional channel '${id}' must have fallbackVideoId, hlsUrl, or handle`);
     });
   }
 
-  it('channels with useFallbackOnly also have fallbackVideoId', () => {
+  it('channels with useFallbackOnly also have fallbackVideoId or hlsUrl', () => {
     const useFallbackMatches = [...liveNewsSrc.matchAll(/id:\s*'([^']+)'[^}]*useFallbackOnly:\s*true[^}]*}/g)];
     for (const m of useFallbackMatches) {
       const channelId = m[1];
-      assert.match(m[0], /fallbackVideoId:\s*'[^']+'/,
-        `Channel '${channelId}' has useFallbackOnly but no fallbackVideoId`);
+      const hasFallback = /fallbackVideoId:\s*'[^']+'/.test(m[0]);
+      const hasHlsUrl = /hlsUrl:\s*'[^']+'/.test(m[0]);
+      assert.ok(hasFallback || hasHlsUrl,
+        `Channel '${channelId}' has useFallbackOnly but no fallbackVideoId or hlsUrl`);
     }
   });
 });

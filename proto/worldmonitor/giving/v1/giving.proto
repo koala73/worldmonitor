@@ -3,7 +3,6 @@ syntax = "proto3";
 package worldmonitor.giving.v1;
 
 import "buf/validate/validate.proto";
-import "sebuf/http/annotations.proto";
 
 // GivingSummary represents a global overview of personal giving activity across platforms.
 message GivingSummary {
@@ -14,7 +13,7 @@ message GivingSummary {
   // Index trend direction.
   string trend = 3; // "rising" | "stable" | "falling"
   // Estimated daily global giving flow in USD (directional, not precise).
-  double estimated_daily_flow_usd = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  double estimated_daily_flow_usd = 4;
   // Per-platform aggregates.
   repeated PlatformGiving platforms = 5;
   // Per-category breakdown of campaign activity.

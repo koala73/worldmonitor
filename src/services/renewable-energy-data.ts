@@ -1,18 +1,18 @@
 /**
- * Renewable energy data service -- fetches World Bank renewable electricity
+ * Renewable energy data service -- displays World Bank renewable electricity
  * indicator (EG.ELC.RNEW.ZS) for global + regional breakdown.
  *
- * Uses the existing getIndicatorData() RPC from the economic service
- * (World Bank API via sebuf proxy).
+ * Data is pre-seeded by seed-wb-indicators.mjs on Railway and read
+ * from bootstrap/Redis. Never calls WB API from the frontend.
  *
- * World Bank indicator EG.ELC.RNEW.ZS ("Renewable electricity output as %
- * of total electricity output") is sourced FROM IEA Energy Statistics
- * (SE4ALL Global Tracking Framework). This fulfills the ENERGY-03
- * requirement for IEA-sourced data without needing IEA's paid API.
+ * EIA installed capacity (solar, wind, coal) still uses the RPC
+ * endpoint since it's a different data source (not World Bank).
  */
 
-import { getIndicatorData, fetchEnergyCapacityRpc } from '@/services/economic';
+import { fetchEnergyCapacityRpc } from '@/services/economic';
 import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
 
 // ---- Types ----
 
@@ -30,26 +30,9 @@ export interface RenewableEnergyData {
   regions: RegionRenewableData[];    // Regional breakdown
 }
 
-// ---- Constants ----
-
-// World Bank indicator for renewable electricity output as % of total
-const INDICATOR_CODE = 'EG.ELC.RNEW.ZS';
-
-// World Bank region codes for breakdown
-const REGIONS: Array<{ code: string; name: string }> = [
-  { code: '1W', name: 'World' },
-  { code: 'EAS', name: 'East Asia & Pacific' },
-  { code: 'ECS', name: 'Europe & Central Asia' },
-  { code: 'LCN', name: 'Latin America & Caribbean' },
-  { code: 'MEA', name: 'Middle East & N. Africa' },
-  { code: 'NAC', name: 'North America' },
-  { code: 'SAS', name: 'South Asia' },
-  { code: 'SSF', name: 'Sub-Saharan Africa' },
-];
-
 // ---- Default / Empty ----
 
-// Static fallback when World Bank API is unavailable and no cache exists.
+// Static fallback when seed data is unavailable and no cache exists.
 // Source: https://data.worldbank.org/indicator/EG.ELC.RNEW.ZS — last verified Feb 2026
 const FALLBACK_DATA: RenewableEnergyData = {
   globalPercentage: 29.6,
@@ -85,88 +68,26 @@ const capacityBreaker = createCircuitBreaker<CapacitySeries[]>({
   persistCache: true,
 });
 
-// ---- Data Fetching ----
+// ---- Data Fetching (from Railway seed via bootstrap) ----
 
 async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
+  // 1. Try bootstrap hydration cache (first page load)
+  const hydrated = getHydratedData('renewableEnergy') as RenewableEnergyData | undefined;
+  if (hydrated?.historicalData?.length) return hydrated;
+
+  // 2. Fallback: fetch from bootstrap endpoint directly
   try {
-    const response = await getIndicatorData(INDICATOR_CODE, {
-      countries: REGIONS.map(r => r.code),
-      years: 35,
+    const resp = await fetch(toApiUrl('/api/bootstrap?keys=renewableEnergy'), {
+      signal: AbortSignal.timeout(5_000),
     });
-
-    // --- Extract global (World = "WLD") data ---
-    // World Bank API returns countryiso3code "WLD" for world aggregate (request code "1W").
-    const worldData = response.byCountry['WLD'];
-    if (!worldData || worldData.values.length === 0) {
-      return FALLBACK_DATA;
+    if (resp.ok) {
+      const { data } = (await resp.json()) as { data: { renewableEnergy?: RenewableEnergyData } };
+      if (data.renewableEnergy?.historicalData?.length) return data.renewableEnergy;
     }
+  } catch { /* fall through */ }
 
-    // Build historical time-series, filtering out null/NaN values
-    const historicalData = worldData.values
-      .filter(v => v.value != null && Number.isFinite(v.value))
-      .map(v => ({
-        year: parseInt(v.year, 10),
-        value: v.value,
-      }))
-      .filter(d => !isNaN(d.year))
-      .sort((a, b) => a.year - b.year);
-
-    if (historicalData.length === 0) {
-      return FALLBACK_DATA;
-    }
-
-    const latest = historicalData[historicalData.length - 1]!;
-    const globalPercentage = latest.value;
-    const globalYear = latest.year;
-
-    // --- Extract regional breakdown ---
-    const regions: RegionRenewableData[] = [];
-
-    for (const region of REGIONS) {
-      // Skip "World" -- it's already in globalPercentage
-      if (region.code === '1W' || region.code === 'WLD') continue;
-
-      try {
-        const countryData = response.byCountry[region.code];
-        if (!countryData || countryData.values.length === 0) continue;
-
-        // Find the most recent non-null value
-        const validValues = countryData.values
-          .filter(v => v.value != null && Number.isFinite(v.value))
-          .map(v => ({
-            year: parseInt(v.year, 10),
-            value: v.value,
-          }))
-          .filter(d => !isNaN(d.year))
-          .sort((a, b) => a.year - b.year);
-
-        if (validValues.length === 0) continue;
-
-        const latestRegion = validValues[validValues.length - 1]!;
-        regions.push({
-          code: region.code,
-          name: region.name,
-          percentage: latestRegion.value,
-          year: latestRegion.year,
-        });
-      } catch {
-        // Individual region failure: skip that region (don't crash the whole fetch)
-        continue;
-      }
-    }
-
-    // Sort regions by percentage descending (highest renewable % first)
-    regions.sort((a, b) => b.percentage - a.percentage);
-
-    return {
-      globalPercentage,
-      globalYear,
-      historicalData,
-      regions,
-    };
-  } catch {
-    return FALLBACK_DATA;
-  }
+  // 3. Static fallback
+  return FALLBACK_DATA;
 }
 
 /**

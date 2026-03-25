@@ -41,6 +41,9 @@ export const MONITORED_AIRPORTS: MonitoredAirport[] = [
   { iata: 'CPH', icao: 'EKCH', name: 'Copenhagen Airport', city: 'Copenhagen', country: 'Denmark', lat: 55.6180, lon: 12.6508, region: 'europe' },
   { iata: 'DUB', icao: 'EIDW', name: 'Dublin Airport', city: 'Dublin', country: 'Ireland', lat: 53.4264, lon: -6.2499, region: 'europe' },
   { iata: 'IST', icao: 'LTFM', name: 'Istanbul Airport', city: 'Istanbul', country: 'Turkey', lat: 41.2753, lon: 28.7519, region: 'europe' },
+  { iata: 'LIS', icao: 'LPPT', name: 'Humberto Delgado Airport', city: 'Lisbon', country: 'Portugal', lat: 38.7756, lon: -9.1354, region: 'europe' },
+  { iata: 'ATH', icao: 'LGAV', name: 'Athens International', city: 'Athens', country: 'Greece', lat: 37.9364, lon: 23.9445, region: 'europe' },
+  { iata: 'WAW', icao: 'EPWA', name: 'Warsaw Chopin Airport', city: 'Warsaw', country: 'Poland', lat: 52.1657, lon: 20.9671, region: 'europe' },
   { iata: 'SVO', icao: 'UUEE', name: 'Sheremetyevo International', city: 'Moscow', country: 'Russia', lat: 55.9736, lon: 37.4125, region: 'europe' },
   { iata: 'ARN', icao: 'ESSA', name: 'Stockholm Arlanda', city: 'Stockholm', country: 'Sweden', lat: 59.6519, lon: 17.9186, region: 'europe' },
   { iata: 'OSL', icao: 'ENGM', name: 'Oslo Gardermoen', city: 'Oslo', country: 'Norway', lat: 60.1939, lon: 11.1004, region: 'europe' },
@@ -51,6 +54,7 @@ export const MONITORED_AIRPORTS: MonitoredAirport[] = [
   { iata: 'NRT', icao: 'RJAA', name: 'Narita International', city: 'Tokyo', country: 'Japan', lat: 35.7720, lon: 140.3929, region: 'apac' },
   { iata: 'PEK', icao: 'ZBAA', name: 'Beijing Capital', city: 'Beijing', country: 'China', lat: 40.0799, lon: 116.6031, region: 'apac' },
   { iata: 'PVG', icao: 'ZSPD', name: 'Shanghai Pudong', city: 'Shanghai', country: 'China', lat: 31.1443, lon: 121.8083, region: 'apac' },
+  { iata: 'CAN', icao: 'ZGGG', name: 'Guangzhou Baiyun International', city: 'Guangzhou', country: 'China', lat: 23.3924, lon: 113.2988, region: 'apac' },
   { iata: 'HKG', icao: 'VHHH', name: 'Hong Kong International', city: 'Hong Kong', country: 'China', lat: 22.3080, lon: 113.9185, region: 'apac' },
   { iata: 'SIN', icao: 'WSSS', name: 'Singapore Changi', city: 'Singapore', country: 'Singapore', lat: 1.3644, lon: 103.9915, region: 'apac' },
   { iata: 'ICN', icao: 'RKSI', name: 'Incheon International', city: 'Seoul', country: 'South Korea', lat: 37.4602, lon: 126.4407, region: 'apac' },
@@ -131,6 +135,23 @@ export const MONITORED_AIRPORTS: MonitoredAirport[] = [
 export const FAA_AIRPORTS = MONITORED_AIRPORTS.filter(
   (a) => a.country === 'USA'
 ).map((a) => a.iata);
+
+// Top international hubs queried via AviationStack (non-US; US uses FAA)
+// All airports remain in MONITORED_AIRPORTS for map display, NOTAMs, and gray dots
+export const AVIATIONSTACK_AIRPORTS: string[] = [
+  // Americas (7)
+  'YYZ', 'YVR', 'MEX', 'GRU', 'EZE', 'BOG', 'SCL',
+  // Europe (16)
+  'LHR', 'CDG', 'FRA', 'AMS', 'MAD', 'FCO', 'MUC', 'BCN', 'ZRH', 'IST', 'VIE', 'CPH',
+  'DUB', 'LIS', 'ATH', 'WAW',
+  // APAC (15)
+  'HND', 'NRT', 'PEK', 'PVG', 'HKG', 'SIN', 'ICN', 'BKK', 'SYD', 'DEL', 'BOM', 'KUL',
+  'CAN', 'TPE', 'MNL',
+  // MENA (9)
+  'DXB', 'DOH', 'AUH', 'RUH', 'CAI', 'TLV', 'AMM', 'KWI', 'CMN',
+  // Africa (5)
+  'JNB', 'NBO', 'LOS', 'ADD', 'CPT',
+];
 
 // Severity thresholds
 export const DELAY_SEVERITY_THRESHOLDS = {

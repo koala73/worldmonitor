@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message BacktestStockEvaluation {
+  int64 analysis_at = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string signal = 2;
+  double signal_score = 3;
+  double entry_price = 4;
+  double exit_price = 5;
+  double simulated_return_pct = 6;
+  bool direction_correct = 7;
+  string outcome = 8;
+  double stop_loss = 9;
+  double take_profit = 10;
+  string analysis_id = 11;
+}
+
+message BacktestStockRequest {
+  string symbol = 1 [(sebuf.http.query) = { name: "symbol" },
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32
+  ];
+
+  string name = 2 [
+    (sebuf.http.query) = { name: "name" },
+    (buf.validate.field).string.max_len = 120
+  ];
+
+  int32 eval_window_days = 3 [
+    (sebuf.http.query) = { name: "eval_window_days" },
+    (buf.validate.field).int32.gte = 3,
+    (buf.validate.field).int32.lte = 30
+  ];
+}
+
+message BacktestStockResponse {
+  bool available = 1;
+  string symbol = 2;
+  string name = 3;
+  string display = 4;
+  string currency = 5;
+  int32 eval_window_days = 6;
+  int32 evaluations_run = 7;
+  int32 actionable_evaluations = 8;
+  double win_rate = 9;
+  double direction_accuracy = 10;
+  double avg_simulated_return_pct = 11;
+  double cumulative_simulated_return_pct = 12;
+  string latest_signal = 13;
+  double latest_signal_score = 14;
+  string summary = 15;
+  string generated_at = 16;
+  repeated BacktestStockEvaluation evaluations = 17;
+  string engine_version = 18;
+}

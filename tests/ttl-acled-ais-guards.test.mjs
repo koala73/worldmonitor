@@ -21,17 +21,21 @@ const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 // 1. TTL alignment
 // ========================================================================
 
-describe('cache TTL alignment with upstream refresh rates', () => {
-  it('climate anomalies uses 3h TTL (ERA5 has 2-7 day lag)', () => {
+describe('cache-only handlers read from seed keys', () => {
+  it('climate anomalies is pure cache read (seed controls TTL)', () => {
     const src = readSrc('server/worldmonitor/climate/v1/list-climate-anomalies.ts');
-    assert.match(src, /REDIS_CACHE_TTL = 10800/,
-      'Climate cache TTL should be 10800s (3 hours)');
+    assert.match(src, /getCachedJson/,
+      'Climate handler should use getCachedJson (seed-only)');
+    assert.doesNotMatch(src, /cachedFetchJson/,
+      'Climate handler should not call external APIs');
   });
 
-  it('fire detections uses 1h TTL (FIRMS NRT updates every ~3h)', () => {
+  it('fire detections is pure cache read (seed controls TTL)', () => {
     const src = readSrc('server/worldmonitor/wildfire/v1/list-fire-detections.ts');
-    assert.match(src, /REDIS_CACHE_TTL = 3600/,
-      'Fire cache TTL should be 3600s (1 hour)');
+    assert.match(src, /getCachedJson/,
+      'Fire handler should use getCachedJson (seed-only)');
+    assert.doesNotMatch(src, /cachedFetchJson/,
+      'Fire handler should not call external APIs');
   });
 });
 
@@ -87,10 +91,12 @@ describe('ACLED consumers use shared cache layer', () => {
       'Conflict handler should use shared ACLED fetch');
   });
 
-  it('unrest handler imports fetchAcledCached', () => {
+  it('unrest handler is pure cache read (seed-only, no ACLED calls)', () => {
     const src = readSrc('server/worldmonitor/unrest/v1/list-unrest-events.ts');
-    assert.match(src, /fetchAcledCached/,
-      'Unrest handler should use shared ACLED fetch');
+    assert.match(src, /getCachedJson/,
+      'Unrest handler should use getCachedJson (seed-only)');
+    assert.doesNotMatch(src, /cachedFetchJson/,
+      'Unrest handler should not call external APIs');
   });
 
   it('risk scores handler imports fetchAcledCached', () => {
@@ -101,9 +107,8 @@ describe('ACLED consumers use shared cache layer', () => {
 
   it('no handler has its own ACLED_API_URL constant', () => {
     const conflict = readSrc('server/worldmonitor/conflict/v1/list-acled-events.ts');
-    const unrest = readSrc('server/worldmonitor/unrest/v1/list-unrest-events.ts');
     const riskScores = readSrc('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
-    for (const [name, src] of [['conflict', conflict], ['unrest', unrest], ['risk-scores', riskScores]]) {
+    for (const [name, src] of [['conflict', conflict], ['risk-scores', riskScores]]) {
       assert.doesNotMatch(src, /ACLED_API_URL/,
         `${name} handler should not define its own ACLED_API_URL`);
     }
@@ -114,53 +119,35 @@ describe('ACLED consumers use shared cache layer', () => {
 // 3. Maritime AIS visibility guard
 // ========================================================================
 
-describe('maritime AIS visibility guard', () => {
+describe('maritime AIS visibility guard (SmartPollLoop)', () => {
   const src = readSrc('src/services/maritime/index.ts');
 
-  it('skips polling when document is hidden', () => {
-    assert.match(src, /document\.hidden/,
-      'Should check document.hidden');
-    // The guard should be in pollSnapshot
+  it('uses startSmartPollLoop for polling', () => {
+    assert.match(src, /startSmartPollLoop/,
+      'Should use startSmartPollLoop for AIS polling');
+  });
+
+  it('pauses entirely when hidden via pauseWhenHidden option', () => {
+    assert.match(src, /pauseWhenHidden:\s*true/,
+      'Should set pauseWhenHidden: true to stop relay traffic in background tabs');
+  });
+
+  it('refreshes on tab becoming visible', () => {
+    assert.match(src, /refreshOnVisible:\s*true/,
+      'Should set refreshOnVisible: true to fetch fresh data when tab returns');
+  });
+
+  it('passes AbortSignal through to pollSnapshot', () => {
+    // pollSnapshot should accept a signal parameter
     const pollFn = src.slice(src.indexOf('async function pollSnapshot'));
-    const hiddenGuard = pollFn.indexOf('document.hidden');
-    assert.ok(hiddenGuard > -1 && hiddenGuard < 400,
-      'document.hidden check should be near the top of pollSnapshot');
+    assert.match(pollFn, /signal\?\.aborted/,
+      'pollSnapshot should check signal.aborted');
   });
 
-  it('has pausePolling function that clears interval', () => {
-    assert.match(src, /function pausePolling\(\)/,
-      'Should define pausePolling');
-    const pauseFn = src.slice(src.indexOf('function pausePolling'), src.indexOf('function pausePolling') + 200);
-    assert.match(pauseFn, /clearInterval\(pollInterval\)/,
-      'pausePolling should clear the poll interval');
-  });
-
-  it('has resumePolling function that restarts polling without overlap', () => {
-    assert.match(src, /function resumePolling\(\)/,
-      'Should define resumePolling');
-    const resumeIdx = src.indexOf('function resumePolling');
-    const resumeFn = src.slice(resumeIdx, resumeIdx + 400);
-    assert.match(resumeFn, /if \(!inFlight\)/,
-      'resumePolling should guard against overlapping polls');
-    assert.match(resumeFn, /pollSnapshot\(false\)/,
-      'resumePolling should trigger a non-forced poll');
-  });
-
-  it('registers visibilitychange listener', () => {
-    assert.match(src, /document\.addEventListener\('visibilitychange'/,
-      'Should listen for visibilitychange events');
-  });
-
-  it('calls pausePolling on hidden and resumePolling on visible', () => {
-    const listenerBlock = src.slice(
-      src.indexOf("document.addEventListener('visibilitychange'"),
-      src.indexOf("document.addEventListener('visibilitychange'") + 300,
-    );
-    assert.match(listenerBlock, /document\.hidden/,
-      'Listener should check document.hidden');
-    assert.match(listenerBlock, /pausePolling\(\)/,
-      'Should call pausePolling when hidden');
-    assert.match(listenerBlock, /resumePolling\(\)/,
-      'Should call resumePolling when visible');
+  it('stops poll loop on disconnect', () => {
+    const disconnectIdx = src.indexOf('function disconnectAisStream');
+    const disconnectFn = src.slice(disconnectIdx, disconnectIdx + 300);
+    assert.match(disconnectFn, /pollLoop\?\.stop\(\)/,
+      'disconnectAisStream should stop the SmartPollLoop');
   });
 });

@@ -1,3 +1,4 @@
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   GivingServiceClient,
   type GetGivingSummaryResponse as ProtoResponse,
@@ -124,7 +125,7 @@ function toDisplayInstitutional(proto?: ProtoInstitutional): InstitutionalGiving
 
 // ─── Client + circuit breaker + caching ───
 
-const client = new GivingServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const client = new GivingServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const emptyResult: GivingSummary = {
   generatedAt: new Date().toISOString(),
@@ -154,7 +155,7 @@ const REFETCH_INTERVAL_MS = 30 * 60 * 1000; // 30 min
 export async function fetchGivingSummary(): Promise<GivingFetchResult> {
   // Check bootstrap hydration first
   const hydrated = getHydratedData('giving') as ProtoResponse | undefined;
-  if (hydrated) {
+  if (hydrated?.summary?.platforms?.length) {
     const data = toDisplaySummary(hydrated);
     cachedData = data;
     cachedAt = Date.now();

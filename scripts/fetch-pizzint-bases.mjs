@@ -125,7 +125,7 @@ async function fetchPage(pageIndex) {
       const data = await res.json();
       return { data, contentRange };
     } catch (err) {
-      const backoff = Math.pow(2, attempt - 1) * 1000;
+      const backoff = 2 ** (attempt - 1) * 1000;
       console.warn(`  Page ${pageIndex} attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}`);
       if (attempt === MAX_RETRIES) throw err;
       console.warn(`  Retrying in ${backoff}ms...`);

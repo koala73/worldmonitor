@@ -1,0 +1,29 @@
+syntax = "proto3";
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+
+// Satellite represents an orbital asset tracked by WorldMonitor.
+message Satellite {
+  // NORAD identifier (e.g., "25544").
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Name of the satellite.
+  string name = 2;
+  // ISO country code of the operator/owner.
+  string country = 3;
+  // Purpose category (e.g., "sar", "optical", "military").
+  string type = 4;
+  // Orbital altitude in kilometers.
+  double alt = 5;
+  // Velocity in km/s.
+  double velocity = 6;
+  // Orbital inclination in degrees.
+  double inclination = 7;
+  // TLE line 1.
+  string line1 = 8;
+  // TLE line 2.
+  string line2 = 9;
+}

@@ -36,6 +36,7 @@ export interface CryptoQuote {
   price: number;
   change: number;
   sparkline: number[];
+  change7d: number;
 }
 
 export interface ListCommodityQuotesRequest {
@@ -166,6 +167,206 @@ export interface GulfQuote {
   sparkline: number[];
 }
 
+export interface AnalyzeStockRequest {
+  symbol: string;
+  name: string;
+  includeNews: boolean;
+}
+
+export interface AnalyzeStockResponse {
+  available: boolean;
+  symbol: string;
+  name: string;
+  display: string;
+  currency: string;
+  currentPrice: number;
+  changePercent: number;
+  signalScore: number;
+  signal: string;
+  trendStatus: string;
+  volumeStatus: string;
+  macdStatus: string;
+  rsiStatus: string;
+  summary: string;
+  action: string;
+  confidence: string;
+  technicalSummary: string;
+  newsSummary: string;
+  whyNow: string;
+  bullishFactors: string[];
+  riskFactors: string[];
+  supportLevels: number[];
+  resistanceLevels: number[];
+  headlines: StockAnalysisHeadline[];
+  ma5: number;
+  ma10: number;
+  ma20: number;
+  ma60: number;
+  biasMa5: number;
+  biasMa10: number;
+  biasMa20: number;
+  volumeRatio5d: number;
+  rsi12: number;
+  macdDif: number;
+  macdDea: number;
+  macdBar: number;
+  provider: string;
+  model: string;
+  fallback: boolean;
+  newsSearched: boolean;
+  generatedAt: string;
+  analysisId: string;
+  analysisAt: number;
+  stopLoss: number;
+  takeProfit: number;
+  engineVersion: string;
+}
+
+export interface StockAnalysisHeadline {
+  title: string;
+  source: string;
+  link: string;
+  publishedAt: number;
+}
+
+export interface GetStockAnalysisHistoryRequest {
+  symbols: string[];
+  limitPerSymbol: number;
+  includeNews: boolean;
+}
+
+export interface GetStockAnalysisHistoryResponse {
+  items: StockAnalysisHistoryItem[];
+}
+
+export interface StockAnalysisHistoryItem {
+  symbol: string;
+  snapshots: AnalyzeStockResponse[];
+}
+
+export interface BacktestStockRequest {
+  symbol: string;
+  name: string;
+  evalWindowDays: number;
+}
+
+export interface BacktestStockResponse {
+  available: boolean;
+  symbol: string;
+  name: string;
+  display: string;
+  currency: string;
+  evalWindowDays: number;
+  evaluationsRun: number;
+  actionableEvaluations: number;
+  winRate: number;
+  directionAccuracy: number;
+  avgSimulatedReturnPct: number;
+  cumulativeSimulatedReturnPct: number;
+  latestSignal: string;
+  latestSignalScore: number;
+  summary: string;
+  generatedAt: string;
+  evaluations: BacktestStockEvaluation[];
+  engineVersion: string;
+}
+
+export interface BacktestStockEvaluation {
+  analysisAt: number;
+  signal: string;
+  signalScore: number;
+  entryPrice: number;
+  exitPrice: number;
+  simulatedReturnPct: number;
+  directionCorrect: boolean;
+  outcome: string;
+  stopLoss: number;
+  takeProfit: number;
+  analysisId: string;
+}
+
+export interface ListStoredStockBacktestsRequest {
+  symbols: string[];
+  evalWindowDays: number;
+}
+
+export interface ListStoredStockBacktestsResponse {
+  items: BacktestStockResponse[];
+}
+
+export interface ListCryptoSectorsRequest {
+}
+
+export interface ListCryptoSectorsResponse {
+  sectors: CryptoSector[];
+}
+
+export interface CryptoSector {
+  id: string;
+  name: string;
+  change: number;
+}
+
+export interface ListDefiTokensRequest {
+}
+
+export interface ListDefiTokensResponse {
+  tokens: CryptoQuote[];
+}
+
+export interface ListAiTokensRequest {
+}
+
+export interface ListAiTokensResponse {
+  tokens: CryptoQuote[];
+}
+
+export interface ListOtherTokensRequest {
+}
+
+export interface ListOtherTokensResponse {
+  tokens: CryptoQuote[];
+}
+
+export interface GetFearGreedIndexRequest {
+}
+
+export interface GetFearGreedIndexResponse {
+  compositeScore: number;
+  compositeLabel: string;
+  previousScore: number;
+  seededAt: string;
+  sentiment?: FearGreedCategory;
+  volatility?: FearGreedCategory;
+  positioning?: FearGreedCategory;
+  trend?: FearGreedCategory;
+  breadth?: FearGreedCategory;
+  momentum?: FearGreedCategory;
+  liquidity?: FearGreedCategory;
+  credit?: FearGreedCategory;
+  macro?: FearGreedCategory;
+  crossAsset?: FearGreedCategory;
+  vix: number;
+  hySpread: number;
+  yield10y: number;
+  putCallRatio: number;
+  pctAbove200d: number;
+  cnnFearGreed: number;
+  cnnLabel: string;
+  aaiiBull: number;
+  aaiiBear: number;
+  fedRate: string;
+  unavailable: boolean;
+}
+
+export interface FearGreedCategory {
+  score: number;
+  weight: number;
+  contribution: number;
+  degraded: boolean;
+  inputsJson: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -219,6 +420,15 @@ export interface MarketServiceHandler {
   listEtfFlows(ctx: ServerContext, req: ListEtfFlowsRequest): Promise<ListEtfFlowsResponse>;
   getCountryStockIndex(ctx: ServerContext, req: GetCountryStockIndexRequest): Promise<GetCountryStockIndexResponse>;
   listGulfQuotes(ctx: ServerContext, req: ListGulfQuotesRequest): Promise<ListGulfQuotesResponse>;
+  analyzeStock(ctx: ServerContext, req: AnalyzeStockRequest): Promise<AnalyzeStockResponse>;
+  getStockAnalysisHistory(ctx: ServerContext, req: GetStockAnalysisHistoryRequest): Promise<GetStockAnalysisHistoryResponse>;
+  backtestStock(ctx: ServerContext, req: BacktestStockRequest): Promise<BacktestStockResponse>;
+  listStoredStockBacktests(ctx: ServerContext, req: ListStoredStockBacktestsRequest): Promise<ListStoredStockBacktestsResponse>;
+  listCryptoSectors(ctx: ServerContext, req: ListCryptoSectorsRequest): Promise<ListCryptoSectorsResponse>;
+  listDefiTokens(ctx: ServerContext, req: ListDefiTokensRequest): Promise<ListDefiTokensResponse>;
+  listAiTokens(ctx: ServerContext, req: ListAiTokensRequest): Promise<ListAiTokensResponse>;
+  listOtherTokens(ctx: ServerContext, req: ListOtherTokensRequest): Promise<ListOtherTokensResponse>;
+  getFearGreedIndex(ctx: ServerContext, req: GetFearGreedIndexRequest): Promise<GetFearGreedIndexResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -561,6 +771,386 @@ export function createMarketServiceRoutes(
 
           const result = await handler.listGulfQuotes(ctx, body);
           return new Response(JSON.stringify(result as ListGulfQuotesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/analyze-stock",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: AnalyzeStockRequest = {
+            symbol: params.get("symbol") ?? "",
+            name: params.get("name") ?? "",
+            includeNews: params.get("include_news") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("analyzeStock", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.analyzeStock(ctx, body);
+          return new Response(JSON.stringify(result as AnalyzeStockResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-stock-analysis-history",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetStockAnalysisHistoryRequest = {
+            symbols: params.get("symbols") ?? "",
+            limitPerSymbol: Number(params.get("limit_per_symbol") ?? "0"),
+            includeNews: params.get("include_news") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getStockAnalysisHistory", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getStockAnalysisHistory(ctx, body);
+          return new Response(JSON.stringify(result as GetStockAnalysisHistoryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/backtest-stock",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: BacktestStockRequest = {
+            symbol: params.get("symbol") ?? "",
+            name: params.get("name") ?? "",
+            evalWindowDays: Number(params.get("eval_window_days") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("backtestStock", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.backtestStock(ctx, body);
+          return new Response(JSON.stringify(result as BacktestStockResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-stored-stock-backtests",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListStoredStockBacktestsRequest = {
+            symbols: params.get("symbols") ?? "",
+            evalWindowDays: Number(params.get("eval_window_days") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listStoredStockBacktests", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listStoredStockBacktests(ctx, body);
+          return new Response(JSON.stringify(result as ListStoredStockBacktestsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-crypto-sectors",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListCryptoSectorsRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listCryptoSectors(ctx, body);
+          return new Response(JSON.stringify(result as ListCryptoSectorsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-defi-tokens",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListDefiTokensRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listDefiTokens(ctx, body);
+          return new Response(JSON.stringify(result as ListDefiTokensResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-ai-tokens",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListAiTokensRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listAiTokens(ctx, body);
+          return new Response(JSON.stringify(result as ListAiTokensResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-other-tokens",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListOtherTokensRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listOtherTokens(ctx, body);
+          return new Response(JSON.stringify(result as ListOtherTokensResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-fear-greed-index",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetFearGreedIndexRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getFearGreedIndex(ctx, body);
+          return new Response(JSON.stringify(result as GetFearGreedIndexResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -1,4 +1,4 @@
-# WorldMonitor — Feature & Improvement Roadmap
+# World Monitor — Feature & Improvement Roadmap
 
 Items are prefixed with `TODO-` and a three-digit number.
 Priority: 🔴 High · 🟡 Medium · 🟢 Low.
@@ -845,7 +845,7 @@ Add scheduled export and a public API endpoint for integration with external too
 ### TODO-100 — Story Share Card Redesign
 
 - **Priority:** 🟢 Low | **Effort:** ~4 hours
-- Redesign the `story-share.ts` OG card template with richer previews: map snapshot, event title, CII score, and WorldMonitor branding.
+- Redesign the `story-share.ts` OG card template with richer previews: map snapshot, event title, CII score, and World Monitor branding.
 
 ### TODO-101 — Multi-Event Comparison View
 
@@ -996,3 +996,10 @@ Add scheduled export and a public API endpoint for integration with external too
 
 - **Priority:** 🟢 Low | **Effort:** ~2 hours
 - Optional mode (off by default): play brief sound effects for different event types — siren for Oref, ping for new signal, etc.
+
+### TODO-131 — Self-Hosted Map Tiles via Protomaps + CloudFront
+
+- **Priority:** 🔴 High | **Effort:** ~2 days
+- Replace CARTO/Stadia third-party basemap tiles with self-hosted Protomaps PMTiles on CloudFront. Eliminates CORS failures, third-party availability issues, and rate limits. CARTO has been intermittently blocking cross-origin requests (no `Access-Control-Allow-Origin` header), causing blank maps until the OpenFreeMap fallback kicks in. Self-hosted tiles = zero external dependency for the base map.
+- **Approach:** Download a PMTiles archive (OpenStreetMap-based, ~70GB planet or extract regions), host on S3 + CloudFront CDN, use `pmtiles://` protocol with MapLibre GL JS. Style JSON also self-hosted.
+- **References:** protomaps.com, github.com/protomaps/PMTiles

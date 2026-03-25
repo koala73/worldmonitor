@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/conflict/v1/humanitarian_summary.proto";
+
+// GetHumanitarianSummaryBatchRequest looks up humanitarian summaries for multiple countries.
+message GetHumanitarianSummaryBatchRequest {
+  // ISO 3166-1 alpha-2 country codes (e.g., "YE", "SD"). Max 25.
+  repeated string country_codes = 1 [
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 25
+  ];
+}
+
+// GetHumanitarianSummaryBatchResponse contains humanitarian summaries for the requested countries.
+message GetHumanitarianSummaryBatchResponse {
+  // Map of country_code -> humanitarian summary for found countries.
+  map<string, HumanitarianCountrySummary> results = 1;
+  // Number of countries successfully fetched.
+  int32 fetched = 2;
+  // Number of countries requested.
+  int32 requested = 3;
+}

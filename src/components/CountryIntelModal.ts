@@ -7,6 +7,7 @@ import { sanitizeUrl } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket } from '@/services/prediction';
+import { toFlagEmoji } from '@/utils/country-flag';
 
 interface CountryIntelData {
   brief: string;
@@ -44,6 +45,7 @@ export class CountryIntelModal {
   private onShareStory?: (code: string, name: string) => void;
   private currentCode: string | null = null;
   private currentName: string | null = null;
+  private keydownHandler: (e: KeyboardEvent) => void;
 
   constructor() {
     this.overlay = document.createElement('div');
@@ -52,7 +54,7 @@ export class CountryIntelModal {
       <div class="country-intel-modal">
         <div class="country-intel-header">
           <div class="country-intel-title"></div>
-          <button class="country-intel-close">×</button>
+          <button class="country-intel-close" aria-label="Close">×</button>
         </div>
         <div class="country-intel-content"></div>
       </div>
@@ -66,21 +68,13 @@ export class CountryIntelModal {
     this.overlay.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).classList.contains('country-intel-overlay')) this.hide();
     });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.overlay.classList.contains('active')) this.hide();
-    });
+    this.keydownHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') this.hide();
+    };
   }
 
   private countryFlag(code: string): string {
-    try {
-      return code
-        .toUpperCase()
-        .split('')
-        .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
-        .join('');
-    } catch {
-      return '🌍';
-    }
+    return toFlagEmoji(code, '🌍');
   }
 
   private levelBadge(level: string): string {
@@ -108,6 +102,7 @@ export class CountryIntelModal {
 
   public showLoading(): void {
     this.currentCode = '__loading__';
+    document.addEventListener('keydown', this.keydownHandler);
     this.headerEl.innerHTML = `
       <span class="country-flag">🌍</span>
       <span class="country-name">${t('modals.countryIntel.identifying')}</span>
@@ -129,6 +124,7 @@ export class CountryIntelModal {
     this.currentName = country;
     const flag = this.countryFlag(code);
     let html = '';
+    document.addEventListener('keydown', this.keydownHandler);
     this.overlay.classList.add('active');
 
     this.headerEl.innerHTML = `
@@ -269,6 +265,7 @@ export class CountryIntelModal {
 
   public hide(): void {
     this.overlay.classList.remove('active');
+    document.removeEventListener('keydown', this.keydownHandler);
     this.currentCode = null;
     this.onCloseCallback?.();
   }

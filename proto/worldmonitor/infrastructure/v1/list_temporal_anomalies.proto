@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+
+message ListTemporalAnomaliesRequest {
+}
+
+message ListTemporalAnomaliesResponse {
+  repeated TemporalAnomaly anomalies = 1;
+  repeated string tracked_types = 2;
+  string computed_at = 3;
+}
+
+message TemporalAnomaly {
+  string type = 1;
+  string region = 2;
+  int32 current_count = 3;
+  int32 expected_count = 4;
+  double z_score = 5;
+  string severity = 6;
+  double multiplier = 7;
+  string message = 8;
+}

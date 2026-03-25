@@ -7,29 +7,22 @@ import type {
 import { getCachedJson } from '../../../_shared/redis';
 
 const CACHE_KEY = 'conflict:ucdp-events:v1';
-const MAX_AGE_MS = 25 * 60 * 60 * 1000; // 25h — reject if cron hasn't refreshed
 
-let fallback: { events: UcdpViolenceEvent[]; ts: number } | null = null;
+// All UCDP fetching happens on Railway (ais-relay.cjs seedUcdpEvents loop).
+// This handler reads pre-seeded data from Redis only.
+// Gold standard: Vercel reads, Railway writes.
 
 export async function listUcdpEvents(
   _ctx: ServerContext,
   req: ListUcdpEventsRequest,
 ): Promise<ListUcdpEventsResponse> {
   try {
-    const raw = await getCachedJson(CACHE_KEY, true) as { events?: UcdpViolenceEvent[]; fetchedAt?: number } | null;
-    if (raw?.events?.length && (!raw.fetchedAt || (Date.now() - raw.fetchedAt) < MAX_AGE_MS)) {
-      fallback = { events: raw.events, ts: Date.now() };
-      let events = raw.events;
-      if (req.country) events = events.filter((e) => e.country === req.country);
-      return { events, pagination: undefined };
-    }
-  } catch { /* fall through */ }
-
-  if (fallback && (Date.now() - fallback.ts) < 12 * 60 * 60 * 1000) {
-    let events = fallback.events;
+    const raw = await getCachedJson(CACHE_KEY, true) as { events?: UcdpViolenceEvent[] } | null;
+    if (!raw?.events?.length) return { events: [], pagination: undefined };
+    let events = raw.events;
     if (req.country) events = events.filter((e) => e.country === req.country);
     return { events, pagination: undefined };
+  } catch {
+    return { events: [], pagination: undefined };
   }
-
-  return { events: [], pagination: undefined };
 }

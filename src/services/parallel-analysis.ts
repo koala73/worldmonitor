@@ -75,11 +75,7 @@ const BUSINESS_DEMOTE = [
 class ParallelAnalysisService {
   private lastReport: AnalysisReport | null = null;
   private recentEmbeddings: Map<string, number[]> = new Map();
-  private analysisCount = 0;
-
   async analyzeHeadlines(clusters: ClusteredEvent[]): Promise<AnalysisReport> {
-
-    this.analysisCount++;
 
     const analyzed: AnalyzedHeadline[] = [];
     const titles = clusters.map(c => c.primaryTitle);
@@ -415,7 +411,7 @@ class ParallelAnalysisService {
 
     const scores = perspectives.map(p => p.score);
     const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
-    const variance = scores.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / scores.length;
+    const variance = scores.reduce((sum, s) => sum + (s - mean) ** 2, 0) / scores.length;
     const disagreement = Math.sqrt(variance);
 
     return {

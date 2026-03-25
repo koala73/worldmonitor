@@ -1,16 +1,18 @@
 import { Panel } from './Panel';
+import { getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { isDesktopRuntime } from '@/services/runtime';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
-import type { TechEvent } from '@/generated/client/worldmonitor/research/v1/service_client';
+import type { TechEvent, ListTechEventsResponse } from '@/generated/client/worldmonitor/research/v1/service_client';
 import type { NewsItem, DeductContextDetail } from '@/types';
 import { buildNewsContext } from '@/utils/news-context';
+import { getHydratedData } from '@/services/bootstrap';
 
 type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 
-const researchClient = new ResearchServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const researchClient = new ResearchServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 export class TechEventsPanel extends Panel {
   private viewMode: ViewMode = 'upcoming';
@@ -29,36 +31,35 @@ export class TechEventsPanel extends Panel {
     this.error = null;
     this.render();
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const data = await researchClient.listTechEvents({
-          type: '',
-          mappable: false,
-          days: 180,
-          limit: 100,
-        });
-        if (!data.success) throw new Error(data.error || 'Unknown error');
+    // Try hydrated bootstrap data first (instant, no RPC call)
+    const hydrated = getHydratedData('techEvents') as ListTechEventsResponse | undefined;
+    if (hydrated?.events?.length) {
+      this.events = hydrated.events;
+      this.setCount(hydrated.conferenceCount || hydrated.events.filter((e: TechEvent) => e.type === 'conference').length);
+      this.loading = false;
+      this.render();
+      return;
+    }
 
-        this.events = data.events;
-        this.setCount(data.conferenceCount);
-        this.error = null;
-
-        if (this.events.length === 0 && attempt < 2) {
-          this.showRetrying();
-          await new Promise(r => setTimeout(r, 15_000));
-          continue;
-        }
-        break;
-      } catch (err) {
-        if (this.isAbortError(err)) return;
-        if (attempt < 2) {
-          this.showRetrying();
-          await new Promise(r => setTimeout(r, 15_000));
-          continue;
-        }
-        this.error = err instanceof Error ? err.message : 'Failed to fetch events';
-        console.error('[TechEvents] Fetch error:', err);
-      }
+    // Fallback: single RPC call — listTechEvents reads from Redis seed,
+    // retrying on empty returns the same stale result each time.
+    try {
+      const data = await researchClient.listTechEvents({
+        type: '',
+        mappable: false,
+        days: 180,
+        limit: 100,
+      });
+      if (!this.element?.isConnected) return;
+      if (!data.success) throw new Error(data.error || 'Unknown error');
+      this.events = data.events;
+      this.setCount(data.conferenceCount);
+      this.error = null;
+    } catch (err) {
+      if (this.isAbortError(err)) return;
+      if (!this.element?.isConnected) return;
+      this.error = t('common.failedToLoad');
+      console.error('[TechEvents] Fetch error:', err);
     }
     this.loading = false;
     this.render();
@@ -76,16 +77,11 @@ export class TechEventsPanel extends Panel {
     }
 
     if (this.error) {
-      replaceChildren(this.content,
-        h('div', { className: 'tech-events-error' },
-          h('span', { className: 'error-icon' }, '⚠️'),
-          h('span', { className: 'error-text' }, this.error),
-          h('button', { className: 'retry-btn', onClick: () => this.refresh() }, t('common.retry')),
-        ),
-      );
+      this.showError(this.error, () => this.refresh());
       return;
     }
 
+    this.setErrorState(false);
     const filteredEvents = this.getFilteredEvents();
     const upcomingConferences = this.events.filter(e => e.type === 'conference' && new Date(e.startDate) >= new Date());
     const mappableCount = upcomingConferences.filter(e => e.coords && !e.coords.virtual).length;
@@ -99,10 +95,10 @@ export class TechEventsPanel extends Panel {
 
     replaceChildren(this.content,
       h('div', { className: 'tech-events-panel' },
-        h('div', { className: 'tech-events-tabs' },
+        h('div', { className: 'panel-tabs' },
           ...tabEntries.map(([view, label]) =>
             h('button', {
-              className: `tab ${this.viewMode === view ? 'active' : ''}`,
+              className: `panel-tab ${this.viewMode === view ? 'active' : ''}`,
               dataset: { view },
               onClick: () => { this.viewMode = view; this.render(); },
             }, label),

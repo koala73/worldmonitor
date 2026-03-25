@@ -1,0 +1,20 @@
+# Exclude local desktop build artifacts and sidecar binaries from deployments
+# These files are large and not needed by the Vercel-hosted frontend/API
+
+# Tauri build outputs
+src-tauri/target/
+src-tauri/bundle/
+
+# Sidecar and bundled node binaries
+src-tauri/sidecar/
+src-tauri/**/node
+
+# macOS disk images and app bundles
+**/*.dmg
+**/*.app
+
+# Rust/Cargo build artifacts (safety)
+target/
+
+# Common local artifacts
+.DS_Store

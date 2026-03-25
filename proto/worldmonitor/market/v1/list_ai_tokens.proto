@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/market/v1/market_quote.proto";
+
+// ListAiTokensRequest retrieves AI crypto token prices.
+message ListAiTokensRequest {
+}
+
+// ListAiTokensResponse contains AI token price data.
+message ListAiTokensResponse {
+  // The list of AI token quotes.
+  repeated CryptoQuote tokens = 1;
+}

@@ -36,6 +36,7 @@ export interface CryptoQuote {
   price: number;
   change: number;
   sparkline: number[];
+  change7d: number;
 }
 
 export interface ListCommodityQuotesRequest {
@@ -164,6 +165,206 @@ export interface GulfQuote {
   price: number;
   change: number;
   sparkline: number[];
+}
+
+export interface AnalyzeStockRequest {
+  symbol: string;
+  name: string;
+  includeNews: boolean;
+}
+
+export interface AnalyzeStockResponse {
+  available: boolean;
+  symbol: string;
+  name: string;
+  display: string;
+  currency: string;
+  currentPrice: number;
+  changePercent: number;
+  signalScore: number;
+  signal: string;
+  trendStatus: string;
+  volumeStatus: string;
+  macdStatus: string;
+  rsiStatus: string;
+  summary: string;
+  action: string;
+  confidence: string;
+  technicalSummary: string;
+  newsSummary: string;
+  whyNow: string;
+  bullishFactors: string[];
+  riskFactors: string[];
+  supportLevels: number[];
+  resistanceLevels: number[];
+  headlines: StockAnalysisHeadline[];
+  ma5: number;
+  ma10: number;
+  ma20: number;
+  ma60: number;
+  biasMa5: number;
+  biasMa10: number;
+  biasMa20: number;
+  volumeRatio5d: number;
+  rsi12: number;
+  macdDif: number;
+  macdDea: number;
+  macdBar: number;
+  provider: string;
+  model: string;
+  fallback: boolean;
+  newsSearched: boolean;
+  generatedAt: string;
+  analysisId: string;
+  analysisAt: number;
+  stopLoss: number;
+  takeProfit: number;
+  engineVersion: string;
+}
+
+export interface StockAnalysisHeadline {
+  title: string;
+  source: string;
+  link: string;
+  publishedAt: number;
+}
+
+export interface GetStockAnalysisHistoryRequest {
+  symbols: string[];
+  limitPerSymbol: number;
+  includeNews: boolean;
+}
+
+export interface GetStockAnalysisHistoryResponse {
+  items: StockAnalysisHistoryItem[];
+}
+
+export interface StockAnalysisHistoryItem {
+  symbol: string;
+  snapshots: AnalyzeStockResponse[];
+}
+
+export interface BacktestStockRequest {
+  symbol: string;
+  name: string;
+  evalWindowDays: number;
+}
+
+export interface BacktestStockResponse {
+  available: boolean;
+  symbol: string;
+  name: string;
+  display: string;
+  currency: string;
+  evalWindowDays: number;
+  evaluationsRun: number;
+  actionableEvaluations: number;
+  winRate: number;
+  directionAccuracy: number;
+  avgSimulatedReturnPct: number;
+  cumulativeSimulatedReturnPct: number;
+  latestSignal: string;
+  latestSignalScore: number;
+  summary: string;
+  generatedAt: string;
+  evaluations: BacktestStockEvaluation[];
+  engineVersion: string;
+}
+
+export interface BacktestStockEvaluation {
+  analysisAt: number;
+  signal: string;
+  signalScore: number;
+  entryPrice: number;
+  exitPrice: number;
+  simulatedReturnPct: number;
+  directionCorrect: boolean;
+  outcome: string;
+  stopLoss: number;
+  takeProfit: number;
+  analysisId: string;
+}
+
+export interface ListStoredStockBacktestsRequest {
+  symbols: string[];
+  evalWindowDays: number;
+}
+
+export interface ListStoredStockBacktestsResponse {
+  items: BacktestStockResponse[];
+}
+
+export interface ListCryptoSectorsRequest {
+}
+
+export interface ListCryptoSectorsResponse {
+  sectors: CryptoSector[];
+}
+
+export interface CryptoSector {
+  id: string;
+  name: string;
+  change: number;
+}
+
+export interface ListDefiTokensRequest {
+}
+
+export interface ListDefiTokensResponse {
+  tokens: CryptoQuote[];
+}
+
+export interface ListAiTokensRequest {
+}
+
+export interface ListAiTokensResponse {
+  tokens: CryptoQuote[];
+}
+
+export interface ListOtherTokensRequest {
+}
+
+export interface ListOtherTokensResponse {
+  tokens: CryptoQuote[];
+}
+
+export interface GetFearGreedIndexRequest {
+}
+
+export interface GetFearGreedIndexResponse {
+  compositeScore: number;
+  compositeLabel: string;
+  previousScore: number;
+  seededAt: string;
+  sentiment?: FearGreedCategory;
+  volatility?: FearGreedCategory;
+  positioning?: FearGreedCategory;
+  trend?: FearGreedCategory;
+  breadth?: FearGreedCategory;
+  momentum?: FearGreedCategory;
+  liquidity?: FearGreedCategory;
+  credit?: FearGreedCategory;
+  macro?: FearGreedCategory;
+  crossAsset?: FearGreedCategory;
+  vix: number;
+  hySpread: number;
+  yield10y: number;
+  putCallRatio: number;
+  pctAbove200d: number;
+  cnnFearGreed: number;
+  cnnLabel: string;
+  aaiiBull: number;
+  aaiiBear: number;
+  fedRate: string;
+  unavailable: boolean;
+}
+
+export interface FearGreedCategory {
+  score: number;
+  weight: number;
+  contribution: number;
+  degraded: boolean;
+  inputsJson: string;
 }
 
 export interface FieldViolation {
@@ -408,6 +609,228 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as ListGulfQuotesResponse;
+  }
+
+  async analyzeStock(req: AnalyzeStockRequest, options?: MarketServiceCallOptions): Promise<AnalyzeStockResponse> {
+    let path = "/api/market/v1/analyze-stock";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    if (req.name != null && req.name !== "") params.set("name", String(req.name));
+    if (req.includeNews) params.set("include_news", String(req.includeNews));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as AnalyzeStockResponse;
+  }
+
+  async getStockAnalysisHistory(req: GetStockAnalysisHistoryRequest, options?: MarketServiceCallOptions): Promise<GetStockAnalysisHistoryResponse> {
+    let path = "/api/market/v1/get-stock-analysis-history";
+    const params = new URLSearchParams();
+    if (req.symbols != null && req.symbols !== "") params.set("symbols", String(req.symbols));
+    if (req.limitPerSymbol != null && req.limitPerSymbol !== 0) params.set("limit_per_symbol", String(req.limitPerSymbol));
+    if (req.includeNews) params.set("include_news", String(req.includeNews));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetStockAnalysisHistoryResponse;
+  }
+
+  async backtestStock(req: BacktestStockRequest, options?: MarketServiceCallOptions): Promise<BacktestStockResponse> {
+    let path = "/api/market/v1/backtest-stock";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    if (req.name != null && req.name !== "") params.set("name", String(req.name));
+    if (req.evalWindowDays != null && req.evalWindowDays !== 0) params.set("eval_window_days", String(req.evalWindowDays));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as BacktestStockResponse;
+  }
+
+  async listStoredStockBacktests(req: ListStoredStockBacktestsRequest, options?: MarketServiceCallOptions): Promise<ListStoredStockBacktestsResponse> {
+    let path = "/api/market/v1/list-stored-stock-backtests";
+    const params = new URLSearchParams();
+    if (req.symbols != null && req.symbols !== "") params.set("symbols", String(req.symbols));
+    if (req.evalWindowDays != null && req.evalWindowDays !== 0) params.set("eval_window_days", String(req.evalWindowDays));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListStoredStockBacktestsResponse;
+  }
+
+  async listCryptoSectors(req: ListCryptoSectorsRequest, options?: MarketServiceCallOptions): Promise<ListCryptoSectorsResponse> {
+    let path = "/api/market/v1/list-crypto-sectors";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListCryptoSectorsResponse;
+  }
+
+  async listDefiTokens(req: ListDefiTokensRequest, options?: MarketServiceCallOptions): Promise<ListDefiTokensResponse> {
+    let path = "/api/market/v1/list-defi-tokens";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListDefiTokensResponse;
+  }
+
+  async listAiTokens(req: ListAiTokensRequest, options?: MarketServiceCallOptions): Promise<ListAiTokensResponse> {
+    let path = "/api/market/v1/list-ai-tokens";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListAiTokensResponse;
+  }
+
+  async listOtherTokens(req: ListOtherTokensRequest, options?: MarketServiceCallOptions): Promise<ListOtherTokensResponse> {
+    let path = "/api/market/v1/list-other-tokens";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListOtherTokensResponse;
+  }
+
+  async getFearGreedIndex(req: GetFearGreedIndexRequest, options?: MarketServiceCallOptions): Promise<GetFearGreedIndexResponse> {
+    let path = "/api/market/v1/get-fear-greed-index";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetFearGreedIndexResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

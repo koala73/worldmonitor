@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/economic/v1/economic_data.proto";
+
+// GetFredSeriesBatchRequest looks up multiple FRED series in a single call.
+message GetFredSeriesBatchRequest {
+  // FRED series IDs (e.g., "WALCL", "FEDFUNDS"). Max 10.
+  repeated string series_ids = 1 [
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 10
+  ];
+  // Maximum number of observations per series. Defaults to 120.
+  int32 limit = 2;
+}
+
+// GetFredSeriesBatchResponse contains the requested FRED series data.
+message GetFredSeriesBatchResponse {
+  // Map of series_id -> FRED series for found series.
+  map<string, FredSeries> results = 1;
+  // Number of series successfully fetched.
+  int32 fetched = 2;
+  // Number of series requested.
+  int32 requested = 3;
+}

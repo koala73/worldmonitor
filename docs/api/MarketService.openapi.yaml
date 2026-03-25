@@ -253,6 +253,302 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/market/v1/analyze-stock:
+        get:
+            tags:
+                - MarketService
+            summary: AnalyzeStock
+            description: AnalyzeStock retrieves a premium stock analysis report with technicals, news, and AI synthesis.
+            operationId: AnalyzeStock
+            parameters:
+                - name: symbol
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: name
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: include_news
+                  in: query
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AnalyzeStockResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-stock-analysis-history:
+        get:
+            tags:
+                - MarketService
+            summary: GetStockAnalysisHistory
+            description: GetStockAnalysisHistory retrieves shared premium stock analysis history from the backend store.
+            operationId: GetStockAnalysisHistory
+            parameters:
+                - name: symbols
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: limit_per_symbol
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: include_news
+                  in: query
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetStockAnalysisHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/backtest-stock:
+        get:
+            tags:
+                - MarketService
+            summary: BacktestStock
+            description: BacktestStock replays premium stock-analysis signals over recent price history.
+            operationId: BacktestStock
+            parameters:
+                - name: symbol
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: name
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: eval_window_days
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BacktestStockResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-stored-stock-backtests:
+        get:
+            tags:
+                - MarketService
+            summary: ListStoredStockBacktests
+            description: ListStoredStockBacktests retrieves stored premium backtest snapshots from the backend store.
+            operationId: ListStoredStockBacktests
+            parameters:
+                - name: symbols
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: eval_window_days
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListStoredStockBacktestsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-crypto-sectors:
+        get:
+            tags:
+                - MarketService
+            summary: ListCryptoSectors
+            description: ListCryptoSectors retrieves crypto sector performance averages.
+            operationId: ListCryptoSectors
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCryptoSectorsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-defi-tokens:
+        get:
+            tags:
+                - MarketService
+            summary: ListDefiTokens
+            description: ListDefiTokens retrieves DeFi token prices and changes.
+            operationId: ListDefiTokens
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDefiTokensResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-ai-tokens:
+        get:
+            tags:
+                - MarketService
+            summary: ListAiTokens
+            description: ListAiTokens retrieves AI-focused crypto token prices and changes.
+            operationId: ListAiTokens
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAiTokensResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-other-tokens:
+        get:
+            tags:
+                - MarketService
+            summary: ListOtherTokens
+            description: ListOtherTokens retrieves other/trending crypto token prices and changes.
+            operationId: ListOtherTokens
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListOtherTokensResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-fear-greed-index:
+        get:
+            tags:
+                - MarketService
+            summary: GetFearGreedIndex
+            description: GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
+            operationId: GetFearGreedIndex
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFearGreedIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -383,6 +679,10 @@ components:
                         type: number
                         format: double
                         description: Sparkline data points (recent price history).
+                change7d:
+                    type: number
+                    format: double
+                    description: 7-day percentage change.
             required:
                 - symbol
             description: CryptoQuote represents a cryptocurrency quote from CoinGecko.
@@ -721,3 +1021,443 @@ components:
                         type: number
                         format: double
             description: GulfQuote represents a Gulf region market quote (index, currency, or oil).
+        AnalyzeStockRequest:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+                name:
+                    type: string
+                    maxLength: 120
+                includeNews:
+                    type: boolean
+            required:
+                - symbol
+        AnalyzeStockResponse:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                symbol:
+                    type: string
+                name:
+                    type: string
+                display:
+                    type: string
+                currency:
+                    type: string
+                currentPrice:
+                    type: number
+                    format: double
+                changePercent:
+                    type: number
+                    format: double
+                signalScore:
+                    type: number
+                    format: double
+                signal:
+                    type: string
+                trendStatus:
+                    type: string
+                volumeStatus:
+                    type: string
+                macdStatus:
+                    type: string
+                rsiStatus:
+                    type: string
+                summary:
+                    type: string
+                action:
+                    type: string
+                confidence:
+                    type: string
+                technicalSummary:
+                    type: string
+                newsSummary:
+                    type: string
+                whyNow:
+                    type: string
+                bullishFactors:
+                    type: array
+                    items:
+                        type: string
+                riskFactors:
+                    type: array
+                    items:
+                        type: string
+                supportLevels:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                resistanceLevels:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                headlines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StockAnalysisHeadline'
+                ma5:
+                    type: number
+                    format: double
+                ma10:
+                    type: number
+                    format: double
+                ma20:
+                    type: number
+                    format: double
+                ma60:
+                    type: number
+                    format: double
+                biasMa5:
+                    type: number
+                    format: double
+                biasMa10:
+                    type: number
+                    format: double
+                biasMa20:
+                    type: number
+                    format: double
+                volumeRatio5d:
+                    type: number
+                    format: double
+                rsi12:
+                    type: number
+                    format: double
+                macdDif:
+                    type: number
+                    format: double
+                macdDea:
+                    type: number
+                    format: double
+                macdBar:
+                    type: number
+                    format: double
+                provider:
+                    type: string
+                model:
+                    type: string
+                fallback:
+                    type: boolean
+                newsSearched:
+                    type: boolean
+                generatedAt:
+                    type: string
+                analysisId:
+                    type: string
+                analysisAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                stopLoss:
+                    type: number
+                    format: double
+                takeProfit:
+                    type: number
+                    format: double
+                engineVersion:
+                    type: string
+        StockAnalysisHeadline:
+            type: object
+            properties:
+                title:
+                    type: string
+                source:
+                    type: string
+                link:
+                    type: string
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        GetStockAnalysisHistoryRequest:
+            type: object
+            properties:
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                limitPerSymbol:
+                    type: integer
+                    maximum: 32
+                    minimum: 1
+                    format: int32
+                includeNews:
+                    type: boolean
+        GetStockAnalysisHistoryResponse:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StockAnalysisHistoryItem'
+        StockAnalysisHistoryItem:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                snapshots:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AnalyzeStockResponse'
+        BacktestStockRequest:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+                name:
+                    type: string
+                    maxLength: 120
+                evalWindowDays:
+                    type: integer
+                    maximum: 30
+                    minimum: 3
+                    format: int32
+            required:
+                - symbol
+        BacktestStockResponse:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                symbol:
+                    type: string
+                name:
+                    type: string
+                display:
+                    type: string
+                currency:
+                    type: string
+                evalWindowDays:
+                    type: integer
+                    format: int32
+                evaluationsRun:
+                    type: integer
+                    format: int32
+                actionableEvaluations:
+                    type: integer
+                    format: int32
+                winRate:
+                    type: number
+                    format: double
+                directionAccuracy:
+                    type: number
+                    format: double
+                avgSimulatedReturnPct:
+                    type: number
+                    format: double
+                cumulativeSimulatedReturnPct:
+                    type: number
+                    format: double
+                latestSignal:
+                    type: string
+                latestSignalScore:
+                    type: number
+                    format: double
+                summary:
+                    type: string
+                generatedAt:
+                    type: string
+                evaluations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BacktestStockEvaluation'
+                engineVersion:
+                    type: string
+        BacktestStockEvaluation:
+            type: object
+            properties:
+                analysisAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                signal:
+                    type: string
+                signalScore:
+                    type: number
+                    format: double
+                entryPrice:
+                    type: number
+                    format: double
+                exitPrice:
+                    type: number
+                    format: double
+                simulatedReturnPct:
+                    type: number
+                    format: double
+                directionCorrect:
+                    type: boolean
+                outcome:
+                    type: string
+                stopLoss:
+                    type: number
+                    format: double
+                takeProfit:
+                    type: number
+                    format: double
+                analysisId:
+                    type: string
+        ListStoredStockBacktestsRequest:
+            type: object
+            properties:
+                symbols:
+                    type: array
+                    items:
+                        type: string
+                evalWindowDays:
+                    type: integer
+                    maximum: 30
+                    minimum: 3
+                    format: int32
+        ListStoredStockBacktestsResponse:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BacktestStockResponse'
+        ListCryptoSectorsRequest:
+            type: object
+            description: ListCryptoSectorsRequest retrieves crypto sector performance.
+        ListCryptoSectorsResponse:
+            type: object
+            properties:
+                sectors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CryptoSector'
+            description: ListCryptoSectorsResponse contains crypto sector performance data.
+        CryptoSector:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Sector identifier.
+                name:
+                    type: string
+                    description: Sector display name.
+                change:
+                    type: number
+                    format: double
+                    description: Average 24h percentage change across sector tokens.
+            description: CryptoSector represents performance data for a crypto market sector.
+        ListDefiTokensRequest:
+            type: object
+            description: ListDefiTokensRequest retrieves DeFi token prices.
+        ListDefiTokensResponse:
+            type: object
+            properties:
+                tokens:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CryptoQuote'
+            description: ListDefiTokensResponse contains DeFi token price data.
+        ListAiTokensRequest:
+            type: object
+            description: ListAiTokensRequest retrieves AI crypto token prices.
+        ListAiTokensResponse:
+            type: object
+            properties:
+                tokens:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CryptoQuote'
+            description: ListAiTokensResponse contains AI token price data.
+        ListOtherTokensRequest:
+            type: object
+            description: ListOtherTokensRequest retrieves other/trending crypto token prices.
+        ListOtherTokensResponse:
+            type: object
+            properties:
+                tokens:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CryptoQuote'
+            description: ListOtherTokensResponse contains other token price data.
+        GetFearGreedIndexRequest:
+            type: object
+        GetFearGreedIndexResponse:
+            type: object
+            properties:
+                compositeScore:
+                    type: number
+                    format: double
+                compositeLabel:
+                    type: string
+                previousScore:
+                    type: number
+                    format: double
+                seededAt:
+                    type: string
+                sentiment:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                volatility:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                positioning:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                trend:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                breadth:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                momentum:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                liquidity:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                credit:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                macro:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                crossAsset:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                vix:
+                    type: number
+                    format: double
+                hySpread:
+                    type: number
+                    format: double
+                yield10y:
+                    type: number
+                    format: double
+                putCallRatio:
+                    type: number
+                    format: double
+                pctAbove200d:
+                    type: number
+                    format: double
+                cnnFearGreed:
+                    type: number
+                    format: double
+                cnnLabel:
+                    type: string
+                aaiiBull:
+                    type: number
+                    format: double
+                aaiiBear:
+                    type: number
+                    format: double
+                fedRate:
+                    type: string
+                unavailable:
+                    type: boolean
+        FearGreedCategory:
+            type: object
+            properties:
+                score:
+                    type: number
+                    format: double
+                weight:
+                    type: number
+                    format: double
+                contribution:
+                    type: number
+                    format: double
+                degraded:
+                    type: boolean
+                inputsJson:
+                    type: string

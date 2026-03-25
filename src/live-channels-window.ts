@@ -13,7 +13,7 @@ import {
 } from '@/components/LiveNewsPanel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
-import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { toApiUrl } from '@/services/runtime';
 import { resolveUserCountryCode } from '@/utils/user-location';
 
 /** Builds a stable custom channel id from a YouTube handle (e.g. @Foo -> custom-foo). */
@@ -52,12 +52,26 @@ function parseYouTubeInput(raw: string): { handle: string } | { videoId: string 
   // youtube.com/c/ChannelName or /channel/ID
   const channelMatch = url.pathname.match(/^\/(c|channel)\/([\w.-]+)$/);
   if (channelMatch) return { handle: `@${channelMatch[2]}` };
+  // youtube.com/ChannelName (bare path, no @/c/channel prefix)
+  const bareMatch = url.pathname.match(/^\/([\w.-]{3,30})$/);
+  if (bareMatch) return { handle: `@${bareMatch[1]}` };
 
   return null;
 }
 
+/** Check if input is an HLS stream URL (.m3u8) */
+function isHlsUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
+    return url.pathname.endsWith('.m3u8') || raw.includes('.m3u8');
+  } catch {
+    return false;
+  }
+}
+
 // Persist active region tab across re-renders
-let activeRegionTab = 'all';
+let activeRegionTab = 'na';
 
 function channelInitials(name: string): string {
   return name.split(/[\s-]+/).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
@@ -73,12 +87,23 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
   const optionalChannelMap = new Map<string, LiveChannel>();
   for (const c of filteredChannels) optionalChannelMap.set(c.id, c);
 
+  let channels: LiveChannel[] = [];
+
+  if (document.getElementById('liveChannelsList')) {
+    // Already initialized, just update the list
+    channels = loadChannelsFromStorage();
+    const listEl = document.getElementById('liveChannelsList') as HTMLElement;
+    renderList(listEl);
+    return;
+  }
+
   if (!containerEl) {
     document.title = `${t('components.liveNews.manage') ?? 'Channel management'} - World Monitor`;
   }
 
-  let channels = loadChannelsFromStorage();
+  channels = loadChannelsFromStorage();
   let suppressRowClick = false;
+  let searchQuery = '';
 
   /** Reads current row order from DOM and persists to storage. */
   function applyOrderFromDom(listEl: HTMLElement): void {
@@ -178,7 +203,6 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       listEl.appendChild(row);
     }
     updateRestoreButton();
-    renderAvailableChannels(listEl);
   }
 
   /** Returns default (built-in) channels that are not in the current list. */
@@ -233,7 +257,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       const handleInput = document.createElement('input');
       handleInput.type = 'text';
       handleInput.className = 'live-news-manage-edit-handle';
-      handleInput.value = ch.handle;
+      handleInput.value = ch.handle ?? '';
       handleInput.placeholder = t('components.liveNews.youtubeHandle') ?? 'YouTube handle';
       row.appendChild(handleInput);
     }
@@ -261,7 +285,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     saveBtn.className = 'live-news-manage-save';
     saveBtn.textContent = t('components.liveNews.save') ?? 'Save';
     saveBtn.addEventListener('click', () => {
-      const displayName = nameInput.value.trim() || ch.name || ch.handle;
+      const displayName = nameInput.value.trim() || ch.name || ch.handle || '';
       const next = applyEditFormToChannels(ch, row, isCustom, displayName);
       if (next) {
         channels = next;
@@ -289,16 +313,48 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     if (!tabBar || !tabContents) return;
 
     const currentIds = new Set(channels.map((c) => c.id));
+    const term = searchQuery.toLowerCase().trim();
+
+    // Auto-switch to the first tab with matches when searching
+    if (term) {
+      const activeHasMatch = filteredRegions.some(r => {
+        if (r.key !== activeRegionTab) return false;
+        return r.channelIds.some(id => {
+          const ch = optionalChannelMap.get(id);
+          return ch && (ch.name.toLowerCase().includes(term) || ch.handle?.toLowerCase().includes(term));
+        });
+      });
+      if (!activeHasMatch) {
+        const firstMatch = filteredRegions.find(r =>
+          r.channelIds.some(id => {
+            const ch = optionalChannelMap.get(id);
+            return ch && (ch.name.toLowerCase().includes(term) || ch.handle?.toLowerCase().includes(term));
+          }),
+        );
+        if (firstMatch) activeRegionTab = firstMatch.key;
+      }
+    }
 
     // Render tab buttons
     tabBar.innerHTML = '';
     for (const region of filteredRegions) {
-      const addedCount = region.channelIds.filter((id) => currentIds.has(id)).length;
+      const regionChannels = region.channelIds
+        .map(id => optionalChannelMap.get(id))
+        .filter((ch): ch is LiveChannel => !!ch);
+
+      const matchingChannels = term
+        ? regionChannels.filter(ch => ch.name.toLowerCase().includes(term) || ch.handle?.toLowerCase().includes(term))
+        : regionChannels;
+
+      const addedCount = matchingChannels.filter(ch => currentIds.has(ch.id)).length;
+
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'live-news-manage-tab-btn' + (region.key === activeRegionTab ? ' active' : '');
+      btn.className = 'panel-tab' + (region.key === activeRegionTab ? ' active' : '');
       const label = t(region.labelKey) ?? region.key.toUpperCase();
-      btn.textContent = addedCount > 0 ? `${label} (${addedCount})` : label;
+      btn.textContent = term
+        ? `${label} (${matchingChannels.length})`
+        : addedCount > 0 ? `${label} (${addedCount})` : label;
       btn.addEventListener('click', () => {
         activeRegionTab = region.key;
         renderAvailableChannels(listEl);
@@ -315,14 +371,24 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       const grid = document.createElement('div');
       grid.className = 'live-news-manage-card-grid';
 
+      let matchCount = 0;
       for (const chId of region.channelIds) {
         const ch = optionalChannelMap.get(chId);
         if (!ch) continue;
+        if (term && !ch.name.toLowerCase().includes(term) && !ch.handle?.toLowerCase().includes(term)) continue;
         const isAdded = currentIds.has(chId);
         grid.appendChild(createCard(ch, isAdded, listEl));
+        matchCount++;
       }
 
-      panel.appendChild(grid);
+      if (matchCount === 0 && term) {
+        const empty = document.createElement('div');
+        empty.className = 'live-news-manage-empty';
+        empty.textContent = (t('components.liveNews.noResults') ?? 'No channels found matching "{{term}}"').replace('{{term}}', term);
+        panel.appendChild(empty);
+      } else {
+        panel.appendChild(grid);
+      }
       tabContents.appendChild(panel);
     }
   }
@@ -342,7 +408,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     nameEl.textContent = ch.name;
     const handleEl = document.createElement('span');
     handleEl.className = 'live-news-manage-card-handle';
-    handleEl.textContent = ch.handle;
+    handleEl.textContent = ch.handle ?? '';
     info.appendChild(nameEl);
     info.appendChild(handleEl);
 
@@ -370,6 +436,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       }
       saveChannelsToStorage(channels);
       renderList(listEl);
+      renderAvailableChannels(listEl);
     });
     return card;
   }
@@ -387,8 +454,16 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
         </div>
         <div class="live-news-manage-list" id="liveChannelsList"></div>
         <div class="live-news-manage-available-section">
-          <span class="live-news-manage-add-title">${escapeHtml(t('components.liveNews.availableChannels') ?? 'Available channels')}</span>
-          <div class="live-news-manage-tab-bar" id="liveChannelsTabBar"></div>
+          <div class="live-news-manage-available-header">
+            <span class="live-news-manage-add-title">${escapeHtml(t('components.liveNews.availableChannels') ?? 'Available channels')}</span>
+            <div class="live-news-manage-search-wrap">
+              <span class="live-news-manage-search-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </span>
+              <input type="text" id="liveChannelsSearch" class="live-news-manage-search-input" placeholder="${escapeHtml(t('header.search') ?? 'Search')}..." autocomplete="off" />
+            </div>
+          </div>
+          <div class="panel-tabs" id="liveChannelsTabBar"></div>
           <div class="live-news-manage-tab-contents" id="liveChannelsTabContents"></div>
         </div>
         <div class="live-news-manage-add-section">
@@ -397,6 +472,10 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
             <div class="live-news-manage-add-field">
               <label class="live-news-manage-add-label" for="liveChannelsHandle">${escapeHtml(t('components.liveNews.youtubeHandleOrUrl') ?? 'YouTube handle or URL')}</label>
               <input type="text" class="live-news-manage-handle" id="liveChannelsHandle" placeholder="@Channel or youtube.com/watch?v=..." />
+            </div>
+            <div class="live-news-manage-add-field">
+              <label class="live-news-manage-add-label" for="liveChannelsHlsUrl">${escapeHtml(t('components.liveNews.hlsUrl') ?? 'HLS Stream URL (optional)')}</label>
+              <input type="text" class="live-news-manage-handle" id="liveChannelsHlsUrl" placeholder="https://example.com/stream.m3u8" />
             </div>
             <div class="live-news-manage-add-field">
               <label class="live-news-manage-add-label" for="liveChannelsName">${escapeHtml(t('components.liveNews.displayName') ?? 'Display name (optional)')}</label>
@@ -413,9 +492,13 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
   if (!listEl) return;
   setupListDnD(listEl);
   renderList(listEl);
+  renderAvailableChannels(listEl);
 
   // Clear validation state on input
   document.getElementById('liveChannelsHandle')?.addEventListener('input', (e) => {
+    (e.target as HTMLInputElement).classList.remove('invalid');
+  });
+  document.getElementById('liveChannelsHlsUrl')?.addEventListener('input', (e) => {
     (e.target as HTMLInputElement).classList.remove('invalid');
   });
 
@@ -430,10 +513,40 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
   const addBtn = document.getElementById('liveChannelsAddBtn') as HTMLButtonElement | null;
   addBtn?.addEventListener('click', async () => {
     const handleInput = document.getElementById('liveChannelsHandle') as HTMLInputElement | null;
+    const hlsInput = document.getElementById('liveChannelsHlsUrl') as HTMLInputElement | null;
     const nameInput = document.getElementById('liveChannelsName') as HTMLInputElement | null;
     const raw = handleInput?.value?.trim();
-    if (!raw) return;
+    const hlsUrl = hlsInput?.value?.trim();
+    if (!raw && !hlsUrl) return;
     if (handleInput) handleInput.classList.remove('invalid');
+    if (hlsInput) hlsInput.classList.remove('invalid');
+
+    // Check if HLS URL is provided
+    if (hlsUrl) {
+      if (!isHlsUrl(hlsUrl)) {
+        if (hlsInput) {
+          hlsInput.classList.add('invalid');
+          hlsInput.setAttribute('title', t('components.liveNews.invalidHlsUrl') ?? 'Enter a valid HLS stream URL (.m3u8)');
+        }
+        return;
+      }
+
+      // Create custom HLS channel
+      const id = `custom-hls-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      if (channels.some((c) => c.id === id)) return;
+
+      const name = nameInput?.value?.trim() || 'HLS Stream';
+      channels.push({ id, name, hlsUrl, useFallbackOnly: true });
+      saveChannelsToStorage(channels);
+      renderList(listEl);
+      if (handleInput) handleInput.value = '';
+      if (hlsInput) hlsInput.value = '';
+      if (nameInput) nameInput.value = '';
+      return;
+    }
+
+    // Handle YouTube input (existing logic)
+    if (!raw) return;
 
     // Try parsing as a YouTube URL first
     const parsed = parseYouTubeInput(raw);
@@ -453,8 +566,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       let resolvedName = nameInput?.value?.trim() || '';
       if (!resolvedName) {
         try {
-          const baseUrl = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
-          const res = await fetch(`${baseUrl}/api/youtube/live?videoId=${encodeURIComponent(videoId)}`);
+          const res = await fetch(toApiUrl(`/api/youtube/live?videoId=${encodeURIComponent(videoId)}`));
           if (res.ok) {
             const data = await res.json();
             resolvedName = data.channelName || data.title || '';
@@ -472,6 +584,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       saveChannelsToStorage(channels);
       renderList(listEl);
       if (handleInput) handleInput.value = '';
+      if (hlsInput) hlsInput.value = '';
       if (nameInput) nameInput.value = '';
       return;
     }
@@ -501,17 +614,9 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
 
     let resolvedName = '';
     try {
-      const baseUrl = isDesktopRuntime() ? getRemoteApiBaseUrl() : '';
-      const res = await fetch(`${baseUrl}/api/youtube/live?channel=${encodeURIComponent(handle)}`);
+      const res = await fetch(toApiUrl(`/api/youtube/live?channel=${encodeURIComponent(handle)}`));
       if (res.ok) {
         const data = await res.json();
-        if (data.channelExists === false && !data.error) {
-          if (handleInput) {
-            handleInput.classList.add('invalid');
-            handleInput.setAttribute('title', t('components.liveNews.channelNotFound') ?? 'YouTube channel not found');
-          }
-          return;
-        }
         resolvedName = data.channelName || '';
       }
       // Non-OK status (429, 5xx) or ambiguous response — allow adding anyway
@@ -530,6 +635,15 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     saveChannelsToStorage(channels);
     renderList(listEl);
     if (handleInput) handleInput.value = '';
+    if (hlsInput) hlsInput.value = '';
     if (nameInput) nameInput.value = '';
+  });
+
+  let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+  const searchInput = document.getElementById('liveChannelsSearch') as HTMLInputElement | null;
+  searchInput?.addEventListener('input', (e) => {
+    searchQuery = (e.target as HTMLInputElement).value;
+    if (searchDebounce) clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => renderAvailableChannels(listEl), 150);
   });
 }

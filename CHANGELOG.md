@@ -2,6 +2,255 @@
 
 All notable changes to World Monitor are documented here.
 
+## [Unreleased]
+
+### Added
+
+- US Treasury customs revenue in Trade Policy panel with monthly data, FYTD year-over-year comparison, and revenue spike highlighting (#1663)
+- Security advisories gold standard migration: Railway cron seed fetches 24 government RSS feeds hourly, Vercel reads Redis only (#1637)
+- CMD+K full panel coverage: all 55 panels now searchable (was 31), including AI forecasts, correlation panels, webcams, displacement, security advisories (#1656)
+- Chokepoint transit intelligence with 3 free data sources: IMF PortWatch (vessel transit counts), CorridorRisk (risk intelligence), AISStream (24h crossing counter) (#1560)
+- 13 monitored chokepoints (was 6): added Cape of Good Hope, Gibraltar, Bosporus Strait (absorbs Dardanelles), Korea, Dover, Kerch, Lombok (#1560, #1572)
+- Expandable chokepoint cards with TradingView lightweight-charts 180-day time-series (tanker vs cargo) (#1560)
+- Real-time transit counting with enter+dwell+exit crossing detection, 30min cooldown (#1560)
+- PortWatch, CorridorRisk, and transit seed loops on Railway relay (#1560)
+- R2 trace storage for forecast debugging with Cloudflare API upload (#1655)
+
+### Fixed
+
+- Trade Policy panel WTO gate changed from panel-wide to per-tab, so Revenue tab works on desktop without WTO API key (#1663)
+- Conflict-intel seed succeeds without ACLED credentials by accepting empty events when humanitarian/PizzINT data is available (#1651)
+- Seed-forecasts crash from top-level @aws-sdk/client-s3 import resolved with lazy dynamic import (#1654)
+- Bootstrap desktop timeouts restored (5s/8s) while keeping aggressive web timeouts (1.2s/1.8s) (#1653)
+- Service worker navigation reverted to NetworkOnly to prevent stale HTML caching on deploy (#1653)
+- Railway seed watch paths fixed for 5 services (seed-insights, seed-unrest-events, seed-prediction-markets, seed-infra, seed-gpsjam)
+- PortWatch ArcGIS URL, field names, and chokepoint name mappings (#1572)
+
+## [2.6.1] - 2026-03-11
+
+### Highlights
+
+- **Blog Platform** — Astro-powered blog at /blog with 16 SEO-optimized posts, OG images, and site footer (#1401, #1405, #1409)
+- **Country Intelligence** — country facts section with right-click context menu (#1400)
+- **Satellite Imagery Overhaul** — globe-native rendering, outline-only polygons, CSP fixes (#1381, #1385, #1376)
+
+### Added
+
+- Astro blog at /blog with 16 SEO posts and build integration (#1401, #1403)
+- Blog redesign to match /pro page design system (#1405)
+- Blog SEO, OG images, favicon fix, and site footer (#1409)
+- Country facts section and right-click context menu for intel panel (#1400)
+- Satellite imagery panel enabled in orbital surveillance layer (#1375)
+- Globe-native satellite imagery, removed sidebar panel (#1381)
+- Layer search filter with synonym support (#1369)
+- Close buttons on panels and Add Panel block (#1354)
+- Enterprise contact form endpoint (#1365)
+- Commodity and happy variants shown on all header versions (#1407)
+
+### Fixed
+
+- NOTAM closures merged into Aviation layer (#1408)
+- Intel deep dive layout reordered, duplicate headlines removed (#1404)
+- Satellite imagery outline-only polygons to eliminate alpha stacking blue tint (#1385)
+- Enterprise form hardened with mandatory fields and lead qualification (#1382)
+- Country intel silently dismisses when geocode cannot identify a country (#1383)
+- Globe hit targets enlarged for small marker types (#1378)
+- Imagery panel hidden for existing users and viewport refetch deadlock (#1377)
+- CSP violations for satellite preview images (#1376)
+- Safari TypeError filtering and Sentry noise patterns (#1380)
+- Swedish locale 'avbruten' TypeError variant filtered (#1402)
+- Satellite imagery STAC backend fix, merged into Orbital Surveillance (#1364)
+- Aviation "Computed" source replaced with specific labels, reduced cache TTLs (#1374)
+- Close button and hover-pause on all marker tooltips (#1371)
+- Invalid 'satelliteImagery' removed from LAYER_SYNONYMS (#1370)
+- Risk scores seeding gap and seed-meta key mismatch (#1366)
+- Consistent LIVE header pattern across news and webcams panels (#1367)
+- Globe null guards in path accessor callbacks (#1372)
+- Node_modules guard in pre-push hook, pinned Node 22 (#1368)
+- Typecheck CI workflow: removed paths-ignore, added push trigger (#1373)
+- Theme toggle removed from header (#1407)
+
+## [2.6.0] - 2026-03-09
+
+### Highlights
+
+- **Orbital Surveillance** — real-time satellite tracking layer with TLE propagation (#1278)
+- **Premium Finance Suite** — stock analysis tools for Pro tier (#1268)
+- **Self-hosted Basemap** — migrated from CARTO to PMTiles on Cloudflare R2 (#1064)
+- **GPS Jamming v2** — migrated from gpsjam.org to Wingbits API with H3 hexagons (#1240)
+- **Military Flights Overhaul** — centralized via Redis seed + edge handler with OpenSky/Wingbits fallbacks (#1263, #1274, #1275, #1276)
+- **Pro Waitlist & Landing Page** — referral system, Turnstile CAPTCHA, 21-language localization (#1140, #1187)
+- **Server-side AI Classification** — batch headline classification moves from client to server (#1195)
+- **Commodity Variant** — new app variant focused on commodities with relevant panels & layers (#1040, #1100)
+- **Health Check System** — comprehensive health endpoint with auto seed-meta freshness tracking (#1091, #1127, #1128)
+
+### Added
+
+- Orbital surveillance layer with real-time satellite tracking via satellite.js (#1278, #1281)
+- Premium finance stock analysis suite for Pro tier (#1268)
+- GPS jamming migration to Wingbits API with H3 hex grid (#1240)
+- Commodity app variant with dedicated panels and map layers (#1040, #1100)
+- Pro waitlist landing page with referral system and Turnstile CAPTCHA (#1140)
+- Pro landing page localization — 21 languages (#1187)
+- Pro page repositioning toward markets, macro & geopolitics (#1261)
+- Referral invite banner when visiting via `?ref=` link (#1232)
+- Server-side batch AI classification for news headlines (#1195)
+- Self-hosted PMTiles basemap on Cloudflare R2, replacing CARTO (#1064)
+- Per-provider map theme selector (#1101)
+- Globe visual preset setting (Earth / Cosmos) with texture selection (#1090, #1076)
+- Comprehensive health check endpoint for UptimeRobot (#1091)
+- Auto seed-meta freshness tracking for all RPC handlers (#1127)
+- Submarine cables expanded to 86 via TeleGeography API (#1224)
+- Pak-Afghan conflict zone and country boundary override system (#1150)
+- Sudan and Myanmar conflict zone polygon improvements (#1216)
+- Iran events: 28 new location coords, 48h TTL (#1251)
+- Tech HQs in Ireland data (#1244)
+- BIS data seed job (#1131)
+- CoinPaprika fallback for crypto/stablecoin data (#1092)
+- Rudaw TV live stream and RSS feed (#1117)
+- Dubai and Riyadh added to default airport watchlist (#1144)
+- Cmd+K: 16 missing layer toggles (#1289), "See all commands" link with category list (#1270)
+- UTM attribution tags on all outbound links (#1233)
+- Performance warning dialog replaces hard layer limit (#1088)
+- Unified error/retry UX with muted styling and countdown (#1115)
+- Settings reorganized into collapsible groups (#1110)
+- Reset Layout button with tooltip (#1267, #1250)
+- Markdown lint in pre-push hook (#1166)
+
+### Changed
+
+- Military flights centralized via Redis seed + edge handler pattern (#1263)
+- Military flights seed with OpenSky anonymous fallback + Wingbits fallback (#1274, #1275)
+- Theater posture computed directly in relay instead of pinging Vercel RPC (#1259)
+- Countries GeoJSON served from R2 CDN (#1164)
+- Consolidated duplicated market data lists into shared JSON configs (#1212)
+- Eliminate all frontend external API calls — enforce gold standard pattern (#1217)
+- WB indicators seeded on Railway, never called from frontend (#1159, #1157)
+- Temporal baseline for news + fires moved to server-side (#1194)
+- Panel creation guarded by variant config (#1221)
+- Panel tab styles unified to underline pattern across all panels (#1106, #1182, #1190, #1192)
+- Reduce default map layers (#1141)
+- Share dialog dismissals persist across subdomains via cookies (#1286)
+- Country-wide conflict zones use actual country geometry (#1245)
+- Aviation seed interval reduced to 1h (#1258)
+- Replace curl with native Node.js HTTP CONNECT tunnel in seeds (#1287)
+- Seed scripts use `_seed-utils.mjs` shared configs from `scripts/shared/` (#1231, #1234)
+
+### Fixed
+
+- **Rate Limiting**: prioritize `cf-connecting-ip` over `x-real-ip` for correct per-user rate limiting behind CF proxy (#1241)
+- **Security**: harden cache keys against injection and hash collision (#1103), per-endpoint rate limits for summarize endpoints (#1161)
+- **Map**: prevent ghost layers rendering without a toggle (#1264), DeckGL layer toggles getting stuck (#1248), auto-fallback to OpenFreeMap on basemap failure (#1109), CORS fallback for Carto basemap (#1142), use CORS-enabled R2 URL for PMTiles in Tauri (#1119), CII Instability layer disabled in 3D mode (#1292)
+- **Layout**: reconcile ultrawide zones when map is hidden (#1246), keep settings button visible on scaled desktop widths (#1249), exit fullscreen before switching variants (#1253), apply map-hidden layout class on initial load (#1087), preserve panel column position across refresh (#1170, #1108, #1112)
+- **Panels**: event delegation to survive setContent debounce (#1203), guard RPC response array access with optional chaining (#1174), clear stuck error headers and sanitize error messages (#1175), lazy panel race conditions + server feed gaps (#1113), Tech Readiness panel loading on full variant (#1208), Strategic Risk panel button listeners (#1214), World Clock green home row (#1202), Airline Intelligence CSS grid layouts (#1197)
+- **Pro/Turnstile**: explicit rendering to fix widget race condition (#1189), invisible widget support (#1215), CSP allow Turnstile (#1155), handle `already_registered` state (#1183), reset on enterprise form error (#1222), registration feedback and referral code gen (#1229, #1228), no-cache header for /pro (#1179), correct API endpoint path (#1177), www redirect loop fix (#1198, #1201)
+- **SEO**: comprehensive improvements for /pro and main pages (#1271)
+- **Railway**: remove custom railpack.json install step causing ENOENT builds (#1296, #1290, #1288)
+- **Aviation**: correct cancellation rate calculation and add 12 airports (#1209), unify NOTAM status logic (#1225)
+- **Sentry**: triage 26 issues, fix 3 bugs, add 29 noise filters (#1173, #1098)
+- **Health**: treat missing seed-meta as stale (#1128), resolve BIS credit and theater posture warnings (#1124), add WB seed loop (#1239), UCDP auth handling (#1252)
+- **Country Brief**: formatting, duplication, and news cap fixes (#1219), prevent modal stuck on geocode failure (#1134)
+- **Economic**: guard BIS and spending data against undefined (#1162, #1169)
+- **Webcams**: detect blocked YouTube embeds on web (#1107), use iframe load event fallback (#1123), MTV Lebanon as live stream (#1122)
+- **Desktop**: recover stranded routing fixes and unified error UX (#1160), DRY debounce, error handling, retry cap (#1084), debounce cache writes, batch secret push, lazy panels (#1077)
+- **PWA**: bump SW nuke key to v2 for CF-cached 404s (#1081), one-time SW nuke on first visit (#1079)
+- **Performance**: only show layer warning when adding layers, not removing (#1265), reduce unnecessary Vercel edge invocations (#1176)
+- **i18n**: sync all 20 locales to en.json — zero drift (#1104), correct indentation for geocode error keys (#1147)
+- **Insights**: graceful exit, LKG fallback, swap to Gemini 2.5 Flash (#1153, #1154)
+- **Seeds**: prevent API quota burn and respect rate limits (#1167), gracefully skip write when validation fails (#1089), seed-meta tracking for all bootstrap keys (#1163, #1138)
+
+## [2.5.25] - 2026-03-04
+
+### Changed
+
+- **Supply Chain v2** — bump chokepoints & minerals cache keys to v2; add `aisDisruptions` field to `ChokepointInfo` (proto, OpenAPI, generated types, handler, UI panel); rename Malacca Strait → Strait of Malacca; reduce chokepoint Redis TTL from 15 min to 5 min; expand description to always show warning + AIS disruption counts; remove Nickel & Copper from critical minerals data (focus on export-controlled minerals); slice top producers to 3; use full FRED series names for shipping indices; add `daily` cache tier (86400s) and move minerals route to it; align client-side circuit breaker TTLs with server TTLs; fix upstream-unavailable banner to only show when no data is present; register supply-chain routes in Vite dev server plugin
+- **Cache migration**: old `supply_chain:chokepoints:v1` and `supply_chain:minerals:v1` Redis keys are no longer read by any consumer — they will expire via TTL with no action required
+
+## [2.5.24] - 2026-03-03
+
+### Highlights
+
+- **UCDP conflict data** — integrated Uppsala Conflict Data Program for historical & ongoing armed conflict tracking (#760)
+- **Country brief sharing** — maximize mode, shareable URLs, native browser share button, expanded sections (#743, #854)
+- **Unified Vercel deployment** — consolidated 4 separate deployments into 1 via runtime variant detection (#756)
+- **CDN performance overhaul** — POST→GET conversion, per-domain edge functions, tiered bootstrap for ~46% egress reduction (#753, #795, #838)
+- **Security hardening** — CSP script hashes replace unsafe-inline, crypto.randomUUID() for IDs, XSS-safe i18n, Finnhub token header (#781, #844, #861, #744)
+- **i18n expansion** — French support with Live TV channels, hardcoded English strings replaced with translation keys (#794, #851, #839)
+
+### Added
+
+- UCDP (Uppsala Conflict Data Program) integration for armed conflict tracking (#760)
+- Iran & Strait of Hormuz conflict zones, upgraded Ukraine polygon (#731)
+- 100 Iran war events seeded with expanded geocoder (#792)
+- Country brief maximize mode, shareable URLs, expanded sections & i18n (#743)
+- Native browser share button for country briefs (#854)
+- French i18n support with French Live TV channels (#851)
+- Geo-restricted live channel support, restored WELT (#765)
+- Manage Channels UX — toggle from grid + show all channels (#745)
+- Command palette: disambiguate Map vs Panel commands, split country into map/brief (#736)
+- Command palette: rotating contextual tips replace static empty state (#737)
+- Download App button for web users with dropdown (#734, #735)
+- Reset layout button to restore default panel sizes and order (#801)
+- System status moved into settings (#735)
+- Vercel cron to pre-warm AviationStack cache (#776)
+- Runtime variant detection — consolidate 4 Vercel deployments into 1 (#756)
+- CJS syntax check in pre-push hook (#769)
+
+### Fixed
+
+- **Security**: XSS — wrap `t()` calls in `escapeHtml()` (#861), use `crypto.randomUUID()` instead of `Math.random()` for ID generation (#844), move Finnhub API key from query string to `X-Finnhub-Token` header (#744)
+- **i18n**: replace hardcoded English strings with translation keys (#839), i18n improvements (#794)
+- **Market**: parse comma-separated query params and align Railway cache keys (#856), Railway market data cron + complete missing tech feed categories (#850), Yahoo relay fallback + RSS digest relay for blocked feeds (#835), tech UNAVAILABLE feeds + Yahoo batch early-exit + sector heatmap gate (#810)
+- **Aviation**: move AviationStack fetching to Railway relay, reduce to 40 airports (#858)
+- **UI**: cancel pending debounced calls on component destroy (#848), guard async operations against stale DOM references (#843)
+- **Sentry**: guard stale DOM refs, audio.play() compat, add 16 noise filters (#855)
+- **Relay**: exponential backoff for failing RSS feeds (#853), deduplicate UCDP constants crashing Railway container (#766)
+- **API**: remove `[domain]` catch-all that intercepted all RPC routes (#753 regression) (#785), pageSize bounds validation on research handlers (#819), return 405 for wrong HTTP method (#757), pagination cursor for cyber threats (#754)
+- **Conflict**: bump Iran events cache-bust to v7 (#724)
+- **OREF**: prevent LLM translation cache from poisoning Hebrew→English pipeline (#733), strip translation labels from World Brief input (#768)
+- **Military**: harden USNI fleet report ship name regex (#805)
+- **Sidecar**: add required params to ACLED API key validation probe (#804)
+- **Macro**: replace hardcoded BTC mining thresholds with Mayer Multiple (#750)
+- **Cyber**: reduce GeoIP per-IP timeout from 3s to 1.5s (#748)
+- **CSP**: restore unsafe-inline for Vercel bot-challenge pages (#788), add missing script hash and finance variant (#798)
+- **Runtime**: route all /api/* calls through CDN edge instead of direct Vercel (#780)
+- **Desktop**: detect Linux node target from host arch (#742), harden Windows installer update path + map resize (#739), close update toast after clicking download (#738), only open valid http(s) links externally (#723)
+- **Webcams**: replace dead Tel Aviv live stream (#732), replace stale Jerusalem feed (#849)
+- Story header uses full domain WORLDMONITOR.APP (#799)
+- Open variant nav links in same window instead of new tab (#721)
+- Suppress map renders during resize drag (#728)
+- Append deduction panel to DOM after async import resolves (#764)
+- Deduplicate stale-while-revalidate background fetches in CircuitBreaker (#793)
+- CORS fallback, rate-limit bump, RSS proxy allowlist (#814)
+- Unavailable stream error messages updated (#759)
+
+### Performance
+
+- Tier slow/fast bootstrap data for ~46% CDN egress reduction (#838)
+- Convert POST RPCs to GET for CDN caching (#795)
+- Split monolithic edge function into per-domain functions (#753)
+- Increase CDN cache TTLs + add stale-if-error across edge functions (#777)
+- Bump CDN cache TTLs for oref-alerts and youtube/live (#791)
+- Skip wasted direct fetch for Vercel-blocked domains in RSS proxy (#815)
+
+### Security
+
+- Replace CSP unsafe-inline with script hashes and add trust signals (#781)
+- Expand Permissions-Policy and tighten CSP connect-src (#779)
+
+### Changed
+
+- Extend support for larger screens (#740)
+- Green download button + retire sliding popup (#747)
+- Extract shared relay helper into `_relay.js` (#782)
+- Consolidate `SummarizeArticleResponse` status fields (#813)
+- Consolidate `declare const process` into shared `env.d.ts` (#752)
+- Deduplicate `clampInt` into `server/_shared/constants`
+- Add error logging for network errors in error mapper (#746)
+- Redis error logging + reduced timeouts for edge functions (#749)
+
+---
+
 ## [2.5.21] - 2026-03-01
 
 ### Highlights

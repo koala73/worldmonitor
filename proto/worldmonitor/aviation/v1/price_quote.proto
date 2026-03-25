@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/aviation/v1/carrier.proto";
+
+// CabinClass represents the travel class for a flight ticket.
+enum CabinClass {
+  // Unspecified cabin class.
+  CABIN_CLASS_UNSPECIFIED = 0;
+  // Economy class.
+  CABIN_CLASS_ECONOMY = 1;
+  // Premium economy class.
+  CABIN_CLASS_PREMIUM_ECONOMY = 2;
+  // Business class.
+  CABIN_CLASS_BUSINESS = 3;
+  // First class.
+  CABIN_CLASS_FIRST = 4;
+}
+
+// PriceQuote represents a single flight price offer from a provider.
+message PriceQuote {
+  // Unique quote identifier.
+  string id = 1;
+  // Origin airport IATA code.
+  string origin = 2;
+  // Destination airport IATA code.
+  string destination = 3;
+  // Outbound departure date (ISO 8601).
+  string departure_date = 4;
+  // Return date (ISO 8601), empty for one-way.
+  string return_date = 5;
+  // Marketing carrier for this offer.
+  Carrier carrier = 6;
+  // Total price amount.
+  double price_amount = 7;
+  // ISO 4217 currency code (e.g., "EUR", "USD", "TRY").
+  string currency = 8;
+  // Cabin class of the offer.
+  CabinClass cabin = 9;
+  // Number of stops (0 = nonstop).
+  int32 stops = 10;
+  // Total travel duration in minutes.
+  int32 duration_minutes = 11;
+  // Booking URL or deep-link (if available).
+  string booking_url = 12;
+  // Provider name (e.g., "amadeus", "demo").
+  string provider = 13;
+  // Whether the price is indicative rather than bookable.
+  bool is_indicative = 14;
+  // Time when this quote was observed, as Unix epoch milliseconds.
+  int64 observed_at = 15 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Reference used during the checkout process (for follow-up actions).
+  string checkout_ref = 16;
+  // Time when this quote expires, as Unix epoch milliseconds.
+  int64 expires_at = 17 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

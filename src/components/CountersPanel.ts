@@ -5,12 +5,13 @@ import {
   formatCounterValue,
   type CounterMetric,
 } from '@/services/humanity-counters';
+import { isDesktopRuntime } from '@/services/runtime';
 
 /**
  * CountersPanel -- Worldometer-style ticking counters showing positive global metrics.
  *
  * Displays 6 metrics (births, trees, vaccines, graduates, books, renewable MW)
- * with values ticking at 60fps via requestAnimationFrame. Values are calculated
+ * with values ticking via requestAnimationFrame. Values are calculated
  * from absolute time (seconds since midnight UTC * per-second rate) to avoid
  * drift across tabs, throttling, or background suspension.
  *
@@ -19,10 +20,25 @@ import {
 export class CountersPanel extends Panel {
   private animFrameId: number | null = null;
   private valueElements: Map<string, HTMLElement> = new Map();
+  private readonly desktopMode = isDesktopRuntime();
+  private visibilityHandler: (() => void) | null = null;
+  private lastDesktopUpdateAt = 0;
+  private readonly desktopUpdateIntervalMs = 250;
 
   constructor() {
     super({ id: 'counters', title: 'Live Counters', trackActivity: false });
     this.createCounterGrid();
+    if (this.desktopMode) {
+      this.visibilityHandler = () => {
+        if (document.hidden) {
+          this.stopTicking();
+          return;
+        }
+        this.lastDesktopUpdateAt = 0;
+        this.startTicking();
+      };
+      document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
     this.startTicking();
   }
 
@@ -84,19 +100,36 @@ export class CountersPanel extends Panel {
 
   /**
    * Start the requestAnimationFrame animation loop.
-   * Each frame recalculates all counter values from absolute time.
+   * Each tick recalculates all counter values from absolute time.
    */
   public startTicking(): void {
     if (this.animFrameId !== null) return; // Already ticking
+    if (this.desktopMode && document.hidden) return;
     this.animFrameId = requestAnimationFrame(this.tick);
+  }
+
+  private stopTicking(): void {
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
   }
 
   /**
    * Animation tick -- arrow function for correct `this` binding.
-   * Updates all 6 counter values using textContent (not innerHTML)
-   * to avoid layout thrashing at 60fps.
+   * Updates all 6 counter values using textContent (not innerHTML).
+   * Desktop runtime is throttled to reduce background CPU usage.
    */
   private tick = (): void => {
+    if (this.desktopMode) {
+      const now = performance.now();
+      if ((now - this.lastDesktopUpdateAt) < this.desktopUpdateIntervalMs) {
+        this.animFrameId = requestAnimationFrame(this.tick);
+        return;
+      }
+      this.lastDesktopUpdateAt = now;
+    }
+
     for (const metric of COUNTER_METRICS) {
       const el = this.valueElements.get(metric.id);
       if (el) {
@@ -111,9 +144,10 @@ export class CountersPanel extends Panel {
    * Clean up animation frame and call parent destroy.
    */
   public destroy(): void {
-    if (this.animFrameId !== null) {
-      cancelAnimationFrame(this.animFrameId);
-      this.animFrameId = null;
+    this.stopTicking();
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
     }
     this.valueElements.clear();
     super.destroy();
