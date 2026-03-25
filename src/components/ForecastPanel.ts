@@ -186,10 +186,7 @@ function injectStyles(): void {
     .fc-signals { margin-top: 2px; }
     .fc-signal { color: var(--text-secondary, #999); font-size: 11px; padding: 1px 0; }
     .fc-signal::before { content: ''; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #666); margin-right: 6px; vertical-align: middle; }
-    .fc-cascade { font-size: 11px; color: var(--accent-color, #3b82f6); margin-top: 3px; padding: 0 10px; }
-    .fc-calibration { font-size: 10px; color: var(--text-secondary, #777); padding: 0 10px 4px; }
     .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
-    .fc-section-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary, #7d8590); padding: 6px 8px 2px; }
   `;
   document.head.appendChild(style);
 }
@@ -227,6 +224,15 @@ export class ForecastPanel extends Panel {
         const panelId = toggle.dataset.fcToggle;
         const detail = panelId ? item?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
         if (detail) detail.classList.toggle('fc-hidden');
+        return;
+      }
+
+      // Touch/click on the prob row itself: show the toggle row so Analysis is reachable on touch devices
+      const probRow = target.closest('.fc-prob-row') as HTMLElement | null;
+      if (probRow) {
+        const item = probRow.closest('.fc-prob-item') as HTMLElement | null;
+        const toggleRow = item?.querySelector('.fc-toggle-row') as HTMLElement | null;
+        if (toggleRow) toggleRow.style.display = toggleRow.style.display === 'flex' ? '' : 'flex';
         return;
       }
     });
@@ -557,7 +563,7 @@ export class ForecastPanel extends Panel {
     }
 
     const chips = [
-      f.calibration?.marketTitle ? `Market: ${f.calibration.marketTitle}` : '',
+      f.calibration?.marketTitle ? `Market: ${f.calibration.marketTitle} (${Math.round((f.calibration.marketPrice || 0) * 100)}%)` : '',
       typeof f.priorProbability === 'number' ? `Prior: ${Math.round(f.priorProbability * 100)}%` : '',
       f.cascades?.length ? `Cascades: ${f.cascades.length}` : '',
     ].filter(Boolean);
