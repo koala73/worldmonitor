@@ -123,6 +123,7 @@ const layers = {
   irelandTechHQs: false,
   irishUnicorns: false,
   irelandAICompanies: false,
+  irelandUniversities: false,
   stockExchanges: false,
   financialCenters: false,
   centralBanks: false,

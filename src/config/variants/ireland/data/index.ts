@@ -34,3 +34,9 @@ export {
   IRELAND_AI_COMPANIES,
   type IrelandAICompany,
 } from './ai-companies';
+
+// Universities
+export {
+  IRELAND_UNIVERSITIES,
+  type IrelandUniversity,
+} from './universities';

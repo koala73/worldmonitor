@@ -11,6 +11,7 @@ import { IRISH_UNICORNS, type IrishUnicorn } from '@/config/variants/ireland/dat
 import { IRELAND_TECH_HQS, type IrelandTechHQ } from '@/config/variants/ireland/data/tech-hqs';
 import { IRELAND_DATA_CENTERS, type IrelandDataCenter } from '@/config/variants/ireland/data/data-centers';
 import { IRELAND_AI_COMPANIES, type IrelandAICompany } from '@/config/variants/ireland/data/ai-companies';
+import { IRELAND_UNIVERSITIES, type IrelandUniversity } from '@/config/variants/ireland/data/universities';
 import type { Company, CompanyIndustry, EmployeeRange, CompanyTag } from '@/types/company';
 import { renderLogo } from '@/utils/logoFallback';
 
@@ -141,6 +142,10 @@ export class CompanyProfile {
     const aiCompany = IRELAND_AI_COMPANIES.find(a => a.id.toLowerCase() === lowerId);
     if (aiCompany) return this.convertAICompanyToCompany(aiCompany);
 
+    // 6. Check Universities and convert to Company type
+    const university = IRELAND_UNIVERSITIES.find(u => u.id.toLowerCase() === lowerId);
+    if (university) return this.convertUniversityToCompany(university);
+
     return undefined;
   }
 
@@ -236,6 +241,29 @@ export class CompanyProfile {
       tags: ['ai-company'],
       coordinates: [ai.lng, ai.lat],
       address: ai.address,
+    };
+  }
+
+  /**
+   * Convert IrelandUniversity to Company type
+   */
+  private convertUniversityToCompany(uni: IrelandUniversity): Company {
+    const employeeRange = uni.students
+      ? this.mapEmployeeCount(uni.students)
+      : undefined;
+
+    return {
+      id: uni.id,
+      slug: uni.id,
+      name: uni.name,
+      description: uni.description,
+      founded: uni.founded,
+      headquarters: `${uni.location}, Ireland`,
+      industry: 'Other',
+      employeeCount: employeeRange,
+      website: uni.website,
+      tags: ['university' as CompanyTag],
+      coordinates: [uni.lng, uni.lat],
     };
   }
 

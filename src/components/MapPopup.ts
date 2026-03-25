@@ -5,7 +5,7 @@ import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
-import type { SemiconductorHub, IrelandDataCenter, IrelandTechHQ, IrishUnicorn, IrelandAICompany } from '@/config/variants/ireland/data';
+import type { SemiconductorHub, IrelandDataCenter, IrelandTechHQ, IrishUnicorn, IrelandAICompany, IrelandUniversity } from '@/config/variants/ireland/data';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
@@ -18,7 +18,7 @@ import { getCableHealthRecord } from '@/services/cable-health';
 import { nameToCountryCode } from '@/services/country-geometry';
 import { renderLogo } from '@/utils/logoFallback';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'semiconductorHub' | 'irelandDataCenter' | 'irelandTechHQ' | 'irishUnicorn' | 'irelandAICompany';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'semiconductorHub' | 'irelandDataCenter' | 'irelandTechHQ' | 'irishUnicorn' | 'irelandAICompany' | 'irelandUniversity';
 
 interface TechEventPopupData {
   id: string;
@@ -488,6 +488,8 @@ export class MapPopup {
         return this.renderIrishUnicornPopup(data.data as IrishUnicorn);
       case 'irelandAICompany':
         return this.renderIrelandAICompanyPopup(data.data as unknown as IrelandAICompany);
+      case 'irelandUniversity':
+        return this.renderIrelandUniversityPopup(data.data as unknown as IrelandUniversity);
       default:
         return '';
     }
@@ -912,6 +914,55 @@ export class MapPopup {
           </a>
         </div>
         ` : ''}
+      </div>
+    `;
+  }
+
+  /**
+   * Render popup for Ireland universities
+   */
+  private renderIrelandUniversityPopup(uni: IrelandUniversity): string {
+    const logoHtml = renderLogo(undefined, uni.name, 48);
+    const specialtiesStr = uni.specialties?.slice(0, 3).join(', ') || '';
+
+    return `
+      <div class="popup-header-rich">
+        <div class="popup-logo">${logoHtml}</div>
+        <div class="popup-header-content">
+          <h3 class="popup-company-name">🎓 ${escapeHtml(uni.name)}</h3>
+          <span class="popup-type-badge university">${uni.ranking ? `QS #${uni.ranking}` : 'University'}</span>
+        </div>
+        <button class="popup-close" aria-label="${t('common.close')}">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-details-rich">
+          <div class="popup-detail-row">
+            <span class="icon">📍</span>
+            <span class="value">${escapeHtml(uni.location)}, Ireland</span>
+          </div>
+          <div class="popup-detail-row">
+            <span class="icon">📅</span>
+            <span class="value">Founded ${uni.founded}</span>
+          </div>
+          ${uni.students ? `
+          <div class="popup-detail-row">
+            <span class="icon">👥</span>
+            <span class="value">${uni.students.toLocaleString()}+ students</span>
+          </div>
+          ` : ''}
+          ${specialtiesStr ? `
+          <div class="popup-detail-row">
+            <span class="icon">📚</span>
+            <span class="value">${escapeHtml(specialtiesStr)}</span>
+          </div>
+          ` : ''}
+        </div>
+        ${uni.description ? `<p class="popup-description">${escapeHtml(uni.description)}</p>` : ''}
+        <div class="popup-cta">
+          <a class="popup-cta-button secondary" href="${sanitizeUrl(uni.website)}" target="_blank" rel="noopener">
+            Visit University Website →
+          </a>
+        </div>
       </div>
     `;
   }

@@ -14,10 +14,12 @@ import {
   IRELAND_TECH_HQS,
   IRISH_UNICORNS,
   IRELAND_AI_COMPANIES,
+  IRELAND_UNIVERSITIES,
   type IrelandDataCenter,
   type IrelandTechHQ,
   type IrishUnicorn,
   type IrelandAICompany,
+  type IrelandUniversity,
 } from '@/config/variants/ireland/data';
 import {
   getSemiconductorTier,
@@ -1582,6 +1584,9 @@ export class DeckGLMap {
       if (mapLayers.irelandAICompanies) {
         layers.push(this.createIrelandAICompaniesLayer());
       }
+      if (mapLayers.irelandUniversities) {
+        layers.push(this.createIrelandUniversitiesLayer());
+      }
     }
 
     const irelandTechFallback = this.createIrelandTechFallbackLayer(mapLayers);
@@ -2906,6 +2911,38 @@ export class DeckGLMap {
     });
   }
 
+  /**
+   * Create Ireland universities layer using IconLayer
+   * Shows major universities and research institutions
+   * Uses academic blue color with enhanced pulse animation
+   */
+  private createIrelandUniversitiesLayer(): IconLayer<IrelandUniversity> {
+    // Enhanced pulse animation for universities (1.5x radius, 2s period)
+    const pulse = 1.0 + 0.25 * Math.sin((this.pulseTime || Date.now()) / 1000);
+
+    return new IconLayer<IrelandUniversity>({
+      id: 'ireland-universities-layer',
+      data: IRELAND_UNIVERSITIES,
+      getPosition: (d) => [d.lng, d.lat],
+      // Use circle shape for universities
+      getIcon: () => getMarkerIcon('circle', 1),
+      getSize: () => {
+        // Slightly larger than Tech HQs
+        const baseSize = getMarkerSizeForTier(1, 'circle') * 1.1;
+        return baseSize * pulse;
+      },
+      getColor: () => {
+        // Academic blue (#1E40AF) - traditional university color
+        return getTierColor([30, 64, 175], 1);
+      },
+      sizeScale: 1,
+      sizeMinPixels: 12,
+      sizeMaxPixels: 36,
+      pickable: true,
+      updateTriggers: { getSize: this.pulseTime },
+    });
+  }
+
   private createCloudRegionsLayer(): ScatterplotLayer {
     const isIreland = isIrelandVariant();
     return new ScatterplotLayer({
@@ -3745,6 +3782,10 @@ export class DeckGLMap {
         const productsStr = obj.products?.length ? obj.products.slice(0, 2).join(', ') : '';
         return { html: `<div class="deckgl-tooltip"><strong>🤖 ${text(obj.name)}</strong><br/>AI Lab<br/>${text(obj.location)}${productsStr ? `<br/>${text(productsStr)}` : ''}</div>` };
       }
+      case 'ireland-universities-layer': {
+        const rankStr = obj.ranking ? `QS #${obj.ranking}` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>🎓 ${text(obj.name)}</strong><br/>${text(obj.location)}${rankStr ? `<br/>${rankStr}` : ''}${obj.students ? `<br/>${obj.students.toLocaleString()}+ students` : ''}</div>` };
+      }
       case 'tech-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.location)}</div>` };
       case 'irradiators-layer':
@@ -4102,6 +4143,7 @@ export class DeckGLMap {
       'ireland-tech-hqs-layer': 'irelandTechHQ',
       'irish-unicorns-layer': 'irishUnicorn',
       'ireland-ai-companies-layer': 'irelandAICompany',
+      'ireland-universities-layer': 'irelandUniversity',
       'tech-events-layer': 'techEvent',
       'apt-groups-layer': 'apt',
       'minerals-layer': 'mineral',
@@ -4572,6 +4614,7 @@ export class DeckGLMap {
         { shape: shapes.diamond('rgb(20, 184, 166)'), label: '💎 Tech HQs (EMEA)' },      // #14B8A6
         { shape: shapes.triangle('rgb(249, 115, 22)'), label: '▲ Irish Unicorns' },       // #F97316
         { shape: shapes.diamond('rgb(147, 51, 234)'), label: '💎 AI Companies' },         // #9333EA
+        { shape: shapes.circle('rgb(30, 64, 175)'), label: '🎓 Universities' },          // #1E40AF
         { shape: shapes.circle('rgb(0, 209, 255)'), label: '⚫ Startup Hubs' },
         { shape: shapes.square('rgb(153, 102, 255)'), label: '▪️ Cloud Regions' },
         { shape: shapes.diamond('rgb(255, 179, 0)'), label: '💎 Accelerators' },
