@@ -90,7 +90,7 @@
     "vite-plugin-pwa": "^1.2.0"
   },
   "dependencies": {
-    "@deck.gl/aggregation-layers": "^9.2.6",
+    "@deck.gl/aggregation-layers": "^9.2.11",
     "@deck.gl/core": "^9.2.6",
     "@deck.gl/geo-layers": "^9.2.11",
     "@deck.gl/layers": "^9.2.11",
