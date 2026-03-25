@@ -3,13 +3,14 @@ title: "Telegram Intel"
 description: "Topic-tabbed Telegram-channel feed — open-source intelligence mirrored through a relay, with live/recent distinction and relay-status awareness."
 ---
 
-The **Telegram Intel** panel (internal id `telegram-intel`) mirrors a curated set of open-source Telegram channels into the dashboard: topic-tabbed, freshness-aware, and relay-status-aware so the panel can distinguish "no recent traffic" from "relay unavailable".
+The **Telegram Intel** panel (internal id `telegram-intel`) mirrors a curated set of open-source Telegram channels into the dashboard and lets users follow additional public channels: topic-tabbed, freshness-aware, and relay-status-aware so the panel can distinguish "no recent traffic" from "relay unavailable".
 
 ## What the panel shows
 
 A row of topic tabs at the top with a feed list below:
 
 - **Topic tabs** — tabs derived from `TELEGRAM_TOPICS` in `src/services/telegram-intel`. The default tab is `all`.
+- **Custom public channels** — resolve an `@username`, preview it, and add up to 20 channels. The list is stored locally under `telegram:watchlist:v1`; each channel can be removed from its pill.
 - **Feed items** — `TelegramItem[]` for the active topic, each showing channel, public trust badges (same propaganda/tier CSS as news clusters), message timestamp, and message body (with `sanitizeUrl` applied to any links).
 - **Live distinction** — items newer than 10 minutes (`LIVE_THRESHOLD_MS = 600_000`) are flagged as live.
 - **Relay state** — when the Telegram relay isn't reachable (`relayEnabled = false`), the panel indicates degraded mode rather than showing an empty list.
@@ -23,13 +24,15 @@ Panel id is `telegram-intel`; canonical component is `src/components/TelegramInt
 
 ## Data sources
 
-- `@/services/telegram-intel` — backed by `/api/telegram-feed` which proxies to a Railway relay that pulls the curated channel set. Channel coverage is curated rather than user-configurable.
+- `@/services/telegram-intel` — backed by `/api/telegram-feed`, which proxies to the existing Railway Telegram relay. The product-managed curated set remains separate from each browser's user-defined watchlist.
 
 ### Backed by endpoints
 
 | Surface | Endpoint | Notes |
 |---|---|---|
 | Panel relay path | `GET /api/telegram-feed` | First-party browser path. Requires the dashboard session credential (`wms_`); message text is R4. |
+| Resolve custom channel | `GET /api/telegram-feed?mode=resolve&username=...` | Resolves public `@username` values through the existing GramJS session. |
+| Read custom channel | `GET /api/telegram-feed?mode=channel&username=...` | Returns recent public-channel posts through the same credential gate and 30-second client cache as the curated feed. |
 | Generated service RPC | `GET /api/intelligence/v1/list-telegram-feed` | Direct IntelligenceService RPC with `topic`, `channel`, and `limit` query parameters; fetches the same Railway relay. |
 
 ## Refresh cadence

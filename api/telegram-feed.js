@@ -72,6 +72,17 @@ function toText(value) {
   return value == null ? '' : String(value);
 }
 
+const TELEGRAM_USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/;
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function toTelegramUsername(value) {
+  const username = toText(value).trim().replace(/^@+/, '').toLowerCase();
+  return TELEGRAM_USERNAME_RE.test(username) ? username : '';
+}
+
 /**
  * @param {unknown} value
  * @returns {string}
@@ -170,6 +181,26 @@ async function normalizeTelegramFeed(parsed) {
   };
 }
 
+/**
+ * @param {unknown} value
+ */
+function normalizeTelegramPreview(value) {
+  if (!value || typeof value !== 'object') throw new Error('Invalid Telegram channel preview');
+  const parsed = /** @type {Record<string, unknown>} */ (value);
+  const username = toTelegramUsername(parsed.username);
+  if (!username) throw new Error('Invalid Telegram channel username');
+  const title = toText(parsed.title).trim() || username;
+  const memberCount = parsed.memberCount == null || parsed.memberCount === ''
+    ? Number.NaN
+    : Number(parsed.memberCount);
+  return {
+    username,
+    title,
+    memberCount: Number.isFinite(memberCount) && memberCount >= 0 ? Math.floor(memberCount) : null,
+    url: `https://t.me/${username}`,
+  };
+}
+
 export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
@@ -219,15 +250,34 @@ export default async function handler(req) {
 
   try {
     const url = new URL(req.url);
-    const limit = Math.max(1, Math.min(200, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
-    const topic = (url.searchParams.get('topic') || '').trim();
-    const channel = (url.searchParams.get('channel') || '').trim();
-    const params = new URLSearchParams();
-    params.set('limit', String(limit));
-    if (topic) params.set('topic', topic);
-    if (channel) params.set('channel', channel);
+    const mode = (url.searchParams.get('mode') || 'feed').trim().toLowerCase();
+    if (!['feed', 'resolve', 'channel'].includes(mode)) {
+      return jsonResponse({ error: 'Invalid Telegram feed mode' }, 400, { 'Cache-Control': 'no-store', ...corsHeaders });
+    }
 
-    const relayUrl = `${relayBaseUrl}/telegram/feed?${params}`;
+    const params = new URLSearchParams();
+    let relayPath = '/telegram/feed';
+    if (mode === 'resolve' || mode === 'channel') {
+      const username = toTelegramUsername(url.searchParams.get('username'));
+      if (!username) {
+        return jsonResponse({ error: 'Invalid public Telegram username' }, 400, { 'Cache-Control': 'no-store', ...corsHeaders });
+      }
+      relayPath = mode === 'resolve' ? '/telegram/resolve' : '/telegram/channel';
+      params.set('username', username);
+      if (mode === 'channel') {
+        const limit = Math.max(1, Math.min(50, parseInt(url.searchParams.get('limit') || '20', 10) || 20));
+        params.set('limit', String(limit));
+      }
+    } else {
+      const limit = Math.max(1, Math.min(200, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
+      const topic = (url.searchParams.get('topic') || '').trim();
+      const channel = (url.searchParams.get('channel') || '').trim();
+      params.set('limit', String(limit));
+      if (topic) params.set('topic', topic);
+      if (channel) params.set('channel', channel);
+    }
+
+    const relayUrl = `${relayBaseUrl}${relayPath}?${params}`;
     const response = await fetchWithTimeout(relayUrl, {
       headers: getRelayHeaders({ Accept: 'application/json' }),
     }, 15000);
@@ -242,7 +292,7 @@ export default async function handler(req) {
     // credential would key roughly one edge entry per browser anyway. The 30s
     // browser window is preserved because the panel already assumes it
     // (CACHE_TTL in src/services/telegram-intel.ts).
-    let cacheControl = 'private, max-age=30';
+    let cacheControl = mode === 'resolve' ? 'private, max-age=3600' : 'private, max-age=30';
     if (!response.ok) {
       return buildRelayResponse(response, body, {
         'Cache-Control': 'no-store',
@@ -251,7 +301,16 @@ export default async function handler(req) {
     }
 
     try {
-      const parsed = /** @type {RawTelegramFeedResponse} */ (JSON.parse(body));
+      const parsedBody = JSON.parse(body);
+      if (mode === 'resolve') {
+        const normalized = normalizeTelegramPreview(parsedBody);
+        return buildRelayResponse(response, JSON.stringify(normalized), {
+          'Cache-Control': cacheControl,
+          ...corsHeaders,
+          'Vary': VARY_CREDENTIAL,
+        });
+      }
+      const parsed = /** @type {RawTelegramFeedResponse} */ (parsedBody);
       const normalized = await normalizeTelegramFeed(parsed);
       if (normalized.count === 0) {
         cacheControl = 'private, max-age=0';
