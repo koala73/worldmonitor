@@ -104,7 +104,7 @@
     "canvas-confetti": "^1.9.4",
     "convex": "^1.32.0",
     "d3": "^7.9.0",
-    "deck.gl": "^9.2.6",
+    "deck.gl": "^9.2.11",
     "fast-xml-parser": "^5.5.9",
     "i18next": "^25.8.10",
     "i18next-browser-languagedetector": "^8.2.1",
