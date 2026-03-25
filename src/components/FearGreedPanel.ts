@@ -52,6 +52,28 @@ function fmt(v: number | null | undefined, digits = 2): string {
   return v.toFixed(digits);
 }
 
+function getRegimeState(score: number): { state: string; stance: string; color: string } {
+  if (score <= 20) return { state: 'Crisis / Risk-Off',    stance: 'CASH',        color: '#c0392b' };
+  if (score <= 35) return { state: 'Stressed / Defensive', stance: 'DEFENSIVE',   color: '#e67e22' };
+  if (score <= 50) return { state: 'Fragile / Hedged',     stance: 'HEDGED',      color: '#f1c40f' };
+  if (score <= 65) return { state: 'Stable / Normal',      stance: 'NORMAL',      color: '#2ecc71' };
+  return               { state: 'Strong / Risk-On',       stance: 'AGGRESSIVE',  color: '#27ae60' };
+}
+
+function getDivergenceWarnings(d: FearGreedData): string[] {
+  const warnings: string[] = [];
+  const mom = d.momentum?.score ?? 50;
+  const sent = d.sentiment?.score ?? 50;
+  const cnn = d.cnnFearGreed;
+  const comp = d.compositeScore;
+  const trend = d.trend?.score ?? 50;
+  if (mom < 10)  warnings.push('Momentum at extreme low — broad equity selling pressure');
+  if (sent < 15) warnings.push('Sentiment in extreme fear zone');
+  if (cnn > 0 && Math.abs(comp - cnn) > 20) warnings.push(`CNN F&G ${Math.round(cnn)} diverges ${Math.abs(Math.round(comp - cnn))}pts from composite — sentiment/structural disconnect`);
+  if (trend < 20) warnings.push('Trend in breakdown — price structure deteriorating');
+  return warnings;
+}
+
 function renderGauge(score: number, label: string, delta: number | null, color: string): string {
   const cx = 100, cy = 100, R = 88, r = 60;
 
@@ -205,6 +227,8 @@ export class FearGreedPanel extends Panel {
     const prev = d.previousScore;
     const delta = prev > 0 ? score - prev : null;
     const color = scoreColor(score);
+    const regime = getRegimeState(score);
+    const warnings = getDivergenceWarnings(d);
 
     const catRows = CAT_NAMES.map(name => {
       const c = d[name] as CategoryData | undefined;
@@ -246,11 +270,22 @@ export class FearGreedPanel extends Panel {
       hdrMetric('Fed Rate', d.fedRate || 'N/A'),
     ].join('');
 
+    const warningsHtml = warnings.length > 0
+      ? `<div style="margin-bottom:10px">
+          ${warnings.map(w => `<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;margin-bottom:4px;border-radius:4px;border:1px solid #e67e22;background:rgba(230,126,34,0.08);font-size:10px;color:#e67e22">&#9888; ${escapeHtml(w)}</div>`).join('')}
+        </div>`
+      : '';
+
     const html = `
       <div style="padding:12px 14px">
         <div style="text-align:center;margin-bottom:12px">
+          <div style="text-align:center;font-size:11px;font-weight:600;color:${regime.color};letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px">${escapeHtml(regime.state)}</div>
           ${renderGauge(score, label, delta, color)}
+          <div style="text-align:center;margin-top:6px;margin-bottom:8px">
+            <span style="display:inline-block;padding:3px 12px;border-radius:999px;font-size:10px;font-weight:700;color:#fff;background:${regime.color};letter-spacing:0.08em">${escapeHtml(regime.stance)}</span>
+          </div>
         </div>
+        ${warningsHtml}
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:rgba(255,255,255,0.04);border-radius:8px;padding:4px;margin-bottom:12px">
           ${hdr}
         </div>
