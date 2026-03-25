@@ -85,7 +85,7 @@
     "h3-js": "^4.4.0",
     "markdownlint-cli2": "^0.21.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.2",
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0"
   },
@@ -106,7 +106,7 @@
     "d3": "^7.9.0",
     "deck.gl": "^9.2.11",
     "fast-xml-parser": "^5.5.9",
-    "i18next": "^25.8.10",
+    "i18next": "^25.10.9",
     "i18next-browser-languagedetector": "^8.2.1",
     "lz-string": "^1.5.0",
     "maplibre-gl": "^5.16.0",

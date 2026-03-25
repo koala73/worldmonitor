@@ -16,19 +16,23 @@ test('full-variant awareness panels are registered, instantiated, and refreshed'
   const appSource = readRepoFile('src/App.ts');
 
   for (const panelId of ['comms-health', 'economic-stress']) {
-    assert.match(panelsConfig, new RegExp(`'${panelId}': \\{`));
+    assert.match(
+      panelsConfig,
+      new RegExp(`['"]${panelId}['"]\\s*:\\s*\\{`),
+      `panels config should register ${panelId} regardless of quote/spacing style`,
+    );
   }
 
   assert.match(panelLayout, /new CommsHealthPanel\(\)/);
-  assert.match(panelLayout, /this\.ctx\.panels\['comms-health'\] = /);
+  assert.match(panelLayout, /this\.ctx\.panels\[['"]comms-health['"]\]\s*=/);
   assert.match(panelLayout, /new EconomicStressPanel\(\)/);
-  assert.match(panelLayout, /this\.ctx\.panels\['economic-stress'\] = /);
+  assert.match(panelLayout, /this\.ctx\.panels\[['"]economic-stress['"]\]\s*=/);
   assert.match(dataLoader, /fetchCommsHealth/);
   assert.match(dataLoader, /fetchEconomicStress/);
   assert.match(dataLoader, /loadCommsHealth\(\)/);
   assert.match(dataLoader, /loadEconomicStress\(\)/);
-  assert.match(dataLoader, /this\.ctx\.panels\['comms-health'\]/);
-  assert.match(dataLoader, /this\.ctx\.panels\['economic-stress'\]/);
+  assert.match(dataLoader, /this\.ctx\.panels\[['"]comms-health['"]\]/);
+  assert.match(dataLoader, /this\.ctx\.panels\[['"]economic-stress['"]\]/);
 
   assert.match(appSource, /this\.dataLoader\.loadCommsHealth\(\)/);
   assert.match(appSource, /this\.dataLoader\.loadEconomicStress\(\)/);

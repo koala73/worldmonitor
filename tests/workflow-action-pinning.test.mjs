@@ -14,29 +14,32 @@ const testLinuxApp = readFileSync(
 );
 
 test('artifact workflows pin upload and download actions to immutable SHAs', () => {
+  const uploadPinnedShaPattern = /actions\/upload-artifact@[0-9a-f]{40}/;
+  const downloadPinnedShaPattern = /actions\/download-artifact@[0-9a-f]{40}/;
+
   assert.match(
     buildDesktop,
-    /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/,
+    uploadPinnedShaPattern,
     'desktop release workflow should pin upload-artifact to a commit SHA',
   );
   assert.match(
     buildDesktop,
-    /actions\/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093/,
+    downloadPinnedShaPattern,
     'desktop release workflow should pin download-artifact to a commit SHA',
   );
   assert.doesNotMatch(
     buildDesktop,
-    /actions\/upload-artifact@v4|actions\/download-artifact@v4/,
+    /actions\/upload-artifact@v\d+|actions\/download-artifact@v\d+/,
     'desktop release workflow should not use floating artifact action tags',
   );
   assert.match(
     testLinuxApp,
-    /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/,
+    uploadPinnedShaPattern,
     'linux app workflow should pin upload-artifact to a commit SHA',
   );
   assert.doesNotMatch(
     testLinuxApp,
-    /actions\/upload-artifact@v4/,
+    /actions\/upload-artifact@v\d+/,
     'linux app workflow should not use a floating artifact upload action tag',
   );
 });
