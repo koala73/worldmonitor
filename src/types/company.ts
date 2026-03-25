@@ -39,7 +39,8 @@ export type CompanyTag =
   | 'semiconductor'
   | 'startup'
   | 'multinational'
-  | 'irish-founded';
+  | 'irish-founded'
+  | 'ai-company';
 
 /** Relation type between companies */
 export type CompanyRelation = 'parent' | 'subsidiary' | 'competitor' | 'partner';

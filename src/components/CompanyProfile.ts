@@ -10,6 +10,7 @@ import { IRELAND_COMPANIES } from '@/data/ireland-companies';
 import { IRISH_UNICORNS, type IrishUnicorn } from '@/config/variants/ireland/data/unicorns';
 import { IRELAND_TECH_HQS, type IrelandTechHQ } from '@/config/variants/ireland/data/tech-hqs';
 import { IRELAND_DATA_CENTERS, type IrelandDataCenter } from '@/config/variants/ireland/data/data-centers';
+import { IRELAND_AI_COMPANIES, type IrelandAICompany } from '@/config/variants/ireland/data/ai-companies';
 import type { Company, CompanyIndustry, EmployeeRange, CompanyTag } from '@/types/company';
 import { renderLogo } from '@/utils/logoFallback';
 
@@ -136,6 +137,10 @@ export class CompanyProfile {
     const dataCenter = IRELAND_DATA_CENTERS.find(d => d.id.toLowerCase() === lowerId);
     if (dataCenter) return this.convertDataCenterToCompany(dataCenter);
 
+    // 5. Check AI Companies and convert to Company type
+    const aiCompany = IRELAND_AI_COMPANIES.find(a => a.id.toLowerCase() === lowerId);
+    if (aiCompany) return this.convertAICompanyToCompany(aiCompany);
+
     return undefined;
   }
 
@@ -207,6 +212,30 @@ export class CompanyProfile {
       website: dc.website,
       tags: ['data-center'],
       coordinates: [dc.lng, dc.lat],
+    };
+  }
+
+  /**
+   * Convert IrelandAICompany to Company type
+   */
+  private convertAICompanyToCompany(ai: IrelandAICompany): Company {
+    const employeeRange = ai.employees
+      ? this.mapEmployeeCount(ai.employees)
+      : undefined;
+
+    return {
+      id: ai.id,
+      slug: ai.id,
+      name: ai.name,
+      description: ai.description,
+      founded: ai.founded,
+      headquarters: `${ai.location}, Ireland`,
+      industry: 'AI/ML',
+      employeeCount: employeeRange,
+      website: ai.website,
+      tags: ['ai-company'],
+      coordinates: [ai.lng, ai.lat],
+      address: ai.address,
     };
   }
 

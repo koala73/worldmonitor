@@ -13,9 +13,11 @@ import {
   IRELAND_DATA_CENTERS,
   IRELAND_TECH_HQS,
   IRISH_UNICORNS,
+  IRELAND_AI_COMPANIES,
   type IrelandDataCenter,
   type IrelandTechHQ,
   type IrishUnicorn,
+  type IrelandAICompany,
 } from '@/config/variants/ireland/data';
 import {
   getSemiconductorTier,
@@ -1577,6 +1579,9 @@ export class DeckGLMap {
       if (mapLayers.irishUnicorns) {
         layers.push(this.createIrishUnicornsLayer());
       }
+      if (mapLayers.irelandAICompanies) {
+        layers.push(this.createIrelandAICompaniesLayer());
+      }
     }
 
     const irelandTechFallback = this.createIrelandTechFallbackLayer(mapLayers);
@@ -2871,6 +2876,36 @@ export class DeckGLMap {
     });
   }
 
+  /**
+   * Create Ireland AI companies layer using IconLayer
+   * Shows leading AI labs and research companies (Anthropic, OpenAI, xAI)
+   */
+  private createIrelandAICompaniesLayer(): IconLayer<IrelandAICompany> {
+    // Pulse animation for AI companies
+    const pulse = 1.0 + 0.18 * Math.sin((this.pulseTime || Date.now()) / 900);
+
+    return new IconLayer<IrelandAICompany>({
+      id: 'ireland-ai-companies-layer',
+      data: IRELAND_AI_COMPANIES,
+      getPosition: (d) => [d.lng, d.lat],
+      // Use diamond shape with purple color for AI companies
+      getIcon: () => getMarkerIcon('diamond', 1),
+      getSize: () => {
+        const baseSize = getMarkerSizeForTier(1, 'diamond');
+        return baseSize * pulse;
+      },
+      getColor: () => {
+        // Vibrant purple (#9333EA) - distinctive AI color
+        return getTierColor([147, 51, 234], 1);
+      },
+      sizeScale: 1,
+      sizeMinPixels: 10,
+      sizeMaxPixels: 32,
+      pickable: true,
+      updateTriggers: { getSize: this.pulseTime },
+    });
+  }
+
   private createCloudRegionsLayer(): ScatterplotLayer {
     const isIreland = isIrelandVariant();
     return new ScatterplotLayer({
@@ -3706,6 +3741,10 @@ export class DeckGLMap {
         const categoryLabel = obj.category === 'unicorn' ? '🦄 Unicorn' : obj.category === 'high-growth' ? '📈 High Growth' : '⭐ Emerging';
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${categoryLabel}<br/>${text(obj.sector)}${obj.valuation ? `<br/>${text(obj.valuation)}` : ''}</div>` };
       }
+      case 'ireland-ai-companies-layer': {
+        const productsStr = obj.products?.length ? obj.products.slice(0, 2).join(', ') : '';
+        return { html: `<div class="deckgl-tooltip"><strong>🤖 ${text(obj.name)}</strong><br/>AI Lab<br/>${text(obj.location)}${productsStr ? `<br/>${text(productsStr)}` : ''}</div>` };
+      }
       case 'tech-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.location)}</div>` };
       case 'irradiators-layer':
@@ -4062,6 +4101,7 @@ export class DeckGLMap {
       'ireland-data-centers-layer': 'irelandDataCenter',
       'ireland-tech-hqs-layer': 'irelandTechHQ',
       'irish-unicorns-layer': 'irishUnicorn',
+      'ireland-ai-companies-layer': 'irelandAICompany',
       'tech-events-layer': 'techEvent',
       'apt-groups-layer': 'apt',
       'minerals-layer': 'mineral',
@@ -4531,6 +4571,7 @@ export class DeckGLMap {
         { shape: shapes.circle('rgb(14, 165, 233)'), label: '⚫ Data Centers (Ireland)' }, // #0EA5E9
         { shape: shapes.diamond('rgb(20, 184, 166)'), label: '💎 Tech HQs (EMEA)' },      // #14B8A6
         { shape: shapes.triangle('rgb(249, 115, 22)'), label: '▲ Irish Unicorns' },       // #F97316
+        { shape: shapes.diamond('rgb(147, 51, 234)'), label: '💎 AI Companies' },         // #9333EA
         { shape: shapes.circle('rgb(0, 209, 255)'), label: '⚫ Startup Hubs' },
         { shape: shapes.square('rgb(153, 102, 255)'), label: '▪️ Cloud Regions' },
         { shape: shapes.diamond('rgb(255, 179, 0)'), label: '💎 Accelerators' },

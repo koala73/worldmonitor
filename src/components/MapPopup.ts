@@ -5,7 +5,7 @@ import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
-import type { SemiconductorHub, IrelandDataCenter, IrelandTechHQ, IrishUnicorn } from '@/config/variants/ireland/data';
+import type { SemiconductorHub, IrelandDataCenter, IrelandTechHQ, IrishUnicorn, IrelandAICompany } from '@/config/variants/ireland/data';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
@@ -18,7 +18,7 @@ import { getCableHealthRecord } from '@/services/cable-health';
 import { nameToCountryCode } from '@/services/country-geometry';
 import { renderLogo } from '@/utils/logoFallback';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'semiconductorHub' | 'irelandDataCenter' | 'irelandTechHQ' | 'irishUnicorn';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'semiconductorHub' | 'irelandDataCenter' | 'irelandTechHQ' | 'irishUnicorn' | 'irelandAICompany';
 
 interface TechEventPopupData {
   id: string;
@@ -486,6 +486,8 @@ export class MapPopup {
         return this.renderIrelandTechHQPopup(data.data as IrelandTechHQ);
       case 'irishUnicorn':
         return this.renderIrishUnicornPopup(data.data as IrishUnicorn);
+      case 'irelandAICompany':
+        return this.renderIrelandAICompanyPopup(data.data as unknown as IrelandAICompany);
       default:
         return '';
     }
@@ -850,6 +852,69 @@ export class MapPopup {
     `;
   }
 
+  /**
+   * Render popup for Ireland AI companies (Anthropic, OpenAI, xAI)
+   */
+  private renderIrelandAICompanyPopup(ai: IrelandAICompany): string {
+    const logoHtml = renderLogo(undefined, ai.name, 48);
+    const productsStr = ai.products?.join(', ') || '';
+
+    return `
+      <div class="popup-header-rich">
+        <div class="popup-logo">${logoHtml}</div>
+        <div class="popup-header-content">
+          <h3 class="popup-company-name">🤖 ${escapeHtml(ai.name)}</h3>
+          <span class="popup-type-badge ai">AI Lab</span>
+        </div>
+        <button class="popup-close" aria-label="${t('common.close')}">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-details-rich">
+          <div class="popup-detail-row">
+            <span class="icon">📍</span>
+            <span class="value">${escapeHtml(ai.location)}, Ireland</span>
+          </div>
+          ${ai.address ? `
+          <div class="popup-detail-row">
+            <span class="icon">🏢</span>
+            <span class="value">${escapeHtml(ai.address)}</span>
+          </div>
+          ` : ''}
+          ${ai.founded ? `
+          <div class="popup-detail-row">
+            <span class="icon">📅</span>
+            <span class="value">Founded ${ai.founded}</span>
+          </div>
+          ` : ''}
+          ${ai.employees ? `
+          <div class="popup-detail-row">
+            <span class="icon">👥</span>
+            <span class="value">${ai.employees.toLocaleString()}+ employees</span>
+          </div>
+          ` : ''}
+          ${productsStr ? `
+          <div class="popup-detail-row">
+            <span class="icon">🧠</span>
+            <span class="value">${escapeHtml(productsStr)}</span>
+          </div>
+          ` : ''}
+        </div>
+        ${ai.description ? `<p class="popup-description">${escapeHtml(ai.description)}</p>` : ''}
+        <div class="popup-cta">
+          <a class="popup-cta-button" href="/company/${escapeHtml(ai.id)}" target="_blank" rel="noopener">
+            View Company Profile →
+          </a>
+        </div>
+        ${ai.website ? `
+        <div class="popup-cta" style="padding-top: 0;">
+          <a class="popup-cta-button secondary" href="${sanitizeUrl(ai.website)}" target="_blank" rel="noopener">
+            Visit Official Website →
+          </a>
+        </div>
+        ` : ''}
+      </div>
+    `;
+  }
 
   private renderConflictPopup(conflict: ConflictZone): string {
     const severityClass = conflict.intensity === 'high' ? 'high' : conflict.intensity === 'medium' ? 'medium' : 'low';

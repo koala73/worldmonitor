@@ -609,6 +609,7 @@ export interface MapLayers {
   irelandDataCenters: boolean;
   irelandTechHQs: boolean;
   irishUnicorns: boolean;
+  irelandAICompanies: boolean;
   // Finance variant layers
   stockExchanges: boolean;
   financialCenters: boolean;

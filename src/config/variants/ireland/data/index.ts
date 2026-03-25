@@ -28,3 +28,9 @@ export {
   IRELAND_SEMICONDUCTOR_HUBS,
   type SemiconductorHub,
 } from './semiconductor-hubs';
+
+// AI Companies
+export {
+  IRELAND_AI_COMPANIES,
+  type IrelandAICompany,
+} from './ai-companies';
