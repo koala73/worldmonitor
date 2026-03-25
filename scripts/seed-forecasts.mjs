@@ -1227,7 +1227,8 @@ function computeStateDerivedBucketCandidate(domain, stateUnit, bucket, marketCon
     'transport_pressure', // shipping route pressure (e.g. Red Sea, Suez transit delays) is maritime-relevant
   ]);
   const requiresMaritimeStateKind = domain === 'supply_chain' && ['freight', 'energy'].includes(bucket.id);
-  if (requiresMaritimeStateKind && stateUnit.stateKind && !MARITIME_BUCKET_STATE_KINDS.has(stateUnit.stateKind)) {
+  // Block if stateKind absent OR not in allowlist — falsy stateKind must NOT bypass this gate.
+  if (requiresMaritimeStateKind && !MARITIME_BUCKET_STATE_KINDS.has(stateUnit.stateKind ?? '')) {
     return null;
   }
 
@@ -1465,7 +1466,9 @@ function deriveStateDrivenForecasts({
 
   const crossDeduped = [...noDerivation];
   for (const group of crossGroups.values()) {
-    group.sort((a, b) => (b.probability * b.confidence) - (a.probability * a.confidence));
+    // Sort by probability descending so the spread check (probability delta) is monotonic.
+    // Secondary: confidence breaks ties to prefer more certain forecasts.
+    group.sort((a, b) => b.probability - a.probability || b.confidence - a.confidence);
     let lastKeptProb = null;
     let keptCount = 0;
     for (const pred of group) {
