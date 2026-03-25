@@ -426,6 +426,9 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+  reits: { name: 'REIT Monitor', enabled: true, priority: 1 },
+  'reit-correlation': { name: 'REIT Macro', enabled: true, priority: 2 },
+  'reit-social': { name: 'REIT Social', enabled: true, priority: 2 },
 };
 
 const FINANCE_MAP_LAYERS: MapLayers = {
