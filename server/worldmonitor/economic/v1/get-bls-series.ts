@@ -12,12 +12,11 @@ import { getCachedJson } from '../../../_shared/redis';
 const BLS_KEY_PREFIX = 'bls:series';
 
 // Only allow series IDs that were seeded. Prevents unbounded Redis key enumeration.
+// National series now fetched via FRED (api.bls.gov is blocked from Railway IPs).
+// Metro-area LAUMT* series dropped — no FRED equivalent available.
 const KNOWN_SERIES_IDS = new Set([
-  'CES0500000001',
-  'CIU1010000000000A',
-  'LAUMT064748000000003',
-  'LAUMT253590000000003',
-  'LAUMT357340000000003',
+  'USPRIV',
+  'ECIALLCIV',
 ]);
 
 function normalizeLimit(limit: number): number {

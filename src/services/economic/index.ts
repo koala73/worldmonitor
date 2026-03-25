@@ -202,14 +202,11 @@ interface BlsConfig {
 }
 
 const BLS_SERIES: BlsConfig[] = [
-  { id: 'CES0500000001', name: 'Private Payrolls', unit: 'K', precision: 0 },
-  { id: 'CIU1010000000000A', name: 'Employment Cost Index', unit: '', precision: 1 },
-  { id: 'LAUMT064748000000003', name: 'SF Unemployment', unit: '%', precision: 1 },
-  { id: 'LAUMT253590000000003', name: 'Boston Unemployment', unit: '%', precision: 1 },
-  { id: 'LAUMT357340000000003', name: 'NYC Unemployment', unit: '%', precision: 1 },
+  { id: 'USPRIV',    name: 'Private Payrolls', unit: 'K', precision: 0 },
+  { id: 'ECIALLCIV', name: 'Employment Cost Index', unit: '', precision: 1 },
 ];
 
-export const BLS_METRO_IDS = new Set(['LAUMT064748000000003', 'LAUMT253590000000003', 'LAUMT357340000000003']);
+export const BLS_METRO_IDS = new Set<string>(); // metro-area LAUMT* series dropped — no FRED equivalent
 
 export async function fetchBlsData(): Promise<FredSeries[]> {
   return blsBreaker.execute(async () => {

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// Seed BLS-only time series not available on FRED (issue #2046).
-// Uses BLS Public Data API v2 — requires free API key (BLS_API_KEY).
+// Seed labor market time series via FRED (replaces direct BLS API which is blocked
+// from Railway container IPs — api.bls.gov rejects HTTPS CONNECT through proxies).
+// FRED mirrors the national BLS series with identical data and no IP restrictions.
+// Metro-area unemployment rates (LAUMT*) are dropped; no FRED equivalent exists.
 
 import { loadEnvFile, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
 
@@ -9,62 +11,56 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'bls:series:v1';
 const KEY_PREFIX = 'bls:series';
 const CACHE_TTL = 259200; // 72h = 3× daily seed interval
-const BLS_API = 'https://api.bls.gov/publicAPI/v2/timeseries/data/';
-const INTER_REQUEST_DELAY_MS = 2_000;
 
-// BLS-only series not adequately mirrored on FRED.
-// For standard FRED-mirrored series (PAYEMS, CPIAUCSL, etc.), use seed-economy.mjs instead.
-const BLS_SERIES = [
-  { id: 'CES0500000001', title: 'Total Private Nonfarm Payrolls', units: 'Thousands' },
-  { id: 'CIU1010000000000A', title: 'Employment Cost Index - All Civilian Workers', units: 'Index (Dec 2005=100)' },
-  // Metro-area unemployment (selected major metros)
-  { id: 'LAUMT064748000000003', title: 'San Francisco metro unemployment rate', units: 'Percent' },
-  { id: 'LAUMT253590000000003', title: 'Boston metro unemployment rate', units: 'Percent' },
-  { id: 'LAUMT357340000000003', title: 'New York metro unemployment rate', units: 'Percent' },
+// FRED equivalents for the national BLS series.
+// seriesId must match what the RPC handler and frontend BLS_SERIES array use.
+const FRED_SERIES = [
+  { id: 'USPRIV',    title: 'Total Private Nonfarm Payrolls', units: 'Thousands of Persons', fredId: 'USPRIV' },
+  { id: 'ECIALLCIV', title: 'Employment Cost Index - All Civilian Workers', units: 'Index (Dec 2005=100)', fredId: 'ECIALLCIV' },
 ];
 
-async function fetchBlsSeries(seriesId) {
-  const apiKey = process.env.BLS_API_KEY;
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+/** Convert a FRED date string ("2024-12-01") to BLS-style observation fields. */
+function fredDateToBls(dateStr) {
+  const [year, mm] = dateStr.split('-');
+  const monthIdx = parseInt(mm, 10) - 1;
+  const period = `M${mm.padStart(2, '0')}`;
+  const periodName = MONTH_NAMES[monthIdx] ?? mm;
+  return { year, period, periodName };
+}
+
+async function fetchFredSeries(fredId) {
+  const apiKey = process.env.FRED_API_KEY;
+  if (!apiKey) throw new Error('Missing FRED_API_KEY');
+
   const currentYear = new Date().getFullYear();
-  const startYear = currentYear - 5;
+  const startDate = `${currentYear - 5}-01-01`;
 
-  const body = {
-    seriesid: [seriesId],
-    startyear: String(startYear),
-    endyear: String(currentYear),
-    catalog: true,
-    calculations: false,
-    annualaverage: false,
-  };
-
-  if (apiKey) body.registrationkey = apiKey;
-
-  const resp = await fetch(BLS_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20_000),
+  const params = new URLSearchParams({
+    series_id: fredId,
+    api_key: apiKey,
+    file_type: 'json',
+    sort_order: 'asc',
+    observation_start: startDate,
   });
 
-  if (!resp.ok) throw new Error(`BLS API HTTP ${resp.status}`);
+  const resp = await fetch(`https://api.stlouisfed.org/fred/series/observations?${params}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!resp.ok) throw new Error(`FRED HTTP ${resp.status} for ${fredId}`);
 
   const data = await resp.json();
-  if (data.status !== 'REQUEST_SUCCEEDED') {
-    throw new Error(`BLS API error: ${data.message?.join('; ') ?? data.status}`);
-  }
+  const raw = data?.observations ?? [];
 
-  const series = data.Results?.series?.[0];
-  if (!series) return null;
-
-  const observations = (series.data ?? [])
-    .map((d) => ({
-      year: String(d.year ?? ''),
-      period: String(d.period ?? ''),
-      periodName: String(d.periodName ?? ''),
-      value: String(d.value ?? ''),
-    }))
-    .filter((d) => d.year && d.value && d.value !== '-')
-    .reverse(); // oldest first
+  const observations = raw
+    .filter(o => o.value && o.value !== '.' && o.date)
+    .map(o => ({
+      ...fredDateToBls(o.date),
+      value: o.value,
+    }));
 
   return { observations };
 }
@@ -73,14 +69,14 @@ async function fetchAllSeries() {
   const all = [];
   const perKeySeries = {};
 
-  for (let i = 0; i < BLS_SERIES.length; i++) {
-    const def = BLS_SERIES[i];
-    if (i > 0) await sleep(INTER_REQUEST_DELAY_MS);
-    console.log(`  Fetching ${def.id} (${def.title})...`);
+  for (let i = 0; i < FRED_SERIES.length; i++) {
+    const def = FRED_SERIES[i];
+    if (i > 0) await sleep(200);
+    console.log(`  Fetching ${def.id} (${def.title}) via FRED...`);
 
     let result = null;
     try {
-      result = await fetchBlsSeries(def.id);
+      result = await fetchFredSeries(def.fredId);
       console.log(`    ${result?.observations?.length ?? 0} observations`);
     } catch (err) {
       console.warn(`    ${def.id}: failed (${err.message})`);
@@ -112,7 +108,6 @@ function publishTransform(data) {
 
 async function afterPublish(data, _meta) {
   for (const [key, value] of Object.entries(data.perKeySeries ?? {})) {
-    // Strip the prefix to get just the series ID for the meta key label
     const seriesId = key.replace(`${KEY_PREFIX}:`, '');
     await writeExtraKeyWithMeta(key, value, CACHE_TTL, value.series?.observations?.length ?? 0, `bls:series:${seriesId}`);
   }
@@ -122,7 +117,7 @@ if (process.argv[1]?.endsWith('seed-bls-series.mjs')) {
   runSeed('economic', 'bls-series', CANONICAL_KEY, fetchAllSeries, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: 'bls-public-api-v2',
+    sourceVersion: 'fred-v1',
     publishTransform,
     afterPublish,
   }).catch((err) => {
