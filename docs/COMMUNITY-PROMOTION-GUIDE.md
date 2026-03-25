@@ -8,7 +8,7 @@ Thank you for helping spread the word about World Monitor! This guide provides t
 
 **One-line pitch**: A free, open-source, real-time global intelligence dashboard — like Bloomberg Terminal meets OSINT, for everyone.
 
-**Longer description**: World Monitor aggregates 150+ news feeds, military tracking, financial markets, conflict data, protest monitoring, satellite imagery, and AI-powered analysis into a single unified dashboard with an interactive globe. Available as a web app, a public macOS desktop app, and an installable PWA.
+**Longer description**: World Monitor aggregates 150+ news feeds, military tracking, financial markets, conflict data, protest monitoring, satellite imagery, and AI-powered analysis into a single unified dashboard with an interactive globe. Available as a web app, Tauri desktop build, and installable PWA.
 
 ---
 
@@ -23,7 +23,7 @@ Thank you for helping spread the word about World Monitor! This guide provides t
 
 ---
 
-## Must-See Features (Top 11)
+## Must-See Features (Top 10)
 
 ### 1. Interactive Globe with 35+ Data Layers
 
@@ -33,7 +33,7 @@ The centerpiece. A WebGL-accelerated globe (deck.gl) with toggleable layers for 
 
 ### 2. AI-Powered World Brief
 
-One-click AI summary of the top global developments. Fallback chain: local Ollama/LM Studio (fully private, offline), Groq, Claude, OpenRouter, then the browser model. Redis caching keeps repeat queries fast.
+One-click AI summary of the top global developments. The summary path supports local Ollama or LM Studio endpoints, then Groq, Claude, OpenRouter, and browser fallback. Redis caching speeds up repeat queries.
 
 **Show**: The summary card at the top of the news panel.
 
@@ -45,7 +45,7 @@ Click any country on the map for a full-page intelligence brief: instability sco
 
 ### 4. 18 Languages Support
 
-Full UI in 18 languages including Japanese, Korean, and Greek. Regional news feeds auto-adapt — Japanese users see NHK World, Nikkei Asia, and Japan-relevant sources. Language bundles are lazy-loaded for fast performance.
+Full UI in 18 languages, including Japanese, Korean, Greek, Thai, and Vietnamese. Regional news feeds auto-adapt, and language bundles are lazy-loaded for fast performance.
 
 **Show**: Switch language to Japanese in the settings. Note how feeds change.
 
@@ -55,11 +55,11 @@ Real-time ADS-B military flight tracking and AIS naval vessel monitoring. Strate
 
 **Show**: Enable the Military layer. Show the Strategic Posture panel.
 
-### 6. Four Variant Dashboards
+### 6. Variant Dashboards
 
-One codebase, four specialized views — switch between World (geopolitics), Tech (startups/AI), Finance (markets/exchanges), and Happy (positive news) with one click in the header bar.
+One codebase powers the World, Tech, and Finance dashboards, plus the Happy web mode. Switch between the main monitoring variants with one click in the header bar.
 
-**Show**: Click the variant switcher (🌍 WORLD | 💻 TECH | 📈 FINANCE | 😊 HAPPY).
+**Show**: Click the variant switcher (🌍 WORLD | 💻 TECH | 📈 FINANCE).
 
 ### 7. Market & Crypto Intelligence
 
@@ -69,13 +69,13 @@ One codebase, four specialized views — switch between World (geopolitics), Tec
 
 ### 8. Live Video & Webcam Feeds
 
-8 live news streams (Bloomberg, Al Jazeera, Sky News, etc.) + 22 live webcams from geopolitical hotspots across 5 regions. Idle-aware — auto-pauses after 5 minutes of inactivity.
+8 live news streams (Bloomberg, Al Jazeera, Sky News, etc.) + 19 live webcams from geopolitical hotspots across 4 regions. Idle-aware — auto-pauses after 5 minutes of inactivity.
 
 **Show**: Open the video panel or webcam panel.
 
 ### 9. Desktop Application (Free)
 
-Native app for macOS via Tauri. API keys stay in macOS Keychain, not plaintext files. A local Node.js sidecar runs the shared API surface on-device, and local LLMs can keep AI summaries private.
+Native Tauri desktop build with keychain-backed secrets and a local Node.js sidecar. Run local LLMs for fully private AI summaries and keep desktop API traffic local-first.
 
 **Show**: The download buttons on the site, or the desktop app running natively.
 
@@ -87,9 +87,9 @@ Generate intelligence briefs for any country and share to Twitter/X, LinkedIn, W
 
 ### 11. Local LLM Support (Ollama / LM Studio)
 
-Run AI summarization entirely on your own hardware — no API keys, no cloud, no data leaving your machine. The desktop app auto-discovers models from Ollama or LM Studio, with a five-step fallback chain: local → Groq → Claude → OpenRouter → browser model. Provider setup lives under Settings → General, while provider keys live under Settings → API Keys.
+Run AI summarization entirely on your own hardware with Ollama or an LM Studio-compatible endpoint. The desktop app auto-discovers models, and cloud providers remain available as optional fallback paths.
 
-**Show**: Open Settings → General → AI Provider, point it at Ollama, verify the model dropdown auto-populates, then generate a summary with the local model.
+**Show**: Open Settings → API Keys tab → Ollama model dropdown auto-populated → generate a summary with the local model.
 
 ---
 
@@ -104,7 +104,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 5. **Japanese UI** — show the language switcher and Japanese interface
 6. **Webcam grid** — 4 live feeds from different regions
 7. **Strategic Posture** — theater risk levels panel
-8. **Settings AI provider flow** — General tab with Ollama model discovery, plus the API Keys section for cloud providers
+8. **Settings API Keys tab** — Ollama model dropdown with local models discovered
 
 ### Video/GIF Ideas
 
@@ -123,7 +123,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 - "150+ news sources, military tracking, AI analysis — all in one dashboard"
 - "Run AI summaries locally with Ollama — your data never leaves your machine"
 - "Available in Japanese with NHK and Nikkei feeds built in"
-- "Native macOS desktop app, completely free"
+- "Native desktop build with local-first API access, completely free"
 
 ### For Tech Audience
 
@@ -137,7 +137,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 
 - "7-signal crypto macro radar with BUY/CASH composite verdict"
 - "92 global stock exchanges mapped with market caps and trading hours"
-- "Country Instability Index tracking 22 nations in real-time"
+- "Country instability scoring tied to live multi-signal event context"
 - "Prediction market integration for geopolitical forecasting"
 - "Air-gapped AI analysis — run Ollama locally for sensitive intelligence work"
 
@@ -146,7 +146,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 - 日本語完全対応 — UI、ニュースフィード、AI要約すべて日本語で利用可能
 - NHK World、日経アジアなど日本向けニュースソース内蔵
 - 無料・オープンソース — アカウント登録不要
-- macOS対応のデスクトップアプリあり
+- デスクトップ版あり
 
 ---
 
@@ -155,10 +155,10 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 | Version | Feature |
 |---------|---------|
 | v2.5.1 | Batch FRED fetching, parallel UCDP, partial cache TTL, bot middleware |
-| v2.5.0 | Ollama/LM Studio local LLM support, desktop settings overhaul, keychain vault consolidation |
+| v2.5.0 | Ollama/LM Studio local LLM support, settings split into LLMs + API Keys tabs, keychain vault consolidation |
 | v2.4.1 | Ultra-wide layout (panels wrap around map on 2000px+ screens) |
-| v2.4.0 | Live webcams and regional surveillance grid |
-| v2.3.9 | Major i18n expansion including Japanese, Arabic (RTL), and Chinese |
+| v2.4.0 | Live webcams from 19 geopolitical hotspots, 4 regions |
+| v2.3.9 | Full i18n: 14 languages including Japanese, Arabic (RTL), Chinese |
 | v2.3.8 | Finance variant with 92 exchanges, Gulf FDI investments |
 | v2.3.7 | Light/dark theme system, UCDP/UNHCR/Climate panels |
 | v2.3.6 | Desktop app with Tauri, OS keychain, auto-updates |

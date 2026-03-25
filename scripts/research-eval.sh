@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -uo pipefail
+set -euo pipefail
 
 usage() {
   echo "Usage: bash scripts/research-eval.sh <alerting|source-trust|map-perf|rotation>"

@@ -28,38 +28,12 @@ jobs:
       - name: Check package lock integrity
         run: node scripts/check-package-lock.mjs
 
-      - name: Run release doctor for full variant on pull requests
-        if: github.event_name == 'pull_request'
+      - name: Run release doctor for full variant
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/release-doctor.mjs --allow-existing-target-release --variant full
 
-      - name: Run release doctor for tech variant on pull requests
-        if: github.event_name == 'pull_request'
+      - name: Run release doctor for tech variant
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/release-doctor.mjs --allow-existing-target-release --variant tech
-
-      - name: Run release doctor for finance variant on pull requests
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/release-doctor.mjs --allow-existing-target-release --variant finance
-
-      - name: Run release doctor for full variant on main push
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/release-doctor.mjs --variant full
-
-      - name: Run release doctor for tech variant on main push
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/release-doctor.mjs --variant tech
-
-      - name: Run release doctor for finance variant on main push
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/release-doctor.mjs --variant finance

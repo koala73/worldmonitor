@@ -268,6 +268,7 @@ server/worldmonitor/sanctions/v1/
 ```
 
 `server/worldmonitor/sanctions/v1/list-sanctions.ts`:
+
 ```typescript
 import type {
   SanctionsServiceHandler,
@@ -286,6 +287,7 @@ export const listSanctions: SanctionsServiceHandler['listSanctions'] = async (
 ```
 
 `server/worldmonitor/sanctions/v1/handler.ts`:
+
 ```typescript
 import type { SanctionsServiceHandler } from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 

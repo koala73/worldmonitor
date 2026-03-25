@@ -1,12 +1,11 @@
 # Desktop Runtime Configuration
 
-World Monitor desktop uses a runtime configuration schema with per-feature toggles and secret-backed credentials. This document describes the current desktop implementation, not the broader shared web/runtime type surface.
+World Monitor desktop uses a runtime configuration schema with per-feature toggles and secret-backed credentials.
 
-## Secret keys
+## Supported Secret Keys
 
-The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 26 keys:
+The desktop vault schema is defined by Rust `SUPPORTED_SECRET_KEYS` in `src-tauri/src/main.rs`. It currently supports these 25 keys:
 
-- `ANTHROPIC_API_KEY`
 - `GROQ_API_KEY`
 - `OPENROUTER_API_KEY`
 - `FRED_API_KEY`
@@ -33,42 +32,40 @@ The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 2
 - `ICAO_API_KEY`
 - `THREATFOX_API_KEY`
 
-Notes:
+Note: `UC_DP_KEY` still exists in the TypeScript `RuntimeSecretKey` union, but it is not part of the desktop Rust keychain or sidecar allowlist.
 
-- `UC_DP_KEY` also exists in the TypeScript union but is not currently part of the Rust desktop vault schema or sidecar environment sync.
+## Feature Availability Model
 
-## Feature schema
+Each runtime feature exposes:
 
-Each feature includes:
+- `id`: stable feature identifier
+- `requiredSecrets`: keys that must be present and valid
+- `enabled`: user toggle state from the runtime settings UI
+- `available`: computed availability after validation
+- `fallback`: user-facing degraded behavior description
 
-- `id`: stable feature identifier.
-- `requiredSecrets`: list of keys that must be present and valid.
-- `enabled`: user-toggle state from runtime settings panel.
-- `available`: computed (`enabled && requiredSecrets valid`).
-- `fallback`: user-facing degraded behavior description.
+## Secret Storage
 
-## Desktop secret storage
+Desktop builds persist secrets through Tauri command bindings backed by OS credential storage.
 
-Desktop builds persist secrets in the OS credential store through Tauri command bindings backed by Rust `keyring` entries (`world-monitor` service namespace).
+- Service namespace: `world-monitor`
+- Storage backend: consolidated `secrets-vault` entry in the OS keychain
+- Frontend behavior: secrets are not written to plaintext config files
 
-Secrets are **not stored in plaintext files** by the frontend.
+## Expected Degradation
 
-## Degradation behavior
+When secrets are missing or disabled, the desktop app degrades feature-by-feature instead of failing globally:
 
-If required secrets are missing or disabled:
+- AI summarization: cloud providers narrow to whatever is configured and validated; local Ollama and browser fallback can still be used when available.
+- Economic and market enrichment: `FRED_API_KEY`, `EIA_API_KEY`, and `FINNHUB_API_KEY` gate economic charts, oil analytics, and some market panels.
+- Conflict and outage feeds: `ACLED_ACCESS_TOKEN`, `ACLED_EMAIL`, and `CLOUDFLARE_API_TOKEN` gate conflict and outage-backed panels.
+- Cyber threat feeds: `URLHAUS_AUTH_KEY`, `OTX_API_KEY`, `ABUSEIPDB_API_KEY`, and `THREATFOX_API_KEY` gate parts of the cyber layer.
+- Fire and climate overlays: `NASA_FIRMS_API_KEY` gates FIRMS-backed fire detection.
+- Aviation and live tracking: `WINGBITS_API_KEY`, `AVIATIONSTACK_API`, `ICAO_API_KEY`, `AISSTREAM_API_KEY`, `WS_RELAY_URL`, `VITE_WS_RELAY_URL`, `VITE_OPENSKY_RELAY_URL`, `OPENSKY_CLIENT_ID`, and `OPENSKY_CLIENT_SECRET` gate enrichment and relay-backed transport features.
+- Trade and institutional data: `WTO_API_KEY` gates WTO-backed trade policy enrichment.
 
-- Summarization: provider-specific hosted paths are skipped and the app continues down the configured fallback chain, ending at the browser model if needed.
-- FRED / EIA / Finnhub: economic, oil analytics, and stock data return empty state.
-- Cloudflare / ACLED: outages/conflicts return empty state.
-- Cyber threat feeds (URLhaus, OTX, AbuseIPDB): cyber threat layer returns empty state.
-- NASA FIRMS: satellite fire detection returns empty state.
-- Wingbits: flight enrichment disabled, heuristic-only flight classification remains.
-- AIS / OpenSky relay: live tracking features are disabled cleanly.
+## Related Docs
 
-## Current schema gaps
-
-The desktop settings UI and shared runtime types have evolved faster than the Rust vault schema in a few places. At the moment:
-
-- `UC_DP_KEY` is present in TypeScript types and labels, but it is not currently wired into the Rust desktop secret store or sidecar sync path.
-
-Documentation and release notes for the packaged macOS build should treat `UC_DP_KEY` as unsupported until the Rust schema is updated.
+- [API_KEY_DEPLOYMENT.md](API_KEY_DEPLOYMENT.md)
+- [RELAY_PARAMETERS.md](RELAY_PARAMETERS.md)
+- [RELEASE_PACKAGING.md](RELEASE_PACKAGING.md)

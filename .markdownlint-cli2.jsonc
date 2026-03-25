@@ -1,10 +1,20 @@
 {
-  // Only enforce the 3 rules from PR #72. Everything else is off.
+  // Keep docs lint strict on structural consistency without forcing broad prose rewrites.
   "config": {
     "default": false,
+    "MD009": true,
+    "MD010": true,
     "MD012": true,
+    "MD018": true,
+    "MD019": true,
+    "MD023": true,
+    "MD031": true,
     "MD022": true,
-    "MD032": true
+    "MD032": true,
+    "MD037": true,
+    "MD038": true,
+    "MD039": true,
+    "MD047": true
   },
   "ignores": ["node_modules/**", "dist/**", "src-tauri/target/**", ".planning/**"]
 }

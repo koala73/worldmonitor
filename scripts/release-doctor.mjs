@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { SUPPORTED_RELEASE_VARIANTS, buildReleaseTag } from './release-metadata.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -17,7 +16,6 @@ const cargoLockPath = path.join(repoRoot, 'src-tauri', 'Cargo.lock');
 function parseArgs(argv) {
   const options = {
     allowExistingTargetRelease: false,
-    remote: 'origin',
     variant: 'full',
   };
 
@@ -25,15 +23,6 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === '--allow-existing-target-release') {
       options.allowExistingTargetRelease = true;
-      continue;
-    }
-    if (arg === '--remote') {
-      options.remote = argv[i + 1] ?? '';
-      i += 1;
-      continue;
-    }
-    if (arg.startsWith('--remote=')) {
-      options.remote = arg.slice('--remote='.length);
       continue;
     }
     if (arg === '--variant') {
@@ -48,7 +37,7 @@ function parseArgs(argv) {
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  if (!SUPPORTED_RELEASE_VARIANTS.includes(options.variant)) {
+  if (!['full', 'tech'].includes(options.variant)) {
     throw new Error(`Unsupported variant for release doctor: ${options.variant}`);
   }
 
@@ -86,6 +75,10 @@ export function parseCargoLockVersion(cargoLock, packageName) {
     throw new Error(`Could not find ${packageName} package version in src-tauri/Cargo.lock`);
   }
   return versionMatch[1];
+}
+
+function buildTargetTag(version, variant) {
+  return variant === 'tech' ? `v${version}-tech` : `v${version}`;
 }
 
 export function findVersionMismatches(versionsByFile) {
@@ -171,7 +164,7 @@ function normalizeRepoSlug(remoteUrl) {
   throw new Error(`Unsupported origin remote URL: ${remoteUrl}`);
 }
 
-export async function readVersionFiles() {
+async function readVersionFiles() {
   const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
   const packageLock = JSON.parse(await readFile(packageLockPath, 'utf8'));
   const tauriConf = JSON.parse(await readFile(tauriConfPath, 'utf8'));
@@ -188,11 +181,11 @@ export async function readVersionFiles() {
   };
 }
 
-async function fetchRemoteReleaseState(targetTag, remoteName) {
+async function fetchRemoteReleaseState(targetTag) {
   const repoSlug = process.env.GITHUB_REPOSITORY
-    || normalizeRepoSlug(runCommand('git', ['remote', 'get-url', remoteName]));
+    || normalizeRepoSlug(runCommand('git', ['remote', 'get-url', 'origin']));
 
-  const remoteTagOutput = runCommand('git', ['ls-remote', '--tags', remoteName, `refs/tags/${targetTag}`]);
+  const remoteTagOutput = runCommand('git', ['ls-remote', '--tags', 'origin', `refs/tags/${targetTag}`]);
   const remoteTags = new Set(remoteTagOutput ? [targetTag] : []);
 
   const releases = JSON.parse(
@@ -209,13 +202,13 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const versionsByFile = await readVersionFiles();
   const targetVersion = versionsByFile['package.json'];
-  const targetTag = buildReleaseTag(targetVersion, options.variant);
+  const targetTag = buildTargetTag(targetVersion, options.variant);
 
   const issues = [
     ...findVersionMismatches(versionsByFile),
   ];
 
-  const { remoteTags, releases } = await fetchRemoteReleaseState(targetTag, options.remote);
+  const { remoteTags, releases } = await fetchRemoteReleaseState(targetTag);
   issues.push(
     ...findReleaseStateIssues({
       targetTag,

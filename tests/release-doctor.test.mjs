@@ -88,18 +88,6 @@ test('findReleaseStateIssues accepts a fresh unreleased target version', () => {
   assert.deepEqual(issues, []);
 });
 
-test('findReleaseStateIssues accepts finance tags when untouched remotely', () => {
-  const issues = findReleaseStateIssues({
-    targetTag: 'v2.6.2-finance',
-    remoteTags: new Set(['v2.6.1']),
-    releases: [
-      { tagName: 'v2.6.1', isDraft: false },
-    ],
-  });
-
-  assert.deepEqual(issues, []);
-});
-
 test('parseCargoPackageMetadata reads the package name and version from Cargo.toml', () => {
   const metadata = parseCargoPackageMetadata(`
 [package]

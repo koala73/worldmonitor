@@ -1,0 +1,60 @@
+name: Auto-tag on version bump
+
+# Watches for version changes in tauri.conf.json on main.
+# When the version changes, creates a vX.Y.Z tag which triggers build-desktop.yml.
+# This means: bump version + commit + push = release builds start automatically.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src-tauri/tauri.conf.json'
+      - 'package.json'
+
+permissions:
+  contents: write
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read version from tauri.conf.json
+        id: version
+        run: |
+          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          {
+            echo "version=$VERSION"
+            echo "tag=v$VERSION"
+          } >> "$GITHUB_OUTPUT"
+          echo "Detected version: $VERSION"
+
+      - name: Check if tag already exists
+        id: tag_check
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG already exists — skipping"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG does not exist — will create"
+          fi
+
+      - name: Create and push tag
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "Created and pushed tag: $TAG"
+          echo "Build workflow will now start automatically."

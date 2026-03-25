@@ -33,8 +33,7 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           COMMITS=$(git log origin/main..HEAD --oneline --no-merges | head -20)
           FILE_COUNT=$(git diff --name-only origin/main...HEAD | wc -l | tr -d ' ')
-          TITLE=${BRANCH##*/}
-          TITLE=${TITLE//-/ }
+          TITLE=$(echo "$BRANCH" | sed 's|.*/||' | sed 's/-/ /g')
           {
             echo "title=auto: $TITLE"
             echo "branch=$BRANCH"
@@ -132,7 +131,7 @@ jobs:
             }
 
   auto-merge:
-    name: Enable GitHub auto-merge
+    name: Auto-merge when checks pass
     needs: auto-pr
     runs-on: ubuntu-latest
     if: startsWith(github.ref_name, 'claude/') || startsWith(github.ref_name, 'codex/') || startsWith(github.ref_name, 'copilot/')
@@ -154,23 +153,13 @@ jobs:
               state: 'open'
             });
             if (prs.length > 0) {
-              const pr = prs[0];
-              await github.graphql(`
-                mutation EnableAutoMerge($pullRequestId: ID!) {
-                  enablePullRequestAutoMerge(input: {
-                    pullRequestId: $pullRequestId,
-                    mergeMethod: SQUASH
-                  }) {
-                    pullRequest {
-                      number
-                      autoMergeRequest {
-                        enabledAt
-                      }
-                    }
-                  }
-                }
-              `, {
-                pullRequestId: pr.node_id
+              await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prs[0].number,
+                merge_method: 'squash',
+                commit_title: `merge(${branch}): auto-merge AI agent branch`,
+                commit_message: `Auto-merged from ${branch} after checks passed.`
               });
-              console.log(`Enabled GitHub auto-merge for PR #${pr.number}`);
+              console.log(`Auto-merged PR #${prs[0].number}`);
             }

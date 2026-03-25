@@ -498,7 +498,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Die Zeit', url: rss('https://newsfeed.zeit.de/index'), lang: 'de' },
     // Italian (IT)
     { name: 'ANSA', url: rss('https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml'), lang: 'it' },
-    { name: 'Corriere della Sera', url: rss('https://www.corriere.it/rss/homepage.xml'), lang: 'it' },
+    { name: 'Corriere della Sera', url: rss('https://news.google.com/rss/search?q=site:corriere.it+when:3d&hl=it&gl=IT&ceid=IT:it'), lang: 'it' },
     { name: 'Repubblica', url: rss('https://www.repubblica.it/rss/homepage/rss2.0.xml'), lang: 'it' },
     // Dutch (NL)
     { name: 'NOS Nieuws', url: rss('https://feeds.nos.nl/nosnieuwsalgemeen'), lang: 'nl' },
@@ -554,7 +554,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
   ],
   ai: [
     { name: 'AI News', url: rss('https://news.google.com/rss/search?q=(OpenAI+OR+Anthropic+OR+Google+AI+OR+"large+language+model"+OR+ChatGPT)+when:2d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'VentureBeat AI', url: rss('https://venturebeat.com/category/ai/feed/') },
+    { name: 'VentureBeat AI', url: rss('https://news.google.com/rss/search?q=site:venturebeat.com+AI+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'The Verge AI', url: rss('https://www.theverge.com/rss/ai-artificial-intelligence/index.xml') },
     { name: 'MIT Tech Review', url: rss('https://www.technologyreview.com/topic/artificial-intelligence/feed') },
     { name: 'ArXiv AI', url: rss('https://export.arxiv.org/rss/cs.AI') },
@@ -619,9 +619,9 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     // GDACS - Global Disaster Alert and Coordination System
     { name: 'GDACS Alerts', url: rss('https://www.gdacs.org/xml/rss.xml') },
     // ReliefWeb - UN humanitarian news and analysis
-    { name: 'ReliefWeb', url: rss('https://reliefweb.int/feeds/updates.rss') },
-    // NOAA Weather Alerts - US national weather alerts
-    { name: 'NOAA Alerts', url: rss('https://alerts.weather.gov/cap/us.php?x=0') },
+    { name: 'ReliefWeb', url: rss('https://news.google.com/rss/search?q=site:reliefweb.int+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // NOAA Weather Alerts - official NWS active alerts atom feed
+    { name: 'NOAA Alerts', url: rss('https://api.weather.gov/alerts/active.atom') },
   ],
   africa: [
     { name: 'Africa News', url: rss('https://news.google.com/rss/search?q=(Africa+OR+Nigeria+OR+Kenya+OR+"South+Africa"+OR+Ethiopia)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -647,7 +647,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Clarín', url: rss('https://www.clarin.com/rss/lo-ultimo/'), lang: 'es' },
     { name: 'O Globo', url: rss('https://news.google.com/rss/search?q=site:oglobo.globo.com+when:1d&hl=pt-BR&gl=BR&ceid=BR:pt-419'), lang: 'pt' },
     { name: 'Folha de S.Paulo', url: rss('https://feeds.folha.uol.com.br/emcimadahora/rss091.xml'), lang: 'pt' },
-    { name: 'Brasil Paralelo', url: rss('https://www.brasilparalelo.com.br/noticias/rss.xml'), lang: 'pt' },
+    { name: 'Brasil Paralelo', url: rss('https://news.google.com/rss/search?q=%22Brasil+Paralelo%22+when:14d&hl=pt-BR&gl=BR&ceid=BR:pt-419'), lang: 'pt' },
     { name: 'El Tiempo', url: rss('https://www.eltiempo.com/rss/mundo_latinoamerica.xml'), lang: 'es' },
     { name: 'El Universal', url: rss('https://news.google.com/rss/search?q=site:eluniversal.com.mx+when:1d&hl=es-419&gl=MX&ceid=MX:es-419'), lang: 'es' },
     { name: 'La Silla Vacía', url: rss('https://www.lasillavacia.com/rss') },
@@ -713,7 +713,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
   ],
   ai: [
     { name: 'AI News', url: rss('https://news.google.com/rss/search?q=(OpenAI+OR+Anthropic+OR+Google+AI+OR+"large+language+model"+OR+ChatGPT+OR+Claude+OR+"AI+model")+when:2d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'VentureBeat AI', url: rss('https://venturebeat.com/category/ai/feed/') },
+    { name: 'VentureBeat AI', url: rss('https://news.google.com/rss/search?q=site:venturebeat.com+AI+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'The Verge AI', url: rss('https://www.theverge.com/rss/ai-artificial-intelligence/index.xml') },
     { name: 'MIT Tech Review AI', url: rss('https://www.technologyreview.com/topic/artificial-intelligence/feed') },
     { name: 'MIT Research', url: rss('https://news.mit.edu/rss/research') },
@@ -736,8 +736,8 @@ const TECH_FEEDS: Record<string, Feed[]> = {
     { name: 'CB Insights', url: rss('https://www.cbinsights.com/research/feed/') },
   ],
   vcblogs: [
-    { name: 'Y Combinator Blog', url: rss('https://www.ycombinator.com/blog/rss/') },
-    { name: 'a16z Blog', url: rss('https://news.google.com/rss/search?q=site:a16z.com+OR+"Andreessen+Horowitz"+blog+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Y Combinator Blog', url: rss('https://news.google.com/rss/search?q=site:ycombinator.com/blog+when:30d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'a16z Blog', url: rss('https://news.google.com/rss/search?q=site:a16z.com+OR+"Andreessen+Horowitz"+OR+a16z+blog+when:30d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Sequoia Blog', url: rss('https://news.google.com/rss/search?q=site:sequoiacap.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Paul Graham Essays', url: rss('https://news.google.com/rss/search?q="Paul+Graham"+essay+OR+blog+when:30d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'VC Insights', url: rss('https://news.google.com/rss/search?q=("venture+capital"+insights+OR+"VC+trends"+OR+"startup+advice")+when:7d&hl=en-US&gl=US&ceid=US:en') },
@@ -779,7 +779,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
     // Taiwan
     { name: 'Taiwan Tech', url: rss('https://news.google.com/rss/search?q=(Taiwan+startup+OR+TSMC+OR+MediaTek+OR+Foxconn)+when:7d&hl=en-US&gl=US&ceid=US:en') },
     // Latin America
-    { name: 'LAVCA (LATAM)', url: rss('https://news.google.com/rss/search?q=site:lavca.org+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'LAVCA (LATAM)', url: rss('https://news.google.com/rss/search?q=site:lavca.org+OR+LAVCA+when:30d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'LATAM Startups', url: rss('https://news.google.com/rss/search?q=("Latin+America"+startup+OR+LATAM+funding)+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Startups LATAM', url: rss('https://news.google.com/rss/search?q=(startup+Brazil+OR+startup+Mexico+OR+startup+Argentina+OR+startup+Colombia+OR+startup+Chile)+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Brazil Tech', url: rss('https://news.google.com/rss/search?q=(Nubank+OR+iFood+OR+Mercado+Libre+OR+Rappi+OR+VTEX)+when:7d&hl=en-US&gl=US&ceid=US:en') },
@@ -847,7 +847,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
     { name: 'CSIS Tech', url: rss('https://news.google.com/rss/search?q=site:csis.org+technology+OR+AI+when:14d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'MIT Tech Policy', url: rss('https://news.google.com/rss/search?q=%22Tech+Policy+Press%22&hl=en&gl=US&ceid=US:en') },
     { name: 'Stanford HAI', url: rss('https://news.google.com/rss/search?q=site:hai.stanford.edu+when:14d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'AI Now Institute', url: rss('https://news.google.com/rss/search?q=%22AI+Now+Institute%22&hl=en&gl=US&ceid=US:en') },
+    { name: 'AI Now Institute', url: rss('https://news.google.com/rss/search?q=%22AI+Now+Institute%22+when:60d&hl=en-US&gl=US&ceid=US:en') },
     // Europe Think Tanks
     { name: 'OECD Digital', url: rss('https://news.google.com/rss/search?q=site:oecd.org+digital+OR+AI+when:14d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'EU Tech Policy', url: rss('https://news.google.com/rss/search?q=("EU+tech+policy"+OR+"European+digital"+OR+Bruegel+tech)+when:14d&hl=en-US&gl=US&ceid=US:en') },
@@ -900,7 +900,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
   ],
   podcasts: [
     // Tech Podcast Episodes (via Google News - podcast hosts block RSS proxies)
-    { name: 'Acquired Episodes', url: rss('https://news.google.com/rss/search?q="Acquired+podcast"+episode+when:14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Acquired Episodes', url: rss('https://news.google.com/rss/search?q=Acquired+podcast+episode+when:30d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'All-In Podcast', url: rss('https://news.google.com/rss/search?q="All-In+podcast"+(Chamath+OR+Sacks+OR+Friedberg)+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'a16z Insights', url: rss('https://news.google.com/rss/search?q=("a16z"+OR+"Andreessen+Horowitz")+podcast+OR+interview+when:14d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'TWIST Episodes', url: rss('https://news.google.com/rss/search?q="This+Week+in+Startups"+Jason+Calacanis+when:14d&hl=en-US&gl=US&ceid=US:en') },
@@ -1088,7 +1088,7 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
 export const INTEL_SOURCES: Feed[] = [
   // Defense & Security (Tier 1)
   { name: 'Defense One', url: rss('https://www.defenseone.com/rss/all/'), type: 'defense' },
-  { name: 'Breaking Defense', url: rss('https://breakingdefense.com/feed/'), type: 'defense' },
+  { name: 'Breaking Defense', url: rss('https://news.google.com/rss/search?q=site:breakingdefense.com+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },
   { name: 'The War Zone', url: rss('https://www.twz.com/feed'), type: 'defense' },
   { name: 'Defense News', url: rss('https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml'), type: 'defense' },
   { name: 'Janes', url: rss('https://news.google.com/rss/search?q=site:janes.com+when:3d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },
@@ -1112,7 +1112,7 @@ export const INTEL_SOURCES: Feed[] = [
   { name: 'RAND', url: rss('https://news.google.com/rss/search?q=site:rand.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
   { name: 'Brookings', url: rss('https://news.google.com/rss/search?q=site:brookings.edu&hl=en&gl=US&ceid=US:en'), type: 'research' },
   { name: 'Carnegie', url: rss('https://news.google.com/rss/search?q=site:carnegieendowment.org&hl=en&gl=US&ceid=US:en'), type: 'research' },
-  { name: 'FAS', url: rss('https://news.google.com/rss/search?q=site:fas.org+nuclear+weapons+security&hl=en&gl=US&ceid=US:en'), type: 'research' },
+  { name: 'FAS', url: rss('https://news.google.com/rss/search?q=site:fas.org+OR+"Federation+of+American+Scientists"+when:30d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
   { name: 'NTI', url: rss('https://news.google.com/rss/search?q=site:nti.org+when:30d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
   { name: 'RUSI', url: rss('https://news.google.com/rss/search?q=site:rusi.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },
   { name: 'Wilson Center', url: rss('https://news.google.com/rss/search?q=site:wilsoncenter.org+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'research' },

@@ -12,6 +12,20 @@ const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 const FETCH_TIMEOUT = 15_000;
 const CONCURRENCY = 10;
 const STALE_DAYS = 30;
+const MONTH_INDEX = {
+  jan: 0, january: 0, janv: 0, janvier: 0, ene: 0, enero: 0,
+  feb: 1, february: 1, fev: 1, fév: 1, fevrier: 1, février: 1, febr: 1, febrero: 1,
+  mar: 2, march: 2, mars: 2, marzo: 2,
+  apr: 3, april: 3, avr: 3, avril: 3, abr: 3, abril: 3,
+  may: 4, mai: 4, mayo: 4,
+  jun: 5, june: 5, juin: 5, junio: 5,
+  jul: 6, july: 6, juil: 6, juillet: 6, julio: 6,
+  aug: 7, august: 7, aout: 7, août: 7, ago: 7, agosto: 7,
+  sep: 8, sept: 8, september: 8, septembre: 8, septiembre: 8,
+  oct: 9, october: 9, octobre: 9, octubre: 9,
+  nov: 10, november: 10, novembre: 10, noviembre: 10,
+  dec: 11, december: 11, decembre: 11, décembre: 11, dic: 11, diciembre: 11,
+};
 
 function extractFeeds() {
   const src = readFileSync(FEEDS_PATH, 'utf8');
@@ -99,39 +113,118 @@ function parseNewestDate(xml) {
   const doc = parser.parse(xml);
 
   const dates = [];
+  const addDate = (value) => {
+    if (value == null) return;
+    const values = Array.isArray(value) ? value : [value];
+    for (const raw of values) {
+      const parsed = parseFeedDate(raw);
+      if (parsed) dates.push(parsed);
+    }
+  };
 
   // RSS 2.0
   const channel = doc?.rss?.channel;
   if (channel) {
+    addDate(channel.pubDate);
+    addDate(channel.lastBuildDate);
+    addDate(channel['dc:date']);
+    addDate(channel.updated);
+
     const items = Array.isArray(channel.item) ? channel.item : channel.item ? [channel.item] : [];
     for (const item of items) {
-      if (item.pubDate) dates.push(new Date(item.pubDate));
+      addDate(item.pubDate);
+      addDate(item['dc:date']);
+      addDate(item.updated);
+      addDate(item.published);
+      addDate(item['atom:updated']);
+      addDate(item['atom:published']);
     }
   }
 
   // Atom
   const atomFeed = doc?.feed;
   if (atomFeed) {
+    addDate(atomFeed.updated);
+    addDate(atomFeed.published);
+    addDate(atomFeed['atom:updated']);
+    addDate(atomFeed['atom:published']);
+
     const entries = Array.isArray(atomFeed.entry) ? atomFeed.entry : atomFeed.entry ? [atomFeed.entry] : [];
     for (const entry of entries) {
-      const d = entry.updated || entry.published;
-      if (d) dates.push(new Date(d));
+      addDate(entry.updated);
+      addDate(entry.published);
+      addDate(entry['atom:updated']);
+      addDate(entry['atom:published']);
+      addDate(entry['dc:date']);
     }
   }
 
   // RDF (RSS 1.0)
   const rdf = doc?.['rdf:RDF'];
   if (rdf) {
+    addDate(rdf['dc:date']);
+    addDate(rdf.pubDate);
+    addDate(rdf.lastBuildDate);
     const items = Array.isArray(rdf.item) ? rdf.item : rdf.item ? [rdf.item] : [];
     for (const item of items) {
-      const d = item['dc:date'] || item.pubDate;
-      if (d) dates.push(new Date(d));
+      addDate(item['dc:date']);
+      addDate(item.pubDate);
+      addDate(item.updated);
     }
   }
 
-  const valid = dates.filter(d => !isNaN(d.getTime()));
+  const valid = dates.filter(d => !Number.isNaN(d.getTime()));
   if (valid.length === 0) return null;
   return new Date(Math.max(...valid.map(d => d.getTime())));
+}
+
+function parseFeedDate(rawDate) {
+  if (rawDate instanceof Date) {
+    return Number.isNaN(rawDate.getTime()) ? null : rawDate;
+  }
+
+  if (typeof rawDate !== 'string' && typeof rawDate !== 'number') {
+    return null;
+  }
+
+  const input = String(rawDate).trim();
+  if (!input) return null;
+
+  const nativeDate = new Date(input);
+  if (!Number.isNaN(nativeDate.getTime())) {
+    return nativeDate;
+  }
+
+  // Example: "26-03-24  15:10" (yy-mm-dd hh:mm)
+  const compactMatch = input.match(/^(\d{2})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
+  if (compactMatch) {
+    const yearShort = Number.parseInt(compactMatch[1], 10);
+    const year = yearShort >= 70 ? 1900 + yearShort : 2000 + yearShort;
+    const month = Number.parseInt(compactMatch[2], 10) - 1;
+    const day = Number.parseInt(compactMatch[3], 10);
+    const hour = Number.parseInt(compactMatch[4], 10);
+    const minute = Number.parseInt(compactMatch[5], 10);
+    return new Date(Date.UTC(year, month, day, hour, minute));
+  }
+
+  // Example: "Mardi, mars 24, 2026 - 16:38"
+  const localizedMatch = input.match(/^[^,]+,\s*([^\s,]+)\s+(\d{1,2}),\s*(\d{4})\s*-\s*(\d{1,2}):(\d{2})$/u);
+  if (localizedMatch) {
+    const rawMonth = localizedMatch[1]
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '');
+    const month = MONTH_INDEX[rawMonth] ?? MONTH_INDEX[rawMonth.slice(0, 3)];
+    if (month != null) {
+      const day = Number.parseInt(localizedMatch[2], 10);
+      const year = Number.parseInt(localizedMatch[3], 10);
+      const hour = Number.parseInt(localizedMatch[4], 10);
+      const minute = Number.parseInt(localizedMatch[5], 10);
+      return new Date(Date.UTC(year, month, day, hour, minute));
+    }
+  }
+
+  return null;
 }
 
 async function validateFeed(feed) {

@@ -1,9 +1,11 @@
 # Desktop Release Packaging Guide (Local, Reproducible)
 
-This guide provides reproducible local packaging steps for both desktop variants:
+This guide covers the desktop packaging helper as it exists today:
 
-- **full** → `World Monitor`
-- **tech** → `Tech Monitor`
+- **full** -> `World Monitor`
+- **tech** -> `Tech Monitor`
+
+The repository also includes a finance desktop build config (`npm run desktop:build:finance`), but `scripts/desktop-package.mjs` currently accepts only `full` and `tech` for release packaging.
 
 Some public GitHub releases also contain Linux AppImage assets for the main `World Monitor` build, but this guide documents only the packaging paths currently maintained in-repo: macOS and Windows.
 

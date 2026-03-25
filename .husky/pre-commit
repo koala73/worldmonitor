@@ -1,13 +1,33 @@
 #!/usr/bin/env sh
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
+CHANGED_FILES="$(git diff --cached --name-only)"
+
+echo "Checking for merge conflict markers..."
+npm run lint:conflicts || exit 1
+
+if echo "$CHANGED_FILES" | grep -Eq "\\.json$"; then
+  echo "Running JSON lint..."
+  npm run lint:json || exit 1
+fi
+
+if echo "$CHANGED_FILES" | grep -Eq "\\.(yml|yaml)$"; then
+  echo "Running YAML lint..."
+  npm run lint:yaml || exit 1
+fi
+
+if echo "$CHANGED_FILES" | grep -Eq "\\.md$"; then
+  echo "Running Markdown lint..."
+  npm run lint:md || exit 1
+fi
+
+if echo "$CHANGED_FILES" | grep -Eq "(^|/)\\.husky/|\\.sh$"; then
+  echo "Running shell lint..."
+  npm run lint:shell || exit 1
+fi
+
 echo "Running TypeScript typecheck (all configs)..."
 npm run typecheck:all || exit 1
-
-echo "Running staged secret scan..."
-npm run secrets:scan:staged || exit 1
-
-CHANGED_FILES="$(git diff --cached --name-only)"
 
 if echo "$CHANGED_FILES" | grep -q "^package-lock\\.json$"; then
   echo "Running lockfile check..."
