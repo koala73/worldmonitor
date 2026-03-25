@@ -4,11 +4,12 @@ import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAss
 import { THREAT_PRIORITY } from '@/services/threat-classifier';
 import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
+import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary } from '@/services';
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { track } from '@/services/analytics';
+import { getCachedContentTranslation, shouldTranslateContent, translateContentText } from '@/services/content-translation';
 
 type SortMode = 'relevance' | 'newest';
 
@@ -17,6 +18,9 @@ const VIRTUAL_SCROLL_THRESHOLD = 15;
 
 /** Summary cache TTL in milliseconds (10 minutes) */
 const SUMMARY_CACHE_TTL = 10 * 60 * 1000;
+
+/** Let Panel.setContent flush the DOM before scanning for titles to translate. */
+const AUTO_TRANSLATION_DELAY_MS = 200;
 
 /** Prepared cluster data for rendering */
 interface PreparedCluster {
@@ -39,6 +43,8 @@ export class NewsPanel extends Panel {
   private renderRequestId = 0;
   private boundScrollHandler: (() => void) | null = null;
   private boundClickHandler: (() => void) | null = null;
+  private titleTranslationTimer: ReturnType<typeof setTimeout> | null = null;
+  private titleTranslationRequestId = 0;
 
   // Sort mode toggle (#107)
   private sortMode!: SortMode;
@@ -84,7 +90,10 @@ export class NewsPanel extends Panel {
         prepared.shouldHighlight,
         prepared.showNewTag
       ),
-      () => this.bindRelatedAssetEvents()
+      () => {
+        this.bindRelatedAssetEvents();
+        this.scheduleAutoTranslateTitles();
+      }
     );
   }
 
@@ -276,32 +285,101 @@ export class NewsPanel extends Panel {
     const titleEl = element.closest('.item')?.querySelector('.item-title') as HTMLElement;
     if (!titleEl) return;
 
-    const originalText = titleEl.textContent || '';
+    const originalText = titleEl.dataset.originalTitle || titleEl.textContent || text;
+    const translatedText = titleEl.dataset.translatedTitle
+      ?? getCachedContentTranslation(originalText, currentLang);
+
+    if (translatedText !== undefined) {
+      if (translatedText === originalText) return;
+      const showingTranslated = titleEl.dataset.translationState !== 'original';
+      titleEl.textContent = showingTranslated ? originalText : translatedText;
+      titleEl.dataset.translationState = showingTranslated ? 'original' : 'translated';
+      titleEl.title = showingTranslated ? '' : originalText;
+      element.innerHTML = showingTranslated ? '文' : '↺';
+      element.title = showingTranslated ? 'Translate' : 'Show original';
+      element.classList.toggle('translated', !showingTranslated);
+      return;
+    }
 
     // Visual feedback
     element.innerHTML = '...';
     element.style.pointerEvents = 'none';
 
     try {
-      const translated = await translateText(text, currentLang);
+      const translated = await translateContentText(text, currentLang, {
+        sourceLang: titleEl.dataset.sourceLang,
+      });
       if (!this.element?.isConnected) return;
-      if (translated) {
+      if (translated && translated !== originalText) {
         titleEl.textContent = translated;
         titleEl.dataset.original = originalText;
-        element.innerHTML = '✓';
-        element.title = 'Original: ' + originalText;
+        titleEl.dataset.originalTitle = originalText;
+        titleEl.dataset.translatedTitle = translated;
+        titleEl.dataset.translationState = 'translated';
+        titleEl.title = originalText;
+        element.innerHTML = '↺';
+        element.title = 'Show original';
         element.classList.add('translated');
       } else {
         element.innerHTML = '文';
-        // Shake animation or error state could be added here
+        element.title = 'Translate';
       }
     } catch (e) {
       if (!this.element?.isConnected) return;
       console.error('Translation failed', e);
       element.innerHTML = '文';
+      element.title = 'Translate';
     } finally {
       if (element.isConnected) {
         element.style.pointerEvents = 'auto';
+      }
+    }
+  }
+
+  private cancelPendingTitleTranslations(): void {
+    this.titleTranslationRequestId += 1;
+    if (this.titleTranslationTimer) {
+      clearTimeout(this.titleTranslationTimer);
+      this.titleTranslationTimer = null;
+    }
+  }
+
+  private scheduleAutoTranslateTitles(): void {
+    this.cancelPendingTitleTranslations();
+    const targetLang = getCurrentLanguage();
+    if (targetLang === 'en') return;
+
+    const requestId = this.titleTranslationRequestId;
+    this.titleTranslationTimer = setTimeout(() => {
+      void this.autoTranslateVisibleTitles(targetLang, requestId);
+    }, AUTO_TRANSLATION_DELAY_MS);
+  }
+
+  private async autoTranslateVisibleTitles(targetLang: string, requestId: number): Promise<void> {
+    if (requestId !== this.titleTranslationRequestId || !this.element.isConnected) return;
+
+    const titleEls = Array.from(this.content.querySelectorAll<HTMLElement>('.item-title[data-original-title]'));
+    for (const titleEl of titleEls) {
+      if (requestId !== this.titleTranslationRequestId || !this.element.isConnected || !titleEl.isConnected) return;
+
+      const originalTitle = titleEl.dataset.originalTitle || titleEl.textContent || '';
+      const sourceLang = titleEl.dataset.sourceLang;
+      if (!originalTitle || !shouldTranslateContent(targetLang, sourceLang)) continue;
+
+      const translated = await translateContentText(originalTitle, targetLang, { sourceLang });
+      if (requestId !== this.titleTranslationRequestId || !titleEl.isConnected) return;
+      if (!translated || translated === originalTitle) continue;
+
+      titleEl.textContent = translated;
+      titleEl.dataset.translatedTitle = translated;
+      titleEl.dataset.translationState = 'translated';
+      titleEl.title = originalTitle;
+
+      const translateBtn = titleEl.closest('.item')?.querySelector<HTMLElement>('.item-translate-btn');
+      if (translateBtn) {
+        translateBtn.innerHTML = '↺';
+        translateBtn.title = 'Show original';
+        translateBtn.classList.add('translated');
       }
     }
   }
@@ -379,6 +457,7 @@ export class NewsPanel extends Panel {
   }
 
   public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.cancelPendingTitleTranslations();
     this.lastRawClusters = null;
     this.lastRawItems = null;
     super.showError(message, onRetry, autoRetrySeconds);
@@ -386,6 +465,7 @@ export class NewsPanel extends Panel {
 
   public renderNews(items: NewsItem[]): void {
     if (items.length === 0) {
+      this.cancelPendingTitleTranslations();
       this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
       this.setDataBadge('unavailable');
       this.showError(t('common.noNewsAvailable'));
@@ -404,6 +484,7 @@ export class NewsPanel extends Panel {
   }
 
   public renderFilteredEmpty(message: string): void {
+    this.cancelPendingTitleTranslations();
     this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
     this.lastRawClusters = null;
     this.lastRawItems = null;
@@ -432,6 +513,7 @@ export class NewsPanel extends Panel {
 
   private renderFlat(items: NewsItem[]): void {
     this.lastRawItems = items;
+    const currentLang = getCurrentLanguage();
 
     let sorted: NewsItem[];
     if (this.sortMode === 'newest') {
@@ -450,24 +532,35 @@ export class NewsPanel extends Panel {
 
     const html = sorted
       .map(
-        (item) => `
+        (item) => {
+          const cachedTitle = shouldTranslateContent(currentLang, item.lang)
+            ? getCachedContentTranslation(item.title, currentLang)
+            : undefined;
+          const displayTitle = cachedTitle ?? item.title;
+          const wasTranslated = typeof cachedTitle === 'string' && cachedTitle !== item.title;
+          return `
       <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
           ${escapeHtml(item.source)}
-          ${item.lang && item.lang !== getCurrentLanguage() ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
+          ${item.lang && item.lang !== currentLang ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
-        <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+        <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener"
+          data-original-title="${escapeHtml(item.title)}"
+          data-source-lang="${escapeHtml(item.lang || '')}"
+          data-translation-state="${wasTranslated ? 'translated' : 'original'}"
+          ${wasTranslated ? `data-translated-title="${escapeHtml(displayTitle)}" title="${escapeHtml(item.title)}"` : ''}>${escapeHtml(displayTitle)}</a>
         <div class="item-time">
           ${formatTime(item.pubDate)}
-          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
+          ${shouldTranslateContent(currentLang, item.lang) ? `<button class="item-translate-btn ${wasTranslated ? 'translated' : ''}" title="${wasTranslated ? 'Show original' : 'Translate'}" data-text="${escapeHtml(item.title)}">${wasTranslated ? '↺' : '文'}</button>` : ''}
         </div>
       </div>
     `
-      )
+        })
       .join('');
 
     this.setContent(html);
+    this.scheduleAutoTranslateTitles();
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
@@ -534,6 +627,7 @@ export class NewsPanel extends Panel {
         .map(p => this.renderClusterHtmlSafely(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
         .join('');
       this.setContent(html);
+      this.scheduleAutoTranslateTitles();
     }
   }
 
@@ -566,6 +660,7 @@ export class NewsPanel extends Panel {
     shouldHighlight: boolean,
     showNewTag: boolean
   ): string {
+    const currentLang = getCurrentLanguage();
     const sourceBadge = cluster.sourceCount > 1
       ? `<span class="source-count">${t('components.newsPanel.sources', { count: String(cluster.sourceCount) })}</span>`
       : '';
@@ -581,9 +676,14 @@ export class NewsPanel extends Panel {
       : '';
 
     const newTag = showNewTag ? `<span class="new-tag">${t('common.new')}</span>` : '';
-    const langBadge = cluster.lang && cluster.lang !== getCurrentLanguage()
+    const langBadge = cluster.lang && cluster.lang !== currentLang
       ? `<span class="lang-badge">${cluster.lang.toUpperCase()}</span>`
       : '';
+    const cachedTitle = shouldTranslateContent(currentLang, cluster.lang)
+      ? getCachedContentTranslation(cluster.primaryTitle, currentLang)
+      : undefined;
+    const displayTitle = cachedTitle ?? cluster.primaryTitle;
+    const wasTranslated = typeof cachedTitle === 'string' && cachedTitle !== cluster.primaryTitle;
 
     // Propaganda risk indicator for primary source
     const primaryPropRisk = getSourcePropagandaRisk(cluster.primarySource);
@@ -684,11 +784,15 @@ export class NewsPanel extends Panel {
           ${categoryBadge}
           ${riskBadge}
         </div>
-        <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>
+        <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener"
+          data-original-title="${escapeHtml(cluster.primaryTitle)}"
+          data-source-lang="${escapeHtml(cluster.lang || '')}"
+          data-translation-state="${wasTranslated ? 'translated' : 'original'}"
+          ${wasTranslated ? `data-translated-title="${escapeHtml(displayTitle)}" title="${escapeHtml(cluster.primaryTitle)}"` : ''}>${escapeHtml(displayTitle)}</a>
         <div class="cluster-meta">
           <span class="top-sources">${topSourcesHtml}</span>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>
-          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>` : ''}
+          ${shouldTranslateContent(currentLang, cluster.lang) ? `<button class="item-translate-btn ${wasTranslated ? 'translated' : ''}" title="${wasTranslated ? 'Show original' : 'Translate'}" data-text="${escapeHtml(cluster.primaryTitle)}">${wasTranslated ? '↺' : '文'}</button>` : ''}
         </div>
         ${relatedAssetsHtml}
       </div>

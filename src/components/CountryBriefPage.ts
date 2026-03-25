@@ -1,6 +1,6 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
-import { t } from '@/services/i18n';
+import { getCurrentLanguage, t } from '@/services/i18n';
 import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
 import type { NewsItem } from '@/types';
@@ -15,8 +15,10 @@ import { exportCountryBriefJSON, exportCountryBriefCSV } from '@/utils/export';
 import type { CountryBriefExport } from '@/utils/export';
 import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import { toFlagEmoji } from '@/utils/country-flag';
+import { getCachedContentTranslation, shouldTranslateContent, translateContentText } from '@/services/content-translation';
 
 type BriefAssetType = AssetType | 'port';
+const COUNTRY_BRIEF_TRANSLATION_DELAY_MS = 80;
 
 export class CountryBriefPage implements CountryBriefPanel {
   private static BRIEF_BOUNDS: Record<string, { n: number; s: number; e: number; w: number }> = {
@@ -63,6 +65,8 @@ export class CountryBriefPage implements CountryBriefPanel {
   private onShareStory?: (code: string, name: string) => void;
   private onExportImage?: (code: string, name: string) => void;
   private abortController: AbortController = new AbortController();
+  private newsTranslationTimer: ReturnType<typeof setTimeout> | null = null;
+  private newsTranslationRequestId = 0;
 
   constructor() {
     this.overlay = document.createElement('div');
@@ -281,6 +285,7 @@ export class CountryBriefPage implements CountryBriefPanel {
   }
 
   public showLoading(): void {
+    this.cancelPendingNewsTranslations();
     this.currentCode = '__loading__';
     this.overlay.innerHTML = `
       <div class="country-brief-page">
@@ -306,6 +311,7 @@ export class CountryBriefPage implements CountryBriefPanel {
   }
 
   public showGeoError(onRetry: () => void): void {
+    this.cancelPendingNewsTranslations();
     this.currentCode = '__error__';
     this.overlay.textContent = '';
 
@@ -361,6 +367,7 @@ export class CountryBriefPage implements CountryBriefPanel {
 
   public show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
     this.abortController.abort();
+    this.cancelPendingNewsTranslations();
     this.abortController = new AbortController();
     this.currentCode = code;
     this.currentName = country;
@@ -556,6 +563,7 @@ export class CountryBriefPage implements CountryBriefPanel {
     if (!section || !content || headlines.length === 0) return;
 
     const items = headlines.slice(0, 8);
+    const currentLang = getCurrentLanguage();
     this.currentHeadlineCount = items.length;
     this.currentHeadlines = items;
     section.style.display = '';
@@ -567,10 +575,19 @@ export class CountryBriefPage implements CountryBriefPanel {
         : item.threat?.level === 'medium' ? getCSSColor('--threat-medium')
         : getCSSColor('--threat-info');
       const timeAgo = this.timeAgo(item.pubDate);
+      const cachedTitle = shouldTranslateContent(currentLang, item.lang)
+        ? getCachedContentTranslation(item.title, currentLang)
+        : undefined;
+      const displayTitle = cachedTitle ?? item.title;
+      const wasTranslated = typeof cachedTitle === 'string' && cachedTitle !== item.title;
       const cardBody = `
         <span class="cb-news-threat" style="background:${threatColor}"></span>
         <div class="cb-news-body">
-          <div class="cb-news-title">${escapeHtml(item.title)}</div>
+          <div class="cb-news-title"
+            data-original-title="${escapeHtml(item.title)}"
+            data-source-lang="${escapeHtml(item.lang || '')}"
+            data-translation-state="${wasTranslated ? 'translated' : 'original'}"
+            ${wasTranslated ? `data-translated-title="${escapeHtml(displayTitle)}" title="${escapeHtml(item.title)}"` : ''}>${escapeHtml(displayTitle)}</div>
           <div class="cb-news-meta">${escapeHtml(item.source)} · ${timeAgo}</div>
         </div>`;
       if (safeUrl) {
@@ -578,6 +595,8 @@ export class CountryBriefPage implements CountryBriefPanel {
       }
       return `<div class="cb-news-card" id="cb-news-${i + 1}">${cardBody}</div>`;
     }).join('');
+
+    this.scheduleAutoTranslateNewsTitles();
   }
 
 
@@ -650,6 +669,47 @@ export class CountryBriefPage implements CountryBriefPanel {
     if (hours < 1) return t('modals.countryBrief.timeAgo.m', { count: Math.floor(ms / 60000) });
     if (hours < 24) return t('modals.countryBrief.timeAgo.h', { count: hours });
     return t('modals.countryBrief.timeAgo.d', { count: Math.floor(hours / 24) });
+  }
+
+  private cancelPendingNewsTranslations(): void {
+    this.newsTranslationRequestId += 1;
+    if (this.newsTranslationTimer) {
+      clearTimeout(this.newsTranslationTimer);
+      this.newsTranslationTimer = null;
+    }
+  }
+
+  private scheduleAutoTranslateNewsTitles(): void {
+    this.cancelPendingNewsTranslations();
+    const targetLang = getCurrentLanguage();
+    if (targetLang === 'en') return;
+
+    const requestId = this.newsTranslationRequestId;
+    this.newsTranslationTimer = setTimeout(() => {
+      void this.autoTranslateNewsTitles(targetLang, requestId);
+    }, COUNTRY_BRIEF_TRANSLATION_DELAY_MS);
+  }
+
+  private async autoTranslateNewsTitles(targetLang: string, requestId: number): Promise<void> {
+    if (requestId !== this.newsTranslationRequestId || !this.overlay.isConnected) return;
+
+    const titleEls = Array.from(this.overlay.querySelectorAll<HTMLElement>('.cb-news-title[data-original-title]'));
+    for (const titleEl of titleEls) {
+      if (requestId !== this.newsTranslationRequestId || !titleEl.isConnected) return;
+
+      const originalTitle = titleEl.dataset.originalTitle || titleEl.textContent || '';
+      const sourceLang = titleEl.dataset.sourceLang;
+      if (!originalTitle || !shouldTranslateContent(targetLang, sourceLang)) continue;
+
+      const translated = await translateContentText(originalTitle, targetLang, { sourceLang });
+      if (requestId !== this.newsTranslationRequestId || !titleEl.isConnected) return;
+      if (!translated || translated === originalTitle) continue;
+
+      titleEl.textContent = translated;
+      titleEl.dataset.translatedTitle = translated;
+      titleEl.dataset.translationState = 'translated';
+      titleEl.title = originalTitle;
+    }
   }
 
   private formatBrief(text: string, headlineCount = 0): string {
@@ -749,6 +809,7 @@ export class CountryBriefPage implements CountryBriefPanel {
 
   public hide(): void {
     this.abortController.abort();
+    this.cancelPendingNewsTranslations();
     this.overlay.classList.remove('active');
     this.currentCode = null;
     this.currentName = null;
