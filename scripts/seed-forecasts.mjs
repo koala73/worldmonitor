@@ -38,7 +38,7 @@ const SIMULATION_RUNNER_VERSION = 'v1';
 const SIMULATION_TASK_KEY_PREFIX = 'forecast:simulation-task:v1';
 const SIMULATION_TASK_QUEUE_KEY = 'forecast:simulation-task-queue:v1';
 const SIMULATION_LOCK_KEY_PREFIX = 'forecast:simulation-lock:v1';
-const SIMULATION_ROUND1_MAX_TOKENS = 1800;
+const SIMULATION_ROUND1_MAX_TOKENS = 2200;
 const SIMULATION_ROUND2_MAX_TOKENS = 2500;
 const SIMULATION_LOCK_TTL_SECONDS = 20 * 60;
 const SIMULATION_TASK_TTL_SECONDS = 30 * 60;
@@ -11872,7 +11872,8 @@ function isMaritimeChokeEnergyCandidate(candidate) {
   const routeKey = candidate.routeFacilityKey || '';
   if (!routeKey || !Object.prototype.hasOwnProperty.call(CHOKEPOINT_MARKET_REGIONS, routeKey)) return false;
   const bucketArr = candidate.marketBucketIds || [];
-  const topBucket = candidate.marketContext?.topBucketId || '';
+  // Accept both nested (marketContext.topBucketId) and flat (topBucketId) shapes
+  const topBucket = candidate.marketContext?.topBucketId || candidate.topBucketId || '';
   return bucketArr.includes('energy') || bucketArr.includes('freight') || topBucket === 'energy' || topBucket === 'freight'
     || SIMULATION_ENERGY_COMMODITY_KEYS.has(candidate.commodityKey || '');
 }
@@ -15399,12 +15400,12 @@ function buildSimulationRound1SystemPrompt(theater, pkg) {
     (e) => !e.relevanceToTheater || e.relevanceToTheater === theater.theaterId,
   );
   const entityList = theaterEntities.slice(0, 10).map(
-    (e) => `- ${e.entityId} | ${sanitizeForPrompt(e.name)} | class=${e.class} | stance=${e.stance || 'unknown'}`,
+    (e) => `- ${sanitizeForPrompt(e.entityId)} | ${sanitizeForPrompt(e.name)} | class=${sanitizeForPrompt(e.class)} | stance=${sanitizeForPrompt(e.stance || 'unknown')}`,
   ).join('\n');
 
   const theaterSeeds = (pkg.eventSeeds || []).filter((s) => s.theaterId === theater.theaterId);
   const seedList = theaterSeeds.slice(0, 8).map(
-    (s) => `- ${s.seedId} [${s.type}] ${sanitizeForPrompt(s.summary)} (${s.timing})`,
+    (s) => `- ${sanitizeForPrompt(s.seedId)} [${sanitizeForPrompt(s.type)}] ${sanitizeForPrompt(s.summary)} (${sanitizeForPrompt(s.timing)})`,
   ).join('\n');
 
   const constraints = (pkg.constraints?.[theater.theaterId] || pkg.constraints?.theater || [])
@@ -15441,6 +15442,7 @@ Generate EXACTLY 3 divergent paths named "escalation", "containment", and "spill
 - Cite event seeds (seedId) in reactions where applicable
 - Do NOT invent actors, routes, or commodities not present above
 - timing format: "T+0h", "T+6h", "T+12h", "T+24h"
+- Maximum 3 initialReactions per path
 - note: A brief (≤200 char) meta-observation on the divergence logic
 
 Return ONLY a JSON object with no markdown fences:
@@ -15465,13 +15467,13 @@ Return ONLY a JSON object with no markdown fences:
 function buildSimulationRound2SystemPrompt(theater, pkg, round1) {
   const r1Paths = (round1?.paths || []).slice(0, 3);
   const pathSummaries = r1Paths.map(
-    (p) => `- ${p.pathId}: ${sanitizeForPrompt(p.summary || '')} — actors: ${(p.initialReactions || []).slice(0, 3).map((r) => r.actorId).join(', ')}`,
+    (p) => `- ${p.pathId}: ${sanitizeForPrompt(p.summary || '')} — actors: ${(p.initialReactions || []).slice(0, 3).map((r) => sanitizeForPrompt(r.actorId || '')).join(', ')}`,
   ).join('\n') || '- (no round 1 paths available)';
 
   const theaterEntities = (pkg.entities || []).filter(
     (e) => !e.relevanceToTheater || e.relevanceToTheater === theater.theaterId,
   );
-  const entityIds = theaterEntities.slice(0, 10).map((e) => e.entityId).join(', ');
+  const entityIds = theaterEntities.slice(0, 10).map((e) => sanitizeForPrompt(e.entityId || '')).join(', ');
 
   const evalTargets = (pkg.evaluationTargets?.[theater.theaterId] || pkg.evaluationTargets?.theater || [])
     .map((t) => `- ${sanitizeForPrompt(t)}`).join('\n') || '- General market and security dynamics';
@@ -15630,11 +15632,15 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
   return { outcomeKey };
 }
 
+const VALID_RUN_ID_RE = /^\d{13,}-[a-z0-9-]{1,64}$/i;
+function validateRunId(runId) { return typeof runId === 'string' && VALID_RUN_ID_RE.test(runId); }
+
 function buildSimulationTaskKey(runId) { return `${SIMULATION_TASK_KEY_PREFIX}:${runId}`; }
 function buildSimulationLockKey(runId) { return `${SIMULATION_LOCK_KEY_PREFIX}:${runId}`; }
 
 async function enqueueSimulationTask(runId) {
   if (!runId) return { queued: false, reason: 'missing_run_id' };
+  if (!validateRunId(runId)) return { queued: false, reason: 'invalid_run_id_format' };
   const { url, token } = getRedisCredentials();
   const queued = await redisCommand(url, token, [
     'SET', buildSimulationTaskKey(runId),
@@ -15684,6 +15690,10 @@ async function processNextSimulationTask(options = {}) {
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedSimulationTasks(10);
 
   for (const runId of queuedRunIds) {
+    if (!validateRunId(runId)) {
+      console.warn(`  [Simulation] Skipping invalid runId format: ${String(runId).slice(0, 80)}`);
+      continue;
+    }
     const task = await claimSimulationTask(runId, workerId);
     if (!task) continue;
 
@@ -15705,6 +15715,9 @@ async function processNextSimulationTask(options = {}) {
         await completeSimulationTask(runId);
         return { status: 'failed', reason: 'no_package_pointer', runId };
       }
+      if (pkgPointer.runId && pkgPointer.runId !== runId) {
+        console.warn(`  [Simulation] Package runId mismatch: task=${runId} pkg=${pkgPointer.runId} — using latest package (Phase 2 behaviour)`);
+      }
 
       const storageConfig = resolveR2StorageConfig();
       if (!storageConfig) {
@@ -15720,12 +15733,7 @@ async function processNextSimulationTask(options = {}) {
 
       // Phase 2 scope: maritime chokepoint + energy/logistics theaters only
       const eligibleTheaters = (pkgData.selectedTheaters || []).filter((t) =>
-        isMaritimeChokeEnergyCandidate({
-          routeFacilityKey: t.routeFacilityKey || '',
-          marketBucketIds: t.marketBucketIds || [],
-          marketContext: { topBucketId: t.topBucketId || '' },
-          commodityKey: t.commodityKey || '',
-        }),
+        isMaritimeChokeEnergyCandidate(t),
       );
       console.log(`  [Simulation] ${runId}: ${eligibleTheaters.length}/${pkgData.selectedTheaters.length} theaters eligible`);
 
@@ -15749,7 +15757,7 @@ async function processNextSimulationTask(options = {}) {
             pathId: p.pathId,
             label: sanitizeForPrompt(p.label || p.pathId).slice(0, 80),
             summary: sanitizeForPrompt(p.summary || '').slice(0, 200),
-            keyActors: Array.isArray(p.keyActors) ? p.keyActors.map(String).slice(0, 6) : [],
+            keyActors: Array.isArray(p.keyActors) ? p.keyActors.map((s) => sanitizeForPrompt(String(s)).slice(0, 80)).slice(0, 6) : [],
             roundByRoundEvolution: Array.isArray(p.roundByRoundEvolution)
               ? p.roundByRoundEvolution.map((r) => ({ round: r.round, summary: sanitizeForPrompt(r.summary || '').slice(0, 160) }))
               : [{ round: 1, summary: sanitizeForPrompt((r1Path?.summary || p.summary || '')).slice(0, 160) }],
@@ -15763,10 +15771,10 @@ async function processNextSimulationTask(options = {}) {
         theaterResults.push({
           theaterId: theater.theaterId,
           topPaths: mergedPaths,
-          dominantReactions: (result.round1?.dominantReactions || []).map(String).slice(0, 6),
-          stabilizers: (result.round2?.stabilizers || []).map(String).slice(0, 6),
-          invalidators: (result.round2?.invalidators || []).map(String).slice(0, 6),
-          timingMarkers: (result.round2?.paths?.[0]?.timingMarkers || []).slice(0, 4),
+          dominantReactions: (result.round1?.dominantReactions || []).map((s) => sanitizeForPrompt(String(s)).slice(0, 120)).slice(0, 6),
+          stabilizers: (result.round2?.stabilizers || []).map((s) => sanitizeForPrompt(String(s)).slice(0, 120)).slice(0, 6),
+          invalidators: (result.round2?.invalidators || []).map((s) => sanitizeForPrompt(String(s)).slice(0, 120)).slice(0, 6),
+          timingMarkers: (result.round2?.paths?.[0]?.timingMarkers || []).slice(0, 4).map((m) => ({ event: sanitizeForPrompt(m.event || '').slice(0, 80), timing: String(m.timing || 'T+0h').slice(0, 10) })),
         });
       }
 

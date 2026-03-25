@@ -1,4 +1,12 @@
 /**
+ * Shared Redis pointer keys for simulation artifacts.
+ * Defined here so TypeScript handlers and seed scripts agree on the exact string.
+ * The MJS seed script keeps its own copy (cannot import TS source directly).
+ */
+export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
+export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
+
+/**
  * Static cache keys for the bootstrap endpoint.
  * Only keys with NO request-varying suffixes are included.
  */

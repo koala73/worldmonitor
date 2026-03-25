@@ -5,7 +5,9 @@ package worldmonitor.forecast.v1;
 import "sebuf/http/annotations.proto";
 
 message GetSimulationOutcomeRequest {
-  // Currently ignored; always returns the latest outcome. Reserved for Phase 3 per-run lookup.
+  // IMPORTANT: Currently a no-op. Always returns the latest available outcome regardless of runId.
+  // Per-run lookup is reserved for Phase 3. Check the response 'note' field when runId is supplied
+  // and you need to detect a mismatch between requested and returned run.
   string run_id = 1 [(sebuf.http.query) = { name: "runId" }];
 }
 
