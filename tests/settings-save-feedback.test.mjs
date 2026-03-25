@@ -11,6 +11,24 @@ function src(path) {
   return readFileSync(join(root, path), 'utf-8');
 }
 
+function extractMethodBody(source, methodName) {
+  const signature = `${methodName}(): void {`;
+  const start = source.indexOf(signature);
+  assert.notEqual(start, -1, `${methodName}() not found`);
+
+  let depth = 1;
+  let i = start + signature.length;
+  while (i < source.length && depth > 0) {
+    const char = source[i];
+    if (char === '{') depth += 1;
+    if (char === '}') depth -= 1;
+    i += 1;
+  }
+
+  assert.equal(depth, 0, `${methodName}() body did not terminate`);
+  return source.slice(start + signature.length, i - 1);
+}
+
 describe('settings save feedback guardrails', () => {
   const toastSrc = src('src/utils/toast.ts');
   const settingsSrc = src('src/components/UnifiedSettings.ts');
@@ -31,9 +49,8 @@ describe('settings save feedback guardrails', () => {
   });
 
   it('keeps Panels save on inline status only', () => {
-    const saveMatch = settingsSrc.match(/private savePanelChanges\(\): void \{([\s\S]*?)\n {2}\}/);
-    assert.ok(saveMatch, 'savePanelChanges() not found');
-    assert.doesNotMatch(saveMatch[1], /showToast\(/);
+    const saveBody = extractMethodBody(settingsSrc, 'savePanelChanges');
+    assert.doesNotMatch(saveBody, /showToast\(/);
   });
 
   it('removes duplicate global toast implementations from event handlers and country intel', () => {
