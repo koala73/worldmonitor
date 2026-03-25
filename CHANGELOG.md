@@ -6,6 +6,17 @@ All notable changes to World Monitor are documented here.
 
 ### Added
 
+- **REIT Property Operating Monitor** — new domain for the finance variant with 3 panels, 1 map layer, and 5 intelligence features (#REITs-monitor)
+  - REITPanel: market quotes for 41 REITs (32 US + 9 China C-REITs) across 8 sectors with sector tabs, sparklines, and dividend yields
+  - REITCorrelationPanel: 4 FRED macro indicators with Pearson correlation, regime signal (FAVORABLE/CAUTIOUS/STRESS/NEUTRAL), sector rotation, and REIT-vs-bond yield spread
+  - REITSocialPanel: social health scores from Google Places/Yelp with review velocity trends and tenant risk signals
+  - REIT Properties map layer: 169 curated property locations on Deck.gl with sector color coding and disaster exposure scores
+  - AI Morning Briefing: Groq LLM-generated daily 3-paragraph briefing collapsible with localStorage memory
+  - Peer comparison overlay: slide-in panel comparing REIT vs sector peers on yield, change, social score, and exposure
+  - China C-REITs: 4 consumer (中海商业, 华润商业, 物美消费, 首创奥莱) + 5 rental housing REITs with Yahoo Finance integration
+  - Proto-first API: 8 proto files, 4 RPC handlers, 4 seed scripts, circuit breakers, bootstrap hydration
+  - 56 unit tests covering math functions, data validation, and config guardrails
+
 - US Treasury customs revenue in Trade Policy panel with monthly data, FYTD year-over-year comparison, and revenue spike highlighting (#1663)
 - Security advisories gold standard migration: Railway cron seed fetches 24 government RSS feeds hourly, Vercel reads Redis only (#1637)
 - CMD+K full panel coverage: all 55 panels now searchable (was 31), including AI forecasts, correlation panels, webcams, displacement, security advisories (#1656)
