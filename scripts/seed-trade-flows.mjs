@@ -135,7 +135,9 @@ function publishTransform(data) {
 
 async function afterPublish(data, _meta) {
   for (const [key, value] of Object.entries(data.perKeyFlows ?? {})) {
-    await writeExtraKey(key, value, CACHE_TTL);
+    if ((value.flows?.length ?? 0) > 0) {
+      await writeExtraKey(key, value, CACHE_TTL);
+    }
   }
 }
 

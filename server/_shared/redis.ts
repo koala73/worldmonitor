@@ -23,6 +23,28 @@ function prefixKey(key: string): string {
   return `${cachedPrefix}${key}`;
 }
 
+/**
+ * Like getCachedJson but throws on Redis/network failures instead of returning null.
+ * Always uses the raw (unprefixed) key — callers that write via seed scripts (which bypass
+ * the prefix system) must use this to read the same key they wrote.
+ */
+export async function getRawJson(key: string): Promise<unknown | null> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    const { sidecarCacheGet } = await import('./sidecar-cache');
+    return sidecarCacheGet(key);
+  }
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) throw new Error('Redis credentials not configured');
+  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
+  });
+  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = (await resp.json()) as { result?: string };
+  return data.result ? JSON.parse(data.result) : null;
+}
+
 export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const { sidecarCacheGet } = await import('./sidecar-cache');

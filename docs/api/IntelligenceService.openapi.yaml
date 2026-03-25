@@ -555,6 +555,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-cross-source-signals:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ListCrossSourceSignals
+            description: ListCrossSourceSignals returns cross-domain signals ranked by severity with composite escalation detection.
+            operationId: ListCrossSourceSignals
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCrossSourceSignalsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/intelligence/v1/list-market-implications:
         get:
             tags:
@@ -1641,6 +1667,90 @@ components:
                     format: double
                     description: Tone or volume value at this point.
             description: GdeltTimelinePoint is a single data point in a tone or volume timeline.
+        ListCrossSourceSignalsRequest:
+            type: object
+            description: ListCrossSourceSignalsRequest has no required parameters (returns all signals).
+        ListCrossSourceSignalsResponse:
+            type: object
+            properties:
+                signals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CrossSourceSignal'
+                evaluatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Timestamp when the aggregator last ran (Unix epoch milliseconds).. Warning: Values > 2^53 may lose precision in JavaScript'
+                compositeCount:
+                    type: integer
+                    format: int32
+                    description: Total number of composite escalation zones detected.
+            description: ListCrossSourceSignalsResponse contains ranked cross-domain signals.
+        CrossSourceSignal:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique signal identifier.
+                type:
+                    type: string
+                    enum:
+                        - CROSS_SOURCE_SIGNAL_TYPE_UNSPECIFIED
+                        - CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE
+                        - CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING
+                        - CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER
+                        - CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE
+                        - CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK
+                        - CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION
+                        - CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT
+                        - CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY
+                        - CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE
+                        - CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS
+                        - CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME
+                        - CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION
+                        - CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE
+                    description: CrossSourceSignalType enumerates all monitored cross-domain signal categories.
+                theater:
+                    type: string
+                    description: Theater / geographic context (e.g. "Eastern Europe", "Red Sea", "Global Markets").
+                summary:
+                    type: string
+                    description: Human-readable summary of the signal.
+                severity:
+                    type: string
+                    enum:
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_LOW
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_HIGH
+                        - CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL
+                    description: CrossSourceSignalSeverity indicates the urgency tier of a detected signal.
+                severityScore:
+                    type: number
+                    format: double
+                    description: 'Raw severity score used for ranking (higher = more severe).. Warning: Values > 2^53 may lose precision in JavaScript'
+                detectedAt:
+                    type: integer
+                    format: int64
+                    description: 'Detection timestamp (Unix epoch milliseconds).. Warning: Values > 2^53 may lose precision in JavaScript'
+                contributingTypes:
+                    type: array
+                    items:
+                        type: string
+                        description: 'For COMPOSITE_ESCALATION: list of contributing signal type names.'
+                signalCount:
+                    type: integer
+                    format: int32
+                    description: 'For COMPOSITE_ESCALATION: number of co-firing signals in theater.'
+            description: CrossSourceSignal represents a single detected cross-domain signal event.
         ListMarketImplicationsRequest:
             type: object
         ListMarketImplicationsResponse:

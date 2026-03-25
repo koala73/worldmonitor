@@ -17,6 +17,7 @@ import "worldmonitor/intelligence/v1/list_satellites.proto";
 import "worldmonitor/intelligence/v1/list_telegram_feed.proto";
 import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
 import "worldmonitor/intelligence/v1/get_gdelt_topic_timeline.proto";
+import "worldmonitor/intelligence/v1/list_cross_source_signals.proto";
 import "worldmonitor/intelligence/v1/list_market_implications.proto";
 
 // IntelligenceService provides APIs for technical and strategic intelligence.
@@ -126,6 +127,11 @@ service IntelligenceService {
   // GetGdeltTopicTimeline retrieves tone and volume timelines for a GDELT intel topic.
   rpc GetGdeltTopicTimeline(GetGdeltTopicTimelineRequest) returns (GetGdeltTopicTimelineResponse) {
     option (sebuf.http.config) = {path: "/get-gdelt-topic-timeline", method: HTTP_METHOD_GET};
+  }
+
+  // ListCrossSourceSignals returns cross-domain signals ranked by severity with composite escalation detection.
+  rpc ListCrossSourceSignals(ListCrossSourceSignalsRequest) returns (ListCrossSourceSignalsResponse) {
+    option (sebuf.http.config) = {path: "/list-cross-source-signals", method: HTTP_METHOD_GET};
   }
 
   // ListMarketImplications returns AI-generated trade-implication cards from live world state.

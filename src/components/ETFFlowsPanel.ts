@@ -42,22 +42,33 @@ export class ETFFlowsPanel extends Panel {
       this.error = null;
       this.loading = false;
       this.renderPanel();
+      void this.refreshFromRpc();
       return;
     }
+    await this.refreshFromRpc();
+  }
 
+  private async refreshFromRpc(): Promise<void> {
     try {
       const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
-      this.data = await client.listEtfFlows({});
+      const fresh = await client.listEtfFlows({});
       if (!this.element?.isConnected) return;
-      this.error = null;
+      if (fresh.etfs?.length || !this.data) {
+        this.data = fresh;
+        this.error = null;
+        this.loading = false;
+        this.renderPanel();
+      }
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      console.warn('[ETFFlows] Fetch error:', err);
-      this.error = t('components.etfFlows.unavailable');
+      if (!this.data) {
+        console.warn('[ETFFlows] Fetch error:', err);
+        this.error = t('components.etfFlows.unavailable');
+        this.loading = false;
+        this.renderPanel();
+      }
     }
-    this.loading = false;
-    this.renderPanel();
   }
 
   private renderPanel(): void {

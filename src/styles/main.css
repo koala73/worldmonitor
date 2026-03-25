@@ -772,6 +772,12 @@ canvas,
   color: var(--text);
 }
 
+.github-stars {
+  font-size: 11px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
 /* Medium-width desktop: keep header utility actions reachable when OS scaling
    reduces the effective viewport width (e.g. 1920px @ 150% = ~1280px CSS). */
 @media (max-width: 1360px) {
@@ -5792,16 +5798,20 @@ body.playback-mode .status-dot {
 /* Heatmap */
 .heatmap {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   padding: 4px;
 }
 
 .heatmap-cell {
-  padding: 8px 4px;
+  padding: 10px 6px;
   text-align: center;
   border-radius: 2px;
   background: var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
 
 .heatmap-cell.up-3 {
@@ -5828,15 +5838,23 @@ body.playback-mode .status-dot {
   background: var(--surface);
 }
 
+.sector-ticker {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
 .sector-name {
   font-size: 9px;
-  color: var(--text-dim);
-  margin-bottom: 2px;
+  color: var(--text-muted);
+  margin-top: 1px;
 }
 
 .sector-change {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: bold;
+  line-height: 1;
 }
 
 .sector-change.up {

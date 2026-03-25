@@ -19,6 +19,10 @@ import {
   fetchCategoryFeeds,
   getFeedFailures,
   fetchMultipleStocks,
+  fetchCommodityQuotes,
+  fetchSectors,
+  warmCommodityCache,
+  warmSectorCache,
   fetchCrypto,
   fetchCryptoSectors,
   fetchDefiTokens,
@@ -108,6 +112,7 @@ import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchThermalEscalations } from '@/services/thermal-escalation';
+import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
@@ -120,7 +125,7 @@ import { t, getCurrentLanguage } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
 import { ingestHeadlines } from '@/services/trending-keywords';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
-import type { GetSectorSummaryResponse, ListMarketQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import {
@@ -521,6 +526,9 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
       tasks.push({ name: 'thermalEscalation', task: runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
     }
+    if (SITE_VARIANT !== 'happy' && shouldLoad('cross-source-signals')) {
+      tasks.push({ name: 'crossSourceSignals', task: runGuarded('crossSourceSignals', () => this.loadCrossSourceSignals()) });
+    }
 
     // Stagger startup: run tasks in small batches to avoid hammering upstreams
     const BATCH_SIZE = 4;
@@ -541,8 +549,10 @@ export class DataLoaderManager implements AppModule {
     this.updateSearchIndex();
 
     if (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) {
-      await this.loadDailyMarketBrief();
-      await this.loadMarketImplications();
+      await Promise.allSettled([
+        this.loadDailyMarketBrief(),
+        this.loadMarketImplications(),
+      ]);
     }
 
     const bootstrapTemporal = consumeServerAnomalies();
@@ -1263,25 +1273,22 @@ export class DataLoaderManager implements AppModule {
       // Sector heatmap: always attempt loading regardless of market rate-limit status
       const hydratedSectors = getHydratedData('sectors') as GetSectorSummaryResponse | undefined;
       const heatmapPanel = this.ctx.panels['heatmap'] as HeatmapPanel | undefined;
+      const sectorNameMap = new Map(SECTORS.map((s) => [s.symbol, s.name]));
+      const toHeatmapItem = (s: { symbol: string; name: string; change: number }) => ({
+        symbol: s.symbol,
+        name: sectorNameMap.get(s.symbol) ?? s.name,
+        change: s.change,
+      });
       if (hydratedSectors?.sectors?.length) {
-        const mapped = hydratedSectors.sectors.map((s) => ({ name: s.name, change: s.change }));
-        heatmapPanel?.renderHeatmap(mapped);
-      } else if (!stocksResult.skipped) {
-        const sectorsResult = await fetchMultipleStocks(
-          SECTORS.map((s) => ({ ...s, display: s.name })),
-          {
-            onBatch: (partialSectors) => {
-              heatmapPanel?.renderHeatmap(
-                partialSectors.map((s) => ({ name: s.name, change: s.change }))
-              );
-            },
-          }
-        );
-        heatmapPanel?.renderHeatmap(
-          sectorsResult.data.map((s) => ({ name: s.name, change: s.change }))
-        );
+        warmSectorCache(hydratedSectors);
+        heatmapPanel?.renderHeatmap(hydratedSectors.sectors.map(toHeatmapItem));
       } else {
-        this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
+        const sectorsResp = await fetchSectors();
+        if (sectorsResp.sectors.length > 0) {
+          heatmapPanel?.renderHeatmap(sectorsResp.sectors.map(toHeatmapItem));
+        } else if (stocksResult.skipped) {
+          this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
+        }
       }
 
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
@@ -1293,12 +1300,15 @@ export class DataLoaderManager implements AppModule {
 
       if (commoditiesPanel || energyPanel) {
         // Hydrate commodities from bootstrap (same pattern as sectors/markets)
-        const hydratedCommodities = getHydratedData('commodityQuotes') as ListMarketQuotesResponse | undefined;
+        const hydratedCommodities = getHydratedData('commodityQuotes') as ListCommodityQuotesResponse | undefined;
         const skipFetch = stocksResult.rateLimited && stocksResult.data.length === 0;
         let metalsLoaded = skipFetch;
         let energyLoaded = skipFetch;
 
         if (!(metalsLoaded && energyLoaded) && hydratedCommodities?.quotes?.length) {
+          // Warm the circuit-breaker cache so SWR serves stale data if the
+          // first scheduled live call fails (bootstrap hydration bypasses the RPC).
+          warmCommodityCache(hydratedCommodities);
           const symbolMetaMap = new Map(COMMODITIES.map((s) => [s.symbol, s]));
           const data = hydratedCommodities.quotes.map((q) => ({
             symbol: q.symbol,
@@ -1321,14 +1331,13 @@ export class DataLoaderManager implements AppModule {
         }
 
         for (let attempt = 0; attempt < 1 && (!metalsLoaded || !energyLoaded); attempt++) {
-          const commoditiesResult = await fetchMultipleStocks(COMMODITIES, {
+          const commoditiesResult = await fetchCommodityQuotes(COMMODITIES, {
             onBatch: (partial) => {
               const commodityMapped = filterCommodityTape(partial).map(mapCommodity);
               const energyMapped = filterEnergyTape(partial);
               if (commoditiesPanel) commoditiesPanel.renderCommodities(commodityMapped);
               energyPanel?.updateTape(energyMapped);
             },
-            useCommodityBreaker: true,
           });
           const commodityMapped = filterCommodityTape(commoditiesResult.data).map(mapCommodity);
           const energyMapped = filterEnergyTape(commoditiesResult.data);
@@ -2925,6 +2934,17 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordUpdate('thermal-escalation' as DataSourceId, result.clusters.length);
     } catch (error) {
       console.error('[App] Thermal escalation fetch failed:', error);
+    }
+  }
+
+  async loadCrossSourceSignals(): Promise<void> {
+    try {
+      const result = await fetchCrossSourceSignals();
+      this.callPanel('cross-source-signals', 'setData', result);
+      dataFreshness.recordUpdate('cross-source-signals' as DataSourceId, result.signals?.length ?? 0);
+    } catch (error) {
+      console.error('[App] Cross-source signals fetch failed:', error);
+      this.callPanel('cross-source-signals', 'showFetchError');
     }
   }
 }

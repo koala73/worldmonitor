@@ -52,6 +52,47 @@ function fmt(v: number | null | undefined, digits = 2): string {
   return v.toFixed(digits);
 }
 
+function renderGauge(score: number, label: string, delta: number | null, color: string): string {
+  const cx = 100, cy = 100, R = 88, r = 60;
+
+  function coord(deg: number, radius: number): string {
+    const a = (deg * Math.PI) / 180;
+    return `${(cx + radius * Math.cos(a)).toFixed(2)},${(cy - radius * Math.sin(a)).toFixed(2)}`;
+  }
+
+  const zones = [
+    { a1: 180, a2: 144, fill: '#c0392b' },
+    { a1: 144, a2: 108, fill: '#e67e22' },
+    { a1: 108, a2:  72, fill: '#f1c40f' },
+    { a1:  72, a2:  36, fill: '#2ecc71' },
+    { a1:  36, a2:   0, fill: '#27ae60' },
+  ];
+
+  const segs = zones.map(z =>
+    `<path d="M${coord(z.a1,R)} A${R},${R} 0 0,0 ${coord(z.a2,R)} L${coord(z.a2,r)} A${r},${r} 0 0,1 ${coord(z.a1,r)} Z" fill="${z.fill}" opacity="0.88"/>`
+  ).join('');
+
+  const na = ((180 - score * 1.8) * Math.PI) / 180;
+  const nx = (cx + 75 * Math.cos(na)).toFixed(1);
+  const ny = (cy - 75 * Math.sin(na)).toFixed(1);
+
+  const dStr = delta != null ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} vs prev` : '';
+  const dFill = delta != null ? (delta >= 0 ? '#2ecc71' : '#e74c3c') : '';
+  const deltaLine = dStr
+    ? `<text x="${cx}" y="111" text-anchor="middle" font-size="9" fill="${dFill}" font-family="system-ui,-apple-system,sans-serif">${dStr}</text>`
+    : '';
+
+  return `<svg viewBox="0 0 200 115" width="200" height="115" style="display:block;margin:0 auto">
+    ${segs}
+    <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="${cx}" cy="${cy}" r="6" fill="${color}"/>
+    <circle cx="${cx}" cy="${cy}" r="3" fill="rgba(8,8,8,0.9)"/>
+    <text x="${cx}" y="81" text-anchor="middle" font-size="26" font-weight="700" fill="${color}" font-family="system-ui,-apple-system,sans-serif">${Math.round(score)}</text>
+    <text x="${cx}" y="96" text-anchor="middle" font-size="9" font-weight="600" fill="${color}" letter-spacing="0.07em" font-family="system-ui,-apple-system,sans-serif">${label}</text>
+    ${deltaLine}
+  </svg>`;
+}
+
 function mapSeedPayload(raw: Record<string, unknown>): FearGreedData | null {
   const comp = raw.composite as Record<string, unknown> | undefined;
   if (!comp?.score) return null;
@@ -117,30 +158,37 @@ export class FearGreedPanel extends Panel {
 
   public async fetchData(): Promise<boolean> {
     const hydrated = getHydratedData('fearGreedIndex') as Record<string, unknown> | undefined;
-    if (hydrated && !hydrated.unavailable) {
+    const hasBootstrap = hydrated && !hydrated.unavailable;
+    if (hasBootstrap) {
       const mapped = mapSeedPayload(hydrated);
       if (mapped && mapped.compositeScore > 0) {
         this.data = mapped;
         this.renderPanel();
+        // Always refresh from RPC to pick up complete data (bootstrap may have partial fields)
+        void this.refreshFromRpc();
         return true;
       }
     }
 
     this.showLoading();
+    return this.refreshFromRpc();
+  }
+
+  private async refreshFromRpc(): Promise<boolean> {
     try {
       const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
       const { getRpcBaseUrl } = await import('@/services/rpc-client');
       const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const resp = await client.getFearGreedIndex({});
       if (resp.unavailable) {
-        this.showError(t('common.noDataShort'), () => void this.fetchData());
+        if (!this.data) this.showError(t('common.noDataShort'), () => void this.fetchData());
         return false;
       }
       this.data = resp as FearGreedData;
       this.renderPanel();
       return true;
     } catch (e) {
-      this.showError(e instanceof Error ? e.message : t('common.failedToLoad'), () => void this.fetchData());
+      if (!this.data) this.showError(e instanceof Error ? e.message : t('common.failedToLoad'), () => void this.fetchData());
       return false;
     }
   }
@@ -180,10 +228,6 @@ export class FearGreedPanel extends Panel {
         </div>`;
     }).join('');
 
-    const deltaHtml = delta != null
-      ? `<span style="font-size:13px;color:${delta >= 0 ? '#2ecc71' : '#e74c3c'}">${delta >= 0 ? '+' : ''}${delta.toFixed(1)} vs prev</span>`
-      : '';
-
     const hdrMetric = (lbl: string, val: string) =>
       `<div style="text-align:center;padding:6px 4px">
         <div style="font-size:18px;font-weight:600;color:var(--text)">${escapeHtml(val)}</div>
@@ -205,9 +249,7 @@ export class FearGreedPanel extends Panel {
     const html = `
       <div style="padding:12px 14px">
         <div style="text-align:center;margin-bottom:12px">
-          <div style="font-size:56px;font-weight:700;line-height:1;color:${color}">${score}</div>
-          <div style="font-size:16px;font-weight:600;color:${color};margin:4px 0">${label}</div>
-          ${deltaHtml}
+          ${renderGauge(score, label, delta, color)}
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:rgba(255,255,255,0.04);border-radius:8px;padding:4px;margin-bottom:12px">
           ${hdr}

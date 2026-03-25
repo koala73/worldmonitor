@@ -39,6 +39,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/forecast/v1/get-simulation-package:
+        get:
+            tags:
+                - ForecastService
+            summary: GetSimulationPackage
+            operationId: GetSimulationPackage
+            parameters:
+                - name: runId
+                  in: query
+                  description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetSimulationPackageResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -327,3 +359,37 @@ components:
                 probabilityShift:
                     type: number
                     format: double
+        GetSimulationPackageRequest:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+        GetSimulationPackageResponse:
+            type: object
+            properties:
+                found:
+                    type: boolean
+                runId:
+                    type: string
+                pkgKey:
+                    type: string
+                schemaVersion:
+                    type: string
+                theaterCount:
+                    type: integer
+                    format: int32
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
+                note:
+                    type: string
+                    description: |-
+                        Populated when req.runId was supplied but does not match the returned package's runId.
+                         Indicates that per-run filtering is not yet active and the latest package was returned instead.
+                error:
+                    type: string
+                    description: |-
+                        Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
+                         Value: "redis_unavailable" on Redis errors.
