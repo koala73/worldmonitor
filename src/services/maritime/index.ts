@@ -139,7 +139,8 @@ const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
 const DIRECT_RAILWAY_SNAPSHOT_URL = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/ais/snapshot'
   : '';
-const LOCAL_SNAPSHOT_FALLBACK = 'http://localhost:3004/ais/snapshot';
+const LOCAL_SNAPSHOT_FALLBACK = 'http://127.0.0.1:3004/ais/snapshot';
+// eslint-disable-next-line no-restricted-syntax -- intentional: runtime detection, localhost never reached in WKWebView
 const isLocalhost = isClientRuntime && window.location.hostname === 'localhost';
 
 // ---- Internal Helpers ----

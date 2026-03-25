@@ -370,6 +370,7 @@ test('strips browser origin headers before invoking local handlers', async () =>
 
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/origin-check`, {
+      // eslint-disable-next-line no-restricted-syntax -- intentional: test fixture sending Tauri IPC origin header
       headers: { Origin: 'https://tauri.localhost' },
     });
     assert.equal(response.status, 200);
@@ -509,6 +510,7 @@ test('strips browser origin headers when proxying to cloud fallback (cloudFallba
 
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/no-local-handler`, {
+      // eslint-disable-next-line no-restricted-syntax -- intentional: test fixture sending Tauri IPC origin header
       headers: { Origin: 'https://tauri.localhost' },
     });
     assert.equal(response.status, 200);
@@ -571,12 +573,14 @@ test('preserves Origin in Vary when gzip compression is applied', async () => {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/large`, {
       headers: {
+        // eslint-disable-next-line no-restricted-syntax -- intentional: test fixture sending Tauri IPC origin header
         Origin: 'https://tauri.localhost',
         'Accept-Encoding': 'gzip',
       },
     });
 
     assert.equal(response.status, 200);
+    // eslint-disable-next-line no-restricted-syntax -- intentional: asserting CORS header echoes back Tauri IPC origin
     assert.equal(response.headers.get('access-control-allow-origin'), 'https://tauri.localhost');
     assert.equal(response.headers.get('content-encoding'), 'gzip');
 
@@ -1394,6 +1398,7 @@ test('rss-proxy blocks requests to localhost (SSRF protection)', async () => {
     const response = await fetch(`http://127.0.0.1:${port}/api/rss-proxy?url=http://127.0.0.1:3000`);
     assert.equal(response.status, 403);
     const body = await response.json();
+    // eslint-disable-next-line no-restricted-syntax -- intentional: asserting SSRF error message may mention "localhost"
     assert.ok(body.error.includes('private') || body.error.includes('localhost'));
   } finally {
     await app.close();

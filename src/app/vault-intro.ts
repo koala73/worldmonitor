@@ -365,31 +365,46 @@ function createTurnedPlateTexture(): THREE.CanvasTexture {
   const cv = document.createElement('canvas');
   cv.width = cv.height = size;
   const ctx = cv.getContext('2d')!;
-  ctx.fillStyle = '#0d1720';
+
+  // Mid-grey steel base — material tint handles the darkness; the map adds surface detail
+  ctx.fillStyle = '#58606a';
   ctx.fillRect(0, 0, size, size);
   const cx = size / 2, cy = size / 2;
-  // Concentric machining rings (lathe-turned surface)
-  for (let r = 1; r < size / 2; r += 1.6) {
-    const n = Math.random();
-    const lum = Math.floor(10 + n * 28);
-    ctx.strokeStyle = `rgba(${lum + 6},${lum + 14},${lum + 22},${0.12 + n * 0.50})`;
-    ctx.lineWidth = 0.7 + Math.random() * 0.9;
+
+  // Lathe-turned concentric rings — 3-ring groups (bright/mid/dark) for high contrast
+  for (let r = 1; r < size * 0.72; r += 1.4) {
+    const n    = Math.random();
+    const band = Math.floor(r / 2.8) % 3;
+    const lum  = band === 0 ? 155 + n * 60 : band === 1 ? 90 + n * 45 : 38 + n * 30;
+    const a    = band === 0 ? 0.45 + n * 0.40 : 0.20 + n * 0.35;
+    ctx.strokeStyle = `rgba(${Math.floor(lum)},${Math.floor(lum + 4)},${Math.floor(lum + 8)},${a})`;
+    ctx.lineWidth   = 0.6 + Math.random() * 1.1;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
   }
-  // Sparse radial scratches
-  for (let i = 0; i < 40; i++) {
+
+  // Radial micro-scratches — handling wear
+  for (let i = 0; i < 80; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const r1 = 20 + Math.random() * size * 0.28;
-    const r2 = r1 + 20 + Math.random() * size * 0.12;
-    ctx.strokeStyle = `rgba(200,220,240,${0.015 + Math.random() * 0.03})`;
-    ctx.lineWidth = 0.5;
+    const r1    = 10 + Math.random() * size * 0.32;
+    const r2    = r1 + 12 + Math.random() * size * 0.14;
+    const lum   = Math.floor(180 + Math.random() * 60);
+    ctx.strokeStyle = `rgba(${lum},${lum},${lum + 6},${0.03 + Math.random() * 0.06})`;
+    ctx.lineWidth   = 0.4;
     ctx.beginPath();
     ctx.moveTo(cx + Math.cos(angle) * r1, cy + Math.sin(angle) * r1);
     ctx.lineTo(cx + Math.cos(angle) * r2, cy + Math.sin(angle) * r2);
     ctx.stroke();
   }
+
+  // Edge darkening — vignette simulating oxidation/wear at panel edges
+  const vig = ctx.createRadialGradient(cx, cy, size * 0.28, cx, cy, size * 0.62);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.52)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, size, size);
+
   return new THREE.CanvasTexture(cv);
 }
 
@@ -828,6 +843,35 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
       pin.rotation.z = Math.PI / 2;
       pin.position.set(cx - side * (DW * 0.5 + 0.045), py, DD * 0.08);
       grp.add(pin);
+    }
+
+    // ── Recessed inset panels (between the horizontal bands) ──────────────────
+    // Two deep rectangular wells per half — break up the flat steel face,
+    // cast natural shadow, and give the door proper physical depth.
+    const recessPanelMat = new THREE.MeshPhysicalMaterial({
+      color: 0x10_18_22, metalness: 0.85, roughness: 0.55,
+    });
+    for (const py of [-0.96, 0.96]) {
+      // Back face of inset
+      const insetBack = new THREE.Mesh(
+        new THREE.BoxGeometry(DW - 0.20, 0.80, 0.002), recessPanelMat,
+      );
+      insetBack.position.set(cx, py, DD * 0.5 - 0.048);
+      grp.add(insetBack);
+
+      // Four thin chrome lips framing each inset well
+      const lipH = new THREE.BoxGeometry(DW - 0.18, 0.014, 0.048);
+      const lipV = new THREE.BoxGeometry(0.014, 0.80, 0.048);
+      for (const [gy, gx] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
+        const isHoriz = gx === 0;
+        const lip = new THREE.Mesh(isHoriz ? lipH : lipV, chromeMat);
+        lip.position.set(
+          cx + gx * ((DW - 0.18) * 0.5 - 0.002),
+          py + gy * (0.80 * 0.5 - 0.002),
+          DD * 0.5 - 0.022,
+        );
+        grp.add(lip);
+      }
     }
 
     // ── Scanner mounting disc — half-circle on door face, split between halves ──

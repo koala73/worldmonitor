@@ -227,7 +227,7 @@ export class EventHandlerManager implements AppModule {
       trackThemeChanged(next);
     });
 
-    const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const isLocalDev = location.hostname === '127.0.0.1';
     if (this.ctx.isDesktopApp || isLocalDev) {
       this.ctx.container.querySelectorAll<HTMLElement>('.variant-option, .mac-variant-pill').forEach(link => {
         link.addEventListener('click', (e) => {

@@ -163,6 +163,7 @@ async function isSafeUrl(urlString) {
   const hostname = parsed.hostname;
 
   // Quick-reject obvious private hostnames before DNS resolution
+  // eslint-disable-next-line no-restricted-syntax -- intentional: SSRF guard checking request hostname, not constructing a URL
   if (hostname === 'localhost' || hostname === '[::1]') {
     return { safe: false, reason: 'Requests to localhost are not allowed' };
   }
@@ -540,6 +541,7 @@ const SIDECAR_ALLOWED_ORIGINS = [
 function getSidecarCorsOrigin(req) {
   const origin = req.headers?.origin || req.headers?.get?.('origin') || '';
   if (origin && SIDECAR_ALLOWED_ORIGINS.some(p => p.test(origin))) return origin;
+  // eslint-disable-next-line no-restricted-syntax -- intentional: Tauri IPC origin; must not change to 127.0.0.1
   return 'tauri://localhost';
 }
 
@@ -2514,6 +2516,147 @@ async function dispatch(requestUrl, req, routes, context) {
       return json(result);
     } catch (e) {
       return json({ stressIndex: 0, error: e?.message ?? 'unknown', fredKeyMissing: false });
+    }
+  }
+
+  // ── Fear & Greed Index (alternative.me, no key required) ─────────────────
+  if (requestUrl.pathname === '/api/fear-greed') {
+    const cached = getCached('fear-greed', 60 * 60 * 1000); // 1 hour
+    if (cached) return json(cached);
+    try {
+      const res = await fetchWithTimeout('https://api.alternative.me/fng/?limit=7', {}, 8000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const entries = data?.data ?? [];
+      const [latest, ...rest] = entries;
+      const result = {
+        score: parseInt(latest?.value ?? '50', 10),
+        classification: latest?.value_classification ?? 'Neutral',
+        history: rest.map(e => ({ value: parseInt(e.value, 10), timestamp: e.timestamp })),
+        updatedAt: parseInt(latest?.timestamp ?? String(Math.floor(Date.now() / 1000)), 10),
+      };
+      setCached('fear-greed', result);
+      return json(result);
+    } catch (e) {
+      return json({ score: 50, classification: 'Neutral', history: [], updatedAt: Math.floor(Date.now() / 1000), error: e?.message ?? 'unknown' });
+    }
+  }
+
+  // ── National Debt / GDP (World Bank, no key required) ─────────────────────
+  if (requestUrl.pathname === '/api/national-debt') {
+    const cached = getCached('national-debt', 24 * 60 * 60 * 1000); // 24 hours
+    if (cached) return json(cached);
+    try {
+      const url = 'https://api.worldbank.org/v2/country/all/indicator/GC.DOD.TOTL.GD.ZS?format=json&mrv=5&per_page=300';
+      const res = await fetchWithTimeout(url, {}, 12000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const rows = data?.[1] ?? [];
+      const seen = new Map();
+      for (const row of rows) {
+        if (!row.country?.value || row.value == null) continue;
+        const code = row.countryiso3code || row.country?.id || '';
+        // skip aggregates (all-caps 3-char codes are typically regional aggregates from WB)
+        if (!code || code.length !== 3) continue;
+        if (!seen.has(code)) {
+          seen.set(code, { code, name: row.country.value, debtPctGdp: parseFloat(row.value.toFixed(1)), year: row.date });
+        }
+      }
+      const countries = [...seen.values()].sort((a, b) => b.debtPctGdp - a.debtPctGdp).slice(0, 30);
+      const result = { countries, updatedAt: Math.floor(Date.now() / 1000) };
+      setCached('national-debt', result);
+      return json(result);
+    } catch (e) {
+      return json({ countries: [], updatedAt: Math.floor(Date.now() / 1000), error: e?.message ?? 'unknown' });
+    }
+  }
+
+  // ── Fuel Prices (EIA v2, free key required) ───────────────────────────────
+  if (requestUrl.pathname === '/api/fuel-prices') {
+    const eiaKey = process.env.EIA_API_KEY;
+    if (!eiaKey) return json({ regions: [], keyMissing: true, updatedAt: Math.floor(Date.now() / 1000) });
+    const cached = getCached('fuel-prices', 12 * 60 * 60 * 1000); // 12 hours
+    if (cached) return json(cached);
+    try {
+      const base = 'https://api.eia.gov/v2/petroleum/pri/gnd/data/';
+      const params = new URLSearchParams({
+        'api_key': eiaKey,
+        'frequency': 'weekly',
+        'data[0]': 'value',
+        'facets[duoarea][]': 'NUS',
+        'facets[process][]': 'PTE',
+        'sort[0][column]': 'period',
+        'sort[0][direction]': 'desc',
+        'length': '20',
+      });
+      // fetch gasoline (EPM0) and diesel (EPD2D) together
+      const paramStr = params.toString() + '&facets[duoarea][]=R10&facets[duoarea][]=R20&facets[duoarea][]=R30&facets[duoarea][]=R40&facets[duoarea][]=R50&facets[product][]=EPM0&facets[product][]=EPD2D';
+      const res = await fetchWithTimeout(`${base}?${paramStr}`, {}, 12000);
+      if (!res.ok) throw new Error(`EIA HTTP ${res.status}`);
+      const data = await res.json();
+      const rows = data?.response?.data ?? [];
+
+      const AREA_NAMES = { NUS: 'U.S. Average', R10: 'East Coast', R20: 'Midwest', R30: 'Gulf Coast', R40: 'Rocky Mountain', R50: 'West Coast' };
+      const AREA_ORDER = ['NUS', 'R10', 'R20', 'R30', 'R40', 'R50'];
+
+      // Group latest value per (duoarea, product)
+      const latest = new Map();
+      for (const row of rows) {
+        const key = `${row.duoarea}|${row.product}`;
+        if (!latest.has(key)) latest.set(key, row);
+      }
+
+      const regions = AREA_ORDER.map(area => {
+        const gasRow = latest.get(`${area}|EPM0`);
+        const dslRow = latest.get(`${area}|EPD2D`);
+        return {
+          name: AREA_NAMES[area] ?? area,
+          gasolineUsd: gasRow ? parseFloat(gasRow.value) : 0,
+          dieselUsd: dslRow ? parseFloat(dslRow.value) : 0,
+          period: gasRow?.period ?? dslRow?.period ?? '',
+        };
+      }).filter(r => r.gasolineUsd > 0 || r.dieselUsd > 0);
+
+      const result = { regions, keyMissing: false, updatedAt: Math.floor(Date.now() / 1000) };
+      setCached('fuel-prices', result);
+      return json(result);
+    } catch (e) {
+      return json({ regions: [], keyMissing: false, updatedAt: Math.floor(Date.now() / 1000), error: e?.message ?? 'unknown' });
+    }
+  }
+
+  // ── GDELT Intelligence (no key required, public API) ──────────────────────
+  if (requestUrl.pathname === '/api/gdelt-intel') {
+    const cached = getCached('gdelt-intel', 15 * 60 * 1000); // 15 minutes
+    if (cached) return json(cached);
+    try {
+      const params = new URLSearchParams({
+        query: 'war OR conflict OR crisis OR military OR sanctions OR nuclear',
+        mode: 'artlist',
+        maxrecords: '25',
+        format: 'json',
+        sort: 'ToneAsc',
+        timespan: '3h',
+      });
+      const res = await fetchWithTimeout(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`, { headers: { 'User-Agent': CHROME_UA } }, 12000);
+      if (!res.ok) throw new Error(`GDELT HTTP ${res.status}`);
+      const data = await res.json();
+      const articles = data?.articles ?? [];
+      const events = articles.map(a => ({
+        title: a.title ?? '',
+        url: a.url ?? '',
+        source: a.domain ?? '',
+        tone: typeof a.tone === 'number' ? Math.round(a.tone * 10) / 10 : 0,
+        country: a.sourcecountry ?? '',
+        timestamp: a.seendate
+          ? new Date(a.seendate.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, '$1-$2-$3T$4:$5:$6Z')).getTime()
+          : Date.now(),
+      })).filter(e => e.title && e.url);
+      const result = { events, updatedAt: Math.floor(Date.now() / 1000) };
+      setCached('gdelt-intel', result);
+      return json(result);
+    } catch (e) {
+      return json({ events: [], updatedAt: Math.floor(Date.now() / 1000), error: e?.message ?? 'unknown' });
     }
   }
 

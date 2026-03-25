@@ -22,6 +22,7 @@ const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
 const DIRECT_OPENSKY_BASE_URL = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/opensky'
   : '';
+// eslint-disable-next-line no-restricted-syntax -- intentional: runtime detection including web dev server; WKWebView uses 127.0.0.1 (already in the array)
 const isLocalhostRuntime = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
 // Cache configuration

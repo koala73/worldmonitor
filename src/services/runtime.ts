@@ -54,8 +54,6 @@ export function detectDesktopRuntime(probe: RuntimeProbe): boolean {
   const tauriInUserAgent = probe.userAgent.includes('Tauri');
   const secureLocalhostOrigin = (
     probe.locationProtocol === 'https:' && (
-      probe.locationHost === 'localhost' ||
-      probe.locationHost.startsWith('localhost:') ||
       probe.locationHost === '127.0.0.1' ||
       probe.locationHost.startsWith('127.0.0.1:')
     )
@@ -66,8 +64,10 @@ export function detectDesktopRuntime(probe: RuntimeProbe): boolean {
   const tauriLikeLocation = (
     probe.locationProtocol === 'tauri:' ||
     probe.locationProtocol === 'asset:' ||
+    /* eslint-disable no-restricted-syntax -- intentional: Tauri IPC origins; these must remain as-is */
     probe.locationHost === 'tauri.localhost' ||
     probe.locationHost.endsWith('.tauri.localhost') ||
+    /* eslint-enable no-restricted-syntax */
     probe.locationOrigin.startsWith('tauri://') ||
     secureLocalhostOrigin
   );
@@ -143,6 +143,7 @@ const APP_HOSTS = new Set([
   'www.worldmonitor.app',
   'tech.worldmonitor.app',
   'api.worldmonitor.app',
+  // eslint-disable-next-line no-restricted-syntax -- intentional: allowlist entry for local web dev server; WKWebView uses 127.0.0.1 (also in this set)
   'localhost',
   '127.0.0.1',
   ...extractHostnames(WS_API_URL, import.meta.env.VITE_WS_RELAY_URL),
@@ -368,6 +369,7 @@ const ALLOWED_REDIRECT_HOSTS = /^https:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*wor
 function isAllowedRedirectTarget(url: string): boolean {
   try {
     const parsed = new URL(url);
+    // eslint-disable-next-line no-restricted-syntax -- intentional: redirect allowlist includes localhost for local web dev; WKWebView origin is 127.0.0.1 (covered by ALLOWED_REDIRECT_HOSTS)
     return ALLOWED_REDIRECT_HOSTS.test(parsed.origin) || parsed.hostname === 'localhost';
   } catch {
     return false;

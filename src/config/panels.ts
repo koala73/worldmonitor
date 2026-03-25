@@ -70,6 +70,10 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'food-insecurity': { name: 'Food Insecurity', enabled: true, priority: 2 },
   'radiation-decay': { name: 'Radiation Decay Calculator', enabled: false, priority: 3 },
   'resource-inventory': { name: 'Resource Inventory', enabled: false, priority: 3 },
+  'fear-greed': { name: 'Fear & Greed Index', enabled: true, priority: 2 },
+  'internet-disruptions': { name: 'Internet Disruptions', enabled: true, priority: 2 },
+  'national-debt': { name: 'National Debt', enabled: true, priority: 2 },
+  'fuel-prices': { name: 'Fuel Prices', enabled: true, priority: 2 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {

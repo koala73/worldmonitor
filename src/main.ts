@@ -14,6 +14,7 @@ Sentry.init({
   environment: location.hostname === 'worldmonitor.app' ? 'production'
     : location.hostname.includes('vercel.app') ? 'preview'
     : 'development',
+  // eslint-disable-next-line no-restricted-syntax -- intentional: Sentry suppression for local web dev (localhost); Tauri runtime is covered by __TAURI_INTERNALS__ check
   enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
   sendDefaultPii: false,
   tracesSampleRate: 0.1,

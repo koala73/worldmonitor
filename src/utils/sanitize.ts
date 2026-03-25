@@ -20,6 +20,7 @@ function isPrivateHostname(hostname: string): boolean {
   let ipCandidate = h.replace(/^\[|\]$/g, '');
 
   // Loopback
+  // eslint-disable-next-line no-restricted-syntax -- intentional: SSRF protection checking hostname values per RFC 6761; not constructing URLs
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local')) return true;
 
   if (ipCandidate === '::1' || ipCandidate === '::') return true;
