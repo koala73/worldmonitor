@@ -1,0 +1,225 @@
+/**
+ * Onboarding Guide Styles
+ *
+ * Styles for the 3-step onboarding tooltip guide.
+ * Uses CSS transforms for smooth animations.
+ */
+
+/* Overlay - semi-transparent backdrop */
+.onboarding-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0);
+  transition: background 0.3s ease;
+  pointer-events: none;
+}
+
+.onboarding-overlay.onboarding-overlay-in {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.onboarding-overlay.onboarding-overlay-out {
+  background: rgba(0, 0, 0, 0);
+}
+
+/* Tooltip container */
+.onboarding-tooltip {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  max-width: 320px;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.onboarding-tooltip.onboarding-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.onboarding-tooltip.onboarding-out {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* Position variants */
+.onboarding-tooltip.onboarding-center {
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+}
+
+.onboarding-tooltip.onboarding-center.onboarding-in {
+  transform: translateX(-50%) translateY(0);
+}
+
+.onboarding-tooltip.onboarding-center.onboarding-out {
+  transform: translateX(-50%) translateY(-10px);
+}
+
+.onboarding-tooltip.onboarding-left {
+  top: 50%;
+  left: 80px;
+  transform: translateY(-50%) translateX(-10px);
+}
+
+.onboarding-tooltip.onboarding-left.onboarding-in {
+  transform: translateY(-50%) translateX(0);
+}
+
+.onboarding-tooltip.onboarding-left.onboarding-out {
+  transform: translateY(-50%) translateX(-20px);
+}
+
+.onboarding-tooltip.onboarding-right {
+  top: 20%;
+  right: 80px;
+  left: auto;
+  transform: translateX(10px);
+}
+
+.onboarding-tooltip.onboarding-right.onboarding-in {
+  transform: translateX(0);
+}
+
+.onboarding-tooltip.onboarding-right.onboarding-out {
+  transform: translateX(20px);
+}
+
+/* Content layout */
+.onboarding-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.onboarding-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.onboarding-text {
+  flex: 1;
+}
+
+.onboarding-text strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: white;
+}
+
+.onboarding-text p {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Footer with progress and skip */
+.onboarding-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.onboarding-progress {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-mono, monospace);
+}
+
+.onboarding-skip {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.onboarding-skip:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .onboarding-tooltip {
+    max-width: calc(100vw - 40px);
+    padding: 14px 16px;
+  }
+
+  .onboarding-tooltip.onboarding-center,
+  .onboarding-tooltip.onboarding-left,
+  .onboarding-tooltip.onboarding-right {
+    top: auto;
+    bottom: 100px;
+    left: 20px;
+    right: 20px;
+    transform: translateY(10px);
+  }
+
+  .onboarding-tooltip.onboarding-center.onboarding-in,
+  .onboarding-tooltip.onboarding-left.onboarding-in,
+  .onboarding-tooltip.onboarding-right.onboarding-in {
+    transform: translateY(0);
+  }
+
+  .onboarding-tooltip.onboarding-center.onboarding-out,
+  .onboarding-tooltip.onboarding-left.onboarding-out,
+  .onboarding-tooltip.onboarding-right.onboarding-out {
+    transform: translateY(20px);
+  }
+
+  .onboarding-icon {
+    font-size: 24px;
+  }
+
+  .onboarding-text strong {
+    font-size: 15px;
+  }
+
+  .onboarding-text p {
+    font-size: 12px;
+  }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-overlay,
+  .onboarding-tooltip {
+    transition: none;
+  }
+
+  .onboarding-tooltip.onboarding-in,
+  .onboarding-tooltip.onboarding-out {
+    transform: none;
+  }
+
+  .onboarding-tooltip.onboarding-center.onboarding-in,
+  .onboarding-tooltip.onboarding-center.onboarding-out {
+    transform: translateX(-50%);
+  }
+
+  .onboarding-tooltip.onboarding-left.onboarding-in,
+  .onboarding-tooltip.onboarding-left.onboarding-out {
+    transform: translateY(-50%);
+  }
+}
