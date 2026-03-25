@@ -201,6 +201,21 @@ jobs:
           fi
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
 
+      - name: Configure Apple notarization credentials
+        if: contains(matrix.platform, 'macos')
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.APPLE_ID }}" ] && [ -n "${{ secrets.APPLE_PASSWORD }}" ] && [ -n "${{ secrets.APPLE_TEAM_ID }}" ]; then
+            {
+              echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+              echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
+              echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+            } >> "$GITHUB_ENV"
+            echo "Apple notarization secrets found."
+          else
+            echo "Apple notarization secrets unavailable; skipping notarization."
+          fi
+
       - name: Resolve Tauri build arguments
         shell: bash
         run: |
@@ -222,10 +237,6 @@ jobs:
           WM_BUILD_TAG: ${{ needs.release-context.outputs.tag }}
           WM_BUILD_COMMIT_SHA: ${{ needs.release-context.outputs.commit_sha }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -n "${TAURI_BUILD_ARGS}" ]; then
             read -r -a tauri_args <<< "${TAURI_BUILD_ARGS}"
