@@ -33,7 +33,8 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           COMMITS=$(git log origin/main..HEAD --oneline --no-merges | head -20)
           FILE_COUNT=$(git diff --name-only origin/main...HEAD | wc -l | tr -d ' ')
-          TITLE=$(echo "$BRANCH" | sed 's|.*/||' | sed 's/-/ /g')
+          TITLE=${BRANCH##*/}
+          TITLE=${TITLE//-/ }
           {
             echo "title=auto: $TITLE"
             echo "branch=$BRANCH"
@@ -140,7 +141,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enable auto-merge on PR
+      - name: Enable GitHub auto-merge
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -153,13 +154,19 @@ jobs:
               state: 'open'
             });
             if (prs.length > 0) {
-              await github.rest.pulls.merge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prs[0].number,
-                merge_method: 'squash',
-                commit_title: `merge(${branch}): auto-merge AI agent branch`,
-                commit_message: `Auto-merged from ${branch} after checks passed.`
-              });
-              console.log(`Auto-merged PR #${prs[0].number}`);
+              const prNodeId = prs[0].node_id;
+              const mutation = `
+                mutation EnablePullRequestAutoMerge($pullRequestId: ID!) {
+                  enablePullRequestAutoMerge(input: {
+                    pullRequestId: $pullRequestId
+                    mergeMethod: SQUASH
+                  }) {
+                    pullRequest {
+                      number
+                    }
+                  }
+                }
+              `;
+              await github.graphql(mutation, { pullRequestId: prNodeId });
+              console.log(`Enabled GitHub auto-merge for PR #${prs[0].number}`);
             }

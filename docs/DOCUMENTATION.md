@@ -1,5 +1,7 @@
 # World Monitor Documentation
 
+![Version](https://img.shields.io/github/v/release/bradleybond512/worldmonitor-macos?label=version)
+
 This repo is easiest to understand in layers: product surface first, runtime boundaries second, then extension points and release mechanics. The guides below are organized that way so a reviewer can move quickly from "what is this?" to "how is this built?" without digging through the whole tree.
 
 ## Fastest Way To Evaluate The Project

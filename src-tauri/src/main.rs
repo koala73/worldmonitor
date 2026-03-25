@@ -773,6 +773,56 @@ fn send_notification(title: String, body: String, sound: Option<String>) -> Resu
 
 /// Download a macOS DMG release, mount it, copy the app bundle to /Applications, and relaunch.
 /// On non-macOS platforms returns an error immediately (no-op — only called on macOS).
+#[cfg(target_os = "macos")]
+fn resolve_update_install_path() -> Result<String, String> {
+    let current_exe = env::current_exe()
+        .map_err(|e| format!("Resolve current executable failed: {e}"))?;
+    let mut cursor = current_exe.as_path();
+    loop {
+        if cursor
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("app"))
+            .unwrap_or(false)
+        {
+            return Ok(cursor.to_string_lossy().to_string());
+        }
+        cursor = cursor
+            .parent()
+            .ok_or_else(|| "Could not resolve active app bundle path".to_string())?;
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn verify_app_bundle_signature(app_path: &str, label: &str) -> Result<(), String> {
+    let verify = Command::new("codesign")
+        .args(["--verify", "--deep", "--strict", app_path])
+        .output()
+        .map_err(|e| format!("codesign verify failed for {label}: {e}"))?;
+    if !verify.status.success() {
+        return Err(format!(
+            "{label} signature verification failed: {}",
+            String::from_utf8_lossy(&verify.stderr)
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn copy_app_bundle_preserving_signature(source: &str, dest: &str) -> Result<(), String> {
+    let copy = Command::new("ditto")
+        .args([source, dest])
+        .output()
+        .map_err(|e| format!("ditto failed: {e}"))?;
+    if !copy.status.success() {
+        return Err(format!(
+            "Copy to install path failed: {}",
+            String::from_utf8_lossy(&copy.stderr)
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn install_update(download_url: String) -> Result<(), String> {
     // Validate the URL comes from GitHub
@@ -832,11 +882,13 @@ async fn install_update(download_url: String) -> Result<(), String> {
             ));
         }
 
-        // 3. Verify the app bundle identifier before overwriting /Applications.
+        // 3. Verify the app bundle identifier before replacing the active install.
         //    This prevents a compromised GitHub account or MITM from replacing the app
         //    with a malicious binary that passes the host check but is not World Monitor.
         let source = format!("{}/World Monitor.app", mount_point);
-        let dest = "/Applications/World Monitor.app";
+        let dest = resolve_update_install_path()?;
+        let staged = format!("{dest}.update-staged");
+        let backup = format!("{dest}.update-backup");
 
         const EXPECTED_BUNDLE_ID: &str = "com.bradleybond.worldmonitor";
         let plist = format!("{source}/Contents/Info.plist");
@@ -861,26 +913,40 @@ async fn install_update(download_url: String) -> Result<(), String> {
             }
         }
 
-        let _ = Command::new("rm").args(["-rf", dest]).output();
+        verify_app_bundle_signature(&source, "Mounted app bundle")?;
+        let _ = fs::remove_dir_all(&staged);
+        let _ = fs::remove_dir_all(&backup);
 
-        let copy = Command::new("cp")
-            .args(["-r", &source, dest])
-            .output()
-            .map_err(|e| format!("cp failed: {e}"))?;
+        let install_result = (|| -> Result<(), String> {
+            copy_app_bundle_preserving_signature(&source, &staged)?;
+            verify_app_bundle_signature(&staged, "Staged app")?;
 
-        // 4. Detach the DMG and clean up regardless of copy result
+            if Path::new(&dest).exists() {
+                fs::rename(&dest, &backup)
+                    .map_err(|e| format!("Move existing install to backup failed: {e}"))?;
+            }
+
+            if let Err(e) = fs::rename(&staged, &dest) {
+                let _ = fs::remove_dir_all(&dest);
+                if Path::new(&backup).exists() {
+                    let _ = fs::rename(&backup, &dest);
+                }
+                return Err(format!("Swap staged app into install path failed: {e}"));
+            }
+
+            verify_app_bundle_signature(&dest, "Installed app")?;
+            let _ = fs::remove_dir_all(&backup);
+            Ok(())
+        })();
+
+        // 4. Detach the DMG and clean up regardless of install result
         let _ = Command::new("hdiutil").args(["detach", mount_point, "-quiet"]).output();
         let _ = std::fs::remove_file(tmp_dmg);
 
-        if !copy.status.success() {
-            return Err(format!(
-                "Copy to /Applications failed: {}",
-                String::from_utf8_lossy(&copy.stderr)
-            ));
-        }
+        install_result?;
 
         // 5. Relaunch and exit
-        let _ = Command::new("open").args(["-a", "World Monitor"]).spawn();
+        let _ = Command::new("open").arg(&dest).spawn();
         std::process::exit(0);
     }
 }

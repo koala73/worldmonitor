@@ -81,6 +81,14 @@ Run **`npm run typecheck`** and **`npm run test:sidecar`** before every PR.
 
 ---
 
+## Release and Main Sync
+
+- Agent branches (`claude/*`, `codex/*`, `copilot/*`) must go through PRs and GitHub auto-merge after required checks pass.
+- Keep local delivery aligned with the same guarded path by installing and maintaining the LaunchAgent with `npm run main-sync:setup`.
+- Trigger a one-off local sync with `npm run main-sync:run`.
+
+---
+
 ## Coding Conventions
 
 ### TypeScript
@@ -163,6 +171,7 @@ Anthropic Claude (`ANTHROPIC_API_KEY`) is a secondary cloud provider used for th
 ## Security Guidelines
 
 - **Never commit secrets** — use `.env.local` or Vercel/GitHub environment variables
+- **Secret scan is mandatory** — this is a user-owned repo where provider-native secret validity checks and non-provider patterns are not enough on their own, so keep repo-level secret scan enforcement active in hooks and CI (`npm run secrets:scan:staged`, `npm run secrets:scan`)
 - **SSRF protection** — always use `sanitizeUrl()` from `src/utils` when handling user-supplied URLs
 - **XSS protection** — always call `DOMPurify.sanitize()` before injecting HTML into the DOM
 - **Rate limiting** — API routes use Upstash Redis (`@upstash/ratelimit`) for per-IP limits

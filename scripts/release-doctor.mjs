@@ -37,7 +37,7 @@ function parseArgs(argv) {
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  if (!['full', 'tech'].includes(options.variant)) {
+  if (!['full', 'tech', 'finance'].includes(options.variant)) {
     throw new Error(`Unsupported variant for release doctor: ${options.variant}`);
   }
 
@@ -78,7 +78,9 @@ export function parseCargoLockVersion(cargoLock, packageName) {
 }
 
 function buildTargetTag(version, variant) {
-  return variant === 'tech' ? `v${version}-tech` : `v${version}`;
+  if (variant === 'tech') return `v${version}-tech`;
+  if (variant === 'finance') return `v${version}-finance`;
+  return `v${version}`;
 }
 
 export function findVersionMismatches(versionsByFile) {
@@ -124,7 +126,7 @@ export function findReleaseStateIssues({
     issues.push(`Remote tag already exists for target release: ${targetTag}`);
   }
 
-  if (hasRemoteTargetTag && releasesForTarget.length === 0) {
+  if (hasRemoteTargetTag && releasesForTarget.length === 0 && !allowExistingTargetRelease) {
     issues.push(`Remote tag exists without a GitHub release for target tag: ${targetTag}`);
   }
 

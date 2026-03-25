@@ -6,6 +6,9 @@ CHANGED_FILES="$(git diff --cached --name-only)"
 echo "Checking for merge conflict markers..."
 npm run lint:conflicts || exit 1
 
+echo "Running staged secret scan..."
+npm run secrets:scan:staged || exit 1
+
 if echo "$CHANGED_FILES" | grep -Eq "\\.json$"; then
   echo "Running JSON lint..."
   npm run lint:json || exit 1

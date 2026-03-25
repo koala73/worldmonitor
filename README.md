@@ -1,5 +1,8 @@
 # World Monitor
 
+[![Version](https://img.shields.io/github/v/release/bradleybond512/worldmonitor-macos?label=version)](https://github.com/bradleybond512/worldmonitor-macos/releases/latest)
+<a href="https://github.com/bradleybond512/worldmonitor-macos/releases/latest"><strong>Download Latest Release</strong></a>
+
 World Monitor is a multi-runtime intelligence platform: one codebase, four web variants, three desktop targets, a proto-first API layer, and a local-first desktop runtime that can keep working when cloud paths are unavailable.
 
 At the product level, it is a real-time situational-awareness dashboard for geopolitics, infrastructure, markets, and technology. At the engineering level, it is a systems project: geospatial rendering, typed contracts, desktop security boundaries, AI fallback orchestration, and operational documentation all living in the same repo.
