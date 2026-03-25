@@ -173,6 +173,8 @@ jobs:
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            echo "Apple signing secrets unavailable; using ad-hoc signing identity (-)."
           fi
 
       - name: Import Apple Developer Certificate
