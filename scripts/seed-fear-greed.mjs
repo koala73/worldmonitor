@@ -273,8 +273,9 @@ function scoreCategory(name, inputs) {
       if (vix == null) return { score: 50, inputs };
       // VIX range 12–35: neutral at ~23.5 (historical avg ~19-20). Old range 12-40 centered neutral at VIX=26 — too permissive.
       const vixScore = clamp(100 - ((vix - 12) / 23) * 100, 0, 100);
-      const termScore = (vix9d != null && vix3m != null) ? (vix / vix3m < 1 ? 70 : 30) : 50;
-      const termStructure = (vix9d != null && vix3m != null) ? (vix / vix3m < 1 ? 'contango' : 'backwardation') : 'unknown';
+      // Gate on vix3m only — vix9d is display-only and its absence shouldn't suppress the term structure signal.
+      const termScore = vix3m != null ? (vix / vix3m < 1 ? 70 : 30) : 50;
+      const termStructure = vix3m != null ? (vix / vix3m < 1 ? 'contango' : 'backwardation') : 'unknown';
       return { score: Math.round(vixScore * 0.7 + termScore * 0.3), inputs: { vix, vix9d, vix3m, termStructure } };
     }
     case 'positioning': {
@@ -318,11 +319,13 @@ function scoreCategory(name, inputs) {
     }
     case 'liquidity': {
       const { m2Obs, walclObs, sofr } = inputs;
-      const m2Latest = fredLatest(m2Obs), m2Ago = fredNMonthsAgo(m2Obs, 12);
+      // M2SL is weekly since 2021 — 52 observations back = 52 weeks = true YoY. Using 12 was ~13 weeks (quarterly).
+      const m2Latest = fredLatest(m2Obs), m2Ago = fredNMonthsAgo(m2Obs, 52);
       const m2Yoy = (m2Latest && m2Ago && m2Ago !== 0) ? ((m2Latest - m2Ago) / m2Ago) * 100 : null;
+      // WALCL is weekly — 4 observations back = ~1 month (MoM). Using 1 was week-over-week (too noisy).
       const walclLatest = fredLatest(walclObs), walclAgo = fredNMonthsAgo(walclObs, 4);
       const fedBsMom = (walclLatest && walclAgo && walclAgo !== 0) ? ((walclLatest - walclAgo) / walclAgo) * 100 : null;
-      // M2 YoY: normal annual growth is 4-6%; use 5x multiplier so 5% YoY ≈ 75 (not pegged at 100 like 10x was)
+      // M2 YoY: normal annual growth is 4-6%; use 5x multiplier so 5% YoY ≈ 75
       const m2Score = m2Yoy != null ? clamp(m2Yoy * 5 + 50, 0, 100) : 50;
       const fedScore = fedBsMom != null ? clamp(fedBsMom * 20 + 50, 0, 100) : 50;
       const sofrScore = sofr != null ? clamp(100 - sofr * 15, 0, 100) : 50;
