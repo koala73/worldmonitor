@@ -168,6 +168,11 @@ export class ConsumerPricesPanel extends Panel {
       if (market === 'all') {
         const results = await fetchAllMarketsOverview();
         if (!this.element?.isConnected) { this.loading = false; return; }
+        if (results.every((r) => r.upstreamUnavailable)) {
+          this.loading = false;
+          this.showError(undefined, () => void this.fetchData());
+          return;
+        }
         this.allMarkets = results;
         this.loading = false;
         this.render();
