@@ -19944,10 +19944,13 @@ body.map-width-resizing {
   grid-column: 1;
 }
 
+<<<<<<< HEAD
 .main-content.desktop-grid.map-hidden .map-width-resize-handle {
   display: none;
 }
 
+=======
+>>>>>>> 45836477 (feat: map width resize and desktop bottom grid for issue #2217)
 .main-content.desktop-grid .map-section {
   grid-column: 1;
   grid-row: 1;
