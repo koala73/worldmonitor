@@ -145,20 +145,25 @@ function injectStyles(): void {
     .fc-inval-item::before { color: #e05252; }
     .fc-react-item::before { color: #58a6ff; }
 
+    /* ── Section label ───────────────────────────────────────────────────── */
+    .fc-section-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary, #7d8590); padding: 6px 8px 4px; }
+
     /* ── Forecast probability table ──────────────────────────────────────── */
     .fc-prob-table { border: 1px solid var(--border-color, #30363d); border-radius: 4px; overflow: hidden; margin: 0 8px 8px; }
-    .fc-prob-row { display: grid; grid-template-columns: 1fr 38px 90px 30px; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #30363d); cursor: pointer; transition: background 0.1s; }
-    .fc-prob-row:last-child { border-bottom: none; }
-    .fc-prob-row:hover { background: rgba(255,255,255,0.02); }
+    .fc-prob-item { border-bottom: 1px solid var(--border-color, #30363d); }
+    .fc-prob-item:last-child { border-bottom: none; }
+    .fc-prob-row { display: grid; grid-template-columns: 1fr 38px 90px 30px; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; transition: background 0.1s; }
+    .fc-prob-item:hover .fc-prob-row { background: rgba(255,255,255,0.02); }
     .fc-prob-label { font-size: 10px; color: var(--text-secondary, #7d8590); line-height: 1.4; }
     .fc-prob-pct { font-size: 11px; font-weight: 700; text-align: right; }
     .fc-prob-bar-track { height: 3px; background: var(--border-color, #30363d); border-radius: 2px; overflow: hidden; }
     .fc-prob-bar-fill { height: 100%; border-radius: 2px; }
     .fc-trend-sm { font-size: 10px; text-align: center; }
 
-    /* ── Detail toggle ───────────────────────────────────────────────────── */
+    /* ── Detail toggle (hidden by default; shown on item hover) ──────────── */
     .fc-hidden { display: none; }
-    .fc-toggle-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 10px 8px; }
+    .fc-toggle-row { display: none; flex-wrap: wrap; gap: 8px; padding: 0 10px 8px; }
+    .fc-prob-item:hover .fc-toggle-row { display: flex; }
     .fc-toggle { cursor: pointer; color: var(--text-secondary, #7d8590); font-size: 11px; }
     .fc-toggle:hover { color: var(--text-primary, #e6edf3); }
     .fc-detail { padding: 8px 10px 2px; border-top: 1px solid var(--border-color, #2a2a2a); }
@@ -215,9 +220,9 @@ export class ForecastPanel extends Panel {
 
       const toggle = target.closest('[data-fc-toggle]') as HTMLElement | null;
       if (toggle) {
-        const row = toggle.closest('.fc-prob-row');
+        const item = toggle.closest('.fc-prob-item');
         const panelId = toggle.dataset.fcToggle;
-        const detail = panelId ? row?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
+        const detail = panelId ? item?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
         if (detail) detail.classList.toggle('fc-hidden');
         return;
       }
@@ -259,17 +264,15 @@ export class ForecastPanel extends Panel {
       `<button class="fc-filter${d === this.activeDomain ? ' fc-active' : ''}" data-fc-domain="${d}">${DOMAIN_LABELS[d]}</button>`
     ).join('');
 
-    const nexusHtml = this.theaters.length > 0 ? this.renderNexus() : '';
-    const forecastsLabel = this.theaters.length > 0
-      ? `<div class="fc-section-label">Probability Bets</div>`
+    const nexusHtml = this.theaters.length > 0
+      ? `<div class="fc-nexus">${this.renderNexus()}</div><div class="fc-section-label">Probability Bets</div>`
       : '';
     const tableHtml = this.renderProbTable(filtered);
 
     this.setContent(`
       <div class="fc-panel">
         <div class="fc-filters">${filtersHtml}</div>
-        <div class="fc-nexus">${nexusHtml}</div>
-        ${forecastsLabel}
+        ${nexusHtml}
         ${tableHtml}
       </div>
     `);
@@ -407,24 +410,25 @@ export class ForecastPanel extends Panel {
     ).join('');
 
     return `
-      <div class="fc-prob-row">
-        <span class="fc-prob-label"
-              style="border-left:2px solid ${catColor}47;padding-left:6px">
-          ${escapeHtml(f.title)}
-        </span>
-        <span class="fc-prob-pct" style="color:${probColor}">${pct}%</span>
-        <div class="fc-prob-bar-track">
-          <div class="fc-prob-bar-fill" style="background:${probColor};width:${pct}%"></div>
+      <div class="fc-prob-item">
+        <div class="fc-prob-row">
+          <span class="fc-prob-label"
+                style="border-left:2px solid ${catColor}47;padding-left:6px">
+            ${escapeHtml(f.title)}
+          </span>
+          <span class="fc-prob-pct" style="color:${probColor}">${pct}%</span>
+          <div class="fc-prob-bar-track">
+            <div class="fc-prob-bar-fill" style="background:${probColor};width:${pct}%"></div>
+          </div>
+          <span class="fc-trend-sm" style="color:${trendColor}">${trendSymbol}</span>
         </div>
-        <span class="fc-trend-sm" style="color:${trendColor}">${trendSymbol}</span>
+        <div class="fc-toggle-row">
+          <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}">Analysis</span>
+          ${(f.signals || []).length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}">Signals (${(f.signals || []).length})</span>` : ''}
+        </div>
+        <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${this.renderDetailBody(f)}</div>
+        ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}
       </div>
-      <div class="fc-toggle-row">
-        <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}">Analysis</span>
-        ${(f.signals || []).length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}">Signals (${(f.signals || []).length})</span>` : ''}
-      </div>
-      <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${this.renderDetailBody(f)}</div>
-      ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}
-      ${f.calibration?.marketTitle ? `<div class="fc-calibration">Market: ${escapeHtml(f.calibration.marketTitle)} (${Math.round((f.calibration.marketPrice || 0) * 100)}%)</div>` : ''}
     `;
   }
 
