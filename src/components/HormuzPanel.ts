@@ -15,25 +15,24 @@ function statusColor(status: string): string {
   }
 }
 
-function barChart(series: HormuzSeries[], color: string, chartIdx: number, width = 280, height = 52): string {
+function barChart(series: HormuzSeries[], color: string, unit: string, width = 280, height = 52): string {
   if (!series.length) return `<div style="height:${height}px;display:flex;align-items:center;color:var(--text-dim);font-size:10px">No data</div>`;
 
   const max = Math.max(...series.map(p => p.value), 1);
   const barW = Math.max(2, Math.floor((width - series.length) / series.length));
-  const unit = chartIdx === 0 ? 'kt/day' : 'units';
 
   let x = 0;
   const rects = series.map(p => {
     const h = Math.max(p.value > 0 ? 2 : 1, Math.round((p.value / max) * (height - 2)));
     const fill = p.value === 0 ? ZERO_COLOR : color;
-    const rect = `<rect class="hbar" x="${x}" y="${height - h}" width="${barW}" height="${h}" fill="${fill}" rx="1" data-date="${escapeHtml(p.date)}" data-val="${p.value}" data-unit="${unit}" style="cursor:crosshair"/>`;
+    const rect = `<rect x="${x}" y="${height - h}" width="${barW}" height="${h}" fill="${fill}" rx="1"/>`;
     x += barW + 1;
     return rect;
   });
 
   x = 0;
   const hits = series.map(p => {
-    const hit = `<rect class="hbar" x="${x}" y="0" width="${barW}" height="${height}" fill="transparent" data-date="${escapeHtml(p.date)}" data-val="${p.value}" data-unit="${unit}" style="cursor:crosshair"/>`;
+    const hit = `<rect class="hbar" x="${x}" y="0" width="${barW}" height="${height}" fill="transparent" data-date="${escapeHtml(p.date)}" data-val="${p.value}" data-unit="${escapeHtml(unit)}" style="cursor:crosshair"/>`;
     x += barW + 1;
     return hit;
   });
@@ -46,7 +45,7 @@ function renderChart(chart: HormuzChart, idx: number): string {
   const last = chart.series[chart.series.length - 1];
   const lastVal = last ? last.value.toFixed(0) : 'N/A';
   const lastDate = last ? last.date.slice(5) : '';
-  const unit = idx === 0 ? 'kt/day' : 'units';
+  const unit = chart.label.includes('crude_oil') ? 'kt/day' : 'units';
 
   return `
     <div class="hz-chart" style="margin-bottom:12px">
@@ -54,7 +53,7 @@ function renderChart(chart: HormuzChart, idx: number): string {
         <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(chart.title)}</span>
         <span style="font-size:11px;font-weight:600;color:${color}">${escapeHtml(lastVal)} <span style="font-size:9px;color:var(--text-dim)">${unit} · ${escapeHtml(lastDate)}</span></span>
       </div>
-      <div style="position:relative">${barChart(chart.series, color, idx)}</div>
+      <div style="position:relative">${barChart(chart.series, color, unit)}</div>
     </div>`;
 }
 
@@ -98,7 +97,7 @@ export class HormuzPanel extends Panel {
       if (!tip) return;
       const barRect = (target as SVGRectElement).getBoundingClientRect();
       tip.style.left = `${barRect.left + barRect.width / 2}px`;
-      tip.style.top = `${barRect.top - 28}px`;
+      tip.style.top = `${Math.max(8, barRect.top - 28)}px`;
       tip.style.transform = 'translateX(-50%)';
       tip.style.opacity = '1';
       tip.textContent = `${date}  ${val} ${unit}`;
