@@ -90,6 +90,7 @@ import {
   COMMODITY_PORTS as COMMODITY_GEO_PORTS,
 } from '@/config';
 import type { GulfInvestment } from '@/types';
+import REIT_PROPERTIES from '../../data/reit-properties.json';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
 import { getSecretState } from '@/services/runtime-config';
@@ -1577,6 +1578,9 @@ export class DeckGLMap {
     if (mapLayers.commodityHubs) {
       layers.push(this.createCommodityHubsLayer());
     }
+    if (mapLayers.reitProperties) {
+      layers.push(this.createReitPropertiesLayer());
+    }
 
     // Critical minerals layer
     if (mapLayers.minerals) {
@@ -2670,6 +2674,31 @@ export class DeckGLMap {
     });
   }
 
+  // REIT sector → RGBA color mapping
+  private static readonly REIT_SECTOR_COLORS: Record<string, [number, number, number, number]> = {
+    retail:      [88, 166, 255, 210],   // #58a6ff
+    industrial:  [63, 185, 80, 210],    // #3fb950
+    residential: [210, 168, 255, 210],  // #d2a8ff
+    office:      [210, 153, 34, 210],   // #d29922
+    healthcare:  [248, 81, 73, 210],    // #f85149
+    datacenter:  [121, 192, 255, 210],  // #79c0ff
+    specialty:   [227, 179, 65, 210],   // #e3b341
+  };
+
+  private createReitPropertiesLayer(): ScatterplotLayer {
+    type ReitProp = { reitSymbol: string; propertyName: string; lat: number; lng: number; sector: string; propertyType: string; city: string; state: string };
+    return new ScatterplotLayer<ReitProp>({
+      id: 'reit-properties-layer',
+      data: REIT_PROPERTIES as ReitProp[],
+      getPosition: (d) => [d.lng, d.lat],
+      getRadius: 12000,
+      getFillColor: (d) => DeckGLMap.REIT_SECTOR_COLORS[d.sector] || [139, 148, 158, 180],
+      radiusMinPixels: 4,
+      radiusMaxPixels: 10,
+      pickable: true,
+    });
+  }
+
   private async loadAptGroups(): Promise<void> {
     const { APT_GROUPS } = await import('@/config/apt-groups');
     this.aptGroups = APT_GROUPS;
@@ -3591,6 +3620,8 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.shortName)}</strong><br/>${text(obj.city)}, ${text(obj.country)}</div>` };
       case 'commodity-hubs-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type)} · ${text(obj.city)}</div>` };
+      case 'reit-properties-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.propertyName)}</strong><br/>${text(obj.reitSymbol)} · ${text(obj.sector)}<br/>${text(obj.city)}, ${text(obj.state)}</div>` };
       case 'startup-hubs-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.city)}</strong><br/>${text(obj.country)}</div>` };
       case 'tech-hqs-layer':
@@ -3951,6 +3982,7 @@ export class DeckGLMap {
       'financial-centers-layer': 'financialCenter',
       'central-banks-layer': 'centralBank',
       'commodity-hubs-layer': 'commodityHub',
+      'reit-properties-layer': 'reitProperty',
       'spaceports-layer': 'spaceport',
       'ports-layer': 'port',
       'flight-delays-layer': 'flight',
