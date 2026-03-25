@@ -19765,13 +19765,56 @@ body.has-breaking-alert .panels-grid {
 }
 
 /* ── Ultra-wide layout: map left, panels beside it ── */
+.map-width-resize-handle {
+  display: none;
+  width: 6px;
+  cursor: ew-resize;
+  background: transparent;
+  align-self: stretch;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.map-width-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  background: var(--text-dim);
+  border-radius: 2px;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.map-width-resize-handle:hover::after,
+.map-width-resize-handle.resizing::after {
+  opacity: 1;
+  background: var(--accent);
+}
+
+body.map-width-resizing {
+  cursor: ew-resize;
+  user-select: none;
+}
+
 @media (min-width: 1600px) {
   .main-content {
     display: grid;
-    grid-template-columns: 60% 1fr;
+    grid-template-columns: var(--map-col-width, 60%) 6px 1fr;
     grid-template-rows: 1fr auto;
-    gap: 4px;
+    gap: 4px 0;
     overflow: hidden;
+  }
+
+  .map-width-resize-handle {
+    display: flex;
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .main-content.map-hidden {
@@ -19835,7 +19878,7 @@ body.has-breaking-alert .panels-grid {
   }
 
   .panels-grid {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 1;
     min-height: 0;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -19843,6 +19886,72 @@ body.has-breaking-alert .panels-grid {
     align-content: start;
     overflow-y: auto;
   }
+}
+
+/* Desktop app grid layout (active at any width >= 900px via JS class) */
+.main-content.desktop-grid {
+  display: grid;
+  grid-template-columns: var(--map-col-width, 60%) 6px 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 4px 0;
+  overflow: hidden;
+}
+
+.main-content.desktop-grid .map-width-resize-handle {
+  display: flex;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.main-content.desktop-grid.map-hidden {
+  grid-template-columns: 1fr;
+}
+
+.main-content.desktop-grid.map-hidden .panels-grid {
+  grid-column: 1;
+}
+
+.main-content.desktop-grid .map-section {
+  grid-column: 1;
+  grid-row: 1;
+  height: 100% !important;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-bottom: none;
+}
+
+.main-content.desktop-grid .panels-grid {
+  grid-column: 3;
+  grid-row: 1;
+  min-height: 0;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-auto-rows: minmax(200px, 380px);
+  align-content: start;
+  overflow-y: auto;
+}
+
+.main-content.desktop-grid .map-resize-handle {
+  position: relative;
+  bottom: auto;
+  left: auto;
+  right: auto;
+  height: 12px;
+  background: var(--border-subtle);
+  margin: 0;
+  cursor: ns-resize;
+  display: flex;
+}
+
+.main-content.desktop-grid .map-resize-handle:hover {
+  background: var(--accent);
+}
+
+.main-content.desktop-grid .map-bottom-grid:empty {
+  border-top: none;
+  padding: 0;
 }
 
 /* ==========================================================================
