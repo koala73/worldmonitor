@@ -376,28 +376,29 @@ export class CountryIntelManager implements AppModule {
         if (fallbackBrief) {
           this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true });
         } else {
-          const lines: string[] = [];
-          if (score) lines.push(t('countryBrief.fallback.instabilityIndex', { score: String(score.score), level: t(`countryBrief.levels.${score.level}`), trend: t(`countryBrief.trends.${score.trend}`) }));
-          if (signals.protests > 0) lines.push(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) }));
-          if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
-          if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
-          if (signals.activeStrikes > 0) lines.push(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) }));
+          const linePromises: Promise<string>[] = [];
+          if (score) linePromises.push(Promise.resolve(t('countryBrief.fallback.instabilityIndex', { score: String(score.score), level: t(`countryBrief.levels.${score.level}`), trend: t(`countryBrief.trends.${score.trend}`) })));
+          if (signals.protests > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) })));
+          if (signals.militaryFlights > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) })));
+          if (signals.militaryVessels > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) })));
+          if (signals.activeStrikes > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) })));
           if (signals.travelAdvisoryMaxLevel === 'do-not-travel') {
-            lines.push(await translateEnglishLine(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`));
+            linePromises.push(translateEnglishLine(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`));
           } else if (signals.travelAdvisoryMaxLevel === 'reconsider') {
-            lines.push(await translateEnglishLine(`⚠️ Travel advisory: Reconsider Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`));
+            linePromises.push(translateEnglishLine(`⚠️ Travel advisory: Reconsider Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`));
           }
-          if (signals.outages > 0) lines.push(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) }));
-          if (signals.criticalNews > 0) lines.push(await translateEnglishLine(`🚨 Critical headlines in scope: ${signals.criticalNews}`));
-          if (signals.cyberThreats > 0) lines.push(await translateEnglishLine(`🛡️ Cyber threat indicators: ${signals.cyberThreats}`));
-          if (signals.aisDisruptions > 0) lines.push(await translateEnglishLine(`🚢 Maritime AIS disruptions: ${signals.aisDisruptions}`));
-          if (signals.satelliteFires > 0) lines.push(await translateEnglishLine(`🔥 Satellite fire detections: ${signals.satelliteFires}`));
-          if (signals.radiationAnomalies > 0) lines.push(await translateEnglishLine(`☢️ Radiation anomalies: ${signals.radiationAnomalies}`));
-          if (signals.temporalAnomalies > 0) lines.push(await translateEnglishLine(`⏱️ Temporal anomaly alerts: ${signals.temporalAnomalies}`));
-          if (signals.thermalEscalations > 0) lines.push(await translateEnglishLine(`🌡️ Thermal escalation clusters: ${signals.thermalEscalations}`));
-          if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
-          if (signals.orefHistory24h > 0) lines.push(await translateEnglishLine(`🚨 Sirens in past 24h: ${signals.orefHistory24h}`));
-          if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
+          if (signals.outages > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) })));
+          if (signals.criticalNews > 0) linePromises.push(translateEnglishLine(`🚨 Critical headlines in scope: ${signals.criticalNews}`));
+          if (signals.cyberThreats > 0) linePromises.push(translateEnglishLine(`🛡️ Cyber threat indicators: ${signals.cyberThreats}`));
+          if (signals.aisDisruptions > 0) linePromises.push(translateEnglishLine(`🚢 Maritime AIS disruptions: ${signals.aisDisruptions}`));
+          if (signals.satelliteFires > 0) linePromises.push(translateEnglishLine(`🔥 Satellite fire detections: ${signals.satelliteFires}`));
+          if (signals.radiationAnomalies > 0) linePromises.push(translateEnglishLine(`☢️ Radiation anomalies: ${signals.radiationAnomalies}`));
+          if (signals.temporalAnomalies > 0) linePromises.push(translateEnglishLine(`⏱️ Temporal anomaly alerts: ${signals.temporalAnomalies}`));
+          if (signals.thermalEscalations > 0) linePromises.push(translateEnglishLine(`🌡️ Thermal escalation clusters: ${signals.thermalEscalations}`));
+          if (signals.earthquakes > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) })));
+          if (signals.orefHistory24h > 0) linePromises.push(translateEnglishLine(`🚨 Sirens in past 24h: ${signals.orefHistory24h}`));
+          if (context.stockIndex) linePromises.push(Promise.resolve(t('countryBrief.fallback.stockIndex', { value: context.stockIndex })));
+          const lines = (await Promise.all(linePromises)).filter((line) => line.length > 0);
           if (lines.length > 0) {
             this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
           } else {
