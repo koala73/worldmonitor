@@ -1224,6 +1224,7 @@ function computeStateDerivedBucketCandidate(domain, stateUnit, bucket, marketCon
   const MARITIME_BUCKET_STATE_KINDS = new Set([
     'maritime_disruption', 'port_disruption', 'shipping_disruption',
     'chokepoint_closure', 'naval_blockade', 'piracy_escalation',
+    'transport_pressure', // shipping route pressure (e.g. Red Sea, Suez transit delays) is maritime-relevant
   ]);
   const requiresMaritimeStateKind = domain === 'supply_chain' && ['freight', 'energy'].includes(bucket.id);
   if (requiresMaritimeStateKind && stateUnit.stateKind && !MARITIME_BUCKET_STATE_KINDS.has(stateUnit.stateKind)) {
