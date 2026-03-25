@@ -2613,7 +2613,6 @@ export class DataLoaderManager implements AppModule {
     } catch (e) {
       console.warn('[App] FIRMS load failed:', e);
       this.callPanel('satellite-fires', 'showError');
-      (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
       this.ctx.statusPanel?.updateApi('FIRMS', { status: 'error' });
       dataFreshness.recordError('firms', String(e));
     }
