@@ -1391,9 +1391,9 @@ body.panel-resize-active iframe {
 .panel-title {
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   color: var(--text);
+  /* Remove text-transform: uppercase to support friendly titles with emoji */
 }
 
 /* Push the first element after header-left to the right; subsequent siblings flow via gap */

@@ -3,6 +3,7 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
+import { getPanelTitleConfig } from '@/constants/panelTitles';
 import {
   MapContainer,
   NewsPanel,
@@ -616,7 +617,11 @@ export class PanelLayoutManager implements AppModule {
       if (this.ctx.panels[panelKey]) continue;
       if (!DEFAULT_PANELS[panelKey] && !DEFAULT_PANELS[key]) continue;
       const panelConfig = DEFAULT_PANELS[panelKey] ?? DEFAULT_PANELS[key];
-      const label = panelConfig?.name ?? key.charAt(0).toUpperCase() + key.slice(1);
+      // Use friendly panel title with emoji if available
+      const titleConfig = getPanelTitleConfig(key, SITE_VARIANT);
+      const label = titleConfig
+        ? `${titleConfig.emoji} ${titleConfig.title}`
+        : panelConfig?.name ?? key.charAt(0).toUpperCase() + key.slice(1);
       const panel = new NewsPanel(panelKey, label);
       this.attachRelatedAssetHandlers(panel);
       this.ctx.newsPanels[key] = panel;
