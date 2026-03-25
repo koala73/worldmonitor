@@ -465,3 +465,9 @@ components:
                     description: |-
                         Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
                          Value: "redis_unavailable" on Redis errors.
+                theaterSummariesJson:
+                    type: string
+                    description: |-
+                        JSON-encoded array of theater summaries for the UI (populated when found=true).
+                         Shape: Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label, summary, confidence, keyActors}], dominantReactions, stabilizers, invalidators }>
+                         Parse with JSON.parse() on the client. Empty string when found=false.

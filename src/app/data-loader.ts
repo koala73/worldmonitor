@@ -398,6 +398,7 @@ export class DataLoaderManager implements AppModule {
       }
       if (shouldLoad('forecast')) {
         tasks.push({ name: 'forecasts', task: runGuarded('forecasts', () => this.loadForecasts()) });
+        tasks.push({ name: 'simulation-outcome', task: runGuarded('simulation-outcome', () => this.loadSimulationOutcome()) });
       }
       if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
       if (shouldLoad('economic')) {
@@ -1485,6 +1486,14 @@ export class DataLoaderManager implements AppModule {
       const forecasts = await fetchForecasts();
       this.callPanel('forecast', 'updateForecasts', forecasts);
     } catch { /* premium feature, silent fail */ }
+  }
+
+  async loadSimulationOutcome(): Promise<void> {
+    try {
+      const { fetchSimulationOutcome } = await import('@/services/forecast');
+      const json = await fetchSimulationOutcome();
+      if (json) this.callPanel('forecast', 'updateSimulation', json);
+    } catch { /* silent fail — simulation data is supplementary */ }
   }
 
   async loadNatural(): Promise<void> {

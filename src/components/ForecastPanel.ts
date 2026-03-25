@@ -27,6 +27,49 @@ const DOMAIN_COLORS: Record<string, string> = {
   infrastructure: '#3fb950',
 };
 
+// Derived from stateKind — maps to a domain color bucket for the theater card accent
+const STATE_KIND_DOMAIN: Record<string, string> = {
+  supply_chain_disruption: 'supply_chain',
+  freight_disruption:      'supply_chain',
+  energy_disruption:       'market',
+  energy_price_shock:      'market',
+  military_posture:        'military',
+  conflict_escalation:     'conflict',
+};
+
+// --- Types for simulation theater data -------------------------------------
+interface SimulationPath {
+  label: string;
+  summary: string;
+  confidence: number;
+  keyActors: string[];
+}
+
+interface SimulationTheater {
+  theaterId: string;
+  theaterLabel: string;
+  stateKind: string;
+  topPaths: SimulationPath[];
+  dominantReactions: string[];
+  stabilizers: string[];
+  invalidators: string[];
+}
+
+function parseTheaters(json: string): SimulationTheater[] {
+  try {
+    const arr = JSON.parse(json);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (v): v is SimulationTheater =>
+        v && typeof v === 'object' && typeof v.theaterId === 'string' && typeof v.theaterLabel === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 let _styleInjected = false;
 function injectStyles(): void {
   if (_styleInjected) return;
@@ -35,83 +78,90 @@ function injectStyles(): void {
   style.textContent = `
     .fc-panel { font-size: 12px; }
     .fc-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-color, #333); }
-    .fc-filter { background: transparent; border: 1px solid var(--border-color, #444); color: var(--text-secondary, #aaa); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; }
+    .fc-filter { background: transparent; border: 1px solid var(--border-color, #444); color: var(--text-secondary, #aaa); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; font-family: inherit; }
     .fc-filter.fc-active { background: var(--accent-color, #3b82f6); color: #fff; border-color: var(--accent-color, #3b82f6); }
 
-    /* 2-col grid */
-    .fc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; padding: 8px; }
-
-    /* prediction market card */
-    .fc-card {
+    /* ── NEXUS: theater grid ─────────────────────────────────────────────── */
+    .fc-nexus { padding: 8px; }
+    .fc-theater-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin-bottom: 10px; }
+    .fc-theater-card {
       background: var(--panel-bg, #161b22);
       border: 1px solid var(--border-color, #30363d);
-      border-radius: 4px;
-      padding: 12px;
+      border-radius: 5px;
+      padding: 10px;
       cursor: pointer;
-      transition: border-color 0.15s;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+      overflow: hidden;
     }
-    .fc-card:hover { border-color: #40464f; }
-
-    /* card top row: title + category tag */
-    .fc-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-    .fc-title { font-weight: 600; color: var(--text-primary, #e6edf3); font-size: 12px; line-height: 1.4; flex: 1; }
-
-    /* domain / category tag */
+    .fc-theater-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      /* color comes from --fc-theater-color set inline on each card */
+      background: var(--fc-theater-color, #58a6ff);
+    }
+    .fc-theater-card:hover { border-color: #40464f; }
+    .fc-theater-card.fc-theater-selected { border-color: var(--accent-color, #58a6ff); background: rgba(88,166,255,0.04); }
+    .fc-theater-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+    .fc-theater-name { font-size: 10px; font-weight: 700; line-height: 1.4; color: var(--text-primary, #e6edf3); flex: 1; padding-right: 6px; }
+    .fc-gauge-wrap { position: relative; width: 38px; height: 38px; flex-shrink: 0; }
+    .fc-gauge-svg { width: 38px; height: 38px; transform: rotate(-90deg); }
+    .fc-gauge-bg { fill: none; stroke: var(--border-color, #30363d); stroke-width: 4; }
+    .fc-gauge-fill { fill: none; stroke-width: 4; stroke-linecap: round; }
+    .fc-gauge-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 9px; font-weight: 700; }
+    .fc-theater-path { font-size: 9px; color: var(--text-secondary, #7d8590); line-height: 1.4; margin-top: 4px; }
     .fc-cat-tag {
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 3px;
-      white-space: nowrap;
-      flex-shrink: 0;
-      margin-top: 1px;
-      font-weight: 500;
+      font-size: 9px; padding: 1px 5px; border-radius: 3px; white-space: nowrap;
+      flex-shrink: 0; font-weight: 500; display: inline-block;
     }
 
-    /* YES / NO outcome pills */
-    .fc-outcomes { display: flex; gap: 6px; }
-    .fc-outcome {
-      flex: 1;
-      border-radius: 3px;
-      padding: 7px 8px;
-      text-align: center;
-      border: 1px solid transparent;
+    /* ── NEXUS: expanded theater detail ─────────────────────────────────── */
+    .fc-theater-detail {
+      background: var(--panel-bg, #161b22);
+      border: 1px solid var(--border-color, #30363d);
+      border-radius: 5px;
+      margin-bottom: 10px;
+      overflow: hidden;
     }
-    .fc-outcome-yes { background: rgba(63,185,80,0.1); border-color: rgba(63,185,80,0.28); }
-    .fc-outcome-no  { background: rgba(224,82,82,0.08); border-color: rgba(224,82,82,0.2); }
-    .fc-outcome-label { font-size: 10px; color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
-    .fc-outcome-pct { font-size: 20px; font-weight: 700; line-height: 1; }
-    .fc-outcome-yes .fc-outcome-pct { color: #3fb950; }
-    .fc-outcome-pct-mid { color: #d29922 !important; }
-    .fc-outcome-pct-low { color: #e05252 !important; }
-    .fc-outcome-no  .fc-outcome-pct { color: #e05252; }
+    .fc-theater-detail-hdr { padding: 10px 12px; border-bottom: 1px solid var(--border-color, #30363d); display: flex; align-items: center; gap: 8px; }
+    .fc-theater-detail-name { font-size: 12px; font-weight: 700; color: var(--text-primary, #e6edf3); }
+    .fc-theater-paths { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 12px; }
+    @media (max-width: 480px) { .fc-theater-paths { grid-template-columns: 1fr; } }
+    .fc-path-card { background: rgba(0,0,0,0.25); border: 1px solid var(--border-color, #30363d); border-radius: 4px; padding: 9px 10px; }
+    .fc-path-label { font-size: 10px; font-weight: 700; color: var(--text-primary, #e6edf3); margin-bottom: 2px; }
+    .fc-path-conf { font-size: 9px; color: var(--text-secondary, #7d8590); margin-bottom: 5px; }
+    .fc-path-bar { height: 2px; border-radius: 1px; margin: 4px 0; }
+    .fc-path-summary { font-size: 10px; color: var(--text-secondary, #7d8590); line-height: 1.5; }
+    .fc-path-actors { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+    .fc-actor-chip { font-size: 9px; padding: 1px 5px; border: 1px solid var(--border-color, #30363d); border-radius: 2px; color: var(--text-secondary, #7d8590); background: rgba(255,255,255,0.02); }
+    .fc-theater-footer { padding: 8px 12px; border-top: 1px solid var(--border-color, #30363d); display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .fc-theater-footer-section { }
+    .fc-footer-title { font-size: 9px; color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+    .fc-footer-item { font-size: 9px; color: var(--text-secondary, #7d8590); padding: 2px 0; line-height: 1.4; }
+    .fc-footer-item::before { content: '›'; margin-right: 4px; }
+    .fc-stab-item::before { color: #3fb950; }
+    .fc-inval-item::before { color: #e05252; }
+    .fc-react-item::before { color: #58a6ff; }
 
-    /* bottom meta row */
-    .fc-card-bottom { display: flex; align-items: center; justify-content: space-between; }
-    .fc-region { font-size: 10px; color: var(--text-secondary, #7d8590); }
-    .fc-trend { font-size: 11px; font-weight: 600; }
-    .fc-trend-rising  { color: #3fb950; }
-    .fc-trend-falling { color: #e05252; }
-    .fc-trend-stable  { color: var(--text-secondary, #7d8590); }
+    /* ── Forecast probability table ──────────────────────────────────────── */
+    .fc-prob-table { border: 1px solid var(--border-color, #30363d); border-radius: 4px; overflow: hidden; margin: 0 8px 8px; }
+    .fc-prob-row { display: grid; grid-template-columns: 1fr 38px 90px 30px; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #30363d); cursor: pointer; transition: background 0.1s; }
+    .fc-prob-row:last-child { border-bottom: none; }
+    .fc-prob-row:hover { background: rgba(255,255,255,0.02); }
+    .fc-prob-label { font-size: 10px; color: var(--text-secondary, #7d8590); line-height: 1.4; }
+    .fc-prob-pct { font-size: 11px; font-weight: 700; text-align: right; }
+    .fc-prob-bar-track { height: 3px; background: var(--border-color, #30363d); border-radius: 2px; overflow: hidden; }
+    .fc-prob-bar-fill { height: 100%; border-radius: 2px; }
+    .fc-trend-sm { font-size: 10px; text-align: center; }
 
-    /* toggle row (Analysis / Signals) */
-    .fc-toggle-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    /* ── Detail toggle ───────────────────────────────────────────────────── */
+    .fc-hidden { display: none; }
+    .fc-toggle-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 10px 8px; }
     .fc-toggle { cursor: pointer; color: var(--text-secondary, #7d8590); font-size: 11px; }
     .fc-toggle:hover { color: var(--text-primary, #e6edf3); }
-
-    /* expandable detail sections — unchanged */
-    .fc-hidden { display: none; }
-    .fc-signals { margin-top: 2px; }
-    .fc-signal { color: var(--text-secondary, #999); font-size: 11px; padding: 1px 0; }
-    .fc-signal::before { content: ''; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #666); margin-right: 6px; vertical-align: middle; }
-    .fc-cascade { font-size: 11px; color: var(--accent-color, #3b82f6); margin-top: 3px; }
-    .fc-counter { font-size: 10px; color: #e05252; opacity: 0.75; margin-top: 4px; line-height: 1.35; font-style: italic; }
-    .fc-summary { font-size: 11px; color: var(--text-primary, #d7d7d7); line-height: 1.45; }
-    .fc-calibration { font-size: 10px; color: var(--text-secondary, #777); margin-top: 2px; }
-    .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
-    .fc-detail { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border-color, #2a2a2a); }
+    .fc-detail { padding: 8px 10px 2px; border-top: 1px solid var(--border-color, #2a2a2a); }
     .fc-detail-grid { display: grid; gap: 8px; }
     .fc-section { display: grid; gap: 4px; }
     .fc-section-title { color: var(--text-secondary, #888); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
@@ -125,6 +175,13 @@ function injectStyles(): void {
     .fc-perspective { font-size: 11px; color: var(--text-secondary, #999); padding: 2px 0; line-height: 1.4; }
     .fc-perspective strong { color: var(--text-primary, #ccc); font-weight: 600; }
     .fc-scenario { font-style: italic; }
+    .fc-signals { margin-top: 2px; }
+    .fc-signal { color: var(--text-secondary, #999); font-size: 11px; padding: 1px 0; }
+    .fc-signal::before { content: ''; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #666); margin-right: 6px; vertical-align: middle; }
+    .fc-cascade { font-size: 11px; color: var(--accent-color, #3b82f6); margin-top: 3px; padding: 0 10px; }
+    .fc-calibration { font-size: 10px; color: var(--text-secondary, #777); padding: 0 10px 4px; }
+    .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
+    .fc-section-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary, #7d8590); padding: 6px 8px 2px; }
   `;
   document.head.appendChild(style);
 }
@@ -132,6 +189,8 @@ function injectStyles(): void {
 export class ForecastPanel extends Panel {
   private forecasts: Forecast[] = [];
   private activeDomain: string = 'all';
+  private theaters: SimulationTheater[] = [];
+  private expandedTheaterId: string | null = null;
 
   constructor() {
     super({ id: 'forecast', title: 'AI Forecasts', showCount: true, infoTooltip: t('components.forecast.infoTooltip') });
@@ -139,19 +198,27 @@ export class ForecastPanel extends Panel {
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
-      const filterBtn = target.closest('[data-fc-domain]') as HTMLElement;
+      const filterBtn = target.closest('[data-fc-domain]') as HTMLElement | null;
       if (filterBtn) {
         this.activeDomain = filterBtn.dataset.fcDomain || 'all';
         this.render();
         return;
       }
 
-      const toggle = target.closest('[data-fc-toggle]') as HTMLElement;
+      const theaterBtn = target.closest('[data-fc-theater]') as HTMLElement | null;
+      if (theaterBtn) {
+        const tid = theaterBtn.dataset.fcTheater || null;
+        this.expandedTheaterId = this.expandedTheaterId === tid ? null : tid;
+        this.render();
+        return;
+      }
+
+      const toggle = target.closest('[data-fc-toggle]') as HTMLElement | null;
       if (toggle) {
-        const card = toggle.closest('.fc-card');
+        const row = toggle.closest('.fc-prob-row');
         const panelId = toggle.dataset.fcToggle;
-        const details = panelId ? card?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
-        if (details) details.classList.toggle('fc-hidden');
+        const detail = panelId ? row?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
+        if (detail) detail.classList.toggle('fc-hidden');
         return;
       }
     });
@@ -163,6 +230,14 @@ export class ForecastPanel extends Panel {
     this.setCount(visible.length);
     this.setDataBadge(visible.length > 0 ? 'live' : 'unavailable');
     this.render();
+  }
+
+  updateSimulation(theaterSummariesJson: string): void {
+    this.theaters = parseTheaters(theaterSummariesJson);
+    // Only re-render if forecasts are already loaded — prevents a flash of "No forecasts available"
+    // when the simulation RPC resolves before the forecast RPC. updateForecasts will trigger
+    // the combined render when it arrives.
+    if (this.forecasts.length > 0) this.render();
   }
 
   private getVisibleForecasts(): Forecast[] {
@@ -184,95 +259,296 @@ export class ForecastPanel extends Panel {
       `<button class="fc-filter${d === this.activeDomain ? ' fc-active' : ''}" data-fc-domain="${d}">${DOMAIN_LABELS[d]}</button>`
     ).join('');
 
-    const cardsHtml = filtered.map(f => this.renderCard(f)).join('');
+    const nexusHtml = this.theaters.length > 0 ? this.renderNexus() : '';
+    const forecastsLabel = this.theaters.length > 0
+      ? `<div class="fc-section-label">Probability Bets</div>`
+      : '';
+    const tableHtml = this.renderProbTable(filtered);
 
     this.setContent(`
       <div class="fc-panel">
         <div class="fc-filters">${filtersHtml}</div>
-        <div class="fc-list">${cardsHtml}</div>
+        <div class="fc-nexus">${nexusHtml}</div>
+        ${forecastsLabel}
+        ${tableHtml}
       </div>
     `);
   }
 
-  private renderCard(f: Forecast): string {
-    const pct    = Math.round((f.probability || 0) * 100);
-    const noPct  = 100 - pct;
-    const domain = f.domain || 'conflict';
-    const catColor = DOMAIN_COLORS[domain] || '#7d8590';
+  // ── NEXUS theater grid + expandable detail ──────────────────────────────
+
+  private renderNexus(): string {
+    const cards = this.theaters.map(t => this.renderTheaterCard(t)).join('');
+    const detail = this.expandedTheaterId
+      ? this.renderTheaterDetail(this.theaters.find(t => t.theaterId === this.expandedTheaterId) ?? null)
+      : '';
+    return `
+      <div class="fc-section-label" style="padding-top:4px">Active Theaters</div>
+      <div class="fc-theater-grid">${cards}</div>
+      ${detail}
+    `;
+  }
+
+  private renderTheaterCard(t: SimulationTheater): string {
+    const domain = STATE_KIND_DOMAIN[t.stateKind] || 'supply_chain';
+    const color = DOMAIN_COLORS[domain] || '#58a6ff';
+    const catLabel = DOMAIN_LABELS[domain] || domain;
+    const dominantPath = t.topPaths[0];
+    const conf = dominantPath?.confidence ?? 0;
+    const confPct = Math.round(conf * 100);
+    const confColor = conf >= 0.65 ? '#3fb950' : conf >= 0.45 ? '#d29922' : '#e05252';
+    const isSelected = this.expandedTheaterId === t.theaterId;
+
+    // SVG gauge: circumference for r=15 is 94.25; stroke-dashoffset = circ * (1 - conf)
+    const r = 15;
+    const circ = 2 * Math.PI * r;
+    const offset = circ * (1 - conf);
+
+    return `
+      <div class="fc-theater-card${isSelected ? ' fc-theater-selected' : ''}"
+           style="--fc-theater-color:${color}"
+           data-fc-theater="${escapeHtml(t.theaterId)}">
+        <div class="fc-theater-top">
+          <div class="fc-theater-name">${escapeHtml(t.theaterLabel)}</div>
+          <div class="fc-gauge-wrap">
+            <svg class="fc-gauge-svg" viewBox="0 0 34 34">
+              <circle class="fc-gauge-bg" cx="17" cy="17" r="${r}"/>
+              <circle class="fc-gauge-fill" cx="17" cy="17" r="${r}"
+                stroke="${confColor}"
+                stroke-dasharray="${circ.toFixed(1)}"
+                stroke-dashoffset="${offset.toFixed(1)}"/>
+            </svg>
+            <span class="fc-gauge-label" style="color:${confColor}">${confPct}%</span>
+          </div>
+        </div>
+        <span class="fc-cat-tag" style="background:${color}1f;color:${color};border:1px solid ${color}47">${escapeHtml(catLabel)}</span>
+        ${dominantPath ? `<div class="fc-theater-path">${escapeHtml(dominantPath.label)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  private renderTheaterDetail(t: SimulationTheater | null): string {
+    if (!t) return '';
+    const domain = STATE_KIND_DOMAIN[t.stateKind] || 'supply_chain';
+    const color = DOMAIN_COLORS[domain] || '#58a6ff';
     const catLabel = DOMAIN_LABELS[domain] || domain;
 
-    // YES pill color: green ≥60%, yellow 40-59%, red <40%
-    const yesPctClass = pct >= 60 ? '' : pct >= 40 ? 'fc-outcome-pct-mid' : 'fc-outcome-pct-low';
-    // YES pill background adjusts for mid/low
-    const yesOutcomeStyle = pct >= 60
-      ? ''
-      : pct >= 40
-        ? 'background:rgba(210,153,34,0.1);border-color:rgba(210,153,34,0.28);'
-        : 'background:rgba(224,82,82,0.1);border-color:rgba(224,82,82,0.28);';
+    const pathsHtml = t.topPaths.map(p => {
+      const pctColor = p.confidence >= 0.65 ? '#3fb950' : p.confidence >= 0.45 ? '#d29922' : '#e05252';
+      const actors = p.keyActors.map(a => `<span class="fc-actor-chip">${escapeHtml(a)}</span>`).join('');
+      return `
+        <div class="fc-path-card">
+          <div class="fc-path-label">${escapeHtml(p.label)}</div>
+          <div class="fc-path-conf">${Math.round(p.confidence * 100)}% probability</div>
+          <div class="fc-path-bar" style="background:${pctColor};width:${Math.round(p.confidence * 100)}%"></div>
+          <div class="fc-path-summary">${escapeHtml(p.summary)}</div>
+          ${actors ? `<div class="fc-path-actors">${actors}</div>` : ''}
+        </div>
+      `;
+    }).join('');
 
+    const reactions = t.dominantReactions.map(r =>
+      `<div class="fc-footer-item fc-react-item">${escapeHtml(r)}</div>`
+    ).join('');
+    const stabilizers = t.stabilizers.map(s =>
+      `<div class="fc-footer-item fc-stab-item">${escapeHtml(s)}</div>`
+    ).join('');
+    const invalidators = t.invalidators.map(s =>
+      `<div class="fc-footer-item fc-inval-item">${escapeHtml(s)}</div>`
+    ).join('');
+
+    return `
+      <div class="fc-theater-detail">
+        <div class="fc-theater-detail-hdr">
+          <span class="fc-theater-detail-name">${escapeHtml(t.theaterLabel)}</span>
+          <span class="fc-cat-tag" style="background:${color}1f;color:${color};border:1px solid ${color}47">${escapeHtml(catLabel)}</span>
+        </div>
+        <div class="fc-theater-paths">${pathsHtml}</div>
+        ${reactions || stabilizers || invalidators ? `
+          <div class="fc-theater-footer">
+            <div class="fc-theater-footer-section">
+              <div class="fc-footer-title">Reactions</div>
+              ${reactions || '<div class="fc-footer-item" style="opacity:0.4">—</div>'}
+            </div>
+            <div class="fc-theater-footer-section">
+              <div class="fc-footer-title">Stabilizers</div>
+              ${stabilizers || '<div class="fc-footer-item" style="opacity:0.4">—</div>'}
+            </div>
+            <div class="fc-theater-footer-section">
+              <div class="fc-footer-title">Invalidators</div>
+              ${invalidators || '<div class="fc-footer-item" style="opacity:0.4">—</div>'}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  // ── Probability table (replaces the old 2-col card grid) ────────────────
+
+  private renderProbTable(forecasts: Forecast[]): string {
+    if (forecasts.length === 0) {
+      return '<div class="fc-empty">No forecasts for this filter</div>';
+    }
+    const rows = forecasts.map(f => this.renderProbRow(f)).join('');
+    return `<div class="fc-prob-table">${rows}</div>`;
+  }
+
+  private renderProbRow(f: Forecast): string {
+    const pct    = Math.round((f.probability || 0) * 100);
+    const domain = f.domain || 'conflict';
+    const catColor = DOMAIN_COLORS[domain] || '#7d8590';
+    const probColor = pct >= 60 ? '#3fb950' : pct >= 40 ? '#d29922' : '#e05252';
     const trendSymbol = f.trend === 'rising' ? '↑' : f.trend === 'falling' ? '↓' : '→';
-    const trendClass  = `fc-trend fc-trend-${f.trend || 'stable'}`;
+    const trendColor  = f.trend === 'rising' ? '#3fb950' : f.trend === 'falling' ? '#e05252' : '#7d8590';
 
     const signalsHtml = (f.signals || []).map(s =>
       `<div class="fc-signal">${escapeHtml(s.value)}</div>`
     ).join('');
 
-    const cascadesHtml = (f.cascades || []).length > 0
-      ? `<div class="fc-cascade">Cascades: ${f.cascades.map(c => escapeHtml(c.domain)).join(', ')}</div>`
-      : '';
-
-    // Self-critique: surface the first counter-thesis at card level so users see the bear case
-    // without having to drill into the Analysis panel.
-    // caseFile is a runtime extension not yet reflected in the generated proto type.
-    type WithCaseFile = Forecast & { caseFile?: { contrarianCase?: string; counterEvidence?: Array<{ summary?: string }> } };
-    const caseFile = (f as WithCaseFile).caseFile;
-    const counterNote = caseFile?.contrarianCase
-      || caseFile?.counterEvidence?.[0]?.summary
-      || '';
-    const counterNoteHtml = counterNote
-      ? `<div class="fc-counter">↓ ${escapeHtml(counterNote.length > 140 ? counterNote.slice(0, 137) + '…' : counterNote)}</div>`
-      : '';
-
-    const calibrationHtml = f.calibration?.marketTitle
-      ? `<div class="fc-calibration">Market: ${escapeHtml(f.calibration.marketTitle)} (${Math.round((f.calibration.marketPrice || 0) * 100)}%)</div>`
-      : '';
-
-    const detailHtml = this.renderDetail(f);
-
     return `
-      <div class="fc-card">
-        <div class="fc-card-top">
-          <span class="fc-title">${escapeHtml(f.title)}</span>
-          <span class="fc-cat-tag" style="background:${catColor}1f;color:${catColor};border:1px solid ${catColor}47">${escapeHtml(catLabel)}</span>
+      <div class="fc-prob-row">
+        <span class="fc-prob-label"
+              style="border-left:2px solid ${catColor}47;padding-left:6px">
+          ${escapeHtml(f.title)}
+        </span>
+        <span class="fc-prob-pct" style="color:${probColor}">${pct}%</span>
+        <div class="fc-prob-bar-track">
+          <div class="fc-prob-bar-fill" style="background:${probColor};width:${pct}%"></div>
         </div>
-
-        <div class="fc-outcomes">
-          <div class="fc-outcome fc-outcome-yes" style="${yesOutcomeStyle}">
-            <div class="fc-outcome-label">YES</div>
-            <div class="fc-outcome-pct ${yesPctClass}">${pct}%</div>
-          </div>
-          <div class="fc-outcome fc-outcome-no">
-            <div class="fc-outcome-label">NO</div>
-            <div class="fc-outcome-pct">${noPct}%</div>
-          </div>
-        </div>
-
-        <div class="fc-card-bottom">
-          <span class="fc-region">${escapeHtml(f.region)}</span>
-          <span class="${trendClass}">${trendSymbol} ${f.trend || 'stable'}</span>
-        </div>
-
-        <div class="fc-toggle-row">
-          <span class="fc-toggle" data-fc-toggle="detail">Analysis</span>
-          <span class="fc-toggle" data-fc-toggle="signals">Signals (${(f.signals || []).length})</span>
-        </div>
-        ${detailHtml}
-        <div class="fc-signals fc-hidden" data-fc-panel="signals">${signalsHtml}</div>
-        ${cascadesHtml}
-        ${counterNoteHtml}
-        ${calibrationHtml}
+        <span class="fc-trend-sm" style="color:${trendColor}">${trendSymbol}</span>
       </div>
+      <div class="fc-toggle-row">
+        <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}">Analysis</span>
+        ${(f.signals || []).length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}">Signals (${(f.signals || []).length})</span>` : ''}
+      </div>
+      <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${this.renderDetailBody(f)}</div>
+      ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}
+      ${f.calibration?.marketTitle ? `<div class="fc-calibration">Market: ${escapeHtml(f.calibration.marketTitle)} (${Math.round((f.calibration.marketPrice || 0) * 100)}%)</div>` : ''}
     `;
+  }
+
+  // ── Detail sections (shared by rows) ────────────────────────────────────
+
+  private renderDetailBody(f: Forecast): string {
+    const caseFile = f.caseFile;
+    const sections: string[] = [];
+
+    if (f.scenario) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Executive View</div>
+          <div class="fc-section-copy fc-scenario">${escapeHtml(f.scenario)}</div>
+        </div>
+      `);
+    }
+    if (caseFile?.baseCase) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Base Case</div>
+          <div class="fc-section-copy">${escapeHtml(caseFile.baseCase)}</div>
+        </div>
+      `);
+    }
+    if (caseFile?.changeSummary || caseFile?.changeItems?.length) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">What Changed</div>
+          ${caseFile?.changeSummary ? `<div class="fc-section-copy">${escapeHtml(caseFile.changeSummary)}</div>` : ''}
+          ${caseFile?.changeItems?.length ? this.renderList(caseFile.changeItems) : ''}
+        </div>
+      `);
+    }
+    if (caseFile?.worldState?.summary || caseFile?.worldState?.activePressures?.length) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">World State</div>
+          ${caseFile?.worldState?.summary ? `<div class="fc-section-copy">${escapeHtml(caseFile.worldState.summary)}</div>` : ''}
+          ${caseFile?.worldState?.activePressures?.length ? `<div class="fc-section-copy"><strong>Pressures:</strong></div>${this.renderList(caseFile.worldState.activePressures)}` : ''}
+          ${caseFile?.worldState?.stabilizers?.length ? `<div class="fc-section-copy"><strong>Stabilizers:</strong></div>${this.renderList(caseFile.worldState.stabilizers)}` : ''}
+          ${caseFile?.worldState?.keyUnknowns?.length ? `<div class="fc-section-copy"><strong>Key unknowns:</strong></div>${this.renderList(caseFile.worldState.keyUnknowns)}` : ''}
+        </div>
+      `);
+    }
+    if (caseFile?.escalatoryCase || caseFile?.contrarianCase) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Alternative Paths</div>
+          ${caseFile?.escalatoryCase ? `<div class="fc-section-copy"><strong>Escalatory:</strong> ${escapeHtml(caseFile.escalatoryCase)}</div>` : ''}
+          ${caseFile?.contrarianCase ? `<div class="fc-section-copy"><strong>Contrarian:</strong> ${escapeHtml(caseFile.contrarianCase)}</div>` : ''}
+        </div>
+      `);
+    }
+    if (caseFile?.branches?.length) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Simulated Branches</div>
+          ${this.renderBranches(caseFile.branches)}
+        </div>
+      `);
+    }
+    if (caseFile?.supportingEvidence?.length) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Supporting Evidence</div>
+          ${this.renderEvidence(caseFile.supportingEvidence)}
+        </div>
+      `);
+    }
+    if (caseFile?.counterEvidence?.length) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Counter Evidence</div>
+          ${this.renderEvidence(caseFile.counterEvidence)}
+        </div>
+      `);
+    }
+    if (caseFile?.triggers?.length) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Signals To Watch</div>
+          ${this.renderList(caseFile.triggers)}
+        </div>
+      `);
+    }
+    if (caseFile?.actors?.length) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Actors</div>
+          ${this.renderActors(caseFile.actors)}
+        </div>
+      `);
+    } else if (caseFile?.actorLenses?.length) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Actor Lenses</div>
+          ${this.renderList(caseFile.actorLenses)}
+        </div>
+      `);
+    }
+    if (f.perspectives?.strategic) {
+      sections.push(`
+        <div class="fc-section">
+          <div class="fc-section-title">Perspectives</div>
+          <div class="fc-perspectives">
+            <div class="fc-perspective"><strong>Strategic:</strong> ${escapeHtml(f.perspectives.strategic)}</div>
+            <div class="fc-perspective"><strong>Regional:</strong> ${escapeHtml(f.perspectives.regional || '')}</div>
+            <div class="fc-perspective"><strong>Contrarian:</strong> ${escapeHtml(f.perspectives.contrarian || '')}</div>
+          </div>
+        </div>
+      `);
+    }
+
+    const chips = [
+      f.calibration?.marketTitle ? `Market: ${f.calibration.marketTitle}` : '',
+      typeof f.priorProbability === 'number' ? `Prior: ${Math.round(f.priorProbability * 100)}%` : '',
+      f.cascades?.length ? `Cascades: ${f.cascades.length}` : '',
+    ].filter(Boolean);
+    if (chips.length > 0) {
+      sections.push(`<div class="fc-section"><div class="fc-section-title">Context</div><div class="fc-chip-row">${chips.map(c => `<span class="fc-chip">${escapeHtml(c)}</span>`).join('')}</div></div>`);
+    }
+
+    return `<div class="fc-detail-grid">${sections.join('')}</div>`;
   }
 
   private renderList(items: string[] | undefined): string {
@@ -303,17 +579,14 @@ export class ForecastPanel extends Panel {
         actor.category ? actor.category : '',
         typeof actor.influenceScore === 'number' ? `Influence ${Math.round(actor.influenceScore * 100)}%` : '',
       ].filter(Boolean).map(chip => `<span class="fc-chip">${escapeHtml(chip)}</span>`).join('');
-      const objective = actor.objectives?.[0] ? `<div class="fc-list-item"><strong>Objective:</strong> ${escapeHtml(actor.objectives[0])}</div>` : '';
-      const constraint = actor.constraints?.[0] ? `<div class="fc-list-item"><strong>Constraint:</strong> ${escapeHtml(actor.constraints[0])}</div>` : '';
-      const action = actor.likelyActions?.[0] ? `<div class="fc-list-item"><strong>Likely action:</strong> ${escapeHtml(actor.likelyActions[0])}</div>` : '';
       return `
         <div class="fc-section-copy">
           <strong>${escapeHtml(actor.name || 'Actor')}</strong>
           ${chips ? `<div class="fc-chip-row" style="margin-top:4px;">${chips}</div>` : ''}
           ${actor.role ? `<div class="fc-list-item">${escapeHtml(actor.role)}</div>` : ''}
-          ${objective}
-          ${constraint}
-          ${action}
+          ${actor.objectives?.[0] ? `<div class="fc-list-item"><strong>Objective:</strong> ${escapeHtml(actor.objectives[0])}</div>` : ''}
+          ${actor.constraints?.[0] ? `<div class="fc-list-item"><strong>Constraint:</strong> ${escapeHtml(actor.constraints[0])}</div>` : ''}
+          ${actor.likelyActions?.[0] ? `<div class="fc-list-item"><strong>Likely action:</strong> ${escapeHtml(actor.likelyActions[0])}</div>` : ''}
         </div>
       `;
     }).join('')}</div>`;
@@ -333,9 +606,7 @@ export class ForecastPanel extends Panel {
         ? `<span class="fc-chip">Projected ${Math.round(branch.projectedProbability * 100)}%</span>`
         : '';
       const rounds = (branch.rounds || []).slice(0, 3).map(round => {
-        const developments = (round.developments || []).slice(0, 2).join(' ');
-        const actorMoves = (round.actorMoves || []).slice(0, 1).join(' ');
-        const copy = [developments, actorMoves].filter(Boolean).join(' ');
+        const copy = [(round.developments || []).slice(0, 2).join(' '), (round.actorMoves || []).slice(0, 1).join(' ')].filter(Boolean).join(' ');
         return `<div class="fc-list-item"><strong>R${round.round || 0}:</strong> ${escapeHtml(copy || round.focus || '')}</div>`;
       }).join('');
       return `
@@ -348,144 +619,5 @@ export class ForecastPanel extends Panel {
         </div>
       `;
     }).join('')}</div>`;
-  }
-
-  private renderDetail(f: Forecast): string {
-    const caseFile = f.caseFile;
-    const sections: string[] = [];
-
-    if (f.scenario) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Executive View</div>
-          <div class="fc-section-copy fc-scenario">${escapeHtml(f.scenario)}</div>
-        </div>
-      `);
-    }
-
-    if (caseFile?.baseCase) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Base Case</div>
-          <div class="fc-section-copy">${escapeHtml(caseFile.baseCase)}</div>
-        </div>
-      `);
-    }
-
-    if (caseFile?.changeSummary || caseFile?.changeItems?.length) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">What Changed</div>
-          ${caseFile?.changeSummary ? `<div class="fc-section-copy">${escapeHtml(caseFile.changeSummary)}</div>` : ''}
-          ${caseFile?.changeItems?.length ? this.renderList(caseFile.changeItems) : ''}
-        </div>
-      `);
-    }
-
-    if (caseFile?.worldState?.summary || caseFile?.worldState?.activePressures?.length || caseFile?.worldState?.stabilizers?.length || caseFile?.worldState?.keyUnknowns?.length) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">World State</div>
-          ${caseFile?.worldState?.summary ? `<div class="fc-section-copy">${escapeHtml(caseFile.worldState.summary)}</div>` : ''}
-          ${caseFile?.worldState?.activePressures?.length ? `<div class="fc-section-copy"><strong>Pressures:</strong></div>${this.renderList(caseFile.worldState.activePressures)}` : ''}
-          ${caseFile?.worldState?.stabilizers?.length ? `<div class="fc-section-copy"><strong>Stabilizers:</strong></div>${this.renderList(caseFile.worldState.stabilizers)}` : ''}
-          ${caseFile?.worldState?.keyUnknowns?.length ? `<div class="fc-section-copy"><strong>Key unknowns:</strong></div>${this.renderList(caseFile.worldState.keyUnknowns)}` : ''}
-        </div>
-      `);
-    }
-
-    if (caseFile?.escalatoryCase || caseFile?.contrarianCase) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Alternative Paths</div>
-          ${caseFile?.escalatoryCase ? `<div class="fc-section-copy"><strong>Escalatory:</strong> ${escapeHtml(caseFile.escalatoryCase)}</div>` : ''}
-          ${caseFile?.contrarianCase ? `<div class="fc-section-copy"><strong>Contrarian:</strong> ${escapeHtml(caseFile.contrarianCase)}</div>` : ''}
-        </div>
-      `);
-    }
-
-    if (caseFile?.branches?.length) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Simulated Branches</div>
-          ${this.renderBranches(caseFile.branches)}
-        </div>
-      `);
-    }
-
-    if (caseFile?.supportingEvidence?.length) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Supporting Evidence</div>
-          ${this.renderEvidence(caseFile.supportingEvidence)}
-        </div>
-      `);
-    }
-
-    if (caseFile?.counterEvidence?.length) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Counter Evidence</div>
-          ${this.renderEvidence(caseFile.counterEvidence)}
-        </div>
-      `);
-    }
-
-    if (caseFile?.triggers?.length) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Signals To Watch</div>
-          ${this.renderList(caseFile.triggers)}
-        </div>
-      `);
-    }
-
-    if (caseFile?.actors?.length) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Actors</div>
-          ${this.renderActors(caseFile.actors)}
-        </div>
-      `);
-    } else if (caseFile?.actorLenses?.length) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Actor Lenses</div>
-          ${this.renderList(caseFile.actorLenses)}
-        </div>
-      `);
-    }
-
-    if (f.perspectives?.strategic) {
-      sections.push(`
-        <div class="fc-section">
-          <div class="fc-section-title">Perspectives</div>
-          <div class="fc-perspectives">
-            <div class="fc-perspective"><strong>Strategic:</strong> ${escapeHtml(f.perspectives.strategic)}</div>
-            <div class="fc-perspective"><strong>Regional:</strong> ${escapeHtml(f.perspectives.regional || '')}</div>
-            <div class="fc-perspective"><strong>Contrarian:</strong> ${escapeHtml(f.perspectives.contrarian || '')}</div>
-          </div>
-        </div>
-      `);
-    }
-
-    const chips = [
-      f.calibration?.marketTitle ? `Market: ${f.calibration.marketTitle}` : '',
-      typeof f.priorProbability === 'number' ? `Prior: ${Math.round(f.priorProbability * 100)}%` : '',
-      f.cascades?.length ? `Cascades: ${f.cascades.length}` : '',
-    ].filter(Boolean);
-
-    const chipHtml = chips.length > 0
-      ? `<div class="fc-section"><div class="fc-section-title">Context</div><div class="fc-chip-row">${chips.map(chip => `<span class="fc-chip">${escapeHtml(chip)}</span>`).join('')}</div></div>`
-      : '';
-
-    return `
-      <div class="fc-detail fc-hidden" data-fc-panel="detail">
-        <div class="fc-detail-grid">
-          ${sections.join('')}
-          ${chipHtml}
-        </div>
-      </div>
-    `;
   }
 }

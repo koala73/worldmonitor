@@ -15670,6 +15670,20 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
     schema_version: SIMULATION_OUTCOME_SCHEMA_VERSION,
   });
   const { url, token } = getRedisCredentials();
+  const uiTheaters = (outcome.theaterResults || []).map((tr) => ({
+    theaterId: tr.theaterId,
+    theaterLabel: tr.theaterLabel || tr.theaterId,
+    stateKind: tr.stateKind || '',
+    topPaths: (tr.topPaths || []).slice(0, 2).map((p) => ({
+      label: p.label,
+      summary: p.summary,
+      confidence: p.confidence,
+      keyActors: (p.keyActors || []).slice(0, 4),
+    })),
+    dominantReactions: (tr.dominantReactions || []).slice(0, 3),
+    stabilizers: (tr.stabilizers || []).slice(0, 3),
+    invalidators: (tr.invalidators || []).slice(0, 2),
+  }));
   await redisCommand(url, token, [
     'SET',
     SIMULATION_OUTCOME_LATEST_KEY,
@@ -15679,6 +15693,7 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
       schemaVersion: SIMULATION_OUTCOME_SCHEMA_VERSION,
       theaterCount: (outcome.theaterResults || []).length,
       generatedAt: generatedAt || Date.now(),
+      uiTheaters,
     }),
     'EX',
     String(TRACE_REDIS_TTL_SECONDS),
@@ -15823,6 +15838,8 @@ async function processNextSimulationTask(options = {}) {
 
         theaterResults.push({
           theaterId: theater.theaterId,
+          theaterLabel: theater.label || theater.dominantRegion || theater.theaterId,
+          stateKind: theater.stateKind || '',
           topPaths: mergedPaths,
           dominantReactions: (result.round1?.dominantReactions || []).map((s) => sanitizeForPrompt(String(s)).slice(0, 120)).slice(0, 6),
           stabilizers: (result.round2?.stabilizers || []).map((s) => sanitizeForPrompt(String(s)).slice(0, 120)).slice(0, 6),

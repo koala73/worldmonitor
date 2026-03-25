@@ -8,7 +8,7 @@ import { getRawJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { SIMULATION_OUTCOME_LATEST_KEY } from '../../../_shared/cache-keys';
 
-type OutcomePointer = { runId: string; outcomeKey: string; schemaVersion: string; theaterCount: number; generatedAt: number };
+type OutcomePointer = { runId: string; outcomeKey: string; schemaVersion: string; theaterCount: number; generatedAt: number; uiTheaters?: unknown[] };
 
 function isOutcomePointer(v: unknown): v is OutcomePointer {
   if (!v || typeof v !== 'object') return false;
@@ -19,7 +19,7 @@ function isOutcomePointer(v: unknown): v is OutcomePointer {
 }
 
 const NOT_FOUND: GetSimulationOutcomeResponse = {
-  found: false, runId: '', outcomeKey: '', schemaVersion: '', theaterCount: 0, generatedAt: 0, note: '', error: '',
+  found: false, runId: '', outcomeKey: '', schemaVersion: '', theaterCount: 0, generatedAt: 0, note: '', error: '', theaterSummariesJson: '',
 };
 
 export const getSimulationOutcome: ForecastServiceHandler['getSimulationOutcome'] = async (
@@ -36,7 +36,10 @@ export const getSimulationOutcome: ForecastServiceHandler['getSimulationOutcome'
     const note = req.runId && req.runId !== pointer.runId
       ? 'runId filter not yet active; returned outcome may differ from requested run'
       : '';
-    return { found: true, runId: pointer.runId, outcomeKey: pointer.outcomeKey, schemaVersion: pointer.schemaVersion, theaterCount: pointer.theaterCount, generatedAt: pointer.generatedAt, note, error: '' };
+    const theaterSummariesJson = Array.isArray(pointer.uiTheaters) && pointer.uiTheaters.length > 0
+      ? JSON.stringify(pointer.uiTheaters)
+      : '';
+    return { found: true, runId: pointer.runId, outcomeKey: pointer.outcomeKey, schemaVersion: pointer.schemaVersion, theaterCount: pointer.theaterCount, generatedAt: pointer.generatedAt, note, error: '', theaterSummariesJson };
   } catch (err) {
     console.warn('[getSimulationOutcome] Redis error:', err instanceof Error ? err.message : String(err));
     markNoCacheResponse(ctx.request); // don't cache error state

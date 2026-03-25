@@ -149,6 +149,7 @@ export interface GetSimulationOutcomeResponse {
   generatedAt: number;
   note: string;
   error: string;
+  theaterSummariesJson: string;
 }
 
 export interface FieldViolation {
