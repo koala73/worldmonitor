@@ -1,0 +1,125 @@
+/**
+ * Skeleton Loading Styles
+ *
+ * Shimmer animation placeholders for loading states.
+ * Uses CSS animations for smooth, GPU-accelerated effects.
+ */
+
+/* ============================================================
+   Skeleton Panel Container
+   ============================================================ */
+.skeleton-panel {
+  padding: 8px 12px;
+}
+
+/* ============================================================
+   Skeleton Card
+   ============================================================ */
+.skeleton-card {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-dim, rgba(255, 255, 255, 0.05));
+}
+
+.skeleton-card:last-child {
+  border-bottom: none;
+}
+
+/* ============================================================
+   Skeleton Elements
+   ============================================================ */
+.skeleton-title {
+  height: 14px;
+  width: 90%;
+  background: var(--skeleton-bg, rgba(255, 255, 255, 0.08));
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.skeleton-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.skeleton-source {
+  height: 10px;
+  width: 80px;
+  background: var(--skeleton-bg, rgba(255, 255, 255, 0.08));
+  border-radius: 3px;
+}
+
+.skeleton-time {
+  height: 10px;
+  width: 50px;
+  background: var(--skeleton-bg, rgba(255, 255, 255, 0.08));
+  border-radius: 3px;
+}
+
+/* ============================================================
+   Shimmer Animation
+   ============================================================ */
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-bg, rgba(255, 255, 255, 0.08)) 25%,
+    var(--skeleton-highlight, rgba(255, 255, 255, 0.15)) 50%,
+    var(--skeleton-bg, rgba(255, 255, 255, 0.08)) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ============================================================
+   Light Theme Overrides
+   ============================================================ */
+[data-theme="light"] .skeleton-title,
+[data-theme="light"] .skeleton-source,
+[data-theme="light"] .skeleton-time {
+  --skeleton-bg: rgba(0, 0, 0, 0.06);
+  --skeleton-highlight: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .skeleton-card {
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+/* ============================================================
+   Responsive Adjustments
+   ============================================================ */
+@media (max-width: 768px) {
+  .skeleton-panel {
+    padding: 6px 10px;
+  }
+
+  .skeleton-card {
+    padding: 10px 0;
+  }
+
+  .skeleton-title {
+    height: 12px;
+    margin-bottom: 8px;
+  }
+
+  .skeleton-source,
+  .skeleton-time {
+    height: 8px;
+  }
+}
+
+/* ============================================================
+   Reduced Motion
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    animation: none;
+  }
+}

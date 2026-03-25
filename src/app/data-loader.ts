@@ -15,6 +15,7 @@ import {
   SITE_VARIANT,
   getFeatures,
 } from '@/config';
+import { getPanelLoadDelay, getRetryDelayWithJitter } from '@/constants/panelPriority';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import {
@@ -772,6 +773,42 @@ export class DataLoaderManager implements AppModule {
     this.applyTimeRangeFilterToNewsPanelsDebounced();
   }
 
+  /**
+   * Load news category with automatic retry on failure (FR #135)
+   * Implements single auto-retry with jitter to prevent retry storms
+   */
+  private async loadNewsCategoryWithRetry(
+    category: string,
+    feeds: typeof FEEDS.politics,
+    digest?: ListFeedDigestResponse | null
+  ): Promise<NewsItem[]> {
+    try {
+      return await this.loadNewsCategory(category, feeds, digest);
+    } catch (error) {
+      const panel = this.ctx.newsPanels[category];
+      console.warn(`[App] News category ${category} failed, will retry:`, error);
+
+      // Wait with jitter before retry
+      await new Promise(resolve => setTimeout(resolve, getRetryDelayWithJitter()));
+
+      try {
+        // Single retry attempt
+        const items = await this.loadNewsCategory(category, feeds, digest);
+        if (panel) panel.resetRetryBackoff();
+        return items;
+      } catch (retryError) {
+        console.error(`[App] News category ${category} retry failed:`, retryError);
+        if (panel) {
+          panel.showError(
+            t('common.failedToLoad'),
+            () => this.loadNewsCategoryWithRetry(category, feeds, digest),
+          );
+        }
+        throw retryError;
+      }
+    }
+  }
+
   private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics, digest?: ListFeedDigestResponse | null): Promise<NewsItem[]> {
     try {
       const panel = this.ctx.newsPanels[category];
@@ -949,15 +986,39 @@ export class DataLoaderManager implements AppModule {
 
     const digest = await digestPromise;
 
+    // Group categories by load priority for staggered loading (FR #135)
+    const categoriesByDelay = new Map<number, typeof categories>();
+    for (const cat of categories) {
+      const delay = getPanelLoadDelay(cat.key);
+      if (!categoriesByDelay.has(delay)) {
+        categoriesByDelay.set(delay, []);
+      }
+      categoriesByDelay.get(delay)!.push(cat);
+    }
+
+    // Sort by delay (ascending) to load high-priority panels first
+    const sortedDelays = Array.from(categoriesByDelay.keys()).sort((a, b) => a - b);
+
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
-    const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
     const categoryResults: PromiseSettledResult<NewsItem[]>[] = [];
-    for (let i = 0; i < categories.length; i += categoryConcurrency) {
-      const chunk = categories.slice(i, i + categoryConcurrency);
-      const chunkResults = await Promise.allSettled(
-        chunk.map(({ key, feeds }) => this.loadNewsCategory(key, feeds, digest))
-      );
-      categoryResults.push(...chunkResults);
+
+    // Load categories in batches by delay
+    for (const delay of sortedDelays) {
+      if (delay > 0) {
+        // Wait before loading this batch
+        await new Promise(resolve => setTimeout(resolve, delay - (sortedDelays[sortedDelays.indexOf(delay) - 1] ?? 0)));
+      }
+
+      const batchCategories = categoriesByDelay.get(delay) ?? [];
+      const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, batchCategories.length));
+
+      for (let i = 0; i < batchCategories.length; i += categoryConcurrency) {
+        const chunk = batchCategories.slice(i, i + categoryConcurrency);
+        const chunkResults = await Promise.allSettled(
+          chunk.map(({ key, feeds }) => this.loadNewsCategoryWithRetry(key, feeds, digest))
+        );
+        categoryResults.push(...chunkResults);
+      }
     }
 
     const collectedNews: NewsItem[] = [];

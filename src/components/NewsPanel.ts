@@ -62,6 +62,8 @@ export class NewsPanel extends Panel {
     this.setupActivityTracking();
     this.initWindowedList();
     this.setupContentDelegation();
+    // Show skeleton loading state instead of default "Loading..." text
+    this.showSkeleton(4);
   }
 
   private initWindowedList(): void {

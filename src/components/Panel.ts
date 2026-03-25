@@ -5,6 +5,7 @@ import { h, replaceChildren, safeHtml } from '../utils/dom-utils';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
+import { renderSkeletonHtml } from '@/components/Skeleton';
 
 export interface PanelOptions {
   id: string;
@@ -707,6 +708,18 @@ export class Panel {
         h('div', { className: 'panel-loading-text' }, message),
       ),
     );
+  }
+
+  /**
+   * Show skeleton loading state with shimmer animation
+   * Provides better visual feedback than static "Loading..." text
+   * @param count - Number of skeleton cards to display (default: 4)
+   */
+  public showSkeleton(count = 4): void {
+    if (this._locked) return;
+    this.setErrorState(false);
+    this.clearRetryCountdown();
+    this.content.innerHTML = renderSkeletonHtml(count);
   }
 
   public showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
