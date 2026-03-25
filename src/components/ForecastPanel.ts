@@ -107,6 +107,7 @@ function injectStyles(): void {
     .fc-signal { color: var(--text-secondary, #999); font-size: 11px; padding: 1px 0; }
     .fc-signal::before { content: ''; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #666); margin-right: 6px; vertical-align: middle; }
     .fc-cascade { font-size: 11px; color: var(--accent-color, #3b82f6); margin-top: 3px; }
+    .fc-counter { font-size: 10px; color: #e05252; opacity: 0.75; margin-top: 4px; line-height: 1.35; font-style: italic; }
     .fc-summary { font-size: 11px; color: var(--text-primary, #d7d7d7); line-height: 1.45; }
     .fc-calibration { font-size: 10px; color: var(--text-secondary, #777); margin-top: 2px; }
     .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
@@ -220,6 +221,16 @@ export class ForecastPanel extends Panel {
       ? `<div class="fc-cascade">Cascades: ${f.cascades.map(c => escapeHtml(c.domain)).join(', ')}</div>`
       : '';
 
+    // Self-critique: surface the first counter-thesis at card level so users see the bear case
+    // without having to drill into the Analysis panel.
+    const caseFile = (f as any).caseFile;
+    const counterNote = caseFile?.contrarianCase
+      || caseFile?.counterEvidence?.[0]?.summary
+      || '';
+    const counterNoteHtml = counterNote
+      ? `<div class="fc-counter">↓ ${escapeHtml(counterNote.length > 140 ? counterNote.slice(0, 137) + '…' : counterNote)}</div>`
+      : '';
+
     const calibrationHtml = f.calibration?.marketTitle
       ? `<div class="fc-calibration">Market: ${escapeHtml(f.calibration.marketTitle)} (${Math.round((f.calibration.marketPrice || 0) * 100)}%)</div>`
       : '';
@@ -256,6 +267,7 @@ export class ForecastPanel extends Panel {
         ${detailHtml}
         <div class="fc-signals fc-hidden" data-fc-panel="signals">${signalsHtml}</div>
         ${cascadesHtml}
+        ${counterNoteHtml}
         ${calibrationHtml}
       </div>
     `;

@@ -1218,6 +1218,18 @@ function computeStateDerivedBucketCandidate(domain, stateUnit, bucket, marketCon
     (domain === 'supply_chain' && directBucket ? 0.05 : 0),
   );
 
+  // Maritime-specific buckets (energy, freight in supply_chain) require actual maritime disruption state.
+  // Without this gate, security escalations in landlocked/non-chokepoint states (Brazil, Cuba, etc.)
+  // generate spurious "Maritime energy flow disruption" forecasts that have no causal basis.
+  const MARITIME_BUCKET_STATE_KINDS = new Set([
+    'maritime_disruption', 'port_disruption', 'shipping_disruption',
+    'chokepoint_closure', 'naval_blockade', 'piracy_escalation',
+  ]);
+  const requiresMaritimeStateKind = domain === 'supply_chain' && ['freight', 'energy'].includes(bucket.id);
+  if (requiresMaritimeStateKind && stateUnit.stateKind && !MARITIME_BUCKET_STATE_KINDS.has(stateUnit.stateKind)) {
+    return null;
+  }
+
   const supplyChainFallbackEligible = domain === 'supply_chain'
     && stateDomainMatch
     && directBucket
@@ -1431,7 +1443,41 @@ function deriveStateDrivenForecasts({
     derived.push(fallback.prediction);
   }
 
-  return derived
+  // Cross-state semantic deduplication: cap same (bucketId × stateKind) combinations.
+  // Without this, every monitored sea/chokepoint produces an identical "Inflation from [X]" bet —
+  // Baltic Sea 66%, Red Sea 66%, Persian Gulf 66%, Hormuz 70%... all the same bet, useless.
+  // Keep the top MAX_CROSS_STATE_SAME_BUCKET_KIND by (probability × confidence), and require
+  // a minimum probability spread so near-identical scores don't both make the cut.
+  const MAX_CROSS_STATE_SAME_BUCKET_KIND = 2;
+  const MIN_CROSS_STATE_PROBABILITY_SPREAD = 0.06;
+
+  const crossGroups = new Map(); // groupKey → sorted array of preds
+  const noDerivation = [];
+  for (const pred of derived) {
+    const bucketId = pred.stateDerivation?.bucketId || '';
+    const stateKind = pred.stateDerivation?.sourceStateKind || '';
+    if (!bucketId || !stateKind) { noDerivation.push(pred); continue; }
+    const key = `${bucketId}:${stateKind}`;
+    if (!crossGroups.has(key)) crossGroups.set(key, []);
+    crossGroups.get(key).push(pred);
+  }
+
+  const crossDeduped = [...noDerivation];
+  for (const group of crossGroups.values()) {
+    group.sort((a, b) => (b.probability * b.confidence) - (a.probability * a.confidence));
+    let lastKeptProb = null;
+    let keptCount = 0;
+    for (const pred of group) {
+      if (keptCount >= MAX_CROSS_STATE_SAME_BUCKET_KIND) break;
+      // Skip if too close to the last kept forecast — ensures meaningful differentiation between kept bets.
+      if (lastKeptProb !== null && Math.abs(pred.probability - lastKeptProb) < MIN_CROSS_STATE_PROBABILITY_SPREAD) continue;
+      lastKeptProb = pred.probability;
+      keptCount++;
+      crossDeduped.push(pred);
+    }
+  }
+
+  return crossDeduped
     .sort((a, b) => (Number(a.stateDerivedBackfill) - Number(b.stateDerivedBackfill))
       || (b.probability * b.confidence) - (a.probability * a.confidence)
       || a.title.localeCompare(b.title));
