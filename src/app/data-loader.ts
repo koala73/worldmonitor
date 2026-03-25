@@ -1588,7 +1588,6 @@ export class DataLoaderManager implements AppModule {
       }
     } catch (error) {
       console.error('[App] Failed to load tech events:', error);
-      this.callPanel('events', 'showError');
       this.ctx.map?.setTechEvents([]);
       this.ctx.map?.setLayerReady('techEvents', false);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
