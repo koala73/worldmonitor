@@ -15371,7 +15371,8 @@ if (_isDirectRun) {
         const snapshotWrite = await writeDeepForecastSnapshot(snapshotPayload, { runId });
         if (snapshotWrite?.storageConfig && (data.impactExpansionCandidates || []).length > 0) {
           writeSimulationPackage(snapshotPayload, { storageConfig: snapshotWrite.storageConfig, priorWorldState: data.priorWorldState || null })
-            .catch((err) => console.warn(`  [SimulationPackage] Write failed: ${err.message}`));
+            .then(() => enqueueSimulationTask(runId))
+            .catch((err) => console.warn(`  [SimulationPackage] Write/enqueue failed: ${err.message}`));
         }
         if (deepForecast.status === 'queued' && (data.impactExpansionCandidates || []).length > 0) {
           if (snapshotWrite?.snapshotKey) {
