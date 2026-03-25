@@ -16,6 +16,7 @@ const cargoLockPath = path.join(repoRoot, 'src-tauri', 'Cargo.lock');
 function parseArgs(argv) {
   const options = {
     allowExistingTargetRelease: false,
+    remote: '',
     variant: 'full',
   };
 
@@ -30,8 +31,17 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (arg === '--remote') {
+      options.remote = argv[i + 1] ?? '';
+      i += 1;
+      continue;
+    }
     if (arg.startsWith('--variant=')) {
       options.variant = arg.slice('--variant='.length);
+      continue;
+    }
+    if (arg.startsWith('--remote=')) {
+      options.remote = arg.slice('--remote='.length);
       continue;
     }
     throw new Error(`Unknown argument: ${arg}`);
@@ -152,6 +162,27 @@ function runCommand(command, args, options = {}) {
   return result.stdout.trim();
 }
 
+function resolveRemoteName(preferredRemote = 'origin') {
+  const remotes = runCommand('git', ['remote'])
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (remotes.includes(preferredRemote)) {
+    return preferredRemote;
+  }
+
+  if (remotes.includes('macos')) {
+    return 'macos';
+  }
+
+  if (remotes.length > 0) {
+    return remotes[0];
+  }
+
+  throw new Error('No git remotes are configured');
+}
+
 function normalizeRepoSlug(remoteUrl) {
   const sshMatch = remoteUrl.match(/^git@github\.com:(.+?)(?:\.git)?$/);
   if (sshMatch) {
@@ -183,11 +214,12 @@ async function readVersionFiles() {
   };
 }
 
-async function fetchRemoteReleaseState(targetTag) {
+async function fetchRemoteReleaseState(targetTag, remoteName = 'origin') {
+  const resolvedRemote = resolveRemoteName(remoteName);
   const repoSlug = process.env.GITHUB_REPOSITORY
-    || normalizeRepoSlug(runCommand('git', ['remote', 'get-url', 'origin']));
+    || normalizeRepoSlug(runCommand('git', ['remote', 'get-url', resolvedRemote]));
 
-  const remoteTagOutput = runCommand('git', ['ls-remote', '--tags', 'origin', `refs/tags/${targetTag}`]);
+  const remoteTagOutput = runCommand('git', ['ls-remote', '--tags', resolvedRemote, `refs/tags/${targetTag}`]);
   const remoteTags = new Set(remoteTagOutput ? [targetTag] : []);
 
   const releases = JSON.parse(
@@ -210,7 +242,7 @@ async function main() {
     ...findVersionMismatches(versionsByFile),
   ];
 
-  const { remoteTags, releases } = await fetchRemoteReleaseState(targetTag);
+  const { remoteTags, releases } = await fetchRemoteReleaseState(targetTag, options.remote || 'origin');
   issues.push(
     ...findReleaseStateIssues({
       targetTag,

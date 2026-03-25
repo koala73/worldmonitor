@@ -6,6 +6,31 @@ All notable changes to World Monitor are documented here.
 
 ---
 
+## [2.7.4] - 2026-03-25
+
+### Fixed
+
+- Restored TypeScript QA gate compatibility by aligning `tsconfig.json` `ignoreDeprecations` with the shipped TypeScript compiler.
+- Repaired release push guard compatibility so `scripts/release-doctor.mjs` accepts and honors remote selection from guarded pre-push flows.
+
+### Changed
+
+- Advanced desktop release metadata to `2.7.4` across Node and Tauri versioned files for a clean tagged release after post-`2.7.3` hardening fixes.
+
+---
+
+## [2.7.3] - 2026-03-25
+
+### Fixed
+
+- Release automation now triggers required pull request checks for the release branch before merge.
+
+### Changed
+
+- Version metadata was advanced to `2.7.3` across Node and Tauri release files to publish the repaired desktop release pipeline.
+
+---
+
 ## [2.7.2] - 2026-03-24
 
 ### Fixed
