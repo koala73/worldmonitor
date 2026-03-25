@@ -1588,7 +1588,7 @@ export class DataLoaderManager implements AppModule {
       }
     } catch (error) {
       console.error('[App] Failed to load tech events:', error);
-      this.callPanel('tech-events', 'showError');
+      this.callPanel('events', 'showError');
       this.ctx.map?.setTechEvents([]);
       this.ctx.map?.setLayerReady('techEvents', false);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
@@ -1603,7 +1603,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateFeed('Weather', { status: 'ok', itemCount: alerts.length });
       dataFreshness.recordUpdate('weather', alerts.length);
     } catch (error) {
-      this.callPanel('weather', 'showError');
       this.ctx.map?.setLayerReady('weather', false);
       this.ctx.statusPanel?.updateFeed('Weather', { status: 'error' });
       dataFreshness.recordError('weather', String(error));
@@ -1957,7 +1956,7 @@ export class DataLoaderManager implements AppModule {
         (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setDdos(r);
       }).catch(() => {});
     } catch (error) {
-      this.callPanel('infra-outages', 'showError');
+      this.callPanel('internet-disruptions', 'showError');
       this.ctx.map?.setLayerReady('outages', false);
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'error' });
       dataFreshness.recordError('outages', String(error));
@@ -1991,7 +1990,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('Cyber Threats API', { status: 'ok' });
       dataFreshness.recordUpdate('cyber_threats', threats.length);
     } catch (error) {
-      this.callPanel('cyber-threats', 'showError');
       this.ctx.map?.setLayerReady('cyberThreats', false);
       this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('Cyber Threats API', { status: 'error' });
@@ -2158,7 +2156,6 @@ export class DataLoaderManager implements AppModule {
       }
       this.ctx.statusPanel?.updateApi('GDELT Doc', { status: 'ok' });
     } catch (error) {
-      this.callPanel('protests', 'showError');
       this.ctx.map?.setLayerReady('protests', false);
       this.ctx.statusPanel?.updateFeed('Protests', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('ACLED', { status: 'error' });
@@ -2206,7 +2203,6 @@ export class DataLoaderManager implements AppModule {
       map.setLayerReady('webcams', allMarkers.length > 0);
     } catch (err) {
       console.warn('[data-loader] webcams failed:', err);
-      this.callPanel('webcams', 'showError');
       this.ctx.map?.setLayerReady('webcams', false);
     }
   }
@@ -2225,7 +2221,6 @@ export class DataLoaderManager implements AppModule {
       });
       this.ctx.statusPanel?.updateApi('FAA', { status: 'ok' });
     } catch (error) {
-      this.callPanel('flight-delays', 'showError');
       this.ctx.map?.setLayerReady('flights', false);
       this.ctx.statusPanel?.updateFeed('Flights', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('FAA', { status: 'error' });

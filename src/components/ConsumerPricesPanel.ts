@@ -184,6 +184,14 @@ export class ConsumerPricesPanel extends Panel {
 
       if (!this.element?.isConnected) { this.loading = false; return; }
 
+      // Services swallow transport failures and return upstreamUnavailable:true.
+      // Check here so the panel shows the radar error state instead of the seeding placeholder.
+      if (overview.upstreamUnavailable) {
+        this.loading = false;
+        this.showError(undefined, () => void this.fetchData());
+        return;
+      }
+
       this.overview = overview;
       this.categories = categories;
       this.movers = movers;
