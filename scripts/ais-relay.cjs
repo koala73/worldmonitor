@@ -3709,7 +3709,10 @@ async function seedWeatherAlerts() {
         };
       });
     if (alerts.length === 0) {
-      console.warn('[Weather] No alerts returned — preserving last good data');
+      // NWS responded successfully but has no active alerts — valid quiet state.
+      // Still bump seed-meta so health.js knows the loop ran (avoids false STALE_SEED).
+      await upstashSet('seed-meta:weather:alerts', { fetchedAt: Date.now(), recordCount: 0 }, 604800);
+      console.log('[Weather] No active alerts — seed-meta refreshed, existing data preserved');
       return;
     }
     const payload = { alerts };
