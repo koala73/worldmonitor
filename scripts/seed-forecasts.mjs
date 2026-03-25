@@ -62,6 +62,13 @@ const MIN_TARGET_PUBLISHED_FORECASTS = 10;
 const MAX_TARGET_PUBLISHED_FORECASTS = 14;
 const MAX_PRESELECTED_FORECASTS_PER_FAMILY = 3;
 const MAX_PRESELECTED_FORECASTS_PER_SITUATION = 2;
+// stateKind values that legitimately drive maritime energy/freight supply_chain forecasts.
+// Defined at module scope — not per-call — to avoid re-allocating the Set on every invocation.
+const MARITIME_BUCKET_STATE_KINDS = new Set([
+  'maritime_disruption', 'port_disruption', 'shipping_disruption',
+  'chokepoint_closure', 'naval_blockade', 'piracy_escalation',
+  'transport_pressure', // shipping route pressure (e.g. Red Sea, Suez transit delays) is maritime-relevant
+]);
 const CYBER_MIN_THREATS_PER_COUNTRY = 5;
 const CYBER_MAX_FORECASTS = 12;
 const CYBER_SCORE_TYPE_MULTIPLIER = 1.5;    // bonus per distinct threat type
@@ -1221,11 +1228,6 @@ function computeStateDerivedBucketCandidate(domain, stateUnit, bucket, marketCon
   // Maritime-specific buckets (energy, freight in supply_chain) require actual maritime disruption state.
   // Without this gate, security escalations in landlocked/non-chokepoint states (Brazil, Cuba, etc.)
   // generate spurious "Maritime energy flow disruption" forecasts that have no causal basis.
-  const MARITIME_BUCKET_STATE_KINDS = new Set([
-    'maritime_disruption', 'port_disruption', 'shipping_disruption',
-    'chokepoint_closure', 'naval_blockade', 'piracy_escalation',
-    'transport_pressure', // shipping route pressure (e.g. Red Sea, Suez transit delays) is maritime-relevant
-  ]);
   const requiresMaritimeStateKind = domain === 'supply_chain' && ['freight', 'energy'].includes(bucket.id);
   // Block if stateKind absent OR not in allowlist — falsy stateKind must NOT bypass this gate.
   if (requiresMaritimeStateKind && !MARITIME_BUCKET_STATE_KINDS.has(stateUnit.stateKind ?? '')) {

@@ -223,7 +223,9 @@ export class ForecastPanel extends Panel {
 
     // Self-critique: surface the first counter-thesis at card level so users see the bear case
     // without having to drill into the Analysis panel.
-    const caseFile = (f as any).caseFile;
+    // caseFile is a runtime extension not yet reflected in the generated proto type.
+    type WithCaseFile = Forecast & { caseFile?: { contrarianCase?: string; counterEvidence?: Array<{ summary?: string }> } };
+    const caseFile = (f as WithCaseFile).caseFile;
     const counterNote = caseFile?.contrarianCase
       || caseFile?.counterEvidence?.[0]?.summary
       || '';
