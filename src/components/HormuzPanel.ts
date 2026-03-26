@@ -43,7 +43,7 @@ function barChart(series: HormuzSeries[], color: string, unit: string, width = 2
 function renderChart(chart: HormuzChart, idx: number): string {
   const color = CHART_COLORS[idx % CHART_COLORS.length] ?? '#3498db';
   const last = chart.series[chart.series.length - 1];
-  const lastVal = last ? last.value.toFixed(0) : 'N/A';
+  const lastVal = last ? Number(last.value).toFixed(0) : 'N/A';
   const lastDate = last ? last.date.slice(5) : '';
   const unit = chart.label.includes('crude_oil') ? 'kt/day' : 'units';
 
