@@ -25,7 +25,6 @@ import type { MacroSignalsPanel } from '@/components/MacroSignalsPanel';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { StrategicRiskPanel } from '@/components/StrategicRiskPanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
-import { getSecretState } from '@/services/runtime-config';
 import { BETA_MODE } from '@/config/beta';
 import { trackEvent, trackDeeplinkOpened } from '@/services/analytics';
 import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country-geometry';
@@ -400,10 +399,7 @@ export class App {
       this.state.map.setCenter(mobileGeoCoords.lat, mobileGeoCoords.lon, 6);
     }
 
-    // Happy variant: pre-populate panels from persistent cache for instant render
-    if (SITE_VARIANT === 'happy') {
-      await this.dataLoader.hydrateHappyPanelsFromCache();
-    }
+
 
     // Phase 2: Shared UI components
     this.state.signalModal = new SignalModal();
@@ -565,7 +561,7 @@ export class App {
         { name: 'oil', fn: () => this.dataLoader.loadOilAnalytics(), intervalMs: 30 * 60 * 1000 },
         { name: 'spending', fn: () => this.dataLoader.loadGovernmentSpending(), intervalMs: 60 * 60 * 1000 },
         { name: 'bis', fn: () => this.dataLoader.loadBisData(), intervalMs: 60 * 60 * 1000 },
-        { name: 'firms', fn: () => this.dataLoader.loadFirmsData(), intervalMs: 30 * 60 * 1000 },
+
         { name: 'ais', fn: () => this.dataLoader.loadAisSignals(), intervalMs: REFRESH_INTERVALS.ais, condition: () => this.state.mapLayers.ais },
         { name: 'cables', fn: () => this.dataLoader.loadCableActivity(), intervalMs: 30 * 60 * 1000, condition: () => this.state.mapLayers.cables },
         { name: 'cableHealth', fn: () => this.dataLoader.loadCableHealth(), intervalMs: 2 * 60 * 60 * 1000, condition: () => this.state.mapLayers.cables },
@@ -579,26 +575,7 @@ export class App {
       ]);
     }
 
-    if (SITE_VARIANT === 'finance') {
-      this.refreshScheduler.scheduleRefresh(
-        'stock-analysis',
-        () => this.dataLoader.loadStockAnalysis(),
-        15 * 60 * 1000,
-        () => getSecretState('WORLDMONITOR_API_KEY').present,
-      );
-      this.refreshScheduler.scheduleRefresh(
-        'daily-market-brief',
-        () => this.dataLoader.loadDailyMarketBrief(),
-        60 * 60 * 1000,
-        () => getSecretState('WORLDMONITOR_API_KEY').present,
-      );
-      this.refreshScheduler.scheduleRefresh(
-        'stock-backtest',
-        () => this.dataLoader.loadStockBacktest(),
-        4 * 60 * 60 * 1000,
-        () => getSecretState('WORLDMONITOR_API_KEY').present,
-      );
-    }
+
 
     // Panel-level refreshes (moved from panel constructors into scheduler for hidden-tab awareness + jitter)
     this.refreshScheduler.scheduleRefresh(

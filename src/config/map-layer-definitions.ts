@@ -2,7 +2,7 @@ import type { MapLayers } from '@/types';
 import { isDesktopRuntime } from '@/services/runtime';
 
 export type MapRenderer = 'flat' | 'globe';
-export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity';
+export type MapVariant = 'full';
 
 const _desktop = isDesktopRuntime();
 
@@ -80,41 +80,18 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
   full: [
     'iranAttacks', 'hotspots', 'conflicts',
-    'bases', 'nuclear', 'irradiators', 'spaceports',
-    'cables', 'pipelines', 'datacenters', 'military',
+    'bases', 'nuclear', 'irradiators',
+    'cables', 'pipelines', 'military',
     'ais', 'tradeRoutes', 'flights', 'protests',
-    'ucdpEvents', 'displacement', 'climate', 'weather',
-    'outages', 'cyberThreats', 'natural', 'fires',
+    'ucdpEvents', 'displacement',
+    'outages', 'cyberThreats',
     'waterways', 'economic', 'minerals', 'gpsJamming',
-    'satellites', 'ciiChoropleth', 'dayNight',
-  ],
-  tech: [
-    'startupHubs', 'techHQs', 'accelerators', 'cloudRegions',
-    'datacenters', 'cables', 'outages', 'cyberThreats',
-    'techEvents', 'natural', 'fires', 'dayNight',
-  ],
-  finance: [
-    'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs',
-    'gulfInvestments', 'tradeRoutes', 'cables', 'pipelines',
-    'outages', 'weather', 'economic', 'waterways',
-    'natural', 'cyberThreats', 'dayNight',
-  ],
-  happy: [
-    'positiveEvents', 'kindness', 'happiness',
-    'speciesRecovery', 'renewableInstallations',
-  ],
-  commodity: [
-    'miningSites', 'processingPlants', 'commodityPorts', 'commodityHubs',
-    'minerals', 'pipelines', 'waterways', 'tradeRoutes',
-    'ais', 'economic', 'fires', 'climate',
-    'natural', 'weather', 'outages', 'dayNight',
+    'satellites', 'ciiChoropleth',
   ],
 };
 
 const SVG_ONLY_LAYERS: Partial<Record<MapVariant, Array<keyof MapLayers>>> = {
   full: ['sanctions'],
-  finance: ['sanctions'],
-  commodity: ['sanctions'],
 };
 
 const I18N_PREFIX = 'components.deckgl.layers.';
@@ -123,7 +100,7 @@ export function getLayersForVariant(variant: MapVariant, renderer: MapRenderer):
   const keys = VARIANT_LAYER_ORDER[variant] ?? VARIANT_LAYER_ORDER.full;
   return keys
     .map(k => LAYER_REGISTRY[k])
-    .filter(d => d.renderers.includes(renderer));
+    .filter(d => d && d.renderers.includes(renderer));
 }
 
 export function getAllowedLayerKeys(variant: MapVariant): Set<keyof MapLayers> {
