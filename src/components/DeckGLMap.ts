@@ -2691,10 +2691,13 @@ export class DeckGLMap {
       id: 'reit-properties-layer',
       data: REIT_PROPERTIES as ReitProp[],
       getPosition: (d) => [d.lng, d.lat],
-      getRadius: 12000,
+      getRadius: 25000,
       getFillColor: (d) => DeckGLMap.REIT_SECTOR_COLORS[d.sector] || [139, 148, 158, 180],
-      radiusMinPixels: 4,
-      radiusMaxPixels: 10,
+      getLineColor: [255, 255, 255, 120],
+      lineWidthMinPixels: 1,
+      stroked: true,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 14,
       pickable: true,
     });
   }
@@ -4469,7 +4472,17 @@ export class DeckGLMap {
         { shape: shapes.circle('rgb(150, 100, 255)'), label: t('components.deckgl.legend.cloudRegion') },
         { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter') },
       ]
-      : SITE_VARIANT === 'finance'
+      : SITE_VARIANT === 'reits'
+        ? [
+          { shape: shapes.circle('rgb(88, 166, 255)'), label: 'Retail REIT' },
+          { shape: shapes.circle('rgb(63, 185, 80)'), label: 'Industrial REIT' },
+          { shape: shapes.circle('rgb(210, 168, 255)'), label: 'Residential REIT' },
+          { shape: shapes.circle('rgb(210, 153, 34)'), label: 'Office REIT' },
+          { shape: shapes.circle('rgb(248, 81, 73)'), label: 'Healthcare REIT' },
+          { shape: shapes.circle('rgb(121, 192, 255)'), label: 'Data Center REIT' },
+          { shape: shapes.circle('rgb(227, 179, 65)'), label: 'Specialty REIT' },
+        ]
+        : SITE_VARIANT === 'finance'
         ? [
           { shape: shapes.circle('rgb(255, 215, 80)'), label: t('components.deckgl.legend.stockExchange') },
           { shape: shapes.circle('rgb(0, 220, 150)'), label: t('components.deckgl.legend.financialCenter') },

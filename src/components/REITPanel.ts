@@ -17,7 +17,7 @@
 
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { formatPrice, formatChange, getChangeClass, loadFromStorage, saveToStorage } from '@/utils';
+import { formatChange, getChangeClass, loadFromStorage, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
 import type { ReitQuote, SectorRotationSignal, ReitRegime } from '@/services/reits';
