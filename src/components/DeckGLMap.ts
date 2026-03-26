@@ -23,8 +23,8 @@ import {
   type IrishUnicorn,
   type IrelandAICompany,
   type IrelandUniversity,
-  type SubmarineCable,
   type LandingStation,
+  type CableSegment,
 } from '@/config/variants/ireland/data';
 import {
   getSemiconductorTier,
@@ -78,7 +78,7 @@ import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
-import { H3HexagonLayer } from '@deck.gl/geo-layers';
+import { H3HexagonLayer, GreatCircleLayer } from '@deck.gl/geo-layers';
 import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
@@ -2957,26 +2957,53 @@ export class DeckGLMap {
    * Displays undersea cables connecting Ireland to the world
    * Color coded by destination: transatlantic(orange), UK(blue), Europe(green), planned(purple)
    */
-  private createSubmarineCablesLayer(): PathLayer<SubmarineCable> {
-    return new PathLayer<SubmarineCable>({
+  /**
+   * Create submarine cables layer using GreatCircleLayer (FR #176)
+   * Displays cables as curved arcs following Great Circle routes
+   * This is more accurate than straight lines for long-distance cables
+   */
+  private createSubmarineCablesLayer(): GreatCircleLayer<CableSegment> {
+    // Flatten cable paths into segments for GreatCircleLayer
+    // Each segment has source and target positions
+    const segments: CableSegment[] = [];
+    for (const cable of IRELAND_SUBMARINE_CABLES) {
+      const path = cable.path;
+      for (let i = 0; i < path.length - 1; i++) {
+        const source = path[i];
+        const target = path[i + 1];
+        if (source && target) {
+          segments.push({
+            cableId: cable.id,
+            source,
+            target,
+            destination: cable.destination,
+            status: cable.status,
+            cable, // Reference to original cable for popup
+          });
+        }
+      }
+    }
+
+    return new GreatCircleLayer<CableSegment>({
       id: 'submarine-cables-layer',
-      data: IRELAND_SUBMARINE_CABLES,
-      getPath: (d: SubmarineCable) => d.path,
-      getColor: (d: SubmarineCable) => {
+      data: segments,
+      getSourcePosition: (d: CableSegment) => d.source,
+      getTargetPosition: (d: CableSegment) => d.target,
+      getSourceColor: (d: CableSegment) => {
         const color = CABLE_COLORS[d.destination];
-        // Reduce opacity for planned cables
         const alpha = d.status === 'planned' || d.status === 'under-construction' ? 150 : 220;
         return [...color, alpha] as [number, number, number, number];
       },
-      getWidth: (d: SubmarineCable) => {
-        // Thinner lines for planned cables
-        return d.status === 'active' ? 3 : 2;
+      getTargetColor: (d: CableSegment) => {
+        const color = CABLE_COLORS[d.destination];
+        const alpha = d.status === 'planned' || d.status === 'under-construction' ? 150 : 220;
+        return [...color, alpha] as [number, number, number, number];
       },
+      getWidth: (d: CableSegment) => (d.status === 'active' ? 3 : 2),
       widthMinPixels: 2,
       widthMaxPixels: 6,
-      // Curved path for more natural appearance
-      jointRounded: true,
-      capRounded: true,
+      // Number of segments for smooth curve (more = smoother)
+      numSegments: 50,
       pickable: true,
     });
   }
@@ -4224,6 +4251,11 @@ export class DeckGLMap {
       const conflictId = info.object.properties.id;
       const fullConflict = CONFLICT_ZONES.find(c => c.id === conflictId);
       if (fullConflict) data = fullConflict;
+    }
+
+    // For submarine cables, extract the original cable from CableSegment (FR #176)
+    if (popupType === 'submarineCable' && data.cable) {
+      data = data.cable;
     }
 
     // Enrich iran events with related events from same location

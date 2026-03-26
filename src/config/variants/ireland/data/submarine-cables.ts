@@ -51,6 +51,19 @@ export interface SubmarineCable {
 }
 
 /**
+ * Cable segment interface for GreatCircleLayer (FR #176)
+ * Each segment represents one arc between two points
+ */
+export interface CableSegment {
+  cableId: string;
+  source: [number, number]; // [lng, lat]
+  target: [number, number]; // [lng, lat]
+  destination: CableDestination;
+  status: CableStatus;
+  cable: SubmarineCable; // Reference to original cable for popup
+}
+
+/**
  * Landing station interface for cable landing points in Ireland
  */
 export interface LandingStation {

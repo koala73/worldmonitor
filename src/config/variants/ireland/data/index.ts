@@ -49,6 +49,7 @@ export {
   CABLE_DESTINATION_LABELS,
   type SubmarineCable,
   type LandingStation,
+  type CableSegment,
   type CableDestination,
   type CableStatus,
 } from './submarine-cables';
