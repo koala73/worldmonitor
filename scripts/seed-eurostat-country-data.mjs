@@ -1,0 +1,264 @@
+#!/usr/bin/env node
+
+import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+
+loadEnvFile(import.meta.url);
+
+// Redis key and TTL
+const CANONICAL_KEY = 'economic:eurostat-country-data:v1';
+const TTL = 259200; // 3 days — 3× daily seeding interval
+
+// EU member states to cover (top 10 by population/GDP)
+const EU_COUNTRIES = ['DE', 'FR', 'IT', 'ES', 'PL', 'NL', 'BE', 'AT', 'SE', 'CZ'];
+
+const EUROSTAT_BASE = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data';
+
+const DATASETS = {
+  cpi: {
+    id: 'prc_hicp_manr',
+    params: { coicop: 'CP00', lastTimePeriod: '1' },
+    unit: '%',
+    label: 'HICP annual rate of change',
+  },
+  unemployment: {
+    id: 'une_rt_m',
+    params: { sex: 'T', age: 'TOTAL', s_adj: 'SA', unit: 'PC_ACT', lastTimePeriod: '1' },
+    unit: '%',
+    label: 'Unemployment rate (SA)',
+  },
+  gdpGrowth: {
+    id: 'namq_10_gdp',
+    params: { s_adj: 'SCA', unit: 'CLV_PCH_PRE', na_item: 'B1GQ', lastTimePeriod: '1' },
+    unit: '%',
+    label: 'GDP growth (quarterly, chain-linked)',
+  },
+};
+
+/**
+ * Parse Eurostat JSON-stat response for a specific geo code.
+ * Eurostat uses a flat value object indexed by integer position.
+ * Dimensions define the order of iteration.
+ */
+function parseEurostatResponse(data, geoCode) {
+  try {
+    const dims = data?.dimension;
+    const values = data?.value;
+    if (!dims || !values) return null;
+
+    // Find geo dimension and its index for our country
+    const geoDim = dims.geo;
+    if (!geoDim) return null;
+
+    const geoCategory = geoDim.category;
+    const geoIndex = geoCategory?.index;
+    if (!geoIndex || geoIndex[geoCode] === undefined) return null;
+
+    const geoPos = geoIndex[geoCode];
+
+    // Find time dimension for the period label
+    const timeDim = dims.time;
+    const timeCategory = timeDim?.category;
+    const timeIndexObj = timeCategory?.index;
+
+    // Get time period label — most recent (lastTimePeriod=1 so only 1 entry)
+    let datePeriod = '';
+    if (timeIndexObj) {
+      const timeKeys = Object.keys(timeIndexObj).sort((a, b) => timeIndexObj[b] - timeIndexObj[a]);
+      datePeriod = timeKeys[0] || '';
+    }
+
+    // Calculate the flat value index
+    // Eurostat dimension order: determines how values are arranged
+    const dimOrder = data.id || [];
+    const dimSizes = data.size || [];
+
+    // Build stride map
+    const strides = {};
+    let stride = 1;
+    for (let i = dimOrder.length - 1; i >= 0; i--) {
+      strides[dimOrder[i]] = stride;
+      stride *= dimSizes[i];
+    }
+
+    // Find the geo and time positions for the target
+    const geoStride = strides['geo'] || 0;
+    const timeStride = strides['time'] || 0;
+
+    // Most datasets have only 1 time period (lastTimePeriod=1)
+    // and we want the specific geo entry
+    // Try to find value at various combos — iterate over all positions
+    // and find entries matching geo=geoPos, time=0 (most recent)
+    let value = null;
+
+    // Determine total size and look for our combination
+    const totalSize = stride; // stride accumulated to total after loop
+    for (let idx = 0; idx < Object.keys(values).length; idx++) {
+      const key = String(idx);
+      const rawVal = values[key];
+      if (rawVal === null || rawVal === undefined) continue;
+
+      // Reverse-engineer position
+      let remaining = idx;
+      const coords = {};
+      for (const dim of dimOrder) {
+        const s = strides[dim];
+        const dimIdx = dims[dim]?.category?.index;
+        const dimSize = dimSizes[dimOrder.indexOf(dim)];
+        coords[dim] = Math.floor(remaining / s) % dimSize;
+        remaining = remaining % s;
+      }
+
+      if (coords['geo'] === geoPos) {
+        value = rawVal;
+        // Use the time label for this coordinate
+        if (timeIndexObj) {
+          const timeEntry = Object.entries(timeIndexObj).find(([, v]) => v === coords['time']);
+          if (timeEntry) datePeriod = timeEntry[0];
+        }
+        break;
+      }
+    }
+
+    if (value === null || value === undefined) return null;
+
+    return {
+      value: typeof value === 'number' ? Math.round(value * 100) / 100 : null,
+      date: datePeriod,
+    };
+  } catch (err) {
+    console.warn(`  parseEurostatResponse error: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Fetch a single dataset for a single country from Eurostat.
+ * Returns { value, date } or null on failure.
+ */
+async function fetchCountryDataset(datasetKey, geoCode) {
+  const ds = DATASETS[datasetKey];
+  const params = new URLSearchParams({
+    format: 'JSON',
+    lang: 'EN',
+    geo: geoCode,
+    ...ds.params,
+  });
+
+  const url = `${EUROSTAT_BASE}/${ds.id}?${params}`;
+
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': CHROME_UA,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!resp.ok) {
+      console.warn(`  Eurostat ${geoCode}/${datasetKey}: HTTP ${resp.status}`);
+      return null;
+    }
+
+    const data = await resp.json();
+    const parsed = parseEurostatResponse(data, geoCode);
+
+    if (!parsed || parsed.value === null) {
+      console.warn(`  Eurostat ${geoCode}/${datasetKey}: no value extracted`);
+      return null;
+    }
+
+    return { value: parsed.value, date: parsed.date, unit: ds.unit };
+  } catch (err) {
+    console.warn(`  Eurostat ${geoCode}/${datasetKey}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Fetch all 3 datasets for a single country.
+ * Uses Promise.allSettled — partial data is acceptable.
+ */
+async function fetchCountryData(geoCode) {
+  const [cpiResult, unemploymentResult, gdpResult] = await Promise.allSettled([
+    fetchCountryDataset('cpi', geoCode),
+    fetchCountryDataset('unemployment', geoCode),
+    fetchCountryDataset('gdpGrowth', geoCode),
+  ]);
+
+  const entry = {};
+  if (cpiResult.status === 'fulfilled' && cpiResult.value) {
+    entry.cpi = cpiResult.value;
+  }
+  if (unemploymentResult.status === 'fulfilled' && unemploymentResult.value) {
+    entry.unemployment = unemploymentResult.value;
+  }
+  if (gdpResult.status === 'fulfilled' && gdpResult.value) {
+    entry.gdpGrowth = gdpResult.value;
+  }
+
+  const metricCount = Object.keys(entry).length;
+  console.log(`  ${geoCode}: ${metricCount}/3 metrics ok`);
+
+  return { geoCode, entry, metricCount };
+}
+
+/**
+ * Fetch all countries in parallel (Promise.allSettled).
+ * Individual failures don't abort the seed.
+ */
+async function fetchAll() {
+  console.log(`  Fetching ${EU_COUNTRIES.length} countries × 3 datasets from Eurostat...`);
+
+  const countryResults = await Promise.allSettled(
+    EU_COUNTRIES.map(geo => fetchCountryData(geo))
+  );
+
+  const countries = {};
+  let countriesWithData = 0;
+
+  for (const result of countryResults) {
+    if (result.status === 'rejected') {
+      console.warn(`  Country fetch rejected: ${result.reason?.message || result.reason}`);
+      continue;
+    }
+    const { geoCode, entry, metricCount } = result.value;
+    if (metricCount > 0) {
+      countries[geoCode] = entry;
+      countriesWithData++;
+    }
+  }
+
+  console.log(`  Eurostat: ${countriesWithData}/${EU_COUNTRIES.length} countries with data`);
+
+  return {
+    countries,
+    seededAt: Date.now(),
+  };
+}
+
+function validate(data) {
+  const countries = data?.countries;
+  if (!countries) return false;
+  const countriesWithMetrics = Object.values(countries).filter(
+    c => Object.keys(c).length >= 1
+  );
+  if (countriesWithMetrics.length < 5) {
+    console.warn(`  Validation failed: only ${countriesWithMetrics.length} countries with data (need ≥5)`);
+    return false;
+  }
+  return true;
+}
+
+if (process.argv[1]?.endsWith('seed-eurostat-country-data.mjs')) {
+  runSeed('economic', 'eurostat-country-data', CANONICAL_KEY, fetchAll, {
+    validateFn: validate,
+    ttlSeconds: TTL,
+    sourceVersion: 'eurostat-v1',
+    recordCount: (data) => Object.keys(data?.countries || {}).length,
+  }).catch((err) => {
+    const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + cause);
+    process.exit(1);
+  });
+}

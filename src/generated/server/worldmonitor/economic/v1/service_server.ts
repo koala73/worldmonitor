@@ -418,6 +418,27 @@ export interface EcbFxRate {
   change1d: number;
 }
 
+export interface GetEurostatCountryDataRequest {
+}
+
+export interface GetEurostatCountryDataResponse {
+  countries: Record<string, EurostatCountryEntry>;
+  seededAt: string;
+  unavailable: boolean;
+}
+
+export interface EurostatCountryEntry {
+  cpi?: EurostatMetric;
+  unemployment?: EurostatMetric;
+  gdpGrowth?: EurostatMetric;
+}
+
+export interface EurostatMetric {
+  value: number;
+  date: string;
+  unit: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -480,6 +501,7 @@ export interface EconomicServiceHandler {
   getEconomicCalendar(ctx: ServerContext, req: GetEconomicCalendarRequest): Promise<GetEconomicCalendarResponse>;
   getCrudeInventories(ctx: ServerContext, req: GetCrudeInventoriesRequest): Promise<GetCrudeInventoriesResponse>;
   getEcbFxRates(ctx: ServerContext, req: GetEcbFxRatesRequest): Promise<GetEcbFxRatesResponse>;
+  getEurostatCountryData(ctx: ServerContext, req: GetEurostatCountryDataRequest): Promise<GetEurostatCountryDataResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -1169,6 +1191,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getEcbFxRates(ctx, body);
           return new Response(JSON.stringify(result as GetEcbFxRatesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-eurostat-country-data",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetEurostatCountryDataRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getEurostatCountryData(ctx, body);
+          return new Response(JSON.stringify(result as GetEurostatCountryDataResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -546,6 +546,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-eurostat-country-data:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEurostatCountryData
+            description: GetEurostatCountryData retrieves per-country CPI, unemployment, and GDP growth for 10 EU member states.
+            operationId: GetEurostatCountryData
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEurostatCountryDataResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1521,3 +1547,53 @@ components:
                     format: double
                     description: 1-day change in rate (absolute).
             description: EcbFxRate is a single ECB official reference rate for a currency pair.
+        GetEurostatCountryDataRequest:
+            type: object
+            description: GetEurostatCountryDataRequest requests Eurostat per-country economic data.
+        GetEurostatCountryDataResponse:
+            type: object
+            properties:
+                countries:
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/EurostatCountryEntry'
+                    description: Map of ISO2 country code to economic metrics (e.g. "DE", "FR", "IT").
+                seededAt:
+                    type: string
+                    format: int64
+                    description: UTC ms timestamp when seed data was written.
+                unavailable:
+                    type: boolean
+                    description: True when upstream data is unavailable (fallback result).
+            description: GetEurostatCountryDataResponse contains per-country CPI, unemployment, and GDP growth.
+        CountriesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    $ref: '#/components/schemas/EurostatCountryEntry'
+        EurostatCountryEntry:
+            type: object
+            properties:
+                cpi:
+                    $ref: '#/components/schemas/EurostatMetric'
+                unemployment:
+                    $ref: '#/components/schemas/EurostatMetric'
+                gdpGrowth:
+                    $ref: '#/components/schemas/EurostatMetric'
+            description: EurostatCountryEntry holds all available metrics for one EU country.
+        EurostatMetric:
+            type: object
+            properties:
+                value:
+                    type: number
+                    format: double
+                    description: Numeric value (e.g. 2.3 for 2.3%).
+                date:
+                    type: string
+                    description: Period string (e.g. "2024-01" for monthly, "2024-Q1" for quarterly).
+                unit:
+                    type: string
+                    description: Unit of measurement (e.g. "%").
+            description: EurostatMetric holds a single economic metric value for a country.

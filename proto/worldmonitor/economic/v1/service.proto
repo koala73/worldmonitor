@@ -20,6 +20,7 @@ import "worldmonitor/economic/v1/get_bls_series.proto";
 import "worldmonitor/economic/v1/get_economic_calendar.proto";
 import "worldmonitor/economic/v1/get_crude_inventories.proto";
 import "worldmonitor/economic/v1/get_ecb_fx_rates.proto";
+import "worldmonitor/economic/v1/get_eurostat_country_data.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -108,5 +109,10 @@ service EconomicService {
   // GetEcbFxRates retrieves daily ECB official reference rates for EUR/major currency pairs.
   rpc GetEcbFxRates(GetEcbFxRatesRequest) returns (GetEcbFxRatesResponse) {
     option (sebuf.http.config) = {path: "/get-ecb-fx-rates", method: HTTP_METHOD_GET};
+  }
+
+  // GetEurostatCountryData retrieves per-country CPI, unemployment, and GDP growth for 10 EU member states.
+  rpc GetEurostatCountryData(GetEurostatCountryDataRequest) returns (GetEurostatCountryDataResponse) {
+    option (sebuf.http.config) = {path: "/get-eurostat-country-data", method: HTTP_METHOD_GET};
   }
 }

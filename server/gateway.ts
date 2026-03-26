@@ -190,6 +190,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-economic-calendar': 'slow',
   '/api/intelligence/v1/list-market-implications': 'slow',
   '/api/economic/v1/get-ecb-fx-rates': 'slow',
+  '/api/economic/v1/get-eurostat-country-data': 'slow',
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';

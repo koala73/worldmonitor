@@ -418,6 +418,27 @@ export interface EcbFxRate {
   change1d: number;
 }
 
+export interface GetEurostatCountryDataRequest {
+}
+
+export interface GetEurostatCountryDataResponse {
+  countries: Record<string, EurostatCountryEntry>;
+  seededAt: string;
+  unavailable: boolean;
+}
+
+export interface EurostatCountryEntry {
+  cpi?: EurostatMetric;
+  unemployment?: EurostatMetric;
+  gdpGrowth?: EurostatMetric;
+}
+
+export interface EurostatMetric {
+  value: number;
+  date: string;
+  unit: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -876,6 +897,29 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetEcbFxRatesResponse;
+  }
+
+  async getEurostatCountryData(req: GetEurostatCountryDataRequest, options?: EconomicServiceCallOptions): Promise<GetEurostatCountryDataResponse> {
+    let path = "/api/economic/v1/get-eurostat-country-data";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetEurostatCountryDataResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

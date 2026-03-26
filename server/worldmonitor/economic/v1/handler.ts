@@ -17,6 +17,7 @@ import { getBlsSeries } from './get-bls-series';
 import { getEconomicCalendar } from './get-economic-calendar';
 import { getCrudeInventories } from './get-crude-inventories';
 import { getEcbFxRates } from './get-ecb-fx-rates';
+import { getEurostatCountryData } from './get-eurostat-country-data';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
@@ -36,4 +37,5 @@ export const economicHandler: EconomicServiceHandler = {
   getEconomicCalendar,
   getCrudeInventories,
   getEcbFxRates,
+  getEurostatCountryData,
 };
