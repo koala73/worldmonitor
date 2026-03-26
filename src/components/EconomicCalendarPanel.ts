@@ -106,15 +106,19 @@ export class EconomicCalendarPanel extends Panel {
 
     const grouped = groupByDate(this._events);
     let bodyRows = '';
+    let isFirstGroup = true;
 
     for (const [date, events] of grouped) {
+      const borderTop = isFirstGroup ? '' : 'border-top:1px solid rgba(255,255,255,0.06);';
+      isFirstGroup = false;
+
       bodyRows += `<tr>
-        <td colspan="4" style="
+        <td colspan="5" style="
           padding:10px 0 3px;
           font-size:10px;font-weight:600;
           color:rgba(255,255,255,0.35);
           text-transform:uppercase;letter-spacing:0.06em;
-          border-top:1px solid rgba(255,255,255,0.06);
+          ${borderTop}
         ">${escapeHtml(formatDateGroup(date))}</td>
       </tr>`;
 
@@ -125,8 +129,10 @@ export class EconomicCalendarPanel extends Panel {
         const isHigh = impact === 'high';
         const actual = escapeHtml(fmtVal(ev.actual, ev.unit));
         const estimate = escapeHtml(fmtVal(ev.estimate, ev.unit));
+        const previous = escapeHtml(fmtVal(ev.previous, ev.unit));
         const actualColor = ev.actual ? 'color:var(--text)' : 'color:rgba(255,255,255,0.2)';
         const estColor = ev.estimate ? 'color:rgba(255,255,255,0.5)' : 'color:rgba(255,255,255,0.2)';
+        const prevColor = ev.previous ? 'color:rgba(255,255,255,0.35)' : 'color:rgba(255,255,255,0.15)';
 
         bodyRows += `<tr style="font-size:12px;line-height:1.2">
           <td style="padding:4px 8px 4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">
@@ -137,24 +143,27 @@ export class EconomicCalendarPanel extends Panel {
           </td>
           <td style="padding:4px;text-align:right;font-variant-numeric:tabular-nums;${actualColor};white-space:nowrap">${actual}</td>
           <td style="padding:4px 0 4px 6px;text-align:right;font-variant-numeric:tabular-nums;${estColor};white-space:nowrap">${estimate}</td>
+          <td style="padding:4px 0 4px 6px;text-align:right;font-variant-numeric:tabular-nums;${prevColor};white-space:nowrap">${previous}</td>
         </tr>`;
       }
     }
 
-    const html = `<div style="padding:0 14px 12px;overflow-y:auto">
+    const html = `<div style="padding:0 14px 12px;max-height:480px;overflow-y:auto">
       <table style="width:100%;border-collapse:collapse;table-layout:fixed">
         <colgroup>
           <col style="width:auto">
           <col style="width:20px">
-          <col style="width:58px">
-          <col style="width:58px">
+          <col style="width:52px">
+          <col style="width:52px">
+          <col style="width:52px">
         </colgroup>
         <thead>
           <tr style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.06em">
             <th style="text-align:left;padding:0 8px 8px 0;font-weight:600">EVENT</th>
             <th style="padding:0 0 8px;font-weight:600"></th>
-            <th style="text-align:right;padding:0 4px 8px;font-weight:600">ACTUAL</th>
-            <th style="text-align:right;padding:0 0 8px 6px;font-weight:600">EST</th>
+            <th style="text-align:right;padding:0 4px 8px;font-weight:600">ACT</th>
+            <th style="text-align:right;padding:0 4px 8px;font-weight:600">EST</th>
+            <th style="text-align:right;padding:0 0 8px 6px;font-weight:600">PREV</th>
           </tr>
         </thead>
         <tbody>${bodyRows}</tbody>
