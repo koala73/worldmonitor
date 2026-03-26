@@ -889,6 +889,9 @@ const REIT_PANELS: Record<string, PanelConfig> = {
   'reit-correlation': { name: 'REIT Macro', enabled: true, priority: 1 },
   'reit-social': { name: 'REIT Social', enabled: true, priority: 1 },
   'reit-detail': { name: 'REIT Detail', enabled: true, priority: 1 },
+  'reit-us': { name: 'REIT Headlines', enabled: true, priority: 1 },
+  'reit-china': { name: '中国REITs', enabled: true, priority: 1 },
+  'property-markets': { name: 'Property Markets', enabled: true, priority: 2 },
 };
 
 export const ALL_PANELS: Record<string, PanelConfig> = {
