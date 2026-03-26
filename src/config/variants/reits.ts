@@ -45,16 +45,9 @@ export const FEEDS: Record<string, Feed[]> = {
 // ============================================
 export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   map: { name: 'REIT Property Map', enabled: true, priority: 1 },
-  'live-news': { name: 'REIT Headlines', enabled: true, priority: 1 },
-  insights: { name: 'AI REIT Insights', enabled: true, priority: 1 },
   reits: { name: 'REIT Monitor', enabled: true, priority: 1 },
   'reit-correlation': { name: 'REIT Macro', enabled: true, priority: 1 },
   'reit-social': { name: 'REIT Social', enabled: true, priority: 1 },
-  markets: { name: 'REIT Markets', enabled: true, priority: 1 },
-  economic: { name: 'Macro Indicators', enabled: true, priority: 2 },
-  'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
-  'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
-  monitors: { name: 'My Monitors', enabled: true, priority: 2 },
 };
 
 // ============================================
