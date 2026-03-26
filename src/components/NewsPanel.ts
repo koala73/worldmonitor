@@ -53,6 +53,13 @@ export class NewsPanel extends Panel {
   private lastHeadlineSignature = '';
   private isSummarizing = false;
 
+  // Optional risk score getter: computes 0-100 score per cluster for badge display
+  private riskScoreGetter: ((cluster: ClusteredEvent) => number | null) | null = null;
+
+  public setRiskScoreGetter(fn: (cluster: ClusteredEvent) => number | null): void {
+    this.riskScoreGetter = fn;
+  }
+
   constructor(id: string, title: string, infoTooltip?: string) {
     super({ id, title, showCount: true, trackActivity: true, infoTooltip });
     this.sortMode = this.loadSortMode();
@@ -640,6 +647,19 @@ export class NewsPanel extends Panel {
       ? `<span class="category-tag" style="color:${catColor};border-color:${catColor}40;background:${catColor}20">${catLabel}</span>`
       : '';
 
+    // Numeric risk score badge (0-100): from external getter or fallback to threat-level derivation
+    const riskScore = this.riskScoreGetter
+      ? this.riskScoreGetter(cluster)
+      : (() => {
+          if (!cluster.threat) return null;
+          const levelScore: Record<string, number> = { critical: 95, high: 75, medium: 50, low: 25, info: 10 };
+          const base = levelScore[cluster.threat.level] ?? 10;
+          return Math.round(base * (cluster.threat.confidence ?? 1));
+        })();
+    const riskBadge = riskScore !== null && riskScore >= 50
+      ? `<span class="risk-score-badge" style="color:${catColor || getCSSColor('--text-dim')};border-color:${catColor ? catColor + '40' : 'var(--border)'};background:${catColor ? catColor + '15' : 'transparent'}" title="Event risk score">${riskScore}</span>`
+      : '';
+
     // Build class list for item
     const itemClasses = [
       'item',
@@ -662,6 +682,7 @@ export class NewsPanel extends Panel {
           ${sentimentBadge}
           ${cluster.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
           ${categoryBadge}
+          ${riskBadge}
         </div>
         <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>
         <div class="cluster-meta">

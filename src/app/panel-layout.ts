@@ -1,5 +1,6 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
+import { renderConflictDaysHtml } from '@/services/conflict-day-counter';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import {
@@ -291,6 +292,7 @@ export class PanelLayoutManager implements AppModule {
             <span class="status-dot"></span>
             <span>${t('header.live')}</span>
           </div>
+          ${SITE_VARIANT === 'full' ? renderConflictDaysHtml() : ''}
           <div class="region-selector">
             <select id="regionSelect" class="region-select">
               <option value="global">${t('components.deckgl.views.global')}</option>

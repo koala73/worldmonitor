@@ -652,12 +652,31 @@ export class CountryBriefPage implements CountryBriefPanel {
   }
 
   private formatBrief(text: string, headlineCount = 0): string {
-    let html = escapeHtml(text)
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/\n/g, '<br>')
-      .replace(/^/, '<p>')
-      .replace(/$/, '</p>');
+    const SECTION_HEADERS = ['SITUATION NOW', 'WHAT THIS MEANS FOR', 'KEY RISKS', 'OUTLOOK', 'WATCH ITEMS'];
+    const escaped = escapeHtml(text);
+    const lines = escaped.split('\n');
+    const out: string[] = [];
+    let inSection = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const isHeader = SECTION_HEADERS.some(h => trimmed.toUpperCase().startsWith(h));
+
+      if (isHeader) {
+        if (inSection) out.push('</div>');
+        out.push(`<div class="brief-section"><div class="brief-section-header">${trimmed}</div>`);
+        inSection = true;
+      } else if (trimmed.startsWith('•') || trimmed.startsWith('-')) {
+        out.push(`<div class="brief-bullet">${trimmed.replace(/^[•-]\s*/, '')}</div>`);
+      } else if (trimmed.startsWith('NEXT ')) {
+        out.push(`<div class="brief-outlook-row"><strong class="brief-outlook-label">${trimmed.split(':')[0]}:</strong> ${trimmed.split(':').slice(1).join(':').trim()}</div>`);
+      } else if (trimmed) {
+        out.push(`<div class="brief-para">${trimmed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</div>`);
+      }
+    }
+
+    if (inSection) out.push('</div>');
+    let html = out.join('') || `<p>${escaped.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</p>`;
 
     if (headlineCount > 0) {
       html = html.replace(/\[(\d{1,2})\]/g, (_match, numStr) => {

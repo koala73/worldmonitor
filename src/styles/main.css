@@ -21547,3 +21547,96 @@ body.has-breaking-alert .panels-grid {
   opacity: 0.85;
   margin-top: 1px;
 }
+
+/* ── Conflict Day Counter ─────────────────────────────────────── */
+.conflict-days-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.conflict-day-item {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  white-space: nowrap;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  opacity: 0.75;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .conflict-days-bar {
+    display: none;
+  }
+}
+
+/* ── Risk Score Badge on News Cards ──────────────────────────── */
+.risk-score-badge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 1px 5px;
+  border: 1px solid;
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+}
+
+/* ── Structured Intel Brief Sections ─────────────────────────── */
+.brief-section {
+  margin-bottom: 12px;
+}
+
+.brief-section-header {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 600;
+  padding: 2px 0 6px;
+  border-bottom: 1px solid var(--overlay-light);
+  margin-bottom: 8px;
+}
+
+.brief-bullet {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  padding: 3px 0 3px 14px;
+  position: relative;
+}
+
+.brief-bullet::before {
+  content: '•';
+  position: absolute;
+  left: 2px;
+  color: var(--text-dim);
+}
+
+.brief-para {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.brief-outlook-row {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 2px 0;
+  color: var(--text);
+}
+
+.brief-outlook-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-right: 4px;
+}

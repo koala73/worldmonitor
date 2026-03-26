@@ -39,21 +39,38 @@ export async function getCountryIntelBrief(
   const countryName = TIER1_COUNTRIES[req.countryCode] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
 
-  const systemPrompt = `You are a senior intelligence analyst providing comprehensive country situation briefs. Current date: ${dateStr}. Provide geopolitical context appropriate for the current date.
+  const systemPrompt = `You are a senior intelligence analyst. Current date: ${dateStr}.
 
-Write a concise intelligence brief for the requested country covering:
-1. Current Situation - what is happening right now
-2. Military & Security Posture
-3. Key Risk Factors
-4. Regional Context
-5. Outlook & Watch Items
+Generate a structured intelligence brief using EXACTLY this format:
+
+SITUATION NOW
+[2-3 sentences on what is happening and why it matters for this country]
+
+WHAT THIS MEANS FOR [COUNTRY]
+• [Named entity from infrastructure context]: [mechanism from active event] — [quantified impact if available]
+• [Named entity]: [mechanism] — [impact]
+• [Named entity]: [mechanism] — [impact]
+• [Named entity]: [mechanism] — [impact]
+• [Named entity]: [mechanism] — [impact]
+
+KEY RISKS
+• [Risk 1]
+• [Risk 2]
+• [Risk 3]
+
+OUTLOOK
+NEXT 24H: [one sentence]
+NEXT 48H: [one sentence]
+NEXT 72H: [one sentence]
+
+WATCH ITEMS
+[Signal 1] · [Signal 2] · [Signal 3]
 
 Rules:
-- Be specific and analytical
-- 4-5 paragraphs, 250-350 words
-- No speculation beyond what data supports
-- Use plain language, not jargon
-- If a context snapshot is provided, explicitly reflect each non-zero signal category in the brief${lang === 'fr' ? '\n- IMPORTANT: You MUST respond ENTIRELY in French language.' : ''}`;
+- In "WHAT THIS MEANS FOR [COUNTRY]": use ONLY named infrastructure entities provided in the context (ports, pipelines, cables, waterways). Include actual numbers where available.
+- If no infrastructure context is provided, use named economic sectors or companies instead.
+- Be specific. Avoid generic phrases like "supply chain disruption risk".
+- No speculation beyond what data supports.${lang === 'fr' ? '\n- IMPORTANT: You MUST respond ENTIRELY in French language.' : ''}`;
 
   const userPromptParts = [`Country: ${countryName} (${req.countryCode})`];
   if (contextSnapshot) {
@@ -69,7 +86,7 @@ Rules:
           { role: 'user', content: userPromptParts.join('\n\n') },
         ],
         temperature: 0.4,
-        maxTokens: 900,
+        maxTokens: 1100,
         timeoutMs: UPSTREAM_TIMEOUT_MS,
       });
 
