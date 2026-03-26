@@ -612,6 +612,14 @@ export class MapPopup {
   private renderIrelandDataCenterPopup(dc: IrelandDataCenter): string {
     const statusClass = dc.status === 'operational' ? 'operational' : dc.status === 'under-construction' ? 'under-construction' : 'planned';
     const statusLabel = dc.status === 'operational' ? 'Operational' : dc.status === 'under-construction' ? 'Under Construction' : 'Planned';
+    // Type labels for FR #172
+    const typeLabels: Record<string, { icon: string; label: string }> = {
+      cloud: { icon: '☁️', label: 'Cloud Provider' },
+      colocation: { icon: '🏢', label: 'Colocation' },
+      tech: { icon: '📱', label: 'Tech Company' },
+      telecom: { icon: '📡', label: 'Telecom' },
+    };
+    const typeInfo = typeLabels[dc.type] || { icon: '🏢', label: 'Data Center' };
     // Extended type for optional fields
     const extDc = dc as IrelandDataCenter & { logo?: string; powerMW?: number; address?: string };
     const logoHtml = renderLogo(extDc.logo, dc.operator, 48);
@@ -620,7 +628,7 @@ export class MapPopup {
       <div class="popup-header-rich">
         <div class="popup-logo">${logoHtml}</div>
         <div class="popup-header-content">
-          <h3 class="popup-company-name">🏢 ${escapeHtml(dc.name)}</h3>
+          <h3 class="popup-company-name">${typeInfo.icon} ${escapeHtml(dc.name)}</h3>
           <span class="popup-type-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
         </div>
         <button class="popup-close" aria-label="${t('common.close')}">×</button>
@@ -628,8 +636,8 @@ export class MapPopup {
       <div class="popup-body">
         <div class="popup-details-rich">
           <div class="popup-detail-row">
-            <span class="icon">🏢</span>
-            <span class="value">${escapeHtml(dc.operator)}</span>
+            <span class="icon">${typeInfo.icon}</span>
+            <span class="value">${escapeHtml(typeInfo.label)}: ${escapeHtml(dc.operator)}</span>
           </div>
           <div class="popup-detail-row">
             <span class="icon">📍</span>

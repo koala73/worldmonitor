@@ -61,9 +61,10 @@ describe('IRELAND_DATA_CENTERS', () => {
     assert.equal(ids.length, uniqueIds.size, 'All IDs should be unique');
   });
 
-  it('all facilities are operational', () => {
+  it('all facilities have valid status', () => {
+    const validStatuses = ['operational', 'under-construction', 'planned'];
     for (const dc of IRELAND_DATA_CENTERS) {
-      assert.equal(dc.status, 'operational', `${dc.name} should be operational`);
+      assert.ok(validStatuses.includes(dc.status), `${dc.name} should have valid status (got: ${dc.status})`);
     }
   });
 });

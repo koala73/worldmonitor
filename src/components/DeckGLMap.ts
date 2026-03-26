@@ -2797,13 +2797,13 @@ export class DeckGLMap {
       },
       getColor: (d) => {
         const tier = getDataCenterTier(d.operator);
-        // Color by operator with tier adjustment - brand colors
-        if (d.operator.includes('Google')) return getTierColor([66, 133, 244], tier);
-        if (d.operator.includes('Meta')) return getTierColor([24, 119, 242], tier);
-        if (d.operator.includes('Microsoft')) return getTierColor([0, 164, 239], tier);
-        if (d.operator.includes('Amazon')) return getTierColor([255, 153, 0], tier);
-        if (d.operator.includes('Equinix')) return getTierColor([237, 28, 36], tier);
-        // Vibrant cyan (#0EA5E9) for other operators - worldmonitor style
+        // Color by data center type (FR #172)
+        // cloud: Blue #3B82F6, colocation: Purple #8B5CF6, tech: Orange #F97316, telecom: Green #10B981
+        if (d.type === 'cloud') return getTierColor([59, 130, 246], tier);      // Blue
+        if (d.type === 'colocation') return getTierColor([139, 92, 246], tier); // Purple
+        if (d.type === 'tech') return getTierColor([249, 115, 22], tier);       // Orange
+        if (d.type === 'telecom') return getTierColor([16, 185, 129], tier);    // Green
+        // Fallback to cyan for any unknown type
         return getTierColor([14, 165, 233], tier);
       },
       sizeScale: 1,
@@ -4610,13 +4610,16 @@ export class DeckGLMap {
     const legendItems = isIrelandVariant()
       ? [
         { shape: shapes.circle('rgb(168, 85, 247)'), label: '⚫ Semiconductor Hubs' },    // #A855F7
-        { shape: shapes.circle('rgb(14, 165, 233)'), label: '⚫ Data Centers (Ireland)' }, // #0EA5E9
+        // Data Centers by type (FR #172)
+        { shape: shapes.circle('rgb(59, 130, 246)'), label: '☁️ Cloud Providers' },       // #3B82F6 - AWS, Azure, Google
+        { shape: shapes.circle('rgb(139, 92, 246)'), label: '🏢 Colocation' },            // #8B5CF6 - Equinix, Digital Realty
+        { shape: shapes.circle('rgb(249, 115, 22)'), label: '📱 Tech DCs' },              // #F97316 - Meta, Apple
+        { shape: shapes.circle('rgb(16, 185, 129)'), label: '📡 Telecom DCs' },           // #10B981 - Eir, BT
         { shape: shapes.diamond('rgb(20, 184, 166)'), label: '💎 Tech HQs (EMEA)' },      // #14B8A6
         { shape: shapes.triangle('rgb(249, 115, 22)'), label: '▲ Irish Unicorns' },       // #F97316
         { shape: shapes.diamond('rgb(147, 51, 234)'), label: '💎 AI Companies' },         // #9333EA
         { shape: shapes.circle('rgb(30, 64, 175)'), label: '🎓 Universities' },          // #1E40AF
         { shape: shapes.circle('rgb(0, 209, 255)'), label: '⚫ Startup Hubs' },
-        { shape: shapes.square('rgb(153, 102, 255)'), label: '▪️ Cloud Regions' },
         { shape: shapes.diamond('rgb(255, 179, 0)'), label: '💎 Accelerators' },
       ]
       : SITE_VARIANT === 'tech'
