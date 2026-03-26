@@ -972,6 +972,52 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadNews(): Promise<void> {
+    // Localhost mock for reits variant — RSS proxy not available on dev server
+    const isLocalhost = typeof window !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+    if (isLocalhost && SITE_VARIANT === 'reits') {
+      const now = new Date();
+      const mockNews: Record<string, Array<{ title: string; url: string; source: string; pubDate: string }>> = {
+        'reit-us': [
+          { title: 'Prologis Reports Record Industrial REIT Occupancy at 97.2% in Q1 2026', url: '#', source: 'REIT.com', pubDate: new Date(now.getTime() - 2 * 3600000).toISOString() },
+          { title: 'Simon Property Group Announces $500M Mall Renovation Program', url: '#', source: 'Nareit', pubDate: new Date(now.getTime() - 4 * 3600000).toISOString() },
+          { title: 'Office REITs Face Headwinds as Remote Work Persists — Vacancy Hits 18.5%', url: '#', source: 'GlobeSt', pubDate: new Date(now.getTime() - 6 * 3600000).toISOString() },
+          { title: 'Digital Realty Expands Ashburn Data Center Campus with $2B Investment', url: '#', source: 'Bisnow', pubDate: new Date(now.getTime() - 8 * 3600000).toISOString() },
+          { title: 'Realty Income Dividend Yield Reaches 5.4% — Analysts Say Buy', url: '#', source: 'Commercial Observer', pubDate: new Date(now.getTime() - 12 * 3600000).toISOString() },
+          { title: 'Fed Rate Decision Sparks Rally in Rate-Sensitive REITs', url: '#', source: 'REIT News', pubDate: new Date(now.getTime() - 18 * 3600000).toISOString() },
+        ],
+        'reit-china': [
+          { title: '华夏中海商业REIT分红率达4.0% 佛山映月湖环宇城出租率稳定', url: '#', source: '赢商网', pubDate: new Date(now.getTime() - 1 * 3600000).toISOString() },
+          { title: '华润万象生活发布2025年报 青岛万象城营收增长12%', url: '#', source: '观点地产', pubDate: new Date(now.getTime() - 3 * 3600000).toISOString() },
+          { title: '首批消费REITs业绩亮眼 物美超市客流量同比增8%', url: '#', source: '公募REITs', pubDate: new Date(now.getTime() - 5 * 3600000).toISOString() },
+          { title: '上海城投宽庭长租公寓出租率达95% 江湾社区满租', url: '#', source: '商业地产', pubDate: new Date(now.getTime() - 7 * 3600000).toISOString() },
+          { title: '深圳保障性租赁住房REITs扩募获批 新增龙华区项目', url: '#', source: '保障房', pubDate: new Date(now.getTime() - 10 * 3600000).toISOString() },
+          { title: '首创奥特莱斯昆山店国庆客流破纪录 日均3.5万人次', url: '#', source: '赢商网', pubDate: new Date(now.getTime() - 24 * 3600000).toISOString() },
+        ],
+        'property-markets': [
+          { title: 'CBRE: Global Commercial Real Estate Investment Volumes Rise 15% in Q1', url: '#', source: 'CBRE Research', pubDate: new Date(now.getTime() - 2 * 3600000).toISOString() },
+          { title: 'JLL: Asia-Pacific Office Market Stabilizing — Shanghai and Singapore Lead Recovery', url: '#', source: 'JLL', pubDate: new Date(now.getTime() - 6 * 3600000).toISOString() },
+          { title: '30-Year Mortgage Rate Falls to 6.2% — Lowest Since 2024', url: '#', source: 'Mortgage Rates', pubDate: new Date(now.getTime() - 10 * 3600000).toISOString() },
+          { title: 'US Industrial Vacancy Rate Remains Near Historic Lows at 4.8%', url: '#', source: 'Property Markets', pubDate: new Date(now.getTime() - 14 * 3600000).toISOString() },
+        ],
+      };
+      for (const [category, items] of Object.entries(mockNews)) {
+        const panel = this.ctx.newsPanels[category];
+        if (panel) {
+          const newsItems = items.map((item, i) => ({
+            title: item.title,
+            url: item.url,
+            source: item.source,
+            pubDate: item.pubDate,
+            id: `mock-${category}-${i}`,
+            category,
+          }));
+          panel.renderNews(newsItems as any);
+        }
+      }
+      console.log('[News] Using mock data (localhost reits dev mode)');
+      return;
+    }
+
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
       this.ctx.happyAllItems = [];
