@@ -102,13 +102,15 @@ export class REITPanel extends Panel {
     const tabsHtml = this.renderTabs();
     const tableHtml = this.renderTable(filtered, isMortgage);
 
-    this.setContent(`${briefingHtml}${tabsHtml}${tableHtml}`);
-    // setContent is debounced — defer listener attachment until DOM is updated
-    setTimeout(() => {
+    // setContent is debounced — use MutationObserver to attach listeners after DOM updates
+    const observer = new MutationObserver(() => {
+      observer.disconnect();
       this.attachTabListeners();
       this.attachRowListeners();
       this.attachBriefingListeners();
-    }, 50);
+    });
+    observer.observe(this.content, { childList: true, subtree: true });
+    this.setContent(`${briefingHtml}${tabsHtml}${tableHtml}`);
   }
 
   private renderBriefing(): string {
