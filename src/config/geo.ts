@@ -3156,16 +3156,32 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'pakistan_khushab', name: 'Khushab', lat: 32.02, lon: 72.22, type: 'weapons', status: 'active' },
 ];
 
+// Used by Map.ts (2D SVG) which looks up countries via TopoJSON numeric IDs.
+// Keep in sync with SANCTIONED_COUNTRIES_ALPHA2 below.
 export const SANCTIONED_COUNTRIES: Record<number, 'severe' | 'high' | 'moderate'> = {
-  408: 'severe',   // North Korea
-  728: 'severe',   // South Sudan
-  760: 'severe',   // Syria
-  364: 'high',     // Iran
-  643: 'high',     // Russia
-  112: 'high',     // Belarus
-  862: 'moderate', // Venezuela
-  104: 'moderate', // Myanmar
-  178: 'moderate', // Congo
+  408: 'severe',   // North Korea (KP)
+  728: 'severe',   // South Sudan (SS)
+  760: 'severe',   // Syria (SY)
+  364: 'high',     // Iran (IR)
+  643: 'high',     // Russia (RU)
+  112: 'high',     // Belarus (BY)
+  862: 'moderate', // Venezuela (VE)
+  104: 'moderate', // Myanmar (MM)
+  178: 'moderate', // Congo DRC (CD)
+};
+
+// Used by DeckGLMap.ts which looks up countries via ISO3166-1-Alpha-2 codes.
+// Keep in sync with SANCTIONED_COUNTRIES above.
+export const SANCTIONED_COUNTRIES_ALPHA2: Record<string, 'severe' | 'high' | 'moderate'> = {
+  KP: 'severe', // North Korea (408)
+  SS: 'severe', // South Sudan (728)
+  SY: 'severe', // Syria (760)
+  IR: 'high',   // Iran (364)
+  RU: 'high',   // Russia (643)
+  BY: 'high',   // Belarus (112)
+  VE: 'moderate', // Venezuela (862)
+  MM: 'moderate', // Myanmar (104)
+  CD: 'moderate', // Congo DRC (178)
 };
 
 export const MAP_URLS = {

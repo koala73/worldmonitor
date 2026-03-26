@@ -89,6 +89,7 @@ import {
   PROCESSING_PLANTS,
   COMMODITY_PORTS as COMMODITY_GEO_PORTS,
 } from '@/config';
+import { SANCTIONED_COUNTRIES_ALPHA2 } from '@/config/geo';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
@@ -1666,6 +1667,11 @@ export class DeckGLMap {
     if (mapLayers.ciiChoropleth) {
       const ciiLayer = this.createCIIChoroplethLayer();
       if (ciiLayer) layers.push(ciiLayer);
+    }
+    // Sanctions choropleth
+    if (mapLayers.sanctions) {
+      const sanctionsLayer = this.createSanctionsChoroplethLayer();
+      if (sanctionsLayer) layers.push(sanctionsLayer);
     }
     // Phase 8: Species recovery zones
     if (mapLayers.speciesRecovery && this.speciesRecoveryZones.length > 0) {
@@ -3414,6 +3420,25 @@ export class DeckGLMap {
       lineWidthMinPixels: 0.5,
       pickable: true,
       updateTriggers: { getFillColor: [this.ciiScoresVersion] },
+    });
+  }
+
+  private createSanctionsChoroplethLayer(): GeoJsonLayer | null {
+    if (!this.countriesGeoJsonData) return null;
+    return new GeoJsonLayer({
+      id: 'sanctions-choropleth-layer',
+      data: this.countriesGeoJsonData,
+      filled: true,
+      stroked: false,
+      getFillColor: (feature: { properties?: Record<string, unknown> }) => {
+        const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        const level = code ? SANCTIONED_COUNTRIES_ALPHA2[code] : undefined;
+        if (level === 'severe') return [255, 0, 0, 89] as [number, number, number, number];
+        if (level === 'high') return [255, 100, 0, 64] as [number, number, number, number];
+        if (level === 'moderate') return [255, 200, 0, 51] as [number, number, number, number];
+        return [0, 0, 0, 0] as [number, number, number, number];
+      },
+      pickable: false,
     });
   }
 
