@@ -22,6 +22,7 @@ import "worldmonitor/economic/v1/get_crude_inventories.proto";
 import "worldmonitor/economic/v1/get_ecb_fx_rates.proto";
 import "worldmonitor/economic/v1/get_eurostat_country_data.proto";
 import "worldmonitor/economic/v1/get_eu_gas_storage.proto";
+import "worldmonitor/economic/v1/get_eu_yield_curve.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -120,5 +121,10 @@ service EconomicService {
   // GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
   rpc GetEuGasStorage(GetEuGasStorageRequest) returns (GetEuGasStorageResponse) {
     option (sebuf.http.config) = {path: "/get-eu-gas-storage", method: HTTP_METHOD_GET};
+  }
+
+  // GetEuYieldCurve retrieves the ECB Euro Area AAA sovereign yield curve (Svensson model spot rates).
+  rpc GetEuYieldCurve(GetEuYieldCurveRequest) returns (GetEuYieldCurveResponse) {
+    option (sebuf.http.config) = {path: "/get-eu-yield-curve", method: HTTP_METHOD_GET};
   }
 }

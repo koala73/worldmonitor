@@ -15,6 +15,9 @@ async function getEconomicClient(): Promise<EconomicServiceClient> {
 const SERIES_IDS = ['DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS10', 'DGS30'] as const;
 const TENOR_LABELS = ['1M', '3M', '6M', '1Y', '2Y', '5Y', '10Y', '30Y'];
 
+// ECB tenors that align with the US curve for overlay purposes
+const ECB_TENOR_ORDER = ['1Y', '2Y', '5Y', '10Y', '20Y', '30Y'];
+
 const SVG_W = 480;
 const SVG_H = 180;
 const MARGIN_L = 40;
@@ -77,21 +80,60 @@ function buildXAxisLabels(count: number): string {
   }).join('');
 }
 
-function buildCircles(points: YieldPoint[], yMin: number, yMax: number): string {
+function buildCircles(points: YieldPoint[], yMin: number, yMax: number, color: string): string {
   return points.map((p, i) => {
     if (p.value === null) return '';
     const x = xPos(i, points.length);
     const y = yPos(p.value, yMin, yMax);
-    return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3" fill="#3498db" stroke="rgba(0,0,0,0.4)" stroke-width="1"/>`;
+    return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3" fill="${color}" stroke="rgba(0,0,0,0.4)" stroke-width="1"/>`;
   }).join('');
 }
 
-function renderChart(current: YieldPoint[], prior: YieldPoint[]): string {
-  const validValues = current.map(p => p.value).filter((v): v is number => v !== null);
-  if (validValues.length === 0) return '<div style="padding:16px;color:var(--text-dim);font-size:12px">No yield data available.</div>';
+// Map ECB tenor labels to X positions on the US curve axis (8 tenors: 1M 3M 6M 1Y 2Y 5Y 10Y 30Y)
+// ECB tenors 1Y 2Y 5Y 10Y map to US indices 3 4 5 6; 20Y is between 10Y and 30Y (idx ~6.5); 30Y = idx 7
+function ecbXPos(tenor: string): number | null {
+  const mapping: Record<string, number> = {
+    '1Y': 3, '2Y': 4, '5Y': 5, '10Y': 6, '20Y': 6.5, '30Y': 7,
+  };
+  const idx = mapping[tenor];
+  if (idx == null) return null;
+  return MARGIN_L + (idx / 7) * CHART_W;
+}
 
-  const yMin = Math.max(0, Math.min(...validValues) - 0.25);
-  const yMax = Math.max(...validValues) + 0.5;
+function buildEcbPolyline(ecbRates: Record<string, number>, yMin: number, yMax: number): string {
+  const points = ECB_TENOR_ORDER
+    .map((tenor) => {
+      const rate = ecbRates[tenor];
+      if (rate == null) return null;
+      const x = ecbXPos(tenor);
+      if (x === null) return null;
+      const y = yPos(rate, yMin, yMax);
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .filter(Boolean);
+  if (points.length < 2) return '';
+  return `<polyline points="${points.join(' ')}" fill="none" stroke="#2ecc71" stroke-width="1.5" stroke-dasharray="5,3" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+
+function buildEcbCircles(ecbRates: Record<string, number>, yMin: number, yMax: number): string {
+  return ECB_TENOR_ORDER.map((tenor) => {
+    const rate = ecbRates[tenor];
+    if (rate == null) return '';
+    const x = ecbXPos(tenor);
+    if (x === null) return '';
+    const y = yPos(rate, yMin, yMax);
+    return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.5" fill="#2ecc71" stroke="rgba(0,0,0,0.4)" stroke-width="1"/>`;
+  }).join('');
+}
+
+function renderChart(current: YieldPoint[], prior: YieldPoint[], ecbRates: Record<string, number> | null): string {
+  const usValues = current.map(p => p.value).filter((v): v is number => v !== null);
+  const ecbValues = ecbRates ? Object.values(ecbRates) : [];
+  const allValues = [...usValues, ...ecbValues];
+  if (allValues.length === 0) return '<div style="padding:16px;color:var(--text-dim);font-size:12px">No yield data available.</div>';
+
+  const yMin = Math.max(0, Math.min(...allValues) - 0.25);
+  const yMax = Math.max(...allValues) + 0.5;
 
   const curPoints = buildPolylinePoints(current, yMin, yMax);
   const priorPoints = buildPolylinePoints(prior, yMin, yMax);
@@ -100,13 +142,18 @@ function renderChart(current: YieldPoint[], prior: YieldPoint[]): string {
     ? `<polyline points="${priorPoints}" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-dasharray="4,3" stroke-linecap="round" stroke-linejoin="round"/>`
     : '';
 
+  const ecbLine = ecbRates ? buildEcbPolyline(ecbRates, yMin, yMax) : '';
+  const ecbDots = ecbRates ? buildEcbCircles(ecbRates, yMin, yMax) : '';
+
   return `
     <svg viewBox="0 0 ${SVG_W} ${SVG_H}" width="100%" style="display:block;overflow:visible">
       ${buildYAxisLabels(yMin, yMax)}
       ${buildXAxisLabels(current.length)}
       ${priorLine}
+      ${ecbLine}
       <polyline points="${curPoints}" fill="none" stroke="#3498db" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      ${buildCircles(current, yMin, yMax)}
+      ${buildCircles(current, yMin, yMax, '#3498db')}
+      ${ecbDots}
     </svg>`;
 }
 
@@ -136,9 +183,12 @@ export class YieldCurvePanel extends Panel {
     this.showLoading();
     try {
       const client = await getEconomicClient();
-      const resp = await client.getFredSeriesBatch({ seriesIds: [...SERIES_IDS], limit: 2 });
+      const [fredResp, ecbResp] = await Promise.allSettled([
+        client.getFredSeriesBatch({ seriesIds: [...SERIES_IDS], limit: 2 }),
+        client.getEuYieldCurve({}),
+      ]);
 
-      const results = resp.results ?? {};
+      const results = fredResp.status === 'fulfilled' ? (fredResp.value.results ?? {}) : {};
       const current: YieldPoint[] = SERIES_IDS.map((id, i) => {
         const obs = results[id]?.observations ?? [];
         return { tenor: TENOR_LABELS[i] ?? id, value: obs.length > 0 ? (obs[obs.length - 1]?.value ?? null) : null };
@@ -148,13 +198,18 @@ export class YieldCurvePanel extends Panel {
         return { tenor: TENOR_LABELS[i] ?? id, value: obs.length > 1 ? (obs[obs.length - 2]?.value ?? null) : null };
       });
 
+      const ecbRates: Record<string, number> | null =
+        ecbResp.status === 'fulfilled' && !ecbResp.value.unavailable && ecbResp.value.data?.rates
+          ? (ecbResp.value.data.rates as Record<string, number>)
+          : null;
+
       const validCount = current.filter(p => p.value !== null).length;
       if (validCount === 0) {
         if (!this._hasData) this.showError('No yield data available', () => void this.fetchData());
         return false;
       }
 
-      this.render(current, prior);
+      this.render(current, prior, ecbRates);
       return true;
     } catch (e) {
       if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load yield curve', () => void this.fetchData());
@@ -162,7 +217,7 @@ export class YieldCurvePanel extends Panel {
     }
   }
 
-  private render(current: YieldPoint[], prior: YieldPoint[]): void {
+  private render(current: YieldPoint[], prior: YieldPoint[], ecbRates: Record<string, number> | null): void {
     this._hasData = true;
 
     const y2 = current.find(p => p.tenor === '2Y')?.value ?? null;
@@ -179,17 +234,22 @@ export class YieldCurvePanel extends Panel {
       ? `<span style="font-size:11px;color:var(--text-dim);margin-left:10px">2Y-10Y Spread: <span style="color:${isInverted ? '#e74c3c' : '#2ecc71'}">${escapeHtml(spreadSign + spreadBps)}bps</span></span>`
       : '';
 
+    const ecbLegend = ecbRates
+      ? `<span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#2ecc71" stroke-width="1.5" stroke-dasharray="5,3"/></svg> EU (ECB AAA)</span>`
+      : '';
+
     const html = `
       <div style="padding:10px 14px 6px">
         <div style="display:flex;align-items:center;margin-bottom:10px;gap:4px">
           ${statusBadge}${spreadHtml}
         </div>
-        <div style="margin:0 -4px">${renderChart(current, prior)}</div>
+        <div style="margin:0 -4px">${renderChart(current, prior, ecbRates)}</div>
         ${renderTable(current)}
-        <div style="margin-top:8px;font-size:9px;color:var(--text-dim);display:flex;gap:12px;align-items:center">
-          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#3498db" stroke-width="2"/></svg> Current</span>
-          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-dasharray="4,3"/></svg> Prior</span>
-          <span style="margin-left:auto">Source: FRED</span>
+        <div style="margin-top:8px;font-size:9px;color:var(--text-dim);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#3498db" stroke-width="2"/></svg> US (Current)</span>
+          <span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-dasharray="4,3"/></svg> US (Prior)</span>
+          ${ecbLegend}
+          <span style="margin-left:auto">Source: FRED / ECB</span>
         </div>
       </div>`;
 

@@ -19,6 +19,7 @@ import { getCrudeInventories } from './get-crude-inventories';
 import { getEcbFxRates } from './get-ecb-fx-rates';
 import { getEurostatCountryData } from './get-eurostat-country-data';
 import { getEuGasStorage } from './get-eu-gas-storage';
+import { getEuYieldCurve } from './get-eu-yield-curve';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
@@ -40,4 +41,5 @@ export const economicHandler: EconomicServiceHandler = {
   getEcbFxRates,
   getEurostatCountryData,
   getEuGasStorage,
+  getEuYieldCurve,
 };
