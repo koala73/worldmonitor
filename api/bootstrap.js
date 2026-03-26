@@ -69,6 +69,9 @@ const BOOTSTRAP_CACHE_KEYS = {
   nationalDebt:      'economic:national-debt:v1',
   marketImplications: 'intelligence:market-implications:v1',
   fearGreedIndex:    'market:fear-greed:v1',
+  earningsCalendar:  'market:earnings-calendar:v1',
+  econCalendar:      'economic:econ-calendar:v1',
+  cotPositioning:    'market:cot:v1',
 };
 
 const SLOW_KEYS = new Set([

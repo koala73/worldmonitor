@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { escapeHtml } from '@/utils/sanitize';
 
 const COUNTRY_FLAGS: Record<string, string> = {
   US: '🇺🇸',
@@ -59,11 +60,10 @@ export class EconomicCalendarPanel extends Panel {
 
   constructor() {
     super({ id: 'economic-calendar', title: 'Economic Calendar', showCount: false });
-    this.showLoading('Loading economic calendar...');
-    void this.fetchData();
   }
 
-  private async fetchData(): Promise<void> {
+  public async fetchData(): Promise<boolean> {
+    this.showLoading('Loading economic calendar...');
     try {
       const { EconomicServiceClient } = await import('@/generated/client/worldmonitor/economic/v1/service_client');
       const { getRpcBaseUrl } = await import('@/services/rpc-client');
@@ -74,22 +74,24 @@ export class EconomicCalendarPanel extends Panel {
       const resp = await client.getEconomicCalendar({ fromDate, toDate });
 
       if (resp.unavailable || !resp.events || resp.events.length === 0) {
-        this.showError('Economic calendar data unavailable.');
-        return;
+        if (!this._hasData) this.showError('Economic calendar data unavailable.', () => void this.fetchData());
+        return false;
       }
 
       this._events = resp.events as EconomicEvent[];
       this._hasData = true;
-      this.render();
+      this._render();
+      return true;
     } catch (err) {
-      if (this.isAbortError(err)) return;
-      this.showError('Failed to load economic calendar.');
+      if (this.isAbortError(err)) return false;
+      if (!this._hasData) this.showError('Failed to load economic calendar.', () => void this.fetchData());
+      return false;
     }
   }
 
-  protected render(): void {
+  private _render(): void {
     if (!this._hasData || this._events.length === 0) {
-      this.showError('No upcoming economic events.');
+      if (!this._hasData) this.showError('No upcoming economic events.', () => void this.fetchData());
       return;
     }
 
@@ -97,20 +99,20 @@ export class EconomicCalendarPanel extends Panel {
     const sections: string[] = [];
 
     for (const [date, events] of grouped) {
-      const dateHeader = `<div class="econ-cal-date-header">${formatDate(date)}</div>`;
+      const dateHeader = `<div class="econ-cal-date-header">${escapeHtml(formatDate(date))}</div>`;
       const rows = events.map((ev) => {
         const impact = (ev.impact || 'low').toLowerCase();
         const color = IMPACT_COLORS[impact] ?? IMPACT_COLORS.low;
-        const flag = COUNTRY_FLAGS[ev.country] ?? ev.country;
+        const flag = COUNTRY_FLAGS[ev.country] ?? escapeHtml(ev.country);
         const isHigh = impact === 'high';
-        const badge = `<span class="econ-cal-badge" style="background:${color};color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700;text-transform:uppercase;">${impact}</span>`;
+        const badge = `<span class="econ-cal-badge" style="background:${color};color:#fff;padding:1px 5px;border-radius:3px;font-size:0.7em;font-weight:700;text-transform:uppercase;">${escapeHtml(impact)}</span>`;
         const name = isHigh
-          ? `<strong>${ev.event}</strong>`
-          : ev.event;
+          ? `<strong>${escapeHtml(ev.event)}</strong>`
+          : escapeHtml(ev.event);
         const meta = [
-          ev.actual ? `<span>Actual: ${formatMetaValue(ev.actual, ev.unit)}</span>` : '',
-          ev.estimate ? `<span>Est: ${formatMetaValue(ev.estimate, ev.unit)}</span>` : '',
-          ev.previous ? `<span>Prev: ${formatMetaValue(ev.previous, ev.unit)}</span>` : '',
+          ev.actual ? `<span>Actual: ${escapeHtml(formatMetaValue(ev.actual, ev.unit))}</span>` : '',
+          ev.estimate ? `<span>Est: ${escapeHtml(formatMetaValue(ev.estimate, ev.unit))}</span>` : '',
+          ev.previous ? `<span>Prev: ${escapeHtml(formatMetaValue(ev.previous, ev.unit))}</span>` : '',
         ].filter(Boolean).join(' &nbsp;');
 
         return `<div class="econ-cal-event">

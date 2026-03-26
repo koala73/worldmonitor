@@ -126,7 +126,9 @@ async function fetchCNN() {
     if (!resp.ok) { console.warn(`  CNN F&G: HTTP ${resp.status}`); return null; }
     const data = await resp.json();
     const score = data?.score ?? data?.fear_and_greed?.score;
-    const rating = data?.rating ?? data?.fear_and_greed?.rating;
+    const rawRating = data?.rating ?? data?.fear_and_greed?.rating;
+    const VALID_CNN_LABELS = new Set(['Extreme Fear', 'Fear', 'Neutral', 'Greed', 'Extreme Greed']);
+    const rating = (typeof rawRating === 'string' && VALID_CNN_LABELS.has(rawRating)) ? rawRating : null;
     return score != null ? { score: Math.round(score), label: rating ?? labelFromScore(Math.round(score)) } : null;
   } catch (e) { console.warn(`  CNN F&G: ${e.message}`); return null; }
 }

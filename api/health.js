@@ -55,6 +55,9 @@ const BOOTSTRAP_KEYS = {
   otherTokens:       'market:other-tokens:v1',
   fredBatch:         'economic:fred:v1:FEDFUNDS:0',
   fearGreedIndex:    'market:fear-greed:v1',
+  earningsCalendar:  'market:earnings-calendar:v1',
+  econCalendar:      'economic:econ-calendar:v1',
+  cotPositioning:    'market:cot:v1',
 };
 
 const STANDALONE_KEYS = {
@@ -246,6 +249,7 @@ function dataSize(parsed) {
                       'airports', 'closedIcaos', 'categories', 'regions', 'entries', 'satellites',
                       'sectors', 'statuses', 'scores', 'topics', 'advisories', 'months',
                       'observations', 'datapoints', 'clusters',
+                      'earnings', 'instruments',
                       'charts']) {
       if (Array.isArray(parsed[k])) return parsed[k].length;
     }

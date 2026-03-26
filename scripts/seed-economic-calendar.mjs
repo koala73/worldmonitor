@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:econ-calendar:v1';
-const CACHE_TTL = 43200;
+const CACHE_TTL = 129600; // 36h — 3× a 12h cron interval
 
 const HIGH_PRIORITY_TERMS = [
   'fomc', 'fed funds', 'federal funds', 'nonfarm', 'non-farm',
@@ -71,12 +71,12 @@ async function fetchEconomicCalendar() {
   const from = today.toISOString().slice(0, 10);
   const to = new Date(today.getTime() + 30 * 86400_000).toISOString().slice(0, 10);
 
-  const url = `https://finnhub.io/api/v1/calendar/economic?from=${from}&to=${to}&token=${apiKey}`;
+  const url = `https://finnhub.io/api/v1/calendar/economic?from=${from}&to=${to}`;
 
   console.log(`  Fetching Finnhub economic calendar ${from} → ${to}`);
 
   const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
+    headers: { 'User-Agent': CHROME_UA, 'X-Finnhub-Token': apiKey },
     signal: AbortSignal.timeout(20_000),
   });
 

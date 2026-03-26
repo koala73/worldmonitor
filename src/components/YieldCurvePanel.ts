@@ -20,6 +20,7 @@ interface YieldPoint {
 }
 
 function xPos(index: number, count: number): number {
+  if (count <= 1) return MARGIN_L + CHART_W / 2;
   return MARGIN_L + (index / (count - 1)) * CHART_W;
 }
 
@@ -126,7 +127,7 @@ export class YieldCurvePanel extends Panel {
       const { EconomicServiceClient } = await import('@/generated/client/worldmonitor/economic/v1/service_client');
       const { getRpcBaseUrl } = await import('@/services/rpc-client');
       const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
-      const resp = await client.getFredSeriesBatch({ seriesIds: ['DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS10', 'DGS30'], limit: 2 });
+      const resp = await client.getFredSeriesBatch({ seriesIds: [...SERIES_IDS], limit: 2 });
 
       const results = resp.results ?? {};
       const current: YieldPoint[] = SERIES_IDS.map((id, i) => {

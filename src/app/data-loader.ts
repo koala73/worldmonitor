@@ -1407,19 +1407,22 @@ export class DataLoaderManager implements AppModule {
         this.callPanel('daily-market-brief', 'showLoading', 'Building daily market brief...');
       }
 
-      const [regimeContext, yieldCurveContext, sectorContext] = await Promise.allSettled([
+      const [r0, r1, r2] = await Promise.allSettled([
         this._collectRegimeContext(),
         this._collectYieldCurveContext(),
         this._collectSectorContext(),
-      ]).then(results => results.map(r => r.status === 'fulfilled' ? r.value : undefined));
+      ]);
+      const regimeContext = r0.status === 'fulfilled' ? r0.value : undefined;
+      const yieldCurveContext = r1.status === 'fulfilled' ? r1.value : undefined;
+      const sectorContext = r2.status === 'fulfilled' ? r2.value : undefined;
 
       const brief = await buildDailyMarketBrief({
         markets: this.ctx.latestMarkets,
         newsByCategory: this.ctx.newsByCategory,
         timezone,
-        regimeContext: regimeContext as RegimeMacroContext | undefined,
-        yieldCurveContext: yieldCurveContext as YieldCurveContext | undefined,
-        sectorContext: sectorContext as SectorBriefContext | undefined,
+        regimeContext,
+        yieldCurveContext,
+        sectorContext,
       });
 
       if (!brief.available) {

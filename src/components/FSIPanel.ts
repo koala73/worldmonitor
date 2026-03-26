@@ -36,7 +36,7 @@ export class FSIPanel extends Panel {
       const { getRpcBaseUrl } = await import('@/services/rpc-client');
       const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
       const resp = await client.getFearGreedIndex({});
-      if (resp.unavailable || !resp.fsiValue) {
+      if (resp.unavailable || resp.fsiValue <= 0) {
         if (!this._hasData) this.showError('FSI data unavailable', () => void this.fetchData());
         return false;
       }

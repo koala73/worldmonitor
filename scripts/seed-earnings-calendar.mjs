@@ -5,7 +5,7 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 const KEY = 'market:earnings-calendar:v1';
-const TTL = 43200;
+const TTL = 129600; // 36h — 3× a 12h cron interval
 
 function toDateStr(d) {
   return d.toISOString().slice(0, 10);
@@ -22,10 +22,10 @@ async function fetchAll() {
   const to = new Date();
   to.setDate(to.getDate() + 14);
 
-  const url = `https://finnhub.io/api/v1/calendar/earnings?from=${toDateStr(from)}&to=${toDateStr(to)}&token=${apiKey}`;
+  const url = `https://finnhub.io/api/v1/calendar/earnings?from=${toDateStr(from)}&to=${toDateStr(to)}`;
 
   const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
+    headers: { 'User-Agent': CHROME_UA, 'X-Finnhub-Token': apiKey },
     signal: AbortSignal.timeout(15_000),
   });
 
@@ -73,8 +73,10 @@ function validate(data) {
   return Array.isArray(data?.earnings) && data.earnings.length > 0;
 }
 
-runSeed('market', 'earnings-calendar', KEY, fetchAll, {
-  validateFn: validate,
-  ttlSeconds: TTL,
-  sourceVersion: 'finnhub-v1',
-}).catch(err => { console.error('FATAL:', err.message || err); process.exit(1); });
+if (process.argv[1]?.endsWith('seed-earnings-calendar.mjs')) {
+  runSeed('market', 'earnings-calendar', KEY, fetchAll, {
+    validateFn: validate,
+    ttlSeconds: TTL,
+    sourceVersion: 'finnhub-v1',
+  }).catch(err => { console.error('FATAL:', err.message || err); process.exit(1); });
+}
