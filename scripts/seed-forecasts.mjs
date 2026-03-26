@@ -12130,17 +12130,18 @@ function buildSimulationPackageEventSeeds(selectedTheaters, candidates) {
 }
 
 function buildSimulationPackageConstraints(selectedTheaters, candidates) {
-  const constraints = [];
+  const result = {};
   let idx = 0;
 
   for (const theater of selectedTheaters) {
     const candidate = candidates.find((c) => c.candidateStateId === theater.candidateStateId);
     if (!candidate) continue;
     const src = `candidate:${theater.candidateStateId}`;
+    const theaterConstraints = [];
 
     if (theater.routeFacilityKey) {
       const hardDisruption = Number(candidate.marketContext?.criticalSignalLift || 0) >= 0.25;
-      constraints.push({
+      theaterConstraints.push({
         constraintId: `c-${++idx}`,
         theaterId: theater.theaterId,
         class: 'route_chokepoint_status',
@@ -12151,7 +12152,7 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
     }
 
     if (theater.commodityKey) {
-      constraints.push({
+      theaterConstraints.push({
         constraintId: `c-${++idx}`,
         theaterId: theater.theaterId,
         class: 'commodity_exposure',
@@ -12162,7 +12163,7 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
     }
 
     if (theater.topBucketId && theater.topChannel) {
-      constraints.push({
+      theaterConstraints.push({
         constraintId: `c-${++idx}`,
         theaterId: theater.theaterId,
         class: 'market_admissibility',
@@ -12174,7 +12175,7 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
 
     const contradictionScore = Number(candidate.marketContext?.contradictionScore || 0);
     if (contradictionScore >= 0.1) {
-      constraints.push({
+      theaterConstraints.push({
         constraintId: `c-${++idx}`,
         theaterId: theater.theaterId,
         class: 'known_invalidators',
@@ -12183,13 +12184,16 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
         source: `${src}:contradictionScore=${contradictionScore}`,
       });
     }
+
+    result[theater.theaterId] = theaterConstraints;
   }
 
-  return constraints;
+  return result;
 }
 
 function buildSimulationPackageEvaluationTargets(selectedTheaters, candidates) {
-  return selectedTheaters.map((theater) => {
+  const result = {};
+  for (const theater of selectedTheaters) {
     const candidate = candidates.find((c) => c.candidateStateId === theater.candidateStateId);
     if (!candidate) {
       console.warn(`[SimulationPackage] No candidate for theaterId=${theater.theaterId} (evaluationTargets)`);
@@ -12200,7 +12204,7 @@ function buildSimulationPackageEvaluationTargets(selectedTheaters, candidates) {
     const channel = theater.topChannel ? theater.topChannel.replace(/_/g, ' ') : 'transmission';
     const macroRegion = theater.macroRegions?.[0] || theater.dominantRegion;
     const actors = (candidate?.stateSummary?.actors || []).slice(0, 3).join(', ') || 'key actors';
-    return {
+    result[theater.theaterId] = {
       theaterId: theater.theaterId,
       requiredPaths: [
         {
@@ -12224,7 +12228,8 @@ function buildSimulationPackageEvaluationTargets(selectedTheaters, candidates) {
       ],
       actorResponseFocus: actors,
     };
-  });
+  }
+  return result;
 }
 
 function buildSimulationStructuralWorld(selectedTheaters, { stateUnits, worldSignals, marketTransmission, marketState, situationClusters, situationFamilies }) {
@@ -15494,10 +15499,11 @@ function buildSimulationRound1SystemPrompt(theater, pkg) {
     (s) => `- ${sanitizeForPrompt(s.seedId)} [${sanitizeForPrompt(s.type)}] ${sanitizeForPrompt(s.summary)} (${sanitizeForPrompt(s.timing)})`,
   ).join('\n');
 
-  const constraints = (pkg.constraints?.[theater.theaterId] || pkg.constraints?.theater || [])
-    .map((c) => `- ${sanitizeForPrompt(c)}`).join('\n') || '- No explicit constraints';
-  const evalTargets = (pkg.evaluationTargets?.[theater.theaterId] || pkg.evaluationTargets?.theater || [])
-    .map((t) => `- ${sanitizeForPrompt(t)}`).join('\n') || '- General market and security dynamics';
+  const constraints = (pkg.constraints?.[theater.theaterId] || [])
+    .map((c) => `- [${c.hard ? 'hard' : 'soft'}] ${sanitizeForPrompt(c.class)}: ${sanitizeForPrompt(c.statement)}`).join('\n') || '- No explicit constraints';
+  const theaterEvalTargets = pkg.evaluationTargets?.[theater.theaterId];
+  const evalTargets = (theaterEvalTargets?.requiredPaths || [])
+    .map((p) => `- ${sanitizeForPrompt(p.pathType)}: ${sanitizeForPrompt(p.question)}`).join('\n') || '- General market and security dynamics';
   const requirement = sanitizeForPrompt(
     pkg.simulationRequirement?.[theater.theaterId] || theater.theaterLabel || theater.theaterId,
   );
@@ -15562,8 +15568,9 @@ function buildSimulationRound2SystemPrompt(theater, pkg, round1) {
   );
   const entityIds = theaterEntities.slice(0, 10).map((e) => sanitizeForPrompt(e.entityId || '')).join(', ');
 
-  const evalTargets = (pkg.evaluationTargets?.[theater.theaterId] || pkg.evaluationTargets?.theater || [])
-    .map((t) => `- ${sanitizeForPrompt(t)}`).join('\n') || '- General market and security dynamics';
+  const r2EvalTargets = pkg.evaluationTargets?.[theater.theaterId];
+  const evalTargets = (r2EvalTargets?.requiredPaths || [])
+    .map((p) => `- ${sanitizeForPrompt(p.pathType)}: ${sanitizeForPrompt(p.question)}`).join('\n') || '- General market and security dynamics';
 
   return `You are a geopolitical simulation engine. This is ROUND 2 of a 2-round theater simulation.
 

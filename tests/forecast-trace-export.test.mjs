@@ -5572,8 +5572,8 @@ describe('simulation package export', () => {
     assert.ok(pkg.structuralWorld);
     assert.ok(Array.isArray(pkg.entities));
     assert.ok(Array.isArray(pkg.eventSeeds));
-    assert.ok(Array.isArray(pkg.constraints));
-    assert.ok(Array.isArray(pkg.evaluationTargets));
+    assert.ok(pkg.constraints && typeof pkg.constraints === 'object' && !Array.isArray(pkg.constraints));
+    assert.ok(pkg.evaluationTargets && typeof pkg.evaluationTargets === 'object' && !Array.isArray(pkg.evaluationTargets));
   });
 
   it('selectedTheaters has correct shape with theater-1 id', () => {
@@ -5606,35 +5606,40 @@ describe('simulation package export', () => {
     assert.ok(newsSeeds[0].strength > 0);
   });
 
-  it('constraints includes route_chokepoint_status for hard disruption', () => {
+  it('constraints is keyed by theaterId with route_chokepoint_status for hard disruption', () => {
     const hardCandidate = makeCandidate();
     hardCandidate.marketContext.criticalSignalLift = 0.28;
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([hardCandidate]));
-    const routeConstraint = pkg.constraints.find((c) => c.class === 'route_chokepoint_status');
+    const theaterConstraints = pkg.constraints['theater-1'];
+    assert.ok(Array.isArray(theaterConstraints));
+    const routeConstraint = theaterConstraints.find((c) => c.class === 'route_chokepoint_status');
     assert.ok(routeConstraint);
     assert.equal(routeConstraint.hard, true);
     assert.equal(routeConstraint.theaterId, 'theater-1');
   });
 
-  it('constraints includes commodity_exposure as hard constraint', () => {
+  it('constraints theater-1 includes commodity_exposure as hard constraint', () => {
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot());
-    const commodityConstraint = pkg.constraints.find((c) => c.class === 'commodity_exposure');
+    const theaterConstraints = pkg.constraints['theater-1'];
+    const commodityConstraint = theaterConstraints.find((c) => c.class === 'commodity_exposure');
     assert.ok(commodityConstraint);
     assert.equal(commodityConstraint.hard, true);
     assert.ok(commodityConstraint.statement.includes('crude oil'));
   });
 
-  it('constraints includes market_admissibility as soft constraint', () => {
+  it('constraints theater-1 includes market_admissibility as soft constraint', () => {
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot());
-    const admissibility = pkg.constraints.find((c) => c.class === 'market_admissibility');
+    const theaterConstraints = pkg.constraints['theater-1'];
+    const admissibility = theaterConstraints.find((c) => c.class === 'market_admissibility');
     assert.ok(admissibility);
     assert.equal(admissibility.hard, false);
     assert.ok(admissibility.statement.includes('energy'));
   });
 
-  it('evaluationTargets has required escalation, containment, market_cascade paths and timing markers', () => {
+  it('evaluationTargets is keyed by theaterId with escalation, containment, market_cascade paths', () => {
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot());
-    const target = pkg.evaluationTargets[0];
+    const target = pkg.evaluationTargets['theater-1'];
+    assert.ok(target, 'evaluationTargets must have theater-1 key');
     assert.equal(target.theaterId, 'theater-1');
     const pathTypes = target.requiredPaths.map((p) => p.pathType);
     assert.ok(pathTypes.includes('escalation'));
@@ -5809,8 +5814,25 @@ const minimalPkg = {
     { seedId: 'seed-1', theaterId: 'test-theater-1', type: 'live_news', summary: 'Houthi missile attack on Red Sea shipping', evidenceRefs: ['E1'], timing: 'T+0h' },
     { seedId: 'seed-2', theaterId: 'test-theater-1', type: 'state_signal', summary: 'Oil tanker rerouting Cape of Good Hope', evidenceRefs: ['E2'], timing: 'T+12h' },
   ],
-  constraints: { 'test-theater-1': ['No actor may unilaterally close the Strait of Bab-el-Mandeb'] },
-  evaluationTargets: { 'test-theater-1': ['Oil price trajectory over 72h', 'Shipping diversion extent'] },
+  constraints: {
+    'test-theater-1': [
+      { constraintId: 'c-1', theaterId: 'test-theater-1', class: 'route_chokepoint_status', statement: 'Red Sea is under elevated risk per current world signals.', hard: false, source: 'test' },
+      { constraintId: 'c-2', theaterId: 'test-theater-1', class: 'commodity_exposure', statement: 'crude oil is the primary exposed commodity.', hard: true, source: 'test' },
+    ],
+  },
+  evaluationTargets: {
+    'test-theater-1': {
+      theaterId: 'test-theater-1',
+      requiredPaths: [
+        { pathType: 'escalation', question: 'How does disruption at Red Sea escalate into a broader energy shock?' },
+        { pathType: 'containment', question: 'What conditions contain the Red Sea disruption before energy repricing?' },
+        { pathType: 'market_cascade', question: 'What are the 2nd and 3rd order economic consequences? Model $/bbl direction and freight rate delta.' },
+      ],
+      requiredOutputs: ['key_invalidators', 'timing_markers', 'actor_response_summary'],
+      timingMarkers: [{ label: 'T+24h', description: 'Initial response' }, { label: 'T+48h', description: 'Repricing signals' }, { label: 'T+72h', description: 'Bifurcation point' }],
+      actorResponseFocus: 'key actors',
+    },
+  },
   simulationRequirement: { 'test-theater-1': 'Simulate how a Red Sea disruption propagates through energy and logistics markets' },
 };
 
@@ -5851,6 +5873,28 @@ describe('simulation runner — prompt builders', () => {
     assert.ok(prompt.includes('market_cascade'), 'should include market_cascade path name');
     assert.ok(prompt.includes('$/bbl') || prompt.includes('freight rate'), 'should include economic cascade language ($/bbl or freight rate)');
     assert.ok(!prompt.includes('"spillover"'), 'spillover must not appear as a path ID');
+  });
+
+  it('Round 1 prompt renders evaluationTargets questions from requiredPaths (not fallback)', () => {
+    const prompt = buildSimulationRound1SystemPrompt(minimalTheater, minimalPkg);
+    assert.ok(prompt.includes('escalation:'), 'evalTargets escalation question must appear');
+    assert.ok(prompt.includes('containment:'), 'evalTargets containment question must appear');
+    assert.ok(prompt.includes('market_cascade:'), 'evalTargets market_cascade question must appear');
+    assert.ok(!prompt.includes('General market and security dynamics'), 'fallback text must not appear when evalTargets are present');
+  });
+
+  it('Round 1 prompt renders constraints with hard/soft labels (not fallback)', () => {
+    const prompt = buildSimulationRound1SystemPrompt(minimalTheater, minimalPkg);
+    assert.ok(prompt.includes('[soft] route_chokepoint_status:'), 'soft constraint must appear');
+    assert.ok(prompt.includes('[hard] commodity_exposure:'), 'hard constraint must appear');
+    assert.ok(!prompt.includes('No explicit constraints'), 'fallback text must not appear when constraints are present');
+  });
+
+  it('Round 2 prompt renders evaluationTargets questions from requiredPaths (not fallback)', () => {
+    const round1 = { paths: [{ pathId: 'escalation', summary: 'Escalation summary', initialReactions: [] }] };
+    const prompt = buildSimulationRound2SystemPrompt(minimalTheater, minimalPkg, round1);
+    assert.ok(prompt.includes('escalation:'), 'evalTargets escalation question must appear in round 2');
+    assert.ok(!prompt.includes('General market and security dynamics'), 'fallback text must not appear in round 2');
   });
 
   it('Round 2 prompt contains Round 1 path summaries', () => {
