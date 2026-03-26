@@ -103,9 +103,12 @@ export class REITPanel extends Panel {
     const tableHtml = this.renderTable(filtered, isMortgage);
 
     this.setContent(`${briefingHtml}${tabsHtml}${tableHtml}`);
-    this.attachTabListeners();
-    this.attachRowListeners();
-    this.attachBriefingListeners();
+    // setContent is debounced — defer listener attachment until DOM is updated
+    setTimeout(() => {
+      this.attachTabListeners();
+      this.attachRowListeners();
+      this.attachBriefingListeners();
+    }, 50);
   }
 
   private renderBriefing(): string {
