@@ -138,13 +138,16 @@ export class HeatmapPanel extends Panel {
     super({ id: 'heatmap', title: t('panels.heatmap'), infoTooltip: t('components.heatmap.infoTooltip') });
   }
 
-  public renderHeatmap(data: Array<{ symbol?: string; name: string; change: number | null }>): void {
+  public renderHeatmap(
+    data: Array<{ symbol?: string; name: string; change: number | null }>,
+    sectorBars?: Array<{ symbol: string; name: string; change1d: number }>,
+  ): void {
     if (data.length === 0) {
       this.showRetrying(t('common.failedSectorData'));
       return;
     }
 
-    const html =
+    const tileHtml =
       '<div class="heatmap">' +
       data
         .map((sector) => {
@@ -163,7 +166,29 @@ export class HeatmapPanel extends Panel {
         .join('') +
       '</div>';
 
-    this.setContent(html);
+    let barChartHtml = '';
+    if (sectorBars && sectorBars.length > 0) {
+      const sorted = [...sectorBars].sort((a, b) => b.change1d - a.change1d);
+      const maxAbs = Math.max(...sorted.map((s) => Math.abs(s.change1d)), 3);
+      barChartHtml =
+        '<div class="heatmap-bar-chart">' +
+        sorted
+          .map((s) => {
+            const pct = Math.min((Math.abs(s.change1d) / maxAbs) * 100, 100).toFixed(1);
+            const isPos = s.change1d >= 0;
+            const color = isPos ? 'var(--color-positive, #22c55e)' : 'var(--color-negative, #ef4444)';
+            const sign = isPos ? '+' : '';
+            return `<div class="heatmap-bar-row">
+  <span class="heatmap-bar-label">${escapeHtml(s.symbol)}</span>
+  <div class="heatmap-bar-track"><div class="heatmap-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+  <span class="heatmap-bar-value ${isPos ? 'positive' : 'negative'}">${sign}${s.change1d.toFixed(2)}%</span>
+</div>`;
+          })
+          .join('') +
+        '</div>';
+    }
+
+    this.setContent(tileHtml + barChartHtml);
   }
 }
 

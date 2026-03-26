@@ -5866,6 +5866,58 @@ body.playback-mode .status-dot {
   color: var(--red);
 }
 
+/* Heatmap bar chart */
+.heatmap-bar-chart {
+  padding: 6px 4px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heatmap-bar-row {
+  display: grid;
+  grid-template-columns: 36px 1fr 46px;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+}
+
+.heatmap-bar-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.heatmap-bar-track {
+  height: 8px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.heatmap-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.heatmap-bar-value {
+  font-size: 10px;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.heatmap-bar-value.positive {
+  color: var(--green);
+}
+
+.heatmap-bar-value.negative {
+  color: var(--red);
+}
+
 /* Markets */
 .market-item {
   display: flex;

@@ -14,6 +14,12 @@ message FearGreedCategory {
   string inputs_json = 5;
 }
 
+message FearGreedSectorPerformance {
+  string symbol = 1;
+  string name = 2;
+  double change1d = 3;
+}
+
 message GetFearGreedIndexResponse {
   double composite_score = 1;
   string composite_label = 2;
@@ -44,4 +50,5 @@ message GetFearGreedIndexResponse {
   string fsi_label = 27;
   double hyg_price = 28;
   double tlt_price = 29;
+  repeated FearGreedSectorPerformance sector_performance = 30;
 }

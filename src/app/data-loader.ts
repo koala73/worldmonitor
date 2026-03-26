@@ -1273,13 +1273,17 @@ export class DataLoaderManager implements AppModule {
         name: sectorNameMap.get(s.symbol) ?? s.name,
         change: s.change,
       });
+      const hydratedFg = getHydratedData('fearGreedIndex') as Record<string, unknown> | undefined;
+      const sectorBars = Array.isArray(hydratedFg?.sectorPerformance)
+        ? (hydratedFg!.sectorPerformance as Array<{ symbol: string; name: string; change1d: number }>)
+        : undefined;
       if (hydratedSectors?.sectors?.length) {
         warmSectorCache(hydratedSectors);
-        heatmapPanel?.renderHeatmap(hydratedSectors.sectors.map(toHeatmapItem));
+        heatmapPanel?.renderHeatmap(hydratedSectors.sectors.map(toHeatmapItem), sectorBars);
       } else {
         const sectorsResp = await fetchSectors();
         if (sectorsResp.sectors.length > 0) {
-          heatmapPanel?.renderHeatmap(sectorsResp.sectors.map(toHeatmapItem));
+          heatmapPanel?.renderHeatmap(sectorsResp.sectors.map(toHeatmapItem), sectorBars);
         } else if (stocksResult.skipped) {
           this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
         }

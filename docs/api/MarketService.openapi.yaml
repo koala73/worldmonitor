@@ -1519,6 +1519,10 @@ components:
                 tltPrice:
                     type: number
                     format: double
+                sectorPerformance:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FearGreedSectorPerformance'
         FearGreedCategory:
             type: object
             properties:
@@ -1535,6 +1539,16 @@ components:
                     type: boolean
                 inputsJson:
                     type: string
+        FearGreedSectorPerformance:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                name:
+                    type: string
+                change1d:
+                    type: number
+                    format: double
         ListEarningsCalendarRequest:
             type: object
             properties:

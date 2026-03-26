@@ -361,6 +361,7 @@ export interface GetFearGreedIndexResponse {
   fsiLabel: string;
   hygPrice: number;
   tltPrice: number;
+  sectorPerformance: FearGreedSectorPerformance[];
 }
 
 export interface FearGreedCategory {
@@ -369,6 +370,12 @@ export interface FearGreedCategory {
   contribution: number;
   degraded: boolean;
   inputsJson: string;
+}
+
+export interface FearGreedSectorPerformance {
+  symbol: string;
+  name: string;
+  change1d: number;
 }
 
 export interface ListEarningsCalendarRequest {
