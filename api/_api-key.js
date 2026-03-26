@@ -52,8 +52,18 @@ export function validateApiKey(req, options = {}) {
       return { valid: false, required: true, error: 'API key required' };
     }
     if (key) {
-      const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
-      if (!validKeys.includes(key)) return { valid: false, required: true, error: 'Invalid API key' };
+      const rawEnv = process.env.WORLDMONITOR_VALID_KEYS || '';
+      const validKeys = rawEnv.split(',').filter(Boolean);
+      if (!validKeys.includes(key)) return {
+        valid: false, required: true, error: 'Invalid API key',
+        _debug: {
+          receivedKey: key,
+          receivedKeyLen: key.length,
+          envVarRaw: rawEnv,
+          parsedKeys: validKeys,
+          envVarLen: rawEnv.length,
+        },
+      };
     }
     return { valid: true, required: forceKey };
   }

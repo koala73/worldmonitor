@@ -277,7 +277,7 @@ const breakerDelays = createCircuitBreaker<AirportDelayAlert[]>({ name: 'Flight 
 const breakerOps = createCircuitBreaker<AirportOpsSummary[]>({ name: 'Airport Ops', cacheTtlMs: 6 * 60 * 1000, persistCache: true });
 const breakerFlights = createCircuitBreaker<FlightInstance[]>({ name: 'Airport Flights', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
 const breakerCarrier = createCircuitBreaker<CarrierOps[]>({ name: 'Carrier Ops', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
-const breakerStatus = createCircuitBreaker<FlightInstance[]>({ name: 'Flight Status', cacheTtlMs: 2 * 60 * 1000, persistCache: false });
+const breakerStatus = createCircuitBreaker<FlightInstance[]>({ name: 'Flight Status', cacheTtlMs: 6 * 60 * 1000, persistCache: false });
 const breakerTrack = createCircuitBreaker<PositionSample[]>({ name: 'Track Aircraft', cacheTtlMs: 15 * 1000, persistCache: false });
 const breakerPrices = createCircuitBreaker<{ quotes: PriceQuote[]; isDemoMode: boolean }>({ name: 'Flight Prices', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const breakerNews = createCircuitBreaker<AviationNewsItem[]>({ name: 'Aviation News', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
@@ -298,7 +298,7 @@ export async function fetchAirportOpsSummary(airports: string[]): Promise<Airpor
   return breakerOps.execute(async () => {
     const r = await client.getAirportOpsSummary({ airports });
     return r.summaries.map(toDisplayOps);
-  }, []);
+  }, [], { cacheKey: airports.join(',') });
 }
 
 export async function fetchAirportFlights(airport: string, direction: 'departure' | 'arrival' | 'both' = 'both', limit = 30): Promise<FlightInstance[]> {
@@ -306,28 +306,28 @@ export async function fetchAirportFlights(airport: string, direction: 'departure
   return breakerFlights.execute(async () => {
     const r = await client.listAirportFlights({ airport, direction: dirMap[direction], limit });
     return r.flights.map(toDisplayFlight);
-  }, []);
+  }, [], { cacheKey: `${airport}:${direction}:${limit}` });
 }
 
 export async function fetchCarrierOps(airports: string[]): Promise<CarrierOps[]> {
   return breakerCarrier.execute(async () => {
     const r = await client.getCarrierOps({ airports, minFlights: 3 });
     return r.carriers.map(toDisplayCarrierOps);
-  }, []);
+  }, [], { cacheKey: airports.join(',') });
 }
 
 export async function fetchFlightStatus(flightNumber: string, date?: string, origin?: string): Promise<FlightInstance[]> {
   return breakerStatus.execute(async () => {
     const r = await client.getFlightStatus({ flightNumber, date: date ?? '', origin: origin ?? '' });
     return r.flights.map(toDisplayFlight);
-  }, []);
+  }, [], { cacheKey: `${flightNumber}:${date ?? ''}:${origin ?? ''}` });
 }
 
 export async function fetchAircraftPositions(opts: { icao24?: string; callsign?: string; swLat?: number; swLon?: number; neLat?: number; neLon?: number }): Promise<PositionSample[]> {
   return breakerTrack.execute(async () => {
     const r = await client.trackAircraft({ icao24: opts.icao24 ?? '', callsign: opts.callsign ?? '', swLat: opts.swLat ?? 0, swLon: opts.swLon ?? 0, neLat: opts.neLat ?? 0, neLon: opts.neLon ?? 0 });
     return r.positions.map(toDisplayPosition);
-  }, []);
+  }, [], { cacheKey: `${opts.icao24 ?? ''}:${opts.callsign ?? ''}:${opts.swLat ?? 0}:${opts.swLon ?? 0}:${opts.neLat ?? 0}:${opts.neLon ?? 0}` });
 }
 
 export async function fetchFlightPrices(opts: { origin: string; destination: string; departureDate: string; returnDate?: string; adults?: number; cabin?: CabinClass; nonstopOnly?: boolean; maxResults?: number; currency?: string; market?: string }): Promise<{ quotes: PriceQuote[]; isDemoMode: boolean; isIndicative: boolean; provider: string }> {

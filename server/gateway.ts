@@ -252,7 +252,7 @@ export function createDomainGateway(
           }
           // Valid pro session — fall through to route handling
         } else {
-          return new Response(JSON.stringify({ error: keyCheck.error }), {
+          return new Response(JSON.stringify({ error: keyCheck.error, _debug: (keyCheck as any)._debug }), {
             status: 401,
             headers: { 'Content-Type': 'application/json', ...corsHeaders },
           });
