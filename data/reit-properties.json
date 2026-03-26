@@ -145,9 +145,7 @@
   {"reitSymbol":"SBAC","propertyName":"SBA - Miami Tower","lat":25.7617,"lng":-80.1918,"sector":"specialty","propertyType":"cell_tower","sqft":2000,"city":"Miami","state":"FL","metro":"Miami"},
   {"reitSymbol":"SBAC","propertyName":"SBA - Phoenix Tower","lat":33.4484,"lng":-112.0740,"sector":"specialty","propertyType":"cell_tower","sqft":2000,"city":"Phoenix","state":"AZ","metro":"Phoenix"},
 
-  {"reitSymbol":"180607.SZ","propertyName":"中海环宇城·北京","lat":39.9756,"lng":116.3486,"sector":"retail","propertyType":"shopping_mall","sqft":1200000,"city":"Beijing","state":"BJ","metro":"Beijing"},
-  {"reitSymbol":"180607.SZ","propertyName":"中海环宇城·济南","lat":36.6512,"lng":117.1201,"sector":"retail","propertyType":"shopping_mall","sqft":980000,"city":"Jinan","state":"SD","metro":"Jinan"},
-  {"reitSymbol":"180607.SZ","propertyName":"中海广场·上海","lat":31.2304,"lng":121.4737,"sector":"retail","propertyType":"office_commercial","sqft":850000,"city":"Shanghai","state":"SH","metro":"Shanghai"},
+  {"reitSymbol":"180607.SZ","propertyName":"佛山映月湖环宇城","lat":23.0218,"lng":113.1310,"sector":"retail","propertyType":"shopping_mall","sqft":1100000,"city":"Foshan","state":"GD","metro":"Guangzhou-Foshan"},
   {"reitSymbol":"180801.SZ","propertyName":"华润万象城·深圳","lat":22.5362,"lng":114.0579,"sector":"retail","propertyType":"shopping_mall","sqft":1600000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"},
   {"reitSymbol":"180801.SZ","propertyName":"华润万象汇·杭州","lat":30.2741,"lng":120.1551,"sector":"retail","propertyType":"shopping_mall","sqft":1100000,"city":"Hangzhou","state":"ZJ","metro":"Hangzhou"},
   {"reitSymbol":"180801.SZ","propertyName":"华润万象天地·深圳","lat":22.5468,"lng":114.0287,"sector":"retail","propertyType":"mixed_use_commercial","sqft":2200000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"},
