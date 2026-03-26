@@ -62,6 +62,12 @@ import {
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,
   extractSimulationRoundPayload,
+  computeSimulationAdjustment,
+  applySimulationMerge,
+  matchesBucket,
+  matchesChannel,
+  contradictsPremise,
+  negatesDisruption,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -6037,5 +6043,281 @@ describe('simulation runner — writeSimulationOutcome', () => {
     const outcome = { theaterResults: [], failedTheaters: [] };
     const result = await writeSimulationOutcome({ generatedAt: Date.now() }, outcome, { storageConfig: null });
     assert.equal(result, null);
+  });
+});
+
+describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () => {
+  const makePath = (targetBucket, channel, affectedAssets = []) => ({
+    type: 'expanded',
+    pathId: 'path-test',
+    candidateStateId: 'state-1',
+    direct: { variableKey: 'route_disruption', targetBucket, channel, affectedAssets },
+    second: null,
+    third: null,
+    pathScore: 0.60,
+    acceptanceScore: 0.55,
+    candidate: { routeFacilityKey: 'Strait of Hormuz', commodityKey: 'crude_oil', topBucketId: targetBucket, topChannel: channel },
+  });
+
+  const makeCandidatePacket = (routeFacilityKey = 'Strait of Hormuz', commodityKey = 'crude_oil') => ({
+    candidateStateId: 'state-1',
+    candidateIndex: 0,
+    routeFacilityKey,
+    commodityKey,
+    topBucketId: 'energy',
+    topChannel: 'energy_supply_shock',
+  });
+
+  it('T1: bucket+channel match gives +0.08', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const simResult = {
+      theaterId: 'state-1',
+      topPaths: [{ label: 'Oil supply disruption escalation via Hormuz', summary: 'Crude oil supply disruption', keyActors: ['US Navy'] }],
+      invalidators: [],
+      stabilizers: [],
+    };
+    const candidatePacket = makeCandidatePacket();
+    const { adjustment } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.08);
+  });
+
+  it('T2: bucket+channel match + 2 actor overlap gives +0.12', () => {
+    const path = makePath('energy', 'energy_supply_shock', ['Iran', 'Houthi', 'Saudi Aramco']);
+    const simResult = {
+      theaterId: 'state-1',
+      topPaths: [{ label: 'Oil energy supply shock via Hormuz', summary: 'Crude supply disruption', keyActors: ['Iran', 'Houthi', 'US Navy'] }],
+      invalidators: [],
+      stabilizers: [],
+    };
+    const candidatePacket = makeCandidatePacket();
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.12);
+    assert.ok(details.actorOverlapCount >= 2);
+  });
+
+  it('T3: invalidator contradiction gives -0.12', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const simResult = {
+      theaterId: 'state-1',
+      topPaths: [],
+      invalidators: ['Strait of Hormuz reopened after diplomatic resolution'],
+      stabilizers: [],
+    };
+    const candidatePacket = makeCandidatePacket();
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, -0.12);
+    assert.equal(details.invalidatorHit, true);
+  });
+
+  it('T4: stabilizer negation gives -0.15', () => {
+    const path = makePath('freight', 'shipping_cost_shock', []);
+    const simResult = {
+      theaterId: 'state-1',
+      topPaths: [],
+      invalidators: [],
+      stabilizers: ['Strait of Hormuz shipping lanes restored to normal operations'],
+    };
+    const candidatePacket = makeCandidatePacket('Strait of Hormuz', '');
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, -0.15);
+    assert.equal(details.stabilizerHit, true);
+  });
+
+  it('T5: bucket+channel match (+0.08) plus invalidator (-0.12) gives net -0.04', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const simResult = {
+      theaterId: 'state-1',
+      topPaths: [{ label: 'Oil supply shock escalation', summary: 'Crude oil supply disruption energy', keyActors: [] }],
+      invalidators: ['Strait of Hormuz reopened after ceasefire agreement'],
+      stabilizers: [],
+    };
+    const candidatePacket = makeCandidatePacket();
+    const { adjustment } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.ok(Math.abs(adjustment - (-0.04)) < 0.001, `expected -0.04 got ${adjustment}`);
+  });
+
+  it('T6: no sim result produces adjustment 0', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const { adjustment } = computeSimulationAdjustment(path, {}, makeCandidatePacket());
+    assert.equal(adjustment, 0);
+  });
+
+  it('T7: actor overlap below 2 does not add +0.04', () => {
+    const path = makePath('energy', 'energy_supply_shock', ['Iran']);
+    const simResult = {
+      theaterId: 'state-1',
+      topPaths: [{ label: 'Oil energy supply shock', summary: 'Crude supply disruption', keyActors: ['Iran'] }],
+      invalidators: [],
+      stabilizers: [],
+    };
+    const candidatePacket = makeCandidatePacket();
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.08);
+    assert.ok(details.actorOverlapCount < 2);
+  });
+});
+
+describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
+  const makeEval = (status, selectedPaths, rejectedPaths = []) => ({
+    status,
+    selectedPaths,
+    rejectedPaths,
+    impactExpansionBundle: null,
+    deepWorldState: status === 'completed' ? { deepForecast: {} } : null,
+    validation: { mapped: [], hypotheses: [] },
+  });
+
+  const makeExpandedPath = (candidateStateId, acceptanceScore) => ({
+    pathId: `path-${candidateStateId}`,
+    type: 'expanded',
+    candidateStateId,
+    candidateIndex: 0,
+    direct: { variableKey: 'route_disruption', targetBucket: 'energy', channel: 'energy_supply_shock', affectedAssets: [] },
+    second: null,
+    third: null,
+    pathScore: 0.60,
+    acceptanceScore,
+    candidate: { routeFacilityKey: 'Red Sea', commodityKey: 'crude_oil', topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+  });
+
+  const makeSimOutcome = (theaterId, topPaths, invalidators = [], stabilizers = []) => ({
+    runId: 'sim-run-001',
+    isCurrentRun: true,
+    theaterResults: [{ theaterId, topPaths, invalidators, stabilizers }],
+  });
+
+  it('T8: null simulation outcome returns unchanged evaluation and null simulationEvidence', () => {
+    const evaluation = makeEval('completed', [makeExpandedPath('state-1', 0.60)]);
+    const { simulationEvidence } = applySimulationMerge(evaluation, null, [], null, null);
+    assert.equal(simulationEvidence, null);
+  });
+
+  it('T9: demotion — accepted path drops below 0.50 when invalidator hits', () => {
+    const path = makeExpandedPath('state-1', 0.52);
+    const evaluation = makeEval('completed', [path]);
+    const simOutcome = makeSimOutcome('state-1', [], ['Red Sea reopened after diplomatic ceasefire']);
+    const candidatePackets = [{ candidateStateId: 'state-1', routeFacilityKey: 'Red Sea', commodityKey: 'crude_oil', topBucketId: 'energy', topChannel: 'energy_supply_shock' }];
+    const { simulationEvidence } = applySimulationMerge(evaluation, simOutcome, candidatePackets, { generatedAt: Date.now(), impactExpansionCandidates: candidatePackets }, null);
+    assert.equal(simulationEvidence.pathsDemoted, 1);
+    assert.equal(evaluation.status, 'completed_no_material_change');
+  });
+
+  it('T10: promotion — rejected path rises above 0.50 when match hits', () => {
+    const acceptedBase = { ...makeExpandedPath('state-1', 0.0), type: 'base' };
+    const rejectedPath = makeExpandedPath('state-1', 0.44);
+    rejectedPath.direct.affectedAssets = ['Iran', 'Houthi', 'Saudi Aramco'];
+    const evaluation = makeEval('completed_no_material_change', [acceptedBase], [rejectedPath]);
+    const simOutcome = makeSimOutcome('state-1', [{ label: 'Oil energy supply shock escalation', summary: 'Crude supply disruption energy', keyActors: ['Iran', 'Houthi'] }]);
+    const candidatePackets = [{ candidateStateId: 'state-1', routeFacilityKey: 'Red Sea', commodityKey: 'crude_oil', topBucketId: 'energy', topChannel: 'energy_supply_shock' }];
+    const snapshot = { generatedAt: Date.now(), impactExpansionCandidates: candidatePackets, fullRunPredictions: [], predictions: [], inputs: {}, deepForecast: {} };
+    const { simulationEvidence } = applySimulationMerge(evaluation, simOutcome, candidatePackets, snapshot, null);
+    assert.equal(simulationEvidence.pathsPromoted, 1);
+    assert.equal(evaluation.status, 'completed');
+  });
+
+  it('T11: no adjustment when sim theater not found for path candidateStateId', () => {
+    const path = makeExpandedPath('state-999', 0.60);
+    const evaluation = makeEval('completed', [path]);
+    const simOutcome = makeSimOutcome('state-1', [{ label: 'energy shock', summary: 'energy supply disruption', keyActors: [] }]);
+    const candidatePackets = [{ candidateStateId: 'state-999', routeFacilityKey: '', commodityKey: '', topBucketId: 'energy', topChannel: 'energy_supply_shock' }];
+    const { simulationEvidence } = applySimulationMerge(evaluation, simOutcome, candidatePackets, null, null);
+    assert.equal(simulationEvidence.adjustments.length, 0);
+    assert.equal(evaluation.status, 'completed');
+  });
+
+  it('T12: simulationEvidence contains outcomeRunId, theaterCount, adjustments', () => {
+    const path = makeExpandedPath('state-1', 0.60);
+    const evaluation = makeEval('completed', [path]);
+    const simOutcome = makeSimOutcome('state-1', [{ label: 'Oil energy supply shock', summary: 'Crude energy disruption', keyActors: [] }]);
+    const candidatePackets = [{ candidateStateId: 'state-1', routeFacilityKey: '', commodityKey: '', topBucketId: 'energy', topChannel: 'energy_supply_shock' }];
+    const { simulationEvidence } = applySimulationMerge(evaluation, simOutcome, candidatePackets, null, null);
+    assert.equal(simulationEvidence.outcomeRunId, 'sim-run-001');
+    assert.equal(simulationEvidence.theaterCount, 1);
+    assert.ok(Array.isArray(simulationEvidence.adjustments));
+  });
+});
+
+describe('phase 3 simulation re-ingestion — matching helpers', () => {
+  it('matchesBucket matches energy path to energy bucket via label', () => {
+    assert.ok(matchesBucket({ label: 'Oil price escalation via crude supply shock', summary: '' }, 'energy'));
+  });
+
+  it('matchesBucket matches freight path to freight bucket via summary', () => {
+    assert.ok(matchesBucket({ label: '', summary: 'Shipping cost increase from route disruption' }, 'freight'));
+  });
+
+  it('matchesBucket returns false for unrelated text', () => {
+    assert.ok(!matchesBucket({ label: 'Diplomatic meeting held', summary: 'Political talks resume' }, 'energy'));
+  });
+
+  it('matchesChannel matches energy_supply_shock via label', () => {
+    assert.ok(matchesChannel({ label: 'Crude supply disruption energy', summary: '' }, 'energy_supply_shock'));
+  });
+
+  it('matchesChannel returns false for unrelated text', () => {
+    assert.ok(!matchesChannel({ label: 'Political talks', summary: 'Ceasefire' }, 'shipping_cost_shock'));
+  });
+
+  it('contradictsPremise detects reopening of named route', () => {
+    const path = { candidate: { routeFacilityKey: 'Strait of Hormuz', commodityKey: '' } };
+    assert.ok(contradictsPremise('Strait of Hormuz reopened after ceasefire', path));
+  });
+
+  it('contradictsPremise returns false when route not mentioned', () => {
+    const path = { candidate: { routeFacilityKey: 'Strait of Hormuz', commodityKey: '' } };
+    assert.ok(!contradictsPremise('Red Sea shipping restored', path));
+  });
+
+  it('contradictsPremise returns false without negation language', () => {
+    const path = { candidate: { routeFacilityKey: 'Strait of Hormuz', commodityKey: '' } };
+    assert.ok(!contradictsPremise('Strait of Hormuz under continued risk', path));
+  });
+
+  it('negatesDisruption detects commodity restoration', () => {
+    const candidatePacket = { routeFacilityKey: '', commodityKey: 'crude_oil' };
+    assert.ok(negatesDisruption('crude_oil supply chain restored to normal operations', candidatePacket));
+  });
+
+  it('negatesDisruption returns false when no route/commodity on candidate', () => {
+    const candidatePacket = { routeFacilityKey: '', commodityKey: '' };
+    assert.ok(!negatesDisruption('all shipping lanes reopened', candidatePacket));
+  });
+});
+
+describe('phase 3 simulation re-ingestion — debug payload simulationEvidence field', () => {
+  it('buildImpactExpansionDebugPayload includes simulationEvidence when provided in data', () => {
+    const simEvidence = {
+      outcomeRunId: 'sim-run-xyz',
+      isCurrentRun: true,
+      theaterCount: 1,
+      adjustments: [{ pathId: 'p1', originalAcceptanceScore: 0.55, simulationAdjustment: 0.08, mergedAcceptanceScore: 0.63, wasAccepted: true, nowAccepted: true }],
+      pathsPromoted: 0,
+      pathsDemoted: 0,
+      pathsUnchanged: 1,
+    };
+    const data = {
+      generatedAt: Date.now(),
+      forecastDepth: 'deep',
+      impactExpansionBundle: { candidatePackets: [] },
+      deepPathEvaluation: { selectedPaths: [], rejectedPaths: [], validation: { mapped: [], hypotheses: [], validated: [], rejectionReasonCounts: {} } },
+      impactExpansionCandidates: [],
+      simulationEvidence: simEvidence,
+    };
+    const payload = buildImpactExpansionDebugPayload(data, null, 'run-test');
+    assert.ok(payload !== null);
+    assert.deepEqual(payload.simulationEvidence, simEvidence);
+  });
+
+  it('buildImpactExpansionDebugPayload has simulationEvidence null when not in data', () => {
+    const data = {
+      generatedAt: Date.now(),
+      forecastDepth: 'deep',
+      impactExpansionBundle: { candidatePackets: [] },
+      deepPathEvaluation: { selectedPaths: [], rejectedPaths: [], validation: { mapped: [], hypotheses: [], validated: [], rejectionReasonCounts: {} } },
+      impactExpansionCandidates: [],
+    };
+    const payload = buildImpactExpansionDebugPayload(data, null, 'run-test');
+    assert.ok(payload !== null);
+    assert.equal(payload.simulationEvidence, null);
   });
 });

@@ -4566,7 +4566,7 @@ function buildForecastRunStatusPayload({
 
 function summarizeImpactPathScore(path = null) {
   if (!path) return null;
-  return {
+  const summary = {
     pathId: path.pathId || '',
     type: path.type || '',
     candidateStateId: path.candidateStateId || '',
@@ -4578,6 +4578,11 @@ function summarizeImpactPathScore(path = null) {
     reportableQualityScore: Number(path.reportableQualityScore || 0),
     marketCoherenceScore: Number(path.marketCoherenceScore || 0),
   };
+  if (path.simulationAdjustment !== undefined) {
+    summary.simulationAdjustment = Number(path.simulationAdjustment);
+    summary.mergedAcceptanceScore = Number(path.mergedAcceptanceScore || path.acceptanceScore || 0);
+  }
+  return summary;
 }
 
 function buildDeepPathScorecardsPayload(data = {}, runId = '') {
@@ -4671,6 +4676,7 @@ function buildImpactExpansionDebugPayload(data = {}, worldState = null, runId = 
     },
     selectedPaths: (data?.deepPathEvaluation?.selectedPaths || []).map(summarizeImpactPathScore).filter(Boolean),
     rejectedPaths: (data?.deepPathEvaluation?.rejectedPaths || []).map(summarizeImpactPathScore).filter(Boolean),
+    simulationEvidence: data?.simulationEvidence || null,
   };
 }
 
@@ -11248,6 +11254,253 @@ function annotateDeepForecastOrigins(worldState, acceptedPaths = []) {
   return worldState;
 }
 
+function normalizeActorName(name) {
+  return String(name || '').toLowerCase().trim().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ');
+}
+
+function extractPathActors(path) {
+  const actors = new Set();
+  for (const hop of [path.direct, path.second, path.third]) {
+    if (!hop) continue;
+    for (const a of hop.affectedAssets || []) {
+      const n = normalizeActorName(a);
+      if (n) actors.add(n);
+    }
+  }
+  return [...actors];
+}
+
+const BUCKET_KEYWORDS = {
+  energy: ['oil', 'crude', 'petroleum', 'energy', 'lng', 'gas', 'fuel', 'brent', 'wti'],
+  freight: ['freight', 'shipping', 'container', 'cargo', 'transit', 'route', 'chokepoint'],
+  sovereign_risk: ['sovereign', 'bond', 'yield', 'credit', 'default', 'geopolit', 'security', 'military', 'escalat'],
+  fx_stress: ['currency', 'fx', 'exchange rate', 'dollar', 'dolar', 'devaluat'],
+  rates_inflation: ['inflation', 'interest rate', 'rate', 'price spike', 'cost push'],
+  semis: ['semiconductor', 'chip', 'semi', 'tech', 'cyber'],
+  crypto_stablecoins: ['crypto', 'bitcoin', 'stablecoin', 'digital asset'],
+  defense: ['defense', 'military', 'arms', 'weapon', 'nato'],
+};
+
+const CHANNEL_KEYWORDS = {
+  energy_supply_shock: ['oil supply', 'crude supply', 'energy supply', 'oil shock', 'energy shock', 'petroleum supply'],
+  gas_supply_stress: ['gas supply', 'lng supply', 'natural gas', 'gas price'],
+  commodity_repricing: ['commodity', 'repricing', 'shortage', 'supply chain'],
+  oil_macro_shock: ['oil macro', 'crude macro', 'oil price macro', 'petro macro'],
+  global_crude_spread_stress: ['crude spread', 'brent wti', 'grade spread'],
+  shipping_cost_shock: ['shipping cost', 'freight cost', 'freight rate', 'route disruption', 'chokepoint', 'transit'],
+  sovereign_stress: ['sovereign', 'debt stress', 'default risk', 'credit stress', 'bond spread'],
+  risk_off_rotation: ['risk off', 'risk aversion', 'flight to safety', 'sell off'],
+  security_escalation: ['escalat', 'military action', 'conflict', 'war', 'strike', 'attack'],
+  yield_curve_stress: ['yield curve', 'yield spread', 'term premium'],
+  volatility_shock: ['volatility', 'vix', 'vol spike'],
+  safe_haven_bid: ['safe haven', 'gold', 'yen', 'swiss franc', 'treasur'],
+  policy_rate_pressure: ['policy rate', 'central bank', 'rate hike', 'rate cut', 'monetary'],
+  fx_stress: ['fx stress', 'currency stress', 'exchange rate volatil'],
+  inflation_impulse: ['inflation', 'price spike', 'cost push', 'cpi'],
+  liquidity_withdrawal: ['liquidity', 'credit crunch', 'funding stress'],
+  cyber_cost_repricing: ['cyber', 'hack', 'ransomware', 'infrastructure attack'],
+  infrastructure_capacity_loss: ['infrastructure', 'capacity loss', 'outage', 'blackout'],
+  defense_repricing: ['defense spend', 'arms', 'rearmament', 'weapon'],
+  demand_shock: ['demand shock', 'demand collapse', 'recession', 'slowdown'],
+};
+
+function matchesBucket(simPath, targetBucket) {
+  if (!targetBucket || !simPath) return false;
+  const text = `${simPath.label || ''} ${simPath.summary || ''}`.toLowerCase();
+  const keywords = BUCKET_KEYWORDS[targetBucket] || [targetBucket.replace(/_/g, ' ')];
+  return keywords.some((kw) => text.includes(kw));
+}
+
+function matchesChannel(simPath, channel) {
+  if (!channel || !simPath) return false;
+  const text = `${simPath.label || ''} ${simPath.summary || ''}`.toLowerCase();
+  const keywords = CHANNEL_KEYWORDS[channel] || [channel.replace(/_/g, ' ')];
+  return keywords.some((kw) => text.includes(kw));
+}
+
+const NEGATION_TERMS = ['ceasefire', 'reopen', 'reopened', 'resolv', 'diplomatic solution', 'withdrawal', 'de-escalat', 'deescalat', 'restored', 'stabiliz', 'lifted', 'normaliz', 'agreement'];
+const SIMULATION_MERGE_ACCEPT_THRESHOLD = 0.50;
+
+function contradictsPremise(invalidator, expandedPath) {
+  if (!invalidator || typeof invalidator !== 'string') return false;
+  const text = invalidator.toLowerCase();
+  const hasNegation = NEGATION_TERMS.some((t) => text.includes(t));
+  if (!hasNegation) return false;
+  const routeKey = expandedPath?.candidate?.routeFacilityKey || '';
+  const commodityKey = expandedPath?.candidate?.commodityKey || '';
+  const refersToSubject = (
+    (routeKey && text.includes(routeKey.toLowerCase())) ||
+    (commodityKey && text.includes(commodityKey.toLowerCase()))
+  );
+  return refersToSubject;
+}
+
+function negatesDisruption(stabilizer, candidatePacket) {
+  if (!stabilizer || typeof stabilizer !== 'string') return false;
+  const text = stabilizer.toLowerCase();
+  const hasNegation = NEGATION_TERMS.some((t) => text.includes(t));
+  if (!hasNegation) return false;
+  const routeKey = candidatePacket?.routeFacilityKey || '';
+  const commodityKey = candidatePacket?.commodityKey || '';
+  if (!routeKey && !commodityKey) return false;
+  return (
+    (routeKey && text.includes(routeKey.toLowerCase())) ||
+    (commodityKey && text.includes(commodityKey.toLowerCase()))
+  );
+}
+
+function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePacket) {
+  let adjustment = 0;
+  const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false };
+
+  const { topPaths = [], invalidators = [], stabilizers = [] } = simTheaterResult || {};
+  const pathBucket = expandedPath?.direct?.targetBucket || candidatePacket?.topBucketId || '';
+  const pathChannel = expandedPath?.direct?.channel || candidatePacket?.topChannel || '';
+  const pathActors = extractPathActors(expandedPath);
+
+  const bucketChannelMatch = topPaths.find(
+    (sp) => matchesBucket(sp, pathBucket) && matchesChannel(sp, pathChannel)
+  );
+  if (bucketChannelMatch) {
+    adjustment += 0.08;
+    details.bucketChannelMatch = true;
+    const simActors = new Set((bucketChannelMatch.keyActors || []).map(normalizeActorName));
+    const overlap = pathActors.filter((a) => simActors.has(a));
+    details.actorOverlapCount = overlap.length;
+    if (overlap.length >= 2) {
+      adjustment += 0.04;
+    }
+  }
+
+  for (const inv of invalidators) {
+    if (contradictsPremise(inv, expandedPath)) {
+      adjustment -= 0.12;
+      details.invalidatorHit = true;
+      break;
+    }
+  }
+
+  for (const stab of stabilizers) {
+    if (negatesDisruption(stab, candidatePacket)) {
+      adjustment -= 0.15;
+      details.stabilizerHit = true;
+      break;
+    }
+  }
+
+  return { adjustment: +adjustment.toFixed(3), details };
+}
+
+function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, snapshot, priorWorldState) {
+  if (!simulationOutcome?.theaterResults?.length) {
+    return { evaluation, simulationEvidence: null };
+  }
+
+  const adjustments = [];
+  let anyPathChanged = false;
+
+  const simByTheater = new Map(
+    (simulationOutcome.theaterResults || []).map((t) => [t.theaterId, t])
+  );
+
+  const selectedPaths = evaluation.selectedPaths || [];
+  const rejectedPaths = evaluation.rejectedPaths || [];
+  const allPaths = [...selectedPaths, ...rejectedPaths];
+
+  for (const path of allPaths) {
+    if (path.type !== 'expanded') continue;
+    const simResult = simByTheater.get(path.candidateStateId);
+    if (!simResult) continue;
+
+    const candidatePacket = (candidatePackets || []).find((c) => c.candidateStateId === path.candidateStateId);
+    if (!candidatePacket) continue;
+
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    if (adjustment === 0) continue;
+
+    const mergedAcceptanceScore = +clampUnitInterval(path.acceptanceScore + adjustment).toFixed(3);
+    const wasAccepted = selectedPaths.includes(path);
+
+    adjustments.push({
+      pathId: path.pathId,
+      candidateStateId: path.candidateStateId,
+      originalAcceptanceScore: path.acceptanceScore,
+      simulationAdjustment: adjustment,
+      mergedAcceptanceScore,
+      details,
+      wasAccepted,
+      nowAccepted: mergedAcceptanceScore >= SIMULATION_MERGE_ACCEPT_THRESHOLD,
+    });
+
+    path.simulationAdjustment = adjustment;
+    path.mergedAcceptanceScore = mergedAcceptanceScore;
+
+    if (wasAccepted && mergedAcceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD) {
+      path.demotedBySimulation = true;
+      anyPathChanged = true;
+    } else if (!wasAccepted && mergedAcceptanceScore >= SIMULATION_MERGE_ACCEPT_THRESHOLD
+        // Guard: only promote paths that passed structural scoring (acceptanceScore > 0).
+        // Paths rejected by structural validation have acceptanceScore === 0 and should not
+        // be promoted by simulation evidence alone — simulation adjusts, not bypasses, structure.
+        && path.acceptanceScore > 0) {
+      path.promotedBySimulation = true;
+      anyPathChanged = true;
+    }
+  }
+
+  if (anyPathChanged) {
+    const newSelected = allPaths.filter((p) => {
+      if (p.type !== 'expanded') return selectedPaths.includes(p);
+      if (p.demotedBySimulation) return false;
+      if (p.promotedBySimulation) return true;
+      return selectedPaths.includes(p);
+    });
+    const newRejected = allPaths.filter((p) => !newSelected.includes(p));
+    const newSelectedExpanded = newSelected.filter((p) => p.type === 'expanded');
+
+    if (newSelectedExpanded.length > 0 && evaluation.status === 'completed_no_material_change') {
+      // Build bundle and world state before mutating evaluation to avoid partial state on error.
+      const acceptedBundle = buildImpactExpansionBundleFromPaths(newSelectedExpanded, candidatePackets, {
+        source: 'deep_selected',
+        parseStage: 'accepted_paths',
+        parseMode: 'accepted_paths',
+      });
+      const deepWorldState = annotateDeepForecastOrigins(
+        buildDeepWorldStateFromSnapshot(snapshot, priorWorldState, acceptedBundle, {
+          status: 'completed',
+          selectedStateIds: newSelectedExpanded.map((p) => p.candidateStateId),
+          eligibleStateCount: (candidatePackets || []).length,
+          selectedPathCount: newSelectedExpanded.length,
+          replacedFastRun: true,
+        }),
+        newSelectedExpanded,
+      );
+      evaluation.selectedPaths = newSelected;
+      evaluation.rejectedPaths = newRejected;
+      evaluation.status = 'completed';
+      evaluation.impactExpansionBundle = acceptedBundle;
+      evaluation.deepWorldState = deepWorldState;
+    } else if (newSelectedExpanded.length === 0 && evaluation.status === 'completed') {
+      evaluation.selectedPaths = newSelected;
+      evaluation.rejectedPaths = newRejected;
+      evaluation.status = 'completed_no_material_change';
+      evaluation.deepWorldState = null;
+    }
+  }
+
+  const simulationEvidence = {
+    outcomeRunId: simulationOutcome.runId || '',
+    isCurrentRun: simulationOutcome.isCurrentRun || false,
+    theaterCount: (simulationOutcome.theaterResults || []).length,
+    adjustments,
+    pathsPromoted: adjustments.filter((a) => !a.wasAccepted && a.nowAccepted).length,
+    pathsDemoted: adjustments.filter((a) => a.wasAccepted && !a.nowAccepted).length,
+    pathsUnchanged: adjustments.filter((a) => a.wasAccepted === a.nowAccepted).length,
+  };
+
+  return { evaluation, simulationEvidence };
+}
+
 function findDuplicateStateUnitLabels(stateUnits = []) {
   const counts = new Map();
   for (const unit of stateUnits || []) {
@@ -14677,6 +14930,23 @@ async function processDeepForecastTask(task = {}) {
     bundle,
   );
 
+  let simulationEvidence = null;
+  try {
+    const simulationOutcome = await fetchSimulationOutcomeForMerge(storageConfig, snapshot.runId || '');
+    if (simulationOutcome) {
+      const mergeResult = applySimulationMerge(
+        evaluation,
+        simulationOutcome,
+        snapshot.impactExpansionCandidates || [],
+        snapshot,
+        priorWorldState,
+      );
+      simulationEvidence = mergeResult.simulationEvidence;
+    }
+  } catch (err) {
+    console.warn('[SimulationMerge] Error during merge:', err.message);
+  }
+
   const baseDeepForecast = {
     ...(snapshot.deepForecast || {}),
     completedAt: new Date().toISOString(),
@@ -14692,6 +14962,7 @@ async function processDeepForecastTask(task = {}) {
     priorWorldStates: priorWorldState ? [priorWorldState] : [],
     impactExpansionBundle: evaluation.impactExpansionBundle || null,
     deepPathEvaluation: evaluation,
+    simulationEvidence,
   };
 
   // Compute convergence before artifact write so it can be returned to callers.
@@ -15699,6 +15970,24 @@ function buildSimulationOutcomeKey(runId, generatedAt) {
   return `${prefix}/simulation-outcome.json`;
 }
 
+async function fetchSimulationOutcomeForMerge(storageConfig, currentRunId) {
+  if (!storageConfig) return null;
+  try {
+    const { url, token } = getRedisCredentials();
+    const pointer = await redisGet(url, token, SIMULATION_OUTCOME_LATEST_KEY).catch(() => null);
+    if (!pointer?.outcomeKey) return null;
+    const MAX_STALE_MS = 6 * 60 * 60 * 1000;
+    const isCurrentRun = pointer.runId === currentRunId;
+    const isFresh = (Date.now() - (pointer.generatedAt || 0)) < MAX_STALE_MS;
+    if (!isCurrentRun && !isFresh) return null;
+    const outcome = await getR2JsonObject(storageConfig, pointer.outcomeKey).catch(() => null);
+    if (!outcome?.theaterResults?.length) return null;
+    return { ...outcome, isCurrentRun };
+  } catch {
+    return null;
+  }
+}
+
 async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
   const config = storageConfig ?? resolveR2StorageConfig();
   if (!config || !pkg?.runId) return null;
@@ -16090,6 +16379,14 @@ export {
   enqueueSimulationTask,
   processNextSimulationTask,
   runSimulationWorker,
+  fetchSimulationOutcomeForMerge,
+  computeSimulationAdjustment,
+  applySimulationMerge,
+  matchesBucket,
+  matchesChannel,
+  contradictsPremise,
+  negatesDisruption,
+  SIMULATION_MERGE_ACCEPT_THRESHOLD,
   scoreImpactExpansionQuality,
   buildImpactExpansionDebugPayload,
   runImpactExpansionPromptRefinement,
