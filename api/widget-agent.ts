@@ -1,0 +1,131 @@
+/**
+ * Vercel edge proxy for the widget agent.
+ *
+ * Auth paths:
+ *   1. Clerk JWT (Authorization: Bearer <token>) — validates plan === 'pro',
+ *      then injects real server keys and proxies to the Railway relay.
+ *   2. Tester keys (X-Widget-Key / X-Pro-Key) — validated directly here
+ *      so the relay's WIDGET_AGENT_KEY / PRO_WIDGET_KEY are never exposed
+ *      to the browser.
+ *
+ * GET  → proxy to relay /widget-agent/health
+ * POST → proxy SSE stream to relay /widget-agent
+ */
+
+export const config = { runtime: 'edge' };
+
+// @ts-expect-error — JS module, no declaration file
+import { getCorsHeaders } from './_cors.js';
+import { validateBearerToken } from '../server/auth-session';
+
+const RELAY_BASE = 'https://proxy.worldmonitor.app';
+const WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY ?? '';
+const PRO_WIDGET_KEY = process.env.PRO_WIDGET_KEY ?? '';
+
+function json(body: unknown, status: number, cors: Record<string, string>): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...cors },
+  });
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  const corsHeaders = getCorsHeaders(req) as Record<string, string>;
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Widget-Key, X-Pro-Key',
+      },
+    });
+  }
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  let isPro = false;
+
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    // Clerk JWT path (web users with active subscription)
+    const session = await validateBearerToken(authHeader.slice(7));
+    if (!session.valid) {
+      return json({ error: 'Invalid or expired session' }, 401, corsHeaders);
+    }
+    if (session.role !== 'pro') {
+      return json({ error: 'Pro subscription required' }, 403, corsHeaders);
+    }
+    isPro = true;
+  } else {
+    // Tester key path (wm-widget-key / wm-pro-key)
+    const widgetKey = req.headers.get('X-Widget-Key') ?? '';
+    const proKey = req.headers.get('X-Pro-Key') ?? '';
+    const hasWidgetKey = Boolean(WIDGET_AGENT_KEY && widgetKey === WIDGET_AGENT_KEY);
+    const hasProKey = Boolean(PRO_WIDGET_KEY && proKey === PRO_WIDGET_KEY);
+    if (!hasWidgetKey && !hasProKey) {
+      return json({ error: 'Forbidden' }, 403, corsHeaders);
+    }
+    isPro = hasProKey;
+  }
+
+  if (!WIDGET_AGENT_KEY) {
+    return json({ error: 'Widget agent unavailable', ok: false, widgetKeyConfigured: false }, 503, corsHeaders);
+  }
+
+  // ── Build relay headers (server-side keys, never exposed to browser) ──────
+  const relayHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Widget-Key': WIDGET_AGENT_KEY,
+  };
+  if (isPro && PRO_WIDGET_KEY) {
+    relayHeaders['X-Pro-Key'] = PRO_WIDGET_KEY;
+  }
+
+  // ── Health check (GET) ────────────────────────────────────────────────────
+  if (req.method === 'GET') {
+    const healthRes = await fetch(`${RELAY_BASE}/widget-agent/health`, {
+      method: 'GET',
+      headers: relayHeaders,
+    });
+    const body = await healthRes.text();
+    return new Response(body, {
+      status: healthRes.status,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
+  }
+
+  if (req.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, 405, corsHeaders);
+  }
+
+  // ── Agent call (POST, SSE stream) ─────────────────────────────────────────
+  let rawBody = await req.text();
+
+  // For Clerk PRO users, ensure tier:pro is present in the body (relay requires it
+  // to enable PRO model, bigger HTML limit, and PRO rate-limit bucket).
+  if (isPro) {
+    try {
+      const parsed = JSON.parse(rawBody) as Record<string, unknown>;
+      if (parsed.tier !== 'pro') {
+        rawBody = JSON.stringify({ ...parsed, tier: 'pro' });
+      }
+    } catch { /* malformed body — relay will return 400 */ }
+  }
+
+  const relayRes = await fetch(`${RELAY_BASE}/widget-agent`, {
+    method: 'POST',
+    headers: relayHeaders,
+    body: rawBody,
+  });
+
+  return new Response(relayRes.body, {
+    status: relayRes.status,
+    headers: {
+      'Content-Type': relayRes.headers.get('Content-Type') ?? 'text/event-stream',
+      'Cache-Control': 'no-cache, no-store',
+      'X-Accel-Buffering': 'no',
+      ...corsHeaders,
+    },
+  });
+}

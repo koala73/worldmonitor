@@ -8324,21 +8324,23 @@ function getWidgetAgentProvidedKey(req) {
 
 function requireWidgetAgentAccess(req, res) {
   const status = getWidgetAgentStatus();
-  if (!status.widgetKeyConfigured) {
+  // P2: allow PRO-only deployments (no basic widget key, but PRO key present)
+  if (!status.widgetKeyConfigured && !status.proKeyConfigured) {
     safeEnd(res, 503, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'Widget agent unavailable' }));
     return null;
   }
 
   const providedKey = getWidgetAgentProvidedKey(req);
   const providedProKey = getWidgetAgentProvidedProKey(req);
-  const hasValidWidgetKey = providedKey && providedKey === WIDGET_AGENT_KEY;
-  const hasValidProKey = PRO_WIDGET_KEY && providedProKey && providedProKey === PRO_WIDGET_KEY;
+  const hasValidWidgetKey = status.widgetKeyConfigured && providedKey && providedKey === WIDGET_AGENT_KEY;
+  const hasValidProKey = status.proKeyConfigured && providedProKey && providedProKey === PRO_WIDGET_KEY;
   if (!hasValidWidgetKey && !hasValidProKey) {
     safeEnd(res, 403, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, error: 'Forbidden' }));
     return null;
   }
 
-  return status;
+  // P1: carry admission path so handleWidgetAgentRequest can enforce correct rate-limit bucket
+  return { ...status, admittedAs: hasValidProKey ? 'pro' : 'basic' };
 }
 
 function sendWidgetSSE(res, type, data) {
@@ -8399,17 +8401,20 @@ async function handleWidgetAgentRequest(req, res) {
   if (rawTier !== undefined && rawTier !== 'basic' && rawTier !== 'pro') {
     return safeEnd(res, 400, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Invalid tier value' }));
   }
-  const tier = rawTier === 'pro' ? 'pro' : 'basic';
+  // P1: if admitted via pro key, default to pro tier regardless of body.tier
+  const tier = (rawTier === 'pro' || status.admittedAs === 'pro') ? 'pro' : 'basic';
   const isPro = tier === 'pro';
 
-  // PRO auth gate
+  // PRO auth gate: only re-check if NOT already verified via pro key at the gate
   if (isPro) {
     if (!PRO_WIDGET_KEY) {
       return safeEnd(res, 503, { 'Content-Type': 'application/json' }, JSON.stringify({ ...status, proKeyConfigured: false, error: 'PRO widget agent unavailable' }));
     }
-    const providedProKey = getWidgetAgentProvidedProKey(req);
-    if (!providedProKey || providedProKey !== PRO_WIDGET_KEY) {
-      return safeEnd(res, 403, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Forbidden' }));
+    if (status.admittedAs !== 'pro') {
+      const providedProKey = getWidgetAgentProvidedProKey(req);
+      if (!providedProKey || providedProKey !== PRO_WIDGET_KEY) {
+        return safeEnd(res, 403, { 'Content-Type': 'application/json' }, JSON.stringify({ error: 'Forbidden' }));
+      }
     }
   }
 
