@@ -18,6 +18,7 @@ const COUNTRY_FLAGS: Record<string, string> = {
   UK: '🇬🇧',
   EU: '🇪🇺',
   EUR: '🇪🇺',
+  EA: '🇪🇺',
   DE: '🇩🇪',
   FR: '🇫🇷',
   JP: '🇯🇵',
@@ -25,6 +26,10 @@ const COUNTRY_FLAGS: Record<string, string> = {
   CA: '🇨🇦',
   AU: '🇦🇺',
 };
+
+const EU_COUNTRIES = new Set(['EU', 'EA', 'EUR', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'PT', 'FI', 'IE', 'GR']);
+
+type RegionFilter = 'all' | 'us' | 'eu';
 
 const IMPACT_COLORS: Record<string, string> = {
   high: '#e74c3c',
@@ -81,9 +86,19 @@ function countdown(dateStr: string): string {
 export class EconomicCalendarPanel extends Panel {
   private _hasData = false;
   private _events: EconomicEvent[] = [];
+  private _region: RegionFilter = 'all';
 
   constructor() {
     super({ id: 'economic-calendar', title: 'Economic Calendar', showCount: false });
+    this.content.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-region]');
+      if (!btn) return;
+      const region = btn.dataset.region as RegionFilter;
+      if (region && region !== this._region) {
+        this._region = region;
+        this._render();
+      }
+    });
   }
 
   public async fetchData(): Promise<boolean> {
@@ -111,13 +126,39 @@ export class EconomicCalendarPanel extends Panel {
     }
   }
 
+  private _filterEvents(): EconomicEvent[] {
+    if (this._region === 'us') return this._events.filter((e) => e.country === 'US');
+    if (this._region === 'eu') return this._events.filter((e) => EU_COUNTRIES.has(e.country));
+    return this._events;
+  }
+
+  private _renderRegionTabs(): string {
+    const tabs: { key: RegionFilter; label: string }[] = [
+      { key: 'all', label: 'All' },
+      { key: 'us',  label: 'US' },
+      { key: 'eu',  label: 'EU' },
+    ];
+    return `<div style="display:flex;gap:4px;padding:0 14px 10px">` +
+      tabs.map(({ key, label }) => {
+        const active = this._region === key;
+        return `<button data-region="${key}" style="
+          padding:3px 10px;font-size:10px;font-weight:600;letter-spacing:0.04em;
+          border-radius:3px;border:none;cursor:pointer;
+          background:${active ? 'rgba(255,255,255,0.15)' : 'transparent'};
+          color:${active ? 'var(--text)' : 'rgba(255,255,255,0.35)'};
+        ">${escapeHtml(label)}</button>`;
+      }).join('') +
+    `</div>`;
+  }
+
   private _render(): void {
     if (!this._hasData || this._events.length === 0) {
       if (!this._hasData) this.showError('No upcoming economic events.', () => void this.fetchData());
       return;
     }
 
-    const grouped = groupByDate(this._events);
+    const filtered = this._filterEvents();
+    const grouped = groupByDate(filtered);
     let bodyRows = '';
     let isFirstGroup = true;
 
@@ -164,7 +205,11 @@ export class EconomicCalendarPanel extends Panel {
       }
     }
 
-    const html = `<div style="padding:0 14px 12px;max-height:480px;overflow-y:auto">
+    const emptyMsg = filtered.length === 0
+      ? `<tr><td colspan="3" style="padding:20px 0;text-align:center;color:rgba(255,255,255,0.3);font-size:12px">No events for selected region</td></tr>`
+      : '';
+
+    const html = `${this._renderRegionTabs()}<div style="padding:0 14px 12px;max-height:440px;overflow-y:auto">
       <table style="width:100%;border-collapse:collapse;table-layout:fixed">
         <colgroup>
           <col style="width:auto">
@@ -178,7 +223,7 @@ export class EconomicCalendarPanel extends Panel {
             <th style="text-align:right;padding:0 0 8px;font-weight:600"></th>
           </tr>
         </thead>
-        <tbody>${bodyRows}</tbody>
+        <tbody>${emptyMsg}${bodyRows}</tbody>
       </table>
     </div>`;
 
