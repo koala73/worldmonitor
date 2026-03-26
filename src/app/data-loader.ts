@@ -2428,11 +2428,10 @@ export class DataLoaderManager implements AppModule {
       // Feed property data to map layer
       this.callPanel('deckgl-map', 'setReitPropertyData', propsData.properties, propsData.exposureSummaries);
 
-      // Update detail panel with all data
+      // Update detail panel with all data + default to 华夏中海商业
       const detailPanel = this.ctx.panels['reit-detail'] as import('@/components/REITDetailPanel').REITDetailPanel | undefined;
-      detailPanel?.setData(quotesData.quotes, socialData.sentiments, propsData.exposureSummaries);
-      // Default to 华夏中海商业 if no REIT selected yet
-      if (detailPanel && !detailPanel.isNearViewport()) {
+      if (detailPanel) {
+        detailPanel.setData(quotesData.quotes, socialData.sentiments, propsData.exposureSummaries);
         detailPanel.showReit('180607.SZ');
       }
 
