@@ -23,6 +23,7 @@ import "worldmonitor/economic/v1/get_ecb_fx_rates.proto";
 import "worldmonitor/economic/v1/get_eurostat_country_data.proto";
 import "worldmonitor/economic/v1/get_eu_gas_storage.proto";
 import "worldmonitor/economic/v1/get_eu_yield_curve.proto";
+import "worldmonitor/economic/v1/get_eu_fsi.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -111,20 +112,17 @@ service EconomicService {
   // GetEcbFxRates retrieves daily ECB official reference rates for EUR/major currency pairs.
   rpc GetEcbFxRates(GetEcbFxRatesRequest) returns (GetEcbFxRatesResponse) {
     option (sebuf.http.config) = {path: "/get-ecb-fx-rates", method: HTTP_METHOD_GET};
-  }
-
   // GetEurostatCountryData retrieves per-country CPI, unemployment, and GDP growth for 10 EU member states.
   rpc GetEurostatCountryData(GetEurostatCountryDataRequest) returns (GetEurostatCountryDataResponse) {
     option (sebuf.http.config) = {path: "/get-eurostat-country-data", method: HTTP_METHOD_GET};
-  }
-
   // GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
   rpc GetEuGasStorage(GetEuGasStorageRequest) returns (GetEuGasStorageResponse) {
     option (sebuf.http.config) = {path: "/get-eu-gas-storage", method: HTTP_METHOD_GET};
-  }
-
   // GetEuYieldCurve retrieves the ECB Euro Area AAA sovereign yield curve (Svensson model spot rates).
   rpc GetEuYieldCurve(GetEuYieldCurveRequest) returns (GetEuYieldCurveResponse) {
     option (sebuf.http.config) = {path: "/get-eu-yield-curve", method: HTTP_METHOD_GET};
+  // GetEuFsi retrieves the ECB CISS (Composite Indicator of Systemic Stress) for the Euro area.
+  rpc GetEuFsi(GetEuFsiRequest) returns (GetEuFsiResponse) {
+    option (sebuf.http.config) = {path: "/get-eu-fsi", method: HTTP_METHOD_GET};
   }
 }

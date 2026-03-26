@@ -393,20 +393,20 @@ export interface GetCrudeInventoriesRequest {
 export interface GetCrudeInventoriesResponse {
   weeks: CrudeInventoryWeek[];
   latestPeriod: string;
-}
-
 export interface CrudeInventoryWeek {
   period: string;
   stocksMb: number;
   weeklyChangeMb?: number;
-}
-
 export interface GetEcbFxRatesRequest {
-}
-
 export interface GetEcbFxRatesResponse {
   rates: EcbFxRate[];
   updatedAt: string;
+export interface GetEuFsiRequest {
+export interface GetEuFsiResponse {
+  latestValue: number;
+  latestDate: string;
+  label: string;
+  history: EuFsiObservation[];
   seededAt: string;
   unavailable: boolean;
 }
@@ -419,59 +419,34 @@ export interface EcbFxRate {
 }
 
 export interface GetEurostatCountryDataRequest {
-}
-
 export interface GetEurostatCountryDataResponse {
   countries: Record<string, EurostatCountryEntry>;
   seededAt: string;
   unavailable: boolean;
-}
-
 export interface EurostatCountryEntry {
   cpi?: EurostatMetric;
   unemployment?: EurostatMetric;
   gdpGrowth?: EurostatMetric;
-}
-
 export interface EurostatMetric {
   value: number;
-  date: string;
   unit: string;
-}
-
 export interface GetEuGasStorageRequest {
-}
-
 export interface GetEuGasStorageResponse {
   fillPct: number;
   fillPctChange1d: number;
   gasDaysConsumption: number;
   trend: string;
   history: EuGasStorageHistoryEntry[];
-  seededAt: string;
   updatedAt: string;
-  unavailable: boolean;
-}
-
 export interface EuGasStorageHistoryEntry {
-  date: string;
-  fillPct: number;
   gasTwh: number;
-}
-
 export interface GetEuYieldCurveRequest {
-}
-
 export interface GetEuYieldCurveResponse {
   data?: EuYieldCurveData;
-  unavailable: boolean;
-}
-
 export interface EuYieldCurveData {
-  date: string;
   rates: Record<string, number>;
   source: string;
-  updatedAt: string;
+export interface EuFsiObservation {
 }
 
 export interface FieldViolation {
@@ -539,6 +514,7 @@ export interface EconomicServiceHandler {
   getEurostatCountryData(ctx: ServerContext, req: GetEurostatCountryDataRequest): Promise<GetEurostatCountryDataResponse>;
   getEuGasStorage(ctx: ServerContext, req: GetEuGasStorageRequest): Promise<GetEuGasStorageResponse>;
   getEuYieldCurve(ctx: ServerContext, req: GetEuYieldCurveRequest): Promise<GetEuYieldCurveResponse>;
+  getEuFsi(ctx: ServerContext, req: GetEuFsiRequest): Promise<GetEuFsiResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -1182,6 +1158,8 @@ export function createEconomicServiceRoutes(
         try {
           const pathParams: Record<string, string> = {};
           const body = {} as GetCrudeInventoriesRequest;
+      path: "/api/economic/v1/get-eu-fsi",
+          const body = {} as GetEuFsiRequest;
 
           const ctx: ServerContext = {
             request: req,
@@ -1203,12 +1181,9 @@ export function createEconomicServiceRoutes(
           }
           if (options?.onError) {
             return options.onError(err, req);
-          }
           const message = err instanceof Error ? err.message : String(err);
           return new Response(JSON.stringify({ message }), {
             status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
         }
       },
     },
@@ -1225,120 +1200,22 @@ export function createEconomicServiceRoutes(
             pathParams,
             headers: Object.fromEntries(req.headers.entries()),
           };
-
           const result = await handler.getEcbFxRates(ctx, body);
           return new Response(JSON.stringify(result as GetEcbFxRatesResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } catch (err: unknown) {
-          if (err instanceof ValidationError) {
-            return new Response(JSON.stringify({ violations: err.violations }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (options?.onError) {
-            return options.onError(err, req);
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return new Response(JSON.stringify({ message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      },
-    },
-    {
-      method: "GET",
       path: "/api/economic/v1/get-eurostat-country-data",
-      handler: async (req: Request): Promise<Response> => {
-        try {
-          const pathParams: Record<string, string> = {};
           const body = {} as GetEurostatCountryDataRequest;
-
-          const ctx: ServerContext = {
-            request: req,
-            pathParams,
-            headers: Object.fromEntries(req.headers.entries()),
-          };
-
           const result = await handler.getEurostatCountryData(ctx, body);
           return new Response(JSON.stringify(result as GetEurostatCountryDataResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } catch (err: unknown) {
-          if (err instanceof ValidationError) {
-            return new Response(JSON.stringify({ violations: err.violations }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (options?.onError) {
-            return options.onError(err, req);
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return new Response(JSON.stringify({ message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      },
-    },
-    {
-      method: "GET",
       path: "/api/economic/v1/get-eu-gas-storage",
-      handler: async (req: Request): Promise<Response> => {
-        try {
-          const pathParams: Record<string, string> = {};
           const body = {} as GetEuGasStorageRequest;
-
-          const ctx: ServerContext = {
-            request: req,
-            pathParams,
-            headers: Object.fromEntries(req.headers.entries()),
-          };
-
           const result = await handler.getEuGasStorage(ctx, body);
           return new Response(JSON.stringify(result as GetEuGasStorageResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } catch (err: unknown) {
-          if (err instanceof ValidationError) {
-            return new Response(JSON.stringify({ violations: err.violations }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (options?.onError) {
-            return options.onError(err, req);
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return new Response(JSON.stringify({ message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      },
-    },
-    {
-      method: "GET",
       path: "/api/economic/v1/get-eu-yield-curve",
-      handler: async (req: Request): Promise<Response> => {
-        try {
-          const pathParams: Record<string, string> = {};
           const body = {} as GetEuYieldCurveRequest;
-
-          const ctx: ServerContext = {
-            request: req,
-            pathParams,
-            headers: Object.fromEntries(req.headers.entries()),
-          };
-
           const result = await handler.getEuYieldCurve(ctx, body);
           return new Response(JSON.stringify(result as GetEuYieldCurveResponse), {
+          const result = await handler.getEuFsi(ctx, body);
+          return new Response(JSON.stringify(result as GetEuFsiResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -67,6 +67,7 @@ const BOOTSTRAP_KEYS = {
   ecbFxRates:        'economic:ecb-fx-rates:v1',
   eurostatCountryData: 'economic:eurostat-country-data:v1',
   euGasStorage:      'economic:eu-gas-storage:v1',
+  euFsi:             'economic:fsi-eu:v1',
 };
 
 const STANDALONE_KEYS = {
@@ -204,6 +205,7 @@ const SEED_META = {
   eurostatCountryData: { key: 'seed-meta:economic:eurostat-country-data', maxStaleMin: 4320 }, // daily seed; 4320min = 3 days = 3x interval
   euGasStorage:      { key: 'seed-meta:economic:eu-gas-storage',      maxStaleMin: 2880 }, // daily seed (T+1); 2880min = 48h = 2x interval
   euYieldCurve:      { key: 'seed-meta:economic:yield-curve-eu',      maxStaleMin: 2880 }, // daily seed (weekdays); 2880min = 48h = 2x interval
+  euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 20160 }, // weekly seed (Saturday); 20160min = 14d = 2x interval
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
