@@ -972,9 +972,8 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadNews(): Promise<void> {
-    // Localhost mock for reits variant — RSS proxy not available on dev server
-    const isLocalhost = typeof window !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-    if (isLocalhost && (SITE_VARIANT === 'reits' || (typeof document !== 'undefined' && document.documentElement.dataset.variant === 'reits'))) {
+    // Localhost mock — RSS proxy not available on dev server
+    if (import.meta.env?.DEV && SITE_VARIANT === 'reits') {
       const now = new Date();
       type MockArticle = { title: string; url: string; source: string; pubDate: string };
       const mockNews: Record<string, MockArticle[]> = {
@@ -1001,27 +1000,31 @@ export class DataLoaderManager implements AppModule {
           { title: 'US Industrial Vacancy Rate Remains Near Historic Lows at 4.8%', url: '#', source: 'Property Markets', pubDate: new Date(now.getTime() - 14 * 3600000).toISOString() },
         ],
       };
-      // Retry every 500ms until panels are available (max 5 attempts)
-      const inject = (attempt = 0) => {
-        let found = 0;
+      // Wait for panels to be created by panel-layout, then inject
+      const renderMockHtml = (items: MockArticle[]) => items.map(item =>
+        `<div class="news-item" style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--text);line-height:1.4">${item.title}</div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:3px">${item.source} · ${new Date(item.pubDate).toLocaleTimeString()}</div>
+        </div>`
+      ).join('');
+
+      const doInject = () => {
         for (const [category, items] of Object.entries(mockNews)) {
           const panel = this.ctx.newsPanels[category] ?? this.ctx.panels[category];
-          if (panel && 'renderNews' in panel) {
-            const newsItems = items.map((item: MockArticle, i: number) => ({
-              title: item.title, url: item.url, source: item.source,
-              pubDate: item.pubDate, id: `mock-${category}-${i}`, category,
-            }));
-            (panel as any).renderNews(newsItems);
-            found++;
+          if (panel) {
+            // Bypass setContent debounce — write directly to DOM
+            const el = (panel as any).content || (panel as any).getElement()?.querySelector('.panel-content');
+            if (el) {
+              el.innerHTML = renderMockHtml(items);
+              // Clear loading state
+              const panelEl = (panel as any).element || (panel as any).getElement();
+              panelEl?.classList?.remove('panel-loading', 'panel-error');
+            }
           }
         }
-        if (found === 0 && attempt < 10) {
-          setTimeout(() => inject(attempt + 1), 500);
-        } else {
-          console.log(`[News] Mock: ${found} panels rendered (attempt ${attempt})`);
-        }
       };
-      inject();
+      setTimeout(doInject, 2000);
+      setTimeout(doInject, 5000);
       return;
     }
 

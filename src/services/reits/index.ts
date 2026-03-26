@@ -195,7 +195,7 @@ function getMockSocial(): GetReitSocialSentimentResponse {
       { reitSymbol: 'SPG', socialHealthScore: 7.2, avgRating: 4.1, reviewVelocity: 12, positiveKeywords: ['great mall', 'clean', 'good stores'], negativeKeywords: ['parking', 'crowded'], tenantRiskSignals: [], sector: 'retail' },
       { reitSymbol: 'O', socialHealthScore: 6.8, avgRating: 3.9, reviewVelocity: 0, positiveKeywords: ['convenient', 'well-maintained'], negativeKeywords: [], tenantRiskSignals: [], sector: 'retail' },
       { reitSymbol: 'EQR', socialHealthScore: 7.5, avgRating: 4.2, reviewVelocity: 8, positiveKeywords: ['luxury', 'great amenities'], negativeKeywords: ['expensive', 'noise'], tenantRiskSignals: [], sector: 'residential' },
-      { reitSymbol: 'VNO', socialHealthScore: 3.8, avgRating: 2.9, reviewVelocity: -18, positiveKeywords: ['location'], negativeKeywords: ['empty floors', 'outdated'], tenantRiskSignals: ['Tenant downsizing in PENN 1'], sector: 'office' },
+      { reitSymbol: 'VNO', socialHealthScore: 3.8, avgRating: 2.9, reviewVelocity: -18, positiveKeywords: ['location'], negativeKeywords: ['empty floors', 'outdated'], tenantRiskSignals: [], sector: 'office' },
       { reitSymbol: 'WELL', socialHealthScore: 8.1, avgRating: 4.3, reviewVelocity: 5, positiveKeywords: ['caring staff', 'clean'], negativeKeywords: [], tenantRiskSignals: [], sector: 'healthcare' },
       { reitSymbol: 'DLR', socialHealthScore: 7.8, avgRating: 4.0, reviewVelocity: 15, positiveKeywords: ['reliable', 'modern'], negativeKeywords: [], tenantRiskSignals: [], sector: 'datacenter' },
       { reitSymbol: '180607.SZ', socialHealthScore: 7.0, avgRating: 4.0, reviewVelocity: 10, positiveKeywords: ['环宇城不错', '品牌齐全'], negativeKeywords: ['停车难'], tenantRiskSignals: [], sector: 'retail' },
