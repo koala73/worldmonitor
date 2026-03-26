@@ -13,6 +13,7 @@ TypeScript monorepo: Vanilla TS panels (no React), sebuf proto RPCs, Redis-cache
 Vercel edge functions, Railway cron seeds.
 
 Key patterns:
+
 - Panels extend `Panel` base class with `fetchData()` returning boolean, `setContent(html)`, `showError(msg, retry)`
 - Private `_hasData` guard prevents overwriting good data with error on retry
 - Seed scripts use `runSeed(domain, name, key, fetchFn, options)` with TTL ≥ 3× seed interval
