@@ -26,17 +26,9 @@ export async function premiumFetch(
     }
   } catch { /* not available — fall through */ }
 
-  // 2. Clerk Pro session token.
-  try {
-    const { getClerkToken } = await import('@/services/clerk');
-    const token = await getClerkToken();
-    if (token) {
-      existing.set('Authorization', `Bearer ${token}`);
-      return globalThis.fetch(input, { ...init, headers: existing });
-    }
-  } catch { /* not signed in — fall through */ }
-
-  // 3. Tester / widget key from localStorage (wm-pro-key or wm-widget-key).
+  // 2. Tester / widget key from localStorage (wm-pro-key or wm-widget-key).
+  // Must run BEFORE Clerk to prevent a free Clerk session from intercepting the
+  // request and returning 403 before the tester key is ever checked.
   try {
     const { getProWidgetKey, getWidgetAgentKey } = await import('@/services/widget-store');
     const testerKey = getProWidgetKey() || getWidgetAgentKey();
@@ -45,6 +37,16 @@ export async function premiumFetch(
       return globalThis.fetch(input, { ...init, headers: existing });
     }
   } catch { /* not available — fall through */ }
+
+  // 3. Clerk Pro session token (fallback for users without a tester key).
+  try {
+    const { getClerkToken } = await import('@/services/clerk');
+    const token = await getClerkToken();
+    if (token) {
+      existing.set('Authorization', `Bearer ${token}`);
+      return globalThis.fetch(input, { ...init, headers: existing });
+    }
+  } catch { /* not signed in — fall through */ }
 
   // 4. No auth — let the request through (gateway will return 401).
   return globalThis.fetch(input, init);

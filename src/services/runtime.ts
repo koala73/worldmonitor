@@ -784,17 +784,19 @@ export function installWebApiRedirect(): void {
         return { ...init, headers };
       }
     } catch { /* runtime-config unavailable — fall through */ }
-    // Clerk Pro: inject Bearer token
-    const token = await getClerkToken();
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-      return { ...init, headers };
-    }
-    // Tester key (wm-pro-key / wm-widget-key): forward as API key header
+    // Tester key (wm-pro-key / wm-widget-key): forward as API key header.
+    // Must run BEFORE Clerk to prevent a free Clerk session from intercepting
+    // the request and returning 403 before the tester key is ever tried.
     const { getProWidgetKey, getWidgetAgentKey } = await import('@/services/widget-store');
     const testerKey = getProWidgetKey() || getWidgetAgentKey();
     if (testerKey) {
       headers.set('X-WorldMonitor-Key', testerKey);
+      return { ...init, headers };
+    }
+    // Clerk Pro: inject Bearer token (fallback for users without a tester key)
+    const token = await getClerkToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
       return { ...init, headers };
     }
     return init;
