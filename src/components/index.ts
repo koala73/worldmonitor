@@ -18,6 +18,7 @@ export * from './REITPanel';
 export * from './REITCorrelationPanel';
 export * from './REITSocialPanel';
 export * from './REITPeerOverlay';
+export * from './REITDetailPanel';
 export * from './EnergyComplexPanel';
 export * from './SearchModal';
 export * from './MobileWarningModal';
