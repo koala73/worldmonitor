@@ -414,8 +414,8 @@ export class DataLoaderManager implements AppModule {
         tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
       }
 
-      // REIT data (FINANCE variant)
-      if (SITE_VARIANT === 'finance') {
+      // REIT data (FINANCE and REITS variants)
+      if (SITE_VARIANT === 'finance' || SITE_VARIANT === 'reits') {
         if (shouldLoad('reits') || shouldLoad('reit-correlation') || shouldLoad('reit-social')) {
           tasks.push({ name: 'reits', task: runGuarded('reits', () => this.loadReits()) });
         }
