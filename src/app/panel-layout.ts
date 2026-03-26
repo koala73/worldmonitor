@@ -1186,7 +1186,7 @@ export class PanelLayoutManager implements AppModule {
         block.style.display = isPro ? '' : 'none';
       }
     };
-    applyProBlockGating(hasPremiumAccess());
+    applyProBlockGating(hasPremiumAccess(getAuthState()));
     this.proBlockUnsubscribe = subscribeAuthState((state) => {
       applyProBlockGating(hasPremiumAccess(state));
     });
