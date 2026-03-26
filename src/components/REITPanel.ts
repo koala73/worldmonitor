@@ -181,7 +181,7 @@ export class REITPanel extends Panel {
             <span style="display:inline-block;font-size:9px;padding:0 4px;border-radius:3px;background:${sectorColor}22;color:${sectorColor};margin-left:4px">${escapeHtml(q.sector)}</span>
           </td>
           <td style="color:var(--text-dim);font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(q.name)}</td>
-          <td style="text-align:right;font-size:11px">${currency}${formatPrice(q.price)}</td>
+          <td style="text-align:right;font-size:11px">${currency}${q.price >= 1000 ? q.price.toLocaleString(undefined, { maximumFractionDigits: 0 }) : q.price.toFixed(2)}</td>
           <td style="text-align:right"><span class="${getChangeClass(q.change)}" style="font-size:11px">${formatChange(q.change)}</span></td>
           <td style="text-align:right;color:#d2a8ff;font-size:11px;font-weight:500">${q.dividendYield.toFixed(2)}%</td>
           <td style="text-align:right">${miniSparkline(q.sparkline, q.change)}</td>
