@@ -300,6 +300,22 @@ export function createDomainGateway(
       }
     }
 
+    // Bearer role check — authenticated users who bypassed the API key gate still
+    // need a pro role for PREMIUM_RPC_PATHS (entitlement check below handles tier-gated).
+    if (sessionUserId && !keyCheck.valid && PREMIUM_RPC_PATHS.has(pathname)) {
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        const { validateBearerToken } = await import('./auth-session');
+        const session = await validateBearerToken(authHeader.slice(7));
+        if (!session.valid || session.role !== 'pro') {
+          return new Response(JSON.stringify({ error: 'Pro subscription required' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        }
+      }
+    }
+
     // Entitlement check — blocks tier-gated endpoints for users below required tier
     const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
     if (entitlementResponse) return entitlementResponse;
