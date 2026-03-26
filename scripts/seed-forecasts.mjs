@@ -15136,6 +15136,7 @@ RULES:
 - NEVER use tickers not in the ALLOWED TICKERS list
 - NEVER invent data — use only what is provided
 - Do NOT include duplicate tickers across cards
+- NEVER write underscored_variable_names or internal keys in any field — always use plain English prose
 
 Respond with ONLY a JSON array:
 [{"ticker":"","name":"","direction":"","timeframe":"","confidence":"","title":"","narrative":"","risk_caveat":"","driver":""},...]`;
@@ -15146,13 +15147,15 @@ function buildMarketImplicationsContext(inputs) {
   // Pre-synthesised critical signals (highest-value input — already ranked by strength)
   const criticalSignals = inputs.criticalSignalBundle?.signals;
   if (Array.isArray(criticalSignals) && criticalSignals.length > 0) {
+    const humanizeType = t => t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     const top = criticalSignals.slice(0, 8).map(s => {
+      const label = s.title || humanizeType(s.type || '');
       const strength = s.strength != null ? ` strength=${(s.strength * 100).toFixed(0)}%` : '';
       const conf = s.confidence != null ? ` conf=${(s.confidence * 100).toFixed(0)}%` : '';
       const domains = Array.isArray(s.domains) && s.domains.length ? ` [${s.domains.join(',')}]` : '';
       const evidence = Array.isArray(s.supportingEvidence) && s.supportingEvidence.length
         ? ` — ${s.supportingEvidence.slice(0, 2).join('; ')}` : '';
-      return `- ${sanitizeForPrompt(s.title || s.type || '')}${strength}${conf}${domains}${evidence}`;
+      return `- ${sanitizeForPrompt(label)}${strength}${conf}${domains}${evidence}`;
     });
     parts.push(`[CRITICAL INTELLIGENCE SIGNALS]\n${top.join('\n')}`);
   }
