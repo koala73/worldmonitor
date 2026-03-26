@@ -175,7 +175,8 @@ export class AirlineIntelPanel extends Panel {
     }
 
     private async refresh(): Promise<void> {
-        void this.loadOps();
+        // Skip loadOps when on the ops tab — loadTab('ops') fetches the same data
+        if (this.activeTab !== 'ops') void this.loadOps();
         void this.loadTab(this.activeTab);
     }
 
