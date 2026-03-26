@@ -222,4 +222,122 @@ export const IRELAND_TECH_HQS: IrelandTechHQ[] = [
     description:
       "Ericsson's Ireland R&D Center, focusing on 5G technology, telecom software, and network solutions.",
   },
+
+  // Monitoring & Observability
+  {
+    id: 'datadog-dublin',
+    company: 'Datadog',
+    type: 'emea-hq',
+    location: 'Dublin',
+    lat: 53.3430,
+    lng: -6.2390,
+    employees: 200,
+    address: "56 John Rogerson's Quay, Grand Canal Dock, Dublin 2",
+    founded: 2010,
+    website: 'https://www.datadoghq.com',
+    description:
+      'Cloud monitoring and observability platform. EMEA headquarters managing enterprise customers across Europe.',
+  },
+  {
+    id: 'dynatrace-dublin',
+    company: 'Dynatrace',
+    type: 'emea-hq',
+    location: 'Dublin',
+    lat: 53.3515,
+    lng: -6.2495,
+    employees: 150,
+    address: '25 North Wall Quay, IFSC, Dublin 1',
+    founded: 2005,
+    website: 'https://www.dynatrace.com',
+    description:
+      'AI-powered application performance monitoring and observability platform for enterprise cloud environments.',
+  },
+  {
+    id: 'splunk-galway',
+    company: 'Splunk',
+    type: 'european-hq',
+    location: 'Galway',
+    lat: 53.2667,
+    lng: -8.9333,
+    employees: 100,
+    address: 'Oranmore Business Park, Oranmore, Co. Galway',
+    founded: 2003,
+    website: 'https://www.splunk.com',
+    description:
+      'Data analytics and observability platform. Ireland office (now part of Cisco) supporting EMEA operations.',
+  },
+
+  // Enterprise Software
+  {
+    id: 'servicenow-dublin',
+    company: 'ServiceNow',
+    type: 'emea-hq',
+    location: 'Dublin',
+    lat: 53.3413,
+    lng: -6.2603,
+    employees: 600,
+    address: '60 Dawson Street, Dublin 2',
+    founded: 2004,
+    website: 'https://www.servicenow.com',
+    description:
+      'Enterprise IT service management and digital workflow platform. EMEA headquarters and Centre of Excellence.',
+  },
+  {
+    id: 'workday-dublin',
+    company: 'Workday',
+    type: 'emea-hq',
+    location: 'Dublin',
+    lat: 53.3394,
+    lng: -6.2594,
+    employees: 250,
+    address: 'College Square, Dublin 2',
+    founded: 2005,
+    website: 'https://www.workday.com',
+    description:
+      'Enterprise cloud applications for HR, finance, and planning. EMEA operations center.',
+  },
+  {
+    id: 'sap-dublin',
+    company: 'SAP',
+    type: 'emea-hq',
+    location: 'Dublin',
+    lat: 53.3378,
+    lng: -6.2712,
+    employees: 1000,
+    address: 'Citywest Business Campus, Dublin 24',
+    founded: 1972,
+    website: 'https://www.sap.com',
+    description:
+      'Enterprise software giant. Ireland hub for ERP, cloud solutions, and EMEA regional operations.',
+  },
+  {
+    id: 'oracle-dublin',
+    company: 'Oracle',
+    type: 'emea-hq',
+    location: 'Dublin',
+    lat: 53.3067,
+    lng: -6.2207,
+    employees: 2000,
+    address: 'Oracle EMEA Campus, East Point Business Park, Dublin 3',
+    founded: 1977,
+    website: 'https://www.oracle.com',
+    description:
+      'Database and cloud infrastructure leader. EMEA headquarters managing enterprise operations across the region.',
+  },
+
+  // Financial Data
+  {
+    id: 'bloomberg-dublin',
+    company: 'Bloomberg',
+    type: 'european-hq',
+    location: 'Dublin',
+    lat: 53.3330,
+    lng: -6.2630,
+    employees: 150,
+    address: "One Charlemont Square, Saint Kevin's, Dublin 2",
+    founded: 1981,
+    website: 'https://www.bloomberg.com',
+    description:
+      'Global financial data and news provider. Dublin office supporting Bloomberg Terminal and data services for EMEA.',
+  },
 ];
