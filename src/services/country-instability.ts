@@ -735,15 +735,19 @@ export function ingestTemporalAnomaliesForCII(anomalies: TemporalAnomaly[]): voi
   }
 }
 
-export function ingestEarthquakesForCII(earthquakes: Earthquake[]): void {
+const EARTHQUAKE_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function ingestEarthquakesForCII(earthquakes: Earthquake[], now = Date.now()): void {
   for (const [, data] of countryDataMap) {
     data.earthquakeSignificantCount = 0;
     data.earthquakeMajorCount = 0;
     data.earthquakeSevereCount = 0;
   }
 
+  const cutoff = now - EARTHQUAKE_LOOKBACK_MS;
   for (const eq of earthquakes) {
     if (eq.magnitude < 5.5) continue;
+    if (eq.occurredAt < cutoff) continue;
     processedCount++;
     const code = getCountryAtCoordinates(eq.location?.latitude ?? 0, eq.location?.longitude ?? 0)?.code;
     if (!code || code === 'XX') { unmappedCount++; continue; }
