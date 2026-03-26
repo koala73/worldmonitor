@@ -904,6 +904,12 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('reit-correlation', () => new REITCorrelationPanel());
     this.createPanel('reit-social', () => new REITSocialPanel());
     const reitDetailPanel = this.createPanel('reit-detail', () => new REITDetailPanel());
+    // REIT variant: explicitly create news panels
+    if (SITE_VARIANT === 'reits') {
+      this.createNewsPanel('reit-us', 'panels.reitUs');
+      this.createNewsPanel('reit-china', 'panels.reitChina');
+      this.createNewsPanel('property-markets', 'panels.propertyMarkets');
+    }
     // Wire REITPanel click → show detail
     const reitsPanel = this.ctx.panels['reits'] as import('@/components/REITPanel').REITPanel | undefined;
     if (reitsPanel && reitDetailPanel) {

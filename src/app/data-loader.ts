@@ -974,9 +974,10 @@ export class DataLoaderManager implements AppModule {
   async loadNews(): Promise<void> {
     // Localhost mock for reits variant — RSS proxy not available on dev server
     const isLocalhost = typeof window !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-    if (isLocalhost && SITE_VARIANT === 'reits') {
+    if (isLocalhost && (SITE_VARIANT === 'reits' || (typeof document !== 'undefined' && document.documentElement.dataset.variant === 'reits'))) {
       const now = new Date();
-      const mockNews: Record<string, Array<{ title: string; url: string; source: string; pubDate: string }>> = {
+      type MockArticle = { title: string; url: string; source: string; pubDate: string };
+      const mockNews: Record<string, MockArticle[]> = {
         'reit-us': [
           { title: 'Prologis Reports Record Industrial REIT Occupancy at 97.2% in Q1 2026', url: '#', source: 'REIT.com', pubDate: new Date(now.getTime() - 2 * 3600000).toISOString() },
           { title: 'Simon Property Group Announces $500M Mall Renovation Program', url: '#', source: 'Nareit', pubDate: new Date(now.getTime() - 4 * 3600000).toISOString() },
@@ -1000,21 +1001,27 @@ export class DataLoaderManager implements AppModule {
           { title: 'US Industrial Vacancy Rate Remains Near Historic Lows at 4.8%', url: '#', source: 'Property Markets', pubDate: new Date(now.getTime() - 14 * 3600000).toISOString() },
         ],
       };
-      for (const [category, items] of Object.entries(mockNews)) {
-        const panel = this.ctx.newsPanels[category];
-        if (panel) {
-          const newsItems = items.map((item, i) => ({
-            title: item.title,
-            url: item.url,
-            source: item.source,
-            pubDate: item.pubDate,
-            id: `mock-${category}-${i}`,
-            category,
-          }));
-          panel.renderNews(newsItems as any);
+      // Retry every 500ms until panels are available (max 5 attempts)
+      const inject = (attempt = 0) => {
+        let found = 0;
+        for (const [category, items] of Object.entries(mockNews)) {
+          const panel = this.ctx.newsPanels[category] ?? this.ctx.panels[category];
+          if (panel && 'renderNews' in panel) {
+            const newsItems = items.map((item: MockArticle, i: number) => ({
+              title: item.title, url: item.url, source: item.source,
+              pubDate: item.pubDate, id: `mock-${category}-${i}`, category,
+            }));
+            (panel as any).renderNews(newsItems);
+            found++;
+          }
         }
-      }
-      console.log('[News] Using mock data (localhost reits dev mode)');
+        if (found === 0 && attempt < 10) {
+          setTimeout(() => inject(attempt + 1), 500);
+        } else {
+          console.log(`[News] Mock: ${found} panels rendered (attempt ${attempt})`);
+        }
+      };
+      inject();
       return;
     }
 
