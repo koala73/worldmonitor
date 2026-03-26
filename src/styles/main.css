@@ -1809,6 +1809,7 @@ body.panel-resize-active iframe {
   overflow-y: auto;
   padding: 8px;
   min-width: 0;
+  user-select: none;
 }
 
 .panel-content::-webkit-scrollbar {

@@ -1587,7 +1587,7 @@ export class PanelLayoutManager implements AppModule {
         target.classList?.contains('panel-col-resize-handle') ||
         target.closest?.('.panel-col-resize-handle')
       ) return;
-      if (target.closest('button, a, input, select, textarea, .panel-content')) return;
+      if (target.closest('button, a, input, select, textarea')) return;
 
       isDragging = true;
       dragStarted = false;
