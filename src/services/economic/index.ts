@@ -336,18 +336,6 @@ function protoEnergyToOilMetric(proto: ProtoEnergyPrice): OilMetric {
   };
 }
 
-export async function checkEiaStatus(): Promise<boolean> {
-  if (!isFeatureAvailable('energyEia')) return false;
-  try {
-    const resp = await eiaBreaker.execute(async () => {
-      return client.getEnergyPrices({ commodities: ['wti'] }, { signal: AbortSignal.timeout(20_000) });
-    }, emptyEiaFallback);
-    return resp.prices.length > 0;
-  } catch {
-    return false;
-  }
-}
-
 export async function fetchOilAnalytics(): Promise<OilAnalytics> {
   const empty: OilAnalytics = {
     wtiPrice: null, brentPrice: null, usProduction: null, usInventory: null, fetchedAt: new Date(),
