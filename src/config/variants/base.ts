@@ -51,6 +51,12 @@ export const REFRESH_INTERVALS = {
   correlationEngine: 5 * 60 * 1000,
   crossSourceSignals: 15 * 60 * 1000,
   hormuzTracker: 60 * 60 * 1000, // 1h — data updates daily
+  macroTiles: 30 * 60 * 1000,
+  fsi: 30 * 60 * 1000,
+  yieldCurve: 30 * 60 * 1000,
+  earningsCalendar: 60 * 60 * 1000,
+  economicCalendar: 60 * 60 * 1000,
+  cotPositioning: 60 * 60 * 1000,
 };
 
 // Monitor colors - shared

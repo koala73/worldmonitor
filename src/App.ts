@@ -1224,37 +1224,37 @@ export class App {
     this.refreshScheduler.scheduleRefresh(
       'macro-tiles',
       () => (this.state.panels['macro-tiles'] as MacroTilesPanel).fetchData(),
-      30 * 60 * 1000,
+      REFRESH_INTERVALS.macroTiles,
       () => this.isPanelNearViewport('macro-tiles')
     );
     this.refreshScheduler.scheduleRefresh(
       'fsi',
       () => (this.state.panels['fsi'] as FSIPanel).fetchData(),
-      30 * 60 * 1000,
+      REFRESH_INTERVALS.fsi,
       () => this.isPanelNearViewport('fsi')
     );
     this.refreshScheduler.scheduleRefresh(
       'yield-curve',
       () => (this.state.panels['yield-curve'] as YieldCurvePanel).fetchData(),
-      30 * 60 * 1000,
+      REFRESH_INTERVALS.yieldCurve,
       () => this.isPanelNearViewport('yield-curve')
     );
     this.refreshScheduler.scheduleRefresh(
       'earnings-calendar',
       () => (this.state.panels['earnings-calendar'] as EarningsCalendarPanel).fetchData(),
-      60 * 60 * 1000,
+      REFRESH_INTERVALS.earningsCalendar,
       () => this.isPanelNearViewport('earnings-calendar')
     );
     this.refreshScheduler.scheduleRefresh(
       'economic-calendar',
       () => (this.state.panels['economic-calendar'] as EconomicCalendarPanel).fetchData(),
-      60 * 60 * 1000,
+      REFRESH_INTERVALS.economicCalendar,
       () => this.isPanelNearViewport('economic-calendar')
     );
     this.refreshScheduler.scheduleRefresh(
       'cot-positioning',
       () => (this.state.panels['cot-positioning'] as CotPositioningPanel).fetchData(),
-      60 * 60 * 1000,
+      REFRESH_INTERVALS.cotPositioning,
       () => this.isPanelNearViewport('cot-positioning')
     );
 
