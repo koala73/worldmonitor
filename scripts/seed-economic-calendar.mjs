@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -17,21 +17,16 @@ const FRED_RELEASES = [
   { id: 9,   event: 'Retail Sales',     unit: '%' },
 ];
 
-// FOMC rate decision dates — Fed publishes full year schedule in advance.
+// 2026 FOMC rate decision dates (Fed publishes full year schedule in advance)
 // Source: federalreserve.gov/monetarypolicy/fomccalendars.htm
-// Add next year's dates before Dec 31 of the current year to avoid a gap.
-const FOMC_DATES_BY_YEAR = {
-  2026: ['2026-01-29', '2026-03-19', '2026-05-07', '2026-06-18', '2026-07-30', '2026-09-17', '2026-11-05', '2026-12-17'],
-  // 2027: [...] — update when Fed releases the 2027 calendar (typically Nov of prior year)
-};
+const FOMC_DATES_2026 = [
+  '2026-01-29', '2026-03-19', '2026-05-07',
+  '2026-06-18', '2026-07-30', '2026-09-17',
+  '2026-11-05', '2026-12-17',
+];
 
 function buildFomcEvents(today) {
-  const thisYear = new Date(today).getFullYear();
-  const dates = [
-    ...(FOMC_DATES_BY_YEAR[thisYear] ?? []),
-    ...(FOMC_DATES_BY_YEAR[thisYear + 1] ?? []),
-  ];
-  return dates
+  return FOMC_DATES_2026
     .filter((d) => d >= today)
     .map((date) => ({
       event: 'FOMC Rate Decision',
@@ -55,10 +50,7 @@ async function fetchFredReleaseDates(releaseId, apiKey, today, toDate) {
     `&api_key=${apiKey}` +
     `&file_type=json`;
 
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
+  const resp = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!resp.ok) throw new Error(`FRED release/dates HTTP ${resp.status} (release_id=${releaseId})`);
 
   const data = await resp.json();
@@ -76,8 +68,7 @@ async function fetchEconomicCalendar() {
 
   if (!apiKey) {
     console.warn('  FRED_API_KEY missing — returning FOMC dates only');
-    const events = fomcEvents;
-    return { events, fromDate: today, toDate, total: events.length };
+    return { events: fomcEvents, fromDate: today, toDate, total: fomcEvents.length };
   }
 
   console.log(`  Fetching FRED economic release calendar ${today} → ${toDate}`);
