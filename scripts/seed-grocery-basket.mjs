@@ -139,9 +139,11 @@ const SYMBOL_MAP = { '£': 'GBP', '€': 'EUR', '¥': 'JPY', '₩': 'KRW', '₹'
 
 // Minimum plausible local price per currency — prevents matching product codes / IDs
 // e.g. IDR 4 = $0.0003 (nonsense), NGN 20 = $0.01 (nonsense), KRW 5 = $0.004 (nonsense)
-// JPY: even the cheapest grocery item in Japan (instant noodles) costs 100+ yen; anything
-// under 50 is a product code, portion weight, or sub-unit price, never a 1kg/1L shelf price.
-const CURRENCY_MIN = { NGN: 50, IDR: 500, ARS: 50, KRW: 1000, ZAR: 2, PKR: 20, LBP: 1000, JPY: 50 };
+// JPY: grocery items in Japan cost 100+ yen; under 50 = product code or sub-unit price.
+// TRY: Turkish supermarket shelf prices ≥ 10 TRY; under 10 = per-100g sub-unit match.
+// EGP: Egyptian supermarket prices ≥ 5 EGP; under 5 = subsidised/fractional unit.
+// INR: Indian supermarket prices ≥ 12 INR; under 12 = product code or stale clearance.
+const CURRENCY_MIN = { NGN: 50, IDR: 500, ARS: 50, KRW: 1000, ZAR: 2, PKR: 20, LBP: 1000, JPY: 50, TRY: 10, EGP: 5, INR: 12 };
 
 // Maximum plausible USD price per item — catches bulk/wholesale/specialty products.
 // Set to ~2× the most expensive legitimate retail price globally for each item.
@@ -213,9 +215,10 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
   const countriesResult = [];
 
   // Load all learned routes in one pipeline request before the country loop.
-  // Include a one-time migration sentinel so the oil eviction only fires once.
+  // Include sentinel keys for one-time migrations so each eviction only fires once.
   const OIL_MIGRATION_KEY = '_migration:canola-oil-v1';
-  const routeKeys = [...config.countries.flatMap(c => config.items.map(i => `${c.code}:${i.id}`)), OIL_MIGRATION_KEY];
+  const BAD_PRICES_KEY    = '_migration:bad-prices-v1'; // JP/TR/EG/IN sub-unit scrapes + JP site change
+  const routeKeys = [...config.countries.flatMap(c => config.items.map(i => `${c.code}:${i.id}`)), OIL_MIGRATION_KEY, BAD_PRICES_KEY];
   const learnedRoutes = await bulkReadLearnedRoutes('grocery-basket', routeKeys).catch((err) => {
     console.warn(`  [routes] load failed (non-fatal): ${err.message}`);
     return new Map();
@@ -236,6 +239,26 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
       for (const k of oilEvictions) learnedRoutes.delete(k);
     }
     routeUpdates.set(OIL_MIGRATION_KEY, 'done'); // persisted at end of run alongside other route updates
+  }
+
+  // One-time eviction: clear known-bad routes from the previous site config (JP) and
+  // from confirmed sub-unit price scrapes (TR/EG/IN). Forces fresh EXA searches on next run.
+  // All JP routes evicted because sites changed from aggregators (kakaku.com) to supermarkets.
+  if (!learnedRoutes.has(BAD_PRICES_KEY)) {
+    const knownBad = new Set([
+      ...config.countries.filter(c => c.code === 'JP').flatMap(c => config.items.map(i => `JP:${i.id}`)),
+      'TR:sugar', 'TR:eggs', 'TR:milk', 'TR:oil',
+      'EG:salt', 'EG:bread', 'EG:milk',
+      'IN:potatoes', 'IN:milk',
+    ].filter(k => learnedRoutes.has(k)));
+    if (knownBad.size > 0) {
+      console.log(`  [routes] one-time eviction: clearing ${knownBad.size} known-bad price routes (JP sites + TR/EG/IN sub-unit)`);
+      await bulkWriteLearnedRoutes('grocery-basket', new Map(), knownBad).catch(err =>
+        console.warn(`  [routes] bad-prices eviction failed (non-fatal): ${err.message}`)
+      );
+      for (const k of knownBad) learnedRoutes.delete(k);
+    }
+    routeUpdates.set(BAD_PRICES_KEY, 'done');
   }
 
   for (const country of config.countries) {
