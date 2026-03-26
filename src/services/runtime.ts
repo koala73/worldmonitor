@@ -781,20 +781,33 @@ export function installWebApiRedirect(): void {
   };
 
   /**
-   * For premium API paths, inject an Authorization: Bearer header when the
-   * user has an active session and no existing auth header is present.
+   * For premium API paths, inject auth when the user has premium access but no
+   * existing auth header is present. Handles three paths:
+   *   1. Clerk Pro: Authorization: Bearer <token>
+   *   2. Tester key (wm-pro-key / wm-widget-key): X-WorldMonitor-Key: <key>
+   *   3. API key users: already set X-WorldMonitor-Key — left unchanged
    * Returns the original init unchanged for non-premium paths (zero overhead).
    */
   const enrichInitForPremium = async (pathWithQuery: string, init?: RequestInit): Promise<RequestInit | undefined> => {
     const path = pathWithQuery.split('?')[0] ?? pathWithQuery;
     if (!WEB_PREMIUM_API_PATHS.has(path)) return init;
-    const token = await getClerkToken();
-    if (!token) return init;
     const headers = new Headers(init?.headers);
     // Don't overwrite existing auth headers (API key users keep their flow)
     if (headers.has('Authorization') || headers.has('X-WorldMonitor-Key')) return init;
-    headers.set('Authorization', `Bearer ${token}`);
-    return { ...init, headers };
+    // Clerk Pro: inject Bearer token
+    const token = await getClerkToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+      return { ...init, headers };
+    }
+    // Tester key (wm-pro-key / wm-widget-key): forward as API key header
+    const { getProWidgetKey, getWidgetAgentKey } = await import('@/services/widget-store');
+    const testerKey = getProWidgetKey() || getWidgetAgentKey();
+    if (testerKey) {
+      headers.set('X-WorldMonitor-Key', testerKey);
+      return { ...init, headers };
+    }
+    return init;
   };
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
