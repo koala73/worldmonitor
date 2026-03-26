@@ -456,12 +456,15 @@ export class TradePolicyPanel extends Panel {
       return `<div class="economic-empty">${t('components.tradePolicy.noComtradeData')}</div>`;
     }
 
-    // Show world-total rows only (partnerCode "000"), deduplicated to latest year per reporter+commodity.
+    // Prefer world-total rows: UN Comtrade API returns partnerCode as integer 0 for world aggregates,
+    // stored as string "0"; "000" is the seed fallback default. If no world-total rows exist
+    // (bilateral-only preview data), fall back to all flows so the table is never empty.
     // Two-step dedup: (1) within same (reporter, cmd, year) keep max tradeValueUsd (exports vs imports);
     // (2) then keep latest year per (reporter, cmd).
-    const worldTotals = flows.filter(f => f.partnerCode === '000');
+    const worldTotals = flows.filter(f => f.partnerCode === '0' || f.partnerCode === '000');
+    const toDedup = worldTotals.length > 0 ? worldTotals : flows;
     const byYearDominant = new Map<string, typeof flows[0]>();
-    for (const f of worldTotals) {
+    for (const f of toDedup) {
       const key = `${f.reporterCode}:${f.cmdCode}:${f.year}`;
       const existing = byYearDominant.get(key);
       if (!existing || f.tradeValueUsd > existing.tradeValueUsd) byYearDominant.set(key, f);
