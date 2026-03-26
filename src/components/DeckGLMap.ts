@@ -88,8 +88,8 @@ import {
   MINING_SITES,
   PROCESSING_PLANTS,
   COMMODITY_PORTS as COMMODITY_GEO_PORTS,
+  SANCTIONED_COUNTRIES_ALPHA2,
 } from '@/config';
-import { SANCTIONED_COUNTRIES_ALPHA2 } from '@/config/geo';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
