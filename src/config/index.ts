@@ -56,12 +56,13 @@ export {
 // Only import what's needed for each variant
 // ============================================
 
-// Full variant (geopolitical) - only included in full builds
-// These are large data files that should be tree-shaken in tech builds
-export {
-  FEEDS,
-  INTEL_SOURCES,
-} from './feeds';
+// Variant-aware FEEDS export
+import { SITE_VARIANT } from './variant';
+import { FEEDS as FULL_FEEDS, INTEL_SOURCES } from './feeds';
+import { FEEDS as REITS_FEEDS } from './variants/reits';
+export { INTEL_SOURCES };
+// REITs variant uses its own focused feeds; all others use the full set
+export const FEEDS = SITE_VARIANT === 'reits' ? REITS_FEEDS : FULL_FEEDS;
 
 export {
   INTEL_HOTSPOTS,
