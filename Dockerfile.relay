@@ -10,7 +10,8 @@
 FROM node:22-alpine
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
 
@@ -26,6 +27,10 @@ COPY shared/ ./shared/
 
 # Data files required by the relay (telegram-channels.json, etc.)
 COPY data/ ./data/
+
+RUN chown -R appuser:appgroup /app
+
+USER appuser
 
 EXPOSE 3004
 

@@ -184,8 +184,6 @@ export default async function handler(req) {
     console.error('RSS proxy error:', feedUrl, error.message);
     return jsonResponse({
       error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed',
-      details: error.message,
-      url: feedUrl
     }, isTimeout ? 504 : 502, corsHeaders);
   }
 }

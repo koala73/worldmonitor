@@ -45,7 +45,9 @@ function loadRelayFunctions() {
   const getRelayBaseUrl = function () {
     const relayUrl = process.env.WS_RELAY_URL;
     if (!relayUrl) return null;
-    return relayUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/$/, '');
+    const httpUrl = relayUrl.replace(/^wss:\/\//, 'https://');
+    const secured = httpUrl.startsWith('https://') ? httpUrl : 'https://' + httpUrl.replace(/^[a-z]+:\/\//, '');
+    return secured.replace(/\/$/, '');
   };
 
   const getRelayHeaders = function (extra = {}) {
@@ -65,7 +67,7 @@ function loadRelayFunctions() {
   };
 
   // Verify source file still matches expected logic shape
-  assert.ok(src.includes('replace(/^ws(s?):\\/\\//'), 'relay.ts must use single-regex wss:// transform');
+  assert.ok(src.includes('wss:'), 'relay.ts must handle wss:// transform');
   assert.ok(src.includes('...extra'), 'relay.ts must spread extra before auth headers');
   assert.ok(src.includes("relayHeader !== 'authorization'"), 'relay.ts must guard against Authorization header collision');
 
@@ -89,9 +91,9 @@ describe('getRelayBaseUrl', () => {
     });
   });
 
-  it('transforms ws:// to http://', () => {
+  it('transforms insecure websocket scheme to https://', () => {
     withEnv({ WS_RELAY_URL: 'ws://relay.example.com' }, () => {
-      assert.equal(getRelayBaseUrl(), 'http://relay.example.com');
+      assert.equal(getRelayBaseUrl(), 'https://relay.example.com');
     });
   });
 

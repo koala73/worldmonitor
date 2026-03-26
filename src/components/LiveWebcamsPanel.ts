@@ -415,9 +415,19 @@ export class LiveWebcamsPanel extends Panel {
     container.appendChild(overlay);
   }
 
+  private static readonly TRUSTED_ORIGINS = new Set([
+    'https://www.youtube.com',
+    'https://www.youtube-nocookie.com',
+    'https://webcams.windy.com',
+  ]);
+
   private handleEmbedMessage(e: MessageEvent): void {
     const iframe = this.findIframeBySource(e.source);
     if (!iframe) return;
+
+    // Validate origin: only accept messages from YouTube, Windy, or the local sidecar.
+    const localOrigin = isDesktopRuntime() ? `http://localhost:${getLocalApiPort()}` : null;
+    if (!LiveWebcamsPanel.TRUSTED_ORIGINS.has(e.origin) && e.origin !== localOrigin) return;
 
     // Desktop sidecar posts { type: 'yt-ready' | 'yt-state' | 'yt-error' }
     const msg = e.data as { type?: string; state?: number; code?: number; event?: string; info?: unknown } | string | null;

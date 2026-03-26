@@ -44,7 +44,9 @@ export function wrapWidgetHtml(html: string, extraClass = ''): string {
 function escapeSrcdoc(str: string): string {
   return str
     .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 export function wrapProWidgetHtml(bodyContent: string): string {

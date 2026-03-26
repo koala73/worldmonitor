@@ -181,15 +181,33 @@ const SHORT_KEYWORDS = new Set([
 
 const keywordRegexCache = new Map<string, RegExp>();
 
-function getKeywordRegex(kw: string): RegExp {
-  let re = keywordRegexCache.get(kw);
-  if (!re) {
-    re = SHORT_KEYWORDS.has(kw)
-      ? new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
-      : new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    keywordRegexCache.set(kw, re);
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Pre-build all keyword regexes at module load time so that no RegExp is
+// constructed from runtime strings during request handling (eliminates ReDoS surface).
+const ALL_KEYWORD_MAPS: KeywordMap[] = [
+  CRITICAL_KEYWORDS, HIGH_KEYWORDS, MEDIUM_KEYWORDS, LOW_KEYWORDS,
+  TECH_HIGH_KEYWORDS, TECH_MEDIUM_KEYWORDS, TECH_LOW_KEYWORDS,
+];
+for (const map of ALL_KEYWORD_MAPS) {
+  for (const kw of Object.keys(map)) {
+    if (!keywordRegexCache.has(kw)) {
+      const escaped = escapeRegExp(kw);
+      keywordRegexCache.set(kw, SHORT_KEYWORDS.has(kw)
+        ? new RegExp(`\\b${escaped}\\b`)
+        : new RegExp(escaped));
+    }
   }
-  return re;
+}
+
+function keywordMatches(kw: string, text: string): boolean {
+  const cached = keywordRegexCache.get(kw);
+  if (cached) return cached.test(text);
+  // Fallback for unknown keywords (should not happen with hardcoded maps).
+  // Use plain string search — no dynamic RegExp construction at runtime.
+  return text.includes(kw);
 }
 
 function matchKeywords(
@@ -197,7 +215,7 @@ function matchKeywords(
   keywords: KeywordMap
 ): { keyword: string; category: EventCategory } | null {
   for (const [kw, cat] of Object.entries(keywords)) {
-    if (getKeywordRegex(kw).test(titleLower)) {
+    if (keywordMatches(kw, titleLower)) {
       return { keyword: kw, category: cat };
     }
   }

@@ -182,15 +182,19 @@ for (const tag of KNOWN_TAGS) {
   });
 }
 
+/**
+ * Extract the text content of an XML tag.  Only pre-cached tag names (see
+ * KNOWN_TAGS) are accepted — unknown tags return '' immediately.  This avoids
+ * constructing RegExp from runtime strings, eliminating any ReDoS risk.
+ */
 function extractTag(xml: string, tag: string): string {
   const cached = TAG_REGEX_CACHE.get(tag);
-  const cdataRe = cached?.cdata ?? new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, 'i');
-  const plainRe = cached?.plain ?? new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i');
+  if (!cached) return '';
 
-  const cdataMatch = xml.match(cdataRe);
+  const cdataMatch = xml.match(cached.cdata);
   if (cdataMatch) return cdataMatch[1]!.trim();
 
-  const match = xml.match(plainRe);
+  const match = xml.match(cached.plain);
   return match ? decodeXmlEntities(match[1]!.trim()) : '';
 }
 

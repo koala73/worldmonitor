@@ -1,4 +1,5 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 
 export const config = { runtime: 'edge' };
@@ -11,11 +12,16 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const BLOCKED_HOST_PATTERNS = [
   /^localhost$/i,
   /^127\./,
+  /^0\.0\.0\.0$/,       // unspecified IPv4 — routes to loopback on many systems
+  /^0+$/,               // zero in various forms
   /^10\./,
   /^172\.(1[6-9]|2\d|3[01])\./,
   /^192\.168\./,
-  /^169\.254\./,   // link-local + cloud metadata (AWS/GCP/Azure)
+  /^169\.254\./,         // link-local + cloud metadata (AWS/GCP/Azure)
   /^::1$/,
+  /^::$/,                // unspecified IPv6
+  /^::ffff:/i,           // IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1)
+  /^\[/,                 // bracket-wrapped IPv6 in hostname
   /^fd[0-9a-f]{2}:/i,
   /^fe80:/i,
 ];
@@ -42,6 +48,31 @@ function validateServerUrl(raw) {
   return url;
 }
 
+// Headers that must not be overridden by user-supplied custom headers.
+// Allowing these to be set by the client could lead to SSRF (Host), auth
+// hijacking, or request smuggling via hop-by-hop headers.
+const BLOCKED_HEADER_NAMES = new Set([
+  'host',
+  'cookie',
+  'set-cookie',
+  'transfer-encoding',
+  'content-length',
+  'connection',
+  'keep-alive',
+  'te',
+  'trailer',
+  'upgrade',
+  'proxy-authorization',
+  'proxy-authenticate',
+  'via',
+  'forwarded',
+  'x-forwarded-for',
+  'x-forwarded-host',
+  'x-forwarded-proto',
+  'x-real-ip',
+  'cf-connecting-ip',
+]);
+
 function buildHeaders(customHeaders) {
   const h = {
     'Content-Type': 'application/json',
@@ -54,7 +85,8 @@ function buildHeaders(customHeaders) {
         // Strip CRLF to prevent header injection
         const safeKey = k.replace(/[\r\n]/g, '');
         const safeVal = v.replace(/[\r\n]/g, '');
-        if (safeKey) h[safeKey] = safeVal;
+        if (!safeKey || BLOCKED_HEADER_NAMES.has(safeKey.toLowerCase())) continue;
+        h[safeKey] = safeVal;
       }
     }
   }
@@ -334,6 +366,9 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
+  const rateLimitResponse = await checkRateLimit(req, cors);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     if (req.method === 'GET') {
       const url = new URL(req.url);
@@ -369,7 +404,9 @@ export default async function handler(req) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const isTimeout = msg.includes('TimeoutError') || msg.includes('timed out');
-    // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page
-    return jsonResponse({ error: isTimeout ? 'MCP server timed out' : msg }, isTimeout ? 504 : 422, cors);
+    console.error('[mcp-proxy] error:', msg);
+    // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page.
+    // Avoid leaking internal error details to the client.
+    return jsonResponse({ error: isTimeout ? 'MCP server timed out' : 'MCP request failed' }, isTimeout ? 504 : 422, cors);
   }
 }

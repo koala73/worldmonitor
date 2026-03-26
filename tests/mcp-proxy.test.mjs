@@ -183,7 +183,7 @@ describe('api/mcp-proxy', () => {
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 422);
       const data = await res.json();
-      assert.match(data.error, /Method not found/i);
+      assert.match(data.error, /MCP request failed/i);
     });
 
     it('returns 504 on fetch timeout', async () => {
@@ -303,7 +303,7 @@ describe('api/mcp-proxy', () => {
       }));
       assert.equal(res.status, 422);
       const data = await res.json();
-      assert.match(data.error, /Unknown tool/i);
+      assert.match(data.error, /MCP request failed/i);
     });
 
     it('returns 504 on timeout during tool call', async () => {
@@ -390,7 +390,8 @@ describe('api/mcp-proxy', () => {
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
       assert.equal(res.status, 422);
       const data = await res.json();
-      assert.match(data.error, /blocked|SSRF|endpoint/i);
+      // Error message is intentionally generic to avoid leaking internals
+      assert.match(data.error, /MCP request failed|blocked|SSRF|endpoint/i);
     });
   });
 

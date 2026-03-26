@@ -3,7 +3,10 @@ import { CHROME_UA } from './constants';
 export function getRelayBaseUrl(): string | null {
   const relayUrl = process.env.WS_RELAY_URL;
   if (!relayUrl) return null;
-  return relayUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/$/, '');
+  // Always upgrade to HTTPS — cleartext relay connections are not permitted.
+  const httpUrl = relayUrl.replace(/^wss:\/\//, 'https://');
+  const secured = httpUrl.startsWith('https://') ? httpUrl : 'https://' + httpUrl.replace(/^[a-z]+:\/\//, '');
+  return secured.replace(/\/$/, '');
 }
 
 export function getRelayHeaders(extra: Record<string, string> = {}): Record<string, string> {

@@ -56,9 +56,9 @@ describe('getRelayBaseUrl', () => {
     assert.equal(getRelayBaseUrl(), 'https://relay.example.com');
   });
 
-  it('converts ws:// to http://', () => {
+  it('converts insecure websocket scheme to https://', () => {
     process.env.WS_RELAY_URL = 'ws://relay.example.com';
-    assert.equal(getRelayBaseUrl(), 'http://relay.example.com');
+    assert.equal(getRelayBaseUrl(), 'https://relay.example.com');
   });
 
   it('strips trailing slash', () => {
@@ -310,7 +310,9 @@ describe('createRelayHandler', () => {
     assert.equal(res.status, 502);
     const body = await res.json();
     assert.equal(body.error, 'Relay request failed');
-    assert.equal(body.details, 'Connection refused');
+    // Internal error details are intentionally omitted from the response
+    // to prevent information leakage — they are logged server-side only.
+    assert.equal(body.details, undefined);
   });
 
   it('calls fallback when relay unavailable', async () => {

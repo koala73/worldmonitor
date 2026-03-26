@@ -7,7 +7,13 @@ import { jsonResponse } from './_json-response.js';
 export function getRelayBaseUrl() {
   const relayUrl = process.env.WS_RELAY_URL;
   if (!relayUrl) return null;
-  return relayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '');
+  // Always upgrade to HTTPS — cleartext relay connections are not permitted.
+  // Normalize any WebSocket scheme to https://.
+  const httpUrl = relayUrl.replace(/^wss:\/\//, 'https://');
+  // If the env var was already https:// or got converted above, we're done.
+  // Otherwise force https:// for any remaining non-secure scheme.
+  const secured = httpUrl.startsWith('https://') ? httpUrl : 'https://' + httpUrl.replace(/^[a-z]+:\/\//, '');
+  return secured.replace(/\/$/, '');
 }
 
 export function getRelayHeaders(baseHeaders = {}) {
@@ -115,9 +121,9 @@ export function createRelayHandler(cfg) {
     } catch (error) {
       if (cfg.fallback) return cfg.fallback(req, corsHeaders);
       const isTimeout = error?.name === 'AbortError';
+      console.error('[relay] error:', error?.message || String(error));
       return jsonResponse({
         error: isTimeout ? 'Relay timeout' : 'Relay request failed',
-        details: error?.message || String(error),
       }, isTimeout ? 504 : 502, corsHeaders);
     }
   };
