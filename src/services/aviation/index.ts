@@ -331,6 +331,7 @@ export async function fetchAircraftPositions(opts: { icao24?: string; callsign?:
 }
 
 export async function fetchFlightPrices(opts: { origin: string; destination: string; departureDate: string; returnDate?: string; adults?: number; cabin?: CabinClass; nonstopOnly?: boolean; maxResults?: number; currency?: string; market?: string }): Promise<{ quotes: PriceQuote[]; isDemoMode: boolean; isIndicative: boolean; provider: string }> {
+  const cacheKey = `${opts.origin}:${opts.destination}:${opts.departureDate}:${opts.returnDate ?? ''}:${opts.adults ?? 1}:${opts.cabin ?? 'CABIN_CLASS_ECONOMY'}:${opts.nonstopOnly ?? false}:${opts.maxResults ?? 10}:${opts.currency ?? 'usd'}:${opts.market ?? ''}`;
   return breakerPrices.execute(async () => {
     const r = await client.searchFlightPrices({
       origin: opts.origin, destination: opts.destination,
@@ -345,12 +346,13 @@ export async function fetchFlightPrices(opts: { origin: string; destination: str
       isIndicative: r.isIndicative ?? true,
       provider: r.provider,
     };
-  }, { quotes: [], isDemoMode: true, isIndicative: true, provider: 'demo' });
+  }, { quotes: [], isDemoMode: true, isIndicative: true, provider: 'demo' }, { cacheKey });
 }
 
 export async function fetchAviationNews(entities: string[], windowHours = 24, maxItems = 20): Promise<AviationNewsItem[]> {
+  const cacheKey = `${entities.join(',')}:${windowHours}:${maxItems}`;
   return breakerNews.execute(async () => {
     const r = await client.listAviationNews({ entities, windowHours, maxItems });
     return r.items.map(toDisplayNewsItem);
-  }, []);
+  }, [], { cacheKey });
 }
