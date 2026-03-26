@@ -40,3 +40,15 @@ export {
   IRELAND_UNIVERSITIES,
   type IrelandUniversity,
 } from './universities';
+
+// Submarine Cables
+export {
+  IRELAND_SUBMARINE_CABLES,
+  IRELAND_LANDING_STATIONS,
+  CABLE_COLORS,
+  CABLE_DESTINATION_LABELS,
+  type SubmarineCable,
+  type LandingStation,
+  type CableDestination,
+  type CableStatus,
+} from './submarine-cables';

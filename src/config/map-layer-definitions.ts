@@ -71,6 +71,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   irishUnicorns:            def('irishUnicorns',            '&#129412;', 'irishUnicorns',            'Irish Unicorns'),
   irelandAICompanies:       def('irelandAICompanies',       '&#129302;', 'irelandAICompanies',       'AI Companies'),
   irelandUniversities:      def('irelandUniversities',      '&#127891;', 'irelandUniversities',      'Universities'),
+  submarineCables:          def('submarineCables',          '&#127754;', 'submarineCables',          'Submarine Cables'),
   stockExchanges:           def('stockExchanges',           '&#127963;', 'stockExchanges',           'Stock Exchanges'),
   financialCenters:         def('financialCenters',         '&#128176;', 'financialCenters',         'Financial Centers'),
   centralBanks:             def('centralBanks',             '&#127974;', 'centralBanks',             'Central Banks'),
@@ -121,7 +122,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
   ],
   ireland: [
     'semiconductorHubs', 'irelandDataCenters', 'irelandTechHQs', 'irishUnicorns',
-    'irelandAICompanies', 'irelandUniversities',
+    'irelandAICompanies', 'irelandUniversities', 'submarineCables',
     'startupHubs', 'accelerators', 'techEvents',
   ],
 };

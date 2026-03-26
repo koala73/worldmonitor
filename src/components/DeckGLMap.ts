@@ -15,11 +15,16 @@ import {
   IRISH_UNICORNS,
   IRELAND_AI_COMPANIES,
   IRELAND_UNIVERSITIES,
+  IRELAND_SUBMARINE_CABLES,
+  IRELAND_LANDING_STATIONS,
+  CABLE_COLORS,
   type IrelandDataCenter,
   type IrelandTechHQ,
   type IrishUnicorn,
   type IrelandAICompany,
   type IrelandUniversity,
+  type SubmarineCable,
+  type LandingStation,
 } from '@/config/variants/ireland/data';
 import {
   getSemiconductorTier,
@@ -1587,6 +1592,10 @@ export class DeckGLMap {
       if (mapLayers.irelandUniversities) {
         layers.push(this.createIrelandUniversitiesLayer());
       }
+      if (mapLayers.submarineCables) {
+        layers.push(this.createSubmarineCablesLayer());
+        layers.push(this.createLandingStationsLayer());
+      }
     }
 
     const irelandTechFallback = this.createIrelandTechFallbackLayer(mapLayers);
@@ -2943,6 +2952,56 @@ export class DeckGLMap {
     });
   }
 
+  /**
+   * Create submarine cables layer using PathLayer (FR #174)
+   * Displays undersea cables connecting Ireland to the world
+   * Color coded by destination: transatlantic(orange), UK(blue), Europe(green), planned(purple)
+   */
+  private createSubmarineCablesLayer(): PathLayer<SubmarineCable> {
+    return new PathLayer<SubmarineCable>({
+      id: 'submarine-cables-layer',
+      data: IRELAND_SUBMARINE_CABLES,
+      getPath: (d: SubmarineCable) => d.path,
+      getColor: (d: SubmarineCable) => {
+        const color = CABLE_COLORS[d.destination];
+        // Reduce opacity for planned cables
+        const alpha = d.status === 'planned' || d.status === 'under-construction' ? 150 : 220;
+        return [...color, alpha] as [number, number, number, number];
+      },
+      getWidth: (d: SubmarineCable) => {
+        // Thinner lines for planned cables
+        return d.status === 'active' ? 3 : 2;
+      },
+      widthMinPixels: 2,
+      widthMaxPixels: 6,
+      // Curved path for more natural appearance
+      jointRounded: true,
+      capRounded: true,
+      pickable: true,
+    });
+  }
+
+  /**
+   * Create landing stations layer using IconLayer (FR #174)
+   * Shows cable landing points in Ireland (Dublin, Galway, Cork)
+   * Uses red color to distinguish from data centers
+   */
+  private createLandingStationsLayer(): IconLayer<LandingStation> {
+    return new IconLayer<LandingStation>({
+      id: 'landing-stations-layer',
+      data: IRELAND_LANDING_STATIONS,
+      getPosition: (d) => [d.lng, d.lat],
+      getIcon: () => getMarkerIcon('circle', 1),
+      getSize: () => getMarkerSizeForTier(1, 'circle') * 1.2,
+      // Red color (#EF4444) for landing stations
+      getColor: () => [239, 68, 68, 255] as [number, number, number, number],
+      sizeScale: 1,
+      sizeMinPixels: 14,
+      sizeMaxPixels: 40,
+      pickable: true,
+    });
+  }
+
   private createCloudRegionsLayer(): ScatterplotLayer {
     const isIreland = isIrelandVariant();
     return new ScatterplotLayer({
@@ -4144,6 +4203,8 @@ export class DeckGLMap {
       'irish-unicorns-layer': 'irishUnicorn',
       'ireland-ai-companies-layer': 'irelandAICompany',
       'ireland-universities-layer': 'irelandUniversity',
+      'submarine-cables-layer': 'submarineCable',
+      'landing-stations-layer': 'landingStation',
       'tech-events-layer': 'techEvent',
       'apt-groups-layer': 'apt',
       'minerals-layer': 'mineral',
@@ -4603,6 +4664,7 @@ export class DeckGLMap {
       hexagon: (color: string) => `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="6,1 10.5,3.5 10.5,8.5 6,11 1.5,8.5 1.5,3.5" fill="${color}" fill-opacity="0.85"/></svg>`,
       diamond: (color: string) => `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="6,1 11,6 6,11 1,6" fill="${color}" fill-opacity="0.85"/></svg>`,
       star: (color: string) => `<svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,1 8.5,5 13,5 9.5,8 11,13 7,10 3,13 4.5,8 1,5 5.5,5" fill="${color}" fill-opacity="0.85"/></svg>`,
+      line: (color: string) => `<svg width="16" height="12" viewBox="0 0 16 12"><line x1="0" y1="6" x2="16" y2="6" stroke="${color}" stroke-width="3" stroke-linecap="round"/></svg>`,
     };
 
     const isLight = getCurrentTheme() === 'light';
@@ -4619,6 +4681,12 @@ export class DeckGLMap {
         { shape: shapes.triangle('rgb(249, 115, 22)'), label: '▲ Irish Unicorns' },       // #F97316
         { shape: shapes.diamond('rgb(147, 51, 234)'), label: '💎 AI Companies' },         // #9333EA
         { shape: shapes.circle('rgb(30, 64, 175)'), label: '🎓 Universities' },          // #1E40AF
+        // Submarine Cables by destination (FR #174)
+        { shape: shapes.line('rgb(249, 115, 22)'), label: '🟧 Transatlantic' },           // #F97316 - Ireland ↔ US
+        { shape: shapes.line('rgb(59, 130, 246)'), label: '🟦 Ireland ↔ UK' },            // #3B82F6
+        { shape: shapes.line('rgb(16, 185, 129)'), label: '🟩 Ireland ↔ Europe' },        // #10B981
+        { shape: shapes.line('rgb(139, 92, 246)'), label: '🟣 Planned Cables' },          // #8B5CF6
+        { shape: shapes.circle('rgb(239, 68, 68)'), label: '🔌 Landing Stations' },       // #EF4444
         { shape: shapes.circle('rgb(0, 209, 255)'), label: '⚫ Startup Hubs' },
         { shape: shapes.diamond('rgb(255, 179, 0)'), label: '💎 Accelerators' },
       ]

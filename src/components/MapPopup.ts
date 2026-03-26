@@ -5,7 +5,8 @@ import type { WeatherAlert } from '@/services/weather';
 import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
-import type { SemiconductorHub, IrelandDataCenter, IrelandTechHQ, IrishUnicorn, IrelandAICompany, IrelandUniversity } from '@/config/variants/ireland/data';
+import type { SemiconductorHub, IrelandDataCenter, IrelandTechHQ, IrishUnicorn, IrelandAICompany, IrelandUniversity, SubmarineCable, LandingStation } from '@/config/variants/ireland/data';
+import { IRELAND_SUBMARINE_CABLES, CABLE_DESTINATION_LABELS } from '@/config/variants/ireland/data';
 import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
@@ -18,7 +19,7 @@ import { getCableHealthRecord } from '@/services/cable-health';
 import { nameToCountryCode } from '@/services/country-geometry';
 import { renderLogo } from '@/utils/logoFallback';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'semiconductorHub' | 'irelandDataCenter' | 'irelandTechHQ' | 'irishUnicorn' | 'irelandAICompany' | 'irelandUniversity';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'semiconductorHub' | 'irelandDataCenter' | 'irelandTechHQ' | 'irishUnicorn' | 'irelandAICompany' | 'irelandUniversity' | 'submarineCable' | 'landingStation';
 
 interface TechEventPopupData {
   id: string;
@@ -490,6 +491,10 @@ export class MapPopup {
         return this.renderIrelandAICompanyPopup(data.data as unknown as IrelandAICompany);
       case 'irelandUniversity':
         return this.renderIrelandUniversityPopup(data.data as unknown as IrelandUniversity);
+      case 'submarineCable':
+        return this.renderSubmarineCablePopup(data.data as unknown as SubmarineCable);
+      case 'landingStation':
+        return this.renderLandingStationPopup(data.data as unknown as LandingStation);
       default:
         return '';
     }
@@ -971,6 +976,130 @@ export class MapPopup {
             Visit University Website →
           </a>
         </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render submarine cable popup (FR #174)
+   * Shows cable details: route, capacity, operator, landing points
+   */
+  private renderSubmarineCablePopup(cable: SubmarineCable): string {
+    const statusClass = cable.status === 'active' ? 'operational' : cable.status === 'under-construction' ? 'under-construction' : 'planned';
+    const statusLabel = cable.status === 'active' ? 'Active' : cable.status === 'under-construction' ? 'Under Construction' : 'Planned';
+    const destinationLabel = CABLE_DESTINATION_LABELS[cable.destination];
+    // Destination icons
+    const destIcons: Record<string, string> = {
+      transatlantic: '🟧',
+      uk: '🟦',
+      europe: '🟩',
+      planned: '🟣',
+    };
+    const destIcon = destIcons[cable.destination] || '🌊';
+
+    return `
+      <div class="popup-header-rich">
+        <div class="popup-logo"><span style="font-size: 32px;">🌊</span></div>
+        <div class="popup-header-content">
+          <h3 class="popup-company-name">${destIcon} ${escapeHtml(cable.name)}</h3>
+          <span class="popup-type-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
+        </div>
+        <button class="popup-close" aria-label="${t('common.close')}">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-details-rich">
+          <div class="popup-detail-row">
+            <span class="icon">📍</span>
+            <span class="value">${escapeHtml(cable.route)}</span>
+          </div>
+          <div class="popup-detail-row">
+            <span class="icon">🌍</span>
+            <span class="value">${escapeHtml(destinationLabel)}</span>
+          </div>
+          ${cable.length ? `
+          <div class="popup-detail-row">
+            <span class="icon">📏</span>
+            <span class="value">Length: ${escapeHtml(cable.length)}</span>
+          </div>
+          ` : ''}
+          ${cable.capacity ? `
+          <div class="popup-detail-row">
+            <span class="icon">⚡</span>
+            <span class="value">Capacity: ${escapeHtml(cable.capacity)}</span>
+          </div>
+          ` : ''}
+          ${cable.latency ? `
+          <div class="popup-detail-row">
+            <span class="icon">🚀</span>
+            <span class="value">Latency: ${escapeHtml(cable.latency)}</span>
+          </div>
+          ` : ''}
+          <div class="popup-detail-row">
+            <span class="icon">🏢</span>
+            <span class="value">Operator: ${escapeHtml(cable.operator)}</span>
+          </div>
+          <div class="popup-detail-row">
+            <span class="icon">📅</span>
+            <span class="value">RFS: ${typeof cable.rfs === 'number' ? cable.rfs : escapeHtml(String(cable.rfs))}</span>
+          </div>
+        </div>
+        <div class="popup-detail-row" style="margin-top: 8px;">
+          <span class="icon">🔌</span>
+          <span class="value"><strong>Landing Points:</strong></span>
+        </div>
+        <ul style="margin: 4px 0 8px 24px; padding: 0; font-size: 12px;">
+          ${cable.landingPoints.map(lp => `<li>${escapeHtml(lp.city)}, ${escapeHtml(lp.country)}</li>`).join('')}
+        </ul>
+        ${cable.description ? `<p class="popup-description">${escapeHtml(cable.description)}</p>` : ''}
+        ${cable.website ? `
+        <div class="popup-cta">
+          <a class="popup-cta-button secondary" href="${sanitizeUrl(cable.website)}" target="_blank" rel="noopener">
+            More Info →
+          </a>
+        </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  /**
+   * Render landing station popup (FR #174)
+   * Shows station location and connected cables
+   */
+  private renderLandingStationPopup(station: LandingStation): string {
+    // Get connected cables by ID
+    const connectedCables = IRELAND_SUBMARINE_CABLES.filter(c => station.cableIds.includes(c.id));
+    const destIcons: Record<string, string> = {
+      transatlantic: '🟧',
+      uk: '🟦',
+      europe: '🟩',
+      planned: '🟣',
+    };
+
+    return `
+      <div class="popup-header-rich">
+        <div class="popup-logo"><span style="font-size: 32px;">🔌</span></div>
+        <div class="popup-header-content">
+          <h3 class="popup-company-name">🔌 ${escapeHtml(station.city)} Landing Station</h3>
+          <span class="popup-type-badge operational">Active</span>
+        </div>
+        <button class="popup-close" aria-label="${t('common.close')}">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-details-rich">
+          <div class="popup-detail-row">
+            <span class="icon">📍</span>
+            <span class="value">${escapeHtml(station.city)}, Ireland</span>
+          </div>
+          <div class="popup-detail-row">
+            <span class="icon">🌊</span>
+            <span class="value"><strong>Connected Cables (${connectedCables.length}):</strong></span>
+          </div>
+        </div>
+        <ul style="margin: 4px 0 8px 24px; padding: 0; font-size: 12px;">
+          ${connectedCables.map(c => `<li>${destIcons[c.destination] || '🌊'} ${escapeHtml(c.name)} (${CABLE_DESTINATION_LABELS[c.destination].split(' ')[0]})</li>`).join('')}
+        </ul>
+        ${station.description ? `<p class="popup-description">${escapeHtml(station.description)}</p>` : ''}
       </div>
     `;
   }

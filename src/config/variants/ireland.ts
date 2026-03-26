@@ -258,6 +258,7 @@ const IRELAND_MAP_LAYERS: MapLayers = {
   irishUnicorns: true, // 爱尔兰本土独角兽
   irelandAICompanies: true, // AI 公司 (Anthropic, OpenAI, xAI)
   irelandUniversities: true, // 大学 (TCD, UCD, DCU, etc.)
+  submarineCables: true, // 海底光缆 (FR #174)
   stockExchanges: false,
   financialCenters: false,
   centralBanks: false,

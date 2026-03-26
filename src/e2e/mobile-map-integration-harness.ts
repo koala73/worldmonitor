@@ -124,6 +124,7 @@ const layers = {
   irishUnicorns: false,
   irelandAICompanies: false,
   irelandUniversities: false,
+  submarineCables: false,
   stockExchanges: false,
   financialCenters: false,
   centralBanks: false,

@@ -611,6 +611,7 @@ export interface MapLayers {
   irishUnicorns: boolean;
   irelandAICompanies: boolean;
   irelandUniversities: boolean;
+  submarineCables: boolean;
   // Finance variant layers
   stockExchanges: boolean;
   financialCenters: boolean;

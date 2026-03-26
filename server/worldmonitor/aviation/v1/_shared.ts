@@ -32,9 +32,11 @@ const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
 
 export const xmlParser = new XMLParser({
   ignoreAttributes: true,
-  isArray: (_name: string, jpath: string) => {
+  isArray: (_tagName, jpath, _isLeafNode, _isAttribute) => {
     // Force arrays for list items regardless of count to prevent single-item-as-object bug
-    return /\.(Ground_Delay|Ground_Stop|Delay|Airport)$/.test(jpath);
+    // jpath can be string or ReadonlyMatcher, convert to string for regex test
+    const jpathStr = typeof jpath === 'string' ? jpath : '';
+    return /\.(Ground_Delay|Ground_Stop|Delay|Airport)$/.test(jpathStr);
   },
 });
 
