@@ -19,3 +19,11 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run test:data
+      - name: Edge function bundle check
+        run: |
+          find api/ -name "*.js" -not -name "_*" | while read f; do
+            npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
+              echo "ERROR: esbuild failed to bundle $f"
+              exit 1
+            }
+          done

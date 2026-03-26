@@ -62,15 +62,31 @@ async function fetchAll() {
         surpriseDirection,
       };
     })
-    .sort((a, b) => a.date.localeCompare(b.date))
+    // Keep companies with meaningful analyst coverage:
+    // - revenue estimate > 0 && >= $10M → large/mid-cap (primary filter)
+    // - revenue estimate === 0 OR null → pre-revenue (biotech, SPACs) or financial/REIT
+    //   with no revenue line — use |EPS| >= $0.05 as proxy for analyst coverage depth
+    //   ($0.05 keeps well-covered loss-making companies; $0.10 was too aggressive)
+    // - revenue estimate > 0 && < $10M → small-cap / micro-cap → always drop
+    .filter(e => {
+      if (e.revenueEstimate != null && e.revenueEstimate > 0) return e.revenueEstimate >= 10_000_000;
+      if (e.epsEstimate != null) return Math.abs(e.epsEstimate) >= 0.05;
+      return false;
+    })
+    // Within same date, largest companies first; across dates, chronological
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      return (b.revenueEstimate ?? 0) - (a.revenueEstimate ?? 0);
+    })
     .slice(0, 100);
 
-  console.log(`  Fetched ${earnings.length} earnings entries`);
+  console.log(`  Fetched ${earnings.length} earnings entries (from ${raw.length} total)`);
   return { earnings, unavailable: false };
 }
 
 function validate(data) {
-  return Array.isArray(data?.earnings) && data.earnings.length > 0;
+  // >= 3 distinguishes a healthy result from an over-aggressive filter or a near-empty API response
+  return Array.isArray(data?.earnings) && data.earnings.length >= 3;
 }
 
 if (process.argv[1]?.endsWith('seed-earnings-calendar.mjs')) {
