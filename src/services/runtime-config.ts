@@ -28,7 +28,11 @@ export type RuntimeSecretKey =
   | 'WTO_API_KEY'
   | 'AVIATIONSTACK_API'
   | 'ICAO_API_KEY'
-  | 'THREATFOX_API_KEY';
+  | 'THREATFOX_API_KEY'
+  | 'NEWSAPI_KEY'
+  | 'NEWSDATA_API_KEY'
+  | 'VIRUSTOTAL_API_KEY'
+  | 'BGPVIEW_API_KEY';
 
 export type RuntimeFeatureId =
   | 'cloudApiFallbackAuth'
@@ -56,7 +60,11 @@ export type RuntimeFeatureId =
   | 'threatfoxThreatIntel'
   | 'openPhishThreatIntel'
   | 'spamhausDrop'
-  | 'cisaKev';
+  | 'cisaKev'
+  | 'newsApiHeadlines'
+  | 'newsDataFeed'
+  | 'virusTotalEnrichment'
+  | 'bgpViewEnrichment';
 
 export interface RuntimeFeatureDefinition {
   id: RuntimeFeatureId;
@@ -112,6 +120,10 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   openPhishThreatIntel: true,
   spamhausDrop: true,
   cisaKev: true,
+  newsApiHeadlines: true,
+  newsDataFeed: true,
+  virusTotalEnrichment: true,
+  bgpViewEnrichment: true,
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
@@ -320,6 +332,38 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     requiredSecrets: [],
     desktopRequiredSecrets: [],
     fallback: 'CISA KEV catalog is disabled.',
+  },
+  {
+    id: 'newsApiHeadlines',
+    name: 'NewsAPI headlines',
+    description: 'Global headline search from 150k+ news sources via NewsAPI.org — free developer plan.',
+    requiredSecrets: ['NEWSAPI_KEY'],
+    desktopRequiredSecrets: [],
+    fallback: 'NewsAPI headline augmentation is disabled.',
+  },
+  {
+    id: 'newsDataFeed',
+    name: 'NewsData.io feed',
+    description: 'Real-time and historical news from 95k+ sources via NewsData.io — free tier.',
+    requiredSecrets: ['NEWSDATA_API_KEY'],
+    desktopRequiredSecrets: [],
+    fallback: 'NewsData feed augmentation is disabled.',
+  },
+  {
+    id: 'virusTotalEnrichment',
+    name: 'VirusTotal IOC enrichment',
+    description: 'On-demand reputation lookups for IPs, domains, and URLs via VirusTotal public API.',
+    requiredSecrets: ['VIRUSTOTAL_API_KEY'],
+    desktopRequiredSecrets: [],
+    fallback: 'VirusTotal enrichment is disabled.',
+  },
+  {
+    id: 'bgpViewEnrichment',
+    name: 'BGPView ASN enrichment',
+    description: 'ASN metadata, prefixes, and peer data from BGPView for infrastructure context.',
+    requiredSecrets: ['BGPVIEW_API_KEY'],
+    desktopRequiredSecrets: [],
+    fallback: 'BGPView ASN enrichment is disabled.',
   },
 ];
 

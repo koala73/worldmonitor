@@ -525,7 +525,7 @@ export class UnifiedSettings {
     return `<div class="us-help-content">
       <div class="us-help-section">
         <h3>Getting Started</h3>
-        <p>World Monitor is a free, open-source geopolitical intelligence dashboard based on <a href="https://worldmonitor.app" target="_blank" rel="noopener">World Monitor</a> by Elie Habib. It pulls live data from dozens of public APIs and displays them on an interactive map and sidebar panels.</p>
+        <p>World Monitor is a free, open-source geopolitical intelligence dashboard. It pulls live data from dozens of public APIs and displays them on an interactive map and sidebar panels.</p>
         <ul>
           <li><strong>Sidebar panels</strong> — click any panel tab on the left to expand it. Panels with a badge show new unread items.</li>
           <li><strong>Map</strong> — use the layer toggles in Settings → Sources to show/hide map overlays. Click any map marker for details.</li>
@@ -581,7 +581,7 @@ export class UnifiedSettings {
 
       <div class="us-help-section">
         <h3>Open Source &amp; Contributing</h3>
-        <p>World Monitor is free and open source under the AGPL-3.0 License, based on <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">World Monitor</a> by Elie Habib.</p>
+        <p>World Monitor is free and open source under the AGPL-3.0 License. Originally forked from <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">koala73/worldmonitor</a>.</p>
         <ul>
           <li><a href="https://github.com/bradleybond512/worldmonitor-macos" target="_blank" rel="noopener">GitHub Repository</a></li>
           <li><a href="https://github.com/bradleybond512/worldmonitor-macos/discussions" target="_blank" rel="noopener">Community Discussions</a></li>

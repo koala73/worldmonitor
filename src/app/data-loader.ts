@@ -128,7 +128,7 @@ import { AirQualityPanel } from '@/components/AirQualityPanel';
 import { AirstrikesPanel } from '@/components/AirstrikesPanel';
 import { fetchAirstrikes } from '@/services/airstrikes';
 import { fetchS2Underground } from '@/services/s2-underground';
-import { fetchThreatFoxIOCs, fetchOpenPhishFeed, fetchSpamhausDrop, fetchCisaKev } from '@/services/cyber-extra';
+import { fetchThreatFoxIOCs, fetchOpenPhishFeed, fetchSpamhausDrop, fetchCisaKev, fetchOtxIOCs } from '@/services/cyber-extra';
 import { fetchSpaceWeather } from '@/services/space-weather';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreak';
 import { fetchGlobalAirQuality } from '@/services/air-quality';
@@ -158,6 +158,8 @@ import { fetchAllPositiveTopicIntelligence } from '@/services/gdelt-intel';
 import { fetchPositiveGeoEvents, geocodePositiveNewsItems } from '@/services/positive-events-geo';
 import { fetchKindnessData } from '@/services/kindness-data';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
+import { fetchNewsApiHeadlines } from '@/services/newsapi';
+import { fetchNewsDataFeed } from '@/services/newsdata';
 import type { ThreatLevel as ClientThreatLevel } from '@/services/threat-classifier';
 import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
 
@@ -798,6 +800,13 @@ export class DataLoaderManager implements AppModule {
         }
       }
     }
+
+    // Augment with NewsAPI and NewsData headlines (non-blocking, best-effort)
+    const [newsApiItems, newsDataItems] = await Promise.all([
+      fetchNewsApiHeadlines('geopolitics world conflict crisis', 15).catch(() => [] as typeof collectedNews),
+      fetchNewsDataFeed('world news geopolitics').catch(() => [] as typeof collectedNews),
+    ]);
+    collectedNews.push(...newsApiItems, ...newsDataItems);
 
     this.ctx.allNews = collectedNews;
     this.ctx.initialLoadComplete = true;
@@ -1458,14 +1467,15 @@ export class DataLoaderManager implements AppModule {
     }
 
     try {
-      const [threats, tfIocs, openPhish, spamhaus, cisaKev] = await Promise.all([
+      const [threats, tfIocs, openPhish, spamhaus, cisaKev, otxIocs] = await Promise.all([
         fetchCyberThreats({ limit: 500, days: 14 }),
         fetchThreatFoxIOCs(),
         fetchOpenPhishFeed(),
         fetchSpamhausDrop(),
         fetchCisaKev(),
+        fetchOtxIOCs(),
       ]);
-      const allThreats = [...threats, ...tfIocs, ...openPhish, ...spamhaus, ...cisaKev];
+      const allThreats = [...threats, ...tfIocs, ...openPhish, ...spamhaus, ...cisaKev, ...otxIocs];
       this.ctx.cyberThreatsCache = allThreats;
       this.ctx.map?.setCyberThreats(allThreats);
       this.ctx.map?.setLayerReady('cyberThreats', allThreats.length > 0);

@@ -108,9 +108,55 @@ const ALLOWED_ENV_KEYS = new Set([
   'UC_DP_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WTO_API_KEY', 'AVIATIONSTACK_API',
   'ICAO_API_KEY', 'THREATFOX_API_KEY',
+  'NEWSAPI_KEY', 'NEWSDATA_API_KEY', 'VIRUSTOTAL_API_KEY', 'BGPVIEW_API_KEY',
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+// ── IP geolocation helpers ────────────────────────────────────────────────
+// ip-api.com batch endpoint: free, no key, up to 100 IPs per request.
+// Note: free tier requires HTTP (not HTTPS).
+async function geolocateIPs(ips) {
+  if (!ips || ips.length === 0) return new Map();
+  try {
+    const batch = ips.slice(0, 100).map(ip => ({ query: ip, fields: 'query,country,countryCode,lat,lon' }));
+    const resp = await fetchWithTimeout('http://ip-api.com/batch?fields=query,country,countryCode,lat,lon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'WorldMonitor/1.0' },
+      body: JSON.stringify(batch),
+    }, 8000);
+    if (!resp.ok) return new Map();
+    const results = await resp.json();
+    const map = new Map();
+    for (const r of results) {
+      if (r.query && r.lat && r.lon) {
+        map.set(r.query, { lat: r.lat, lon: r.lon, country: r.country ?? '', countryCode: r.countryCode ?? '' });
+      }
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+// IPQuery.io: free, no key, per-IP risk scoring.
+async function scoreIPsQuery(ips) {
+  if (!ips || ips.length === 0) return new Map();
+  const map = new Map();
+  const topIps = ips.slice(0, 15);
+  await Promise.allSettled(topIps.map(async (ip) => {
+    try {
+      const resp = await fetchWithTimeout(`https://api.ipquery.io/${encodeURIComponent(ip)}`, {
+        headers: { 'User-Agent': 'WorldMonitor/1.0', Accept: 'application/json' },
+      }, 5000);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const score = data?.risk?.risk_score ?? null;
+      if (score !== null) map.set(ip, score);
+    } catch { /* ignore per-IP failures */ }
+  }));
+  return map;
+}
 
 // ── SSRF protection ──────────────────────────────────────────────────────
 // Block requests to private/reserved IP ranges to prevent the RSS proxy
@@ -992,6 +1038,51 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       }
       return ok('WorldMonitor API key stored');
 
+    case 'NEWSAPI_KEY': {
+      const resp = await fetchWithTimeout(
+        `https://newsapi.org/v2/top-headlines?country=us&pageSize=1&apiKey=${encodeURIComponent(value)}`,
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
+        10000,
+      );
+      const text = await resp.text();
+      if (isAuthFailure(resp.status, text)) return fail('NewsAPI rejected this key');
+      if (!resp.ok) return fail(`NewsAPI probe failed (${resp.status})`);
+      return ok('NewsAPI key verified');
+    }
+
+    case 'NEWSDATA_API_KEY': {
+      const resp = await fetchWithTimeout(
+        `https://newsdata.io/api/1/latest?apikey=${encodeURIComponent(value)}&country=us&size=1`,
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
+        10000,
+      );
+      const text = await resp.text();
+      if (isAuthFailure(resp.status, text)) return fail('NewsData rejected this key');
+      if (!resp.ok) return fail(`NewsData probe failed (${resp.status})`);
+      return ok('NewsData API key verified');
+    }
+
+    case 'VIRUSTOTAL_API_KEY': {
+      const resp = await fetchWithTimeout(
+        'https://www.virustotal.com/api/v3/ip_addresses/8.8.8.8',
+        { headers: { 'x-apikey': value, Accept: 'application/json', 'User-Agent': CHROME_UA } },
+        10000,
+      );
+      const text = await resp.text();
+      if (isAuthFailure(resp.status, text)) return fail('VirusTotal rejected this key');
+      if (!resp.ok) return fail(`VirusTotal probe failed (${resp.status})`);
+      return ok('VirusTotal key verified');
+    }
+
+    case 'BGPVIEW_API_KEY': {
+      const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA, 'X-Api-Key': value };
+      const resp = await fetchWithTimeout('https://api.bgpview.io/asn/15169', { headers }, 10000);
+      const text = await resp.text();
+      if (isAuthFailure(resp.status, text)) return fail('BGPView rejected this key');
+      if (!resp.ok) return fail(`BGPView probe failed (${resp.status})`);
+      return ok('BGPView key verified');
+    }
+
       default:
         return ok('Key stored');
     }
@@ -1509,6 +1600,190 @@ async function dispatch(requestUrl, req, routes, context) {
         lastSeen: v.dueDate ?? v.dateAdded ?? '',
       }));
       return json(threats);
+    } catch (e) {
+      return json([], 200);
+    }
+  }
+
+  // ── AlienVault OTX pulse/IOC feed ────────────────────────────────────────
+  if (requestUrl.pathname === '/api/otx-iocs') {
+    const apiKey = process.env.OTX_API_KEY;
+    if (!apiKey) return json({ error: 'OTX_API_KEY not configured' }, 503);
+    try {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const resp = await fetchWithTimeout(
+        `https://otx.alienvault.com/api/v1/pulses/subscribed?limit=50&modified_since=${since}`,
+        { headers: { 'X-OTX-API-KEY': apiKey, Accept: 'application/json', 'User-Agent': CHROME_UA } },
+        15000,
+      );
+      if (!resp.ok) return json([], 200);
+      const data = await resp.json();
+      const pulses = Array.isArray(data?.results) ? data.results : [];
+      const rawThreats = [];
+      for (const pulse of pulses) {
+        const indicators = Array.isArray(pulse.indicators) ? pulse.indicators : [];
+        for (const ioc of indicators) {
+          const itype = ioc.type ?? '';
+          const isIP = itype === 'IPv4' || itype === 'IPv6';
+          const isURL = itype === 'URL';
+          rawThreats.push({
+            id: `otx-${pulse.id}-${ioc.id ?? rawThreats.length}`,
+            type: isIP ? 'c2_server' : 'malware_host',
+            source: 'otx',
+            indicator: String(ioc.indicator ?? ''),
+            indicatorType: isIP ? 'ip' : isURL ? 'url' : 'domain',
+            lat: 0,
+            lon: 0,
+            country: '',
+            severity: 'high',
+            malwareFamily: pulse.adversary || (Array.isArray(pulse.tags) ? pulse.tags.slice(0, 3).join(', ') : ''),
+            tags: Array.isArray(pulse.tags) ? pulse.tags : [],
+            firstSeen: ioc.created ?? pulse.created ?? '',
+            lastSeen: ioc.created ?? pulse.modified ?? '',
+          });
+          if (rawThreats.length >= 300) break;
+        }
+        if (rawThreats.length >= 300) break;
+      }
+      // Enrich IP-type IOCs with geolocation
+      const ipIOCs = rawThreats.filter(t => t.indicatorType === 'ip').map(t => t.indicator);
+      const [geoMap, riskMap] = await Promise.all([geolocateIPs(ipIOCs), scoreIPsQuery(ipIOCs)]);
+      for (const t of rawThreats) {
+        if (t.indicatorType === 'ip') {
+          const geo = geoMap.get(t.indicator);
+          if (geo) { t.lat = geo.lat; t.lon = geo.lon; t.country = geo.country; }
+          const risk = riskMap.get(t.indicator);
+          if (risk !== undefined) t.riskScore = risk;
+        }
+      }
+      return json(rawThreats);
+    } catch (e) {
+      return json([], 200);
+    }
+  }
+
+  // ── VirusTotal IOC reputation lookup ─────────────────────────────────────
+  if (requestUrl.pathname === '/api/virustotal-lookup') {
+    const apiKey = process.env.VIRUSTOTAL_API_KEY;
+    if (!apiKey) return json({ error: 'VIRUSTOTAL_API_KEY not configured' }, 503);
+    const indicator = requestUrl.searchParams.get('indicator');
+    const type = requestUrl.searchParams.get('type') ?? 'domain';
+    if (!indicator) return json({ error: 'Missing indicator' }, 400);
+    try {
+      const endpointMap = { ip: 'ip_addresses', domain: 'domains', url: 'urls' };
+      const ep = endpointMap[type] ?? 'domains';
+      const encoded = type === 'url'
+        ? Buffer.from(indicator).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+        : encodeURIComponent(indicator);
+      const resp = await fetchWithTimeout(
+        `https://www.virustotal.com/api/v3/${ep}/${encoded}`,
+        { headers: { 'x-apikey': apiKey, Accept: 'application/json', 'User-Agent': CHROME_UA } },
+        12000,
+      );
+      if (!resp.ok) return json({ error: `VT responded ${resp.status}` }, resp.status);
+      const data = await resp.json();
+      const stats = data?.data?.attributes?.last_analysis_stats ?? {};
+      return json({
+        indicator,
+        type,
+        malicious: stats.malicious ?? 0,
+        suspicious: stats.suspicious ?? 0,
+        harmless: stats.harmless ?? 0,
+        undetected: stats.undetected ?? 0,
+        reputation: data?.data?.attributes?.reputation ?? 0,
+        lastAnalysisDate: data?.data?.attributes?.last_analysis_date ?? null,
+      });
+    } catch (e) {
+      return json({ error: String(e.message ?? e) }, 502);
+    }
+  }
+
+  // ── BGPView ASN info ──────────────────────────────────────────────────────
+  if (requestUrl.pathname === '/api/bgpview-asn') {
+    const apiKey = process.env.BGPVIEW_API_KEY;
+    const asn = requestUrl.searchParams.get('asn');
+    if (!asn || !/^\d+$/.test(asn)) return json({ error: 'Invalid ASN' }, 400);
+    try {
+      const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
+      if (apiKey) headers['X-Api-Key'] = apiKey;
+      const [asnResp, prefixResp] = await Promise.all([
+        fetchWithTimeout(`https://api.bgpview.io/asn/${asn}`, { headers }, 10000),
+        fetchWithTimeout(`https://api.bgpview.io/asn/${asn}/prefixes`, { headers }, 10000),
+      ]);
+      const asnData = asnResp.ok ? await asnResp.json() : {};
+      const prefixData = prefixResp.ok ? await prefixResp.json() : {};
+      const info = asnData?.data ?? {};
+      return json({
+        asn: info.asn ?? Number(asn),
+        name: info.name ?? '',
+        description: info.description_short ?? info.description_full ?? '',
+        countryCode: info.country_code ?? '',
+        website: info.website ?? '',
+        rir: info.rir_allocation?.rir_name ?? '',
+        ipv4Prefixes: Array.isArray(prefixData?.data?.ipv4_prefixes) ? prefixData.data.ipv4_prefixes.length : 0,
+        ipv6Prefixes: Array.isArray(prefixData?.data?.ipv6_prefixes) ? prefixData.data.ipv6_prefixes.length : 0,
+      });
+    } catch (e) {
+      return json({ error: String(e.message ?? e) }, 502);
+    }
+  }
+
+  // ── NewsAPI.org headlines ─────────────────────────────────────────────────
+  if (requestUrl.pathname === '/api/newsapi-headlines') {
+    const apiKey = process.env.NEWSAPI_KEY;
+    if (!apiKey) return json({ error: 'NEWSAPI_KEY not configured' }, 503);
+    const q = requestUrl.searchParams.get('q') ?? 'geopolitics';
+    const pageSize = Math.min(20, parseInt(requestUrl.searchParams.get('pageSize') ?? '10', 10));
+    try {
+      const params = new URLSearchParams({ q, pageSize: String(pageSize), language: 'en', sortBy: 'publishedAt', apiKey });
+      const resp = await fetchWithTimeout(
+        `https://newsapi.org/v2/everything?${params}`,
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
+        12000,
+      );
+      if (!resp.ok) return json([], 200);
+      const data = await resp.json();
+      const articles = Array.isArray(data?.articles) ? data.articles : [];
+      const items = articles.map((a, i) => ({
+        id: `newsapi-${i}`,
+        source: a.source?.name ?? 'NewsAPI',
+        title: a.title ?? '',
+        link: a.url ?? '',
+        pubDate: a.publishedAt ?? new Date().toISOString(),
+        description: a.description ?? '',
+        imageUrl: a.urlToImage ?? undefined,
+      }));
+      return json(items);
+    } catch (e) {
+      return json([], 200);
+    }
+  }
+
+  // ── NewsData.io feed ──────────────────────────────────────────────────────
+  if (requestUrl.pathname === '/api/newsdata-feed') {
+    const apiKey = process.env.NEWSDATA_API_KEY;
+    if (!apiKey) return json({ error: 'NEWSDATA_API_KEY not configured' }, 503);
+    const q = requestUrl.searchParams.get('q') ?? 'world news';
+    try {
+      const params = new URLSearchParams({ apikey: apiKey, q, language: 'en' });
+      const resp = await fetchWithTimeout(
+        `https://newsdata.io/api/1/latest?${params}`,
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
+        12000,
+      );
+      if (!resp.ok) return json([], 200);
+      const data = await resp.json();
+      const results = Array.isArray(data?.results) ? data.results : [];
+      const items = results.map((a, i) => ({
+        id: `newsdata-${i}`,
+        source: a.source_name ?? a.source_id ?? 'NewsData',
+        title: a.title ?? '',
+        link: a.link ?? '',
+        pubDate: a.pubDate ?? new Date().toISOString(),
+        description: a.description ?? '',
+        imageUrl: a.image_url ?? undefined,
+      }));
+      return json(items);
     } catch (e) {
       return json([], 200);
     }

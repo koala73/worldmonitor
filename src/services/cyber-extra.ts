@@ -56,3 +56,42 @@ export async function fetchCisaKev(): Promise<CyberThreat[]> {
     return [];
   }
 }
+
+// ── AlienVault OTX ─────────────────────────────────────────────────────────
+export async function fetchOtxIOCs(): Promise<CyberThreat[]> {
+  if (!isFeatureAvailable('alienvaultOtxThreatIntel')) return [];
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/otx-iocs`, { method: 'GET' });
+    if (!res.ok) return [];
+    return (await res.json()) as CyberThreat[];
+  } catch {
+    return [];
+  }
+}
+
+// ── VirusTotal reputation lookup ────────────────────────────────────────────
+export interface VtReputation {
+  indicator: string;
+  type: string;
+  malicious: number;
+  suspicious: number;
+  harmless: number;
+  undetected: number;
+  reputation: number;
+  lastAnalysisDate: number | null;
+}
+
+export async function lookupVtIndicator(
+  indicator: string,
+  type: 'ip' | 'domain' | 'url',
+): Promise<VtReputation | null> {
+  if (!isFeatureAvailable('virusTotalEnrichment')) return null;
+  try {
+    const params = new URLSearchParams({ indicator, type });
+    const res = await fetch(`${getApiBaseUrl()}/api/virustotal-lookup?${params}`);
+    if (!res.ok) return null;
+    return (await res.json()) as VtReputation;
+  } catch {
+    return null;
+  }
+}

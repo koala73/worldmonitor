@@ -555,6 +555,29 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'www.goodnewsnetwork.org', 'www.positive.news', 'reasonstobecheerful.world',
   'www.optimistdaily.com', 'www.sunnyskyz.com', 'www.huffpost.com',
   'www.sciencedaily.com', 'feeds.nature.com', 'www.livescience.com', 'www.newscientist.com',
+  // Missing international/regional (synced from api/rss-proxy.js)
+  'dailytrust.com', 'de.euronews.com', 'e00-elmundo.uecdn.es', 'es.euronews.com',
+  'feeds.elpais.com', 'feeds.folha.uol.com.br', 'feeds.news24.com', 'feeds.nos.nl',
+  'fr.africanews.com', 'fr.euronews.com', 'gcaptain.com', 'greatergood.berkeley.edu',
+  'humanprogress.org', 'indianexpress.com', 'insightcrime.org', 'islandtimes.org',
+  'it.euronews.com', 'japantoday.com', 'mexiconewsdaily.com', 'newsfeed.zeit.de',
+  'pt.euronews.com', 'ru.euronews.com', 'singularityhub.com', 'thebetterindia.com',
+  'tuoitrenews.vn', 'www.aljazeera.net', 'www.ansa.it', 'www.asahi.com',
+  'www.bbc.com', 'www.bild.de', 'www.channelstv.com', 'www.clarin.com',
+  'www.dailygood.org', 'www.dn.se', 'www.eltiempo.com', 'www.gdacs.org',
+  'www.good.is', 'www.goodgoodgood.co', 'www.iefimerida.gr', 'www.in.gr',
+  'www.jeuneafrique.com', 'www.middleeasteye.net', 'www.naftemporiki.gr',
+  'www.nrc.nl', 'www.premiumtimesng.com', 'www.ransomware.live', 'www.repubblica.it',
+  'www.rt.com', 'www.spiegel.de', 'www.svd.se', 'www.svt.se', 'www.tagesschau.de',
+  'www.thisdaylive.com', 'www.twz.com', 'www.upworthy.com', 'www.vanguardngr.com',
+  // Emergency / weather
+  'api.weather.gov', 'www.nhc.noaa.gov', 'www.tsunami.gov', 'tfr.faa.gov',
+  'www.nrc.gov', 'promedmail.org', 'www.metoc.navy.mil', 'www.iaea.org',
+  'fews.net', 'www.fews.net', 'www.nerc.com', 'www.energy.gov', 'www.csb.gov',
+  'www.phmsa.dot.gov', 'www.ferc.gov', 'emergency.copernicus.eu', 'www.cisa.gov',
+  'inciweb.wildfire.gov',
+  // Podcast feed hosts
+  'feeds.megaphone.fm', 'rss.art19.com', 'rss.libsyn.com',
 ]);
 
 function rssProxyPlugin(): Plugin {

@@ -1,4 +1,6 @@
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { fetchCountryMeta } from '@/services/rest-countries';
+import { fetchWikiSummary } from '@/services/wikipedia';
 import { t } from '@/services/i18n';
 import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
@@ -353,6 +355,16 @@ export class CountryBriefPage {
                 <div class="cb-infra-content"></div>
               </section>
 
+              <section class="cb-section cb-facts-section" style="display:none">
+                <h3 class="cb-section-title">Country Facts</h3>
+                <div class="cb-facts-content"></div>
+              </section>
+
+              <section class="cb-section cb-wiki-section" style="display:none">
+                <h3 class="cb-section-title">Overview</h3>
+                <div class="cb-wiki-content"></div>
+              </section>
+
             </div>
           </div>
         </div>
@@ -412,6 +424,47 @@ export class CountryBriefPage {
     this.overlay.addEventListener('click', this.boundCitationClick);
 
     this.overlay.classList.add('active');
+    void this.loadCountryEnrichment(code, country);
+  }
+
+  private async loadCountryEnrichment(code: string, name: string): Promise<void> {
+    const [meta, wiki] = await Promise.all([
+      fetchCountryMeta(code).catch(() => null),
+      fetchWikiSummary(name).catch(() => null),
+    ]);
+
+    if (this.currentCode !== code) return; // stale response
+
+    if (meta) {
+      const factsEl = this.overlay.querySelector('.cb-facts-section') as HTMLElement | null;
+      const content = this.overlay.querySelector('.cb-facts-content');
+      if (factsEl && content) {
+        const fmt = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n.toLocaleString();
+        content.innerHTML = `
+          <dl class="cb-facts-dl">
+            ${meta.capital ? `<dt>Capital</dt><dd>${escapeHtml(meta.capital)}</dd>` : ''}
+            ${meta.region ? `<dt>Region</dt><dd>${escapeHtml(meta.region)}${meta.subregion ? ` — ${escapeHtml(meta.subregion)}` : ''}</dd>` : ''}
+            ${meta.population ? `<dt>Population</dt><dd>${fmt(meta.population)}</dd>` : ''}
+            ${meta.area ? `<dt>Area</dt><dd>${fmt(meta.area)} km²</dd>` : ''}
+            ${meta.currencies.length ? `<dt>Currency</dt><dd>${escapeHtml(meta.currencies[0] ?? '')}</dd>` : ''}
+            ${meta.languages.length ? `<dt>Languages</dt><dd>${escapeHtml(meta.languages.slice(0, 3).join(', '))}</dd>` : ''}
+            ${meta.tld.length ? `<dt>TLD</dt><dd>${escapeHtml(meta.tld[0] ?? '')}</dd>` : ''}
+            ${meta.timezones.length ? `<dt>Timezone</dt><dd>${escapeHtml(meta.timezones[0] ?? '')}</dd>` : ''}
+          </dl>`;
+        factsEl.style.display = '';
+      }
+    }
+
+    if (wiki?.extract) {
+      const wikiSec = this.overlay.querySelector('.cb-wiki-section') as HTMLElement | null;
+      const wikiContent = this.overlay.querySelector('.cb-wiki-content');
+      if (wikiSec && wikiContent) {
+        wikiContent.innerHTML = `
+          <p class="cb-wiki-extract">${escapeHtml(wiki.extract)}</p>
+          <a class="cb-wiki-link" href="${sanitizeUrl(wiki.pageUrl)}" target="_blank" rel="noopener">Wikipedia →</a>`;
+        wikiSec.style.display = '';
+      }
+    }
   }
 
   public updateBrief(data: CountryIntelData): void {

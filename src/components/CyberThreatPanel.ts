@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import type { CyberThreat, CyberThreatSeverity } from '@/types';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { lookupVtIndicator } from '@/services/cyber-extra';
 
 export class CyberThreatPanel extends Panel {
   private threats: CyberThreat[] = [];
@@ -31,15 +32,16 @@ export class CyberThreatPanel extends Panel {
       return;
     }
 
-    const rows = this.threats.slice(0, 100).map(t => {
-      const rowClass = severityClass(t.severity);
-      const indicator = t.indicator.length > 40 ? t.indicator.slice(0, 38) + '…' : t.indicator;
-      const country = t.country ? escapeHtml(t.country) : '—';
-      const typeLbl = typeLabel(t.type);
-      const sourceLbl = sourceLabel(t.source);
-      const age = t.lastSeen ? timeAgo(t.lastSeen) : '—';
-      return `<tr class="${rowClass}">
-        <td class="ct-sev">${escapeHtml(t.severity)}</td>
+    const rows = this.threats.slice(0, 100).map(threat => {
+      const rowClass = severityClass(threat.severity);
+      const indicator = threat.indicator.length > 40 ? threat.indicator.slice(0, 38) + '…' : threat.indicator;
+      const country = threat.country ? escapeHtml(threat.country) : '—';
+      const typeLbl = typeLabel(threat.type);
+      const sourceLbl = sourceLabel(threat.source);
+      const age = threat.lastSeen ? timeAgo(threat.lastSeen) : '—';
+      const itype = threat.indicatorType === 'ip' ? 'ip' : threat.indicatorType === 'url' ? 'url' : 'domain';
+      return `<tr class="${rowClass} ct-clickable" data-indicator="${escapeHtml(threat.indicator)}" data-itype="${itype}" title="Click for VirusTotal lookup">
+        <td class="ct-sev">${escapeHtml(threat.severity)}</td>
         <td class="ct-type">${typeLbl}</td>
         <td class="ct-country">${country}</td>
         <td class="ct-indicator">${escapeHtml(indicator)}</td>
@@ -52,6 +54,7 @@ export class CyberThreatPanel extends Panel {
 
     this.setContent(`
       <div class="ct-panel-content">
+        <div class="ct-vt-tooltip" style="display:none"></div>
         <table class="eq-table ct-table">
           <thead>
             <tr>
@@ -71,6 +74,44 @@ export class CyberThreatPanel extends Panel {
         </div>
       </div>
     `);
+
+    this.getContentElement().querySelector('tbody')?.addEventListener('click', (e) => {
+      const row = (e.target as HTMLElement).closest('tr[data-indicator]') as HTMLElement | null;
+      if (!row) return;
+      const indicator = row.dataset.indicator ?? '';
+      const itype = (row.dataset.itype ?? 'domain') as 'ip' | 'domain' | 'url';
+      if (!indicator) return;
+      void this.showVtTooltip(row, indicator, itype);
+    });
+  }
+
+  private async showVtTooltip(row: HTMLElement, indicator: string, itype: 'ip' | 'domain' | 'url'): Promise<void> {
+    const tooltip = this.getContentElement().querySelector('.ct-vt-tooltip') as HTMLElement | null;
+    if (!tooltip) return;
+
+    // Position near the row
+    const rect = row.getBoundingClientRect();
+    const panelRect = this.getContentElement().getBoundingClientRect();
+    tooltip.style.top = `${rect.bottom - panelRect.top + 4}px`;
+    tooltip.style.display = 'block';
+    tooltip.innerHTML = '<span class="ct-vt-loading">Checking VirusTotal…</span>';
+
+    const rep = await lookupVtIndicator(indicator, itype);
+    if (!rep) {
+      tooltip.innerHTML = '<span class="ct-vt-na">VirusTotal: no key configured</span>';
+      setTimeout(() => { tooltip.style.display = 'none'; }, 3000);
+      return;
+    }
+
+    const badge = rep.malicious >= 5 ? '🔴' : rep.malicious >= 1 ? '🟠' : rep.suspicious >= 3 ? '🟡' : '🟢';
+    tooltip.innerHTML = `
+      <div class="ct-vt-result">
+        <strong>${badge} ${escapeHtml(indicator.length > 40 ? indicator.slice(0, 38) + '…' : indicator)}</strong>
+        <span>Malicious: ${rep.malicious} · Suspicious: ${rep.suspicious} · Harmless: ${rep.harmless}</span>
+        <a href="https://www.virustotal.com/gui/${itype === 'ip' ? 'ip-address' : itype}/${encodeURIComponent(indicator)}" target="_blank" rel="noopener">View on VT →</a>
+        <button class="ct-vt-close">✕</button>
+      </div>`;
+    tooltip.querySelector('.ct-vt-close')?.addEventListener('click', () => { tooltip.style.display = 'none'; });
   }
 }
 

@@ -343,6 +343,16 @@ const ALLOWED_DOMAINS = [
   'www.cisa.gov',          // CISA critical infrastructure advisories
   'inciweb.wildfire.gov',  // InciWeb wildfire incidents (official US)
   'www.nhc.noaa.gov',      // NHC hurricane recon VDMs RSS
+  // Additional news sources
+  'www.gdacs.org',         // GDACS disaster alerts
+  'www.middleeasteye.net', // Middle East Eye
+  'api.weather.gov',       // NWS weather alerts
+  'tuoitrenews.vn',        // Vietnam news
+  'www.rt.com',            // RT (Russian state media — included for source diversity)
+  // Podcast feed hosts
+  'feeds.megaphone.fm',
+  'rss.art19.com',
+  'rss.libsyn.com',
 ];
 
 export default async function handler(req) {
