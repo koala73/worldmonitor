@@ -46,6 +46,7 @@ export const REFRESH_INTERVALS = {
   groceryBasket: 6 * 60 * 60 * 1000,
   intelligence: 15 * 60 * 1000,
   correlationEngine: 5 * 60 * 1000,
+  defensePatents: 24 * 60 * 60 * 1000, // 24h — data is weekly, daily poll is sufficient
 };
 
 // Monitor colors - shared

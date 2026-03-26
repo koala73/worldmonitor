@@ -7,7 +7,7 @@ import { loadEnvFile, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'patents:defense:latest';
-const CACHE_TTL = 604800; // 7 days
+const CACHE_TTL = 1_814_400; // 21 days (3× weekly interval)
 const PATENTSVIEW_API = 'https://search.patentsview.org/api/v1/patent/';
 const INTER_CATEGORY_DELAY_MS = 3_000;
 const MAX_PER_CATEGORY = 20;
@@ -101,6 +101,7 @@ runSeed('military', 'defense-patents', CANONICAL_KEY, fetchAllPatents, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'patentsview-v1',
+  recordCount: (d) => d?.patents?.length ?? 0,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);
