@@ -465,8 +465,8 @@ describe('panel guardrails — cw- prefix handling', () => {
 
   it('panel-layout loads widgets when feature is enabled', () => {
     assert.ok(
-      layout.includes('isProUser'),
-      'panel-layout must check isProUser before loading widgets',
+      layout.includes('hasPremiumAccess') || layout.includes('isProUser'),
+      'panel-layout must check hasPremiumAccess (or isProUser) before loading widgets',
     );
     assert.ok(
       layout.includes('loadWidgets'),
@@ -481,10 +481,10 @@ describe('panel guardrails — cw- prefix handling', () => {
     );
   });
 
-  it('panel-layout AI button is gated by isProUser', () => {
-    const featureIdx = layout.indexOf('isProUser');
+  it('panel-layout AI button is gated by hasPremiumAccess', () => {
+    const hasCheck = layout.includes('hasPremiumAccess') || layout.includes('isProUser');
     const buttonIdx = layout.indexOf('ai-widget-block');
-    assert.ok(featureIdx !== -1, 'isProUser not found in panel-layout');
+    assert.ok(hasCheck, 'hasPremiumAccess (or isProUser) not found in panel-layout');
     assert.ok(buttonIdx !== -1, 'AI widget button not found in panel-layout');
   });
 
@@ -1205,10 +1205,10 @@ describe('PRO widget — modal and layout integration', () => {
     );
   });
 
-  it('layout has PRO create button when isProUser', () => {
+  it('layout has PRO create button when hasPremiumAccess', () => {
     assert.ok(
-      layout.includes('isProUser'),
-      'panel-layout must import/call isProUser',
+      layout.includes('hasPremiumAccess') || layout.includes('isProUser'),
+      'panel-layout must import/call hasPremiumAccess (or isProUser)',
     );
     assert.ok(
       layout.includes('ai-widget-block-pro'),
