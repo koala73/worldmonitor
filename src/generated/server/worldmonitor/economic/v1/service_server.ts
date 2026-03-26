@@ -439,6 +439,26 @@ export interface EurostatMetric {
   unit: string;
 }
 
+export interface GetEuGasStorageRequest {
+}
+
+export interface GetEuGasStorageResponse {
+  fillPct: number;
+  fillPctChange1d: number;
+  gasDaysConsumption: number;
+  trend: string;
+  history: EuGasStorageHistoryEntry[];
+  seededAt: string;
+  updatedAt: string;
+  unavailable: boolean;
+}
+
+export interface EuGasStorageHistoryEntry {
+  date: string;
+  fillPct: number;
+  gasTwh: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -502,6 +522,7 @@ export interface EconomicServiceHandler {
   getCrudeInventories(ctx: ServerContext, req: GetCrudeInventoriesRequest): Promise<GetCrudeInventoriesResponse>;
   getEcbFxRates(ctx: ServerContext, req: GetEcbFxRatesRequest): Promise<GetEcbFxRatesResponse>;
   getEurostatCountryData(ctx: ServerContext, req: GetEurostatCountryDataRequest): Promise<GetEurostatCountryDataResponse>;
+  getEuGasStorage(ctx: ServerContext, req: GetEuGasStorageRequest): Promise<GetEuGasStorageResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -1228,6 +1249,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getEurostatCountryData(ctx, body);
           return new Response(JSON.stringify(result as GetEurostatCountryDataResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-eu-gas-storage",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetEuGasStorageRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getEuGasStorage(ctx, body);
+          return new Response(JSON.stringify(result as GetEuGasStorageResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

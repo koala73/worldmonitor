@@ -572,6 +572,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-eu-gas-storage:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEuGasStorage
+            description: GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
+            operationId: GetEuGasStorage
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEuGasStorageResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1597,3 +1623,54 @@ components:
                     type: string
                     description: Unit of measurement (e.g. "%").
             description: EurostatMetric holds a single economic metric value for a country.
+        GetEuGasStorageRequest:
+            type: object
+            description: GetEuGasStorageRequest is empty — returns latest EU aggregate snapshot.
+        GetEuGasStorageResponse:
+            type: object
+            properties:
+                fillPct:
+                    type: number
+                    format: double
+                    description: Current storage fill level as a percentage of working gas volume (0–100).
+                fillPctChange1d:
+                    type: number
+                    format: double
+                    description: 1-day change in fill percentage (positive = injecting, negative = withdrawing).
+                gasDaysConsumption:
+                    type: number
+                    format: double
+                    description: Approximate days of consumption remaining at average EU winter drawdown rate.
+                trend:
+                    type: string
+                    description: 'Current storage trend: "injecting", "withdrawing", or "stable".'
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EuGasStorageHistoryEntry'
+                seededAt:
+                    type: string
+                    format: int64
+                    description: UTC ms timestamp when seed data was written.
+                updatedAt:
+                    type: string
+                    description: Calendar date of the most recent data point (YYYY-MM-DD).
+                unavailable:
+                    type: boolean
+                    description: True when upstream data is unavailable (fallback result).
+            description: GetEuGasStorageResponse contains the EU aggregate gas storage snapshot.
+        EuGasStorageHistoryEntry:
+            type: object
+            properties:
+                date:
+                    type: string
+                    description: Calendar date (YYYY-MM-DD).
+                fillPct:
+                    type: number
+                    format: double
+                    description: Storage fill level as a percentage of working gas volume capacity.
+                gasTwh:
+                    type: number
+                    format: double
+                    description: Working gas volume in storage (TWh).
+            description: EuGasStorageHistoryEntry represents one day of EU aggregate gas storage data.

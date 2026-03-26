@@ -439,6 +439,26 @@ export interface EurostatMetric {
   unit: string;
 }
 
+export interface GetEuGasStorageRequest {
+}
+
+export interface GetEuGasStorageResponse {
+  fillPct: number;
+  fillPctChange1d: number;
+  gasDaysConsumption: number;
+  trend: string;
+  history: EuGasStorageHistoryEntry[];
+  seededAt: string;
+  updatedAt: string;
+  unavailable: boolean;
+}
+
+export interface EuGasStorageHistoryEntry {
+  date: string;
+  fillPct: number;
+  gasTwh: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -920,6 +940,29 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetEurostatCountryDataResponse;
+  }
+
+  async getEuGasStorage(req: GetEuGasStorageRequest, options?: EconomicServiceCallOptions): Promise<GetEuGasStorageResponse> {
+    let path = "/api/economic/v1/get-eu-gas-storage";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetEuGasStorageResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
