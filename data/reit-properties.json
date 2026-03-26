@@ -146,25 +146,33 @@
   {"reitSymbol":"SBAC","propertyName":"SBA - Phoenix Tower","lat":33.4484,"lng":-112.0740,"sector":"specialty","propertyType":"cell_tower","sqft":2000,"city":"Phoenix","state":"AZ","metro":"Phoenix"},
 
   {"reitSymbol":"180607.SZ","propertyName":"佛山映月湖环宇城","lat":23.0218,"lng":113.1310,"sector":"retail","propertyType":"shopping_mall","sqft":1100000,"city":"Foshan","state":"GD","metro":"Guangzhou-Foshan"},
-  {"reitSymbol":"180801.SZ","propertyName":"华润万象城·深圳","lat":22.5362,"lng":114.0579,"sector":"retail","propertyType":"shopping_mall","sqft":1600000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"},
-  {"reitSymbol":"180801.SZ","propertyName":"华润万象汇·杭州","lat":30.2741,"lng":120.1551,"sector":"retail","propertyType":"shopping_mall","sqft":1100000,"city":"Hangzhou","state":"ZJ","metro":"Hangzhou"},
-  {"reitSymbol":"180801.SZ","propertyName":"华润万象天地·深圳","lat":22.5468,"lng":114.0287,"sector":"retail","propertyType":"mixed_use_commercial","sqft":2200000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"},
-  {"reitSymbol":"508016.SS","propertyName":"物美超市·北京大成","lat":39.8746,"lng":116.3276,"sector":"retail","propertyType":"supermarket","sqft":350000,"city":"Beijing","state":"BJ","metro":"Beijing"},
-  {"reitSymbol":"508016.SS","propertyName":"物美超市·北京玉蜓桥","lat":39.8656,"lng":116.4061,"sector":"retail","propertyType":"supermarket","sqft":280000,"city":"Beijing","state":"BJ","metro":"Beijing"},
-  {"reitSymbol":"508016.SS","propertyName":"物美超市·北京圆明园","lat":39.9947,"lng":116.3003,"sector":"retail","propertyType":"supermarket","sqft":220000,"city":"Beijing","state":"BJ","metro":"Beijing"},
-  {"reitSymbol":"508016.SS","propertyName":"物美超市·杭州","lat":30.2594,"lng":120.2194,"sector":"retail","propertyType":"supermarket","sqft":260000,"city":"Hangzhou","state":"ZJ","metro":"Hangzhou"},
-  {"reitSymbol":"180601.SZ","propertyName":"首创奥莱·昆山","lat":31.3856,"lng":121.0022,"sector":"retail","propertyType":"outlet_mall","sqft":600000,"city":"Kunshan","state":"JS","metro":"Shanghai"},
-  {"reitSymbol":"180601.SZ","propertyName":"首创奥莱·济南","lat":36.6512,"lng":117.0063,"sector":"retail","propertyType":"outlet_mall","sqft":550000,"city":"Jinan","state":"SD","metro":"Jinan"},
-  {"reitSymbol":"180601.SZ","propertyName":"首创奥莱·重庆","lat":29.5630,"lng":106.5516,"sector":"retail","propertyType":"outlet_mall","sqft":480000,"city":"Chongqing","state":"CQ","metro":"Chongqing"},
-  {"reitSymbol":"508027.SS","propertyName":"华润有巢·泗泾","lat":31.1176,"lng":121.3775,"sector":"residential","propertyType":"rental_housing","sqft":350000,"city":"Shanghai","state":"SH","metro":"Shanghai"},
-  {"reitSymbol":"508027.SS","propertyName":"华润有巢·松江","lat":31.0326,"lng":121.2292,"sector":"residential","propertyType":"rental_housing","sqft":280000,"city":"Shanghai","state":"SH","metro":"Shanghai"},
-  {"reitSymbol":"508058.SS","propertyName":"城投宽庭·江湾","lat":31.2803,"lng":121.5069,"sector":"residential","propertyType":"rental_housing","sqft":320000,"city":"Shanghai","state":"SH","metro":"Shanghai"},
-  {"reitSymbol":"508058.SS","propertyName":"城投宽庭·光华","lat":31.2237,"lng":121.4704,"sector":"residential","propertyType":"rental_housing","sqft":260000,"city":"Shanghai","state":"SH","metro":"Shanghai"},
-  {"reitSymbol":"180401.SZ","propertyName":"中金厦门安居·园博","lat":24.4798,"lng":118.0894,"sector":"residential","propertyType":"affordable_housing","sqft":400000,"city":"Xiamen","state":"FJ","metro":"Xiamen"},
-  {"reitSymbol":"180401.SZ","propertyName":"中金厦门安居·珩琦","lat":24.5124,"lng":118.1198,"sector":"residential","propertyType":"affordable_housing","sqft":350000,"city":"Xiamen","state":"FJ","metro":"Xiamen"},
-  {"reitSymbol":"508068.SS","propertyName":"北京保障房·文龙家园","lat":39.9042,"lng":116.4074,"sector":"residential","propertyType":"affordable_housing","sqft":500000,"city":"Beijing","state":"BJ","metro":"Beijing"},
-  {"reitSymbol":"508068.SS","propertyName":"北京保障房·熙悦尚郡","lat":39.7963,"lng":116.5217,"sector":"residential","propertyType":"affordable_housing","sqft":420000,"city":"Beijing","state":"BJ","metro":"Beijing"},
-  {"reitSymbol":"180501.SZ","propertyName":"深圳安居·凤凰英荟","lat":22.7250,"lng":113.8500,"sector":"residential","propertyType":"affordable_housing","sqft":380000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"},
-  {"reitSymbol":"180501.SZ","propertyName":"深圳安居·保利香槟","lat":22.6530,"lng":114.0579,"sector":"residential","propertyType":"affordable_housing","sqft":450000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"},
-  {"reitSymbol":"180501.SZ","propertyName":"深圳安居·龙海家园","lat":22.7100,"lng":114.2190,"sector":"residential","propertyType":"affordable_housing","sqft":520000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"}
+
+  {"reitSymbol":"180801.SZ","propertyName":"青岛万象城","lat":36.0671,"lng":120.3826,"sector":"retail","propertyType":"shopping_mall","sqft":1500000,"city":"Qingdao","state":"SD","metro":"Qingdao"},
+  {"reitSymbol":"180801.SZ","propertyName":"杭州萧山万象汇","lat":30.1833,"lng":120.2641,"sector":"retail","propertyType":"shopping_mall","sqft":900000,"city":"Hangzhou","state":"ZJ","metro":"Hangzhou"},
+
+  {"reitSymbol":"508016.SS","propertyName":"物美大成店","lat":39.8610,"lng":116.3390,"sector":"retail","propertyType":"supermarket","sqft":320000,"city":"Beijing","state":"BJ","metro":"Beijing"},
+  {"reitSymbol":"508016.SS","propertyName":"物美玉蜓桥店","lat":39.8656,"lng":116.4061,"sector":"retail","propertyType":"supermarket","sqft":280000,"city":"Beijing","state":"BJ","metro":"Beijing"},
+  {"reitSymbol":"508016.SS","propertyName":"物美圆明园店","lat":39.9947,"lng":116.3003,"sector":"retail","propertyType":"supermarket","sqft":220000,"city":"Beijing","state":"BJ","metro":"Beijing"},
+  {"reitSymbol":"508016.SS","propertyName":"物美新街口店","lat":39.9375,"lng":116.3730,"sector":"retail","propertyType":"supermarket","sqft":250000,"city":"Beijing","state":"BJ","metro":"Beijing"},
+
+  {"reitSymbol":"180601.SZ","propertyName":"首创奥特莱斯·昆山","lat":31.3856,"lng":121.0022,"sector":"retail","propertyType":"outlet_mall","sqft":600000,"city":"Kunshan","state":"JS","metro":"Shanghai"},
+  {"reitSymbol":"180601.SZ","propertyName":"首创奥特莱斯·济南","lat":36.6077,"lng":116.9972,"sector":"retail","propertyType":"outlet_mall","sqft":550000,"city":"Jinan","state":"SD","metro":"Jinan"},
+  {"reitSymbol":"180601.SZ","propertyName":"首创奥特莱斯·武汉","lat":30.4588,"lng":114.4268,"sector":"retail","propertyType":"outlet_mall","sqft":480000,"city":"Wuhan","state":"HB","metro":"Wuhan"},
+
+  {"reitSymbol":"508027.SS","propertyName":"有巢国际公寓社区·泗泾店","lat":31.1176,"lng":121.3775,"sector":"residential","propertyType":"rental_housing","sqft":350000,"city":"Shanghai","state":"SH","metro":"Shanghai"},
+  {"reitSymbol":"508027.SS","propertyName":"有巢国际公寓社区·松江店","lat":31.0326,"lng":121.2292,"sector":"residential","propertyType":"rental_housing","sqft":280000,"city":"Shanghai","state":"SH","metro":"Shanghai"},
+
+  {"reitSymbol":"508058.SS","propertyName":"城投宽庭·江湾社区","lat":31.3100,"lng":121.5069,"sector":"residential","propertyType":"rental_housing","sqft":320000,"city":"Shanghai","state":"SH","metro":"Shanghai"},
+  {"reitSymbol":"508058.SS","propertyName":"城投宽庭·光华社区","lat":31.2237,"lng":121.4704,"sector":"residential","propertyType":"rental_housing","sqft":260000,"city":"Shanghai","state":"SH","metro":"Shanghai"},
+
+  {"reitSymbol":"180401.SZ","propertyName":"厦门园博公寓","lat":24.5798,"lng":118.0594,"sector":"residential","propertyType":"affordable_housing","sqft":400000,"city":"Xiamen","state":"FJ","metro":"Xiamen"},
+  {"reitSymbol":"180401.SZ","propertyName":"厦门珩琦公寓","lat":24.5124,"lng":118.1198,"sector":"residential","propertyType":"affordable_housing","sqft":350000,"city":"Xiamen","state":"FJ","metro":"Xiamen"},
+
+  {"reitSymbol":"508068.SS","propertyName":"文龙家园","lat":39.9242,"lng":116.4574,"sector":"residential","propertyType":"affordable_housing","sqft":500000,"city":"Beijing","state":"BJ","metro":"Beijing"},
+  {"reitSymbol":"508068.SS","propertyName":"熙悦尚郡","lat":39.7963,"lng":116.5217,"sector":"residential","propertyType":"affordable_housing","sqft":420000,"city":"Beijing","state":"BJ","metro":"Beijing"},
+
+  {"reitSymbol":"180501.SZ","propertyName":"安居百泰·凤凰英荟","lat":22.7250,"lng":113.8500,"sector":"residential","propertyType":"affordable_housing","sqft":380000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"},
+  {"reitSymbol":"180501.SZ","propertyName":"安居百泰·保利香槟苑","lat":22.6530,"lng":114.0579,"sector":"residential","propertyType":"affordable_housing","sqft":450000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"},
+  {"reitSymbol":"180501.SZ","propertyName":"安居百泰·龙海家园","lat":22.7100,"lng":114.2190,"sector":"residential","propertyType":"affordable_housing","sqft":520000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"},
+  {"reitSymbol":"180501.SZ","propertyName":"安居锦园","lat":22.5562,"lng":114.0665,"sector":"residential","propertyType":"affordable_housing","sqft":400000,"city":"Shenzhen","state":"GD","metro":"Shenzhen"}
 ]
