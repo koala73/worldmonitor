@@ -255,12 +255,17 @@ async function executeTool(tool: ToolDef): Promise<{ cached_at: string | null; s
   }
 
   const data: Record<string, unknown> = {};
+  // Walk backward through ':'-delimited segments, skipping non-informative suffixes
+  // (version tags, bare numbers, internal format names) to produce a readable label.
+  const NON_LABEL = /^(v\d+|\d+|stale|sebuf)$/;
   tool._cacheKeys.forEach((key, i) => {
     const parts = key.split(':');
-    const last = parts[parts.length - 1] ?? '';
-    const secondLast = parts[parts.length - 2] ?? key;
-    const label = last.replace(/^v\d+$/, '') || secondLast;
-    data[label] = results[i];
+    let label = '';
+    for (let idx = parts.length - 1; idx >= 0; idx--) {
+      const seg = parts[idx] ?? '';
+      if (!NON_LABEL.test(seg)) { label = seg; break; }
+    }
+    data[label || (parts[0] ?? key)] = results[i];
   });
 
   return { cached_at, stale, data };
@@ -341,10 +346,14 @@ export default async function handler(req: Request): Promise<Response> {
       if (!tool) {
         return rpcError(id, -32602, `Unknown tool: ${p.name}`);
       }
-      const result = await executeTool(tool);
-      return rpcOk(id, {
-        content: [{ type: 'text', text: JSON.stringify(result) }],
-      }, corsHeaders);
+      try {
+        const result = await executeTool(tool);
+        return rpcOk(id, {
+          content: [{ type: 'text', text: JSON.stringify(result) }],
+        }, corsHeaders);
+      } catch {
+        return rpcError(id, -32603, 'Internal error: data fetch failed');
+      }
     }
 
     default:

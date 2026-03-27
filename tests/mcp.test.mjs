@@ -187,4 +187,23 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // The exact Upstash Lua response format is internal — just verify the handler doesn't crash
     assert.ok(body.error?.code === -32029 || body.result?.protocolVersion, 'Handler must return valid JSON-RPC (either rate limited or initialized)');
   });
+
+  it('tools/call returns JSON-RPC -32603 when Redis fetch throws (P1 fix)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    // Simulate Redis being unreachable — fetch throws a network/timeout error
+    globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 6, method: 'tools/call',
+      params: { name: 'get_market_data', arguments: {} },
+    }));
+    assert.equal(res.status, 200, 'Must return HTTP 200, not 500');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603, 'Must return JSON-RPC -32603, not throw');
+  });
 });
