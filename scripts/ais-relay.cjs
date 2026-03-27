@@ -8194,49 +8194,58 @@ const WIDGET_SYSTEM_PROMPT = `You are a WorldMonitor widget builder. Your job is
 
 ## Available data tools
 
-### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no matching service below exists.
-URL pattern: /api/<service>/v1/<method> (kebab-case method names)
+### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no bootstrap key or RPC matches.
 
-market: list-market-quotes, list-commodity-quotes, list-crypto-quotes, list-gulf-quotes,
-  get-sector-summary, list-etf-flows, get-fear-greed-index, list-earnings-calendar,
-  get-cot-positioning, list-stablecoin-markets, list-ai-tokens, list-defi-tokens,
-  list-crypto-sectors, get-country-stock-index (params: country_code)
+## Tool budget — CRITICAL
+Make at most 3 tool calls total. After 2 calls without usable data, generate the widget immediately using whatever you have — even if sparse. NEVER keep probing.
 
+## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
+Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
+PREFER this over live RPCs whenever a key matches the user's topic.
+
+Market & Crypto:
+  marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes, sectors, etfFlows,
+  cryptoSectors, defiTokens, aiTokens, otherTokens, stablecoinMarkets, fearGreedIndex
+
+Economic & Energy:
+  macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
+  euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+
+Tech & Intelligence:
+  techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
+  gdeltIntel, marketImplications
+
+Conflict & Unrest:
+  ucdpEvents, iranEvents, unrestEvents, theaterPosture
+
+Infrastructure & Environment:
+  earthquakes, wildfires, naturalEvents, thermalEscalation, climateAnomalies,
+  radiationWatch, weatherAlerts, outages, serviceStatuses, ddosAttacks, trafficAnomalies
+
+Supply Chain & Trade:
+  shippingRates, chokepoints, chokepointTransits, minerals, customsRevenue, sanctionsPressure
+
+Consumer Prices:
+  consumerPricesOverview, consumerPricesCategories, consumerPricesMovers, consumerPricesSpread
+
+Other:
+  flightDelays, cyberThreats, positiveGeoEvents, predictions, forecasts, giving, insights
+
+## Option 2 — Live RPCs (use only when no bootstrap key matches; supports custom params)
+URL pattern: /api/<service>/v1/<method> (kebab-case)
 economic: list-world-bank-indicators (params: indicator, country_code),
-  get-macro-signals, get-national-debt, get-bis-policy-rates, get-bis-exchange-rates,
-  get-ecb-fx-rates, get-eu-fsi, get-economic-calendar, list-big-mac-prices,
-  get-eu-yield-curve, get-energy-prices, get-crude-inventories, get-nat-gas-storage,
-  get-eu-gas-storage, list-fuel-prices, list-grocery-basket-prices,
-  get-fred-series (params: series_id — e.g. UNRATE, CPIAUCSL, DGS10, GDP),
-  get-eurostat-country-data (params: country_code)
-
-trade: get-trade-flows, get-trade-restrictions, get-tariff-trends,
-  get-trade-barriers, get-customs-revenue, list-comtrade-flows
-
-consumer-prices: get-consumer-price-overview, list-consumer-price-movers,
-  list-consumer-price-categories, list-retailer-price-spreads
-
-aviation: list-airport-delays, list-aviation-news,
-  get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code)
-
-intelligence: get-risk-scores, get-country-intel-brief (params: country_code),
-  get-country-facts (params: country_code), list-gps-interference,
-  list-cross-source-signals, list-security-advisories, list-satellites
-
-conflict: list-ucdp-events, list-acled-events, list-iran-events,
-  get-humanitarian-summary (params: country_code)
-
-unrest: list-unrest-events
-seismology: list-earthquakes
-wildfire: list-fire-detections
-natural: list-natural-events
+  get-fred-series (params: series_id e.g. UNRATE/CPIAUCSL/DGS10), get-eurostat-country-data
+trade: get-trade-flows, get-trade-restrictions, get-tariff-trends, get-trade-barriers, list-comtrade-flows
+aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code), list-aviation-news
+intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code)
+conflict: list-acled-events, get-humanitarian-summary (params: country_code)
+market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
+consumer-prices: list-retailer-price-spreads
 maritime: list-navigational-warnings
-supply-chain: get-shipping-rates, get-chokepoint-status, get-critical-minerals
-cyber: list-cyber-threats
-sanctions: list-sanctions-pressure
 news: list-feed-digest
 
-### search_web — Use ONLY when no matching WorldMonitor service exists above
+### search_web — Use ONLY when neither bootstrap nor RPC covers the topic
 Results include: title, url, snippet, publishedDate. Embed this data directly into the widget HTML.
 
 ## Visual design — CRITICAL (match the dashboard exactly)
@@ -8617,15 +8626,23 @@ async function handleWidgetAgentRequest(req, res) {
     messages.push({ role: 'user', content: String(prompt).slice(0, 2000) });
 
     let completed = false;
+    let toolCallCount = 0;
     for (let turn = 0; turn < maxTurns; turn++) {
       if (cancelled) break;
+
+      // Option D: on penultimate turn, inject a final-turn directive so the model
+      // emits HTML with whatever data it has instead of making another tool call.
+      const isLastChance = turn === maxTurns - 2;
+      const turnMessages = isLastChance
+        ? [...messages, { role: 'user', content: 'FINAL TURN: You have used all available tool calls. You MUST emit the completed widget HTML now using the data you already have. No more tool calls — output <!-- widget-html --> immediately.' }]
+        : messages;
 
       const response = await client.messages.create({
         model,
         max_tokens: maxTokens,
         system: systemPrompt,
-        tools: [WIDGET_FETCH_TOOL, WIDGET_SEARCH_TOOL],
-        messages,
+        tools: isLastChance ? [] : [WIDGET_FETCH_TOOL, WIDGET_SEARCH_TOOL],
+        messages: turnMessages,
       });
 
       if (response.stop_reason === 'end_turn') {
@@ -8693,10 +8710,30 @@ async function handleWidgetAgentRequest(req, res) {
         }
         messages.push({ role: 'assistant', content: response.content });
         messages.push({ role: 'user', content: toolResults });
+        toolCallCount++;
       }
     }
     if (!completed && !cancelled) {
-      sendWidgetSSE(res, 'error', { message: `Widget generation incomplete: tool loop exhausted (${maxTurns} turns)` });
+      // Partial recovery: scan all assistant messages for any widget-html markers
+      // emitted mid-loop (e.g. model tried to output but was truncated).
+      let recovered = false;
+      for (const msg of messages) {
+        if (msg.role !== 'assistant') continue;
+        const text = Array.isArray(msg.content)
+          ? msg.content.filter(b => b.type === 'text').map(b => b.text).join('')
+          : String(msg.content ?? '');
+        const htmlMatch = text.match(/<!--\s*widget-html\s*-->([\s\S]*?)<!--\s*\/widget-html\s*-->/);
+        if (htmlMatch?.[1]?.trim()) {
+          const titleMatch = text.match(/<!--\s*title:\s*([^\n]+?)\s*-->/);
+          sendWidgetSSE(res, 'html_complete', { html: htmlMatch[1].slice(0, maxHtml) });
+          sendWidgetSSE(res, 'done', { title: titleMatch?.[1]?.trim() ?? 'Custom Widget' });
+          recovered = true;
+          break;
+        }
+      }
+      if (!recovered) {
+        sendWidgetSSE(res, 'error', { message: `Widget generation incomplete: tool loop exhausted (${maxTurns} turns)` });
+      }
     }
   } catch (err) {
     if (!cancelled) sendWidgetSSE(res, 'error', { message: 'Agent error' });
@@ -8711,49 +8748,58 @@ const WIDGET_PRO_SYSTEM_PROMPT = `You are a WorldMonitor PRO widget builder. You
 
 ## Available data tools
 
-### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no matching service below exists.
-URL pattern: /api/<service>/v1/<method> (kebab-case method names)
+### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no bootstrap key or RPC matches.
 
-market: list-market-quotes, list-commodity-quotes, list-crypto-quotes, list-gulf-quotes,
-  get-sector-summary, list-etf-flows, get-fear-greed-index, list-earnings-calendar,
-  get-cot-positioning, list-stablecoin-markets, list-ai-tokens, list-defi-tokens,
-  list-crypto-sectors, get-country-stock-index (params: country_code)
+## Tool budget — CRITICAL
+Make at most 3 tool calls total. After 2 calls without usable data, generate the widget immediately using whatever you have. NEVER keep probing.
 
+## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
+Use: /api/bootstrap?keys=<key>  — response shape: { data: { <key>: <array or object> } }
+PREFER this over live RPCs whenever a key matches the user's topic.
+
+Market & Crypto:
+  marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes, sectors, etfFlows,
+  cryptoSectors, defiTokens, aiTokens, otherTokens, stablecoinMarkets, fearGreedIndex
+
+Economic & Energy:
+  macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
+  euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+
+Tech & Intelligence:
+  techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
+  gdeltIntel, marketImplications
+
+Conflict & Unrest:
+  ucdpEvents, iranEvents, unrestEvents, theaterPosture
+
+Infrastructure & Environment:
+  earthquakes, wildfires, naturalEvents, thermalEscalation, climateAnomalies,
+  radiationWatch, weatherAlerts, outages, serviceStatuses, ddosAttacks, trafficAnomalies
+
+Supply Chain & Trade:
+  shippingRates, chokepoints, chokepointTransits, minerals, customsRevenue, sanctionsPressure
+
+Consumer Prices:
+  consumerPricesOverview, consumerPricesCategories, consumerPricesMovers, consumerPricesSpread
+
+Other:
+  flightDelays, cyberThreats, positiveGeoEvents, predictions, forecasts, giving, insights
+
+## Option 2 — Live RPCs (use only when no bootstrap key matches; supports custom params)
+URL pattern: /api/<service>/v1/<method> (kebab-case)
 economic: list-world-bank-indicators (params: indicator, country_code),
-  get-macro-signals, get-national-debt, get-bis-policy-rates, get-bis-exchange-rates,
-  get-ecb-fx-rates, get-eu-fsi, get-economic-calendar, list-big-mac-prices,
-  get-eu-yield-curve, get-energy-prices, get-crude-inventories, get-nat-gas-storage,
-  get-eu-gas-storage, list-fuel-prices, list-grocery-basket-prices,
-  get-fred-series (params: series_id — e.g. UNRATE, CPIAUCSL, DGS10, GDP),
-  get-eurostat-country-data (params: country_code)
-
-trade: get-trade-flows, get-trade-restrictions, get-tariff-trends,
-  get-trade-barriers, get-customs-revenue, list-comtrade-flows
-
-consumer-prices: get-consumer-price-overview, list-consumer-price-movers,
-  list-consumer-price-categories, list-retailer-price-spreads
-
-aviation: list-airport-delays, list-aviation-news,
-  get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code)
-
-intelligence: get-risk-scores, get-country-intel-brief (params: country_code),
-  get-country-facts (params: country_code), list-gps-interference,
-  list-cross-source-signals, list-security-advisories, list-satellites
-
-conflict: list-ucdp-events, list-acled-events, list-iran-events,
-  get-humanitarian-summary (params: country_code)
-
-unrest: list-unrest-events
-seismology: list-earthquakes
-wildfire: list-fire-detections
-natural: list-natural-events
+  get-fred-series (params: series_id e.g. UNRATE/CPIAUCSL/DGS10), get-eurostat-country-data
+trade: get-trade-flows, get-trade-restrictions, get-tariff-trends, get-trade-barriers, list-comtrade-flows
+aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code), list-aviation-news
+intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code)
+conflict: list-acled-events, get-humanitarian-summary (params: country_code)
+market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
+consumer-prices: list-retailer-price-spreads
 maritime: list-navigational-warnings
-supply-chain: get-shipping-rates, get-chokepoint-status, get-critical-minerals
-cyber: list-cyber-threats
-sanctions: list-sanctions-pressure
 news: list-feed-digest
 
-### search_web — Use ONLY when no matching WorldMonitor service exists above
+### search_web — Use ONLY when neither bootstrap nor RPC covers the topic
 Results include: title, url, snippet, publishedDate. Embed as const DATA = [...] in your inline script.
 
 ## Output: body content + inline scripts ONLY
