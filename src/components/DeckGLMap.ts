@@ -539,6 +539,7 @@ export class DeckGLMap {
     this.createTimeSlider();
     this.createLayerToggles();
     this.createLegend();
+    this.updateLegendVisibility();
 
     // Start day/night timer only if layer is initially enabled
     if (this.state.layers.dayNight) {
@@ -5371,8 +5372,59 @@ export class DeckGLMap {
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];
     this.render();
+    // Update legend visibility based on active layers
+    this.updateLegendVisibility();
     this.onLayerChange?.(layer, this.state.layers[layer], 'programmatic');
     this.enforceLayerLimit();
+  }
+
+  // Update legend visibility based on which layers are currently active
+  private updateLegendVisibility(): void {
+    const legend = this.container.querySelector('.map-legend.deckgl-legend') as HTMLElement | null;
+    if (!legend) return;
+
+    // Determine which legend items should be visible based on active layers
+    const visibleLabels: Set<string> = new Set();
+
+    // Map layers to their legend labels
+    const layerToLabels: Record<string, string[]> = {
+      startupHub: ['Startup Hub'],
+      techHQ: ['Tech HQ'],
+      accelerator: ['Accelerator'],
+      cloudRegion: ['Cloud Region'],
+      datacenter: ['Datacenter'],
+      stockExchange: ['Stock Exchange'],
+      financialCenter: ['Financial Center'],
+      centralBank: ['Central Bank'],
+      commodityHub: ['Commodity Hub'],
+      waterway: ['Waterway'],
+      aircraft: ['Aircraft'],
+      nuclear: ['Nuclear'],
+      naturalEvents: ['Natural Event', 'Positive Event', 'Breakthrough', 'Act of Kindness'],
+      conflictZones: ['HIGH', 'ELEVATED', 'MONITORING'],
+      cyberThreats: ['APT'],
+      positiveEvents: ['Positive Event', 'Breakthrough', 'Act of Kindness', 'Species Recovery Zone', 'Renewable Installation'],
+      aiDataCenters: ['AI Data Center'],
+      techEvents: ['Tech Event'],
+    };
+
+    // Collect visible labels based on active layers
+    for (const [layer, labels] of Object.entries(layerToLabels)) {
+      if (this.state.layers[layer as keyof MapLayers]) {
+        labels.forEach(label => visibleLabels.add(label));
+      }
+    }
+
+    // Update legend item visibility
+    const legendItems = legend.querySelectorAll('.legend-item');
+    legendItems.forEach(item => {
+      const labelEl = item.querySelector('.legend-label');
+      if (labelEl) {
+        const labelText = labelEl.textContent?.trim() || '';
+        const isVisible = visibleLabels.has(labelText);
+        (item as HTMLElement).style.display = isVisible ? '' : 'none';
+      }
+    });
   }
 
   // Get center coordinates for programmatic popup positioning
