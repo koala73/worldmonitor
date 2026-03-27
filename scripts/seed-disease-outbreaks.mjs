@@ -47,9 +47,15 @@ const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
 function resolveProxy() {
   const raw = process.env.PROXY_URL || '';
   if (raw) {
-    const parts = raw.split(':');
-    if (parts.length === 4) {
-      const [host, port, user, pass] = parts;
+    // Format: "host:port:user:pass" — password may itself contain colons, so split on first 3 only
+    const idx1 = raw.indexOf(':');
+    const idx2 = raw.indexOf(':', idx1 + 1);
+    const idx3 = raw.indexOf(':', idx2 + 1);
+    if (idx1 !== -1 && idx2 !== -1 && idx3 !== -1) {
+      const host = raw.slice(0, idx1);
+      const port = raw.slice(idx1 + 1, idx2);
+      const user = raw.slice(idx2 + 1, idx3);
+      const pass = raw.slice(idx3 + 1);
       return `${user}:${pass}@${host.replace(/^gate\./, 'us.')}:${port}`;
     }
   }
@@ -83,9 +89,13 @@ function stableHash(str) {
  * Handles: "Disease – Country" (em-dash), "Disease - Country" (hyphen), "Disease in Country".
  */
 function extractLocationFromTitle(title) {
-  // WHO DON pattern: "Avian influenza A(H5N1) – Cambodia" or "Nipah virus - Bangladesh"
-  const dashMatch = title.match(/[–—-]\s*([A-Z][^–—]+)$/);
-  if (dashMatch) return dashMatch[1].trim();
+  // WHO DON pattern: "Disease – Country" or "Disease - Country" (one or more dash-separated segments)
+  // Split on em-dash, en-dash, or " - " / " – " to get all segments, then take the last capitalized one.
+  const segments = title.split(/\s*[–—]\s*|\s+-\s+/);
+  if (segments.length >= 2) {
+    const last = segments[segments.length - 1].trim();
+    if (/^[A-Z]/.test(last)) return last;
+  }
   // Fallback: "... in <Country/Region>"
   const inMatch = title.match(/\bin\s+([A-Z][^,.(]+)/);
   if (inMatch) return inMatch[1].trim();
@@ -284,10 +294,11 @@ async function fetchDiseaseOutbreaks() {
 
   outbreaks.sort((a, b) => b.publishedAt - a.publishedAt);
 
-  // Deduplicate by disease+country combination (keep most recent per pair)
+  // Deduplicate by disease+country combination (keep most recent per pair).
+  // "Unknown Disease" events are not collapsed — use the unique id to preserve distinct alerts.
   const seen = new Set();
   const deduped = outbreaks.filter(o => {
-    const key = `${o.disease}:${o.countryCode || o.location}`;
+    const key = o.disease === 'Unknown Disease' ? o.id : `${o.disease}:${o.countryCode || o.location}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
