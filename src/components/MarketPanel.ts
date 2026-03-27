@@ -182,7 +182,7 @@ export class HeatmapPanel extends Panel {
           .map((s) => {
             const pct = Math.min((Math.abs(s.change1d) / maxAbs) * 100, 100).toFixed(1);
             const isPos = s.change1d >= 0;
-            const color = isPos ? 'var(--color-positive, #22c55e)' : 'var(--color-negative, #ef4444)';
+            const color = isPos ? 'var(--green)' : 'var(--red)';
             const sign = isPos ? '+' : '';
             return `<div class="heatmap-bar-row">
   <span class="heatmap-bar-label">${escapeHtml(s.symbol)}</span>
