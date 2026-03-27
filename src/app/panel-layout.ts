@@ -141,36 +141,39 @@ export class PanelLayoutManager implements AppModule {
       this.applyTimeRangeFilterToNewsPanels();
     }, 120);
 
-    // Detect post-checkout redirect params and show success banner
-    if (handleCheckoutReturn()) {
-      showCheckoutSuccess();
-    }
+    // Dodo Payments: entitlement + billing init gated behind isProUser()
+    // (same gate as Clerk auth — remove both once ready for all users)
+    if (isProUser()) {
+      if (handleCheckoutReturn()) {
+        showCheckoutSuccess();
+      }
 
-    // Boot entitlement + billing subscriptions if we have a user identifier.
-    const userId = getUserId();
-    if (userId) {
-      initEntitlementSubscription(userId).catch(() => {});
-      initSubscriptionWatch(userId).catch(() => {});
-      initPaymentFailureBanner();
-    }
+      const userId = getUserId();
+      if (userId) {
+        initEntitlementSubscription(userId).catch(() => {});
+        initSubscriptionWatch(userId).catch(() => {});
+        initPaymentFailureBanner();
+      }
 
-    // Initialize checkout overlay so payment success triggers the success banner
-    initCheckoutOverlay(() => showCheckoutSuccess());
+      initCheckoutOverlay(() => showCheckoutSuccess());
+    }
 
     // Listen for entitlement changes — reload panels to pick up new gating state.
     // Skip the initial snapshot to avoid a reload loop for users who already have
     // premium via legacy signals (API key / wm-pro-key).
-    let skipInitialSnapshot = true;
-    onEntitlementChange(() => {
-      if (skipInitialSnapshot) {
-        skipInitialSnapshot = false;
-        return;
-      }
-      if (isEntitled()) {
-        console.log('[entitlements] Subscription activated — reloading to unlock panels');
-        window.location.reload();
-      }
-    });
+    if (isProUser()) {
+      let skipInitialSnapshot = true;
+      onEntitlementChange(() => {
+        if (skipInitialSnapshot) {
+          skipInitialSnapshot = false;
+          return;
+        }
+        if (isEntitled()) {
+          console.log('[entitlements] Subscription activated — reloading to unlock panels');
+          window.location.reload();
+        }
+      });
+    }
   }
 
   init(): void {
