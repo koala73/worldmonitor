@@ -176,11 +176,11 @@ export class McpDataPanel extends Panel {
 
     try {
       const testerKey = getBrowserTesterKey();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'X-Widget-Key': getWidgetAgentKey(),
-        'X-Pro-Key': getProWidgetKey(),
-      };
+      const widgetKey = getWidgetAgentKey();
+      const proKey = getProWidgetKey();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (widgetKey) headers['X-Widget-Key'] = widgetKey;
+      if (proKey) headers['X-Pro-Key'] = proKey;
       if (testerKey) headers['X-WorldMonitor-Key'] = testerKey;
       const res = await fetch(widgetAgentUrl(), {
         method: 'POST',

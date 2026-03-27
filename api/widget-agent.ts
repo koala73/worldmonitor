@@ -24,11 +24,15 @@ import { validateBearerToken } from '../server/auth-session';
 const RELAY_BASE = 'https://proxy.worldmonitor.app';
 const WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY ?? '';
 const PRO_WIDGET_KEY = process.env.PRO_WIDGET_KEY ?? '';
+const WORLDMONITOR_VALID_KEY_SET = new Set(
+  (process.env.WORLDMONITOR_VALID_KEYS ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean),
+);
 
 function hasValidWorldMonitorKey(key: string): boolean {
-  if (!key) return false;
-  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '').split(',').map((v) => v.trim()).filter(Boolean);
-  return validKeys.includes(key);
+  return Boolean(key) && WORLDMONITOR_VALID_KEY_SET.has(key);
 }
 
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
