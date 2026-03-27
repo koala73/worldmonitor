@@ -3,6 +3,7 @@ import { getRecentAlerts, type UnifiedAlert } from '@/services/cross-module-inte
 import { getAlertSettings, updateAlertSettings } from '@/services/breaking-news-alerts';
 import { t } from '@/services/i18n';
 import { getSignalContext } from '@/utils/analysis-constants';
+import { playAlertPing } from '@/services/sound-manager';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackFindingClicked } from '@/services/analytics';
 
@@ -46,7 +47,6 @@ export class IntelligenceFindingsBadge {
       this.update();
     });
   };
-  private audio: HTMLAudioElement | null = null;
   private audioEnabled = true;
   private enabled: boolean;
   private popupEnabled: boolean;
@@ -127,21 +127,14 @@ export class IntelligenceFindingsBadge {
     if (this.enabled) {
       document.addEventListener('click', this.boundCloseDropdown);
       this.mount();
-      this.initAudio();
       this.update();
       this.startRefresh();
     }
   }
 
-  private initAudio(): void {
-    this.audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQYjfKapmWswEjCJvuPQfSoXZZ+3qqBJESSP0unGaxMJVYiytrFeLhR6p8znrFUXRW+bs7V3Qx1hn8Xjp1cYPnegprhkMCFmoLi1k0sZTYGlqqlUIA==');
-    this.audio.volume = 0.3;
-  }
-
   private playSound(): void {
-    if (this.audioEnabled && this.audio) {
-      this.audio.currentTime = 0;
-      this.audio.play().catch(() => {});
+    if (this.audioEnabled) {
+      playAlertPing();
     }
   }
 
@@ -173,7 +166,6 @@ export class IntelligenceFindingsBadge {
       localStorage.removeItem(STORAGE_KEY);
       document.addEventListener('click', this.boundCloseDropdown);
       this.mount();
-      this.initAudio();
       this.update();
       this.startRefresh();
     } else {

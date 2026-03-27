@@ -45,6 +45,7 @@ import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/Dow
 import type { Platform } from '@/components/DownloadBanner';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { toggleGhostMode, getMode, setMode } from '@/services/mode-manager';
+import { playUiClick } from '@/services/sound-manager';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
 import { UnifiedSettings } from '@/components/UnifiedSettings';
@@ -683,6 +684,7 @@ export class EventHandlerManager implements AppModule {
         const config = this.ctx.panelSettings[key];
         if (config) {
           config.enabled = !config.enabled;
+          playUiClick(config.enabled ? 'open' : 'close');
           trackPanelToggled(key, config.enabled);
           saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
           this.applyPanelSettings();

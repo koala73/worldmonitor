@@ -1,6 +1,7 @@
 import type { BreakingAlert } from '@/services/breaking-news-alerts';
 import { getAlertSettings } from '@/services/breaking-news-alerts';
 import { t } from '@/services/i18n';
+import { playAlertPing } from '@/services/sound-manager';
 
 const MAX_ALERTS = 3;
 const CRITICAL_DISMISS_MS = 60_000;
@@ -18,7 +19,6 @@ interface ActiveAlert {
 export class BreakingNewsBanner {
   private container: HTMLElement;
   private activeAlerts: ActiveAlert[] = [];
-  private audio: HTMLAudioElement | null = null;
   private lastSoundMs = 0;
   private mutationObserver: MutationObserver | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -33,7 +33,6 @@ export class BreakingNewsBanner {
     this.container.className = 'breaking-news-container';
     document.body.appendChild(this.container);
 
-    this.initAudio();
     this.updatePosition();
     this.setupObservers();
 
@@ -58,17 +57,11 @@ export class BreakingNewsBanner {
     });
   }
 
-  private initAudio(): void {
-    this.audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQYjfKapmWswEjCJvuPQfSoXZZ+3qqBJESSP0unGaxMJVYiytrFeLhR6p8znrFUXRW+bs7V3Qx1hn8Xjp1cYPnegprhkMCFmoLi1k0sZTYGlqqlUIA==');
-    this.audio.volume = 0.3;
-  }
-
   private playSound(): void {
     const settings = getAlertSettings();
-    if (!settings.soundEnabled || !this.audio) return;
+    if (!settings.soundEnabled) return;
     if (Date.now() - this.lastSoundMs < SOUND_COOLDOWN_MS) return;
-    this.audio.currentTime = 0;
-    this.audio.play().catch(() => {});
+    playAlertPing();
     this.lastSoundMs = Date.now();
   }
 
@@ -264,12 +257,6 @@ export class BreakingNewsBanner {
     window.removeEventListener('resize', this.boundOnResize);
     this.mutationObserver?.disconnect();
     this.resizeObserver?.disconnect();
-
-    if (this.audio) {
-      this.audio.pause();
-      this.audio.removeAttribute('src');
-      this.audio = null;
-    }
 
     for (const active of this.activeAlerts) {
       if (active.timer) clearTimeout(active.timer);

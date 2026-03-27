@@ -5,12 +5,12 @@ import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
+import { playAlertPing } from '@/services/sound-manager';
 
 export class SignalModal {
   private element: HTMLElement;
   private currentSignals: CorrelationSignal[] = [];
   private audioEnabled = true;
-  private audio: HTMLAudioElement | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
 
   constructor() {
@@ -35,7 +35,6 @@ export class SignalModal {
 
     document.body.appendChild(this.element);
     this.setupEventListeners();
-    this.initAudio();
 
     // Remove will-change after entrance animation to free GPU memory
     const modal = this.element.querySelector('.signal-modal') as HTMLElement | null;
@@ -44,10 +43,6 @@ export class SignalModal {
     }, { once: true });
   }
 
-  private initAudio(): void {
-    this.audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQYjfKapmWswEjCJvuPQfSoXZZ+3qqBJESSP0unGaxMJVYiytrFeLhR6p8znrFUXRW+bs7V3Qx1hn8Xjp1cYPnegprhkMCFmoLi1k0sZTYGlqqlUIA==');
-    this.audio.volume = 0.3;
-  }
 
   private setupEventListeners(): void {
     this.element.querySelector('.signal-modal-close')?.addEventListener('click', () => {
@@ -222,9 +217,8 @@ export class SignalModal {
   }
 
   public playSound(): void {
-    if (this.audioEnabled && this.audio) {
-      this.audio.currentTime = 0;
-      this.audio.play().catch(() => {});
+    if (this.audioEnabled) {
+      playAlertPing();
     }
   }
 

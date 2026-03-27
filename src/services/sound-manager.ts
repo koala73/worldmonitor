@@ -1,31 +1,51 @@
 /**
- * Sound Manager — Mode Transition & Alert Audio
+ * Sound Manager — Mode Transition & Spatial Alert Audio
  *
- * Synthesizes distinct sounds for each monitoring mode using the Web Audio API.
- * No audio files required — all sounds are generated procedurally.
+ * All sounds are synthesized procedurally with the Web Audio API. No audio files.
  *
- * War Mode:      controlled military two-tone alert (440/880 Hz sine, 3 pulses)
- *                — authoritative and urgent without being panicked
- * Finance Mode:  clean two-note broadcast chime (523 → 783 Hz sine)
- *                — like a Bloomberg terminal or newsroom notification
- * Peace Mode:    soft resolved two-note tone (392 → 523 Hz sine)
- *                — clear status-cleared confirmation
- * Disaster Mode: EAS-style two-frequency attention signal (853/960 Hz sine, 3 pairs)
- *                — modeled on the US Emergency Alert System attention tone
+ * Mode transition sounds:
+ *   War:      military two-tone pulse (440/880 Hz, 3 pairs)
+ *   Finance:  Bloomberg-style broadcast chime (C5 → G5)
+ *   Peace:    soft resolved fourth (G4 → C5)
+ *   Disaster: EAS dual-tone attention signal (853/960 Hz, 3 bursts)
+ *   Ghost:    descending electronic sweep (800 → 120 Hz)
  *
- * Spatial drone: two detuned triangle oscillators at 40 Hz (sub-bass) with
- * a slow LFO tremolo — felt as a rumble, not heard as a hum.
+ * Continuous spatial layers (all feed through _masterGain):
+ *   drone     — sub-bass triangle rumble, war-score-driven pitch (40–100 Hz)
+ *   ambient   — bandpass noise chatter, density scales with breaking news
+ *   pings     — escalation tones on breaking alerts
+ *   radar     — sonar-style sweep tick (active in War/Ghost modes)
+ *   ticker    — teletype micro-click stream (active in Finance mode)
+ *   ghost     — eerie 28 Hz sawtooth hum with slow tremolo (Ghost mode only)
  *
- * Sounds respect the global mute setting stored at localStorage key 'wm-sound-muted'.
- * AudioContext is created lazily on first interaction to satisfy browser autoplay policy.
+ * One-shot utility sounds (exported for callers):
+ *   playUiClick(type)   — panel open/close UI feedback
+ *   playDataTick(level) — data ingestion pulse (info/warning/critical)
+ *   playSonarPing()     — map event ping
+ *   playGeigerTick()    — radiation panel click
+ *
+ * localStorage keys:
+ *   wm-sound-muted       '0'|'1'        global mute (default 0)
+ *   wm-spatial-volume    '0.00'–'1.00'  master volume (default 0.50)
+ *   wm-spatial-ambient   '0'|'1'        default 1
+ *   wm-spatial-drone     '0'|'1'        default 0 (OFF — felt, not heard)
+ *   wm-spatial-pings     '0'|'1'        default 1
+ *   wm-spatial-radar     '0'|'1'        default 1
+ *   wm-spatial-ticker    '0'|'1'        default 1
+ *   wm-spatial-ghost     '0'|'1'        default 1
+ *   wm-sound-ui          '0'|'1'        UI click sounds (default 1)
+ *   wm-sound-data        '0'|'1'        data ingestion ticks (default 1)
  */
 
 import type { AppMode, ModeChangedDetail } from '@/services/mode-manager';
 
-const MUTE_KEY = 'wm-sound-muted';
+const MUTE_KEY           = 'wm-sound-muted';
+const UI_SOUND_KEY       = 'wm-sound-ui';
+const DATA_SOUND_KEY     = 'wm-sound-data';
 
 let _ctx: AudioContext | null = null;
 let _initialized = false;
+let _currentMode: AppMode = 'peace';
 
 // Stored handler references for cleanup (prevents event listener leaks)
 let _modeChangedHandler: EventListener | null = null;
@@ -47,7 +67,9 @@ export function initSoundManager(): void {
   _modeChangedHandler = ((e: CustomEvent<ModeChangedDetail>) => {
     const { mode, prev } = e.detail;
     if (mode !== prev) {
+      _currentMode = mode;
       _playModeSound(mode);
+      _onModeChangedLayers(mode, prev);
     }
   }) as EventListener;
   document.addEventListener('wm:mode-changed', _modeChangedHandler);
@@ -107,6 +129,9 @@ export function destroySoundManager(): void {
 
   _stopDrone();
   _cancelChatter();
+  _stopRadar();
+  _cancelTicker();
+  _stopGhostDrone();
 
   if (_ctx) {
     void _ctx.close().catch(() => {});
@@ -149,6 +174,7 @@ function _playModeSound(mode: AppMode): void {
     case 'finance':  return _playFinanceChime();
     case 'peace':    return _playPeaceTone();
     case 'disaster': return _playDisasterAlert();
+    case 'ghost':    return _playGhostActivate();
   }
 }
 
@@ -319,6 +345,9 @@ const SPATIAL_VOLUME_KEY  = 'wm-spatial-volume';
 const SPATIAL_AMBIENT_KEY = 'wm-spatial-ambient';
 const SPATIAL_DRONE_KEY   = 'wm-spatial-drone';
 const SPATIAL_PINGS_KEY   = 'wm-spatial-pings';
+const SPATIAL_RADAR_KEY   = 'wm-spatial-radar';
+const SPATIAL_TICKER_KEY  = 'wm-spatial-ticker';
+const SPATIAL_GHOST_KEY   = 'wm-spatial-ghost';
 const IDLE_MUTE_MS        = 5 * 60_000; // fade to silence after 5 min idle
 
 let _masterGain:    GainNode       | null = null;
@@ -331,6 +360,15 @@ let _ambientTimer:  ReturnType<typeof setTimeout> | null = null;
 let _idleTimer:     ReturnType<typeof setTimeout> | null = null;
 let _recentBreakingCount = 0; // decays by 3 after 5 min; drives chatter density
 let _warScore = 0;            // 0-100 from wm:war-score; drives drone pitch
+
+// ── New layer state ────────────────────────────────────────────────────────────
+let _radarTimer:    ReturnType<typeof setTimeout> | null = null;
+let _tickerTimer:   ReturnType<typeof setTimeout> | null = null;
+let _ghostDroneOsc: OscillatorNode | null = null;
+let _ghostDroneOsc2:OscillatorNode | null = null;
+let _ghostLfo:      OscillatorNode | null = null;
+let _ghostLfoGain:  GainNode       | null = null;
+let _ghostGainNode: GainNode       | null = null;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -347,24 +385,56 @@ export function setSpatialVolume(v: number): void {
   _applyMasterVolume();
 }
 
-/** Whether a spatial layer is enabled ('ambient' | 'drone' | 'pings'). */
-export function isSpatialLayerEnabled(layer: 'ambient' | 'drone' | 'pings'): boolean {
-  const key = layer === 'ambient' ? SPATIAL_AMBIENT_KEY
-            : layer === 'drone'   ? SPATIAL_DRONE_KEY
-            :                       SPATIAL_PINGS_KEY;
-  // Drone defaults OFF (must be explicitly enabled). Ambient & pings default ON.
+export type SpatialLayer = 'ambient' | 'drone' | 'pings' | 'radar' | 'ticker' | 'ghost';
+
+/** Whether a spatial layer is enabled. Drone defaults OFF; all others default ON. */
+export function isSpatialLayerEnabled(layer: SpatialLayer): boolean {
+  const key = _spatialKey(layer);
   if (layer === 'drone') return localStorage.getItem(key) === '1';
   return localStorage.getItem(key) !== '0';
 }
 
 /** Enable or disable a spatial layer and apply immediately. */
-export function setSpatialLayerEnabled(layer: 'ambient' | 'drone' | 'pings', enabled: boolean): void {
-  const key = layer === 'ambient' ? SPATIAL_AMBIENT_KEY
-            : layer === 'drone'   ? SPATIAL_DRONE_KEY
-            :                       SPATIAL_PINGS_KEY;
-  localStorage.setItem(key, enabled ? '1' : '0');
-  if (layer === 'drone')   enabled ? _startDrone()    : _stopDrone();
-  if (layer === 'ambient') enabled ? _scheduleChatter() : _cancelChatter();
+export function setSpatialLayerEnabled(layer: SpatialLayer, enabled: boolean): void {
+  localStorage.setItem(_spatialKey(layer), enabled ? '1' : '0');
+  switch (layer) {
+    case 'drone':   enabled ? _startDrone()      : _stopDrone();      break;
+    case 'ambient': enabled ? _scheduleChatter() : _cancelChatter();  break;
+    case 'radar':   enabled ? _scheduleRadar()   : _stopRadar();      break;
+    case 'ticker':  enabled ? _scheduleTicker()  : _cancelTicker();   break;
+    case 'ghost':   enabled ? _startGhostDrone() : _stopGhostDrone(); break;
+  }
+}
+
+/** Whether UI click sounds are enabled. */
+export function isUiSoundEnabled(): boolean {
+  return localStorage.getItem(UI_SOUND_KEY) !== '0';
+}
+
+/** Toggle UI click sounds on/off. */
+export function setUiSoundEnabled(enabled: boolean): void {
+  localStorage.setItem(UI_SOUND_KEY, enabled ? '1' : '0');
+}
+
+/** Whether data ingestion tick sounds are enabled. */
+export function isDataSoundEnabled(): boolean {
+  return localStorage.getItem(DATA_SOUND_KEY) !== '0';
+}
+
+/** Toggle data tick sounds on/off. */
+export function setDataSoundEnabled(enabled: boolean): void {
+  localStorage.setItem(DATA_SOUND_KEY, enabled ? '1' : '0');
+}
+
+function _spatialKey(layer: SpatialLayer): string {
+  switch (layer) {
+    case 'ambient': return SPATIAL_AMBIENT_KEY;
+    case 'drone':   return SPATIAL_DRONE_KEY;
+    case 'pings':   return SPATIAL_PINGS_KEY;
+    case 'radar':   return SPATIAL_RADAR_KEY;
+    case 'ticker':  return SPATIAL_TICKER_KEY;
+    case 'ghost':   return SPATIAL_GHOST_KEY;
+  }
 }
 
 // ── Internal init (called from initSoundManager) ──────────────────────────────
@@ -397,9 +467,13 @@ function _initSpatialAudio(): void {
     if (enabled) {
       _stopDrone();
       _cancelChatter();
-    } else {
-      if (isSpatialLayerEnabled('drone')   && !isMuted()) _startDrone();
-      if (isSpatialLayerEnabled('ambient') && !isMuted()) _scheduleChatter();
+      _stopRadar();
+      _cancelTicker();
+      _stopGhostDrone();
+    } else if (!isMuted()) {
+      if (isSpatialLayerEnabled('drone'))   _startDrone();
+      if (isSpatialLayerEnabled('ambient')) _scheduleChatter();
+      _onModeChangedLayers(_currentMode, _currentMode);
     }
   }) as EventListener;
   document.addEventListener('wm:low-power-changed', _lowPowerHandler);
@@ -412,11 +486,40 @@ function _initSpatialAudio(): void {
     const ctx = _getCtx();
     if (!ctx) return;
     _ensureMasterGain(ctx);
-    if (isSpatialLayerEnabled('drone')   && !isMuted()) _startDrone();
-    if (isSpatialLayerEnabled('ambient') && !isMuted()) _scheduleChatter();
+    if (!isMuted()) {
+      if (isSpatialLayerEnabled('drone'))   _startDrone();
+      if (isSpatialLayerEnabled('ambient')) _scheduleChatter();
+      // Mode-specific layers — seed from current mode
+      _onModeChangedLayers(_currentMode, _currentMode);
+    }
   };
   document.addEventListener('click',   _startAfterGesture, { once: true });
   document.addEventListener('keydown', _startAfterGesture, { once: true });
+}
+
+// ── Mode-driven layer switching ───────────────────────────────────────────────
+
+function _onModeChangedLayers(mode: AppMode, prev: AppMode): void {
+  if (isMuted()) return;
+
+  const wasWarOrGhost = prev === 'war' || prev === 'ghost';
+  const isWarOrGhost  = mode === 'war' || mode === 'ghost';
+  const wasFinance    = prev === 'finance';
+  const isFinance     = mode === 'finance';
+  const wasGhost      = prev === 'ghost';
+  const isGhost       = mode === 'ghost';
+
+  // Radar: active in War + Ghost
+  if (isWarOrGhost && !wasWarOrGhost && isSpatialLayerEnabled('radar')) _scheduleRadar();
+  if (!isWarOrGhost && wasWarOrGhost) _stopRadar();
+
+  // Stock ticker: active in Finance
+  if (isFinance && !wasFinance && isSpatialLayerEnabled('ticker')) _scheduleTicker();
+  if (!isFinance && wasFinance) _cancelTicker();
+
+  // Ghost drone: active in Ghost only
+  if (isGhost && !wasGhost && isSpatialLayerEnabled('ghost')) _startGhostDrone();
+  if (!isGhost && wasGhost) _stopGhostDrone();
 }
 
 // ── Tension drone ─────────────────────────────────────────────────────────────
@@ -632,4 +735,443 @@ function _onVisibilityChange(): void {
   } else {
     _masterGain.gain.setTargetAtTime(getSpatialVolume() * 0.15, ctx.currentTime, 0.3);
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Ghost Mode activation sound
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// A descending electronic sweep (800 → 120 Hz) with a slow de-tuned harmonic.
+// Signals stealth mode activation — cinematic, not alarming.
+
+function _playGhostActivate(): void {
+  const ctx = _getCtx();
+  if (!ctx) return;
+
+  const t0 = ctx.currentTime;
+
+  // Primary descending sweep
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(800, t0);
+  osc.frequency.exponentialRampToValueAtTime(120, t0 + 0.9);
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(0.30, t0 + 0.04);
+  g.gain.setValueAtTime(0.30, t0 + 0.55);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 1.05);
+  osc.connect(g);
+  g.connect(ctx.destination);
+  osc.start(t0); osc.stop(t0 + 1.1);
+
+  // Soft de-tuned second harmonic for depth
+  const osc2 = ctx.createOscillator();
+  osc2.type = 'sine';
+  osc2.frequency.setValueAtTime(804, t0);
+  osc2.frequency.exponentialRampToValueAtTime(122, t0 + 0.9);
+
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0, t0);
+  g2.gain.linearRampToValueAtTime(0.12, t0 + 0.05);
+  g2.gain.exponentialRampToValueAtTime(0.001, t0 + 1.10);
+  osc2.connect(g2);
+  g2.connect(ctx.destination);
+  osc2.start(t0); osc2.stop(t0 + 1.15);
+
+  // Brief filtered noise burst at the start (atmospheric texture)
+  const nBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.18), ctx.sampleRate);
+  const nd = nBuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const nSrc = ctx.createBufferSource(); nSrc.buffer = nBuf;
+  const nF = ctx.createBiquadFilter(); nF.type = 'bandpass'; nF.frequency.value = 3200; nF.Q.value = 0.8;
+  const nG = ctx.createGain();
+  nG.gain.setValueAtTime(0.07, t0);
+  nG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.18);
+  nSrc.connect(nF).connect(nG).connect(ctx.destination);
+  nSrc.start(t0);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Radar sweep spatial layer  (War + Ghost modes)
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// A sonar-style ping repeating every 2.8 s (War) or 4.5 s (Ghost).
+// Two-component: a clean 1400 Hz sine with exponential decay, plus a faint
+// 2800 Hz harmonic that makes it sparkle. Routes through _masterGain.
+
+function _scheduleRadar(): void {
+  if (_radarTimer !== null) return;
+  _fireRadarPing();
+}
+
+function _stopRadar(): void {
+  if (_radarTimer !== null) { clearTimeout(_radarTimer); _radarTimer = null; }
+}
+
+function _fireRadarPing(): void {
+  if (!isSpatialLayerEnabled('radar') || isMuted()) { _radarTimer = null; return; }
+  const ctx = _getCtx();
+  if (!ctx) { _radarTimer = null; return; }
+  _ensureMasterGain(ctx);
+  if (!_masterGain) { _radarTimer = null; return; }
+
+  const t = ctx.currentTime;
+
+  // Primary ping tone — 1400 Hz
+  const o1 = ctx.createOscillator(); o1.type = 'sine';
+  o1.frequency.setValueAtTime(1400, t);
+  const g1 = ctx.createGain();
+  g1.gain.setValueAtTime(0, t);
+  g1.gain.linearRampToValueAtTime(0.22, t + 0.003);
+  g1.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+  o1.connect(g1).connect(_masterGain);
+  o1.start(t); o1.stop(t + 0.58);
+
+  // Sparkle harmonic — 2800 Hz at 35% gain
+  const o2 = ctx.createOscillator(); o2.type = 'sine';
+  o2.frequency.setValueAtTime(2800, t);
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0, t);
+  g2.gain.linearRampToValueAtTime(0.08, t + 0.003);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.30);
+  o2.connect(g2).connect(_masterGain);
+  o2.start(t); o2.stop(t + 0.33);
+
+  // Interval: shorter in War (more active), longer in Ghost (eerie spacing)
+  const intervalMs = _currentMode === 'ghost' ? 4400 + Math.random() * 600
+                                              : 2600 + Math.random() * 400;
+  _radarTimer = setTimeout(_fireRadarPing, intervalMs);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Stock ticker spatial layer  (Finance mode)
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Rapid micro-clicks mimicking a teletype or trading terminal.
+// High-frequency noise bursts (3–5 kHz) at randomised short intervals.
+
+function _scheduleTicker(): void {
+  if (_tickerTimer !== null) return;
+  _fireTickerClick();
+}
+
+function _cancelTicker(): void {
+  if (_tickerTimer !== null) { clearTimeout(_tickerTimer); _tickerTimer = null; }
+}
+
+function _fireTickerClick(): void {
+  if (!isSpatialLayerEnabled('ticker') || isMuted()) { _tickerTimer = null; return; }
+  const ctx = _getCtx();
+  if (!ctx) { _tickerTimer = null; return; }
+  _ensureMasterGain(ctx);
+  if (!_masterGain) { _tickerTimer = null; return; }
+
+  // 6–14 ms burst of noise through a tight high-frequency bandpass
+  const durS  = 0.006 + Math.random() * 0.008;
+  const buf   = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * durS), ctx.sampleRate);
+  const data  = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const bpf = ctx.createBiquadFilter();
+  bpf.type = 'bandpass';
+  bpf.frequency.setValueAtTime(3000 + Math.random() * 2000, ctx.currentTime);
+  bpf.Q.setValueAtTime(8 + Math.random() * 6, ctx.currentTime);
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.12, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + durS);
+
+  src.connect(bpf).connect(g).connect(_masterGain);
+  src.start();
+
+  const nextMs = 120 + Math.random() * 280; // 120–400 ms between ticks
+  _tickerTimer = setTimeout(_fireTickerClick, nextMs);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Ghost ambient drone  (Ghost mode only)
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Two sawtooth oscillators at 28 Hz through a lowpass filter at 90 Hz — removes
+// harsh harmonics, leaving only a dark sub-bass presence. Very slow 0.035 Hz
+// LFO tremolo (28-second cycle) — barely breathing. Distinct from the war drone
+// (40–100 Hz triangle, 0.08 Hz tremolo, fast pitch modulation).
+
+function _startGhostDrone(): void {
+  if (_ghostDroneOsc) return;
+  const ctx = _getCtx();
+  if (!ctx) return;
+  _ensureMasterGain(ctx);
+  if (!_masterGain) return;
+
+  const BASE = 28; // Hz
+
+  _ghostDroneOsc = ctx.createOscillator();
+  _ghostDroneOsc.type = 'sawtooth';
+  _ghostDroneOsc.frequency.setValueAtTime(BASE, ctx.currentTime);
+
+  _ghostDroneOsc2 = ctx.createOscillator();
+  _ghostDroneOsc2.type = 'sawtooth';
+  _ghostDroneOsc2.frequency.setValueAtTime(BASE * 1.007, ctx.currentTime);
+
+  // Lowpass to remove harsh sawtooth edge — only the dark sub-bass survives
+  const lpf = ctx.createBiquadFilter();
+  lpf.type = 'lowpass'; lpf.frequency.value = 90;
+
+  _ghostGainNode = ctx.createGain();
+  _ghostGainNode.gain.setValueAtTime(0.28, ctx.currentTime);
+
+  // Very slow LFO — 0.035 Hz = 28-second cycle
+  _ghostLfo = ctx.createOscillator();
+  _ghostLfo.type = 'sine';
+  _ghostLfo.frequency.setValueAtTime(0.035, ctx.currentTime);
+
+  _ghostLfoGain = ctx.createGain();
+  _ghostLfoGain.gain.setValueAtTime(0.18, ctx.currentTime);
+  _ghostLfo.connect(_ghostLfoGain);
+  _ghostLfoGain.connect(_ghostGainNode.gain);
+
+  // 10-second fade in — slow and ominous
+  const fadeIn = ctx.createGain();
+  fadeIn.gain.setValueAtTime(0, ctx.currentTime);
+  fadeIn.gain.linearRampToValueAtTime(1, ctx.currentTime + 10);
+
+  _ghostDroneOsc.connect(lpf);
+  _ghostDroneOsc2.connect(lpf);
+  lpf.connect(fadeIn);
+  fadeIn.connect(_ghostGainNode);
+  _ghostGainNode.connect(_masterGain);
+
+  _ghostDroneOsc.start(); _ghostDroneOsc2.start(); _ghostLfo.start();
+}
+
+function _stopGhostDrone(): void {
+  const ctx = _getCtx();
+  if (ctx && _ghostGainNode) {
+    _ghostGainNode.gain.cancelScheduledValues(ctx.currentTime);
+    _ghostGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.8);
+  }
+  const o1 = _ghostDroneOsc; const o2 = _ghostDroneOsc2;
+  const lfo = _ghostLfo; const lfoG = _ghostLfoGain; const gN = _ghostGainNode;
+  _ghostDroneOsc = null; _ghostDroneOsc2 = null;
+  _ghostLfo = null; _ghostLfoGain = null; _ghostGainNode = null;
+  setTimeout(() => {
+    try { o1?.disconnect(); o1?.stop(); } catch { /* already stopped */ }
+    try { o2?.disconnect(); o2?.stop(); } catch { /* already stopped */ }
+    try { lfo?.disconnect(); lfo?.stop(); } catch { /* already stopped */ }
+    try { lfoG?.disconnect(); } catch { /* already disconnected */ }
+    try { gN?.disconnect(); } catch { /* already disconnected */ }
+  }, 2500);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// One-shot utility sounds  (exported for component use)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Subtle UI click for panel interactions.
+ * 'open': crisp 2200 Hz transient.  'close': softer 1600 Hz transient.
+ * Routes directly to ctx.destination — independent of spatial volume.
+ */
+export function playUiClick(type: 'open' | 'close' = 'open'): void {
+  if (isMuted() || !isUiSoundEnabled()) return;
+  const ctx = _getCtx();
+  if (!ctx) return;
+
+  const freq  = type === 'open' ? 2200 : 1600;
+  const peak  = type === 'open' ? 0.055 : 0.040;
+  const decay = type === 'open' ? 0.065 : 0.055;
+  const t = ctx.currentTime;
+
+  const osc = ctx.createOscillator(); osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, t);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(peak, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.001, t + decay);
+  osc.connect(g).connect(ctx.destination);
+  osc.start(t); osc.stop(t + decay + 0.01);
+
+  // Short high-frequency noise transient for the "click" character
+  const nDur = 0.008;
+  const nBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * nDur), ctx.sampleRate);
+  const nd = nBuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const nSrc = ctx.createBufferSource(); nSrc.buffer = nBuf;
+  const nF = ctx.createBiquadFilter(); nF.type = 'highpass';
+  nF.frequency.value = type === 'open' ? 4500 : 3200;
+  const nG = ctx.createGain();
+  nG.gain.setValueAtTime(0.035, t);
+  nG.gain.exponentialRampToValueAtTime(0.001, t + nDur);
+  nSrc.connect(nF).connect(nG).connect(ctx.destination);
+  nSrc.start(t);
+}
+
+/**
+ * Data ingestion tick — plays when panels receive new data.
+ *   'info':     quiet 2800 Hz blip
+ *   'warning':  two-tone 1800 → 1200 Hz descending chirp
+ *   'critical': bright sawtooth burst through bandpass — sharp and urgent
+ */
+export function playDataTick(level: 'info' | 'warning' | 'critical' = 'info'): void {
+  if (isMuted() || !isDataSoundEnabled()) return;
+  const ctx = _getCtx();
+  if (!ctx) return;
+  _ensureMasterGain(ctx);
+  if (!_masterGain) return;
+
+  const t = ctx.currentTime;
+
+  if (level === 'info') {
+    const osc = ctx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(2800, t);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.055, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    osc.connect(g).connect(_masterGain);
+    osc.start(t); osc.stop(t + 0.08);
+
+  } else if (level === 'warning') {
+    // Two-tone descending: 1800 → 1200 Hz
+    for (const [freq, start, endFreq, peak] of [
+      [1800, 0.00, 1400, 0.10] as [number, number, number, number],
+      [1200, 0.09, 900,  0.08] as [number, number, number, number],
+    ]) {
+      const osc = ctx.createOscillator(); osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t + start);
+      osc.frequency.exponentialRampToValueAtTime(endFreq, t + start + 0.08);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t + start);
+      g.gain.linearRampToValueAtTime(peak, t + start + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.001, t + start + 0.10);
+      osc.connect(g).connect(_masterGain);
+      osc.start(t + start); osc.stop(t + start + 0.12);
+    }
+
+  } else {
+    // Critical: bright sawtooth through bandpass — punchy, attention-grabbing
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1100, t);
+    osc.frequency.exponentialRampToValueAtTime(600, t + 0.10);
+    const bpf = ctx.createBiquadFilter(); bpf.type = 'bandpass';
+    bpf.frequency.value = 1800; bpf.Q.value = 2.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    osc.connect(bpf).connect(g).connect(_masterGain);
+    osc.start(t); osc.stop(t + 0.16);
+  }
+}
+
+/**
+ * Sonar ping — for new map events (cyber, ADS-B, seismic).
+ * Clean 680 Hz sine with long exponential tail and a faint 1360 Hz harmonic.
+ */
+export function playSonarPing(): void {
+  if (isMuted()) return;
+  const ctx = _getCtx();
+  if (!ctx) return;
+  _ensureMasterGain(ctx);
+  if (!_masterGain) return;
+
+  const t = ctx.currentTime;
+
+  // Primary 680 Hz — sustained attack + clean decay
+  const o1 = ctx.createOscillator(); o1.type = 'sine';
+  o1.frequency.setValueAtTime(680, t);
+  const g1 = ctx.createGain();
+  g1.gain.setValueAtTime(0, t);
+  g1.gain.linearRampToValueAtTime(0.28, t + 0.005);
+  g1.gain.setValueAtTime(0.28, t + 0.018);
+  g1.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+  o1.connect(g1).connect(_masterGain);
+  o1.start(t); o1.stop(t + 0.58);
+
+  // Faint 1360 Hz octave harmonic
+  const o2 = ctx.createOscillator(); o2.type = 'sine';
+  o2.frequency.setValueAtTime(1360, t);
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0, t);
+  g2.gain.linearRampToValueAtTime(0.10, t + 0.005);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+  o2.connect(g2).connect(_masterGain);
+  o2.start(t); o2.stop(t + 0.30);
+}
+
+/**
+ * Geiger counter click — for radiation panel.
+ * A single very-short noise burst through a highpass filter.
+ * Call repeatedly on a Poisson-distributed timer for authenticity.
+ */
+export function playGeigerTick(): void {
+  if (isMuted()) return;
+  const ctx = _getCtx();
+  if (!ctx) return;
+  _ensureMasterGain(ctx);
+  if (!_masterGain) return;
+
+  const durS = 0.004 + Math.random() * 0.006; // 4–10 ms
+  const buf  = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * durS), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const hpf = ctx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = 5500;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.25 + Math.random() * 0.15, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + durS);
+
+  src.connect(hpf).connect(g).connect(_masterGain);
+  src.start();
+}
+
+/**
+ * Breaking-news / intelligence alert ping — replaces the base64 WAV placeholder.
+ * A bright three-component tone: sine fundamental + two harmonics + noise snap.
+ */
+export function playAlertPing(): void {
+  if (isMuted()) return;
+  const ctx = _getCtx();
+  if (!ctx) return;
+  _ensureMasterGain(ctx);
+  if (!_masterGain) return;
+
+  const t = ctx.currentTime;
+
+  // Fundamental 1050 Hz — clear and present
+  const o1 = ctx.createOscillator(); o1.type = 'sine';
+  o1.frequency.setValueAtTime(1050, t);
+  const g1 = ctx.createGain();
+  g1.gain.setValueAtTime(0, t);
+  g1.gain.linearRampToValueAtTime(0.32, t + 0.004);
+  g1.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+  o1.connect(g1).connect(_masterGain);
+  o1.start(t); o1.stop(t + 0.40);
+
+  // Second harmonic 2100 Hz — adds sparkle
+  const o2 = ctx.createOscillator(); o2.type = 'sine';
+  o2.frequency.setValueAtTime(2100, t);
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0, t);
+  g2.gain.linearRampToValueAtTime(0.12, t + 0.003);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.20);
+  o2.connect(g2).connect(_masterGain);
+  o2.start(t); o2.stop(t + 0.22);
+
+  // Noise transient — attack snap
+  const nDur = 0.012;
+  const nBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * nDur), ctx.sampleRate);
+  const nd = nBuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const nSrc = ctx.createBufferSource(); nSrc.buffer = nBuf;
+  const nF = ctx.createBiquadFilter(); nF.type = 'bandpass'; nF.frequency.value = 3200; nF.Q.value = 1.2;
+  const nG = ctx.createGain();
+  nG.gain.setValueAtTime(0.10, t);
+  nG.gain.exponentialRampToValueAtTime(0.001, t + nDur);
+  nSrc.connect(nF).connect(nG).connect(_masterGain);
+  nSrc.start(t);
 }
