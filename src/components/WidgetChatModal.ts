@@ -1,5 +1,5 @@
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { getWidgetAgentKey, getProWidgetKey } from '@/services/widget-store';
+import { getBrowserTesterKey, getWidgetAgentKey, getProWidgetKey } from '@/services/widget-store';
 import { getClerkToken } from '@/services/clerk';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
@@ -43,10 +43,12 @@ let abortController: AbortController | null = null;
 let clientTimeout: ReturnType<typeof setTimeout> | null = null;
 
 async function buildWidgetAuthHeaders(isPro: boolean): Promise<Record<string, string>> {
+  const testerKey = getBrowserTesterKey();
   const widgetKey = getWidgetAgentKey();
   const proKey = getProWidgetKey();
-  if (widgetKey || proKey) {
+  if (testerKey || widgetKey || proKey) {
     const headers: Record<string, string> = {};
+    if (testerKey) headers['X-WorldMonitor-Key'] = testerKey;
     if (widgetKey) headers['X-Widget-Key'] = widgetKey;
     if (isPro && proKey) headers['X-Pro-Key'] = proKey;
     return headers;

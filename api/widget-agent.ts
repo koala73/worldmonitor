@@ -4,7 +4,10 @@
  * Auth paths:
  *   1. Clerk JWT (Authorization: Bearer <token>) — validates plan === 'pro',
  *      then injects real server keys and proxies to the Railway relay.
- *   2. Tester keys (X-Widget-Key / X-Pro-Key) — validated directly here
+ *   2. Browser tester key (X-WorldMonitor-Key) — validated against
+ *      WORLDMONITOR_VALID_KEYS so one browser-held key can unlock premium
+ *      testing paths across the app.
+ *   3. Legacy tester keys (X-Widget-Key / X-Pro-Key) — validated directly here
  *      so the relay's WIDGET_AGENT_KEY / PRO_WIDGET_KEY are never exposed
  *      to the browser.
  *
@@ -21,6 +24,12 @@ import { validateBearerToken } from '../server/auth-session';
 const RELAY_BASE = 'https://proxy.worldmonitor.app';
 const WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY ?? '';
 const PRO_WIDGET_KEY = process.env.PRO_WIDGET_KEY ?? '';
+
+function hasValidWorldMonitorKey(key: string): boolean {
+  if (!key) return false;
+  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+  return validKeys.includes(key);
+}
 
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -46,27 +55,32 @@ export default async function handler(req: Request): Promise<Response> {
   // ── Auth ──────────────────────────────────────────────────────────────────
   let isPro = false;
 
-  const authHeader = req.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    // Clerk JWT path (web users with active subscription)
-    const session = await validateBearerToken(authHeader.slice(7));
-    if (!session.valid) {
-      return json({ error: 'Invalid or expired session' }, 401, corsHeaders);
-    }
-    if (session.role !== 'pro') {
-      return json({ error: 'Pro subscription required' }, 403, corsHeaders);
-    }
+  const worldMonitorKey = req.headers.get('X-WorldMonitor-Key') ?? '';
+  if (hasValidWorldMonitorKey(worldMonitorKey)) {
     isPro = true;
   } else {
-    // Tester key path (wm-widget-key / wm-pro-key)
-    const widgetKey = req.headers.get('X-Widget-Key') ?? '';
-    const proKey = req.headers.get('X-Pro-Key') ?? '';
-    const hasWidgetKey = Boolean(WIDGET_AGENT_KEY && widgetKey === WIDGET_AGENT_KEY);
-    const hasProKey = Boolean(PRO_WIDGET_KEY && proKey === PRO_WIDGET_KEY);
-    if (!hasWidgetKey && !hasProKey) {
-      return json({ error: 'Forbidden' }, 403, corsHeaders);
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      // Clerk JWT path (web users with active subscription)
+      const session = await validateBearerToken(authHeader.slice(7));
+      if (!session.valid) {
+        return json({ error: 'Invalid or expired session' }, 401, corsHeaders);
+      }
+      if (session.role !== 'pro') {
+        return json({ error: 'Pro subscription required' }, 403, corsHeaders);
+      }
+      isPro = true;
+    } else {
+      // Legacy tester key path (wm-widget-key / wm-pro-key)
+      const widgetKey = req.headers.get('X-Widget-Key') ?? '';
+      const proKey = req.headers.get('X-Pro-Key') ?? '';
+      const hasWidgetKey = Boolean(WIDGET_AGENT_KEY && widgetKey === WIDGET_AGENT_KEY);
+      const hasProKey = Boolean(PRO_WIDGET_KEY && proKey === PRO_WIDGET_KEY);
+      if (!hasWidgetKey && !hasProKey) {
+        return json({ error: 'Forbidden' }, 403, corsHeaders);
+      }
+      isPro = hasProKey;
     }
-    isPro = hasProKey;
   }
 
   // Mirror the relay P2 fix: allow PRO-only deployments (no basic key, but PRO key present)

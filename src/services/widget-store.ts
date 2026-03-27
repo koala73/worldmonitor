@@ -146,6 +146,23 @@ export function getWidgetAgentKey(): string {
   return getKey('wm-widget-key');
 }
 
+export function getBrowserTesterKeys(): string[] {
+  const keys = [getProWidgetKey(), getWidgetAgentKey()];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of keys) {
+    const key = raw.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(key);
+  }
+  return result;
+}
+
+export function getBrowserTesterKey(): string {
+  return getBrowserTesterKeys()[0] ?? '';
+}
+
 export function isProWidgetEnabled(): boolean {
   return !!getKey('wm-pro-key');
 }

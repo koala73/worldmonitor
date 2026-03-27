@@ -42,11 +42,8 @@ async function loadTesterKeys(): Promise<string[]> {
     if (_testProviders?.getTesterKey) {
       return uniqueNonEmptyKeys([_testProviders.getTesterKey()]);
     }
-    const { getProWidgetKey, getWidgetAgentKey } = await import('@/services/widget-store');
-    return uniqueNonEmptyKeys([
-      getProWidgetKey(),
-      getWidgetAgentKey(),
-    ]);
+    const { getBrowserTesterKeys } = await import('@/services/widget-store');
+    return uniqueNonEmptyKeys(getBrowserTesterKeys());
   } catch {
     return [];
   }
