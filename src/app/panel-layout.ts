@@ -141,8 +141,8 @@ export class PanelLayoutManager implements AppModule {
       this.applyTimeRangeFilterToNewsPanels();
     }, 120);
 
-    // Dodo Payments: entitlement + billing init gated behind isProUser()
-    // (same gate as Clerk auth — remove both once ready for all users)
+    // Dodo Payments: entitlement + billing init gated behind isProUser().
+    // Same gate as Clerk auth — remove both gates once ready for all users.
     if (isProUser()) {
       if (handleCheckoutReturn()) {
         showCheckoutSuccess();
