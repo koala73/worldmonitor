@@ -5,6 +5,7 @@
  * into every request. This is the source-of-truth auth injection for premium
  * market endpoints — no reliance on the global fetch patch.
  */
+import * as Sentry from '@sentry/browser';
 
 /**
  * Test seam — set in unit tests to inject key/token providers without needing
@@ -20,6 +21,19 @@ export function _setTestProviders(
   p: typeof _testProviders,
 ): void {
   _testProviders = p;
+}
+
+function reportServerError(res: Response, input: RequestInfo | URL): void {
+  if (res.status < 500) return;
+  try {
+    const href = input instanceof Request ? input.url : String(input);
+    const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;
+    Sentry.captureMessage(`API ${res.status}: ${path}`, {
+      level: 'error',
+      tags: { kind: 'api_5xx' },
+      extra: { path, status: res.status },
+    });
+  } catch { /* ignore URL parse errors */ }
 }
 
 function uniqueNonEmptyKeys(keys: Array<string | null | undefined>): string[] {
@@ -56,7 +70,9 @@ export async function premiumFetch(
   // Skip injection if the caller already set an auth header.
   const existing = new Headers(init?.headers);
   if (existing.has('Authorization') || existing.has('X-WorldMonitor-Key')) {
-    return globalThis.fetch(input, init);
+    const res = await globalThis.fetch(input, init);
+    reportServerError(res, input);
+    return res;
   }
 
   // 1. WORLDMONITOR_API_KEY from env (desktop / test environments).
@@ -65,7 +81,9 @@ export async function premiumFetch(
     const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
     if (wmKey) {
       existing.set('X-WorldMonitor-Key', wmKey);
-      return globalThis.fetch(input, { ...init, headers: existing });
+      const res = await globalThis.fetch(input, { ...init, headers: existing });
+      reportServerError(res, input);
+      return res;
     }
   } catch { /* not available — fall through */ }
 
@@ -79,7 +97,10 @@ export async function premiumFetch(
     const testerHeaders = new Headers(existing);
     testerHeaders.set('X-WorldMonitor-Key', testerKey);
     const res = await globalThis.fetch(input, { ...init, headers: testerHeaders });
-    if (res.status !== 401) return res;
+    if (res.status !== 401) {
+      reportServerError(res, input);
+      return res;
+    }
     // 401 → try the next tester key, then fall through to Clerk if none work.
   }
 
@@ -95,10 +116,14 @@ export async function premiumFetch(
     }
     if (token) {
       existing.set('Authorization', `Bearer ${token}`);
-      return globalThis.fetch(input, { ...init, headers: existing });
+      const res = await globalThis.fetch(input, { ...init, headers: existing });
+      reportServerError(res, input);
+      return res;
     }
   } catch { /* not signed in — fall through */ }
 
   // 4. No auth — let the request through (gateway will return 401).
-  return globalThis.fetch(input, init);
+  const res = await globalThis.fetch(input, init);
+  reportServerError(res, input);
+  return res;
 }

@@ -328,6 +328,28 @@ window.addEventListener('unhandledrejection', (e) => {
   if (e.reason?.name === 'NotAllowedError') e.preventDefault();
 });
 
+// Report CSP violations in the parent page to Sentry.
+// Sandbox iframe violations are isolated and not captured here.
+window.addEventListener('securitypolicyviolation', (e) => {
+  const src = e.sourceFile ?? '';
+  const blocked = e.blockedURI ?? '';
+  // Skip violations originating from browser extensions or injected scripts
+  if (/^(?:chrome|moz|safari)-extension:/.test(src) || /^(?:chrome|moz|safari)-extension:/.test(blocked)) return;
+  if (/^blob:/.test(src)) return;
+  Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
+    level: 'warning',
+    tags: { kind: 'csp_violation' },
+    extra: {
+      violatedDirective: e.violatedDirective,
+      effectiveDirective: e.effectiveDirective,
+      blockedURI: blocked,
+      sourceFile: src,
+      lineNumber: e.lineNumber,
+      disposition: e.disposition,
+    },
+  });
+});
+
 import { debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';

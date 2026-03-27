@@ -136,7 +136,7 @@
     {
       "source": "/wm-widget-sandbox.html",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; connect-src 'none';" },
+        { "key": "Content-Security-Policy", "value": "default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;" },
         { "key": "Cache-Control", "value": "public, max-age=86400" }
       ]
     }

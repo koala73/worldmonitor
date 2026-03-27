@@ -1110,10 +1110,14 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
-  it('widget document builder CSP has connect-src none (blocks beaconing)', () => {
+  it('widget document builder CSP restricts connect-src to cdn.jsdelivr.net only', () => {
     assert.ok(
-      san.includes("connect-src 'none'"),
-      "CSP must include connect-src 'none' to block network beaconing from iframe",
+      san.includes('connect-src https://cdn.jsdelivr.net'),
+      'CSP connect-src must allow only cdn.jsdelivr.net (for Chart.js source maps) and nothing else',
+    );
+    assert.ok(
+      !san.includes("connect-src 'none'") && !san.includes('connect-src *'),
+      'CSP connect-src must not be wildcard or none',
     );
   });
 
