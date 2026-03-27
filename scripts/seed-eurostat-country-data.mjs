@@ -22,7 +22,7 @@ const DATASETS = {
   },
   unemployment: {
     id: 'une_rt_m',
-    params: { sex: 'T', age: 'TOTAL', s_adj: 'SA', unit: 'PC_ACT', lastTimePeriod: '1' },
+    params: { sex: 'T', age: 'TOTAL', s_adj: 'SA', unit: 'PC_ACT', lastTimePeriod: '3' },
     unit: '%',
     label: 'Unemployment rate (SA)',
   },
@@ -60,7 +60,7 @@ function parseEurostatResponse(data, geoCode) {
     const timeCategory = timeDim?.category;
     const timeIndexObj = timeCategory?.index;
 
-    // Get time period label — most recent (lastTimePeriod=1 so only 1 entry)
+    // Get time period label — will be overridden below with the matched observation's period
     let datePeriod = '';
     if (timeIndexObj) {
       const timeKeys = Object.keys(timeIndexObj).sort((a, b) => timeIndexObj[b] - timeIndexObj[a]);
@@ -82,8 +82,10 @@ function parseEurostatResponse(data, geoCode) {
 
     let value = null;
 
-    // Iterate over the actual key positions present in the sparse values object
-    for (const key of Object.keys(values)) {
+    // Iterate over the actual key positions present in the sparse values object,
+    // in descending numeric order so we pick the most recent non-null observation first
+    // (needed when lastTimePeriod>1 and the latest period has no data yet).
+    for (const key of Object.keys(values).sort((a, b) => Number(b) - Number(a))) {
       const idx = Number(key);
       const rawVal = values[key];
       if (rawVal === null || rawVal === undefined) continue;
