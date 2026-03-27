@@ -1,5 +1,6 @@
 import { CHROME_UA } from './constants';
 import { isProviderAvailable } from './llm-health';
+import { sanitizeForPrompt } from './llm-sanitize.js';
 
 export interface ProviderCredentials {
   apiUrl: string;
@@ -122,22 +123,6 @@ export function stripThinkingTags(text: string): string {
   return s;
 }
 
-const INJECTION_PHRASES = [
-  'ignore all', 'ignore previous', 'disregard', 'override', 'forget your',
-  'new instructions', 'from now on', 'you are now', 'act as', 'pretend you',
-  'your new role', 'system:', '\u0000',
-];
-
-function sanitizeSystemAppend(text: string): string {
-  return text
-    .split('\n')
-    .filter(line => {
-      const lower = line.toLowerCase().trim();
-      return !INJECTION_PHRASES.some(phrase => lower.includes(phrase));
-    })
-    .join('\n')
-    .trim();
-}
 
 const PROVIDER_CHAIN = ['ollama', 'groq', 'openrouter', 'generic'] as const;
 const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
@@ -202,7 +187,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
   let messages = rawMessages;
   const firstMsg = messages[0];
   if (systemAppend && firstMsg && firstMsg.role === 'system') {
-    const sanitized = sanitizeSystemAppend(systemAppend);
+    const sanitized = sanitizeForPrompt(systemAppend);
     if (sanitized) {
       messages = [
         { role: 'system', content: `${firstMsg.content}\n\n---\n\n${sanitized}` },

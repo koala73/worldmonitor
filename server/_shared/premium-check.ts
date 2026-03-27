@@ -8,8 +8,10 @@ import { validateBearerToken } from '../auth-session';
  * (e.g. framework/systemAppend) should only be honored for premium callers.
  */
 export async function isCallerPremium(request: Request): Promise<boolean> {
-  const keyCheck = validateApiKey(request, {}) as { valid: boolean };
-  if (keyCheck.valid) return true;
+  const keyCheck = validateApiKey(request, {}) as { valid: boolean; required: boolean };
+  // Only treat as premium when an explicit API key was validated (required: true).
+  // Trusted-origin short-circuits (required: false) do NOT imply PRO entitlement.
+  if (keyCheck.valid && keyCheck.required) return true;
 
   const authHeader = request.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {

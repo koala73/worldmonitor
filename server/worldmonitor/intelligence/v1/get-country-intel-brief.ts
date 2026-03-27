@@ -8,6 +8,7 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
 import { isCallerPremium } from '../../../_shared/premium-check';
+import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 
 const INTEL_CACHE_TTL = 7200;
 
@@ -29,7 +30,7 @@ export async function getCountryIntelBrief(
   let lang = 'en';
   try {
     const url = new URL(ctx.request.url);
-    contextSnapshot = (url.searchParams.get('context') || '').trim().slice(0, 4000);
+    contextSnapshot = sanitizeForPrompt((url.searchParams.get('context') || '').trim().slice(0, 4000));
     lang = url.searchParams.get('lang') || 'en';
   } catch {
     contextSnapshot = '';
