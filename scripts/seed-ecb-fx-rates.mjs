@@ -128,6 +128,7 @@ if (process.argv[1]?.endsWith('seed-ecb-fx-rates.mjs')) {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'ecb-data-portal',
+    recordCount: (data) => Object.keys(data?.rates ?? {}).length,
   }).catch(err => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

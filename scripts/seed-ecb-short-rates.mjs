@@ -173,6 +173,8 @@ async function main() {
 
   if (successCount === 0) {
     await releaseLock(`${domain}:${resource}`, runId);
+    // Extend seed-meta TTL so health checks don't see STALE_SEED on transient ECB outages.
+    await extendExistingTtl([`seed-meta:${domain}:${resource}`], TTL).catch(() => {});
     throw new Error(`All ECB series failed: ${failedSeries.join(', ')}`);
   }
 
