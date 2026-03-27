@@ -123,6 +123,28 @@ describe('widget-agent relay — security', () => {
     );
   });
 
+  it('injection guard — isWidgetInjectionAttempt function is present', () => {
+    assert.ok(relay.includes('isWidgetInjectionAttempt'), 'injection guard function must exist');
+    assert.ok(relay.includes('ignore') && relay.includes('previous'), 'must detect override patterns');
+    assert.ok(relay.includes('jailbreak'), 'must detect jailbreak keyword');
+    assert.ok(relay.includes('act\\s+as'), 'must detect role hijacking');
+  });
+
+  it('injection guard — hard rejected before API call', () => {
+    const guardIdx = relay.indexOf('isWidgetInjectionAttempt(prompt)');
+    assert.ok(guardIdx !== -1, 'injection check must be called on prompt');
+    // Guard must appear before the Anthropic client is created
+    const anthropicIdx = relay.indexOf('new Anthropic(');
+    assert.ok(guardIdx < anthropicIdx, 'injection check must happen before any Anthropic API call');
+  });
+
+  it('injection guard — tool results are sanitized before context insertion', () => {
+    assert.ok(relay.includes('sanitizeToolContent'), 'sanitizeToolContent must be applied to tool results');
+    // Must be called on both search results and WM data results
+    const count = (relay.match(/sanitizeToolContent/g) || []).length;
+    assert.ok(count >= 3, `sanitizeToolContent must appear in definition + both result paths (found ${count})`);
+  });
+
   it('tool loop is bounded by maxTurns (6 for basic, 10 for PRO)', () => {
     assert.ok(
       relay.includes('turn < maxTurns'),
@@ -990,7 +1012,7 @@ describe('PRO widget — relay auth and configuration', () => {
   it('PRO system prompt allows cdn.jsdelivr.net for Chart.js', () => {
     // Use lastIndexOf to find the constant definition
     const promptIdx = relay.lastIndexOf('WIDGET_PRO_SYSTEM_PROMPT');
-    const promptRegion = relay.slice(promptIdx, promptIdx + 3500);
+    const promptRegion = relay.slice(promptIdx, promptIdx + 6000);
     assert.ok(
       promptRegion.includes('cdn.jsdelivr.net') || promptRegion.includes('chart.js') || promptRegion.includes('Chart.js'),
       'PRO system prompt must mention cdn.jsdelivr.net/Chart.js as allowed CDN',
