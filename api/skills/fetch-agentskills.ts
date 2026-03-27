@@ -14,12 +14,6 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'Method not allowed' }, { status: 405, headers: corsHeaders });
   }
 
-  // Simple IP-based rate limiting (10/hour) using cf-connecting-ip header first
-  const ip = req.headers.get('cf-connecting-ip') ?? req.headers.get('x-forwarded-for') ?? 'unknown';
-  // Note: stateless edge -- implement rate limiting via KV or accept best-effort for now.
-  // For phase 1, log the IP and rely on Vercel rate limiting rules for abuse prevention.
-  void ip;
-
   let body: { url?: string; id?: string };
   try {
     body = await req.json() as { url?: string; id?: string };
@@ -39,9 +33,8 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'Invalid URL' }, { status: 400, headers: corsHeaders });
   }
 
-  // Use exact match or subdomain check — endsWith alone is bypassable by 'evilagentskills.io'
-  const h = skillUrl.hostname;
-  if (h !== 'agentskills.io' && !h.endsWith('.agentskills.io')) {
+  const ALLOWED_AGENTSKILLS_HOSTS = new Set(['agentskills.io', 'www.agentskills.io', 'api.agentskills.io']);
+  if (!ALLOWED_AGENTSKILLS_HOSTS.has(skillUrl.hostname)) {
     return Response.json({ error: 'Only agentskills.io URLs are supported.' }, { status: 400, headers: corsHeaders });
   }
 
@@ -49,8 +42,12 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const res = await fetch(skillUrl.toString(), {
       headers: { 'Accept': 'application/json', 'User-Agent': 'WorldMonitor/1.0' },
-      signal: AbortSignal.timeout(10_000),
+      redirect: 'manual',
+      signal: AbortSignal.timeout(8_000),
     });
+    if (res.status >= 300 && res.status < 400) {
+      return Response.json({ error: 'Redirects are not allowed.' }, { status: 400, headers: corsHeaders });
+    }
     if (!res.ok) {
       return Response.json({ error: 'Could not reach agentskills.io. Check your connection.' }, { status: 502, headers: corsHeaders });
     }
@@ -61,7 +58,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const instructions = typeof skillData.instructions === 'string' ? skillData.instructions : null;
   if (!instructions) {
-    return Response.json({ error: "This skill has no instructions — it may use tools only (not supported in phase 1)." }, { status: 422, headers: corsHeaders });
+    return Response.json({ error: "This skill has no instructions — it may use tools only (not supported)." }, { status: 422, headers: corsHeaders });
   }
 
   const MAX_LEN = 2000;
