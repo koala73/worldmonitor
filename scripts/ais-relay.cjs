@@ -4939,15 +4939,23 @@ async function seedUsniFleet() {
   const t0 = Date.now();
   try {
     // USNI (WordPress) returns 403 from Railway datacenter IPs via Cloudflare.
-    // Route through the residential proxy when available; fall back to direct for dev.
-    const proxyAuth = process.env.OREF_PROXY_AUTH || OREF_PROXY_AUTH;
+    // Try IL proxy first, then US proxy (YOUTUBE_PROXY_URL), then direct (dev only).
+    const ilProxyAuth = process.env.OREF_PROXY_AUTH || OREF_PROXY_AUTH;
+    const usProxyUrl = process.env.YOUTUBE_PROXY_URL || '';
     let wpData;
-    if (proxyAuth) {
-      const proxy = parseProxyUrl(`http://${proxyAuth}`);
-      const result = proxy ? await ytFetchViaProxy(USNI_URL, proxy) : null;
-      if (!result || !result.ok) throw new Error(`proxy HTTP ${result?.status ?? 'unavailable'}`);
-      wpData = JSON.parse(result.body);
-    } else {
+    const proxiesToTry = [
+      ilProxyAuth ? parseProxyUrl(`http://${ilProxyAuth}`) : null,
+      usProxyUrl ? parseProxyUrl(usProxyUrl) : null,
+    ].filter(Boolean);
+    let fetched = false;
+    for (const proxy of proxiesToTry) {
+      try {
+        const result = await ytFetchViaProxy(USNI_URL, proxy);
+        if (result?.ok) { wpData = JSON.parse(result.body); fetched = true; break; }
+        console.warn(`[USNI] Proxy ${proxy.host} returned HTTP ${result?.status ?? 'unavailable'}`);
+      } catch (proxyErr) { console.warn(`[USNI] Proxy ${proxy.host} error:`, proxyErr?.message); }
+    }
+    if (!fetched) {
       const res = await fetch(USNI_URL, {
         headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15000),
