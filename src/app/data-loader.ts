@@ -1273,17 +1273,19 @@ export class DataLoaderManager implements AppModule {
         name: sectorNameMap.get(s.symbol) ?? s.name,
         change: s.change,
       });
-      const hydratedFg = getHydratedData('fearGreedIndex') as Record<string, unknown> | undefined;
-      const sectorBars = Array.isArray(hydratedFg?.sectorPerformance)
-        ? (hydratedFg!.sectorPerformance as Array<{ symbol: string; name: string; change1d: number }>)
-        : undefined;
+      const toSectorBar = (s: { symbol?: string; name: string; change: number | null }) =>
+        s.symbol && Number.isFinite(s.change) ? { symbol: s.symbol, name: s.name, change1d: s.change as number } : null;
       if (hydratedSectors?.sectors?.length) {
         warmSectorCache(hydratedSectors);
-        heatmapPanel?.renderHeatmap(hydratedSectors.sectors.map(toHeatmapItem), sectorBars);
+        const items = hydratedSectors.sectors.map(toHeatmapItem);
+        const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
+        heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
       } else {
         const sectorsResp = await fetchSectors();
         if (sectorsResp.sectors.length > 0) {
-          heatmapPanel?.renderHeatmap(sectorsResp.sectors.map(toHeatmapItem), sectorBars);
+          const items = sectorsResp.sectors.map(toHeatmapItem);
+          const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
+          heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
         } else if (stocksResult.skipped) {
           this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
         }
