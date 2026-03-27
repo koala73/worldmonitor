@@ -115,7 +115,8 @@ function detectDisease(title) {
     'polio', 'marburg', 'lassa', 'plague', 'yellow fever', 'typhoid', 'influenza',
     'avian flu', 'h5n1', 'h5n2', 'anthrax', 'rabies', 'meningitis', 'hepatitis',
     'nipah', 'rift valley', 'crimean-congo', 'leishmaniasis', 'malaria', 'diphtheria',
-    'chikungunya', 'botulism', 'brucellosis'];
+    'chikungunya', 'botulism', 'brucellosis', 'salmonella', 'listeria', 'e. coli',
+    'norovirus', 'legionella', 'campylobacter'];
   for (const d of known) {
     if (lower.includes(d)) return d.charAt(0).toUpperCase() + d.slice(1);
   }
@@ -170,7 +171,10 @@ async function fetchRssItems(url, sourceName, useCurl = false) {
       const block = match[1];
       const title = (block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1]?.trim() || '';
       const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim() || '';
-      const desc = (block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/) || [])[1]?.replace(/<[^>]+>/g, '').trim().slice(0, 300) || '';
+      const rawDesc = (block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/) || [])[1] || '';
+      const desc = rawDesc
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+        .replace(/<[^>]+>/g, '').trim().slice(0, 300);
       const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1]?.trim() || '';
       const publishedMs = pubDate ? new Date(pubDate).getTime() : Date.now();
       if (!title || isNaN(publishedMs)) continue;
@@ -264,7 +268,8 @@ async function fetchDiseaseOutbreaks() {
   const diseaseKeywords = ['outbreak', 'disease', 'virus', 'fever', 'flu', 'ebola', 'mpox',
     'cholera', 'dengue', 'measles', 'polio', 'plague', 'avian', 'h5n1', 'epidemic',
     'infection', 'pathogen', 'rabies', 'meningitis', 'hepatitis', 'nipah', 'marburg',
-    'diphtheria', 'chikungunya', 'rift valley', 'influenza', 'botulism'];
+    'diphtheria', 'chikungunya', 'rift valley', 'influenza', 'botulism',
+    'salmonella', 'listeria', 'e. coli', 'norovirus', 'legionella', 'campylobacter'];
 
   const relevant = allItems.filter(item => {
     const text = `${item.title} ${item.desc}`.toLowerCase();
@@ -273,7 +278,9 @@ async function fetchDiseaseOutbreaks() {
 
   const outbreaks = relevant.map((item) => {
     // TGH items have pre-parsed country/disease/location from the bundle data.
-    const location = item._location || extractLocationFromTitle(item.title);
+    const location = item._location || extractLocationFromTitle(item.title)
+      // CDC is US-only; default location when title gives no geographic hint
+      || (item.sourceName === 'CDC' ? 'United States' : '');
     const disease = item._disease || detectDisease(item.title);
     // Use pre-parsed country name for TGH; otherwise extract from title location.
     const countryCode = item._country
@@ -314,7 +321,7 @@ function validate(data) {
 runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'who-api-cdc-ont-v4',
+  sourceVersion: 'who-api-cdc-ont-v5',
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);
