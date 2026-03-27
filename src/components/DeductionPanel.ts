@@ -6,6 +6,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { NewsItem, DeductContextDetail } from '@/types';
 import { buildNewsContext } from '@/utils/news-context';
+import { getActiveFrameworkForPanel } from '@/services/analysis-framework-store';
 
 const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
@@ -110,6 +111,11 @@ export class DeductionPanel extends Panel {
             if (newsCtx) {
                 geoContext = geoContext ? `${geoContext}\n\n${newsCtx}` : newsCtx;
             }
+        }
+
+        const fw = getActiveFrameworkForPanel('deduction');
+        if (fw) {
+            geoContext = `${geoContext}\n\n---\nAnalytical Framework:\n${fw.systemPromptAppend}`;
         }
 
         this.isSubmitting = true;

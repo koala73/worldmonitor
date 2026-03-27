@@ -41,6 +41,7 @@ import type { NewsItem } from '@/types';
 import { getNearbyInfrastructure } from '@/services/related-assets';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
+import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -60,6 +61,7 @@ type CountryStockSnapshot = {
 export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
+  private frameworkUnsubscribe: (() => void) | null = null;
 
   constructor(ctx: AppContext) {
     this.ctx = ctx;
@@ -67,12 +69,21 @@ export class CountryIntelManager implements AppModule {
 
   init(): void {
     this.setupCountryIntel();
+    this.frameworkUnsubscribe = subscribeFrameworkChange('country-brief', () => {
+      const page = this.ctx.countryBriefPage;
+      if (!page?.isVisible()) return;
+      const code = page.getCode();
+      const name = page.getName() ?? code;
+      if (code && name) void this.openCountryBriefByCode(code, name);
+    });
   }
 
   destroy(): void {
     this.ctx.countryTimeline?.destroy();
     this.ctx.countryTimeline = null;
     this.ctx.countryBriefPage = null;
+    this.frameworkUnsubscribe?.();
+    this.frameworkUnsubscribe = null;
   }
 
   private setupCountryIntel(): void {
@@ -327,7 +338,8 @@ export class CountryIntelManager implements AppModule {
           } catch { /* RAG unavailable */ }
         }
 
-        briefText = await this.fetchCountryIntelBrief(code, contextSnapshot);
+        const countryFw = getActiveFrameworkForPanel('country-brief');
+        briefText = await this.fetchCountryIntelBrief(code, contextSnapshot, countryFw?.systemPromptAppend ?? '');
       } catch { /* server unreachable */ }
 
       if (briefText) {
@@ -398,13 +410,16 @@ export class CountryIntelManager implements AppModule {
     page.updateScore?.(score, signals);
   }
 
-  private async fetchCountryIntelBrief(code: string, contextSnapshot: string): Promise<string> {
+  private async fetchCountryIntelBrief(code: string, contextSnapshot: string, framework = ''): Promise<string> {
     const lang = getCurrentLanguage();
     const params = new URLSearchParams({ country_code: code, lang });
     const trimmed = contextSnapshot.trim();
     if (trimmed.length > 0) {
       // 3800 chars ≈ ~950 tokens; raised from 2200 to include infra context. Monitor p95 LLM latency if timeouts increase.
       params.set('context', trimmed.slice(0, 3800));
+    }
+    if (framework) {
+      params.set('framework', framework.slice(0, 2000));
     }
 
     const resp = await fetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {

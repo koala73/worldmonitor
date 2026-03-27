@@ -167,6 +167,7 @@ import { fetchPositiveGeoEvents, geocodePositiveNewsItems, type PositiveGeoEvent
 import type { HappyContentCategory } from '@/services/positive-classifier';
 import { fetchKindnessData } from '@/services/kindness-data';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
+import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 import {
   buildDailyMarketBrief,
   cacheDailyMarketBrief,
@@ -240,6 +241,8 @@ export class DataLoaderManager implements AppModule {
 
   private boundMarketWatchlistHandler: (() => void) | null = null;
   private satellitePropagationCleanup: (() => void) | null = null;
+  private dailyBriefGeneration = 0;
+  private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
@@ -267,6 +270,10 @@ export class DataLoaderManager implements AppModule {
       });
     };
     window.addEventListener('wm-market-watchlist-changed', this.boundMarketWatchlistHandler as EventListener);
+
+    this.dailyBriefFrameworkUnsubscribe = subscribeFrameworkChange('daily-market-brief', () => {
+      void this.loadDailyMarketBrief(true);
+    });
   }
 
   destroy(): void {
@@ -278,6 +285,8 @@ export class DataLoaderManager implements AppModule {
       window.removeEventListener('wm-market-watchlist-changed', this.boundMarketWatchlistHandler as EventListener);
       this.boundMarketWatchlistHandler = null;
     }
+    this.dailyBriefFrameworkUnsubscribe?.();
+    this.dailyBriefFrameworkUnsubscribe = null;
   }
 
   private refreshCiiAndBrief(forceLocal = false): void {
@@ -1421,6 +1430,8 @@ export class DataLoaderManager implements AppModule {
     if (!hasPremiumAccess()) return;
     if (this.ctx.isDestroyed || this.ctx.inFlight.has('dailyMarketBrief')) return;
 
+    this.dailyBriefGeneration++;
+    const gen = this.dailyBriefGeneration;
     this.ctx.inFlight.add('dailyMarketBrief');
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -1454,7 +1465,10 @@ export class DataLoaderManager implements AppModule {
         regimeContext,
         yieldCurveContext,
         sectorContext,
+        frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
       });
+
+      if (this.dailyBriefGeneration !== gen) return;
 
       if (!brief.available) {
         if (!cached?.available) {

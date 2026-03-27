@@ -69,6 +69,7 @@ export interface BuildDailyMarketBriefOptions {
   regimeContext?: RegimeMacroContext;
   yieldCurveContext?: YieldCurveContext;
   sectorContext?: SectorBriefContext;
+  frameworkAppend?: string;
   summarize?: (
     headlines: string[],
     onProgress?: undefined,
@@ -411,7 +412,10 @@ export async function buildDailyMarketBrief(options: BuildDailyMarketBriefOption
   }
 
   const { headlines: summaryHeadlines, marketContext } = buildSummaryInputs(items, relevantHeadlines);
-  const extendedContext = buildExtendedMarketContext(marketContext, options.regimeContext, options.yieldCurveContext, options.sectorContext);
+  let extendedContext = buildExtendedMarketContext(marketContext, options.regimeContext, options.yieldCurveContext, options.sectorContext);
+  if (options.frameworkAppend) {
+    extendedContext = `${extendedContext}\n\n---\nAnalytical Framework:\n${options.frameworkAppend}`;
+  }
   let summary = buildRuleSummary(items, relevantHeadlines.length);
   let provider = 'rules';
   let model = '';
