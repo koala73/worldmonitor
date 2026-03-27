@@ -182,9 +182,10 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
   } = opts;
 
   let messages = rawMessages;
-  if (systemAppend && messages.length > 0 && messages[0].role === 'system') {
+  const firstMsg = messages[0];
+  if (systemAppend && firstMsg && firstMsg.role === 'system') {
     messages = [
-      { role: 'system', content: `${messages[0].content}\n\n---\n\n${systemAppend}` },
+      { role: 'system', content: `${firstMsg.content}\n\n---\n\n${systemAppend}` },
       ...messages.slice(1),
     ];
   }
