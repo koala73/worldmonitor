@@ -266,26 +266,6 @@ function parseRedisValue(raw) {
   try { return JSON.parse(raw); } catch { return raw; }
 }
 
-function dataSize(parsed) {
-  if (!parsed) return 0;
-  if (Array.isArray(parsed)) return parsed.length;
-  if (typeof parsed === 'object') {
-    for (const k of ['quotes', 'hexes', 'events', 'stablecoins', 'fires', 'threats',
-                      'earthquakes', 'outages', 'delays', 'items', 'predictions', 'alerts', 'awards',
-                      'papers', 'repos', 'articles', 'signals', 'rates', 'countries',
-                      'chokepoints', 'minerals', 'anomalies', 'flows', 'bases', 'flights',
-                      'theaters', 'fleets', 'warnings', 'closures', 'cables',
-                      'airports', 'closedIcaos', 'categories', 'regions', 'entries', 'satellites',
-                      'sectors', 'statuses', 'scores', 'topics', 'advisories', 'months',
-                      'observations', 'datapoints', 'clusters',
-                      'earnings', 'instruments',
-                      'charts']) {
-      if (Array.isArray(parsed[k])) return parsed[k].length;
-    }
-    return Object.keys(parsed).length;
-  }
-  return typeof parsed === 'string' ? parsed.length : 1;
-}
 
 export default async function handler(req) {
   const headers = {
@@ -306,11 +286,16 @@ export default async function handler(req) {
     ...Object.values(STANDALONE_KEYS),
   ];
   const allMetaKeys = Object.values(SEED_META).map(s => s.key);
-  const allKeys = [...allDataKeys, ...allMetaKeys];
 
+  // STRLEN for data keys avoids loading large blobs into memory (OOM prevention).
+  // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — any real data is >10 bytes.
+  const NEG_SENTINEL_LEN = NEG_SENTINEL.length;
   let results;
   try {
-    const commands = allKeys.map(k => ['GET', k]);
+    const commands = [
+      ...allDataKeys.map(k => ['STRLEN', k]),
+      ...allMetaKeys.map(k => ['GET', k]),
+    ];
     results = await redisPipeline(commands);
   } catch (err) {
     return jsonResponse({
@@ -320,9 +305,15 @@ export default async function handler(req) {
     }, 503, headers);
   }
 
-  const keyValues = new Map();
-  for (let i = 0; i < allKeys.length; i++) {
-    keyValues.set(allKeys[i], results[i]?.result ?? null);
+  // keyStrens: byte length per data key (0 = missing/empty/sentinel)
+  const keyStrens = new Map();
+  for (let i = 0; i < allDataKeys.length; i++) {
+    keyStrens.set(allDataKeys[i], results[i]?.result ?? 0);
+  }
+  // keyMetaValues: parsed seed-meta objects (GET, small payloads)
+  const keyMetaValues = new Map();
+  for (let i = 0; i < allMetaKeys.length; i++) {
+    keyMetaValues.set(allMetaKeys[i], results[allDataKeys.length + i]?.result ?? null);
   }
 
   const checks = {};
@@ -333,15 +324,15 @@ export default async function handler(req) {
 
   for (const [name, redisKey] of Object.entries(BOOTSTRAP_KEYS)) {
     totalChecks++;
-    const raw = keyValues.get(redisKey);
-    const parsed = parseRedisValue(raw);
-    const size = dataSize(parsed);
+    const strlen = keyStrens.get(redisKey) ?? 0;
+    const hasData = strlen > NEG_SENTINEL_LEN;
     const seedCfg = SEED_META[name];
 
     let seedAge = null;
     let seedStale = null;
+    let metaCount = null;
     if (seedCfg) {
-      const metaRaw = keyValues.get(seedCfg.key);
+      const metaRaw = keyMetaValues.get(seedCfg.key);
       const meta = parseRedisValue(metaRaw);
       if (meta?.fetchedAt) {
         seedAge = Math.round((now - meta.fetchedAt) / 60_000);
@@ -349,10 +340,13 @@ export default async function handler(req) {
       } else {
         seedStale = true;
       }
+      if (meta?.count != null) metaCount = meta.count;
     }
 
+    const size = metaCount ?? (hasData ? 1 : 0);
+
     let status;
-    if (!parsed || raw === NEG_SENTINEL) {
+    if (!hasData) {
       if (EMPTY_DATA_OK_KEYS.has(name)) {
         if (seedStale === true) {
           status = 'STALE_SEED';
@@ -394,17 +388,17 @@ export default async function handler(req) {
 
   for (const [name, redisKey] of Object.entries(STANDALONE_KEYS)) {
     totalChecks++;
-    const raw = keyValues.get(redisKey);
-    const parsed = parseRedisValue(raw);
-    const size = dataSize(parsed);
+    const strlen = keyStrens.get(redisKey) ?? 0;
+    const hasData = strlen > NEG_SENTINEL_LEN;
     const isOnDemand = ON_DEMAND_KEYS.has(name);
     const seedCfg = SEED_META[name];
 
     // Freshness tracking for standalone keys (same logic as bootstrap keys)
     let seedAge = null;
     let seedStale = null;
+    let metaCount = null;
     if (seedCfg) {
-      const metaRaw = keyValues.get(seedCfg.key);
+      const metaRaw = keyMetaValues.get(seedCfg.key);
       const meta = parseRedisValue(metaRaw);
       if (meta?.fetchedAt) {
         seedAge = Math.round((now - meta.fetchedAt) / 60_000);
@@ -413,19 +407,20 @@ export default async function handler(req) {
         // No seed-meta → data exists but freshness is unknown → stale
         seedStale = true;
       }
+      if (meta?.count != null) metaCount = meta.count;
     }
+
+    const size = metaCount ?? (hasData ? 1 : 0);
 
     // Cascade: if this key is empty but a sibling in the cascade group has data, it's OK.
     const cascadeSiblings = CASCADE_GROUPS[name];
     let cascadeCovered = false;
-    if (cascadeSiblings && (!parsed || size === 0)) {
+    if (cascadeSiblings && !hasData) {
       for (const sibling of cascadeSiblings) {
         if (sibling === name) continue;
         const sibKey = STANDALONE_KEYS[sibling];
         if (!sibKey) continue;
-        const sibRaw = keyValues.get(sibKey);
-        const sibParsed = parseRedisValue(sibRaw);
-        if (sibParsed && dataSize(sibParsed) > 0) {
+        if ((keyStrens.get(sibKey) ?? 0) > NEG_SENTINEL_LEN) {
           cascadeCovered = true;
           break;
         }
@@ -433,7 +428,7 @@ export default async function handler(req) {
     }
 
     let status;
-    if (!parsed || raw === NEG_SENTINEL) {
+    if (!hasData) {
       if (cascadeCovered) {
         status = 'OK_CASCADE';
         okCount++;
