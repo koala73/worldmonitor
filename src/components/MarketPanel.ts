@@ -168,7 +168,13 @@ export class HeatmapPanel extends Panel {
 
     let barChartHtml = '';
     if (sectorBars && sectorBars.length > 0) {
-      const sorted = [...sectorBars].sort((a, b) => b.change1d - a.change1d);
+      const sorted = [...sectorBars]
+        .filter((s) => Number.isFinite(s.change1d))
+        .sort((a, b) => b.change1d - a.change1d);
+      if (sorted.length === 0) {
+        this.setContent(tileHtml);
+        return;
+      }
       const maxAbs = Math.max(...sorted.map((s) => Math.abs(s.change1d)), 3);
       barChartHtml =
         '<div class="heatmap-bar-chart">' +

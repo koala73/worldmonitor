@@ -30,11 +30,14 @@ export async function getFearGreedIndex(
     });
 
     const rawSectors = (raw.sectorPerformance ?? []) as Array<Record<string, unknown>>;
-    const sectorPerformance: FearGreedSectorPerformance[] = rawSectors.map((s) => ({
-      symbol: String(s.symbol ?? ''),
-      name: String(s.name ?? ''),
-      change1d: Number(s.change1d ?? 0),
-    }));
+    const sectorPerformance: FearGreedSectorPerformance[] = rawSectors.map((s) => {
+      const c = Number(s.change1d ?? 0);
+      return {
+        symbol: String(s.symbol ?? ''),
+        name: String(s.name ?? ''),
+        change1d: Number.isFinite(c) ? c : 0,
+      };
+    });
 
     return {
       compositeScore: Number(comp.score ?? 0),
