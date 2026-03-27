@@ -5,15 +5,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 
-async function loadMapLocale(defaultLang = 'en') {
+async function loadMapLocale() {
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const sourcePath = resolve(__dirname, '..', 'src', 'utils', 'map-locale.ts');
   const source = readFileSync(sourcePath, 'utf-8');
-  const patched = source.replace(
-    "import { getCurrentLanguage } from '@/services/i18n';",
-    `const getCurrentLanguage = () => '${defaultLang}';`,
-  );
-  const transformed = transformSync(patched, {
+  const transformed = transformSync(source, {
     loader: 'ts',
     format: 'esm',
     target: 'es2020',
@@ -22,106 +18,57 @@ async function loadMapLocale(defaultLang = 'en') {
   return import(dataUrl);
 }
 
-// Load module twice: once for English (default) and once for Arabic (non-Latin, RTL)
-const enMod = await loadMapLocale('en');
-const arMod = await loadMapLocale('ar');
+const mod = await loadMapLocale();
 
 const {
   getLocalizedNameField,
   getLocalizedNameExpression,
   isLocalizableTextField,
   localizeMapLabels,
-} = enMod;
+} = mod;
 
-// ── getLocalizedNameField ───────────────────────────────────────────
+// ── FR #181: Force English map labels ────────────────────────────────
 
-describe('getLocalizedNameField', () => {
-  it('returns mapped tile field for supported language', () => {
-    assert.equal(getLocalizedNameField('ko'), 'name:ko');
+describe('getLocalizedNameField (FR #181: forced English)', () => {
+  it('always returns name:en regardless of language parameter', () => {
+    assert.equal(getLocalizedNameField('en'), 'name:en');
+    assert.equal(getLocalizedNameField('fr'), 'name:en');
+    assert.equal(getLocalizedNameField('zh'), 'name:en');
+    assert.equal(getLocalizedNameField('ar'), 'name:en');
+    assert.equal(getLocalizedNameField('ja'), 'name:en');
+    assert.equal(getLocalizedNameField('ko'), 'name:en');
   });
 
-  it('falls back to name:en for unsupported language', () => {
-    assert.equal(getLocalizedNameField('xx'), 'name:en');
-  });
-
-  it('falls back to name:en for Vietnamese (no CARTO tile field)', () => {
-    assert.equal(getLocalizedNameField('vi'), 'name:en');
-  });
-
-  it('returns correct field for every mapped language', () => {
-    const expected: Record<string, string> = {
-      en: 'name:en', bg: 'name:bg', cs: 'name:cs', fr: 'name:fr',
-      de: 'name:de', el: 'name:el', es: 'name:es', it: 'name:it',
-      pl: 'name:pl', pt: 'name:pt', nl: 'name:nl', sv: 'name:sv',
-      ru: 'name:ru', ar: 'name:ar', zh: 'name:zh', ja: 'name:ja',
-      ko: 'name:ko', ro: 'name:ro', tr: 'name:tr', th: 'name:th',
-    };
-    for (const [lang, field] of Object.entries(expected)) {
-      assert.equal(getLocalizedNameField(lang), field, `lang=${lang}`);
-    }
-  });
-
-  it('falls back to name:en for empty string', () => {
+  it('returns name:en for undefined/empty language', () => {
+    assert.equal(getLocalizedNameField(), 'name:en');
     assert.equal(getLocalizedNameField(''), 'name:en');
+    assert.equal(getLocalizedNameField(undefined), 'name:en');
+  });
+
+  it('returns name:en for unknown language codes', () => {
+    assert.equal(getLocalizedNameField('xx'), 'name:en');
+    assert.equal(getLocalizedNameField('invalid'), 'name:en');
   });
 });
 
-// ── getLocalizedNameExpression ───────────────────────────────────────
+describe('getLocalizedNameExpression (FR #181: forced English)', () => {
+  const expectedEnglishExpression = ['coalesce', ['get', 'name:en'], ['get', 'name']];
 
-describe('getLocalizedNameExpression', () => {
-  it('returns simplified English coalesce expression', () => {
-    assert.deepEqual(
-      getLocalizedNameExpression('en'),
-      ['coalesce', ['get', 'name:en'], ['get', 'name']],
-    );
+  it('always returns English expression regardless of language parameter', () => {
+    assert.deepEqual(getLocalizedNameExpression('en'), expectedEnglishExpression);
+    assert.deepEqual(getLocalizedNameExpression('fr'), expectedEnglishExpression);
+    assert.deepEqual(getLocalizedNameExpression('zh'), expectedEnglishExpression);
+    assert.deepEqual(getLocalizedNameExpression('ar'), expectedEnglishExpression);
+    assert.deepEqual(getLocalizedNameExpression('ja'), expectedEnglishExpression);
   });
 
-  it('returns localized-first coalesce expression for non-English language', () => {
-    assert.deepEqual(
-      getLocalizedNameExpression('fr'),
-      ['coalesce', ['get', 'name:fr'], ['get', 'name:en'], ['get', 'name']],
-    );
+  it('returns English expression when no parameter is passed', () => {
+    assert.deepEqual(getLocalizedNameExpression(), expectedEnglishExpression);
   });
 
-  it('returns 3-element coalesce for CJK languages', () => {
-    for (const lang of ['zh', 'ja', 'ko']) {
-      const expr = getLocalizedNameExpression(lang);
-      assert.equal(expr.length, 4, `lang=${lang} should have coalesce + 3 gets`);
-      assert.deepEqual(expr[1], ['get', `name:${lang}`]);
-      assert.deepEqual(expr[2], ['get', 'name:en']);
-      assert.deepEqual(expr[3], ['get', 'name']);
-    }
-  });
-
-  it('returns 3-element coalesce for Arabic (RTL)', () => {
-    const expr = getLocalizedNameExpression('ar');
-    assert.deepEqual(expr, ['coalesce', ['get', 'name:ar'], ['get', 'name:en'], ['get', 'name']]);
-  });
-
-  it('Vietnamese falls back to English expression (no tile field)', () => {
-    assert.deepEqual(
-      getLocalizedNameExpression('vi'),
-      ['coalesce', ['get', 'name:en'], ['get', 'name']],
-    );
-  });
-
-  it('unknown language falls back to English expression', () => {
-    assert.deepEqual(
-      getLocalizedNameExpression('xx'),
-      ['coalesce', ['get', 'name:en'], ['get', 'name']],
-    );
-  });
-
-  it('uses getCurrentLanguage() when no arg is passed (English module)', () => {
-    // enMod was loaded with getCurrentLanguage = () => 'en'
-    const expr = enMod.getLocalizedNameExpression();
-    assert.deepEqual(expr, ['coalesce', ['get', 'name:en'], ['get', 'name']]);
-  });
-
-  it('uses getCurrentLanguage() when no arg is passed (Arabic module)', () => {
-    // arMod was loaded with getCurrentLanguage = () => 'ar'
-    const expr = arMod.getLocalizedNameExpression();
-    assert.deepEqual(expr, ['coalesce', ['get', 'name:ar'], ['get', 'name:en'], ['get', 'name']]);
+  it('returns English expression for undefined/empty language', () => {
+    assert.deepEqual(getLocalizedNameExpression(undefined), expectedEnglishExpression);
+    assert.deepEqual(getLocalizedNameExpression(''), expectedEnglishExpression);
   });
 });
 
@@ -145,7 +92,6 @@ describe('isLocalizableTextField', () => {
     });
 
     it('accepts mixed tokens containing a name field', () => {
-      // Rare but possible: "{name}\n{name:en}" bilingual labels
       assert.equal(isLocalizableTextField('{name}\n{name:en}'), true);
     });
   });
@@ -171,7 +117,6 @@ describe('isLocalizableTextField', () => {
     });
 
     it('accepts already-localized coalesce expression', () => {
-      // After localizeMapLabels runs, text-fields become this
       assert.equal(
         isLocalizableTextField(['coalesce', ['get', 'name:fr'], ['get', 'name:en'], ['get', 'name']]),
         true,
@@ -202,7 +147,6 @@ describe('isLocalizableTextField', () => {
 
   describe('format expressions', () => {
     it('accepts MapLibre format expressions containing name', () => {
-      // Some styles use: ["format", ["get","name"], {}, "\n", {}, ["get","name:en"], {"font-scale":0.8}]
       const formatExpr = ['format', ['get', 'name'], {}, '\n', {}, ['get', 'name:en'], { 'font-scale': 0.8 }];
       assert.equal(isLocalizableTextField(formatExpr), true);
     });
@@ -314,7 +258,7 @@ describe('localizeMapLabels', () => {
     assert.deepEqual(setCalls[0]!.value, setCalls[1]!.value);
   });
 
-  it('produces correct Arabic expression when loaded with ar language', () => {
+  it('always uses English expression regardless of browser language (FR #181)', () => {
     const layers = [{ id: 'place_country', type: 'symbol' }];
     const textFields = new Map<string, unknown>([['place_country', '{name_en}']]);
     const setCalls: Array<{ id: string; value: unknown }> = [];
@@ -326,15 +270,11 @@ describe('localizeMapLabels', () => {
       },
     };
 
-    arMod.localizeMapLabels(map);
+    localizeMapLabels(map);
 
     assert.equal(setCalls.length, 1);
-    assert.deepEqual(setCalls[0]!.value, [
-      'coalesce',
-      ['get', 'name:ar'],
-      ['get', 'name:en'],
-      ['get', 'name'],
-    ]);
+    // FR #181: Should always be English, never localized to other languages
+    assert.deepEqual(setCalls[0]!.value, ['coalesce', ['get', 'name:en'], ['get', 'name']]);
   });
 });
 
@@ -399,7 +339,7 @@ describe('CARTO dark-matter style compatibility', () => {
   }
 });
 
-// ── RTL plugin file existence ───────────────────────────────────────
+// ── RTL text plugin file existence ───────────────────────────────────
 
 describe('RTL text plugin', () => {
   it('self-hosted mapbox-gl-rtl-text.min.js exists in public/', () => {

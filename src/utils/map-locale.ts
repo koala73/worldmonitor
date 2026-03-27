@@ -1,28 +1,8 @@
-import { getCurrentLanguage } from '@/services/i18n';
-
-const LANG_TO_TILE_FIELD: Record<string, string> = {
-  en: 'name:en',
-  bg: 'name:bg',
-  cs: 'name:cs',
-  fr: 'name:fr',
-  de: 'name:de',
-  el: 'name:el',
-  es: 'name:es',
-  it: 'name:it',
-  pl: 'name:pl',
-  pt: 'name:pt',
-  nl: 'name:nl',
-  sv: 'name:sv',
-  ru: 'name:ru',
-  ar: 'name:ar',
-  zh: 'name:zh',
-  ja: 'name:ja',
-  ko: 'name:ko',
-  ro: 'name:ro',
-  tr: 'name:tr',
-  th: 'name:th',
-  // vi — not available in Protomaps/OSM tiles
-};
+/**
+ * Force map labels to display in English regardless of browser language.
+ * FR #181: Users want map place names to always show in English.
+ */
+const FORCE_MAP_LANGUAGE = 'en';
 
 type Expression = [string, ...unknown[]];
 
@@ -41,19 +21,14 @@ interface LocalizableMap {
   setLayoutProperty?: (layerId: string, property: 'text-field', value: Expression) => void;
 }
 
-export function getLocalizedNameField(lang?: string): string {
-  const code = lang ?? getCurrentLanguage();
-  return LANG_TO_TILE_FIELD[code] ?? 'name:en';
+export function getLocalizedNameField(_lang?: string): string {
+  // FR #181: Force English labels on map regardless of UI language
+  return `name:${FORCE_MAP_LANGUAGE}`;
 }
 
-export function getLocalizedNameExpression(lang?: string): Expression {
-  const field = getLocalizedNameField(lang);
-
-  if (field === 'name:en') {
-    return ['coalesce', ['get', 'name:en'], ['get', 'name']];
-  }
-
-  return ['coalesce', ['get', field], ['get', 'name:en'], ['get', 'name']];
+export function getLocalizedNameExpression(_lang?: string): Expression {
+  // FR #181: Always return English expression for map labels
+  return ['coalesce', ['get', 'name:en'], ['get', 'name']];
 }
 
 export function isLocalizableTextField(textField: unknown): boolean {
