@@ -41,7 +41,7 @@ function extractKeyFromHeaders(headers: Record<string, string>, template: string
  *  "Requires Authorization: Bearer <VAR> (free tier at exa.ai)" → "free tier at exa.ai" */
 function extractAuthHint(authNote: string): string {
   const m = authNote.match(/\(([^)]+)\)\s*$/);
-  return m ? m[1] : authNote;
+  return m?.[1] ?? authNote;
 }
 
 export function openMcpConnectModal(options: McpConnectOptions): void {
