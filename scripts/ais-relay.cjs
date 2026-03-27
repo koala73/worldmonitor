@@ -2846,9 +2846,9 @@ const THREAT_COUNTRY_NAME_TO_ISO2 = {
   'yemen':'YE','zambia':'ZM','zimbabwe':'ZW',
   // Key aliases
   'tehran':'IR','moscow':'RU','beijing':'CN','kyiv':'UA','pyongyang':'KP',
-  'tel aviv':'IL','gaza':'IL','damascus':'SY','sanaa':'YE','houthi':'YE',
+  'tel aviv':'IL','gaza':'PS','damascus':'SY','sanaa':'YE','houthi':'YE',
   'kremlin':'RU','pentagon':'US','nato':'','irgc':'IR','hezbollah':'LB',
-  'hamas':'IL','taliban':'AF','riyadh':'SA','ankara':'TR',
+  'hamas':'PS','taliban':'AF','riyadh':'SA','ankara':'TR',
 };
 // Sort by name length desc so longer multi-word names match first (used for tie-breaking same position)
 const THREAT_COUNTRY_NAME_ENTRIES = Object.entries(THREAT_COUNTRY_NAME_TO_ISO2)
@@ -2863,7 +2863,7 @@ const THREAT_COUNTRY_NAME_ENTRIES = Object.entries(THREAT_COUNTRY_NAME_TO_ISO2)
 // "US strikes on Yemen condemned by Iran" → ['YE'] (Iran is a reactor, not affected)
 // "Yemen says UK and US strikes hit Hodeidah" → [] (Hodeidah is a city, skip)
 // "Russia invades Ukraine" → ['UA']
-const AFFECTED_PREFIX_RE = /\b(in|on|against|at|into|across|inside|targeting|toward[s]?|invad(?:es?|ed|ing)|attack(?:s|ed|ing)?|bomb(?:s|ed|ing)?|hit(?:s|ting)?|strik(?:es?|ing))\s+(?:the\s+)?/gi;
+const AFFECTED_PREFIX_RE = /\b(in|on|against|at|into|across|inside|targeting|toward[s]?|invad(?:es?|ed|ing)|attack(?:s|ed|ing)?|bomb(?:s|ed|ing)?|hitt?(?:ing|s)?|strik(?:es?|ing))\s+(?:the\s+)?/gi;
 function matchCountryNamesInText(text) {
   const lower = text.toLowerCase();
   let match;
@@ -3127,9 +3127,9 @@ async function seedClassify() {
       }
     }
 
+    await upstashSet('seed-meta:news:threat-summary', { fetchedAt: Date.now(), recordCount: Object.keys(mergedByCountry).length }, 604800);
     if (Object.keys(mergedByCountry).length > 0) {
       await upstashSet(NEWS_THREAT_SUMMARY_KEY, { byCountry: mergedByCountry, generatedAt: Date.now() }, NEWS_THREAT_SUMMARY_TTL);
-      await upstashSet('seed-meta:news:threat-summary', { fetchedAt: Date.now(), recordCount: Object.keys(mergedByCountry).length }, 604800);
       console.log(`[Classify] Threat summary written for ${Object.keys(mergedByCountry).length} countries`);
     }
 
