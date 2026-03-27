@@ -198,36 +198,84 @@ export class HeatmapPanel extends Panel {
   }
 }
 
+interface EcbFxRateItem {
+  currency: string;
+  rate: number;
+  change1d?: number | null;
+}
+
+type CommoditiesTab = 'commodities' | 'fx';
+
 export class CommoditiesPanel extends Panel {
+  private _tab: CommoditiesTab = 'commodities';
+  private _commodityData: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[] }> = [];
+  private _fxRates: EcbFxRateItem[] = [];
+
   constructor() {
     super({ id: 'commodities', title: t('panels.commodities'), infoTooltip: t('components.commodities.infoTooltip') });
+
+    this.content.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
+      if (btn?.dataset.tab === 'commodities' || btn?.dataset.tab === 'fx') {
+        this._tab = btn.dataset.tab as CommoditiesTab;
+        this._render();
+      }
+    });
   }
 
   public renderCommodities(data: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
-    const validData = data.filter((d) => d.price !== null);
+    this._commodityData = data;
+    this._render();
+  }
 
-    if (validData.length === 0) {
-      this.showRetrying(t('common.failedCommodities'));
+  public updateFxRates(rates: EcbFxRateItem[]): void {
+    this._fxRates = rates;
+    this._render();
+  }
+
+  private _render(): void {
+    const hasFx = this._fxRates.length > 0;
+    const tabBar = hasFx ? `<div style="display:flex;gap:4px;margin-bottom:8px">
+      <button class="panel-tab${this._tab === 'commodities' ? ' active' : ''}" data-tab="commodities" style="font-size:11px;padding:3px 10px">Commodities</button>
+      <button class="panel-tab${this._tab === 'fx' ? ' active' : ''}" data-tab="fx" style="font-size:11px;padding:3px 10px">EUR FX</button>
+    </div>` : '';
+
+    if (this._tab === 'fx' && hasFx) {
+      const items = this._fxRates.map(r => {
+        const change = r.change1d ?? null;
+        const changeStr = change !== null ? `${change >= 0 ? '+' : ''}${change.toFixed(4)}` : '';
+        const changeClass = change === null ? '' : change >= 0 ? 'change-positive' : 'change-negative';
+        return `<div class="commodity-item">
+          <div class="commodity-name">EUR/${escapeHtml(r.currency)}</div>
+          <div class="commodity-price">${escapeHtml(r.rate.toFixed(4))}</div>
+          ${changeStr ? `<div class="commodity-change ${escapeHtml(changeClass)}">${escapeHtml(changeStr)}</div>` : ''}
+        </div>`;
+      }).join('');
+      this.setContent(tabBar + `<div class="commodities-grid">${items}</div><div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Source: ECB</div>`);
       return;
     }
 
-    const html =
-      '<div class="commodities-grid">' +
-      validData
-        .map(
-          (c) => `
+    const validData = this._commodityData.filter((d) => d.price !== null);
+    if (validData.length === 0) {
+      if (!hasFx) {
+        this.showRetrying(t('common.failedCommodities'));
+        return;
+      }
+      this.setContent(tabBar + `<div style="padding:8px;color:var(--text-dim);font-size:12px">${t('common.failedCommodities')}</div>`);
+      return;
+    }
+
+    const grid = '<div class="commodities-grid">' +
+      validData.map(c => `
         <div class="commodity-item">
           <div class="commodity-name">${escapeHtml(c.display)}</div>
           ${miniSparkline(c.sparkline, c.change, 60, 18)}
           <div class="commodity-price">${formatPrice(c.price!)}</div>
           <div class="commodity-change ${getChangeClass(c.change!)}">${formatChange(c.change!)}</div>
         </div>
-      `
-        )
-        .join('') +
-      '</div>';
+      `).join('') + '</div>';
 
-    this.setContent(html);
+    this.setContent(tabBar + grid);
   }
 }
 
