@@ -1,4 +1,4 @@
-import type { McpPanelSpec, McpToolDef } from '@/services/mcp-store';
+import type { McpPanelSpec, McpPreset, McpToolDef } from '@/services/mcp-store';
 import { MCP_PRESETS } from '@/services/mcp-store';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
@@ -11,6 +11,38 @@ interface McpConnectOptions {
 }
 
 let overlay: HTMLElement | null = null;
+
+/** Build a header Record from a template + key value.
+ *  Template format: "Header-Name: prefix {key}" e.g. "Authorization: Bearer {key}" */
+function buildHeadersFromTemplate(template: string, key: string): Record<string, string> {
+  const colon = template.indexOf(':');
+  if (colon === -1) return {};
+  const headerName = template.slice(0, colon).trim();
+  const headerValue = template.slice(colon + 1).trim().replace('{key}', key.trim());
+  return { [headerName]: headerValue };
+}
+
+/** Extract the raw key value from existing headers using the preset template (for edit mode).
+ *  Returns null if headers don't match the template. */
+function extractKeyFromHeaders(headers: Record<string, string>, template: string): string | null {
+  const colon = template.indexOf(':');
+  if (colon === -1) return null;
+  const headerName = template.slice(0, colon).trim();
+  const valueTemplate = template.slice(colon + 1).trim(); // e.g. "Bearer {key}"
+  const actual = headers[headerName];
+  if (!actual) return null;
+  const keyIdx = valueTemplate.indexOf('{key}');
+  const prefix = valueTemplate.slice(0, keyIdx).trim();
+  if (prefix && !actual.startsWith(prefix)) return null;
+  return actual.slice(prefix ? prefix.length + 1 : 0).trim() || null;
+}
+
+/** Extract a short signup/docs hint from an authNote string.
+ *  "Requires Authorization: Bearer <VAR> (free tier at exa.ai)" → "free tier at exa.ai" */
+function extractAuthHint(authNote: string): string {
+  const m = authNote.match(/\(([^)]+)\)\s*$/);
+  return m?.[1] ?? authNote;
+}
 
 export function openMcpConnectModal(options: McpConnectOptions): void {
   closeMcpConnectModal();
@@ -27,7 +59,8 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       data-tool="${escapeHtml(p.defaultTool ?? '')}"
       data-args="${escapeHtml(JSON.stringify(p.defaultArgs ?? {}))}"
       data-title="${escapeHtml(p.defaultTitle ?? p.name)}"
-      data-auth-note="${escapeHtml(p.authNote ?? '')}">
+      data-auth-note="${escapeHtml(p.authNote ?? '')}"
+      data-api-key-header="${escapeHtml(p.apiKeyHeader ?? '')}">
       <span class="mcp-preset-icon">${p.icon}</span>
       <span class="mcp-preset-info">
         <span class="mcp-preset-name">${escapeHtml(p.name)}</span>
@@ -36,6 +69,19 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       ${p.authNote ? '<span class="mcp-preset-key-badge">🔑</span>' : ''}
     </button>
   `).join('');
+
+  // Determine initial auth mode for edit flow
+  const existingHeaders = existing?.customHeaders ?? {};
+  const matchingPreset: McpPreset | undefined = existing
+    ? MCP_PRESETS.find(p => p.serverUrl === existing.serverUrl && p.apiKeyHeader)
+    : undefined;
+  const editSimpleKey = matchingPreset?.apiKeyHeader
+    ? extractKeyFromHeaders(existingHeaders, matchingPreset.apiKeyHeader)
+    : null;
+
+  const initialSimpleMode = !!editSimpleKey;
+  const initialApiKey = editSimpleKey ?? '';
+  const initialRawHeader = initialSimpleMode ? '' : _headersToLine(existingHeaders);
 
   modal.innerHTML = `
     <div class="modal-header">
@@ -56,11 +102,20 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
           placeholder="https://my-mcp-server.com/mcp"
           value="${escapeHtml(existing?.serverUrl ?? '')}" />
       </div>
-      <div class="mcp-form-group">
+      <div class="mcp-form-group mcp-api-key-group" style="${initialSimpleMode ? '' : 'display:none'}">
+        <label class="mcp-label">${escapeHtml(t('mcp.apiKey'))}</label>
+        <input class="mcp-input mcp-api-key" type="text" autocomplete="off"
+          placeholder="${escapeHtml(t('mcp.apiKeyPlaceholder'))}"
+          value="${escapeHtml(initialApiKey)}" />
+        <span class="mcp-api-key-hint"></span>
+        <button type="button" class="mcp-auth-mode-btn mcp-to-advanced">${escapeHtml(t('mcp.useCustomHeaders'))}</button>
+      </div>
+      <div class="mcp-form-group mcp-auth-header-group" style="${initialSimpleMode ? 'display:none' : ''}">
         <label class="mcp-label">${escapeHtml(t('mcp.authHeader'))} <span class="mcp-optional">(${t('mcp.optional')})</span></label>
         <input class="mcp-input mcp-auth-header" type="text"
           placeholder="Authorization: Bearer token123; x-api-key: key456"
-          value="${escapeHtml(existing ? _headersToLine(existing.customHeaders) : '')}" />
+          value="${escapeHtml(initialRawHeader)}" />
+        <button type="button" class="mcp-auth-mode-btn mcp-to-simple" style="display:none">${escapeHtml(t('mcp.useApiKey'))}</button>
       </div>
       <div class="mcp-connect-actions">
         <button class="btn btn-secondary mcp-connect-btn">${escapeHtml(t('mcp.connectBtn'))}</button>
@@ -103,9 +158,17 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   let selectedTool: McpToolDef | null = existing
     ? { name: existing.toolName, description: '' }
     : null;
+  /** Template for the current preset, e.g. "Authorization: Bearer {key}" */
+  let activeApiKeyHeader = matchingPreset?.apiKeyHeader ?? '';
 
   const urlInput = modal.querySelector('.mcp-server-url') as HTMLInputElement;
+  const apiKeyGroup = modal.querySelector('.mcp-api-key-group') as HTMLElement;
+  const apiKeyInput = modal.querySelector('.mcp-api-key') as HTMLInputElement;
+  const apiKeyHint = modal.querySelector('.mcp-api-key-hint') as HTMLElement;
+  const toAdvancedBtn = modal.querySelector('.mcp-to-advanced') as HTMLButtonElement;
+  const authHeaderGroup = modal.querySelector('.mcp-auth-header-group') as HTMLElement;
   const authInput = modal.querySelector('.mcp-auth-header') as HTMLInputElement;
+  const toSimpleBtn = modal.querySelector('.mcp-to-simple') as HTMLButtonElement;
   const connectBtn = modal.querySelector('.mcp-connect-btn') as HTMLButtonElement;
   const connectStatus = modal.querySelector('.mcp-connect-status') as HTMLElement;
   const toolsSection = modal.querySelector('.mcp-tools-section') as HTMLElement;
@@ -117,19 +180,88 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   const refreshInput = modal.querySelector('.mcp-refresh-input') as HTMLInputElement;
   const addBtn = modal.querySelector('.mcp-add-btn') as HTMLButtonElement;
 
+  function isSimpleMode(): boolean {
+    return apiKeyGroup.style.display !== 'none';
+  }
+
+  function getEffectiveHeaders(): Record<string, string> {
+    if (isSimpleMode() && activeApiKeyHeader) {
+      const key = apiKeyInput.value.trim();
+      return key ? buildHeadersFromTemplate(activeApiKeyHeader, key) : {};
+    }
+    return parseAuthHeader(authInput.value);
+  }
+
+  function showSimpleMode(preset: McpPreset): void {
+    activeApiKeyHeader = preset.apiKeyHeader ?? '';
+    apiKeyGroup.style.display = '';
+    authHeaderGroup.style.display = 'none';
+    toSimpleBtn.style.display = 'none';
+    if (preset.authNote) {
+      apiKeyHint.textContent = extractAuthHint(preset.authNote);
+    } else {
+      apiKeyHint.textContent = '';
+    }
+  }
+
+  function showAdvancedMode(prefillFromKey = true): void {
+    if (prefillFromKey && activeApiKeyHeader && apiKeyInput.value.trim()) {
+      authInput.value = _headersToLine(buildHeadersFromTemplate(activeApiKeyHeader, apiKeyInput.value.trim()));
+    }
+    apiKeyGroup.style.display = 'none';
+    authHeaderGroup.style.display = '';
+    if (activeApiKeyHeader) toSimpleBtn.style.display = '';
+  }
+
+  toAdvancedBtn.addEventListener('click', () => showAdvancedMode(true));
+  toSimpleBtn.addEventListener('click', () => {
+    // Re-extract key from any edits made in advanced mode
+    if (activeApiKeyHeader) {
+      const parsed = parseAuthHeader(authInput.value);
+      const extracted = extractKeyFromHeaders(parsed, activeApiKeyHeader);
+      if (extracted) apiKeyInput.value = extracted;
+    }
+    apiKeyGroup.style.display = '';
+    authHeaderGroup.style.display = 'none';
+    toSimpleBtn.style.display = 'none';
+  });
+
+  // Set hint if editing in simple mode
+  if (initialSimpleMode && matchingPreset?.authNote) {
+    apiKeyHint.textContent = extractAuthHint(matchingPreset.authNote);
+  }
+
   // Preset card click handlers
   modal.querySelectorAll<HTMLElement>('.mcp-preset-card').forEach(card => {
     card.addEventListener('click', () => {
       modal.querySelectorAll('.mcp-preset-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
       urlInput.value = card.dataset.url ?? '';
-      if (card.dataset.authNote) {
-        connectStatus.textContent = `\u{1f511} ${card.dataset.authNote}`;
-        connectStatus.className = 'mcp-connect-status mcp-status-info';
-      } else {
+
+      const cardApiKeyHeader = card.dataset.apiKeyHeader ?? '';
+      const cardAuthNote = card.dataset.authNote ?? '';
+
+      if (cardApiKeyHeader) {
+        const fakePreset = { apiKeyHeader: cardApiKeyHeader, authNote: cardAuthNote } as McpPreset;
+        showSimpleMode(fakePreset);
+        apiKeyInput.value = '';
         connectStatus.textContent = '';
         connectStatus.className = 'mcp-connect-status';
+      } else {
+        activeApiKeyHeader = '';
+        apiKeyGroup.style.display = 'none';
+        authHeaderGroup.style.display = '';
+        toSimpleBtn.style.display = 'none';
+        authInput.value = '';
+        if (cardAuthNote) {
+          connectStatus.textContent = `\u{1f511} ${cardAuthNote}`;
+          connectStatus.className = 'mcp-connect-status mcp-status-info';
+        } else {
+          connectStatus.textContent = '';
+          connectStatus.className = 'mcp-connect-status';
+        }
       }
+
       // Pre-fill tool config if preset has defaults
       const presetTool = card.dataset.tool;
       const presetArgs = card.dataset.args;
@@ -140,7 +272,6 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         if (presetTitle) titleInput.value = presetTitle;
         toolConfig.style.display = '';
         addBtn.disabled = false;
-        // Show a placeholder in tool list
         toolsSection.style.display = '';
         toolsList.innerHTML = `<div class="mcp-tool-item selected"><span class="mcp-tool-name">${escapeHtml(presetTool)}</span></div>`;
       }
@@ -158,9 +289,6 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     addBtn.disabled = false;
   }
 
-  // Parse auth header input into Record<string,string>.
-  // Supports multiple headers separated by "; " (matching _headersToLine serialization).
-  // Example: "x-smithery-api-key: abc; Authorization: Bearer xyz"
   function parseAuthHeader(raw: string): Record<string, string> {
     const trimmed = raw.trim();
     if (!trimmed) return {};
@@ -215,7 +343,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     connectStatus.className = 'mcp-connect-status mcp-status-loading';
     connectBtn.disabled = true;
     try {
-      const headers = parseAuthHeader(authInput.value);
+      const headers = getEffectiveHeaders();
       const qs = new URLSearchParams({ serverUrl });
       if (Object.keys(headers).length) qs.set('headers', JSON.stringify(headers));
       const resp = await fetch(`${proxyUrl('/api/mcp-proxy')}?${qs}`, {
@@ -255,7 +383,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       id,
       title: titleInput.value.trim() || selectedTool.name,
       serverUrl: urlInput.value.trim(),
-      customHeaders: parseAuthHeader(authInput.value),
+      customHeaders: getEffectiveHeaders(),
       toolName: selectedTool.name,
       toolArgs,
       refreshIntervalMs: Math.max(10, parseInt(refreshInput.value, 10) || 60) * 1000,

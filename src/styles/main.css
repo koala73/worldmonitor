@@ -20658,6 +20658,29 @@ body.has-breaking-alert .panels-grid {
   border-color: var(--accent);
 }
 
+.mcp-api-key-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.mcp-auth-mode-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: left;
+  opacity: 0.8;
+}
+
+.mcp-auth-mode-btn:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
 .mcp-connect-actions {
   display: flex;
   align-items: center;
