@@ -152,8 +152,8 @@ export class EconomicCalendarPanel extends Panel {
   }
 
   private _render(): void {
-    if (!this._hasData || this._events.length === 0) {
-      if (!this._hasData) this.showError('No upcoming economic events.', () => void this.fetchData());
+    if (!this._hasData) {
+      this.showError('No upcoming economic events.', () => void this.fetchData());
       return;
     }
 
@@ -205,8 +205,11 @@ export class EconomicCalendarPanel extends Panel {
       }
     }
 
+    const emptyMsgText = this._region === 'all'
+      ? 'No upcoming economic events'
+      : 'No events for selected region';
     const emptyMsg = filtered.length === 0
-      ? `<tr><td colspan="3" style="padding:20px 0;text-align:center;color:rgba(255,255,255,0.3);font-size:12px">No events for selected region</td></tr>`
+      ? `<tr><td colspan="3" style="padding:20px 0;text-align:center;color:rgba(255,255,255,0.3);font-size:12px">${escapeHtml(emptyMsgText)}</td></tr>`
       : '';
 
     const html = `${this._renderRegionTabs()}<div style="padding:0 14px 12px;max-height:440px;overflow-y:auto">
