@@ -29,16 +29,24 @@ export async function premiumFetch(
   // 2. Tester / widget key from localStorage (wm-pro-key or wm-widget-key).
   // Must run BEFORE Clerk to prevent a free Clerk session from intercepting the
   // request and returning 403 before the tester key is ever checked.
+  // If the gateway returns 401 (key not in WORLDMONITOR_VALID_KEYS), fall through
+  // to Clerk JWT rather than surfacing the error — widget relay keys and gateway
+  // API keys can be different sets.
+  let testerKey: string | null = null;
   try {
     const { getProWidgetKey, getWidgetAgentKey } = await import('@/services/widget-store');
-    const testerKey = getProWidgetKey() || getWidgetAgentKey();
+    testerKey = getProWidgetKey() || getWidgetAgentKey();
     if (testerKey) {
-      existing.set('X-WorldMonitor-Key', testerKey);
-      return globalThis.fetch(input, { ...init, headers: existing });
+      const testerHeaders = new Headers(existing);
+      testerHeaders.set('X-WorldMonitor-Key', testerKey);
+      const res = await globalThis.fetch(input, { ...init, headers: testerHeaders });
+      if (res.status !== 401) return res;
+      // 401 → tester key not valid for this gateway endpoint; fall through to Clerk.
     }
   } catch { /* not available — fall through */ }
 
-  // 3. Clerk Pro session token (fallback for users without a tester key).
+  // 3. Clerk Pro session token (fallback for users without a tester key, or when
+  //    the tester key is not in WORLDMONITOR_VALID_KEYS).
   try {
     const { getClerkToken } = await import('@/services/clerk');
     const token = await getClerkToken();
