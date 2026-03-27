@@ -832,29 +832,34 @@ export async function analyzeStock(
   const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
   const cacheKey = `market:analyze-stock:v1:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
-  const cached = await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, async () => {
-    const history = await fetchYahooHistory(symbol);
-    if (!history) return null;
+  let cached: AnalyzeStockResponse | null = null;
+  try {
+    cached = await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, async () => {
+      const history = await fetchYahooHistory(symbol);
+      if (!history) return null;
 
-    const technical = buildTechnicalSnapshot(history.candles);
-    technical.currency = history.currency || 'USD';
-    const headlines = includeNews ? (await searchRecentStockHeadlines(symbol, name, NEWS_LIMIT)).headlines : [];
-    const overlay = await buildAiOverlay(symbol, name, technical, headlines);
-    const analysisAt = history.candles[history.candles.length - 1]?.timestamp || Date.now();
-    const response = buildAnalysisResponse({
-      symbol,
-      name,
-      currency: history.currency || 'USD',
-      technical,
-      headlines,
-      overlay,
-      includeNews,
-      analysisAt,
-      generatedAt: new Date().toISOString(),
+      const technical = buildTechnicalSnapshot(history.candles);
+      technical.currency = history.currency || 'USD';
+      const headlines = includeNews ? (await searchRecentStockHeadlines(symbol, name, NEWS_LIMIT)).headlines : [];
+      const overlay = await buildAiOverlay(symbol, name, technical, headlines);
+      const analysisAt = history.candles[history.candles.length - 1]?.timestamp || Date.now();
+      const response = buildAnalysisResponse({
+        symbol,
+        name,
+        currency: history.currency || 'USD',
+        technical,
+        headlines,
+        overlay,
+        includeNews,
+        analysisAt,
+        generatedAt: new Date().toISOString(),
+      });
+      await storeStockAnalysisSnapshot(response, includeNews);
+      return response;
     });
-    await storeStockAnalysisSnapshot(response, includeNews);
-    return response;
-  });
+  } catch {
+    // fetcher timed out or threw — fall through to empty response
+  }
 
   if (cached) return cached;
 
