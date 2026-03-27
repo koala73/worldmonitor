@@ -539,6 +539,7 @@ export class DeckGLMap {
     this.createTimeSlider();
     this.createLayerToggles();
     this.createLegend();
+    this.updateLegendVisibility();
 
     // Start day/night timer only if layer is initially enabled
     if (this.state.layers.dayNight) {
@@ -4242,6 +4243,7 @@ export class DeckGLMap {
           this.state.layers[layer] = (input as HTMLInputElement).checked;
           if (layer === 'flights') this.manageAircraftTimer((input as HTMLInputElement).checked);
           this.render();
+          this.updateLegendVisibility();
           this.onLayerChange?.(layer, (input as HTMLInputElement).checked, 'user');
           if (layer === 'ciiChoropleth') {
             const ciiLeg = this.container.querySelector('#ciiChoroplethLegend') as HTMLElement | null;
@@ -4664,6 +4666,7 @@ export class DeckGLMap {
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${key}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = value;
     });
+    this.updateLegendVisibility();
   }
 
   public getState(): DeckMapState {
@@ -5360,6 +5363,7 @@ export class DeckGLMap {
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = true;
       this.render();
+      this.updateLegendVisibility();
       this.onLayerChange?.(layer, true, 'programmatic');
       this.enforceLayerLimit();
     }
@@ -5371,8 +5375,58 @@ export class DeckGLMap {
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];
     this.render();
+    // Update legend visibility based on active layers
+    this.updateLegendVisibility();
     this.onLayerChange?.(layer, this.state.layers[layer], 'programmatic');
     this.enforceLayerLimit();
+  }
+
+  // Update legend visibility based on which layers are currently active
+  private updateLegendVisibility(): void {
+    const legend = this.container.querySelector('.map-legend.deckgl-legend') as HTMLElement | null;
+    if (!legend) return;
+
+    // Determine which legend items should be visible based on active layers
+    const visibleLabels: Set<string> = new Set();
+
+    // Map layers to their legend labels
+    const layerToLabels: Partial<Record<keyof MapLayers, string[]>> = {
+      startupHubs: ['Startup Hub'],
+      techHQs: ['Tech HQ'],
+      accelerators: ['Accelerator'],
+      cloudRegions: ['Cloud Region'],
+      datacenters: ['Datacenter'],
+      stockExchanges: ['Stock Exchange'],
+      financialCenters: ['Financial Center'],
+      centralBanks: ['Central Bank'],
+      commodityHubs: ['Commodity Hub'],
+      waterways: ['Waterway'],
+      flights: ['Aircraft'],
+      nuclear: ['Nuclear'],
+      bases: ['Base'],
+      natural: ['Natural Event', 'Positive Event', 'Breakthrough', 'Act of Kindness'],
+      conflicts: ['High Alert', 'Elevated', 'Monitoring'],
+      cyberThreats: ['Cyber Threat'],
+      positiveEvents: ['Positive Event', 'Breakthrough', 'Act of Kindness', 'Species Recovery Zone', 'Renewable Installation'],
+      techEvents: ['Tech Event'],
+    };
+
+    // Collect visible labels based on active layers
+    for (const key of Object.keys(layerToLabels) as Array<keyof MapLayers>) {
+      if (this.state.layers[key]) {
+        layerToLabels[key]!.forEach(label => visibleLabels.add(label));
+      }
+    }
+
+    // Update legend item visibility
+    const legendItems = legend.querySelectorAll<HTMLElement>('.legend-item');
+    legendItems.forEach(item => {
+      const labelEl = item.querySelector('.legend-label');
+      if (labelEl) {
+        const labelText = labelEl.textContent?.trim() || '';
+        item.style.display = visibleLabels.has(labelText) ? '' : 'none';
+      }
+    });
   }
 
   // Get center coordinates for programmatic popup positioning

@@ -254,6 +254,7 @@ Sentry.init({
     /^"use strict" is not a function$/,
     /Can only call Window\.setTimeout on instances of Window/, // iOS Safari cross-frame setTimeout from 3rd-party injected script
     /^Can't find variable: _G$/, // browser extension/userscript injecting _G global
+    /onAppPageCallback is not defined/, // Android Chrome WebView injection (Huawei/Samsung browsers)
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -292,7 +293,8 @@ Sentry.init({
     // Suppress TypeErrors from anonymous/injected scripts (no real source files or only inline page URL)
     if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
     // Suppress parentNode.insertBefore from injected/inline scripts (iOS WKWebView, Apple Mail)
-    if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+    // Also covers [native code] frames (no filename) produced by WKWebView's forEach wrapper
+    if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
     // Suppress Sentry breadcrumb DOM-measuring crashes (element.offsetWidth on detached DOM)
     if (/evaluating '(?:element|e)\.offset(?:Width|Height)'/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress errors originating entirely from blob: URLs (browser extensions)
@@ -336,6 +338,16 @@ window.addEventListener('securitypolicyviolation', (e) => {
   // Skip violations originating from browser extensions or injected scripts
   if (/^(?:chrome|moz|safari(?:-web)?)-extension:/.test(src) || /^(?:chrome|moz|safari(?:-web)?)-extension:/.test(blocked)) return;
   if (/^blob:/.test(src)) return;
+  // Skip Sentry reporting itself (connect-src bootstrap paradox — SDK blocked before it can report)
+  if (/sentry\.io\/api\//.test(blocked)) return;
+  // Skip YouTube live stream manifests (media-src — expected from YouTube embeds)
+  if (/googlevideo\.com|youtube\.com\/generate_204/.test(blocked)) return;
+  // Skip corporate/school content filter injections (securly, GoGuardian, etc.)
+  if (/securly\.com|goguardian\.com|contentkeeper\.com/.test(blocked)) return;
+  // Skip Vercel Analytics (script-src — known first-party, not a real violation to action)
+  if (/_vercel\/insights\/script\.js/.test(blocked)) return;
+  // Skip inline script blocks — browser extension or in-app browser injection, not actionable
+  if (blocked === 'inline' && e.effectiveDirective === 'script-src-elem') return;
   Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
     level: 'warning',
     tags: { kind: 'csp_violation' },
