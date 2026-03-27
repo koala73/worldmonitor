@@ -133,6 +133,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:insights', keywords: ['insights', 'ai insights', 'analysis'], label: 'Panel: AI Insights', icon: '\u{1F4A1}', category: 'panels' },
   { id: 'panel:strategic-posture', keywords: ['strategic posture', 'ai posture', 'posture assessment'], label: 'Panel: AI Strategic Posture', icon: '\u{1F3AF}', category: 'panels' },
   { id: 'panel:forecast', keywords: ['forecast', 'ai forecast', 'predictions ai'], label: 'Panel: AI Forecasts', icon: '\u{1F52E}', category: 'panels' },
+  { id: 'panel:deduction', keywords: ['deduct', 'deduction', 'ai deduction', 'situation analysis', 'scenario analysis'], label: 'Panel: AI Deduction', icon: '\u{1F9E0}', category: 'panels' },
   { id: 'panel:military-correlation', keywords: ['force posture', 'military correlation', 'military posture'], label: 'Panel: Force Posture', icon: '\u{1F396}\uFE0F', category: 'panels' },
   { id: 'panel:escalation-correlation', keywords: ['escalation', 'escalation monitor', 'escalation risk'], label: 'Panel: Escalation Monitor', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:economic-correlation', keywords: ['economic warfare', 'economic correlation', 'sanctions impact'], label: 'Economic Warfare', icon: '\u{1F4B1}', category: 'panels' },
