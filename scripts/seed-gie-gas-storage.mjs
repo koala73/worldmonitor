@@ -108,7 +108,7 @@ async function fetchEuGasStorage() {
     gasDaysConsumption,
     trend,
     history,
-    seededAt: Date.now(),
+    seededAt: String(Date.now()),
     updatedAt: current.date,
   };
 

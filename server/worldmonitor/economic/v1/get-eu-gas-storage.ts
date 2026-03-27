@@ -33,7 +33,11 @@ export async function getEuGasStorage(
   try {
     const result = await getCachedJson(SEED_CACHE_KEY, true) as GetEuGasStorageResponse | null;
     if (result && !result.unavailable && typeof result.fillPct === 'number' && result.fillPct > 0) {
-      return result;
+      return {
+        ...result,
+        // proto int64 seeded_at → string; normalize in case older seed wrote a number
+        seededAt: String(result.seededAt ?? '0'),
+      };
     }
     return buildFallbackResult();
   } catch {
