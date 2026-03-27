@@ -721,7 +721,7 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('gdelt-intel', () => new GdeltIntelPanel());
 
-    if (SITE_VARIANT === 'full' && this.ctx.isDesktopApp) {
+    if (SITE_VARIANT === 'full') {
       import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
         const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
         this.ctx.panels['deduction'] = deductionPanel;
@@ -1240,7 +1240,7 @@ export class PanelLayoutManager implements AppModule {
     if (import.meta.env.DEV) {
       const configured = new Set(Object.keys(ALL_PANELS).filter(k => k !== 'map'));
       const created = new Set(Object.keys(this.ctx.panels));
-      const extra = [...created].filter(k => !configured.has(k) && k !== 'deduction' && k !== 'runtime-config' && !k.startsWith('cw-') && !k.startsWith('mcp-'));
+      const extra = [...created].filter(k => !configured.has(k) && k !== 'runtime-config' && !k.startsWith('cw-') && !k.startsWith('mcp-'));
       if (extra.length) console.warn('[PanelLayoutManager] Panels created but not in ALL_PANELS:', extra);
     }
   }

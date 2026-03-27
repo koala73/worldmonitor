@@ -91,6 +91,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'national-debt': { name: 'Global Debt Clock', enabled: true, priority: 2 },
   'cross-source-signals': { name: 'Cross-Source Signals', enabled: true, priority: 2 },
   'market-implications': { name: 'AI Market Implications', enabled: true, priority: 1, premium: 'locked' as const },
+  'deduction': { name: 'Deduct Situation', enabled: true, priority: 1, premium: 'locked' as const },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
@@ -923,7 +924,7 @@ export const FREE_MAX_SOURCES = 80;
  */
 export function isPanelEntitled(key: string, config: PanelConfig, isPro = false): boolean {
   if (!config.premium) return true;
-  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications'];
+  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'deduction'];
   if (apiKeyPanels.includes(key)) {
     return getSecretState('WORLDMONITOR_API_KEY').present || isPro;
   }

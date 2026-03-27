@@ -9,4 +9,5 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/market/v1/get-stock-analysis-history',
   '/api/market/v1/backtest-stock',
   '/api/market/v1/list-stored-stock-backtests',
+  '/api/intelligence/v1/deduct-situation',
 ]);
