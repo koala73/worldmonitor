@@ -37,7 +37,7 @@ export async function summarizeArticle(
   _ctx: ServerContext,
   req: SummarizeArticleRequest,
 ): Promise<SummarizeArticleResponse> {
-  const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en', systemAppend = '' } = req;
 
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
@@ -120,13 +120,17 @@ export async function summarizeArticle(
           lang,
         });
 
+        const effectiveSystemPrompt = systemAppend
+          ? `${systemPrompt}\n\n---\n\n${systemAppend}`
+          : systemPrompt;
+
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { ...providerHeaders, 'User-Agent': CHROME_UA },
           body: JSON.stringify({
             model,
             messages: [
-              { role: 'system', content: systemPrompt },
+              { role: 'system', content: effectiveSystemPrompt },
               { role: 'user', content: userPrompt },
             ],
             temperature: 0.3,

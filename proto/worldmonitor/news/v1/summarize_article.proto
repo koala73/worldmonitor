@@ -21,6 +21,8 @@ message SummarizeArticleRequest {
   string variant = 5;
   // Output language code, default "en".
   string lang = 6;
+  // Optional system prompt append for analytical framework instructions.
+  string system_append = 7;
 }
 
 // SummarizeStatus indicates the outcome of a summarization request.

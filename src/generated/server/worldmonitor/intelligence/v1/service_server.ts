@@ -105,6 +105,7 @@ export interface EventClassification {
 
 export interface GetCountryIntelBriefRequest {
   countryCode: string;
+  framework: string;
 }
 
 export interface GetCountryIntelBriefResponse {
@@ -142,6 +143,7 @@ export interface GdeltArticle {
 export interface DeductSituationRequest {
   query: string;
   geoContext: string;
+  framework: string;
 }
 
 export interface DeductSituationResponse {
@@ -675,6 +677,7 @@ export function createIntelligenceServiceRoutes(
           const params = url.searchParams;
           const body: GetCountryIntelBriefRequest = {
             countryCode: params.get("country_code") ?? "",
+            framework: params.get("framework") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getCountryIntelBrief", body);

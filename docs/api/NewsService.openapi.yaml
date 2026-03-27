@@ -166,6 +166,9 @@ components:
                 lang:
                     type: string
                     description: Output language code, default "en".
+                systemAppend:
+                    type: string
+                    description: Optional system prompt append for analytical framework instructions.
             required:
                 - provider
             description: SummarizeArticleRequest specifies parameters for LLM article summarization.

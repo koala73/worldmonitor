@@ -16875,6 +16875,301 @@ a.prediction-link:hover {
   background: #f59e0b;
 }
 
+/* ============ Analysis Frameworks Settings ============ */
+
+.fw-panel-status-list {
+  margin-bottom: 8px;
+}
+
+.fw-panel-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: 11px;
+}
+
+.fw-panel-status-name {
+  color: var(--text-dim);
+}
+
+.fw-panel-status-val {
+  color: var(--text-primary);
+  font-weight: 500;
+  max-width: 60%;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fw-library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.fw-library-empty {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 4px 0;
+}
+
+.fw-library-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.fw-library-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.fw-library-item-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.fw-builtin-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.fw-library-item-desc {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 1px;
+  line-height: 1.3;
+}
+
+.fw-library-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.fw-lib-btn {
+  font: inherit;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: var(--text-dim);
+  transition: background 0.15s, color 0.15s;
+}
+
+.fw-lib-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-primary);
+}
+
+.fw-lib-btn-danger {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.fw-lib-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+}
+
+.fw-import-row {
+  margin-top: 4px;
+}
+
+/* ── Import modal ── */
+
+.fw-import-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.fw-import-modal {
+  background: var(--panel-bg, #1a1d21);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.fw-import-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fw-import-modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.fw-import-modal-close {
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.fw-import-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.fw-import-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 12px;
+}
+
+.fw-import-tab {
+  font: inherit;
+  font-size: 12px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 8px 10px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.fw-import-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: #60a5fa;
+}
+
+.fw-import-tab-panel {
+  display: none;
+  padding: 14px 16px 16px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fw-import-tab-panel.active {
+  display: flex;
+}
+
+.fw-import-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.fw-import-input {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.fw-import-input:focus {
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.fw-import-textarea {
+  font: inherit;
+  font-size: 11px;
+  font-family: monospace;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.fw-import-textarea:focus {
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.fw-import-field {
+  width: 100%;
+}
+
+.fw-import-preview {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fw-import-preview-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.fw-import-preview-desc {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.fw-import-error {
+  font-size: 11px;
+  color: #f87171;
+  line-height: 1.3;
+}
+
+.fw-save-btn {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 6px 16px;
+}
+
 .ai-flow-status-dot.disabled {
   background: #ef4444;
 }

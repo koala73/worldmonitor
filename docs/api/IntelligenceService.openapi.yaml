@@ -134,6 +134,12 @@ paths:
                   required: false
                   schema:
                     type: string
+                - name: framework
+                  in: query
+                  description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -983,6 +989,9 @@ components:
                     type: string
                     pattern: ^[A-Z]{2}$
                     description: ISO 3166-1 alpha-2 country code.
+                framework:
+                    type: string
+                    description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
             required:
                 - countryCode
             description: GetCountryIntelBriefRequest specifies which country to generate a brief for.
@@ -1080,6 +1089,9 @@ components:
                     type: string
                 geoContext:
                     type: string
+                framework:
+                    type: string
+                    description: Optional analytical framework instructions.
         DeductSituationResponse:
             type: object
             properties:

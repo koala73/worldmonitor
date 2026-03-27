@@ -9,6 +9,14 @@ import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-s
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
+import {
+  loadFrameworkLibrary,
+  saveImportedFramework,
+  deleteImportedFramework,
+  renameImportedFramework,
+  getActiveFrameworkForPanel,
+  type AnalysisPanelId,
+} from '@/services/analysis-framework-store';
 
 const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 
@@ -198,6 +206,77 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
   html += `</div></details>`;
 
+  // ── Analysis Frameworks group ──
+  html += `<details class="wm-pref-group">`;
+  html += `<summary>Analysis Frameworks</summary>`;
+  html += `<div class="wm-pref-group-content">`;
+
+  // Per-panel active framework display
+  const panelIds: Array<{ id: AnalysisPanelId; label: string }> = [
+    { id: 'insights', label: 'Insights' },
+    { id: 'country-brief', label: 'Country Brief' },
+    { id: 'daily-market-brief', label: 'Market Brief' },
+    { id: 'deduction', label: 'Deduction' },
+  ];
+  html += `<div class="ai-flow-section-label">Active per panel</div>`;
+  html += `<div class="fw-panel-status-list" id="fwPanelStatusList">`;
+  for (const { id, label } of panelIds) {
+    const active = getActiveFrameworkForPanel(id);
+    html += `<div class="fw-panel-status-row">
+      <span class="fw-panel-status-name">${escapeHtml(label)}</span>
+      <span class="fw-panel-status-val">${active ? escapeHtml(active.name) : 'Default (Neutral)'}</span>
+    </div>`;
+  }
+  html += `</div>`;
+
+  // Skill library list
+  html += `<div class="ai-flow-section-label">Skill library</div>`;
+  html += `<div class="fw-library-list" id="fwLibraryList">`;
+  html += renderFrameworkLibraryHtml();
+  html += `</div>`;
+
+  // Import button
+  html += `<div class="fw-import-row">
+    <button type="button" class="settings-btn settings-btn-secondary fw-import-btn" id="fwImportBtn">Import framework</button>
+  </div>`;
+
+  // Import modal (hidden by default)
+  html += `<div class="fw-import-modal-backdrop" id="fwImportModalBackdrop" style="display:none">
+    <div class="fw-import-modal" role="dialog" aria-modal="true" aria-label="Import framework">
+      <div class="fw-import-modal-header">
+        <span class="fw-import-modal-title">Import Framework</span>
+        <button type="button" class="fw-import-modal-close" id="fwImportModalClose" aria-label="Close">&times;</button>
+      </div>
+      <div class="fw-import-tabs">
+        <button type="button" class="fw-import-tab active" data-fw-tab="agentskills" id="fwTabAgentskills">From agentskills.io</button>
+        <button type="button" class="fw-import-tab" data-fw-tab="json" id="fwTabJson">Paste JSON</button>
+      </div>
+      <div class="fw-import-tab-panel active" id="fwTabPanelAgentskills">
+        <div class="fw-import-field">
+          <label class="fw-import-label">agentskills.io URL or ID</label>
+          <input type="text" class="fw-import-input" id="fwAgentskillsUrl" placeholder="https://agentskills.io/skills/..." />
+        </div>
+        <button type="button" class="settings-btn settings-btn-secondary" id="fwFetchBtn">Fetch</button>
+        <div class="fw-import-preview" id="fwAgentskillsPreview" style="display:none">
+          <div class="fw-import-preview-name" id="fwPreviewName"></div>
+          <div class="fw-import-preview-desc" id="fwPreviewDesc"></div>
+          <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">Save to Library</button>
+        </div>
+        <div class="fw-import-error" id="fwAgentskillsError" style="display:none"></div>
+      </div>
+      <div class="fw-import-tab-panel" id="fwTabPanelJson">
+        <div class="fw-import-field">
+          <label class="fw-import-label">Paste JSON</label>
+          <textarea class="fw-import-textarea" id="fwJsonInput" rows="6" placeholder='{ "name": "...", "instructions": "..." }'></textarea>
+        </div>
+        <div class="fw-import-error" id="fwJsonError" style="display:none"></div>
+        <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwJsonSaveBtn">Save to Library</button>
+      </div>
+    </div>
+  </div>`;
+
+  html += `</div></details>`;
+
   // ── Media group ──
   html += `<details class="wm-pref-group">`;
   html += `<summary>${t('preferences.media')}</summary>`;
@@ -348,6 +427,153 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           container.querySelector<HTMLInputElement>('#usImportInput')?.click();
           return;
         }
+
+        // ── Framework settings handlers ──
+
+        if (target.closest('#fwImportBtn')) {
+          const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+          if (backdrop) backdrop.style.display = 'flex';
+          return;
+        }
+
+        if (target.closest('#fwImportModalClose') || target.id === 'fwImportModalBackdrop') {
+          const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+          if (backdrop) backdrop.style.display = 'none';
+          return;
+        }
+
+        const tab = target.closest<HTMLElement>('[data-fw-tab]');
+        if (tab?.dataset.fwTab) {
+          const tabId = tab.dataset.fwTab;
+          container.querySelectorAll('.fw-import-tab').forEach(el => el.classList.toggle('active', (el as HTMLElement).dataset.fwTab === tabId));
+          container.querySelectorAll('.fw-import-tab-panel').forEach(el => {
+            const panelEl = el as HTMLElement;
+            panelEl.classList.toggle('active', panelEl.id === `fwTabPanel${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`);
+          });
+          return;
+        }
+
+        if (target.closest('#fwFetchBtn')) {
+          const urlInput = container.querySelector<HTMLInputElement>('#fwAgentskillsUrl');
+          const errEl = container.querySelector<HTMLElement>('#fwAgentskillsError');
+          const preview = container.querySelector<HTMLElement>('#fwAgentskillsPreview');
+          if (!urlInput) return;
+          hideImportError(errEl);
+          if (preview) preview.style.display = 'none';
+          const urlVal = urlInput.value.trim();
+          if (!urlVal.includes('agentskills.io')) {
+            showImportError(errEl, 'Only agentskills.io URLs are supported.');
+            return;
+          }
+          const fetchBtn = container.querySelector<HTMLButtonElement>('#fwFetchBtn');
+          if (fetchBtn) fetchBtn.disabled = true;
+          fetch('/api/skills/fetch-agentskills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: urlVal }),
+            signal,
+          }).then(async (res) => {
+            if (res.status === 429) throw new Error('rate-limit');
+            if (!res.ok) throw new Error('network');
+            return res.json() as Promise<{ name?: string; description?: string; instructions?: string }>;
+          }).then((data) => {
+            if (!data.instructions) {
+              showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported in phase 1).');
+              return;
+            }
+            const nameEl = container.querySelector<HTMLElement>('#fwPreviewName');
+            const descEl = container.querySelector<HTMLElement>('#fwPreviewDesc');
+            if (nameEl) nameEl.textContent = data.name ?? 'Unnamed skill';
+            if (descEl) descEl.textContent = data.instructions.slice(0, 200) + (data.instructions.length > 200 ? '…' : '');
+            if (preview) {
+              preview.style.display = 'block';
+              (preview as HTMLElement & { _fwData?: { name: string; description: string; instructions: string } })._fwData = {
+                name: data.name ?? 'Unnamed skill',
+                description: data.description ?? '',
+                instructions: data.instructions,
+              };
+            }
+          }).catch((err: Error) => {
+            if (err.name === 'AbortError') return;
+            if (err.message === 'rate-limit') {
+              showImportError(errEl, 'Too many import requests. Try again in an hour.');
+            } else {
+              showImportError(errEl, 'Could not reach agentskills.io. Check your connection.');
+            }
+          }).finally(() => {
+            if (fetchBtn) fetchBtn.disabled = false;
+          });
+          return;
+        }
+
+        if (target.closest('#fwAgentskillsSaveBtn')) {
+          const preview = container.querySelector<HTMLElement>('#fwAgentskillsPreview');
+          const errEl = container.querySelector<HTMLElement>('#fwAgentskillsError');
+          const fwData = (preview as HTMLElement & { _fwData?: { name: string; description: string; instructions: string } } | null)?._fwData;
+          if (!fwData) return;
+          try {
+            saveImportedFramework({ id: `imported-${Date.now()}`, name: fwData.name, description: fwData.description, systemPromptAppend: fwData.instructions });
+            refreshFrameworkLibrary(container);
+            const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+            if (backdrop) backdrop.style.display = 'none';
+          } catch (err) {
+            showImportError(errEl, (err as Error).message);
+          }
+          return;
+        }
+
+        if (target.closest('#fwJsonSaveBtn')) {
+          const textarea = container.querySelector<HTMLTextAreaElement>('#fwJsonInput');
+          const errEl = container.querySelector<HTMLElement>('#fwJsonError');
+          if (!textarea) return;
+          hideImportError(errEl);
+          let parsed: { name?: string; description?: string; instructions?: string };
+          try {
+            parsed = JSON.parse(textarea.value) as typeof parsed;
+          } catch {
+            showImportError(errEl, 'Could not parse skill definition. Paste valid JSON.');
+            return;
+          }
+          if (!parsed.instructions) {
+            showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported in phase 1).');
+            return;
+          }
+          try {
+            saveImportedFramework({
+              id: `imported-${Date.now()}`,
+              name: parsed.name ?? 'Imported skill',
+              description: parsed.description ?? '',
+              systemPromptAppend: parsed.instructions,
+            });
+            textarea.value = '';
+            refreshFrameworkLibrary(container);
+            const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+            if (backdrop) backdrop.style.display = 'none';
+          } catch (err) {
+            showImportError(errEl, (err as Error).message);
+          }
+          return;
+        }
+
+        const deleteBtn = target.closest<HTMLElement>('.fw-delete-btn');
+        if (deleteBtn?.dataset.fwId) {
+          deleteImportedFramework(deleteBtn.dataset.fwId);
+          refreshFrameworkLibrary(container);
+          return;
+        }
+
+        const renameBtn = target.closest<HTMLElement>('.fw-rename-btn');
+        if (renameBtn?.dataset.fwId) {
+          const fwId = renameBtn.dataset.fwId;
+          const current = renameBtn.closest('.fw-library-item')?.querySelector('.fw-library-item-name');
+          const currentName = current?.childNodes[0]?.textContent?.trim() ?? '';
+          const newName = prompt('Rename framework:', currentName);
+          if (newName && newName.trim() && newName.trim() !== currentName) {
+            renameImportedFramework(fwId, newName.trim());
+            refreshFrameworkLibrary(container);
+          }
+          return;
+        }
       }, { signal });
 
       if (!host.isDesktopApp) updateAiStatus(container);
@@ -355,6 +581,42 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       return () => ac.abort();
     },
   };
+}
+
+function renderFrameworkLibraryHtml(): string {
+  const frameworks = loadFrameworkLibrary();
+  if (frameworks.length === 0) return '<div class="fw-library-empty">No frameworks in library.</div>';
+  return frameworks.map(fw => `
+    <div class="fw-library-item" data-fw-id="${escapeHtml(fw.id)}">
+      <div class="fw-library-item-info">
+        <div class="fw-library-item-name">${escapeHtml(fw.name)}${fw.isBuiltIn ? ' <span class="fw-builtin-badge">built-in</span>' : ''}</div>
+        <div class="fw-library-item-desc">${escapeHtml(fw.description)}</div>
+      </div>
+      ${!fw.isBuiltIn ? `
+        <div class="fw-library-item-actions">
+          <button type="button" class="fw-lib-btn fw-rename-btn" data-fw-id="${escapeHtml(fw.id)}">Rename</button>
+          <button type="button" class="fw-lib-btn fw-lib-btn-danger fw-delete-btn" data-fw-id="${escapeHtml(fw.id)}">Delete</button>
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+}
+
+function refreshFrameworkLibrary(container: HTMLElement): void {
+  const list = container.querySelector('#fwLibraryList');
+  if (list) list.innerHTML = renderFrameworkLibraryHtml();
+}
+
+function showImportError(el: HTMLElement | null, msg: string): void {
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideImportError(el: HTMLElement | null): void {
+  if (!el) return;
+  el.textContent = '';
+  el.style.display = 'none';
 }
 
 function showToast(container: HTMLElement, msg: string, success: boolean): void {

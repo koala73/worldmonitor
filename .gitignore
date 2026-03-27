@@ -20,6 +20,7 @@ CLAUDE.md
 .factory/
 .windsurf/
 skills/
+!api/skills/
 ideas/
 docs/internal/
 docs/ideation/

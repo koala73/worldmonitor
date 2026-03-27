@@ -105,6 +105,7 @@ export interface EventClassification {
 
 export interface GetCountryIntelBriefRequest {
   countryCode: string;
+  framework: string;
 }
 
 export interface GetCountryIntelBriefResponse {
@@ -142,6 +143,7 @@ export interface GdeltArticle {
 export interface DeductSituationRequest {
   query: string;
   geoContext: string;
+  framework: string;
 }
 
 export interface DeductSituationResponse {
@@ -582,6 +584,7 @@ export class IntelligenceServiceClient {
     let path = "/api/intelligence/v1/get-country-intel-brief";
     const params = new URLSearchParams();
     if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.framework != null && req.framework !== "") params.set("framework", String(req.framework));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

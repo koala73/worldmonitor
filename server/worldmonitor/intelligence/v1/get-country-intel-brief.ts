@@ -34,8 +34,10 @@ export async function getCountryIntelBrief(
     contextSnapshot = '';
   }
 
+  const frameworkRaw = typeof req.framework === 'string' ? req.framework.slice(0, 2000) : '';
   const contextHash = contextSnapshot ? (await sha256Hex(contextSnapshot)).slice(0, 16) : 'base';
-  const cacheKey = `ci-sebuf:v3:${req.countryCode}:${lang}:${contextHash}`;
+  const frameworkHash = frameworkRaw ? (await sha256Hex(frameworkRaw)).slice(0, 8) : '';
+  const cacheKey = `ci-sebuf:v3:${req.countryCode}:${lang}:${contextHash}${frameworkHash ? `:${frameworkHash}` : ''}`;
   const countryName = TIER1_COUNTRIES[req.countryCode] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
 
@@ -88,6 +90,7 @@ Rules:
         temperature: 0.4,
         maxTokens: 1100,
         timeoutMs: UPSTREAM_TIMEOUT_MS,
+        systemAppend: frameworkRaw || undefined,
       });
 
       if (!llmResult) return null;

@@ -18,9 +18,11 @@ export async function deductSituation(
 ): Promise<DeductSituationResponse> {
     const MAX_QUERY_LEN = 500;
     const MAX_GEO_LEN = 2000;
+    const MAX_FRAMEWORK_LEN = 2000;
 
     const query = typeof req.query === 'string' ? req.query.slice(0, MAX_QUERY_LEN).trim() : '';
     const geoContext = typeof req.geoContext === 'string' ? req.geoContext.slice(0, MAX_GEO_LEN).trim() : '';
+    const framework = typeof req.framework === 'string' ? req.framework.slice(0, MAX_FRAMEWORK_LEN) : '';
 
     if (!query) return { analysis: '', model: '', provider: 'skipped' };
 
@@ -40,6 +42,7 @@ export async function deductSituation(
                 temperature: 0.3,
                 maxTokens: 1500,
                 timeoutMs: DEDUCT_TIMEOUT_MS,
+                systemAppend: framework || undefined,
             });
 
             if (!result) return null;

@@ -136,6 +136,8 @@ export interface LlmCallOptions {
   modelOverrides?: Partial<Record<LlmProviderName, string>>;
   stripThinkingTags?: boolean;
   validate?: (content: string) => boolean;
+  /** Optional text to append to the system message (index 0). Appended as \n\n---\n\n<systemAppend>. No-op if no system message at index 0. */
+  systemAppend?: string;
 }
 
 export interface LlmCallResult {
@@ -167,7 +169,7 @@ function resolveProviderChain(opts: {
 
 export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | null> {
   const {
-    messages,
+    messages: rawMessages,
     temperature = 0.3,
     maxTokens = 1500,
     timeoutMs = 25_000,
@@ -176,7 +178,16 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
     modelOverrides,
     stripThinkingTags: shouldStrip = true,
     validate,
+    systemAppend,
   } = opts;
+
+  let messages = rawMessages;
+  if (systemAppend && messages.length > 0 && messages[0].role === 'system') {
+    messages = [
+      { role: 'system', content: `${messages[0].content}\n\n---\n\n${systemAppend}` },
+      ...messages.slice(1),
+    ];
+  }
 
   const providers = resolveProviderChain({ forcedProvider, providerOrder });
 
