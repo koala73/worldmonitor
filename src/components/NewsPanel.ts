@@ -4,7 +4,7 @@ import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAss
 import { THREAT_PRIORITY } from '@/services/threat-classifier';
 import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
+import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, translateText } from '@/services';
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -16,8 +16,8 @@ type SortMode = 'relevance' | 'newest';
 /** Threshold for enabling virtual scrolling */
 const VIRTUAL_SCROLL_THRESHOLD = 15;
 
-/** Summary cache TTL in milliseconds (10 minutes) */
-const SUMMARY_CACHE_TTL = 10 * 60 * 1000;
+// FR #186: Summary cache TTL unused until AI Summary is re-implemented
+// const SUMMARY_CACHE_TTL = 10 * 60 * 1000;
 
 /** Prepared cluster data for rendering */
 interface PreparedCluster {
@@ -47,12 +47,12 @@ export class NewsPanel extends Panel {
   private lastRawClusters: ClusteredEvent[] | null = null;
   private lastRawItems: NewsItem[] | null = null;
 
-  // Panel summary feature
-  private summaryBtn: HTMLButtonElement | null = null;
+  // Panel summary feature - FR #186: disabled until AI Summary is implemented
+  // private summaryBtn: HTMLButtonElement | null = null;
   private summaryContainer: HTMLElement | null = null;
   private currentHeadlines: string[] = [];
   private lastHeadlineSignature = '';
-  private isSummarizing = false;
+  // private isSummarizing = false;
 
   constructor(id: string, title: string) {
     super({ id, title, showCount: true, trackActivity: true });
@@ -196,70 +196,49 @@ export class NewsPanel extends Panel {
       }
     });
 
-    // Create summarize button
-    this.summaryBtn = document.createElement('button');
-    this.summaryBtn.className = 'panel-summarize-btn';
-    this.summaryBtn.innerHTML = '✨';
-    this.summaryBtn.title = t('components.newsPanel.summarize');
-    this.summaryBtn.addEventListener('click', () => this.handleSummarize());
-
-    // Insert before count element (use inherited this.header directly)
-    const countEl = this.header.querySelector('.panel-count');
-    if (countEl) {
-      this.header.insertBefore(this.summaryBtn, countEl);
-    } else {
-      this.header.appendChild(this.summaryBtn);
-    }
+    // FR #186: Summary button disabled until AI Summary is implemented
+    // this.summaryBtn = document.createElement('button');
+    // this.summaryBtn.className = 'panel-summarize-btn';
+    // this.summaryBtn.innerHTML = '✨';
+    // this.summaryBtn.title = t('components.newsPanel.summarize');
+    // this.summaryBtn.addEventListener('click', () => this.handleSummarize());
+    // const countEl = this.header.querySelector('.panel-count');
+    // if (countEl) {
+    //   this.header.insertBefore(this.summaryBtn, countEl);
+    // } else {
+    //   this.header.appendChild(this.summaryBtn);
+    // }
   }
 
-  private async handleSummarize(): Promise<void> {
-    if (this.isSummarizing || !this.summaryContainer || !this.summaryBtn) return;
-    if (this.currentHeadlines.length === 0) return;
-
-    // Check cache first (include variant, version, and language)
-    const currentLang = getCurrentLanguage();
-    const cacheKey = `panel_summary_v3_${SITE_VARIANT}_${this.panelId}_${currentLang}`;
-    const cached = this.getCachedSummary(cacheKey);
-    if (cached) {
-      this.showSummary(cached);
-      return;
-    }
-
-    // Show loading state
-    this.isSummarizing = true;
-    this.summaryBtn.innerHTML = '<span class="panel-summarize-spinner"></span>';
-    this.summaryBtn.disabled = true;
-    this.summaryContainer.style.display = 'block';
-    this.summaryContainer.innerHTML = `<div class="panel-summary-loading">${t('components.newsPanel.generatingSummary')}</div>`;
-
-    const sigAtStart = this.lastHeadlineSignature;
-
-    try {
-      const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, this.panelId, currentLang);
-      if (!this.element?.isConnected) return;
-      if (this.lastHeadlineSignature !== sigAtStart) {
-        this.hideSummary();
-        return;
-      }
-      if (result?.summary) {
-        this.setCachedSummary(cacheKey, result.summary);
-        this.showSummary(result.summary);
-      } else {
-        this.summaryContainer.innerHTML = `<div class="panel-summary-error">${t('components.newsPanel.summaryError')}</div>`;
-        setTimeout(() => this.hideSummary(), 3000);
-      }
-    } catch {
-      if (!this.element?.isConnected) return;
-      this.summaryContainer.innerHTML = `<div class="panel-summary-error">${t('components.newsPanel.summaryFailed')}</div>`;
-      setTimeout(() => this.hideSummary(), 3000);
-    } finally {
-      this.isSummarizing = false;
-      if (this.summaryBtn) {
-        this.summaryBtn.innerHTML = '✨';
-        this.summaryBtn.disabled = false;
-      }
-    }
-  }
+  // FR #186: handleSummarize disabled until AI Summary is implemented
+  // private async handleSummarize(): Promise<void> {
+  //   if (this.isSummarizing || !this.summaryContainer || !this.summaryBtn) return;
+  //   if (this.currentHeadlines.length === 0) return;
+  //   const currentLang = getCurrentLanguage();
+  //   const cacheKey = `panel_summary_v3_${SITE_VARIANT}_${this.panelId}_${currentLang}`;
+  //   const cached = this.getCachedSummary(cacheKey);
+  //   if (cached) { this.showSummary(cached); return; }
+  //   this.isSummarizing = true;
+  //   this.summaryBtn.innerHTML = '<span class="panel-summarize-spinner"></span>';
+  //   this.summaryBtn.disabled = true;
+  //   this.summaryContainer.style.display = 'block';
+  //   this.summaryContainer.innerHTML = `<div class="panel-summary-loading">${t('components.newsPanel.generatingSummary')}</div>`;
+  //   const sigAtStart = this.lastHeadlineSignature;
+  //   try {
+  //     const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, this.panelId, currentLang);
+  //     if (!this.element?.isConnected) return;
+  //     if (this.lastHeadlineSignature !== sigAtStart) { this.hideSummary(); return; }
+  //     if (result?.summary) { this.setCachedSummary(cacheKey, result.summary); this.showSummary(result.summary); }
+  //     else { this.summaryContainer.innerHTML = `<div class="panel-summary-error">${t('components.newsPanel.summaryError')}</div>`; setTimeout(() => this.hideSummary(), 3000); }
+  //   } catch {
+  //     if (!this.element?.isConnected) return;
+  //     this.summaryContainer.innerHTML = `<div class="panel-summary-error">${t('components.newsPanel.summaryFailed')}</div>`;
+  //     setTimeout(() => this.hideSummary(), 3000);
+  //   } finally {
+  //     this.isSummarizing = false;
+  //     if (this.summaryBtn) { this.summaryBtn.innerHTML = '✨'; this.summaryBtn.disabled = false; }
+  //   }
+  // }
 
   private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
     const currentLang = getCurrentLanguage();
@@ -298,17 +277,17 @@ export class NewsPanel extends Panel {
     }
   }
 
-  private showSummary(summary: string): void {
-    if (!this.summaryContainer || !this.element?.isConnected) return;
-    this.summaryContainer.style.display = 'block';
-    this.summaryContainer.innerHTML = `
-      <div class="panel-summary-content">
-        <span class="panel-summary-text">${escapeHtml(summary)}</span>
-        <button class="panel-summary-close" title="${t('components.newsPanel.close')}" aria-label="${t('components.newsPanel.close')}">×</button>
-      </div>
-    `;
-    // Close button click is handled via event delegation on summaryContainer (set up in constructor)
-  }
+  // FR #186: showSummary commented out until AI Summary is re-implemented
+  // private showSummary(summary: string): void {
+  //   if (!this.summaryContainer || !this.element?.isConnected) return;
+  //   this.summaryContainer.style.display = 'block';
+  //   this.summaryContainer.innerHTML = `
+  //     <div class="panel-summary-content">
+  //       <span class="panel-summary-text">${escapeHtml(summary)}</span>
+  //       <button class="panel-summary-close" title="${t('components.newsPanel.close')}" aria-label="${t('components.newsPanel.close')}">×</button>
+  //     </div>
+  //   `;
+  // }
 
   private hideSummary(): void {
     if (!this.summaryContainer) return;
@@ -330,29 +309,29 @@ export class NewsPanel extends Panel {
     }
   }
 
-  private getCachedSummary(key: string): string | null {
-    try {
-      const cached = localStorage.getItem(key);
-      if (!cached) return null;
-      const parsed = JSON.parse(cached);
-      if (!parsed.headlineSignature) { localStorage.removeItem(key); return null; }
-      if (parsed.headlineSignature !== this.lastHeadlineSignature) return null;
-      if (Date.now() - parsed.timestamp > SUMMARY_CACHE_TTL) { localStorage.removeItem(key); return null; }
-      return parsed.summary;
-    } catch {
-      return null;
-    }
-  }
+  // FR #186: getCachedSummary commented out until AI Summary is re-implemented
+  // private getCachedSummary(key: string): string | null {
+  //   try {
+  //     const cached = localStorage.getItem(key);
+  //     if (!cached) return null;
+  //     const parsed = JSON.parse(cached);
+  //     if (!parsed.headlineSignature) { localStorage.removeItem(key); return null; }
+  //     if (parsed.headlineSignature !== this.lastHeadlineSignature) return null;
+  //     if (Date.now() - parsed.timestamp > SUMMARY_CACHE_TTL) { localStorage.removeItem(key); return null; }
+  //     return parsed.summary;
+  //   } catch { return null; }
+  // }
 
-  private setCachedSummary(key: string, summary: string): void {
-    try {
-      localStorage.setItem(key, JSON.stringify({
-        headlineSignature: this.lastHeadlineSignature,
-        summary,
-        timestamp: Date.now(),
-      }));
-    } catch { /* storage full */ }
-  }
+  // FR #186: setCachedSummary commented out until AI Summary is re-implemented
+  // private setCachedSummary(key: string, summary: string): void {
+  //   try {
+  //     localStorage.setItem(key, JSON.stringify({
+  //       headlineSignature: this.lastHeadlineSignature,
+  //       summary,
+  //       timestamp: Date.now(),
+  //     }));
+  //   } catch { /* storage full */ }
+  // }
 
   public setDeviation(zScore: number, percentChange: number, level: DeviationLevel): void {
     if (!this.deviationEl) return;
