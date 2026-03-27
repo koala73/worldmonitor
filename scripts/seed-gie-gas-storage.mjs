@@ -76,21 +76,19 @@ async function fetchEuGasStorage() {
     throw new Error(`GIE AGSI+: invalid fillPct=${fillPct} (expected 0–100)`);
   }
 
-  const fillPctChange1d = previous !== null ? +(fillPct - previous.fill).toFixed(2) : null;
+  const fillPctChange1d = previous !== null ? +(fillPct - previous.fill).toFixed(2) : 0;
 
   // Derive trend from 1d change
   let trend = 'stable';
-  if (fillPctChange1d !== null) {
-    if (fillPctChange1d > 0.05) trend = 'injecting';
-    else if (fillPctChange1d < -0.05) trend = 'withdrawing';
-  }
+  if (fillPctChange1d > 0.05) trend = 'injecting';
+  else if (fillPctChange1d < -0.05) trend = 'withdrawing';
 
   // Approximate days of consumption — standard EU working gas volume ~1100 TWh
   // Days = storage_gwh / (total_capacity_gwh * seasonal_avg_drawdown_per_day)
   // Simple heuristic: storage_gwh / ~18 TWh/day EU avg winter consumption
   const gasDaysConsumption = current.gwh > 0
     ? +(current.gwh / 18).toFixed(1)
-    : null;
+    : 0;
 
   // Build 5-day history
   const history = entries.map(e => {

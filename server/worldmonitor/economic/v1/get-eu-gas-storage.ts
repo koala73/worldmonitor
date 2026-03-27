@@ -37,6 +37,9 @@ export async function getEuGasStorage(
         ...result,
         // proto int64 seeded_at → string; normalize in case older seed wrote a number
         seededAt: String(result.seededAt ?? '0'),
+        // coerce nulls → 0 for older cached blobs that pre-date the null-guard fix
+        fillPctChange1d: result.fillPctChange1d ?? 0,
+        gasDaysConsumption: result.gasDaysConsumption ?? 0,
       };
     }
     return buildFallbackResult();
