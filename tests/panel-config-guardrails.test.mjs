@@ -73,6 +73,19 @@ describe('panel-config guardrails', () => {
     );
   });
 
+  it('reapplies panel settings after mounting the async deduction panel', () => {
+    const deductionMount = panelLayoutSrc.match(
+      /import\('@\/components\/DeductionPanel'\)\.then\(\(\{ DeductionPanel \}\) => \{([\s\S]*?)\n\s*\}\);/
+    );
+
+    assert.ok(deductionMount, 'expected async DeductionPanel mount block in panel-layout.ts');
+    assert.match(
+      deductionMount[1],
+      /this\.applyPanelSettings\(\);/,
+      'async DeductionPanel mount must replay saved panel settings after insertion',
+    );
+  });
+
   it('panel keys are consistent across variant configs (no typos)', () => {
     const allKeys = new Map();
     for (const v of VARIANT_FILES) {

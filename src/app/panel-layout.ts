@@ -736,6 +736,7 @@ export class PanelLayoutManager implements AppModule {
             grid.appendChild(el);
           }
         }
+        this.applyPanelSettings();
       });
     }
 
