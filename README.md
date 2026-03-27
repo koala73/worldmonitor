@@ -98,7 +98,7 @@ Flight data provided gracefully by [Wingbits](https://wingbits.com?utm_source=wo
 
 ## Data Sources
 
-WorldMonitor aggregates data from the following open and public APIs. We are grateful to these providers for making their data freely accessible.
+WorldMonitor aggregates 30+ external data sources. Below are the open/public APIs used by the seed pipeline. For the full catalog including real-time feeds, proprietary sources, and collection methods, see the [data sources documentation](https://docs.worldmonitor.app/data-sources).
 
 | Provider | Data |
 |----------|------|
