@@ -35,8 +35,12 @@ export async function getCountryIntelBrief(
   }
 
   const frameworkRaw = typeof req.framework === 'string' ? req.framework.slice(0, 2000) : '';
-  const contextHash = contextSnapshot ? (await sha256Hex(contextSnapshot)).slice(0, 16) : 'base';
-  const frameworkHash = frameworkRaw ? (await sha256Hex(frameworkRaw)).slice(0, 8) : '';
+  const [contextHashFull, frameworkHashFull] = await Promise.all([
+    contextSnapshot ? sha256Hex(contextSnapshot) : Promise.resolve('base'),
+    frameworkRaw    ? sha256Hex(frameworkRaw)    : Promise.resolve(''),
+  ]);
+  const contextHash = contextSnapshot ? contextHashFull.slice(0, 16) : 'base';
+  const frameworkHash = frameworkRaw ? frameworkHashFull.slice(0, 8) : '';
   const cacheKey = `ci-sebuf:v3:${req.countryCode}:${lang}:${contextHash}${frameworkHash ? `:${frameworkHash}` : ''}`;
   const countryName = TIER1_COUNTRIES[req.countryCode] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];

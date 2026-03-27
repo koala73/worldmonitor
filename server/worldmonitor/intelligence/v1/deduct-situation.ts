@@ -26,7 +26,12 @@ export async function deductSituation(
 
     if (!query) return { analysis: '', model: '', provider: 'skipped' };
 
-    const cacheKey = `deduct:situation:v2:${(await sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase())).slice(0, 16)}`;
+    const [queryHash, frameworkHashFull] = await Promise.all([
+        sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase()),
+        framework ? sha256Hex(framework) : Promise.resolve(''),
+    ]);
+    const frameworkHash = framework ? frameworkHashFull.slice(0, 8) : '';
+    const cacheKey = `deduct:situation:v2:${queryHash.slice(0, 16)}${frameworkHash ? ':fw' + frameworkHash : ''}`;
 
     const { mode, systemPrompt, userPrompt } = buildDeductionPrompt({ query, geoContext });
 
