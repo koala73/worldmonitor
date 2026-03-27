@@ -147,7 +147,9 @@ export class DeductionPanel extends Panel {
                 );
                 this.resultContainer.appendChild(meta);
             } else {
-                this.resultContainer.textContent = 'No analysis available for this query.';
+                this.resultContainer.textContent = resp.provider === 'error'
+                    ? 'AI analysis temporarily unavailable. Please try again in a moment.'
+                    : 'No analysis available for this query.';
             }
         } catch (err) {
             if (!this.element?.isConnected) return;
