@@ -409,6 +409,9 @@ export function getTrendColor(trend: OilMetric['trend'], inverse = false): strin
 export type { CrudeInventoryWeek };
 
 export async function fetchCrudeInventoriesRpc(): Promise<GetCrudeInventoriesResponse> {
+  if (!isFeatureAvailable('energyEia')) return emptyCrudeFallback;
+  const hydrated = getHydratedData('crudeInventories') as GetCrudeInventoriesResponse | undefined;
+  if (hydrated?.weeks?.length) return hydrated;
   try {
     return await crudeBreaker.execute(async () => {
       return client.getCrudeInventories({}, { signal: AbortSignal.timeout(20_000) });

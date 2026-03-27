@@ -71,6 +71,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   nationalDebt:     'economic:national-debt:v1',
   marketImplications: 'intelligence:market-implications:v1',
   fearGreedIndex:   'market:fear-greed:v1',
+  crudeInventories: 'economic:crude-inventories:v1',
 };
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
@@ -103,4 +104,5 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   nationalDebt: 'slow',
   marketImplications: 'slow',
   fearGreedIndex: 'slow',
+  crudeInventories: 'slow',
 };

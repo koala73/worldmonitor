@@ -69,6 +69,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   nationalDebt:      'economic:national-debt:v1',
   marketImplications: 'intelligence:market-implications:v1',
   fearGreedIndex:    'market:fear-greed:v1',
+  crudeInventories:  'economic:crude-inventories:v1',
 };
 
 const SLOW_KEYS = new Set([
@@ -90,6 +91,7 @@ const SLOW_KEYS = new Set([
   'nationalDebt',
   'marketImplications',
   'fearGreedIndex',
+  'crudeInventories',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',

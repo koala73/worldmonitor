@@ -11,8 +11,8 @@ message CrudeInventoryWeek {
   // Total crude oil stocks in millions of barrels.
   double stocks_mb = 2;
   // Week-over-week change in millions of barrels. Positive = build (bearish), negative = draw (bullish).
-  // Absent (NaN) for the oldest week in the response when no prior week is available.
-  double weekly_change_mb = 3;
+  // Absent for the oldest week when no prior week is available for comparison.
+  optional double weekly_change_mb = 3;
 }
 
 // GetCrudeInventoriesRequest is the request message for GetCrudeInventories.

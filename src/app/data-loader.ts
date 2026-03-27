@@ -2512,6 +2512,8 @@ export class DataLoaderManager implements AppModule {
       }
       if (crudeResp.status === 'fulfilled' && crudeResp.value.weeks.length > 0) {
         energyPanel?.updateCrudeInventories(crudeResp.value.weeks);
+      } else if (crudeResp.status === 'rejected') {
+        console.warn('[App] Crude inventories fetch failed:', crudeResp.reason);
       }
     } catch (e) {
       console.error('[App] Oil analytics failed:', e);

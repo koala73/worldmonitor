@@ -17,7 +17,7 @@ const FRED_TTL = 93600; // 26h — survive daily cron scheduling drift
 const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
 const MACRO_TTL = 21600; // 6h — survive extended Yahoo outages
-const CRUDE_INVENTORIES_TTL = 864000; // 10 days — EIA publishes weekly
+const CRUDE_INVENTORIES_TTL = 1_814_400; // 21 days — EIA publishes weekly; 3x cadence per gold standard
 
 const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30'];
 
@@ -434,7 +434,7 @@ async function fetchCrudeInventories() {
     const row = rows[i];
     const stocksMb = row.value != null ? parseFloat(String(row.value)) : null;
     if (stocksMb == null || !Number.isFinite(stocksMb)) continue;
-    const period = row.period ?? '';
+    const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
 
     const olderRow = rows[i + 1];
     let weeklyChangeMb = null;
