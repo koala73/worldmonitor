@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { fetchSocialVelocity, type SocialVelocityPost } from '@/services/social-velocity';
 
 function relativeTime(ms: number): string {
@@ -67,7 +67,7 @@ export class SocialVelocityPanel extends Panel {
         <div style="display:flex;gap:8px;align-items:flex-start">
           <span style="flex-shrink:0;font-size:10px;font-weight:700;color:var(--text-dim);min-width:18px;text-align:right;margin-top:2px">${i + 1}</span>
           <div style="flex:1;min-width:0">
-            <a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:500;color:var(--text);text-decoration:none;line-height:1.35;display:block">${escapeHtml(p.title)}</a>
+            <a href="${escapeHtml(sanitizeUrl(p.url))}" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:500;color:var(--text);text-decoration:none;line-height:1.35;display:block">${escapeHtml(p.title)}</a>
             <div style="display:flex;gap:8px;margin-top:4px;align-items:center;flex-wrap:wrap">
               <span style="font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.06);color:var(--text-dim)">r/${escapeHtml(p.subreddit)}</span>
               <span style="font-size:9px;color:var(--text-dim)">&#9650; ${escapeHtml(formatScore(p.score))}</span>

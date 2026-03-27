@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { fetchDiseaseOutbreaks, type DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 
 function alertColor(level: string): string {
@@ -90,12 +90,15 @@ export class DiseaseOutbreaksPanel extends Panel {
       if (k in counts) counts[k]++;
     }
 
+    const alertLevels = new Set(['alert', 'warning', 'watch']);
     const filtered = this._filter
-      ? this._outbreaks.filter(o =>
-          o.disease.toLowerCase().includes(this._filter) ||
-          o.location.toLowerCase().includes(this._filter) ||
-          o.countryCode?.toLowerCase().includes(this._filter)
-        )
+      ? alertLevels.has(this._filter)
+        ? this._outbreaks.filter(o => o.alertLevel === this._filter)
+        : this._outbreaks.filter(o =>
+            o.disease.toLowerCase().includes(this._filter) ||
+            o.location.toLowerCase().includes(this._filter) ||
+            o.countryCode?.toLowerCase().includes(this._filter)
+          )
       : this._outbreaks;
 
     const filterBar = `<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
@@ -109,7 +112,7 @@ export class DiseaseOutbreaksPanel extends Panel {
       const label = alertLabel(o.alertLevel);
       const age = relativeTime(o.publishedAt);
       const sourceLink = o.sourceUrl
-        ? `<a href="${escapeHtml(o.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);text-decoration:none;font-size:9px">${escapeHtml(o.sourceName || 'Source')}</a>`
+        ? `<a href="${escapeHtml(sanitizeUrl(o.sourceUrl))}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);text-decoration:none;font-size:9px">${escapeHtml(o.sourceName || 'Source')}</a>`
         : (o.sourceName ? `<span style="font-size:9px;color:var(--text-dim)">${escapeHtml(o.sourceName)}</span>` : '');
 
       return `<div style="border-bottom:1px solid var(--border);padding:8px 0">

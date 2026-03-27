@@ -593,7 +593,7 @@ export class MapContainer {
 
   public setDiseaseOutbreaks(outbreaks: DiseaseOutbreakItem[]): void {
     this.cachedDiseaseOutbreaks = outbreaks;
-    if (this.useGlobe) return;
+    if (this.useGlobe) return; // TODO: add globe support for disease outbreaks layer
     if (this.useDeckGL) this.deckGLMap?.setDiseaseOutbreaks(outbreaks);
   }
 
