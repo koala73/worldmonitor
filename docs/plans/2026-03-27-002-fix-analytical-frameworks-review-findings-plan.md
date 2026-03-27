@@ -43,6 +43,7 @@ const cacheKey = `deduct:situation:v2:${queryHash}${frameworkHash ? ':fw' + fram
 `getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang)` is imported from
 `src/utils/summary-cache-key.ts`. The `systemAppend` is NOT currently in the signature.
 Options:
+
 - Extend `buildSummaryCacheKey` to accept an optional `systemAppend` param,
   append `':fw' + hashString(systemAppend).toString(16).slice(0, 8)` when non-empty.
 - OR: compute the suffix inline and append to the result of `getCacheKey(...)` before
