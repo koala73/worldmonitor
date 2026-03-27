@@ -5880,6 +5880,24 @@ describe('buildSimulationRequirementText — stateKind branching', () => {
     );
     assert.ok(text.includes('supply chain capacity'), `expected "supply chain capacity", got: ${text}`);
   });
+
+  it('T-R6: cyber_pressure contains "systems availability" and "financial network continuity"', () => {
+    const text = buildSimulationRequirementText(
+      makeTheater({ stateKind: 'cyber_pressure', routeFacilityKey: '', commodityKey: '' }),
+      makeMinCand({ criticalSignalTypes: ['cyber_disruption'] }),
+    );
+    assert.ok(text.includes('systems availability'), `expected "systems availability", got: ${text}`);
+    assert.ok(text.includes('financial network continuity'), `expected "financial network continuity", got: ${text}`);
+  });
+
+  it('T-R7: governance_pressure uses same template as political_instability — contains "government policy"', () => {
+    const text = buildSimulationRequirementText(
+      makeTheater({ stateKind: 'governance_pressure', routeFacilityKey: '', commodityKey: '' }),
+      makeMinCand(),
+    );
+    assert.ok(text.includes('government policy'), `expected "government policy", got: ${text}`);
+    assert.ok(text.includes('investor sentiment'), `expected "investor sentiment", got: ${text}`);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -5958,6 +5976,28 @@ describe('buildSimulationPackageConstraints — non-maritime constraint classes'
     const result = buildSimulationPackageConstraints([theater], [cand]);
     const classes = (result['th-test'] || []).map((x) => x.class);
     assert.ok(!classes.includes('macro_financial_posture'), `unexpected macro_financial_posture, got: ${classes}`);
+  });
+
+  it('T-C5: political_instability + sovereign_risk bucket (in MACRO_FIN_BUCKETS) generates both macro_financial_posture and structural_event_premise', () => {
+    // sovereign_risk IS in MACRO_FIN_BUCKETS — this theater stacks both constraint classes
+    const theater = makeTheaterObj({
+      stateKind: 'political_instability',
+      routeFacilityKey: '',
+      commodityKey: '',
+      topBucketId: 'sovereign_risk',
+    });
+    const cand = makeCandObj({
+      marketBucketIds: ['sovereign_risk'],
+      marketContext: { topBucketId: 'sovereign_risk', criticalSignalLift: 0.15, contradictionScore: 0 },
+    });
+    const result = buildSimulationPackageConstraints([theater], [cand]);
+    const classes = (result['th-test'] || []).map((x) => x.class);
+    assert.ok(classes.includes('macro_financial_posture'), `expected macro_financial_posture, got: ${classes}`);
+    assert.ok(classes.includes('structural_event_premise'), `expected structural_event_premise, got: ${classes}`);
+    const hard = (result['th-test'] || []).find((x) => x.class === 'structural_event_premise');
+    assert.equal(hard?.hard, true);
+    const soft = (result['th-test'] || []).find((x) => x.class === 'macro_financial_posture');
+    assert.equal(soft?.hard, false);
   });
 });
 
