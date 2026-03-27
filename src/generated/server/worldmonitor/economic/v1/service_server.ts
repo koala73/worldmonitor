@@ -401,6 +401,20 @@ export interface CrudeInventoryWeek {
   weeklyChangeMb?: number;
 }
 
+export interface GetNatGasStorageRequest {
+}
+
+export interface GetNatGasStorageResponse {
+  weeks: NatGasStorageWeek[];
+  latestPeriod: string;
+}
+
+export interface NatGasStorageWeek {
+  period: string;
+  storBcf: number;
+  weeklyChangeBcf?: number;
+}
+
 export interface GetEcbFxRatesRequest {
 }
 
@@ -552,6 +566,7 @@ export interface EconomicServiceHandler {
   getBlsSeries(ctx: ServerContext, req: GetBlsSeriesRequest): Promise<GetBlsSeriesResponse>;
   getEconomicCalendar(ctx: ServerContext, req: GetEconomicCalendarRequest): Promise<GetEconomicCalendarResponse>;
   getCrudeInventories(ctx: ServerContext, req: GetCrudeInventoriesRequest): Promise<GetCrudeInventoriesResponse>;
+  getNatGasStorage(ctx: ServerContext, req: GetNatGasStorageRequest): Promise<GetNatGasStorageResponse>;
   getEcbFxRates(ctx: ServerContext, req: GetEcbFxRatesRequest): Promise<GetEcbFxRatesResponse>;
   getEurostatCountryData(ctx: ServerContext, req: GetEurostatCountryDataRequest): Promise<GetEurostatCountryDataResponse>;
   getEuGasStorage(ctx: ServerContext, req: GetEuGasStorageRequest): Promise<GetEuGasStorageResponse>;
@@ -1209,6 +1224,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getCrudeInventories(ctx, body);
           return new Response(JSON.stringify(result as GetCrudeInventoriesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-nat-gas-storage",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetNatGasStorageRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getNatGasStorage(ctx, body);
+          return new Response(JSON.stringify(result as GetNatGasStorageResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

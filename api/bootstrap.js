@@ -71,6 +71,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   marketImplications: 'intelligence:market-implications:v1',
   fearGreedIndex:    'market:fear-greed:v1',
   crudeInventories:  'economic:crude-inventories:v1',
+  natGasStorage:     'economic:nat-gas-storage:v1',
   ecbFxRates:        'economic:ecb-fx-rates:v1',
   euFsi:             'economic:fsi-eu:v1',
 };
@@ -96,6 +97,7 @@ const SLOW_KEYS = new Set([
   'marketImplications',
   'fearGreedIndex',
   'crudeInventories',
+  'natGasStorage',
   'ecbFxRates',
   'euFsi',
 ]);

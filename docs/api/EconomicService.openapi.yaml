@@ -520,6 +520,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-nat-gas-storage:
+        get:
+            tags:
+                - EconomicService
+            summary: GetNatGasStorage
+            description: GetNatGasStorage retrieves the 8 most recent weeks of US natural gas working gas storage from EIA (NW2_EPG0_SWO_R48_BCF).
+            operationId: GetNatGasStorage
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetNatGasStorageResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/economic/v1/get-ecb-fx-rates:
         get:
             tags:
@@ -1586,6 +1612,37 @@ components:
                         Week-over-week change in millions of barrels. Positive = build (bearish), negative = draw (bullish).
                          Absent for the oldest week when no prior week is available for comparison.
             description: CrudeInventoryWeek represents one week of US crude oil stockpile data from EIA WCRSTUS1.
+        GetNatGasStorageRequest:
+            type: object
+            description: GetNatGasStorageRequest is the request message for GetNatGasStorage.
+        GetNatGasStorageResponse:
+            type: object
+            properties:
+                weeks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NatGasStorageWeek'
+                latestPeriod:
+                    type: string
+                    description: Timestamp of the most recent EIA data point (ISO 8601).
+            description: GetNatGasStorageResponse contains the 8 most recent weeks of US natural gas storage data.
+        NatGasStorageWeek:
+            type: object
+            properties:
+                period:
+                    type: string
+                    description: ISO week period (YYYY-MM-DD, Monday of the EIA report week).
+                storBcf:
+                    type: number
+                    format: double
+                    description: Working gas in underground storage, Lower-48 States, in Bcf.
+                weeklyChangeBcf:
+                    type: number
+                    format: double
+                    description: |-
+                        Week-over-week change in Bcf. Positive = build (bearish for gas prices), negative = draw (bullish).
+                         Absent for the oldest week when no prior week is available for comparison.
+            description: NatGasStorageWeek represents one week of US natural gas working gas storage data from EIA.
         GetEcbFxRatesRequest:
             type: object
             description: GetEcbFxRatesRequest is empty; returns all tracked EUR pairs.

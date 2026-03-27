@@ -16,6 +16,7 @@ import { listFuelPrices } from './list-fuel-prices';
 import { getBlsSeries } from './get-bls-series';
 import { getEconomicCalendar } from './get-economic-calendar';
 import { getCrudeInventories } from './get-crude-inventories';
+import { getNatGasStorage } from './get-nat-gas-storage';
 import { getEcbFxRates } from './get-ecb-fx-rates';
 import { getEurostatCountryData } from './get-eurostat-country-data';
 import { getEuGasStorage } from './get-eu-gas-storage';
@@ -39,6 +40,7 @@ export const economicHandler: EconomicServiceHandler = {
   getBlsSeries,
   getEconomicCalendar,
   getCrudeInventories,
+  getNatGasStorage,
   getEcbFxRates,
   getEurostatCountryData,
   getEuGasStorage,

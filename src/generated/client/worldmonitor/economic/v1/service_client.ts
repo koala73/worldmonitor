@@ -401,6 +401,20 @@ export interface CrudeInventoryWeek {
   weeklyChangeMb?: number;
 }
 
+export interface GetNatGasStorageRequest {
+}
+
+export interface GetNatGasStorageResponse {
+  weeks: NatGasStorageWeek[];
+  latestPeriod: string;
+}
+
+export interface NatGasStorageWeek {
+  period: string;
+  storBcf: number;
+  weeklyChangeBcf?: number;
+}
+
 export interface GetEcbFxRatesRequest {
 }
 
@@ -926,6 +940,29 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetCrudeInventoriesResponse;
+  }
+
+  async getNatGasStorage(req: GetNatGasStorageRequest, options?: EconomicServiceCallOptions): Promise<GetNatGasStorageResponse> {
+    let path = "/api/economic/v1/get-nat-gas-storage";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetNatGasStorageResponse;
   }
 
   async getEcbFxRates(req: GetEcbFxRatesRequest, options?: EconomicServiceCallOptions): Promise<GetEcbFxRatesResponse> {

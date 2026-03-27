@@ -19,6 +19,7 @@ import "worldmonitor/economic/v1/list_fuel_prices.proto";
 import "worldmonitor/economic/v1/get_bls_series.proto";
 import "worldmonitor/economic/v1/get_economic_calendar.proto";
 import "worldmonitor/economic/v1/get_crude_inventories.proto";
+import "worldmonitor/economic/v1/get_nat_gas_storage.proto";
 import "worldmonitor/economic/v1/get_ecb_fx_rates.proto";
 import "worldmonitor/economic/v1/get_eurostat_country_data.proto";
 import "worldmonitor/economic/v1/get_eu_gas_storage.proto";
@@ -107,6 +108,11 @@ service EconomicService {
   // GetCrudeInventories retrieves the 8 most recent weeks of US crude oil stockpile data from EIA (WCRSTUS1).
   rpc GetCrudeInventories(GetCrudeInventoriesRequest) returns (GetCrudeInventoriesResponse) {
     option (sebuf.http.config) = {path: "/get-crude-inventories", method: HTTP_METHOD_GET};
+  }
+
+  // GetNatGasStorage retrieves the 8 most recent weeks of US natural gas working gas storage from EIA (NW2_EPG0_SWO_R48_BCF).
+  rpc GetNatGasStorage(GetNatGasStorageRequest) returns (GetNatGasStorageResponse) {
+    option (sebuf.http.config) = {path: "/get-nat-gas-storage", method: HTTP_METHOD_GET};
   }
 
   // GetEcbFxRates retrieves daily ECB official reference rates for EUR/major currency pairs.

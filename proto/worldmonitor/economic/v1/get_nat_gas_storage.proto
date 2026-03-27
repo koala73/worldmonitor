@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+// NatGasStorageWeek represents one week of US natural gas working gas storage data from EIA.
+message NatGasStorageWeek {
+  // ISO week period (YYYY-MM-DD, Monday of the EIA report week).
+  string period = 1;
+  // Working gas in underground storage, Lower-48 States, in Bcf.
+  double stor_bcf = 2;
+  // Week-over-week change in Bcf. Positive = build (bearish for gas prices), negative = draw (bullish).
+  // Absent for the oldest week when no prior week is available for comparison.
+  optional double weekly_change_bcf = 3;
+}
+
+// GetNatGasStorageRequest is the request message for GetNatGasStorage.
+message GetNatGasStorageRequest {}
+
+// GetNatGasStorageResponse contains the 8 most recent weeks of US natural gas storage data.
+message GetNatGasStorageResponse {
+  // The 8 most recent weeks, sorted newest-first.
+  repeated NatGasStorageWeek weeks = 1;
+  // Timestamp of the most recent EIA data point (ISO 8601).
+  string latest_period = 2;
+}
