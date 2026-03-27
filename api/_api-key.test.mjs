@@ -40,3 +40,21 @@ test('allows trusted browser origin when fetch metadata is present', () => {
   assert.equal(result.valid, true);
   assert.equal(result.required, false);
 });
+
+test('requires API key for trusted browser non-read requests', () => {
+  const request = new Request('https://worldmonitor.app/api/news/v1/summarize-article', {
+    method: 'POST',
+    headers: new Headers({
+      Origin: 'https://worldmonitor.app',
+      'Sec-Fetch-Site': 'same-origin',
+      'Sec-Fetch-Mode': 'cors',
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify({ headlines: ['a', 'b'] }),
+  });
+  const result = validateApiKey(request);
+
+  assert.equal(result.valid, false);
+  assert.equal(result.required, true);
+  assert.match(result.error || '', /non-read requests/i);
+});

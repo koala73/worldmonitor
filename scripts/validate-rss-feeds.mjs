@@ -109,7 +109,11 @@ async function fetchFeed(url) {
 }
 
 function parseNewestDate(xml) {
-  const parser = new XMLParser({ ignoreAttributes: false });
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    removeNSPrefix: false,
+  });
   const doc = parser.parse(xml);
 
   const dates = [];

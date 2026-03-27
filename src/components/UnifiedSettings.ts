@@ -543,7 +543,7 @@ export class UnifiedSettings {
           <li><strong>AISStream</strong> — Live ship tracking. Free at <a href="https://aisstream.io/authenticate" target="_blank" rel="noopener">aisstream.io</a>.</li>
           <li><strong>OpenSky</strong> — Military flight tracking. Free account at <a href="https://opensky-network.org/" target="_blank" rel="noopener">opensky-network.org</a>.</li>
           <li><strong>Wingbits</strong> — Aircraft enrichment for ADS-B data. Free at <a href="https://wingbits.com/register" target="_blank" rel="noopener">wingbits.com</a>.</li>
-          <li><strong>AI Summarization</strong> — Every panel has an AI summary button (✦). Use Ollama (local/free), Groq (free tier), or Anthropic Claude.</li>
+          <li><strong>AI Summarization</strong> — Every panel has an AI summary button (✦). Use Ollama (local/free), Groq (free tier), or OpenRouter.</li>
         </ul>
       </div>
 

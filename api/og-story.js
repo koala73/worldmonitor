@@ -31,7 +31,7 @@ function normalizeLevel(rawLevel) {
 }
 
 export default function handler(req, res) {
-  const url = new URL(req.url, `https://${req.headers.host}`);
+  const url = new URL(req.url, 'https://worldmonitor.app');
   const countryCode = (url.searchParams.get('c') || '').toUpperCase();
   const type = url.searchParams.get('t') || 'ciianalysis';
   const score = url.searchParams.get('s');

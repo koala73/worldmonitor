@@ -2,7 +2,6 @@ import type { RuntimeSecretKey, RuntimeFeatureId } from './runtime-config';
 
 export const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
   WORLDMONITOR_API_KEY: 'https://worldmonitor.app',
-  ANTHROPIC_API_KEY: 'https://console.anthropic.com/settings/keys',
   GROQ_API_KEY: 'https://console.groq.com/keys',
   OPENROUTER_API_KEY: 'https://openrouter.ai/settings/keys',
   FRED_API_KEY: 'https://fred.stlouisfed.org/docs/api/api_key.html',
@@ -44,7 +43,7 @@ export const MASKED_SENTINEL = '__WM_MASKED__';
 
 export const HUMAN_LABELS: Record<RuntimeSecretKey, string> = {
   WORLDMONITOR_API_KEY: 'World Monitor Cloud API Key',
-  ANTHROPIC_API_KEY: 'Anthropic (Claude) API Key',
+  ANTHROPIC_API_KEY: 'Anthropic API Key',
   GROQ_API_KEY: 'Groq API Key',
   OPENROUTER_API_KEY: 'OpenRouter API Key',
   FRED_API_KEY: 'FRED API Key',
@@ -86,7 +85,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: 'ai',
     label: 'AI & Summarization',
-    features: ['aiOllama', 'aiGroq', 'aiClaude', 'aiOpenRouter'],
+    features: ['aiOllama', 'aiGroq', 'aiOpenRouter'],
   },
   {
     id: 'economy',

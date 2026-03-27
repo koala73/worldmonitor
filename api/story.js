@@ -16,17 +16,17 @@ const COUNTRY_NAMES = {
 const BOT_UA = /twitterbot|facebookexternalhit|linkedinbot|slackbot|telegrambot|whatsapp|discordbot|redditbot|googlebot/i;
 
 export default function handler(req, res) {
-  const url = new URL(req.url, `https://${req.headers.host}`);
-  const countryCode = (url.searchParams.get('c') || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
-  const type = encodeURIComponent((url.searchParams.get('t') || 'ciianalysis').slice(0, 50));
-  const ts = encodeURIComponent((url.searchParams.get('ts') || '').slice(0, 50));
-  const score = encodeURIComponent((url.searchParams.get('s') || '').slice(0, 20));
-  const level = encodeURIComponent((url.searchParams.get('l') || '').slice(0, 20));
+  const url = new URL(req.url, 'https://worldmonitor.app');
+  const countryCode = (url.searchParams.get('c') || '').toUpperCase();
+  const type = url.searchParams.get('t') || 'ciianalysis';
+  const ts = url.searchParams.get('ts') || '';
+  const score = url.searchParams.get('s') || '';
+  const level = url.searchParams.get('l') || '';
 
   const ua = req.headers['user-agent'] || '';
   const isBot = BOT_UA.test(ua);
 
-  const baseUrl = `https://${req.headers.host}`;
+  const baseUrl = 'https://worldmonitor.app';
   const spaUrl = `${baseUrl}/?c=${countryCode}&t=${type}${ts ? `&ts=${ts}` : ''}`;
 
   // Real users → redirect to SPA

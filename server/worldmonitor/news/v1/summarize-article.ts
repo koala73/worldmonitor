@@ -51,7 +51,6 @@ export async function summarizeArticle(
     ollama: 'OLLAMA_API_URL not configured',
     groq: 'GROQ_API_KEY not configured',
     openrouter: 'OPENROUTER_API_KEY not configured',
-    claude: 'ANTHROPIC_API_KEY not configured',
   };
 
   const credentials = getProviderCredentials(provider);
@@ -70,7 +69,7 @@ export async function summarizeArticle(
     };
   }
 
-  const { apiUrl, model, headers: providerHeaders, extraBody, responseFormat } = credentials;
+  const { apiUrl, model, headers: providerHeaders, extraBody } = credentials;
 
   // Request validation
   if (!headlines || !Array.isArray(headlines) || headlines.length === 0) {
@@ -105,26 +104,17 @@ export async function summarizeArticle(
           lang,
         });
 
-        const requestBody = responseFormat === 'anthropic'
-          ? JSON.stringify({
-              model,
-              system: systemPrompt,
-              messages: [{ role: 'user', content: userPrompt }],
-              temperature: 0.3,
-              max_tokens: 100,
-              ...extraBody,
-            })
-          : JSON.stringify({
-              model,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt },
-              ],
-              temperature: 0.3,
-              max_tokens: 100,
-              top_p: 0.9,
-              ...extraBody,
-            });
+        const requestBody = JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: 100,
+          top_p: 0.9,
+          ...extraBody,
+        });
 
         const response = await fetch(apiUrl, {
           method: 'POST',
@@ -140,12 +130,10 @@ export async function summarizeArticle(
         }
 
         const data = await response.json() as any;
-        const tokens = responseFormat === 'anthropic'
-          ? ((data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0))
-          : ((data.usage?.total_tokens as number) || 0);
-        let rawContent = responseFormat === 'anthropic'
-          ? (typeof data.content?.[0]?.text === 'string' ? data.content[0].text.trim() : '')
-          : (typeof data.choices?.[0]?.message?.content === 'string' ? data.choices[0].message.content.trim() : '');
+        const tokens = (data.usage?.total_tokens as number) || 0;
+        let rawContent = typeof data.choices?.[0]?.message?.content === 'string'
+          ? data.choices[0].message.content.trim()
+          : '';
 
         rawContent = rawContent
           .replace(/<think>[\s\S]*?<\/think>/gi, '')

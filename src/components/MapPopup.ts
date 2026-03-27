@@ -1111,25 +1111,37 @@ export class MapPopup {
   }
 
   private renderAPTPopup(apt: APTGroup): string {
+    const tacticsHtml = apt.tactics?.length
+      ? `<div class="popup-tags">${apt.tactics.map(tactic => `<span class="popup-tag">${escapeHtml(tactic)}</span>`).join('')}</div>`
+      : '';
+    const sectorsHtml = apt.targetSectors?.length
+      ? `<div class="popup-subtitle" style="margin-top:6px">Targets: ${escapeHtml(apt.targetSectors.join(', '))}</div>`
+      : '';
+    const mitreHtml = apt.mitreId && apt.mitreUrl
+      ? `<div class="popup-stat"><span class="stat-label">MITRE</span><span class="stat-value"><a class="popup-link" href="${escapeHtml(apt.mitreUrl)}" target="_blank" rel="noopener">${escapeHtml(apt.mitreId)} ↗</a></span></div>`
+      : '';
+    const activeBadge = apt.active === false
+      ? `<span class="popup-badge low">Inactive</span>`
+      : `<span class="popup-badge high">${t('popups.threat')}</span>`;
+
     return `
       <div class="popup-header apt">
         <span class="popup-title">${escapeHtml(apt.name)}</span>
-        <span class="popup-badge high">${t('popups.threat')}</span>
-        <button class="popup-close">×</button>
+        ${activeBadge}
+        <button class="popup-close" aria-label="Close">×</button>
       </div>
       <div class="popup-body">
-        <div class="popup-subtitle">${t('popups.aka')}: ${escapeHtml(apt.aka)}</div>
+        <div class="popup-subtitle">${escapeHtml(apt.aka)}</div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.sponsor')}</span>
             <span class="stat-value">${escapeHtml(apt.sponsor)}</span>
           </div>
-          <div class="popup-stat">
-            <span class="stat-label">${t('popups.origin')}</span>
-            <span class="stat-value">${apt.lat.toFixed(1)}°, ${apt.lon.toFixed(1)}°</span>
-          </div>
+          ${mitreHtml}
         </div>
-        <p class="popup-description">${t('popups.apt.description')}</p>
+        ${apt.description ? `<p class="popup-description">${escapeHtml(apt.description)}</p>` : ''}
+        ${tacticsHtml}
+        ${sectorsHtml}
       </div>
     `;
   }

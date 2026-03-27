@@ -25,7 +25,6 @@ import {
   PIPELINE_COLORS,
   SANCTIONED_COUNTRIES,
   STRATEGIC_WATERWAYS,
-  APT_GROUPS,
   ECONOMIC_CENTERS,
   AI_DATA_CENTERS,
   PORTS,
@@ -139,6 +138,8 @@ export class MapComponent {
   private techActivities: TechHubActivity[] = [];
   private geoActivities: GeoHubActivity[] = [];
   private iranEvents: IranEvent[] = [];
+  private aptGroups: import('@/types').APTGroup[] = [];
+  private aptGroupsLoaded = false;
   private news: NewsItem[] = [];
   private onTechHubClick?: (hub: TechHubActivity) => void;
   private onGeoHubClick?: (hub: GeoHubActivity) => void;
@@ -1347,8 +1348,8 @@ export class MapComponent {
       this.renderPorts(projection);
     }
 
-    // APT groups (geopolitical variant only)
-    if (SITE_VARIANT !== 'tech') {
+    // APT groups — rendered only when cyberThreats layer is active, loaded lazily
+    if (this.state.layers.cyberThreats && SITE_VARIANT !== 'tech' && this.aptGroups.length > 0) {
       this.renderAPTMarkers(projection);
     }
 
@@ -2834,8 +2835,15 @@ export class MapComponent {
     });
   }
 
+  private async loadAptGroups(): Promise<void> {
+    const { APT_GROUPS } = await import('@/config/apt-groups');
+    this.aptGroups = APT_GROUPS;
+    this.aptGroupsLoaded = true;
+    this.render();
+  }
+
   private renderAPTMarkers(projection: d3.GeoProjection): void {
-    APT_GROUPS.forEach((apt) => {
+    this.aptGroups.forEach((apt) => {
       const pos = projection([apt.lon, apt.lat]);
       if (!pos) return;
 
@@ -3531,7 +3539,9 @@ export class MapComponent {
   }
 
   public setLayers(layers: MapLayers): void {
+    const prevCyber = this.state.layers.cyberThreats;
     this.state.layers = { ...layers };
+    if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
     this.syncLayerButtons();
     this.render();
   }

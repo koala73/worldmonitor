@@ -4,6 +4,68 @@ All notable changes to World Monitor are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Removed the Claude agent surface from desktop/web runtime configuration, UI exports, and API routes to avoid direct Anthropic API-cost exposure in default app flows.
+- Summarization provider chain now uses `Ollama -> Groq -> OpenRouter -> browser` without Anthropic dependencies in runtime settings or sidecar secret validation.
+
+### Security
+
+- Tightened API key policy for trusted browser origins: keyless access now applies to read-only requests only; non-read requests require `X-WorldMonitor-Key`.
+- Hardened RSS proxy ingress with explicit origin rejection, method allowlisting (`GET/OPTIONS`), and per-IP Upstash rate limiting.
+- Release workflow now hard-fails publish builds on macOS when Apple signing secrets are missing.
+
+---
+
+## [2.7.2] - 2026-03-24
+
+### Fixed
+
+- CI typecheck compatibility for XML parser callbacks in aviation and arXiv ingestion paths, preventing release pipeline failures against stricter callback signatures.
+- Release docs no longer pin stale download/version strings in README and docs badges.
+
+### Changed
+
+- Added release-doc sync regression coverage so docs and changelog stay aligned with `package.json` version updates.
+
+---
+
+## [2.7.4] - 2026-03-25
+
+### Fixed
+
+- Restored TypeScript QA gate compatibility by aligning `tsconfig.json` `ignoreDeprecations` with the shipped TypeScript compiler.
+- Repaired release push guard compatibility so `scripts/release-doctor.mjs` accepts and honors remote selection from guarded pre-push flows.
+
+### Changed
+
+- Advanced desktop release metadata to `2.7.4` across Node and Tauri versioned files for a clean tagged release after post-`2.7.3` hardening fixes.
+
+---
+
+## [2.7.3] - 2026-03-25
+
+### Fixed
+
+- Release automation now triggers required pull request checks for the release branch before merge.
+
+### Changed
+
+- Version metadata was advanced to `2.7.3` across Node and Tauri release files to publish the repaired desktop release pipeline.
+
+---
+
+## [2.7.2] - 2026-03-24
+
+### Fixed
+
+- CI typecheck compatibility for XML parser callbacks in aviation and arXiv ingestion paths, preventing release pipeline failures against stricter callback signatures.
+- Release docs no longer pin stale download/version strings in README and docs badges.
+
+### Changed
+
+- Added release-doc sync regression coverage so docs and changelog stay aligned with `package.json` version updates.
+
 ---
 
 ## [2.7.4] - 2026-03-25

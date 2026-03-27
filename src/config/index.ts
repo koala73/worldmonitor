@@ -60,7 +60,6 @@ export {
   CONFLICT_ZONES,
   MILITARY_BASES,
   NUCLEAR_FACILITIES,
-  APT_GROUPS,
   STRATEGIC_WATERWAYS,
   ECONOMIC_CENTERS,
   SANCTIONED_COUNTRIES,
@@ -68,6 +67,7 @@ export {
   CRITICAL_MINERALS,
 } from './geo';
 
+export { APT_GROUPS } from './apt-groups';
 export { GAMMA_IRRADIATORS } from './irradiators';
 export { PIPELINES, PIPELINE_COLORS } from './pipelines';
 export { PORTS } from './ports';

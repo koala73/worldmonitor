@@ -156,7 +156,7 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     description: 'Primary fast LLM provider used for AI summary generation.',
     requiredSecrets: ['GROQ_API_KEY'],
     desktopRequiredSecrets: [],
-    fallback: 'Falls back to Claude, then OpenRouter, then local browser model.',
+    fallback: 'Falls back to OpenRouter, then local browser model.',
   },
   {
     id: 'aiOpenRouter',

@@ -1,4 +1,4 @@
-import type { Hotspot, ConflictZone, MilitaryBase, UnderseaCable, NuclearFacility, StrategicWaterway, APTGroup, EconomicCenter, Spaceport, CriticalMineralProject } from '@/types';
+import type { Hotspot, ConflictZone, MilitaryBase, UnderseaCable, NuclearFacility, StrategicWaterway, EconomicCenter, Spaceport, CriticalMineralProject } from '@/types';
 import { MILITARY_BASES_EXPANDED } from './bases-expanded';
 
 // Hotspot levels are NOT hardcoded - they are dynamically calculated based on news activity
@@ -486,12 +486,6 @@ export const STRATEGIC_WATERWAYS: StrategicWaterway[] = [
   { id: 'dardanelles', name: 'DARDANELLES', lat: 40.2, lon: 26.4, description: 'Aegean-Marmara link, Turkey control' },
 ];
 
-export const APT_GROUPS: APTGroup[] = [
-  { id: 'apt28', name: 'APT28/29', aka: 'Fancy Bear/Cozy Bear', sponsor: 'Russia (GRU/FSB)', lat: 55.0, lon: 40.0 },
-  { id: 'apt41', name: 'APT41', aka: 'Double Dragon', sponsor: 'China (MSS)', lat: 38.0, lon: 118.0 },
-  { id: 'lazarus', name: 'Lazarus', aka: 'Hidden Cobra', sponsor: 'North Korea (RGB)', lat: 38.5, lon: 127.0 },
-  { id: 'apt33', name: 'APT33/35', aka: 'Elfin/Charming Kitten', sponsor: 'Iran (IRGC)', lat: 34.0, lon: 53.0 },
-];
 
 export const CONFLICT_ZONES: ConflictZone[] = [
   {

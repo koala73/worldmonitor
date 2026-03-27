@@ -1,7 +1,64 @@
 // Non-sebuf: returns XML/HTML, stays as standalone Vercel function
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
 export const config = { runtime: 'edge' };
+
+let rssProxyRatelimit = null;
+
+function getRssProxyRatelimit() {
+  if (rssProxyRatelimit) return rssProxyRatelimit;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+
+  rssProxyRatelimit = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.slidingWindow(120, '60 s'),
+    prefix: 'rl:rss-proxy',
+    analytics: false,
+  });
+  return rssProxyRatelimit;
+}
+
+function getClientIp(request) {
+  return (
+    request.headers.get('x-real-ip')
+    || request.headers.get('cf-connecting-ip')
+    || '0.0.0.0'
+  );
+}
+
+async function checkRateLimit(request, corsHeaders) {
+  const rl = getRssProxyRatelimit();
+  if (!rl) return null;
+
+  try {
+    const { success, limit, reset } = await rl.limit(getClientIp(request));
+    if (success) return null;
+    return new Response(JSON.stringify({ error: 'Too many requests' }), {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-RateLimit-Limit': String(limit),
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': String(reset),
+        'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
+        ...corsHeaders,
+      },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: 'Rate limit unavailable' }), {
+      status: 503,
+      headers: {
+        'Content-Type': 'application/json',
+        'Retry-After': '1',
+        ...corsHeaders,
+      },
+    });
+  }
+}
 
 // Fetch with timeout
 async function fetchWithTimeout(url, options, timeoutMs = 15000) {
@@ -356,12 +413,29 @@ const ALLOWED_DOMAINS = [
 ];
 
 export default async function handler(req) {
+  if (isDisallowedOrigin(req)) {
+    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
+
+  if (req.method !== 'GET') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
+  }
+
+  const rateLimitResponse = await checkRateLimit(req, corsHeaders);
+  if (rateLimitResponse) return rateLimitResponse;
 
   const requestUrl = new URL(req.url);
   const feedUrl = requestUrl.searchParams.get('url');
