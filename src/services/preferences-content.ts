@@ -208,7 +208,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
   // ── Analysis Frameworks group ──
   html += `<details class="wm-pref-group">`;
-  html += `<summary>Analysis Frameworks</summary>`;
+  html += `<summary>${t('components.insights.analysisFrameworksLabel')}</summary>`;
   html += `<div class="wm-pref-group-content">`;
 
   // Per-panel active framework display
@@ -218,38 +218,38 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     { id: 'daily-market-brief', label: 'Market Brief' },
     { id: 'deduction', label: 'Deduction' },
   ];
-  html += `<div class="ai-flow-section-label">Active per panel</div>`;
+  html += `<div class="ai-flow-section-label">${t('components.insights.analysisFrameworksActivePerPanel')}</div>`;
   html += `<div class="fw-panel-status-list" id="fwPanelStatusList">`;
   for (const { id, label } of panelIds) {
     const active = getActiveFrameworkForPanel(id);
     html += `<div class="fw-panel-status-row">
       <span class="fw-panel-status-name">${escapeHtml(label)}</span>
-      <span class="fw-panel-status-val">${active ? escapeHtml(active.name) : 'Default (Neutral)'}</span>
+      <span class="fw-panel-status-val">${active ? escapeHtml(active.name) : t('components.insights.analysisFrameworksDefaultNeutral')}</span>
     </div>`;
   }
   html += `</div>`;
 
   // Skill library list
-  html += `<div class="ai-flow-section-label">Skill library</div>`;
+  html += `<div class="ai-flow-section-label">${t('components.insights.analysisFrameworksSkillLibrary')}</div>`;
   html += `<div class="fw-library-list" id="fwLibraryList">`;
   html += renderFrameworkLibraryHtml();
   html += `</div>`;
 
   // Import button
   html += `<div class="fw-import-row">
-    <button type="button" class="settings-btn settings-btn-secondary fw-import-btn" id="fwImportBtn">Import framework</button>
+    <button type="button" class="settings-btn settings-btn-secondary fw-import-btn" id="fwImportBtn">${t('components.insights.analysisFrameworksImportBtn')}</button>
   </div>`;
 
   // Import modal (hidden by default)
   html += `<div class="fw-import-modal-backdrop" id="fwImportModalBackdrop" style="display:none">
     <div class="fw-import-modal" role="dialog" aria-modal="true" aria-label="Import framework">
       <div class="fw-import-modal-header">
-        <span class="fw-import-modal-title">Import Framework</span>
+        <span class="fw-import-modal-title">${t('components.insights.analysisFrameworksImportTitle')}</span>
         <button type="button" class="fw-import-modal-close" id="fwImportModalClose" aria-label="Close">&times;</button>
       </div>
       <div class="fw-import-tabs">
-        <button type="button" class="fw-import-tab active" data-fw-tab="agentskills" id="fwTabAgentskills">From agentskills.io</button>
-        <button type="button" class="fw-import-tab" data-fw-tab="json" id="fwTabJson">Paste JSON</button>
+        <button type="button" class="fw-import-tab active" data-fw-tab="agentskills" id="fwTabAgentskills">${t('components.insights.analysisFrameworksFromAgentskills')}</button>
+        <button type="button" class="fw-import-tab" data-fw-tab="json" id="fwTabJson">${t('components.insights.analysisFrameworksPasteJson')}</button>
       </div>
       <div class="fw-import-tab-panel active" id="fwTabPanelAgentskills">
         <div class="fw-import-field">
@@ -260,17 +260,17 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         <div class="fw-import-preview" id="fwAgentskillsPreview" style="display:none">
           <div class="fw-import-preview-name" id="fwPreviewName"></div>
           <div class="fw-import-preview-desc" id="fwPreviewDesc"></div>
-          <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">Save to Library</button>
+          <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
         </div>
         <div class="fw-import-error" id="fwAgentskillsError" style="display:none"></div>
       </div>
       <div class="fw-import-tab-panel" id="fwTabPanelJson">
         <div class="fw-import-field">
-          <label class="fw-import-label">Paste JSON</label>
+          <label class="fw-import-label">${t('components.insights.analysisFrameworksPasteJson')}</label>
           <textarea class="fw-import-textarea" id="fwJsonInput" rows="6" placeholder='{ "name": "...", "instructions": "..." }'></textarea>
         </div>
         <div class="fw-import-error" id="fwJsonError" style="display:none"></div>
-        <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwJsonSaveBtn">Save to Library</button>
+        <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwJsonSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
       </div>
     </div>
   </div>`;
@@ -478,7 +478,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             return res.json() as Promise<{ name?: string; description?: string; instructions?: string }>;
           }).then((data) => {
             if (!data.instructions) {
-              showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported in phase 1).');
+              showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported).');
               return;
             }
             const nameEl = container.querySelector<HTMLElement>('#fwPreviewName');
@@ -512,7 +512,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const fwData = (preview as HTMLElement & { _fwData?: { name: string; description: string; instructions: string } } | null)?._fwData;
           if (!fwData) return;
           try {
-            saveImportedFramework({ id: `imported-${Date.now()}`, name: fwData.name, description: fwData.description, systemPromptAppend: fwData.instructions });
+            saveImportedFramework({ id: crypto.randomUUID(), name: fwData.name, description: fwData.description, systemPromptAppend: fwData.instructions });
             refreshFrameworkLibrary(container);
             const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
             if (backdrop) backdrop.style.display = 'none';
@@ -535,12 +535,12 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             return;
           }
           if (!parsed.instructions) {
-            showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported in phase 1).');
+            showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported).');
             return;
           }
           try {
             saveImportedFramework({
-              id: `imported-${Date.now()}`,
+              id: crypto.randomUUID(),
               name: parsed.name ?? 'Imported skill',
               description: parsed.description ?? '',
               systemPromptAppend: parsed.instructions,

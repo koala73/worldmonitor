@@ -56,7 +56,7 @@ export class InsightsPanel extends Panel {
       void this.updateInsights(this.lastClusters);
     });
 
-    this.fwSelector = new FrameworkSelector({ panelId: 'insights', isPremium: hasPremiumAccess(), panel: this });
+    this.fwSelector = new FrameworkSelector({ panelId: 'insights', isPremium: hasPremiumAccess(), panel: this, note: 'Applies to client-generated analysis only' });
     this.header.appendChild(this.fwSelector.el);
   }
 

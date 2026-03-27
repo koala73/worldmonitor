@@ -110,6 +110,7 @@ export function stripThinkingTags(text: string): string {
     .replace(/<\|begin_of_thought\|>[\s\S]*?<\|end_of_thought\|>/gi, '')
     .trim();
 
+  // Strip unterminated opening tags (no closing tag present)
   s = s
     .replace(/<think>[\s\S]*/gi, '')
     .replace(/<\|thinking\|>[\s\S]*/gi, '')

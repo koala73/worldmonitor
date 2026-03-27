@@ -11,6 +11,7 @@ interface FrameworkSelectorOptions {
   panelId: AnalysisPanelId;
   isPremium: boolean;
   panel: Panel | null;
+  note?: string;
 }
 
 export class FrameworkSelector {
@@ -33,14 +34,14 @@ export class FrameworkSelector {
         setActiveFrameworkForPanel(opts.panelId, select.value || null);
       });
 
-      if (opts.panelId === 'insights') {
+      if (opts.note) {
         const wrap = document.createElement('span');
         wrap.className = 'framework-selector-wrap';
-        const note = document.createElement('span');
-        note.className = 'framework-selector-note';
-        note.title = 'Applies to client-generated analysis only';
-        note.textContent = '*';
-        wrap.append(select, note);
+        const noteEl = document.createElement('span');
+        noteEl.className = 'framework-selector-note';
+        noteEl.title = opts.note;
+        noteEl.textContent = '*';
+        wrap.append(select, noteEl);
         this.el = wrap;
       } else {
         this.el = select;
