@@ -79,11 +79,24 @@ function tileHtml(tile: MacroTile): string {
 
 const EU_CORE = ['DE', 'FR', 'IT', 'ES'];
 
+function fmtEuDate(d: string): string {
+  if (!d) return '';
+  // YYYY-MM → "Jan 2026"; YYYY-QN stays as-is
+  const parts = /^(\d{4})-(\d{2})$/.exec(d);
+  if (parts) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const mon = months[parseInt(parts[2] ?? '0', 10) - 1];
+    return mon ? `${mon} ${parts[1] ?? d}` : d;
+  }
+  return d;
+}
+
 function euAvg(
   eurostat: GetEurostatCountryDataResponse,
   key: 'cpi' | 'unemployment' | 'gdpGrowth',
-): { value: number | null; date: string } {
+): { value: number | null; prior: number | null; date: string } {
   const values: number[] = [];
+  const priorValues: number[] = [];
   let latestDate = '';
   for (const code of EU_CORE) {
     const m = eurostat.countries[code]?.[key];
@@ -91,9 +104,16 @@ function euAvg(
       values.push(m.value);
       if (!latestDate || m.date > latestDate) latestDate = m.date;
     }
+    if (m && typeof (m as { priorValue?: number }).priorValue === 'number' && Number.isFinite((m as { priorValue?: number }).priorValue!)) {
+      priorValues.push((m as { priorValue?: number }).priorValue!);
+    }
   }
-  if (values.length === 0) return { value: null, date: '' };
-  return { value: Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 100) / 100, date: latestDate };
+  if (values.length === 0) return { value: null, prior: null, date: '' };
+  const avg = Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 100) / 100;
+  const priorAvg = priorValues.length === values.length
+    ? Math.round((priorValues.reduce((s, v) => s + v, 0) / priorValues.length) * 100) / 100
+    : null;
+  return { value: avg, prior: priorAvg, date: fmtEuDate(latestDate) };
 }
 
 export class MacroTilesPanel extends Panel {
@@ -186,9 +206,9 @@ export class MacroTilesPanel extends Panel {
     const estr = lastTwo(this._estrObs);
 
     const euTiles: MacroTile[] = [
-      { id: 'eu-cpi', label: 'HICP (avg DE/FR/IT/ES)', value: cpiAvg.value, prior: null, date: cpiAvg.date, lowerIsBetter: true, format: pctFmt },
-      { id: 'eu-un', label: 'Unemployment (avg)', value: unAvg.value, prior: null, date: unAvg.date, lowerIsBetter: true, format: pctFmt },
-      { id: 'eu-gdp', label: 'GDP Growth QoQ (avg)', value: gdpAvg.value, prior: null, date: gdpAvg.date, lowerIsBetter: false, format: pctFmt },
+      { id: 'eu-cpi', label: 'HICP (YoY)', value: cpiAvg.value, prior: cpiAvg.prior, date: cpiAvg.date, lowerIsBetter: true, format: pctFmt },
+      { id: 'eu-un', label: 'Unemployment', value: unAvg.value, prior: unAvg.prior, date: unAvg.date, lowerIsBetter: true, format: pctFmt },
+      { id: 'eu-gdp', label: 'GDP Growth (QoQ)', value: gdpAvg.value, prior: gdpAvg.prior, date: gdpAvg.date, lowerIsBetter: false, format: pctFmt },
       { id: 'eu-estr', label: '€STR (ECB Rate)', ...estr, lowerIsBetter: false, neutral: true, format: pctFmt },
     ];
 

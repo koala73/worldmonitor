@@ -16,7 +16,7 @@ const EUROSTAT_BASE = 'https://ec.europa.eu/eurostat/api/dissemination/statistic
 const DATASETS = {
   cpi: {
     id: 'prc_hicp_manr',
-    params: { coicop: 'CP00', lastTimePeriod: '1' },
+    params: { coicop: 'CP00', lastTimePeriod: '2' },
     unit: '%',
     label: 'HICP annual rate of change',
   },
@@ -28,7 +28,7 @@ const DATASETS = {
   },
   gdpGrowth: {
     id: 'namq_10_gdp',
-    params: { s_adj: 'SCA', unit: 'CLV_PCH_PRE', na_item: 'B1GQ', lastTimePeriod: '1' },
+    params: { s_adj: 'SCA', unit: 'CLV_PCH_PRE', na_item: 'B1GQ', lastTimePeriod: '2' },
     unit: '%',
     label: 'GDP growth (quarterly, chain-linked)',
   },
@@ -81,6 +81,8 @@ function parseEurostatResponse(data, geoCode) {
     }
 
     let value = null;
+    let priorValue = null;
+    let matchCount = 0;
 
     // Iterate over the actual key positions present in the sparse values object,
     // in descending numeric order so we pick the most recent non-null observation first
@@ -101,13 +103,18 @@ function parseEurostatResponse(data, geoCode) {
       }
 
       if (coords['geo'] === geoPos) {
-        value = rawVal;
-        // Use the time label for this coordinate
-        if (timeIndexObj) {
-          const timeEntry = Object.entries(timeIndexObj).find(([, v]) => v === coords['time']);
-          if (timeEntry) datePeriod = timeEntry[0];
+        if (matchCount === 0) {
+          value = rawVal;
+          // Use the time label for this coordinate
+          if (timeIndexObj) {
+            const timeEntry = Object.entries(timeIndexObj).find(([, v]) => v === coords['time']);
+            if (timeEntry) datePeriod = timeEntry[0];
+          }
+        } else if (matchCount === 1) {
+          priorValue = rawVal;
+          break;
         }
-        break;
+        matchCount++;
       }
     }
 
@@ -115,6 +122,7 @@ function parseEurostatResponse(data, geoCode) {
 
     return {
       value: typeof value === 'number' ? Math.round(value * 100) / 100 : null,
+      priorValue: typeof priorValue === 'number' ? Math.round(priorValue * 100) / 100 : null,
       date: datePeriod,
     };
   } catch (err) {
@@ -160,7 +168,7 @@ async function fetchCountryDataset(datasetKey, geoCode) {
       return null;
     }
 
-    return { value: parsed.value, date: parsed.date, unit: ds.unit };
+    return { value: parsed.value, priorValue: parsed.priorValue ?? null, date: parsed.date, unit: ds.unit };
   } catch (err) {
     console.warn(`  Eurostat ${geoCode}/${datasetKey}: ${err.message}`);
     return null;

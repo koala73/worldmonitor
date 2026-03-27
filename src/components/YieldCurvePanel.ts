@@ -234,7 +234,7 @@ export class YieldCurvePanel extends Panel {
   private _rateRows: RateRow[] = [];
 
   constructor() {
-    super({ id: 'yield-curve', title: 'US Treasury Yield Curve', showCount: false });
+    super({ id: 'yield-curve', title: 'Yield Curve & Rates', showCount: false });
 
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
@@ -296,7 +296,7 @@ export class YieldCurvePanel extends Panel {
 
   private _render(): void {
     const tabBar = `<div style="display:flex;gap:4px;margin-bottom:6px">
-      <button class="panel-tab${this._tab === 'curve' ? ' active' : ''}" data-tab="curve" style="font-size:11px;padding:3px 10px">Curve</button>
+      <button class="panel-tab${this._tab === 'curve' ? ' active' : ''}" data-tab="curve" style="font-size:11px;padding:3px 10px">US Curve</button>
       <button class="panel-tab${this._tab === 'rates' ? ' active' : ''}" data-tab="rates" style="font-size:11px;padding:3px 10px">ECB Rates</button>
     </div>`;
 
