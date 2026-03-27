@@ -126,6 +126,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       assert.ok(tool.description, 'tool.description must be present');
       assert.ok(tool.inputSchema, 'tool.inputSchema must be present');
       assert.ok(!('_cacheKeys' in tool), 'Internal _cacheKeys must not be exposed in tools/list');
+      assert.ok(!('_execute' in tool), 'Internal _execute must not be exposed in tools/list');
     }
   });
 

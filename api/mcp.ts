@@ -235,7 +235,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
 
   // -------------------------------------------------------------------------
-  // AI inference tools — call LLM endpoints, not cached Redis reads
+  // Social velocity — cache read (Reddit signals, seeded by relay)
   // -------------------------------------------------------------------------
   {
     name: 'get_social_velocity',
@@ -245,6 +245,10 @@ const TOOL_REGISTRY: ToolDef[] = [
     _seedMetaKey: 'seed-meta:intelligence:social-reddit',
     _maxStaleMin: 30,
   },
+
+  // -------------------------------------------------------------------------
+  // AI inference tools — call LLM endpoints, not cached Redis reads
+  // -------------------------------------------------------------------------
   {
     name: 'get_world_brief',
     description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines and produces an LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
@@ -256,10 +260,11 @@ const TOOL_REGISTRY: ToolDef[] = [
       required: [],
     },
     _execute: async (params, base, apiKey) => {
-      // Step 1: fetch current geopolitical headlines from the live feed
+      const UA = 'worldmonitor-mcp-edge/1.0';
+      // Step 1: fetch current geopolitical headlines (budget: 8 s, leaves ~22 s for LLM)
       const digestRes = await fetch(`${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`, {
-        headers: { 'X-WorldMonitor-Key': apiKey },
-        signal: AbortSignal.timeout(10_000),
+        headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
+        signal: AbortSignal.timeout(8_000),
       });
       if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
       type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
@@ -269,10 +274,10 @@ const TOOL_REGISTRY: ToolDef[] = [
         .map(item => item.title ?? '')
         .filter(Boolean)
         .slice(0, 10);
-      // Step 2: summarize with LLM
+      // Step 2: summarize with LLM (budget: 20 s — total <30 s edge ceiling)
       const briefRes = await fetch(`${base}/api/news/v1/summarize-article`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey },
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
         body: JSON.stringify({
           provider: 'groq',
           headlines,
@@ -281,7 +286,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           variant: 'geo',
           lang: 'en',
         }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(20_000),
       });
       if (!briefRes.ok) throw new Error(`summarize-article HTTP ${briefRes.status}`);
       return briefRes.json();
@@ -301,9 +306,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _execute: async (params, base, apiKey) => {
       const res = await fetch(`${base}/api/intelligence/v1/get-country-intel-brief`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey },
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         body: JSON.stringify({ countryCode: String(params.country_code ?? ''), framework: String(params.framework ?? '') }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
       return res.json();
@@ -323,9 +328,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _execute: async (params, base, apiKey) => {
       const res = await fetch(`${base}/api/intelligence/v1/deduct-situation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey },
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         body: JSON.stringify({ query: String(params.query ?? ''), geoContext: String(params.context ?? '') }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`deduct-situation HTTP ${res.status}`);
       return res.json();
@@ -343,11 +348,12 @@ const TOOL_REGISTRY: ToolDef[] = [
       required: [],
     },
     _execute: async (params, base, apiKey) => {
+      // 25 s — stays within Vercel Edge's ~30 s hard ceiling (was 60 s, which exceeded the limit)
       const res = await fetch(`${base}/api/forecast/v1/get-forecasts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey },
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         body: JSON.stringify({ domain: String(params.domain ?? ''), region: String(params.region ?? '') }),
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`get-forecasts HTTP ${res.status}`);
       return res.json();
