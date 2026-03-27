@@ -5048,9 +5048,10 @@ async function seedShippingStress() {
       return;
     }
     const avgChange = results.reduce((a, b) => a + b.changePct, 0) / results.length;
-    const stressScore = Math.min(100, Math.max(0, Math.round(50 - avgChange * 3)));
+    // Neutral market (0% change) → score=40 (moderate). Positive change = lower stress.
+    const stressScore = Math.min(100, Math.max(0, Math.round(40 - avgChange * 3)));
     const stressLevel = stressScore >= 75 ? 'critical' : stressScore >= 50 ? 'elevated' : stressScore >= 25 ? 'moderate' : 'low';
-    const payload = { carriers: results, stressScore, stressLevel, fetchedAt: new Date().toISOString() };
+    const payload = { carriers: results, stressScore, stressLevel, fetchedAt: Date.now() };
     const ok = await upstashSet(SHIPPING_STRESS_REDIS_KEY, payload, SHIPPING_STRESS_TTL);
     await upstashSet('seed-meta:supply_chain:shipping_stress', { fetchedAt: Date.now(), recordCount: results.length }, 604800);
     console.log(`[ShippingStress] Seeded ${results.length} carriers score=${stressScore}/${stressLevel} (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
@@ -5108,10 +5109,16 @@ async function seedSocialVelocity() {
   try {
     const nowSec = Date.now() / 1000;
     const allPosts = [];
+    const seenUrls = new Set();
     for (const sub of REDDIT_SUBREDDITS) {
       await new Promise(r => setTimeout(r, 500));
       const posts = await fetchRedditHot(sub);
       for (const p of posts) {
+        // Deduplicate cross-subreddit reposts of the same article URL.
+        const articleUrl = p.url || '';
+        const isExternal = articleUrl && !articleUrl.includes('reddit.com');
+        if (isExternal && seenUrls.has(articleUrl)) continue;
+        if (isExternal) seenUrls.add(articleUrl);
         const ageSec = Math.max(1, nowSec - (p.created_utc || nowSec));
         const recencyFactor = Math.exp(-ageSec / (6 * 3600));
         const velocityScore = Math.log1p(p.score || 1) * (p.upvote_ratio || 0.5) * recencyFactor * 100;

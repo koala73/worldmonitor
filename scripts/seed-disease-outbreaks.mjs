@@ -7,8 +7,8 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'health:disease-outbreaks:v1';
 const CACHE_TTL = 86400; // 24h — daily seed
 
-// WHO Disease Outbreak News RSS
-const WHO_FEED = 'https://www.who.int/rss-feeds/news-releases.rss';
+// WHO Disease Outbreak News RSS (specific DON feed, not general news)
+const WHO_FEED = 'https://www.who.int/feeds/entity/csr/don/en/rss.xml';
 // ProMED RSS
 const PROMED_FEED = 'https://promedmail.org/feed/';
 
@@ -26,6 +26,12 @@ const COUNTRY_CODE_MAP = {
   'malawi': 'MW', 'angola': 'AO', 'chad': 'TD', 'niger': 'NE',
   'cameroon': 'CM', 'somalia': 'SO', 'yemen': 'YE', 'iraq': 'IQ',
 };
+
+function stableHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return Math.abs(h).toString(36);
+}
 
 function extractCountryCode(text) {
   const lower = text.toLowerCase();
@@ -67,9 +73,9 @@ async function fetchRssItems(url, sourceName) {
     let match;
     while ((match = itemRe.exec(xml)) !== null) {
       const block = match[1];
-      const title = (block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/) || [])[1]?.trim() || '';
-      const link = (block.match(/<link>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim() || '';
-      const desc = (block.match(/<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/description>/) || [])[1]?.replace(/<[^>]+>/g, '').trim().slice(0, 300) || '';
+      const title = (block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1]?.trim() || '';
+      const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim() || '';
+      const desc = (block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/) || [])[1]?.replace(/<[^>]+>/g, '').trim().slice(0, 300) || '';
       const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1]?.trim() || '';
       const publishedMs = pubDate ? new Date(pubDate).getTime() : Date.now();
       if (!title || isNaN(publishedMs)) continue;
@@ -98,8 +104,8 @@ async function fetchDiseaseOutbreaks() {
     return diseaseKeywords.some(k => text.includes(k));
   });
 
-  const outbreaks = relevant.map((item, i) => ({
-    id: `${item.sourceName.toLowerCase()}-${i}-${item.publishedMs}`,
+  const outbreaks = relevant.map((item) => ({
+    id: `${item.sourceName.toLowerCase()}-${stableHash(item.link || item.title)}-${item.publishedMs}`,
     disease: detectDisease(item.title),
     location: '',
     countryCode: extractCountryCode(`${item.title} ${item.desc}`),
@@ -116,7 +122,7 @@ async function fetchDiseaseOutbreaks() {
 }
 
 function validate(data) {
-  return Array.isArray(data?.outbreaks);
+  return Array.isArray(data?.outbreaks) && data.outbreaks.length >= 1;
 }
 
 runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {

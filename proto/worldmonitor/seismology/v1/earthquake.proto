@@ -27,11 +27,11 @@ message Earthquake {
   // URL to the USGS event detail page.
   string source_url = 7;
   // True when epicenter is within 100 km of a known nuclear test site.
-  bool near_test_site = 8;
+  optional bool near_test_site = 8;
   // Name of the nearest test site (e.g. "Punggye-ri"), when near_test_site is true.
-  string test_site_name = 9;
+  optional string test_site_name = 9;
   // Composite concern score 0–100 based on magnitude, depth, and proximity.
-  double concern_score = 10;
+  optional double concern_score = 10;
   // Human-readable concern level: "low" | "moderate" | "elevated" | "critical".
-  string concern_level = 11;
+  optional string concern_level = 11;
 }
