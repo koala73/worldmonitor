@@ -247,8 +247,8 @@ async function fetchThinkGlobalHealth() {
         _country: rec.country || '',
         _disease: rec.diseases || '',
         _location: cityName,
-        _lat: parseFloat(rec.lat) || 0,
-        _lng: parseFloat(rec.lng) || 0,
+        _lat: Number.isFinite(parseFloat(rec.lat)) ? parseFloat(rec.lat) : null,
+        _lng: Number.isFinite(parseFloat(rec.lng)) ? parseFloat(rec.lng) : null,
         _cases: parseInt(rec.cases_count || rec.cases || '0', 10) || 0,
       });
     }
@@ -277,8 +277,8 @@ function mapItem(item) {
     sourceUrl: item.link,
     publishedAt: item.publishedMs,
     sourceName: item.sourceName,
-    lat: item._lat || 0,
-    lng: item._lng || 0,
+    lat: item._lat ?? 0,
+    lng: item._lng ?? 0,
     cases: item._cases || 0,
   };
 }
@@ -309,6 +309,9 @@ async function fetchDiseaseOutbreaks() {
     })
     .map(mapItem);
 
+  // Sort before dedup so the first occurrence is always the most recent.
+  otherOutbreaks.sort((a, b) => b.publishedAt - a.publishedAt);
+
   // Deduplicate non-TGH items by disease+country (keep most recent per pair).
   // TGH items each represent a distinct geo-located event — never collapse them.
   const seen = new Set();
@@ -319,12 +322,11 @@ async function fetchDiseaseOutbreaks() {
     return true;
   });
 
-  // TGH first (precise geo), then WHO/CDC/ONT sorted by recency.
+  // TGH first (precise geo), then WHO/CDC/ONT (already sorted above before dedup).
   const tghSorted = tghOutbreaks.sort((a, b) => b.publishedAt - a.publishedAt);
-  const othersSorted = dedupedOthers.sort((a, b) => b.publishedAt - a.publishedAt);
 
   // Up to 150 TGH geo-pinned alerts + up to 50 from other authoritative sources.
-  const outbreaks = [...tghSorted.slice(0, 150), ...othersSorted.slice(0, 50)];
+  const outbreaks = [...tghSorted.slice(0, 150), ...dedupedOthers.slice(0, 50)];
 
   return { outbreaks, fetchedAt: Date.now() };
 }
