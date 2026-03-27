@@ -8429,7 +8429,7 @@ async function handleWidgetAgentRequest(req, res) {
   if (!Array.isArray(conversationHistory)) return safeEnd(res, 400, {}, '');
 
   // Tier-specific settings
-  const model = isPro ? 'claude-sonnet-4-6-20250514' : 'claude-haiku-4-5-20251001';
+  const model = isPro ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
   const maxTokens = isPro ? 8192 : 4096;
   const maxTurns = isPro ? 10 : 6;
   const maxHtml = isPro ? WIDGET_PRO_MAX_HTML : WIDGET_MAX_HTML;
