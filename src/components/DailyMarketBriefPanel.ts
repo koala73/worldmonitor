@@ -1,5 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { FrameworkSelector } from './FrameworkSelector';
 import type { DailyMarketBrief } from '@/services/daily-market-brief';
 import { describeFreshness } from '@/services/persistent-cache';
 import { escapeHtml } from '@/utils/sanitize';
@@ -39,8 +41,17 @@ function formatChange(change: number | null): string {
 }
 
 export class DailyMarketBriefPanel extends Panel {
+  private fwSelector: FrameworkSelector;
+
   constructor() {
     super({ id: 'daily-market-brief', title: 'Daily Market Brief', infoTooltip: t('components.dailyMarketBrief.infoTooltip'), premium: 'locked' });
+    this.fwSelector = new FrameworkSelector({ panelId: 'daily-market-brief', isPremium: hasPremiumAccess(), panel: this });
+    this.header.appendChild(this.fwSelector.el);
+  }
+
+  public override destroy(): void {
+    this.fwSelector.destroy();
+    super.destroy();
   }
 
   public renderBrief(brief: DailyMarketBrief, source: BriefSource = 'live'): void {

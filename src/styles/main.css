@@ -21988,3 +21988,37 @@ body.has-breaking-alert .panels-grid {
   color: var(--text-dim);
   margin-right: 4px;
 }
+
+.framework-selector {
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 3px;
+  color: inherit;
+  padding: 1px 4px;
+  cursor: pointer;
+  max-width: 150px;
+}
+.framework-selector--locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.framework-selector-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.framework-selector-pro-badge {
+  font-size: 9px;
+  font-weight: 700;
+  background: var(--color-accent, #7c3aed);
+  color: #fff;
+  border-radius: 3px;
+  padding: 1px 4px;
+  letter-spacing: 0.05em;
+}
+.framework-selector-note {
+  font-size: 10px;
+  opacity: 0.5;
+  cursor: help;
+}

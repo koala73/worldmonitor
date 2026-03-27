@@ -1,5 +1,7 @@
 import type { CountryBriefSignals } from '@/types';
 import { getSourcePropagandaRisk, getSourceTier } from '@/config/feeds';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { FrameworkSelector } from './FrameworkSelector';
 import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
@@ -63,6 +65,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private infrastructureByType = new Map<AssetType, RelatedAsset[]>();
   private maximizeButton: HTMLButtonElement | null = null;
   private currentHeadlineCount = 0;
+  private fwSelector: FrameworkSelector | null = null;
 
   private signalsBody: HTMLElement | null = null;
   private signalBreakdownBody: HTMLElement | null = null;
@@ -670,7 +673,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         this.onExportImage(this.currentCode, this.currentName);
       }
     });
-    right.append(shareBtn, maxBtn, storyButton, exportButton);
+    this.fwSelector = new FrameworkSelector({ panelId: 'country-brief', isPremium: hasPremiumAccess(), panel: null });
+    right.append(this.fwSelector.el, shareBtn, maxBtn, storyButton, exportButton);
     header.append(left, right);
 
     const scoreCard = this.el('section', 'cdp-card cdp-score-card');

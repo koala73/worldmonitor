@@ -15,6 +15,8 @@ import { t } from '@/services/i18n';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getAiFlowSettings, isAnyAiProviderEnabled, subscribeAiFlowChange } from '@/services/ai-flow-settings';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { FrameworkSelector } from './FrameworkSelector';
 import { getServerInsights, type ServerInsights, type ServerInsightStory } from '@/services/insights-loader';
 import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
 
@@ -28,6 +30,7 @@ export class InsightsPanel extends Panel {
   private lastClusters: ClusteredEvent[] = [];
   private aiFlowUnsubscribe: (() => void) | null = null;
   private frameworkUnsubscribe: (() => void) | null = null;
+  private fwSelector: FrameworkSelector | null = null;
   private updateGeneration = 0;
   private static readonly BRIEF_COOLDOWN_MS = 120000; // 2 min cooldown (API has limits)
   private static readonly BRIEF_CACHE_KEY = 'summary:world-brief';
@@ -53,6 +56,9 @@ export class InsightsPanel extends Panel {
       this.updateGeneration++;
       void this.updateInsights(this.lastClusters);
     });
+
+    this.fwSelector = new FrameworkSelector({ panelId: 'insights', isPremium: hasPremiumAccess(), panel: this });
+    this.header.appendChild(this.fwSelector.el);
   }
 
   public setMilitaryFlights(flights: MilitaryFlight[]): void {
@@ -867,6 +873,7 @@ export class InsightsPanel extends Panel {
   public override destroy(): void {
     this.aiFlowUnsubscribe?.();
     this.frameworkUnsubscribe?.();
+    this.fwSelector?.destroy();
     super.destroy();
   }
 }
