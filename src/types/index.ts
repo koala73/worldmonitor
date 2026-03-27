@@ -651,6 +651,8 @@ export interface MapLayers {
   commodityPorts: boolean;
   webcams: boolean;
   weatherRadar: boolean;
+  // Health layers
+  diseaseOutbreaks: boolean;
 }
 
 export interface AIDataCenter {

@@ -151,6 +151,8 @@ import {
   UcdpEventsPanel,
   TradePolicyPanel,
   SupplyChainPanel,
+  DiseaseOutbreaksPanel,
+  SocialVelocityPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
@@ -180,6 +182,9 @@ import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
 import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
+import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
+import { fetchSocialVelocity } from '@/services/social-velocity';
+import { fetchShippingStress } from '@/services/supply-chain';
 
 const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
   THREAT_LEVEL_UNSPECIFIED: 'info',
@@ -501,6 +506,8 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
     }
     if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
+    if (this.ctx.mapLayers.diseaseOutbreaks || shouldLoad('disease-outbreaks')) tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
+    if (shouldLoad('social-velocity')) tasks.push({ name: 'socialVelocity', task: runGuarded('socialVelocity', () => this.loadSocialVelocity()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
     if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
@@ -639,6 +646,9 @@ export class DataLoaderManager implements AppModule {
         case 'climate':
         case 'gpsJamming':
           await this.loadIntelligenceSignals();
+          break;
+        case 'diseaseOutbreaks':
+          await this.loadDiseaseOutbreaks();
           break;
       }
     } finally {
@@ -2663,19 +2673,22 @@ export class DataLoaderManager implements AppModule {
     if (!scPanel) return;
 
     try {
-      const [shipping, chokepoints, minerals] = await Promise.allSettled([
+      const [shipping, chokepoints, minerals, stress] = await Promise.allSettled([
         fetchShippingRates(),
         fetchChokepointStatus(),
         fetchCriticalMinerals(),
+        fetchShippingStress(),
       ]);
 
       const shippingData = shipping.status === 'fulfilled' ? shipping.value : null;
       const chokepointData = chokepoints.status === 'fulfilled' ? chokepoints.value : null;
       const mineralsData = minerals.status === 'fulfilled' ? minerals.value : null;
+      const stressData = stress.status === 'fulfilled' ? stress.value : null;
 
       if (shippingData) scPanel.updateShippingRates(shippingData);
       if (chokepointData) scPanel.updateChokepointStatus(chokepointData);
       if (mineralsData) scPanel.updateCriticalMinerals(mineralsData);
+      if (stressData) scPanel.updateShippingStress(stressData);
 
       const totalItems = (shippingData?.indices.length || 0) + (chokepointData?.chokepoints.length || 0) + (mineralsData?.minerals.length || 0);
       const anyUnavailable = shippingData?.upstreamUnavailable || chokepointData?.upstreamUnavailable || mineralsData?.upstreamUnavailable;
@@ -2692,6 +2705,32 @@ export class DataLoaderManager implements AppModule {
       this.callPanel('supply-chain', 'showError', undefined, () => void this.loadSupplyChain());
       this.ctx.statusPanel?.updateApi('SupplyChain', { status: 'error' });
       dataFreshness.recordError('supply_chain', String(e));
+    }
+  }
+
+  async loadDiseaseOutbreaks(): Promise<void> {
+    try {
+      const data = await fetchDiseaseOutbreaks();
+      if (data.outbreaks?.length) {
+        const panel = this.ctx.panels['disease-outbreaks'] as DiseaseOutbreaksPanel | undefined;
+        panel?.updateData(data.outbreaks);
+        this.ctx.map?.setDiseaseOutbreaks(data.outbreaks);
+        this.ctx.map?.setLayerReady('diseaseOutbreaks', true);
+      }
+    } catch (e) {
+      console.error('[App] Disease outbreaks load failed:', e);
+    }
+  }
+
+  async loadSocialVelocity(): Promise<void> {
+    try {
+      const data = await fetchSocialVelocity();
+      if (data.posts?.length) {
+        const panel = this.ctx.panels['social-velocity'] as SocialVelocityPanel | undefined;
+        panel?.updateData(data.posts);
+      }
+    } catch (e) {
+      console.error('[App] Social velocity load failed:', e);
     }
   }
 

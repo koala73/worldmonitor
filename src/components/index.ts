@@ -79,3 +79,5 @@ export * from './EarningsCalendarPanel';
 export * from './EconomicCalendarPanel';
 export * from './CotPositioningPanel';
 export { HormuzPanel } from './HormuzPanel';
+export * from './DiseaseOutbreaksPanel';
+export * from './SocialVelocityPanel';

@@ -3,6 +3,7 @@ import type {
   GetShippingRatesResponse,
   GetChokepointStatusResponse,
   GetCriticalMineralsResponse,
+  GetShippingStressResponse,
 } from '@/services/supply-chain';
 import { TransitChart } from '@/utils/transit-chart';
 import { t } from '@/services/i18n';
@@ -10,12 +11,13 @@ import { escapeHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 
-type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals';
+type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals' | 'stress';
 
 export class SupplyChainPanel extends Panel {
   private shippingData: GetShippingRatesResponse | null = null;
   private chokepointData: GetChokepointStatusResponse | null = null;
   private mineralsData: GetCriticalMineralsResponse | null = null;
+  private stressData: GetShippingStressResponse | null = null;
   private activeTab: TabId = 'chokepoints';
   private expandedChokepoint: string | null = null;
   private transitChart = new TransitChart();
@@ -66,6 +68,11 @@ export class SupplyChainPanel extends Panel {
     this.render();
   }
 
+  public updateShippingStress(data: GetShippingStressResponse): void {
+    this.stressData = data;
+    this.render();
+  }
+
   private render(): void {
     this.clearTransitChart();
 
@@ -83,6 +90,9 @@ export class SupplyChainPanel extends Panel {
         <button class="panel-tab ${this.activeTab === 'minerals' ? 'active' : ''}" data-tab="minerals">
           ${t('components.supplyChain.minerals')}
         </button>
+        <button class="panel-tab ${this.activeTab === 'stress' ? 'active' : ''}" data-tab="stress">
+          Stress
+        </button>
       </div>
     `;
 
@@ -92,11 +102,14 @@ export class SupplyChainPanel extends Panel {
         ? (this.shippingData?.indices?.length ?? 0) > 0 || this.chokepointData !== null
         : this.activeTab === 'indicators'
           ? (this.shippingData?.indices?.length ?? 0) > 0
-          : (this.mineralsData?.minerals?.length ?? 0) > 0;
+          : this.activeTab === 'stress'
+            ? (this.stressData?.carriers?.length ?? 0) > 0
+            : (this.mineralsData?.minerals?.length ?? 0) > 0;
     const activeData = this.activeTab === 'chokepoints' ? this.chokepointData
       : (this.activeTab === 'shipping' || this.activeTab === 'indicators') ? this.shippingData
+      : this.activeTab === 'stress' ? this.stressData
       : this.mineralsData;
-    const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
+    const unavailableBanner = !activeHasData && this.activeTab !== 'stress' && (activeData as { upstreamUnavailable?: boolean } | null)?.upstreamUnavailable
       ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
       : '';
 
@@ -106,6 +119,7 @@ export class SupplyChainPanel extends Panel {
       case 'shipping': contentHtml = this.renderShipping(); break;
       case 'indicators': contentHtml = this.renderIndicators(); break;
       case 'minerals': contentHtml = this.renderMinerals(); break;
+      case 'stress': contentHtml = this.renderStress(); break;
     }
 
     this.setContent(`
@@ -331,6 +345,53 @@ export class SupplyChainPanel extends Panel {
         </div>`;
     }).join('');
     return `<div class="trade-restrictions-list">${cards}</div>`;
+  }
+
+  private renderStress(): string {
+    if (!this.stressData || !this.stressData.carriers?.length) {
+      return `<div class="economic-empty">Shipping stress data unavailable</div>`;
+    }
+
+    const { stressScore, stressLevel, carriers } = this.stressData;
+    const levelColor = stressLevel === 'critical' ? '#e74c3c'
+      : stressLevel === 'elevated' ? '#e67e22'
+      : stressLevel === 'moderate' ? '#f1c40f'
+      : '#27ae60';
+
+    const gaugeWidth = Math.round(Math.min(100, Math.max(0, stressScore)));
+    const gaugeBg = stressLevel === 'critical' ? 'rgba(231,76,60,0.15)'
+      : stressLevel === 'elevated' ? 'rgba(230,126,34,0.15)'
+      : stressLevel === 'moderate' ? 'rgba(241,196,15,0.15)'
+      : 'rgba(39,174,96,0.15)';
+
+    const header = `<div style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Composite Stress Score</span>
+        <span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:3px;background:${gaugeBg};color:${levelColor}">${escapeHtml(stressLevel.toUpperCase())}</span>
+      </div>
+      <div style="position:relative;height:6px;border-radius:3px;background:rgba(255,255,255,0.08)">
+        <div style="position:absolute;left:0;top:0;height:100%;width:${gaugeWidth}%;border-radius:3px;background:${levelColor};transition:width 0.4s"></div>
+      </div>
+      <div style="text-align:right;font-size:10px;color:var(--text-dim);margin-top:2px">${stressScore.toFixed(1)}/100</div>
+    </div>`;
+
+    const rows = carriers.map(c => {
+      const changeClass = c.changePct >= 0 ? 'change-positive' : 'change-negative';
+      const arrow = c.changePct >= 0 ? '▲' : '▼';
+      const typeLabel = c.carrierType === 'etf' ? 'ETF' : c.carrierType === 'index' ? 'IDX' : 'CARR';
+      const spark = c.sparkline?.length >= 2 ? this.renderSparkline(c.sparkline) : '';
+      return `<div class="trade-restriction-card">
+        <div class="trade-restriction-header">
+          <span class="trade-country" style="font-size:11px">${escapeHtml(c.symbol)}</span>
+          <span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-dim)">${typeLabel}</span>
+          <span class="trade-badge">${c.price.toFixed(2)}</span>
+          <span class="trade-flow-change ${changeClass}">${arrow} ${Math.abs(c.changePct).toFixed(2)}%</span>
+        </div>
+        <div class="trade-restriction-body" style="font-size:10px;color:var(--text-dim)">${escapeHtml(c.name)}${spark}</div>
+      </div>`;
+    }).join('');
+
+    return `<div class="trade-restrictions-list">${header}${rows}</div>`;
   }
 
   private renderSparkline(values: number[], dates?: string[]): string {

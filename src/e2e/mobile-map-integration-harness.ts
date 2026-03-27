@@ -137,7 +137,7 @@ const layers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 await initI18n();

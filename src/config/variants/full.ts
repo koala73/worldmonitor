@@ -111,7 +111,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 // Mobile-specific defaults for geopolitical
@@ -172,7 +172,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

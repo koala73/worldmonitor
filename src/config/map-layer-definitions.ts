@@ -80,6 +80,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   commodityPorts:           def('commodityPorts',           '&#9973;',   'commodityPorts',           'Commodity Ports'),
   webcams:                  def('webcams',                  '&#128247;', 'webcams',                  'Live Webcams'),
   weatherRadar:             def('weatherRadar',             '&#127783;', 'weatherRadar',             'Weather Radar', ['flat']),
+  diseaseOutbreaks:         def('diseaseOutbreaks',         '&#129440;', 'diseaseOutbreaks',         'Disease Outbreaks'),
 };
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
@@ -92,6 +93,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
     'satellites', 'ciiChoropleth', 'sanctions', 'dayNight', 'webcams', 'weatherRadar',
+    'diseaseOutbreaks',
   ],
   tech: [
     'startupHubs', 'techHQs', 'accelerators', 'cloudRegions',

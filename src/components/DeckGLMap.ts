@@ -109,7 +109,8 @@ import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { SpeciesRecovery } from '@/services/conservation-data';
-import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
+import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox, getCountryCentroid } from '@/services/country-geometry';
+import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { FeatureCollection, Geometry } from 'geojson';
 
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
@@ -373,6 +374,7 @@ export class DeckGLMap {
   private gpsJammingHexes: GpsJamHex[] = [];
   private climateAnomalies: ClimateAnomaly[] = [];
   private radiationObservations: RadiationObservation[] = [];
+  private diseaseOutbreaks: DiseaseOutbreakItem[] = [];
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
@@ -1448,6 +1450,12 @@ export class DeckGLMap {
     }
     layers.push(this.createEmptyGhost('radiation-watch-layer'));
 
+    // Disease outbreaks layer
+    if (mapLayers.diseaseOutbreaks && this.diseaseOutbreaks.length > 0) {
+      layers.push(this.createDiseaseOutbreaksLayer());
+    }
+    layers.push(this.createEmptyGhost('disease-outbreaks-layer'));
+
     // Satellite fires layer (NASA FIRMS)
     if (mapLayers.fires && this.firmsFireData.length > 0) {
       layers.push(this.createFiresLayer());
@@ -2398,6 +2406,34 @@ export class DeckGLMap {
       lineWidthMinPixels: 2,
       radiusMinPixels: 6,
       radiusMaxPixels: 20,
+      pickable: true,
+    });
+  }
+
+  private createDiseaseOutbreaksLayer(): ScatterplotLayer<{ lon: number; lat: number; item: DiseaseOutbreakItem }> {
+    type Point = { lon: number; lat: number; item: DiseaseOutbreakItem };
+    const points: Point[] = [];
+    for (const item of this.diseaseOutbreaks) {
+      const centroid = getCountryCentroid(item.countryCode ?? '');
+      if (centroid) points.push({ lon: centroid.lon, lat: centroid.lat, item });
+    }
+    return new ScatterplotLayer<Point>({
+      id: 'disease-outbreaks-layer',
+      data: points,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => d.item.alertLevel === 'alert' ? 180000 : d.item.alertLevel === 'warning' ? 130000 : 90000,
+      getFillColor: (d) => (
+        d.item.alertLevel === 'alert'
+          ? [231, 76, 60, 200]
+          : d.item.alertLevel === 'warning'
+            ? [230, 126, 34, 190]
+            : [241, 196, 15, 170]
+      ) as [number, number, number, number],
+      getLineColor: [255, 255, 255, 120],
+      stroked: true,
+      lineWidthMinPixels: 1,
+      radiusMinPixels: 5,
+      radiusMaxPixels: 22,
       pickable: true,
     });
   }
@@ -3628,6 +3664,13 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.location)}</div>` };
       case 'irradiators-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type || t('components.deckgl.layers.gammaIrradiators'))}</div>` };
+      case 'disease-outbreaks-layer': {
+        const item = (obj as { item: DiseaseOutbreakItem }).item;
+        if (!item) return null;
+        const lvlColor = item.alertLevel === 'alert' ? '#e74c3c' : item.alertLevel === 'warning' ? '#e67e22' : '#f1c40f';
+        const summaryHtml = item.summary ? `<br/><span style="opacity:.75">${text(item.summary.slice(0, 100))}${item.summary.length > 100 ? '…' : ''}</span>` : '';
+        return { html: `<div class="deckgl-tooltip"><strong style="color:${lvlColor}">${text(item.alertLevel.toUpperCase())}</strong> ${text(item.disease)}<br/>${text(item.location)}${summaryHtml}<br/><span style="opacity:.6">${text(item.sourceName || '')}</span></div>` };
+      }
       case 'radiation-watch-layer': {
         const severityLabel = obj.severity === 'spike' ? t('components.deckgl.layers.radiationSpike') : t('components.deckgl.layers.radiationElevated');
         const delta = Number(obj.delta || 0);
@@ -5108,6 +5151,11 @@ export class DeckGLMap {
 
   public setGpsJamming(hexes: GpsJamHex[]): void {
     this.gpsJammingHexes = hexes;
+    this.render();
+  }
+
+  public setDiseaseOutbreaks(outbreaks: DiseaseOutbreakItem[]): void {
+    this.diseaseOutbreaks = outbreaks;
     this.render();
   }
 
