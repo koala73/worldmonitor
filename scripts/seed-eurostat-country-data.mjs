@@ -80,20 +80,11 @@ function parseEurostatResponse(data, geoCode) {
       stride *= dimSizes[i];
     }
 
-    // Find the geo and time positions for the target
-    const geoStride = strides['geo'] || 0;
-    const timeStride = strides['time'] || 0;
-
-    // Most datasets have only 1 time period (lastTimePeriod=1)
-    // and we want the specific geo entry
-    // Try to find value at various combos — iterate over all positions
-    // and find entries matching geo=geoPos, time=0 (most recent)
     let value = null;
 
-    // Determine total size and look for our combination
-    const totalSize = stride; // stride accumulated to total after loop
-    for (let idx = 0; idx < Object.keys(values).length; idx++) {
-      const key = String(idx);
+    // Iterate over the actual key positions present in the sparse values object
+    for (const key of Object.keys(values)) {
+      const idx = Number(key);
       const rawVal = values[key];
       if (rawVal === null || rawVal === undefined) continue;
 
@@ -102,7 +93,6 @@ function parseEurostatResponse(data, geoCode) {
       const coords = {};
       for (const dim of dimOrder) {
         const s = strides[dim];
-        const dimIdx = dims[dim]?.category?.index;
         const dimSize = dimSizes[dimOrder.indexOf(dim)];
         coords[dim] = Math.floor(remaining / s) % dimSize;
         remaining = remaining % s;
@@ -204,15 +194,19 @@ async function fetchCountryData(geoCode) {
 }
 
 /**
- * Fetch all countries in parallel (Promise.allSettled).
+ * Fetch all countries in batches to avoid overwhelming Eurostat with simultaneous requests.
  * Individual failures don't abort the seed.
  */
 async function fetchAll() {
   console.log(`  Fetching ${EU_COUNTRIES.length} countries × 3 datasets from Eurostat...`);
 
-  const countryResults = await Promise.allSettled(
-    EU_COUNTRIES.map(geo => fetchCountryData(geo))
-  );
+  const BATCH_SIZE = 3;
+  const countryResults = [];
+  for (let i = 0; i < EU_COUNTRIES.length; i += BATCH_SIZE) {
+    const batch = EU_COUNTRIES.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.allSettled(batch.map(geo => fetchCountryData(geo)));
+    countryResults.push(...batchResults);
+  }
 
   const countries = {};
   let countriesWithData = 0;
