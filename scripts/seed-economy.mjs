@@ -18,6 +18,7 @@ const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
 const MACRO_TTL = 21600; // 6h — survive extended Yahoo outages
 const CRUDE_INVENTORIES_TTL = 1_814_400; // 21 days — EIA publishes weekly; 3x cadence per gold standard
+const CRUDE_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 
 const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30'];
 
@@ -452,7 +453,7 @@ async function fetchCrudeInventories() {
     if (weeks.length === 8) break; // only return 8 weeks to client
   }
 
-  if (weeks.length === 0) throw new Error('EIA WCRSTUS1: could not parse any rows');
+  if (weeks.length < CRUDE_MIN_WEEKS) throw new Error(`EIA WCRSTUS1: only ${weeks.length} valid rows (need >= ${CRUDE_MIN_WEEKS})`);
   const latestPeriod = weeks[0]?.period ?? '';
   console.log(`  Crude inventories: ${weeks.length} weeks, latest=${latestPeriod}`);
   return { weeks, latestPeriod };
@@ -496,7 +497,12 @@ async function fetchAll() {
 
   if (ms && !ms.unavailable && ms.totalCount > 0) await writeExtraKeyWithMeta(KEYS.macroSignals, ms, MACRO_TTL, ms.totalCount ?? 0);
 
-  if (ci?.weeks?.length > 0) await writeExtraKeyWithMeta(KEYS.crudeInventories, ci, CRUDE_INVENTORIES_TTL, ci.weeks.length);
+  const isValidWeek = (w) => typeof w.period === 'string' && typeof w.stocksMb === 'number' && Number.isFinite(w.stocksMb);
+  if (ci?.weeks?.length >= CRUDE_MIN_WEEKS && ci.weeks.every(isValidWeek)) {
+    await writeExtraKeyWithMeta(KEYS.crudeInventories, ci, CRUDE_INVENTORIES_TTL, ci.weeks.length);
+  } else if (ci) {
+    console.warn(`  CrudeInventories: skipped write — ${ci.weeks?.length ?? 0} weeks or schema invalid`);
+  }
 
   return ep || { prices: [] };
 }
