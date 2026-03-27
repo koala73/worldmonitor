@@ -2271,12 +2271,6 @@
 .ds-confidence { margin-bottom: 10px; }
 .ds-confidence .ds-section-label { color: var(--text-dim); }
 
-/* Attribution footer */
-.deduction-meta {
-  margin-top: 14px; padding-top: 8px; border-top: 1px solid var(--border-subtle);
-  font-size: 10px; color: var(--text-dim); letter-spacing: 0.03em;
-}
-
 /* ----------------------------------------------------------
    Thermal Escalation Panel (Option A — Dense Intel)
    ---------------------------------------------------------- */

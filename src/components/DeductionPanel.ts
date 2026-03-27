@@ -250,11 +250,6 @@ export class DeductionPanel extends Panel {
                 const safe = DOMPurify.sanitize(parsed);
                 this.resultContainer.innerHTML = safe;
                 this.reformatResult(this.resultContainer);
-
-                const meta = h('div', { className: 'deduction-meta' },
-                    `${resp.provider || 'AI'}${resp.model ? ` · ${resp.model}` : ''}`
-                );
-                this.resultContainer.appendChild(meta);
             } else {
                 this.resultContainer.textContent = resp.provider === 'error'
                     ? 'AI analysis temporarily unavailable. Please try again in a moment.'
