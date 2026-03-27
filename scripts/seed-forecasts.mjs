@@ -11320,6 +11320,7 @@ function matchesChannel(simPath, channel) {
 
 const NEGATION_TERMS = ['ceasefire', 'reopen', 'reopened', 'resolv', 'diplomatic solution', 'withdrawal', 'de-escalat', 'deescalat', 'restored', 'stabiliz', 'lifted', 'normaliz', 'agreement'];
 const SIMULATION_MERGE_ACCEPT_THRESHOLD = 0.50;
+const SIMULATION_ELIGIBILITY_RANK_THRESHOLD = 0.40;
 
 function contradictsPremise(invalidator, expandedPath) {
   if (!invalidator || typeof invalidator !== 'string') return false;
@@ -11328,11 +11329,19 @@ function contradictsPremise(invalidator, expandedPath) {
   if (!hasNegation) return false;
   const routeKey = expandedPath?.candidate?.routeFacilityKey || '';
   const commodityKey = expandedPath?.candidate?.commodityKey || '';
-  const refersToSubject = (
-    (routeKey && text.includes(routeKey.toLowerCase())) ||
-    (commodityKey && text.includes(commodityKey.toLowerCase()))
-  );
-  return refersToSubject;
+  if (routeKey || commodityKey) {
+    return (
+      (routeKey && text.includes(routeKey.toLowerCase())) ||
+      (commodityKey && text.includes(commodityKey.toLowerCase()))
+    );
+  }
+  // Non-maritime: match on stateKind and bucket keywords so macro/political/cyber
+  // theaters can also receive negative adjustments from simulation invalidators.
+  const stateKind = expandedPath?.candidate?.stateKind || '';
+  const bucket = expandedPath?.direct?.targetBucket || expandedPath?.candidate?.topBucketId || '';
+  const subjectKeywords = [...stateKind.toLowerCase().split('_'), ...bucket.toLowerCase().split('_')]
+    .filter((w) => w.length >= 4);
+  return subjectKeywords.some((kw) => text.includes(kw));
 }
 
 function negatesDisruption(stabilizer, candidatePacket) {
@@ -11342,11 +11351,18 @@ function negatesDisruption(stabilizer, candidatePacket) {
   if (!hasNegation) return false;
   const routeKey = candidatePacket?.routeFacilityKey || '';
   const commodityKey = candidatePacket?.commodityKey || '';
-  if (!routeKey && !commodityKey) return false;
-  return (
-    (routeKey && text.includes(routeKey.toLowerCase())) ||
-    (commodityKey && text.includes(commodityKey.toLowerCase()))
-  );
+  if (routeKey || commodityKey) {
+    return (
+      (routeKey && text.includes(routeKey.toLowerCase())) ||
+      (commodityKey && text.includes(commodityKey.toLowerCase()))
+    );
+  }
+  // Non-maritime: match on stateKind and bucket keywords.
+  const stateKind = candidatePacket?.stateKind || '';
+  const bucket = candidatePacket?.topBucketId || '';
+  const subjectKeywords = [...stateKind.toLowerCase().split('_'), ...bucket.toLowerCase().split('_')]
+    .filter((w) => w.length >= 4);
+  return subjectKeywords.some((kw) => text.includes(kw));
 }
 
 function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePacket) {
@@ -12189,17 +12205,19 @@ async function writeDeepForecastSnapshot(snapshot, _context = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Simulation Package Export (Phase 1: maritime chokepoint + energy/logistics)
+// Simulation Package Export — theater-agnostic eligibility
 // ---------------------------------------------------------------------------
 
-function isMaritimeChokeEnergyCandidate(candidate) {
-  const routeKey = candidate.routeFacilityKey || '';
-  if (!routeKey || !Object.prototype.hasOwnProperty.call(CHOKEPOINT_MARKET_REGIONS, routeKey)) return false;
-  const bucketArr = candidate.marketBucketIds || [];
-  // Accept both nested (marketContext.topBucketId) and flat (topBucketId) shapes
-  const topBucket = candidate.marketContext?.topBucketId || candidate.topBucketId || '';
-  return bucketArr.includes('energy') || bucketArr.includes('freight') || topBucket === 'energy' || topBucket === 'freight'
-    || SIMULATION_ENERGY_COMMODITY_KEYS.has(candidate.commodityKey || '');
+function isSimulationEligible(candidate) {
+  const score = parseFloat(candidate.rankingScore || 0);
+  if (score < SIMULATION_ELIGIBILITY_RANK_THRESHOLD) return false;
+  // Accept both full-candidate shape (marketBucketIds / marketContext.topBucketId)
+  // and theater-object shape (topBucketId only) — both appear in call sites.
+  const hasBucket =
+    (candidate.marketBucketIds?.length > 0) ||
+    !!(candidate.topBucketId) ||
+    !!(candidate.marketContext?.topBucketId);
+  return hasBucket && !!(candidate.candidateStateId);
 }
 
 function mapActorCategoryToEntityClass(category, domains = []) {
@@ -12225,7 +12243,7 @@ function inferEntityClassFromName(name) {
 function buildSimulationRequirementText(theater, candidate) {
   const label = sanitizeForPrompt(theater.label) || theater.dominantRegion || 'unknown theater';
   const route = sanitizeForPrompt(theater.routeFacilityKey || theater.dominantRegion);
-  const stateKind = sanitizeForPrompt(theater.stateKind) || 'disruption';
+  const stateKind = theater.stateKind || 'cross_domain_pressure';
   const commodity = theater.commodityKey ? ` (${theater.commodityKey.replace(/_/g, ' ')})` : '';
   const bucket = theater.topBucketId || 'market';
   const rawChannel = theater.topChannel ? sanitizeForPrompt(theater.topChannel) : '';
@@ -12233,7 +12251,26 @@ function buildSimulationRequirementText(theater, candidate) {
   const macroRegion = theater.macroRegions?.[0] || theater.dominantRegion;
   const critTypes = (candidate.criticalSignalTypes || []).slice(0, 3).map((t) => sanitizeForPrompt(t).replace(/_/g, ' ')).join(', ');
   const signalContext = critTypes ? ` Active signals: ${critTypes}.` : '';
-  return `Simulate how a ${label} (${stateKind} at ${route}${commodity}) propagates through state behavior, shipping behavior, ${macroRegion} importer response, and ${bucket} market sentiment${channel} over the next 72 hours.${signalContext}`;
+
+  if (stateKind === 'maritime_disruption') {
+    return `Simulate how a ${label} (${stateKind} at ${route}${commodity}) propagates through state behavior, shipping behavior, ${macroRegion} importer response, and ${bucket} market sentiment${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'market_repricing') {
+    return `Simulate how ${label}${commodity} propagates through credit conditions, ${macroRegion} ${bucket} market repricing, FX stress on import-dependent economies, and second-order commodity demand${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'political_instability' || stateKind === 'governance_pressure') {
+    return `Simulate how ${label} propagates through government policy response, trade posture, investor sentiment, ${macroRegion} capital flows, and downstream ${bucket} market pressure${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'security_escalation') {
+    return `Simulate how ${label} in ${macroRegion} propagates through state military posture, logistics disruption, regional stability, and ${bucket} market reaction${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'infrastructure_fragility') {
+    return `Simulate how ${label} (${route}${commodity}) propagates through supply chain capacity, logistics operator response, ${macroRegion} production continuity, and ${bucket} market conditions${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'cyber_pressure') {
+    return `Simulate how ${label} propagates through systems availability, financial network continuity, ${macroRegion} institutional response, and ${bucket} market confidence${channel} over the next 72 hours.${signalContext}`;
+  }
+  return `Simulate how ${label}${commodity} in ${macroRegion} propagates through state behavior, market conditions, and ${bucket} sentiment${channel} over the next 72 hours.${signalContext}`;
 }
 
 function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegistry) {
@@ -12438,10 +12475,92 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
       });
     }
 
+    const bucketArr = candidate.marketBucketIds || [];
+    const topBucket = theater.topBucketId || candidate.marketContext?.topBucketId || '';
+    const MACRO_FIN_BUCKETS = ['rates_inflation', 'sovereign_risk', 'fx_stress'];
+    if (MACRO_FIN_BUCKETS.some((b) => bucketArr.includes(b) || topBucket === b) && !theater.routeFacilityKey) {
+      theaterConstraints.push({
+        constraintId: `c-${++idx}`,
+        theaterId: theater.theaterId,
+        class: 'macro_financial_posture',
+        statement: `${theater.label || theater.candidateStateId} operates under existing ${topBucket || 'macro'} conditions; simulation must route consequences through ${(theater.topChannel || 'market channel').replace(/_/g, ' ')} and must not exceed bounds set by current structural ${topBucket || 'market'} state.`,
+        hard: false,
+        source: `${src}:topBucketId=${topBucket}:topChannel=${theater.topChannel}`,
+      });
+    }
+
+    if (!theater.routeFacilityKey && !theater.commodityKey && theater.stateKind !== 'market_repricing') {
+      theaterConstraints.push({
+        constraintId: `c-${++idx}`,
+        theaterId: theater.theaterId,
+        class: 'structural_event_premise',
+        statement: `${theater.label || theater.candidateStateId} (${theater.stateKind || 'unknown'}) is the primary disruption premise; simulation must not invent a physical chokepoint or commodity disruption that is not evidenced in the theater state.`,
+        hard: true,
+        source: `${src}:stateKind=${theater.stateKind}`,
+      });
+    }
+
     result[theater.theaterId] = theaterConstraints;
   }
 
   return result;
+}
+
+function buildEvalTargetQuestions(theater, macroRegion) {
+  const stateKind = theater.stateKind || '';
+  const bucket = theater.topBucketId || 'market';
+  const label = theater.label || theater.candidateStateId;
+  const route = theater.routeFacilityKey || theater.dominantRegion;
+  const commodity = theater.commodityKey ? ` and ${theater.commodityKey.replace(/_/g, ' ')} flows` : '';
+
+  if (stateKind === 'maritime_disruption') {
+    return [
+      { pathType: 'escalation', question: `How does disruption at ${route}${commodity} escalate into a broader ${bucket} shock, and which actors accelerate it?` },
+      { pathType: 'containment', question: `What specific conditions contain the ${route} disruption before it crosses into ${bucket} repricing?` },
+      { pathType: 'market_cascade', question: `What are the 2nd and 3rd order economic consequences of disruption at ${route}? Model energy price direction ($/bbl or %), freight rate delta on affected trade lanes, downstream sector impacts (manufacturing, agriculture, consumer prices), and FX stress on import-dependent economies in ${macroRegion}.` },
+    ];
+  }
+  if (stateKind === 'market_repricing') {
+    return [
+      { pathType: 'escalation', question: `How does ${label} escalate through ${bucket} market conditions, and which institutional actors accelerate the repricing?` },
+      { pathType: 'containment', question: `What policy interventions or market signals contain the ${bucket} repricing before second-order spillovers materialize?` },
+      { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences: ${bucket.replace(/_/g, ' ')} direction, FX stress on import-dependent economies in ${macroRegion}, sovereign spread widening, and downstream sector demand compression.` },
+    ];
+  }
+  if (stateKind === 'political_instability' || stateKind === 'governance_pressure') {
+    return [
+      { pathType: 'escalation', question: `How does ${label} in ${macroRegion} escalate through government dysfunction, trade posture shifts, and investor confidence into ${bucket} pressure?` },
+      { pathType: 'containment', question: `What institutional stabilizers (coalition formation, international mediation, credible commitment signals) contain the political instability before market spillover?` },
+      { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences: capital flight from ${macroRegion}, FX stress, sovereign risk premium widening, and downstream trade disruption.` },
+    ];
+  }
+  if (stateKind === 'security_escalation') {
+    return [
+      { pathType: 'escalation', question: `How does ${label} in ${macroRegion} escalate through military posture changes, logistics disruption, and regional alliance dynamics into ${bucket} pressure?` },
+      { pathType: 'containment', question: `What deterrence signals, diplomatic channels, or de-escalation steps contain ${label} before it triggers broader market repricing?` },
+      { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences: regional risk premium, defense spending signals, logistics cost increases in ${macroRegion}, and ${bucket} market sentiment.` },
+    ];
+  }
+  if (stateKind === 'infrastructure_fragility') {
+    return [
+      { pathType: 'escalation', question: `How does ${label}${commodity} at ${route} escalate through supply chain capacity loss, logistics rerouting, and production continuity gaps into ${bucket} pressure?` },
+      { pathType: 'containment', question: `What restoration timelines or alternative routing contain the infrastructure disruption before ${bucket} markets reprice?` },
+      { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences: production shortfall in ${macroRegion}, logistics cost increases, downstream manufacturing disruptions, and ${bucket} supply gap.` },
+    ];
+  }
+  if (stateKind === 'cyber_pressure') {
+    return [
+      { pathType: 'escalation', question: `How does ${label} escalate through systems availability failures, financial network disruption, and institutional confidence loss into ${bucket} pressure?` },
+      { pathType: 'containment', question: `What technical containment, incident response timelines, or redundancy activation limits the ${label} impact on ${bucket} conditions?` },
+      { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences: financial settlement disruption in ${macroRegion}, confidence shock on ${bucket} participants, and downstream sector operational losses.` },
+    ];
+  }
+  // fallback
+  return [
+    { pathType: 'escalation', question: `How does ${label} in ${macroRegion} escalate through actor behavior and institutional response into broader ${bucket} pressure, and who accelerates it?` },
+    { pathType: 'containment', question: `What conditions or interventions contain ${label} before it crosses into sustained ${bucket} repricing?` },
+    { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences of ${label}: ${bucket.replace(/_/g, ' ')} conditions, FX stress in ${macroRegion}, downstream sector impacts, and actor-driven amplification.` },
+  ];
 }
 
 function buildSimulationPackageEvaluationTargets(selectedTheaters, candidates) {
@@ -12451,31 +12570,16 @@ function buildSimulationPackageEvaluationTargets(selectedTheaters, candidates) {
     if (!candidate) {
       console.warn(`[SimulationPackage] No candidate for theaterId=${theater.theaterId} (evaluationTargets)`);
     }
-    const route = theater.routeFacilityKey || theater.dominantRegion;
-    const commodity = theater.commodityKey ? ` and ${theater.commodityKey.replace(/_/g, ' ')} flows` : '';
     const bucket = theater.topBucketId || 'market';
-    const channel = theater.topChannel ? theater.topChannel.replace(/_/g, ' ') : 'transmission';
     const macroRegion = theater.macroRegions?.[0] || theater.dominantRegion;
     const actors = (candidate?.stateSummary?.actors || []).slice(0, 3).join(', ') || 'key actors';
+    const isMaritimeOrInfra = theater.routeFacilityKey && (theater.stateKind === 'maritime_disruption' || theater.stateKind === 'infrastructure_fragility');
     result[theater.theaterId] = {
       theaterId: theater.theaterId,
-      requiredPaths: [
-        {
-          pathType: 'escalation',
-          question: `How does disruption at ${route}${commodity} escalate into a broader ${bucket} shock, and which actors accelerate it?`,
-        },
-        {
-          pathType: 'containment',
-          question: `What specific conditions contain the ${route} disruption before it crosses into ${bucket} repricing?`,
-        },
-        {
-          pathType: 'market_cascade',
-          question: `What are the 2nd and 3rd order economic consequences of disruption at ${route}? Model energy price direction ($/bbl or %), freight rate delta on affected trade lanes, downstream sector impacts (manufacturing, agriculture, consumer prices), and FX stress on import-dependent economies in ${macroRegion}.`,
-        },
-      ],
+      requiredPaths: buildEvalTargetQuestions(theater, macroRegion),
       requiredOutputs: ['key_invalidators', 'timing_markers', 'actor_response_summary'],
       timingMarkers: [
-        { label: 'T+24h', description: `Initial state and logistics actor response to ${theater.label}` },
+        { label: 'T+24h', description: `Initial state and ${isMaritimeOrInfra ? 'logistics ' : ''}actor response to ${theater.label}` },
         { label: 'T+48h', description: `${bucket} market repricing and policy signals emerging from ${macroRegion}` },
         { label: 'T+72h', description: 'Stabilization or escalation bifurcation point' },
       ],
@@ -12517,7 +12621,7 @@ function buildSimulationStructuralWorld(selectedTheaters, { stateUnits, worldSig
 }
 
 function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null) {
-  const candidates = (snapshot.impactExpansionCandidates || []).filter(isMaritimeChokeEnergyCandidate);
+  const candidates = (snapshot.impactExpansionCandidates || []).filter(isSimulationEligible);
   if (candidates.length === 0) return null;
   const usedGroups = new Set();
   const top = [];
@@ -15807,7 +15911,7 @@ Generate EXACTLY 3 divergent paths named "escalation", "containment", and "marke
 - timing format: "T+0h", "T+6h", "T+12h", "T+24h"
 - Maximum 3 initialReactions per path
 - note: A brief (≤200 char) meta-observation on the divergence logic
-- market_cascade path: model 2nd and 3rd order economic consequences — energy price direction ($/bbl or %), freight rate delta on affected trade lanes, downstream sector impacts (manufacturing, agriculture, consumer prices), FX stress on import-dependent economies
+- market_cascade path: model 2nd and 3rd order economic consequences as described in EVALUATION TARGETS above; do not invent commodities, routes, or market instruments not present in the structural context
 
 Return ONLY a JSON object with no markdown fences:
 {
@@ -16128,10 +16232,7 @@ async function processNextSimulationTask(options = {}) {
         return { status: 'failed', reason: 'package_read_failed', runId };
       }
 
-      // Phase 2 scope: maritime chokepoint + energy/logistics theaters only
-      const eligibleTheaters = (pkgData.selectedTheaters || []).filter((t) =>
-        isMaritimeChokeEnergyCandidate(t),
-      );
+      const eligibleTheaters = (pkgData.selectedTheaters || []).filter(isSimulationEligible);
       console.log(`  [Simulation] ${runId}: ${eligibleTheaters.length}/${pkgData.selectedTheaters.length} theaters eligible`);
 
       const theaterResults = [];
@@ -16358,8 +16459,12 @@ export {
   buildDeepForecastSnapshotKey,
   buildDeepForecastSnapshotPayload,
   writeDeepForecastSnapshot,
-  isMaritimeChokeEnergyCandidate,
+  isSimulationEligible,
+  SIMULATION_ELIGIBILITY_RANK_THRESHOLD,
   inferEntityClassFromName,
+  buildSimulationRequirementText,
+  buildSimulationPackageConstraints,
+  buildSimulationPackageEvaluationTargets,
   buildSimulationPackageFromDeepSnapshot,
   buildSimulationPackageKey,
   writeSimulationPackage,
