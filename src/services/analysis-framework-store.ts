@@ -11,7 +11,8 @@ export type AnalysisPanelId =
   | 'insights'
   | 'country-brief'
   | 'daily-market-brief'
-  | 'deduction';
+  | 'deduction'
+  | 'market-implications';
 
 export interface AnalysisFramework {
   id: string;

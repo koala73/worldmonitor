@@ -28,19 +28,21 @@ export function getCachedMarketImplications(): MarketImplicationsData | null {
   return cachedData;
 }
 
-export async function fetchMarketImplications(): Promise<MarketImplicationsData | null> {
+export async function fetchMarketImplications(framework?: string): Promise<MarketImplicationsData | null> {
   const now = Date.now();
-  if (cachedData && !cachedData.degraded && now - cachedAt < CACHE_TTL) return cachedData;
+  if (!framework && cachedData && !cachedData.degraded && now - cachedAt < CACHE_TTL) return cachedData;
 
   const hydrated = getHydratedData('marketImplications') as MarketImplicationsData | undefined;
-  if (hydrated?.cards && Array.isArray(hydrated.cards) && hydrated.cards.length > 0 && !hydrated.degraded) {
+  if (!framework && hydrated?.cards && Array.isArray(hydrated.cards) && hydrated.cards.length > 0 && !hydrated.degraded) {
     cachedData = hydrated;
     cachedAt = now;
     return cachedData;
   }
 
   try {
-    const resp = await fetch(toApiUrl('/api/intelligence/v1/list-market-implications'), {
+    const url = new URL(toApiUrl('/api/intelligence/v1/list-market-implications'));
+    if (framework) url.searchParams.set('framework', framework.slice(0, 2000));
+    const resp = await fetch(url.toString(), {
       signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) return cachedData;
