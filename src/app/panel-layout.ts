@@ -101,6 +101,7 @@ const WEB_PREMIUM_PANELS = new Set([
   'stock-backtest',
   'daily-market-brief',
   'market-implications',
+  'deduction',
 ]);
 
 export interface PanelLayoutManagerCallbacks {
@@ -737,6 +738,7 @@ export class PanelLayoutManager implements AppModule {
           }
         }
         this.applyPanelSettings();
+        this.updatePanelGating(getAuthState());
       });
     }
 
