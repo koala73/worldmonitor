@@ -36,6 +36,8 @@ const SETTINGS_KEY_PREFIXES = [
   'map-pinned',
   'mobile-map-collapsed',
   'positive-threshold',
+  'wm-analysis-frameworks',
+  'wm-panel-frameworks',
 ];
 
 function isSettingsKey(key: string): boolean {

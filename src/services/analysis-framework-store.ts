@@ -105,6 +105,8 @@ Close with: a one-sentence devil's advocate verdict — what is the most importa
   },
 ];
 
+const _activeCache = new Map<AnalysisPanelId, AnalysisFramework | null>();
+
 export function loadFrameworkLibrary(): AnalysisFramework[] {
   const imported = loadFromStorage<AnalysisFramework[]>(LIBRARY_KEY, []);
   return [...BUILT_IN_FRAMEWORKS, ...imported];
@@ -124,31 +126,38 @@ export function saveImportedFramework(fw: Omit<AnalysisFramework, 'isBuiltIn' | 
   }
   const newFw: AnalysisFramework = { ...fw, isBuiltIn: false, createdAt: Date.now() };
   saveToStorage(LIBRARY_KEY, [...imported, newFw]);
+  _activeCache.clear();
 }
 
 export function deleteImportedFramework(id: string): void {
   if (BUILT_IN_FRAMEWORKS.some(f => f.id === id)) return;
   const imported = loadFromStorage<AnalysisFramework[]>(LIBRARY_KEY, []);
   saveToStorage(LIBRARY_KEY, imported.filter(f => f.id !== id));
+  _activeCache.clear();
 }
 
 export function renameImportedFramework(id: string, name: string): void {
   if (BUILT_IN_FRAMEWORKS.some(f => f.id === id)) return;
   const imported = loadFromStorage<AnalysisFramework[]>(LIBRARY_KEY, []);
   saveToStorage(LIBRARY_KEY, imported.map(f => f.id === id ? { ...f, name } : f));
+  _activeCache.clear();
 }
 
 export function getActiveFrameworkForPanel(panelId: AnalysisPanelId): AnalysisFramework | null {
   if (!hasPremiumAccess()) return null;
+  if (_activeCache.has(panelId)) return _activeCache.get(panelId)!;
   const selections = loadFromStorage<Record<string, string | null>>(PANEL_KEY, {});
   const frameworkId = selections[panelId] ?? null;
-  if (!frameworkId) return null;
-  return loadFrameworkLibrary().find(f => f.id === frameworkId) ?? null;
+  if (!frameworkId) { _activeCache.set(panelId, null); return null; }
+  const result = loadFrameworkLibrary().find(f => f.id === frameworkId) ?? null;
+  _activeCache.set(panelId, result);
+  return result;
 }
 
 export function setActiveFrameworkForPanel(panelId: AnalysisPanelId, frameworkId: string | null): void {
   const selections = loadFromStorage<Record<string, string | null>>(PANEL_KEY, {});
   saveToStorage(PANEL_KEY, { ...selections, [panelId]: frameworkId });
+  _activeCache.delete(panelId);
   window.dispatchEvent(new CustomEvent(FRAMEWORK_CHANGED_EVENT, {
     detail: { panelId, frameworkId },
   }));

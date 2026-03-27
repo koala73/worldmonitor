@@ -62,6 +62,7 @@ export class CountryIntelManager implements AppModule {
   private ctx: AppContext;
   private briefRequestToken = 0;
   private frameworkUnsubscribe: (() => void) | null = null;
+  private _fwDebounce: ReturnType<typeof setTimeout> | null = null;
 
   constructor(ctx: AppContext) {
     this.ctx = ctx;
@@ -74,11 +75,14 @@ export class CountryIntelManager implements AppModule {
       if (!page?.isVisible()) return;
       const code = page.getCode();
       const name = page.getName() ?? code;
-      if (code && name) void this.openCountryBriefByCode(code, name);
+      if (!code || !name) return;
+      if (this._fwDebounce) clearTimeout(this._fwDebounce);
+      this._fwDebounce = setTimeout(() => void this.openCountryBriefByCode(code, name), 400);
     });
   }
 
   destroy(): void {
+    if (this._fwDebounce) { clearTimeout(this._fwDebounce); this._fwDebounce = null; }
     this.ctx.countryTimeline?.destroy();
     this.ctx.countryTimeline = null;
     this.ctx.countryBriefPage = null;
