@@ -96,6 +96,32 @@ Flight data provided gracefully by [Wingbits](https://wingbits.com?utm_source=wo
 
 ---
 
+## Data Sources
+
+WorldMonitor aggregates data from the following open and public APIs. We are grateful to these providers for making their data freely accessible.
+
+| Provider | Data |
+|----------|------|
+| [GIE AGSI+](https://agsi.gie.eu) | EU natural gas storage levels |
+| [ECB Data Portal](https://data-api.ecb.europa.eu) | FX reference rates, yield curve, short-term rates (ESTR/EURIBOR), financial stress index |
+| [Eurostat](https://ec.europa.eu/eurostat) | Euro Area economic indicators, CPI, GDP, unemployment |
+| [FRED — St. Louis Fed](https://fred.stlouisfed.org) | US/global interest rates, macroeconomic series |
+| [World Bank Open Data](https://data.worldbank.org) | Development indicators, renewable energy, technology readiness |
+| [U.S. EIA](https://www.eia.gov/opendata) | Crude oil inventories, fuel prices, energy data |
+| [U.S. BLS](https://www.bls.gov/developers) | US labor statistics |
+| [BIS Statistics](https://stats.bis.org) | Central bank and international financial statistics |
+| [USA Spending](https://api.usaspending.gov) | US federal spending and contracts |
+| [UN Comtrade](https://comtradeapi.un.org) | Global merchandise trade flows |
+| [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov) | Near real-time wildfire/fire detections |
+| [NASA EONET](https://eonet.gsfc.nasa.gov) | Natural events (storms, volcanoes, floods) |
+| [USGS Earthquake Hazards](https://earthquake.usgs.gov) | Global seismic activity |
+| [CoinGecko](https://www.coingecko.com) | Cryptocurrency prices and market data |
+| [Cloudflare Radar](https://radar.cloudflare.com) | Internet outages and traffic anomalies |
+| [Submarine Cable Map](https://submarinecablemap.com) | Global submarine cable infrastructure |
+| [ACLED](https://acleddata.com) | Armed conflict and protest event data |
+
+---
+
 ## Contributing
 
 Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
