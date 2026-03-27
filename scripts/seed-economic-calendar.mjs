@@ -28,8 +28,8 @@ const FOMC_DATES_2026 = [
 // 2026 ECB Governing Council monetary policy meeting dates
 // Source: ecb.europa.eu/press/govcdec/mopo/html/index.en.html
 const ECB_RATE_DATES_2026 = [
-  '2026-01-30', '2026-03-06', '2026-04-17',
-  '2026-06-05', '2026-07-24', '2026-09-11',
+  '2026-01-30', '2026-03-19', '2026-04-30',
+  '2026-06-11', '2026-07-23', '2026-09-10',
   '2026-10-29', '2026-12-17',
 ];
 
