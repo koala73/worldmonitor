@@ -121,9 +121,6 @@ export class DeductionPanel extends Panel {
         }
 
         const fw = getActiveFrameworkForPanel('deduction');
-        if (fw) {
-            geoContext = `${geoContext}\n\n---\nAnalytical Framework:\n${fw.systemPromptAppend}`;
-        }
 
         this.isSubmitting = true;
         this.submitBtn.disabled = true;
@@ -135,7 +132,7 @@ export class DeductionPanel extends Panel {
             const resp = await client.deductSituation({
                 query,
                 geoContext,
-                framework: '',
+                framework: fw?.systemPromptAppend ?? '',
             });
             if (!this.element?.isConnected) return;
 

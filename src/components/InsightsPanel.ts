@@ -53,7 +53,6 @@ export class InsightsPanel extends Panel {
     }
 
     this.frameworkUnsubscribe = subscribeFrameworkChange('insights', () => {
-      this.updateGeneration++;
       void this.updateInsights(this.lastClusters);
     });
 
