@@ -20,6 +20,9 @@ export interface DiseaseOutbreakItem {
   sourceUrl: string;
   publishedAt: number;
   sourceName: string;
+  lat: number;
+  lng: number;
+  cases: number;
 }
 
 export interface FieldViolation {

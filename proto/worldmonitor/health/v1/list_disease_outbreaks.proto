@@ -24,6 +24,12 @@ message DiseaseOutbreakItem {
   int64 published_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Source name (e.g., "WHO", "ProMED", "HealthMap").
   string source_name = 9;
+  // Precise latitude from source (overrides country centroid on map when non-zero).
+  double lat = 10;
+  // Precise longitude from source (overrides country centroid on map when non-zero).
+  double lng = 11;
+  // Case count if reported by source (0 = unknown).
+  int32 cases = 12;
 }
 
 message ListDiseaseOutbreaksRequest {}

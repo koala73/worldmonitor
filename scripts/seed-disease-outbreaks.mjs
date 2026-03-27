@@ -236,6 +236,8 @@ async function fetchThinkGlobalHealth() {
       if (!rec.lat || !rec.lng || !rec.diseases || !rec.date) continue;
       const publishedMs = new Date(rec.date).getTime();
       if (isNaN(publishedMs) || publishedMs < cutoff) continue;
+      // place_name from TGH is often "City, District, Country" — take only the first segment for display.
+      const cityName = (rec.place_name || '').split(',')[0].trim() || rec.country || '';
       items.push({
         title: `${rec.diseases}${rec.country ? ` - ${rec.country}` : ''}`,
         link: rec.link || '',
@@ -244,7 +246,10 @@ async function fetchThinkGlobalHealth() {
         sourceName: 'ThinkGlobalHealth',
         _country: rec.country || '',
         _disease: rec.diseases || '',
-        _location: rec.place_name || rec.country || '',
+        _location: cityName,
+        _lat: parseFloat(rec.lat) || 0,
+        _lng: parseFloat(rec.lng) || 0,
+        _cases: parseInt(rec.cases_count || rec.cases || '0', 10) || 0,
       });
     }
     console.log(`[Disease] ThinkGlobalHealth: ${records.length} total, ${items.length} in last ${TGH_LOOKBACK_DAYS}d`);
@@ -255,6 +260,29 @@ async function fetchThinkGlobalHealth() {
   }
 }
 
+function mapItem(item) {
+  const location = item._location || extractLocationFromTitle(item.title)
+    || (item.sourceName === 'CDC' ? 'United States' : '');
+  const disease = item._disease || detectDisease(item.title);
+  const countryCode = item._country
+    ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
+    : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
+  return {
+    id: `${item.sourceName.toLowerCase()}-${stableHash(item.link || item.title)}-${item.publishedMs}`,
+    disease,
+    location,
+    countryCode,
+    alertLevel: detectAlertLevel(item.title, item.desc),
+    summary: item.desc,
+    sourceUrl: item.link,
+    publishedAt: item.publishedMs,
+    sourceName: item.sourceName,
+    lat: item._lat || 0,
+    lng: item._lng || 0,
+    cases: item._cases || 0,
+  };
+}
+
 async function fetchDiseaseOutbreaks() {
   const [whoItems, cdcItems, outbreakNewsItems, tghItems] = await Promise.all([
     fetchWhoDonApi(),
@@ -263,7 +291,10 @@ async function fetchDiseaseOutbreaks() {
     fetchThinkGlobalHealth(),
   ]);
   console.log(`[Disease] Sources: WHO=${whoItems.length} CDC=${cdcItems.length} ONT=${outbreakNewsItems.length} TGH=${tghItems.length}`);
-  const allItems = [...tghItems, ...whoItems, ...cdcItems, ...outbreakNewsItems];
+
+  // TGH items are already disease-curated with exact lat/lng — skip keyword filter,
+  // preserve all geo-located alerts, and don't collapse by disease+country.
+  const tghOutbreaks = tghItems.map(mapItem);
 
   const diseaseKeywords = ['outbreak', 'disease', 'virus', 'fever', 'flu', 'ebola', 'mpox',
     'cholera', 'dengue', 'measles', 'polio', 'plague', 'avian', 'h5n1', 'epidemic',
@@ -271,47 +302,31 @@ async function fetchDiseaseOutbreaks() {
     'diphtheria', 'chikungunya', 'rift valley', 'influenza', 'botulism',
     'salmonella', 'listeria', 'e. coli', 'norovirus', 'legionella', 'campylobacter'];
 
-  const relevant = allItems.filter(item => {
-    const text = `${item.title} ${item.desc}`.toLowerCase();
-    return diseaseKeywords.some(k => text.includes(k));
-  });
+  const otherOutbreaks = [...whoItems, ...cdcItems, ...outbreakNewsItems]
+    .filter(item => {
+      const text = `${item.title} ${item.desc}`.toLowerCase();
+      return diseaseKeywords.some(k => text.includes(k));
+    })
+    .map(mapItem);
 
-  const outbreaks = relevant.map((item) => {
-    // TGH items have pre-parsed country/disease/location from the bundle data.
-    const location = item._location || extractLocationFromTitle(item.title)
-      // CDC is US-only; default location when title gives no geographic hint
-      || (item.sourceName === 'CDC' ? 'United States' : '');
-    const disease = item._disease || detectDisease(item.title);
-    // Use pre-parsed country name for TGH; otherwise extract from title location.
-    const countryCode = item._country
-      ? (extractCountryCodeFull(item._country) || extractCountryCodeFull(location || item.title))
-      : extractCountryCodeFull(location || `${item.title} ${item.desc}`);
-    return {
-      id: `${item.sourceName.toLowerCase()}-${stableHash(item.link || item.title)}-${item.publishedMs}`,
-      disease,
-      location,
-      countryCode,
-      alertLevel: detectAlertLevel(item.title, item.desc),
-      summary: item.desc,
-      sourceUrl: item.link,
-      publishedAt: item.publishedMs,
-      sourceName: item.sourceName,
-    };
-  });
-
-  outbreaks.sort((a, b) => b.publishedAt - a.publishedAt);
-
-  // Deduplicate by disease+country combination (keep most recent per pair).
-  // "Unknown Disease" events are not collapsed — use the unique id to preserve distinct alerts.
+  // Deduplicate non-TGH items by disease+country (keep most recent per pair).
+  // TGH items each represent a distinct geo-located event — never collapse them.
   const seen = new Set();
-  const deduped = outbreaks.filter(o => {
+  const dedupedOthers = otherOutbreaks.filter(o => {
     const key = o.disease === 'Unknown Disease' ? o.id : `${o.disease}:${o.countryCode || o.location}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  return { outbreaks: deduped.slice(0, 50), fetchedAt: Date.now() };
+  // TGH first (precise geo), then WHO/CDC/ONT sorted by recency.
+  const tghSorted = tghOutbreaks.sort((a, b) => b.publishedAt - a.publishedAt);
+  const othersSorted = dedupedOthers.sort((a, b) => b.publishedAt - a.publishedAt);
+
+  // Up to 150 TGH geo-pinned alerts + up to 50 from other authoritative sources.
+  const outbreaks = [...tghSorted.slice(0, 150), ...othersSorted.slice(0, 50)];
+
+  return { outbreaks, fetchedAt: Date.now() };
 }
 
 function validate(data) {
@@ -321,7 +336,7 @@ function validate(data) {
 runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'who-api-cdc-ont-v5',
+  sourceVersion: 'who-api-cdc-ont-v6',
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

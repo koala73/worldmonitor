@@ -2414,8 +2414,12 @@ export class DeckGLMap {
     type Point = { lon: number; lat: number; item: DiseaseOutbreakItem };
     const points: Point[] = [];
     for (const item of this.diseaseOutbreaks) {
-      const centroid = getCountryCentroid(item.countryCode ?? '');
-      if (centroid) points.push({ lon: centroid.lon, lat: centroid.lat, item });
+      if (item.lat && item.lng) {
+        points.push({ lon: item.lng, lat: item.lat, item });
+      } else {
+        const centroid = getCountryCentroid(item.countryCode ?? '');
+        if (centroid) points.push({ lon: centroid.lon, lat: centroid.lat, item });
+      }
     }
     return new ScatterplotLayer<Point>({
       id: 'disease-outbreaks-layer',
@@ -3668,8 +3672,11 @@ export class DeckGLMap {
         const item = (obj as { item: DiseaseOutbreakItem }).item;
         if (!item) return null;
         const lvlColor = item.alertLevel === 'alert' ? '#e74c3c' : item.alertLevel === 'warning' ? '#e67e22' : '#f1c40f';
+        const casesHtml = item.cases ? ` | ${item.cases} case${item.cases !== 1 ? 's' : ''}` : '';
+        const dateHtml = item.publishedAt ? ` | ${new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : '';
+        const metaHtml = casesHtml || dateHtml ? `<br/><span style="opacity:.6;font-size:11px">${text(item.sourceName || '')}${dateHtml}${casesHtml}</span>` : `<br/><span style="opacity:.6">${text(item.sourceName || '')}</span>`;
         const summaryHtml = item.summary ? `<br/><span style="opacity:.75">${text(item.summary.slice(0, 100))}${item.summary.length > 100 ? '…' : ''}</span>` : '';
-        return { html: `<div class="deckgl-tooltip"><strong style="color:${lvlColor}">${text(item.alertLevel.toUpperCase())}</strong> ${text(item.disease)}<br/>${text(item.location)}${summaryHtml}<br/><span style="opacity:.6">${text(item.sourceName || '')}</span></div>` };
+        return { html: `<div class="deckgl-tooltip"><strong style="color:${lvlColor}">${text(item.alertLevel.toUpperCase())}</strong> ${text(item.disease)}<br/>${text(item.location)}${summaryHtml}${metaHtml}</div>` };
       }
       case 'radiation-watch-layer': {
         const severityLabel = obj.severity === 'spike' ? t('components.deckgl.layers.radiationSpike') : t('components.deckgl.layers.radiationElevated');
