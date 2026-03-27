@@ -29,6 +29,8 @@ import {
   type GetBlsSeriesResponse,
   type GetCrudeInventoriesResponse,
   type CrudeInventoryWeek,
+  type GetNatGasStorageResponse,
+  type NatGasStorageWeek,
   type GetEcbFxRatesResponse,
   type EcbFxRate,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
@@ -74,6 +76,8 @@ const emptyWbFallback: ListWorldBankIndicatorsResponse = { data: [], pagination:
 const emptyEiaFallback: GetEnergyPricesResponse = { prices: [] };
 const emptyCrudeFallback: GetCrudeInventoriesResponse = { weeks: [], latestPeriod: '' };
 const crudeBreaker = createCircuitBreaker<GetCrudeInventoriesResponse>({ name: 'EIA Crude Inventories', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
+const emptyNatGasFallback: GetNatGasStorageResponse = { weeks: [], latestPeriod: '' };
+const natGasBreaker = createCircuitBreaker<GetNatGasStorageResponse>({ name: 'EIA Nat Gas Storage', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
 const emptyCapacityFallback: GetEnergyCapacityResponse = { series: [] };
 const emptyBisPolicyFallback: GetBisPolicyRatesResponse = { rates: [] };
 const emptyBisEerFallback: GetBisExchangeRatesResponse = { rates: [] };
@@ -420,6 +424,25 @@ export async function fetchCrudeInventoriesRpc(): Promise<GetCrudeInventoriesRes
     }, emptyCrudeFallback);
   } catch {
     return emptyCrudeFallback;
+  }
+}
+
+// ========================================================================
+// EIA Natural Gas Storage (NW2_EPG0_SWO_R48_BCF) -- weekly storage data
+// ========================================================================
+
+export type { NatGasStorageWeek };
+
+export async function fetchNatGasStorageRpc(): Promise<GetNatGasStorageResponse> {
+  if (!isFeatureAvailable('energyEia')) return emptyNatGasFallback;
+  const hydrated = getHydratedData('natGasStorage') as GetNatGasStorageResponse | undefined;
+  if (hydrated?.weeks?.length) return hydrated;
+  try {
+    return await natGasBreaker.execute(async () => {
+      return client.getNatGasStorage({}, { signal: AbortSignal.timeout(20_000) });
+    }, emptyNatGasFallback);
+  } catch {
+    return emptyNatGasFallback;
   }
 }
 
