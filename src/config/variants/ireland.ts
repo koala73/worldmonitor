@@ -30,12 +30,17 @@ const rss = rssProxyUrl;
 
 // Ireland-specific FEEDS configuration
 export const FEEDS: Record<string, Feed[]> = {
-  // 爱尔兰科技新闻
+  // 爱尔兰科技新闻 (含 AI Companies: OpenAI, Anthropic, xAI, DeepMind)
   ieTech: [
     { name: 'Silicon Republic', url: rss('https://www.siliconrepublic.com/feed') },
     { name: 'Tech Central', url: rss('https://www.techcentral.ie/feed/') },
     { name: 'Business Plus', url: rss('https://businessplus.ie/feed/') },
     { name: 'Irish Tech News', url: rss('https://irishtechnews.ie/feed/') },
+    // AI Companies in Ireland (FR #178)
+    { name: 'OpenAI Ireland', url: rss('https://news.google.com/rss/search?q=OpenAI+(Ireland+OR+Dublin)+when:14d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Anthropic Ireland', url: rss('https://news.google.com/rss/search?q=Anthropic+(Ireland+OR+Dublin)+when:14d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'xAI Ireland', url: rss('https://news.google.com/rss/search?q=xAI+(Ireland+OR+Dublin)+when:14d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'DeepMind Ireland', url: rss('https://news.google.com/rss/search?q=(DeepMind+OR+"Google+DeepMind")+(Ireland+OR+Dublin)+when:14d&hl=en-IE&gl=IE&ceid=IE:en') },
   ],
 
   // 爱尔兰学术机构（通过 Google News）
@@ -106,12 +111,19 @@ export const FEEDS: Record<string, Feed[]> = {
     { name: 'ArXiv ML', url: rss('https://export.arxiv.org/rss/cs.LG') },
   ],
 
-  // 欧洲创业生态
+  // 欧洲创业生态 (含 Startup Hubs & Accelerators: NDRC, Dogpatch, YC, Techstars)
   startups: [
     { name: 'EU Startups', url: rss('https://www.eu-startups.com/feed/') },
     { name: 'Tech.eu', url: rss('https://tech.eu/feed/') },
     { name: 'Sifted (Europe)', url: rss('https://sifted.eu/feed') },
     { name: 'TechCrunch Startups', url: rss('https://techcrunch.com/category/startups/feed/') },
+    // Irish Accelerators & Startup Hubs (FR #178)
+    { name: 'NDRC Ireland', url: rss('https://news.google.com/rss/search?q=NDRC+(Ireland+OR+Dublin+OR+startup)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Dogpatch Labs', url: rss('https://news.google.com/rss/search?q="Dogpatch+Labs"+(Dublin+OR+startup)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Y Combinator Ireland', url: rss('https://news.google.com/rss/search?q="Y+Combinator"+(Ireland+OR+Irish+OR+Dublin)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Techstars Dublin', url: rss('https://news.google.com/rss/search?q=Techstars+(Ireland+OR+Dublin)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Enterprise Ireland Startups', url: rss('https://news.google.com/rss/search?q="Enterprise+Ireland"+(startup+OR+accelerator+OR+"high+potential")+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Dublin Startup Ecosystem', url: rss('https://news.google.com/rss/search?q=(Dublin+OR+Ireland)+(startup+ecosystem+OR+"startup+hub"+OR+"Demo+Day")+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
   ],
 
   // 爱尔兰科技峰会
@@ -204,6 +216,27 @@ export const FEEDS: Record<string, Feed[]> = {
     // Financial data
     { name: 'Bloomberg Ireland', url: rss('https://news.google.com/rss/search?q=Bloomberg+(Ireland+OR+Dublin)+office+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
   ],
+
+  // 基础设施新闻：数据中心 + 海底光缆 (FR #178)
+  ieInfrastructure: [
+    // Data Center News
+    { name: 'Data Center Ireland', url: rss('https://news.google.com/rss/search?q=("data+center"+OR+"data+centre")+(Ireland+OR+Dublin)+when:14d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Google Data Center Ireland', url: rss('https://news.google.com/rss/search?q=Google+("data+center"+OR+"data+centre")+(Ireland+OR+Dublin)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Microsoft Azure Ireland', url: rss('https://news.google.com/rss/search?q=(Microsoft+OR+Azure)+("data+center"+OR+"data+centre")+(Ireland+OR+Dublin)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'AWS Data Center Ireland', url: rss('https://news.google.com/rss/search?q=(AWS+OR+"Amazon+Web+Services")+("data+center"+OR+"data+centre")+(Ireland+OR+Dublin)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Meta Data Center Ireland', url: rss('https://news.google.com/rss/search?q=(Meta+OR+Facebook)+("data+center"+OR+"data+centre")+(Ireland+OR+Clonee)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Equinix Ireland', url: rss('https://news.google.com/rss/search?q=Equinix+(Ireland+OR+Dublin)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+
+    // Submarine Cable News
+    { name: 'Submarine Cable Ireland', url: rss('https://news.google.com/rss/search?q=("submarine+cable"+OR+"undersea+cable")+(Ireland+OR+Dublin+OR+Galway)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Hibernia Express', url: rss('https://news.google.com/rss/search?q="Hibernia+Express"+(cable+OR+Ireland)+when:90d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'AEC-1 Cable', url: rss('https://news.google.com/rss/search?q="AEC-1"+(cable+OR+Ireland+OR+transatlantic)+when:90d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'IRIS Cable Iceland', url: rss('https://news.google.com/rss/search?q=("IRIS+cable"+OR+"Ireland+Iceland+cable")+when:90d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Cable Landing Station Ireland', url: rss('https://news.google.com/rss/search?q="cable+landing"+(Ireland+OR+Dublin+OR+Galway)+when:90d&hl=en-IE&gl=IE&ceid=IE:en') },
+
+    // Infrastructure Investment
+    { name: 'Data Center Investment Ireland', url: rss('https://news.google.com/rss/search?q=("data+center"+OR+"data+centre")+(investment+OR+construction+OR+expansion)+(Ireland+OR+Dublin)+when:30d&hl=en-IE&gl=IE&ceid=IE:en') },
+  ],
 };
 
 // Ireland variant panels
@@ -216,8 +249,9 @@ export const PANELS: Record<string, PanelConfig> = {
   ieEnterpriseTech: { name: 'Enterprise Tech', enabled: true, priority: 6 },
   startups: { name: 'Startups', enabled: true, priority: 7 },
   ieSummits: { name: 'Summits', enabled: true, priority: 8 },
-  ieBusiness: { name: 'Business', enabled: true, priority: 9 },
-  ai: { name: 'AI/ML', enabled: true, priority: 10 },
+  ieInfrastructure: { name: 'Infrastructure', enabled: true, priority: 9 }, // FR #178: Data Centers + Submarine Cables
+  ieBusiness: { name: 'Business', enabled: true, priority: 10 },
+  ai: { name: 'AI/ML', enabled: true, priority: 11 },
 };
 
 // Ireland map layers (minimal for tech focus)
