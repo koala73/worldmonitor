@@ -607,6 +607,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-social-velocity:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetSocialVelocity
+            description: GetSocialVelocity returns trending Reddit posts from r/worldnews and r/geopolitics ranked by velocity.
+            operationId: GetSocialVelocity
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetSocialVelocityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1787,3 +1813,52 @@ components:
                     type: string
                 driver:
                     type: string
+        GetSocialVelocityRequest:
+            type: object
+        GetSocialVelocityResponse:
+            type: object
+            properties:
+                posts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SocialVelocityPost'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        SocialVelocityPost:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Reddit post ID.
+                title:
+                    type: string
+                    description: Post title.
+                subreddit:
+                    type: string
+                    description: Subreddit name (without r/ prefix).
+                url:
+                    type: string
+                    description: Direct URL to the post.
+                score:
+                    type: integer
+                    format: int32
+                    description: Reddit score (upvotes - downvotes).
+                upvoteRatio:
+                    type: number
+                    format: double
+                    description: Upvote ratio (0.0–1.0).
+                numComments:
+                    type: integer
+                    format: int32
+                    description: Number of comments.
+                velocityScore:
+                    type: number
+                    format: double
+                    description: Composite velocity score accounting for recency, score, and ratio.
+                createdAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix epoch milliseconds when posted.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: SocialVelocityPost represents a trending Reddit post with velocity scoring.

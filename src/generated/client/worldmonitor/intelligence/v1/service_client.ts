@@ -438,6 +438,26 @@ export interface MarketImplicationCard {
   driver: string;
 }
 
+export interface GetSocialVelocityRequest {
+}
+
+export interface GetSocialVelocityResponse {
+  posts: SocialVelocityPost[];
+  fetchedAt: number;
+}
+
+export interface SocialVelocityPost {
+  id: string;
+  title: string;
+  subreddit: string;
+  url: string;
+  score: number;
+  upvoteRatio: number;
+  numComments: number;
+  velocityScore: number;
+  createdAt: number;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -927,6 +947,29 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as ListMarketImplicationsResponse;
+  }
+
+  async getSocialVelocity(req: GetSocialVelocityRequest, options?: IntelligenceServiceCallOptions): Promise<GetSocialVelocityResponse> {
+    let path = "/api/intelligence/v1/get-social-velocity";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetSocialVelocityResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

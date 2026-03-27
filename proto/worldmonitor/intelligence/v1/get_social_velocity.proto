@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// SocialVelocityPost represents a trending Reddit post with velocity scoring.
+message SocialVelocityPost {
+  // Reddit post ID.
+  string id = 1;
+  // Post title.
+  string title = 2;
+  // Subreddit name (without r/ prefix).
+  string subreddit = 3;
+  // Direct URL to the post.
+  string url = 4;
+  // Reddit score (upvotes - downvotes).
+  int32 score = 5;
+  // Upvote ratio (0.0–1.0).
+  double upvote_ratio = 6;
+  // Number of comments.
+  int32 num_comments = 7;
+  // Composite velocity score accounting for recency, score, and ratio.
+  double velocity_score = 8;
+  // Unix epoch milliseconds when posted.
+  int64 created_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message GetSocialVelocityRequest {}
+
+message GetSocialVelocityResponse {
+  repeated SocialVelocityPost posts = 1;
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

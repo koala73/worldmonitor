@@ -5000,6 +5000,152 @@ async function startUsniFleetSeedLoop() {
   }, USNI_SEED_INTERVAL_MS).unref?.();
 }
 
+// ─────────────────────────────────────────────────────────────
+// Shipping Stress Index — Yahoo Finance carrier/ETF market data
+// ─────────────────────────────────────────────────────────────
+
+const SHIPPING_STRESS_REDIS_KEY = 'supply_chain:shipping_stress:v1';
+const SHIPPING_STRESS_TTL = 3600; // 1h — seed runs every 15min (4× safety margin)
+const SHIPPING_STRESS_INTERVAL_MS = 15 * 60 * 1000;
+
+const SHIPPING_CARRIERS = [
+  { symbol: 'BDRY', name: 'Breakwave Dry Bulk ETF',  carrierType: 'etf' },
+  { symbol: 'ZIM',  name: 'ZIM Integrated Shipping', carrierType: 'carrier' },
+  { symbol: 'MATX', name: 'Matson Inc',              carrierType: 'carrier' },
+  { symbol: 'SBLK', name: 'Star Bulk Carriers',      carrierType: 'carrier' },
+  { symbol: 'GOGL', name: 'Golden Ocean Group',       carrierType: 'carrier' },
+];
+
+let shippingStressInFlight = false;
+
+async function seedShippingStress() {
+  if (shippingStressInFlight) { console.log('[ShippingStress] Skipped (in-flight)'); return; }
+  shippingStressInFlight = true;
+  console.log('[ShippingStress] Fetching...');
+  const t0 = Date.now();
+  try {
+    const results = [];
+    for (const carrier of SHIPPING_CARRIERS) {
+      await new Promise(r => setTimeout(r, 150));
+      const quote = await fetchYahooChartDirect(carrier.symbol);
+      if (!quote) continue;
+      results.push({
+        symbol: carrier.symbol,
+        name: carrier.name,
+        carrierType: carrier.carrierType,
+        price: quote.price,
+        changePct: Number(quote.change.toFixed(2)),
+        sparkline: quote.sparkline,
+      });
+    }
+    if (!results.length) {
+      console.warn('[ShippingStress] No carrier data — skipping');
+      return;
+    }
+    const avgChange = results.reduce((a, b) => a + b.changePct, 0) / results.length;
+    const stressScore = Math.min(100, Math.max(0, Math.round(50 - avgChange * 3)));
+    const stressLevel = stressScore >= 75 ? 'critical' : stressScore >= 50 ? 'elevated' : stressScore >= 25 ? 'moderate' : 'low';
+    const payload = { carriers: results, stressScore, stressLevel, fetchedAt: new Date().toISOString() };
+    const ok = await upstashSet(SHIPPING_STRESS_REDIS_KEY, payload, SHIPPING_STRESS_TTL);
+    await upstashSet('seed-meta:supply_chain:shipping_stress', { fetchedAt: Date.now(), recordCount: results.length }, 604800);
+    console.log(`[ShippingStress] Seeded ${results.length} carriers score=${stressScore}/${stressLevel} (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.warn('[ShippingStress] Seed error:', e?.message || e);
+  } finally {
+    shippingStressInFlight = false;
+  }
+}
+
+async function startShippingStressSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[ShippingStress] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[ShippingStress] Seed loop starting (interval ${SHIPPING_STRESS_INTERVAL_MS / 1000 / 60}min)`);
+  seedShippingStress().catch(e => console.warn('[ShippingStress] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedShippingStress().catch(e => console.warn('[ShippingStress] Seed error:', e?.message || e));
+  }, SHIPPING_STRESS_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
+// Social Velocity — Reddit r/worldnews + r/geopolitics trending
+// ─────────────────────────────────────────────────────────────
+
+const SOCIAL_VELOCITY_REDIS_KEY = 'intelligence:social:reddit:v1';
+const SOCIAL_VELOCITY_TTL = 1800; // 30min — seed runs every 10min (3× safety margin)
+const SOCIAL_VELOCITY_INTERVAL_MS = 10 * 60 * 1000;
+const REDDIT_SUBREDDITS = ['worldnews', 'geopolitics'];
+
+let socialVelocityInFlight = false;
+
+async function fetchRedditHot(subreddit) {
+  const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=25&raw_json=1`;
+  const resp = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': 'WorldMonitor/1.0 (contact: info@worldmonitor.app)' },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!resp.ok) { console.warn(`[SocialVelocity] Reddit r/${subreddit} HTTP ${resp.status}`); return []; }
+  const data = await resp.json();
+  return (data?.data?.children || []).map(c => c.data).filter(Boolean);
+}
+
+async function seedSocialVelocity() {
+  if (socialVelocityInFlight) { console.log('[SocialVelocity] Skipped (in-flight)'); return; }
+  socialVelocityInFlight = true;
+  console.log('[SocialVelocity] Fetching...');
+  const t0 = Date.now();
+  try {
+    const nowSec = Date.now() / 1000;
+    const allPosts = [];
+    for (const sub of REDDIT_SUBREDDITS) {
+      await new Promise(r => setTimeout(r, 500));
+      const posts = await fetchRedditHot(sub);
+      for (const p of posts) {
+        const ageSec = Math.max(1, nowSec - (p.created_utc || nowSec));
+        const recencyFactor = Math.exp(-ageSec / (6 * 3600));
+        const velocityScore = Math.log1p(p.score || 1) * (p.upvote_ratio || 0.5) * recencyFactor * 100;
+        allPosts.push({
+          id: String(p.id || ''),
+          title: String(p.title || '').slice(0, 300),
+          subreddit: sub,
+          url: `https://reddit.com${p.permalink || ''}`,
+          score: p.score || 0,
+          upvoteRatio: p.upvote_ratio || 0,
+          numComments: p.num_comments || 0,
+          velocityScore: Math.round(velocityScore * 10) / 10,
+          createdAt: Math.round((p.created_utc || nowSec) * 1000),
+        });
+      }
+    }
+    if (!allPosts.length) {
+      console.warn('[SocialVelocity] No posts — skipping');
+      return;
+    }
+    allPosts.sort((a, b) => b.velocityScore - a.velocityScore);
+    const top = allPosts.slice(0, 30);
+    const payload = { posts: top, fetchedAt: Date.now() };
+    const ok = await upstashSet(SOCIAL_VELOCITY_REDIS_KEY, payload, SOCIAL_VELOCITY_TTL);
+    await upstashSet('seed-meta:intelligence:social-reddit', { fetchedAt: Date.now(), recordCount: top.length }, 604800);
+    console.log(`[SocialVelocity] Seeded ${top.length} posts (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.warn('[SocialVelocity] Seed error:', e?.message || e);
+  } finally {
+    socialVelocityInFlight = false;
+  }
+}
+
+async function startSocialVelocitySeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[SocialVelocity] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[SocialVelocity] Seed loop starting (interval ${SOCIAL_VELOCITY_INTERVAL_MS / 1000 / 60}min)`);
+  seedSocialVelocity().catch(e => console.warn('[SocialVelocity] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedSocialVelocity().catch(e => console.warn('[SocialVelocity] Seed error:', e?.message || e));
+  }, SOCIAL_VELOCITY_INTERVAL_MS).unref?.();
+}
 
 function gzipSyncBuffer(body) {
   try {
@@ -9084,6 +9230,8 @@ server.listen(PORT, () => {
   startPortWatchSeedLoop();
   startCorridorRiskSeedLoop();
   startUsniFleetSeedLoop();
+  startShippingStressSeedLoop();
+  startSocialVelocitySeedLoop();
 });
 
 wss.on('connection', (ws, req) => {
