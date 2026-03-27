@@ -403,7 +403,7 @@ export class CountryIntelManager implements AppModule {
     const params = new URLSearchParams({ country_code: code, lang });
     const trimmed = contextSnapshot.trim();
     if (trimmed.length > 0) {
-      params.set('context', trimmed.slice(0, 2200));
+      params.set('context', trimmed.slice(0, 3800));
     }
 
     const resp = await fetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {
@@ -426,6 +426,10 @@ export class CountryIntelManager implements AppModule {
   ): string {
     const lines: string[] = [];
     lines.push(`Country: ${country} (${code})`);
+
+    // Infrastructure grounding must appear early so it survives the context char limit
+    const infraContext = this.buildInfrastructureContext(code);
+    if (infraContext) lines.push(infraContext);
 
     if (score) {
       lines.push(`CII: ${score.score}/100 (${score.level}), trend=${score.trend}, 24h_change=${score.change24h}`);
@@ -473,9 +477,6 @@ export class CountryIntelManager implements AppModule {
     if (headlines.length > 0) {
       lines.push(`Headlines: ${headlines.slice(0, 6).join(' | ')}`);
     }
-
-    const infraContext = this.buildInfrastructureContext(code);
-    if (infraContext) lines.push(infraContext);
 
     return lines.join('\n');
   }

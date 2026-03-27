@@ -35,7 +35,7 @@ export async function getCountryIntelBrief(
   }
 
   const contextHash = contextSnapshot ? (await sha256Hex(contextSnapshot)).slice(0, 16) : 'base';
-  const cacheKey = `ci-sebuf:v2:${req.countryCode}:${lang}:${contextHash}`;
+  const cacheKey = `ci-sebuf:v3:${req.countryCode}:${lang}:${contextHash}`;
   const countryName = TIER1_COUNTRIES[req.countryCode] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
 
@@ -46,7 +46,7 @@ Generate a structured intelligence brief using EXACTLY this format:
 SITUATION NOW
 [2-3 sentences on what is happening and why it matters for this country]
 
-WHAT THIS MEANS FOR [COUNTRY]
+WHAT THIS MEANS FOR ${countryName.toUpperCase()}
 • [Named entity from infrastructure context]: [mechanism from active event] — [quantified impact if available]
 • [Named entity]: [mechanism] — [impact]
 • [Named entity]: [mechanism] — [impact]
@@ -67,7 +67,7 @@ WATCH ITEMS
 [Signal 1] · [Signal 2] · [Signal 3]
 
 Rules:
-- In "WHAT THIS MEANS FOR [COUNTRY]": use ONLY named infrastructure entities provided in the context (ports, pipelines, cables, waterways). Include actual numbers where available.
+- In "WHAT THIS MEANS FOR ${countryName.toUpperCase()}": use ONLY named infrastructure entities provided in the context (ports, pipelines, cables, waterways). Include actual numbers where available.
 - If no infrastructure context is provided, use named economic sectors or companies instead.
 - Be specific. Avoid generic phrases like "supply chain disruption risk".
 - No speculation beyond what data supports.${lang === 'fr' ? '\n- IMPORTANT: You MUST respond ENTIRELY in French language.' : ''}`;
