@@ -5,7 +5,7 @@ loadEnvFile(import.meta.url);
 
 // ECB SDMX REST API — free, no auth required.
 // CISS: Composite Indicator of Systemic Stress (0–1 range, higher = more systemic stress).
-// Daily frequency, Euro area aggregate; ECB publishes each Friday with ~10-month lag.
+// Weekly frequency, Euro area aggregate; ECB publishes each Friday (SDMX series key uses 'D' but only Friday observations are present).
 const ECB_CISS_URL =
   'https://data-api.ecb.europa.eu/service/data/CISS/D.U2.Z0Z.4F.EC.SS_CI.IDX?format=jsondata&lastNObservations=52';
 

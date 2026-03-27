@@ -100,12 +100,12 @@ export class FSIPanel extends Panel {
       let euFsi: GetEuFsiResponse | null = null;
       try {
         const hydratedEuFsi = getHydratedData('euFsi') as GetEuFsiResponse | undefined;
-        if (hydratedEuFsi && !hydratedEuFsi.unavailable && hydratedEuFsi.latestValue > 0) {
+        if (hydratedEuFsi && !hydratedEuFsi.unavailable && Number.isFinite(hydratedEuFsi.latestValue)) {
           euFsi = hydratedEuFsi;
         } else {
           const econClient = await getEconomicClient();
           const euResp = await econClient.getEuFsi({});
-          if (!euResp.unavailable && euResp.latestValue > 0) euFsi = euResp;
+          if (!euResp.unavailable && Number.isFinite(euResp.latestValue)) euFsi = euResp;
         }
       } catch {
         // CISS unavailable — render without it
