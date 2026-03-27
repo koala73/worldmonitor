@@ -3,6 +3,8 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error -- JS module, no declaration file
 import { getCorsHeaders } from '../_cors.js';
 
+const ALLOWED_AGENTSKILLS_HOSTS = new Set(['agentskills.io', 'www.agentskills.io', 'api.agentskills.io']);
+
 export default async function handler(req: Request): Promise<Response> {
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
 
@@ -33,7 +35,6 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'Invalid URL' }, { status: 400, headers: corsHeaders });
   }
 
-  const ALLOWED_AGENTSKILLS_HOSTS = new Set(['agentskills.io', 'www.agentskills.io', 'api.agentskills.io']);
   if (!ALLOWED_AGENTSKILLS_HOSTS.has(skillUrl.hostname)) {
     return Response.json({ error: 'Only agentskills.io URLs are supported.' }, { status: 400, headers: corsHeaders });
   }
@@ -45,7 +46,7 @@ export default async function handler(req: Request): Promise<Response> {
       redirect: 'manual',
       signal: AbortSignal.timeout(8_000),
     });
-    if (res.status >= 300 && res.status < 400) {
+    if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
       return Response.json({ error: 'Redirects are not allowed.' }, { status: 400, headers: corsHeaders });
     }
     if (!res.ok) {
