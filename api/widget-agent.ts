@@ -104,16 +104,15 @@ export default async function handler(req: Request): Promise<Response> {
   // ── Agent call (POST, SSE stream) ─────────────────────────────────────────
   let rawBody = await req.text();
 
-  // For Clerk PRO users, ensure tier:pro is present in the body (relay requires it
-  // to enable PRO model, bigger HTML limit, and PRO rate-limit bucket).
-  if (isPro) {
-    try {
-      const parsed = JSON.parse(rawBody) as Record<string, unknown>;
-      if (parsed.tier !== 'pro') {
-        rawBody = JSON.stringify({ ...parsed, tier: 'pro' });
-      }
-    } catch { /* malformed body — relay will return 400 */ }
-  }
+  // Normalise tier in body to match the server-validated isPro flag.
+  // Prevents the relay from seeing tier:pro without the matching X-Pro-Key.
+  try {
+    const parsed = JSON.parse(rawBody) as Record<string, unknown>;
+    const expectedTier = isPro ? 'pro' : 'basic';
+    if (parsed.tier !== expectedTier) {
+      rawBody = JSON.stringify({ ...parsed, tier: expectedTier });
+    }
+  } catch { /* malformed body — relay will return 400 */ }
 
   const relayRes = await fetch(`${RELAY_BASE}/widget-agent`, {
     method: 'POST',
