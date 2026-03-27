@@ -72,6 +72,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   fearGreedIndex:    'market:fear-greed:v1',
   crudeInventories:  'economic:crude-inventories:v1',
   ecbFxRates:        'economic:ecb-fx-rates:v1',
+  euFsi:             'economic:fsi-eu:v1',
 };
 
 const SLOW_KEYS = new Set([
@@ -96,6 +97,7 @@ const SLOW_KEYS = new Set([
   'fearGreedIndex',
   'crudeInventories',
   'ecbFxRates',
+  'euFsi',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',

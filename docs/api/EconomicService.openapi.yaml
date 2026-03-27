@@ -624,6 +624,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-eu-fsi:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEuFsi
+            description: GetEuFsi retrieves the ECB CISS (Composite Indicator of Systemic Stress) for the Euro area.
+            operationId: GetEuFsi
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEuFsiResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1735,6 +1761,34 @@ components:
             type: object
             properties:
                 key:
+                    type: string
+                value:
+                    type: number
+                    format: double
+        GetEuFsiRequest:
+            type: object
+        GetEuFsiResponse:
+            type: object
+            properties:
+                latestValue:
+                    type: number
+                    format: double
+                latestDate:
+                    type: string
+                label:
+                    type: string
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EuFsiObservation'
+                seededAt:
+                    type: string
+                unavailable:
+                    type: boolean
+        EuFsiObservation:
+            type: object
+            properties:
+                date:
                     type: string
                 value:
                     type: number

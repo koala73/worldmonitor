@@ -474,6 +474,23 @@ export interface EuYieldCurveData {
   updatedAt: string;
 }
 
+export interface GetEuFsiRequest {
+}
+
+export interface GetEuFsiResponse {
+  latestValue: number;
+  latestDate: string;
+  label: string;
+  history: EuFsiObservation[];
+  seededAt: string;
+  unavailable: boolean;
+}
+
+export interface EuFsiObservation {
+  date: string;
+  value: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1001,6 +1018,29 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetEuYieldCurveResponse;
+  }
+
+  async getEuFsi(req: GetEuFsiRequest, options?: EconomicServiceCallOptions): Promise<GetEuFsiResponse> {
+    let path = "/api/economic/v1/get-eu-fsi";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetEuFsiResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

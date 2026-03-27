@@ -474,6 +474,23 @@ export interface EuYieldCurveData {
   updatedAt: string;
 }
 
+export interface GetEuFsiRequest {
+}
+
+export interface GetEuFsiResponse {
+  latestValue: number;
+  latestDate: string;
+  label: string;
+  history: EuFsiObservation[];
+  seededAt: string;
+  unavailable: boolean;
+}
+
+export interface EuFsiObservation {
+  date: string;
+  value: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -539,6 +556,7 @@ export interface EconomicServiceHandler {
   getEurostatCountryData(ctx: ServerContext, req: GetEurostatCountryDataRequest): Promise<GetEurostatCountryDataResponse>;
   getEuGasStorage(ctx: ServerContext, req: GetEuGasStorageRequest): Promise<GetEuGasStorageResponse>;
   getEuYieldCurve(ctx: ServerContext, req: GetEuYieldCurveRequest): Promise<GetEuYieldCurveResponse>;
+  getEuFsi(ctx: ServerContext, req: GetEuFsiRequest): Promise<GetEuFsiResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -1339,6 +1357,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getEuYieldCurve(ctx, body);
           return new Response(JSON.stringify(result as GetEuYieldCurveResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-eu-fsi",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetEuFsiRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getEuFsi(ctx, body);
+          return new Response(JSON.stringify(result as GetEuFsiResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

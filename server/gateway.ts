@@ -193,6 +193,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-ecb-fx-rates': 'slow',
   '/api/economic/v1/get-eurostat-country-data': 'slow',
   '/api/economic/v1/get-eu-gas-storage': 'slow',
+  '/api/economic/v1/get-eu-fsi': 'slow',
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
