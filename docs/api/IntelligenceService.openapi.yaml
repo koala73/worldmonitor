@@ -594,6 +594,12 @@ paths:
             summary: ListMarketImplications
             description: ListMarketImplications returns AI-generated trade-implication cards from live world state.
             operationId: ListMarketImplications
+            parameters:
+                - name: frameworkId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -1791,6 +1797,9 @@ components:
             description: CrossSourceSignal represents a single detected cross-domain signal event.
         ListMarketImplicationsRequest:
             type: object
+            properties:
+                frameworkId:
+                    type: string
         ListMarketImplicationsResponse:
             type: object
             properties:
