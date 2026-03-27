@@ -7,6 +7,7 @@ import type {
 import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
+import { isCallerPremium } from '../../../_shared/premium-check';
 
 const INTEL_CACHE_TTL = 7200;
 
@@ -34,7 +35,8 @@ export async function getCountryIntelBrief(
     contextSnapshot = '';
   }
 
-  const frameworkRaw = typeof req.framework === 'string' ? req.framework.slice(0, 2000) : '';
+  const isPremium = await isCallerPremium(ctx.request);
+  const frameworkRaw = isPremium && typeof req.framework === 'string' ? req.framework.slice(0, 2000) : '';
   const [contextHashFull, frameworkHashFull] = await Promise.all([
     contextSnapshot ? sha256Hex(contextSnapshot) : Promise.resolve('base'),
     frameworkRaw    ? sha256Hex(frameworkRaw)    : Promise.resolve(''),

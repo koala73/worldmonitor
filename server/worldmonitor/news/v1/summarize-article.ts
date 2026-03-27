@@ -15,6 +15,7 @@ import {
 import { CHROME_UA } from '../../../_shared/constants';
 import { isProviderAvailable } from '../../../_shared/llm-health';
 import { sanitizeHeadlinesLight, sanitizeHeadlines, sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
+import { isCallerPremium } from '../../../_shared/premium-check';
 
 // ======================================================================
 // Reasoning preamble detection
@@ -34,10 +35,12 @@ export function hasReasoningPreamble(text: string): boolean {
 // ======================================================================
 
 export async function summarizeArticle(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: SummarizeArticleRequest,
 ): Promise<SummarizeArticleResponse> {
-  const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en', systemAppend = '' } = req;
+  const isPremium = await isCallerPremium(ctx.request);
+  const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
 
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;

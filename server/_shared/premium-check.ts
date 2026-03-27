@@ -1,0 +1,20 @@
+// @ts-expect-error — JS module, no declaration file
+import { validateApiKey } from '../../api/_api-key.js';
+import { validateBearerToken } from '../auth-session';
+
+/**
+ * Returns true when the caller has a valid API key OR a PRO bearer token.
+ * Used by handlers where the RPC endpoint is public but certain fields
+ * (e.g. framework/systemAppend) should only be honored for premium callers.
+ */
+export async function isCallerPremium(request: Request): Promise<boolean> {
+  const keyCheck = validateApiKey(request, {}) as { valid: boolean };
+  if (keyCheck.valid) return true;
+
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const session = await validateBearerToken(authHeader.slice(7));
+    return session.valid && session.role === 'pro';
+  }
+  return false;
+}

@@ -8,12 +8,13 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
 import { buildDeductionPrompt, postProcessDeductionOutput } from './deduction-prompt';
+import { isCallerPremium } from '../../../_shared/premium-check';
 
 const DEDUCT_TIMEOUT_MS = 120_000;
 const DEDUCT_CACHE_TTL = 3600;
 
 export async function deductSituation(
-    _ctx: ServerContext,
+    ctx: ServerContext,
     req: DeductSituationRequest,
 ): Promise<DeductSituationResponse> {
     const MAX_QUERY_LEN = 500;
@@ -22,7 +23,8 @@ export async function deductSituation(
 
     const query = typeof req.query === 'string' ? req.query.slice(0, MAX_QUERY_LEN).trim() : '';
     const geoContext = typeof req.geoContext === 'string' ? req.geoContext.slice(0, MAX_GEO_LEN).trim() : '';
-    const framework = typeof req.framework === 'string' ? req.framework.slice(0, MAX_FRAMEWORK_LEN) : '';
+    const isPremium = await isCallerPremium(ctx.request);
+    const framework = isPremium && typeof req.framework === 'string' ? req.framework.slice(0, MAX_FRAMEWORK_LEN) : '';
 
     if (!query) return { analysis: '', model: '', provider: 'skipped' };
 
