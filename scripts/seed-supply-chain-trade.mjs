@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey, resolveProxy, fredFetchJson } from './_seed-utils.mjs';
 import { BUDGET_LAB_TARIFFS_URL, htmlToPlainText, toIsoDate, parseBudgetLabEffectiveTariffHtml } from './_trade-parse-utils.mjs';
 
 loadEnvFile(import.meta.url);
+
+const _proxyAuth = resolveProxy();
 
 // ─── Keys (must match handler cache keys exactly) ───
 const KEYS = {
@@ -56,12 +58,11 @@ async function fetchShippingRates() {
         series_id: cfg.seriesId, api_key: apiKey, file_type: 'json',
         frequency: cfg.frequency, sort_order: 'desc', limit: '24',
       });
-      const resp = await fetch(`https://api.stlouisfed.org/fred/series/observations?${params}`, {
-        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(10_000),
+      const data = await fredFetchJson(`https://api.stlouisfed.org/fred/series/observations?${params}`, _proxyAuth).catch((e) => {
+        console.warn(`  FRED ${cfg.seriesId}: ${e.message}`);
+        return null;
       });
-      if (!resp.ok) { console.warn(`  FRED ${cfg.seriesId}: HTTP ${resp.status}`); continue; }
-      const data = await resp.json();
+      if (!data) continue;
       const observations = (data.observations || [])
         .map(o => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
         .filter(Boolean).reverse();

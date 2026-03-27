@@ -4,9 +4,11 @@
 // FRED mirrors the national BLS series with identical data and no IP restrictions.
 // Metro-area unemployment rates (LAUMT*) are dropped; no FRED equivalent exists.
 
-import { loadEnvFile, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, fredFetchJson } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
+
+const _proxyAuth = resolveProxy();
 
 const CANONICAL_KEY = 'bls:series:v1';
 const KEY_PREFIX = 'bls:series';
@@ -45,14 +47,7 @@ async function fetchFredSeries(fredId) {
     observation_start: startDate,
   });
 
-  const resp = await fetch(`https://api.stlouisfed.org/fred/series/observations?${params}`, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!resp.ok) throw new Error(`FRED HTTP ${resp.status} for ${fredId}`);
-
-  const data = await resp.json();
+  const data = await fredFetchJson(`https://api.stlouisfed.org/fred/series/observations?${params}`, _proxyAuth);
   const raw = data?.observations ?? [];
 
   const observations = raw

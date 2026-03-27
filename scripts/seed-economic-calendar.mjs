@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, resolveProxy, fredFetchJson } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
+
+const _proxyAuth = resolveProxy();
 
 const CANONICAL_KEY = 'economic:econ-calendar:v1';
 const CACHE_TTL = 129600; // 36h — 3× a 12h cron interval
@@ -163,13 +165,7 @@ async function fetchFredReleaseDates(releaseId, apiKey, today, toDate) {
     `&api_key=${apiKey}` +
     `&file_type=json`;
 
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`FRED release/dates HTTP ${resp.status} (release_id=${releaseId})`);
-
-  const data = await resp.json();
+  const data = await fredFetchJson(url, _proxyAuth);
   return (data.release_dates ?? [])
     .map((e) => e.date)
     .filter((d) => d >= today && d <= toDate);
