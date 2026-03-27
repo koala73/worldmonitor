@@ -231,6 +231,21 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     apiKeyHint.textContent = extractAuthHint(matchingPreset.authNote);
   }
 
+  // When user manually edits the URL, deselect any active preset and reset to raw mode
+  urlInput.addEventListener('input', () => {
+    const typed = urlInput.value.trim();
+    const presetUrls = Array.from(modal.querySelectorAll<HTMLElement>('.mcp-preset-card'))
+      .map(c => c.dataset.url ?? '');
+    if (!presetUrls.includes(typed)) {
+      modal.querySelectorAll('.mcp-preset-card').forEach(c => c.classList.remove('selected'));
+      activeApiKeyHeader = '';
+      apiKeyGroup.style.display = 'none';
+      apiKeyHint.textContent = '';
+      authHeaderGroup.style.display = '';
+      toSimpleBtn.style.display = 'none';
+    }
+  });
+
   // Preset card click handlers
   modal.querySelectorAll<HTMLElement>('.mcp-preset-card').forEach(card => {
     card.addEventListener('click', () => {
