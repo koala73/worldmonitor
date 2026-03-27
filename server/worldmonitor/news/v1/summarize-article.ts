@@ -123,8 +123,9 @@ export async function summarizeArticle(
           lang,
         });
 
-        const effectiveSystemPrompt = systemAppend
-          ? `${systemPrompt}\n\n---\n\n${systemAppend}`
+        const sanitizedAppend = systemAppend ? sanitizeForPrompt(systemAppend) : '';
+        const effectiveSystemPrompt = sanitizedAppend
+          ? `${systemPrompt}\n\n---\n\n${sanitizedAppend}`
           : systemPrompt;
 
         const response = await fetch(apiUrl, {

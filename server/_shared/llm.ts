@@ -121,6 +121,23 @@ export function stripThinkingTags(text: string): string {
   return s;
 }
 
+const INJECTION_PHRASES = [
+  'ignore all', 'ignore previous', 'disregard', 'override', 'forget your',
+  'new instructions', 'from now on', 'you are now', 'act as', 'pretend you',
+  'your new role', 'system:', '\u0000',
+];
+
+function sanitizeSystemAppend(text: string): string {
+  return text
+    .split('\n')
+    .filter(line => {
+      const lower = line.toLowerCase().trim();
+      return !INJECTION_PHRASES.some(phrase => lower.includes(phrase));
+    })
+    .join('\n')
+    .trim();
+}
+
 const PROVIDER_CHAIN = ['ollama', 'groq', 'openrouter', 'generic'] as const;
 const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
 
@@ -184,10 +201,13 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
   let messages = rawMessages;
   const firstMsg = messages[0];
   if (systemAppend && firstMsg && firstMsg.role === 'system') {
-    messages = [
-      { role: 'system', content: `${firstMsg.content}\n\n---\n\n${systemAppend}` },
-      ...messages.slice(1),
-    ];
+    const sanitized = sanitizeSystemAppend(systemAppend);
+    if (sanitized) {
+      messages = [
+        { role: 'system', content: `${firstMsg.content}\n\n---\n\n${sanitized}` },
+        ...messages.slice(1),
+      ];
+    }
   }
 
   const providers = resolveProviderChain({ forcedProvider, providerOrder });
