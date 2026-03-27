@@ -37,14 +37,29 @@ function getMcpRatelimit(): Ratelimit | null {
 // ---------------------------------------------------------------------------
 // Tool registry
 // ---------------------------------------------------------------------------
-interface ToolDef {
+interface BaseToolDef {
   name: string;
   description: string;
   inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+}
+
+// Cache-read tool: reads one or more Redis keys and returns them with staleness info.
+interface CacheToolDef extends BaseToolDef {
   _cacheKeys: string[];
   _seedMetaKey: string;
   _maxStaleMin: number;
+  _execute?: never;
 }
+
+// AI inference tool: calls an internal RPC endpoint and returns the raw response.
+interface RpcToolDef extends BaseToolDef {
+  _cacheKeys?: never;
+  _seedMetaKey?: never;
+  _maxStaleMin?: never;
+  _execute: (params: Record<string, unknown>, base: string, apiKey: string) => Promise<unknown>;
+}
+
+type ToolDef = CacheToolDef | RpcToolDef;
 
 const TOOL_REGISTRY: ToolDef[] = [
   {
@@ -218,6 +233,126 @@ const TOOL_REGISTRY: ToolDef[] = [
     _seedMetaKey: 'seed-meta:forecast:predictions',
     _maxStaleMin: 90,
   },
+
+  // -------------------------------------------------------------------------
+  // AI inference tools — call LLM endpoints, not cached Redis reads
+  // -------------------------------------------------------------------------
+  {
+    name: 'get_social_velocity',
+    description: 'Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['intelligence:social:reddit:v1'],
+    _seedMetaKey: 'seed-meta:intelligence:social-reddit',
+    _maxStaleMin: 30,
+  },
+  {
+    name: 'get_world_brief',
+    description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines and produces an LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        geo_context: { type: 'string', description: 'Optional focus context (e.g. "Middle East tensions", "US-China trade war")' },
+      },
+      required: [],
+    },
+    _execute: async (params, base, apiKey) => {
+      // Step 1: fetch current geopolitical headlines from the live feed
+      const digestRes = await fetch(`${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`, {
+        headers: { 'X-WorldMonitor-Key': apiKey },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
+      type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
+      const digest = await digestRes.json() as DigestPayload;
+      const headlines = Object.values(digest.categories ?? {})
+        .flatMap(cat => cat.items ?? [])
+        .map(item => item.title ?? '')
+        .filter(Boolean)
+        .slice(0, 10);
+      // Step 2: summarize with LLM
+      const briefRes = await fetch(`${base}/api/news/v1/summarize-article`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey },
+        body: JSON.stringify({
+          provider: 'groq',
+          headlines,
+          mode: 'brief',
+          geoContext: String(params.geo_context ?? ''),
+          variant: 'geo',
+          lang: 'en',
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!briefRes.ok) throw new Error(`summarize-article HTTP ${briefRes.status}`);
+      return briefRes.json();
+    },
+  },
+  {
+    name: 'get_country_brief',
+    description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, e.g. "US", "DE", "CN", "IR"' },
+        framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
+      },
+      required: ['country_code'],
+    },
+    _execute: async (params, base, apiKey) => {
+      const res = await fetch(`${base}/api/intelligence/v1/get-country-intel-brief`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey },
+        body: JSON.stringify({ countryCode: String(params.country_code ?? ''), framework: String(params.framework ?? '') }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
+      return res.json();
+    },
+  },
+  {
+    name: 'analyze_situation',
+    description: 'AI geopolitical situation analysis (DeductionPanel). Provide a query and optional geo-political context; returns an LLM-powered analytical deduction with confidence and supporting signals.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The question or situation to analyze, e.g. "What are the implications of the Taiwan strait escalation for semiconductor supply chains?"' },
+        context: { type: 'string', description: 'Optional additional geo-political context to include in the analysis' },
+      },
+      required: ['query'],
+    },
+    _execute: async (params, base, apiKey) => {
+      const res = await fetch(`${base}/api/intelligence/v1/deduct-situation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey },
+        body: JSON.stringify({ query: String(params.query ?? ''), geoContext: String(params.context ?? '') }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) throw new Error(`deduct-situation HTTP ${res.status}`);
+      return res.json();
+    },
+  },
+  {
+    name: 'generate_forecasts',
+    description: 'Generate live AI geopolitical and economic forecasts. Unlike get_forecast_predictions (pre-computed cache), this calls the forecasting model directly for fresh probability estimates. Note: slower than cache tools.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        domain: { type: 'string', description: 'Forecast domain: "geopolitical", "economic", "military", "climate", or empty for all domains' },
+        region: { type: 'string', description: 'Geographic region filter, e.g. "Middle East", "Europe", "Asia Pacific", or empty for global' },
+      },
+      required: [],
+    },
+    _execute: async (params, base, apiKey) => {
+      const res = await fetch(`${base}/api/forecast/v1/get-forecasts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey },
+        body: JSON.stringify({ domain: String(params.domain ?? ''), region: String(params.region ?? '') }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!res.ok) throw new Error(`get-forecasts HTTP ${res.status}`);
+      return res.json();
+    },
+  },
 ];
 
 // Public shape for tools/list (strip internal _-prefixed fields)
@@ -241,7 +376,7 @@ function rpcError(id: unknown, code: number, message: string): Response {
 // ---------------------------------------------------------------------------
 // Tool execution
 // ---------------------------------------------------------------------------
-async function executeTool(tool: ToolDef): Promise<{ cached_at: string | null; stale: boolean; data: Record<string, unknown> }> {
+async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | null; stale: boolean; data: Record<string, unknown> }> {
   const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
   const metaRead = readJsonFromUpstash(tool._seedMetaKey);
   const [results, meta] = await Promise.all([Promise.all(reads), metaRead]);
@@ -347,7 +482,13 @@ export default async function handler(req: Request): Promise<Response> {
         return rpcError(id, -32602, `Unknown tool: ${p.name}`);
       }
       try {
-        const result = await executeTool(tool);
+        let result: unknown;
+        if (tool._execute) {
+          const origin = new URL(req.url).origin;
+          result = await tool._execute(p.arguments ?? {}, origin, apiKey);
+        } else {
+          result = await executeTool(tool);
+        }
         return rpcOk(id, {
           content: [{ type: 'text', text: JSON.stringify(result) }],
         }, corsHeaders);
