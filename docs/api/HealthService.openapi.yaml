@@ -106,4 +106,16 @@ components:
                 sourceName:
                     type: string
                     description: Source name (e.g., "WHO", "ProMED", "HealthMap").
+                lat:
+                    type: number
+                    format: double
+                    description: Precise latitude from source (overrides country centroid on map when non-zero).
+                lng:
+                    type: number
+                    format: double
+                    description: Precise longitude from source (overrides country centroid on map when non-zero).
+                cases:
+                    type: integer
+                    format: int32
+                    description: Case count if reported by source (0 = unknown).
             description: DiseaseOutbreakItem represents a single disease outbreak event.
