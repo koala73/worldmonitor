@@ -334,7 +334,7 @@ window.addEventListener('securitypolicyviolation', (e) => {
   const src = e.sourceFile ?? '';
   const blocked = e.blockedURI ?? '';
   // Skip violations originating from browser extensions or injected scripts
-  if (/^(?:chrome|moz|safari)-extension:/.test(src) || /^(?:chrome|moz|safari)-extension:/.test(blocked)) return;
+  if (/^(?:chrome|moz|safari(?:-web)?)-extension:/.test(src) || /^(?:chrome|moz|safari(?:-web)?)-extension:/.test(blocked)) return;
   if (/^blob:/.test(src)) return;
   Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
     level: 'warning',
