@@ -572,20 +572,20 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
-    /api/economic/v1/get-eu-gas-storage:
+    /api/economic/v1/get-eu-yield-curve:
         get:
             tags:
                 - EconomicService
-            summary: GetEuGasStorage
-            description: GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
-            operationId: GetEuGasStorage
+            summary: GetEuYieldCurve
+            description: GetEuYieldCurve retrieves the ECB Euro Area AAA sovereign yield curve (Svensson model spot rates).
+            operationId: GetEuYieldCurve
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/GetEuGasStorageResponse'
+                                $ref: '#/components/schemas/GetEuYieldCurveResponse'
                 "400":
                     description: Validation error
                     content:
@@ -1623,54 +1623,42 @@ components:
                     type: string
                     description: Unit of measurement (e.g. "%").
             description: EurostatMetric holds a single economic metric value for a country.
-        GetEuGasStorageRequest:
+        GetEuYieldCurveRequest:
             type: object
-            description: GetEuGasStorageRequest is empty — returns latest EU aggregate snapshot.
-        GetEuGasStorageResponse:
+            description: GetEuYieldCurveRequest fetches the ECB Euro Area AAA sovereign yield curve.
+        GetEuYieldCurveResponse:
             type: object
             properties:
-                fillPct:
-                    type: number
-                    format: double
-                    description: Current storage fill level as a percentage of working gas volume (0–100).
-                fillPctChange1d:
-                    type: number
-                    format: double
-                    description: 1-day change in fill percentage (positive = injecting, negative = withdrawing).
-                gasDaysConsumption:
-                    type: number
-                    format: double
-                    description: Approximate days of consumption remaining at average EU winter drawdown rate.
-                trend:
-                    type: string
-                    description: 'Current storage trend: "injecting", "withdrawing", or "stable".'
-                history:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/EuGasStorageHistoryEntry'
-                seededAt:
-                    type: string
-                    format: int64
-                    description: UTC ms timestamp when seed data was written.
-                updatedAt:
-                    type: string
-                    description: Calendar date of the most recent data point (YYYY-MM-DD).
+                data:
+                    $ref: '#/components/schemas/EuYieldCurveData'
                 unavailable:
                     type: boolean
-                    description: True when upstream data is unavailable (fallback result).
-            description: GetEuGasStorageResponse contains the EU aggregate gas storage snapshot.
-        EuGasStorageHistoryEntry:
+                    description: True if data is not yet available in cache.
+            description: GetEuYieldCurveResponse contains the latest ECB Euro Area AAA sovereign yield curve.
+        EuYieldCurveData:
             type: object
             properties:
                 date:
                     type: string
-                    description: Calendar date (YYYY-MM-DD).
-                fillPct:
+                    description: Date of the observation (YYYY-MM or YYYY-MM-DD).
+                rates:
+                    type: object
+                    additionalProperties:
+                        type: number
+                        format: double
+                    description: 'Spot rates by tenor. Keys: "1Y", "2Y", "5Y", "10Y", "20Y", "30Y".'
+                source:
+                    type: string
+                    description: Data source identifier (e.g. "ecb-aaa").
+                updatedAt:
+                    type: string
+                    description: ISO 8601 timestamp when this was last seeded.
+            description: EuYieldCurveData holds a single observation of the ECB Euro Area AAA yield curve.
+        RatesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
                     type: number
                     format: double
-                    description: Storage fill level as a percentage of working gas volume capacity.
-                gasTwh:
-                    type: number
-                    format: double
-                    description: Working gas volume in storage (TWh).
-            description: EuGasStorageHistoryEntry represents one day of EU aggregate gas storage data.
