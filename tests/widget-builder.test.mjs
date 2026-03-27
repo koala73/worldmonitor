@@ -1134,6 +1134,16 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
+  it('widget document builder injects panel CSS classes for design-system alignment', () => {
+    assert.ok(san.includes('.panel-header'), 'must define .panel-header');
+    assert.ok(san.includes('.panel-title'), 'must define .panel-title');
+    assert.ok(san.includes('.panel-tabs'), 'must define .panel-tabs');
+    assert.ok(san.includes('.panel-tab'), 'must define .panel-tab');
+    assert.ok(san.includes('.disp-stats-grid'), 'must define .disp-stats-grid');
+    assert.ok(san.includes('.disp-stat-box'), 'must define .disp-stat-box');
+    assert.ok(san.includes('--accent'), 'must define --accent CSS variable');
+  });
+
   it('widget document builder injects Chart.js from jsdelivr so new Chart() is available', () => {
     assert.ok(
       san.includes('cdn.jsdelivr.net') && san.includes('chart.js'),

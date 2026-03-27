@@ -51,7 +51,7 @@ function buildWidgetDoc(bodyContent: string): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
-:root{--bg:#0a0a0a;--surface:#141414;--text:#e8e8e8;--text-secondary:#ccc;--text-dim:#888;--text-muted:#666;--border:#2a2a2a;--border-subtle:#1a1a1a;--overlay-subtle:rgba(255,255,255,0.03);--green:#44ff88;--red:#ff4444;--yellow:#ffaa00}
+:root{--bg:#0a0a0a;--surface:#141414;--text:#e8e8e8;--text-secondary:#ccc;--text-dim:#888;--text-muted:#666;--border:#2a2a2a;--border-subtle:#1a1a1a;--overlay-subtle:rgba(255,255,255,0.03);--green:#44ff88;--red:#ff4444;--yellow:#ffaa00;--accent:#44ff88}
 body{margin:0;padding:12px;background:var(--bg);color:var(--text);font-family:'SF Mono','Monaco','Cascadia Code','Fira Code','DejaVu Sans Mono','Liberation Mono',monospace;font-size:12px;line-height:1.5;overflow-y:auto;box-sizing:border-box}
 *{box-sizing:inherit;font-family:inherit!important}
 table{border-collapse:collapse;width:100%}
@@ -59,6 +59,16 @@ th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;
 td{padding:5px 8px;border-bottom:1px solid var(--border-subtle);color:var(--text-secondary)}
 .change-positive{color:var(--green)}
 .change-negative{color:var(--red)}
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--overlay-subtle);border-bottom:1px solid var(--border);margin:-12px -12px 0}
+.panel-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text)}
+.panel-tabs{display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--border);margin:0 -12px}
+.panel-tab{font-size:11px;font-weight:500;color:var(--text-muted);padding:4px 10px;border:none;border-bottom:2px solid transparent;cursor:pointer;background:none;letter-spacing:0.5px;text-transform:uppercase}
+.panel-tab:hover{color:var(--text);background:var(--overlay-subtle)}
+.panel-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.disp-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--border);margin-top:8px}
+.disp-stat-box{background:var(--bg);padding:8px}
+.disp-stat-value{display:block;font-size:16px;font-variant-numeric:tabular-nums;color:var(--text);font-weight:500}
+.disp-stat-label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-top:2px}
 </style>
 </head>
 <body>${bodyContent}</body>

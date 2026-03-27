@@ -8715,18 +8715,65 @@ Generate ONLY the <body> content — NO <!DOCTYPE>, NO <html>, NO <head> wrapper
 
 ## Design — match the dashboard (CRITICAL)
 The iframe host page already applies: background #0a0a0a, color #e8e8e8, monospace font stack, font-size 12px.
-CSS variables are pre-defined in the iframe: --bg, --surface, --text, --text-secondary, --text-dim, --text-muted, --border, --border-subtle, --green (#44ff88), --red (#ff4444), --overlay-subtle.
+CSS variables are pre-defined in the iframe: --bg, --surface, --text, --text-secondary, --text-dim, --text-muted, --border, --border-subtle, --green (#44ff88), --red (#ff4444), --accent (#44ff88), --overlay-subtle.
 
-- ALWAYS use these CSS variables for colors — never hardcode hex values like #3b82f6, #1a1a2e, etc.
-- NEVER override font-family (the monospace stack is already set — do not change it)
-- NEVER use border-radius > 4px (no large rounded cards)
+- ALWAYS use CSS variables for colors — never hardcode hex values like #3b82f6, #1a1a2e, etc.
+- NEVER override font-family (already set — do not change it)
+- NEVER use border-radius > 4px
+- NEVER use large bold titles (h1/h2/h3) — use .panel-title or section labels only
 - Keep row padding tight: 5–8px vertical, 8px horizontal
-- Labels: text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; color: var(--text-muted)
 - Numbers/prices: font-variant-numeric: tabular-nums
 - Positive values: color: var(--green) | Negative values: color: var(--red)
 - Design for 400px height with overflow-y: auto for larger content
-- Use inline styles referencing CSS variables only — NEVER add a <style> block (it loads after the head CSS and will override the monospace font and dark palette)
-- Always include a source footer
+- NEVER add a <style> block — use the pre-defined classes below and inline styles only
+- Always include a source footer: <div style="font-size:10px;color:var(--text-muted);padding:6px 8px">Source: WorldMonitor</div>
+
+## Pre-defined CSS classes — use these, do NOT reinvent them
+
+Panel structure (copy exactly):
+<div class="panel-header"><span class="panel-title">SECTION TITLE</span><span style="color:var(--text-muted);font-size:10px">LIVE</span></div>
+<div class="panel-tabs">
+  <button class="panel-tab active" onclick="switchTab(this,'line')">LINE</button>
+  <button class="panel-tab" onclick="switchTab(this,'bar')">BAR</button>
+</div>
+
+Stat boxes (for key metrics):
+<div class="disp-stats-grid">
+  <div class="disp-stat-box">
+    <span class="disp-stat-value">$64.51</span>
+    <span class="disp-stat-label">WTI CRUDE</span>
+    <span class="change-negative">▼ vs prior yr</span>
+  </div>
+  <div class="disp-stat-box">
+    <span class="disp-stat-value change-positive">+2.3%</span>
+    <span class="disp-stat-label">GROWTH</span>
+  </div>
+</div>
+
+Chart.js (always read colors from CSS variables, not hardcoded hex):
+<canvas id="chart" style="width:100%;height:200px;margin-top:8px"></canvas>
+<script>
+const s = getComputedStyle(document.documentElement);
+const green = s.getPropertyValue('--green').trim();
+const red = s.getPropertyValue('--red').trim();
+const muted = s.getPropertyValue('--text-muted').trim();
+new Chart(document.getElementById('chart'), {
+  type: 'line',
+  data: { labels: DATA.labels, datasets: [{ label: 'Oil', data: DATA.oil, borderColor: red, tension: 0.3, pointRadius: 2, fill: false }] },
+  options: { responsive: true, plugins: { legend: { labels: { color: muted, font: { size: 10 } } } },
+    scales: { x: { ticks: { color: muted, font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+              y: { ticks: { color: muted, font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } } } }
+});
+</script>
+
+Tab switching (standard pattern):
+<script>
+function switchTab(btn, key) {
+  btn.closest('.panel-tabs').querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('[data-tab]').forEach(el => el.style.display = el.dataset.tab === key ? '' : 'none');
+}
+</script>
 
 ## Output format
 1. First line MUST be: <!-- title: Your Widget Title -->
