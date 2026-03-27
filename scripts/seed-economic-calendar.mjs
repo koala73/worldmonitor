@@ -60,13 +60,20 @@ async function fetchFomcDates(fallback) {
       May: '05', June: '06', July: '07', August: '08',
       September: '09', October: '10', November: '11', December: '12',
     };
+    const MON = Object.keys(MONTHS).join('|');
     const dates = [];
-    // Matches "January 27-28, 2026" or "January 27–28, 2026"; captures day2 and year
-    const re = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}[-\u2013](\d{1,2})[^,]*,\s*(20\d{2})/g;
+    // Same-month: "January 27-28, 2026" → day2=28
+    const reSame = new RegExp(`\\b(${MON})\\s+\\d{1,2}[-\u2013](\\d{1,2})\\*?\\s*,\\s*(20\\d{2})`, 'g');
+    // Cross-month: "January 28 - February 1, 2026" → month2+day2
+    const reCross = new RegExp(`\\b${MON}\\s+\\d{1,2}\\s*[-\u2013]\\s*(${MON})\\s+(\\d{1,2})\\*?\\s*,\\s*(20\\d{2})`, 'g');
     let m;
-    while ((m = re.exec(html)) !== null) {
+    while ((m = reSame.exec(html)) !== null) {
       const [, month, day2, year] = m;
       dates.push(`${year}-${MONTHS[month]}-${day2.padStart(2, '0')}`);
+    }
+    while ((m = reCross.exec(html)) !== null) {
+      const [, month2, day2, year] = m;
+      dates.push(`${year}-${MONTHS[month2]}-${day2.padStart(2, '0')}`);
     }
 
     const unique = [...new Set(dates)].sort();
@@ -92,13 +99,16 @@ async function fetchEcbCouncilDates(fallback) {
     const html = await resp.text();
 
     const dates = [];
-    // Each calendar entry has datetime="YYYY-MM-DD"; check the next ~600 chars for "monetary policy" + "Day 2"
+    // Find all datetime="YYYY-MM-DD" positions; for each, scan only up to the NEXT datetime= attr
+    // to avoid bleeding context from adjacent calendar entries
     const dateRe = /datetime="(\d{4}-\d{2}-\d{2})"/g;
-    let m;
-    while ((m = dateRe.exec(html)) !== null) {
-      const ctx = html.slice(m.index, m.index + 600);
+    const allMatches = [...html.matchAll(dateRe)];
+    for (let i = 0; i < allMatches.length; i++) {
+      const match = allMatches[i];
+      const nextIdx = allMatches[i + 1]?.index ?? match.index + 800;
+      const ctx = html.slice(match.index, nextIdx);
       if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
-        dates.push(m[1]);
+        dates.push(match[1]);
       }
     }
 
@@ -220,10 +230,14 @@ async function fetchEconomicCalendar() {
 
   await Promise.all(
     FRED_RELEASES.map(async ({ id, event, unit }) => {
-      const dates = await fetchFredReleaseDates(id, apiKey, today, toDate);
-      console.log(`  ${event} (release_id=${id}): ${dates.length} upcoming date(s)`);
-      for (const date of dates) {
-        events.push({ event, country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit });
+      try {
+        const dates = await fetchFredReleaseDates(id, apiKey, today, toDate);
+        console.log(`  ${event} (release_id=${id}): ${dates.length} upcoming date(s)`);
+        for (const date of dates) {
+          events.push({ event, country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit });
+        }
+      } catch (err) {
+        console.warn(`  FRED release ${id} (${event}) failed: ${err.message} — skipping`);
       }
     }),
   );
