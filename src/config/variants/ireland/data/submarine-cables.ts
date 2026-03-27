@@ -107,11 +107,21 @@ export const IRELAND_SUBMARINE_CABLES: SubmarineCable[] = [
     name: 'Hibernia Express',
     route: 'New York → Halifax → Dublin → London',
     destination: 'transatlantic',
+    // FR #191: Detailed waypoints for smooth Great Circle curve
+    // 12 points form a natural northward arc across the Atlantic
     path: [
-      [-74.006, 40.7128],   // New York
-      [-63.5752, 44.6488],  // Halifax
-      [-6.2603, 53.3498],   // Dublin
-      [-0.1278, 51.5074],   // London
+      [-74.006, 40.7128],   // 1. New York (landing point)
+      [-70.5, 41.5],        // 2. Atlantic West (offshore NY)
+      [-67.0, 42.8],        // 3. Approaching Canadian coast
+      [-63.5752, 44.6488],  // 4. Halifax (landing point)
+      [-55.0, 48.0],        // 5. South of Newfoundland
+      [-45.0, 51.5],        // 6. Mid-Atlantic (Great Circle apex)
+      [-35.0, 53.0],        // 7. Eastern Atlantic
+      [-25.0, 53.5],        // 8. South of Iceland
+      [-15.0, 53.2],        // 9. West of Ireland
+      [-6.2603, 53.3498],   // 10. Dublin (landing point)
+      [-3.5, 52.5],         // 11. Irish Sea
+      [-0.1278, 51.5074],   // 12. London (landing point)
     ],
     landingPoints: [
       { city: 'New York', country: 'USA', lat: 40.7128, lng: -74.006 },
