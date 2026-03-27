@@ -494,6 +494,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-crude-inventories:
+        get:
+            tags:
+                - EconomicService
+            summary: GetCrudeInventories
+            description: GetCrudeInventories retrieves the 8 most recent weeks of US crude oil stockpile data from EIA (WCRSTUS1).
+            operationId: GetCrudeInventories
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCrudeInventoriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1399,3 +1425,34 @@ components:
                     type: string
                 unit:
                     type: string
+        GetCrudeInventoriesRequest:
+            type: object
+            description: GetCrudeInventoriesRequest is the request message for GetCrudeInventories.
+        GetCrudeInventoriesResponse:
+            type: object
+            properties:
+                weeks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CrudeInventoryWeek'
+                latestPeriod:
+                    type: string
+                    description: Timestamp of the most recent EIA data point (ISO 8601).
+            description: GetCrudeInventoriesResponse contains the 8 most recent weeks of US crude oil inventory data.
+        CrudeInventoryWeek:
+            type: object
+            properties:
+                period:
+                    type: string
+                    description: ISO week period (YYYY-MM-DD, Monday of the EIA report week).
+                stocksMb:
+                    type: number
+                    format: double
+                    description: Total crude oil stocks in millions of barrels.
+                weeklyChangeMb:
+                    type: number
+                    format: double
+                    description: |-
+                        Week-over-week change in millions of barrels. Positive = build (bearish), negative = draw (bullish).
+                         Absent for the oldest week when no prior week is available for comparison.
+            description: CrudeInventoryWeek represents one week of US crude oil stockpile data from EIA WCRSTUS1.
