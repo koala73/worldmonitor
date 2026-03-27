@@ -114,6 +114,7 @@ export interface GetShippingStressResponse {
   stressScore: number;
   stressLevel: string;
   fetchedAt: number;
+  upstreamUnavailable: boolean;
 }
 
 export interface ShippingStressCarrier {

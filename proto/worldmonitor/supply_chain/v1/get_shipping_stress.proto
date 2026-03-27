@@ -29,4 +29,6 @@ message GetShippingStressResponse {
   // "low" | "moderate" | "elevated" | "critical".
   string stress_level = 3;
   int64 fetched_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Set to true when upstream data source is unavailable and cached data is stale.
+  bool upstream_unavailable = 5;
 }

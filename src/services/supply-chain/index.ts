@@ -77,7 +77,7 @@ export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsRespon
   }
 }
 
-const emptyShippingStress: GetShippingStressResponse = { carriers: [], stressScore: 0, stressLevel: 'low', fetchedAt: 0 };
+const emptyShippingStress: GetShippingStressResponse = { carriers: [], stressScore: 0, stressLevel: 'low', fetchedAt: 0, upstreamUnavailable: false };
 
 export async function fetchShippingStress(): Promise<GetShippingStressResponse> {
   const hydrated = getHydratedData('shippingStress') as GetShippingStressResponse | undefined;

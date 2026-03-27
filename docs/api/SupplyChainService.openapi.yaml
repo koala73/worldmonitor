@@ -364,6 +364,9 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                upstreamUnavailable:
+                    type: boolean
+                    description: Set to true when upstream data source is unavailable and cached data is stale.
         ShippingStressCarrier:
             type: object
             properties:

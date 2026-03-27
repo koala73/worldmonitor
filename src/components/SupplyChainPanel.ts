@@ -109,7 +109,7 @@ export class SupplyChainPanel extends Panel {
       : (this.activeTab === 'shipping' || this.activeTab === 'indicators') ? this.shippingData
       : this.activeTab === 'stress' ? this.stressData
       : this.mineralsData;
-    const unavailableBanner = !activeHasData && this.activeTab !== 'stress' && (activeData as { upstreamUnavailable?: boolean } | null)?.upstreamUnavailable
+    const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
       ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
       : '';
 
