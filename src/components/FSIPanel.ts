@@ -136,7 +136,7 @@ export class FSIPanel extends Panel {
             <div style="font-size:28px;font-weight:700;color:${cissLabelColor(euFsi.label)};line-height:1">${euFsi.latestValue.toFixed(4)}</div>
             <div>
               <div style="font-size:12px;font-weight:600;color:${cissLabelColor(euFsi.label)}">${escapeHtml(euFsi.label)}</div>
-              <div style="font-size:10px;color:var(--text-dim)">${escapeHtml(euFsi.latestDate)}</div>
+              <div style="font-size:10px;color:var(--text-dim)">${escapeHtml(euFsi.latestDate ? new Date(euFsi.latestDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '')}</div>
             </div>
           </div>
           <div style="background:rgba(255,255,255,0.07);border-radius:4px;height:6px;overflow:hidden">

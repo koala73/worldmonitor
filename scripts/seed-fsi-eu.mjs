@@ -10,10 +10,9 @@ const ECB_CISS_URL =
   'https://data-api.ecb.europa.eu/service/data/CISS/D.U2.Z0Z.4F.EC.SS_CI.IDX?format=jsondata&lastNObservations=52';
 
 const FSI_EU_KEY = 'economic:fsi-eu:v1';
-// Weekly data — TTL = 7 days (604800s). Gold standard: TTL ≥ 3× cron interval.
-// Cron runs weekly (Saturday); 3× = 21 days, but 7d matches the data cadence
-// and is consistent with other weekly seeds (groceryBasket, bigmac, fuelPrices).
-const FSI_EU_TTL = 604800;
+// Weekly cron (Saturday) — 864000s (10 days) matches other weekly seeds (bigmac, groceryBasket,
+// fuelPrices) and provides a 3-day buffer against cron-drift or missed runs.
+const FSI_EU_TTL = 864000;
 
 function classifyLabel(value) {
   if (value < 0.2) return 'Low';
