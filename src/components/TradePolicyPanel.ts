@@ -490,7 +490,7 @@ export class TradePolicyPanel extends Panel {
         ? `$${(f.tradeValueUsd / 1e9).toFixed(1)}B`
         : `$${(f.tradeValueUsd / 1e6).toFixed(0)}M`;
       const anomalyBadge = f.isAnomaly
-        ? `<span style="margin-left:6px;font-size:9px;font-weight:600;letter-spacing:0.05em;padding:1px 5px;border-radius:3px;background:rgba(231,76,60,0.18);color:#e74c3c;vertical-align:middle;text-transform:uppercase">${t('components.tradePolicy.anomalyBadge')}</span>`
+        ? `<span style="margin-left:6px;font-size:9px;font-weight:600;letter-spacing:0.05em;padding:1px 5px;border-radius:3px;background:rgba(255,68,68,0.15);color:var(--red);vertical-align:middle;text-transform:uppercase">${t('components.tradePolicy.anomalyBadge')}</span>`
         : '';
       return `<tr class="${f.isAnomaly ? 'trade-anomaly-row' : ''}">
         <td>${escapeHtml(f.reporterName)}${anomalyBadge}</td>

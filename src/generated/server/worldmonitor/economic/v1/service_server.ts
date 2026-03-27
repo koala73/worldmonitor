@@ -451,6 +451,8 @@ export interface EurostatMetric {
   value: number;
   date: string;
   unit: string;
+  priorValue: number;
+  hasPrior: boolean;
 }
 
 export interface GetEuGasStorageRequest {

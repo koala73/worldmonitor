@@ -120,9 +120,11 @@ function parseEurostatResponse(data, geoCode) {
 
     if (value === null || value === undefined) return null;
 
+    const roundedPrior = typeof priorValue === 'number' ? Math.round(priorValue * 100) / 100 : null;
     return {
       value: typeof value === 'number' ? Math.round(value * 100) / 100 : null,
-      priorValue: typeof priorValue === 'number' ? Math.round(priorValue * 100) / 100 : null,
+      priorValue: roundedPrior,
+      hasPrior: roundedPrior !== null,
       date: datePeriod,
     };
   } catch (err) {

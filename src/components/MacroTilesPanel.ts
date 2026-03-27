@@ -104,8 +104,8 @@ function euAvg(
       values.push(m.value);
       if (!latestDate || m.date > latestDate) latestDate = m.date;
     }
-    if (m && typeof (m as { priorValue?: number }).priorValue === 'number' && Number.isFinite((m as { priorValue?: number }).priorValue!)) {
-      priorValues.push((m as { priorValue?: number }).priorValue!);
+    if (m?.hasPrior && Number.isFinite(m.priorValue)) {
+      priorValues.push(m.priorValue);
     }
   }
   if (values.length === 0) return { value: null, prior: null, date: '' };

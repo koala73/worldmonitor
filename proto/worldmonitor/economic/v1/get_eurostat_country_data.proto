@@ -10,6 +10,10 @@ message EurostatMetric {
   string date = 2;
   // Unit of measurement (e.g. "%").
   string unit = 3;
+  // Prior period value for delta calculation (e.g. previous month/quarter).
+  double prior_value = 4;
+  // True when prior_value is present (proto3 can't distinguish 0 from absent).
+  bool has_prior = 5;
 }
 
 // EurostatCountryEntry holds all available metrics for one EU country.

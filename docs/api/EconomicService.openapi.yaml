@@ -1731,6 +1731,13 @@ components:
                 unit:
                     type: string
                     description: Unit of measurement (e.g. "%").
+                priorValue:
+                    type: number
+                    format: double
+                    description: Prior period value for delta calculation (e.g. previous month/quarter).
+                hasPrior:
+                    type: boolean
+                    description: True when prior_value is present (proto3 can't distinguish 0 from absent).
             description: EurostatMetric holds a single economic metric value for a country.
         GetEuGasStorageRequest:
             type: object
