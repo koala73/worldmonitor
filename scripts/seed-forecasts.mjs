@@ -11320,6 +11320,7 @@ function matchesChannel(simPath, channel) {
 
 const NEGATION_TERMS = ['ceasefire', 'reopen', 'reopened', 'resolv', 'diplomatic solution', 'withdrawal', 'de-escalat', 'deescalat', 'restored', 'stabiliz', 'lifted', 'normaliz', 'agreement'];
 const SIMULATION_MERGE_ACCEPT_THRESHOLD = 0.50;
+const SIMULATION_ELIGIBILITY_RANK_THRESHOLD = 0.40;
 
 function contradictsPremise(invalidator, expandedPath) {
   if (!invalidator || typeof invalidator !== 'string') return false;
@@ -12189,17 +12190,19 @@ async function writeDeepForecastSnapshot(snapshot, _context = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Simulation Package Export (Phase 1: maritime chokepoint + energy/logistics)
+// Simulation Package Export — theater-agnostic eligibility
 // ---------------------------------------------------------------------------
 
-function isMaritimeChokeEnergyCandidate(candidate) {
-  const routeKey = candidate.routeFacilityKey || '';
-  if (!routeKey || !Object.prototype.hasOwnProperty.call(CHOKEPOINT_MARKET_REGIONS, routeKey)) return false;
-  const bucketArr = candidate.marketBucketIds || [];
-  // Accept both nested (marketContext.topBucketId) and flat (topBucketId) shapes
-  const topBucket = candidate.marketContext?.topBucketId || candidate.topBucketId || '';
-  return bucketArr.includes('energy') || bucketArr.includes('freight') || topBucket === 'energy' || topBucket === 'freight'
-    || SIMULATION_ENERGY_COMMODITY_KEYS.has(candidate.commodityKey || '');
+function isSimulationEligible(candidate) {
+  const score = parseFloat(candidate.rankingScore || 0);
+  if (score < SIMULATION_ELIGIBILITY_RANK_THRESHOLD) return false;
+  // Accept both full-candidate shape (marketBucketIds / marketContext.topBucketId)
+  // and theater-object shape (topBucketId only) — both appear in call sites.
+  const hasBucket =
+    (candidate.marketBucketIds?.length > 0) ||
+    !!(candidate.topBucketId) ||
+    !!(candidate.marketContext?.topBucketId);
+  return hasBucket && !!(candidate.candidateStateId);
 }
 
 function mapActorCategoryToEntityClass(category, domains = []) {
@@ -12225,7 +12228,7 @@ function inferEntityClassFromName(name) {
 function buildSimulationRequirementText(theater, candidate) {
   const label = sanitizeForPrompt(theater.label) || theater.dominantRegion || 'unknown theater';
   const route = sanitizeForPrompt(theater.routeFacilityKey || theater.dominantRegion);
-  const stateKind = sanitizeForPrompt(theater.stateKind) || 'disruption';
+  const stateKind = theater.stateKind || 'cross_domain_pressure';
   const commodity = theater.commodityKey ? ` (${theater.commodityKey.replace(/_/g, ' ')})` : '';
   const bucket = theater.topBucketId || 'market';
   const rawChannel = theater.topChannel ? sanitizeForPrompt(theater.topChannel) : '';
@@ -12233,7 +12236,26 @@ function buildSimulationRequirementText(theater, candidate) {
   const macroRegion = theater.macroRegions?.[0] || theater.dominantRegion;
   const critTypes = (candidate.criticalSignalTypes || []).slice(0, 3).map((t) => sanitizeForPrompt(t).replace(/_/g, ' ')).join(', ');
   const signalContext = critTypes ? ` Active signals: ${critTypes}.` : '';
-  return `Simulate how a ${label} (${stateKind} at ${route}${commodity}) propagates through state behavior, shipping behavior, ${macroRegion} importer response, and ${bucket} market sentiment${channel} over the next 72 hours.${signalContext}`;
+
+  if (stateKind === 'maritime_disruption') {
+    return `Simulate how a ${label} (${stateKind} at ${route}${commodity}) propagates through state behavior, shipping behavior, ${macroRegion} importer response, and ${bucket} market sentiment${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'market_repricing') {
+    return `Simulate how ${label}${commodity} propagates through credit conditions, ${macroRegion} ${bucket} market repricing, FX stress on import-dependent economies, and second-order commodity demand${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'political_instability' || stateKind === 'governance_pressure') {
+    return `Simulate how ${label} propagates through government policy response, trade posture, investor sentiment, ${macroRegion} capital flows, and downstream ${bucket} market pressure${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'security_escalation') {
+    return `Simulate how ${label} in ${macroRegion} propagates through state military posture, logistics disruption, regional stability, and ${bucket} market reaction${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'infrastructure_fragility') {
+    return `Simulate how ${label} (${route}${commodity}) propagates through supply chain capacity, logistics operator response, ${macroRegion} production continuity, and ${bucket} market conditions${channel} over the next 72 hours.${signalContext}`;
+  }
+  if (stateKind === 'cyber_pressure') {
+    return `Simulate how ${label} propagates through systems availability, financial network continuity, ${macroRegion} institutional response, and ${bucket} market confidence${channel} over the next 72 hours.${signalContext}`;
+  }
+  return `Simulate how ${label}${commodity} in ${macroRegion} propagates through state behavior, market conditions, and ${bucket} sentiment${channel} over the next 72 hours.${signalContext}`;
 }
 
 function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegistry) {
@@ -12438,6 +12460,31 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
       });
     }
 
+    const bucketArr = candidate.marketBucketIds || [];
+    const topBucket = theater.topBucketId || candidate.marketContext?.topBucketId || '';
+    const MACRO_FIN_BUCKETS = ['rates_inflation', 'sovereign_risk', 'fx_stress'];
+    if (MACRO_FIN_BUCKETS.some((b) => bucketArr.includes(b) || topBucket === b) && !theater.routeFacilityKey) {
+      theaterConstraints.push({
+        constraintId: `c-${++idx}`,
+        theaterId: theater.theaterId,
+        class: 'macro_financial_posture',
+        statement: `${theater.label || theater.candidateStateId} operates under existing ${topBucket || 'macro'} conditions; simulation must route consequences through ${(theater.topChannel || 'market channel').replace(/_/g, ' ')} and must not exceed bounds set by current structural ${topBucket || 'market'} state.`,
+        hard: false,
+        source: `${src}:topBucketId=${topBucket}:topChannel=${theater.topChannel}`,
+      });
+    }
+
+    if (!theater.routeFacilityKey && !theater.commodityKey && theater.stateKind !== 'market_repricing') {
+      theaterConstraints.push({
+        constraintId: `c-${++idx}`,
+        theaterId: theater.theaterId,
+        class: 'structural_event_premise',
+        statement: `${theater.label || theater.candidateStateId} (${theater.stateKind || 'unknown'}) is the primary disruption premise; simulation must not invent a physical chokepoint or commodity disruption that is not evidenced in the theater state.`,
+        hard: true,
+        source: `${src}:stateKind=${theater.stateKind}`,
+      });
+    }
+
     result[theater.theaterId] = theaterConstraints;
   }
 
@@ -12517,7 +12564,7 @@ function buildSimulationStructuralWorld(selectedTheaters, { stateUnits, worldSig
 }
 
 function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null) {
-  const candidates = (snapshot.impactExpansionCandidates || []).filter(isMaritimeChokeEnergyCandidate);
+  const candidates = (snapshot.impactExpansionCandidates || []).filter(isSimulationEligible);
   if (candidates.length === 0) return null;
   const usedGroups = new Set();
   const top = [];
@@ -16128,10 +16175,7 @@ async function processNextSimulationTask(options = {}) {
         return { status: 'failed', reason: 'package_read_failed', runId };
       }
 
-      // Phase 2 scope: maritime chokepoint + energy/logistics theaters only
-      const eligibleTheaters = (pkgData.selectedTheaters || []).filter((t) =>
-        isMaritimeChokeEnergyCandidate(t),
-      );
+      const eligibleTheaters = (pkgData.selectedTheaters || []).filter(isSimulationEligible);
       console.log(`  [Simulation] ${runId}: ${eligibleTheaters.length}/${pkgData.selectedTheaters.length} theaters eligible`);
 
       const theaterResults = [];
@@ -16358,8 +16402,11 @@ export {
   buildDeepForecastSnapshotKey,
   buildDeepForecastSnapshotPayload,
   writeDeepForecastSnapshot,
-  isMaritimeChokeEnergyCandidate,
+  isSimulationEligible,
+  SIMULATION_ELIGIBILITY_RANK_THRESHOLD,
   inferEntityClassFromName,
+  buildSimulationRequirementText,
+  buildSimulationPackageConstraints,
   buildSimulationPackageFromDeepSnapshot,
   buildSimulationPackageKey,
   writeSimulationPackage,
