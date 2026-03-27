@@ -6,12 +6,14 @@ import { extractCountryCode } from './shared/geo-extract.mjs';
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'health:disease-outbreaks:v1';
-const CACHE_TTL = 86400; // 24h — daily seed
+const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
 
 // WHO Disease Outbreak News RSS (specific DON feed, not general news)
 const WHO_FEED = 'https://www.who.int/feeds/entity/csr/don/en/rss.xml';
-// ProMED RSS — promedmail.org/feed/ returns HTML 404; omitted until a valid feed URL is confirmed
-// const PROMED_FEED = 'https://promedmail.org/feed/';
+// CDC Health Alert Network RSS
+const CDC_FEED = 'https://tools.cdc.gov/api/v2/resources/media/132608.rss';
+// Outbreak News Today — aggregates WHO, CDC, and regional health ministry alerts
+const OUTBREAK_NEWS_FEED = 'https://outbreaknewstoday.com/feed/';
 
 const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
 
@@ -19,6 +21,20 @@ function stableHash(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
   return Math.abs(h).toString(36);
+}
+
+/**
+ * Extract location string from WHO-style titles: "Disease Name – Country" or "Disease in Country".
+ * Returns empty string when no location can be determined.
+ */
+function extractLocationFromTitle(title) {
+  // WHO DON pattern: "Avian influenza A(H5N1) – Cambodia"
+  const dashMatch = title.match(/[–—]\s*(.+)$/);
+  if (dashMatch) return dashMatch[1].trim();
+  // Fallback: "... in <Country/Region>"
+  const inMatch = title.match(/\bin\s+([A-Z][^,.(]+)/);
+  if (inMatch) return inMatch[1].trim();
+  return '';
 }
 
 function detectAlertLevel(title, desc) {
@@ -70,13 +86,18 @@ async function fetchRssItems(url, sourceName) {
 }
 
 async function fetchDiseaseOutbreaks() {
-  const whoItems = await fetchRssItems(WHO_FEED, 'WHO');
+  const [whoItems, cdcItems, outbreakNewsItems] = await Promise.all([
+    fetchRssItems(WHO_FEED, 'WHO'),
+    fetchRssItems(CDC_FEED, 'CDC'),
+    fetchRssItems(OUTBREAK_NEWS_FEED, 'Outbreak News Today'),
+  ]);
+  const allItems = [...whoItems, ...cdcItems, ...outbreakNewsItems];
 
   const diseaseKeywords = ['outbreak', 'disease', 'virus', 'fever', 'flu', 'ebola', 'mpox',
     'cholera', 'dengue', 'measles', 'polio', 'plague', 'avian', 'h5n1', 'epidemic',
     'infection', 'pathogen', 'rabies', 'meningitis', 'hepatitis', 'nipah', 'marburg'];
 
-  const relevant = whoItems.filter(item => {
+  const relevant = allItems.filter(item => {
     const text = `${item.title} ${item.desc}`.toLowerCase();
     return diseaseKeywords.some(k => text.includes(k));
   });
@@ -84,6 +105,7 @@ async function fetchDiseaseOutbreaks() {
   const outbreaks = relevant.map((item) => ({
     id: `${item.sourceName.toLowerCase()}-${stableHash(item.link || item.title)}-${item.publishedMs}`,
     disease: detectDisease(item.title),
+    location: extractLocationFromTitle(item.title),
     countryCode: extractCountryCode(`${item.title} ${item.desc}`) ?? '',
     alertLevel: detectAlertLevel(item.title, item.desc),
     summary: item.desc,
@@ -104,7 +126,7 @@ function validate(data) {
 runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'who-don-rss-v2',
+  sourceVersion: 'who-cdc-outbreaknews-v3',
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

@@ -69,6 +69,11 @@ const BOOTSTRAP_KEYS = {
   eurostatCountryData: 'economic:eurostat-country-data:v1',
   euGasStorage:      'economic:eu-gas-storage:v1',
   euFsi:             'economic:fsi-eu:v1',
+  shippingStress:    'supply_chain:shipping_stress:v1',
+  diseaseOutbreaks:  'health:disease-outbreaks:v1',
+  socialVelocity:    'intelligence:social:reddit:v1',
+  vpdTrackerRealtime:   'health:vpd-tracker:realtime:v1',
+  vpdTrackerHistorical: 'health:vpd-tracker:historical:v1',
 };
 
 const STANDALONE_KEYS = {
@@ -112,9 +117,6 @@ const STANDALONE_KEYS = {
   hormuzTracker:            'supply_chain:hormuz_tracker:v1',
   simulationPackageLatest:  'forecast:simulation-package:latest',
   simulationOutcomeLatest:  'forecast:simulation-outcome:latest',
-  shippingStress:           'supply_chain:shipping_stress:v1',
-  diseaseOutbreaks:         'health:disease-outbreaks:v1',
-  socialVelocity:           'intelligence:social:reddit:v1',
 };
 
 const SEED_META = {
@@ -215,6 +217,8 @@ const SEED_META = {
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
   diseaseOutbreaks:  { key: 'seed-meta:health:disease-outbreaks',      maxStaleMin: 2880 }, // daily seed; 2880 = 48h = 2x interval
   socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval (was 20 = equals retry window, too tight)
+  vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
+  vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
