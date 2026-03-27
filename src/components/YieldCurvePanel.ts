@@ -128,8 +128,9 @@ function buildEcbCircles(ecbRates: Record<string, number>, yMin: number, yMax: n
 
 function renderChart(current: YieldPoint[], prior: YieldPoint[], ecbRates: Record<string, number> | null): string {
   const usValues = current.map(p => p.value).filter((v): v is number => v !== null);
+  const priorValues = prior.map(p => p.value).filter((v): v is number => v !== null);
   const ecbValues = ecbRates ? Object.values(ecbRates) : [];
-  const allValues = [...usValues, ...ecbValues];
+  const allValues = [...usValues, ...priorValues, ...ecbValues];
   if (allValues.length === 0) return '<div style="padding:16px;color:var(--text-dim);font-size:12px">No yield data available.</div>';
 
   const yMin = Math.max(0, Math.min(...allValues) - 0.25);
