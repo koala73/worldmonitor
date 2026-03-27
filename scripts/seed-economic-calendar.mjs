@@ -58,9 +58,6 @@ function buildFomcEvents(today) {
 
 function buildEcbEvents(today) {
   const upcoming = ECB_RATE_DATES_2026.filter((d) => d >= today);
-  if (upcoming.length === 0) {
-    console.warn('  WARNING: no upcoming ECB dates — ECB_RATE_DATES_2026 needs updating for the new year');
-  }
   return upcoming.map((date) => ({
     event: 'ECB Rate Decision',
     country: 'EU',
@@ -137,12 +134,15 @@ async function fetchEconomicCalendar() {
   if (fomcEvents.length === 0) {
     console.warn('  WARNING: no upcoming FOMC dates — FOMC_DATES_2026 needs updating for the new year');
   }
+  if (ecbEvents.length === 0) {
+    console.warn('  WARNING: no upcoming ECB dates — ECB_RATE_DATES_2026 needs updating for the new year');
+  }
 
   const events = [...fomcEvents, ...ecbEvents];
 
   // Fetch Eurostat EU macro release dates (no API key required)
   console.log(`  Fetching Eurostat EU release dates ${today} → ${toDate}`);
-  await Promise.allSettled(
+  await Promise.all(
     EUROSTAT_DATASETS.map(async ({ id, event, country, impact, unit }) => {
       try {
         const dates = await fetchEurostatRelease(id, today, toDate);
