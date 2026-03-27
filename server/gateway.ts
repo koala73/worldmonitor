@@ -188,6 +188,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/list-earnings-calendar': 'slow',
   '/api/market/v1/get-cot-positioning': 'slow',
   '/api/economic/v1/get-economic-calendar': 'slow',
+  '/api/intelligence/v1/list-market-implications': 'slow',
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
