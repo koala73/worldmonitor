@@ -12,6 +12,7 @@
  */
 let _testProviders: {
   getTesterKey?: () => string;
+  getTesterKeys?: () => string[];
   getClerkToken?: () => Promise<string | null>;
 } | null = null;
 
@@ -19,6 +20,36 @@ export function _setTestProviders(
   p: typeof _testProviders,
 ): void {
   _testProviders = p;
+}
+
+function uniqueNonEmptyKeys(keys: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of keys) {
+    const key = raw?.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(key);
+  }
+  return result;
+}
+
+async function loadTesterKeys(): Promise<string[]> {
+  try {
+    if (_testProviders?.getTesterKeys) {
+      return uniqueNonEmptyKeys(_testProviders.getTesterKeys());
+    }
+    if (_testProviders?.getTesterKey) {
+      return uniqueNonEmptyKeys([_testProviders.getTesterKey()]);
+    }
+    const { getProWidgetKey, getWidgetAgentKey } = await import('@/services/widget-store');
+    return uniqueNonEmptyKeys([
+      getProWidgetKey(),
+      getWidgetAgentKey(),
+    ]);
+  } catch {
+    return [];
+  }
 }
 
 export async function premiumFetch(
@@ -41,32 +72,22 @@ export async function premiumFetch(
     }
   } catch { /* not available — fall through */ }
 
-  // 2. Tester / widget key from localStorage (wm-pro-key or wm-widget-key).
+  // 2. Tester / widget keys from localStorage.
   // Must run BEFORE Clerk to prevent a free Clerk session from intercepting the
   // request and returning 403 before the tester key is ever checked.
-  // If the gateway returns 401 (key not in WORLDMONITOR_VALID_KEYS), fall through
-  // to Clerk JWT rather than surfacing the error — widget relay keys and gateway
-  // API keys can be different sets.
-  let testerKey: string | null = null;
-  try {
-    if (_testProviders?.getTesterKey) {
-      testerKey = _testProviders.getTesterKey();
-    } else {
-      const { getProWidgetKey, getWidgetAgentKey } = await import('@/services/widget-store');
-      testerKey = getProWidgetKey() || getWidgetAgentKey();
-    }
-  } catch { /* widget-store not available — fall through */ }
-
-  if (testerKey) {
+  // Try wm-pro-key first, then wm-widget-key. A relay-only pro key can be invalid
+  // for the gateway even when the widget key is valid for premium RPC access.
+  const testerKeys = await loadTesterKeys();
+  for (const testerKey of testerKeys) {
     const testerHeaders = new Headers(existing);
     testerHeaders.set('X-WorldMonitor-Key', testerKey);
     const res = await globalThis.fetch(input, { ...init, headers: testerHeaders });
     if (res.status !== 401) return res;
-    // 401 → tester key not in WORLDMONITOR_VALID_KEYS; fall through to Clerk.
+    // 401 → try the next tester key, then fall through to Clerk if none work.
   }
 
-  // 3. Clerk Pro session token (fallback for users without a tester key, or when
-  //    the tester key is not in WORLDMONITOR_VALID_KEYS).
+  // 3. Clerk Pro session token (fallback for users without tester keys, or when
+  //    none of the tester keys are in WORLDMONITOR_VALID_KEYS).
   try {
     let token: string | null = null;
     if (_testProviders?.getClerkToken) {

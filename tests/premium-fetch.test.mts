@@ -5,10 +5,11 @@
  *  - Passthrough when caller already sets auth header
  *  - Tester key: valid key → returns response immediately (no second fetch)
  *  - Tester key: 401 → falls through to Clerk JWT
+ *  - wm-pro-key 401 → retries with wm-widget-key before Clerk
  *  - Tester key: non-401 returned immediately (no fallback)
  *  - Tester key: network error / AbortError propagates to caller (not swallowed)
  *  - No keys, no Clerk → unauthenticated request forwarded
- *  - wm-widget-key / wm-pro-key precedence
+ *  - wm-pro-key / wm-widget-key order is deterministic and deduped
  */
 
 import assert from 'node:assert/strict';
@@ -47,11 +48,12 @@ describe('premiumFetch', () => {
 
   function setup(opts: {
     testerKey?: string;
+    testerKeys?: string[];
     clerkToken?: string | null;
     fetchImpl?: () => Promise<Response>;
   } = {}) {
     _setTestProviders({
-      getTesterKey: () => opts.testerKey ?? '',
+      getTesterKeys: () => opts.testerKeys ?? (opts.testerKey ? [opts.testerKey] : []),
       getClerkToken: async () => opts.clerkToken ?? null,
     });
     fetchMock.mock.resetCalls();
@@ -98,6 +100,23 @@ describe('premiumFetch', () => {
     // Second call: Clerk Bearer sent, no tester key
     assert.equal(sentHeaders(1).get('Authorization'), 'Bearer clerk-jwt-abc');
     assert.equal(sentHeaders(1).get('X-WorldMonitor-Key'), null);
+  });
+
+  it('wm-pro-key 401 retries with wm-widget-key before Clerk', async () => {
+    let n = 0;
+    setup({
+      testerKeys: ['relay-only-pro-key', 'valid-widget-key'],
+      clerkToken: 'clerk-jwt-should-not-be-used',
+      fetchImpl: () => Promise.resolve(fakeRes(n++ === 0 ? 401 : 200)),
+    });
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200);
+    assert.equal(fetchMock.mock.calls.length, 2, 'Expected pro-key attempt then widget-key retry');
+    assert.equal(sentHeaders(0).get('X-WorldMonitor-Key'), 'relay-only-pro-key');
+    assert.equal(sentHeaders(0).get('Authorization'), null);
+    assert.equal(sentHeaders(1).get('X-WorldMonitor-Key'), 'valid-widget-key');
+    assert.equal(sentHeaders(1).get('Authorization'), null);
   });
 
   it('tester key: 403 returned immediately, no Clerk fallback', async () => {
