@@ -79,7 +79,9 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     ? extractKeyFromHeaders(existingHeaders, matchingPreset.apiKeyHeader)
     : null;
 
-  const initialSimpleMode = !!editSimpleKey;
+  // New connections always open in simple API key mode; edit mode uses simple only if the
+  // existing headers reverse-map cleanly to the preset's key template.
+  const initialSimpleMode = !existing || !!editSimpleKey;
   const initialApiKey = editSimpleKey ?? '';
   const initialRawHeader = initialSimpleMode ? '' : _headersToLine(existingHeaders);
 
@@ -158,8 +160,10 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   let selectedTool: McpToolDef | null = existing
     ? { name: existing.toolName, description: '' }
     : null;
-  /** Template for the current preset, e.g. "Authorization: Bearer {key}" */
-  let activeApiKeyHeader = matchingPreset?.apiKeyHeader ?? '';
+  /** Template for the current preset, e.g. "Authorization: Bearer {key}".
+   *  Falls back to a generic Bearer default so custom server key input works. */
+  const DEFAULT_API_KEY_HEADER = 'Authorization: Bearer {key}';
+  let activeApiKeyHeader = matchingPreset?.apiKeyHeader ?? (initialSimpleMode ? DEFAULT_API_KEY_HEADER : '');
 
   const urlInput = modal.querySelector('.mcp-server-url') as HTMLInputElement;
   const apiKeyGroup = modal.querySelector('.mcp-api-key-group') as HTMLElement;
@@ -229,6 +233,40 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   // Set hint if editing in simple mode
   if (initialSimpleMode && matchingPreset?.authNote) {
     apiKeyHint.textContent = extractAuthHint(matchingPreset.authNote);
+  }
+
+  // When user manually edits the URL: deselect presets and switch to generic simple mode.
+  // Only applies in add mode — edit mode has no preset cards and manages its own auth state.
+  if (!existing) {
+    urlInput.addEventListener('input', () => {
+      const typed = urlInput.value.trim();
+      const presetCards = Array.from(modal.querySelectorAll<HTMLElement>('.mcp-preset-card'));
+      const matchedCard = presetCards.find(c => c.dataset.url === typed);
+      if (matchedCard) {
+        // Re-select if user typed back an exact preset URL
+        presetCards.forEach(c => c.classList.remove('selected'));
+        matchedCard.classList.add('selected');
+        const cardApiKeyHeader = matchedCard.dataset.apiKeyHeader ?? '';
+        const cardAuthNote = matchedCard.dataset.authNote ?? '';
+        const fakePreset = { apiKeyHeader: cardApiKeyHeader, authNote: cardAuthNote } as McpPreset;
+        if (cardApiKeyHeader) {
+          showSimpleMode(fakePreset);
+        } else {
+          activeApiKeyHeader = '';
+          apiKeyGroup.style.display = 'none';
+          apiKeyHint.textContent = '';
+          authHeaderGroup.style.display = '';
+          toSimpleBtn.style.display = 'none';
+        }
+      } else {
+        presetCards.forEach(c => c.classList.remove('selected'));
+        activeApiKeyHeader = DEFAULT_API_KEY_HEADER;
+        apiKeyGroup.style.display = '';
+        apiKeyHint.textContent = '';
+        authHeaderGroup.style.display = 'none';
+        toSimpleBtn.style.display = 'none';
+      }
+    });
   }
 
   // Preset card click handlers
@@ -308,9 +346,12 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     for (const tool of list) {
       const item = document.createElement('div');
       item.className = 'mcp-tool-item';
+      const shortDesc = tool.description
+        ? (tool.description.length > 100 ? tool.description.slice(0, 97) + '…' : tool.description)
+        : '';
       item.innerHTML = `
         <span class="mcp-tool-name">${escapeHtml(tool.name)}</span>
-        ${tool.description ? `<span class="mcp-tool-desc">${escapeHtml(tool.description)}</span>` : ''}
+        ${shortDesc ? `<span class="mcp-tool-desc">${escapeHtml(shortDesc)}</span>` : ''}
       `;
       item.addEventListener('click', () => {
         toolsList.querySelectorAll('.mcp-tool-item').forEach(el => el.classList.remove('selected'));
@@ -322,9 +363,10 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
           const defaults: Record<string, unknown> = {};
           for (const [k, v] of Object.entries(schema.properties)) {
             const prop = v as { default?: unknown };
-            if (prop.default !== undefined) defaults[k] = prop.default;
+            // Skip null defaults — they add noise without value
+            if (prop.default !== undefined && prop.default !== null) defaults[k] = prop.default;
           }
-          argsInput.value = JSON.stringify(defaults, null, 2) || '{}';
+          argsInput.value = Object.keys(defaults).length ? JSON.stringify(defaults, null, 2) : '{}';
         } else {
           argsInput.value = '{}';
         }

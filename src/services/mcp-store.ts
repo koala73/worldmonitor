@@ -232,6 +232,17 @@ export const MCP_PRESETS: McpPreset[] = [
     defaultArgs: { baseId: 'appXXXXXXXXXXXXXX', tableId: 'tblXXXXXXXXXXXXXX', maxRecords: 20 },
     defaultTitle: 'Airtable Records',
   },
+  {
+    name: 'Data Commons',
+    icon: '🌍',
+    description: 'Google\'s open knowledge graph — global stats on health, economy, demographics, and more',
+    serverUrl: 'https://api.datacommons.org/mcp',
+    authNote: 'Requires x-api-key: <API_KEY> (free at console.cloud.google.com)',
+    apiKeyHeader: 'x-api-key: {key}',
+    defaultTool: 'search_indicators',
+    defaultArgs: { query: 'GDP per capita' },
+    defaultTitle: 'Data Commons',
+  },
 ];
 
 export interface McpToolDef {
