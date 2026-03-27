@@ -11416,7 +11416,7 @@ function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, s
   let anyPathChanged = false;
 
   const simByTheater = new Map(
-    (simulationOutcome.theaterResults || []).map((t) => [t.theaterId, t])
+    (simulationOutcome.theaterResults || []).map((t) => [t.candidateStateId || t.theaterId, t])
   );
 
   const selectedPaths = evaluation.selectedPaths || [];
@@ -16268,6 +16268,7 @@ async function processNextSimulationTask(options = {}) {
 
         theaterResults.push({
           theaterId: theater.theaterId,
+          candidateStateId: theater.candidateStateId || '',
           theaterLabel: theater.label || theater.dominantRegion || theater.theaterId,
           stateKind: theater.stateKind || '',
           topPaths: mergedPaths,
