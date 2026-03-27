@@ -225,12 +225,12 @@ export class CommoditiesPanel extends Panel {
 
   public renderCommodities(data: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
     this._commodityData = data;
-    if (this._tab === 'commodities') this._render();
+    this._render();
   }
 
   public updateFxRates(rates: EcbFxRateItem[]): void {
     this._fxRates = rates;
-    if (this._tab === 'fx') this._render();
+    this._render();
   }
 
   private _render(): void {
