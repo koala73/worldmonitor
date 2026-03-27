@@ -4,6 +4,7 @@ import {
   type GetShippingRatesResponse,
   type GetChokepointStatusResponse,
   type GetCriticalMineralsResponse,
+  type GetShippingStressResponse,
   type ShippingIndex,
   type ChokepointInfo,
   type CriticalMineral,
@@ -17,6 +18,7 @@ export type {
   GetShippingRatesResponse,
   GetChokepointStatusResponse,
   GetCriticalMineralsResponse,
+  GetShippingStressResponse,
   ShippingIndex,
   ChokepointInfo,
   CriticalMineral,
@@ -72,5 +74,18 @@ export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsRespon
     }, emptyMinerals);
   } catch {
     return emptyMinerals;
+  }
+}
+
+const emptyShippingStress: GetShippingStressResponse = { carriers: [], stressScore: 0, stressLevel: 'low', fetchedAt: 0 };
+
+export async function fetchShippingStress(): Promise<GetShippingStressResponse> {
+  const hydrated = getHydratedData('shippingStress') as GetShippingStressResponse | undefined;
+  if (hydrated?.carriers?.length) return hydrated;
+
+  try {
+    return await client.getShippingStress({});
+  } catch {
+    return emptyShippingStress;
   }
 }

@@ -23,6 +23,10 @@ export interface Earthquake {
   location?: GeoCoordinates;
   occurredAt: number;
   sourceUrl: string;
+  nearTestSite?: boolean;
+  testSiteName?: string;
+  concernScore?: number;
+  concernLevel?: string;
 }
 
 export interface GeoCoordinates {

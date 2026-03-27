@@ -346,9 +346,12 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     for (const tool of list) {
       const item = document.createElement('div');
       item.className = 'mcp-tool-item';
+      const shortDesc = tool.description
+        ? (tool.description.length > 100 ? tool.description.slice(0, 97) + '…' : tool.description)
+        : '';
       item.innerHTML = `
         <span class="mcp-tool-name">${escapeHtml(tool.name)}</span>
-        ${tool.description ? `<span class="mcp-tool-desc">${escapeHtml(tool.description)}</span>` : ''}
+        ${shortDesc ? `<span class="mcp-tool-desc">${escapeHtml(shortDesc)}</span>` : ''}
       `;
       item.addEventListener('click', () => {
         toolsList.querySelectorAll('.mcp-tool-item').forEach(el => el.classList.remove('selected'));
@@ -360,9 +363,10 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
           const defaults: Record<string, unknown> = {};
           for (const [k, v] of Object.entries(schema.properties)) {
             const prop = v as { default?: unknown };
-            if (prop.default !== undefined) defaults[k] = prop.default;
+            // Skip null defaults — they add noise without value
+            if (prop.default !== undefined && prop.default !== null) defaults[k] = prop.default;
           }
-          argsInput.value = JSON.stringify(defaults, null, 2) || '{}';
+          argsInput.value = Object.keys(defaults).length ? JSON.stringify(defaults, null, 2) : '{}';
         } else {
           argsInput.value = '{}';
         }

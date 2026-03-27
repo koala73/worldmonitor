@@ -78,6 +78,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-shipping-stress:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetShippingStress
+            description: GetShippingStress returns carrier market data and a composite stress index.
+            operationId: GetShippingStress
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetShippingStressResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -318,3 +344,50 @@ components:
                 sharePct:
                     type: number
                     format: double
+        GetShippingStressRequest:
+            type: object
+        GetShippingStressResponse:
+            type: object
+            properties:
+                carriers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ShippingStressCarrier'
+                stressScore:
+                    type: number
+                    format: double
+                    description: Composite stress score 0–100 (higher = more disruption).
+                stressLevel:
+                    type: string
+                    description: '"low" | "moderate" | "elevated" | "critical".'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        ShippingStressCarrier:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    description: Ticker or identifier (e.g., "BDRY", "ZIM").
+                name:
+                    type: string
+                    description: Human-readable name.
+                price:
+                    type: number
+                    format: double
+                    description: Current price.
+                changePct:
+                    type: number
+                    format: double
+                    description: Percentage change from previous close.
+                carrierType:
+                    type: string
+                    description: 'Carrier type: "etf" | "carrier" | "index".'
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: 30-day price sparkline.
+            description: ShippingStressCarrier represents market stress data for a carrier or shipping index.

@@ -17,6 +17,7 @@ import { listCompanySignals } from './list-company-signals';
 import { getGdeltTopicTimeline } from './get-gdelt-topic-timeline';
 import { listCrossSourceSignals } from './list-cross-source-signals';
 import { listMarketImplications } from './list-market-implications';
+import { getSocialVelocity } from './get-social-velocity';
 
 export const intelligenceHandler: IntelligenceServiceHandler = {
   getRiskScores,
@@ -36,4 +37,5 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   getGdeltTopicTimeline,
   listCrossSourceSignals,
   listMarketImplications,
+  getSocialVelocity,
 };

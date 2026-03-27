@@ -26,4 +26,12 @@ message Earthquake {
   int64 occurred_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // URL to the USGS event detail page.
   string source_url = 7;
+  // True when epicenter is within 100 km of a known nuclear test site.
+  optional bool near_test_site = 8;
+  // Name of the nearest test site (e.g. "Punggye-ri"), when near_test_site is true.
+  optional string test_site_name = 9;
+  // Composite concern score 0–100 based on magnitude, depth, and proximity.
+  optional double concern_score = 10;
+  // Human-readable concern level: "low" | "moderate" | "elevated" | "critical".
+  optional string concern_level = 11;
 }

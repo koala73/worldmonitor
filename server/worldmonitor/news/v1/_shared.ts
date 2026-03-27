@@ -36,13 +36,10 @@ export { deduplicateHeadlines } from './dedup.mjs';
 export function buildArticlePrompts(
   headlines: string[],
   uniqueHeadlines: string[],
-  opts: { mode: string; geoContext: string; variant: string; lang: string; frameworkAppend?: string },
+  opts: { mode: string; geoContext: string; variant: string; lang: string },
 ): { systemPrompt: string; userPrompt: string } {
   const headlineText = uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
-  const effectiveGeoContext = opts.frameworkAppend
-    ? `${opts.geoContext}\n\n---\nAnalytical Framework:\n${opts.frameworkAppend}`.trimStart()
-    : opts.geoContext;
-  const intelSection = effectiveGeoContext ? `\n\n${effectiveGeoContext}` : '';
+  const intelSection = opts.geoContext ? `\n\n${opts.geoContext}` : '';
   const isTechVariant = opts.variant === 'tech';
   const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.${isTechVariant ? '' : ' Provide geopolitical context appropriate for the current date.'}`;
   const langInstruction = opts.lang && opts.lang !== 'en' ? `\nIMPORTANT: Output the summary in ${opts.lang.toUpperCase()} language.` : '';

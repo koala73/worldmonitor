@@ -3154,6 +3154,12 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'dimona', name: 'Dimona', lat: 31.0, lon: 35.15, type: 'weapons', status: 'active' },
   { id: 'pakistan_kahuta', name: 'Kahuta', lat: 33.59, lon: 73.40, type: 'enrichment', status: 'active' },
   { id: 'pakistan_khushab', name: 'Khushab', lat: 32.02, lon: 72.22, type: 'weapons', status: 'active' },
+  // Historical nuclear test sites (enriches earthquake proximity alerts)
+  { id: 'punggye_ri',    name: 'Punggye-ri',     lat: 41.28, lon: 129.08,  type: 'test-site', status: 'active' },
+  { id: 'lop_nur',       name: 'Lop Nur',         lat: 41.75, lon: 88.35,   type: 'test-site', status: 'inactive', operator: 'CN' },
+  { id: 'novaya_zemlya', name: 'Novaya Zemlya',   lat: 73.37, lon: 54.78,   type: 'test-site', status: 'inactive', operator: 'RU' },
+  { id: 'nevada_nts',    name: 'Nevada NTS',      lat: 37.07, lon: -116.05, type: 'test-site', status: 'inactive', operator: 'US' },
+  { id: 'semipalatinsk', name: 'Semipalatinsk',   lat: 50.07, lon: 78.43,   type: 'test-site', status: 'inactive', operator: 'KZ' },
 ];
 
 // Used by Map.ts (2D SVG) which looks up countries via TopoJSON numeric IDs.

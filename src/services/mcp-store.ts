@@ -239,8 +239,8 @@ export const MCP_PRESETS: McpPreset[] = [
     serverUrl: 'https://api.datacommons.org/mcp',
     authNote: 'Requires x-api-key: <API_KEY> (free at console.cloud.google.com)',
     apiKeyHeader: 'x-api-key: {key}',
-    defaultTool: 'query',
-    defaultArgs: { q: 'What is the GDP of France?' },
+    defaultTool: 'search_indicators',
+    defaultArgs: { query: 'GDP per capita' },
     defaultTitle: 'Data Commons',
   },
 ];

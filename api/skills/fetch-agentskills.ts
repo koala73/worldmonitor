@@ -39,7 +39,9 @@ export default async function handler(req: Request): Promise<Response> {
     return Response.json({ error: 'Invalid URL' }, { status: 400, headers: corsHeaders });
   }
 
-  if (!skillUrl.hostname.endsWith('agentskills.io')) {
+  // Use exact match or subdomain check — endsWith alone is bypassable by 'evilagentskills.io'
+  const h = skillUrl.hostname;
+  if (h !== 'agentskills.io' && !h.endsWith('.agentskills.io')) {
     return Response.json({ error: 'Only agentskills.io URLs are supported.' }, { status: 400, headers: corsHeaders });
   }
 

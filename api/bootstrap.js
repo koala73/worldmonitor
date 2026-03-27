@@ -75,6 +75,9 @@ const BOOTSTRAP_CACHE_KEYS = {
   natGasStorage:     'economic:nat-gas-storage:v1',
   ecbFxRates:        'economic:ecb-fx-rates:v1',
   euFsi:             'economic:fsi-eu:v1',
+  shippingStress:    'supply_chain:shipping_stress:v1',
+  socialVelocity:    'intelligence:social:reddit:v1',
+  diseaseOutbreaks:  'health:disease-outbreaks:v1',
 };
 
 const SLOW_KEYS = new Set([
@@ -102,12 +105,13 @@ const SLOW_KEYS = new Set([
   'natGasStorage',
   'ecbFxRates',
   'euFsi',
+  'diseaseOutbreaks',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',
   'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays','insights', 'predictions',
   'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel',
-  'correlationCards', 'forecasts', 'shippingRates',
+  'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity',
 ]);
 
 // No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would

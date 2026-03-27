@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package worldmonitor.health.v1;
+
+import "sebuf/http/annotations.proto";
+
+// DiseaseOutbreakItem represents a single disease outbreak event.
+message DiseaseOutbreakItem {
+  // Unique identifier (URL-derived).
+  string id = 1;
+  // Disease or outbreak name.
+  string disease = 2;
+  // Affected country or region.
+  string location = 3;
+  // ISO2 country code when known.
+  string country_code = 4;
+  // Alert level: "watch" | "warning" | "alert".
+  string alert_level = 5;
+  // Short description from the source.
+  string summary = 6;
+  // Source URL.
+  string source_url = 7;
+  // Unix epoch milliseconds when published.
+  int64 published_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Source name (e.g., "WHO", "ProMED", "HealthMap").
+  string source_name = 9;
+}
+
+message ListDiseaseOutbreaksRequest {}
+
+message ListDiseaseOutbreaksResponse {
+  repeated DiseaseOutbreakItem outbreaks = 1;
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
