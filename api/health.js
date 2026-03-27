@@ -212,9 +212,9 @@ const SEED_META = {
   euYieldCurve:      { key: 'seed-meta:economic:yield-curve-eu',      maxStaleMin: 2880 }, // daily seed (weekdays); 2880min = 48h = 2x interval
   euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 20160 }, // weekly seed (Saturday); 20160min = 14d = 2x interval
   newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify every ~20min; 60min = 3x interval
-  shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval
-  diseaseOutbreaks:  { key: 'seed-meta:health:disease-outbreaks',      maxStaleMin: 1440 }, // daily seed; 1440 = 24h = 1x interval
-  socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval
+  shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 30 }, // relay loop every 15min; 30 = 2x interval (retry in 20min self-heals faster)
+  diseaseOutbreaks:  { key: 'seed-meta:health:disease-outbreaks',      maxStaleMin: 2880 }, // daily seed; 2880 = 48h = 2x interval
+  socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 20 }, // relay loop every 10min; 20 = 2x interval (retry in 20min self-heals faster)
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

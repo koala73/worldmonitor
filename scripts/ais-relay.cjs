@@ -5017,10 +5017,13 @@ const SHIPPING_CARRIERS = [
 ];
 
 let shippingStressInFlight = false;
+let shippingStressRetryTimer = null;
+const SHIPPING_STRESS_RETRY_MS = 20 * 60 * 1000;
 
 async function seedShippingStress() {
   if (shippingStressInFlight) { console.log('[ShippingStress] Skipped (in-flight)'); return; }
   shippingStressInFlight = true;
+  if (shippingStressRetryTimer) { clearTimeout(shippingStressRetryTimer); shippingStressRetryTimer = null; }
   console.log('[ShippingStress] Fetching...');
   const t0 = Date.now();
   try {
@@ -5039,7 +5042,9 @@ async function seedShippingStress() {
       });
     }
     if (!results.length) {
-      console.warn('[ShippingStress] No carrier data — skipping');
+      console.warn('[ShippingStress] No carrier data — extending TTL, retrying in 20min');
+      try { await upstashExpire(SHIPPING_STRESS_REDIS_KEY, SHIPPING_STRESS_TTL); } catch {}
+      shippingStressRetryTimer = setTimeout(() => { seedShippingStress().catch(() => {}); }, SHIPPING_STRESS_RETRY_MS);
       return;
     }
     const avgChange = results.reduce((a, b) => a + b.changePct, 0) / results.length;
@@ -5050,7 +5055,9 @@ async function seedShippingStress() {
     await upstashSet('seed-meta:supply_chain:shipping_stress', { fetchedAt: Date.now(), recordCount: results.length }, 604800);
     console.log(`[ShippingStress] Seeded ${results.length} carriers score=${stressScore}/${stressLevel} (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
-    console.warn('[ShippingStress] Seed error:', e?.message || e);
+    console.warn('[ShippingStress] Seed error:', e?.message || e, '— extending TTL, retrying in 20min');
+    try { await upstashExpire(SHIPPING_STRESS_REDIS_KEY, SHIPPING_STRESS_TTL); } catch {}
+    shippingStressRetryTimer = setTimeout(() => { seedShippingStress().catch(() => {}); }, SHIPPING_STRESS_RETRY_MS);
   } finally {
     shippingStressInFlight = false;
   }
@@ -5078,6 +5085,8 @@ const SOCIAL_VELOCITY_INTERVAL_MS = 10 * 60 * 1000;
 const REDDIT_SUBREDDITS = ['worldnews', 'geopolitics'];
 
 let socialVelocityInFlight = false;
+let socialVelocityRetryTimer = null;
+const SOCIAL_VELOCITY_RETRY_MS = 20 * 60 * 1000;
 
 async function fetchRedditHot(subreddit) {
   const url = `https://www.reddit.com/r/${subreddit}/hot.json?limit=25&raw_json=1`;
@@ -5093,6 +5102,7 @@ async function fetchRedditHot(subreddit) {
 async function seedSocialVelocity() {
   if (socialVelocityInFlight) { console.log('[SocialVelocity] Skipped (in-flight)'); return; }
   socialVelocityInFlight = true;
+  if (socialVelocityRetryTimer) { clearTimeout(socialVelocityRetryTimer); socialVelocityRetryTimer = null; }
   console.log('[SocialVelocity] Fetching...');
   const t0 = Date.now();
   try {
@@ -5119,7 +5129,9 @@ async function seedSocialVelocity() {
       }
     }
     if (!allPosts.length) {
-      console.warn('[SocialVelocity] No posts — skipping');
+      console.warn('[SocialVelocity] No posts — extending TTL, retrying in 20min');
+      try { await upstashExpire(SOCIAL_VELOCITY_REDIS_KEY, SOCIAL_VELOCITY_TTL); } catch {}
+      socialVelocityRetryTimer = setTimeout(() => { seedSocialVelocity().catch(() => {}); }, SOCIAL_VELOCITY_RETRY_MS);
       return;
     }
     allPosts.sort((a, b) => b.velocityScore - a.velocityScore);
@@ -5129,7 +5141,9 @@ async function seedSocialVelocity() {
     await upstashSet('seed-meta:intelligence:social-reddit', { fetchedAt: Date.now(), recordCount: top.length }, 604800);
     console.log(`[SocialVelocity] Seeded ${top.length} posts (redis: ${ok ? 'OK' : 'FAIL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
-    console.warn('[SocialVelocity] Seed error:', e?.message || e);
+    console.warn('[SocialVelocity] Seed error:', e?.message || e, '— extending TTL, retrying in 20min');
+    try { await upstashExpire(SOCIAL_VELOCITY_REDIS_KEY, SOCIAL_VELOCITY_TTL); } catch {}
+    socialVelocityRetryTimer = setTimeout(() => { seedSocialVelocity().catch(() => {}); }, SOCIAL_VELOCITY_RETRY_MS);
   } finally {
     socialVelocityInFlight = false;
   }
