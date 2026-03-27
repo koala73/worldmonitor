@@ -62,7 +62,11 @@ function parseSdmxJson(data) {
   const obsDimension = data?.structure?.dimensions?.observation?.[0];
   const dateValues = obsDimension?.values ?? [];
 
-  const seriesKey = Object.keys(seriesMap)[0];
+  const allSeriesKeys = Object.keys(seriesMap);
+  if (allSeriesKeys.length > 1) {
+    console.warn(`  WARN: response contained ${allSeriesKeys.length} series; using only the first`);
+  }
+  const seriesKey = allSeriesKeys[0];
   if (!seriesKey) return [];
 
   const observations = seriesMap[seriesKey]?.observations ?? {};
@@ -136,7 +140,7 @@ async function main() {
   console.log(`  Run ID: ${runId}`);
   console.log(`  Keys:   ${ECB_SERIES.map(s => fredSeedKey(s.id)).join(', ')}`);
 
-  const lockResult = await acquireLockSafely(`${domain}:${resource}`, runId, 120_000, { label: `${domain}:${resource}` });
+  const lockResult = await acquireLockSafely(`${domain}:${resource}`, runId, 300_000, { label: `${domain}:${resource}` });
   if (lockResult.skipped) process.exit(0);
   if (!lockResult.locked) {
     console.log('  SKIPPED: another seed run in progress');
