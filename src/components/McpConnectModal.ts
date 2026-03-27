@@ -235,21 +235,39 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     apiKeyHint.textContent = extractAuthHint(matchingPreset.authNote);
   }
 
-  // When user manually edits the URL: deselect presets and switch to generic simple mode
-  // (API Key field with default Bearer template, no preset-specific hint)
-  urlInput.addEventListener('input', () => {
-    const typed = urlInput.value.trim();
-    const presetUrls = Array.from(modal.querySelectorAll<HTMLElement>('.mcp-preset-card'))
-      .map(c => c.dataset.url ?? '');
-    if (!presetUrls.includes(typed)) {
-      modal.querySelectorAll('.mcp-preset-card').forEach(c => c.classList.remove('selected'));
-      activeApiKeyHeader = DEFAULT_API_KEY_HEADER;
-      apiKeyGroup.style.display = '';
-      apiKeyHint.textContent = '';
-      authHeaderGroup.style.display = 'none';
-      toSimpleBtn.style.display = 'none';
-    }
-  });
+  // When user manually edits the URL: deselect presets and switch to generic simple mode.
+  // Only applies in add mode — edit mode has no preset cards and manages its own auth state.
+  if (!existing) {
+    urlInput.addEventListener('input', () => {
+      const typed = urlInput.value.trim();
+      const presetCards = Array.from(modal.querySelectorAll<HTMLElement>('.mcp-preset-card'));
+      const matchedCard = presetCards.find(c => c.dataset.url === typed);
+      if (matchedCard) {
+        // Re-select if user typed back an exact preset URL
+        presetCards.forEach(c => c.classList.remove('selected'));
+        matchedCard.classList.add('selected');
+        const cardApiKeyHeader = matchedCard.dataset.apiKeyHeader ?? '';
+        const cardAuthNote = matchedCard.dataset.authNote ?? '';
+        const fakePreset = { apiKeyHeader: cardApiKeyHeader, authNote: cardAuthNote } as McpPreset;
+        if (cardApiKeyHeader) {
+          showSimpleMode(fakePreset);
+        } else {
+          activeApiKeyHeader = '';
+          apiKeyGroup.style.display = 'none';
+          apiKeyHint.textContent = '';
+          authHeaderGroup.style.display = '';
+          toSimpleBtn.style.display = 'none';
+        }
+      } else {
+        presetCards.forEach(c => c.classList.remove('selected'));
+        activeApiKeyHeader = DEFAULT_API_KEY_HEADER;
+        apiKeyGroup.style.display = '';
+        apiKeyHint.textContent = '';
+        authHeaderGroup.style.display = 'none';
+        toSimpleBtn.style.display = 'none';
+      }
+    });
+  }
 
   // Preset card click handlers
   modal.querySelectorAll<HTMLElement>('.mcp-preset-card').forEach(card => {
