@@ -1190,8 +1190,12 @@ export class PanelLayoutManager implements AppModule {
     const mcpLabel = document.createElement('span');
     mcpLabel.className = 'add-panel-block-label';
     mcpLabel.textContent = t('mcp.connectPanel');
+    const mcpBadge = document.createElement('span');
+    mcpBadge.className = 'widget-pro-badge';
+    mcpBadge.textContent = t('widgets.proBadge');
     mcpBlock.appendChild(mcpIcon);
     mcpBlock.appendChild(mcpLabel);
+    mcpBlock.appendChild(mcpBadge);
     mcpBlock.addEventListener('click', () => {
       openMcpConnectModal({
         onComplete: (spec) => this.addMcpPanel(spec),
