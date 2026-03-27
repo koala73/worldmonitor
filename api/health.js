@@ -117,6 +117,7 @@ const STANDALONE_KEYS = {
   hormuzTracker:            'supply_chain:hormuz_tracker:v1',
   simulationPackageLatest:  'forecast:simulation-package:latest',
   simulationOutcomeLatest:  'forecast:simulation-outcome:latest',
+  newsThreatSummary:        'news:threat:summary:v1',
 };
 
 const SEED_META = {
@@ -235,6 +236,7 @@ const ON_DEMAND_KEYS = new Set([
   'marketImplications', // LLM-generated inside forecast cron; can fail silently on LLM errors — degrade to WARN not CRIT
   'simulationPackageLatest', // written by writeSimulationPackage after deep forecast runs; only present after first successful deep run
   'simulationOutcomeLatest', // written by writeSimulationOutcome after simulation runs; only present after first successful simulation
+  'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,
@@ -244,6 +246,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'notamClosures', 'faaDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
+  'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
