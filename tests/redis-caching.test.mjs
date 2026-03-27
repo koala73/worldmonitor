@@ -687,8 +687,8 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(groqCalls, 2, 'different contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v2:IL:'), 'cache key should use v2 country-intel namespace');
-      assert.ok(setKeys[1]?.startsWith('ci-sebuf:v2:IL:'), 'cache key should use v2 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
+      assert.ok(setKeys[1]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-2');
       assert.equal(alphaCached.brief, 'brief-1', 'same context should hit cache');
