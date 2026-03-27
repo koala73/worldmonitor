@@ -299,6 +299,7 @@ export async function deleteRedisKey(key: string, raw = false): Promise<void> {
   try {
     const finalKey = raw ? key : prefixKey(key);
     await fetch(`${url}/del/${encodeURIComponent(finalKey)}`, {
+      method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
     });
