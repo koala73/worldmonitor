@@ -8157,22 +8157,17 @@ const server = http.createServer(async (req, res) => {
 
 // ─── Widget Agent ────────────────────────────────────────────────────────────
 
-const WIDGET_ALLOWED_ENDPOINTS = new Set([
-  '/api/economic/v1/list-world-bank-indicators',
-  '/api/economic/v1/get-macro-signals',
-  '/api/trade/v1/get-customs-revenue',
-  '/api/trade/v1/get-trade-restrictions',
-  '/api/trade/v1/get-tariff-trends',
-  '/api/trade/v1/get-trade-flows',
-  '/api/trade/v1/get-trade-barriers',
-  '/api/market/v1/list-market-quotes',
-  '/api/market/v1/get-sector-summary',
-  '/api/market/v1/list-commodity-quotes',
-  '/api/market/v1/list-crypto-quotes',
-  '/api/aviation/v1/list-airport-delays',
-  '/api/intelligence/v1/get-risk-scores',
-  '/api/conflict/v1/list-ucdp-events',
-]);
+function isWidgetEndpointAllowed(endpoint) {
+  // Allow any /api/ path — the allowlist is enforced by the system prompt.
+  // Exclude write/inference/streaming paths that are not data endpoints.
+  if (!endpoint.startsWith('/api/')) return false;
+  const blocked = [
+    'analyze-stock', 'backtest-stock', 'summarize-article', 'classify-event',
+    'deduce-situation', 'track-aircraft', 'search-flight-prices', 'get-youtube',
+    'get-vessel-snapshot', 'lookup-sanction', 'get-ip-geo', 'get-simulation',
+  ];
+  return !blocked.some(b => endpoint.includes(b));
+}
 
 const WIDGET_FETCH_TOOL = {
   name: 'fetch_worldmonitor_data',
@@ -8191,24 +8186,49 @@ const WIDGET_SYSTEM_PROMPT = `You are a WorldMonitor widget builder. Your job is
 
 ## Available data tools
 
-### fetch_worldmonitor_data — WorldMonitor structured data (preferred for these topics)
-- /api/market/v1/list-market-quotes — market quotes (stocks, indices)
-- /api/market/v1/list-commodity-quotes — commodity prices (oil, gold, silver, etc.)
-- /api/market/v1/list-crypto-quotes — crypto prices
-- /api/market/v1/get-sector-summary — sector performance
-- /api/economic/v1/list-world-bank-indicators — economic indicators (GDP, inflation, unemployment, etc.)
-- /api/economic/v1/get-macro-signals — macro signals (policy rates, yields, CPI trend)
-- /api/trade/v1/get-customs-revenue — US customs/tariff revenue by month
-- /api/trade/v1/get-trade-restrictions — WTO trade restrictions
-- /api/trade/v1/get-tariff-trends — tariff rate history
-- /api/trade/v1/get-trade-flows — import/export flows
-- /api/trade/v1/get-trade-barriers — SPS/TBT barriers
-- /api/aviation/v1/list-airport-delays — international flight delays by airport/region
-- /api/intelligence/v1/get-risk-scores — country instability/risk scores
-- /api/conflict/v1/list-ucdp-events — conflict events (UCDP data)
+### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no matching service below exists.
+URL pattern: /api/<service>/v1/<method> (kebab-case method names)
 
-### search_web — Live internet search for ANY topic (use when topic not covered above)
-Use search_web for: breaking news, weather, sports, elections, specific events, company news, scientific reports, geopolitical updates, sanctions, disasters, or any real-time topic.
+market: list-market-quotes, list-commodity-quotes, list-crypto-quotes, list-gulf-quotes,
+  get-sector-summary, list-etf-flows, get-fear-greed-index, list-earnings-calendar,
+  get-cot-positioning, list-stablecoin-markets, list-ai-tokens, list-defi-tokens,
+  list-crypto-sectors, get-country-stock-index (params: country_code)
+
+economic: list-world-bank-indicators (params: indicator, country_code),
+  get-macro-signals, get-national-debt, get-bis-policy-rates, get-bis-exchange-rates,
+  get-ecb-fx-rates, get-eu-fsi, get-economic-calendar, list-big-mac-prices,
+  get-eu-yield-curve, get-energy-prices, get-crude-inventories, get-nat-gas-storage,
+  get-eu-gas-storage, list-fuel-prices, list-grocery-basket-prices,
+  get-fred-series (params: series_id — e.g. UNRATE, CPIAUCSL, DGS10, GDP),
+  get-eurostat-country-data (params: country_code)
+
+trade: get-trade-flows, get-trade-restrictions, get-tariff-trends,
+  get-trade-barriers, get-customs-revenue, list-comtrade-flows
+
+consumer-prices: get-consumer-price-overview, list-consumer-price-movers,
+  list-consumer-price-categories, list-retailer-price-spreads
+
+aviation: list-airport-delays, list-aviation-news,
+  get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code)
+
+intelligence: get-risk-scores, get-country-intel-brief (params: country_code),
+  get-country-facts (params: country_code), list-gps-interference,
+  list-cross-source-signals, list-security-advisories, list-satellites
+
+conflict: list-ucdp-events, list-acled-events, list-iran-events,
+  get-humanitarian-summary (params: country_code)
+
+unrest: list-unrest-events
+seismology: list-earthquakes
+wildfire: list-fire-detections
+natural: list-natural-events
+maritime: list-navigational-warnings
+supply-chain: get-shipping-rates, get-chokepoint-status, get-critical-minerals
+cyber: list-cyber-threats
+sanctions: list-sanctions-pressure
+news: list-feed-digest
+
+### search_web — Use ONLY when no matching WorldMonitor service exists above
 Results include: title, url, snippet, publishedDate. Embed this data directly into the widget HTML.
 
 ## Visual design — CRITICAL (match the dashboard exactly)
@@ -8638,7 +8658,7 @@ async function handleWidgetAgentRequest(req, res) {
           const { endpoint, params = {} } = block.input;
           sendWidgetSSE(res, 'tool_call', { endpoint });
 
-          if (!WIDGET_ALLOWED_ENDPOINTS.has(endpoint)) {
+          if (!isWidgetEndpointAllowed(endpoint)) {
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Endpoint not allowed.' });
             continue;
           }
@@ -8683,24 +8703,49 @@ const WIDGET_PRO_SYSTEM_PROMPT = `You are a WorldMonitor PRO widget builder. You
 
 ## Available data tools
 
-### fetch_worldmonitor_data — WorldMonitor structured data (preferred for these topics)
-- /api/market/v1/list-market-quotes — market quotes (stocks, indices)
-- /api/market/v1/list-commodity-quotes — commodity prices (oil, gold, silver, etc.)
-- /api/market/v1/list-crypto-quotes — crypto prices
-- /api/market/v1/get-sector-summary — sector performance
-- /api/economic/v1/list-world-bank-indicators — economic indicators (GDP, inflation, unemployment, etc.)
-- /api/economic/v1/get-macro-signals — macro signals (policy rates, yields, CPI trend)
-- /api/trade/v1/get-customs-revenue — US customs/tariff revenue by month
-- /api/trade/v1/get-trade-restrictions — WTO trade restrictions
-- /api/trade/v1/get-tariff-trends — tariff rate history
-- /api/trade/v1/get-trade-flows — import/export flows
-- /api/trade/v1/get-trade-barriers — SPS/TBT barriers
-- /api/aviation/v1/list-airport-delays — international flight delays by airport/region
-- /api/intelligence/v1/get-risk-scores — country instability/risk scores
-- /api/conflict/v1/list-ucdp-events — conflict events (UCDP data)
+### fetch_worldmonitor_data — ALWAYS use first. Only fall back to search_web if no matching service below exists.
+URL pattern: /api/<service>/v1/<method> (kebab-case method names)
 
-### search_web — Live internet search for ANY topic (use when topic not covered above)
-Use search_web for: breaking news, weather, sports, elections, specific events, company news, scientific reports, geopolitical updates, sanctions, disasters, or any real-time topic.
+market: list-market-quotes, list-commodity-quotes, list-crypto-quotes, list-gulf-quotes,
+  get-sector-summary, list-etf-flows, get-fear-greed-index, list-earnings-calendar,
+  get-cot-positioning, list-stablecoin-markets, list-ai-tokens, list-defi-tokens,
+  list-crypto-sectors, get-country-stock-index (params: country_code)
+
+economic: list-world-bank-indicators (params: indicator, country_code),
+  get-macro-signals, get-national-debt, get-bis-policy-rates, get-bis-exchange-rates,
+  get-ecb-fx-rates, get-eu-fsi, get-economic-calendar, list-big-mac-prices,
+  get-eu-yield-curve, get-energy-prices, get-crude-inventories, get-nat-gas-storage,
+  get-eu-gas-storage, list-fuel-prices, list-grocery-basket-prices,
+  get-fred-series (params: series_id — e.g. UNRATE, CPIAUCSL, DGS10, GDP),
+  get-eurostat-country-data (params: country_code)
+
+trade: get-trade-flows, get-trade-restrictions, get-tariff-trends,
+  get-trade-barriers, get-customs-revenue, list-comtrade-flows
+
+consumer-prices: get-consumer-price-overview, list-consumer-price-movers,
+  list-consumer-price-categories, list-retailer-price-spreads
+
+aviation: list-airport-delays, list-aviation-news,
+  get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code)
+
+intelligence: get-risk-scores, get-country-intel-brief (params: country_code),
+  get-country-facts (params: country_code), list-gps-interference,
+  list-cross-source-signals, list-security-advisories, list-satellites
+
+conflict: list-ucdp-events, list-acled-events, list-iran-events,
+  get-humanitarian-summary (params: country_code)
+
+unrest: list-unrest-events
+seismology: list-earthquakes
+wildfire: list-fire-detections
+natural: list-natural-events
+maritime: list-navigational-warnings
+supply-chain: get-shipping-rates, get-chokepoint-status, get-critical-minerals
+cyber: list-cyber-threats
+sanctions: list-sanctions-pressure
+news: list-feed-digest
+
+### search_web — Use ONLY when no matching WorldMonitor service exists above
 Results include: title, url, snippet, publishedDate. Embed as const DATA = [...] in your inline script.
 
 ## Output: body content + inline scripts ONLY

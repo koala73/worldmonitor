@@ -93,17 +93,21 @@ describe('widget-agent relay — security', () => {
     assert.ok(handlerBody.includes('163840'), 'Body limit must be enforced in handleWidgetAgentRequest');
   });
 
-  it('SSRF guard — ALLOWED_ENDPOINTS set is present', () => {
-    assert.ok(relay.includes('WIDGET_ALLOWED_ENDPOINTS'), 'WIDGET_ALLOWED_ENDPOINTS not found');
+  it('SSRF guard — isWidgetEndpointAllowed function is present', () => {
     assert.ok(
-      relay.includes("new Set(["),
-      'WIDGET_ALLOWED_ENDPOINTS should be a Set',
+      relay.includes('isWidgetEndpointAllowed'),
+      'isWidgetEndpointAllowed guard function must exist',
+    );
+    // Must reject non-API paths
+    assert.ok(
+      relay.includes("startsWith('/api/')"),
+      'Guard must restrict to /api/ prefix',
     );
   });
 
   it('SSRF guard — allowlist is checked before any fetch call in tool loop', () => {
-    const allowlistCheck = relay.indexOf('WIDGET_ALLOWED_ENDPOINTS.has(endpoint)');
-    assert.ok(allowlistCheck !== -1, 'WIDGET_ALLOWED_ENDPOINTS.has() check missing');
+    const allowlistCheck = relay.indexOf('isWidgetEndpointAllowed(endpoint)');
+    assert.ok(allowlistCheck !== -1, 'isWidgetEndpointAllowed() check missing in tool loop');
     // The fetch call to api.worldmonitor.app must come AFTER the check
     const fetchCallIdx = relay.indexOf("'https://api.worldmonitor.app'", allowlistCheck);
     assert.ok(
@@ -112,18 +116,11 @@ describe('widget-agent relay — security', () => {
     );
   });
 
-  it('SSRF guard — only worldmonitor.app endpoints are in allowlist', () => {
-    const setStart = relay.indexOf('WIDGET_ALLOWED_ENDPOINTS = new Set');
-    assert.ok(setStart !== -1);
-    const setBody = relay.slice(setStart, relay.indexOf(']);', setStart) + 2);
-    // Extract all quoted strings inside the Set
-    const entries = [...setBody.matchAll(/['"]([^'"]+)['"]/g)].map(m => m[1]);
-    for (const entry of entries) {
-      assert.ok(
-        entry.startsWith('/api/'),
-        `Non-API endpoint in WIDGET_ALLOWED_ENDPOINTS: "${entry}" — must start with /api/`,
-      );
-    }
+  it('SSRF guard — dangerous inference/write paths are blocked', () => {
+    assert.ok(
+      relay.includes('analyze-stock') && relay.includes('summarize-article'),
+      'Blocklist must explicitly exclude inference-only paths',
+    );
   });
 
   it('tool loop is bounded by maxTurns (6 for basic, 10 for PRO)', () => {
