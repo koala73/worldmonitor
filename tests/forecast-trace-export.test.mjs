@@ -53,6 +53,7 @@ import {
   inferEntityClassFromName,
   buildSimulationRequirementText,
   buildSimulationPackageConstraints,
+  buildSimulationPackageEvaluationTargets,
   buildSimulationPackageFromDeepSnapshot,
   buildSimulationPackageKey,
   SIMULATION_PACKAGE_SCHEMA_VERSION,
@@ -6488,9 +6489,49 @@ describe('phase 3 simulation re-ingestion — matching helpers', () => {
     assert.ok(negatesDisruption('crude_oil supply chain restored to normal operations', candidatePacket));
   });
 
-  it('negatesDisruption returns false when no route/commodity on candidate', () => {
+  it('negatesDisruption returns false when no route/commodity and no stateKind/bucket on candidate', () => {
     const candidatePacket = { routeFacilityKey: '', commodityKey: '' };
     assert.ok(!negatesDisruption('all shipping lanes reopened', candidatePacket));
+  });
+
+  it('contradictsPremise — non-maritime: sovereign_risk bucket + negation term matches', () => {
+    const path = {
+      candidate: { routeFacilityKey: '', commodityKey: '', stateKind: 'political_instability', topBucketId: 'sovereign_risk' },
+      direct: { targetBucket: 'sovereign_risk' },
+    };
+    assert.ok(contradictsPremise('sovereign debt crisis resolved after IMF agreement', path));
+  });
+
+  it('contradictsPremise — non-maritime: requires negation term even with matching keywords', () => {
+    const path = {
+      candidate: { routeFacilityKey: '', commodityKey: '', stateKind: 'political_instability', topBucketId: 'sovereign_risk' },
+      direct: { targetBucket: 'sovereign_risk' },
+    };
+    assert.ok(!contradictsPremise('sovereign risk remains elevated', path));
+  });
+
+  it('negatesDisruption — non-maritime: rates_inflation bucket + negation term matches', () => {
+    const candidatePacket = { routeFacilityKey: '', commodityKey: '', stateKind: 'market_repricing', topBucketId: 'rates_inflation' };
+    assert.ok(negatesDisruption('inflation pressures stabilized as Fed signals rate normalization', candidatePacket));
+  });
+
+  it('negatesDisruption — non-maritime: unrelated stateKind text does not match', () => {
+    const candidatePacket = { routeFacilityKey: '', commodityKey: '', stateKind: 'cyber_pressure', topBucketId: 'rates_inflation' };
+    // stabilizer text mentions "shipping restored" but theater is cyber/rates — no keyword match
+    assert.ok(!negatesDisruption('Red Sea shipping lanes restored to normal', candidatePacket));
+  });
+
+  it('buildSimulationPackageEvaluationTargets — market_repricing does NOT contain maritime framing', () => {
+    const theater = {
+      theaterId: 'th-1', candidateStateId: 'state-1', label: 'Fed Rate Hike Cycle',
+      stateKind: 'market_repricing', dominantRegion: 'United States', macroRegions: ['North America'],
+      routeFacilityKey: '', commodityKey: '', topBucketId: 'rates_inflation', topChannel: 'policy_rate_pressure',
+    };
+    const result = buildSimulationPackageEvaluationTargets([theater], []);
+    const allText = JSON.stringify(result);
+    assert.ok(!allText.includes('freight rate delta'), `"freight rate delta" must not appear for non-maritime theater, got: ${allText}`);
+    assert.ok(!allText.includes('$/bbl'), `"$/bbl" must not appear for non-maritime theater, got: ${allText}`);
+    assert.ok(allText.includes('inflation') || allText.includes('rates'), `expected bucket-related text, got: ${allText}`);
   });
 });
 
