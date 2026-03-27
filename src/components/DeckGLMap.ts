@@ -5388,6 +5388,7 @@ export class DeckGLMap {
     this.enforceLayerLimit();
   }
 
+  // Update legend visibility based on which layers are currently active
   // Get center coordinates for programmatic popup positioning
   private getContainerCenter(): { x: number; y: number } {
     const rect = this.container.getBoundingClientRect();

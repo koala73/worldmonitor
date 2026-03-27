@@ -6446,6 +6446,29 @@ describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
     assert.equal(simulationEvidence.theaterCount, 1);
     assert.ok(Array.isArray(simulationEvidence.adjustments));
   });
+
+  it('T13: candidateStateId-keyed lookup works when theaterId is a positional ID (production scenario)', () => {
+    // Regression test: before the fix, theaterResults only stored theaterId="theater-1"
+    // and the map lookup by candidateStateId="state-eca8696a31" always returned undefined.
+    const candidateStateId = 'state-eca8696a31';
+    const path = makeExpandedPath(candidateStateId, 0.52);  // routeFacilityKey='Red Sea' from fixture
+    const evaluation = makeEval('completed', [path]);
+    const simOutcome = {
+      runId: 'sim-run-002',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',        // positional — diverges from candidateStateId
+        candidateStateId,              // production fix: stored alongside theaterId
+        topPaths: [],
+        invalidators: ['Red Sea reopened after ceasefire agreement'],
+        stabilizers: [],
+      }],
+    };
+    const candidatePackets = [{ candidateStateId, routeFacilityKey: 'Red Sea', commodityKey: 'crude_oil', topBucketId: 'energy', topChannel: 'energy_supply_shock' }];
+    const { simulationEvidence } = applySimulationMerge(evaluation, simOutcome, candidatePackets, { generatedAt: Date.now(), impactExpansionCandidates: candidatePackets }, null);
+    assert.equal(simulationEvidence.pathsDemoted, 1, 'path should be demoted via candidateStateId lookup');
+    assert.equal(simulationEvidence.adjustments.length, 1);
+  });
 });
 
 describe('phase 3 simulation re-ingestion — matching helpers', () => {
