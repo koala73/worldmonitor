@@ -4939,13 +4939,11 @@ async function seedUsniFleet() {
   const t0 = Date.now();
   try {
     // USNI (WordPress) returns 403 from Railway datacenter IPs via Cloudflare.
-    // Try IL proxy first, then US proxy (YOUTUBE_PROXY_URL), then direct (dev only).
-    const ilProxyAuth = process.env.OREF_PROXY_AUTH || OREF_PROXY_AUTH;
-    const usProxyUrl = process.env.YOUTUBE_PROXY_URL || '';
+    // Use PROXY_URL (US-targeted proxy). OREF_PROXY_AUTH is IL-only and must NOT be used here.
+    const proxyUrl = process.env.PROXY_URL || '';
     let wpData;
     const proxiesToTry = [
-      ilProxyAuth ? parseProxyUrl(`http://${ilProxyAuth}`) : null,
-      usProxyUrl ? parseProxyUrl(usProxyUrl) : null,
+      proxyUrl ? parseProxyUrl(proxyUrl) : null,
     ].filter(Boolean);
     let fetched = false;
     for (const proxy of proxiesToTry) {
