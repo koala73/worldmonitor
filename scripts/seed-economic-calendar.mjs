@@ -17,17 +17,19 @@ const FRED_RELEASES = [
   { id: 9,   event: 'Retail Sales',     unit: '%' },
 ];
 
-// 2026 FOMC rate decision dates (Fed publishes full year schedule in advance)
+// Fallback FOMC rate decision dates (day 2 of each 2-day meeting = decision day)
 // Source: federalreserve.gov/monetarypolicy/fomccalendars.htm
-const FOMC_DATES_2026 = [
-  '2026-01-29', '2026-03-19', '2026-05-07',
-  '2026-06-18', '2026-07-30', '2026-09-17',
-  '2026-11-05', '2026-12-17',
+// Used only when live fetch fails
+const FOMC_DATES_FALLBACK = [
+  '2026-01-28', '2026-03-18', '2026-04-29',
+  '2026-06-17', '2026-07-29', '2026-09-16',
+  '2026-10-28', '2026-12-09',
 ];
 
-// 2026 ECB Governing Council monetary policy meeting dates
-// Source: ecb.europa.eu/press/govcdec/mopo/html/index.en.html
-const ECB_RATE_DATES_2026 = [
+// Fallback ECB Governing Council monetary policy dates (press conference = Day 2)
+// Source: ecb.europa.eu/press/calendars/mgcgc/html/index.en.html
+// Used only when live fetch fails
+const ECB_RATE_DATES_FALLBACK = [
   '2026-01-30', '2026-03-19', '2026-04-30',
   '2026-06-11', '2026-07-23', '2026-09-10',
   '2026-10-29', '2026-12-17',
@@ -41,33 +43,73 @@ const EUROSTAT_DATASETS = [
   { id: 'namq_10_gdp',   event: 'Euro Area GDP',        country: 'EA', impact: 'high',   unit: '%' },
 ];
 
-function buildFomcEvents(today) {
-  return FOMC_DATES_2026
-    .filter((d) => d >= today)
-    .map((date) => ({
-      event: 'FOMC Rate Decision',
-      country: 'US',
-      date,
-      impact: 'high',
-      actual: '',
-      estimate: '',
-      previous: '',
-      unit: '',
-    }));
+// Scrape FOMC meeting dates from the official Fed calendar page.
+// Takes the second day of each 2-day meeting as the rate decision date.
+// Falls back to FOMC_DATES_FALLBACK if the page is unreachable or parse fails.
+async function fetchFomcDates(fallback) {
+  try {
+    const resp = await fetch('https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm', {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const html = await resp.text();
+
+    const MONTHS = {
+      January: '01', February: '02', March: '03', April: '04',
+      May: '05', June: '06', July: '07', August: '08',
+      September: '09', October: '10', November: '11', December: '12',
+    };
+    const dates = [];
+    // Matches "January 27-28, 2026" or "January 27–28, 2026"; captures day2 and year
+    const re = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}[-\u2013](\d{1,2})[^,]*,\s*(20\d{2})/g;
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const [, month, day2, year] = m;
+      dates.push(`${year}-${MONTHS[month]}-${day2.padStart(2, '0')}`);
+    }
+
+    const unique = [...new Set(dates)].sort();
+    if (unique.length === 0) throw new Error('no dates parsed from Fed page');
+    console.log(`  FOMC: fetched ${unique.length} meeting dates from federalreserve.gov`);
+    return unique;
+  } catch (err) {
+    console.warn(`  FOMC dates fetch failed (${err.message}) — using fallback`);
+    return fallback;
+  }
 }
 
-function buildEcbEvents(today) {
-  const upcoming = ECB_RATE_DATES_2026.filter((d) => d >= today);
-  return upcoming.map((date) => ({
-    event: 'ECB Rate Decision',
-    country: 'EU',
-    date,
-    impact: 'high',
-    actual: '',
-    estimate: '',
-    previous: '',
-    unit: '',
-  }));
+// Scrape ECB Governing Council monetary policy meeting dates from the official ECB calendar.
+// Filters to Day 2 entries (press conference day = rate decision announcement).
+// Falls back to ECB_RATE_DATES_FALLBACK if the page is unreachable or parse fails.
+async function fetchEcbCouncilDates(fallback) {
+  try {
+    const resp = await fetch('https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html', {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const html = await resp.text();
+
+    const dates = [];
+    // Each calendar entry has datetime="YYYY-MM-DD"; check the next ~600 chars for "monetary policy" + "Day 2"
+    const dateRe = /datetime="(\d{4}-\d{2}-\d{2})"/g;
+    let m;
+    while ((m = dateRe.exec(html)) !== null) {
+      const ctx = html.slice(m.index, m.index + 600);
+      if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
+        dates.push(m[1]);
+      }
+    }
+
+    const unique = [...new Set(dates)].sort();
+    if (unique.length === 0) throw new Error('no dates parsed from ECB page');
+    console.log(`  ECB: fetched ${unique.length} council dates from ecb.europa.eu`);
+    return unique;
+  } catch (err) {
+    console.warn(`  ECB council dates fetch failed (${err.message}) — using fallback`);
+    return fallback;
+  }
 }
 
 async function fetchEurostatRelease(datasetId, today, toDate) {
@@ -128,14 +170,26 @@ async function fetchEconomicCalendar() {
   const today = new Date().toISOString().slice(0, 10);
   const toDate = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
 
-  const fomcEvents = buildFomcEvents(today);
-  const ecbEvents = buildEcbEvents(today);
+  // Fetch FOMC and ECB dates dynamically; fall back to hardcoded if unavailable
+  console.log('  Fetching FOMC and ECB Governing Council dates...');
+  const [fomcAllDates, ecbAllDates] = await Promise.all([
+    fetchFomcDates(FOMC_DATES_FALLBACK),
+    fetchEcbCouncilDates(ECB_RATE_DATES_FALLBACK),
+  ]);
+
+  const fomcEvents = fomcAllDates
+    .filter((d) => d >= today && d <= toDate)
+    .map((date) => ({ event: 'FOMC Rate Decision', country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit: '' }));
+
+  const ecbEvents = ecbAllDates
+    .filter((d) => d >= today && d <= toDate)
+    .map((date) => ({ event: 'ECB Rate Decision', country: 'EU', date, impact: 'high', actual: '', estimate: '', previous: '', unit: '' }));
 
   if (fomcEvents.length === 0) {
-    console.warn('  WARNING: no upcoming FOMC dates — FOMC_DATES_2026 needs updating for the new year');
+    console.warn('  WARNING: no upcoming FOMC dates in next 30 days');
   }
   if (ecbEvents.length === 0) {
-    console.warn('  WARNING: no upcoming ECB dates — ECB_RATE_DATES_2026 needs updating for the new year');
+    console.warn('  WARNING: no upcoming ECB dates in next 30 days');
   }
 
   const events = [...fomcEvents, ...ecbEvents];
