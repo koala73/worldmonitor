@@ -6,6 +6,21 @@
  * market endpoints — no reliance on the global fetch patch.
  */
 
+/**
+ * Test seam — set in unit tests to inject key/token providers without needing
+ * browser globals (localStorage, Clerk session). Null in production.
+ */
+let _testProviders: {
+  getTesterKey?: () => string;
+  getClerkToken?: () => Promise<string | null>;
+} | null = null;
+
+export function _setTestProviders(
+  p: typeof _testProviders,
+): void {
+  _testProviders = p;
+}
+
 export async function premiumFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -34,22 +49,32 @@ export async function premiumFetch(
   // API keys can be different sets.
   let testerKey: string | null = null;
   try {
-    const { getProWidgetKey, getWidgetAgentKey } = await import('@/services/widget-store');
-    testerKey = getProWidgetKey() || getWidgetAgentKey();
-    if (testerKey) {
-      const testerHeaders = new Headers(existing);
-      testerHeaders.set('X-WorldMonitor-Key', testerKey);
-      const res = await globalThis.fetch(input, { ...init, headers: testerHeaders });
-      if (res.status !== 401) return res;
-      // 401 → tester key not valid for this gateway endpoint; fall through to Clerk.
+    if (_testProviders?.getTesterKey) {
+      testerKey = _testProviders.getTesterKey();
+    } else {
+      const { getProWidgetKey, getWidgetAgentKey } = await import('@/services/widget-store');
+      testerKey = getProWidgetKey() || getWidgetAgentKey();
     }
-  } catch { /* not available — fall through */ }
+  } catch { /* widget-store not available — fall through */ }
+
+  if (testerKey) {
+    const testerHeaders = new Headers(existing);
+    testerHeaders.set('X-WorldMonitor-Key', testerKey);
+    const res = await globalThis.fetch(input, { ...init, headers: testerHeaders });
+    if (res.status !== 401) return res;
+    // 401 → tester key not in WORLDMONITOR_VALID_KEYS; fall through to Clerk.
+  }
 
   // 3. Clerk Pro session token (fallback for users without a tester key, or when
   //    the tester key is not in WORLDMONITOR_VALID_KEYS).
   try {
-    const { getClerkToken } = await import('@/services/clerk');
-    const token = await getClerkToken();
+    let token: string | null = null;
+    if (_testProviders?.getClerkToken) {
+      token = await _testProviders.getClerkToken();
+    } else {
+      const { getClerkToken } = await import('@/services/clerk');
+      token = await getClerkToken();
+    }
     if (token) {
       existing.set('Authorization', `Bearer ${token}`);
       return globalThis.fetch(input, { ...init, headers: existing });
