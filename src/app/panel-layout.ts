@@ -953,6 +953,26 @@ export class PanelLayoutManager implements AppModule {
       import('@/components/CrossSourceSignalsPanel').then(m => new m.CrossSourceSignalsPanel()),
     );
 
+    this.lazyPanel('geo-hubs', () =>
+      import('@/components/GeoHubsPanel').then(m => {
+        const p = new m.GeoHubsPanel();
+        p.setOnHubClick((hub) => { this.ctx.map?.setCenter(hub.lat, hub.lon, 4); });
+        return p;
+      }),
+    );
+
+    this.lazyPanel('tech-hubs', () =>
+      import('@/components/TechHubsPanel').then(m => {
+        const p = new m.TechHubsPanel();
+        p.setOnHubClick((hub) => { this.ctx.map?.setCenter(hub.lat, hub.lon, 4); });
+        return p;
+      }),
+    );
+
+    this.lazyPanel('ai-regulation', () =>
+      import('@/components/RegulationPanel').then(m => new m.RegulationPanel('ai-regulation')),
+    );
+
     this.createPanel('macro-signals', () => new MacroSignalsPanel());
     this.createPanel('fear-greed', () => new FearGreedPanel());
     this.createPanel('macro-tiles', () => new MacroTilesPanel());

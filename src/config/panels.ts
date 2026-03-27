@@ -94,6 +94,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'cross-source-signals': { name: 'Cross-Source Signals', enabled: true, priority: 2 },
   'market-implications': { name: 'AI Market Implications', enabled: true, priority: 1, premium: 'locked' as const },
   'deduction': { name: 'Deduct Situation', enabled: true, priority: 1, premium: 'locked' as const },
+  'geo-hubs': { name: 'Geopolitical Hubs', enabled: false, priority: 2 },
+  'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
@@ -238,7 +240,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   accelerators: { name: 'Accelerators & Demo Days', enabled: true, priority: 1 },
   security: { name: 'Cybersecurity', enabled: true, priority: 1 },
   policy: { name: 'AI Policy & Regulation', enabled: true, priority: 1 },
-  regulation: { name: 'AI Regulation Dashboard', enabled: true, priority: 1 },
+  regulation: { name: 'AI Regulation News', enabled: true, priority: 1 },
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 1 },
   markets: { name: 'Tech Stocks', enabled: true, priority: 2 },
   finance: { name: 'Financial News', enabled: true, priority: 2 },
@@ -262,6 +264,8 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+  'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
+  'ai-regulation': { name: 'AI Regulation Dashboard', enabled: false, priority: 2 },
 };
 
 const TECH_MAP_LAYERS: MapLayers = {

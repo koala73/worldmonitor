@@ -186,6 +186,10 @@ import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
 import { fetchShippingStress } from '@/services/supply-chain';
+import { getTopActiveGeoHubs } from '@/services/geo-activity';
+import { getTopActiveHubs } from '@/services/tech-activity';
+import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
+import type { TechHubsPanel } from '@/components/TechHubsPanel';
 
 const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
   THREAT_LEVEL_UNSPECIFIED: 'info',
@@ -1121,6 +1125,11 @@ export class DataLoaderManager implements AppModule {
 
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.updateInsights(this.ctx.latestClusters);
+
+      (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
+        ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
+      (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
+        ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
 
       const geoLocated = this.ctx.latestClusters
         .filter((c): c is typeof c & { lat: number; lon: number } => c.lat != null && c.lon != null)
@@ -2765,6 +2774,10 @@ export class DataLoaderManager implements AppModule {
         ingestNewsForCII(this.ctx.latestClusters);
         dataFreshness.recordUpdate('gdelt', this.ctx.latestClusters.length);
         this.refreshCiiAndBrief();
+        (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
+          ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
+        (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
+          ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
       }
 
       const signals = await analysisWorker.analyzeCorrelations(
