@@ -1,8 +1,40 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { execFileSync } from 'child_process';
 
 loadEnvFile(import.meta.url);
+
+// Proxy for FRED — Railway container IPs get rate-limited/blocked by api.stlouisfed.org.
+// Supports PROXY_URL="host:port:user:pass" (Decodo) or OREF_PROXY_AUTH="user:pass@host:port" (Froxy).
+function resolveProxy() {
+  const raw = process.env.PROXY_URL || '';
+  if (raw) {
+    const parts = raw.split(':');
+    if (parts.length === 4) {
+      const [host, port, user, pass] = parts;
+      return `${user}:${pass}@${host.replace(/^gate\./, 'us.')}:${port}`;
+    }
+    return raw;
+  }
+  return process.env.OREF_PROXY_AUTH || '';
+}
+const _proxyAuth = resolveProxy();
+
+// curl-based fetch for sources that block Railway IPs.
+// Returns response body as string; throws on non-2xx.
+function curlFetch(url, headers = {}) {
+  const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
+  if (_proxyAuth) args.push('-x', `http://${_proxyAuth}`);
+  for (const [k, v] of Object.entries(headers)) args.push('-H', `${k}: ${v}`);
+  args.push('-w', '\n%{http_code}');
+  args.push(url);
+  const raw = execFileSync('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
+  const nl = raw.lastIndexOf('\n');
+  const status = parseInt(raw.slice(nl + 1).trim(), 10);
+  if (status < 200 || status >= 300) throw Object.assign(new Error(`HTTP ${status}`), { status });
+  return raw.slice(0, nl);
+}
 
 // ─── Keys (must match handler cache keys exactly) ───
 const KEYS = {
@@ -159,30 +191,32 @@ async function fetchFredSeries() {
         series_id: seriesId, api_key: apiKey, file_type: 'json',
       });
 
+      const fredFetchJson = async (url) => {
+        if (_proxyAuth) return JSON.parse(curlFetch(url, { Accept: 'application/json' }));
+        const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+        if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+        return r.json();
+      };
+
       const [obsResp, metaResp] = await Promise.allSettled([
-        fetch(`https://api.stlouisfed.org/fred/series/observations?${obsParams}`, {
-          headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000),
-        }),
-        fetch(`https://api.stlouisfed.org/fred/series?${metaParams}`, {
-          headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000),
-        }),
+        fredFetchJson(`https://api.stlouisfed.org/fred/series/observations?${obsParams}`),
+        fredFetchJson(`https://api.stlouisfed.org/fred/series?${metaParams}`),
       ]);
 
-      if (obsResp.status === 'rejected' || !obsResp.value.ok) {
+      if (obsResp.status === 'rejected') {
         console.warn(`  FRED ${seriesId}: fetch failed`);
         continue;
       }
 
-      const obsData = await obsResp.value.json();
+      const obsData = obsResp.value;
       const observations = (obsData.observations || [])
         .map((o) => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
         .filter(Boolean)
         .reverse();
 
       let title = seriesId, units = '', frequency = '';
-      if (metaResp.status === 'fulfilled' && metaResp.value.ok) {
-        const metaData = await metaResp.value.json();
-        const meta = metaData.seriess?.[0];
+      if (metaResp.status === 'fulfilled') {
+        const meta = metaResp.value.seriess?.[0];
         if (meta) { title = meta.title || seriesId; units = meta.units || ''; frequency = meta.frequency || ''; }
       }
 
