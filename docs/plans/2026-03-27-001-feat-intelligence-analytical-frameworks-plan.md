@@ -276,6 +276,7 @@ this.header.appendChild(selector.el);
 Add a new `<details class="wm-pref-group">` section **"Analysis Frameworks"** between the Intelligence and Media groups.
 
 Contents:
+
 1. **Active framework display** — read-only list showing which framework is active per panel (or "Default" if none). This is informational; per-panel selection is done in the panel headers.
 2. **Skill library list** — shows all imported skills with name, description (truncated), and action buttons (rename, delete). Built-in frameworks are listed as read-only (no delete/rename).
 3. **Import button** — opens the import modal.
@@ -283,6 +284,7 @@ Contents:
 **Import modal (`FrameworkImportModal`)**
 
 A simple modal (same pattern as existing modals in the codebase):
+
 - Tab A: **From agentskills.io** — URL/ID input field → "Fetch" button → preview of name + instructions (first 200 chars) → "Save to Library" button.
 - Tab B: **Paste skill definition** — `<textarea>` for raw JSON → `JSON.parse()` validation with live error feedback → "Save to Library" button. JSON only in phase 1; YAML deferred (no YAML parser dependency to add).
 - Validation errors shown inline (empty instructions, too long, parse error, CORS/network error).

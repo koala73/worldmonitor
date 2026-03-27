@@ -51,6 +51,7 @@ WorldMonitor's AI intelligence panels (WorldBrief, Country Brief, Market Brief) 
 ## Outstanding Questions
 
 ### Resolve Before Planning
+
 _(none blocking — proceed to planning)_
 
 ### Deferred to Planning
