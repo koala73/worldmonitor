@@ -168,7 +168,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:economic-calendar', keywords: ['economic calendar', 'macro events', 'nonfarm payrolls', 'gdp release', 'fomc'], label: 'Panel: Economic Calendar', icon: '\u{1F4C6}', category: 'panels' },
   { id: 'panel:cot-positioning', keywords: ['cot', 'cot positioning', 'commitments of traders', 'futures positioning', 'cftc'], label: 'Panel: CFTC COT Positioning', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:macro-tiles', keywords: ['macro tiles', 'macro indicators', 'macro overview'], label: 'Panel: Macro Indicators', icon: '\u{1F9E9}', category: 'panels' },
-  { id: 'panel:defense-patents', keywords: ['defense patents', 'r&d signal', 'military research', 'defense r&d'], label: "Panel: R\u0026D Signal", icon: '\u{1F9EA}', category: 'panels' },
+  { id: 'panel:defense-patents', keywords: ['defense patents', 'r&d signal', 'military research', 'defense r&d'], label: 'Panel: R&D Signal', icon: '\u{1F9EA}', category: 'panels' },
   { id: 'panel:disease-outbreaks', keywords: ['disease outbreaks', 'outbreaks', 'who alerts', 'epidemic', 'health alerts', 'promed'], label: 'Panel: Disease Outbreaks', icon: '\u{1F9A0}', category: 'panels' },
   { id: 'panel:social-velocity', keywords: ['social velocity', 'reddit trending', 'social signals', 'viral', 'trending posts'], label: 'Panel: Social Velocity', icon: '\u{1F4F1}', category: 'panels' },
 
