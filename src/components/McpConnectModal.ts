@@ -215,6 +215,12 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
 
   toAdvancedBtn.addEventListener('click', () => showAdvancedMode(true));
   toSimpleBtn.addEventListener('click', () => {
+    // Re-extract key from any edits made in advanced mode
+    if (activeApiKeyHeader) {
+      const parsed = parseAuthHeader(authInput.value);
+      const extracted = extractKeyFromHeaders(parsed, activeApiKeyHeader);
+      if (extracted) apiKeyInput.value = extracted;
+    }
     apiKeyGroup.style.display = '';
     authHeaderGroup.style.display = 'none';
     toSimpleBtn.style.display = 'none';
