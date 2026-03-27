@@ -79,7 +79,9 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     ? extractKeyFromHeaders(existingHeaders, matchingPreset.apiKeyHeader)
     : null;
 
-  const initialSimpleMode = !!editSimpleKey;
+  // New connections always open in simple API key mode; edit mode uses simple only if the
+  // existing headers reverse-map cleanly to the preset's key template.
+  const initialSimpleMode = !existing || !!editSimpleKey;
   const initialApiKey = editSimpleKey ?? '';
   const initialRawHeader = initialSimpleMode ? '' : _headersToLine(existingHeaders);
 
@@ -158,8 +160,10 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   let selectedTool: McpToolDef | null = existing
     ? { name: existing.toolName, description: '' }
     : null;
-  /** Template for the current preset, e.g. "Authorization: Bearer {key}" */
-  let activeApiKeyHeader = matchingPreset?.apiKeyHeader ?? '';
+  /** Template for the current preset, e.g. "Authorization: Bearer {key}".
+   *  Falls back to a generic Bearer default so custom server key input works. */
+  const DEFAULT_API_KEY_HEADER = 'Authorization: Bearer {key}';
+  let activeApiKeyHeader = matchingPreset?.apiKeyHeader ?? (initialSimpleMode ? DEFAULT_API_KEY_HEADER : '');
 
   const urlInput = modal.querySelector('.mcp-server-url') as HTMLInputElement;
   const apiKeyGroup = modal.querySelector('.mcp-api-key-group') as HTMLElement;
@@ -231,17 +235,18 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     apiKeyHint.textContent = extractAuthHint(matchingPreset.authNote);
   }
 
-  // When user manually edits the URL, deselect any active preset and reset to raw mode
+  // When user manually edits the URL: deselect presets and switch to generic simple mode
+  // (API Key field with default Bearer template, no preset-specific hint)
   urlInput.addEventListener('input', () => {
     const typed = urlInput.value.trim();
     const presetUrls = Array.from(modal.querySelectorAll<HTMLElement>('.mcp-preset-card'))
       .map(c => c.dataset.url ?? '');
     if (!presetUrls.includes(typed)) {
       modal.querySelectorAll('.mcp-preset-card').forEach(c => c.classList.remove('selected'));
-      activeApiKeyHeader = '';
-      apiKeyGroup.style.display = 'none';
+      activeApiKeyHeader = DEFAULT_API_KEY_HEADER;
+      apiKeyGroup.style.display = '';
       apiKeyHint.textContent = '';
-      authHeaderGroup.style.display = '';
+      authHeaderGroup.style.display = 'none';
       toSimpleBtn.style.display = 'none';
     }
   });
