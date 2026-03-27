@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package worldmonitor.intelligence.v1;
 
+import "sebuf/http/annotations.proto";
+
 message MarketImplicationCard {
   string ticker = 1;
   string name = 2;
@@ -14,7 +16,9 @@ message MarketImplicationCard {
   string driver = 9;
 }
 
-message ListMarketImplicationsRequest {}
+message ListMarketImplicationsRequest {
+  string framework_id = 1 [(sebuf.http.query) = { name: "frameworkId" }];
+}
 
 message ListMarketImplicationsResponse {
   repeated MarketImplicationCard cards = 1;

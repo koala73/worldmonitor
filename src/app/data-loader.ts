@@ -1601,7 +1601,7 @@ export class DataLoaderManager implements AppModule {
     if (this.ctx.isDestroyed || this.ctx.inFlight.has('marketImplications')) return;
     this.ctx.inFlight.add('marketImplications');
     try {
-      const data = await fetchMarketImplications(getActiveFrameworkForPanel('market-implications')?.systemPromptAppend);
+      const data = await fetchMarketImplications(getActiveFrameworkForPanel('market-implications')?.id ?? '');
       if (!data) {
         this.callPanel('market-implications', 'showUnavailable');
         return;

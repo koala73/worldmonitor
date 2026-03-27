@@ -419,6 +419,7 @@ export interface CrossSourceSignal {
 }
 
 export interface ListMarketImplicationsRequest {
+  frameworkId: string;
 }
 
 export interface ListMarketImplicationsResponse {
@@ -931,7 +932,9 @@ export class IntelligenceServiceClient {
 
   async listMarketImplications(req: ListMarketImplicationsRequest, options?: IntelligenceServiceCallOptions): Promise<ListMarketImplicationsResponse> {
     let path = "/api/intelligence/v1/list-market-implications";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.frameworkId != null && req.frameworkId !== "") params.set("frameworkId", String(req.frameworkId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

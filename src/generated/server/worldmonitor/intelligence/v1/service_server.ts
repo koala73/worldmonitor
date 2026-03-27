@@ -419,6 +419,7 @@ export interface CrossSourceSignal {
 }
 
 export interface ListMarketImplicationsRequest {
+  frameworkId: string;
 }
 
 export interface ListMarketImplicationsResponse {
@@ -1290,7 +1291,17 @@ export function createIntelligenceServiceRoutes(
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = {} as ListMarketImplicationsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListMarketImplicationsRequest = {
+            frameworkId: params.get("frameworkId") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listMarketImplications", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
 
           const ctx: ServerContext = {
             request: req,
