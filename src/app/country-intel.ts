@@ -403,6 +403,7 @@ export class CountryIntelManager implements AppModule {
     const params = new URLSearchParams({ country_code: code, lang });
     const trimmed = contextSnapshot.trim();
     if (trimmed.length > 0) {
+      // 3800 chars ≈ ~950 tokens; raised from 2200 to include infra context. Monitor p95 LLM latency if timeouts increase.
       params.set('context', trimmed.slice(0, 3800));
     }
 
@@ -505,7 +506,7 @@ export class CountryIntelManager implements AppModule {
         .slice(0, 3)
         .map(e => {
           const node = graph.nodes.get(e.from);
-          const status = node?.metadata?.status as string | undefined;
+          const status = typeof node?.metadata?.status === 'string' ? node.metadata.status : undefined;
           return node ? `${node.name}${status ? ` (${status})` : ''}` : '';
         }).filter(Boolean);
       if (pipes.length) parts.push(`Pipelines: ${pipes.join(', ')}`);
