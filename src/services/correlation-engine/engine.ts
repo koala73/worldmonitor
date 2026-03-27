@@ -418,7 +418,7 @@ export class CorrelationEngine {
           ? `Location: ${card.location.label} (${card.location.lat.toFixed(2)}, ${card.location.lon.toFixed(2)})`
           : '';
 
-      const resp = await this.intelligenceClient.deductSituation({ query, geoContext });
+      const resp = await this.intelligenceClient.deductSituation({ query, geoContext, framework: '' });
 
       if (resp.analysis) {
         card.assessment = resp.analysis;

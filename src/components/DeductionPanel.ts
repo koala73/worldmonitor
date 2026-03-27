@@ -135,6 +135,7 @@ export class DeductionPanel extends Panel {
             const resp = await client.deductSituation({
                 query,
                 geoContext,
+                framework: '',
             });
             if (!this.element?.isConnected) return;
 

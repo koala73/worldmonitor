@@ -143,7 +143,7 @@ export interface GdeltArticle {
 export interface DeductSituationRequest {
   query: string;
   geoContext: string;
-  framework?: string;
+  framework: string;
 }
 
 export interface DeductSituationResponse {

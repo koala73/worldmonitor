@@ -9,7 +9,7 @@ export interface SummarizeArticleRequest {
   geoContext: string;
   variant: string;
   lang: string;
-  systemAppend?: string;
+  systemAppend: string;
 }
 
 export interface SummarizeArticleResponse {

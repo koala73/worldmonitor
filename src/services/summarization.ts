@@ -83,6 +83,7 @@ async function tryApiProvider(
         geoContext: geoContext || '',
         variant: SITE_VARIANT,
         lang: lang || 'en',
+        systemAppend: '',
       });
     }, emptySummaryFallback);
 
@@ -310,6 +311,7 @@ export async function translateText(
           geoContext: '',
           variant: targetLang,
           lang: '',
+          systemAppend: '',
         });
       }, emptySummaryFallback);
 
