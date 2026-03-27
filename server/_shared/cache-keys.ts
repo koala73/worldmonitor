@@ -77,9 +77,6 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   euGasStorage:     'economic:eu-gas-storage:v1',
   eurostatCountryData: 'economic:eurostat-country-data:v1',
   euFsi:            'economic:fsi-eu:v1',
-  shippingStress:   'supply_chain:shipping_stress:v1',
-  diseaseOutbreaks: 'health:disease-outbreaks:v1',
-  socialVelocity:   'intelligence:social:reddit:v1',
 };
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
