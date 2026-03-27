@@ -8446,10 +8446,14 @@ Infrastructure & Environment:
   radiationWatch, weatherAlerts, outages, serviceStatuses, ddosAttacks, trafficAnomalies
 
 Supply Chain & Trade:
-  shippingRates, chokepoints, chokepointTransits, minerals, customsRevenue, sanctionsPressure
+  shippingRates, chokepoints, chokepointTransits, minerals, customsRevenue, sanctionsPressure,
+  shippingStress
 
 Consumer Prices:
   consumerPricesOverview, consumerPricesCategories, consumerPricesMovers, consumerPricesSpread
+
+Health & Social:
+  diseaseOutbreaks, socialVelocity
 
 Other:
   flightDelays, cyberThreats, positiveGeoEvents, predictions, forecasts, giving, insights
@@ -8460,7 +8464,10 @@ economic: list-world-bank-indicators (params: indicator, country_code),
   get-fred-series (params: series_id e.g. UNRATE/CPIAUCSL/DGS10), get-eurostat-country-data
 trade: get-trade-flows, get-trade-restrictions, get-tariff-trends, get-trade-barriers, list-comtrade-flows
 aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code), list-aviation-news
-intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code)
+intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
+  get-social-velocity
+health: list-disease-outbreaks
+supply-chain: get-shipping-stress
 conflict: list-acled-events, get-humanitarian-summary (params: country_code)
 market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
 consumer-prices: list-retailer-price-spreads
@@ -9019,10 +9026,14 @@ Infrastructure & Environment:
   radiationWatch, weatherAlerts, outages, serviceStatuses, ddosAttacks, trafficAnomalies
 
 Supply Chain & Trade:
-  shippingRates, chokepoints, chokepointTransits, minerals, customsRevenue, sanctionsPressure
+  shippingRates, chokepoints, chokepointTransits, minerals, customsRevenue, sanctionsPressure,
+  shippingStress
 
 Consumer Prices:
   consumerPricesOverview, consumerPricesCategories, consumerPricesMovers, consumerPricesSpread
+
+Health & Social:
+  diseaseOutbreaks, socialVelocity
 
 Other:
   flightDelays, cyberThreats, positiveGeoEvents, predictions, forecasts, giving, insights
@@ -9033,7 +9044,10 @@ economic: list-world-bank-indicators (params: indicator, country_code),
   get-fred-series (params: series_id e.g. UNRATE/CPIAUCSL/DGS10), get-eurostat-country-data
 trade: get-trade-flows, get-trade-restrictions, get-tariff-trends, get-trade-barriers, list-comtrade-flows
 aviation: get-airport-ops-summary (params: airport_code), get-carrier-ops (params: carrier_code), list-aviation-news
-intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code)
+intelligence: get-country-intel-brief (params: country_code), get-country-facts (params: country_code),
+  get-social-velocity
+health: list-disease-outbreaks
+supply-chain: get-shipping-stress
 conflict: list-acled-events, get-humanitarian-summary (params: country_code)
 market: get-country-stock-index (params: country_code), list-earnings-calendar, get-cot-positioning
 consumer-prices: list-retailer-price-spreads

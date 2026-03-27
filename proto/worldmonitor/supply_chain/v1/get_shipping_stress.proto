@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package worldmonitor.supply_chain.v1;
 
+import "sebuf/http/annotations.proto";
+
 // ShippingStressCarrier represents market stress data for a carrier or shipping index.
 message ShippingStressCarrier {
   // Ticker or identifier (e.g., "BDRY", "ZIM").
@@ -26,5 +28,5 @@ message GetShippingStressResponse {
   double stress_score = 2;
   // "low" | "moderate" | "elevated" | "critical".
   string stress_level = 3;
-  int64 fetched_at = 4;
+  int64 fetched_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }

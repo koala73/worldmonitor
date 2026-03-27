@@ -13,6 +13,6 @@ export const listDiseaseOutbreaks: HealthServiceHandler['listDiseaseOutbreaks'] 
   _ctx: ServerContext,
   _req: ListDiseaseOutbreaksRequest,
 ): Promise<ListDiseaseOutbreaksResponse> => {
-  const data = (await getCachedJson(REDIS_KEY, true).catch(() => null)) as ListDiseaseOutbreaksResponse | null;
+  const data = (await getCachedJson(REDIS_KEY, true)) as ListDiseaseOutbreaksResponse | null;
   return data ?? { outbreaks: [], fetchedAt: 0 };
 };

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { extractCountryCode } from './shared/geo-extract.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -9,36 +10,15 @@ const CACHE_TTL = 86400; // 24h — daily seed
 
 // WHO Disease Outbreak News RSS (specific DON feed, not general news)
 const WHO_FEED = 'https://www.who.int/feeds/entity/csr/don/en/rss.xml';
-// ProMED RSS
-const PROMED_FEED = 'https://promedmail.org/feed/';
+// ProMED RSS — promedmail.org/feed/ returns HTML 404; omitted until a valid feed URL is confirmed
+// const PROMED_FEED = 'https://promedmail.org/feed/';
 
-const COUNTRY_CODE_MAP = {
-  'china': 'CN', 'india': 'IN', 'brazil': 'BR', 'russia': 'RU',
-  'usa': 'US', 'united states': 'US', 'france': 'FR', 'germany': 'DE',
-  'uk': 'GB', 'united kingdom': 'GB', 'japan': 'JP', 'nigeria': 'NG',
-  'congo': 'CD', 'drc': 'CD', 'kenya': 'KE', 'indonesia': 'ID',
-  'philippines': 'PH', 'thailand': 'TH', 'vietnam': 'VN', 'pakistan': 'PK',
-  'bangladesh': 'BD', 'egypt': 'EG', 'south africa': 'ZA', 'mexico': 'MX',
-  'colombia': 'CO', 'sudan': 'SD', 'ethiopia': 'ET', 'myanmar': 'MM',
-  'cambodia': 'KH', 'laos': 'LA', 'mali': 'ML', 'guinea': 'GN',
-  'liberia': 'LR', 'sierra leone': 'SL', 'ghana': 'GH', 'senegal': 'SN',
-  'tanzania': 'TZ', 'mozambique': 'MZ', 'zambia': 'ZM', 'zimbabwe': 'ZW',
-  'malawi': 'MW', 'angola': 'AO', 'chad': 'TD', 'niger': 'NE',
-  'cameroon': 'CM', 'somalia': 'SO', 'yemen': 'YE', 'iraq': 'IQ',
-};
+const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
 
 function stableHash(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
   return Math.abs(h).toString(36);
-}
-
-function extractCountryCode(text) {
-  const lower = text.toLowerCase();
-  for (const [country, code] of Object.entries(COUNTRY_CODE_MAP)) {
-    if (lower.includes(country)) return code;
-  }
-  return '';
 }
 
 function detectAlertLevel(title, desc) {
@@ -67,7 +47,8 @@ async function fetchRssItems(url, sourceName) {
       signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) { console.warn(`[Disease] ${sourceName} HTTP ${resp.status}`); return []; }
-    const xml = await resp.text();
+    const raw = await resp.text();
+    const xml = raw.length > RSS_MAX_BYTES ? raw.slice(0, RSS_MAX_BYTES) : raw;
     const items = [];
     const itemRe = /<item>([\s\S]*?)<\/item>/g;
     let match;
@@ -89,17 +70,13 @@ async function fetchRssItems(url, sourceName) {
 }
 
 async function fetchDiseaseOutbreaks() {
-  const [whoItems, promedItems] = await Promise.all([
-    fetchRssItems(WHO_FEED, 'WHO'),
-    fetchRssItems(PROMED_FEED, 'ProMED'),
-  ]);
+  const whoItems = await fetchRssItems(WHO_FEED, 'WHO');
 
-  const allItems = [...whoItems, ...promedItems];
   const diseaseKeywords = ['outbreak', 'disease', 'virus', 'fever', 'flu', 'ebola', 'mpox',
     'cholera', 'dengue', 'measles', 'polio', 'plague', 'avian', 'h5n1', 'epidemic',
     'infection', 'pathogen', 'rabies', 'meningitis', 'hepatitis', 'nipah', 'marburg'];
 
-  const relevant = allItems.filter(item => {
+  const relevant = whoItems.filter(item => {
     const text = `${item.title} ${item.desc}`.toLowerCase();
     return diseaseKeywords.some(k => text.includes(k));
   });
@@ -107,10 +84,9 @@ async function fetchDiseaseOutbreaks() {
   const outbreaks = relevant.map((item) => ({
     id: `${item.sourceName.toLowerCase()}-${stableHash(item.link || item.title)}-${item.publishedMs}`,
     disease: detectDisease(item.title),
-    location: '',
-    countryCode: extractCountryCode(`${item.title} ${item.desc}`),
+    countryCode: extractCountryCode(`${item.title} ${item.desc}`) ?? '',
     alertLevel: detectAlertLevel(item.title, item.desc),
-    summary: item.desc.slice(0, 300),
+    summary: item.desc,
     sourceUrl: item.link,
     publishedAt: item.publishedMs,
     sourceName: item.sourceName,
@@ -128,7 +104,7 @@ function validate(data) {
 runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'who-promed-rss-v1',
+  sourceVersion: 'who-don-rss-v2',
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

@@ -13,6 +13,6 @@ export const getShippingStress: SupplyChainServiceHandler['getShippingStress'] =
   _ctx: ServerContext,
   _req: GetShippingStressRequest,
 ): Promise<GetShippingStressResponse> => {
-  const data = (await getCachedJson(REDIS_KEY, true).catch(() => null)) as GetShippingStressResponse | null;
-  return data ?? { carriers: [], stressScore: 0, stressLevel: 'unknown', fetchedAt: '' };
+  const data = (await getCachedJson(REDIS_KEY, true)) as GetShippingStressResponse | null;
+  return data ?? { carriers: [], stressScore: 0, stressLevel: 'low', fetchedAt: 0 };
 };

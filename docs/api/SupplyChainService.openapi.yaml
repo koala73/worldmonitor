@@ -361,8 +361,9 @@ components:
                     type: string
                     description: '"low" | "moderate" | "elevated" | "critical".'
                 fetchedAt:
-                    type: string
+                    type: integer
                     format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
         ShippingStressCarrier:
             type: object
             properties:

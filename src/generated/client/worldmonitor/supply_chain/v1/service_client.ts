@@ -113,7 +113,7 @@ export interface GetShippingStressResponse {
   carriers: ShippingStressCarrier[];
   stressScore: number;
   stressLevel: string;
-  fetchedAt: string;
+  fetchedAt: number;
 }
 
 export interface ShippingStressCarrier {

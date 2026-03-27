@@ -13,6 +13,6 @@ export const getSocialVelocity: IntelligenceServiceHandler['getSocialVelocity'] 
   _ctx: ServerContext,
   _req: GetSocialVelocityRequest,
 ): Promise<GetSocialVelocityResponse> => {
-  const data = (await getCachedJson(REDIS_KEY, true).catch(() => null)) as GetSocialVelocityResponse | null;
+  const data = (await getCachedJson(REDIS_KEY, true)) as GetSocialVelocityResponse | null;
   return data ?? { posts: [], fetchedAt: 0 };
 };
