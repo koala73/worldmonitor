@@ -75,6 +75,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   natGasStorage:    'economic:nat-gas-storage:v1',
   ecbFxRates:       'economic:ecb-fx-rates:v1',
   euGasStorage:     'economic:eu-gas-storage:v1',
+  eurostatCountryData: 'economic:eurostat-country-data:v1',
   euFsi:            'economic:fsi-eu:v1',
 };
 
@@ -112,5 +113,6 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   natGasStorage: 'slow',
   ecbFxRates: 'slow',
   euGasStorage: 'slow',
+  eurostatCountryData: 'slow',
   euFsi: 'slow',
 };

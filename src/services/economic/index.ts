@@ -33,6 +33,10 @@ import {
   type NatGasStorageWeek,
   type GetEcbFxRatesResponse,
   type EcbFxRate,
+  type GetEuGasStorageResponse,
+  type EuGasStorageHistoryEntry,
+  type GetEurostatCountryDataResponse,
+  type EurostatCountryEntry,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
@@ -76,6 +80,10 @@ const emptyWbFallback: ListWorldBankIndicatorsResponse = { data: [], pagination:
 const emptyEiaFallback: GetEnergyPricesResponse = { prices: [] };
 const emptyCrudeFallback: GetCrudeInventoriesResponse = { weeks: [], latestPeriod: '' };
 const crudeBreaker = createCircuitBreaker<GetCrudeInventoriesResponse>({ name: 'EIA Crude Inventories', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
+const emptyEuGasFallback: GetEuGasStorageResponse = { fillPct: 0, fillPctChange1d: 0, gasDaysConsumption: 0, trend: 'stable', history: [], seededAt: '0', updatedAt: '', unavailable: true };
+const euGasBreaker = createCircuitBreaker<GetEuGasStorageResponse>({ name: 'EU Gas Storage', cacheTtlMs: 4 * 60 * 60 * 1000, persistCache: true });
+const emptyEurostatFallback: GetEurostatCountryDataResponse = { countries: {}, seededAt: '0', unavailable: true };
+const eurostatBreaker = createCircuitBreaker<GetEurostatCountryDataResponse>({ name: 'Eurostat Country Data', cacheTtlMs: 4 * 60 * 60 * 1000, persistCache: true });
 const emptyNatGasFallback: GetNatGasStorageResponse = { weeks: [], latestPeriod: '' };
 const natGasBreaker = createCircuitBreaker<GetNatGasStorageResponse>({ name: 'EIA Nat Gas Storage', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
 const emptyCapacityFallback: GetEnergyCapacityResponse = { series: [] };
@@ -784,5 +792,47 @@ export async function getEcbFxRatesData(): Promise<GetEcbFxRatesResponse> {
     );
   } catch {
     return emptyEcbFxRatesFallback;
+  }
+}
+
+// ========================================================================
+// EU Gas Storage (GIE AGSI+)
+// ========================================================================
+
+export type { GetEuGasStorageResponse, EuGasStorageHistoryEntry };
+
+export async function getEuGasStorageData(): Promise<GetEuGasStorageResponse> {
+  const hydrated = getHydratedData('euGasStorage') as GetEuGasStorageResponse | undefined;
+  if (hydrated && !hydrated.unavailable && hydrated.fillPct > 0) return hydrated;
+
+  try {
+    return await euGasBreaker.execute(
+      () => client.getEuGasStorage({}, { signal: AbortSignal.timeout(12_000) }),
+      emptyEuGasFallback,
+      { shouldCache: (r) => !r.unavailable && r.fillPct > 0 },
+    );
+  } catch {
+    return emptyEuGasFallback;
+  }
+}
+
+// ========================================================================
+// Eurostat Country Data (CPI, Unemployment, GDP Growth)
+// ========================================================================
+
+export type { GetEurostatCountryDataResponse, EurostatCountryEntry };
+
+export async function getEurostatCountryData(): Promise<GetEurostatCountryDataResponse> {
+  const hydrated = getHydratedData('eurostatCountryData') as GetEurostatCountryDataResponse | undefined;
+  if (hydrated && !hydrated.unavailable && Object.keys(hydrated.countries).length > 0) return hydrated;
+
+  try {
+    return await eurostatBreaker.execute(
+      () => client.getEurostatCountryData({}, { signal: AbortSignal.timeout(12_000) }),
+      emptyEurostatFallback,
+      { shouldCache: (r) => !r.unavailable && Object.keys(r.countries).length > 0 },
+    );
+  } catch {
+    return emptyEurostatFallback;
   }
 }
