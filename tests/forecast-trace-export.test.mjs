@@ -68,6 +68,7 @@ import {
   extractSimulationRoundPayload,
   computeSimulationAdjustment,
   applySimulationMerge,
+  applyPostSimulationRescore,
   matchesBucket,
   matchesChannel,
   contradictsPremise,
@@ -6735,5 +6736,143 @@ describe('phase 3 simulation re-ingestion — debug payload simulationEvidence f
     const payload = buildImpactExpansionDebugPayload(data, null, 'run-test');
     assert.ok(payload !== null);
     assert.equal(payload.simulationEvidence, null);
+  });
+});
+
+describe('phase 3 simulation re-ingestion — applyPostSimulationRescore', () => {
+  // Minimal path objects with enough structure for computeSimulationAdjustment + bundle rebuild
+  const makeRescorePath = (stateId, acceptanceScore, channel = 'supply_disruption') => ({
+    pathId: `path-${stateId}`,
+    type: 'expanded',
+    candidateStateId: stateId,
+    candidateIndex: 0,
+    direct: { variableKey: 'route_disruption', targetBucket: '', channel, affectedAssets: ['Red Sea shipping'] },
+    second: null,
+    third: null,
+    pathScore: acceptanceScore + 0.05,
+    acceptanceScore,
+  });
+
+  const makeRescoreCandidatePacket = (stateId) => ({
+    candidateStateId: stateId,
+    candidateIndex: 0,
+    stateKind: 'maritime_disruption',
+    routeFacilityKey: 'Red Sea',
+    commodityKey: 'crude_oil',
+    marketContext: {
+      topBucketId: 'energy',
+      topChannel: 'energy_supply_shock',
+    },
+  });
+
+  const makeRescoreSimOutcome = (stateId) => ({
+    runId: 'sim-rescore-001',
+    theaterResults: [{
+      theaterId: `theater-1`,
+      candidateStateId: stateId,
+      theaterLabel: 'Red Sea maritime disruption state',
+      stateKind: 'maritime_disruption',
+      topPaths: [{ label: 'Supply Disruption', summary: 'oil supply shock from Red Sea disruption', keyActors: ['Red Sea shipping'] }],
+      invalidators: [],
+      stabilizers: [],
+    }],
+  });
+
+  const makeRescoreSnapshot = (stateId, priorWorldStateKey = '') => ({
+    runId: '1774800000000-test01',
+    generatedAt: 1774800000000,
+    priorWorldStateKey,
+    impactExpansionCandidates: [makeRescoreCandidatePacket(stateId)],
+    deepForecast: { status: 'queued', selectedStateIds: [] },
+  });
+
+  it('R-1: skips when storageConfig is null', async () => {
+    const result = await applyPostSimulationRescore('1774800000000-test01', makeRescoreSimOutcome('state-x'), null);
+    assert.equal(result.skipped, true);
+    assert.equal(result.reason, 'missing_params');
+  });
+
+  it('R-2: skips when freshOutcome has no theaterResults', async () => {
+    const result = await applyPostSimulationRescore('1774800000000-test01', { theaterResults: [] }, { bucket: 'test', basePrefix: 'test' });
+    assert.equal(result.skipped, true);
+    assert.equal(result.reason, 'missing_params');
+  });
+
+  it('R-3: returns no_path_changes when simulation does not adjust any path', async () => {
+    // Simulate the rescore inline using applySimulationMerge directly (no R2 I/O needed)
+    const stateId = 'state-r3';
+    // Path well above threshold — no chance of promotion/demotion
+    const selectedPath = makeRescorePath(stateId, 0.75);
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [selectedPath],
+      rejectedPaths: [],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    // Simulation with no matching bucket/channel and no invalidators
+    const simOutcome = {
+      runId: 'sim-r3',
+      isCurrentRun: true,
+      theaterResults: [{ theaterId: 'theater-1', candidateStateId: stateId, topPaths: [], invalidators: [], stabilizers: [] }],
+    };
+    const snapshot = makeRescoreSnapshot(stateId);
+    const { simulationEvidence } = applySimulationMerge(evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null);
+    assert.equal(simulationEvidence.pathsPromoted, 0);
+    assert.equal(simulationEvidence.pathsDemoted, 0);
+  });
+
+  it('R-4: applySimulationMerge promotes near-threshold path to selected when bucketChannelMatch fires', () => {
+    // Simulate what applyPostSimulationRescore does internally:
+    // status=completed_no_material_change, rejected path at 0.44 (below 0.50),
+    // simulation has matching topPath → +0.08 → 0.52 → promoted
+    const stateId = 'state-r4';
+    const rejectedPath = makeRescorePath(stateId, 0.44);
+    const evaluation = {
+      status: 'completed_no_material_change',
+      selectedPaths: [],
+      rejectedPaths: [rejectedPath],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r4',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateId,
+        topPaths: [{ label: 'Oil Supply Shock', summary: 'oil supply disruption from Red Sea energy shock', keyActors: [] }],
+        invalidators: [],
+        stabilizers: [],
+      }],
+    };
+    const snapshot = makeRescoreSnapshot(stateId);
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    assert.equal(simulationEvidence.pathsPromoted, 1, 'path should be promoted');
+    assert.equal(simulationEvidence.adjustments[0].details.bucketChannelMatch, true);
+    assert.ok(simulationEvidence.adjustments[0].details.channelSource === 'market', 'channel resolved via marketContext fallback');
+    assert.equal(updatedEval.status, 'completed', 'evaluation status should upgrade to completed');
+    const selectedExpanded = updatedEval.selectedPaths.filter((p) => p.type === 'expanded');
+    assert.equal(selectedExpanded.length, 1, 'promoted path now in selectedPaths');
+    assert.equal(selectedExpanded[0].candidateStateId, stateId);
+  });
+
+  it('R-5: simulation adjustments use marketContext fallback when direct.channel is an LLM-generated invalid key', () => {
+    // supply_disruption is not in CHANNEL_KEYWORDS — should fall back to marketContext.topChannel=energy_supply_shock
+    const stateId = 'state-r5';
+    const path = makeRescorePath(stateId, 0.45, 'supply_disruption');
+    const candidatePacket = makeRescoreCandidatePacket(stateId);
+    const simResult = {
+      topPaths: [{ label: 'Energy Crisis', summary: 'oil supply disruption drives energy price spike', keyActors: [] }],
+      invalidators: [],
+      stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(details.channelSource, 'market', 'supply_disruption is invalid — falls back to marketContext');
+    assert.equal(details.resolvedChannel, 'energy_supply_shock');
+    assert.equal(details.bucketChannelMatch, true);
+    assert.equal(adjustment, 0.08);
   });
 });

@@ -4558,6 +4558,18 @@ function summarizeImpactPathScore(path = null) {
   return summary;
 }
 
+function buildForecastEvalPayload(data = {}) {
+  const evaluation = data?.deepPathEvaluation || null;
+  if (!evaluation) return null;
+  return {
+    runId: data?.runId || '',
+    generatedAt: data?.generatedAt || Date.now(),
+    status: evaluation.status || '',
+    selectedPaths: evaluation.selectedPaths || [],
+    rejectedPaths: evaluation.rejectedPaths || [],
+  };
+}
+
 function buildDeepPathScorecardsPayload(data = {}, runId = '') {
   const evaluation = data?.deepPathEvaluation || null;
   if (!evaluation) return null;
@@ -11999,6 +12011,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     manifest.runId,
   );
   const pathScorecards = buildDeepPathScorecardsPayload(data, manifest.runId);
+  const forecastEval = buildForecastEvalPayload(data);
 
   return {
     prefix,
@@ -12014,6 +12027,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     deepWorldStateKey,
     runStatusKey,
     forecastEvalKey: artifactKeys.forecastEvalKey,
+    forecastEval,
     runStatus,
     impactExpansionDebugKey,
     impactExpansionDebug,
@@ -12156,6 +12170,12 @@ async function writeForecastTraceArtifacts(data, context = {}) {
     await putR2JsonObject(storageConfig, artifacts.pathScorecardsKey, artifacts.pathScorecards, {
       runid: String(artifacts.manifest.runId || ''),
       kind: 'path_scorecards',
+    });
+  }
+  if (artifacts.forecastEval) {
+    await putR2JsonObject(storageConfig, artifacts.forecastEvalKey, artifacts.forecastEval, {
+      runid: String(artifacts.manifest.runId || ''),
+      kind: 'forecast_eval',
     });
   }
   await Promise.all(
@@ -16077,6 +16097,126 @@ async function fetchSimulationOutcomeForMerge(storageConfig, currentRunId) {
   }
 }
 
+/**
+ * Re-apply simulation merge against the just-completed simulation for a run whose deep forecast
+ * had already finished with stale (or no) simulation data. Reads forecast-eval.json + snapshot
+ * from R2, re-runs applySimulationMerge with the fresh outcome, and re-writes trace artifacts if
+ * any path was promoted or demoted.
+ *
+ * Called fire-and-forget from processNextSimulationTask after writeSimulationOutcome.
+ *
+ * @param {string} runId
+ * @param {object} freshOutcome — the simulation outcome just written (theaterResults array)
+ * @param {object} storageConfig
+ * @returns {Promise<{skipped: boolean, reason?: string, status?: string, pathsPromoted?: number, pathsDemoted?: number}>}
+ */
+async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
+  if (!runId || !freshOutcome?.theaterResults?.length || !storageConfig) {
+    return { skipped: true, reason: 'missing_params' };
+  }
+  try {
+    const generatedAt = parseForecastRunGeneratedAt(runId);
+    const artifactKeys = buildForecastTraceArtifactKeys(runId, generatedAt, storageConfig.basePrefix || FORECAST_DEEP_RUN_PREFIX);
+    const snapshotKey = buildDeepForecastSnapshotKey(runId, generatedAt, storageConfig.basePrefix || FORECAST_DEEP_RUN_PREFIX);
+
+    const [evalData, snapshot] = await Promise.all([
+      getR2JsonObject(storageConfig, artifactKeys.forecastEvalKey).catch(() => null),
+      getR2JsonObject(storageConfig, snapshotKey).catch(() => null),
+    ]);
+
+    if (!evalData?.status || (!evalData.selectedPaths?.length && !evalData.rejectedPaths?.length)) {
+      return { skipped: true, reason: 'no_eval_data' };
+    }
+    if (!snapshot?.impactExpansionCandidates?.length) {
+      return { skipped: true, reason: 'no_candidates' };
+    }
+
+    // Only re-score if there is actionable opportunity:
+    // - 'completed_no_material_change': any expanded rejected path could be promoted
+    // - 'completed': only worth it if a rejected expanded path is near threshold (0.42–0.50)
+    const rejectedExpanded = (evalData.rejectedPaths || []).filter((p) => p.type === 'expanded');
+    const hasNearThreshold = rejectedExpanded.some(
+      (p) => p.acceptanceScore >= 0.42 && p.acceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
+    );
+    if (evalData.status !== 'completed_no_material_change' && !hasNearThreshold) {
+      return { skipped: true, reason: 'no_near_threshold_paths' };
+    }
+
+    const priorWorldState = snapshot.priorWorldStateKey
+      ? await getR2JsonObject(storageConfig, snapshot.priorWorldStateKey).catch(() => null)
+      : null;
+
+    // Reconstruct evaluation from stored paths (full path objects including direct/second/third)
+    const evaluation = {
+      status: evalData.status,
+      selectedPaths: [...(evalData.selectedPaths || [])],
+      rejectedPaths: [...(evalData.rejectedPaths || [])],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+
+    // Tag the outcome as current-run since we just wrote it for this runId
+    const simulationOutcome = { ...freshOutcome, isCurrentRun: true };
+    const mergeResult = applySimulationMerge(
+      evaluation,
+      simulationOutcome,
+      snapshot.impactExpansionCandidates,
+      snapshot,
+      priorWorldState,
+    );
+
+    const ev = mergeResult.simulationEvidence;
+    if (!ev?.pathsPromoted && !ev?.pathsDemoted) {
+      return { skipped: false, reason: 'no_path_changes', adjustmentsApplied: ev?.adjustments?.length || 0 };
+    }
+
+    // Paths changed — re-write the trace artifacts with updated evaluation + simulation evidence.
+    const deepForecast = {
+      completedAt: new Date().toISOString(),
+      failureReason: '',
+      rejectedPathsPreview: buildDeepForecastRejectedPreview(evaluation.rejectedPaths || []),
+      selectedPathCount: (evaluation.selectedPaths || []).filter((p) => p.type === 'expanded').length,
+      replacedFastRun: evaluation.status === 'completed',
+      status: evaluation.status || 'completed_no_material_change',
+      selectedStateIds: (evaluation.selectedPaths || []).filter((p) => p.type === 'expanded').map((p) => p.candidateStateId),
+      simulationRescored: true,
+    };
+
+    await writeForecastTraceArtifacts({
+      ...snapshot,
+      priorWorldState,
+      priorWorldStates: priorWorldState ? [priorWorldState] : [],
+      impactExpansionBundle: evaluation.impactExpansionBundle || null,
+      deepPathEvaluation: evaluation,
+      simulationEvidence: ev,
+      forecastDepth: 'deep',
+      deepForecast,
+      worldStateOverride: evaluation.deepWorldState,
+      candidateWorldStateOverride: evaluation.deepWorldState,
+      runStatusContext: {
+        status: deepForecast.status,
+        stage: 'deep_rescored',
+        progressPercent: 100,
+        processedCandidateCount: (snapshot.impactExpansionCandidates || []).length,
+        acceptedPathCount: deepForecast.selectedPathCount,
+        completedAt: deepForecast.completedAt,
+      },
+    }, { runId });
+
+    return {
+      status: 'rescored',
+      runId,
+      pathsPromoted: ev.pathsPromoted,
+      pathsDemoted: ev.pathsDemoted,
+      adjustmentsApplied: ev.adjustments?.length || 0,
+    };
+  } catch (err) {
+    console.warn(`[SimulationRescore] Error for ${runId}: ${err.message}`);
+    return { skipped: true, reason: `error: ${err.message}` };
+  }
+}
+
+
 async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
   const config = storageConfig ?? resolveR2StorageConfig();
   if (!config || !pkg?.runId) return null;
@@ -16281,6 +16421,10 @@ async function processNextSimulationTask(options = {}) {
       const writeResult = await writeSimulationOutcome(pkgData, outcome, { storageConfig });
       await completeSimulationTask(runId);
       console.log(`  [Simulation] Completed ${runId}: ${theaterResults.length} theaters → ${writeResult?.outcomeKey}`);
+      // Fire-and-forget: re-score the deep forecast that may have run with stale simulation data.
+      applyPostSimulationRescore(runId, outcome, storageConfig)
+        .then((r) => { if (r && !r.skipped) console.log(`  [SimulationRescore] ${runId}: ${JSON.stringify(r)}`); })
+        .catch((err) => console.warn(`  [SimulationRescore] Error for ${runId}: ${err.message}`));
       return { status: 'completed', runId, theaterCount: theaterResults.length, outcomeKey: writeResult?.outcomeKey };
     } catch (err) {
       console.warn(`  [Simulation] Task failed for ${runId}: ${err.message}`);
@@ -16471,6 +16615,7 @@ export {
   processNextSimulationTask,
   runSimulationWorker,
   fetchSimulationOutcomeForMerge,
+  applyPostSimulationRescore,
   computeSimulationAdjustment,
   applySimulationMerge,
   matchesBucket,
