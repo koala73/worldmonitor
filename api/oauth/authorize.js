@@ -34,17 +34,19 @@ function escapeHtml(str) {
     .replace(/'/g, '&#x27;');
 }
 
+// Returns null on genuine key-miss; throws on transport/HTTP failure
+// so callers can distinguish "key not found" from "storage unavailable".
 async function redisGet(key) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
+  if (!url || !token) throw new Error('Redis not configured');
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(3_000),
   });
-  if (!resp.ok) return null;
-  const data = await resp.json().catch(() => null);
-  if (!data?.result) return null;
+  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (!data?.result) return null; // key did not exist
   try { return JSON.parse(data.result); } catch { return null; }
 }
 
@@ -147,7 +149,12 @@ export default async function handler(req) {
       return htmlError('Invalid Request', 'code_challenge must be a 43-character base64url string.');
     }
 
-    const client = await redisGet(`oauth:client:${client_id}`);
+    let client;
+    try {
+      client = await redisGet(`oauth:client:${client_id}`);
+    } catch {
+      return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
+    }
     if (!client) {
       return htmlError('Unknown Client', 'The client_id is not registered or has expired. Please re-register the client.');
     }
@@ -207,7 +214,12 @@ export default async function handler(req) {
     }
 
     // Validate CSRF nonce
-    const nonceData = await redisGet(`oauth:nonce:${nonce}`);
+    let nonceData;
+    try {
+      nonceData = await redisGet(`oauth:nonce:${nonce}`);
+    } catch {
+      return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
+    }
     if (!nonceData || nonceData.client_id !== client_id || nonceData.redirect_uri !== redirect_uri) {
       return htmlError('Session Expired', 'Authorization session expired or is invalid. Please start over.');
     }
@@ -223,7 +235,12 @@ export default async function handler(req) {
       }).catch(() => {});
     }
 
-    const client = await redisGet(`oauth:client:${client_id}`);
+    let client;
+    try {
+      client = await redisGet(`oauth:client:${client_id}`);
+    } catch {
+      return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
+    }
     if (!client) {
       return htmlError('Unknown Client', 'The client registration has expired. Please re-register.');
     }
@@ -236,10 +253,13 @@ export default async function handler(req) {
     // Validate API key
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
     if (!await timingSafeIncludes(api_key, validKeys)) {
+      // Generate and store a fresh nonce so the retry submit succeeds
+      const retryNonce = crypto.randomUUID();
+      await redisSet(`oauth:nonce:${retryNonce}`, { client_id, redirect_uri, code_challenge, state, created_at: Date.now() }, 600);
       return consentPage({
         client_name: client.client_name ?? 'Unknown Client',
         redirect_uri, client_id, response_type: 'code', code_challenge, code_challenge_method: 'S256', state,
-      }, crypto.randomUUID(), 'Invalid API key. Please check and try again.');
+      }, retryNonce, 'Invalid API key. Please check and try again.');
     }
 
     // Issue authorization code

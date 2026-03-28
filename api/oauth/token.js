@@ -59,37 +59,36 @@ async function redisPipeline(commands) {
   } catch { return null; }
 }
 
-// Atomic GETDEL — read and delete in one round-trip
+// Atomic GETDEL — read and delete in one round-trip.
+// Returns null on genuine key-miss; throws on transport/HTTP failure
+// so callers can distinguish "expired/used" from "storage unavailable".
 async function redisGetDel(key) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  try {
-    const resp = await fetch(`${url}/getdel/${encodeURIComponent(key)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json().catch(() => null);
-    if (!data?.result) return null;
-    try { return JSON.parse(data.result); } catch { return null; }
-  } catch { return null; }
+  if (!url || !token) throw new Error('Redis not configured');
+  const resp = await fetch(`${url}/getdel/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(3_000),
+  });
+  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (!data?.result) return null; // key did not exist
+  try { return JSON.parse(data.result); } catch { return null; }
 }
 
+// Returns null on genuine key-miss; throws on transport/HTTP failure.
 async function redisGet(key) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  try {
-    const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json().catch(() => null);
-    if (!data?.result) return null;
-    try { return JSON.parse(data.result); } catch { return null; }
-  } catch { return null; }
+  if (!url || !token) throw new Error('Redis not configured');
+  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(3_000),
+  });
+  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (!data?.result) return null; // key did not exist
+  try { return JSON.parse(data.result); } catch { return null; }
 }
 
 // Store legacy client_credentials token (16-char fingerprint for backward compat)
@@ -166,8 +165,14 @@ export default async function handler(req) {
       return jsonResp({ error: 'invalid_request', error_description: 'code_verifier must be 43-128 URL-safe characters [A-Za-z0-9-._~]' }, 400);
     }
 
-    // Atomically consume the auth code (GETDEL — prevents concurrent exchange race)
-    const codeData = await redisGetDel(`oauth:code:${code}`);
+    // Atomically consume the auth code (GETDEL — prevents concurrent exchange race).
+    // Throws on transport failure so we return 503, not a misleading 400.
+    let codeData;
+    try {
+      codeData = await redisGetDel(`oauth:code:${code}`);
+    } catch {
+      return jsonResp({ error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' }, 503);
+    }
     if (!codeData) {
       return jsonResp({ error: 'invalid_grant', error_description: 'Authorization code is invalid, expired, or already used' }, 400);
     }
@@ -188,11 +193,19 @@ export default async function handler(req) {
       return jsonResp({ error: 'invalid_grant', error_description: 'code_verifier does not match code_challenge' }, 400);
     }
 
-    // Verify client still exists (expired client → re-registration signal)
-    const client = await redisGet(`oauth:client:${clientId}`);
+    // Verify client still exists (throws on unavailable, null = expired → re-register signal)
+    let client;
+    try {
+      client = await redisGet(`oauth:client:${clientId}`);
+    } catch {
+      return jsonResp({ error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' }, 503);
+    }
     if (!client) {
       return jsonResp({ error: 'invalid_client', error_description: 'Client registration not found or expired. Please re-register.' }, 401);
     }
+
+    // Extend client TTL (sliding 90-day window)
+    redisPipeline([['EXPIRE', `oauth:client:${clientId}`, CLIENT_TTL_SECONDS]]).catch(() => {});
 
     const scope = codeData.scope ?? 'mcp';
     const accessUuid = crypto.randomUUID();
@@ -223,8 +236,14 @@ export default async function handler(req) {
       return jsonResp({ error: 'invalid_request', error_description: 'Missing required parameters: refresh_token, client_id' }, 400);
     }
 
-    // Atomically consume the refresh token (GETDEL — prevents concurrent rotation race)
-    const refreshData = await redisGetDel(`oauth:refresh:${refreshToken}`);
+    // Atomically consume the refresh token (GETDEL — prevents concurrent rotation race).
+    // Throws on transport failure so we return 503, not a misleading 400.
+    let refreshData;
+    try {
+      refreshData = await redisGetDel(`oauth:refresh:${refreshToken}`);
+    } catch {
+      return jsonResp({ error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' }, 503);
+    }
     if (!refreshData) {
       return jsonResp({ error: 'invalid_grant', error_description: 'Refresh token is invalid, expired, or already used' }, 400);
     }
@@ -233,11 +252,19 @@ export default async function handler(req) {
       return jsonResp({ error: 'invalid_grant', error_description: 'client_id mismatch' }, 400);
     }
 
-    // Verify client still exists
-    const client = await redisGet(`oauth:client:${clientId}`);
+    // Verify client still exists (throws on unavailable, null = expired → re-register signal)
+    let client;
+    try {
+      client = await redisGet(`oauth:client:${clientId}`);
+    } catch {
+      return jsonResp({ error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' }, 503);
+    }
     if (!client) {
       return jsonResp({ error: 'invalid_client', error_description: 'Client registration not found or expired. Please re-register.' }, 401);
     }
+
+    // Extend client TTL (sliding 90-day window)
+    redisPipeline([['EXPIRE', `oauth:client:${clientId}`, CLIENT_TTL_SECONDS]]).catch(() => {});
 
     const scope = refreshData.scope ?? 'mcp';
     const accessUuid = crypto.randomUUID();
