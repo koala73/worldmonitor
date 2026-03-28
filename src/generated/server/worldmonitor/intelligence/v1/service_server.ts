@@ -439,6 +439,13 @@ export interface MarketImplicationCard {
   narrative: string;
   riskCaveat: string;
   driver: string;
+  transmissionChain: TransmissionNode[];
+}
+
+export interface TransmissionNode {
+  node: string;
+  impactType: string;
+  logic: string;
 }
 
 export interface GetSocialVelocityRequest {

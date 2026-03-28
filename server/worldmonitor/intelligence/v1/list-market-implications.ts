@@ -13,6 +13,12 @@ const ALLOWED_FRAMEWORK_IDS = new Set([
   'dalio-macro', 'buffett-value', 'pmesii-pt', 'doomsday-prepper',
 ]);
 
+interface CachedTransmissionNode {
+  node?: string;
+  impact_type?: string;
+  logic?: string;
+}
+
 interface CachedMarketImplication {
   ticker?: string;
   name?: string;
@@ -23,6 +29,7 @@ interface CachedMarketImplication {
   narrative?: string;
   risk_caveat?: string;
   driver?: string;
+  transmission_chain?: CachedTransmissionNode[];
 }
 
 interface CachedMarketImplicationsData {
@@ -41,6 +48,13 @@ function toCard(raw: CachedMarketImplication): MarketImplicationCard {
     narrative: raw.narrative ?? '',
     riskCaveat: raw.risk_caveat ?? '',
     driver: raw.driver ?? '',
+    transmissionChain: Array.isArray(raw.transmission_chain)
+      ? raw.transmission_chain.map(n => ({
+          node: n.node ?? '',
+          impactType: n.impact_type ?? '',
+          logic: n.logic ?? '',
+        }))
+      : [],
   };
 }
 

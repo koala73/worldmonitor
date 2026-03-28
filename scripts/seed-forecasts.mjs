@@ -15497,6 +15497,11 @@ RULES:
 - narrative: 2–3 sentences grounding the thesis in the provided context. Cite specific signals by name (e.g. "Hormuz at CRITICAL risk", "VIX at 28", "Polymarket: 74% Iran conflict"). When prediction market odds are provided, weave them into the thesis.
 - risk_caveat: 1 sentence on the primary counter-thesis or risk
 - driver: 1–3 words naming the core geopolitical/macro driver (e.g. "Hormuz closure risk", "Fed pivot", "Taiwan tension")
+- transmission_chain: array of 2–4 objects, each with:
+  - node: short label (max 8 words) for this step in the causal chain
+  - impact_type: one of supply_disruption, demand_shift, earnings_risk, valuation_shift, policy_shift, capital_flow, sentiment_shift, contagion
+  - logic: 1 sentence (max 15 words) explaining what this step means for the trade thesis
+  The chain models the causal path from geopolitical event to price impact.
 - Cross-reference signals: if geopolitical escalation coincides with a commodity move in the opposite direction, flag the divergence and consider a HEDGE rather than directional call.
 - Prioritise cards by signal strength — lead with the highest-conviction setup.
 - NEVER use tickers not in the ALLOWED TICKERS list
@@ -15505,7 +15510,7 @@ RULES:
 - NEVER write underscored_variable_names or internal keys in any field — always use plain English prose
 
 Respond with ONLY a JSON array:
-[{"ticker":"","name":"","direction":"","timeframe":"","confidence":"","title":"","narrative":"","risk_caveat":"","driver":""},...]`;
+[{"ticker":"","name":"","direction":"","timeframe":"","confidence":"","title":"","narrative":"","risk_caveat":"","driver":"","transmission_chain":[{"node":"","impact_type":"","logic":""}]},...]`;
 
 function buildMarketImplicationsContext(inputs) {
   const parts = [];
@@ -15641,6 +15646,11 @@ function buildMarketImplicationsContext(inputs) {
   return parts.length > 0 ? parts.join('\n\n') : 'No live world state available.';
 }
 
+const VALID_IMPACT_TYPES = new Set([
+  'supply_disruption', 'demand_shift', 'earnings_risk', 'valuation_shift',
+  'policy_shift', 'capital_flow', 'sentiment_shift', 'contagion',
+]);
+
 function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS) {
   if (!Array.isArray(cards)) return [];
   const seen = new Set();
@@ -15660,6 +15670,18 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
     if (title.length < 5) continue;
     const narrative = typeof card.narrative === 'string' ? card.narrative.trim().slice(0, 600) : '';
     if (narrative.length < 20) continue;
+    let chain = [];
+    if (Array.isArray(card.transmission_chain)) {
+      for (const step of card.transmission_chain.slice(0, 4)) {
+        if (!step || typeof step !== 'object') continue;
+        const node = typeof step.node === 'string' ? step.node.trim().slice(0, 80) : '';
+        const impactType = typeof step.impact_type === 'string' ? step.impact_type.trim().toLowerCase() : '';
+        const logic = typeof step.logic === 'string' ? step.logic.trim().slice(0, 120) : '';
+        if (node.length < 3 || !VALID_IMPACT_TYPES.has(impactType) || logic.length < 5) continue;
+        chain.push({ node, impact_type: impactType, logic });
+      }
+    }
+    if (chain.length === 1) chain = [];
     seen.add(ticker);
     valid.push({
       ticker,
@@ -15671,6 +15693,7 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
       narrative,
       risk_caveat: typeof card.risk_caveat === 'string' ? card.risk_caveat.trim().slice(0, 300) : '',
       driver: typeof card.driver === 'string' ? card.driver.trim().slice(0, 60) : '',
+      transmission_chain: chain,
     });
     if (valid.length >= 5) break;
   }
