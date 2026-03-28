@@ -11345,7 +11345,7 @@ function negatesDisruption(stabilizer, candidatePacket) {
   }
   // Non-maritime: match on stateKind and bucket keywords.
   const stateKind = candidatePacket?.stateKind || '';
-  const bucket = candidatePacket?.marketContext?.topBucketId || '';
+  const bucket = candidatePacket?.marketContext?.topBucketId || candidatePacket?.topBucketId || '';
   const subjectKeywords = [...stateKind.toLowerCase().split('_'), ...bucket.toLowerCase().split('_')]
     .filter((w) => w.length >= 4);
   return subjectKeywords.some((kw) => text.includes(kw));
