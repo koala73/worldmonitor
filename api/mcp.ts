@@ -426,8 +426,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   // Auth chain (in priority order):
   //   1. Authorization: Bearer <oauth_token> — issued by /oauth/token (spec-compliant OAuth 2.0)
-  //   2. ?key= query param — direct API key (for clients that cannot set headers)
-  //   3. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
+  //   2. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
   let apiKey = '';
   const bearerHeader = req.headers.get('Authorization') ?? '';
   const bearerApiKey = await resolveApiKeyFromBearer(req);
@@ -440,11 +439,9 @@ export default async function handler(req: Request): Promise<Response> {
       { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token"', ...corsHeaders } }
     );
   } else {
-    const urlKey = new URL(req.url).searchParams.get('key') ?? '';
-    const headerKey = req.headers.get('X-WorldMonitor-Key') ?? '';
-    const candidateKey = urlKey || headerKey;
+    const candidateKey = req.headers.get('X-WorldMonitor-Key') ?? '';
     if (!candidateKey) {
-      return rpcError(null, -32001, 'Authentication required. Use OAuth (/oauth/token) or pass a key via ?key=, Authorization: Bearer, or X-WorldMonitor-Key.');
+      return rpcError(null, -32001, 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.');
     }
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
     if (!validKeys.includes(candidateKey)) {
@@ -518,9 +515,9 @@ export default async function handler(req: Request): Promise<Response> {
         return rpcOk(id, {
           content: [{ type: 'text', text: JSON.stringify(result) }],
         }, corsHeaders);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'data fetch failed';
-        return rpcError(id, -32603, `Internal error: ${msg}`);
+      } catch (err: unknown) {
+        console.error('[mcp] tool execution error:', err);
+        return rpcError(id, -32603, 'Internal error: data fetch failed');
       }
     }
 
