@@ -12,7 +12,7 @@
 function parseProxyConfig(raw) {
   if (!raw) return null;
 
-  // Standard URL format: http://user:pass@host:port
+  // Standard URL format: http://user:pass@host:port or https://user:pass@host:port
   try {
     const u = new URL(raw);
     if (u.hostname) {
@@ -20,6 +20,7 @@ function parseProxyConfig(raw) {
         host: u.hostname,
         port: parseInt(u.port, 10),
         auth: u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}` : null,
+        tls: u.protocol === 'https:',
       };
     }
   } catch { /* fall through */ }
