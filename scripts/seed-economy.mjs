@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, fredFetchJson } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, fredFetchJson, curlFetch } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -198,7 +198,8 @@ async function fetchFredSeries() {
 
 // ─── Macro Signals (Yahoo, Alternative.me, Mempool) ───
 
-async function fetchJsonSafe(url, timeout = 8000) {
+async function fetchJsonSafe(url, timeout = 8000, proxyAuth = null) {
+  if (proxyAuth) return JSON.parse(curlFetch(url, proxyAuth, { 'User-Agent': CHROME_UA }));
   const resp = await fetch(url, {
     headers: { 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(timeout),
@@ -262,17 +263,17 @@ async function fetchFredJpyFallback() {
   } catch { return []; }
 }
 
-async function fetchMacroSignals() {
+async function fetchMacroSignals(proxyAuth = null) {
   const yahooBase = 'https://query1.finance.yahoo.com/v8/finance/chart';
 
-  // Sequential Yahoo calls (150ms gaps like yahooGate)
-  const jpyChart = await fetchJsonSafe(`${yahooBase}/JPY=X?range=1y&interval=1d`).catch(() => null);
+  // Sequential Yahoo calls (150ms gaps like yahooGate); route through proxy to bypass Railway IP blocks
+  const jpyChart = await fetchJsonSafe(`${yahooBase}/JPY=X?range=1y&interval=1d`, 8000, proxyAuth).catch(() => null);
   await sleep(150);
-  const btcChart = await fetchJsonSafe(`${yahooBase}/BTC-USD?range=1y&interval=1d`).catch(() => null);
+  const btcChart = await fetchJsonSafe(`${yahooBase}/BTC-USD?range=1y&interval=1d`, 8000, proxyAuth).catch(() => null);
   await sleep(150);
-  const qqqChart = await fetchJsonSafe(`${yahooBase}/QQQ?range=1y&interval=1d`).catch(() => null);
+  const qqqChart = await fetchJsonSafe(`${yahooBase}/QQQ?range=1y&interval=1d`, 8000, proxyAuth).catch(() => null);
   await sleep(150);
-  const xlpChart = await fetchJsonSafe(`${yahooBase}/XLP?range=1y&interval=1d`).catch(() => null);
+  const xlpChart = await fetchJsonSafe(`${yahooBase}/XLP?range=1y&interval=1d`, 8000, proxyAuth).catch(() => null);
 
   const [fearGreed, mempoolHash] = await Promise.allSettled([
     fetchJsonSafe('https://api.alternative.me/fng/?limit=30&format=json'),
@@ -522,7 +523,7 @@ async function fetchAll() {
     fetchEnergyPrices(),
     fetchEnergyCapacity(),
     fetchFredSeries(),
-    fetchMacroSignals(),
+    fetchMacroSignals(_proxyAuth),
     fetchCrudeInventories(),
     fetchNatGasStorage(),
   ]);
