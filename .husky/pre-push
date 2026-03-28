@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Ensure dependencies are installed (worktrees start with no node_modules)
 if [ ! -d node_modules ]; then
   echo "node_modules missing, running npm install..."

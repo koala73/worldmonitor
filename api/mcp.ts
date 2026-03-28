@@ -10,7 +10,7 @@ import { readJsonFromUpstash } from './_upstash-json.js';
 import { resolveApiKeyFromBearer } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
-import COUNTRY_BBOXES from '../shared/country-bboxes.json';
+import COUNTRY_BBOXES from '../shared/country-bboxes.json' with { type: 'json' };
 
 export const config = { runtime: 'edge' };
 
@@ -386,15 +386,24 @@ const TOOL_REGISTRY: ToolDef[] = [
         type === 'military'
           ? Promise.resolve(null)
           : fetch(`${base}/api/aviation/v1/track-aircraft?${bboxQ}`, { headers, signal: AbortSignal.timeout(8_000) })
-              .then(r => r.ok ? r.json() as Promise<CivilianResp> : null),
+              .then(r => r.ok ? r.json() as Promise<CivilianResp> : Promise.reject(new Error(`HTTP ${r.status}`))),
         type === 'civilian'
           ? Promise.resolve(null)
           : fetch(`${base}/api/military/v1/list-military-flights?${bboxQ}&page_size=100`, { headers, signal: AbortSignal.timeout(8_000) })
-              .then(r => r.ok ? r.json() as Promise<MilResp> : null),
+              .then(r => r.ok ? r.json() as Promise<MilResp> : Promise.reject(new Error(`HTTP ${r.status}`))),
       ]);
+
+      const civOk = type === 'military' || civResult.status === 'fulfilled';
+      const milOk = type === 'civilian' || milResult.status === 'fulfilled';
+
+      // Both sources down — total outage, don't return misleading empty data
+      if (!civOk && !milOk) throw new Error('Airspace data unavailable: both civilian and military sources failed');
 
       const civ = civResult.status === 'fulfilled' ? civResult.value : null;
       const mil = milResult.status === 'fulfilled' ? milResult.value : null;
+      const warnings: string[] = [];
+      if (!civOk) warnings.push('civilian ADS-B data unavailable');
+      if (!milOk) warnings.push('military flight data unavailable');
 
       const civilianFlights = (civ?.positions ?? []).slice(0, 100).map(p => ({
         callsign: p.callsign, icao24: p.icao24,
@@ -418,6 +427,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         military_count: militaryFlights.length,
         ...(type !== 'military' && { civilian_flights: civilianFlights }),
         ...(type !== 'civilian' && { military_flights: militaryFlights }),
+        ...(warnings.length > 0 && { partial: true, warnings }),
         source: civ?.source ?? 'opensky',
         updated_at: civ?.updated_at ? new Date(civ.updated_at).toISOString() : new Date().toISOString(),
       };
