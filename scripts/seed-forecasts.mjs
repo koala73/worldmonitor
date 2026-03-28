@@ -16115,7 +16115,7 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
     return { skipped: true, reason: 'missing_params' };
   }
   try {
-    const generatedAt = parseForecastRunGeneratedAt(runId);
+    const generatedAt = freshOutcome.generatedAt || parseForecastRunGeneratedAt(runId);
     const artifactKeys = buildForecastTraceArtifactKeys(runId, generatedAt, storageConfig.basePrefix || FORECAST_DEEP_RUN_PREFIX);
     const snapshotKey = buildDeepForecastSnapshotKey(runId, generatedAt, storageConfig.basePrefix || FORECAST_DEEP_RUN_PREFIX);
 
@@ -16132,14 +16132,15 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
     }
 
     // Only re-score if there is actionable opportunity:
-    // - 'completed_no_material_change': any expanded rejected path could be promoted
-    // - 'completed': only worth it if a rejected expanded path is near threshold (0.42–0.50)
-    const rejectedExpanded = (evalData.rejectedPaths || []).filter((p) => p.type === 'expanded');
-    const hasNearThreshold = rejectedExpanded.some(
-      (p) => p.acceptanceScore >= 0.42 && p.acceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
-    );
-    if (evalData.status !== 'completed_no_material_change' && !hasNearThreshold) {
-      return { skipped: true, reason: 'no_near_threshold_paths' };
+    // - 'completed_no_material_change': any simulation evidence could promote a rejected path
+    // - 'completed': only worth it if a selected expanded path risks demotion (acceptanceScore < 0.62
+    //   means a -0.12 invalidator penalty could push it below the 0.50 acceptance threshold)
+    const hasDemotionRisk = evalData.status === 'completed' &&
+      (evalData.selectedPaths || []).some(
+        (p) => p.type === 'expanded' && p.acceptanceScore < 0.62,
+      );
+    if (evalData.status !== 'completed_no_material_change' && !hasDemotionRisk) {
+      return { skipped: true, reason: 'no_actionable_paths' };
     }
 
     const priorWorldState = snapshot.priorWorldStateKey
