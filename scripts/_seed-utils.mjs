@@ -369,7 +369,7 @@ async function httpsProxyFetchJson(url, proxyAuth) {
     }).on('error', reject).end();
   });
 
-  const tlsSock = tls.connect({ socket, servername: targetUrl.hostname });
+  const tlsSock = tls.connect({ socket, servername: targetUrl.hostname, ALPNProtocols: ['http/1.1'] });
   await new Promise((resolve, reject) => {
     tlsSock.on('secureConnect', resolve);
     tlsSock.on('error', reject);
@@ -408,7 +408,7 @@ async function httpsProxyFetchJson(url, proxyAuth) {
 // Fetch JSON from a FRED URL, routing through proxy when available.
 export async function fredFetchJson(url, proxyAuth) {
   try {
-    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
     if (r.ok) return r.json();
     throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
   } catch (directErr) {
