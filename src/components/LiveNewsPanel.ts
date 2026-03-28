@@ -991,7 +991,14 @@ export class LiveNewsPanel extends Panel {
     const info = await fetchLiveVideoInfo(channel.handle);
     channel.videoId = info.videoId || channel.fallbackVideoId;
     channel.isLive = !!info.videoId;
-    channel.hlsUrl = info.hlsUrl || undefined;
+    // Don't re-apply an hlsUrl while the channel is on HLS failure cooldown —
+    // prevents an infinite retry loop in browsers (e.g. Firefox) that reject
+    // YouTube HLS manifests via CORS. The cooldown lets the embed fallback run.
+    const hlsCooldownActive = (() => {
+      const failedAt = this.hlsFailureCooldown.get(channel.id);
+      return failedAt !== undefined && Date.now() - failedAt < this.HLS_COOLDOWN_MS;
+    })();
+    channel.hlsUrl = (!hlsCooldownActive && info.hlsUrl) ? info.hlsUrl : undefined;
   }
 
   private async switchChannel(channel: LiveChannel): Promise<void> {
