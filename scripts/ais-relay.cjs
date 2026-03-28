@@ -8606,7 +8606,7 @@ async function handleGoogleFlightsSearch(req, res) {
       cabinClass: url.searchParams.get('cabin_class') || '',
       maxStops: url.searchParams.get('max_stops') || '',
       departureWindow: url.searchParams.get('departure_window') || '',
-      airlines: gfParseAirlines(url.searchParams.get('airlines') || url.searchParams.getAll('airlines')),
+      airlines: gfParseAirlines(url.searchParams.getAll('airlines')),
       sortBy: url.searchParams.get('sort_by') || '',
       passengers: url.searchParams.get('passengers') || '1',
     });
@@ -8660,7 +8660,7 @@ async function handleGoogleFlightsDates(req, res) {
       cabinClass: url.searchParams.get('cabin_class') || '',
       maxStops: url.searchParams.get('max_stops') || '',
       departureWindow: url.searchParams.get('departure_window') || '',
-      airlines: gfParseAirlines(url.searchParams.get('airlines') || url.searchParams.getAll('airlines')),
+      airlines: gfParseAirlines(url.searchParams.getAll('airlines')),
       passengers: url.searchParams.get('passengers') || '1',
     };
 
