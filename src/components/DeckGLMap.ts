@@ -3705,7 +3705,7 @@ export class DeckGLMap {
    * Fetches a KML URL and converts it to GeoJSON for native rendering.
    * Tries a direct fetch first; falls back to /api/gmaps-kml proxy on network failure.
    */
-  private async loadConflictKml(kmlUrl: string): Promise<void> {
+  private async loadConflictKml(kmlUrl: string, folderTranslations: Record<string, string>): Promise<void> {
     const version = ++this.conflictKmlFetchVersion;
     this.conflictOverlayGeoJson = null;
     this.render();
@@ -3725,24 +3725,19 @@ export class DeckGLMap {
 
     if (version !== this.conflictKmlFetchVersion || !text) return;
     this.conflictOverlayGeoJson = this.parseKmlToGeoJson(text);
-    this.conflictLegendEntries = this.deriveConflictLegendEntries(this.conflictOverlayGeoJson);
+    this.conflictLegendEntries = this.deriveConflictLegendEntries(this.conflictOverlayGeoJson, folderTranslations);
     this.updateLegend();
     this.render();
   }
 
-  // Arabic KML folder names to display in the legend, with English translations.
-  // Only folders listed here are included — all others are hidden.
-  private static readonly CONFLICT_FOLDER_TRANSLATIONS: Record<string, string> = {
-    'مناطق تقدم\\تمركز الجيش الإسرائيلي': 'IDF Advance / Deployment Areas',
-  };
-
   /**
    * Derives legend entries from the parsed GeoJSON.
-   * Only includes folders listed in CONFLICT_FOLDER_TRANSLATIONS.
+   * Only includes folders listed in folderTranslations.
    * Deduplicates by unique color so each distinct color gets one swatch.
    */
   private deriveConflictLegendEntries(
     geojson: GeoJSON.FeatureCollection,
+    folderTranslations: Record<string, string>,
   ): Array<{ label: string; color: [number, number, number, number]; type: 'line' | 'polygon' }> {
     const seen = new Map<string, { label: string; color: [number, number, number, number]; type: 'line' | 'polygon' }>();
 
@@ -3752,7 +3747,7 @@ export class DeckGLMap {
       if (gtype === 'Point' || gtype === 'MultiPoint') continue;
 
       const folder = (p?._folder as string | undefined) ?? '';
-      const translatedLabel = DeckGLMap.CONFLICT_FOLDER_TRANSLATIONS[folder];
+      const translatedLabel = folderTranslations[folder];
       if (!translatedLabel) continue; // skip folders not in the allow-list
 
       const isLine = gtype === 'LineString' || gtype === 'MultiLineString';
@@ -4067,7 +4062,7 @@ export class DeckGLMap {
         if (!name && !desc) return null;
         const cleanDesc = desc.replace(/<[^>]+>/g, '').slice(0, 80);
         const descSnippet = cleanDesc
-          ? `<br/><span style="opacity:.7">${text(cleanDesc)}${desc.length > 80 ? '…' : ''}</span>`
+          ? `<br/><span style="opacity:.7">${text(cleanDesc)}${cleanDesc.length === 80 ? '…' : ''}</span>`
           : '';
         return { html: `<div class="deckgl-tooltip"><strong>${text(name)}</strong>${descSnippet}</div>` };
       }
@@ -5038,7 +5033,7 @@ export class DeckGLMap {
     this.activeConflictLabel = scene.label;
     this.maplibreMap?.flyTo({ center: [scene.lon, scene.lat], zoom: scene.zoom, duration: 1200 });
     if (scene.kmlUrl) {
-      this.loadConflictKml(scene.kmlUrl).catch(() => { /* failure handled inside */ });
+      this.loadConflictKml(scene.kmlUrl, scene.folderTranslations ?? {}).catch(() => { /* failure handled inside */ });
     } else {
       this.conflictOverlayGeoJson = null;
       this.updateLegend();

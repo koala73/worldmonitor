@@ -11,11 +11,22 @@
  * prevent this endpoint from being used as an open proxy.
  */
 
+import { checkRateLimit } from './_rate-limit.js';
+
 export const config = { runtime: 'edge' };
 
 const ALLOWED_HOSTNAMES = new Set(['www.google.com', 'maps.google.com']);
 
+const CORS_HEADERS = { 'Access-Control-Allow-Origin': '*' };
+
 export default async function handler(req) {
+  if (req.method !== 'GET') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+
+  const rateLimitResponse = await checkRateLimit(req, CORS_HEADERS);
+  if (rateLimitResponse) return rateLimitResponse;
+
   const { searchParams } = new URL(req.url);
   const kmlUrl = searchParams.get('url');
 
@@ -30,7 +41,7 @@ export default async function handler(req) {
     return new Response('Invalid URL', { status: 400 });
   }
 
-  if (!ALLOWED_HOSTNAMES.has(parsed.hostname)) {
+  if (!ALLOWED_HOSTNAMES.has(parsed.hostname) || parsed.protocol !== 'https:') {
     return new Response('URL not allowed', { status: 403 });
   }
 
@@ -48,8 +59,8 @@ export default async function handler(req) {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.google-earth.kml+xml; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'public, max-age=300, s-maxage=600',
+      ...CORS_HEADERS,
     },
   });
 }

@@ -877,10 +877,15 @@ export default defineConfig(({ mode }) => {
           target: 'https://www.google.com',
           changeOrigin: true,
           configure: (proxy) => {
+            const ALLOWED_HOSTNAMES = new Set(['www.google.com', 'maps.google.com']);
             proxy.on('proxyReq', (proxyReq, req) => {
               const kmlUrl = new URL(req.url ?? '', 'http://x').searchParams.get('url');
               if (kmlUrl) {
                 const parsed = new URL(kmlUrl);
+                if (!ALLOWED_HOSTNAMES.has(parsed.hostname) || parsed.protocol !== 'https:') {
+                  proxyReq.destroy(new Error(`gmaps-kml dev proxy: URL not allowed — ${parsed.hostname}`));
+                  return;
+                }
                 proxyReq.path = parsed.pathname + parsed.search;
                 proxyReq.setHeader('host', parsed.hostname);
               }

@@ -16,6 +16,11 @@ export interface ConflictSceneConfig {
    * The overlay is fetched, parsed, and rendered as native WebGL layers.
    */
   kmlUrl?: string;
+  /**
+   * KML folder names → English labels shown in the conflict legend.
+   * Only folders listed here are rendered; all others are hidden.
+   */
+  folderTranslations?: Record<string, string>;
 }
 
 /**
@@ -32,5 +37,8 @@ export const CONFLICT_SCENES: ConflictSceneConfig[] = [
     lon: 35.57413,
     zoom: 11,
     kmlUrl: 'https://www.google.com/maps/d/kml?mid=1rSOCMJ8VTxNOl6wWCMByZE93qcKqDD4&forcekml=1',
+    folderTranslations: {
+      'مناطق تقدم\\تمركز الجيش الإسرائيلي': 'IDF Advance / Deployment Areas',
+    },
   },
 ];
