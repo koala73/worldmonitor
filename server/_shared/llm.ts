@@ -176,7 +176,11 @@ function callLlmProfile(
   modelEnv: string,
   defaultProvider: LlmProviderName,
 ): Promise<LlmCallResult | null> {
-  const provider = (process.env[providerEnv] || defaultProvider) as LlmProviderName;
+  const envProvider = process.env[providerEnv];
+  const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : (() => {
+    if (envProvider) console.warn(`[llm] ${providerEnv}="${envProvider}" is not a known provider; falling back to "${defaultProvider}"`);
+    return defaultProvider;
+  })()) as LlmProviderName;
   const model = process.env[modelEnv];
   const remaining = PROVIDER_CHAIN.filter((p) => p !== provider);
   return callLlm({

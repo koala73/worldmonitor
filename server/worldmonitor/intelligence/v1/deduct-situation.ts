@@ -44,7 +44,7 @@ function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): 
   const words = query
     .toLowerCase()
     .split(/\W+/)
-    .filter((w) => w.length > 3);
+    .filter((w) => w.length > 1);
 
   const scored = allMarkets.map((m) => ({
     market: m,
@@ -64,7 +64,7 @@ function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): 
   const lines = matched.map((m) => {
     const title = sanitizeHeadline(m.title);
     if (!title) return null;
-    const pct = Math.round(m.yesPrice);
+    const pct = Math.round(m.yesPrice / 5) * 5;
     const vol = formatVolume(m.volume);
     return `- "${title}" — Yes ${pct}% (${vol} volume)`;
   }).filter((l): l is string => l !== null);
@@ -93,7 +93,7 @@ export async function deductSituation(
     const [queryHash, frameworkHashFull, predictionBootstrap] = await Promise.all([
         sha256Hex(query.toLowerCase() + '|' + geoContext.toLowerCase()),
         framework ? sha256Hex(framework) : Promise.resolve(''),
-        getCachedJson(PREDICTION_BOOTSTRAP_KEY).catch(() => null),
+        getCachedJson(PREDICTION_BOOTSTRAP_KEY, true).catch(() => null),
     ]);
     const frameworkHash = framework ? frameworkHashFull.slice(0, 8) : '';
 
