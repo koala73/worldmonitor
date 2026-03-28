@@ -6510,6 +6510,22 @@ describe('phase 3 simulation re-ingestion — matching helpers', () => {
     assert.ok(matchesChannel({ label: 'Crude supply disruption energy', summary: '' }, 'energy_supply_shock'));
   });
 
+  it('matchesChannel energy_supply_shock matches oil infrastructure scenario (bridge keyword)', () => {
+    assert.ok(matchesChannel({ label: 'Oil infrastructure damage leads to supply disruption', summary: '' }, 'energy_supply_shock'));
+    assert.ok(matchesChannel({ label: 'Crude price spike from Persian Gulf closure', summary: '' }, 'energy_supply_shock'));
+  });
+
+  it('matchesChannel shipping_cost_shock matches maritime rerouting scenario (bridge keyword)', () => {
+    assert.ok(matchesChannel({ label: 'Tanker rerouting via Cape of Good Hope raises freight costs', summary: '' }, 'shipping_cost_shock'));
+    assert.ok(matchesChannel({ label: 'Vessel traffic diverted from Suez Canal shipping lane', summary: '' }, 'shipping_cost_shock'));
+  });
+
+  it('matchesChannel risk_off_rotation matches geopolitical sovereign risk scenario (bridge keyword)', () => {
+    assert.ok(matchesChannel({ label: 'Regional Conflict & Sovereign Risk Spiral', summary: 'rapid repricing of sovereign risk' }, 'risk_off_rotation'));
+    assert.ok(matchesChannel({ label: 'Global Economic Shockwave', summary: '' }, 'risk_off_rotation'));
+    assert.ok(matchesChannel({ label: 'Market contagion from India FX crisis', summary: '' }, 'risk_off_rotation'));
+  });
+
   it('matchesChannel returns false for unrelated text', () => {
     assert.ok(!matchesChannel({ label: 'Political talks', summary: 'Ceasefire' }, 'shipping_cost_shock'));
   });
