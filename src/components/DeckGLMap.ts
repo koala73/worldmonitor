@@ -4532,15 +4532,25 @@ export class DeckGLMap {
             { shape: shapes.circle('rgb(255, 200, 50)'), label: 'Renewable Installation', layerKey: 'renewableInstallations' },
             { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft'), layerKey: 'flights' },
           ]
-          : [
-            { shape: shapes.circle('rgb(255, 68, 68)'), label: t('components.deckgl.legend.highAlert'), layerKey: 'hotspots' },
-            { shape: shapes.circle('rgb(255, 165, 0)'), label: t('components.deckgl.legend.elevated'), layerKey: 'hotspots' },
-            { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 255, 0)'), label: t('components.deckgl.legend.monitoring'), layerKey: 'hotspots' },
-            { shape: shapes.triangle('rgb(68, 136, 255)'), label: t('components.deckgl.legend.base'), layerKey: 'bases' },
-            { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 220, 0)'), label: t('components.deckgl.legend.nuclear'), layerKey: 'nuclear' },
-            { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter'), layerKey: 'datacenters' },
-            { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft'), layerKey: 'flights' },
-          ];
+          : SITE_VARIANT === 'commodity'
+            ? [
+              { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.commodityHub'), layerKey: 'commodityHubs' },
+              { shape: shapes.circle('rgb(180, 80, 80)'), label: t('components.deckgl.legend.miningSite'), layerKey: 'miningSites' },
+              { shape: shapes.square('rgb(80, 160, 220)'), label: t('components.deckgl.legend.commodityPort'), layerKey: 'commodityPorts' },
+              { shape: shapes.circle('rgb(255, 150, 50)'), label: t('components.deckgl.legend.pipeline'), layerKey: 'pipelines' },
+              { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway'), layerKey: 'waterways' },
+              { shape: shapes.circle('rgb(200, 100, 255)'), label: t('components.deckgl.legend.processingPlant'), layerKey: 'processingPlants' },
+            ]
+            : [
+              { shape: shapes.circle('rgb(255, 68, 68)'), label: t('components.deckgl.legend.highAlert'), layerKey: 'hotspots' },
+              { shape: shapes.circle('rgb(255, 165, 0)'), label: t('components.deckgl.legend.elevated'), layerKey: 'hotspots' },
+              { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 255, 0)'), label: t('components.deckgl.legend.monitoring'), layerKey: 'hotspots' },
+              { shape: shapes.circle('rgb(255, 100, 100)'), label: t('components.deckgl.legend.conflict'), layerKey: 'conflicts' },
+              { shape: shapes.triangle('rgb(68, 136, 255)'), label: t('components.deckgl.legend.base'), layerKey: 'bases' },
+              { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 220, 0)'), label: t('components.deckgl.legend.nuclear'), layerKey: 'nuclear' },
+              { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter'), layerKey: 'datacenters' },
+              { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft'), layerKey: 'flights' },
+            ];
 
     legend.innerHTML = `
       <span class="legend-label-title">${t('components.deckgl.legend.title')}</span>
