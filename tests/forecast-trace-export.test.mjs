@@ -5709,7 +5709,7 @@ describe('simulation package export', () => {
     assert.ok(pkg.selectedTheaters.length <= 3);
   });
 
-  it('geo-dedup: selects at most 1 theater per macro-region group when 2 MENA candidates are present', () => {
+  it('geo-dedup: Strait of Hormuz (MENA_Gulf) and Red Sea (MENA_RedSea) are distinct groups — both selected', () => {
     const hormuz = makeCandidate({
       candidateStateId: 'state-hormuz',
       candidateStateLabel: 'Strait of Hormuz disruption',
@@ -5734,11 +5734,32 @@ describe('simulation package export', () => {
     });
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([hormuz, redsea, malacca]));
     assert.ok(pkg, 'package should not be null');
-    assert.equal(pkg.selectedTheaters.length, 2, 'should select exactly 2 theaters (1 MENA + 1 AsiaPacific)');
+    assert.equal(pkg.selectedTheaters.length, 3, 'all 3 should be selected — Hormuz (MENA_Gulf), Red Sea (MENA_RedSea), Malacca (AsiaPacific)');
     const routeKeys = pkg.selectedTheaters.map((t) => t.routeFacilityKey);
-    assert.ok(routeKeys.includes('Strait of Hormuz'), 'should pick the higher-ranked MENA candidate');
-    assert.ok(!routeKeys.includes('Red Sea'), 'should skip the 2nd MENA candidate');
-    assert.ok(routeKeys.includes('Strait of Malacca'), 'should include the AsiaPacific candidate');
+    assert.ok(routeKeys.includes('Strait of Hormuz'), 'Hormuz must be selected');
+    assert.ok(routeKeys.includes('Red Sea'), 'Red Sea must be selected — it is a distinct geo group from Hormuz');
+    assert.ok(routeKeys.includes('Strait of Malacca'), 'Malacca must be selected');
+  });
+
+  it('geo-dedup: Red Sea and Suez Canal are same MENA_RedSea group — only higher-ranked selected', () => {
+    const redsea = makeCandidate({
+      candidateStateId: 'state-redsea',
+      candidateStateLabel: 'Red Sea blockade',
+      routeFacilityKey: 'Red Sea',
+      dominantRegion: 'Red Sea',
+      rankingScore: 0.85,
+    });
+    const suez = makeCandidate({
+      candidateStateId: 'state-suez',
+      candidateStateLabel: 'Suez Canal closure',
+      routeFacilityKey: 'Suez Canal',
+      dominantRegion: 'Red Sea',
+      rankingScore: 0.78,
+    });
+    const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([redsea, suez]));
+    assert.ok(pkg);
+    assert.equal(pkg.selectedTheaters.length, 1, 'only 1 theater — both are MENA_RedSea');
+    assert.equal(pkg.selectedTheaters[0].routeFacilityKey, 'Red Sea', 'higher-ranked Red Sea wins');
   });
 
   it('label cleanup: (stateKind) suffix is stripped from theater label', () => {
