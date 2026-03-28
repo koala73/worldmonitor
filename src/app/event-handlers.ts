@@ -271,6 +271,15 @@ export class EventHandlerManager implements AppModule {
       window.removeEventListener('blur', this.boundMapEndResizeHandler);
       this.boundMapEndResizeHandler = null;
     }
+    if (this.boundMapWidthResizeMoveHandler) {
+      document.removeEventListener('mousemove', this.boundMapWidthResizeMoveHandler);
+      this.boundMapWidthResizeMoveHandler = null;
+    }
+    if (this.boundMapWidthEndResizeHandler) {
+      document.removeEventListener('mouseup', this.boundMapWidthEndResizeHandler);
+      window.removeEventListener('blur', this.boundMapWidthEndResizeHandler);
+      this.boundMapWidthEndResizeHandler = null;
+    }
     if (this.boundMapResizeVisChangeHandler) {
       document.removeEventListener('visibilitychange', this.boundMapResizeVisChangeHandler);
       this.boundMapResizeVisChangeHandler = null;
@@ -1400,7 +1409,7 @@ export class EventHandlerManager implements AppModule {
       isResizing = false;
       this.ctx.map?.setIsResizing(false);
       this.ctx.map?.resize();
-      document.body.style.cursor = '';
+      document.body.classList.remove('map-width-resizing');
       widthHandle.classList.remove('resizing');
       const current = mainContent.style.getPropertyValue('--map-col-width');
       if (current) localStorage.setItem('map-col-width', current);
@@ -1413,7 +1422,7 @@ export class EventHandlerManager implements AppModule {
       const raw = mainContent.style.getPropertyValue('--map-col-width') || '60%';
       startColPx = startTotalWidth * (parseFloat(raw) / 100);
       this.ctx.map?.setIsResizing(true);
-      document.body.style.cursor = 'ew-resize';
+      document.body.classList.add('map-width-resizing');
       widthHandle.classList.add('resizing');
       e.preventDefault();
     });
