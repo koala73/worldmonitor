@@ -15198,6 +15198,62 @@ a.prediction-link:hover {
   border-color: var(--green);
 }
 
+/* Conflict KML legend — standalone panel, bottom-right of map */
+.conflict-kml-legend {
+  position: absolute;
+  bottom: 48px;
+  right: 8px;
+  z-index: 100;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-size: 10px;
+  color: var(--text-dim);
+  min-width: 160px;
+  max-width: 220px;
+  pointer-events: none;
+}
+
+.conflict-kml-legend-title {
+  font-size: 9px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  color: var(--text-dim);
+}
+
+.conflict-legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conflict-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.conflict-legend-swatches {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Header conflict selector — reuses .region-select styles */
+.conflict-selector {
+  display: flex;
+  align-items: center;
+}
+
+.conflict-select:hover {
+  border-color: #f87171 !important;
+}
+
 /* deck.gl Time Slider */
 .deckgl-time-slider {
   position: absolute;

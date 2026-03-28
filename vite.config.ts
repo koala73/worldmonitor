@@ -872,6 +872,21 @@ export default defineConfig(({ mode }) => {
             });
           },
         },
+        // Google My Maps KML CORS fallback — forwards ?url= param to the real Google URL
+        '/api/gmaps-kml': {
+          target: 'https://www.google.com',
+          changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq, req) => {
+              const kmlUrl = new URL(req.url ?? '', 'http://x').searchParams.get('url');
+              if (kmlUrl) {
+                const parsed = new URL(kmlUrl);
+                proxyReq.path = parsed.pathname + parsed.search;
+                proxyReq.setHeader('host', parsed.hostname);
+              }
+            });
+          },
+        },
         // PizzINT - Pentagon Pizza Index
         '/api/pizzint': {
           target: 'https://www.pizzint.watch',

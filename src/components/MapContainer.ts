@@ -833,6 +833,14 @@ export class MapContainer {
     }
   }
 
+  /**
+   * Activate a conflict scene by id: flies the camera to the area and loads the KML overlay.
+   * Pass `null` to clear the active conflict and remove the overlay.
+   */
+  public activateConflictScene(id: string | null): void {
+    if (this.useDeckGL) this.deckGLMap?.activateConflictScene(id);
+  }
+
   public triggerConflictClick(id: string): void {
     if (this.useDeckGL) {
       this.deckGLMap?.triggerConflictClick(id);

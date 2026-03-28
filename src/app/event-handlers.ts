@@ -479,6 +479,12 @@ export class EventHandlerManager implements AppModule {
       trackMapViewChange(regionSelect.value);
     });
 
+    // Fly to conflict area and load KML overlay when user picks from the conflicts dropdown.
+    const conflictSelect = document.getElementById('conflictSelect') as HTMLSelectElement | null;
+    conflictSelect?.addEventListener('change', () => {
+      this.ctx.map?.activateConflictScene(conflictSelect.value || null);
+    });
+
     this.boundResizeHandler = debounce(() => {
       this.ctx.map?.setIsResizing(false);
       this.ctx.map?.render();
