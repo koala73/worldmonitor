@@ -430,7 +430,7 @@ export class EventHandlerManager implements AppModule {
     // undo via Ctrl/Cmd+Z
     this.boundUndoHandler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        const tag = (e.target as HTMLElement).tagName;
+        const tag = (e.target as HTMLElement)?.tagName ?? '';
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
         e.preventDefault();
         this.performUndo();

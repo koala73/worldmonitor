@@ -1544,6 +1544,35 @@ body.panel-resize-active iframe {
   }
 }
 
+/* ---- Collapse (▾) button on panels ---- */
+.panel-header .panel-collapse-btn {
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  order: 998;
+}
+
+.panel:hover .panel-collapse-btn,
+.panel-collapse-btn:focus-visible {
+  opacity: 1;
+}
+
+.panel.panel-collapsed {
+  align-self: start;
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+.panel-collapsed .panel-collapse-btn {
+  opacity: 0.7;
+}
+
+@media (hover: none) {
+  .panel-header .panel-collapse-btn {
+    opacity: 0.7;
+  }
+}
+
 /* ---- Add Panel (+) block ---- */
 .add-panel-block {
   display: flex;

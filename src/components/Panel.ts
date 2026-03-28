@@ -16,6 +16,7 @@ export interface PanelOptions {
   infoTooltip?: string;
   premium?: 'locked' | 'enhanced';
   closable?: boolean;
+  collapsible?: boolean;
   defaultRowSpan?: number;
 }
 
@@ -208,6 +209,7 @@ export class Panel {
   private retryAttempt = 0;
   private _fetching = false;
   private _locked = false;
+  private _collapsed = false;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -272,6 +274,10 @@ export class Panel {
       this.countEl.className = 'panel-count';
       this.countEl.textContent = '0';
       this.header.appendChild(this.countEl);
+    }
+
+    if (options.collapsible) {
+      this.appendCollapseButton();
     }
 
     if (options.closable !== false) {
@@ -656,6 +662,25 @@ export class Panel {
     badge.className = 'panel-live-count';
     badge.textContent = `${count}`;
     headerLeft.appendChild(badge);
+  }
+
+  protected appendCollapseButton(): void {
+    const btn = h('button', {
+      className: 'icon-btn panel-collapse-btn',
+      'aria-label': t('components.panel.collapsePanel') ?? 'Collapse',
+      title: t('components.panel.collapsePanel') ?? 'Collapse',
+    }, '▾');
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._collapsed = !this._collapsed;
+      this.content.style.display = this._collapsed ? 'none' : '';
+      this.element.classList.toggle('panel-collapsed', this._collapsed);
+      btn.textContent = this._collapsed ? '▸' : '▾';
+      btn.title = this._collapsed
+        ? (t('components.panel.expandPanel') ?? 'Expand')
+        : (t('components.panel.collapsePanel') ?? 'Collapse');
+    });
+    this.header.appendChild(btn);
   }
 
   protected appendCloseButton(): void {
