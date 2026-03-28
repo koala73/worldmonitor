@@ -70,8 +70,10 @@ export class InsightsPanel extends Panel {
   }
 
   private getTheaterPostureContext(): string {
-    const postures = getCachedPosture()?.postures
-      ?? (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
+    const cachedPostures = getCachedPosture()?.postures;
+    const postures = cachedPostures?.length
+      ? cachedPostures
+      : (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
 
     const significant = postures.filter(
       (p) => p.postureLevel === 'critical' || p.postureLevel === 'elevated' || p.strikeCapable
@@ -225,8 +227,10 @@ export class InsightsPanel extends Panel {
       let focalSummary: ReturnType<typeof focalPointDetector.analyze>;
 
       if (SITE_VARIANT === 'full') {
-        const theaterPostures = getCachedPosture()?.postures
-          ?? (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
+        const _cp = getCachedPosture()?.postures;
+        const theaterPostures = _cp?.length
+          ? _cp
+          : (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
         if (theaterPostures.length > 0) {
           signalAggregator.ingestTheaterPostures(theaterPostures);
         }
@@ -315,8 +319,10 @@ export class InsightsPanel extends Panel {
       let focalSummary: ReturnType<typeof focalPointDetector.analyze>;
 
       if (SITE_VARIANT === 'full') {
-        const theaterPostures = getCachedPosture()?.postures
-          ?? (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
+        const _cp = getCachedPosture()?.postures;
+        const theaterPostures = _cp?.length
+          ? _cp
+          : (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
         if (theaterPostures.length > 0) {
           signalAggregator.ingestTheaterPostures(theaterPostures);
         }
