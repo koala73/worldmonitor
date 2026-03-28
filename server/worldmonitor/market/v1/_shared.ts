@@ -90,6 +90,8 @@ export const AV_PHYSICAL_COMMODITY_MAP: Record<string, string> = {
   'NG=F': 'NATURAL_GAS',
   'HG=F': 'COPPER',
   'ALI=F': 'ALUMINUM',
+  'GC=F': 'GOLD',
+  'SI=F': 'SILVER',
 };
 
 export async function fetchAlphaVantageQuotesBatch(

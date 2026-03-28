@@ -12,6 +12,8 @@ export const AV_PHYSICAL_MAP = {
   'NG=F': 'NATURAL_GAS',
   'HG=F': 'COPPER',
   'ALI=F': 'ALUMINUM',
+  'GC=F': 'GOLD',
+  'SI=F': 'SILVER',
 };
 
 const AV_BATCH_DELAY_MS = 500;
