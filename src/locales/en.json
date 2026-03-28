@@ -1927,6 +1927,8 @@
       "dragToResize": "Drag to resize (double-click to reset)",
       "openSettings": "Open Settings",
       "closePanel": "Close panel",
+      "collapsePanel": "Collapse panel",
+      "expandPanel": "Expand panel",
       "addPanel": "Add Panel"
     },
     "languageSelector": {

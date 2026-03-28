@@ -61,6 +61,31 @@ function savePanelColSpan(panelId: string, span: number): void {
   localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify(spans));
 }
 
+const PANEL_COLLAPSED_KEY = 'worldmonitor-panel-collapsed';
+
+function loadPanelCollapsed(): Record<string, boolean> {
+  try {
+    const stored = localStorage.getItem(PANEL_COLLAPSED_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePanelCollapsed(panelId: string, collapsed: boolean): void {
+  const map = loadPanelCollapsed();
+  if (collapsed) {
+    map[panelId] = true;
+  } else {
+    delete map[panelId];
+  }
+  if (Object.keys(map).length === 0) {
+    localStorage.removeItem(PANEL_COLLAPSED_KEY);
+  } else {
+    localStorage.setItem(PANEL_COLLAPSED_KEY, JSON.stringify(map));
+  }
+}
+
 function clearPanelColSpan(panelId: string): void {
   const spans = loadPanelColSpans();
   if (!(panelId in spans)) return;
@@ -210,6 +235,7 @@ export class Panel {
   private _fetching = false;
   private _locked = false;
   private _collapsed = false;
+  private _collapseBtn: HTMLButtonElement | null = null;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -290,6 +316,10 @@ export class Panel {
 
     this.element.appendChild(this.header);
     this.element.appendChild(this.content);
+
+    if (this._collapseBtn && loadPanelCollapsed()[this.panelId]) {
+      this._applyCollapsed(this._collapseBtn, true);
+    }
 
     this.content.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest('[data-panel-retry]');
@@ -664,22 +694,30 @@ export class Panel {
     headerLeft.appendChild(badge);
   }
 
+  private _applyCollapsed(btn: HTMLButtonElement, collapsed: boolean): void {
+    this._collapsed = collapsed;
+    this.content.style.display = collapsed ? 'none' : '';
+    this.element.classList.toggle('panel-collapsed', collapsed);
+    btn.textContent = collapsed ? '▸' : '▾';
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.title = collapsed
+      ? (t('components.panel.expandPanel') ?? 'Expand')
+      : (t('components.panel.collapsePanel') ?? 'Collapse');
+  }
+
   protected appendCollapseButton(): void {
     const btn = h('button', {
       className: 'icon-btn panel-collapse-btn',
       'aria-label': t('components.panel.collapsePanel') ?? 'Collapse',
+      'aria-expanded': 'true',
       title: t('components.panel.collapsePanel') ?? 'Collapse',
-    }, '▾');
+    }, '▾') as HTMLButtonElement;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._collapsed = !this._collapsed;
-      this.content.style.display = this._collapsed ? 'none' : '';
-      this.element.classList.toggle('panel-collapsed', this._collapsed);
-      btn.textContent = this._collapsed ? '▸' : '▾';
-      btn.title = this._collapsed
-        ? (t('components.panel.expandPanel') ?? 'Expand')
-        : (t('components.panel.collapsePanel') ?? 'Collapse');
+      this._applyCollapsed(btn, !this._collapsed);
+      savePanelCollapsed(this.panelId, this._collapsed);
     });
+    this._collapseBtn = btn;
     this.header.appendChild(btn);
   }
 
