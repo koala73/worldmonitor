@@ -108,3 +108,17 @@ Use **Option 2**. Distinguishing "Bearer present but invalid" from "no auth" is 
 - Agent-native reviewer flagged as CRITICAL for agent re-auth loop
 - Security sentinel independently flagged RFC 6750 non-compliance
 - Identified `rpcError` always returns 200 as the root cause
+
+### 2026-03-28 — Partial Fix Applied (commit a2cf0df3b)
+
+**Bearer-present-but-invalid path now returns 401:**
+
+```typescript
+} else if (bearerHeader.startsWith('Bearer ')) {
+  return new Response(
+    JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: '...' } }),
+    { status: 401, headers: { 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token"', ...corsHeaders } }
+  );
+```
+
+**Still pending:** The "no credentials at all" path and "invalid direct key" path still return HTTP 200 via `rpcError`. For claude.ai OAuth clients specifically this is acceptable (they always send a Bearer header), but it is a RFC 6750 non-compliance for any client that calls the endpoint without any auth. Full fix requires either: (a) special-casing -32001 in `rpcError` to return 401, or (b) manually constructing the 401 response for the "no candidateKey" and "invalid candidateKey" branches.
