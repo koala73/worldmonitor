@@ -6905,6 +6905,50 @@ describe('phase 3 simulation re-ingestion — applyPostSimulationRescore', () =>
     assert.ok(rejectedIds.includes(stateA), 'demoted path moved to rejectedPaths');
   });
 
+  it('R-7: applySimulationMerge promotes near-threshold rejected path in completed run (CASE 3 promotion)', () => {
+    // completed eval with safe selected path (0.75) and near-threshold rejected path (0.44).
+    // Simulation matches rejected path → +0.08 → 0.52 → promoted. Status stays 'completed'.
+    // This is the case the hasDemotionRisk guard previously blocked (hasPromotionOpportunity needed).
+    const stateA = 'state-r7a'; // rejected, 0.44 — near threshold
+    const stateB = 'state-r7b'; // selected, 0.75 — safe
+    const candidateA = makeRescoreCandidatePacket(stateA);
+    const candidateB = makeRescoreCandidatePacket(stateB);
+    const pathA = { ...makeRescorePath(stateA, 0.44), candidate: candidateA };
+    const pathB = { ...makeRescorePath(stateB, 0.75), candidate: candidateB };
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [pathB],
+      rejectedPaths: [pathA],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r7',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateA,
+        topPaths: [{ label: 'Oil Supply Shock', summary: 'oil supply disruption from Red Sea energy shock', keyActors: [] }],
+        invalidators: [],
+        stabilizers: [],
+      }],
+    };
+    const snapshot = {
+      ...makeRescoreSnapshot(stateA),
+      impactExpansionCandidates: [candidateA, candidateB],
+    };
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    assert.equal(simulationEvidence.pathsPromoted, 1, 'near-threshold path should be promoted');
+    assert.equal(updatedEval.status, 'completed', 'status stays completed — existing selected path remains');
+    const selectedIds = updatedEval.selectedPaths.map((p) => p.candidateStateId);
+    assert.ok(selectedIds.includes(stateA), 'promoted path now in selectedPaths');
+    assert.ok(selectedIds.includes(stateB), 'original selected path remains');
+    const rejectedIds = updatedEval.rejectedPaths.map((p) => p.candidateStateId);
+    assert.ok(!rejectedIds.includes(stateA), 'promoted path removed from rejectedPaths');
+  });
+
   it('R-5: simulation adjustments use marketContext fallback when direct.channel is an LLM-generated invalid key', () => {
     // supply_disruption is not in CHANNEL_KEYWORDS — should fall back to marketContext.topChannel=energy_supply_shock
     const stateId = 'state-r5';

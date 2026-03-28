@@ -16157,14 +16157,17 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
     }
 
     // Only re-score if there is actionable opportunity:
-    // - 'completed_no_material_change': any simulation evidence could promote a rejected path
-    // - 'completed': only worth it if a selected expanded path risks demotion (acceptanceScore < 0.62
-    //   means a -0.12 invalidator penalty could push it below the 0.50 acceptance threshold)
-    const hasDemotionRisk = evalData.status === 'completed' &&
-      (evalData.selectedPaths || []).some(
-        (p) => p.type === 'expanded' && p.acceptanceScore < 0.62,
-      );
-    if (evalData.status !== 'completed_no_material_change' && !hasDemotionRisk) {
+    // - 'completed_no_material_change': always proceed — any simulation evidence could promote a rejected path
+    // - 'completed': proceed if (a) a selected expanded path risks demotion (acceptanceScore < 0.62
+    //   means a -0.12 invalidator could push it below 0.50), or (b) a rejected expanded path is
+    //   near-threshold (0.42–0.50) and could be promoted via +0.08 bucketChannelMatch into CASE 3.
+    const hasDemotionRisk = (evalData.selectedPaths || []).some(
+      (p) => p.type === 'expanded' && p.acceptanceScore < 0.62,
+    );
+    const hasPromotionOpportunity = (evalData.rejectedPaths || []).some(
+      (p) => p.type === 'expanded' && p.acceptanceScore >= 0.42 && p.acceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
+    );
+    if (evalData.status !== 'completed_no_material_change' && !hasDemotionRisk && !hasPromotionOpportunity) {
       return { skipped: true, reason: 'no_actionable_paths' };
     }
 
