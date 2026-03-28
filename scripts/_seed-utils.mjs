@@ -408,7 +408,7 @@ async function httpsProxyFetchJson(url, proxyAuth) {
 // Fetch JSON from a FRED URL, routing through proxy when available.
 export async function fredFetchJson(url, proxyAuth) {
   try {
-    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
     if (r.ok) return r.json();
     throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
   } catch (directErr) {
