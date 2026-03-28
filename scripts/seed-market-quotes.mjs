@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, sleep, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const stocksConfig = loadSharedConfig('stocks.json');
 
@@ -65,40 +66,6 @@ async function fetchYahooQuote(symbol) {
   }
 }
 
-async function fetchAlphaVantageQuotesBatch(symbols, apiKey) {
-  const results = new Map();
-  const BATCH = 100;
-  const AV_BATCH_DELAY_MS = 500;
-  for (let i = 0; i < symbols.length; i += BATCH) {
-    if (i > 0) await sleep(AV_BATCH_DELAY_MS);
-    const chunk = symbols.slice(i, i + BATCH);
-    const url = `https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=${encodeURIComponent(chunk.join(','))}&apikey=${encodeURIComponent(apiKey)}`;
-    try {
-      const resp = await fetch(url, {
-        headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!resp.ok) { console.warn(`  [AV] Bulk quotes HTTP ${resp.status}`); continue; }
-      const json = await resp.json();
-      if (json.Information) { console.warn(`  [AV] Rate limit hit: ${String(json.Information).slice(0, 100)}`); break; }
-      if (!Array.isArray(json.data)) { console.warn('  [AV] Unexpected response:', JSON.stringify(json).slice(0, 200)); continue; }
-      for (const item of json.data) {
-        const price = parseFloat(item.price);
-        const prevClose = parseFloat(item['previous close']);
-        const changePct = (Number.isFinite(prevClose) && prevClose > 0)
-          ? ((price - prevClose) / prevClose) * 100
-          : parseFloat((item['change percent'] || '0').replace('%', ''));
-        if (Number.isFinite(price) && price > 0) {
-          results.set(item.symbol, { symbol: item.symbol, name: item.symbol, display: item.symbol, price, change: Number.isFinite(changePct) ? changePct : 0, sparkline: [] });
-        }
-      }
-    } catch (err) {
-      console.warn(`  [AV] Bulk quotes error: ${err.message}`);
-    }
-  }
-  return results;
-}
-
 async function fetchMarketQuotes() {
   const quotes = [];
   const avKey = process.env.ALPHA_VANTAGE_API_KEY;
@@ -106,12 +73,12 @@ async function fetchMarketQuotes() {
 
   // --- Primary: Alpha Vantage REALTIME_BULK_QUOTES ---
   if (avKey) {
-    // AV doesn't support Indian NSE symbols; keep Yahoo-only for those
-    const avSymbols = MARKET_SYMBOLS.filter((s) => !s.endsWith('.NS') && !s.startsWith('^NSEI') && !s.startsWith('^BSESN'));
-    const avResults = await fetchAlphaVantageQuotesBatch(avSymbols, avKey);
+    // AV doesn't support Indian NSE symbols or Yahoo-only indices — skip those
+    const avSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s) && !s.endsWith('.NS'));
+    const avResults = await fetchAvBulkQuotes(avSymbols, avKey);
     for (const [sym, q] of avResults) {
       const meta = stocksConfig.symbols.find(s => s.symbol === sym);
-      quotes.push({ ...q, symbol: sym, name: meta?.name || sym, display: meta?.display || sym });
+      quotes.push({ symbol: sym, name: meta?.name || sym, display: meta?.display || sym, price: q.price, change: q.change, sparkline: [] });
       console.log(`  [AV] ${sym}: $${q.price} (${q.change > 0 ? '+' : ''}${q.change.toFixed(2)}%)`);
     }
   }

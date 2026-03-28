@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, runSeed } from './_seed-utils.mjs';
+import { fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const etfConfig = loadSharedConfig('etfs.json');
 
@@ -78,35 +79,6 @@ function parseEtfChartData(chart, ticker, issuer) {
   };
 }
 
-async function fetchAvBulkForEtfs(tickers, apiKey) {
-  if (tickers.length === 0) return new Map();
-  const results = new Map();
-  const url = `https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=${encodeURIComponent(tickers.join(','))}&apikey=${encodeURIComponent(apiKey)}`;
-  try {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) { console.warn(`  [AV] ETF bulk quotes HTTP ${resp.status}`); return results; }
-    const json = await resp.json();
-    if (json.Information) { console.warn(`  [AV] Rate limit hit: ${String(json.Information).slice(0, 100)}`); return results; }
-    if (!Array.isArray(json.data)) return results;
-    for (const item of json.data) {
-      const price = parseFloat(item.price);
-      const prevClose = parseFloat(item['previous close']);
-      const volume = parseInt(item.volume || '0', 10);
-      if (!Number.isFinite(price) || price <= 0) continue;
-      const priceChange = (Number.isFinite(prevClose) && prevClose > 0)
-        ? ((price - prevClose) / prevClose) * 100
-        : parseFloat((item['change percent'] || '0').replace('%', ''));
-      results.set(item.symbol, { price, priceChange: Number.isFinite(priceChange) ? priceChange : 0, volume, prevClose });
-    }
-  } catch (err) {
-    console.warn(`  [AV] ETF bulk quotes error: ${err.message}`);
-  }
-  return results;
-}
-
 async function fetchEtfFlows() {
   const etfs = [];
   let misses = 0;
@@ -116,14 +88,15 @@ async function fetchEtfFlows() {
   // --- Primary: Alpha Vantage REALTIME_BULK_QUOTES ---
   if (avKey) {
     const tickers = ETF_LIST.map(e => e.ticker);
-    const avData = await fetchAvBulkForEtfs(tickers, avKey);
+    const avData = await fetchAvBulkQuotes(tickers, avKey);
     for (const { ticker, issuer } of ETF_LIST) {
       const av = avData.get(ticker);
       if (!av) continue;
-      const { price, priceChange, volume } = av;
+      const { price, change: priceChange, volume } = av;
       const direction = priceChange > 0.1 ? 'inflow' : priceChange < -0.1 ? 'outflow' : 'neutral';
       const estFlow = Math.round(volume * price * (priceChange > 0 ? 1 : -1) * 0.1);
-      etfs.push({ ticker, issuer, price: +price.toFixed(2), priceChange: +priceChange.toFixed(2), volume, avgVolume: volume, volumeRatio: 1, direction, estFlow });
+      // avgVolume and volumeRatio require 5-day history not available from REALTIME_BULK_QUOTES
+      etfs.push({ ticker, issuer, price: +price.toFixed(2), priceChange: +priceChange.toFixed(2), volume, avgVolume: 0, volumeRatio: 0, direction, estFlow });
       covered.add(ticker);
       console.log(`  [AV] ${ticker}: $${price.toFixed(2)} (${direction})`);
     }

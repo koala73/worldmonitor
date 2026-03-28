@@ -103,18 +103,29 @@ export async function fetchAlphaVantageQuotesBatch(
     if (i > 0) await new Promise<void>(r => setTimeout(r, AV_BATCH_DELAY_MS));
     const chunk = symbols.slice(i, i + BATCH);
     const url = `https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=${encodeURIComponent(chunk.join(','))}&apikey=${encodeURIComponent(apiKey)}`;
-    try {
-      const resp = await fetch(url, {
-        headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      });
-      if (!resp.ok) {
-        console.warn(`[AV] Bulk quotes HTTP ${resp.status}`);
-        continue;
+    let resp: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        if (attempt > 0) await new Promise<void>(r => setTimeout(r, 1000));
+        resp = await fetch(url, {
+          headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        });
+        break;
+      } catch (err) {
+        console.warn(`[AV] Bulk quotes fetch error (attempt ${attempt + 1}):`, (err as Error).message);
       }
+    }
+    if (!resp) continue;
+    if (!resp.ok) {
+      console.warn(`[AV] Bulk quotes HTTP ${resp.status}`);
+      continue;
+    }
+    try {
       const json = await resp.json() as { data?: Array<{ symbol: string; price: string; 'previous close': string; 'change percent': string }>; Information?: string };
       if (json.Information) {
-        console.warn(`[AV] Rate limit hit: ${json.Information.slice(0, 100)}`);
+        const remaining = symbols.length - i - chunk.length;
+        console.warn(`[AV] Rate limit hit${remaining > 0 ? ` — dropping ${remaining} remaining symbols` : ''}: ${json.Information.slice(0, 80)}`);
         break;
       }
       if (!Array.isArray(json.data)) continue;
@@ -129,7 +140,7 @@ export async function fetchAlphaVantageQuotesBatch(
         }
       }
     } catch (err) {
-      console.warn(`[AV] Bulk quotes error:`, (err as Error).message);
+      console.warn(`[AV] Bulk quotes parse error:`, (err as Error).message);
     }
   }
   return results;
@@ -142,15 +153,25 @@ export async function fetchAlphaVantagePhysicalCommodity(
   const fn = AV_PHYSICAL_COMMODITY_MAP[yahooSymbol];
   if (!fn) return null;
   const url = `https://www.alphavantage.co/query?function=${fn}&interval=daily&apikey=${encodeURIComponent(apiKey)}`;
-  try {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-    if (!resp.ok) {
-      console.warn(`[AV] ${fn} HTTP ${resp.status}`);
-      return null;
+  let resp: Response | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if (attempt > 0) await new Promise<void>(r => setTimeout(r, 1000));
+      resp = await fetch(url, {
+        headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      break;
+    } catch (err) {
+      console.warn(`[AV] ${fn} fetch error (attempt ${attempt + 1}):`, (err as Error).message);
     }
+  }
+  if (!resp) return null;
+  if (!resp.ok) {
+    console.warn(`[AV] ${fn} HTTP ${resp.status}`);
+    return null;
+  }
+  try {
     const json = await resp.json() as { data?: Array<{ date: string; value: string }>; Information?: string };
     if (json.Information) {
       console.warn(`[AV] Rate limit hit: ${json.Information.slice(0, 100)}`);
@@ -162,9 +183,11 @@ export async function fetchAlphaVantagePhysicalCommodity(
     const prev = parseFloat(data[1]!.value);
     if (!Number.isFinite(latest) || latest <= 0) return null;
     const change = Number.isFinite(prev) && prev > 0 ? ((latest - prev) / prev) * 100 : 0;
-    return { price: latest, change, sparkline: [] };
+    // Build sparkline from last 7 daily closes (oldest → newest)
+    const sparkline = data.slice(0, 7).map(d => parseFloat(d.value)).filter(Number.isFinite).reverse();
+    return { price: latest, change, sparkline };
   } catch (err) {
-    console.warn(`[AV] ${fn} error:`, (err as Error).message);
+    console.warn(`[AV] ${fn} parse error:`, (err as Error).message);
     return null;
   }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, sleep, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { AV_PHYSICAL_MAP, fetchAvPhysicalCommodity, fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const commodityConfig = loadSharedConfig('commodities.json');
 
@@ -34,71 +35,6 @@ async function fetchYahooWithRetry(url, label, maxAttempts = 4) {
 
 const COMMODITY_SYMBOLS = commodityConfig.commodities.map(c => c.symbol);
 
-// Alpha Vantage physical commodity function map
-const AV_PHYSICAL_MAP = {
-  'CL=F': 'WTI',
-  'BZ=F': 'BRENT',
-  'NG=F': 'NATURAL_GAS',
-  'HG=F': 'COPPER',
-  'ALI=F': 'ALUMINUM',
-};
-
-async function fetchAvPhysicalCommodity(yahooSymbol, apiKey) {
-  const fn = AV_PHYSICAL_MAP[yahooSymbol];
-  if (!fn) return null;
-  try {
-    const url = `https://www.alphavantage.co/query?function=${fn}&interval=daily&apikey=${encodeURIComponent(apiKey)}`;
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) { console.warn(`  [AV] ${fn} HTTP ${resp.status}`); return null; }
-    const json = await resp.json();
-    if (json.Information) { console.warn(`  [AV] Rate limit hit: ${String(json.Information).slice(0, 100)}`); return null; }
-    const data = json.data;
-    if (!Array.isArray(data) || data.length < 2) return null;
-    const latest = parseFloat(data[0].value);
-    const prev = parseFloat(data[1].value);
-    if (!Number.isFinite(latest) || latest <= 0) return null;
-    const change = (Number.isFinite(prev) && prev > 0) ? ((latest - prev) / prev) * 100 : 0;
-    const meta = commodityConfig.commodities.find(c => c.symbol === yahooSymbol);
-    return { symbol: yahooSymbol, name: meta?.name || yahooSymbol, display: meta?.display || yahooSymbol, price: latest, change, sparkline: [] };
-  } catch (err) {
-    console.warn(`  [AV] ${fn} error: ${err.message}`);
-    return null;
-  }
-}
-
-async function fetchAvBulkQuotes(symbols, apiKey) {
-  if (symbols.length === 0) return new Map();
-  const results = new Map();
-  const url = `https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=${encodeURIComponent(symbols.join(','))}&apikey=${encodeURIComponent(apiKey)}`;
-  try {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) { console.warn(`  [AV] Bulk quotes HTTP ${resp.status}`); return results; }
-    const json = await resp.json();
-    if (json.Information) { console.warn(`  [AV] Rate limit hit: ${String(json.Information).slice(0, 100)}`); return results; }
-    if (!Array.isArray(json.data)) return results;
-    for (const item of json.data) {
-      const price = parseFloat(item.price);
-      const prevClose = parseFloat(item['previous close']);
-      const changePct = (Number.isFinite(prevClose) && prevClose > 0)
-        ? ((price - prevClose) / prevClose) * 100
-        : parseFloat((item['change percent'] || '0').replace('%', ''));
-      if (Number.isFinite(price) && price > 0) {
-        const meta = commodityConfig.commodities.find(c => c.symbol === item.symbol);
-        results.set(item.symbol, { symbol: item.symbol, name: meta?.name || item.symbol, display: meta?.display || item.symbol, price, change: Number.isFinite(changePct) ? changePct : 0, sparkline: [] });
-      }
-    }
-  } catch (err) {
-    console.warn(`  [AV] Bulk quotes error: ${err.message}`);
-  }
-  return results;
-}
-
 async function fetchCommodityQuotes() {
   const quotes = [];
   let misses = 0;
@@ -111,16 +47,18 @@ async function fetchCommodityQuotes() {
     for (const sym of physicalSymbols) {
       const q = await fetchAvPhysicalCommodity(sym, avKey);
       if (q) {
-        quotes.push(q);
+        const meta = commodityConfig.commodities.find(c => c.symbol === sym);
+        quotes.push({ symbol: sym, name: meta?.name || sym, display: meta?.display || sym, ...q });
         console.log(`  [AV:physical] ${sym}: $${q.price} (${q.change > 0 ? '+' : ''}${q.change.toFixed(2)}%)`);
       }
     }
 
-    // REALTIME_BULK_QUOTES for ETF-style symbols (URA, LIT) and ^VIX (if supported)
+    // REALTIME_BULK_QUOTES for ETF-style symbols (URA, LIT)
     const bulkCandidates = COMMODITY_SYMBOLS.filter(s => !AV_PHYSICAL_MAP[s] && !quotes.some(q => q.symbol === s) && !s.includes('=F') && !s.startsWith('^'));
     const bulkResults = await fetchAvBulkQuotes(bulkCandidates, avKey);
     for (const [sym, q] of bulkResults) {
-      quotes.push(q);
+      const meta = commodityConfig.commodities.find(c => c.symbol === sym);
+      quotes.push({ symbol: sym, name: meta?.name || sym, display: meta?.display || sym, price: q.price, change: q.change, sparkline: [] });
       console.log(`  [AV:bulk] ${sym}: $${q.price} (${q.change > 0 ? '+' : ''}${q.change.toFixed(2)}%)`);
     }
   }
