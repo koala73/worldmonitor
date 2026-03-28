@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
@@ -300,19 +301,10 @@ export function sleep(ms) {
 }
 
 // ─── Proxy helpers for sources that block Railway container IPs ───
-// Supports PROXY_URL="host:port:user:pass" (Decodo) or OREF_PROXY_AUTH="user:pass@host:port" (Froxy).
+const { resolveProxyString } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
 export function resolveProxy() {
-  const raw = process.env.PROXY_URL || '';
-  if (raw) {
-    const parts = raw.split(':');
-    if (parts.length === 4) {
-      const [host, port, user, pass] = parts;
-      return `${user}:${pass}@${host.replace(/^gate\./, 'us.')}:${port}`;
-    }
-    return raw;
-  }
-  return process.env.OREF_PROXY_AUTH || '';
+  return resolveProxyString();
 }
 
 // curl-based fetch; throws on non-2xx. Returns response body as string.

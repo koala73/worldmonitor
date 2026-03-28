@@ -17,6 +17,8 @@ const { readFileSync } = require('fs');
 const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
+const { parseProxyConfig } = require('./_proxy-utils.cjs');
+const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
 
@@ -86,7 +88,7 @@ const ALLOW_VERCEL_PREVIEW_ORIGINS = process.env.ALLOW_VERCEL_PREVIEW_ORIGINS ==
 const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.OREF_PROXY_AUTH || '';
 const OPENSKY_PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
 
-const PROXY_URL = process.env.PROXY_URL || ''; // generic residential proxy (US exit) — user:pass@host:port or http://...
+const PROXY_URL = process.env.PROXY_URL || ''; // generic residential proxy (US exit) — http://user:pass@host:port or host:port:user:pass (Decodo)
 
 // OREF (Israel Home Front Command) siren alerts — fetched via HTTP proxy (Israel exit)
 const OREF_PROXY_AUTH = process.env.OREF_PROXY_AUTH || ''; // format: user:pass@host:port
@@ -7474,18 +7476,6 @@ function handleAviationStackRequest(req, res) {
 
 // ── YouTube Live Detection (residential proxy bypass) ──────────────
 const YOUTUBE_PROXY_URL = process.env.YOUTUBE_PROXY_URL || '';
-
-function parseProxyUrl(proxyUrl) {
-  if (!proxyUrl) return null;
-  try {
-    const u = new URL(proxyUrl);
-    return {
-      host: u.hostname,
-      port: parseInt(u.port, 10),
-      auth: u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}` : null,
-    };
-  } catch { return null; }
-}
 
 function ytFetchViaProxy(targetUrl, proxy) {
   return new Promise((resolve, reject) => {

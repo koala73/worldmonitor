@@ -1,23 +1,9 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, sleep, resolveProxy } from './_seed-utils.mjs';
 import { execFileSync } from 'child_process';
 loadEnvFile(import.meta.url);
 
-// Proxy for Yahoo Finance — Railway container IPs get blocked by Yahoo after restarts.
-// Supports PROXY_URL="host:port:user:pass" (Decodo) or OREF_PROXY_AUTH="user:pass@host:port" (Froxy).
-function resolveProxy() {
-  const raw = process.env.PROXY_URL || '';
-  if (raw) {
-    const parts = raw.split(':');
-    if (parts.length === 4) {
-      const [host, port, user, pass] = parts;
-      return `${user}:${pass}@${host.replace(/^gate\./, 'us.')}:${port}`;
-    }
-    return raw;
-  }
-  return process.env.OREF_PROXY_AUTH || '';
-}
 const _proxyAuth = resolveProxy();
 
 // curl-based fetch for sources that block Railway IPs (Yahoo Finance).
