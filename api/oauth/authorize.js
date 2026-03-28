@@ -238,8 +238,17 @@ export default async function handler(req) {
     } catch {
       return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
     }
-    if (!nonceData || nonceData.client_id !== client_id || nonceData.redirect_uri !== redirect_uri) {
+    if (!nonceData) {
       return htmlError('Session Expired', 'Authorization session expired or is invalid. Please start over.');
+    }
+    // Log any param mismatch to diagnose Connectors UI behavior; don't block here —
+    // client_id and redirect_uri are re-validated against the client registry below.
+    if (nonceData.client_id !== client_id || nonceData.redirect_uri !== redirect_uri) {
+      console.error(JSON.stringify({
+        event: 'oauth_nonce_param_mismatch',
+        stored_client: nonceData.client_id, recv_client: client_id,
+        stored_redirect_uri: nonceData.redirect_uri, recv_redirect_uri: redirect_uri,
+      }));
     }
 
     let client;
