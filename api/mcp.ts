@@ -1,7 +1,7 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getPublicCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
@@ -416,14 +416,11 @@ async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | nu
 // Main handler
 // ---------------------------------------------------------------------------
 export default async function handler(req: Request): Promise<Response> {
-  const corsHeaders = getCorsHeaders(req, 'POST, OPTIONS');
+  // MCP is a public API endpoint secured by API key — allow all origins (claude.ai, Claude Desktop, custom agents)
+  const corsHeaders = getPublicCorsHeaders('POST, OPTIONS');
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
-  }
-
-  if (isDisallowedOrigin(req)) {
-    return rpcError(null, -32001, 'Origin not allowed');
   }
 
   // Auth — always require API key (MCP clients are never same-origin browser requests)
