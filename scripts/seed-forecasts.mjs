@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @ts-check
+/// <reference path="./seed-forecasts.types.d.ts" />
 
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -11322,6 +11324,12 @@ const NEGATION_TERMS = ['ceasefire', 'reopen', 'reopened', 'resolv', 'diplomatic
 const SIMULATION_MERGE_ACCEPT_THRESHOLD = 0.50;
 const SIMULATION_ELIGIBILITY_RANK_THRESHOLD = 0.40;
 
+/**
+ * @param {string} invalidator
+ * @param {ExpandedPath} expandedPath
+ * @param {boolean} [fromSimulation]
+ * @returns {boolean}
+ */
 function contradictsPremise(invalidator, expandedPath, fromSimulation = false) {
   if (!invalidator || typeof invalidator !== 'string') return false;
   const text = invalidator.toLowerCase();
@@ -11346,6 +11354,11 @@ function contradictsPremise(invalidator, expandedPath, fromSimulation = false) {
   return subjectKeywords.some((kw) => text.includes(kw));
 }
 
+/**
+ * @param {string} stabilizer
+ * @param {CandidatePacket} candidatePacket
+ * @returns {boolean}
+ */
 function negatesDisruption(stabilizer, candidatePacket) {
   if (!stabilizer || typeof stabilizer !== 'string') return false;
   const text = stabilizer.toLowerCase();
@@ -11361,19 +11374,25 @@ function negatesDisruption(stabilizer, candidatePacket) {
   }
   // Non-maritime: match on stateKind and bucket keywords.
   const stateKind = candidatePacket?.stateKind || '';
-  const bucket = candidatePacket?.marketContext?.topBucketId || candidatePacket?.topBucketId || '';
+  const bucket = candidatePacket?.marketContext?.topBucketId || '';
   const subjectKeywords = [...stateKind.toLowerCase().split('_'), ...bucket.toLowerCase().split('_')]
     .filter((w) => w.length >= 4);
   return subjectKeywords.some((kw) => text.includes(kw));
 }
 
+/**
+ * @param {ExpandedPath} expandedPath
+ * @param {TheaterResult} simTheaterResult
+ * @param {CandidatePacket} candidatePacket
+ * @returns {{ adjustment: number; details: SimulationAdjustmentDetail }}
+ */
 function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePacket) {
   let adjustment = 0;
   const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false };
 
   const { topPaths = [], invalidators = [], stabilizers = [] } = simTheaterResult || {};
-  const pathBucket = expandedPath?.direct?.targetBucket || candidatePacket?.marketContext?.topBucketId || candidatePacket?.topBucketId || '';
-  const pathChannel = expandedPath?.direct?.channel || candidatePacket?.marketContext?.topChannel || candidatePacket?.topChannel || '';
+  const pathBucket = expandedPath?.direct?.targetBucket || candidatePacket?.marketContext?.topBucketId || '';
+  const pathChannel = expandedPath?.direct?.channel || candidatePacket?.marketContext?.topChannel || '';
   const pathActors = extractPathActors(expandedPath);
 
   const bucketChannelMatch = topPaths.find(
@@ -11409,6 +11428,14 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
   return { adjustment: +adjustment.toFixed(3), details };
 }
 
+/**
+ * @param {object} evaluation
+ * @param {SimulationOutcome} simulationOutcome
+ * @param {CandidatePacket[]} candidatePackets
+ * @param {object} snapshot
+ * @param {object | null} priorWorldState
+ * @returns {{ evaluation: object; simulationEvidence: SimulationEvidence | null }}
+ */
 function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, snapshot, priorWorldState) {
   if (!simulationOutcome?.theaterResults?.length) {
     return { evaluation, simulationEvidence: null };
