@@ -4,6 +4,7 @@
 
 export interface ListSanctionsPressureRequest {
   maxItems: number;
+  timeRange: string;
 }
 
 export interface ListSanctionsPressureResponse {
@@ -121,6 +122,7 @@ export class SanctionsServiceClient {
     let path = "/api/sanctions/v1/list-sanctions-pressure";
     const params = new URLSearchParams();
     if (req.maxItems != null && req.maxItems !== 0) params.set("max_items", String(req.maxItems));
+    if (req.timeRange != null && req.timeRange !== "") params.set("time_range", String(req.timeRange));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

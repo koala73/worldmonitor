@@ -147,7 +147,7 @@ function toResult(response: ListSanctionsPressureResponse): SanctionsPressureRes
   };
 }
 
-export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult> {
+export async function fetchSanctionsPressure(timeRange?: string): Promise<SanctionsPressureResult> {
   const hydrated = getHydratedData('sanctionsPressure') as ListSanctionsPressureResponse | undefined;
   if (hydrated?.entries?.length || hydrated?.countries?.length || hydrated?.programs?.length) {
     const result = toResult(hydrated);
@@ -158,6 +158,7 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
   return breaker.execute(async () => {
     const response = await client.listSanctionsPressure({
       maxItems: 30,
+      timeRange: timeRange ?? '',
     }, {
       signal: AbortSignal.timeout(25_000),
     });

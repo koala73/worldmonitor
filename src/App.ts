@@ -690,6 +690,7 @@ export class App {
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
+      onTimeRangeChanged: () => { void this.dataLoader.loadSanctionsPressure(); },
     });
 
     this.eventHandlers = new EventHandlerManager(this.state, {

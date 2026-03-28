@@ -4,6 +4,7 @@
 
 export interface ListSanctionsPressureRequest {
   maxItems: number;
+  timeRange: string;
 }
 
 export interface ListSanctionsPressureResponse {
@@ -133,6 +134,7 @@ export function createSanctionsServiceRoutes(
           const params = url.searchParams;
           const body: ListSanctionsPressureRequest = {
             maxItems: Number(params.get("max_items") ?? "0"),
+            timeRange: params.get("time_range") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listSanctionsPressure", body);
