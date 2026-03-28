@@ -10,7 +10,7 @@ import { readJsonFromUpstash } from './_upstash-json.js';
 import { resolveApiKeyFromBearer } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
-import COUNTRY_BBOXES from '../shared/country-bboxes.json' with { type: 'json' };
+import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 
 export const config = { runtime: 'edge' };
 
@@ -365,7 +365,7 @@ const TOOL_REGISTRY: ToolDef[] = [
     },
     _execute: async (params, base, apiKey) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
-      const bbox = (COUNTRY_BBOXES as unknown as Record<string, [number, number, number, number]>)[code];
+      const bbox = COUNTRY_BBOXES[code];
       if (!bbox) return { error: `Unknown country code: ${code}. Use ISO 3166-1 alpha-2 (e.g. "AE", "US", "GB").` };
       const [sw_lat, sw_lon, ne_lat, ne_lon] = bbox;
       const type = String(params.type ?? 'all');
@@ -448,7 +448,7 @@ const TOOL_REGISTRY: ToolDef[] = [
     },
     _execute: async (params, base, apiKey) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
-      const bbox = (COUNTRY_BBOXES as unknown as Record<string, [number, number, number, number]>)[code];
+      const bbox = COUNTRY_BBOXES[code];
       if (!bbox) return { error: `Unknown country code: ${code}. Use ISO 3166-1 alpha-2 (e.g. "AE", "SA", "JP").` };
       const [sw_lat, sw_lon, ne_lat, ne_lon] = bbox;
       const bboxQ = `sw_lat=${sw_lat}&sw_lon=${sw_lon}&ne_lat=${ne_lat}&ne_lon=${ne_lon}`;
