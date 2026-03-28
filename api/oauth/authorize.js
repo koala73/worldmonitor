@@ -149,6 +149,7 @@ button:disabled{opacity:.5;cursor:default}
 <hr>
 <form id="cf" method="POST" action="https://api.worldmonitor.app/oauth/authorize">
 <input type="hidden" name="_nonce" id="nn" value="${escapeHtml(nonce)}">
+<input type="hidden" name="_js" id="jf" value="">
 <label for="api_key">API Key</label>
 <input type="password" id="api_key" name="api_key" placeholder="wm_&#8230;" autocomplete="current-password" required>
 <p class="hint">No key? <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get one at worldmonitor.app/pro &#x2192;</a></p>
@@ -157,7 +158,7 @@ button:disabled{opacity:.5;cursor:default}
 </form>
 </div>
 <p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a> &middot; <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get an API key &#x2192;</a></p>
-<script>document.getElementById('cf').addEventListener('submit',function(e){e.preventDefault();var b=document.getElementById('ab');b.disabled=true;b.textContent='Authorizing\u2026';var d=new URLSearchParams(new FormData(e.target));fetch('/oauth/authorize',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'},body:d}).then(function(r){var c=r.headers.get('Content-Type')||'';if(c.indexOf('json')>=0)return r.json().then(function(j){if(j.location){window.location.replace(j.location);return;}if(j.error==='invalid_key'){var n=document.getElementById('nn');if(n)n.value=j.nonce||'';var em=document.getElementById('ke');if(em){em.textContent='Invalid API key. Please check and try again.';em.style.display='';}}b.disabled=false;b.textContent='Authorize';});return r.text().then(function(h){document.open();document.write(h);document.close();});}).catch(function(){b.disabled=false;b.textContent='Authorize';});})</script>
+<script>document.getElementById('cf').addEventListener('submit',function(e){e.preventDefault();var jf=document.getElementById('jf');if(jf)jf.value='1';var b=document.getElementById('ab');b.disabled=true;b.textContent='Authorizing\u2026';var d=new URLSearchParams(new FormData(e.target));fetch('/oauth/authorize',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:d}).then(function(r){var c=r.headers.get('Content-Type')||'';if(c.indexOf('json')>=0)return r.json().then(function(j){if(j.location){window.location.replace(j.location);return;}if(j.error==='invalid_key'){var n=document.getElementById('nn');if(n)n.value=j.nonce||'';var em=document.getElementById('ke');if(em){em.textContent='Invalid API key. Please check and try again.';em.style.display='';}}b.disabled=false;b.textContent='Authorize';});return r.text().then(function(h){document.open();document.write(h);document.close();});}).catch(function(){b.disabled=false;b.textContent='Authorize';});})</script>
 </body></html>`, { status: 200, headers: PAGE_HEADERS });
 }
 
@@ -165,7 +166,7 @@ export default async function handler(req) {
   const method = req.method;
 
   if (method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' } });
+    return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } });
   }
 
   if (method === 'GET') {
@@ -218,13 +219,12 @@ export default async function handler(req) {
   }
 
   if (method === 'POST') {
-    // Origin validation: form submits from our own domain
+    // Origin validation: allow our domain, absent origin (server/CLI), and 'null'
+    // (WebView with opaque/sandboxed origin). CSRF nonce provides the actual protection.
     const origin = req.headers.get('origin');
-    if (origin && origin !== 'https://api.worldmonitor.app') {
+    if (origin && origin !== 'https://api.worldmonitor.app' && origin !== 'null') {
       return new Response('Forbidden', { status: 403 });
     }
-
-    const isXHR = req.headers.get('x-requested-with') === 'fetch';
 
     const rl = getRatelimit();
     if (rl) {
@@ -245,6 +245,9 @@ export default async function handler(req) {
 
     const api_key = params.get('api_key') ?? '';
     const nonce = params.get('_nonce') ?? '';
+    // _js=1 is set by the inline script before building FormData — distinguishes
+    // the JS/WebView path (needs JSON response) from native form submit (needs 302).
+    const isXHR = params.get('_js') === '1';
 
     if (!nonce) {
       return htmlError('Bad Request', 'Missing session token.');

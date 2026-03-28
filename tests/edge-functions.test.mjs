@@ -148,6 +148,50 @@ describe('reverse-geocode Redis write', () => {
   });
 });
 
+describe('oauth/authorize.js consent page safety', () => {
+  const authorizePath = join(apiOauthDir, 'authorize.js');
+
+  it('uses _js POST body field (not X-Requested-With header) for XHR detection — avoids CORS preflight', () => {
+    const src = readFileSync(authorizePath, 'utf-8');
+    assert.ok(
+      !src.includes("'X-Requested-With'"),
+      'authorize.js: must not send X-Requested-With header in fetch — it triggers CORS preflight which fails in WebView. Use _js POST body field instead.',
+    );
+    assert.ok(
+      src.includes("params.get('_js') === '1'"),
+      "authorize.js: must detect JS path via params.get('_js') === '1' from POST body.",
+    );
+  });
+
+  it('allows null origin for WebView compatibility', () => {
+    const src = readFileSync(authorizePath, 'utf-8');
+    assert.ok(
+      src.includes("origin !== 'null'"),
+      "authorize.js: origin check must allow the string 'null' (WebView opaque origin). Without this, Connectors UI gets 403.",
+    );
+  });
+
+  it('consent form includes _js hidden field set by inline script before FormData', () => {
+    const src = readFileSync(authorizePath, 'utf-8');
+    assert.ok(
+      src.includes('name="_js"'),
+      'authorize.js: consent form must include <input name="_js"> for JS-path detection.',
+    );
+    assert.ok(
+      src.includes("jf.value='1'"),
+      "authorize.js: inline script must set jf.value='1' before building FormData.",
+    );
+  });
+
+  it('OPTIONS response includes Access-Control-Allow-Headers', () => {
+    const src = readFileSync(authorizePath, 'utf-8');
+    assert.ok(
+      src.includes('Access-Control-Allow-Headers'),
+      'authorize.js: OPTIONS response must include Access-Control-Allow-Headers.',
+    );
+  });
+});
+
 describe('Edge Function module isolation', () => {
   for (const { name, path } of allEdgeFunctions) {
     it(`${name} does not import from ../server/ (Edge Functions cannot resolve cross-directory TS)`, () => {
