@@ -11,7 +11,8 @@
  * Railway setup: rootDirectory=. startCommand="node scripts/seed-fx-rates.mjs"
  */
 
-import { loadEnvFile, runSeed, fetchYahooFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, fetchYahooFxRates, SHARED_FX_FALLBACKS, sleep } from './_seed-utils.mjs';
+import { fetchAvCurrencyRate } from './_shared-av.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -41,13 +42,38 @@ const FX_SYMBOLS = Object.fromEntries(
 const FX_FALLBACKS = SHARED_FX_FALLBACKS;
 
 await runSeed('shared', 'fx-rates', CANONICAL_KEY, async () => {
-  // Always fetch live — this seed IS the cache writer, bypass getSharedFxRates
-  const rates = await fetchYahooFxRates(FX_SYMBOLS, FX_FALLBACKS);
-  console.log('  Fetched', Object.keys(rates).length, 'currencies');
+  const avKey = process.env.ALPHA_VANTAGE_API_KEY;
+  const rates = { USD: 1.0 };
+
+  // --- Primary: Alpha Vantage CURRENCY_EXCHANGE_RATE ---
+  if (avKey) {
+    let avHits = 0;
+    for (const currency of ALL_CURRENCIES) {
+      if (currency === 'USD') continue;
+      if (avHits > 0) await sleep(900); // ~67 req/min — safe under 75/min limit
+      const rate = await fetchAvCurrencyRate(currency, avKey);
+      if (rate !== null) {
+        rates[currency] = rate;
+        avHits++;
+      }
+    }
+    console.log(`  [AV] ${avHits}/${ALL_CURRENCIES.length - 1} currencies fetched`);
+  }
+
+  // --- Fallback: Yahoo for any currencies not covered by AV ---
+  const missing = ALL_CURRENCIES.filter(c => c !== 'USD' && rates[c] == null);
+  if (missing.length > 0) {
+    const yahooSymbols = Object.fromEntries(missing.map(c => [c, `${c}USD=X`]));
+    const yahooRates = await fetchYahooFxRates(yahooSymbols, FX_FALLBACKS);
+    Object.assign(rates, yahooRates);
+    console.log(`  [Yahoo] ${missing.length} currencies fetched`);
+  }
+
+  console.log('  Total:', Object.keys(rates).length, 'currencies');
   return rates;
 }, {
   ttlSeconds: CACHE_TTL,
   validateFn: (data) => data && typeof data === 'object' && Object.keys(data).length > 10,
   recordCount: (data) => Object.keys(data).length,
-  sourceVersion: 'yahoo-fx-shared',
+  sourceVersion: 'alphavantage+yahoo-fx',
 });

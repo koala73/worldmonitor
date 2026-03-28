@@ -78,6 +78,64 @@ export async function fetchAvPhysicalCommodity(yahooSymbol, apiKey) {
 }
 
 /**
+ * Fetch real-time exchange rate for a single currency pair (FROM → USD).
+ * Uses CURRENCY_EXCHANGE_RATE endpoint — real-time rate only, no history.
+ * Use this when you only need the current rate (e.g. seed-fx-rates).
+ *
+ * @param {string} fromCurrency  e.g. 'SAR', 'EUR', 'JPY'
+ * @param {string} apiKey
+ * @returns {Promise<number | null>}  rate as a number, or null on failure
+ */
+export async function fetchAvCurrencyRate(fromCurrency, apiKey) {
+  if (fromCurrency === 'USD') return 1.0;
+  const url = `https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=${encodeURIComponent(fromCurrency)}&to_currency=USD&apikey=${encodeURIComponent(apiKey)}`;
+  const resp = await avFetch(url, `FX/${fromCurrency}`);
+  if (!resp) return null;
+  try {
+    const json = await resp.json();
+    if (json.Information) { console.warn(`  [AV] Rate limit: ${String(json.Information).slice(0, 100)}`); return null; }
+    const rate = parseFloat(json['Realtime Currency Exchange Rate']?.['5. Exchange Rate']);
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  } catch (err) {
+    console.warn(`  [AV] FX/${fromCurrency} parse error: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Fetch daily FX time series for a currency pair (FROM → USD).
+ * Returns price (latest close), day-over-day change %, and 7-point sparkline.
+ * Use this when you need change% and sparkline (e.g. gulf panel currencies).
+ *
+ * @param {string} fromCurrency  e.g. 'SAR', 'EUR', 'JPY'
+ * @param {string} apiKey
+ * @returns {Promise<{ price: number; change: number; sparkline: number[] } | null>}
+ */
+export async function fetchAvFxDaily(fromCurrency, apiKey) {
+  if (fromCurrency === 'USD') return { price: 1.0, change: 0, sparkline: [] };
+  const url = `https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=${encodeURIComponent(fromCurrency)}&to_symbol=USD&outputsize=compact&apikey=${encodeURIComponent(apiKey)}`;
+  const resp = await avFetch(url, `FX_DAILY/${fromCurrency}`);
+  if (!resp) return null;
+  try {
+    const json = await resp.json();
+    if (json.Information) { console.warn(`  [AV] Rate limit: ${String(json.Information).slice(0, 100)}`); return null; }
+    const series = json['Time Series FX (Daily)'];
+    if (!series || typeof series !== 'object') return null;
+    const dates = Object.keys(series).sort().reverse(); // newest first
+    if (dates.length < 2) return null;
+    const latest = parseFloat(series[dates[0]]['4. close']);
+    const prev = parseFloat(series[dates[1]]['4. close']);
+    if (!Number.isFinite(latest) || latest <= 0) return null;
+    const change = (Number.isFinite(prev) && prev > 0) ? ((latest - prev) / prev) * 100 : 0;
+    const sparkline = dates.slice(0, 7).map(d => parseFloat(series[d]['4. close'])).filter(Number.isFinite).reverse();
+    return { price: latest, change, sparkline };
+  } catch (err) {
+    console.warn(`  [AV] FX_DAILY/${fromCurrency} parse error: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Fetch real-time bulk quotes from AV. Batches up to 100 symbols per call.
  * Returns a Map of symbol → { price, change, volume, prevClose }.
  *
