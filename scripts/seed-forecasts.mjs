@@ -11289,8 +11289,8 @@ const CHANNEL_KEYWORDS = {
   global_crude_spread_stress: ['crude spread', 'brent wti', 'grade spread'],
   shipping_cost_shock: ['shipping cost', 'freight cost', 'freight rate', 'route disruption', 'chokepoint', 'transit'],
   sovereign_stress: ['sovereign', 'debt stress', 'default risk', 'credit stress', 'bond spread'],
-  risk_off_rotation: ['risk off', 'risk aversion', 'flight to safety', 'sell off'],
-  security_escalation: ['escalat', 'military action', 'conflict', 'war', 'strike', 'attack'],
+  risk_off_rotation: ['risk off', 'risk aversion', 'flight to safety', 'sell off', 'selloff', 'sell-off', 'capital flight', 'capital outflow', 'risk premium', 'avers', 'retreat', 'flight to'],
+  security_escalation: ['escalat', 'military action', 'conflict', 'war', 'strike', 'attack', 'military', 'geopolit'],
   yield_curve_stress: ['yield curve', 'yield spread', 'term premium'],
   volatility_shock: ['volatility', 'vix', 'vol spike'],
   safe_haven_bid: ['safe haven', 'gold', 'yen', 'swiss franc', 'treasur'],
@@ -11330,7 +11330,7 @@ function contradictsPremise(invalidator, expandedPath, fromSimulation = false) {
     if (!hasNegation) return false;
   }
   const routeKey = expandedPath?.candidate?.routeFacilityKey || '';
-  const commodityKey = expandedPath?.candidate?.commodityKey || '';
+  const commodityKey = (expandedPath?.candidate?.commodityKey || '').replace(/_/g, ' ');
   if (routeKey || commodityKey) {
     return (
       (routeKey && text.includes(routeKey.toLowerCase())) ||
@@ -11352,7 +11352,7 @@ function negatesDisruption(stabilizer, candidatePacket) {
   const hasNegation = NEGATION_TERMS.some((t) => text.includes(t));
   if (!hasNegation) return false;
   const routeKey = candidatePacket?.routeFacilityKey || '';
-  const commodityKey = candidatePacket?.commodityKey || '';
+  const commodityKey = (candidatePacket?.commodityKey || '').replace(/_/g, ' ');
   if (routeKey || commodityKey) {
     return (
       (routeKey && text.includes(routeKey.toLowerCase())) ||

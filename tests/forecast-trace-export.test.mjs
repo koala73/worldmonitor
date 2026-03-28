@@ -6540,7 +6540,10 @@ describe('phase 3 simulation re-ingestion — matching helpers', () => {
 
   it('negatesDisruption detects commodity restoration', () => {
     const candidatePacket = { routeFacilityKey: '', commodityKey: 'crude_oil' };
-    assert.ok(negatesDisruption('crude_oil supply chain restored to normal operations', candidatePacket));
+    // commodityKey is normalized to "crude oil" (space) before text matching — LLM text uses natural language
+    assert.ok(negatesDisruption('crude oil supply restored to normal operations', candidatePacket));
+    // underscore form in text would no longer match (correct — LLM never emits "crude_oil")
+    assert.ok(!negatesDisruption('crude_oil supply chain restored to normal operations', candidatePacket));
   });
 
   it('negatesDisruption returns false when no route/commodity and no stateKind/bucket on candidate', () => {
