@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const apiDir = join(root, 'api');
+const apiOauthDir = join(root, 'api', 'oauth');
 const sharedDir = join(root, 'shared');
 const scriptsSharedDir = join(root, 'scripts', 'shared');
 
@@ -15,13 +16,23 @@ const edgeFunctions = readdirSync(apiDir)
   .filter((f) => f.endsWith('.js') && !f.startsWith('_'))
   .map((f) => ({ name: f, path: join(apiDir, f) }));
 
+// Also include api/oauth/ subdir edge functions
+const oauthEdgeFunctions = readdirSync(apiOauthDir)
+  .filter((f) => f.endsWith('.js') && !f.startsWith('_'))
+  .map((f) => ({ name: `oauth/${f}`, path: join(apiOauthDir, f) }));
+
+const allEdgeFunctions = [...edgeFunctions, ...oauthEdgeFunctions];
+
 // ALL .js AND .ts files in api/ root — used for node: built-in checks.
 // Note: .ts edge functions (e.g. widget-agent.ts) are intentionally excluded from the
 // module-isolation describe below because Vercel bundles them at build time, so
 // imports from '../server/' are valid. The node: built-in check still applies.
-const allApiFiles = readdirSync(apiDir)
-  .filter((f) => (f.endsWith('.js') || f.endsWith('.ts')) && !f.startsWith('_'))
-  .map((f) => ({ name: f, path: join(apiDir, f) }));
+const allApiFiles = [
+  ...readdirSync(apiDir)
+    .filter((f) => (f.endsWith('.js') || f.endsWith('.ts')) && !f.startsWith('_'))
+    .map((f) => ({ name: f, path: join(apiDir, f) })),
+  ...oauthEdgeFunctions,
+];
 
 describe('scripts/shared/ stays in sync with shared/', () => {
   const sharedFiles = readdirSync(sharedDir).filter((f) => f.endsWith('.json') || f.endsWith('.cjs'));
@@ -138,7 +149,7 @@ describe('reverse-geocode Redis write', () => {
 });
 
 describe('Edge Function module isolation', () => {
-  for (const { name, path } of edgeFunctions) {
+  for (const { name, path } of allEdgeFunctions) {
     it(`${name} does not import from ../server/ (Edge Functions cannot resolve cross-directory TS)`, () => {
       const src = readFileSync(path, 'utf-8');
       assert.ok(

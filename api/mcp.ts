@@ -364,11 +364,12 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
 ];
 
-// Public shape for tools/list (strip internal _-prefixed fields)
+// Public shape for tools/list (strip internal _-prefixed fields, add MCP annotations)
 const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map(({ name, description, inputSchema }) => ({
   name,
   description,
   inputSchema,
+  annotations: { readOnlyHint: true, openWorldHint: true },
 }));
 
 // ---------------------------------------------------------------------------
@@ -426,6 +427,22 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
+  // HEAD probe — return 200 with no body (Anthropic submission guide compatibility)
+  if (req.method === 'HEAD') {
+    return new Response(null, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+  }
+
+  // MCP Streamable HTTP transport (2025-03-26) uses POST only.
+  // Return 405 for GET/other so clients don't mistake JSON error for a valid SSE stream.
+  if (req.method !== 'POST') {
+    return new Response(null, { status: 405, headers: { Allow: 'POST, HEAD, OPTIONS', ...corsHeaders } });
+  }
+
+  // Origin validation: allow claude.ai/claude.com web clients; allow absent origin (desktop/CLI)
+  const origin = req.headers.get('Origin');
+  if (origin && origin !== 'https://claude.ai' && origin !== 'https://claude.com') {
+    return new Response('Forbidden', { status: 403, headers: corsHeaders });
+  }
   // Auth chain (in priority order):
   //   1. Authorization: Bearer <oauth_token> — issued by /oauth/token (spec-compliant OAuth 2.0)
   //   2. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
@@ -449,7 +466,7 @@ export default async function handler(req: Request): Promise<Response> {
       // Bearer token present but unresolvable — expired or invalid UUID
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token"', ...corsHeaders } }
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token", resource_metadata="https://api.worldmonitor.app/.well-known/oauth-protected-resource"', ...corsHeaders } }
       );
     }
   } else {
@@ -457,7 +474,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (!candidateKey) {
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor"', ...corsHeaders } }
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", resource_metadata="https://api.worldmonitor.app/.well-known/oauth-protected-resource"', ...corsHeaders } }
       );
     }
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
@@ -508,6 +525,9 @@ export default async function handler(req: Request): Promise<Response> {
 
     case 'notifications/initialized':
       return new Response(null, { status: 202, headers: corsHeaders });
+
+    case 'ping':
+      return rpcOk(id, {}, corsHeaders);
 
     case 'tools/list':
       return rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders);
