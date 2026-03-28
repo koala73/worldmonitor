@@ -11528,6 +11528,29 @@ function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, s
       evaluation.rejectedPaths = newRejected;
       evaluation.status = 'completed_no_material_change';
       evaluation.deepWorldState = null;
+    } else if (evaluation.status === 'completed') {
+      // CASE 3: Partial change within a completed run — at least one expanded path was
+      // promoted or demoted, but the set of selected expanded paths is non-empty.
+      // Status stays 'completed'; rebuild bundle and world state to reflect the updated path set.
+      const acceptedBundle = buildImpactExpansionBundleFromPaths(newSelectedExpanded, candidatePackets, {
+        source: 'deep_selected',
+        parseStage: 'accepted_paths',
+        parseMode: 'accepted_paths',
+      });
+      const deepWorldState = annotateDeepForecastOrigins(
+        buildDeepWorldStateFromSnapshot(snapshot, priorWorldState, acceptedBundle, {
+          status: 'completed',
+          selectedStateIds: newSelectedExpanded.map((p) => p.candidateStateId),
+          eligibleStateCount: (candidatePackets || []).length,
+          selectedPathCount: newSelectedExpanded.length,
+          replacedFastRun: true,
+        }),
+        newSelectedExpanded,
+      );
+      evaluation.selectedPaths = newSelected;
+      evaluation.rejectedPaths = newRejected;
+      evaluation.impactExpansionBundle = acceptedBundle;
+      evaluation.deepWorldState = deepWorldState;
     }
   }
 
@@ -12204,7 +12227,9 @@ async function writeForecastTraceArtifacts(data, context = {}) {
     quality: artifacts.summary.quality,
     worldStateSummary: artifacts.summary.worldStateSummary,
   };
-  await writeForecastTracePointer(pointer);
+  if (!context.skipPointer) {
+    await writeForecastTracePointer(pointer);
+  }
   return pointer;
 }
 
@@ -16202,7 +16227,7 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
         acceptedPathCount: deepForecast.selectedPathCount,
         completedAt: deepForecast.completedAt,
       },
-    }, { runId });
+    }, { runId, skipPointer: true });
 
     return {
       status: 'rescored',

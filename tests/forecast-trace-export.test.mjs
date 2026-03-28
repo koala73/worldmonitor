@@ -6859,6 +6859,52 @@ describe('phase 3 simulation re-ingestion — applyPostSimulationRescore', () =>
     assert.equal(selectedExpanded[0].candidateStateId, stateId);
   });
 
+  it('R-6: applySimulationMerge persists partial demotion in completed run without status change (CASE 3)', () => {
+    // Reproduces: two selected expanded paths at 0.55 and 0.75; invalidator fires for stateA
+    // (0.55 - 0.12 = 0.43 < 0.50 → demoted). stateB (0.75) survives. Status must stay 'completed'
+    // and selectedPaths must update to exclude stateA.
+    const stateA = 'state-r6a';
+    const stateB = 'state-r6b';
+    const candidateA = makeRescoreCandidatePacket(stateA);
+    const candidateB = makeRescoreCandidatePacket(stateB);
+    // Embed candidate so contradictsPremise can match on routeFacilityKey
+    const pathA = { ...makeRescorePath(stateA, 0.55), candidate: candidateA };
+    const pathB = { ...makeRescorePath(stateB, 0.75), candidate: candidateB };
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [pathA, pathB],
+      rejectedPaths: [],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r6',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateA,
+        topPaths: [],
+        // invalidator matches routeFacilityKey='Red Sea' → contradictsPremise returns true → -0.12
+        invalidators: ['red sea shipping disruption reversed'],
+        stabilizers: [],
+      }],
+    };
+    const snapshot = {
+      ...makeRescoreSnapshot(stateA),
+      impactExpansionCandidates: [candidateA, candidateB],
+    };
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    assert.equal(simulationEvidence.pathsDemoted, 1, 'one path should be demoted');
+    assert.equal(updatedEval.status, 'completed', 'status stays completed — stateB is still selected');
+    const selectedIds = updatedEval.selectedPaths.map((p) => p.candidateStateId);
+    assert.ok(!selectedIds.includes(stateA), 'demoted path removed from selectedPaths');
+    assert.ok(selectedIds.includes(stateB), 'safe path remains in selectedPaths');
+    const rejectedIds = updatedEval.rejectedPaths.map((p) => p.candidateStateId);
+    assert.ok(rejectedIds.includes(stateA), 'demoted path moved to rejectedPaths');
+  });
+
   it('R-5: simulation adjustments use marketContext fallback when direct.channel is an LLM-generated invalid key', () => {
     // supply_disruption is not in CHANNEL_KEYWORDS — should fall back to marketContext.topChannel=energy_supply_shock
     const stateId = 'state-r5';
