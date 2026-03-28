@@ -1,20 +1,20 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+// @ts-expect-error — JS module, no declaration file
+import { getClientIp } from '../_rate-limit.js';
+// @ts-expect-error — JS module, no declaration file
+import { getPublicCorsHeaders } from '../_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { jsonResponse } from '../_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { keyFingerprint, timingSafeIncludes } from '../_crypto.js';
 
 export const config = { runtime: 'edge' };
 
 const TOKEN_TTL_SECONDS = 3600;
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
 
 function jsonResp(body, status = 200, extra = {}) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS, ...extra },
-  });
+  return jsonResponse(body, status, { ...getPublicCorsHeaders('POST, OPTIONS'), ...extra });
 }
 
 // Tight rate limiter for credential endpoint: 10 token requests per minute per IP
@@ -33,19 +33,10 @@ function getRatelimit() {
   return _rl;
 }
 
-function getClientIp(req) {
-  return (
-    req.headers.get('cf-connecting-ip') ||
-    req.headers.get('x-real-ip') ||
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    '0.0.0.0'
-  );
-}
-
-function validateSecret(secret) {
+async function validateSecret(secret) {
   if (!secret) return false;
   const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
-  return validKeys.includes(secret);
+  return timingSafeIncludes(secret, validKeys);
 }
 
 async function storeToken(uuid, apiKey) {
@@ -53,10 +44,11 @@ async function storeToken(uuid, apiKey) {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return false;
 
+  const fingerprint = await keyFingerprint(apiKey);
   const resp = await fetch(`${url}/pipeline`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify([['SET', `oauth:token:${uuid}`, JSON.stringify(apiKey), 'EX', TOKEN_TTL_SECONDS]]),
+    body: JSON.stringify([['SET', `oauth:token:${uuid}`, JSON.stringify(fingerprint), 'EX', TOKEN_TTL_SECONDS]]),
     signal: AbortSignal.timeout(3_000),
   });
   if (!resp.ok) return false;
@@ -66,8 +58,10 @@ async function storeToken(uuid, apiKey) {
 }
 
 export default async function handler(req) {
+  const corsHeaders = getPublicCorsHeaders('POST, OPTIONS');
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'POST') {
     return jsonResp({ error: 'method_not_allowed' }, 405);
@@ -99,7 +93,7 @@ export default async function handler(req) {
     return jsonResp({ error: 'unsupported_grant_type' }, 400);
   }
 
-  if (!validateSecret(clientSecret)) {
+  if (!await validateSecret(clientSecret)) {
     return jsonResp({ error: 'invalid_client', error_description: 'Invalid client credentials' }, 401);
   }
 

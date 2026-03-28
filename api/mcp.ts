@@ -8,6 +8,8 @@ import { jsonResponse } from './_json-response.js';
 import { readJsonFromUpstash } from './_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { resolveApiKeyFromBearer } from './_oauth-token.js';
+// @ts-expect-error — JS module, no declaration file
+import { timingSafeIncludes } from './_crypto.js';
 
 export const config = { runtime: 'edge' };
 
@@ -428,23 +430,29 @@ export default async function handler(req: Request): Promise<Response> {
   //   1. Authorization: Bearer <oauth_token> — issued by /oauth/token (spec-compliant OAuth 2.0)
   //   2. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
   let apiKey = '';
-  const bearerHeader = req.headers.get('Authorization') ?? '';
-  const bearerApiKey = await resolveApiKeyFromBearer(req);
-  if (bearerApiKey) {
-    apiKey = bearerApiKey;
-  } else if (bearerHeader.startsWith('Bearer ')) {
-    // Bearer token present but unresolvable — expired or invalid UUID
-    return new Response(
-      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
-      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token"', ...corsHeaders } }
-    );
+  const authHeader = req.headers.get('Authorization') ?? '';
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    const bearerApiKey = await resolveApiKeyFromBearer(token);
+    if (bearerApiKey) {
+      apiKey = bearerApiKey;
+    } else {
+      // Bearer token present but unresolvable — expired or invalid UUID
+      return new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token"', ...corsHeaders } }
+      );
+    }
   } else {
     const candidateKey = req.headers.get('X-WorldMonitor-Key') ?? '';
     if (!candidateKey) {
-      return rpcError(null, -32001, 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.');
+      return new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor"', ...corsHeaders } }
+      );
     }
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
-    if (!validKeys.includes(candidateKey)) {
+    if (!await timingSafeIncludes(candidateKey, validKeys)) {
       return rpcError(null, -32001, 'Invalid API key');
     }
     apiKey = candidateKey;
