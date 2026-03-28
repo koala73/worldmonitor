@@ -2,11 +2,15 @@
  * MapContainer - Conditional map renderer
  * Renders DeckGLMap (WebGL) on desktop, fallback to D3/SVG MapComponent on mobile.
  * Supports an optional 3D globe mode (globe.gl) selectable from Settings.
+ *
+ * FR #201: Lazy load map components to reduce initial bundle size.
+ * DeckGLMap (~2MB with maplibre+deck.gl) and GlobeMap are loaded on demand.
  */
 import { isMobileDevice } from '@/utils';
 import { MapComponent } from './Map';
-import { DeckGLMap, type DeckMapView, type CountryClickPayload } from './DeckGLMap';
-import { GlobeMap } from './GlobeMap';
+// FR #201: Types are imported statically (zero runtime cost), implementations are lazy loaded
+import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
+import type { GlobeMap } from './GlobeMap';
 import type {
   MapLayers,
   Hotspot,
@@ -184,13 +188,73 @@ export class MapContainer {
     this.svgMap = new MapComponent(this.container, this.initialState);
   }
 
+  /**
+   * FR #201: Show loading skeleton while map components are being loaded
+   */
+  private showMapSkeleton(): void {
+    this.container.innerHTML = `
+      <div class="map-skeleton" style="
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 16px;
+      ">
+        <div class="map-skeleton-spinner" style="
+          width: 48px;
+          height: 48px;
+          border: 3px solid rgba(59, 130, 246, 0.2);
+          border-top-color: #3b82f6;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        "></div>
+        <div style="color: #94a3b8; font-size: 14px; font-family: system-ui, sans-serif;">
+          Loading map...
+        </div>
+      </div>
+      <style>
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      </style>
+    `;
+  }
+
+  /**
+   * FR #201: Initialize map with lazy loading for DeckGLMap and GlobeMap
+   * Shows skeleton while loading to improve perceived performance
+   */
   private init(): void {
+    // Show skeleton immediately for visual feedback
+    if (this.useDeckGL || this.useGlobe) {
+      this.showMapSkeleton();
+    }
+
+    // Use async initialization for lazy loading
+    this.initAsync().catch(error => {
+      console.error('[MapContainer] Async initialization failed:', error);
+      this.initSvgMap('[MapContainer] Initializing SVG map (async fallback mode)');
+    });
+  }
+
+  /**
+   * FR #201: Async initialization with dynamic imports
+   * Lazy loads DeckGLMap (~2MB) and GlobeMap to reduce initial bundle size
+   */
+  private async initAsync(): Promise<void> {
     if (this.useGlobe) {
-      console.log('[MapContainer] Initializing 3D globe (globe.gl mode)');
+      console.log('[MapContainer] Lazy loading 3D globe (globe.gl mode)');
+      const { GlobeMap } = await import('./GlobeMap');
+      this.container.innerHTML = ''; // Clear skeleton
       this.globeMap = new GlobeMap(this.container, this.initialState);
     } else if (this.useDeckGL) {
-      console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
+      console.log('[MapContainer] Lazy loading deck.gl map (desktop mode)');
       try {
+        const { DeckGLMap } = await import('./DeckGLMap');
+        this.container.innerHTML = ''; // Clear skeleton
         this.container.classList.add('deckgl-mode');
         this.deckGLMap = new DeckGLMap(this.container, {
           ...this.initialState,
@@ -215,8 +279,11 @@ export class MapContainer {
     }
   }
 
-  /** Switch to 3D globe mode at runtime (called from Settings). */
-  public switchToGlobe(): void {
+  /**
+   * Switch to 3D globe mode at runtime (called from Settings).
+   * FR #201: Uses lazy loading for GlobeMap
+   */
+  public async switchToGlobe(): Promise<void> {
     if (this.useGlobe) return;
     const snapshot = this.getState();
     const center = this.getCenter();
@@ -225,6 +292,9 @@ export class MapContainer {
     this.destroyFlatMap();
     this.useGlobe = true;
     this.useDeckGL = false;
+    this.showMapSkeleton();
+    const { GlobeMap } = await import('./GlobeMap');
+    this.container.innerHTML = '';
     this.globeMap = new GlobeMap(this.container, this.initialState);
     this.restoreViewport(snapshot, center);
     this.rehydrateActiveMap();
