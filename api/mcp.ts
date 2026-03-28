@@ -5,9 +5,9 @@ import { getPublicCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
-import { validateApiKey } from './_api-key.js';
-// @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash } from './_upstash-json.js';
+// @ts-expect-error — JS module, no declaration file
+import { resolveApiKeyFromBearer } from './_oauth-token.js';
 
 export const config = { runtime: 'edge' };
 
@@ -424,13 +424,28 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  // Auth — always require API key (MCP clients are never same-origin browser requests)
-  const auth = validateApiKey(req, { forceKey: true });
-  if (!auth.valid) {
-    return rpcError(null, -32001, auth.error ?? 'API key required');
+  // Auth chain (in priority order):
+  //   1. Authorization: Bearer <oauth_token> — issued by /oauth/token (spec-compliant OAuth 2.0)
+  //   2. ?key= query param — direct API key (for clients that cannot set headers)
+  //   3. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
+  let apiKey = '';
+  const bearerApiKey = await resolveApiKeyFromBearer(req);
+  if (bearerApiKey) {
+    apiKey = bearerApiKey;
+  } else {
+    const urlKey = new URL(req.url).searchParams.get('key') ?? '';
+    const headerKey = req.headers.get('X-WorldMonitor-Key') ?? '';
+    const candidateKey = urlKey || headerKey;
+    if (!candidateKey) {
+      return rpcError(null, -32001, 'Authentication required. Use OAuth (/oauth/token) or pass a key via ?key=, Authorization: Bearer, or X-WorldMonitor-Key.');
+    }
+    const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+    if (!validKeys.includes(candidateKey)) {
+      return rpcError(null, -32001, 'Invalid API key');
+    }
+    apiKey = candidateKey;
   }
 
-  const apiKey = req.headers.get('X-WorldMonitor-Key') ?? '';
 
   // Per-key rate limit
   const rl = getMcpRatelimit();
