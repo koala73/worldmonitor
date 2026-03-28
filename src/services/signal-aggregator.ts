@@ -135,7 +135,7 @@ class SignalAggregator {
     this.clearSignalType('military_flight');
     const countryCounts = new Map<string, number>();
     for (const f of flights) {
-      const code = this.coordsToCountry(f.lat, f.lon);
+      const code = this.coordsToCountryWithFallback(f.lat, f.lon);
       const count = countryCounts.get(code) || 0;
       countryCounts.set(code, count + 1);
     }
@@ -160,7 +160,7 @@ class SignalAggregator {
     const regionCounts = new Map<string, { count: number; lat: number; lon: number }>();
 
     for (const v of vessels) {
-      const code = this.coordsToCountry(v.lat, v.lon);
+      const code = this.coordsToCountryWithFallback(v.lat, v.lon);
       const existing = regionCounts.get(code);
       if (existing) {
         existing.count++;
@@ -430,8 +430,7 @@ class SignalAggregator {
       const code = TARGET_CODES[p.targetNation];
       if (!code) continue;
 
-      const hasFlight = this.signals.some(s => s.country === code && s.type === 'military_flight');
-      if (!hasFlight && p.totalAircraft > 0) {
+      if (p.totalAircraft > 0) {
         this.signals.push({
           type: 'military_flight',
           country: code,
@@ -444,8 +443,7 @@ class SignalAggregator {
         });
       }
 
-      const hasVessel = this.signals.some(s => s.country === code && s.type === 'military_vessel');
-      if (!hasVessel && p.totalVessels > 0) {
+      if (p.totalVessels > 0) {
         this.signals.push({
           type: 'military_vessel',
           country: code,
