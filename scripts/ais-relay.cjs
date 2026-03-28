@@ -3421,10 +3421,16 @@ async function handleWingbitsTrackRequest(req, res) {
       JSON.stringify({ error: 'Invalid bbox params: must be finite numbers', positions: [] }));
   }
 
-  const centerLat = (lamin + lamax) / 2;
-  const centerLon = (lomin + lomax) / 2;
-  const widthNm = Math.min(Math.abs(lomax - lomin) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM);
-  const heightNm = Math.min(Math.abs(lamax - lamin) * 60, WINGBITS_MAX_BOX_NM);
+  // Clamp bbox to valid geographic ranges before computing center.
+  // Map projections can produce slightly out-of-range values; Wingbits rejects la outside [-90,90].
+  const clampedLamin = Math.max(-90, Math.min(90, lamin));
+  const clampedLamax = Math.max(-90, Math.min(90, lamax));
+  const clampedLomin = Math.max(-180, Math.min(180, lomin));
+  const clampedLomax = Math.max(-180, Math.min(180, lomax));
+  const centerLat = (clampedLamin + clampedLamax) / 2;
+  const centerLon = (clampedLomin + clampedLomax) / 2;
+  const widthNm = Math.min(Math.abs(clampedLomax - clampedLomin) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM);
+  const heightNm = Math.min(Math.abs(clampedLamax - clampedLamin) * 60, WINGBITS_MAX_BOX_NM);
   const areas = [{ alias: 'viewport', by: 'box', la: centerLat, lo: centerLon, w: widthNm, h: heightNm, unit: 'nm' }];
 
   try {

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-import { execFileSync } from 'node:child_process';
-import { loadEnvFile, CHROME_UA, runSeed, resolveProxy } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
 
 loadEnvFile(import.meta.url);
@@ -42,22 +41,6 @@ const TGH_LOOKBACK_DAYS = 90;
 
 const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
 
-const _proxyAuth = resolveProxy();
-
-// curl-based fetch for sources that block Railway IPs (e.g. Outbreak News Today).
-function curlFetch(url, extraHeaders = {}) {
-  const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
-  if (_proxyAuth) args.push('-x', `http://${_proxyAuth}`);
-  args.push('-H', `User-Agent: ${CHROME_UA}`);
-  for (const [k, v] of Object.entries(extraHeaders)) args.push('-H', `${k}: ${v}`);
-  args.push('-w', '\n%{http_code}');
-  args.push(url);
-  const raw = execFileSync('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
-  const nl = raw.lastIndexOf('\n');
-  const httpStatus = parseInt(raw.slice(nl + 1).trim(), 10);
-  if (httpStatus < 200 || httpStatus >= 300) throw Object.assign(new Error(`HTTP ${httpStatus}`), { status: httpStatus });
-  return raw.slice(0, nl);
-}
 
 function stableHash(str) {
   let h = 0;
@@ -131,19 +114,14 @@ async function fetchWhoDonApi() {
   }
 }
 
-async function fetchRssItems(url, sourceName, useCurl = false) {
+async function fetchRssItems(url, sourceName) {
   try {
-    let xml;
-    if (useCurl) {
-      xml = curlFetch(url, { Accept: 'application/rss+xml, application/xml, text/xml' });
-    } else {
-      const resp = await fetch(url, {
-        headers: { Accept: 'application/rss+xml, application/xml, text/xml', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!resp.ok) { console.warn(`[Disease] ${sourceName} HTTP ${resp.status}`); return []; }
-      xml = await resp.text();
-    }
+    const resp = await fetch(url, {
+      headers: { Accept: 'application/rss+xml, application/xml, text/xml', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!resp.ok) { console.warn(`[Disease] ${sourceName} HTTP ${resp.status}`); return []; }
+    const xml = await resp.text();
     const bounded = xml.length > RSS_MAX_BYTES ? xml.slice(0, RSS_MAX_BYTES) : xml;
     const items = [];
     const itemRe = /<item>([\s\S]*?)<\/item>/g;
@@ -268,7 +246,7 @@ async function fetchDiseaseOutbreaks() {
   const [whoItems, cdcItems, outbreakNewsItems, tghItems] = await Promise.all([
     fetchWhoDonApi(),
     fetchRssItems(CDC_FEED, 'CDC'),
-    fetchRssItems(OUTBREAK_NEWS_FEED, 'Outbreak News Today', true),
+    fetchRssItems(OUTBREAK_NEWS_FEED, 'Outbreak News Today'),
     fetchThinkGlobalHealth(),
   ]);
   console.log(`[Disease] Sources: WHO=${whoItems.length} CDC=${cdcItems.length} ONT=${outbreakNewsItems.length} TGH=${tghItems.length}`);

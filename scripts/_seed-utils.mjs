@@ -5,6 +5,13 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import * as http from 'node:http';
+import * as tls from 'node:tls';
+import * as https from 'node:https';
+import { promisify } from 'node:util';
+import { gunzip as _gunzip } from 'node:zlib';
+
+const gunzip = promisify(_gunzip);
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
@@ -301,6 +308,13 @@ export function sleep(ms) {
 }
 
 // ─── Proxy helpers for sources that block Railway container IPs ───
+// TODO: consolidate all fetch+proxy logic into a single proxyFetch(url, options) helper.
+// Current state: _seed-utils has fredFetchJson (fixed: direct-first, proxy fallback) and
+// curlFetch (curl-only, relay container). seed-disease-outbreaks.mjs and seed-fear-greed.mjs
+// each define their own local curlFetch that silently fails with ENOENT in seeder containers
+// (curl not in node:22-alpine). Each of those scripts should use a shared fetchWithProxyFallback
+// that tries native fetch first and falls back to httpsProxyFetchJson — same pattern as
+// fredFetchJson after this fix. Tracked: consolidate into one exported function.
 const { resolveProxyString } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
 export function resolveProxy() {
@@ -308,6 +322,8 @@ export function resolveProxy() {
 }
 
 // curl-based fetch; throws on non-2xx. Returns response body as string.
+// NOTE: requires curl binary — only available in Dockerfile.relay (apk add curl).
+// Do NOT call from standalone seed scripts; use fredFetchJson or httpsProxyFetchJson instead.
 export function curlFetch(url, proxyAuth, headers = {}) {
   const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
   if (proxyAuth) args.push('-x', `http://${proxyAuth}`);
@@ -321,12 +337,84 @@ export function curlFetch(url, proxyAuth, headers = {}) {
   return raw.slice(0, nl);
 }
 
+// Pure Node.js HTTPS-through-HTTP-proxy (CONNECT tunnel).
+// Replaces curlFetch for seeder scripts running in containers without curl.
+// proxyAuth format: "user:pass@host:port"
+async function httpsProxyFetchJson(url, proxyAuth) {
+  const targetUrl = new URL(url);
+  const atIdx = proxyAuth.lastIndexOf('@');
+  const credentials = atIdx >= 0 ? proxyAuth.slice(0, atIdx) : '';
+  const hostPort = atIdx >= 0 ? proxyAuth.slice(atIdx + 1) : proxyAuth;
+  const colonIdx = hostPort.lastIndexOf(':');
+  const proxyHost = hostPort.slice(0, colonIdx);
+  const proxyPort = parseInt(hostPort.slice(colonIdx + 1), 10);
+
+  const connectHeaders = {};
+  if (credentials) {
+    connectHeaders['Proxy-Authorization'] = `Basic ${Buffer.from(credentials).toString('base64')}`;
+  }
+
+  const { socket } = await new Promise((resolve, reject) => {
+    http.request({
+      host: proxyHost, port: proxyPort,
+      method: 'CONNECT',
+      path: `${targetUrl.hostname}:443`,
+      headers: connectHeaders,
+    }).on('connect', (res, socket) => {
+      if (res.statusCode !== 200) {
+        socket.destroy();
+        return reject(Object.assign(new Error(`Proxy CONNECT: ${res.statusCode}`), { status: res.statusCode }));
+      }
+      resolve({ socket });
+    }).on('error', reject).end();
+  });
+
+  const tlsSock = tls.connect({ socket, servername: targetUrl.hostname, ALPNProtocols: ['http/1.1'] });
+  await new Promise((resolve, reject) => {
+    tlsSock.on('secureConnect', resolve);
+    tlsSock.on('error', reject);
+  });
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { tlsSock.destroy(); reject(new Error('FRED proxy fetch timeout')); }, 20000);
+    const fail = (e) => { clearTimeout(timer); tlsSock.destroy(); reject(e); };
+
+    https.request({
+      host: targetUrl.hostname,
+      path: targetUrl.pathname + targetUrl.search,
+      method: 'GET',
+      headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip', 'User-Agent': CHROME_UA },
+      createConnection: () => tlsSock,
+    }, (resp) => {
+      clearTimeout(timer);
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        resp.resume();
+        return reject(Object.assign(new Error(`HTTP ${resp.statusCode}`), { status: resp.statusCode }));
+      }
+      const chunks = [];
+      resp.on('data', c => chunks.push(c));
+      resp.on('end', () => {
+        const body = Buffer.concat(chunks);
+        const isGzip = (resp.headers['content-encoding'] || '').includes('gzip');
+        (isGzip ? gunzip(body) : Promise.resolve(body))
+          .then(data => { try { resolve(JSON.parse(data.toString('utf8'))); } catch (e) { fail(e); } })
+          .catch(fail);
+      });
+      resp.on('error', fail);
+    }).on('error', fail).end();
+  });
+}
+
 // Fetch JSON from a FRED URL, routing through proxy when available.
 export async function fredFetchJson(url, proxyAuth) {
-  if (proxyAuth) return JSON.parse(curlFetch(url, proxyAuth, { Accept: 'application/json' }));
-  const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
-  if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
-  return r.json();
+  try {
+    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+    if (r.ok) return r.json();
+    throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+  } catch (directErr) {
+    if (!proxyAuth) throw directErr;
+    return httpsProxyFetchJson(url, proxyAuth);
+  }
 }
 
 // ---------------------------------------------------------------------------
