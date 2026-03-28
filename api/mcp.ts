@@ -10,7 +10,7 @@ import { readJsonFromUpstash } from './_upstash-json.js';
 import { resolveApiKeyFromBearer } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
-import COUNTRY_BBOXES from '../shared/country-bboxes.js';
+import COUNTRY_BBOXES from '../shared/country-bboxes.ts';
 
 export const config = { runtime: 'edge' };
 

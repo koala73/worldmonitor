@@ -208,4 +208,189 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const body = await res.json();
     assert.equal(body.error?.code, -32603, 'Must return JSON-RPC -32603, not throw');
   });
+
+  // --- get_airspace ---
+
+  it('get_airspace returns counts and flights for valid country code', async () => {
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes('/api/aviation/v1/track-aircraft')) {
+        return new Response(JSON.stringify({
+          positions: [
+            { callsign: 'UAE123', icao24: 'abc123', lat: 24.5, lon: 54.3, altitude_m: 11000, ground_speed_kts: 480, track_deg: 270, on_ground: false },
+          ],
+          source: 'opensky',
+          updated_at: 1711620000000,
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes('/api/military/v1/list-military-flights')) {
+        return new Response(JSON.stringify({ flights: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 10, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'AE' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'result.content must be present');
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.country_code, 'AE');
+    assert.equal(data.civilian_count, 1);
+    assert.equal(data.military_count, 0);
+    assert.ok(Array.isArray(data.civilian_flights), 'civilian_flights must be array');
+    assert.ok(Array.isArray(data.military_flights), 'military_flights must be array');
+    assert.ok(data.bounding_box?.sw_lat !== undefined, 'bounding_box must be present');
+    assert.equal(data.partial, undefined, 'no partial flag when both sources succeed');
+  });
+
+  it('get_airspace returns error for unknown country code', async () => {
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 11, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'XX' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.ok(data.error?.includes('Unknown country code'), 'must return error for unknown code');
+  });
+
+  it('get_airspace returns partial:true + warning when military source fails', async () => {
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes('/api/aviation/v1/track-aircraft')) {
+        return new Response(JSON.stringify({ positions: [], source: 'opensky' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes('/api/military/v1/list-military-flights')) {
+        return new Response('Service Unavailable', { status: 503 });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 12, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'US' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.partial, true, 'partial must be true when one source fails');
+    assert.ok(data.warnings?.some(w => w.includes('military')), 'warnings must mention military');
+    assert.equal(data.civilian_count, 0, 'civilian data still returned');
+  });
+
+  it('get_airspace returns JSON-RPC -32603 when both sources fail', async () => {
+    globalThis.fetch = async () => new Response('Error', { status: 500 });
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 13, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'GB' } },
+    }));
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603, 'total outage must return -32603');
+  });
+
+  it('get_airspace type=civilian skips military fetch', async () => {
+    let militaryFetched = false;
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes('/api/military/')) militaryFetched = true;
+      if (u.includes('/api/aviation/v1/track-aircraft')) {
+        return new Response(JSON.stringify({ positions: [], source: 'opensky' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 14, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'DE', type: 'civilian' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(militaryFetched, false, 'military endpoint must not be called for type=civilian');
+    assert.equal(data.military_flights, undefined, 'military_flights must be absent for type=civilian');
+    assert.ok(Array.isArray(data.civilian_flights), 'civilian_flights must be present');
+  });
+
+  // --- get_maritime_activity ---
+
+  it('get_maritime_activity returns zones and disruptions for valid country code', async () => {
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({
+          snapshot: {
+            snapshot_at: 1711620000000,
+            density_zones: [
+              { name: 'Strait of Hormuz', intensity: 82, ships_per_day: 45, delta_pct: 3.2, note: '' },
+            ],
+            disruptions: [
+              { name: 'Gulf AIS Gap', type: 'AIS_DISRUPTION_TYPE_GAP_SPIKE', severity: 'AIS_DISRUPTION_SEVERITY_ELEVATED', dark_ships: 3, vessel_count: 12, region: 'Persian Gulf', description: 'Elevated dark-ship activity' },
+            ],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 20, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'AE' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.country_code, 'AE');
+    assert.equal(data.total_zones, 1);
+    assert.equal(data.total_disruptions, 1);
+    assert.equal(data.density_zones[0].name, 'Strait of Hormuz');
+    assert.equal(data.disruptions[0].dark_ships, 3);
+    assert.ok(data.bounding_box?.sw_lat !== undefined, 'bounding_box must be present');
+  });
+
+  it('get_maritime_activity returns error for unknown country code', async () => {
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 21, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'ZZ' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.ok(data.error?.includes('Unknown country code'), 'must return error for unknown code');
+  });
+
+  it('get_maritime_activity returns JSON-RPC -32603 when vessel API fails', async () => {
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/')) {
+        return new Response('Service Unavailable', { status: 503 });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 22, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'SA' } },
+    }));
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603, 'vessel API failure must return -32603');
+  });
+
+  it('get_maritime_activity handles empty snapshot gracefully', async () => {
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({ snapshot: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 23, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'JP' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.total_zones, 0);
+    assert.equal(data.total_disruptions, 0);
+    assert.deepEqual(data.density_zones, []);
+    assert.deepEqual(data.disruptions, []);
+  });
 });
