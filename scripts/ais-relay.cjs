@@ -4946,7 +4946,7 @@ async function seedUsniFleet() {
     // Use PROXY_URL (US-targeted proxy). OREF_PROXY_AUTH is IL-only and must NOT be used here.
     let wpData;
     const proxiesToTry = [
-      PROXY_URL ? parseProxyUrl(PROXY_URL) : null,
+      PROXY_URL ? { ...parseProxyUrl(PROXY_URL), tls: true } : null, // Decodo gate.*.com:10001 is HTTPS
     ].filter(Boolean);
     let fetched = false;
     for (const proxy of proxiesToTry) {
@@ -7487,7 +7487,8 @@ function ytFetchViaProxy(targetUrl, proxy) {
     if (proxy.auth) {
       connectOpts.headers['Proxy-Authorization'] = 'Basic ' + Buffer.from(proxy.auth).toString('base64');
     }
-    const connectReq = http.request(connectOpts);
+    // Use TLS to connect to proxy if required (e.g. Decodo port 10001); plain HTTP otherwise
+    const connectReq = proxy.tls ? https.request(connectOpts) : http.request(connectOpts);
     connectReq.on('connect', (_res, socket) => {
       connectReq.setTimeout(0);
       const req = https.request({
