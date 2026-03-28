@@ -117,8 +117,7 @@
     "supercluster": "^8.0.1",
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
-    "ws": "^8.19.0",
-    "youtubei.js": "^16.0.1"
+    "ws": "^8.19.0"
   },
   "overrides": {
     "fast-xml-parser": "^5.3.7",
