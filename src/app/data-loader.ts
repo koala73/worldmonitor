@@ -497,20 +497,57 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'thermalEscalation', task: runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
     }
 
-    // Stagger startup: run tasks in small batches to avoid hammering upstreams
-    const BATCH_SIZE = 4;
-    const BATCH_DELAY_MS = 300;
-    for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
-      const batch = tasks.slice(i, i + BATCH_SIZE);
+    // FR #203: Prioritized loading - group tasks by priority and load in phases
+    const { groupTasksByPriority, LoadPriority, PRIORITY_DELAYS } = await import('@/config/load-priorities');
+    const priorityGroups = groupTasksByPriority(tasks);
+
+    const runBatch = async (batch: typeof tasks): Promise<void> => {
       const results = await Promise.allSettled(batch.map(t => t.task));
       results.forEach((result, idx) => {
         if (result.status === 'rejected') {
           console.error(`[App] ${batch[idx]?.name} load failed:`, result.reason);
         }
       });
-      if (i + BATCH_SIZE < tasks.length) {
-        await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+    };
+
+    // Phase 1: CRITICAL - load immediately and wait
+    const criticalTasks = priorityGroups.get(LoadPriority.CRITICAL) ?? [];
+    if (criticalTasks.length > 0) {
+      console.info(`[App] Loading ${criticalTasks.length} CRITICAL tasks`);
+      await runBatch(criticalTasks);
+    }
+
+    // Phase 2: HIGH - load after short delay
+    const highTasks = priorityGroups.get(LoadPriority.HIGH) ?? [];
+    if (highTasks.length > 0) {
+      setTimeout(() => {
+        console.info(`[App] Loading ${highTasks.length} HIGH priority tasks`);
+        runBatch(highTasks);
+      }, PRIORITY_DELAYS[LoadPriority.HIGH]);
+    }
+
+    // Phase 3: NORMAL - load on idle or after timeout
+    const normalTasks = priorityGroups.get(LoadPriority.NORMAL) ?? [];
+    if (normalTasks.length > 0) {
+      const loadNormal = () => {
+        console.info(`[App] Loading ${normalTasks.length} NORMAL priority tasks`);
+        runBatch(normalTasks);
+      };
+      if ('requestIdleCallback' in window) {
+        (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => void })
+          .requestIdleCallback(loadNormal, { timeout: PRIORITY_DELAYS[LoadPriority.NORMAL] });
+      } else {
+        setTimeout(loadNormal, PRIORITY_DELAYS[LoadPriority.NORMAL]);
       }
+    }
+
+    // Phase 4: LOW - load after longer delay
+    const lowTasks = priorityGroups.get(LoadPriority.LOW) ?? [];
+    if (lowTasks.length > 0) {
+      setTimeout(() => {
+        console.info(`[App] Loading ${lowTasks.length} LOW priority tasks`);
+        runBatch(lowTasks);
+      }, PRIORITY_DELAYS[LoadPriority.LOW]);
     }
 
     this.updateSearchIndex();
