@@ -159,9 +159,9 @@ const CHOKEPOINT_MARKET_REGIONS = {
 };
 
 const THEATER_GEO_GROUPS = {
-  'Middle East': 'MENA',
-  'Red Sea': 'MENA',
-  'Persian Gulf': 'MENA',
+  'Middle East': 'MENA_Gulf',       // Strait of Hormuz, Persian Gulf, Arabian Sea, Iran
+  'Persian Gulf': 'MENA_Gulf',
+  'Red Sea': 'MENA_RedSea',         // Red Sea, Bab el-Mandeb, Suez Canal
   'South China Sea': 'AsiaPacific',
   'Western Pacific': 'AsiaPacific',
   'Southeast Asia': 'AsiaPacific',
