@@ -12,7 +12,7 @@ const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 Sentry.init({
   dsn: sentryDsn || undefined,
   release: `worldmonitor@${__APP_VERSION__}`,
-  environment: location.hostname === 'worldmonitor.app' ? 'production'
+  environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
     : location.hostname.includes('vercel.app') ? 'preview'
     : 'development',
   enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
@@ -295,6 +295,8 @@ Sentry.init({
     // Suppress parentNode.insertBefore from injected/inline scripts (iOS WKWebView, Apple Mail)
     // Also covers [native code] frames (no filename) produced by WKWebView's forEach wrapper
     if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+    // Suppress NotFoundError: insertBefore with no usable stack (Chrome 146+ extension DOM interference — stack shows minified bundle but no line/function)
+    if (excType === 'NotFoundError' && /insertBefore/.test(msg) && frames.every(f => !f.lineno && !f.function)) return null;
     // Suppress Sentry breadcrumb DOM-measuring crashes (element.offsetWidth on detached DOM)
     if (/evaluating '(?:element|e)\.offset(?:Width|Height)'/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress errors originating entirely from blob: URLs (browser extensions)
@@ -337,7 +339,11 @@ window.addEventListener('securitypolicyviolation', (e) => {
   const blocked = e.blockedURI ?? '';
   // Skip violations originating from browser extensions or injected scripts
   if (/^(?:chrome|moz|safari(?:-web)?)-extension:/.test(src) || /^(?:chrome|moz|safari(?:-web)?)-extension:/.test(blocked)) return;
-  if (/^blob:/.test(src)) return;
+  if (/^blob:/.test(src) || /^blob:/.test(blocked)) return;
+  // Skip eval/inline/data: blocked URIs — browser extensions injecting eval, inline handlers, or data: URIs
+  if (blocked === 'eval' || blocked === 'inline' || /^data:/.test(blocked)) return;
+  // Skip third-party injectors: Google Translate, Facebook Pixel
+  if (/gstatic\.com\/_\/translate/.test(blocked) || /facebook\.net/.test(blocked)) return;
   // Skip Sentry reporting itself (connect-src bootstrap paradox — SDK blocked before it can report)
   if (/sentry\.io\/api\//.test(blocked)) return;
   // Skip YouTube live stream manifests (media-src — expected from YouTube embeds)
