@@ -112,27 +112,24 @@ input[type=password]:focus{border-color:#60a5fa}
 .error{color:#f87171;font-size:0.85rem;margin:0.5rem 0 0}
 button{width:100%;margin-top:1.25rem;padding:0.7rem;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:1rem;cursor:pointer;font-weight:500}
 button:hover{background:#1d4ed8}
+button:disabled{opacity:0.6;cursor:default}
 .redirect{font-size:0.75rem;color:#666;margin-top:1rem;text-align:center}
 </style></head>
 <body><div class="card">
 <h1>${escapeHtml(client_name)} wants to connect</h1>
 <p class="sub">to WorldMonitor via <strong>${escapeHtml(redirectHost)}</strong></p>
 <span class="scope-badge">mcp — read access</span>
-<form method="POST" action="/oauth/authorize">
-<input type="hidden" name="client_id" value="${escapeHtml(client_id)}">
-<input type="hidden" name="redirect_uri" value="${escapeHtml(redirect_uri)}">
-<input type="hidden" name="response_type" value="${escapeHtml(response_type)}">
-<input type="hidden" name="code_challenge" value="${escapeHtml(code_challenge)}">
-<input type="hidden" name="code_challenge_method" value="${escapeHtml(code_challenge_method)}">
-<input type="hidden" name="state" value="${escapeHtml(state ?? '')}">
-<input type="hidden" name="_nonce" value="${escapeHtml(nonce)}">
+<form id="cf" method="POST" action="https://api.worldmonitor.app/oauth/authorize">
+<input type="hidden" name="_nonce" id="nn" value="${escapeHtml(nonce)}">
 <label for="api_key">WorldMonitor API Key</label>
 <input type="password" id="api_key" name="api_key" placeholder="wm_…" autocomplete="current-password" required>
-${errorMsg ? `<p class="error">${escapeHtml(errorMsg)}</p>` : ''}
-<button type="submit">Authorize</button>
+<p class="error" id="ke"${errorMsg ? '' : ' style="display:none"'}>${errorMsg ? escapeHtml(errorMsg) : ''}</p>
+<button type="submit" id="ab">Authorize</button>
 </form>
 <p class="redirect">You will be redirected to ${escapeHtml(redirectHost)}</p>
-</div></body></html>`, {
+</div>
+<script>document.getElementById('cf').addEventListener('submit',function(e){e.preventDefault();var b=document.getElementById('ab');b.disabled=true;b.textContent='Authorizing\u2026';var d=new URLSearchParams(new FormData(e.target));fetch('/oauth/authorize',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'fetch'},body:d}).then(function(r){var c=r.headers.get('Content-Type')||'';if(c.indexOf('json')>=0)return r.json().then(function(j){if(j.location){window.location.replace(j.location);return;}if(j.error==='invalid_key'){var n=document.getElementById('nn');if(n)n.value=j.nonce||'';var em=document.getElementById('ke');if(em){em.textContent='Invalid API key. Please check and try again.';em.style.display='';}}b.disabled=false;b.textContent='Authorize';});return r.text().then(function(h){document.open();document.write(h);document.close();});}).catch(function(){b.disabled=false;b.textContent='Authorize';});});</script>
+</body></html>`, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'DENY', 'Cache-Control': 'no-store', 'Pragma': 'no-cache' },
   });
@@ -201,6 +198,8 @@ export default async function handler(req) {
       return new Response('Forbidden', { status: 403 });
     }
 
+    const isXHR = req.headers.get('x-requested-with') === 'fetch';
+
     const rl = getRatelimit();
     if (rl) {
       try {
@@ -265,6 +264,12 @@ export default async function handler(req) {
       if (!retryNonceStored) {
         return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
       }
+      if (isXHR) {
+        return new Response(JSON.stringify({ error: 'invalid_key', nonce: retryNonce }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+        });
+      }
       return consentPage({
         client_name: client.client_name ?? 'Unknown Client',
         redirect_uri, client_id, response_type: 'code', code_challenge, code_challenge_method: 'S256', state,
@@ -292,6 +297,14 @@ export default async function handler(req) {
     redirectUrl.searchParams.set('code', code);
     if (state) redirectUrl.searchParams.set('state', state);
 
+    // XHR (JavaScript fetch) path: return JSON so the page can navigate the WebView.
+    // Native form submit path: return 302 redirect (curl, non-JS fallback).
+    if (isXHR) {
+      return new Response(JSON.stringify({ location: redirectUrl.toString() }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
     return new Response(null, {
       status: 302,
       headers: {
