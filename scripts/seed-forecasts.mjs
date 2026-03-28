@@ -8,6 +8,7 @@ import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
+import { loadTickerSet, filterInvalidTickers } from './_ticker-validation.mjs';
 
 const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (_isDirectRun) loadEnvFile(import.meta.url);
@@ -15484,6 +15485,13 @@ const ALL_ALLOWED_TICKERS = new Set([
   ...ALLOWED_INSTRUMENTS.rates,
 ]);
 
+const NON_EQUITY_TICKERS = new Set([
+  ...ALLOWED_INSTRUMENTS.commodities,
+  ...ALLOWED_INSTRUMENTS.forex,
+  ...ALLOWED_INSTRUMENTS.crypto,
+  ...ALLOWED_INSTRUMENTS.rates,
+]);
+
 const MARKET_IMPLICATIONS_SYSTEM_PROMPT = `You are a senior macro strategist generating structured trade-implication cards from live world intelligence.
 
 RULES:
@@ -15710,15 +15718,38 @@ async function buildAndSeedMarketImplications(inputs) {
   }
 
   const { url, token } = getRedisCredentials();
-  const payload = { cards, generatedAt: new Date().toISOString(), model: result.model || '' };
+
+  // Dynamic ticker gate: supplement the static whitelist with live symbols from Redis.
+  // Only runs when equity cards are present (non-equity instruments use static list only).
+  const hasEquityCards = cards.some(c => !NON_EQUITY_TICKERS.has(c.ticker));
+  let finalCards = cards;
+  if (hasEquityCards) {
+    const liveTickerSet = await loadTickerSet(url, token);
+    if (liveTickerSet.size > 0) {
+      // Union of full static whitelist + live Redis symbols — additive, never reductive
+      const combinedValid = new Set([...ALL_ALLOWED_TICKERS, ...liveTickerSet]);
+      finalCards = filterInvalidTickers(cards, combinedValid, 'MarketImplications');
+      if (finalCards.length === 0) {
+        console.warn('  [MarketImplications] All cards dropped by dynamic ticker gate — skipping write');
+        return;
+      }
+      if (finalCards.length < cards.length) {
+        console.log(`  [MarketImplications] Dynamic ticker gate: kept ${finalCards.length}/${cards.length} cards`);
+      }
+    } else {
+      console.warn('  [MarketImplications] Dynamic ticker set empty — skipping live validation, using static whitelist only');
+    }
+  }
+
+  const payload = { cards: finalCards, generatedAt: new Date().toISOString(), model: result.model || '' };
   await redisSet(url, token, MARKET_IMPLICATIONS_KEY, payload, MARKET_IMPLICATIONS_TTL);
 
   const metaKey = 'seed-meta:intelligence:market-implications';
-  const meta = { fetchedAt: Date.now(), recordCount: cards.length };
+  const meta = { fetchedAt: Date.now(), recordCount: finalCards.length };
   await redisSet(url, token, metaKey, meta, 86400 * 7);
 
   const durationMs = Date.now() - startMs;
-  console.log(`  [MarketImplications] Published ${cards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
+  console.log(`  [MarketImplications] Published ${finalCards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
 }
 
 if (_isDirectRun) {
