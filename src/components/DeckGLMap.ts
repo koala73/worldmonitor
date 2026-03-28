@@ -1356,6 +1356,9 @@ export class DeckGLMap {
     const { layers: mapLayers } = this.state;
     const filteredEarthquakes = mapLayers.natural ? this.filterByTimeCached(this.earthquakes, (eq) => eq.occurredAt) : [];
     const filteredNaturalEvents = mapLayers.natural ? this.filterByTimeCached(this.naturalEvents, (event) => event.date) : [];
+    const filteredDiseaseOutbreaks = mapLayers.diseaseOutbreaks ? this.filterByTimeCached(this.diseaseOutbreaks, (item) => item.publishedAt) : [];
+    const filteredRadiationObservations = mapLayers.radiationWatch ? this.filterByTimeCached(this.radiationObservations, (obs) => obs.observedAt) : [];
+    const filteredPositiveEvents = mapLayers.positiveEvents ? this.filterByTimeCached(this.positiveEvents, (e) => e.timestamp) : [];
     const filteredWeatherAlerts = mapLayers.weather ? this.filterByTimeCached(this.weatherAlerts, (alert) => alert.onset) : [];
     const filteredOutages = mapLayers.outages ? this.filterByTimeCached(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTimeCached(this.cableAdvisories, (advisory) => advisory.reported) : [];
@@ -1445,14 +1448,14 @@ export class DeckGLMap {
       layers.push(...this.createNaturalEventsLayers(filteredNaturalEvents));
     }
 
-    if (mapLayers.radiationWatch && this.radiationObservations.length > 0) {
-      layers.push(this.createRadiationLayer());
+    if (mapLayers.radiationWatch && filteredRadiationObservations.length > 0) {
+      layers.push(this.createRadiationLayer(filteredRadiationObservations));
     }
     layers.push(this.createEmptyGhost('radiation-watch-layer'));
 
     // Disease outbreaks layer
-    if (mapLayers.diseaseOutbreaks && this.diseaseOutbreaks.length > 0) {
-      layers.push(this.createDiseaseOutbreaksLayer());
+    if (mapLayers.diseaseOutbreaks && filteredDiseaseOutbreaks.length > 0) {
+      layers.push(this.createDiseaseOutbreaksLayer(filteredDiseaseOutbreaks));
     }
     layers.push(this.createEmptyGhost('disease-outbreaks-layer'));
 
@@ -1657,8 +1660,8 @@ export class DeckGLMap {
     }
 
     // Positive events layer (happy variant)
-    if (mapLayers.positiveEvents && this.positiveEvents.length > 0) {
-      layers.push(...this.createPositiveEventsLayers());
+    if (mapLayers.positiveEvents && filteredPositiveEvents.length > 0) {
+      layers.push(...this.createPositiveEventsLayers(filteredPositiveEvents));
     }
 
     // Kindness layer (happy variant -- green baseline pulses + real kindness events)
@@ -2383,10 +2386,10 @@ export class DeckGLMap {
     });
   }
 
-  private createRadiationLayer(): ScatterplotLayer<RadiationObservation> {
+  private createRadiationLayer(items: RadiationObservation[]): ScatterplotLayer<RadiationObservation> {
     return new ScatterplotLayer<RadiationObservation>({
       id: 'radiation-watch-layer',
-      data: this.radiationObservations,
+      data: items,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => {
         const base = d.severity === 'spike' ? 26000 : 18000;
@@ -2410,10 +2413,10 @@ export class DeckGLMap {
     });
   }
 
-  private createDiseaseOutbreaksLayer(): ScatterplotLayer<{ lon: number; lat: number; item: DiseaseOutbreakItem }> {
+  private createDiseaseOutbreaksLayer(items: DiseaseOutbreakItem[]): ScatterplotLayer<{ lon: number; lat: number; item: DiseaseOutbreakItem }> {
     type Point = { lon: number; lat: number; item: DiseaseOutbreakItem };
     const points: Point[] = [];
-    for (const item of this.diseaseOutbreaks) {
+    for (const item of items) {
       if (Number.isFinite(item.lat) && item.lat !== 0 && Number.isFinite(item.lng) && item.lng !== 0) {
         points.push({ lon: item.lng, lat: item.lat, item });
       } else {
@@ -3309,7 +3312,7 @@ export class DeckGLMap {
     return layers;
   }
 
-  private createPositiveEventsLayers(): Layer[] {
+  private createPositiveEventsLayers(items: PositiveGeoEvent[]): Layer[] {
     const layers: Layer[] = [];
 
     const getCategoryColor = (category: string): [number, number, number, number] => {
@@ -3331,7 +3334,7 @@ export class DeckGLMap {
     // Dot layer (tooltip on hover via getTooltip)
     layers.push(new ScatterplotLayer({
       id: 'positive-events-layer',
-      data: this.positiveEvents,
+      data: items,
       getPosition: (d: PositiveGeoEvent) => [d.lon, d.lat],
       getRadius: 12000,
       getFillColor: (d: PositiveGeoEvent) => getCategoryColor(d.category),
@@ -3341,7 +3344,7 @@ export class DeckGLMap {
     }));
 
     // Gentle pulse ring for significant events (count > 8)
-    const significantEvents = this.positiveEvents.filter(e => e.count > 8);
+    const significantEvents = items.filter(e => e.count > 8);
     if (significantEvents.length > 0) {
       const pulse = 1.0 + 0.4 * (0.5 + 0.5 * Math.sin((this.pulseTime || Date.now()) / 800));
       layers.push(new ScatterplotLayer({
