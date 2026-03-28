@@ -34,6 +34,21 @@ function escapeHtml(str) {
     .replace(/'/g, '&#x27;');
 }
 
+// Atomic GETDEL — returns null on genuine key-miss; throws on transport/HTTP failure.
+async function redisGetDel(key) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) throw new Error('Redis not configured');
+  const resp = await fetch(`${url}/getdel/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(3_000),
+  });
+  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (!data?.result) return null; // key did not exist
+  try { return JSON.parse(data.result); } catch { return null; }
+}
+
 // Returns null on genuine key-miss; throws on transport/HTTP failure
 // so callers can distinguish "key not found" from "storage unavailable".
 async function redisGet(key) {
@@ -168,7 +183,10 @@ export default async function handler(req) {
     await redisSet(`oauth:client:${client_id}`, { ...client, last_used: Date.now() }, CLIENT_TTL_SECONDS);
 
     const nonce = crypto.randomUUID();
-    await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, created_at: Date.now() }, 600);
+    const nonceStored = await redisSet(`oauth:nonce:${nonce}`, { client_id, redirect_uri, code_challenge, state, created_at: Date.now() }, 600);
+    if (!nonceStored) {
+      return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
+    }
 
     return consentPage({
       client_name: client.client_name ?? 'Unknown Client',
@@ -213,26 +231,15 @@ export default async function handler(req) {
       return htmlError('Invalid Request', 'Missing required parameters.');
     }
 
-    // Validate CSRF nonce
+    // Validate and atomically consume CSRF nonce (GETDEL — prevents concurrent submit race)
     let nonceData;
     try {
-      nonceData = await redisGet(`oauth:nonce:${nonce}`);
+      nonceData = await redisGetDel(`oauth:nonce:${nonce}`);
     } catch {
       return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
     }
     if (!nonceData || nonceData.client_id !== client_id || nonceData.redirect_uri !== redirect_uri) {
       return htmlError('Session Expired', 'Authorization session expired or is invalid. Please start over.');
-    }
-    // Consume nonce (single-use)
-    const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
-    const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-    if (redisUrl && redisToken) {
-      fetch(`${redisUrl}/pipeline`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify([['DEL', `oauth:nonce:${nonce}`]]),
-        signal: AbortSignal.timeout(2_000),
-      }).catch(() => {});
     }
 
     let client;
@@ -253,9 +260,12 @@ export default async function handler(req) {
     // Validate API key
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
     if (!await timingSafeIncludes(api_key, validKeys)) {
-      // Generate and store a fresh nonce so the retry submit succeeds
+      // Generate and store a fresh nonce; fail closed if storage is unavailable
       const retryNonce = crypto.randomUUID();
-      await redisSet(`oauth:nonce:${retryNonce}`, { client_id, redirect_uri, code_challenge, state, created_at: Date.now() }, 600);
+      const retryNonceStored = await redisSet(`oauth:nonce:${retryNonce}`, { client_id, redirect_uri, code_challenge, state, created_at: Date.now() }, 600);
+      if (!retryNonceStored) {
+        return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
+      }
       return consentPage({
         client_name: client.client_name ?? 'Unknown Client',
         redirect_uri, client_id, response_type: 'code', code_challenge, code_challenge_method: 'S256', state,
