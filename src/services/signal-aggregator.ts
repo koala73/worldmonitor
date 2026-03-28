@@ -432,6 +432,21 @@ class SignalAggregator {
     this.signals = this.signals.filter(s => !prev.has(s));
     this.theaterPostureSignals = [];
 
+    // Remove any real flight/vessel signals already attributed to active theater countries
+    // by coordsToCountryWithFallback — theater summary is authoritative for these theaters
+    const activeCodes = new Set<string>();
+    for (const p of postures) {
+      if (!p.targetNation || p.postureLevel === 'normal') continue;
+      const code = TARGET_CODES[p.targetNation];
+      if (code) activeCodes.add(code);
+    }
+    if (activeCodes.size > 0) {
+      this.signals = this.signals.filter(s =>
+        !activeCodes.has(s.country) ||
+        (s.type !== 'military_flight' && s.type !== 'military_vessel')
+      );
+    }
+
     for (const p of postures) {
       if (!p.targetNation || p.postureLevel === 'normal') continue;
       const code = TARGET_CODES[p.targetNation];

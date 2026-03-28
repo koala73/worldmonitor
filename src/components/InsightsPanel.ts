@@ -70,11 +70,9 @@ export class InsightsPanel extends Panel {
   }
 
   private getTheaterPostureContext(): string {
-    if (this.lastMilitaryFlights.length === 0) {
-      return '';
-    }
+    const postures = getCachedPosture()?.postures
+      ?? (this.lastMilitaryFlights.length > 0 ? getTheaterPostureSummaries(this.lastMilitaryFlights) : []);
 
-    const postures = getTheaterPostureSummaries(this.lastMilitaryFlights);
     const significant = postures.filter(
       (p) => p.postureLevel === 'critical' || p.postureLevel === 'elevated' || p.strikeCapable
     );
@@ -109,7 +107,12 @@ export class InsightsPanel extends Panel {
   private extractISQInput(cluster: ClusteredEvent): SignalQualityInput {
     const entities = extractEntitiesFromTitle(cluster.primaryTitle);
     const idx = getEntityIndex();
-    const countryEntity = entities.find(e => idx.byId.get(e.entityId)?.type === 'country');
+    // Keyword matches (confidence 0.7) are ambiguous for shared-actor terms like
+    // "hezbollah" (→ IR + IL) or "hamas" (→ IL + QA). Only trust alias matches
+    // (direct country name mention, confidence ≥ 0.85) for ISQ country attribution.
+    const countryEntity = entities.find(
+      e => e.matchType === 'alias' && idx.byId.get(e.entityId)?.type === 'country'
+    );
     return {
       sourceCount: cluster.sourceCount,
       isAlert: cluster.isAlert,
