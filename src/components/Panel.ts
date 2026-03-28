@@ -705,6 +705,7 @@ export class Panel {
     btn.setAttribute('aria-expanded', String(!collapsed));
     btn.setAttribute('aria-label', label);
     btn.title = label;
+    this.onCollapse(collapsed);
   }
 
   protected appendCollapseButton(): void {
@@ -721,6 +722,10 @@ export class Panel {
     });
     this._collapseBtn = btn;
     this.header.appendChild(btn);
+  }
+
+  protected onCollapse(_collapsed: boolean): void {
+    // subclasses override to pause/resume streams
   }
 
   protected appendCloseButton(): void {
