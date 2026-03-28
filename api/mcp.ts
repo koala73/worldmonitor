@@ -10,6 +10,7 @@ import { readJsonFromUpstash } from './_upstash-json.js';
 import { resolveApiKeyFromBearer } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
+import COUNTRY_BBOXES from '../shared/country-bboxes.json';
 
 export const config = { runtime: 'edge' };
 
@@ -342,6 +343,138 @@ const TOOL_REGISTRY: ToolDef[] = [
       });
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
       return res.json();
+    },
+  },
+  {
+    name: 'get_airspace',
+    description: 'Live ADS-B aircraft over a country. Returns civilian flights (OpenSky) and identified military aircraft with callsigns, positions, altitudes, and headings. Answers questions like "how many planes are over the UAE right now?" or "are there military aircraft over Taiwan?"',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: {
+          type: 'string',
+          description: 'ISO 3166-1 alpha-2 country code (e.g. "AE", "US", "GB", "JP")',
+        },
+        type: {
+          type: 'string',
+          enum: ['all', 'civilian', 'military'],
+          description: 'Filter: all flights (default), civilian only, or military only',
+        },
+      },
+      required: ['country_code'],
+    },
+    _execute: async (params, base, apiKey) => {
+      const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
+      const bbox = (COUNTRY_BBOXES as unknown as Record<string, [number, number, number, number]>)[code];
+      if (!bbox) return { error: `Unknown country code: ${code}. Use ISO 3166-1 alpha-2 (e.g. "AE", "US", "GB").` };
+      const [sw_lat, sw_lon, ne_lat, ne_lon] = bbox;
+      const type = String(params.type ?? 'all');
+      const UA = 'worldmonitor-mcp-edge/1.0';
+      const headers = { 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA };
+      const bboxQ = `sw_lat=${sw_lat}&sw_lon=${sw_lon}&ne_lat=${ne_lat}&ne_lon=${ne_lon}`;
+
+      type CivilianResp = {
+        positions?: { callsign: string; icao24: string; lat: number; lon: number; altitude_m: number; ground_speed_kts: number; track_deg: number; on_ground: boolean }[];
+        source?: string;
+        updated_at?: number;
+      };
+      type MilResp = {
+        flights?: { callsign: string; hex_code: string; aircraft_type: string; aircraft_model: string; operator: string; operator_country: string; location?: { latitude: number; longitude: number }; altitude: number; heading: number; speed: number; is_interesting: boolean; note: string }[];
+      };
+
+      const [civResult, milResult] = await Promise.allSettled([
+        type === 'military'
+          ? Promise.resolve(null)
+          : fetch(`${base}/api/aviation/v1/track-aircraft?${bboxQ}`, { headers, signal: AbortSignal.timeout(8_000) })
+              .then(r => r.ok ? r.json() as Promise<CivilianResp> : null),
+        type === 'civilian'
+          ? Promise.resolve(null)
+          : fetch(`${base}/api/military/v1/list-military-flights?${bboxQ}&page_size=100`, { headers, signal: AbortSignal.timeout(8_000) })
+              .then(r => r.ok ? r.json() as Promise<MilResp> : null),
+      ]);
+
+      const civ = civResult.status === 'fulfilled' ? civResult.value : null;
+      const mil = milResult.status === 'fulfilled' ? milResult.value : null;
+
+      const civilianFlights = (civ?.positions ?? []).slice(0, 100).map(p => ({
+        callsign: p.callsign, icao24: p.icao24,
+        lat: p.lat, lon: p.lon,
+        altitude_m: p.altitude_m, speed_kts: p.ground_speed_kts,
+        heading_deg: p.track_deg, on_ground: p.on_ground,
+      }));
+      const militaryFlights = (mil?.flights ?? []).slice(0, 100).map(f => ({
+        callsign: f.callsign, hex_code: f.hex_code,
+        aircraft_type: f.aircraft_type, aircraft_model: f.aircraft_model,
+        operator: f.operator, operator_country: f.operator_country,
+        lat: f.location?.latitude, lon: f.location?.longitude,
+        altitude: f.altitude, heading: f.heading, speed: f.speed,
+        is_interesting: f.is_interesting, ...(f.note ? { note: f.note } : {}),
+      }));
+
+      return {
+        country_code: code,
+        bounding_box: { sw_lat, sw_lon, ne_lat, ne_lon },
+        civilian_count: civilianFlights.length,
+        military_count: militaryFlights.length,
+        ...(type !== 'military' && { civilian_flights: civilianFlights }),
+        ...(type !== 'civilian' && { military_flights: militaryFlights }),
+        source: civ?.source ?? 'opensky',
+        updated_at: civ?.updated_at ? new Date(civ.updated_at).toISOString() : new Date().toISOString(),
+      };
+    },
+  },
+  {
+    name: 'get_maritime_activity',
+    description: "Live vessel traffic and maritime disruptions for a country's waters. Returns AIS density zones (ships-per-day, intensity score), dark ship events, and chokepoint congestion from AIS tracking.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: {
+          type: 'string',
+          description: 'ISO 3166-1 alpha-2 country code (e.g. "AE", "SA", "JP", "EG")',
+        },
+      },
+      required: ['country_code'],
+    },
+    _execute: async (params, base, apiKey) => {
+      const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
+      const bbox = (COUNTRY_BBOXES as unknown as Record<string, [number, number, number, number]>)[code];
+      if (!bbox) return { error: `Unknown country code: ${code}. Use ISO 3166-1 alpha-2 (e.g. "AE", "SA", "JP").` };
+      const [sw_lat, sw_lon, ne_lat, ne_lon] = bbox;
+      const bboxQ = `sw_lat=${sw_lat}&sw_lon=${sw_lon}&ne_lat=${ne_lat}&ne_lon=${ne_lon}`;
+      const headers = { 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' };
+
+      type VesselResp = {
+        snapshot?: {
+          snapshot_at?: number;
+          density_zones?: { name: string; intensity: number; ships_per_day: number; delta_pct: number; note: string }[];
+          disruptions?: { name: string; type: string; severity: string; dark_ships: number; vessel_count: number; region: string; description: string }[];
+        };
+      };
+
+      const res = await fetch(`${base}/api/maritime/v1/get-vessel-snapshot?${bboxQ}`, {
+        headers, signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) throw new Error(`get-vessel-snapshot HTTP ${res.status}`);
+      const data = await res.json() as VesselResp;
+      const snap = data.snapshot ?? {};
+
+      return {
+        country_code: code,
+        bounding_box: { sw_lat, sw_lon, ne_lat, ne_lon },
+        snapshot_at: snap.snapshot_at ? new Date(snap.snapshot_at).toISOString() : new Date().toISOString(),
+        total_zones: (snap.density_zones ?? []).length,
+        total_disruptions: (snap.disruptions ?? []).length,
+        density_zones: (snap.density_zones ?? []).map(z => ({
+          name: z.name, intensity: z.intensity, ships_per_day: z.ships_per_day,
+          delta_pct: z.delta_pct, ...(z.note ? { note: z.note } : {}),
+        })),
+        disruptions: (snap.disruptions ?? []).map(d => ({
+          name: d.name, type: d.type, severity: d.severity,
+          dark_ships: d.dark_ships, vessel_count: d.vessel_count,
+          region: d.region, description: d.description,
+        })),
+      };
     },
   },
   {
