@@ -15485,13 +15485,6 @@ const ALL_ALLOWED_TICKERS = new Set([
   ...ALLOWED_INSTRUMENTS.rates,
 ]);
 
-const NON_EQUITY_TICKERS = new Set([
-  ...ALLOWED_INSTRUMENTS.commodities,
-  ...ALLOWED_INSTRUMENTS.forex,
-  ...ALLOWED_INSTRUMENTS.crypto,
-  ...ALLOWED_INSTRUMENTS.rates,
-]);
-
 const MARKET_IMPLICATIONS_SYSTEM_PROMPT = `You are a senior macro strategist generating structured trade-implication cards from live world intelligence.
 
 RULES:
@@ -15713,18 +15706,18 @@ async function buildAndSeedMarketImplications(inputs) {
 
   const { url, token } = getRedisCredentials();
 
-  // Build the effective ticker allowlist before validation so the single pass catches
-  // hallucinated symbols. When Redis has live equity data, replace the static equity
-  // sub-list with it (non-equity instruments are always kept from the static set).
-  // Falls back to ALL_ALLOWED_TICKERS when Redis is unavailable.
+  // Extend the curated static allowlist with live equity symbols from Redis.
+  // ALL_ALLOWED_TICKERS is always preserved (ETFs, defense, commodities, forex, rates, crypto).
+  // liveTickerSet adds stocks we have live price data for (e.g. NFLX, WMT) that are not in
+  // the static list. Hallucinated symbols absent from both sets are rejected at validation.
   const liveTickerSet = await loadTickerSet(url, token);
   let effectiveTickers;
   if (liveTickerSet.size > 0) {
-    effectiveTickers = new Set([...NON_EQUITY_TICKERS, ...liveTickerSet]);
-    console.log(`  [MarketImplications] Using live ticker set (${liveTickerSet.size} equity symbols + ${NON_EQUITY_TICKERS.size} non-equity)`);
+    effectiveTickers = new Set([...ALL_ALLOWED_TICKERS, ...liveTickerSet]);
+    console.log(`  [MarketImplications] Extended allowlist: ${ALL_ALLOWED_TICKERS.size} static + ${liveTickerSet.size} live equity symbols`);
   } else {
     effectiveTickers = ALL_ALLOWED_TICKERS;
-    console.warn('  [MarketImplications] Redis ticker set empty — falling back to static whitelist');
+    console.warn('  [MarketImplications] Redis ticker set empty — using static allowlist only');
   }
 
   const cards = validateMarketImplications(rawCards, effectiveTickers);
