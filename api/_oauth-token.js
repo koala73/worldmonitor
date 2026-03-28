@@ -1,28 +1,11 @@
+// @ts-expect-error — JS module, no declaration file
+import { readJsonFromUpstash } from './_upstash-json.js';
+
 export async function resolveApiKeyFromBearer(req) {
-  const authHeader = req.headers.get('Authorization') || '';
-  if (!authHeader.startsWith('Bearer ')) return null;
-
-  const token = authHeader.slice(7).trim();
+  const hdr = req.headers.get('Authorization') || '';
+  if (!hdr.startsWith('Bearer ')) return null;
+  const token = hdr.slice(7).trim();
   if (!token) return null;
-
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !redisToken) return null;
-
-  try {
-    const key = `oauth:token:${token}`;
-    const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
-      headers: { Authorization: `Bearer ${redisToken}` },
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (!resp.ok) return null;
-
-    const data = await resp.json();
-    if (!data.result) return null;
-
-    const entry = JSON.parse(data.result);
-    return entry?.apiKey ?? null;
-  } catch {
-    return null;
-  }
+  const apiKey = await readJsonFromUpstash(`oauth:token:${token}`);
+  return typeof apiKey === 'string' && apiKey ? apiKey : null;
 }

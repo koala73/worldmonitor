@@ -37,6 +37,14 @@
       ]
     },
     {
+      "source": "/.well-known/oauth-authorization-server",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
       "source": "/.well-known/(.*)",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },

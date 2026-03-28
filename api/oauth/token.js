@@ -1,3 +1,6 @@
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
+
 export const config = { runtime: 'edge' };
 
 const TOKEN_TTL_SECONDS = 3600;
@@ -14,8 +17,29 @@ function jsonResp(body, status = 200, extra = {}) {
   });
 }
 
-function invalidClient() {
-  return jsonResp({ error: 'invalid_client', error_description: 'Invalid client credentials' }, 401);
+// Tight rate limiter for credential endpoint: 10 token requests per minute per IP
+let _rl = null;
+function getRatelimit() {
+  if (_rl) return _rl;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  _rl = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.slidingWindow(10, '60 s'),
+    prefix: 'rl:oauth-token',
+    analytics: false,
+  });
+  return _rl;
+}
+
+function getClientIp(req) {
+  return (
+    req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-real-ip') ||
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    '0.0.0.0'
+  );
 }
 
 function validateSecret(secret) {
@@ -24,55 +48,21 @@ function validateSecret(secret) {
   return validKeys.includes(secret);
 }
 
-async function storeToken(uuid, apiKey, clientId) {
+async function storeToken(uuid, apiKey) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return false;
 
-  const key = `oauth:token:${uuid}`;
-  const value = JSON.stringify({ apiKey, clientId, issuedAt: Date.now() });
   const resp = await fetch(`${url}/pipeline`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify([['SET', key, value, 'EX', TOKEN_TTL_SECONDS]]),
+    body: JSON.stringify([['SET', `oauth:token:${uuid}`, JSON.stringify(apiKey), 'EX', TOKEN_TTL_SECONDS]]),
     signal: AbortSignal.timeout(3_000),
   });
-  return resp.ok;
-}
+  if (!resp.ok) return false;
 
-function parseBasicAuth(req) {
-  const authHeader = req.headers.get('Authorization') || '';
-  if (!authHeader.startsWith('Basic ')) return null;
-  try {
-    const decoded = atob(authHeader.slice(6));
-    const colon = decoded.indexOf(':');
-    if (colon === -1) return null;
-    return { clientId: decoded.slice(0, colon), clientSecret: decoded.slice(colon + 1) };
-  } catch {
-    return null;
-  }
-}
-
-async function parseBody(req) {
-  const ct = req.headers.get('content-type') || '';
-  if (ct.includes('application/x-www-form-urlencoded')) {
-    const text = await req.text();
-    const params = new URLSearchParams(text);
-    return {
-      grantType: params.get('grant_type'),
-      clientId: params.get('client_id'),
-      clientSecret: params.get('client_secret'),
-    };
-  }
-  if (ct.includes('application/json')) {
-    const json = await req.json().catch(() => ({}));
-    return {
-      grantType: json.grant_type,
-      clientId: json.client_id,
-      clientSecret: json.client_secret,
-    };
-  }
-  return { grantType: null, clientId: null, clientSecret: null };
+  const results = await resp.json().catch(() => null);
+  return Array.isArray(results) && results[0]?.result === 'OK';
 }
 
 export default async function handler(req) {
@@ -83,32 +73,38 @@ export default async function handler(req) {
     return jsonResp({ error: 'method_not_allowed' }, 405);
   }
 
-  let grantType, clientId, clientSecret;
-
-  // HTTP Basic auth overrides body params
-  const basic = parseBasicAuth(req);
-  if (basic) {
-    clientId = basic.clientId;
-    clientSecret = basic.clientSecret;
-    const body = await parseBody(req).catch(() => ({}));
-    grantType = body.grantType || 'client_credentials';
-  } else {
-    const body = await parseBody(req);
-    grantType = body.grantType;
-    clientId = body.clientId;
-    clientSecret = body.clientSecret;
+  // Rate limit by IP before any credential work
+  const rl = getRatelimit();
+  if (rl) {
+    try {
+      const ip = getClientIp(req);
+      const { success, reset } = await rl.limit(ip);
+      if (!success) {
+        return jsonResp(
+          { error: 'rate_limit_exceeded', error_description: 'Too many token requests. Try again later.' },
+          429,
+          { 'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)) }
+        );
+      }
+    } catch {
+      // Upstash unavailable — allow through (graceful degradation)
+    }
   }
+
+  const params = new URLSearchParams(await req.text().catch(() => ''));
+  const grantType = params.get('grant_type');
+  const clientSecret = params.get('client_secret');
 
   if (grantType !== 'client_credentials') {
     return jsonResp({ error: 'unsupported_grant_type' }, 400);
   }
 
   if (!validateSecret(clientSecret)) {
-    return invalidClient();
+    return jsonResp({ error: 'invalid_client', error_description: 'Invalid client credentials' }, 401);
   }
 
   const uuid = crypto.randomUUID();
-  const stored = await storeToken(uuid, clientSecret, clientId || '');
+  const stored = await storeToken(uuid, clientSecret);
   if (!stored) {
     return jsonResp({ error: 'server_error', error_description: 'Token storage failed' }, 500);
   }
@@ -118,5 +114,5 @@ export default async function handler(req) {
     token_type: 'Bearer',
     expires_in: TOKEN_TTL_SECONDS,
     scope: 'mcp',
-  });
+  }, 200, { 'Cache-Control': 'no-store', 'Pragma': 'no-cache' });
 }

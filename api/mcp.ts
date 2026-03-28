@@ -429,9 +429,16 @@ export default async function handler(req: Request): Promise<Response> {
   //   2. ?key= query param — direct API key (for clients that cannot set headers)
   //   3. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
   let apiKey = '';
+  const bearerHeader = req.headers.get('Authorization') ?? '';
   const bearerApiKey = await resolveApiKeyFromBearer(req);
   if (bearerApiKey) {
     apiKey = bearerApiKey;
+  } else if (bearerHeader.startsWith('Bearer ')) {
+    // Bearer token present but unresolvable — expired or invalid UUID
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
+      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token"', ...corsHeaders } }
+    );
   } else {
     const urlKey = new URL(req.url).searchParams.get('key') ?? '';
     const headerKey = req.headers.get('X-WorldMonitor-Key') ?? '';
