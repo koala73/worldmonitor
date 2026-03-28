@@ -432,19 +432,23 @@ class SignalAggregator {
     this.signals = this.signals.filter(s => !prev.has(s));
     this.theaterPostureSignals = [];
 
-    // Remove any real flight/vessel signals already attributed to active theater countries
-    // by coordsToCountryWithFallback — theater summary is authoritative for these theaters
-    const activeCodes = new Set<string>();
+    // Remove real signals only for the specific type that will be replaced by theater summary.
+    // Tracked per-type so that e.g. an aircraft-only posture doesn't erase real vessel signals.
+    const activeFlightCodes = new Set<string>();
+    const activeVesselCodes = new Set<string>();
     for (const p of postures) {
       if (!p.targetNation || p.postureLevel === 'normal') continue;
       const code = TARGET_CODES[p.targetNation];
-      if (code) activeCodes.add(code);
+      if (!code) continue;
+      if (p.totalAircraft > 0) activeFlightCodes.add(code);
+      if (p.totalVessels > 0) activeVesselCodes.add(code);
     }
-    if (activeCodes.size > 0) {
-      this.signals = this.signals.filter(s =>
-        !activeCodes.has(s.country) ||
-        (s.type !== 'military_flight' && s.type !== 'military_vessel')
-      );
+    if (activeFlightCodes.size > 0 || activeVesselCodes.size > 0) {
+      this.signals = this.signals.filter(s => {
+        if (s.type === 'military_flight' && activeFlightCodes.has(s.country)) return false;
+        if (s.type === 'military_vessel' && activeVesselCodes.has(s.country)) return false;
+        return true;
+      });
     }
 
     for (const p of postures) {
