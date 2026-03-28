@@ -38,7 +38,14 @@ const STATE_KIND_DOMAIN: Record<string, string> = {
 };
 
 // --- Types for simulation theater data -------------------------------------
+const PATH_ID_LABELS: Record<string, string> = {
+  escalation:     'Escalation',
+  containment:    'Containment',
+  market_cascade: 'Market Cascade',
+};
+
 interface SimulationPath {
+  pathId: string;
   label: string;
   summary: string;
   confidence: number;
@@ -110,7 +117,11 @@ function injectStyles(): void {
     .fc-gauge-bg { fill: none; stroke: var(--border-color, #30363d); stroke-width: 4; }
     .fc-gauge-fill { fill: none; stroke-width: 4; stroke-linecap: round; }
     .fc-gauge-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 9px; font-weight: 700; }
-    .fc-theater-path { font-size: 9px; color: var(--text-secondary, #7d8590); line-height: 1.4; margin-top: 4px; }
+    .fc-theater-path { font-size: 9px; color: var(--text-secondary, #7d8590); line-height: 1.4; margin-top: 4px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .fc-path-type { font-size: 8px; padding: 1px 4px; border-radius: 2px; font-weight: 600; letter-spacing: 0.03em; opacity: 0.75; white-space: nowrap; }
+    .fc-path-type-escalation    { background: rgba(224,82,82,0.2); color: #e05252; border: 1px solid rgba(224,82,82,0.3); }
+    .fc-path-type-containment   { background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.25); }
+    .fc-path-type-market_cascade { background: rgba(210,153,34,0.15); color: #d29922; border: 1px solid rgba(210,153,34,0.25); }
     .fc-cat-tag {
       font-size: 9px; padding: 1px 5px; border-radius: 3px; white-space: nowrap;
       flex-shrink: 0; font-weight: 500; display: inline-block;
@@ -330,11 +341,11 @@ export class ForecastPanel extends Panel {
                 stroke-dasharray="${circ.toFixed(1)}"
                 stroke-dashoffset="${offset.toFixed(1)}"/>
             </svg>
-            <span class="fc-gauge-label" style="color:${confColor}">${confPct}%</span>
+            <span class="fc-gauge-label" style="color:${confColor}">${conf > 0 ? confPct + '%' : '—'}</span>
           </div>
         </div>
         <span class="fc-cat-tag" style="background:${color}1f;color:${color};border:1px solid ${color}47">${escapeHtml(catLabel)}</span>
-        ${dominantPath ? `<div class="fc-theater-path">${escapeHtml(dominantPath.label)}</div>` : ''}
+        ${dominantPath ? `<div class="fc-theater-path">${dominantPath.pathId ? `<span class="fc-path-type fc-path-type-${escapeHtml(dominantPath.pathId)}">${escapeHtml(PATH_ID_LABELS[dominantPath.pathId] ?? dominantPath.pathId)}</span>` : ''}${escapeHtml(dominantPath.label)}</div>` : ''}
       </div>
     `;
   }
@@ -348,10 +359,12 @@ export class ForecastPanel extends Panel {
     const pathsHtml = t.topPaths.map(p => {
       const pctColor = p.confidence >= 0.65 ? '#3fb950' : p.confidence >= 0.45 ? '#d29922' : '#e05252';
       const actors = p.keyActors.map(a => `<span class="fc-actor-chip">${escapeHtml(a)}</span>`).join('');
+      const typeTag = p.pathId ? `<span class="fc-path-type fc-path-type-${escapeHtml(p.pathId)}">${escapeHtml(PATH_ID_LABELS[p.pathId] ?? p.pathId)}</span>` : '';
+      const confText = p.confidence > 0 ? `${Math.round(p.confidence * 100)}% probability` : '—';
       return `
         <div class="fc-path-card">
-          <div class="fc-path-label">${escapeHtml(p.label)}</div>
-          <div class="fc-path-conf">${Math.round(p.confidence * 100)}% probability</div>
+          <div class="fc-path-label">${typeTag}${escapeHtml(p.label)}</div>
+          <div class="fc-path-conf">${confText}</div>
           <div class="fc-path-bar" style="background:${pctColor};width:${Math.round(p.confidence * 100)}%"></div>
           <div class="fc-path-summary">${escapeHtml(p.summary)}</div>
           ${actors ? `<div class="fc-path-actors">${actors}</div>` : ''}

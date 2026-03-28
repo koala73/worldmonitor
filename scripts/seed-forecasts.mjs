@@ -15990,11 +15990,11 @@ Return ONLY a JSON object with no markdown fences:
         { "round": 1, "summary": "<≤160 char>" },
         { "round": 2, "summary": "<≤160 char>" }
       ],
-      "confidence": 0.0,
+      "confidence": 0.35,
       "timingMarkers": [{ "event": "<≤80 char>", "timing": "T+Nh" }]
     },
-    { "pathId": "containment", "label": "...", "summary": "...", "keyActors": [], "roundByRoundEvolution": [], "confidence": 0.0, "timingMarkers": [] },
-    { "pathId": "market_cascade", "label": "...", "summary": "...", "keyActors": [], "roundByRoundEvolution": [], "confidence": 0.0, "timingMarkers": [] }
+    { "pathId": "containment", "label": "...", "summary": "...", "keyActors": [], "roundByRoundEvolution": [], "confidence": 0.50, "timingMarkers": [] },
+    { "pathId": "market_cascade", "label": "...", "summary": "...", "keyActors": [], "roundByRoundEvolution": [], "confidence": 0.15, "timingMarkers": [] }
   ],
   "stabilizers": ["<≤100 char>"],
   "invalidators": ["<≤100 char>"],
@@ -16116,12 +16116,16 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
     theaterId: tr.theaterId,
     theaterLabel: tr.theaterLabel || tr.theaterId,
     stateKind: tr.stateKind || '',
-    topPaths: (tr.topPaths || []).slice(0, 3).map((p) => ({
-      label: p.label,
-      summary: p.summary,
-      confidence: p.confidence,
-      keyActors: (p.keyActors || []).slice(0, 4),
-    })),
+    topPaths: (tr.topPaths || [])
+      .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+      .slice(0, 3)
+      .map((p) => ({
+        pathId: p.pathId || '',
+        label: p.label,
+        summary: p.summary,
+        confidence: p.confidence,
+        keyActors: (p.keyActors || []).slice(0, 4),
+      })),
     dominantReactions: (tr.dominantReactions || []).slice(0, 3),
     stabilizers: (tr.stabilizers || []).slice(0, 3),
     invalidators: (tr.invalidators || []).slice(0, 2),
