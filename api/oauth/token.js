@@ -17,20 +17,36 @@ function jsonResp(body, status = 200, extra = {}) {
   return jsonResponse(body, status, { ...getPublicCorsHeaders('POST, OPTIONS'), ...extra });
 }
 
-// Tight rate limiter for credential endpoint: 10 token requests per minute per credential
-let _rl = null;
-function getRatelimit() {
-  if (_rl) return _rl;
+// Per-credential: 10 req/min — limits replays of a specific credential
+// Per-IP: 30 req/min — catches brute-force with rotating guesses from one source
+// Both run in parallel; either can trigger a 429.
+let _rlCred = null;
+let _rlIp = null;
+function getRatelimitCred() {
+  if (_rlCred) return _rlCred;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
-  _rl = new Ratelimit({
+  _rlCred = new Ratelimit({
     redis: new Redis({ url, token }),
     limiter: Ratelimit.slidingWindow(10, '60 s'),
-    prefix: 'rl:oauth-token',
+    prefix: 'rl:oauth-token-cred',
     analytics: false,
   });
-  return _rl;
+  return _rlCred;
+}
+function getRatelimitIp() {
+  if (_rlIp) return _rlIp;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  _rlIp = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.slidingWindow(30, '60 s'),
+    prefix: 'rl:oauth-token-ip',
+    analytics: false,
+  });
+  return _rlIp;
 }
 
 async function validateSecret(secret) {
@@ -76,17 +92,31 @@ export default async function handler(req) {
   const grantType = params.get('grant_type');
   const clientSecret = params.get('client_secret');
 
-  const rl = getRatelimit();
-  if (rl) {
+  const rlCred = getRatelimitCred();
+  const rlIp = getRatelimitIp();
+  if (rlCred || rlIp) {
     try {
-      // Key by sha256(clientSecret).slice(0,8) when a secret is present so each
-      // credential gets its own 10/min bucket regardless of shared outbound IP.
-      // Fall back to IP for requests without a secret (will fail validation anyway).
-      const rlKey = clientSecret
+      // Dual-bucket strategy:
+      // - Per-credential (10/min): each distinct secret gets its own bucket.
+      //   Stops replaying a known credential at high rate.
+      // - Per-IP (30/min): all attempts from one IP share a single bucket.
+      //   Catches brute-force with rotating guesses (each guess is a different
+      //   credential hash, so per-cred alone wouldn't accumulate).
+      // 30/min per-IP is loose enough that multiple legit Claude users sharing
+      // an egress IP (~1 token/hr each) won't collide in normal use.
+      const clientIp = getClientIp(req);
+      const credKey = clientSecret
         ? `cred:${(await sha256Hex(clientSecret)).slice(0, 8)}`
-        : `ip:${getClientIp(req)}`;
-      const { success, reset } = await rl.limit(rlKey);
-      if (!success) {
+        : `ip:${clientIp}`;
+      const ipKey = `ip:${clientIp}`;
+
+      const [credResult, ipResult] = await Promise.all([
+        rlCred ? rlCred.limit(credKey) : Promise.resolve({ success: true, reset: 0 }),
+        rlIp ? rlIp.limit(ipKey) : Promise.resolve({ success: true, reset: 0 }),
+      ]);
+
+      if (!credResult.success || !ipResult.success) {
+        const reset = Math.max(credResult.reset ?? 0, ipResult.reset ?? 0);
         return jsonResp(
           { error: 'rate_limit_exceeded', error_description: 'Too many token requests. Try again later.' },
           429,
