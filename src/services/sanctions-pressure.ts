@@ -148,12 +148,20 @@ function toResult(response: ListSanctionsPressureResponse): SanctionsPressureRes
 }
 
 export async function fetchSanctionsPressure(timeRange?: string): Promise<SanctionsPressureResult> {
-  const hydrated = getHydratedData('sanctionsPressure') as ListSanctionsPressureResponse | undefined;
-  if (hydrated?.entries?.length || hydrated?.countries?.length || hydrated?.programs?.length) {
-    const result = toResult(hydrated);
-    latestSanctionsPressureResult = result;
-    return result;
+  // Only use the bootstrap hydration path when there is no timeRange filter:
+  // hydrated data carries the seed script's static isNew flags and cannot be
+  // re-filtered, so a non-default window would show incorrect counts.
+  if (!timeRange) {
+    const hydrated = getHydratedData('sanctionsPressure') as ListSanctionsPressureResponse | undefined;
+    if (hydrated?.entries?.length || hydrated?.countries?.length || hydrated?.programs?.length) {
+      const result = toResult(hydrated);
+      latestSanctionsPressureResult = result;
+      return result;
+    }
   }
+
+  // Use the timeRange as the cache key so each window has its own cache slot.
+  const cacheKey = timeRange || 'all';
 
   return breaker.execute(async () => {
     const response = await client.listSanctionsPressure({
@@ -168,10 +176,11 @@ export async function fetchSanctionsPressure(timeRange?: string): Promise<Sancti
       // Seed is missing or the feed is down. Evict any stale cache so the
       // panel surfaces "unavailable" instead of serving old designations
       // indefinitely via stale-while-revalidate.
-      breaker.clearCache();
+      breaker.clearCache(cacheKey);
     }
     return result;
   }, emptyResult, {
+    cacheKey,
     shouldCache: (result) => result.totalCount > 0,
   });
 }
