@@ -362,6 +362,7 @@ async function httpsProxyFetchJson(url, proxyAuth) {
       headers: connectHeaders,
     }).on('connect', (res, socket) => {
       if (res.statusCode !== 200) {
+        socket.destroy();
         return reject(Object.assign(new Error(`Proxy CONNECT: ${res.statusCode}`), { status: res.statusCode }));
       }
       resolve({ socket });
@@ -382,7 +383,7 @@ async function httpsProxyFetchJson(url, proxyAuth) {
       host: targetUrl.hostname,
       path: targetUrl.pathname + targetUrl.search,
       method: 'GET',
-      headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip' },
+      headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip', 'User-Agent': CHROME_UA },
       createConnection: () => tlsSock,
     }, (resp) => {
       clearTimeout(timer);
