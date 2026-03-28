@@ -6949,6 +6949,98 @@ describe('phase 3 simulation re-ingestion — applyPostSimulationRescore', () =>
     assert.ok(!rejectedIds.includes(stateA), 'promoted path removed from rejectedPaths');
   });
 
+  it('R-8: applySimulationMerge promotes path at 0.39 via +0.12 (bucketChannelMatch + actor overlap)', () => {
+    // Boundary: old guard required >= 0.42; correct lower bound is 0.38 (= 0.50 - 0.12 max bonus).
+    // Path at 0.39 + 0.08 (bucketChannelMatch) + 0.04 (2 shared actors) = 0.51 → promoted.
+    const stateA = 'state-r8a';
+    const stateB = 'state-r8b';
+    const candidateA = makeRescoreCandidatePacket(stateA);
+    const candidateB = makeRescoreCandidatePacket(stateB);
+    // Override affectedAssets with 2 actors that will also appear in topPath.keyActors
+    const pathA = {
+      ...makeRescorePath(stateA, 0.39),
+      candidate: candidateA,
+      direct: { variableKey: 'route_disruption', targetBucket: '', channel: 'supply_disruption', affectedAssets: ['Red Sea Oil Tankers', 'Saudi Aramco'] },
+    };
+    const pathB = { ...makeRescorePath(stateB, 0.75), candidate: candidateB };
+    const evaluation = {
+      status: 'completed_no_material_change',
+      selectedPaths: [pathB],
+      rejectedPaths: [pathA],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r8',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateA,
+        // Summary matches energy bucket + energy_supply_shock channel; keyActors match path actors (2 overlap → +0.04)
+        topPaths: [{ label: 'Oil Supply Shock', summary: 'oil supply disruption from Red Sea energy shock', keyActors: ['Red Sea Oil Tankers', 'Saudi Aramco'] }],
+        invalidators: [],
+        stabilizers: [],
+      }],
+    };
+    const snapshot = {
+      ...makeRescoreSnapshot(stateA),
+      impactExpansionCandidates: [candidateA, candidateB],
+    };
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    const adj = simulationEvidence.adjustments.find((a) => a.candidateStateId === stateA);
+    assert.ok(adj, 'adjustment entry for stateA');
+    assert.equal(adj.details.actorOverlapCount, 2, 'two actors overlap → +0.04 applied');
+    assert.equal(adj.simulationAdjustment, 0.12, 'total adjustment is +0.12');
+    assert.equal(simulationEvidence.pathsPromoted, 1, 'path at 0.39 should be promoted');
+    assert.ok(updatedEval.selectedPaths.some((p) => p.candidateStateId === stateA), 'promoted path in selectedPaths');
+  });
+
+  it('R-9: applySimulationMerge demotes path at 0.64 via -0.15 stabilizer (boundary above old 0.62 guard)', () => {
+    // Boundary: old guard required < 0.62; correct upper bound is 0.65 (= 0.50 + 0.15 max stabilizer).
+    // Path at 0.64 - 0.15 (stabilizer) = 0.49 → demoted. Second path at 0.75 stays; CASE 3 fires.
+    const stateA = 'state-r9a'; // 0.64 — at risk from stabilizer but above old 0.62 threshold
+    const stateB = 'state-r9b'; // 0.75 — safe
+    const candidateA = makeRescoreCandidatePacket(stateA);
+    const candidateB = makeRescoreCandidatePacket(stateB);
+    const pathA = { ...makeRescorePath(stateA, 0.64), candidate: candidateA };
+    const pathB = { ...makeRescorePath(stateB, 0.75), candidate: candidateB };
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [pathA, pathB],
+      rejectedPaths: [],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r9',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateA,
+        topPaths: [],
+        invalidators: [],
+        // stabilizer matches routeFacilityKey='Red Sea' + contains negation term 'normaliz' → -0.15
+        stabilizers: ['red sea shipping lanes normaliz'],
+      }],
+    };
+    const snapshot = {
+      ...makeRescoreSnapshot(stateA),
+      impactExpansionCandidates: [candidateA, candidateB],
+    };
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    const adj = simulationEvidence.adjustments.find((a) => a.candidateStateId === stateA);
+    assert.ok(adj, 'adjustment entry for stateA');
+    assert.equal(adj.simulationAdjustment, -0.15, 'stabilizer applies -0.15');
+    assert.equal(simulationEvidence.pathsDemoted, 1, 'path at 0.64 should be demoted');
+    assert.equal(updatedEval.status, 'completed', 'status stays completed — stateB still selected');
+    assert.ok(!updatedEval.selectedPaths.some((p) => p.candidateStateId === stateA), 'demoted path removed');
+    assert.ok(updatedEval.selectedPaths.some((p) => p.candidateStateId === stateB), 'safe path remains');
+  });
+
   it('R-5: simulation adjustments use marketContext fallback when direct.channel is an LLM-generated invalid key', () => {
     // supply_disruption is not in CHANNEL_KEYWORDS — should fall back to marketContext.topChannel=energy_supply_shock
     const stateId = 'state-r5';

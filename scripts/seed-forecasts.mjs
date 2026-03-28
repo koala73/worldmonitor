@@ -16158,14 +16158,16 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
 
     // Only re-score if there is actionable opportunity:
     // - 'completed_no_material_change': always proceed — any simulation evidence could promote a rejected path
-    // - 'completed': proceed if (a) a selected expanded path risks demotion (acceptanceScore < 0.62
-    //   means a -0.12 invalidator could push it below 0.50), or (b) a rejected expanded path is
-    //   near-threshold (0.42–0.50) and could be promoted via +0.08 bucketChannelMatch into CASE 3.
+    // - 'completed': proceed if (a) a selected expanded path risks demotion, or (b) a rejected expanded
+    //   path could be promoted. Thresholds are derived from the max adjustments in computeSimulationAdjustment:
+    //     max positive: +0.08 (bucketChannelMatch) + 0.04 (actor overlap >= 2) = +0.12
+    //     max negative: -0.15 (stabilizer) — larger than invalidator -0.12
+    //   Demotion risk threshold: 0.50 + 0.15 = 0.65. Promotion window: [0.50 - 0.12, 0.50) = [0.38, 0.50).
     const hasDemotionRisk = (evalData.selectedPaths || []).some(
-      (p) => p.type === 'expanded' && p.acceptanceScore < 0.62,
+      (p) => p.type === 'expanded' && p.acceptanceScore < 0.65,
     );
     const hasPromotionOpportunity = (evalData.rejectedPaths || []).some(
-      (p) => p.type === 'expanded' && p.acceptanceScore >= 0.42 && p.acceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
+      (p) => p.type === 'expanded' && p.acceptanceScore >= 0.38 && p.acceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
     );
     if (evalData.status !== 'completed_no_material_change' && !hasDemotionRisk && !hasPromotionOpportunity) {
       return { skipped: true, reason: 'no_actionable_paths' };
