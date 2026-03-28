@@ -261,10 +261,10 @@ const TOOL_REGISTRY: ToolDef[] = [
     },
     _execute: async (params, base, apiKey) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
-      // Step 1: fetch current geopolitical headlines (budget: 8 s, leaves ~22 s for LLM)
+      // Step 1: fetch current geopolitical headlines (budget: 6 s, leaves ~24 s for LLM)
       const digestRes = await fetch(`${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`, {
         headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
-        signal: AbortSignal.timeout(8_000),
+        signal: AbortSignal.timeout(6_000),
       });
       if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
       type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
@@ -274,19 +274,19 @@ const TOOL_REGISTRY: ToolDef[] = [
         .map(item => item.title ?? '')
         .filter(Boolean)
         .slice(0, 10);
-      // Step 2: summarize with LLM (budget: 20 s — total <30 s edge ceiling)
+      // Step 2: summarize with LLM (budget: 18 s — combined 24 s, well under 30 s edge ceiling)
       const briefRes = await fetch(`${base}/api/news/v1/summarize-article`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
         body: JSON.stringify({
-          provider: 'groq',
+          provider: 'openrouter',
           headlines,
           mode: 'brief',
           geoContext: String(params.geo_context ?? ''),
           variant: 'geo',
           lang: 'en',
         }),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(18_000),
       });
       if (!briefRes.ok) throw new Error(`summarize-article HTTP ${briefRes.status}`);
       return briefRes.json();
@@ -307,7 +307,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const res = await fetch(`${base}/api/intelligence/v1/get-country-intel-brief`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-        body: JSON.stringify({ countryCode: String(params.country_code ?? ''), framework: String(params.framework ?? '') }),
+        body: JSON.stringify({ country_code: String(params.country_code ?? ''), framework: String(params.framework ?? '') }),
         signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
@@ -322,6 +322,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       properties: {
         query: { type: 'string', description: 'The question or situation to analyze, e.g. "What are the implications of the Taiwan strait escalation for semiconductor supply chains?"' },
         context: { type: 'string', description: 'Optional additional geo-political context to include in the analysis' },
+        framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT, Porter\'s Five Forces)' },
       },
       required: ['query'],
     },
@@ -329,7 +330,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const res = await fetch(`${base}/api/intelligence/v1/deduct-situation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-        body: JSON.stringify({ query: String(params.query ?? ''), geoContext: String(params.context ?? '') }),
+        body: JSON.stringify({ query: String(params.query ?? ''), geoContext: String(params.context ?? ''), framework: String(params.framework ?? '') }),
         signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`deduct-situation HTTP ${res.status}`);
@@ -498,8 +499,9 @@ export default async function handler(req: Request): Promise<Response> {
         return rpcOk(id, {
           content: [{ type: 'text', text: JSON.stringify(result) }],
         }, corsHeaders);
-      } catch {
-        return rpcError(id, -32603, 'Internal error: data fetch failed');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'data fetch failed';
+        return rpcError(id, -32603, `Internal error: ${msg}`);
       }
     }
 
