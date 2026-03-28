@@ -306,11 +306,39 @@ const TOOL_REGISTRY: ToolDef[] = [
       required: ['country_code'],
     },
     _execute: async (params, base, apiKey) => {
-      const res = await fetch(`${base}/api/intelligence/v1/get-country-intel-brief`, {
+      const UA = 'worldmonitor-mcp-edge/1.0';
+      const countryCode = String(params.country_code ?? '').toUpperCase().slice(0, 2);
+
+      // Fetch current geopolitical headlines to ground the LLM (budget: 4 s).
+      // Without context the model hallucinates events — real headlines anchor it.
+      let contextParam = '';
+      try {
+        const digestRes = await fetch(`${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`, {
+          headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
+          signal: AbortSignal.timeout(4_000),
+        });
+        if (digestRes.ok) {
+          type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
+          const digest = await digestRes.json() as DigestPayload;
+          const headlines = Object.values(digest.categories ?? {})
+            .flatMap(cat => cat.items ?? [])
+            .map(item => item.title ?? '')
+            .filter(Boolean)
+            .slice(0, 15)
+            .join('\n');
+          if (headlines) contextParam = encodeURIComponent(headlines.slice(0, 4000));
+        }
+      } catch { /* proceed without context — better than failing */ }
+
+      const briefUrl = contextParam
+        ? `${base}/api/intelligence/v1/get-country-intel-brief?context=${contextParam}`
+        : `${base}/api/intelligence/v1/get-country-intel-brief`;
+
+      const res = await fetch(briefUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-        body: JSON.stringify({ country_code: String(params.country_code ?? ''), framework: String(params.framework ?? '') }),
-        signal: AbortSignal.timeout(25_000),
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
+        body: JSON.stringify({ country_code: countryCode, framework: String(params.framework ?? '') }),
+        signal: AbortSignal.timeout(24_000),
       });
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
       return res.json();

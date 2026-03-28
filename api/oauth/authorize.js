@@ -87,9 +87,9 @@ const GLOBE_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" s
 const PAGE_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'DENY', 'Cache-Control': 'no-store', 'Pragma': 'no-cache' };
 
 function htmlError(title, detail) {
-  return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Error &#x2014; WorldMonitor</title>
+  return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Error &#x2014; WorldMonitor MCP</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:ui-monospace,'SF Mono','Cascadia Code',monospace;background:#0a0a0a;color:#e8e8e8;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem}.wm-logo{display:flex;align-items:center;gap:.5rem;margin-bottom:2rem;text-decoration:none}.wm-logo svg{color:#2d8a6e}.wm-logo-text{font-size:.75rem;color:#555;letter-spacing:.1em;text-transform:uppercase}.card{width:100%;max-width:420px;background:#111;border:1px solid #1e1e1e;padding:2rem}h1{font-size:.95rem;font-weight:600;color:#ef4444;margin-bottom:.75rem;letter-spacing:.02em}p{font-size:.85rem;color:#666;line-height:1.6}.back{display:inline-block;margin-top:1.5rem;font-size:.75rem;color:#444;text-decoration:none;letter-spacing:.03em}.back:hover{color:#888}.footer{margin-top:1.5rem;font-size:.7rem;color:#2a2a2a;text-align:center}.footer a{color:#333;text-decoration:none}.footer a:hover{color:#555}</style></head>
-<body><a href="https://www.worldmonitor.app" class="wm-logo" target="_blank" rel="noopener">${GLOBE_SVG}<span class="wm-logo-text">WorldMonitor</span></a>
+<body><a href="https://www.worldmonitor.app" class="wm-logo" target="_blank" rel="noopener">${GLOBE_SVG}<span class="wm-logo-text">WorldMonitor MCP</span></a>
 <div class="card"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(detail)}</p><a href="javascript:history.back()" class="back">&#8592; go back</a></div>
 <p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a></p>
 </body></html>`, { status: 400, headers: PAGE_HEADERS });
@@ -100,7 +100,7 @@ function consentPage(params, nonce, errorMsg = '') {
   const redirectHost = new URL(redirect_uri).hostname;
   return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Authorize &#x2014; WorldMonitor</title>
+<title>Authorize &#x2014; WorldMonitor MCP</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:ui-monospace,'SF Mono','Cascadia Code',monospace;background:#0a0a0a;color:#e8e8e8;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem}
@@ -115,7 +115,7 @@ hr{border:none;border-top:1px solid #1e1e1e;margin:1.25rem 0}
 .scope-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#444;margin-bottom:.6rem}
 .scope-list{list-style:none}
 .scope-list li{font-size:.8rem;color:#666;padding:.2rem 0;display:flex;align-items:flex-start;gap:.5rem}
-.scope-list li::before{content:'&#x2192;';color:#2d8a6e;flex-shrink:0;margin-top:.05em}
+.scope-list li::before{content:'\2192';color:#2d8a6e;flex-shrink:0;margin-top:.05em}
 label{display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#444;margin-bottom:.4rem}
 input[type=password]{width:100%;padding:.65rem .75rem;background:#0a0a0a;border:1px solid #2a2a2a;color:#e8e8e8;font-family:inherit;font-size:.9rem;outline:none;border-radius:0}
 input[type=password]:focus{border-color:#2d8a6e}
@@ -131,7 +131,7 @@ button:disabled{opacity:.5;cursor:default}
 .footer a:hover{color:#555}
 </style></head>
 <body>
-<a href="https://www.worldmonitor.app" class="wm-logo" target="_blank" rel="noopener">${GLOBE_SVG}<span class="wm-logo-text">WorldMonitor</span></a>
+<a href="https://www.worldmonitor.app" class="wm-logo" target="_blank" rel="noopener">${GLOBE_SVG}<span class="wm-logo-text">WorldMonitor MCP</span></a>
 <div class="card">
 <div class="client-hd">
 <div class="client-name">${escapeHtml(client_name)} wants access</div>
