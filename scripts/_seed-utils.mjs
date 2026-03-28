@@ -308,6 +308,13 @@ export function sleep(ms) {
 }
 
 // ─── Proxy helpers for sources that block Railway container IPs ───
+// TODO: consolidate all fetch+proxy logic into a single proxyFetch(url, options) helper.
+// Current state: _seed-utils has fredFetchJson (fixed: direct-first, proxy fallback) and
+// curlFetch (curl-only, relay container). seed-disease-outbreaks.mjs and seed-fear-greed.mjs
+// each define their own local curlFetch that silently fails with ENOENT in seeder containers
+// (curl not in node:22-alpine). Each of those scripts should use a shared fetchWithProxyFallback
+// that tries native fetch first and falls back to httpsProxyFetchJson — same pattern as
+// fredFetchJson after this fix. Tracked: consolidate into one exported function.
 const { resolveProxyString } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
 export function resolveProxy() {
@@ -316,7 +323,7 @@ export function resolveProxy() {
 
 // curl-based fetch; throws on non-2xx. Returns response body as string.
 // NOTE: requires curl binary — only available in Dockerfile.relay (apk add curl).
-// Do NOT call from standalone seed scripts; use httpsProxyFetchJson instead.
+// Do NOT call from standalone seed scripts; use fredFetchJson or httpsProxyFetchJson instead.
 export function curlFetch(url, proxyAuth, headers = {}) {
   const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
   if (proxyAuth) args.push('-x', `http://${proxyAuth}`);
