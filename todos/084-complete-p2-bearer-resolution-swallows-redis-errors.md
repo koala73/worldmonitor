@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: "084"
 tags: [code-review, oauth, mcp, reliability]

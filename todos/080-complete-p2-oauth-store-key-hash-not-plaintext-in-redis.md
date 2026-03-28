@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: "080"
 tags: [code-review, security, oauth, redis]
