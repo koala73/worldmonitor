@@ -218,20 +218,16 @@ export default async function handler(req) {
       return htmlError('Bad Request', 'Could not parse form data.');
     }
 
-    const client_id = params.get('client_id');
-    const redirect_uri = params.get('redirect_uri');
-    const response_type = params.get('response_type');
-    const code_challenge = params.get('code_challenge');
-    const code_challenge_method = params.get('code_challenge_method');
-    const state = params.get('state') ?? '';
     const api_key = params.get('api_key') ?? '';
     const nonce = params.get('_nonce') ?? '';
 
-    if (!client_id || !redirect_uri || response_type !== 'code' || !code_challenge || code_challenge_method !== 'S256') {
-      return htmlError('Invalid Request', 'Missing required parameters.');
+    if (!nonce) {
+      return htmlError('Bad Request', 'Missing session token.');
     }
 
-    // Validate and atomically consume CSRF nonce (GETDEL — prevents concurrent submit race)
+    // Atomically consume CSRF nonce (GETDEL — prevents concurrent submit race).
+    // All security-critical values are derived from nonceData, not from mutable
+    // form fields — prevents authorization misbinding via cross-origin form POST.
     let nonceData;
     try {
       nonceData = await redisGetDel(`oauth:nonce:${nonce}`);
@@ -241,15 +237,9 @@ export default async function handler(req) {
     if (!nonceData) {
       return htmlError('Session Expired', 'Authorization session expired or is invalid. Please start over.');
     }
-    // Log any param mismatch to diagnose Connectors UI behavior; don't block here —
-    // client_id and redirect_uri are re-validated against the client registry below.
-    if (nonceData.client_id !== client_id || nonceData.redirect_uri !== redirect_uri) {
-      console.error(JSON.stringify({
-        event: 'oauth_nonce_param_mismatch',
-        stored_client: nonceData.client_id, recv_client: client_id,
-        stored_redirect_uri: nonceData.redirect_uri, recv_redirect_uri: redirect_uri,
-      }));
-    }
+
+    // Authoritative values come exclusively from server-stored nonce.
+    const { client_id, redirect_uri, code_challenge, state } = nonceData;
 
     let client;
     try {
@@ -281,7 +271,7 @@ export default async function handler(req) {
       }, retryNonce, 'Invalid API key. Please check and try again.');
     }
 
-    // Issue authorization code
+    // Issue authorization code — all fields sourced from nonceData
     const code = crypto.randomUUID();
     const codeData = {
       client_id,
