@@ -50,14 +50,15 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- Auth ---
 
-  it('returns JSON-RPC -32001 when no API key provided', async () => {
+  it('returns HTTP 401 + WWW-Authenticate when no credentials provided', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(initBody()),
     });
     const res = await handler(req);
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 401);
+    assert.ok(res.headers.get('www-authenticate')?.includes('Bearer realm="worldmonitor"'), 'must include WWW-Authenticate header');
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
   });
