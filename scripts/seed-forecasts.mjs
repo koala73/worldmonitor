@@ -15706,15 +15706,20 @@ async function buildAndSeedMarketImplications(inputs) {
 
   const { url, token } = getRedisCredentials();
 
-  // Extend the curated static allowlist with live equity symbols from Redis.
+  // Extend the curated static allowlist with tradeable equity symbols from Redis.
   // ALL_ALLOWED_TICKERS is always preserved (ETFs, defense, commodities, forex, rates, crypto).
-  // liveTickerSet adds stocks we have live price data for (e.g. NFLX, WMT) that are not in
-  // the static list. Hallucinated symbols absent from both sets are rejected at validation.
+  // The live set adds stocks we have live price data for (e.g. NFLX, WMT) that are not in
+  // the static list, but only after stripping non-tradeable entries: index symbols (^GSPC,
+  // ^DJI) and foreign-exchange suffixes (RELIANCE.NS) are in the bootstrap for display only
+  // and must not be accepted as valid card tickers.
   const liveTickerSet = await loadTickerSet(url, token);
   let effectiveTickers;
   if (liveTickerSet.size > 0) {
-    effectiveTickers = new Set([...ALL_ALLOWED_TICKERS, ...liveTickerSet]);
-    console.log(`  [MarketImplications] Extended allowlist: ${ALL_ALLOWED_TICKERS.size} static + ${liveTickerSet.size} live equity symbols`);
+    const tradeableLive = new Set(
+      [...liveTickerSet].filter(s => /^[A-Z]{1,6}(-[A-Z])?$/.test(s)),
+    );
+    effectiveTickers = new Set([...ALL_ALLOWED_TICKERS, ...tradeableLive]);
+    console.log(`  [MarketImplications] Extended allowlist: ${ALL_ALLOWED_TICKERS.size} static + ${tradeableLive.size} live equity symbols`);
   } else {
     effectiveTickers = ALL_ALLOWED_TICKERS;
     console.warn('  [MarketImplications] Redis ticker set empty — using static allowlist only');
