@@ -772,6 +772,13 @@ export class DeckGLMap {
 
     this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
 
+    // FR #199: Add scale control for distance reference
+    const scaleControl = new maplibregl.ScaleControl({
+      maxWidth: 100,
+      unit: 'metric',
+    });
+    this.maplibreMap.addControl(scaleControl, 'bottom-left');
+
     this.maplibreMap.on('movestart', () => {
       if (this.moveTimeoutId) {
         clearTimeout(this.moveTimeoutId);
