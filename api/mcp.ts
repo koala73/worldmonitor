@@ -310,13 +310,14 @@ const TOOL_REGISTRY: ToolDef[] = [
       const UA = 'worldmonitor-mcp-edge/1.0';
       const countryCode = String(params.country_code ?? '').toUpperCase().slice(0, 2);
 
-      // Fetch current geopolitical headlines to ground the LLM (budget: 4 s).
+      // Fetch current geopolitical headlines to ground the LLM (budget: 2 s — cached endpoint).
       // Without context the model hallucinates events — real headlines anchor it.
+      // 2 s + 22 s brief = 24 s worst-case; 6 s margin before the 30 s Edge kill.
       let contextParam = '';
       try {
         const digestRes = await fetch(`${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`, {
           headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
-          signal: AbortSignal.timeout(4_000),
+          signal: AbortSignal.timeout(2_000),
         });
         if (digestRes.ok) {
           type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
@@ -339,7 +340,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
         body: JSON.stringify({ country_code: countryCode, framework: String(params.framework ?? '') }),
-        signal: AbortSignal.timeout(24_000),
+        signal: AbortSignal.timeout(22_000),
       });
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
       return res.json();
