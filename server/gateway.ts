@@ -89,6 +89,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/aviation/v1/get-flight-status': 'fast',
   '/api/aviation/v1/track-aircraft': 'no-store',
   '/api/aviation/v1/search-flight-prices': 'medium',
+  '/api/aviation/v1/search-google-flights': 'no-store',
+  '/api/aviation/v1/search-google-dates': 'medium',
   '/api/aviation/v1/list-aviation-news': 'slow',
   '/api/market/v1/get-country-stock-index': 'slow',
 

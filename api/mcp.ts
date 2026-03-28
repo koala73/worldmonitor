@@ -362,6 +362,80 @@ const TOOL_REGISTRY: ToolDef[] = [
       return res.json();
     },
   },
+  {
+    name: 'search_flights',
+    description: 'Search Google Flights for real-time flight options between two airports on a specific date. Returns available flights with prices, stops, airline, and segment details. Use IATA airport codes (e.g. "JFK", "LHR", "DXB").',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        origin: { type: 'string', description: 'IATA code for the departure airport, e.g. "JFK"' },
+        destination: { type: 'string', description: 'IATA code for the arrival airport, e.g. "LHR"' },
+        departure_date: { type: 'string', description: 'Departure date in YYYY-MM-DD format' },
+        return_date: { type: 'string', description: 'Return date in YYYY-MM-DD format for round trips (optional)' },
+        cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy)' },
+        max_stops: { type: 'string', description: 'Max stops: "0" or "non_stop" for nonstop, "1" or "one_stop" for max one stop, or omit for any (optional)' },
+        passengers: { type: 'number', description: 'Number of passengers (1-9, default 1)' },
+        sort_by: { type: 'string', description: 'Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional)' },
+      },
+      required: ['origin', 'destination', 'departure_date'],
+    },
+    _execute: async (params, base, apiKey) => {
+      const qs = new URLSearchParams({
+        origin: String(params.origin ?? ''),
+        destination: String(params.destination ?? ''),
+        departure_date: String(params.departure_date ?? ''),
+        ...(params.return_date ? { return_date: String(params.return_date) } : {}),
+        ...(params.cabin_class ? { cabin_class: String(params.cabin_class) } : {}),
+        ...(params.max_stops ? { max_stops: String(params.max_stops) } : {}),
+        ...(params.sort_by ? { sort_by: String(params.sort_by) } : {}),
+        passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
+      });
+      const res = await fetch(`${base}/api/aviation/v1/search-google-flights?${qs}`, {
+        headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(25_000),
+      });
+      if (!res.ok) throw new Error(`search-google-flights HTTP ${res.status}`);
+      return res.json();
+    },
+  },
+  {
+    name: 'search_flight_prices_by_date',
+    description: 'Search Google Flights date-grid pricing across a date range. Returns cheapest prices for each departure date between two airports. Useful for finding the cheapest day to fly. Use IATA airport codes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        origin: { type: 'string', description: 'IATA code for the departure airport, e.g. "JFK"' },
+        destination: { type: 'string', description: 'IATA code for the arrival airport, e.g. "LHR"' },
+        start_date: { type: 'string', description: 'Start of the date range in YYYY-MM-DD format' },
+        end_date: { type: 'string', description: 'End of the date range in YYYY-MM-DD format' },
+        is_round_trip: { type: 'boolean', description: 'Whether to search round-trip prices (default false). Requires trip_duration when true.' },
+        trip_duration: { type: 'number', description: 'Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip)' },
+        cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional)' },
+        passengers: { type: 'number', description: 'Number of passengers (1-9, default 1)' },
+        sort_by_price: { type: 'boolean', description: 'Sort results by price ascending (default false, sorts by date)' },
+      },
+      required: ['origin', 'destination', 'start_date', 'end_date'],
+    },
+    _execute: async (params, base, apiKey) => {
+      const qs = new URLSearchParams({
+        origin: String(params.origin ?? ''),
+        destination: String(params.destination ?? ''),
+        start_date: String(params.start_date ?? ''),
+        end_date: String(params.end_date ?? ''),
+        is_round_trip: String(params.is_round_trip ?? false),
+        ...(params.trip_duration ? { trip_duration: String(params.trip_duration) } : {}),
+        ...(params.cabin_class ? { cabin_class: String(params.cabin_class) } : {}),
+        sort_by_price: String(params.sort_by_price ?? false),
+        passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
+      });
+      const res = await fetch(`${base}/api/aviation/v1/search-google-dates?${qs}`, {
+        headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(25_000),
+      });
+      if (!res.ok) throw new Error(`search-google-dates HTTP ${res.status}`);
+      return res.json();
+    },
+  },
 ];
 
 // Public shape for tools/list (strip internal _-prefixed fields, add MCP annotations)
