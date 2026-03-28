@@ -7,7 +7,7 @@ import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
-import { keyFingerprint, timingSafeIncludes } from '../_crypto.js';
+import { keyFingerprint, sha256Hex, timingSafeIncludes } from '../_crypto.js';
 
 export const config = { runtime: 'edge' };
 
@@ -17,7 +17,7 @@ function jsonResp(body, status = 200, extra = {}) {
   return jsonResponse(body, status, { ...getPublicCorsHeaders('POST, OPTIONS'), ...extra });
 }
 
-// Tight rate limiter for credential endpoint: 10 token requests per minute per IP
+// Tight rate limiter for credential endpoint: 10 token requests per minute per credential
 let _rl = null;
 function getRatelimit() {
   if (_rl) return _rl;
@@ -44,17 +44,20 @@ async function storeToken(uuid, apiKey) {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return false;
 
-  const fingerprint = await keyFingerprint(apiKey);
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify([['SET', `oauth:token:${uuid}`, JSON.stringify(fingerprint), 'EX', TOKEN_TTL_SECONDS]]),
-    signal: AbortSignal.timeout(3_000),
-  });
-  if (!resp.ok) return false;
-
-  const results = await resp.json().catch(() => null);
-  return Array.isArray(results) && results[0]?.result === 'OK';
+  try {
+    const fingerprint = await keyFingerprint(apiKey);
+    const resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['SET', `oauth:token:${uuid}`, JSON.stringify(fingerprint), 'EX', TOKEN_TTL_SECONDS]]),
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!resp.ok) return false;
+    const results = await resp.json().catch(() => null);
+    return Array.isArray(results) && results[0]?.result === 'OK';
+  } catch {
+    return false;
+  }
 }
 
 export default async function handler(req) {
@@ -67,12 +70,22 @@ export default async function handler(req) {
     return jsonResp({ error: 'method_not_allowed' }, 405);
   }
 
-  // Rate limit by IP before any credential work
+  // Parse body first so we can key the rate limit on the credential fingerprint
+  // rather than IP — Claude's shared outbound IPs would otherwise cause cross-user 429s
+  const params = new URLSearchParams(await req.text().catch(() => ''));
+  const grantType = params.get('grant_type');
+  const clientSecret = params.get('client_secret');
+
   const rl = getRatelimit();
   if (rl) {
     try {
-      const ip = getClientIp(req);
-      const { success, reset } = await rl.limit(ip);
+      // Key by sha256(clientSecret).slice(0,8) when a secret is present so each
+      // credential gets its own 10/min bucket regardless of shared outbound IP.
+      // Fall back to IP for requests without a secret (will fail validation anyway).
+      const rlKey = clientSecret
+        ? `cred:${(await sha256Hex(clientSecret)).slice(0, 8)}`
+        : `ip:${getClientIp(req)}`;
+      const { success, reset } = await rl.limit(rlKey);
       if (!success) {
         return jsonResp(
           { error: 'rate_limit_exceeded', error_description: 'Too many token requests. Try again later.' },
@@ -84,10 +97,6 @@ export default async function handler(req) {
       // Upstash unavailable — allow through (graceful degradation)
     }
   }
-
-  const params = new URLSearchParams(await req.text().catch(() => ''));
-  const grantType = params.get('grant_type');
-  const clientSecret = params.get('client_secret');
 
   if (grantType !== 'client_credentials') {
     return jsonResp({ error: 'unsupported_grant_type' }, 400);

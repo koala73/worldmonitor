@@ -433,7 +433,16 @@ export default async function handler(req: Request): Promise<Response> {
   const authHeader = req.headers.get('Authorization') ?? '';
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7).trim();
-    const bearerApiKey = await resolveApiKeyFromBearer(token);
+    let bearerApiKey: string | null;
+    try {
+      bearerApiKey = await resolveApiKeyFromBearer(token);
+    } catch {
+      // Redis/network error — return 503 so clients know to retry, not re-authenticate
+      return new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Auth service temporarily unavailable. Try again.' } }),
+        { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } }
+      );
+    }
     if (bearerApiKey) {
       apiKey = bearerApiKey;
     } else {
