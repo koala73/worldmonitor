@@ -550,7 +550,7 @@ async function fetchAll() {
   // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
   if (ec?.series?.length > 0) await writeExtraKeyWithMeta(KEYS.energyCapacity, ec, CAPACITY_TTL, ec.series.length);
 
-  if (fr) {
+  if (frHasData) {
     for (const [seriesId, series] of Object.entries(fr)) {
       await writeExtraKeyWithMeta(`${FRED_KEY_PREFIX}:${seriesId}:0`, { series }, FRED_TTL, series.observations?.length ?? 0);
     }
