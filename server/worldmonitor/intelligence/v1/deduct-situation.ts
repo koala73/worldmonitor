@@ -69,6 +69,7 @@ function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): 
     return `- "${title}" — Yes ${pct}% (${vol} volume)`;
   }).filter((l): l is string => l !== null);
 
+  if (!lines.length) return '';
   return `## Prediction Market Odds (crowd-calibrated)\n${lines.join('\n')}`;
 }
 
