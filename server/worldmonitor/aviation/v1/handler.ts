@@ -9,6 +9,8 @@ import { trackAircraft } from './track-aircraft';
 import { searchFlightPrices } from './search-flight-prices';
 import { listAviationNews } from './list-aviation-news';
 import { getYoutubeLiveStreamInfo } from './get-youtube-live-stream-info';
+import { searchGoogleFlights } from './search-google-flights';
+import { searchGoogleDates } from './search-google-dates';
 
 export const aviationHandler: AviationServiceHandler = {
   listAirportDelays,
@@ -20,4 +22,6 @@ export const aviationHandler: AviationServiceHandler = {
   searchFlightPrices,
   listAviationNews,
   getYoutubeLiveStreamInfo,
+  searchGoogleFlights,
+  searchGoogleDates,
 };
