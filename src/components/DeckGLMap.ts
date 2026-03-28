@@ -1359,6 +1359,11 @@ export class DeckGLMap {
     const filteredDiseaseOutbreaks = mapLayers.diseaseOutbreaks ? this.filterByTimeCached(this.diseaseOutbreaks, (item) => item.publishedAt) : [];
     const filteredRadiationObservations = mapLayers.radiationWatch ? this.filterByTimeCached(this.radiationObservations, (obs) => obs.observedAt) : [];
     const filteredPositiveEvents = mapLayers.positiveEvents ? this.filterByTimeCached(this.positiveEvents, (e) => e.timestamp) : [];
+    const filteredIranEvents = mapLayers.iranAttacks ? this.filterByTimeCached(this.iranEvents, (e) => e.timestamp) : [];
+    const filteredFirmsFireData = mapLayers.fires ? this.filterByTimeCached(this.firmsFireData, (d) => d.acq_date) : [];
+    const filteredTrafficAnomalies = mapLayers.outages ? this.filterByTimeCached(this.trafficAnomalies, (a) => a.startDate) : [];
+    const filteredKindnessPoints = mapLayers.kindness ? this.filterByTimeCached(this.kindnessPoints, (p) => p.timestamp) : [];
+    const filteredImageryScenes = mapLayers.satellites ? this.filterByTimeCached(this.imageryScenes, (s) => s.datetime) : [];
     const filteredWeatherAlerts = mapLayers.weather ? this.filterByTimeCached(this.weatherAlerts, (alert) => alert.onset) : [];
     const filteredOutages = mapLayers.outages ? this.filterByTimeCached(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTimeCached(this.cableAdvisories, (advisory) => advisory.reported) : [];
@@ -1460,14 +1465,14 @@ export class DeckGLMap {
     layers.push(this.createEmptyGhost('disease-outbreaks-layer'));
 
     // Satellite fires layer (NASA FIRMS)
-    if (mapLayers.fires && this.firmsFireData.length > 0) {
-      layers.push(this.createFiresLayer());
+    if (mapLayers.fires && filteredFirmsFireData.length > 0) {
+      layers.push(this.createFiresLayer(filteredFirmsFireData));
     }
 
     // Iran events layer
-    if (mapLayers.iranAttacks && this.iranEvents.length > 0) {
-      layers.push(this.createIranEventsLayer());
-      layers.push(this.createGhostLayer('iran-events-layer', this.iranEvents, d => [d.longitude, d.latitude], { radiusMinPixels: 12 }));
+    if (mapLayers.iranAttacks && filteredIranEvents.length > 0) {
+      layers.push(this.createIranEventsLayer(filteredIranEvents));
+      layers.push(this.createGhostLayer('iran-events-layer', filteredIranEvents, d => [d.longitude, d.latitude], { radiusMinPixels: 12 }));
     }
 
     // Weather alerts layer
@@ -1481,8 +1486,8 @@ export class DeckGLMap {
     }
     layers.push(this.createEmptyGhost('outages-layer'));
 
-    if (mapLayers.outages && this.trafficAnomalies.length > 0) {
-      layers.push(this.createTrafficAnomaliesLayer(this.trafficAnomalies));
+    if (mapLayers.outages && filteredTrafficAnomalies.length > 0) {
+      layers.push(this.createTrafficAnomaliesLayer(filteredTrafficAnomalies));
     }
     layers.push(this.createEmptyGhost('traffic-anomalies-layer'));
 
@@ -1665,8 +1670,8 @@ export class DeckGLMap {
     }
 
     // Kindness layer (happy variant -- green baseline pulses + real kindness events)
-    if (mapLayers.kindness && this.kindnessPoints.length > 0) {
-      layers.push(...this.createKindnessLayers());
+    if (mapLayers.kindness && filteredKindnessPoints.length > 0) {
+      layers.push(...this.createKindnessLayers(filteredKindnessPoints));
     }
 
     // Phase 8: Happiness choropleth (rendered below point markers)
@@ -1693,8 +1698,8 @@ export class DeckGLMap {
       layers.push(this.createRenewableInstallationsLayer());
     }
 
-    if (mapLayers.satellites && this.imageryScenes.length > 0) {
-      layers.push(this.createImageryFootprintLayer());
+    if (mapLayers.satellites && filteredImageryScenes.length > 0) {
+      layers.push(this.createImageryFootprintLayer(filteredImageryScenes));
     }
 
     // Webcam layer (server-side clustered markers)
@@ -2266,10 +2271,10 @@ export class DeckGLMap {
     return layers;
   }
 
-  private createFiresLayer(): ScatterplotLayer {
+  private createFiresLayer(items: typeof this.firmsFireData): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'fires-layer',
-      data: this.firmsFireData,
+      data: items,
       getPosition: (d: (typeof this.firmsFireData)[0]) => [d.lon, d.lat],
       getRadius: (d: (typeof this.firmsFireData)[0]) => Math.min(d.frp * 200, 30000) || 5000,
       getFillColor: (d: (typeof this.firmsFireData)[0]) => {
@@ -2283,10 +2288,10 @@ export class DeckGLMap {
     });
   }
 
-  private createIranEventsLayer(): ScatterplotLayer {
+  private createIranEventsLayer(items: IranEvent[]): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'iran-events-layer',
-      data: this.iranEvents,
+      data: items,
       getPosition: (d: IranEvent) => [d.longitude, d.latitude],
       getRadius: (d: IranEvent) => getIranEventRadius(d.severity),
       getFillColor: (d: IranEvent) => getIranEventColor(d),
@@ -3367,14 +3372,14 @@ export class DeckGLMap {
     return layers;
   }
 
-  private createKindnessLayers(): Layer[] {
+  private createKindnessLayers(items: KindnessPoint[]): Layer[] {
     const layers: Layer[] = [];
-    if (this.kindnessPoints.length === 0) return layers;
+    if (items.length === 0) return layers;
 
     // Dot layer (tooltip on hover via getTooltip)
     layers.push(new ScatterplotLayer<KindnessPoint>({
       id: 'kindness-layer',
-      data: this.kindnessPoints,
+      data: items,
       getPosition: (d: KindnessPoint) => [d.lon, d.lat],
       getRadius: 12000,
       getFillColor: [74, 222, 128, 200] as [number, number, number, number],
@@ -3387,7 +3392,7 @@ export class DeckGLMap {
     const pulse = 1.0 + 0.4 * (0.5 + 0.5 * Math.sin((this.pulseTime || Date.now()) / 800));
     layers.push(new ScatterplotLayer<KindnessPoint>({
       id: 'kindness-pulse',
-      data: this.kindnessPoints,
+      data: items,
       getPosition: (d: KindnessPoint) => [d.lon, d.lat],
       getRadius: 14000,
       radiusScale: pulse,
@@ -3529,10 +3534,10 @@ export class DeckGLMap {
     });
   }
 
-  private createImageryFootprintLayer(): PolygonLayer {
+  private createImageryFootprintLayer(items: ImageryScene[]): PolygonLayer {
     return new PolygonLayer({
       id: 'satellite-imagery-layer',
-      data: this.imageryScenes.filter(s => s.geometryGeojson),
+      data: items.filter(s => s.geometryGeojson),
       getPolygon: (d: ImageryScene) => {
         try {
           const geom = JSON.parse(d.geometryGeojson);
