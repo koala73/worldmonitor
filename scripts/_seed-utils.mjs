@@ -369,7 +369,7 @@ async function httpsProxyFetchJson(url, proxyAuth) {
     }).on('error', reject).end();
   });
 
-  const tlsSock = tls.connect({ socket, servername: targetUrl.hostname });
+  const tlsSock = tls.connect({ socket, servername: targetUrl.hostname, ALPNProtocols: ['http/1.1'] });
   await new Promise((resolve, reject) => {
     tlsSock.on('secureConnect', resolve);
     tlsSock.on('error', reject);
