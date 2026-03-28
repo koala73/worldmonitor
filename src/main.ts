@@ -354,6 +354,8 @@ window.addEventListener('securitypolicyviolation', (e) => {
   if (/_vercel\/insights\/script\.js/.test(blocked)) return;
   // Skip inline script blocks — browser extension or in-app browser injection, not actionable
   if (blocked === 'inline' && e.effectiveDirective === 'script-src-elem') return;
+  // Skip null blocked URI — in-app browsers (Baidu, WeChat, Instagram) inject null-src iframes
+  if (blocked === 'null') return;
   Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
     level: 'warning',
     tags: { kind: 'csp_violation' },
