@@ -400,7 +400,7 @@ export class App {
       }
       for (const key of newVariantKeys) {
         if (!(key in panelSettings)) {
-          panelSettings[key] = { ...getEffectivePanelConfig(key, currentVariant), enabled: true };
+          panelSettings[key] = { ...getEffectivePanelConfig(key, currentVariant) };
         }
       }
     } else {
@@ -438,8 +438,9 @@ export class App {
       // Merge in any panels from ALL_PANELS that didn't exist when settings were saved
       for (const key of Object.keys(ALL_PANELS)) {
         if (!(key in panelSettings)) {
-          const isDefault = (VARIANT_DEFAULTS[SITE_VARIANT] ?? []).includes(key);
-          panelSettings[key] = { ...getEffectivePanelConfig(key, SITE_VARIANT), enabled: isDefault };
+          const config = getEffectivePanelConfig(key, SITE_VARIANT);
+          const isInVariant = (VARIANT_DEFAULTS[SITE_VARIANT] ?? []).includes(key);
+          panelSettings[key] = { ...config, enabled: isInVariant && config.enabled };
         }
       }
 
@@ -449,7 +450,8 @@ export class App {
         const variantDefaults = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
         for (const key of Object.keys(ALL_PANELS)) {
           if (!(key in panelSettings)) {
-            panelSettings[key] = { ...getEffectivePanelConfig(key, SITE_VARIANT), enabled: variantDefaults.has(key) };
+            const config = getEffectivePanelConfig(key, SITE_VARIANT);
+            panelSettings[key] = { ...config, enabled: variantDefaults.has(key) && config.enabled };
           }
         }
         saveToStorage(STORAGE_KEYS.panels, panelSettings);

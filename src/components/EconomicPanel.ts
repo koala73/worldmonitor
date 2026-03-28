@@ -217,7 +217,20 @@ export class EconomicPanel extends Panel {
         return `<div class="economic-empty">${t('components.economic.fredKeyMissing')}</div>`;
       }
       if (this.fredState === 'error' || this.fredState === 'retrying') {
-        return `<div class="economic-empty">${escapeHtml(this.fredErrorMsg)}</div>`;
+        const isRetrying = this.fredState === 'retrying';
+        const raw = isRetrying ? t('common.upstreamUnavailable') : this.fredErrorMsg;
+        const mainMsg = raw.includes('\u2014') ? raw.slice(0, raw.indexOf('\u2014')).trimEnd() : raw;
+        const countdownLine = isRetrying ? `<div class="panel-error-countdown">${escapeHtml(this.fredErrorMsg)}</div>` : '';
+        return `
+          <div class="panel-error-state">
+            <div class="panel-loading-radar panel-error-radar">
+              <div class="panel-radar-sweep"></div>
+              <div class="panel-radar-dot error"></div>
+            </div>
+            <div class="panel-error-msg">${escapeHtml(mainMsg)}</div>
+            ${countdownLine}
+          </div>
+        `;
       }
       return `<div class="economic-empty">${t('components.economic.noIndicatorData')}</div>`;
     }
