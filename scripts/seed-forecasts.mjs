@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
+import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 
 const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (_isDirectRun) loadEnvFile(import.meta.url);
@@ -3188,39 +3189,9 @@ async function extractCriticalSignalBundle(inputs) {
   return bundle;
 }
 
-function extractFirstJsonObject(text) {
-  const start = text.indexOf('{');
-  if (start === -1) return '';
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < text.length; i++) {
-    const char = text[i];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === '\\') {
-      escaped = true;
-      continue;
-    }
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (char === '{') depth += 1;
-    if (char === '}') {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
-  }
-  return text.slice(start);
-}
-
 function tryParseImpactExpansionCandidate(candidate) {
   try {
-    const parsed = JSON.parse(candidate);
+    const parsed = JSON.parse(cleanJsonText(candidate));
     if (Array.isArray(parsed?.candidates)) return { candidates: parsed.candidates, stage: 'object_candidates' };
     if (Array.isArray(parsed)) return { candidates: parsed, stage: 'direct_array' };
   } catch {
@@ -3229,7 +3200,7 @@ function tryParseImpactExpansionCandidate(candidate) {
   // Gemini sometimes returns '"candidates": [...]' without outer braces (especially when
   // wrapping in a markdown code fence). Try wrapping in {} to recover.
   try {
-    const wrapped = JSON.parse(`{${candidate}}`);
+    const wrapped = JSON.parse(cleanJsonText(`{${candidate}}`));
     if (Array.isArray(wrapped?.candidates)) return { candidates: wrapped.candidates, stage: 'wrapped_candidates' };
   } catch {
     // continue
@@ -14016,39 +13987,9 @@ function extractStructuredLlmPayload(text) {
   };
 }
 
-function extractFirstJsonArray(text) {
-  const start = text.indexOf('[');
-  if (start === -1) return '';
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < text.length; i++) {
-    const char = text[i];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === '\\') {
-      escaped = true;
-      continue;
-    }
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (char === '[') depth += 1;
-    if (char === ']') {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
-  }
-  return text.slice(start);
-}
-
 function tryParseStructuredCandidate(candidate) {
   try {
-    const parsed = JSON.parse(candidate);
+    const parsed = JSON.parse(cleanJsonText(candidate));
     if (Array.isArray(parsed)) return { items: parsed, stage: 'direct_array' };
     if (Array.isArray(parsed?.items)) return { items: parsed.items, stage: 'object_items' };
     if (Array.isArray(parsed?.scenarios)) return { items: parsed.scenarios, stage: 'object_scenarios' };
@@ -14059,7 +14000,7 @@ function tryParseStructuredCandidate(candidate) {
       const partial = candidate.slice(bracketIdx);
       for (const suffix of ['"}]', '}]', '"]', ']']) {
         try {
-          const repaired = JSON.parse(partial + suffix);
+          const repaired = JSON.parse(cleanJsonText(partial + suffix));
           if (Array.isArray(repaired)) return { items: repaired, stage: 'repaired_array' };
         } catch {
           // continue
