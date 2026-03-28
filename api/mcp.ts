@@ -279,7 +279,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
         body: JSON.stringify({
-          provider: 'groq',
+          provider: 'openrouter',
           headlines,
           mode: 'brief',
           geoContext: String(params.geo_context ?? ''),
@@ -307,7 +307,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const res = await fetch(`${base}/api/intelligence/v1/get-country-intel-brief`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-        body: JSON.stringify({ countryCode: String(params.country_code ?? ''), framework: String(params.framework ?? '') }),
+        body: JSON.stringify({ country_code: String(params.country_code ?? ''), framework: String(params.framework ?? '') }),
         signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
