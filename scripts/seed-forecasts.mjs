@@ -11359,12 +11359,27 @@ function negatesDisruption(stabilizer, candidatePacket) {
  */
 function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePacket) {
   let adjustment = 0;
-  const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false };
+  const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none' };
 
   const { topPaths = [], invalidators = [], stabilizers = [] } = simTheaterResult || {};
-  const pathBucket = expandedPath?.direct?.targetBucket || candidatePacket?.marketContext?.topBucketId || '';
-  const pathChannel = expandedPath?.direct?.channel || candidatePacket?.marketContext?.topChannel || '';
+  const pathBucket = expandedPath?.direct?.targetBucket
+    || candidatePacket?.marketContext?.topBucketId
+    || candidatePacket?.topBucketId
+    || '';
+  const directChannel = expandedPath?.direct?.channel || '';
+  const marketChannel = candidatePacket?.marketContext?.topChannel || candidatePacket?.topChannel || '';
+  const pathChannel = Object.hasOwn(CHANNEL_KEYWORDS, directChannel)
+    ? directChannel
+    : Object.hasOwn(CHANNEL_KEYWORDS, marketChannel)
+      ? marketChannel
+      : '';
   const pathActors = extractPathActors(expandedPath);
+  details.resolvedChannel = pathChannel;
+  details.channelSource = Object.hasOwn(CHANNEL_KEYWORDS, directChannel)
+    ? 'direct'
+    : Object.hasOwn(CHANNEL_KEYWORDS, marketChannel)
+      ? 'market'
+      : 'none';
 
   const bucketChannelMatch = topPaths.find(
     (sp) => matchesBucket(sp, pathBucket) && matchesChannel(sp, pathChannel)

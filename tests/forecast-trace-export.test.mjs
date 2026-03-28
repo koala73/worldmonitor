@@ -6387,6 +6387,78 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     assert.equal(adjustment, 0.08);
     assert.ok(details.actorOverlapCount < 2);
   });
+
+  // Channel resolution tests (Tests A-E): verify tiered fallback and channelSource observability
+  const makeNestedCandidatePkt = (topBucketId, topChannel) => ({
+    candidateStateId: 'state-1',
+    candidateIndex: 0,
+    routeFacilityKey: 'Strait of Hormuz',
+    commodityKey: 'crude_oil',
+    marketContext: { topBucketId, topChannel },
+  });
+
+  const makeFlatCandidatePkt = (topBucketId, topChannel) => ({
+    candidateStateId: 'state-1',
+    candidateIndex: 0,
+    routeFacilityKey: 'Strait of Hormuz',
+    commodityKey: 'crude_oil',
+    topBucketId,
+    topChannel,
+  });
+
+  const riskOffSimResult = {
+    theaterId: 'state-1',
+    topPaths: [{ label: 'Sustained Conflict', summary: 'risk aversion and capital flight amid oil supply concerns', keyActors: [] }],
+    invalidators: [],
+    stabilizers: [],
+  };
+
+  it('T-A: valid LLM channel key (fx_stress) uses directChannel — channelSource=direct', () => {
+    const path = makePath('energy', 'fx_stress', []);
+    const candidatePacket = makeNestedCandidatePkt('energy', 'risk_off_rotation');
+    const { details } = computeSimulationAdjustment(path, riskOffSimResult, candidatePacket);
+    assert.equal(details.channelSource, 'direct');
+    assert.equal(details.resolvedChannel, 'fx_stress');
+  });
+
+  it('T-B: invalid LLM channel (supply_disruption) falls back to nested marketContext.topChannel', () => {
+    const path = makePath('energy', 'supply_disruption', []);
+    const candidatePacket = makeNestedCandidatePkt('energy', 'risk_off_rotation');
+    const { adjustment, details } = computeSimulationAdjustment(path, riskOffSimResult, candidatePacket);
+    assert.equal(details.channelSource, 'market');
+    assert.equal(details.resolvedChannel, 'risk_off_rotation');
+    assert.equal(details.bucketChannelMatch, true);
+    assert.equal(adjustment, 0.08);
+  });
+
+  it('T-C: invalid LLM channel falls back to legacy flat topChannel', () => {
+    const path = makePath('energy', 'supply_disruption', []);
+    const candidatePacket = makeFlatCandidatePkt('energy', 'risk_off_rotation');
+    const { adjustment, details } = computeSimulationAdjustment(path, riskOffSimResult, candidatePacket);
+    assert.equal(details.channelSource, 'market');
+    assert.equal(details.resolvedChannel, 'risk_off_rotation');
+    assert.equal(adjustment, 0.08);
+  });
+
+  it('T-D: invalid LLM channel + no valid marketChannel — channelSource=none, no match', () => {
+    const path = makePath('energy', 'supply_disruption', []);
+    const candidatePacket = makeNestedCandidatePkt('energy', '');
+    const { adjustment, details } = computeSimulationAdjustment(path, riskOffSimResult, candidatePacket);
+    assert.equal(details.channelSource, 'none');
+    assert.equal(details.resolvedChannel, '');
+    assert.equal(details.bucketChannelMatch, false);
+    assert.equal(adjustment, 0);
+  });
+
+  it('T-E: production case — no direct bucket, invalid direct channel, both resolve from marketContext', () => {
+    const path = makePath('', 'supply_disruption', []);
+    const candidatePacket = makeNestedCandidatePkt('energy', 'risk_off_rotation');
+    const { adjustment, details } = computeSimulationAdjustment(path, riskOffSimResult, candidatePacket);
+    assert.equal(details.channelSource, 'market');
+    assert.equal(details.resolvedChannel, 'risk_off_rotation');
+    assert.equal(details.bucketChannelMatch, true);
+    assert.equal(adjustment, 0.08);
+  });
 });
 
 describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
