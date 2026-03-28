@@ -152,8 +152,8 @@ export class EventHandlerManager implements AppModule {
 
     // Ensure restored panel fetches fresh data (otherwise it may show no content)
     const panel = this.ctx.panels[panelId];
-    if (panel && 'fetchData' in panel) {
-      (panel as any).fetchData();
+    if (panel && 'fetchData' in panel && typeof (panel as { fetchData: unknown }).fetchData === 'function') {
+      (panel as { fetchData: () => void }).fetchData();
     }
   }
 
