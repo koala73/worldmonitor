@@ -3,8 +3,6 @@ import type {
   ListSanctionsPressureResponse,
   SanctionsServiceHandler,
   SanctionsEntry,
-  CountrySanctionsPressure,
-  ProgramSanctionsPressure,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 
@@ -76,44 +74,31 @@ function applyTimeRangeFilter(
 
   const newEntryCount = retagged.filter((e) => e.isNew).length;
 
-  // Rebuild country pressure with recomputed newEntryCount
-  const countryMap = new Map<string, CountrySanctionsPressure>();
+  // Start from the original countries/programs (preserving every entry),
+  // then patch newEntryCount with recomputed values from the time window.
+  const countryNewCounts = new Map<string, number>();
   for (const entry of retagged) {
+    if (!entry.isNew) continue;
     for (const code of (entry.countryCodes ?? [])) {
-      const existing = countryMap.get(code);
-      if (existing) {
-        if (entry.isNew) existing.newEntryCount += 1;
-      } else {
-        // Find matching country from original data
-        const orig = (data.countries ?? []).find((c) => c.countryCode === code);
-        if (orig) {
-          countryMap.set(code, { ...orig, newEntryCount: entry.isNew ? 1 : 0 });
-        }
-      }
+      countryNewCounts.set(code, (countryNewCounts.get(code) ?? 0) + 1);
     }
   }
-  const countries = countryMap.size > 0
-    ? Array.from(countryMap.values())
-    : (data.countries ?? []).map((c) => ({ ...c, newEntryCount: 0 }));
+  const countries = (data.countries ?? []).map((c) => ({
+    ...c,
+    newEntryCount: countryNewCounts.get(c.countryCode) ?? 0,
+  }));
 
-  // Rebuild program pressure with recomputed newEntryCount
-  const programMap = new Map<string, ProgramSanctionsPressure>();
+  const programNewCounts = new Map<string, number>();
   for (const entry of retagged) {
+    if (!entry.isNew) continue;
     for (const prog of (entry.programs ?? [])) {
-      const existing = programMap.get(prog);
-      if (existing) {
-        if (entry.isNew) existing.newEntryCount += 1;
-      } else {
-        const orig = (data.programs ?? []).find((p) => p.program === prog);
-        if (orig) {
-          programMap.set(prog, { ...orig, newEntryCount: entry.isNew ? 1 : 0 });
-        }
-      }
+      programNewCounts.set(prog, (programNewCounts.get(prog) ?? 0) + 1);
     }
   }
-  const programs = programMap.size > 0
-    ? Array.from(programMap.values())
-    : (data.programs ?? []).map((p) => ({ ...p, newEntryCount: 0 }));
+  const programs = (data.programs ?? []).map((p) => ({
+    ...p,
+    newEntryCount: programNewCounts.get(p.program) ?? 0,
+  }));
 
   return {
     ...data,
