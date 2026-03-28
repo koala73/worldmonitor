@@ -461,6 +461,195 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/aviation/v1/search-google-flights:
+        get:
+            tags:
+                - AviationService
+            summary: SearchGoogleFlights
+            description: SearchGoogleFlights searches Google Flights for available itineraries on a specific date.
+            operationId: SearchGoogleFlights
+            parameters:
+                - name: origin
+                  in: query
+                  description: Departure airport IATA code (e.g. "JFK").
+                  required: false
+                  schema:
+                    type: string
+                - name: destination
+                  in: query
+                  description: Arrival airport IATA code (e.g. "LHR").
+                  required: false
+                  schema:
+                    type: string
+                - name: departure_date
+                  in: query
+                  description: Departure date in YYYY-MM-DD format.
+                  required: false
+                  schema:
+                    type: string
+                - name: return_date
+                  in: query
+                  description: Return date in YYYY-MM-DD format; omit for one-way.
+                  required: false
+                  schema:
+                    type: string
+                - name: cabin_class
+                  in: query
+                  description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
+                  required: false
+                  schema:
+                    type: string
+                - name: max_stops
+                  in: query
+                  description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
+                  required: false
+                  schema:
+                    type: string
+                - name: departure_window
+                  in: query
+                  description: Departure time window in HH-HH format (e.g. "6-20").
+                  required: false
+                  schema:
+                    type: string
+                - name: airlines
+                  in: query
+                  description: Airline IATA codes to filter by (e.g. ["BA", "AA"]).
+                  required: false
+                  schema:
+                    type: string
+                - name: sort_by
+                  in: query
+                  description: 'Sort order: CHEAPEST, DURATION, DEPARTURE_TIME, or ARRIVAL_TIME.'
+                  required: false
+                  schema:
+                    type: string
+                - name: passengers
+                  in: query
+                  description: Number of adult passengers (1-9).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SearchGoogleFlightsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/aviation/v1/search-google-dates:
+        get:
+            tags:
+                - AviationService
+            summary: SearchGoogleDates
+            description: SearchGoogleDates finds the cheapest travel dates across a flexible date range via Google Flights.
+            operationId: SearchGoogleDates
+            parameters:
+                - name: origin
+                  in: query
+                  description: Departure airport IATA code (e.g. "JFK").
+                  required: false
+                  schema:
+                    type: string
+                - name: destination
+                  in: query
+                  description: Arrival airport IATA code (e.g. "LHR").
+                  required: false
+                  schema:
+                    type: string
+                - name: start_date
+                  in: query
+                  description: Start of date range in YYYY-MM-DD format.
+                  required: false
+                  schema:
+                    type: string
+                - name: end_date
+                  in: query
+                  description: End of date range in YYYY-MM-DD format.
+                  required: false
+                  schema:
+                    type: string
+                - name: trip_duration
+                  in: query
+                  description: Trip duration in days (required for round-trip searches).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: is_round_trip
+                  in: query
+                  description: Whether to search for round-trip flights.
+                  required: false
+                  schema:
+                    type: boolean
+                - name: cabin_class
+                  in: query
+                  description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
+                  required: false
+                  schema:
+                    type: string
+                - name: max_stops
+                  in: query
+                  description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
+                  required: false
+                  schema:
+                    type: string
+                - name: departure_window
+                  in: query
+                  description: Departure time window in HH-HH format (e.g. "6-20").
+                  required: false
+                  schema:
+                    type: string
+                - name: airlines
+                  in: query
+                  description: Airline IATA codes to filter by (e.g. ["BA", "AA"]).
+                  required: false
+                  schema:
+                    type: string
+                - name: sort_by_price
+                  in: query
+                  description: Whether to sort results by price (lowest first).
+                  required: false
+                  schema:
+                    type: boolean
+                - name: passengers
+                  in: query
+                  description: Number of adult passengers (1-9).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SearchGoogleDatesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1346,3 +1535,158 @@ components:
                     type: string
                     description: Article image URL (if available).
             description: AviationNewsItem represents a single aviation news article or press release.
+        SearchGoogleFlightsRequest:
+            type: object
+            properties:
+                origin:
+                    type: string
+                    description: Departure airport IATA code (e.g. "JFK").
+                destination:
+                    type: string
+                    description: Arrival airport IATA code (e.g. "LHR").
+                departureDate:
+                    type: string
+                    description: Departure date in YYYY-MM-DD format.
+                returnDate:
+                    type: string
+                    description: Return date in YYYY-MM-DD format; omit for one-way.
+                cabinClass:
+                    type: string
+                    description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
+                maxStops:
+                    type: string
+                    description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
+                departureWindow:
+                    type: string
+                    description: Departure time window in HH-HH format (e.g. "6-20").
+                airlines:
+                    type: array
+                    items:
+                        type: string
+                        description: Airline IATA codes to filter by (e.g. ["BA", "AA"]).
+                sortBy:
+                    type: string
+                    description: 'Sort order: CHEAPEST, DURATION, DEPARTURE_TIME, or ARRIVAL_TIME.'
+                passengers:
+                    type: integer
+                    format: int32
+                    description: Number of adult passengers (1-9).
+            description: SearchGoogleFlightsRequest specifies parameters for a Google Flights search.
+        SearchGoogleFlightsResponse:
+            type: object
+            properties:
+                flights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoogleFlightResult'
+                degraded:
+                    type: boolean
+                error:
+                    type: string
+            description: SearchGoogleFlightsResponse contains flight results from Google Flights.
+        GoogleFlightResult:
+            type: object
+            properties:
+                legs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoogleFlightLeg'
+                price:
+                    type: number
+                    format: double
+                durationMinutes:
+                    type: integer
+                    format: int32
+                stops:
+                    type: integer
+                    format: int32
+            description: GoogleFlightResult represents a complete itinerary (one or more legs).
+        GoogleFlightLeg:
+            type: object
+            properties:
+                airlineCode:
+                    type: string
+                flightNumber:
+                    type: string
+                departureAirport:
+                    type: string
+                arrivalAirport:
+                    type: string
+                departureDatetime:
+                    type: string
+                    description: ISO 8601 local datetime, e.g. "2025-06-01T08:45".
+                arrivalDatetime:
+                    type: string
+                durationMinutes:
+                    type: integer
+                    format: int32
+            description: GoogleFlightLeg represents a single flight segment (one plane, one takeoff and landing).
+        SearchGoogleDatesRequest:
+            type: object
+            properties:
+                origin:
+                    type: string
+                    description: Departure airport IATA code (e.g. "JFK").
+                destination:
+                    type: string
+                    description: Arrival airport IATA code (e.g. "LHR").
+                startDate:
+                    type: string
+                    description: Start of date range in YYYY-MM-DD format.
+                endDate:
+                    type: string
+                    description: End of date range in YYYY-MM-DD format.
+                tripDuration:
+                    type: integer
+                    format: int32
+                    description: Trip duration in days (required for round-trip searches).
+                isRoundTrip:
+                    type: boolean
+                    description: Whether to search for round-trip flights.
+                cabinClass:
+                    type: string
+                    description: 'Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.'
+                maxStops:
+                    type: string
+                    description: 'Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.'
+                departureWindow:
+                    type: string
+                    description: Departure time window in HH-HH format (e.g. "6-20").
+                airlines:
+                    type: array
+                    items:
+                        type: string
+                        description: Airline IATA codes to filter by (e.g. ["BA", "AA"]).
+                sortByPrice:
+                    type: boolean
+                    description: Whether to sort results by price (lowest first).
+                passengers:
+                    type: integer
+                    format: int32
+                    description: Number of adult passengers (1-9).
+            description: SearchGoogleDatesRequest specifies parameters for a Google Flights date-range price search.
+        SearchGoogleDatesResponse:
+            type: object
+            properties:
+                dates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DatePriceEntry'
+                degraded:
+                    type: boolean
+                error:
+                    type: string
+            description: SearchGoogleDatesResponse contains cheapest-date results from Google Flights.
+        DatePriceEntry:
+            type: object
+            properties:
+                date:
+                    type: string
+                    description: Departure date in YYYY-MM-DD format.
+                returnDate:
+                    type: string
+                    description: Return date in YYYY-MM-DD format; empty for one-way results.
+                price:
+                    type: number
+                    format: double
+            description: DatePriceEntry pairs a departure date (and optional return date) with its cheapest price.

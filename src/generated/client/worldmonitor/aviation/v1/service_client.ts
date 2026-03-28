@@ -264,6 +264,69 @@ export interface AviationNewsItem {
   imageUrl: string;
 }
 
+export interface SearchGoogleFlightsRequest {
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate: string;
+  cabinClass: string;
+  maxStops: string;
+  departureWindow: string;
+  airlines: string[];
+  sortBy: string;
+  passengers: number;
+}
+
+export interface SearchGoogleFlightsResponse {
+  flights: GoogleFlightResult[];
+  degraded: boolean;
+  error: string;
+}
+
+export interface GoogleFlightResult {
+  legs: GoogleFlightLeg[];
+  price: number;
+  durationMinutes: number;
+  stops: number;
+}
+
+export interface GoogleFlightLeg {
+  airlineCode: string;
+  flightNumber: string;
+  departureAirport: string;
+  arrivalAirport: string;
+  departureDatetime: string;
+  arrivalDatetime: string;
+  durationMinutes: number;
+}
+
+export interface SearchGoogleDatesRequest {
+  origin: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  tripDuration: number;
+  isRoundTrip: boolean;
+  cabinClass: string;
+  maxStops: string;
+  departureWindow: string;
+  airlines: string[];
+  sortByPrice: boolean;
+  passengers: number;
+}
+
+export interface SearchGoogleDatesResponse {
+  dates: DatePriceEntry[];
+  degraded: boolean;
+  error: string;
+}
+
+export interface DatePriceEntry {
+  date: string;
+  returnDate: string;
+  price: number;
+}
+
 export type AirportRegion = "AIRPORT_REGION_UNSPECIFIED" | "AIRPORT_REGION_AMERICAS" | "AIRPORT_REGION_EUROPE" | "AIRPORT_REGION_APAC" | "AIRPORT_REGION_MENA" | "AIRPORT_REGION_AFRICA";
 
 export type CabinClass = "CABIN_CLASS_UNSPECIFIED" | "CABIN_CLASS_ECONOMY" | "CABIN_CLASS_PREMIUM_ECONOMY" | "CABIN_CLASS_BUSINESS" | "CABIN_CLASS_FIRST";
@@ -576,6 +639,76 @@ export class AviationServiceClient {
     }
 
     return await resp.json() as ListAviationNewsResponse;
+  }
+
+  async searchGoogleFlights(req: SearchGoogleFlightsRequest, options?: AviationServiceCallOptions): Promise<SearchGoogleFlightsResponse> {
+    let path = "/api/aviation/v1/search-google-flights";
+    const params = new URLSearchParams();
+    if (req.origin != null && req.origin !== "") params.set("origin", String(req.origin));
+    if (req.destination != null && req.destination !== "") params.set("destination", String(req.destination));
+    if (req.departureDate != null && req.departureDate !== "") params.set("departure_date", String(req.departureDate));
+    if (req.returnDate != null && req.returnDate !== "") params.set("return_date", String(req.returnDate));
+    if (req.cabinClass != null && req.cabinClass !== "") params.set("cabin_class", String(req.cabinClass));
+    if (req.maxStops != null && req.maxStops !== "") params.set("max_stops", String(req.maxStops));
+    if (req.departureWindow != null && req.departureWindow !== "") params.set("departure_window", String(req.departureWindow));
+    if (req.airlines != null && req.airlines !== "") params.set("airlines", String(req.airlines));
+    if (req.sortBy != null && req.sortBy !== "") params.set("sort_by", String(req.sortBy));
+    if (req.passengers != null && req.passengers !== 0) params.set("passengers", String(req.passengers));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchGoogleFlightsResponse;
+  }
+
+  async searchGoogleDates(req: SearchGoogleDatesRequest, options?: AviationServiceCallOptions): Promise<SearchGoogleDatesResponse> {
+    let path = "/api/aviation/v1/search-google-dates";
+    const params = new URLSearchParams();
+    if (req.origin != null && req.origin !== "") params.set("origin", String(req.origin));
+    if (req.destination != null && req.destination !== "") params.set("destination", String(req.destination));
+    if (req.startDate != null && req.startDate !== "") params.set("start_date", String(req.startDate));
+    if (req.endDate != null && req.endDate !== "") params.set("end_date", String(req.endDate));
+    if (req.tripDuration != null && req.tripDuration !== 0) params.set("trip_duration", String(req.tripDuration));
+    if (req.isRoundTrip) params.set("is_round_trip", String(req.isRoundTrip));
+    if (req.cabinClass != null && req.cabinClass !== "") params.set("cabin_class", String(req.cabinClass));
+    if (req.maxStops != null && req.maxStops !== "") params.set("max_stops", String(req.maxStops));
+    if (req.departureWindow != null && req.departureWindow !== "") params.set("departure_window", String(req.departureWindow));
+    if (req.airlines != null && req.airlines !== "") params.set("airlines", String(req.airlines));
+    if (req.sortByPrice) params.set("sort_by_price", String(req.sortByPrice));
+    if (req.passengers != null && req.passengers !== 0) params.set("passengers", String(req.passengers));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchGoogleDatesResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
