@@ -1,6 +1,5 @@
 // @ts-check
 /** @typedef {{ symbol: string, name?: string, display?: string }} StockSymbol */
-/** @typedef {{ ticker?: string | null, [key: string]: unknown }} TickerCard */
 
 const STOCKS_BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
 
@@ -27,26 +26,4 @@ export async function loadTickerSet(redisUrl, redisToken) {
   } catch {
     return new Set();
   }
-}
-
-/**
- * Filter cards whose ticker is not present in validTickers.
- * Logs each dropped card for observability.
- * @param {TickerCard[]} cards
- * @param {Set<string>} validTickers
- * @param {string} [label] - context label for log lines
- * @returns {TickerCard[]}
- */
-export function filterInvalidTickers(cards, validTickers, label = 'TickerValidation') {
-  if (!validTickers.size) return cards; // no set loaded — pass through unchanged
-  const kept = [];
-  for (const card of cards) {
-    const ticker = typeof card.ticker === 'string' ? card.ticker.toUpperCase() : null;
-    if (ticker && validTickers.has(ticker)) {
-      kept.push({ ...card, ticker });
-    } else {
-      console.warn(`  [${label}] Dropped card — ticker "${card.ticker ?? '(none)'}" not in valid symbol set`);
-    }
-  }
-  return kept;
 }

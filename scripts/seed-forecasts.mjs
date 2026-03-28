@@ -8,7 +8,7 @@ import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
-import { loadTickerSet, filterInvalidTickers } from './_ticker-validation.mjs';
+import { loadTickerSet } from './_ticker-validation.mjs';
 
 const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (_isDirectRun) loadEnvFile(import.meta.url);
@@ -15648,14 +15648,14 @@ function buildMarketImplicationsContext(inputs) {
   return parts.length > 0 ? parts.join('\n\n') : 'No live world state available.';
 }
 
-function validateMarketImplications(cards) {
+function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS) {
   if (!Array.isArray(cards)) return [];
   const seen = new Set();
   const valid = [];
   for (const card of cards) {
     if (!card || typeof card !== 'object') continue;
     const ticker = typeof card.ticker === 'string' ? card.ticker.trim().toUpperCase() : '';
-    if (!ticker || !ALL_ALLOWED_TICKERS.has(ticker)) continue;
+    if (!ticker || !allowedTickers.has(ticker)) continue;
     if (seen.has(ticker)) continue;
     const direction = typeof card.direction === 'string' ? card.direction.trim().toUpperCase() : '';
     if (!['LONG', 'SHORT', 'HEDGE'].includes(direction)) continue;
@@ -15711,45 +15711,40 @@ async function buildAndSeedMarketImplications(inputs) {
     return;
   }
 
-  const cards = validateMarketImplications(rawCards);
+  const { url, token } = getRedisCredentials();
+
+  // Build the effective ticker allowlist before validation so the single pass catches
+  // hallucinated symbols. When Redis has live equity data, replace the static equity
+  // sub-list with it (non-equity instruments are always kept from the static set).
+  // Falls back to ALL_ALLOWED_TICKERS when Redis is unavailable.
+  const liveTickerSet = await loadTickerSet(url, token);
+  let effectiveTickers;
+  if (liveTickerSet.size > 0) {
+    effectiveTickers = new Set([...NON_EQUITY_TICKERS, ...liveTickerSet]);
+    console.log(`  [MarketImplications] Using live ticker set (${liveTickerSet.size} equity symbols + ${NON_EQUITY_TICKERS.size} non-equity)`);
+  } else {
+    effectiveTickers = ALL_ALLOWED_TICKERS;
+    console.warn('  [MarketImplications] Redis ticker set empty — falling back to static whitelist');
+  }
+
+  const cards = validateMarketImplications(rawCards, effectiveTickers);
   if (cards.length === 0) {
     console.warn('  [MarketImplications] All cards failed validation — skipping write');
     return;
   }
-
-  const { url, token } = getRedisCredentials();
-
-  // Dynamic ticker gate: supplement the static whitelist with live symbols from Redis.
-  // Only runs when equity cards are present (non-equity instruments use static list only).
-  const hasEquityCards = cards.some(c => !NON_EQUITY_TICKERS.has(c.ticker));
-  let finalCards = cards;
-  if (hasEquityCards) {
-    const liveTickerSet = await loadTickerSet(url, token);
-    if (liveTickerSet.size > 0) {
-      // Union of full static whitelist + live Redis symbols — additive, never reductive
-      const combinedValid = new Set([...ALL_ALLOWED_TICKERS, ...liveTickerSet]);
-      finalCards = filterInvalidTickers(cards, combinedValid, 'MarketImplications');
-      if (finalCards.length === 0) {
-        console.warn('  [MarketImplications] All cards dropped by dynamic ticker gate — skipping write');
-        return;
-      }
-      if (finalCards.length < cards.length) {
-        console.log(`  [MarketImplications] Dynamic ticker gate: kept ${finalCards.length}/${cards.length} cards`);
-      }
-    } else {
-      console.warn('  [MarketImplications] Dynamic ticker set empty — skipping live validation, using static whitelist only');
-    }
+  if (cards.length < rawCards.length) {
+    console.log(`  [MarketImplications] Validation: kept ${cards.length}/${rawCards.length} cards`);
   }
 
-  const payload = { cards: finalCards, generatedAt: new Date().toISOString(), model: result.model || '' };
+  const payload = { cards, generatedAt: new Date().toISOString(), model: result.model || '' };
   await redisSet(url, token, MARKET_IMPLICATIONS_KEY, payload, MARKET_IMPLICATIONS_TTL);
 
   const metaKey = 'seed-meta:intelligence:market-implications';
-  const meta = { fetchedAt: Date.now(), recordCount: finalCards.length };
+  const meta = { fetchedAt: Date.now(), recordCount: cards.length };
   await redisSet(url, token, metaKey, meta, 86400 * 7);
 
   const durationMs = Date.now() - startMs;
-  console.log(`  [MarketImplications] Published ${finalCards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
+  console.log(`  [MarketImplications] Published ${cards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
 }
 
 if (_isDirectRun) {
