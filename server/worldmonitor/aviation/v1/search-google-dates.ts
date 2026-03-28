@@ -4,6 +4,7 @@ import type {
   SearchGoogleDatesResponse,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+import { parseStringArray } from '../../../_shared/parse-string-array';
 
 export async function searchGoogleDates(
   _ctx: ServerContext,
@@ -37,7 +38,7 @@ export async function searchGoogleDates(
       sort_by_price: String(req.sortByPrice ?? false),
       passengers: String(Math.max(1, Math.min(req.passengers ?? 1, 9))),
     });
-    for (const airline of req.airlines ?? []) {
+    for (const airline of parseStringArray(req.airlines)) {
       params.append('airlines', airline);
     }
 
@@ -49,15 +50,15 @@ export async function searchGoogleDates(
       return { dates: [], degraded: true, error: `relay returned ${resp.status}` };
     }
 
-    const data = (await resp.json()) as { dates?: unknown[]; error?: string };
+    const data = (await resp.json()) as { dates?: unknown[]; partial?: boolean; error?: string };
     if (!Array.isArray(data.dates)) {
       return { dates: [], degraded: true, error: data.error ?? 'no results' };
     }
 
     return {
       dates: data.dates as SearchGoogleDatesResponse['dates'],
-      degraded: false,
-      error: '',
+      degraded: data.partial === true,
+      error: data.partial === true ? 'partial results: one or more date chunks failed' : '',
     };
   } catch (err) {
     return { dates: [], degraded: true, error: err instanceof Error ? err.message : 'search failed' };

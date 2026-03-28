@@ -4,6 +4,7 @@ import type {
   SearchGoogleFlightsResponse,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+import { parseStringArray } from '../../../_shared/parse-string-array';
 
 export async function searchGoogleFlights(
   _ctx: ServerContext,
@@ -34,7 +35,7 @@ export async function searchGoogleFlights(
       ...(req.sortBy ? { sort_by: req.sortBy } : {}),
       passengers: String(Math.max(1, Math.min(req.passengers ?? 1, 9))),
     });
-    for (const airline of req.airlines ?? []) {
+    for (const airline of parseStringArray(req.airlines)) {
       params.append('airlines', airline);
     }
 

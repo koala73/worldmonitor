@@ -8359,21 +8359,29 @@ function gfCabinClass(cabin) {
 
 function gfMaxStops(stops) {
   switch ((stops || '').toUpperCase()) {
-    case 'NON_STOP': return 1;
-    case 'ONE_STOP': return 2;
-    case 'TWO_PLUS_STOPS': return 3;
+    case 'NON_STOP': case '0': return 1;
+    case 'ONE_STOP': case '1': return 2;
+    case 'TWO_PLUS_STOPS': case '2': return 3;
     default: return 0;
   }
 }
 
 function gfSortBy(sort) {
   switch ((sort || '').toUpperCase()) {
-    case 'CHEAPEST': return 2;
-    case 'DEPARTURE_TIME': return 3;
-    case 'ARRIVAL_TIME': return 4;
+    case 'CHEAPEST': case 'PRICE': return 2;
+    case 'DEPARTURE_TIME': case 'DEPARTURE': return 3;
+    case 'ARRIVAL_TIME': case 'ARRIVAL': return 4;
     case 'DURATION': return 5;
     default: return 0;
   }
+}
+
+// Parse a query-param airlines value that may be a comma-joined string (from
+// codegen serialization) or an array (from getAll). Returns a clean string[].
+function gfParseAirlines(raw) {
+  if (!raw) return [];
+  const arr = Array.isArray(raw) ? raw : String(raw).split(',');
+  return arr.map(s => s.trim().toUpperCase()).filter(Boolean);
 }
 
 /**
@@ -8598,7 +8606,7 @@ async function handleGoogleFlightsSearch(req, res) {
       cabinClass: url.searchParams.get('cabin_class') || '',
       maxStops: url.searchParams.get('max_stops') || '',
       departureWindow: url.searchParams.get('departure_window') || '',
-      airlines: url.searchParams.getAll('airlines'),
+      airlines: gfParseAirlines(url.searchParams.get('airlines') || url.searchParams.getAll('airlines')),
       sortBy: url.searchParams.get('sort_by') || '',
       passengers: url.searchParams.get('passengers') || '1',
     });
@@ -8639,13 +8647,20 @@ async function handleGoogleFlightsDates(req, res) {
     }
 
     const isRoundTrip = url.searchParams.get('is_round_trip') || 'false';
+    const tripDuration = url.searchParams.get('trip_duration') || '0';
+    if ((isRoundTrip === 'true') && (parseInt(tripDuration) || 0) <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'trip_duration is required for round-trip date searches' }));
+      return;
+    }
+
     const params = {
       origin, destination, startDate, endDate, isRoundTrip,
-      tripDuration: url.searchParams.get('trip_duration') || '0',
+      tripDuration,
       cabinClass: url.searchParams.get('cabin_class') || '',
       maxStops: url.searchParams.get('max_stops') || '',
       departureWindow: url.searchParams.get('departure_window') || '',
-      airlines: url.searchParams.getAll('airlines'),
+      airlines: gfParseAirlines(url.searchParams.get('airlines') || url.searchParams.getAll('airlines')),
       passengers: url.searchParams.get('passengers') || '1',
     };
 
@@ -8655,6 +8670,7 @@ async function handleGoogleFlightsDates(req, res) {
     const totalDays = Math.ceil((end - start) / 86_400_000) + 1;
     const MAX_CHUNK = 61;
     const allDates = [];
+    let hasPartialFailure = false;
 
     if (totalDays <= MAX_CHUNK) {
       const filters = buildDateFilters(params);
@@ -8680,6 +8696,9 @@ async function handleGoogleFlightsDates(req, res) {
         if (gfResp.ok) {
           const text = await gfResp.text();
           allDates.push(...parseGfDates(text, isRoundTrip));
+        } else {
+          hasPartialFailure = true;
+          console.warn(`[Google Flights] dates chunk ${current.toISOString().slice(0, 10)} failed: ${gfResp.status}`);
         }
         current.setDate(current.getDate() + MAX_CHUNK);
       }
@@ -8689,7 +8708,7 @@ async function handleGoogleFlightsDates(req, res) {
     if (sortByPrice) allDates.sort((a, b) => a.price - b.price);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ dates: allDates }));
+    res.end(JSON.stringify({ dates: allDates, partial: hasPartialFailure }));
   } catch (err) {
     console.error('[Google Flights] dates error:', err?.message || err);
     res.writeHead(502, { 'Content-Type': 'application/json' });
