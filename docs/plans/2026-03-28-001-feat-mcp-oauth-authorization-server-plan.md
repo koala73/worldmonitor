@@ -59,6 +59,7 @@ The `client_secret` **is** the existing WorldMonitor API key. No new credential 
 ```
 
 **`api/oauth/token.js`** (Vercel Edge function):
+
 - Parses `grant_type`, `client_id`, `client_secret` from POST body (form-encoded or JSON)
 - Also supports HTTP Basic auth (`Authorization: Basic base64(client_id:client_secret)`)
 - Validates `client_secret` against `WORLDMONITOR_VALID_KEYS` env var (same logic as `_api-key.js`)
@@ -67,6 +68,7 @@ The `client_secret` **is** the existing WorldMonitor API key. No new credential 
 - On failure: returns RFC 6749 error: `{ error: "invalid_client" }` with HTTP 401
 
 **`api/_oauth-token.js`** (shared helper, importable by `api/mcp.ts`):
+
 - `resolveApiKeyFromBearer(req)` — extracts `Authorization: Bearer <token>`, looks up `oauth:token:<token>` in Redis, returns the stored API key or null
 - Used by `mcp.ts` in its auth chain
 
@@ -81,6 +83,7 @@ The `client_secret` **is** the existing WorldMonitor API key. No new credential 
 ```
 
 **`vercel.json`**:
+
 - Add rewrite: `{ "source": "/oauth/token", "destination": "/api/oauth/token" }` (canonical URL without `/api/` prefix, cleaner for discovery doc)
 - Add CORS headers entry for `/api/oauth/token` (allow `*`, `Content-Type, Authorization`)
 - Update discovery doc to use `/oauth/token` (no `/api/` prefix)
