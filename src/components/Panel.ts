@@ -699,10 +699,12 @@ export class Panel {
     this.content.style.display = collapsed ? 'none' : '';
     this.element.classList.toggle('panel-collapsed', collapsed);
     btn.textContent = collapsed ? '▸' : '▾';
-    btn.setAttribute('aria-expanded', String(!collapsed));
-    btn.title = collapsed
+    const label = collapsed
       ? (t('components.panel.expandPanel') ?? 'Expand')
       : (t('components.panel.collapsePanel') ?? 'Collapse');
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
   }
 
   protected appendCollapseButton(): void {
