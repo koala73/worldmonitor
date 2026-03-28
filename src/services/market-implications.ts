@@ -1,6 +1,12 @@
 import { toApiUrl } from '@/services/runtime';
 import { getHydratedData } from '@/services/bootstrap';
 
+export interface TransmissionNode {
+  node: string;
+  impactType: string;
+  logic: string;
+}
+
 export interface MarketImplicationCard {
   ticker: string;
   name: string;
@@ -11,6 +17,7 @@ export interface MarketImplicationCard {
   narrative: string;
   riskCaveat: string;
   driver: string;
+  transmissionChain?: TransmissionNode[];
 }
 
 export interface MarketImplicationsData {
@@ -18,6 +25,34 @@ export interface MarketImplicationsData {
   degraded: boolean;
   emptyReason: string;
   generatedAt: string;
+}
+
+export function normalizeCard(raw: Record<string, unknown>): MarketImplicationCard {
+  const chain = Array.isArray(raw.transmissionChain)
+    ? (raw.transmissionChain as Array<Record<string, unknown>>).map(n => ({
+        node: String(n.node ?? ''),
+        impactType: String(n.impactType ?? ''),
+        logic: String(n.logic ?? ''),
+      }))
+    : Array.isArray(raw.transmission_chain)
+      ? (raw.transmission_chain as Array<Record<string, unknown>>).map(n => ({
+          node: String(n.node ?? ''),
+          impactType: String(n.impact_type ?? ''),
+          logic: String(n.logic ?? ''),
+        }))
+      : [];
+  return {
+    ticker: String(raw.ticker ?? ''),
+    name: String(raw.name ?? ''),
+    direction: String(raw.direction ?? ''),
+    timeframe: String(raw.timeframe ?? ''),
+    confidence: String(raw.confidence ?? ''),
+    title: String(raw.title ?? ''),
+    narrative: String(raw.narrative ?? ''),
+    riskCaveat: String(raw.riskCaveat ?? raw.risk_caveat ?? ''),
+    driver: String(raw.driver ?? ''),
+    transmissionChain: chain,
+  };
 }
 
 // Cache keyed by frameworkId ('' = no framework). Avoids 100 users × 1 API call
@@ -35,10 +70,16 @@ export async function fetchMarketImplications(frameworkId = ''): Promise<MarketI
   if (cached && !cached.data.degraded && now - cached.cachedAt < CACHE_TTL) return cached.data;
 
   if (!frameworkId) {
-    const hydrated = getHydratedData('marketImplications') as MarketImplicationsData | undefined;
+    const hydrated = getHydratedData('marketImplications') as { cards?: unknown[]; degraded?: boolean; emptyReason?: string; generatedAt?: string } | undefined;
     if (hydrated?.cards && Array.isArray(hydrated.cards) && hydrated.cards.length > 0 && !hydrated.degraded) {
-      cache.set('', { data: hydrated, cachedAt: now });
-      return hydrated;
+      const data: MarketImplicationsData = {
+        cards: hydrated.cards.map(c => normalizeCard(c as Record<string, unknown>)),
+        degraded: false,
+        emptyReason: hydrated.emptyReason ?? '',
+        generatedAt: hydrated.generatedAt ?? '',
+      };
+      cache.set('', { data, cachedAt: now });
+      return data;
     }
   }
 
@@ -50,11 +91,17 @@ export async function fetchMarketImplications(frameworkId = ''): Promise<MarketI
     });
     if (!resp.ok) return cached?.data ?? null;
 
-    const raw = (await resp.json()) as MarketImplicationsData;
+    const raw = (await resp.json()) as { cards?: unknown[]; degraded?: boolean; emptyReason?: string; generatedAt?: string };
     if (!Array.isArray(raw.cards)) return cached?.data ?? null;
 
-    cache.set(frameworkId, { data: raw, cachedAt: now });
-    return raw;
+    const data: MarketImplicationsData = {
+      cards: raw.cards.map(c => normalizeCard(c as Record<string, unknown>)),
+      degraded: raw.degraded ?? false,
+      emptyReason: raw.emptyReason ?? '',
+      generatedAt: raw.generatedAt ?? '',
+    };
+    cache.set(frameworkId, { data, cachedAt: now });
+    return data;
   } catch {
     return cached?.data ?? null;
   }

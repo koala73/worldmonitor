@@ -4,6 +4,12 @@ package worldmonitor.intelligence.v1;
 
 import "sebuf/http/annotations.proto";
 
+message TransmissionNode {
+  string node = 1;
+  string impact_type = 2;
+  string logic = 3;
+}
+
 message MarketImplicationCard {
   string ticker = 1;
   string name = 2;
@@ -14,6 +20,7 @@ message MarketImplicationCard {
   string narrative = 7;
   string risk_caveat = 8;
   string driver = 9;
+  repeated TransmissionNode transmission_chain = 10;
 }
 
 message ListMarketImplicationsRequest {

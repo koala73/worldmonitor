@@ -82,67 +82,91 @@ async function redisSet(key, value, exSeconds) {
   } catch { return false; }
 }
 
+const GLOBE_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+
+const PAGE_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'DENY', 'Cache-Control': 'no-store', 'Pragma': 'no-cache' };
+
 function htmlError(title, detail) {
-  return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Authorization Error</title>
-<style>body{font-family:system-ui,sans-serif;background:#111;color:#eee;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
-.box{max-width:400px;padding:2rem;background:#1a1a1a;border-radius:8px;border:1px solid #333}
-h1{color:#f87171;font-size:1.25rem;margin:0 0 1rem}p{margin:0;color:#aaa;line-height:1.5}</style></head>
-<body><div class="box"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(detail)}</p></div></body></html>`, {
-    status: 400,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'DENY', 'Cache-Control': 'no-store', 'Pragma': 'no-cache' },
-  });
+  return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Error &#x2014; WorldMonitor</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:ui-monospace,'SF Mono','Cascadia Code',monospace;background:#0a0a0a;color:#e8e8e8;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem}.wm-logo{display:flex;align-items:center;gap:.5rem;margin-bottom:2rem;text-decoration:none}.wm-logo svg{color:#2d8a6e}.wm-logo-text{font-size:.75rem;color:#555;letter-spacing:.1em;text-transform:uppercase}.card{width:100%;max-width:420px;background:#111;border:1px solid #1e1e1e;padding:2rem}h1{font-size:.95rem;font-weight:600;color:#ef4444;margin-bottom:.75rem;letter-spacing:.02em}p{font-size:.85rem;color:#666;line-height:1.6}.back{display:inline-block;margin-top:1.5rem;font-size:.75rem;color:#444;text-decoration:none;letter-spacing:.03em}.back:hover{color:#888}.footer{margin-top:1.5rem;font-size:.7rem;color:#2a2a2a;text-align:center}.footer a{color:#333;text-decoration:none}.footer a:hover{color:#555}</style></head>
+<body><a href="https://www.worldmonitor.app" class="wm-logo" target="_blank" rel="noopener">${GLOBE_SVG}<span class="wm-logo-text">WorldMonitor</span></a>
+<div class="card"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(detail)}</p><a href="javascript:history.back()" class="back">&#8592; go back</a></div>
+<p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a></p>
+</body></html>`, { status: 400, headers: PAGE_HEADERS });
 }
 
 function consentPage(params, nonce, errorMsg = '') {
-  const { client_name, redirect_uri, client_id, response_type, code_challenge, code_challenge_method, state } = params;
+  const { client_name, redirect_uri } = params;
   const redirectHost = new URL(redirect_uri).hostname;
   return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Authorize — WorldMonitor</title>
+<title>Authorize &#x2014; WorldMonitor</title>
 <style>
-*{box-sizing:border-box}
-body{font-family:system-ui,sans-serif;background:#0f0f0f;color:#e8e8e8;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:1rem}
-.card{width:100%;max-width:420px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:2rem}
-h1{font-size:1.1rem;margin:0 0 0.25rem;color:#fff}
-.sub{color:#888;font-size:0.85rem;margin:0 0 1.5rem}
-.scope-badge{display:inline-block;background:#1e3a5f;color:#7dd3fc;border-radius:4px;padding:0.2rem 0.5rem;font-size:0.8rem;margin-bottom:1.5rem}
-label{display:block;font-size:0.85rem;color:#aaa;margin-bottom:0.4rem}
-input[type=password]{width:100%;padding:0.6rem 0.75rem;background:#111;border:1px solid #333;border-radius:6px;color:#fff;font-size:0.95rem;outline:none}
-input[type=password]:focus{border-color:#60a5fa}
-.error{color:#f87171;font-size:0.85rem;margin:0.5rem 0 0}
-button{width:100%;margin-top:1.25rem;padding:0.7rem;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:1rem;cursor:pointer;font-weight:500}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:ui-monospace,'SF Mono','Cascadia Code',monospace;background:#0a0a0a;color:#e8e8e8;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem}
+.wm-logo{display:flex;align-items:center;gap:.5rem;margin-bottom:2rem;text-decoration:none}
+.wm-logo svg{color:#2d8a6e}
+.wm-logo-text{font-size:.75rem;color:#555;letter-spacing:.1em;text-transform:uppercase}
+.card{width:100%;max-width:440px;background:#111;border:1px solid #1e1e1e;padding:2rem}
+.client-hd{margin-bottom:1.25rem}
+.client-name{font-size:1rem;color:#fff;font-weight:600;margin-bottom:.25rem}
+.client-host{font-size:.75rem;color:#444}
+hr{border:none;border-top:1px solid #1e1e1e;margin:1.25rem 0}
+.scope-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#444;margin-bottom:.6rem}
+.scope-list{list-style:none}
+.scope-list li{font-size:.8rem;color:#666;padding:.2rem 0;display:flex;align-items:flex-start;gap:.5rem}
+.scope-list li::before{content:'&#x2192;';color:#2d8a6e;flex-shrink:0;margin-top:.05em}
+label{display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#444;margin-bottom:.4rem}
+input[type=password]{width:100%;padding:.65rem .75rem;background:#0a0a0a;border:1px solid #2a2a2a;color:#e8e8e8;font-family:inherit;font-size:.9rem;outline:none;border-radius:0}
+input[type=password]:focus{border-color:#2d8a6e}
+.hint{font-size:.72rem;color:#333;margin-top:.4rem}
+.hint a{color:#2d8a6e;text-decoration:none}
+.hint a:hover{text-decoration:underline}
+.error{color:#ef4444;font-size:.8rem;margin:.5rem 0 0}
+button{width:100%;margin-top:1.25rem;padding:.75rem;background:#2563eb;color:#fff;border:none;font-family:inherit;font-size:.9rem;cursor:pointer;font-weight:500;letter-spacing:.02em;border-radius:0}
 button:hover{background:#1d4ed8}
-.redirect{font-size:0.75rem;color:#666;margin-top:1rem;text-align:center}
+button:disabled{opacity:.5;cursor:default}
+.footer{font-size:.7rem;color:#2a2a2a;text-align:center;margin-top:1.25rem}
+.footer a{color:#333;text-decoration:none}
+.footer a:hover{color:#555}
 </style></head>
-<body><div class="card">
-<h1>${escapeHtml(client_name)} wants to connect</h1>
-<p class="sub">to WorldMonitor via <strong>${escapeHtml(redirectHost)}</strong></p>
-<span class="scope-badge">mcp — read access</span>
-<form method="POST" action="/oauth/authorize">
-<input type="hidden" name="client_id" value="${escapeHtml(client_id)}">
-<input type="hidden" name="redirect_uri" value="${escapeHtml(redirect_uri)}">
-<input type="hidden" name="response_type" value="${escapeHtml(response_type)}">
-<input type="hidden" name="code_challenge" value="${escapeHtml(code_challenge)}">
-<input type="hidden" name="code_challenge_method" value="${escapeHtml(code_challenge_method)}">
-<input type="hidden" name="state" value="${escapeHtml(state ?? '')}">
-<input type="hidden" name="_nonce" value="${escapeHtml(nonce)}">
-<label for="api_key">WorldMonitor API Key</label>
-<input type="password" id="api_key" name="api_key" placeholder="wm_…" autocomplete="current-password" required>
-${errorMsg ? `<p class="error">${escapeHtml(errorMsg)}</p>` : ''}
-<button type="submit">Authorize</button>
+<body>
+<a href="https://www.worldmonitor.app" class="wm-logo" target="_blank" rel="noopener">${GLOBE_SVG}<span class="wm-logo-text">WorldMonitor</span></a>
+<div class="card">
+<div class="client-hd">
+<div class="client-name">${escapeHtml(client_name)} wants access</div>
+<div class="client-host">via ${escapeHtml(redirectHost)}</div>
+</div>
+<hr>
+<p class="scope-label">Read-only access to</p>
+<ul class="scope-list">
+<li>Real-time news &amp; events from 100+ global sources</li>
+<li>Live flight tracking &amp; AIS vessel positions</li>
+<li>Weather alerts, earthquakes &amp; natural disasters</li>
+<li>Geopolitical risk indicators &amp; conflict data</li>
+<li>Markets: stocks, commodities, crypto &amp; FX</li>
+</ul>
+<hr>
+<form id="cf" method="POST" action="https://api.worldmonitor.app/oauth/authorize">
+<input type="hidden" name="_nonce" id="nn" value="${escapeHtml(nonce)}">
+<input type="hidden" name="_js" id="jf" value="">
+<label for="api_key">API Key</label>
+<input type="password" id="api_key" name="api_key" placeholder="wm_&#8230;" autocomplete="current-password" required>
+<p class="hint">No key? <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get one at worldmonitor.app/pro &#x2192;</a></p>
+<p class="error" id="ke"${errorMsg ? '' : ' style="display:none"'}>${errorMsg ? escapeHtml(errorMsg) : ''}</p>
+<button type="submit" id="ab">Authorize</button>
 </form>
-<p class="redirect">You will be redirected to ${escapeHtml(redirectHost)}</p>
-</div></body></html>`, {
-    status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Frame-Options': 'DENY', 'Cache-Control': 'no-store', 'Pragma': 'no-cache' },
-  });
+</div>
+<p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a> &middot; <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get an API key &#x2192;</a></p>
+<script>document.getElementById('cf').addEventListener('submit',function(e){e.preventDefault();var jf=document.getElementById('jf');if(jf)jf.value='1';var b=document.getElementById('ab');b.disabled=true;b.textContent='Authorizing\u2026';var d=new URLSearchParams(new FormData(e.target));fetch('/oauth/authorize',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:d}).then(function(r){var c=r.headers.get('Content-Type')||'';if(c.indexOf('json')>=0)return r.json().then(function(j){if(j.location){window.location.replace(j.location);return;}if(j.error==='invalid_key'){var n=document.getElementById('nn');if(n)n.value=j.nonce||'';var em=document.getElementById('ke');if(em){em.textContent='Invalid API key. Please check and try again.';em.style.display='';}}b.disabled=false;b.textContent='Authorize';});return r.text().then(function(h){document.open();document.write(h);document.close();});}).catch(function(){b.disabled=false;b.textContent='Authorize';});})</script>
+</body></html>`, { status: 200, headers: PAGE_HEADERS });
 }
 
 export default async function handler(req) {
   const method = req.method;
 
   if (method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' } });
+    return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } });
   }
 
   if (method === 'GET') {
@@ -195,9 +219,10 @@ export default async function handler(req) {
   }
 
   if (method === 'POST') {
-    // Origin validation: form submits from our own domain
+    // Origin validation: allow our domain, absent origin (server/CLI), and 'null'
+    // (WebView with opaque/sandboxed origin). CSRF nonce provides the actual protection.
     const origin = req.headers.get('origin');
-    if (origin && origin !== 'https://api.worldmonitor.app') {
+    if (origin && origin !== 'https://api.worldmonitor.app' && origin !== 'null') {
       return new Response('Forbidden', { status: 403 });
     }
 
@@ -220,6 +245,9 @@ export default async function handler(req) {
 
     const api_key = params.get('api_key') ?? '';
     const nonce = params.get('_nonce') ?? '';
+    // _js=1 is set by the inline script before building FormData — distinguishes
+    // the JS/WebView path (needs JSON response) from native form submit (needs 302).
+    const isXHR = params.get('_js') === '1';
 
     if (!nonce) {
       return htmlError('Bad Request', 'Missing session token.');
@@ -265,6 +293,12 @@ export default async function handler(req) {
       if (!retryNonceStored) {
         return htmlError('Service Unavailable', 'Authorization service is temporarily unavailable. Please try again shortly.');
       }
+      if (isXHR) {
+        return new Response(JSON.stringify({ error: 'invalid_key', nonce: retryNonce }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+        });
+      }
       return consentPage({
         client_name: client.client_name ?? 'Unknown Client',
         redirect_uri, client_id, response_type: 'code', code_challenge, code_challenge_method: 'S256', state,
@@ -292,6 +326,14 @@ export default async function handler(req) {
     redirectUrl.searchParams.set('code', code);
     if (state) redirectUrl.searchParams.set('state', state);
 
+    // XHR (JavaScript fetch) path: return JSON so the page can navigate the WebView.
+    // Native form submit path: return 302 redirect (curl, non-JS fallback).
+    if (isXHR) {
+      return new Response(JSON.stringify({ location: redirectUrl.toString() }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
     return new Response(null, {
       status: 302,
       headers: {

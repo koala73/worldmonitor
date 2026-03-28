@@ -68,6 +68,7 @@ import {
   extractSimulationRoundPayload,
   computeSimulationAdjustment,
   applySimulationMerge,
+  applyPostSimulationRescore,
   matchesBucket,
   matchesChannel,
   contradictsPremise,
@@ -6735,5 +6736,325 @@ describe('phase 3 simulation re-ingestion — debug payload simulationEvidence f
     const payload = buildImpactExpansionDebugPayload(data, null, 'run-test');
     assert.ok(payload !== null);
     assert.equal(payload.simulationEvidence, null);
+  });
+});
+
+describe('phase 3 simulation re-ingestion — applyPostSimulationRescore', () => {
+  // Minimal path objects with enough structure for computeSimulationAdjustment + bundle rebuild
+  const makeRescorePath = (stateId, acceptanceScore, channel = 'supply_disruption') => ({
+    pathId: `path-${stateId}`,
+    type: 'expanded',
+    candidateStateId: stateId,
+    candidateIndex: 0,
+    direct: { variableKey: 'route_disruption', targetBucket: '', channel, affectedAssets: ['Red Sea shipping'] },
+    second: null,
+    third: null,
+    pathScore: acceptanceScore + 0.05,
+    acceptanceScore,
+  });
+
+  const makeRescoreCandidatePacket = (stateId) => ({
+    candidateStateId: stateId,
+    candidateIndex: 0,
+    stateKind: 'maritime_disruption',
+    routeFacilityKey: 'Red Sea',
+    commodityKey: 'crude_oil',
+    marketContext: {
+      topBucketId: 'energy',
+      topChannel: 'energy_supply_shock',
+    },
+  });
+
+  const makeRescoreSimOutcome = (stateId) => ({
+    runId: 'sim-rescore-001',
+    theaterResults: [{
+      theaterId: `theater-1`,
+      candidateStateId: stateId,
+      theaterLabel: 'Red Sea maritime disruption state',
+      stateKind: 'maritime_disruption',
+      topPaths: [{ label: 'Supply Disruption', summary: 'oil supply shock from Red Sea disruption', keyActors: ['Red Sea shipping'] }],
+      invalidators: [],
+      stabilizers: [],
+    }],
+  });
+
+  const makeRescoreSnapshot = (stateId, priorWorldStateKey = '') => ({
+    runId: '1774800000000-test01',
+    generatedAt: 1774800000000,
+    priorWorldStateKey,
+    impactExpansionCandidates: [makeRescoreCandidatePacket(stateId)],
+    deepForecast: { status: 'queued', selectedStateIds: [] },
+  });
+
+  it('R-1: skips when storageConfig is null', async () => {
+    const result = await applyPostSimulationRescore('1774800000000-test01', makeRescoreSimOutcome('state-x'), null);
+    assert.equal(result.skipped, true);
+    assert.equal(result.reason, 'missing_params');
+  });
+
+  it('R-2: skips when freshOutcome has no theaterResults', async () => {
+    const result = await applyPostSimulationRescore('1774800000000-test01', { theaterResults: [] }, { bucket: 'test', basePrefix: 'test' });
+    assert.equal(result.skipped, true);
+    assert.equal(result.reason, 'missing_params');
+  });
+
+  it('R-3: returns no_path_changes when simulation does not adjust any path', async () => {
+    // Simulate the rescore inline using applySimulationMerge directly (no R2 I/O needed)
+    const stateId = 'state-r3';
+    // Path well above threshold — no chance of promotion/demotion
+    const selectedPath = makeRescorePath(stateId, 0.75);
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [selectedPath],
+      rejectedPaths: [],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    // Simulation with no matching bucket/channel and no invalidators
+    const simOutcome = {
+      runId: 'sim-r3',
+      isCurrentRun: true,
+      theaterResults: [{ theaterId: 'theater-1', candidateStateId: stateId, topPaths: [], invalidators: [], stabilizers: [] }],
+    };
+    const snapshot = makeRescoreSnapshot(stateId);
+    const { simulationEvidence } = applySimulationMerge(evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null);
+    assert.equal(simulationEvidence.pathsPromoted, 0);
+    assert.equal(simulationEvidence.pathsDemoted, 0);
+  });
+
+  it('R-4: applySimulationMerge promotes near-threshold path to selected when bucketChannelMatch fires', () => {
+    // Simulate what applyPostSimulationRescore does internally:
+    // status=completed_no_material_change, rejected path at 0.44 (below 0.50),
+    // simulation has matching topPath → +0.08 → 0.52 → promoted
+    const stateId = 'state-r4';
+    const rejectedPath = makeRescorePath(stateId, 0.44);
+    const evaluation = {
+      status: 'completed_no_material_change',
+      selectedPaths: [],
+      rejectedPaths: [rejectedPath],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r4',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateId,
+        topPaths: [{ label: 'Oil Supply Shock', summary: 'oil supply disruption from Red Sea energy shock', keyActors: [] }],
+        invalidators: [],
+        stabilizers: [],
+      }],
+    };
+    const snapshot = makeRescoreSnapshot(stateId);
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    assert.equal(simulationEvidence.pathsPromoted, 1, 'path should be promoted');
+    assert.equal(simulationEvidence.adjustments[0].details.bucketChannelMatch, true);
+    assert.ok(simulationEvidence.adjustments[0].details.channelSource === 'market', 'channel resolved via marketContext fallback');
+    assert.equal(updatedEval.status, 'completed', 'evaluation status should upgrade to completed');
+    const selectedExpanded = updatedEval.selectedPaths.filter((p) => p.type === 'expanded');
+    assert.equal(selectedExpanded.length, 1, 'promoted path now in selectedPaths');
+    assert.equal(selectedExpanded[0].candidateStateId, stateId);
+  });
+
+  it('R-6: applySimulationMerge persists partial demotion in completed run without status change (CASE 3)', () => {
+    // Reproduces: two selected expanded paths at 0.55 and 0.75; invalidator fires for stateA
+    // (0.55 - 0.12 = 0.43 < 0.50 → demoted). stateB (0.75) survives. Status must stay 'completed'
+    // and selectedPaths must update to exclude stateA.
+    const stateA = 'state-r6a';
+    const stateB = 'state-r6b';
+    const candidateA = makeRescoreCandidatePacket(stateA);
+    const candidateB = makeRescoreCandidatePacket(stateB);
+    // Embed candidate so contradictsPremise can match on routeFacilityKey
+    const pathA = { ...makeRescorePath(stateA, 0.55), candidate: candidateA };
+    const pathB = { ...makeRescorePath(stateB, 0.75), candidate: candidateB };
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [pathA, pathB],
+      rejectedPaths: [],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r6',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateA,
+        topPaths: [],
+        // invalidator matches routeFacilityKey='Red Sea' → contradictsPremise returns true → -0.12
+        invalidators: ['red sea shipping disruption reversed'],
+        stabilizers: [],
+      }],
+    };
+    const snapshot = {
+      ...makeRescoreSnapshot(stateA),
+      impactExpansionCandidates: [candidateA, candidateB],
+    };
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    assert.equal(simulationEvidence.pathsDemoted, 1, 'one path should be demoted');
+    assert.equal(updatedEval.status, 'completed', 'status stays completed — stateB is still selected');
+    const selectedIds = updatedEval.selectedPaths.map((p) => p.candidateStateId);
+    assert.ok(!selectedIds.includes(stateA), 'demoted path removed from selectedPaths');
+    assert.ok(selectedIds.includes(stateB), 'safe path remains in selectedPaths');
+    const rejectedIds = updatedEval.rejectedPaths.map((p) => p.candidateStateId);
+    assert.ok(rejectedIds.includes(stateA), 'demoted path moved to rejectedPaths');
+  });
+
+  it('R-7: applySimulationMerge promotes near-threshold rejected path in completed run (CASE 3 promotion)', () => {
+    // completed eval with safe selected path (0.75) and near-threshold rejected path (0.44).
+    // Simulation matches rejected path → +0.08 → 0.52 → promoted. Status stays 'completed'.
+    // This is the case the hasDemotionRisk guard previously blocked (hasPromotionOpportunity needed).
+    const stateA = 'state-r7a'; // rejected, 0.44 — near threshold
+    const stateB = 'state-r7b'; // selected, 0.75 — safe
+    const candidateA = makeRescoreCandidatePacket(stateA);
+    const candidateB = makeRescoreCandidatePacket(stateB);
+    const pathA = { ...makeRescorePath(stateA, 0.44), candidate: candidateA };
+    const pathB = { ...makeRescorePath(stateB, 0.75), candidate: candidateB };
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [pathB],
+      rejectedPaths: [pathA],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r7',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateA,
+        topPaths: [{ label: 'Oil Supply Shock', summary: 'oil supply disruption from Red Sea energy shock', keyActors: [] }],
+        invalidators: [],
+        stabilizers: [],
+      }],
+    };
+    const snapshot = {
+      ...makeRescoreSnapshot(stateA),
+      impactExpansionCandidates: [candidateA, candidateB],
+    };
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    assert.equal(simulationEvidence.pathsPromoted, 1, 'near-threshold path should be promoted');
+    assert.equal(updatedEval.status, 'completed', 'status stays completed — existing selected path remains');
+    const selectedIds = updatedEval.selectedPaths.map((p) => p.candidateStateId);
+    assert.ok(selectedIds.includes(stateA), 'promoted path now in selectedPaths');
+    assert.ok(selectedIds.includes(stateB), 'original selected path remains');
+    const rejectedIds = updatedEval.rejectedPaths.map((p) => p.candidateStateId);
+    assert.ok(!rejectedIds.includes(stateA), 'promoted path removed from rejectedPaths');
+  });
+
+  it('R-8: applySimulationMerge promotes path at 0.39 via +0.12 (bucketChannelMatch + actor overlap)', () => {
+    // Boundary: old guard required >= 0.42; correct lower bound is 0.38 (= 0.50 - 0.12 max bonus).
+    // Path at 0.39 + 0.08 (bucketChannelMatch) + 0.04 (2 shared actors) = 0.51 → promoted.
+    const stateA = 'state-r8a';
+    const stateB = 'state-r8b';
+    const candidateA = makeRescoreCandidatePacket(stateA);
+    const candidateB = makeRescoreCandidatePacket(stateB);
+    // Override affectedAssets with 2 actors that will also appear in topPath.keyActors
+    const pathA = {
+      ...makeRescorePath(stateA, 0.39),
+      candidate: candidateA,
+      direct: { variableKey: 'route_disruption', targetBucket: '', channel: 'supply_disruption', affectedAssets: ['Red Sea Oil Tankers', 'Saudi Aramco'] },
+    };
+    const pathB = { ...makeRescorePath(stateB, 0.75), candidate: candidateB };
+    const evaluation = {
+      status: 'completed_no_material_change',
+      selectedPaths: [pathB],
+      rejectedPaths: [pathA],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r8',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateA,
+        // Summary matches energy bucket + energy_supply_shock channel; keyActors match path actors (2 overlap → +0.04)
+        topPaths: [{ label: 'Oil Supply Shock', summary: 'oil supply disruption from Red Sea energy shock', keyActors: ['Red Sea Oil Tankers', 'Saudi Aramco'] }],
+        invalidators: [],
+        stabilizers: [],
+      }],
+    };
+    const snapshot = {
+      ...makeRescoreSnapshot(stateA),
+      impactExpansionCandidates: [candidateA, candidateB],
+    };
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    const adj = simulationEvidence.adjustments.find((a) => a.candidateStateId === stateA);
+    assert.ok(adj, 'adjustment entry for stateA');
+    assert.equal(adj.details.actorOverlapCount, 2, 'two actors overlap → +0.04 applied');
+    assert.equal(adj.simulationAdjustment, 0.12, 'total adjustment is +0.12');
+    assert.equal(simulationEvidence.pathsPromoted, 1, 'path at 0.39 should be promoted');
+    assert.ok(updatedEval.selectedPaths.some((p) => p.candidateStateId === stateA), 'promoted path in selectedPaths');
+  });
+
+  it('R-9: applySimulationMerge demotes path at 0.64 via -0.15 stabilizer (boundary above old 0.62 guard)', () => {
+    // Boundary: old guard required < 0.62; correct upper bound is 0.65 (= 0.50 + 0.15 max stabilizer).
+    // Path at 0.64 - 0.15 (stabilizer) = 0.49 → demoted. Second path at 0.75 stays; CASE 3 fires.
+    const stateA = 'state-r9a'; // 0.64 — at risk from stabilizer but above old 0.62 threshold
+    const stateB = 'state-r9b'; // 0.75 — safe
+    const candidateA = makeRescoreCandidatePacket(stateA);
+    const candidateB = makeRescoreCandidatePacket(stateB);
+    const pathA = { ...makeRescorePath(stateA, 0.64), candidate: candidateA };
+    const pathB = { ...makeRescorePath(stateB, 0.75), candidate: candidateB };
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [pathA, pathB],
+      rejectedPaths: [],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+    const simOutcome = {
+      runId: 'sim-r9',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId: stateA,
+        topPaths: [],
+        invalidators: [],
+        // stabilizer matches routeFacilityKey='Red Sea' + contains negation term 'normaliz' → -0.15
+        stabilizers: ['red sea shipping lanes normaliz'],
+      }],
+    };
+    const snapshot = {
+      ...makeRescoreSnapshot(stateA),
+      impactExpansionCandidates: [candidateA, candidateB],
+    };
+    const { evaluation: updatedEval, simulationEvidence } = applySimulationMerge(
+      evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    const adj = simulationEvidence.adjustments.find((a) => a.candidateStateId === stateA);
+    assert.ok(adj, 'adjustment entry for stateA');
+    assert.equal(adj.simulationAdjustment, -0.15, 'stabilizer applies -0.15');
+    assert.equal(simulationEvidence.pathsDemoted, 1, 'path at 0.64 should be demoted');
+    assert.equal(updatedEval.status, 'completed', 'status stays completed — stateB still selected');
+    assert.ok(!updatedEval.selectedPaths.some((p) => p.candidateStateId === stateA), 'demoted path removed');
+    assert.ok(updatedEval.selectedPaths.some((p) => p.candidateStateId === stateB), 'safe path remains');
+  });
+
+  it('R-5: simulation adjustments use marketContext fallback when direct.channel is an LLM-generated invalid key', () => {
+    // supply_disruption is not in CHANNEL_KEYWORDS — should fall back to marketContext.topChannel=energy_supply_shock
+    const stateId = 'state-r5';
+    const path = makeRescorePath(stateId, 0.45, 'supply_disruption');
+    const candidatePacket = makeRescoreCandidatePacket(stateId);
+    const simResult = {
+      topPaths: [{ label: 'Energy Crisis', summary: 'oil supply disruption drives energy price spike', keyActors: [] }],
+      invalidators: [],
+      stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(details.channelSource, 'market', 'supply_disruption is invalid — falls back to marketContext');
+    assert.equal(details.resolvedChannel, 'energy_supply_shock');
+    assert.equal(details.bucketChannelMatch, true);
+    assert.equal(adjustment, 0.08);
   });
 });

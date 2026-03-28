@@ -4559,6 +4559,18 @@ function summarizeImpactPathScore(path = null) {
   return summary;
 }
 
+function buildForecastEvalPayload(data = {}) {
+  const evaluation = data?.deepPathEvaluation || null;
+  if (!evaluation) return null;
+  return {
+    runId: data?.runId || '',
+    generatedAt: data?.generatedAt || Date.now(),
+    status: evaluation.status || '',
+    selectedPaths: evaluation.selectedPaths || [],
+    rejectedPaths: evaluation.rejectedPaths || [],
+  };
+}
+
 function buildDeepPathScorecardsPayload(data = {}, runId = '') {
   const evaluation = data?.deepPathEvaluation || null;
   if (!evaluation) return null;
@@ -11517,6 +11529,29 @@ function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, s
       evaluation.rejectedPaths = newRejected;
       evaluation.status = 'completed_no_material_change';
       evaluation.deepWorldState = null;
+    } else if (evaluation.status === 'completed') {
+      // CASE 3: Partial change within a completed run — at least one expanded path was
+      // promoted or demoted, but the set of selected expanded paths is non-empty.
+      // Status stays 'completed'; rebuild bundle and world state to reflect the updated path set.
+      const acceptedBundle = buildImpactExpansionBundleFromPaths(newSelectedExpanded, candidatePackets, {
+        source: 'deep_selected',
+        parseStage: 'accepted_paths',
+        parseMode: 'accepted_paths',
+      });
+      const deepWorldState = annotateDeepForecastOrigins(
+        buildDeepWorldStateFromSnapshot(snapshot, priorWorldState, acceptedBundle, {
+          status: 'completed',
+          selectedStateIds: newSelectedExpanded.map((p) => p.candidateStateId),
+          eligibleStateCount: (candidatePackets || []).length,
+          selectedPathCount: newSelectedExpanded.length,
+          replacedFastRun: true,
+        }),
+        newSelectedExpanded,
+      );
+      evaluation.selectedPaths = newSelected;
+      evaluation.rejectedPaths = newRejected;
+      evaluation.impactExpansionBundle = acceptedBundle;
+      evaluation.deepWorldState = deepWorldState;
     }
   }
 
@@ -12000,6 +12035,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     manifest.runId,
   );
   const pathScorecards = buildDeepPathScorecardsPayload(data, manifest.runId);
+  const forecastEval = buildForecastEvalPayload(data);
 
   return {
     prefix,
@@ -12015,6 +12051,7 @@ function buildForecastTraceArtifacts(data, context = {}, config = {}) {
     deepWorldStateKey,
     runStatusKey,
     forecastEvalKey: artifactKeys.forecastEvalKey,
+    forecastEval,
     runStatus,
     impactExpansionDebugKey,
     impactExpansionDebug,
@@ -12159,6 +12196,12 @@ async function writeForecastTraceArtifacts(data, context = {}) {
       kind: 'path_scorecards',
     });
   }
+  if (artifacts.forecastEval) {
+    await putR2JsonObject(storageConfig, artifacts.forecastEvalKey, artifacts.forecastEval, {
+      runid: String(artifacts.manifest.runId || ''),
+      kind: 'forecast_eval',
+    });
+  }
   await Promise.all(
     artifacts.forecasts.map((item, index) => putR2JsonObject(storageConfig, item.key, item.payload, {
       runid: String(artifacts.manifest.runId || ''),
@@ -12185,7 +12228,9 @@ async function writeForecastTraceArtifacts(data, context = {}) {
     quality: artifacts.summary.quality,
     worldStateSummary: artifacts.summary.worldStateSummary,
   };
-  await writeForecastTracePointer(pointer);
+  if (!context.skipPointer) {
+    await writeForecastTracePointer(pointer);
+  }
   return pointer;
 }
 
@@ -15497,6 +15542,11 @@ RULES:
 - narrative: 2–3 sentences grounding the thesis in the provided context. Cite specific signals by name (e.g. "Hormuz at CRITICAL risk", "VIX at 28", "Polymarket: 74% Iran conflict"). When prediction market odds are provided, weave them into the thesis.
 - risk_caveat: 1 sentence on the primary counter-thesis or risk
 - driver: 1–3 words naming the core geopolitical/macro driver (e.g. "Hormuz closure risk", "Fed pivot", "Taiwan tension")
+- transmission_chain: array of 2–4 objects, each with:
+  - node: short label (max 8 words) for this step in the causal chain
+  - impact_type: one of supply_disruption, demand_shift, earnings_risk, valuation_shift, policy_shift, capital_flow, sentiment_shift, contagion
+  - logic: 1 sentence (max 15 words) explaining what this step means for the trade thesis
+  The chain models the causal path from geopolitical event to price impact.
 - Cross-reference signals: if geopolitical escalation coincides with a commodity move in the opposite direction, flag the divergence and consider a HEDGE rather than directional call.
 - Prioritise cards by signal strength — lead with the highest-conviction setup.
 - NEVER use tickers not in the ALLOWED TICKERS list
@@ -15505,7 +15555,7 @@ RULES:
 - NEVER write underscored_variable_names or internal keys in any field — always use plain English prose
 
 Respond with ONLY a JSON array:
-[{"ticker":"","name":"","direction":"","timeframe":"","confidence":"","title":"","narrative":"","risk_caveat":"","driver":""},...]`;
+[{"ticker":"","name":"","direction":"","timeframe":"","confidence":"","title":"","narrative":"","risk_caveat":"","driver":"","transmission_chain":[{"node":"","impact_type":"","logic":""}]},...]`;
 
 function buildMarketImplicationsContext(inputs) {
   const parts = [];
@@ -15641,6 +15691,11 @@ function buildMarketImplicationsContext(inputs) {
   return parts.length > 0 ? parts.join('\n\n') : 'No live world state available.';
 }
 
+const VALID_IMPACT_TYPES = new Set([
+  'supply_disruption', 'demand_shift', 'earnings_risk', 'valuation_shift',
+  'policy_shift', 'capital_flow', 'sentiment_shift', 'contagion',
+]);
+
 function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS) {
   if (!Array.isArray(cards)) return [];
   const seen = new Set();
@@ -15660,6 +15715,18 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
     if (title.length < 5) continue;
     const narrative = typeof card.narrative === 'string' ? card.narrative.trim().slice(0, 600) : '';
     if (narrative.length < 20) continue;
+    let chain = [];
+    if (Array.isArray(card.transmission_chain)) {
+      for (const step of card.transmission_chain.slice(0, 4)) {
+        if (!step || typeof step !== 'object') continue;
+        const node = typeof step.node === 'string' ? step.node.trim().slice(0, 80) : '';
+        const impactType = typeof step.impact_type === 'string' ? step.impact_type.trim().toLowerCase() : '';
+        const logic = typeof step.logic === 'string' ? step.logic.trim().slice(0, 120) : '';
+        if (node.length < 3 || !VALID_IMPACT_TYPES.has(impactType) || logic.length < 5) continue;
+        chain.push({ node, impact_type: impactType, logic });
+      }
+    }
+    if (chain.length === 1) chain = [];
     seen.add(ticker);
     valid.push({
       ticker,
@@ -15671,6 +15738,7 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
       narrative,
       risk_caveat: typeof card.risk_caveat === 'string' ? card.risk_caveat.trim().slice(0, 300) : '',
       driver: typeof card.driver === 'string' ? card.driver.trim().slice(0, 60) : '',
+      transmission_chain: chain,
     });
     if (valid.length >= 5) break;
   }
@@ -16101,6 +16169,132 @@ async function fetchSimulationOutcomeForMerge(storageConfig, currentRunId) {
   }
 }
 
+/**
+ * Re-apply simulation merge against the just-completed simulation for a run whose deep forecast
+ * had already finished with stale (or no) simulation data. Reads forecast-eval.json + snapshot
+ * from R2, re-runs applySimulationMerge with the fresh outcome, and re-writes trace artifacts if
+ * any path was promoted or demoted.
+ *
+ * Called fire-and-forget from processNextSimulationTask after writeSimulationOutcome.
+ *
+ * @param {string} runId
+ * @param {object} freshOutcome — the simulation outcome just written (theaterResults array)
+ * @param {object} storageConfig
+ * @returns {Promise<{skipped: boolean, reason?: string, status?: string, pathsPromoted?: number, pathsDemoted?: number}>}
+ */
+async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
+  if (!runId || !freshOutcome?.theaterResults?.length || !storageConfig) {
+    return { skipped: true, reason: 'missing_params' };
+  }
+  try {
+    const generatedAt = freshOutcome.generatedAt || parseForecastRunGeneratedAt(runId);
+    const artifactKeys = buildForecastTraceArtifactKeys(runId, generatedAt, storageConfig.basePrefix || FORECAST_DEEP_RUN_PREFIX);
+    const snapshotKey = buildDeepForecastSnapshotKey(runId, generatedAt, storageConfig.basePrefix || FORECAST_DEEP_RUN_PREFIX);
+
+    const [evalData, snapshot] = await Promise.all([
+      getR2JsonObject(storageConfig, artifactKeys.forecastEvalKey).catch(() => null),
+      getR2JsonObject(storageConfig, snapshotKey).catch(() => null),
+    ]);
+
+    if (!evalData?.status || (!evalData.selectedPaths?.length && !evalData.rejectedPaths?.length)) {
+      return { skipped: true, reason: 'no_eval_data' };
+    }
+    if (!snapshot?.impactExpansionCandidates?.length) {
+      return { skipped: true, reason: 'no_candidates' };
+    }
+
+    // Only re-score if there is actionable opportunity:
+    // - 'completed_no_material_change': always proceed — any simulation evidence could promote a rejected path
+    // - 'completed': proceed if (a) a selected expanded path risks demotion, or (b) a rejected expanded
+    //   path could be promoted. Thresholds are derived from the max adjustments in computeSimulationAdjustment:
+    //     max positive: +0.08 (bucketChannelMatch) + 0.04 (actor overlap >= 2) = +0.12
+    //     max negative: -0.15 (stabilizer) — larger than invalidator -0.12
+    //   Demotion risk threshold: 0.50 + 0.15 = 0.65. Promotion window: [0.50 - 0.12, 0.50) = [0.38, 0.50).
+    const hasDemotionRisk = (evalData.selectedPaths || []).some(
+      (p) => p.type === 'expanded' && p.acceptanceScore < 0.65,
+    );
+    const hasPromotionOpportunity = (evalData.rejectedPaths || []).some(
+      (p) => p.type === 'expanded' && p.acceptanceScore >= 0.38 && p.acceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
+    );
+    if (evalData.status !== 'completed_no_material_change' && !hasDemotionRisk && !hasPromotionOpportunity) {
+      return { skipped: true, reason: 'no_actionable_paths' };
+    }
+
+    const priorWorldState = snapshot.priorWorldStateKey
+      ? await getR2JsonObject(storageConfig, snapshot.priorWorldStateKey).catch(() => null)
+      : null;
+
+    // Reconstruct evaluation from stored paths (full path objects including direct/second/third)
+    const evaluation = {
+      status: evalData.status,
+      selectedPaths: [...(evalData.selectedPaths || [])],
+      rejectedPaths: [...(evalData.rejectedPaths || [])],
+      impactExpansionBundle: null,
+      deepWorldState: null,
+    };
+
+    // Tag the outcome as current-run since we just wrote it for this runId
+    const simulationOutcome = { ...freshOutcome, isCurrentRun: true };
+    const mergeResult = applySimulationMerge(
+      evaluation,
+      simulationOutcome,
+      snapshot.impactExpansionCandidates,
+      snapshot,
+      priorWorldState,
+    );
+
+    const ev = mergeResult.simulationEvidence;
+    if (!ev?.pathsPromoted && !ev?.pathsDemoted) {
+      return { skipped: false, reason: 'no_path_changes', adjustmentsApplied: ev?.adjustments?.length || 0 };
+    }
+
+    // Paths changed — re-write the trace artifacts with updated evaluation + simulation evidence.
+    const deepForecast = {
+      completedAt: new Date().toISOString(),
+      failureReason: '',
+      rejectedPathsPreview: buildDeepForecastRejectedPreview(evaluation.rejectedPaths || []),
+      selectedPathCount: (evaluation.selectedPaths || []).filter((p) => p.type === 'expanded').length,
+      replacedFastRun: evaluation.status === 'completed',
+      status: evaluation.status || 'completed_no_material_change',
+      selectedStateIds: (evaluation.selectedPaths || []).filter((p) => p.type === 'expanded').map((p) => p.candidateStateId),
+      simulationRescored: true,
+    };
+
+    await writeForecastTraceArtifacts({
+      ...snapshot,
+      priorWorldState,
+      priorWorldStates: priorWorldState ? [priorWorldState] : [],
+      impactExpansionBundle: evaluation.impactExpansionBundle || null,
+      deepPathEvaluation: evaluation,
+      simulationEvidence: ev,
+      forecastDepth: 'deep',
+      deepForecast,
+      worldStateOverride: evaluation.deepWorldState,
+      candidateWorldStateOverride: evaluation.deepWorldState,
+      runStatusContext: {
+        status: deepForecast.status,
+        stage: 'deep_rescored',
+        progressPercent: 100,
+        processedCandidateCount: (snapshot.impactExpansionCandidates || []).length,
+        acceptedPathCount: deepForecast.selectedPathCount,
+        completedAt: deepForecast.completedAt,
+      },
+    }, { runId, skipPointer: true });
+
+    return {
+      status: 'rescored',
+      runId,
+      pathsPromoted: ev.pathsPromoted,
+      pathsDemoted: ev.pathsDemoted,
+      adjustmentsApplied: ev.adjustments?.length || 0,
+    };
+  } catch (err) {
+    console.warn(`[SimulationRescore] Error for ${runId}: ${err.message}`);
+    return { skipped: true, reason: `error: ${err.message}` };
+  }
+}
+
+
 async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
   const config = storageConfig ?? resolveR2StorageConfig();
   if (!config || !pkg?.runId) return null;
@@ -16305,6 +16499,10 @@ async function processNextSimulationTask(options = {}) {
       const writeResult = await writeSimulationOutcome(pkgData, outcome, { storageConfig });
       await completeSimulationTask(runId);
       console.log(`  [Simulation] Completed ${runId}: ${theaterResults.length} theaters → ${writeResult?.outcomeKey}`);
+      // Fire-and-forget: re-score the deep forecast that may have run with stale simulation data.
+      applyPostSimulationRescore(runId, outcome, storageConfig)
+        .then((r) => { if (r && !r.skipped) console.log(`  [SimulationRescore] ${runId}: ${JSON.stringify(r)}`); })
+        .catch((err) => console.warn(`  [SimulationRescore] Error for ${runId}: ${err.message}`));
       return { status: 'completed', runId, theaterCount: theaterResults.length, outcomeKey: writeResult?.outcomeKey };
     } catch (err) {
       console.warn(`  [Simulation] Task failed for ${runId}: ${err.message}`);
@@ -16495,6 +16693,7 @@ export {
   processNextSimulationTask,
   runSimulationWorker,
   fetchSimulationOutcomeForMerge,
+  applyPostSimulationRescore,
   computeSimulationAdjustment,
   applySimulationMerge,
   matchesBucket,

@@ -1834,6 +1834,19 @@ components:
                     type: string
                 driver:
                     type: string
+                transmissionChain:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TransmissionNode'
+        TransmissionNode:
+            type: object
+            properties:
+                node:
+                    type: string
+                impactType:
+                    type: string
+                logic:
+                    type: string
         GetSocialVelocityRequest:
             type: object
         GetSocialVelocityResponse:
