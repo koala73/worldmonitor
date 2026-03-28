@@ -115,7 +115,7 @@ hr{border:none;border-top:1px solid #1e1e1e;margin:1.25rem 0}
 .scope-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#444;margin-bottom:.6rem}
 .scope-list{list-style:none}
 .scope-list li{font-size:.8rem;color:#666;padding:.2rem 0;display:flex;align-items:flex-start;gap:.5rem}
-.scope-list li::before{content:'\2192';color:#2d8a6e;flex-shrink:0;margin-top:.05em}
+.scope-list li::before{content:'→';color:#2d8a6e;flex-shrink:0;margin-top:.05em}
 label{display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#444;margin-bottom:.4rem}
 input[type=password]{width:100%;padding:.65rem .75rem;background:#0a0a0a;border:1px solid #2a2a2a;color:#e8e8e8;font-family:inherit;font-size:.9rem;outline:none;border-radius:0}
 input[type=password]:focus{border-color:#2d8a6e}
