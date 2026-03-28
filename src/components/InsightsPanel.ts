@@ -253,11 +253,11 @@ export class InsightsPanel extends Panel {
       ) ?? false);
       const sortedStories = [...serverInsights.topStories].sort((a, b) => {
         const isqA = computeISQ(
-          { sourceCount: a.sourceCount, isAlert: a.isAlert, threatLevel: a.threatLevel ?? undefined, countryCode: a.countryCode },
+          { sourceCount: a.sourceCount, isAlert: a.isAlert, threatLevel: a.threatLevel ?? undefined, countryCode: a.countryCode, velocity: a.velocity },
           focalFnServer, getCountryScore, isFocalReadyServer,
         );
         const isqB = computeISQ(
-          { sourceCount: b.sourceCount, isAlert: b.isAlert, threatLevel: b.threatLevel ?? undefined, countryCode: b.countryCode },
+          { sourceCount: b.sourceCount, isAlert: b.isAlert, threatLevel: b.threatLevel ?? undefined, countryCode: b.countryCode, velocity: b.velocity },
           focalFnServer, getCountryScore, isFocalReadyServer,
         );
         return isqB.composite - isqA.composite;

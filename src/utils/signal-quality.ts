@@ -3,7 +3,7 @@ export interface SignalQualityInput {
   isAlert: boolean;
   sourceTier?: number;
   threatLevel?: string;
-  velocity?: { sourcesPerHour: number; level: string; trend: string };
+  velocity?: { sourcesPerHour: number; level: string; trend?: string };
   countryCode?: string | null;
 }
 
