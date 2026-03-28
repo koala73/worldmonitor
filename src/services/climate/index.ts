@@ -53,7 +53,7 @@ export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
 
   const response = await breaker.execute(async () => {
     return client.listClimateAnomalies({ minSeverity: 'ANOMALY_SEVERITY_UNSPECIFIED', pageSize: 0, cursor: '' });
-  }, emptyClimateFallback);
+  }, emptyClimateFallback, { shouldCache: (r) => r.anomalies.length > 0 });
   const anomalies = (response.anomalies ?? [])
     .map(toDisplayAnomaly)
     .filter(a => a.severity !== 'normal');

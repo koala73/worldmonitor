@@ -724,25 +724,23 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('gdelt-intel', () => new GdeltIntelPanel());
 
-    if (SITE_VARIANT === 'full') {
-      import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
-        const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
-        this.ctx.panels['deduction'] = deductionPanel;
-        const el = deductionPanel.getElement();
-        this.makeDraggable(el, 'deduction');
-        const grid = document.getElementById('panelsGrid');
-        if (grid) {
-          const gdeltEl = this.ctx.panels['gdelt-intel']?.getElement();
-          if (gdeltEl?.nextSibling) {
-            grid.insertBefore(el, gdeltEl.nextSibling);
-          } else {
-            grid.appendChild(el);
-          }
+    import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
+      const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
+      this.ctx.panels['deduction'] = deductionPanel;
+      const el = deductionPanel.getElement();
+      this.makeDraggable(el, 'deduction');
+      const grid = document.getElementById('panelsGrid');
+      if (grid) {
+        const gdeltEl = this.ctx.panels['gdelt-intel']?.getElement();
+        if (gdeltEl?.parentNode === grid && gdeltEl.nextSibling) {
+          grid.insertBefore(el, gdeltEl.nextSibling);
+        } else {
+          grid.appendChild(el);
         }
-        this.applyPanelSettings();
-        this.updatePanelGating(getAuthState());
-      });
-    }
+      }
+      this.applyPanelSettings();
+      this.updatePanelGating(getAuthState());
+    });
 
     if (this.shouldCreatePanel('cii')) {
       const ciiPanel = new CIIPanel();

@@ -161,7 +161,7 @@ export async function fetchFredData(): Promise<FredSeries[]> {
       }
       throw err;
     }
-  }, emptyFredBatchFallback);
+  }, emptyFredBatchFallback, { shouldCache: (r) => r.fetched > 0 });
 
   const out: FredSeries[] = [];
   for (const config of FRED_SERIES) {
@@ -364,7 +364,7 @@ export async function fetchOilAnalytics(): Promise<OilAnalytics> {
   try {
     const resp = await eiaBreaker.execute(async () => {
       return client.getEnergyPrices({ commodities: [] }, { signal: AbortSignal.timeout(20_000) }); // all commodities
-    }, emptyEiaFallback);
+    }, emptyEiaFallback, { shouldCache: (r) => r.prices.length > 0 });
 
     const byId = new Map<string, ProtoEnergyPrice>();
     for (const p of resp.prices) byId.set(p.commodity, p);
@@ -429,7 +429,7 @@ export async function fetchCrudeInventoriesRpc(): Promise<GetCrudeInventoriesRes
   try {
     return await crudeBreaker.execute(async () => {
       return client.getCrudeInventories({}, { signal: AbortSignal.timeout(20_000) });
-    }, emptyCrudeFallback);
+    }, emptyCrudeFallback, { shouldCache: (r) => r.weeks.length > 0 });
   } catch {
     return emptyCrudeFallback;
   }
@@ -448,7 +448,7 @@ export async function fetchNatGasStorageRpc(): Promise<GetNatGasStorageResponse>
   try {
     return await natGasBreaker.execute(async () => {
       return client.getNatGasStorage({}, { signal: AbortSignal.timeout(20_000) });
-    }, emptyNatGasFallback);
+    }, emptyNatGasFallback, { shouldCache: (r) => r.weeks.length > 0 });
   } catch {
     return emptyNatGasFallback;
   }
@@ -469,7 +469,7 @@ export async function fetchEnergyCapacityRpc(
         energySources: energySources ?? [],
         years: years ?? 0,
       }, { signal: AbortSignal.timeout(20_000) });
-    }, emptyCapacityFallback);
+    }, emptyCapacityFallback, { shouldCache: (r) => r.series.length > 0 });
   } catch {
     return emptyCapacityFallback;
   }
@@ -734,7 +734,7 @@ async function _fetchNationalDebt(): Promise<GetNationalDebtResponse> {
   try {
     return await nationalDebtBreaker.execute(async () => {
       return client.getNationalDebt({}, { signal: AbortSignal.timeout(12_000) });
-    }, emptyNationalDebtFallback);
+    }, emptyNationalDebtFallback, { shouldCache: (r) => r.entries.length > 0 });
   } catch {
     return emptyNationalDebtFallback;
   }

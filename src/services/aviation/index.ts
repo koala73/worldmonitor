@@ -291,7 +291,7 @@ export async function fetchFlightDelays(): Promise<AirportDelayAlert[]> {
   return breakerDelays.execute(async () => {
     const r = await client.listAirportDelays({ region: 'AIRPORT_REGION_UNSPECIFIED', minSeverity: 'FLIGHT_DELAY_SEVERITY_UNSPECIFIED', pageSize: 0, cursor: '' });
     return r.alerts.map(toDisplayAlert);
-  }, []);
+  }, [], { shouldCache: (r) => r.length > 0 });
 }
 
 export async function fetchAirportOpsSummary(airports: string[]): Promise<AirportOpsSummary[]> {

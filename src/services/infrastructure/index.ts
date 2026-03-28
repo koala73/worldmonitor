@@ -97,7 +97,7 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
       pageSize: 0,
       cursor: '',
     });
-  }, emptyOutageFallback);
+  }, emptyOutageFallback, { shouldCache: (r) => r.outages.length > 0 });
 
   if (resp.outages.length === 0) {
     if (outagesConfigured === null) outagesConfigured = false;
@@ -122,7 +122,7 @@ export async function fetchDdosAttacks(): Promise<ListInternetDdosAttacksRespons
 
   return ddosBreaker.execute(async () => {
     return client.listInternetDdosAttacks({});
-  }, emptyDdosFallback);
+  }, emptyDdosFallback, { shouldCache: (r) => r.protocol.length > 0 || r.vector.length > 0 });
 }
 
 // ========================================================================
@@ -135,7 +135,7 @@ export async function fetchTrafficAnomalies(country?: string): Promise<ListInter
 
   return trafficAnomaliesBreaker.execute(async () => {
     return client.listInternetTrafficAnomalies({ country: country || '' });
-  }, emptyAnomaliesFallback);
+  }, emptyAnomaliesFallback, { shouldCache: (r) => r.anomalies.length > 0 });
 }
 
 // ========================================================================
@@ -205,7 +205,7 @@ export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
     return client.listServiceStatuses({
       status: 'SERVICE_OPERATIONAL_STATUS_UNSPECIFIED',
     });
-  }, emptyStatusFallback);
+  }, emptyStatusFallback, { shouldCache: (r) => r.statuses.length > 0 });
 
   const services = resp.statuses.map(toServiceResult);
 

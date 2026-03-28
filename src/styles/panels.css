@@ -2530,3 +2530,145 @@
 .gb-total-row td { border-top: 2px solid rgba(255,255,255,0.2); }
 .gb-wow { display: block; font-size: 0.6rem; opacity: 0.85; margin-top: 1px; }
 .gb-updated { font-size: 0.65rem; opacity: 0.4; text-align: right; padding: 4px 6px; }
+
+/* ── Geo Hubs & Tech Hubs Panels ─────────────────────────────────────── */
+.geo-hub-item,
+.tech-hub-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.geo-hub-item:hover,
+.tech-hub-item:hover {
+  background: color-mix(in srgb, var(--text-dim) 6%, transparent);
+}
+
+.hub-rank {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 14px;
+  text-align: right;
+}
+
+.geo-hub-indicator,
+.hub-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+.geo-hub-indicator.high,
+.hub-indicator.high {
+  background: var(--semantic-critical);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--semantic-critical) 60%, transparent);
+}
+.geo-hub-indicator.elevated,
+.hub-indicator.elevated {
+  background: var(--semantic-elevated);
+}
+.geo-hub-indicator.low,
+.hub-indicator.low {
+  background: var(--text-muted);
+}
+
+.hub-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.hub-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1.3;
+}
+
+.hub-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #e8e8e8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-flag {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.hub-breaking {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--semantic-high) 15%, transparent);
+  color: var(--semantic-high);
+  border: 1px solid color-mix(in srgb, var(--semantic-high) 25%, transparent);
+}
+.hub-breaking.geo {
+  background: color-mix(in srgb, var(--semantic-critical) 15%, transparent);
+  color: var(--semantic-critical);
+  border-color: color-mix(in srgb, var(--semantic-critical) 25%, transparent);
+}
+
+.hub-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.hub-news-count {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.hub-trend {
+  font-size: 11px;
+  font-weight: 600;
+}
+.hub-trend.rising { color: var(--semantic-critical); }
+.hub-trend.falling { color: var(--semantic-normal); }
+
+.geo-hub-type,
+.hub-tier {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.hub-score {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  min-width: 26px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.hub-score.geo { color: var(--semantic-high); }
+.geo-hub-item.high .hub-score.geo { color: var(--semantic-critical); }
+
+.hub-top-story,
+a.hub-top-story {
+  display: block;
+  padding: 4px 10px 7px 30px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--link-color, #4a9eff);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border-subtle);
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+.hub-top-story:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
