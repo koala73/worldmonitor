@@ -170,7 +170,7 @@ async function fetchFredSeries() {
       ]);
 
       if (obsResp.status === 'rejected') {
-        console.warn(`  FRED ${seriesId}: fetch failed`);
+        console.warn(`  FRED ${seriesId}: fetch failed — ${obsResp.reason?.message || obsResp.reason}`);
         continue;
       }
 
@@ -192,7 +192,9 @@ async function fetchFredSeries() {
       console.warn(`  FRED ${seriesId}: ${e.message}`);
     }
   }
-  console.log(`  FRED series: ${Object.keys(results).length}/${FRED_SERIES.length}`);
+  const fredCount = Object.keys(results).length;
+  console.log(`  FRED series: ${fredCount}/${FRED_SERIES.length}`);
+  if (fredCount === 0) console.warn('  [WARN] FRED series: 0 fetched — all series failed. Check FRED_API_KEY and PROXY_URL. FRED-dependent panels will go stale.');
   return results;
 }
 
@@ -542,12 +544,13 @@ async function fetchAll() {
   if (crudeInventories.status === 'rejected') console.warn(`  CrudeInventories failed: ${crudeInventories.reason?.message || crudeInventories.reason}`);
   if (natGasStorage.status === 'rejected') console.warn(`  NatGasStorage failed: ${natGasStorage.reason?.message || natGasStorage.reason}`);
 
-  if (!ep && !fr && !ms) throw new Error('All economic fetches failed');
+  const frHasData = fr && Object.keys(fr).length > 0;
+  if (!ep && !frHasData && !ms) throw new Error('All economic fetches failed');
 
   // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
   if (ec?.series?.length > 0) await writeExtraKeyWithMeta(KEYS.energyCapacity, ec, CAPACITY_TTL, ec.series.length);
 
-  if (fr) {
+  if (frHasData) {
     for (const [seriesId, series] of Object.entries(fr)) {
       await writeExtraKeyWithMeta(`${FRED_KEY_PREFIX}:${seriesId}:0`, { series }, FRED_TTL, series.observations?.length ?? 0);
     }
