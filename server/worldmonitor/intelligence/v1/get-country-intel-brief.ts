@@ -10,7 +10,7 @@ import { callLlm } from '../../../_shared/llm';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 
-const INTEL_CACHE_TTL = 7200;
+const INTEL_CACHE_TTL = 21600;
 
 export async function getCountryIntelBrief(
   ctx: ServerContext,
