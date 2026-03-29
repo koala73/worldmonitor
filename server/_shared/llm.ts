@@ -198,7 +198,7 @@ export const callLlmTool = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelO
 export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
   callLlmProfile(opts, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
 
-export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides'>;
+export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider'>;
 
 /**
  * Streaming variant of callLlmReasoning.

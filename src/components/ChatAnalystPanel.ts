@@ -275,6 +275,8 @@ export class ChatAnalystPanel extends Panel {
           history: trimmedHistory,
           query: trimmedQuery,
           domainFocus: this.domainFocus,
+          // geoContext (ISO-2 country focus) is supported by the API but wired in Phase 2
+          // when the panel can read the map's selected country. Agent callers can pass it directly.
         }),
         signal: this.streamAbort.signal,
       });
@@ -364,7 +366,7 @@ export class ChatAnalystPanel extends Panel {
           }
           if (payload.delta) {
             accumulated += payload.delta;
-            bodyEl.innerHTML = basicMarkdownToHtml(accumulated);
+            bodyEl.appendChild(document.createTextNode(payload.delta));
             onToken(accumulated);
             this.scrollToBottom();
           }

@@ -1,7 +1,6 @@
 import { getCachedJson } from '../../../_shared/redis';
-import { sanitizeHeadline } from '../../../_shared/llm-sanitize.js';
-
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+import { sanitizeForPrompt, sanitizeHeadline } from '../../../_shared/llm-sanitize.js';
+import { CHROME_UA } from '../../../_shared/constants';
 
 const GDELT_TOPICS: Record<string, string> = {
   geo: 'geopolitical conflict crisis diplomacy',
@@ -118,7 +117,7 @@ function buildForecasts(data: unknown): string {
     const domain = safeStr(pred.domain || pred.category);
     const prob = safeNum(pred.probability ?? pred.prob);
     if (!title) return null;
-    const probStr = prob > 0 ? ` — ${formatPct(prob * 100 > 1 ? prob : prob * 100)}` : '';
+    const probStr = prob > 0 ? ` — ${formatPct(prob > 1 ? prob : prob * 100)}` : '';
     return `- [${domain || 'General'}] ${title}${probStr}`;
   }).filter((l): l is string => l !== null);
 
@@ -218,7 +217,7 @@ async function buildLiveHeadlines(domainFocus: string): Promise<string> {
 
     const res = await fetch(url.toString(), {
       headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(2_500),
     });
 
     if (!res.ok) return '';
@@ -228,7 +227,7 @@ async function buildLiveHeadlines(domainFocus: string): Promise<string> {
     if (articles.length === 0) return '';
 
     const lines = articles.map((a) => {
-      const title = sanitizeHeadline(safeStr(a.title));
+      const title = sanitizeForPrompt(safeStr(a.title)) ?? '';
       const source = safeStr(a.domain).slice(0, 40);
       if (!title) return null;
       return `- ${title}${source ? ` (${source})` : ''}`;

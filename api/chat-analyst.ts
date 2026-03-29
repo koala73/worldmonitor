@@ -16,6 +16,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
+import { checkRateLimit } from '../server/_shared/rate-limit';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
 import { callLlmReasoningStream } from '../server/_shared/llm';
@@ -84,6 +85,9 @@ export default async function handler(req: Request): Promise<Response> {
   if (!isPremium) {
     return json({ error: 'Pro subscription required' }, 403, corsHeaders);
   }
+
+  const rateLimitResponse = await checkRateLimit(req, corsHeaders);
+  if (rateLimitResponse) return rateLimitResponse;
 
   let body: ChatAnalystRequestBody;
   try {
