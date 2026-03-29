@@ -72,6 +72,7 @@ import {
   writeSimulationDecorations,
   applySimulationDecorationsToForecasts,
   SIMULATION_DECORATIONS_KEY,
+  SIMULATION_DECORATIONS_MAX_AGE_MS,
   __setRedisStoreForTests,
   matchesBucket,
   matchesChannel,
@@ -7619,21 +7620,35 @@ describe('writeSimulationDecorations and applySimulationDecorationsToForecasts',
     __setRedisStoreForTests(null);
   });
 
-  it('WD-1: writeSimulationDecorations skips when adjustments is empty', async () => {
+  it('WD-1: writeSimulationDecorations writes empty decoration when adjustments is empty (clears stale data)', async () => {
+    // Empty adjustments = valid simulation result (nothing crossed thresholds).
+    // Must write empty byForecastId to overwrite any prior run's decorations.
     const store = {};
     __setRedisStoreForTests(store);
-    await writeSimulationDecorations(makeMergeResult([]), makeSnapshot([]));
-    assert.deepEqual(Object.keys(store), [], 'nothing written to Redis');
+    await writeSimulationDecorations(makeMergeResult([]), makeSnapshot([], 'run-empty'));
+    const written = store[SIMULATION_DECORATIONS_KEY];
+    assert.ok(written, 'empty decoration written to Redis to clear stale data');
+    assert.equal(written.runId, 'run-empty');
+    assert.deepEqual(written.byForecastId, {}, 'empty map — nothing to apply');
   });
 
-  it('WD-2: writeSimulationDecorations skips when mergeResult has no simulationEvidence', async () => {
+  it('WD-2: writeSimulationDecorations skips when mergeResult has no simulationEvidence (genuinely bogus data)', async () => {
     const store = {};
     __setRedisStoreForTests(store);
     await writeSimulationDecorations({}, makeSnapshot([]));
-    assert.deepEqual(Object.keys(store), [], 'nothing written to Redis');
+    assert.deepEqual(Object.keys(store), [], 'bogus mergeResult — do not clear old decorations');
   });
 
-  it('WD-3: writeSimulationDecorations skips when adjustments present but no stateUnit has matching forecastIds', async () => {
+  it('WD-2b: writeSimulationDecorations skips when simulationEvidence.adjustments is not an array', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    await writeSimulationDecorations({ simulationEvidence: { adjustments: null } }, makeSnapshot([]));
+    assert.deepEqual(Object.keys(store), [], 'null adjustments field — do not clear old decorations');
+  });
+
+  it('WD-3: writeSimulationDecorations writes empty decoration when adjustments present but no stateUnit has matching forecastIds', async () => {
+    // Adjustments exist but candidateStateId → forecastIds lookup yields nothing.
+    // Still must write an empty map to clear stale decorations from prior runs.
     const store = {};
     __setRedisStoreForTests(store);
     const stateUnits = [
@@ -7641,8 +7656,11 @@ describe('writeSimulationDecorations and applySimulationDecorationsToForecasts',
       { id: 'state-y', label: 'no array' }, // missing forecastIds field
     ];
     const adj = makeAdj('state-x', 0.08);
-    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits));
-    assert.deepEqual(Object.keys(store), [], 'decorationCount=0, nothing written');
+    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits, 'run-nomatch'));
+    const written = store[SIMULATION_DECORATIONS_KEY];
+    assert.ok(written, 'empty decoration written — clears stale data even when decorationCount=0');
+    assert.deepEqual(written.byForecastId, {});
+    assert.equal(written.runId, 'run-nomatch');
   });
 
   it('WD-4: writeSimulationDecorations writes correct decoration for a single candidate → single forecast', async () => {
@@ -7761,6 +7779,46 @@ describe('writeSimulationDecorations and applySimulationDecorationsToForecasts',
     const predictions = [{ id: 'fc-yy', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }];
     await assert.doesNotReject(() => applySimulationDecorationsToForecasts(predictions));
     assert.equal(predictions[0].simulationAdjustment, 0, 'prediction unchanged when byForecastId is not an object');
+  });
+
+  it('WD-13: applySimulationDecorationsToForecasts skips decorations older than SIMULATION_DECORATIONS_MAX_AGE_MS', async () => {
+    const staleAge = SIMULATION_DECORATIONS_MAX_AGE_MS + 1000; // 1s past the threshold
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: {
+        runId: 'run-old',
+        generatedAt: Date.now() - staleAge,
+        byForecastId: {
+          'fc-stale': { simulationAdjustment: 0.12, simPathConfidence: 0.85, demotedBySimulation: false },
+        },
+      },
+    };
+    __setRedisStoreForTests(store);
+    const predictions = [{ id: 'fc-stale', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }];
+    await applySimulationDecorationsToForecasts(predictions);
+    assert.equal(predictions[0].simulationAdjustment, 0, 'stale decorations not applied');
+  });
+
+  it('WD-14: empty-adjustments write clears stale decorations — subsequent apply sees no flags', async () => {
+    // Scenario: run N wrote decorations; run N+1 produced zero adjustments.
+    // writeSimulationDecorations with empty adjustments must overwrite so apply sees empty map.
+    const store = {};
+    __setRedisStoreForTests(store);
+
+    // Seed a stale decoration as if from run N
+    store[SIMULATION_DECORATIONS_KEY] = {
+      runId: 'run-n',
+      generatedAt: Date.now(),
+      byForecastId: { 'fc-was-flagged': { simulationAdjustment: 0.12, simPathConfidence: 0.9, demotedBySimulation: false } },
+    };
+
+    // Run N+1: no adjustments → writeSimulationDecorations overwrites with empty map
+    await writeSimulationDecorations(makeMergeResult([]), makeSnapshot([], 'run-n+1'));
+    assert.deepEqual(store[SIMULATION_DECORATIONS_KEY].byForecastId, {}, 'empty map written, stale entry gone');
+
+    // Fast-path seed applies: nothing should be applied
+    const predictions = [{ id: 'fc-was-flagged', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }];
+    await applySimulationDecorationsToForecasts(predictions);
+    assert.equal(predictions[0].simulationAdjustment, 0, 'stale flag cleared — sub-bar correctly shows nothing');
   });
 
   it('WD-12: round-trip — writeSimulationDecorations then applySimulationDecorationsToForecasts flows full pipeline', async () => {

@@ -45,6 +45,7 @@ const SIMULATION_TASK_QUEUE_KEY = 'forecast:simulation-task-queue:v1';
 const SIMULATION_LOCK_KEY_PREFIX = 'forecast:simulation-lock:v1';
 const SIMULATION_DECORATIONS_KEY = 'forecast:sim-decorations:v1';
 const SIMULATION_DECORATIONS_TTL_SECONDS = 86400 * 3; // 3 days — outlasts typical run cadence
+const SIMULATION_DECORATIONS_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48h — skip apply if no simulation ran recently
 const VALID_RUN_ID_RE = /^\d{13,}-[a-z0-9-]{1,64}$/i;
 const SIMULATION_ROUND1_MAX_TOKENS = 2200;
 const SIMULATION_ROUND2_MAX_TOKENS = 2500;
@@ -16311,8 +16312,12 @@ async function fetchSimulationOutcomeForMerge(storageConfig, currentRunId) {
  * @param {object} snapshot — deep forecast snapshot (has fullRunStateUnits with forecastIds)
  */
 async function writeSimulationDecorations(mergeResult, snapshot) {
-  const adjustments = mergeResult?.simulationEvidence?.adjustments;
-  if (!adjustments?.length) return;
+  // Guard: skip only on genuinely bogus/absent simulationEvidence — NOT on empty adjustments.
+  // An empty adjustments array is a valid result (simulation ran but nothing crossed thresholds).
+  // We MUST write in that case to overwrite any stale decorations from prior runs.
+  if (!mergeResult?.simulationEvidence) return;
+  const adjustments = mergeResult.simulationEvidence.adjustments;
+  if (!Array.isArray(adjustments)) return;
 
   const stateUnits = Array.isArray(snapshot?.fullRunStateUnits) ? snapshot.fullRunStateUnits : [];
   // Build candidateStateId → forecastIds lookup
@@ -16354,9 +16359,9 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
     }
   }
 
+  // Always write — even when byForecastId is empty — so later runs clear stale decorations
+  // from prior runs. Without this, old simulation flags persist for the full 3-day TTL.
   const decorationCount = Object.keys(byForecastId).length;
-  if (decorationCount === 0) return;
-
   try {
     const { url, token } = getRedisCredentials();
     await redisSet(url, token, SIMULATION_DECORATIONS_KEY, {
@@ -16364,7 +16369,7 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
       generatedAt: Date.now(),
       byForecastId,
     }, SIMULATION_DECORATIONS_TTL_SECONDS);
-    console.log(`  [SimulationDecorations] Written ${decorationCount} decorations from ${byCandidateId.size} candidates`);
+    console.log(`  [SimulationDecorations] Written ${decorationCount} decorations from ${byCandidateId.size} candidates (runId=${snapshot?.runId || 'unknown'})`);
   } catch (err) {
     console.warn(`  [SimulationDecorations] Write failed: ${err.message}`);
   }
@@ -16383,6 +16388,15 @@ async function applySimulationDecorationsToForecasts(predictions) {
     const { url, token } = getRedisCredentials();
     const decorations = await redisGet(url, token, SIMULATION_DECORATIONS_KEY);
     if (!decorations?.byForecastId || typeof decorations.byForecastId !== 'object') return;
+
+    // Defense-in-depth: skip decorations that are too old. writeSimulationDecorations overwrites
+    // on every simulation run (including empty results), so this guard only fires when no
+    // simulation has run for SIMULATION_DECORATIONS_MAX_AGE_MS (e.g., 48h) — e.g., during outage.
+    const ageMs = typeof decorations.generatedAt === 'number' ? Date.now() - decorations.generatedAt : Infinity;
+    if (ageMs > SIMULATION_DECORATIONS_MAX_AGE_MS) {
+      console.warn(`  [SimulationDecorations] Skipping stale decorations (age=${Math.round(ageMs / 3600000)}h, run=${decorations.runId || 'unknown'})`);
+      return;
+    }
 
     let applied = 0;
     for (const pred of predictions) {
@@ -16940,6 +16954,7 @@ export {
   writeSimulationDecorations,
   applySimulationDecorationsToForecasts,
   SIMULATION_DECORATIONS_KEY,
+  SIMULATION_DECORATIONS_MAX_AGE_MS,
   computeSimulationAdjustment,
   applySimulationMerge,
   matchesBucket,
