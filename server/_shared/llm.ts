@@ -300,8 +300,9 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
           const reader = resp.body.getReader();
           const decoder = new TextDecoder();
           let buf = '';
+          let providerDone = false;
 
-          while (!streamClosed) {
+          while (!streamClosed && !providerDone) {
             const { done, value } = await reader.read();
             if (done) break;
             buf += decoder.decode(value, { stream: true });
@@ -310,7 +311,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
             for (const line of lines) {
               if (!line.startsWith('data: ')) continue;
               const payload = line.slice(6).trim();
-              if (payload === '[DONE]') break;
+              if (payload === '[DONE]') { providerDone = true; break; }
               try {
                 const chunk = JSON.parse(payload) as {
                   choices?: Array<{ delta?: { content?: string }; finish_reason?: string }>;
