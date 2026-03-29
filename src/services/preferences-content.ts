@@ -344,15 +344,17 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += `</div></details>`;
 
   // ── Notifications group (web-only, signed-in) ──
-  if (!host.isSignedIn) {
-    html += `<div class="ai-flow-toggle-desc us-notif-signin">Sign in to link notification channels.</div>`;
-  } else if (!host.isDesktopApp) {
-    html += `<details class="wm-pref-group" id="usNotifGroup">`;
-    html += `<summary>Notifications</summary>`;
-    html += `<div class="wm-pref-group-content">`;
-    html += `<div class="us-notif-loading" id="usNotifLoading">Loading...</div>`;
-    html += `<div class="us-notif-content" id="usNotifContent" style="display:none"></div>`;
-    html += `</div></details>`;
+  if (!host.isDesktopApp) {
+    if (!host.isSignedIn) {
+      html += `<div class="ai-flow-toggle-desc us-notif-signin">Sign in to link notification channels.</div>`;
+    } else {
+      html += `<details class="wm-pref-group" id="usNotifGroup">`;
+      html += `<summary>Notifications</summary>`;
+      html += `<div class="wm-pref-group-content">`;
+      html += `<div class="us-notif-loading" id="usNotifLoading">Loading...</div>`;
+      html += `<div class="us-notif-content" id="usNotifContent" style="display:none"></div>`;
+      html += `</div></details>`;
+    }
   }
 
   // AI status footer (web-only)
@@ -697,6 +699,12 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         reloadNotifSection();
 
         let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+        signal.addEventListener('abort', () => {
+          if (alertRuleDebounceTimer !== null) {
+            clearTimeout(alertRuleDebounceTimer);
+            alertRuleDebounceTimer = null;
+          }
+        });
 
         container.addEventListener('change', (e) => {
           const target = e.target as HTMLInputElement;
@@ -745,17 +753,16 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                 remaining -= 3;
                 const countdownEl = container.querySelector<HTMLElement>('#usTgCountdown');
                 if (countdownEl) countdownEl.textContent = `${Math.max(0, remaining)}s`;
+                const expired = remaining <= 0;
+                if (expired) clearNotifPoll();
                 getChannelsData().then((data) => {
                   const tg = data.channels.find(c => c.channelType === 'telegram');
-                  if (tg?.verified) {
-                    clearNotifPoll();
+                  if (tg?.verified || expired) {
                     reloadNotifSection();
                   }
-                }).catch(() => {});
-                if (remaining <= 0) {
-                  clearNotifPoll();
-                  reloadNotifSection();
-                }
+                }).catch(() => {
+                  if (expired) reloadNotifSection();
+                });
               }, 3000);
             }).catch(() => {});
             return;
@@ -766,7 +773,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             const email = user?.email;
             if (!email) {
               const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
-              if (rowEl) rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">No email found on your account</span>');
+              if (rowEl) {
+                rowEl.querySelector('.us-notif-error')?.remove();
+                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">No email found on your account</span>');
+              }
               return;
             }
             setEmailChannel(email).then(() => {
