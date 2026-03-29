@@ -8,7 +8,7 @@ const ALPHA = 0.3;
 const MIN_WINDOW = 6; // min points before z-score is meaningful
 
 /**
- * @typedef {{ region: string, window: number[], ema: number, mean: number, stddev: number, updatedAt: number, lastRawCount: number }} WindowState
+ * @typedef {{ region: string, window: number[], ema: number, mean: number, stddev: number, updatedAt: number }} WindowState
  */
 
 /**
@@ -27,6 +27,11 @@ export function updateWindow(region, count, prior) {
   const { mean, stddev } = computeWindowStats(window);
 
   return { region, window, ema, mean, stddev, updatedAt: Date.now() };
+}
+
+/** @param {string|undefined} name @returns {string} */
+function normalizeCountry(name) {
+  return (name ?? '').trim().toLowerCase();
 }
 
 /**
@@ -51,43 +56,50 @@ export function computeWindowStats(window) {
 }
 
 /**
- * @param {Map<string,any>} priorWindows - prior state from Redis (null-safe)
- * @param {any[]} acledEvents - array of { country: string } ACLED events
- * @param {any[]} ucdpEvents - array of { country: string, country_name?: string } UCDP events
+ * @param {Map<string,any>} priorWindows
+ * @param {any[]} acledEvents  — each has event_date: 'YYYY-MM-DD'
+ * @param {any[]} ucdpEvents   — each has date_start: 'YYYY-MM-DD' and country/country_name
+ * @param {number} [nowMs]
  * @returns {Map<string, WindowState>}
  */
-export function computeEmaWindows(priorWindows, acledEvents, ucdpEvents) {
+export function computeEmaWindows(priorWindows, acledEvents, ucdpEvents, nowMs = Date.now()) {
+  const cutoff = nowMs - 24 * 60 * 60 * 1000;
+
   /** @type {Map<string, number>} */
-  const currentCounts = new Map();
+  const counts24h = new Map();
 
   const safeAcled = Array.isArray(acledEvents) ? acledEvents : [];
   const safeUcdp = Array.isArray(ucdpEvents) ? ucdpEvents : [];
 
-  for (const e of safeAcled) {
-    const country = (e?.country ?? '').toString().toLowerCase().trim();
+  for (const ev of safeAcled) {
+    const country = normalizeCountry(ev?.country);
     if (!country) continue;
-    currentCounts.set(country, (currentCounts.get(country) ?? 0) + 1);
+    const ts = Date.parse(ev.event_date);
+    if (Number.isFinite(ts) && ts >= cutoff) {
+      counts24h.set(country, (counts24h.get(country) ?? 0) + 1);
+    }
   }
 
-  for (const e of safeUcdp) {
-    const country = ((e?.country ?? e?.country_name ?? '')).toString().toLowerCase().trim();
+  for (const ev of safeUcdp) {
+    const country = normalizeCountry(ev?.country ?? ev?.country_name);
     if (!country) continue;
-    currentCounts.set(country, (currentCounts.get(country) ?? 0) + 1);
+    const ts = Date.parse(ev.date_start);
+    if (Number.isFinite(ts) && ts >= cutoff) {
+      counts24h.set(country, (counts24h.get(country) ?? 0) + 1);
+    }
   }
+
+  const safePrior = priorWindows instanceof Map ? priorWindows : new Map();
+  const allCountries = new Set([...safePrior.keys(), ...counts24h.keys()]);
 
   /** @type {Map<string, WindowState>} */
   const updated = new Map();
 
-  const safePrior = priorWindows instanceof Map ? priorWindows : new Map();
-  const allCountries = new Set([...safePrior.keys(), ...currentCounts.keys()]);
-
   for (const country of allCountries) {
-    const currentRaw = currentCounts.get(country) ?? 0;
+    const count = counts24h.get(country) ?? 0;
     const prior = safePrior.get(country) ?? null;
-    const priorRaw = typeof prior?.lastRawCount === 'number' ? prior.lastRawCount : currentRaw;
-    const delta = Math.max(0, currentRaw - priorRaw);
-    const windowState = updateWindow(country, delta, prior);
-    updated.set(country, { ...windowState, lastRawCount: currentRaw });
+    const ws = updateWindow(country, count, prior);
+    updated.set(country, ws);
   }
 
   return updated;
