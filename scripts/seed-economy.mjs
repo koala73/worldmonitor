@@ -295,13 +295,18 @@ async function fetchFredSeries() {
 // ─── Macro Signals (Yahoo, Alternative.me, Mempool) ───
 
 async function fetchJsonSafe(url, timeout = 8000, proxyAuth = null) {
-  if (proxyAuth) return JSON.parse(curlFetch(url, proxyAuth, { 'User-Agent': CHROME_UA }));
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(timeout),
-  });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return resp.json();
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(timeout),
+    });
+    if (resp.ok) return resp.json();
+    throw new Error(`HTTP ${resp.status}`);
+  } catch (directErr) {
+    if (!proxyAuth) throw directErr;
+    // Direct fetch failed; retry via proxy
+    return JSON.parse(curlFetch(url, proxyAuth, { 'User-Agent': CHROME_UA }));
+  }
 }
 
 function extractClosePrices(chart) {
