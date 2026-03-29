@@ -250,7 +250,7 @@ export class CommoditiesPanel extends Panel {
   }
 
   private _buildTabBar(hasFx: boolean, hasXau: boolean): string {
-    const firstTabLabel = SITE_VARIANT === 'commodity' ? 'Metals' : 'Commodities';
+    const firstTabLabel = 'Commodities';
     const tabs: string[] = [
       `<button class="panel-tab${this._tab === 'commodities' ? ' active' : ''}" data-tab="commodities" style="font-size:11px;padding:3px 10px">${firstTabLabel}</button>`,
     ];
