@@ -45,6 +45,10 @@ function fmtMin(m: number): string {
     if (!m) return '—';
     return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
+function localDateStr(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 const TABS = ['ops', 'flights', 'airlines', 'tracking', 'news', 'prices'] as const;
 type Tab = typeof TABS[number];
@@ -185,7 +189,7 @@ export class AirlineIntelPanel extends Panel {
             if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
             return;
         }
-        const today = new Date().toISOString().slice(0, 10);
+        const today = localDateStr();
         if (dep && dep < today) {
             if (errEl) errEl.textContent = 'Departure date must be today or future';
             return;
@@ -212,7 +216,15 @@ export class AirlineIntelPanel extends Panel {
             if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
             return;
         }
-        if (!start || !end || start >= end) {
+        if (!start || !end) {
+            if (errEl) errEl.textContent = 'Enter start and end dates';
+            return;
+        }
+        if (start < localDateStr()) {
+            if (errEl) errEl.textContent = 'Start date must be today or future';
+            return;
+        }
+        if (start >= end) {
             if (errEl) errEl.textContent = 'Start date must be before end date';
             return;
         }
@@ -442,11 +454,7 @@ export class AirlineIntelPanel extends Panel {
         <div id="priceInlineErr" style="color:#ef4444;font-size:11px;min-height:14px"></div>`;
 
             let body: string;
-            if (this.pricesError) {
-                body = `<div class="no-data" style="color:#ef4444">${escapeHtml(this.pricesError)}</div>`;
-            } else if (!this.googleFlightsData.length) {
-                body = `<div class="no-data">${escapeHtml(t('components.airlineIntel.enterRouteAndDate'))}</div>`;
-            } else {
+            if (this.googleFlightsData.length) {
                 const cards = this.googleFlightsData.map(it => {
                     const stops = it.stops === 0
                         ? t('components.airlineIntel.nonstop')
@@ -470,16 +478,19 @@ export class AirlineIntelPanel extends Panel {
             </div>`;
                 }).join('');
                 body = `<div class="gf-list">${cards}</div>`;
+            } else if (this.pricesError) {
+                body = `<div class="no-data" style="color:#ef4444">${escapeHtml(this.pricesError)}</div>`;
+            } else {
+                body = `<div class="no-data">${escapeHtml(t('components.airlineIntel.enterRouteAndDate'))}</div>`;
             }
             this.content.innerHTML = `${toggle}${form}${degradedBanner}${body}`;
         } else {
-            const today = new Date().toISOString().slice(0, 10);
             const form = `
         <div class="price-controls">
           <input id="datesFromInput" class="price-input" placeholder="From" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
           <span style="color:#6b7280">\u2192</span>
           <input id="datesToInput" class="price-input" placeholder="To" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
-          <input id="datesStartInput" class="price-input" type="date" value="${escapeHtml(this.datesStart || today)}" style="width:128px">
+          <input id="datesStartInput" class="price-input" type="date" value="${escapeHtml(this.datesStart || localDateStr())}" style="width:128px">
           <input id="datesEndInput" class="price-input" type="date" value="${escapeHtml(this.datesEnd)}" style="width:128px">
           <label style="display:flex;align-items:center;gap:4px;font-size:12px">
             <input id="datesRoundTripCheck" type="checkbox" ${this.datesRoundTrip ? 'checked' : ''}>${escapeHtml(t('components.airlineIntel.roundTrip'))}
@@ -499,11 +510,7 @@ export class AirlineIntelPanel extends Panel {
         <div id="datesInlineErr" style="color:#ef4444;font-size:11px;min-height:14px"></div>`;
 
             let body: string;
-            if (this.pricesError) {
-                body = `<div class="no-data" style="color:#ef4444">${escapeHtml(this.pricesError)}</div>`;
-            } else if (!this.datesData.length) {
-                body = `<div class="no-data">${escapeHtml(t('components.airlineIntel.enterDateRange'))}</div>`;
-            } else {
+            if (this.datesData.length) {
                 const sorted = [...this.datesData].sort((a, b) => a.price - b.price);
                 const prices = sorted.map(d => d.price);
                 const cheapThreshold = prices[Math.floor(prices.length * 0.2)] ?? Infinity;
@@ -518,6 +525,10 @@ export class AirlineIntelPanel extends Panel {
             </div>`;
                 }).join('');
                 body = `<div class="dp-list">${rows}</div>`;
+            } else if (this.pricesError) {
+                body = `<div class="no-data" style="color:#ef4444">${escapeHtml(this.pricesError)}</div>`;
+            } else {
+                body = `<div class="no-data">${escapeHtml(t('components.airlineIntel.enterDateRange'))}</div>`;
             }
             this.content.innerHTML = `${toggle}${form}${degradedBanner}${body}`;
         }

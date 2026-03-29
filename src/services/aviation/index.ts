@@ -442,7 +442,7 @@ export async function fetchGoogleDates(opts: {
   tripDuration?: number; isRoundTrip?: boolean; cabinClass?: string;
   maxStops?: string; passengers?: number;
 }): Promise<GoogleDatesResult> {
-  const cacheKey = `${opts.origin}:${opts.destination}:${opts.startDate}:${opts.endDate}:${opts.tripDuration ?? 0}:${opts.isRoundTrip ?? false}:${opts.cabinClass ?? 'ECONOMY'}:${opts.passengers ?? 1}`;
+  const cacheKey = `${opts.origin}:${opts.destination}:${opts.startDate}:${opts.endDate}:${opts.tripDuration ?? 0}:${opts.isRoundTrip ?? false}:${opts.cabinClass ?? 'ECONOMY'}:${opts.maxStops ?? ''}:${opts.passengers ?? 1}`;
   return breakerGoogleDates.execute(async () => {
     const r = await client.searchGoogleDates({
       origin: opts.origin, destination: opts.destination,
