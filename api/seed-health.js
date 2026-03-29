@@ -1,6 +1,8 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { redisPipeline } from './_upstash-json.js';
 
 export const config = { runtime: 'edge' };
 
@@ -59,20 +61,10 @@ const SEED_DOMAINS = {
 };
 
 async function getMetaBatch(keys) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) throw new Error('Redis not configured');
-
   const pipeline = keys.map((k) => ['GET', k]);
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(pipeline),
-    signal: AbortSignal.timeout(3000),
-  });
-  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = await redisPipeline(pipeline, 3000);
+  if (!data) throw new Error('Redis not configured');
 
-  const data = await resp.json();
   const result = new Map();
   for (let i = 0; i < keys.length; i++) {
     const raw = data[i]?.result;
