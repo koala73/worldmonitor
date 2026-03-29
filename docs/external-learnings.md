@@ -30,15 +30,18 @@ Not all seeds are equal. A seeder going stale should trigger different urgency l
 depending on the downstream signal loss. Using HOPEFX's weights as a proxy for importance:
 
 **Priority 1 — weight ≥ 0.9 (full loss if stale)**
+
 - `theater-posture:sebuf:v1` — `ais-relay.cjs` → `seedTheaterPosture`
 - `acled:*` — `ais-relay.cjs` → ACLED loop, `seed-conflict-intel.mjs` backup
 - `country-intel` / risk scores — `intelligence/v1/get-risk-scores`
 
 **Priority 2 — weight 0.6–0.8 (partial degradation)**
+
 - `military-flights:*` — `seed-military-flights.mjs`
 - `gdelt-*` / news intel — `seed-insights.mjs`
 
 **Priority 3 — weight < 0.6 (tolerable stale window)**
+
 - `infra-outages:*` — `seed-infra.mjs`
 - `firms-fire:*` — `seed-wildfire.mjs`
 
@@ -147,6 +150,7 @@ This turns every external integration into an organic referral source.
 ## 4. Python SDK Demand
 
 HOPEFX independently built a `WorldMonitorClient` Python class with:
+
 - Method-per-endpoint design (`get_conflicts()`, `get_country_intel()`, etc.)
 - A `get_all_layers()` parallel batch method
 - Docker deployment support
