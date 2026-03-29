@@ -1,6 +1,6 @@
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
-import { redisPipeline } from './_upstash-json.js';
+import { redisPipeline, getRedisCredentials } from './_upstash-json.js';
 
 export const config = { runtime: 'edge' };
 
@@ -299,8 +299,9 @@ export default async function handler(req) {
       ...allDataKeys.map(k => ['STRLEN', k]),
       ...allMetaKeys.map(k => ['GET', k]),
     ];
+    if (!getRedisCredentials()) throw new Error('Redis not configured');
     results = await redisPipeline(commands, 8_000);
-    if (!results) throw new Error('Redis not configured');
+    if (!results) throw new Error('Redis request failed');
   } catch (err) {
     return jsonResponse({
       status: 'REDIS_DOWN',
