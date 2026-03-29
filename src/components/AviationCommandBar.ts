@@ -176,7 +176,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
         // Fallback to TravelPayouts / demo
         const { quotes, isDemoMode } = await fetchFlightPrices({ origin: intent.origin, destination: intent.destination, departureDate: date });
         if (!quotes.length) return { html: '<div class="cmd-empty">No prices found.</div>' };
-        const rows = quotes.slice(0, 5).sort((a, b) => a.stops !== b.stops ? a.stops - b.stops : a.priceAmount - b.priceAmount).map(q => {
+        const rows = [...quotes].sort((a, b) => a.stops !== b.stops ? a.stops - b.stops : a.priceAmount - b.priceAmount).slice(0, 5).map(q => {
             const stopColor = q.stops === 0 ? '#22c55e' : '#9ca3af';
             const stopLabel = q.stops === 0 ? 'nonstop' : `${q.stops} stop`;
             return `<div class="cmd-row" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
