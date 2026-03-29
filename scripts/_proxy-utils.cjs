@@ -79,4 +79,15 @@ function resolveProxyString() {
   return cfg.auth ? `${cfg.auth}@${host}:${cfg.port}` : `${host}:${cfg.port}`;
 }
 
-module.exports = { parseProxyConfig, resolveProxyConfig, resolveProxyConfigWithFallback, resolveProxyString };
+/**
+ * Returns proxy as "user:pass@host:port" string for use with HTTP CONNECT tunneling.
+ * Does NOT replace gate.decodo.com → us.decodo.com; CONNECT endpoint is gate.decodo.com.
+ * Returns empty string if no proxy configured.
+ */
+function resolveProxyStringConnect() {
+  const cfg = resolveProxyConfigWithFallback();
+  if (!cfg) return '';
+  return cfg.auth ? `${cfg.auth}@${cfg.host}:${cfg.port}` : `${cfg.host}:${cfg.port}`;
+}
+
+module.exports = { parseProxyConfig, resolveProxyConfig, resolveProxyConfigWithFallback, resolveProxyString, resolveProxyStringConnect };

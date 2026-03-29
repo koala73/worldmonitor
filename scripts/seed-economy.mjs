@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, fredFetchJson, curlFetch, getRedisCredentials } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, resolveProxyForConnect, fredFetchJson, curlFetch, getRedisCredentials } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const _proxyAuth = resolveProxy();
+const _proxyAuth = resolveProxyForConnect(); // gate.decodo.com — HTTP CONNECT tunneling for FRED
+const _curlProxyAuth = resolveProxy();       // us.decodo.com  — curl for Yahoo/macro signals
 
 // ─── Keys (must match handler cache keys exactly) ───
 const KEYS = {
@@ -624,7 +625,7 @@ async function fetchAll() {
     fetchEnergyPrices(),
     fetchEnergyCapacity(),
     fetchFredSeries(),
-    fetchMacroSignals(_proxyAuth),
+    fetchMacroSignals(_curlProxyAuth),
     fetchCrudeInventories(),
     fetchNatGasStorage(),
   ]);

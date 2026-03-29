@@ -315,10 +315,15 @@ export function sleep(ms) {
 // (curl not in node:22-alpine). Each of those scripts should use a shared fetchWithProxyFallback
 // that tries native fetch first and falls back to httpsProxyFetchJson — same pattern as
 // fredFetchJson after this fix. Tracked: consolidate into one exported function.
-const { resolveProxyString } = createRequire(import.meta.url)('./_proxy-utils.cjs');
+const { resolveProxyString, resolveProxyStringConnect } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
 export function resolveProxy() {
   return resolveProxyString();
+}
+
+// For HTTP CONNECT tunneling (httpsProxyFetchJson); keeps gate.decodo.com, not us.decodo.com.
+export function resolveProxyForConnect() {
+  return resolveProxyStringConnect();
 }
 
 // curl-based fetch; throws on non-2xx. Returns response body as string.
@@ -413,7 +418,12 @@ export async function fredFetchJson(url, proxyAuth) {
     throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
   } catch (directErr) {
     if (!proxyAuth) throw directErr;
-    return httpsProxyFetchJson(url, proxyAuth);
+    console.warn(`  [fredFetch] direct failed (${directErr.message}) — retrying via proxy`);
+    try {
+      return await httpsProxyFetchJson(url, proxyAuth);
+    } catch (proxyErr) {
+      throw Object.assign(new Error(`proxy: ${proxyErr.message}`), { cause: proxyErr });
+    }
   }
 }
 
