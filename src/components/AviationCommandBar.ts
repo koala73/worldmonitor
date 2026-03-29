@@ -27,7 +27,6 @@ function resolveIata(token: string): string | undefined {
     const low = token.toLowerCase();
     const match = MONITORED_AIRPORTS.find(a =>
         a.city.toLowerCase() === low ||
-        a.name.toLowerCase().includes(low) ||
         a.iata.toLowerCase() === low
     );
     return match?.iata;
