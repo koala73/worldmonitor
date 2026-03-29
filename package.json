@@ -61,6 +61,7 @@
     "desktop:package:windows:full:sign": "node scripts/desktop-package.mjs --os windows --variant full --sign",
     "desktop:package:windows:tech:sign": "node scripts/desktop-package.mjs --os windows --variant tech --sign",
     "desktop:package": "node scripts/desktop-package.mjs"
+    "start": "node server.js"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
@@ -137,11 +138,9 @@
   "name": "news-api",
   "version": "1.0.0",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
+  "dependencies": 
+  {
     "express": "^4.18.2"
   }
-}
+
 }
