@@ -184,7 +184,7 @@ function matchesMarketHeadline(market: Pick<MarketData, 'symbol' | 'display' | '
 }
 
 function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>, extraCategories?: string[]): NewsItem[] {
-  const cats = extraCategories ? [...BRIEF_NEWS_CATEGORIES, ...extraCategories] : BRIEF_NEWS_CATEGORIES;
+  const cats = extraCategories ?? BRIEF_NEWS_CATEGORIES;
   return cats
     .flatMap((category) => newsByCategory[category] || [])
     .filter((item) => !!item?.title)

@@ -207,10 +207,8 @@ interface EcbFxRateItem {
 
 type CommoditiesTab = 'commodities' | 'fx' | 'xau';
 
-// XAU/currency config: symbol → { label, flag }
-// Direction derived from symbol: startsWith('USD') means USD is base (rate = FC/USD) → XAU_FC = XAU_USD * rate
-// Otherwise USD is quote (rate = USD/FC) → XAU_FC = XAU_USD / rate
-// Exception: USDCHF=X — Yahoo quotes as USD/CHF (USD per CHF), so divide despite USD prefix
+// CCYUSD=X (e.g. EURUSD): USD is quote, rate = USD/FC → XAU_FC = XAU_USD / rate
+// USDCCY=X (e.g. USDJPY, USDCHF): USD is base, rate = FC/USD → XAU_FC = XAU_USD * rate
 const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; multiply: boolean }> = [
   { symbol: 'EURUSD=X',  label: 'EUR', flag: '🇪🇺', multiply: false },
   { symbol: 'GBPUSD=X',  label: 'GBP', flag: '🇬🇧', multiply: false },
@@ -218,7 +216,7 @@ const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; 
   { symbol: 'USDCNY=X',  label: 'CNY', flag: '🇨🇳', multiply: true  },
   { symbol: 'USDINR=X',  label: 'INR', flag: '🇮🇳', multiply: true  },
   { symbol: 'AUDUSD=X',  label: 'AUD', flag: '🇦🇺', multiply: false },
-  { symbol: 'USDCHF=X',  label: 'CHF', flag: '🇨🇭', multiply: false },
+  { symbol: 'USDCHF=X',  label: 'CHF', flag: '🇨🇭', multiply: true  },
   { symbol: 'USDCAD=X',  label: 'CAD', flag: '🇨🇦', multiply: true  },
   { symbol: 'USDTRY=X',  label: 'TRY', flag: '🇹🇷', multiply: true  },
 ];
