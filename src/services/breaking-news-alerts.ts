@@ -1,6 +1,8 @@
 import type { NewsItem } from '@/types';
 import type { OrefAlert } from '@/services/oref-alerts';
 import { getSourceTier } from '@/config/feeds';
+import { isDesktopRuntime } from '@/services/runtime';
+import { getClerkToken } from '@/services/clerk';
 
 export interface BreakingAlert {
   id: string;
@@ -153,6 +155,22 @@ function dispatchAlert(alert: BreakingAlert): void {
   lastGlobalAlertLevel = alert.threatLevel;
   saveDedupeMap();
   document.dispatchEvent(new CustomEvent('wm:breaking-news', { detail: alert }));
+
+  if (!isDesktopRuntime()) {
+    void (async () => {
+      const token = await getClerkToken();
+      if (!token) return;
+      fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          eventType: alert.origin,
+          payload: { title: alert.headline, source: alert.source, link: alert.link },
+          severity: alert.threatLevel,
+        }),
+      }).catch(() => {});
+    })();
+  }
 }
 
 export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
