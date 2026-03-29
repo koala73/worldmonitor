@@ -73,6 +73,7 @@ import {
   matchesChannel,
   contradictsPremise,
   negatesDisruption,
+  normalizeActorName,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -6298,6 +6299,7 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     routeFacilityKey,
     commodityKey,
     marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+    stateSummary: { actors: ['Iran', 'Houthi movement', 'US Navy'] },
   });
 
   it('T1: bucket+channel match gives +0.08', () => {
@@ -6481,6 +6483,163 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     assert.equal(details.bucketChannelMatch, true);
     assert.equal(adjustment, 0.08);
   });
+
+  it('T-F: stateSummary.actors overlap with underscore-formatted sim keyActors gives +0.04 bonus', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);  // empty affectedAssets (production-realistic)
+    const candidatePacket = {
+      ...makeCandidatePacket(),
+      stateSummary: { actors: ['Iran', 'Saudi Arabia', 'Houthi movement'] },
+    };
+    const simResult = {
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia', 'US'] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.12);  // +0.08 + +0.04
+    assert.ok(details.actorOverlapCount >= 2);  // "iran" + "saudi arabia" ✓
+    assert.ok(details.bucketChannelMatch);
+    assert.equal(details.actorSource, 'stateSummary');
+  });
+
+  it('T-G: entity ID format keyActors resolve to names via normalization', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = {
+      ...makeCandidatePacket(),
+      stateSummary: { actors: ['Iran', 'Saudi Arabia'] },
+    };
+    const simResult = {
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption', keyActors: ['state-aa3f41bf4f:iran', 'state-aa3f41bf4f:saudi_arabia'] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.12);
+    assert.ok(details.actorOverlapCount >= 2);
+  });
+
+  it('T-H: without stateSummary.actors, affectedAssets still provides overlap', () => {
+    const path = makePath('energy', 'energy_supply_shock', ['Iran', 'Houthi']);
+    const candidatePacket = { ...makeCandidatePacket(), stateSummary: { actors: [] } };
+    const simResult = {
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Houthi'] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.12);
+    assert.ok(details.actorOverlapCount >= 2);
+    assert.equal(details.actorSource, 'affectedAssets');
+  });
+
+  it('T-I: no actors on either side gives actorOverlapCount=0', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = { ...makeCandidatePacket(), stateSummary: { actors: [] } };
+    const simResult = {
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption', keyActors: [] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.08);  // bucket+channel only
+    assert.equal(details.actorOverlapCount, 0);
+    assert.equal(details.actorSource, 'none');
+  });
+
+  it('T-K: two paths for same candidate get identical actor result even when affectedAssets differ (strict precedence)', () => {
+    const candidatePacket = {
+      ...makeCandidatePacket(),
+      stateSummary: { actors: ['Iran', 'Saudi Arabia'] },
+    };
+    const path1 = makePath('energy', 'energy_supply_shock', []);  // affectedAssets empty
+    const path2 = makePath('energy', 'energy_supply_shock', ['TTF gas futures', 'European utility stocks']);  // different affectedAssets — irrelevant
+    const simResult = {
+      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi_Arabia'] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment: adj1, details: d1 } = computeSimulationAdjustment(path1, simResult, candidatePacket);
+    const { adjustment: adj2, details: d2 } = computeSimulationAdjustment(path2, simResult, candidatePacket);
+    assert.equal(adj1, 0.12);
+    assert.equal(adj2, 0.12);  // same — affectedAssets on path2 ignored due to strict precedence
+    assert.equal(d1.actorSource, 'stateSummary');
+    assert.equal(d2.actorSource, 'stateSummary');
+    assert.equal(d1.candidateActorCount, d2.candidateActorCount);  // identical — candidate-scoped
+  });
+
+  it('T-L: stateSummary.actors with only malformed entries triggers stateSummary path but no overlap (raw-presence check)', () => {
+    const path = makePath('energy', 'energy_supply_shock', ['Iran', 'Saudi Arabia']);  // affectedAssets present
+    const candidatePacket = {
+      ...makeCandidatePacket(),
+      stateSummary: { actors: ['---', '   '] },  // raw list non-empty → stateSummary wins, but normalizes to []
+    };
+    const simResult = {
+      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi Arabia'] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.08);  // bucket/channel only — no actor overlap
+    assert.equal(details.actorOverlapCount, 0);
+    assert.equal(details.actorSource, 'stateSummary');  // raw list was present — no fallthrough to affectedAssets
+    assert.equal(details.candidateActorCount, 0);
+  });
+
+  it('T-L-pre: non-array stateSummary.actors does not crash — treated as absent, falls back to affectedAssets', () => {
+    const path = makePath('energy', 'energy_supply_shock', ['Iran', 'Saudi Arabia']);
+    const candidatePacket = {
+      ...makeCandidatePacket(),
+      stateSummary: { actors: 'Iran' },  // string, not array — common malformed snapshot shape
+    };
+    const simResult = {
+      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi Arabia'] }],
+      invalidators: [], stabilizers: [],
+    };
+    // Should not throw; falls back to affectedAssets since actors is not an array
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(details.actorSource, 'affectedAssets');
+    assert.ok(details.actorOverlapCount >= 2);  // affectedAssets overlap works
+    assert.equal(adjustment, 0.12);
+  });
+
+  it('T-M: non-array keyActors in sim topPath does not crash — treated as empty, no overlap bonus', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = { ...makeCandidatePacket(), stateSummary: { actors: ['Iran', 'Saudi Arabia'] } };
+    const simResult = {
+      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: 'Iran' }],  // string, not array
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.08);  // bucket/channel only — keyActors is non-array, treated as []
+    assert.equal(details.actorOverlapCount, 0);
+    assert.equal(details.bucketChannelMatch, true);
+  });
+});
+
+describe('normalizeActorName', () => {
+  it('N-1: underscore-separated name normalizes to spaces', () => {
+    assert.strictEqual(normalizeActorName('Saudi_Arabia'), 'saudi arabia');
+  });
+
+  it('N-2: entity ID prefix stripped before normalization', () => {
+    // hex candidateStateId
+    assert.strictEqual(normalizeActorName('state-aa3f41bf4f:saudi_arabia'), 'saudi arabia');
+    // slug candidateStateId (alphanumeric + hyphens)
+    assert.strictEqual(normalizeActorName('state-hormuz-1:houthi'), 'houthi');
+    // fallback entity ID prefixes
+    assert.strictEqual(normalizeActorName('logistics:red_sea'), 'red sea');
+    assert.strictEqual(normalizeActorName('market:energy'), 'energy');
+    // uppercase prefixes are NOT stripped — regression guard against "US:Navy"-style false strips
+    assert.strictEqual(normalizeActorName('US: Navy'), 'us navy');
+    assert.strictEqual(normalizeActorName('EU: Commission'), 'eu commission');
+    // natural-language text with colon is NOT stripped (space in prefix)
+    assert.strictEqual(normalizeActorName('New York: City'), 'new york city');
+  });
+
+  it('N-3: plain name unchanged except case', () => {
+    assert.strictEqual(normalizeActorName('Saudi Arabia'), 'saudi arabia');
+    assert.strictEqual(normalizeActorName('Iran'), 'iran');
+  });
+
+  it('N-4: malformed entry normalizes to empty string (no bonus credit)', () => {
+    assert.strictEqual(normalizeActorName('---'), '');
+    assert.strictEqual(normalizeActorName(''), '');
+    assert.strictEqual(normalizeActorName('   '), '');
+  });
 });
 
 describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
@@ -6583,6 +6742,41 @@ describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
     const { simulationEvidence } = applySimulationMerge(evaluation, simOutcome, candidatePackets, { generatedAt: Date.now(), impactExpansionCandidates: candidatePackets }, null);
     assert.equal(simulationEvidence.pathsDemoted, 1, 'path should be demoted via candidateStateId lookup');
     assert.equal(simulationEvidence.adjustments.length, 1);
+  });
+
+  it('T-J: applySimulationMerge promotes 0.39 path to 0.51 via stateSummary.actors alone (empty affectedAssets)', () => {
+    const stateA = 'state-actor-j';
+    const candidateA = {
+      candidateStateId: stateA, candidateIndex: 0,
+      stateKind: 'maritime_disruption', routeFacilityKey: 'Red Sea', commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: ['Iran', 'Saudi Arabia'] },
+    };
+    const pathA = {
+      ...makeExpandedPath(stateA, 0.39),
+      candidate: candidateA,
+      direct: { variableKey: 'route_disruption', targetBucket: '', channel: 'supply_disruption', affectedAssets: [] },
+    };
+    const evaluation = makeEval('completed_no_material_change', [], [pathA]);
+    const simOutcome = {
+      runId: 'sim-tj', isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1', candidateStateId: stateA,
+        topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia'] }],
+        invalidators: [], stabilizers: [],
+      }],
+    };
+    const snapshot = {
+      runId: '1774800000000-test01',
+      generatedAt: 1774800000000,
+      impactExpansionCandidates: [candidateA],
+      deepForecast: { status: 'queued', selectedStateIds: [] },
+    };
+    const { evaluation: result } = applySimulationMerge(evaluation, simOutcome, snapshot.impactExpansionCandidates, snapshot, null);
+    const promoted = (result.selectedPaths || []).find(p => p.candidateStateId === stateA && p.type === 'expanded');
+    assert.ok(promoted, 'path should be promoted to selected');
+    assert.ok(promoted.mergedAcceptanceScore >= 0.50, `score should be >= 0.50, got ${promoted.mergedAcceptanceScore}`);
+    assert.ok(promoted.simulationAdjustment >= 0.12, 'should have +0.12 (bucket+channel + actor overlap)');
   });
 });
 
@@ -6763,6 +6957,9 @@ describe('phase 3 simulation re-ingestion — applyPostSimulationRescore', () =>
       topBucketId: 'energy',
       topChannel: 'energy_supply_shock',
     },
+    // Empty stateSummary.actors — rescore integration tests use affectedAssets for actor overlap.
+    // Actor-overlap-specific tests create their own inline candidatePackets with stateSummary.actors.
+    stateSummary: { actors: [] },
   });
 
   const makeRescoreSimOutcome = (stateId) => ({

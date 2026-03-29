@@ -11274,19 +11274,12 @@ function annotateDeepForecastOrigins(worldState, acceptedPaths = []) {
 }
 
 function normalizeActorName(name) {
-  return String(name || '').toLowerCase().trim().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ');
-}
-
-function extractPathActors(path) {
-  const actors = new Set();
-  for (const hop of [path.direct, path.second, path.third]) {
-    if (!hop) continue;
-    for (const a of hop.affectedAssets || []) {
-      const n = normalizeActorName(a);
-      if (n) actors.add(n);
-    }
+  let s = String(name || '').trim();
+  const colonIdx = s.indexOf(':');
+  if (colonIdx > 0 && /^[a-z][a-z0-9_-]*$/.test(s.slice(0, colonIdx))) {
+    s = s.slice(colonIdx + 1);
   }
-  return [...actors];
+  return s.toLowerCase().replace(/[_-]/g, ' ').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 const BUCKET_KEYWORDS = {
@@ -11405,7 +11398,7 @@ function negatesDisruption(stabilizer, candidatePacket) {
  */
 function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePacket) {
   let adjustment = 0;
-  const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none' };
+  const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none', candidateActorCount: 0, actorSource: 'none' };
 
   const { topPaths = [], invalidators = [], stabilizers = [] } = simTheaterResult || {};
   const pathBucket = expandedPath?.direct?.targetBucket
@@ -11419,7 +11412,28 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
     : Object.hasOwn(CHANNEL_KEYWORDS, marketChannel)
       ? marketChannel
       : '';
-  const pathActors = extractPathActors(expandedPath);
+  const rawStateActors = Array.isArray(candidatePacket?.stateSummary?.actors)
+    ? candidatePacket.stateSummary.actors
+    : [];
+  let candidateActors;
+  let actorSrc;
+  if (rawStateActors.length > 0) {
+    candidateActors = [...new Set(rawStateActors.map(normalizeActorName).filter(Boolean))];
+    actorSrc = 'stateSummary';
+  } else {
+    const assetNames = [];
+    for (const hop of [expandedPath.direct, expandedPath.second, expandedPath.third]) {
+      if (!hop) continue;
+      for (const a of hop.affectedAssets || []) {
+        const n = normalizeActorName(a);
+        if (n) assetNames.push(n);
+      }
+    }
+    candidateActors = [...new Set(assetNames)];
+    actorSrc = candidateActors.length > 0 ? 'affectedAssets' : 'none';
+  }
+  details.candidateActorCount = candidateActors.length;
+  details.actorSource = actorSrc;
   details.resolvedChannel = pathChannel;
   details.channelSource = Object.hasOwn(CHANNEL_KEYWORDS, directChannel)
     ? 'direct'
@@ -11433,8 +11447,8 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
   if (bucketChannelMatch) {
     adjustment += 0.08;
     details.bucketChannelMatch = true;
-    const simActors = new Set((bucketChannelMatch.keyActors || []).map(normalizeActorName));
-    const overlap = pathActors.filter((a) => simActors.has(a));
+    const simActors = new Set((Array.isArray(bucketChannelMatch.keyActors) ? bucketChannelMatch.keyActors : []).map(normalizeActorName));
+    const overlap = candidateActors.filter((a) => simActors.has(a));
     details.actorOverlapCount = overlap.length;
     if (overlap.length >= 2) {
       adjustment += 0.04;
@@ -16771,6 +16785,7 @@ export {
   matchesChannel,
   contradictsPremise,
   negatesDisruption,
+  normalizeActorName,
   SIMULATION_MERGE_ACCEPT_THRESHOLD,
   scoreImpactExpansionQuality,
   buildImpactExpansionDebugPayload,

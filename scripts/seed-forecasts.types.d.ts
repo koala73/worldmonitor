@@ -49,6 +49,10 @@ interface CandidatePacket {
    * BUG HISTORY: PRs #2404/#2410 fixed crashes caused by reading candidatePacket.topBucketId directly.
    */
   marketContext: CandidateMarketContext;
+  stateSummary?: {
+    actors: string[];
+    [key: string]: unknown;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +162,14 @@ interface SimulationAdjustmentDetail {
   actorOverlapCount: number;
   invalidatorHit: boolean;
   stabilizerHit: boolean;
+  /** Number of candidate-theater actors used for overlap matching. Source is stateSummary.actors if raw list present, else affectedAssets. Never a union. */
+  candidateActorCount: number;
+  /** Source of candidate actors used for overlap matching (candidate-theater scoped, no union). */
+  actorSource: 'stateSummary' | 'affectedAssets' | 'none';
+  /** Resolved channel used for bucket-channel matching. */
+  resolvedChannel: string;
+  /** Source of resolved channel: 'direct' | 'market' | 'none'. */
+  channelSource: string;
 }
 
 interface SimulationAdjustmentRecord {
