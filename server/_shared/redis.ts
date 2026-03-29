@@ -81,9 +81,16 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
   if (!url || !token) return;
   try {
     // Atomic SET with EX — single call avoids race between SET and EXPIRE (C-3 fix)
-    await fetch(`${url}/set/${encodeURIComponent(prefixKey(key))}/${encodeURIComponent(JSON.stringify(value))}/EX/${ttlSeconds}`, {
+    const pipeline = [
+      ['SET', prefixKey(key), JSON.stringify(value), 'EX', String(ttlSeconds)],
+    ];
+    await fetch(`${url}/pipeline`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
     });
   } catch (err) {
