@@ -199,15 +199,21 @@ async function fetchZone(zone, normals, startDate, endDate) {
 
 async function fetchClimateAnomalies() {
   const endDate = new Date().toISOString().slice(0, 10);
-  const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   // Try to fetch WMO normals from Redis
   const normals = await fetchZoneNormalsFromRedis();
-  if (normals) {
+  const hasNormals = normals && normals.length > 0;
+
+  if (hasNormals) {
     console.log(`[CLIMATE] Using WMO 30-year normals for ${normals.length} zones`);
   } else {
     console.log('[CLIMATE] Normals not available — using 30-day rolling fallback');
   }
+
+  // If normals are available, fetch 7 days of data for current period comparison
+  // If normals are NOT available, fetch 30 days so the fallback can split into baseline + current
+  const daysToFetch = hasNormals ? 7 : 30;
+  const startDate = new Date(Date.now() - daysToFetch * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const anomalies = [];
   let failures = 0;
