@@ -94,7 +94,7 @@ interface ExpandedPathCandidate {
  * Written by applySimulationMerge; rendered as a chip in ForecastPanel.
  */
 interface SimulationSignal {
-  /** Non-zero simulation adjustment was applied (positive = promoted, negative = weakened). */
+  /** Simulation added a positive bonus to this path (bucket-channel match fired). False for negative-only adjustments (invalidator/stabilizer hit without a bucket-channel match). */
   backed: boolean;
   /** Raw adjustment delta (+0.08/+0.04 weighted by simPathConfidence; -0.12/-0.15 flat). */
   adjustmentDelta: number;
