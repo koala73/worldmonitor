@@ -311,15 +311,6 @@
         "maxMessages": 20
       },
       {
-        "handle": "ReportingFromUkraine",
-        "label": "Reporting from Ukraine",
-        "topic": "conflict",
-        "tier": 2,
-        "enabled": true,
-        "region": "ukraine",
-        "maxMessages": 20
-      },
-      {
         "handle": "middleeastobserver",
         "label": "Middle East Observer",
         "topic": "geopolitics",
@@ -329,22 +320,13 @@
         "maxMessages": 20
       },
       {
-        "handle": "MiddleEastEye",
+        "handle": "MiddleEastEye_TG",
         "label": "Middle East Eye",
         "topic": "geopolitics",
         "tier": 2,
         "enabled": true,
         "region": "middleeast",
         "maxMessages": 20
-      },
-      {
-        "handle": "syriahr",
-        "label": "Syrian Observatory",
-        "topic": "conflict",
-        "tier": 3,
-        "enabled": true,
-        "region": "middleeast",
-        "maxMessages": 15
       },
       {
         "handle": "dragonwatch",
@@ -354,33 +336,6 @@
         "enabled": true,
         "region": "asia",
         "maxMessages": 20
-      },
-      {
-        "handle": "indopacificnews",
-        "label": "Indo-Pacific News",
-        "topic": "geopolitics",
-        "tier": 2,
-        "enabled": true,
-        "region": "asia",
-        "maxMessages": 20
-      },
-      {
-        "handle": "sahelwatch",
-        "label": "Sahel Watch",
-        "topic": "conflict",
-        "tier": 3,
-        "enabled": true,
-        "region": "africa",
-        "maxMessages": 15
-      },
-      {
-        "handle": "sudanwarmonitor",
-        "label": "Sudan War Monitor",
-        "topic": "conflict",
-        "tier": 3,
-        "enabled": true,
-        "region": "africa",
-        "maxMessages": 15
       }
     ],
     "tech": [
