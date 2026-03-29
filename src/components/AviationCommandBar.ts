@@ -158,13 +158,15 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
                 const depTime = leg?.departureDatetime?.slice(11, 16) ?? '';
                 const arrTime = f.legs[f.legs.length - 1]?.arrivalDatetime?.slice(11, 16) ?? '';
                 const stopColor = f.stops === 0 ? '#22c55e' : '#9ca3af';
-                const stopLabel = f.stops === 0 ? 'nonstop' : `${f.stops} stop`;
+                const stopLabel = f.stops === 0 ? 'nonstop' : `${f.stops} stop${f.stops > 1 ? 's' : ''}`;
+                const safeDepTime = escapeHtml(depTime);
+                const safeArrTime = escapeHtml(arrTime);
                 return `<div class="cmd-row" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
           <div style="flex:1;min-width:0">
             <span style="font-size:13px">${carrier}</span>
             <span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span>
           </div>
-          <div style="color:#9ca3af;font-size:11px;margin:0 10px">${depTime}${arrTime ? `–${arrTime}` : ''} · ${escapeHtml(fmtDur(f.durationMinutes))}</div>
+          <div style="color:#9ca3af;font-size:11px;margin:0 10px">${safeDepTime}${safeArrTime ? `–${safeArrTime}` : ''} · ${escapeHtml(fmtDur(f.durationMinutes))}</div>
           <div style="color:#60a5fa;font-weight:600">$${Math.round(f.price).toLocaleString()}</div>
         </div>`;
             }).join('');
@@ -178,7 +180,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
         if (!quotes.length) return { html: '<div class="cmd-empty">No prices found.</div>' };
         const rows = [...quotes].sort((a, b) => a.stops !== b.stops ? a.stops - b.stops : a.priceAmount - b.priceAmount).slice(0, 5).map(q => {
             const stopColor = q.stops === 0 ? '#22c55e' : '#9ca3af';
-            const stopLabel = q.stops === 0 ? 'nonstop' : `${q.stops} stop`;
+            const stopLabel = q.stops === 0 ? 'nonstop' : `${q.stops} stop${q.stops > 1 ? 's' : ''}`;
             return `<div class="cmd-row" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
           <div style="flex:1">${escapeHtml(q.carrierName || q.carrierIata)}<span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span></div>
           <div style="color:#60a5fa;font-weight:600">$${Math.round(q.priceAmount)}</div>
