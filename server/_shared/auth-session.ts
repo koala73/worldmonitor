@@ -45,6 +45,7 @@ export async function resolveSessionUserId(request: Request): Promise<string | n
     const issuerDomain = process.env.CLERK_JWT_ISSUER_DOMAIN!;
     const { payload } = await jwtVerify(token, jwks, {
       issuer: issuerDomain,
+      algorithms: ['RS256'],
     });
 
     return (payload.sub as string) ?? null;

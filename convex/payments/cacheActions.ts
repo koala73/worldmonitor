@@ -11,12 +11,25 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 
-const ENTITLEMENT_CACHE_TTL_SECONDS = 3600; // 1 hour
+// 15 min — short enough that subscription expiry is reflected promptly
+const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
+
+// Timeout for Redis requests (5 seconds)
+const REDIS_FETCH_TIMEOUT_MS = 5000;
+
+/**
+ * Returns the environment-aware Redis key prefix for entitlements.
+ * Prevents live/test data from clobbering each other.
+ */
+function getEntitlementKey(userId: string): string {
+  const envPrefix = process.env.DODO_PAYMENTS_ENVIRONMENT === 'live_mode' ? 'live' : 'test';
+  return `entitlements:${envPrefix}:${userId}`;
+}
 
 /**
  * Writes a user's entitlements to Redis via Upstash REST API.
  *
- * Uses raw key format: entitlements:{userId} (no deployment prefix)
+ * Uses key format: entitlements:{env}:{userId} (no deployment prefix)
  * because entitlements are user-scoped, not deployment-scoped (Pitfall 2).
  *
  * Failures are logged but do not throw -- cache write failure should
@@ -26,7 +39,14 @@ export const syncEntitlementCache = internalAction({
   args: {
     userId: v.string(),
     planKey: v.string(),
-    features: v.any(),
+    features: v.object({
+      tier: v.number(),
+      maxDashboards: v.number(),
+      apiAccess: v.boolean(),
+      apiRateLimit: v.number(),
+      prioritySupport: v.boolean(),
+      exportFormats: v.array(v.string()),
+    }),
     validUntil: v.number(),
   },
   handler: async (_ctx, args) => {
@@ -40,19 +60,22 @@ export const syncEntitlementCache = internalAction({
       return;
     }
 
-    const key = `entitlements:${args.userId}`;
+    const key = getEntitlementKey(args.userId);
     const value = JSON.stringify({
       planKey: args.planKey,
       features: args.features,
       validUntil: args.validUntil,
     });
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REDIS_FETCH_TIMEOUT_MS);
     try {
       const resp = await fetch(
         `${url}/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}/EX/${ENTITLEMENT_CACHE_TTL_SECONDS}`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
         },
       );
 
@@ -66,6 +89,8 @@ export const syncEntitlementCache = internalAction({
         "[cacheActions] Redis cache sync failed:",
         err instanceof Error ? err.message : String(err),
       );
+    } finally {
+      clearTimeout(timeout);
     }
   },
 });
@@ -84,14 +109,17 @@ export const deleteEntitlementCache = internalAction({
 
     if (!url || !token) return;
 
-    const key = `entitlements:${args.userId}`;
+    const key = getEntitlementKey(args.userId);
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REDIS_FETCH_TIMEOUT_MS);
     try {
       const resp = await fetch(
         `${url}/del/${encodeURIComponent(key)}`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
         },
       );
 
@@ -105,6 +133,8 @@ export const deleteEntitlementCache = internalAction({
         "[cacheActions] Redis cache delete failed:",
         err instanceof Error ? err.message : String(err),
       );
+    } finally {
+      clearTimeout(timeout);
     }
   },
 });

@@ -11,11 +11,11 @@
 
 import type { ConvexClient } from 'convex/browser';
 
+// Use typeof to get the exact generated API type without importing statically
+type ConvexApi = typeof import('../../convex/_generated/api').api;
+
 let client: ConvexClient | null = null;
-// The generated API type is complex and not worth importing statically
-// since this module's purpose is lazy-loading. Callers use `api.x.y` paths.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let apiRef: Record<string, any> | null = null;
+let apiRef: ConvexApi | null = null;
 
 /**
  * Returns the shared ConvexClient instance, creating it on first call.
@@ -36,8 +36,7 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
  * Returns the generated Convex API reference, loading it on first call.
  * Returns null if the import fails.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function getConvexApi(): Promise<Record<string, any> | null> {
+export async function getConvexApi(): Promise<ConvexApi | null> {
   if (apiRef) return apiRef;
 
   const { api } = await import('../../convex/_generated/api');

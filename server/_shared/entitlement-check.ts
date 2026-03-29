@@ -3,9 +3,11 @@
  *
  * Reads cached entitlements from Redis (raw keys, no deployment prefix) with
  * Convex fallback on cache miss. Returns a 403 Response for tier-gated endpoints
- * when the user lacks the required tier. Degrades gracefully:
- *   - No userId header -> skip check (allow)
- *   - Redis miss + Convex failure -> allow (fail-open)
+ * when the user lacks the required tier.
+ *
+ * Fail-closed behavior:
+ *   - No userId header on a gated endpoint -> 403 (authentication required)
+ *   - Redis miss + Convex failure -> 403 (unable to verify entitlements)
  *   - Endpoint not in ENDPOINT_ENTITLEMENTS -> allow (unrestricted)
  */
 
@@ -70,6 +72,21 @@ function getConvexSingleton() {
 }
 
 // ---------------------------------------------------------------------------
+// Request coalescing (P1-6: Cache stampede mitigation)
+// ---------------------------------------------------------------------------
+
+const _inFlight = new Map<string, Promise<CachedEntitlements | null>>();
+
+// ---------------------------------------------------------------------------
+// Environment-aware Redis key prefix (P2-3)
+// ---------------------------------------------------------------------------
+
+const ENV_PREFIX = process.env.DODO_PAYMENTS_ENVIRONMENT === 'live_mode' ? 'live' : 'test';
+
+// Cache TTL: 15 min — short enough that subscription expiry is reflected promptly (P2-5)
+const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -85,12 +102,28 @@ export function getRequiredTier(pathname: string): number | null {
  * Fetches entitlements for a user. Tries Redis cache first (raw key),
  * then falls back to ConvexHttpClient query on cache miss.
  *
- * Returns null on any failure (fail-open).
+ * Returns null on any failure (fail-closed: caller must treat null as no entitlements).
+ *
+ * Uses request coalescing to prevent cache stampede: concurrent requests for
+ * the same userId share a single in-flight promise.
  */
 export async function getEntitlements(userId: string): Promise<CachedEntitlements | null> {
+  const existing = _inFlight.get(userId);
+  if (existing) return existing;
+
+  const promise = _getEntitlementsImpl(userId);
+  _inFlight.set(userId, promise);
+  try {
+    return await promise;
+  } finally {
+    _inFlight.delete(userId);
+  }
+}
+
+async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements | null> {
   try {
     // Redis cache check (raw=true: entitlements use user-scoped keys, no deployment prefix)
-    const cached = await getCachedJson(`entitlements:${userId}`, true);
+    const cached = await getCachedJson(`entitlements:${ENV_PREFIX}:${userId}`, true);
 
     if (cached && typeof cached === 'object') {
       const ent = cached as CachedEntitlements;
@@ -108,14 +141,14 @@ export async function getEntitlements(userId: string): Promise<CachedEntitlement
     const result = await singleton.client.query(singleton.api.entitlements.getEntitlementsForUser, { userId });
 
     if (result) {
-      // Populate Redis cache for subsequent requests (1-hour TTL, raw key)
-      await setCachedJson(`entitlements:${userId}`, result, 3600, true);
+      // Populate Redis cache for subsequent requests (15-min TTL, raw key)
+      await setCachedJson(`entitlements:${ENV_PREFIX}:${userId}`, result, ENTITLEMENT_CACHE_TTL_SECONDS, true);
       return result as CachedEntitlements;
     }
 
     return null;
   } catch (err) {
-    // Fail-open: any error in entitlement lookup allows the request through
+    // Fail-closed: any error in entitlement lookup returns null (caller blocks the request)
     console.warn('[entitlement-check] getEntitlements failed:', err instanceof Error ? err.message : String(err));
     return null;
   }
@@ -138,18 +171,23 @@ async function _checkEntitlementCore(
     return null;
   }
 
-  // Extract userId from request header (set by session middleware when auth is ready).
-  // During auth-stub era, this header won't be present -- degrade gracefully.
+  // Extract userId from request header (set by session middleware).
+  // Fail-closed: if no userId on a gated endpoint, block the request.
   const userId = request.headers.get('x-user-id');
   if (!userId) {
-    // No user context -- skip entitlement check (graceful degradation)
-    return null;
+    return new Response(
+      JSON.stringify({ error: 'Authentication required', requiredTier }),
+      { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+    );
   }
 
   const ent = await getEntitlementsFn(userId);
   if (!ent) {
-    // Cache miss + Convex failure -- fail-open (allow request)
-    return null;
+    // Fail-closed: unable to verify entitlements -> block the request
+    return new Response(
+      JSON.stringify({ error: 'Unable to verify entitlements', requiredTier }),
+      { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+    );
   }
 
   if (ent.features.tier >= requiredTier) {
@@ -176,8 +214,9 @@ async function _checkEntitlementCore(
  * Checks whether the current request is allowed based on tier entitlements.
  *
  * Returns:
- *   - null if the request is allowed (unrestricted endpoint, no userId, sufficient tier, or fail-open)
- *   - a 403 Response if the user's tier is below the required tier
+ *   - null if the request is allowed (unrestricted endpoint or sufficient tier)
+ *   - a 403 Response if the user is unauthenticated, entitlements cannot be verified,
+ *     or the user's tier is below the required tier (fail-closed)
  */
 export async function checkEntitlement(
   request: Request,

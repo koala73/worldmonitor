@@ -13,7 +13,7 @@
 import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
 import { getConvexClient, getConvexApi } from './convex-client';
-import { getUserId } from './user-identity';
+// getUserId no longer needed — server resolves userId from session
 
 // Module-level state
 let initialized = false;
@@ -118,7 +118,6 @@ export async function startCheckout(
 
     const result = await client.action(api.payments.checkout.createCheckout, {
       productId,
-      userId: getUserId(),
       returnUrl: window.location.origin,
       discountCode: options?.discountCode,
       referralCode: options?.referralCode,

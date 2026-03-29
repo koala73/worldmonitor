@@ -7,7 +7,7 @@
  * which accepts a getEntitlementsFn parameter. This avoids needing to mock Redis
  * or ConvexHttpClient -- we inject a fake getEntitlements directly.
  *
- * For pure function tests (getRequiredTier, checkEntitlement with ungated/no-userId),
+ * For pure function tests (getRequiredTier, checkEntitlement with ungated),
  * we use the real functions without mocking.
  *
  * Per-file @vitest-environment node override avoids edge-runtime's missing
@@ -67,8 +67,8 @@ describe("gateway entitlement check", () => {
     expect(result).toBeNull();
   });
 
-  test("checkEntitlement returns null when no userId in request", async () => {
-    // Gated endpoint but no x-user-id header -> graceful degradation
+  test("checkEntitlement returns 403 when no userId in request (fail-closed)", async () => {
+    // Gated endpoint but no x-user-id header -> 403 (authentication required)
     const req = makeRequest("/api/market/v1/analyze-stock");
     const result = await _testCheckEntitlement(
       req,
@@ -78,7 +78,31 @@ describe("gateway entitlement check", () => {
         throw new Error("should not be called");
       },
     );
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(403);
+
+    const body = await result!.json();
+    expect(body.error).toBe("Authentication required");
+    expect(body.requiredTier).toBe(2);
+  });
+
+  test("checkEntitlement returns 403 when getEntitlements returns null (fail-closed)", async () => {
+    // Gated endpoint with userId but entitlement lookup fails -> 403
+    const req = makeRequest("/api/market/v1/analyze-stock", {
+      "x-user-id": "test-user",
+    });
+    const result = await _testCheckEntitlement(
+      req,
+      "/api/market/v1/analyze-stock",
+      {},
+      async () => null,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(403);
+
+    const body = await result!.json();
+    expect(body.error).toBe("Unable to verify entitlements");
+    expect(body.requiredTier).toBe(2);
   });
 
   test("checkEntitlement returns 403 for insufficient tier", async () => {
