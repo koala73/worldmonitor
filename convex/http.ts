@@ -47,7 +47,7 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   const aArr = new Uint8Array(sigA);
   const bArr = new Uint8Array(sigB);
   let diff = 0;
-  for (let i = 0; i < aArr.length; i++) diff |= aArr[i] ^ bArr[i];
+  for (let i = 0; i < aArr.length; i++) diff |= (aArr[i] ?? 0) ^ (bArr[i] ?? 0);
   return diff === 0;
 }
 
@@ -105,7 +105,7 @@ http.route({
 
     try {
       const result = await ctx.runMutation(
-        anyApi.userPreferences.setPreferences,
+        anyApi.userPreferences!.setPreferences as any,
         {
           variant: body.variant,
           data: body.data,
@@ -179,7 +179,7 @@ http.route({
     const match = text.match(/^\/start\s+([A-Za-z0-9_-]{40,50})$/);
     if (!match) return new Response("OK", { status: 200 });
 
-    const claimed = await ctx.runMutation(anyApi.notificationChannels.claimPairingToken, {
+    const claimed = await ctx.runMutation(anyApi.notificationChannels!.claimPairingToken as any, {
       token: match[1],
       chatId,
     });
