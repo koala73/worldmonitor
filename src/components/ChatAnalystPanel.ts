@@ -42,6 +42,7 @@ function basicMarkdownToHtml(raw: string): string {
   const escaped = escapeHtml(raw);
   return escaped
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
     .replace(/\n/g, '<br>');
 }
 

@@ -22315,3 +22315,25 @@ body.map-width-resizing {
 .chat-analyst-clear:hover { border-color: var(--red, #ef4444); color: var(--red, #ef4444); }
 .chat-analyst-export:hover { border-color: var(--accent); color: var(--text); }
 .chat-analyst-send:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-source-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px 2px;
+}
+.chat-source-chip {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--surface2, rgba(255,255,255,0.06));
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  border-radius: 3px;
+  padding: 1px 5px;
+  line-height: 1.6;
+}
+.chat-source-chip--warn {
+  color: var(--yellow, #eab308);
+  border-color: var(--yellow, #eab308);
+}
