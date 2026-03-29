@@ -40,6 +40,10 @@ import { fetchMilitaryBases, type MilitaryBaseCluster as ServerBaseCluster } fro
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import { fetchAircraftPositions } from '@/services/aviation';
 import { type IranEvent, getIranEventColor, getIranEventRadius } from '@/services/conflict';
+import { getMilitaryBaseColor } from '@/config/military-base-colors';
+import { getMineralColor } from '@/config/mineral-colors';
+import { getWindColor } from '@/config/wind-colors';
+import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
 import { fetchImageryScenes } from '@/services/imagery';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
@@ -1861,19 +1865,6 @@ export class DeckGLMap {
     return this.serverBasesLoaded ? this.serverBases : MILITARY_BASES as MilitaryBaseEnriched[];
   }
 
-  private getBaseColor(type: string, a: number): [number, number, number, number] {
-    switch (type) {
-      case 'us-nato': return [68, 136, 255, a];
-      case 'russia': return [255, 68, 68, a];
-      case 'china': return [255, 136, 68, a];
-      case 'uk': return [68, 170, 255, a];
-      case 'france': return [0, 85, 164, a];
-      case 'india': return [255, 153, 51, a];
-      case 'japan': return [188, 0, 45, a];
-      default: return [136, 136, 136, a];
-    }
-  }
-
   private createBasesLayer(): IconLayer {
     const highlightedBases = this.highlightedAssets.base;
     const zoom = this.maplibreMap?.getZoom() || 3;
@@ -1893,7 +1884,7 @@ export class DeckGLMap {
         if (highlightedBases.has(d.id)) {
           return [255, 100, 100, 220] as [number, number, number, number];
         }
-        return this.getBaseColor(d.type, a);
+        return getMilitaryBaseColor(d.type, a);
       },
       sizeScale: 1,
       sizeMinPixels: 6,
@@ -1913,7 +1904,7 @@ export class DeckGLMap {
       data: this.serverBaseClusters,
       getPosition: (d) => [d.longitude, d.latitude],
       getRadius: (d) => Math.max(8000, Math.log2(d.count) * 6000),
-      getFillColor: (d) => this.getBaseColor(d.dominantType, a),
+      getFillColor: (d) => getMilitaryBaseColor(d.dominantType, a),
       radiusMinPixels: 10,
       radiusMaxPixels: 40,
       pickable: true,
@@ -2140,23 +2131,6 @@ export class DeckGLMap {
     });
   }
 
-  private static readonly TC_WIND_COLORS: [number, [number, number, number, number]][] = [
-    [137, [255, 96, 96, 200]],    // Cat5
-    [113, [255, 140, 0, 200]],    // Cat4
-    [96,  [255, 140, 0, 200]],    // Cat3
-    [83,  [255, 231, 117, 200]],  // Cat2
-    [64,  [255, 231, 117, 200]],  // Cat1
-    [34,  [94, 186, 255, 200]],   // TS
-    [0,   [160, 160, 160, 160]],  // TD
-  ];
-
-  private static windColor(kt: number): [number, number, number, number] {
-    for (const [threshold, color] of DeckGLMap.TC_WIND_COLORS) {
-      if (kt >= threshold) return color;
-    }
-    return [160, 160, 160, 160];
-  }
-
   private createNaturalEventsLayers(events: NaturalEvent[]): Layer[] {
     const nonTC = events.filter(e => !e.stormName && !e.windKt);
     const cyclones = events.filter(e => e.stormName || e.windKt);
@@ -2221,7 +2195,7 @@ export class DeckGLMap {
         id: 'storm-past-track-layer',
         data: pastSegments,
         getPath: (d: { path: [number, number][] }) => d.path,
-        getColor: (d: { windKt: number }) => DeckGLMap.windColor(d.windKt),
+        getColor: (d: { windKt: number }) => getWindColor(d.windKt),
         getWidth: 3,
         widthUnits: 'pixels' as const,
         pickable: true,
@@ -2259,7 +2233,7 @@ export class DeckGLMap {
       data: cyclones,
       getPosition: (d: NaturalEvent) => [d.lon, d.lat],
       getRadius: 15000,
-      getFillColor: (d: NaturalEvent) => DeckGLMap.windColor(d.windKt ?? 0),
+      getFillColor: (d: NaturalEvent) => getWindColor(d.windKt ?? 0),
       getLineColor: [255, 255, 255, 200],
       lineWidthMinPixels: 2,
       stroked: true,
@@ -2770,24 +2744,6 @@ export class DeckGLMap {
     });
   }
 
-  private mineralColor(mineral: string): [number, number, number, number] {
-    switch (mineral) {
-      case 'Gold':        return [255, 215, 0, 210];
-      case 'Silver':      return [192, 192, 192, 200];
-      case 'Copper':      return [184, 115, 51, 210];
-      case 'Lithium':     return [0, 200, 255, 200];
-      case 'Cobalt':      return [100, 100, 255, 200];
-      case 'Rare Earths': return [255, 100, 200, 200];
-      case 'Nickel':      return [100, 220, 100, 200];
-      case 'Platinum':    return [210, 210, 255, 200];
-      case 'Palladium':   return [180, 220, 180, 200];
-      case 'Iron Ore':    return [139, 69, 19, 210];
-      case 'Uranium':     return [50, 255, 80, 200];
-      case 'Coal':        return [80, 80, 80, 200];
-      default:            return [200, 200, 200, 200];
-    }
-  }
-
   // Commodity variant layers
   private createMiningSitesLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
@@ -2795,7 +2751,7 @@ export class DeckGLMap {
       data: MINING_SITES,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: (d) => d.status === 'producing' ? 10000 : d.status === 'development' ? 8000 : 6000,
-      getFillColor: (d) => this.mineralColor(d.mineral),
+      getFillColor: (d) => getMineralColor(d.mineral),
       radiusMinPixels: 5,
       radiusMaxPixels: 14,
       pickable: true,
@@ -2835,7 +2791,7 @@ export class DeckGLMap {
       data: COMMODITY_GEO_PORTS,
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 12000,
-      getFillColor: (d) => this.mineralColor(d.commodities[0]),
+      getFillColor: (d) => getMineralColor(d.commodities[0]),
       radiusMinPixels: 6,
       radiusMaxPixels: 14,
       pickable: true,
@@ -3437,14 +3393,6 @@ export class DeckGLMap {
     });
   }
 
-  private static readonly CII_LEVEL_COLORS: Record<string, [number, number, number, number]> = {
-    low:      [40, 180, 60, 130],
-    normal:   [220, 200, 50, 135],
-    elevated: [240, 140, 30, 145],
-    high:     [220, 50, 20, 155],
-    critical: [140, 10, 0, 170],
-  };
-
   private static readonly CII_LEVEL_HEX: Record<string, string> = {
     critical: '#b91c1c', high: '#dc2626', elevated: '#f59e0b', normal: '#eab308', low: '#22c55e',
   };
@@ -3452,7 +3400,7 @@ export class DeckGLMap {
   private createCIIChoroplethLayer(): GeoJsonLayer | null {
     if (!this.countriesGeoJsonData || this.ciiScoresMap.size === 0) return null;
     const scores = this.ciiScoresMap;
-    const colors = DeckGLMap.CII_LEVEL_COLORS;
+    const colors = CII_LEVEL_COLORS;
     return new GeoJsonLayer({
       id: 'cii-choropleth-layer',
       data: this.countriesGeoJsonData,
@@ -3461,7 +3409,7 @@ export class DeckGLMap {
       getFillColor: (feature: { properties?: Record<string, unknown> }) => {
         const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
         const entry = code ? scores.get(code) : undefined;
-        return entry ? (colors[entry.level] ?? [0, 0, 0, 0]) : [0, 0, 0, 0];
+        return entry ? (colors[entry.level as CiiLevel] ?? [0, 0, 0, 0]) : [0, 0, 0, 0];
       },
       getLineColor: [80, 80, 80, 80] as [number, number, number, number],
       getLineWidth: 1,

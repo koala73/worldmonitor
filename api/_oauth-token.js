@@ -1,20 +1,10 @@
 // @ts-expect-error — JS module, no declaration file
 import { keyFingerprint, sha256Hex } from './_crypto.js';
+// @ts-expect-error — JS module, no declaration file
+import { readJsonFromUpstash } from './_upstash-json.js';
 
 async function fetchOAuthToken(uuid) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-
-  const resp = await fetch(`${url}/get/${encodeURIComponent(`oauth:token:${uuid}`)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(3_000),
-  });
-  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
-
-  const data = await resp.json();
-  if (!data.result) return null;
-  try { return JSON.parse(data.result); } catch { return null; }
+  return readJsonFromUpstash(`oauth:token:${uuid}`);
 }
 
 // Legacy: 16-char fingerprint for client_credentials tokens (backward compat)
