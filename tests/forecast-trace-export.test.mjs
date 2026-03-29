@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 
 import {
   makePrediction,
@@ -69,6 +69,10 @@ import {
   computeSimulationAdjustment,
   applySimulationMerge,
   applyPostSimulationRescore,
+  writeSimulationDecorations,
+  applySimulationDecorationsToForecasts,
+  SIMULATION_DECORATIONS_KEY,
+  __setRedisStoreForTests,
   matchesBucket,
   matchesChannel,
   contradictsPremise,
@@ -7591,4 +7595,194 @@ describe('phase 3 simulation re-ingestion — applyPostSimulationRescore', () =>
     assert.equal(adjustment, 0.08);
   });
 
+});
+
+describe('writeSimulationDecorations and applySimulationDecorationsToForecasts', () => {
+  // Helpers
+  const makeAdj = (candidateStateId, simulationAdjustment, simPathConfidence = 1.0, wasAccepted = true, nowAccepted = true) => ({
+    candidateStateId,
+    simulationAdjustment,
+    details: { simPathConfidence },
+    wasAccepted,
+    nowAccepted,
+  });
+  const makeStateUnit = (id, forecastIds) => ({ id, label: `State ${id}`, forecastIds });
+  const makeMergeResult = (adjustments) => ({ simulationEvidence: { adjustments } });
+  const makeSnapshot = (stateUnits, runId = 'run-test-001') => ({
+    runId,
+    generatedAt: Date.now(),
+    fullRunStateUnits: stateUnits,
+  });
+
+  afterEach(() => {
+    // Always clear the test Redis store after each test
+    __setRedisStoreForTests(null);
+  });
+
+  it('WD-1: writeSimulationDecorations skips when adjustments is empty', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    await writeSimulationDecorations(makeMergeResult([]), makeSnapshot([]));
+    assert.deepEqual(Object.keys(store), [], 'nothing written to Redis');
+  });
+
+  it('WD-2: writeSimulationDecorations skips when mergeResult has no simulationEvidence', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    await writeSimulationDecorations({}, makeSnapshot([]));
+    assert.deepEqual(Object.keys(store), [], 'nothing written to Redis');
+  });
+
+  it('WD-3: writeSimulationDecorations skips when adjustments present but no stateUnit has matching forecastIds', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [
+      makeStateUnit('state-x', []),         // no forecastIds
+      { id: 'state-y', label: 'no array' }, // missing forecastIds field
+    ];
+    const adj = makeAdj('state-x', 0.08);
+    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits));
+    assert.deepEqual(Object.keys(store), [], 'decorationCount=0, nothing written');
+  });
+
+  it('WD-4: writeSimulationDecorations writes correct decoration for a single candidate → single forecast', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [makeStateUnit('state-a', ['fc-001'])];
+    const adj = makeAdj('state-a', 0.08, 0.82);
+    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits, 'run-wd4'));
+    const written = store[SIMULATION_DECORATIONS_KEY];
+    assert.ok(written, 'decoration written to Redis key');
+    assert.equal(written.runId, 'run-wd4');
+    assert.ok(typeof written.generatedAt === 'number');
+    assert.deepEqual(Object.keys(written.byForecastId), ['fc-001']);
+    assert.equal(written.byForecastId['fc-001'].simulationAdjustment, 0.08);
+    assert.equal(written.byForecastId['fc-001'].simPathConfidence, 0.82);
+    assert.equal(written.byForecastId['fc-001'].demotedBySimulation, false);
+  });
+
+  it('WD-5: writeSimulationDecorations picks strongest adjustment when multiple paths share candidateStateId', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [makeStateUnit('state-b', ['fc-002'])];
+    // Three adjustments for the same candidate — +0.08, +0.12, -0.04
+    const adjs = [
+      makeAdj('state-b', 0.08, 0.60),
+      makeAdj('state-b', 0.12, 0.88), // strongest — should win
+      makeAdj('state-b', -0.04, 0.50),
+    ];
+    await writeSimulationDecorations(makeMergeResult(adjs), makeSnapshot(stateUnits));
+    const dec = store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-002'];
+    assert.equal(dec.simulationAdjustment, 0.12, 'highest absolute value wins');
+    assert.equal(dec.simPathConfidence, 0.88);
+  });
+
+  it('WD-6: writeSimulationDecorations resolves conflict when two candidates map to the same forecastId — highest absolute value wins', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [
+      makeStateUnit('state-c1', ['fc-shared']),
+      makeStateUnit('state-c2', ['fc-shared']), // same forecast
+    ];
+    const adjs = [
+      makeAdj('state-c1', 0.08, 0.70),
+      makeAdj('state-c2', -0.15, 0.90), // higher absolute value
+    ];
+    await writeSimulationDecorations(makeMergeResult(adjs), makeSnapshot(stateUnits));
+    const dec = store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-shared'];
+    assert.equal(dec.simulationAdjustment, -0.15, 'highest |adj| wins across candidates');
+  });
+
+  it('WD-7: writeSimulationDecorations sets demotedBySimulation=true when wasAccepted && !nowAccepted', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [makeStateUnit('state-d', ['fc-003'])];
+    // wasAccepted=true, nowAccepted=false → demoted
+    const adj = makeAdj('state-d', -0.15, 0.95, true, false);
+    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits));
+    const dec = store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-003'];
+    assert.equal(dec.demotedBySimulation, true);
+    assert.equal(dec.simulationAdjustment, -0.15);
+  });
+
+  it('WD-8: writeSimulationDecorations is non-fatal when Redis credentials are missing', async () => {
+    // No test store, no env vars → getRedisCredentials() throws inside catch block
+    __setRedisStoreForTests(null);
+    const stateUnits = [makeStateUnit('state-e', ['fc-004'])];
+    const adj = makeAdj('state-e', 0.08);
+    // Must not throw
+    await assert.doesNotReject(
+      () => writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits))
+    );
+  });
+
+  it('WD-9: applySimulationDecorationsToForecasts mutates matching predictions in-place', async () => {
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: {
+        runId: 'run-apply-001',
+        generatedAt: Date.now(),
+        byForecastId: {
+          'fc-aa': { simulationAdjustment: 0.12, simPathConfidence: 0.85, demotedBySimulation: false },
+          'fc-bb': { simulationAdjustment: -0.15, simPathConfidence: 0.95, demotedBySimulation: true },
+        },
+      },
+    };
+    __setRedisStoreForTests(store);
+    const predictions = [
+      { id: 'fc-aa', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false },
+      { id: 'fc-bb', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false },
+      { id: 'fc-cc', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }, // no decoration
+    ];
+    await applySimulationDecorationsToForecasts(predictions);
+    assert.equal(predictions[0].simulationAdjustment, 0.12);
+    assert.equal(predictions[0].simPathConfidence, 0.85);
+    assert.equal(predictions[0].demotedBySimulation, false);
+    assert.equal(predictions[1].simulationAdjustment, -0.15);
+    assert.equal(predictions[1].simPathConfidence, 0.95);
+    assert.equal(predictions[1].demotedBySimulation, true);
+    // fc-cc has no decoration — stays at 0
+    assert.equal(predictions[2].simulationAdjustment, 0);
+    assert.equal(predictions[2].demotedBySimulation, false);
+  });
+
+  it('WD-10: applySimulationDecorationsToForecasts is non-fatal when Redis credentials are missing', async () => {
+    __setRedisStoreForTests(null);
+    const predictions = [{ id: 'fc-xx', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }];
+    await assert.doesNotReject(() => applySimulationDecorationsToForecasts(predictions));
+    // predictions unchanged
+    assert.equal(predictions[0].simulationAdjustment, 0);
+  });
+
+  it('WD-11: applySimulationDecorationsToForecasts is non-fatal when decoration value has wrong shape', async () => {
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: { runId: 'run-bad', generatedAt: Date.now(), byForecastId: 'not-an-object' },
+    };
+    __setRedisStoreForTests(store);
+    const predictions = [{ id: 'fc-yy', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }];
+    await assert.doesNotReject(() => applySimulationDecorationsToForecasts(predictions));
+    assert.equal(predictions[0].simulationAdjustment, 0, 'prediction unchanged when byForecastId is not an object');
+  });
+
+  it('WD-12: round-trip — writeSimulationDecorations then applySimulationDecorationsToForecasts flows full pipeline', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    // Simulation produced +0.12 for state-f → fc-005
+    const stateUnits = [makeStateUnit('state-f', ['fc-005', 'fc-006'])];
+    const adj = makeAdj('state-f', 0.12, 0.78);
+    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits, 'run-rt'));
+
+    // Next fast-path seed run applies decorations to predictions
+    const predictions = [
+      { id: 'fc-005', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false },
+      { id: 'fc-006', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false },
+      { id: 'fc-007', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }, // unrelated
+    ];
+    await applySimulationDecorationsToForecasts(predictions);
+
+    // Both fc-005 and fc-006 should be decorated (both belong to state-f)
+    assert.equal(predictions[0].simulationAdjustment, 0.12, 'fc-005 decorated');
+    assert.equal(predictions[0].simPathConfidence, 0.78);
+    assert.equal(predictions[1].simulationAdjustment, 0.12, 'fc-006 decorated (same candidate)');
+    assert.equal(predictions[2].simulationAdjustment, 0, 'fc-007 unaffected');
+  });
 });

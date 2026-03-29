@@ -43,6 +43,8 @@ const SIMULATION_RUNNER_VERSION = 'v1';
 const SIMULATION_TASK_KEY_PREFIX = 'forecast:simulation-task:v1';
 const SIMULATION_TASK_QUEUE_KEY = 'forecast:simulation-task-queue:v1';
 const SIMULATION_LOCK_KEY_PREFIX = 'forecast:simulation-lock:v1';
+const SIMULATION_DECORATIONS_KEY = 'forecast:sim-decorations:v1';
+const SIMULATION_DECORATIONS_TTL_SECONDS = 86400 * 3; // 3 days — outlasts typical run cadence
 const VALID_RUN_ID_RE = /^\d{13,}-[a-z0-9-]{1,64}$/i;
 const SIMULATION_ROUND1_MAX_TOKENS = 2200;
 const SIMULATION_ROUND2_MAX_TOKENS = 2500;
@@ -571,6 +573,7 @@ const IMPACT_VARIABLE_CHANNELS = Object.fromEntries(
 );
 
 function getRedisCredentials() {
+  if (_testRedisStore) return { url: 'http://test', token: 'test' };
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
@@ -598,7 +601,12 @@ async function redisCommand(url, token, command) {
   return resp.json();
 }
 
+/** In-memory Redis store injected by tests. When set, redisGet/redisSet skip network calls. */
+let _testRedisStore = null;
+function __setRedisStoreForTests(store) { _testRedisStore = store; }
+
 async function redisGet(url, token, key) {
+  if (_testRedisStore) return _testRedisStore[key] ?? null;
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(10_000),
@@ -14269,6 +14277,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
 }
 
 async function redisSet(url, token, key, data, ttlSeconds) {
+  if (_testRedisStore) { _testRedisStore[key] = JSON.parse(JSON.stringify(data)); return; }
   try {
     await fetch(url, {
       method: 'POST',
@@ -14995,6 +15004,11 @@ async function fetchForecasts() {
   prepareForecastMetrics(predictions);
 
   rankForecastsForAnalysis(predictions);
+
+  // Apply simulation decorations from the prior simulation run (non-fatal if absent).
+  // Must run before enrichScenariosWithLLM so that simulationAdjustment is present when
+  // buildPublishedForecastPayload serializes the prediction.
+  await applySimulationDecorationsToForecasts(predictions);
 
   const enrichmentMeta = await enrichScenariosWithLLM(predictions);
   populateFallbackNarratives(predictions);
@@ -16284,6 +16298,110 @@ async function fetchSimulationOutcomeForMerge(storageConfig, currentRunId) {
 }
 
 /**
+ * Write per-forecast simulation decorations to Redis after a simulation rescore.
+ *
+ * Maps each candidateStateId in simulationEvidence.adjustments → stateUnit.forecastIds (via
+ * snapshot.fullRunStateUnits), picks the strongest-signal adjustment per candidate, and writes
+ * forecast:sim-decorations:v1 as a flat { byForecastId: { [id]: decoration } } map.
+ *
+ * These decorations are consumed by applySimulationDecorationsToForecasts() in the NEXT fast-path
+ * seed run, so the ForecastPanel sub-bar reflects simulation evidence from the most recent run.
+ *
+ * @param {object} mergeResult — result of applySimulationMerge (has simulationEvidence.adjustments)
+ * @param {object} snapshot — deep forecast snapshot (has fullRunStateUnits with forecastIds)
+ */
+async function writeSimulationDecorations(mergeResult, snapshot) {
+  const adjustments = mergeResult?.simulationEvidence?.adjustments;
+  if (!adjustments?.length) return;
+
+  const stateUnits = Array.isArray(snapshot?.fullRunStateUnits) ? snapshot.fullRunStateUnits : [];
+  // Build candidateStateId → forecastIds lookup
+  const candidateToForecastIds = new Map();
+  for (const unit of stateUnits) {
+    if (unit?.id && Array.isArray(unit.forecastIds) && unit.forecastIds.length > 0) {
+      candidateToForecastIds.set(unit.id, unit.forecastIds);
+    }
+  }
+
+  // Group adjustments by candidateStateId
+  /** @type {Map<string, Array<{simulationAdjustment: number, simPathConfidence: number, demotedBySimulation: boolean}>>} */
+  const byCandidateId = new Map();
+  for (const adj of adjustments) {
+    const { candidateStateId, simulationAdjustment, details, wasAccepted, nowAccepted } = adj;
+    if (!candidateStateId) continue;
+    if (!byCandidateId.has(candidateStateId)) byCandidateId.set(candidateStateId, []);
+    byCandidateId.get(candidateStateId).push({
+      simulationAdjustment: Number(simulationAdjustment || 0),
+      simPathConfidence: Number(details?.simPathConfidence ?? 1.0),
+      demotedBySimulation: !!(wasAccepted && !nowAccepted),
+    });
+  }
+
+  // For each candidate, pick the adjustment with the highest absolute value (strongest signal).
+  // When multiple candidates map to the same forecast ID, keep the highest absolute value.
+  /** @type {Record<string, {simulationAdjustment: number, simPathConfidence: number, demotedBySimulation: boolean}>} */
+  const byForecastId = {};
+  for (const [candidateStateId, adjs] of byCandidateId) {
+    const best = adjs.reduce((prev, curr) =>
+      Math.abs(curr.simulationAdjustment) > Math.abs(prev.simulationAdjustment) ? curr : prev
+    );
+    const forecastIds = candidateToForecastIds.get(candidateStateId) || [];
+    for (const fid of forecastIds) {
+      const existing = byForecastId[fid];
+      if (!existing || Math.abs(best.simulationAdjustment) > Math.abs(existing.simulationAdjustment)) {
+        byForecastId[fid] = { ...best };
+      }
+    }
+  }
+
+  const decorationCount = Object.keys(byForecastId).length;
+  if (decorationCount === 0) return;
+
+  try {
+    const { url, token } = getRedisCredentials();
+    await redisSet(url, token, SIMULATION_DECORATIONS_KEY, {
+      runId: snapshot?.runId || '',
+      generatedAt: Date.now(),
+      byForecastId,
+    }, SIMULATION_DECORATIONS_TTL_SECONDS);
+    console.log(`  [SimulationDecorations] Written ${decorationCount} decorations from ${byCandidateId.size} candidates`);
+  } catch (err) {
+    console.warn(`  [SimulationDecorations] Write failed: ${err.message}`);
+  }
+}
+
+/**
+ * Apply simulation decorations from forecast:sim-decorations:v1 to the given predictions array.
+ * Mutates pred.simulationAdjustment, pred.simPathConfidence, pred.demotedBySimulation in-place.
+ * Decorations come from the prior simulation run — stale by at most one fast-path seed cycle.
+ * Failures are non-fatal: the pipeline continues without decorations.
+ *
+ * @param {object[]} predictions
+ */
+async function applySimulationDecorationsToForecasts(predictions) {
+  try {
+    const { url, token } = getRedisCredentials();
+    const decorations = await redisGet(url, token, SIMULATION_DECORATIONS_KEY);
+    if (!decorations?.byForecastId || typeof decorations.byForecastId !== 'object') return;
+
+    let applied = 0;
+    for (const pred of predictions) {
+      const dec = decorations.byForecastId[pred.id];
+      if (!dec) continue;
+      pred.simulationAdjustment = Number(dec.simulationAdjustment || 0);
+      pred.simPathConfidence = Number(dec.simPathConfidence ?? 1.0);
+      pred.demotedBySimulation = !!dec.demotedBySimulation;
+      applied++;
+    }
+    if (applied > 0) {
+      console.log(`  [SimulationDecorations] Applied to ${applied}/${predictions.length} forecasts (run ${decorations.runId || 'unknown'})`);
+    }
+  } catch (err) {
+    console.warn(`  [SimulationDecorations] Apply failed (non-fatal): ${err.message}`);
+  }
+}
+
+/**
  * Re-apply simulation merge against the just-completed simulation for a run whose deep forecast
  * had already finished with stale (or no) simulation data. Reads forecast-eval.json + snapshot
  * from R2, re-runs applySimulationMerge with the fresh outcome, and re-writes trace artifacts if
@@ -16358,6 +16476,13 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
     );
 
     const ev = mergeResult.simulationEvidence;
+
+    // Always write decorations when adjustments exist — even if no path crossed the
+    // promotion/demotion threshold, any non-zero adjustment is worth showing in ForecastPanel.
+    writeSimulationDecorations(mergeResult, snapshot).catch((err) =>
+      console.warn(`  [SimulationDecorations] Fire-and-forget write failed: ${err.message}`)
+    );
+
     if (!ev?.pathsPromoted && !ev?.pathsDemoted) {
       return { skipped: false, reason: 'no_path_changes', adjustmentsApplied: ev?.adjustments?.length || 0 };
     }
@@ -16812,6 +16937,9 @@ export {
   runSimulationWorker,
   fetchSimulationOutcomeForMerge,
   applyPostSimulationRescore,
+  writeSimulationDecorations,
+  applySimulationDecorationsToForecasts,
+  SIMULATION_DECORATIONS_KEY,
   computeSimulationAdjustment,
   applySimulationMerge,
   matchesBucket,
@@ -16830,4 +16958,5 @@ export {
   readImpactPromptLearnedSection,
   clearImpactPromptLearnedSection,
   __setForecastLlmCallOverrideForTests,
+  __setRedisStoreForTests,
 };
