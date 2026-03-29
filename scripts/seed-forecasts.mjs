@@ -11398,7 +11398,7 @@ function negatesDisruption(stabilizer, candidatePacket) {
  */
 function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePacket) {
   let adjustment = 0;
-  const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none', candidateActorCount: 0, actorSource: 'none' };
+  const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none', candidateActorCount: 0, actorSource: 'none', simPathConfidence: 1.0 };
 
   const { topPaths = [], invalidators = [], stabilizers = [] } = simTheaterResult || {};
   const pathBucket = expandedPath?.direct?.targetBucket
@@ -11445,13 +11445,23 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
     (sp) => matchesBucket(sp, pathBucket) && matchesChannel(sp, pathChannel)
   );
   if (bucketChannelMatch) {
-    adjustment += 0.08;
+    // Scale bonuses by sim path confidence. Missing/null/zero confidence falls back to 1.0
+    // (no penalty for legacy LLM output that omitted the field).
+    const rawConf = bucketChannelMatch.confidence;
+    const simConf = typeof rawConf === 'number' && Number.isFinite(rawConf) && rawConf > 0
+      ? Math.min(1, rawConf)
+      : 1.0;
+    adjustment += +parseFloat((0.08 * simConf).toFixed(3));
     details.bucketChannelMatch = true;
+    details.simPathConfidence = simConf;
     const simActors = new Set((Array.isArray(bucketChannelMatch.keyActors) ? bucketChannelMatch.keyActors : []).map(normalizeActorName));
     const overlap = candidateActors.filter((a) => simActors.has(a));
     details.actorOverlapCount = overlap.length;
+    // Overlap bonus fires only when both sides have named geo-political actors.
+    // Macro-financial theaters with role-based stateSummary.actors (e.g. "Commodity traders",
+    // "Central banks") will have actorOverlapCount=0 — this is expected, not a bug.
     if (overlap.length >= 2) {
-      adjustment += 0.04;
+      adjustment += +parseFloat((0.04 * simConf).toFixed(3));
     }
   }
 
@@ -11525,6 +11535,13 @@ function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, s
 
     path.simulationAdjustment = adjustment;
     path.mergedAcceptanceScore = mergedAcceptanceScore;
+    path.simulationSignal = {
+      backed: adjustment > 0,
+      adjustmentDelta: adjustment,
+      channelSource: details.channelSource,
+      demoted: wasAccepted && mergedAcceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
+      simPathConfidence: details.simPathConfidence,
+    };
 
     if (wasAccepted && mergedAcceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD) {
       path.demotedBySimulation = true;

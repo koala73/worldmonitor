@@ -89,6 +89,23 @@ interface ExpandedPathCandidate {
   topBucketId?: string;
 }
 
+/**
+ * Compact simulation signal attached to an ExpandedPath when a non-zero adjustment was applied.
+ * Written by applySimulationMerge; rendered as a chip in ForecastPanel.
+ */
+interface SimulationSignal {
+  /** Non-zero simulation adjustment was applied (positive = promoted, negative = weakened). */
+  backed: boolean;
+  /** Raw adjustment delta (+0.08/+0.04 weighted by simPathConfidence; -0.12/-0.15 flat). */
+  adjustmentDelta: number;
+  /** Source of the matched channel: 'direct' (from path.direct.channel) | 'market' (from marketContext.topChannel) | 'none'. */
+  channelSource: 'direct' | 'market' | 'none';
+  /** Path was demoted below the 0.50 acceptance threshold by simulation. */
+  demoted: boolean;
+  /** Confidence of the matched simulation top-path (0–1). Only meaningful when backed=true. */
+  simPathConfidence: number;
+}
+
 /** A single expanded path produced by the deep forecast LLM evaluation. */
 interface ExpandedPath {
   pathId: string;
@@ -99,6 +116,8 @@ interface ExpandedPath {
   simulationAdjustment?: number;
   demotedBySimulation?: boolean;
   promotedBySimulation?: boolean;
+  /** Compact simulation signal. Present only when applySimulationMerge produced a non-zero adjustment. */
+  simulationSignal?: SimulationSignal;
   direct?: ExpandedPathDirect;
   candidate?: ExpandedPathCandidate;
 }
@@ -170,6 +189,8 @@ interface SimulationAdjustmentDetail {
   resolvedChannel: string;
   /** Source of resolved channel. */
   channelSource: 'direct' | 'market' | 'none';
+  /** Confidence of the matched simulation top-path (0–1). 1.0 when no bucketChannelMatch or when confidence is missing/null/zero in LLM output. */
+  simPathConfidence: number;
 }
 
 interface SimulationAdjustmentRecord {
