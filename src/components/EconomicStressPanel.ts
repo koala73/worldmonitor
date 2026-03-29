@@ -135,7 +135,7 @@ export class EconomicStressPanel extends Panel {
       </div>
 
       <div style="margin-bottom:16px">
-        <div style="position:relative;height:12px;border-radius:6px;overflow:visible;background:linear-gradient(to right, #27ae60 0%, #f1c40f 40%, #e67e22 70%, #e74c3c 100%);margin-bottom:4px">
+        <div style="position:relative;height:12px;border-radius:6px;overflow:visible;background:linear-gradient(to right, #27ae60 0%, #f1c40f 20%, #e67e22 40%, #e74c3c 60%, #8e44ad 80%, #8e44ad 100%);margin-bottom:4px">
           <div style="position:absolute;top:-4px;left:calc(${needlePct.toFixed(1)}% - 2px);width:4px;height:20px;background:#fff;border-radius:2px;box-shadow:0 0 4px rgba(0,0,0,0.6)"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim)">
