@@ -22169,7 +22169,7 @@ body.map-width-resizing {
   cursor: help;
 }
 
-/* ── SIGINT Analyst Chat Panel ──────────────────────────────────────── */
+/* ── WM Analyst Chat Panel ──────────────────────────────────────── */
 .chat-analyst-wrapper {
   display: flex;
   flex-direction: column;

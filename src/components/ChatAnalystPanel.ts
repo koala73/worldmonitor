@@ -45,7 +45,7 @@ export class ChatAnalystPanel extends Panel {
   constructor() {
     super({
       id: 'chat-analyst',
-      title: 'SIGINT Analyst',
+      title: 'WM Analyst',
       premium: 'locked',
       defaultRowSpan: 2,
     });
@@ -353,7 +353,7 @@ export class ChatAnalystPanel extends Panel {
 
   private exportChat(): void {
     if (this.history.length === 0) return;
-    const lines = [`# SIGINT Analyst Session\n*Exported: ${new Date().toISOString()}*\n`];
+    const lines = [`# WM Analyst Session\n*Exported: ${new Date().toISOString()}*\n`];
     for (const msg of this.history) {
       const role = msg.role === 'user' ? '**You**' : '**Analyst**';
       lines.push(`\n${role}:\n${msg.content}`);
@@ -362,7 +362,7 @@ export class ChatAnalystPanel extends Panel {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `sigint-session-${Date.now()}.md`;
+    a.download = `wm-analyst-session-${Date.now()}.md`;
     a.click();
     URL.revokeObjectURL(url);
   }
