@@ -30,21 +30,21 @@ function parseIntent(raw: string): Intent {
         if (airports.length) return { type: 'OPS', airports };
     }
 
-    // FLIGHT <IATA-FLIGHT>
-    if (/^(FLIGHT|FLT|STATUS)\s+[A-Z]{2}\d{1,4}/.test(q)) {
-        const match = q.match(/[A-Z]{2}\d{1,4}/);
+    // FLIGHT <IATA-FLIGHT> or <IATA-FLIGHT> [STATUS|FLIGHT|FLT]
+    if (/^(FLIGHT|FLT)\s+[A-Z]{2,3}\d{1,4}/.test(q) || /[A-Z]{2,3}\d{1,4}\s+(STATUS|FLIGHT|FLT)/.test(q) || /^STATUS\s+[A-Z]{2,3}\d{1,4}/.test(q)) {
+        const match = q.match(/[A-Z]{2,3}\d{1,4}/);
         if (match) {
             const origin = words.find(w => /^[A-Z]{3}$/.test(w) && w !== match[0]);
             return { type: 'FLIGHT_STATUS', flightNumber: match[0], origin };
         }
     }
 
-    // PRICE / PRICES <ORG> <DST>
-    if (/^PRICE[S]?\s+[A-Z]{3}\s+[A-Z]{3}/.test(q)) {
-        const airports = words.slice(1).filter(w => /^[A-Z]{3}$/.test(w));
-        if (airports.length >= 2) {
+    // PRICE / PRICES <ORG> <DST>  or  <ORG> TO <DST> PRICE[S]
+    if (words.some(w => /^PRICE[S]?$/.test(w))) {
+        const priceAirports = words.filter(w => /^[A-Z]{3}$/.test(w) && w !== 'TO');
+        if (priceAirports.length >= 2) {
             const date = words.find(w => /^\d{4}-\d{2}-\d{2}$/.test(w));
-            return { type: 'PRICE_WATCH', origin: airports[0]!, destination: airports[1]!, date };
+            return { type: 'PRICE_WATCH', origin: priceAirports[0]!, destination: priceAirports[1]!, date };
         }
     }
 

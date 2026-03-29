@@ -181,6 +181,7 @@ export class AirlineIntelPanel extends Panel {
 
     /** Called by the map when new aircraft positions arrive. */
     updateLivePositions(positions: PositionSample[]): void {
+        if (this.trackingQuery) return; // preserve filtered search results
         this.trackingData = positions;
         if (this.activeTab === 'tracking') this.renderTab();
     }
@@ -454,7 +455,8 @@ export class AirlineIntelPanel extends Panel {
               <span style="color:${color};font-size:11px;margin-left:auto">${f.status}</span>
             </div>
             <div style="font-size:12px;color:var(--text-dim)">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${depStr ? ` · ${depStr}` : ''}${arrStr}</div>
-            ${f.aircraftType ? `<div style="font-size:11px;color:#6b7280">${escapeHtml(f.aircraftType)}${f.gate ? ` · Gate ${escapeHtml(f.gate)}` : ''}${f.terminal ? ` · T${escapeHtml(f.terminal)}` : ''}</div>` : ''}
+            ${f.aircraftType ? `<div style="font-size:11px;color:#6b7280">${escapeHtml(f.aircraftType)}</div>` : ''}
+            ${(f.gate || f.terminal) ? `<div style="font-size:11px;color:#6b7280">${f.gate ? `Gate ${escapeHtml(f.gate)}` : ''}${f.terminal ? `${f.gate ? ' · ' : ''}T${escapeHtml(f.terminal)}` : ''}</div>` : ''}
             ${f.delayMinutes > 0 ? `<div style="color:#f97316;font-size:12px">+${f.delayMinutes}m delay</div>` : ''}
           </div>`;
             }).join('');
