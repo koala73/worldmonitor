@@ -31,7 +31,7 @@ export class BreakingNewsBanner {
   constructor() {
     this.container = document.createElement('div');
     this.container.className = 'breaking-news-container';
-    document.body.appendChild(this.container);
+    document.body.append(this.container);
 
     this.updatePosition();
     this.setupObservers();
@@ -137,7 +137,7 @@ export class BreakingNewsBanner {
     }
 
     const el = this.createAlertElement(alert);
-    this.container.appendChild(el);
+    this.container.append(el);
 
     const dismissMs = alert.threatLevel === 'critical' ? CRITICAL_DISMISS_MS : HIGH_DISMISS_MS;
     const now = Date.now();
@@ -188,18 +188,18 @@ export class BreakingNewsBanner {
     metaSpan.className = 'breaking-alert-meta';
     metaSpan.textContent = `${alert.source} · ${timeAgo}`;
 
-    content.appendChild(levelSpan);
-    content.appendChild(headlineSpan);
-    content.appendChild(metaSpan);
+    content.append(levelSpan);
+    content.append(headlineSpan);
+    content.append(metaSpan);
 
     const dismissBtn = document.createElement('button');
     dismissBtn.className = 'breaking-alert-dismiss';
     dismissBtn.textContent = '×';
     dismissBtn.title = t('components.breakingNews.dismiss');
 
-    el.appendChild(iconSpan);
-    el.appendChild(content);
-    el.appendChild(dismissBtn);
+    el.append(iconSpan);
+    el.append(content);
+    el.append(dismissBtn);
 
     return el;
   }

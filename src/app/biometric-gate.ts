@@ -7,20 +7,20 @@ const WINDOW_READY_POLL_MS = 80;
 const AUTO_PROMPT_DELAY_MS = 80;
 const BRIDGE_RETRY_INTERVAL_MS = 500;
 
-type GateOverlay = {
+interface GateOverlay {
   container: HTMLDivElement;
   message: HTMLParagraphElement;
   primaryButton: HTMLButtonElement;
   quitButton: HTMLButtonElement;
   stage: HTMLDivElement;
-};
+}
 
-type BiometricGate3DController = {
+interface BiometricGate3DController {
   setAuthenticating: (active: boolean) => void;
   setAccessGranted: () => void;
   setDoorOpenProgress: (progress: number) => void;
   destroy: () => void;
-};
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -224,14 +224,14 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
         return true;
       } catch {
         gate3D?.setDoorOpenProgress(0);
-        if (!hasTauriInvokeBridge()) {
+        if (hasTauriInvokeBridge()) {
+          showAutoResumeMessage();
+        } else {
           showFallbackOverlay(
             overlay,
             'Preparing secure unlock. Authentication will start automatically.',
           );
           startBridgeRetry();
-        } else {
-          showAutoResumeMessage();
         }
         return false;
       } finally {
@@ -246,14 +246,14 @@ export async function ensureBiometricUnlock(): Promise<boolean> {
       void tryAuthenticate(false);
     };
 
-    overlay.quitButton.onclick = () => {
+    overlay.quitButton.addEventListener('click', () => {
       settle(false);
       window.close();
-    };
+    });
 
-    overlay.primaryButton.onclick = () => {
+    overlay.primaryButton.addEventListener('click', () => {
       void tryAuthenticate(true);
-    };
+    });
 
     window.addEventListener('focus', resumeAuthIfReady);
     document.addEventListener('visibilitychange', resumeAuthIfReady);

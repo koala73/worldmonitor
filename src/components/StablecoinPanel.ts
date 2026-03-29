@@ -56,20 +56,20 @@ export class StablecoinPanel extends Panel {
         }
         this.error = null;
 
-        if (this.data && this.data.stablecoins.length === 0 && attempt < 2) {
+        if (this.data?.stablecoins.length === 0 && attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 20_000));
           continue;
         }
         break;
-      } catch (err) {
-        if (this.isAbortError(err)) return;
+      } catch (error) {
+        if (this.isAbortError(error)) return;
         if (attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 20_000));
           continue;
         }
-        this.error = err instanceof Error ? err.message : 'Failed to fetch';
+        this.error = error instanceof Error ? error.message : 'Failed to fetch';
       }
     }
     this.loading = false;

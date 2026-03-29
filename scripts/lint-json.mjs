@@ -92,7 +92,7 @@ async function main() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const position = extractPosition(message);
-      const location = position == null ? null : indexToLineColumn(source, position);
+      const location = position == undefined ? null : indexToLineColumn(source, position);
       if (location) {
         failures.push(`${relativePath}:${location.line}:${location.column} ${message}`);
       } else {

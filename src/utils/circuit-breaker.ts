@@ -75,7 +75,7 @@ export class CircuitBreaker<T> {
       try {
         const { getPersistentCache } = await import('../services/persistent-cache');
         const entry = await getPersistentCache<T>(this.persistKey);
-        if (entry == null || entry.data === undefined || entry.data === null) return;
+        if (entry?.data === undefined || entry.data === null) return;
 
         const age = Date.now() - entry.updatedAt;
         if (age > PERSISTENT_STALE_CEILING_MS) return;
@@ -90,8 +90,8 @@ export class CircuitBreaker<T> {
             offline: false,
           };
         }
-      } catch (err) {
-        console.warn(`[${this.name}] Persistent cache hydration failed:`, err);
+      } catch (error) {
+        console.warn(`[${this.name}] Persistent cache hydration failed:`, error);
       } finally {
         this.persistentLoaded = true;
         this.persistentLoadPromise = null;
@@ -221,9 +221,9 @@ export class CircuitBreaker<T> {
     if (this.cache !== null && this.cacheTtlMs > 0) {
       this.lastDataState = { mode: 'cached', timestamp: this.cache.timestamp, offline };
       // Fire-and-forget background refresh
-      fn().then(result => this.recordSuccess(result)).catch(e => {
-        console.warn(`[${this.name}] Background refresh failed:`, e);
-        this.recordFailure(String(e));
+      fn().then(result => this.recordSuccess(result)).catch(error => {
+        console.warn(`[${this.name}] Background refresh failed:`, error);
+        this.recordFailure(String(error));
       });
       return this.cache.data as R;
     }
@@ -232,8 +232,8 @@ export class CircuitBreaker<T> {
       const result = await fn();
       this.recordSuccess(result);
       return result;
-    } catch (e) {
-      const msg = String(e);
+    } catch (error) {
+      const msg = String(error);
       console.error(`[${this.name}] Failed:`, msg);
       this.recordFailure(msg);
       this.lastDataState = { mode: 'unavailable', timestamp: null, offline };

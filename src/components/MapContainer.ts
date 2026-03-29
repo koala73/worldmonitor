@@ -178,7 +178,7 @@ export class MapContainer {
       this.deckGLMap?.setCenter(lat, lon, zoom);
     } else {
       this.svgMap?.setCenter(lat, lon);
-      if (zoom != null) this.svgMap?.setZoom(zoom);
+      if (zoom != undefined) this.svgMap?.setZoom(zoom);
     }
   }
 
@@ -309,7 +309,7 @@ export class MapContainer {
     }
   }
 
-  public setFires(fires: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }>): void {
+  public setFires(fires: { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }[]): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setFires(fires);
     } else {
@@ -377,7 +377,7 @@ export class MapContainer {
     }
   }
 
-  public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
+  public setNewsLocations(data: { lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }[]): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setNewsLocations(data);
     } else {

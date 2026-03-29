@@ -31,7 +31,7 @@ function getVerificationTemplate(): VerificationCheck[] {
 export class VerificationChecklist extends Component {
   private checks: VerificationCheck[] = getVerificationTemplate();
   private notes: string[] = [];
-  private manualNote: string = '';
+  private manualNote = '';
 
   private toggleCheck(id: string): void {
     this.checks = this.checks.map(c =>

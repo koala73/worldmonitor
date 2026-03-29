@@ -34,9 +34,9 @@ export interface OrefHistoryResponse {
 
 let cachedResponse: OrefAlertsResponse | null = null;
 let lastFetchAt = 0;
-const CACHE_TTL = 8_000;
+const CACHE_TTL = 8000;
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
-let updateCallbacks: Array<(data: OrefAlertsResponse) => void> = [];
+let updateCallbacks: ((data: OrefAlertsResponse) => void)[] = [];
 
 let locationTranslator: ((s: string) => string) | null = null;
 let locationMapPromise: Promise<void> | null = null;
@@ -57,7 +57,7 @@ let translationPromise: Promise<boolean> | null = null;
 function sanitizeHebrew(text: string): string {
   return text
     .normalize('NFKC')
-    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '')
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
     .replace(/[\u2010-\u2015\u2212]/g, '-')
     .trim()
     .replace(/\s+/g, ' ');
@@ -111,15 +111,14 @@ function alertNeedsTranslation(alert: OrefAlert): boolean {
 }
 
 function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return s.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 function buildTranslationPrompt(alerts: OrefAlert[]): string {
   const lines: string[] = [];
   for (const a of alerts) {
     lines.push(`ALERT[${a.id}]: ${a.title || '(none)'}`);
-    lines.push(`AREAS[${a.id}]: ${a.data.join(', ') || '(none)'}`);
-    lines.push(`DESC[${a.id}]: ${a.desc || '(none)'}`);
+    lines.push(`AREAS[${a.id}]: ${a.data.join(', ') || '(none)'}`, `DESC[${a.id}]: ${a.desc || '(none)'}`);
   }
   return 'Translate each line from Hebrew to English. Keep the ALERT/AREAS/DESC labels and IDs exactly as-is. Only translate the text after the colon.\n' + lines.join('\n');
 }
@@ -128,9 +127,9 @@ function parseTranslationResponse(raw: string, alerts: OrefAlert[]): void {
   const lines = raw.split('\n');
   for (const alert of alerts) {
     const eid = escapeRegExp(alert.id);
-    const reAlert = new RegExp(`ALERT\\[${eid}\\]:\\s*(.+)`);
-    const reAreas = new RegExp(`AREAS\\[${eid}\\]:\\s*(.+)`);
-    const reDesc = new RegExp(`DESC\\[${eid}\\]:\\s*(.+)`);
+    const reAlert = new RegExp(String.raw`ALERT\[${eid}\]:\s*(.+)`);
+    const reAreas = new RegExp(String.raw`AREAS\[${eid}\]:\s*(.+)`);
+    const reDesc = new RegExp(String.raw`DESC\[${eid}\]:\s*(.+)`);
     let title: string | null = null;
     let areas: string[] | null = null;
     let desc: string | null = null;
@@ -202,8 +201,8 @@ async function translateAlerts(alerts: OrefAlert[]): Promise<boolean> {
         parseTranslationResponse(result, untranslated);
         translated = true;
       }
-    } catch (e) {
-      console.warn('OREF alert translation failed', e);
+    } catch (error) {
+      console.warn('OREF alert translation failed', error);
     } finally {
       translationPromise = null;
     }
@@ -247,8 +246,8 @@ export async function fetchOrefAlerts(): Promise<OrefAlertsResponse> {
     }
 
     return { ...data, alerts: applyTranslations(data.alerts) };
-  } catch (err) {
-    return { configured: false, alerts: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: String(err) };
+  } catch (error) {
+    return { configured: false, alerts: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: String(error) };
   }
 }
 
@@ -275,8 +274,8 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
     }
 
     return data;
-  } catch (err) {
-    return { configured: false, history: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: String(err) };
+  } catch (error) {
+    return { configured: false, history: [], historyCount24h: 0, timestamp: new Date().toISOString(), error: String(error) };
   }
 }
 

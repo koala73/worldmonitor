@@ -5,7 +5,7 @@ import { tryInvokeTauri } from '@/services/tauri-bridge';
 import { isGhostMode } from '@/services/mode-manager';
 
 export class EconomicStressPanel extends Panel {
-  private _previousStressIndex: number = 0;
+  private _previousStressIndex = 0;
 
   constructor() {
     super({ id: 'economic-stress', title: 'Economic Stress' });
@@ -39,13 +39,13 @@ export class EconomicStressPanel extends Panel {
     const el = this.getContentElement();
     const { stressIndex, trend, indicators, foodSecurity } = data;
     const pct = Math.min(100, stressIndex);
-    const indexColor = stressIndex >= 85 ? '#ef4444' : stressIndex >= 70 ? '#eab308' : '#22c55e';
+    const indexColor = stressIndex >= 85 ? '#ef4444' : (stressIndex >= 70 ? '#eab308' : '#22c55e');
 
     const trendGlyph = trend === 'rising'
       ? `<span style="color:#ef4444;">↑</span>`
-      : trend === 'falling'
+      : (trend === 'falling'
       ? `<span style="color:#22c55e;">↓</span>`
-      : `<span style="opacity:0.5;">→</span>`;
+      : `<span style="opacity:0.5;">→</span>`);
 
     const ind = indicators;
     const cards = [
@@ -57,11 +57,11 @@ export class EconomicStressPanel extends Panel {
       renderStatusCard({ label: 'Job Claims',   value: ind.jobClaims.value >= 1000 ? `${Math.round(ind.jobClaims.value / 1000)}K` : String(ind.jobClaims.value), severity: ind.jobClaims.severity, sublabel: ind.jobClaims.label }),
     ].join('');
 
-    const fsVal = foodSecurity.value !== null ? String(foodSecurity.value) : '—';
+    const fsVal = foodSecurity.value === null ? '—' : String(foodSecurity.value);
     const fsColor = foodSecurity.severity === 'critical' ? '#ef4444'
-      : foodSecurity.severity === 'warning' ? '#eab308' : '#22c55e';
+      : (foodSecurity.severity === 'warning' ? '#eab308' : '#22c55e');
     const fsLabel = foodSecurity.severity === 'critical' ? 'Severely stressed'
-      : foodSecurity.severity === 'warning' ? 'Moderately stressed' : 'Normal';
+      : (foodSecurity.severity === 'warning' ? 'Moderately stressed' : 'Normal');
 
     const ts = new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 

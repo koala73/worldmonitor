@@ -95,7 +95,7 @@ function extractKeywords(title: string, description: string): string[] {
   const text = title + ' ' + description;
   const found: string[] = [];
   for (const kw of DEFENSE_KEYWORDS) {
-    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
     if (new RegExp(escaped, 'i').test(text)) found.push(kw);
   }
   return [...new Set(found)].slice(0, 10);
@@ -138,7 +138,7 @@ function parseXmlItems(xmlText: string): ParsedItem[] {
   const doc = parser.parseFromString(xmlText, 'text/xml');
   if (doc.querySelector('parsererror')) return [];
 
-  return Array.from(doc.querySelectorAll('item')).map(item => ({
+  return [...doc.querySelectorAll('item')].map(item => ({
     title: item.querySelector('title')?.textContent?.trim() ?? '',
     description: stripHtml(item.querySelector('description')?.textContent ?? '').trim(),
     link: item.querySelector('link')?.textContent?.trim() ?? '',
@@ -150,7 +150,7 @@ function parseXmlItems(xmlText: string): ParsedItem[] {
 async function fetchFeed(feedUrl: string): Promise<CongressDefenseItem[]> {
   try {
     const res = await fetch(proxyUrl(feedUrl), {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
     });
     if (!res.ok) return [];

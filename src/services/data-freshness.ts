@@ -112,8 +112,8 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
 };
 
 class DataFreshnessTracker {
-  private sources: Map<DataSourceId, DataSourceState> = new Map();
-  private listeners: Set<() => void> = new Set();
+  private sources = new Map<DataSourceId, DataSourceState>();
+  private listeners = new Set<() => void>();
 
   constructor() {
     // Initialize all sources
@@ -134,7 +134,7 @@ class DataFreshnessTracker {
   /**
    * Record that a data source received new data
    */
-  recordUpdate(sourceId: DataSourceId, itemCount: number = 1): void {
+  recordUpdate(sourceId: DataSourceId, itemCount = 1): void {
     const source = this.sources.get(sourceId);
     if (source) {
       source.lastUpdate = new Date();
@@ -185,7 +185,7 @@ class DataFreshnessTracker {
    * Get all source states
    */
   getAllSources(): DataSourceState[] {
-    return Array.from(this.sources.values()).map(source => ({
+    return [...this.sources.values()].map(source => ({
       ...source,
       status: source.enabled ? this.calculateStatus(source) : 'disabled',
     }));
@@ -288,8 +288,8 @@ class DataFreshnessTracker {
     for (const listener of this.listeners) {
       try {
         listener();
-      } catch (e) {
-        console.error('[DataFreshness] Listener error:', e);
+      } catch (error) {
+        console.error('[DataFreshness] Listener error:', error);
       }
     }
   }
@@ -302,10 +302,10 @@ class DataFreshnessTracker {
     if (!source?.lastUpdate) return 'never';
 
     const ms = Date.now() - source.lastUpdate.getTime();
-    if (ms < 60000) return 'just now';
-    if (ms < 3600000) return `${Math.floor(ms / 60000)}m ago`;
-    if (ms < 86400000) return `${Math.floor(ms / 3600000)}h ago`;
-    return `${Math.floor(ms / 86400000)}d ago`;
+    if (ms < 60_000) return 'just now';
+    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+    return `${Math.floor(ms / 86_400_000)}d ago`;
   }
 }
 
@@ -315,24 +315,36 @@ export const dataFreshness = new DataFreshnessTracker();
 // Helper to get status color
 export function getStatusColor(status: FreshnessStatus): string {
   switch (status) {
-    case 'fresh': return getCSSColor('--semantic-normal');
-    case 'stale': return getCSSColor('--semantic-elevated');
-    case 'very_stale': return getCSSColor('--semantic-high');
-    case 'error': return getCSSColor('--semantic-critical');
-    case 'disabled': return getCSSColor('--text-muted');
-    case 'no_data': return getCSSColor('--text-dim');
+    case 'fresh': { return getCSSColor('--semantic-normal');
+    }
+    case 'stale': { return getCSSColor('--semantic-elevated');
+    }
+    case 'very_stale': { return getCSSColor('--semantic-high');
+    }
+    case 'error': { return getCSSColor('--semantic-critical');
+    }
+    case 'disabled': { return getCSSColor('--text-muted');
+    }
+    case 'no_data': { return getCSSColor('--text-dim');
+    }
   }
 }
 
 // Helper to get status icon
 export function getStatusIcon(status: FreshnessStatus): string {
   switch (status) {
-    case 'fresh': return '●';
-    case 'stale': return '◐';
-    case 'very_stale': return '○';
-    case 'error': return '✕';
-    case 'disabled': return '○';
-    case 'no_data': return '○';
+    case 'fresh': { return '●';
+    }
+    case 'stale': { return '◐';
+    }
+    case 'very_stale': { return '○';
+    }
+    case 'error': { return '✕';
+    }
+    case 'disabled': { return '○';
+    }
+    case 'no_data': { return '○';
+    }
   }
 }
 

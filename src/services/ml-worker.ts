@@ -45,15 +45,15 @@ type WorkerResult =
 
 class MLWorkerManager {
   private worker: Worker | null = null;
-  private pendingRequests: Map<string, PendingRequest<unknown>> = new Map();
+  private pendingRequests = new Map<string, PendingRequest<unknown>>();
   private requestIdCounter = 0;
   private isReady = false;
   private capabilities: MLCapabilities | null = null;
   private loadedModels = new Set<string>();
   private readyResolve: (() => void) | null = null;
-  private modelProgressCallbacks: Map<string, (progress: number) => void> = new Map();
+  private modelProgressCallbacks = new Map<string, (progress: number) => void>();
 
-  private static readonly READY_TIMEOUT_MS = 10000;
+  private static readonly READY_TIMEOUT_MS = 10_000;
 
   /**
    * Initialize the ML worker. Returns false if ML is not supported.
@@ -313,7 +313,7 @@ class MLWorkerManager {
    * High-level: Cluster items by semantic similarity
    */
   async clusterBySemanticSimilarity(
-    items: Array<{ id: string; text: string }>,
+    items: { id: string; text: string }[],
     threshold = ML_THRESHOLDS.semanticClusterThreshold
   ): Promise<string[][]> {
     const embeddings = await this.embedTexts(items.map(i => i.text));
@@ -366,7 +366,7 @@ class MLWorkerManager {
    * Get list of currently loaded models
    */
   get loadedModelIds(): string[] {
-    return Array.from(this.loadedModels);
+    return [...this.loadedModels];
   }
 
   /**

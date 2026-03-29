@@ -16,7 +16,7 @@ import { StringSession } from 'telegram/sessions/index.js';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
-const apiId = parseInt(String(process.env.TELEGRAM_API_ID || ''), 10);
+const apiId = Number.parseInt(String(process.env.TELEGRAM_API_ID || ''), 10);
 const apiHash = String(process.env.TELEGRAM_API_HASH || '');
 
 if (!apiId || !apiHash) {
@@ -44,7 +44,7 @@ try {
   // ⚠️  SECURITY: This session token grants FULL access to the Telegram account.
   // Treat it like a password. Write it to a file rather than relying on terminal
   // history/scrollback (which may be logged or captured by screen recorders).
-  const outFile = new URL('./telegram-session.txt', import.meta.url);
+  const outFile = new URL('telegram-session.txt', import.meta.url);
   import('node:fs').then(fs => {
     fs.writeFileSync(outFile, `TELEGRAM_SESSION=${session}\n`, { mode: 0o600 });
     console.log(`\n✅ Session written to: ${outFile.pathname}`);

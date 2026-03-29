@@ -106,7 +106,7 @@ export interface PanelLayoutCallbacks {
 export class PanelLayoutManager implements AppModule {
   private ctx: AppContext;
   private callbacks: PanelLayoutCallbacks;
-  private panelDragCleanupHandlers: Array<() => void> = [];
+  private panelDragCleanupHandlers: (() => void)[] = [];
   private criticalBannerEl: HTMLElement | null = null;
   private readonly applyTimeRangeFilterDebounced: () => void;
 
@@ -168,11 +168,7 @@ export class PanelLayoutManager implements AppModule {
   }
 
   renderLayout(): void {
-    if (this.ctx.isDesktopApp) {
-      this.ctx.container.innerHTML = this.buildDesktopLayout();
-    } else {
-      this.ctx.container.innerHTML = this.buildWebLayout();
-    }
+    this.ctx.container.innerHTML = this.ctx.isDesktopApp ? this.buildDesktopLayout() : this.buildWebLayout();
     if (this.ctx.isDesktopApp) {
       document.title = `World Monitor v${__APP_VERSION__}`;
     }
@@ -226,7 +222,7 @@ export class PanelLayoutManager implements AppModule {
       <div class="map-section" id="mapSection">
         <div class="panel-header">
           <div class="panel-header-left">
-            <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
+            <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : (SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map'))}</span>
           </div>
           <span class="header-clock" id="headerClock"></span>
           <button class="map-pin-btn" id="mapPinBtn" title="${t('header.pinMap')}">
@@ -266,7 +262,7 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private buildDesktopLayout(): string {
-    return `
+    return String.raw`
       <!-- Original header kept for compatibility; hidden via CSS on desktop -->
       <div class="header" aria-hidden="true" style="display:none">
         <div class="header-left">
@@ -308,7 +304,7 @@ export class PanelLayoutManager implements AppModule {
           </nav>
 
           <!-- Mode Selector: Peace / Finance / War -->
-          ${SITE_VARIANT !== 'happy' ? `<div class="mac-mode-section" id="modeSelectorSection">
+          ${SITE_VARIANT === 'happy' ? '' : `<div class="mac-mode-section" id="modeSelectorSection">
             <div class="mac-mode-label">MODE</div>
             <div class="mac-mode-buttons">
               <button class="mac-mode-btn${initMode() === 'peace' ? ' mac-mode-active' : ''}" data-mode="peace" title="Peace Mode — Standard world monitoring">🕊 Peace</button>
@@ -318,7 +314,7 @@ export class PanelLayoutManager implements AppModule {
             </div>
             ${getMode() === 'war' ? '<button class="mac-alert-family-btn" id="alertFamilyBtn">⚠ Alert Family</button>' : ''}
             <button class="mac-ghost-mode-btn${getMode() === 'ghost' ? ' mac-ghost-mode-active' : ''}" id="ghostModeBtn" title="Ghost Mode — Reduce polling, suppress notifications (⌘⇧G)">👻 Ghost Mode</button>
-          </div>` : ''}
+          </div>`}
 
           <!-- Footer: theme, low-power, settings, version, collapse -->
           <div class="mac-sidebar-footer">
@@ -335,7 +331,7 @@ export class PanelLayoutManager implements AppModule {
         <main class="mac-content">
           <!-- Draggable toolbar (title bar area) — drag via JS _setupToolbarDrag() -->
           <div class="mac-content-toolbar" data-tauri-drag-region>
-            <button class="mac-sidebar-toggle-btn" id="sidebarCollapseBtn" title="Toggle sidebar (⌘\\)" aria-label="Toggle sidebar">
+            <button class="mac-sidebar-toggle-btn" id="sidebarCollapseBtn" title="Toggle sidebar (⌘\)" aria-label="Toggle sidebar">
               <svg width="14" height="12" viewBox="0 0 14 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <rect x="0" y="0" width="4" height="12" rx="1.5" fill="currentColor" opacity="0.5"/>
                 <rect x="6" y="0" width="8" height="2" rx="1" fill="currentColor"/>
@@ -448,7 +444,7 @@ export class PanelLayoutManager implements AppModule {
     }
 
     const dismissedAt = sessionStorage.getItem('banner-dismissed');
-    if (dismissedAt && Date.now() - parseInt(dismissedAt, 10) < 30 * 60 * 1000) {
+    if (dismissedAt && Date.now() - Number.parseInt(dismissedAt, 10) < 30 * 60 * 1000) {
       return;
     }
 
@@ -532,7 +528,7 @@ export class PanelLayoutManager implements AppModule {
 
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
     this.ctx.map = new MapContainer(mapContainer, {
-      zoom: this.ctx.isMobile ? 2.5 : 1.0,
+      zoom: this.ctx.isMobile ? 2.5 : 1,
       pan: { x: 0, y: 0 },
       view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
       layers: this.ctx.mapLayers,
@@ -544,27 +540,27 @@ export class PanelLayoutManager implements AppModule {
 
     const politicsPanel = new NewsPanel('politics', t('panels.politics'));
     this.attachRelatedAssetHandlers(politicsPanel);
-    this.ctx.newsPanels['politics'] = politicsPanel;
-    this.ctx.panels['politics'] = politicsPanel;
+    this.ctx.newsPanels.politics = politicsPanel;
+    this.ctx.panels.politics = politicsPanel;
 
     const techPanel = new NewsPanel('tech', t('panels.tech'));
     this.attachRelatedAssetHandlers(techPanel);
-    this.ctx.newsPanels['tech'] = techPanel;
-    this.ctx.panels['tech'] = techPanel;
+    this.ctx.newsPanels.tech = techPanel;
+    this.ctx.panels.tech = techPanel;
 
     const financePanel = new NewsPanel('finance', t('panels.finance'));
     this.attachRelatedAssetHandlers(financePanel);
-    this.ctx.newsPanels['finance'] = financePanel;
-    this.ctx.panels['finance'] = financePanel;
+    this.ctx.newsPanels.finance = financePanel;
+    this.ctx.panels.finance = financePanel;
 
     const heatmapPanel = new HeatmapPanel();
-    this.ctx.panels['heatmap'] = heatmapPanel;
+    this.ctx.panels.heatmap = heatmapPanel;
 
     const marketsPanel = new MarketPanel();
-    this.ctx.panels['markets'] = marketsPanel;
+    this.ctx.panels.markets = marketsPanel;
 
     const monitorPanel = new MonitorPanel(this.ctx.monitors);
-    this.ctx.panels['monitors'] = monitorPanel;
+    this.ctx.panels.monitors = monitorPanel;
     monitorPanel.onChanged((monitors) => {
       this.ctx.monitors = monitors;
       saveToStorage(STORAGE_KEYS.monitors, monitors);
@@ -572,116 +568,116 @@ export class PanelLayoutManager implements AppModule {
     });
 
     const commoditiesPanel = new CommoditiesPanel();
-    this.ctx.panels['commodities'] = commoditiesPanel;
+    this.ctx.panels.commodities = commoditiesPanel;
 
     const predictionPanel = new PredictionPanel();
-    this.ctx.panels['polymarket'] = predictionPanel;
+    this.ctx.panels.polymarket = predictionPanel;
 
     const govPanel = new NewsPanel('gov', t('panels.gov'));
     this.attachRelatedAssetHandlers(govPanel);
-    this.ctx.newsPanels['gov'] = govPanel;
-    this.ctx.panels['gov'] = govPanel;
+    this.ctx.newsPanels.gov = govPanel;
+    this.ctx.panels.gov = govPanel;
 
     const intelPanel = new NewsPanel('intel', t('panels.intel'));
     this.attachRelatedAssetHandlers(intelPanel);
-    this.ctx.newsPanels['intel'] = intelPanel;
-    this.ctx.panels['intel'] = intelPanel;
+    this.ctx.newsPanels.intel = intelPanel;
+    this.ctx.panels.intel = intelPanel;
 
     const cryptoPanel = new CryptoPanel();
-    this.ctx.panels['crypto'] = cryptoPanel;
+    this.ctx.panels.crypto = cryptoPanel;
 
     const middleeastPanel = new NewsPanel('middleeast', t('panels.middleeast'));
     this.attachRelatedAssetHandlers(middleeastPanel);
-    this.ctx.newsPanels['middleeast'] = middleeastPanel;
-    this.ctx.panels['middleeast'] = middleeastPanel;
+    this.ctx.newsPanels.middleeast = middleeastPanel;
+    this.ctx.panels.middleeast = middleeastPanel;
 
     const layoffsPanel = new NewsPanel('layoffs', t('panels.layoffs'));
     this.attachRelatedAssetHandlers(layoffsPanel);
-    this.ctx.newsPanels['layoffs'] = layoffsPanel;
-    this.ctx.panels['layoffs'] = layoffsPanel;
+    this.ctx.newsPanels.layoffs = layoffsPanel;
+    this.ctx.panels.layoffs = layoffsPanel;
 
     const aiPanel = new NewsPanel('ai', t('panels.ai'));
     this.attachRelatedAssetHandlers(aiPanel);
-    this.ctx.newsPanels['ai'] = aiPanel;
-    this.ctx.panels['ai'] = aiPanel;
+    this.ctx.newsPanels.ai = aiPanel;
+    this.ctx.panels.ai = aiPanel;
 
     const startupsPanel = new NewsPanel('startups', t('panels.startups'));
     this.attachRelatedAssetHandlers(startupsPanel);
-    this.ctx.newsPanels['startups'] = startupsPanel;
-    this.ctx.panels['startups'] = startupsPanel;
+    this.ctx.newsPanels.startups = startupsPanel;
+    this.ctx.panels.startups = startupsPanel;
 
     const vcblogsPanel = new NewsPanel('vcblogs', t('panels.vcblogs'));
     this.attachRelatedAssetHandlers(vcblogsPanel);
-    this.ctx.newsPanels['vcblogs'] = vcblogsPanel;
-    this.ctx.panels['vcblogs'] = vcblogsPanel;
+    this.ctx.newsPanels.vcblogs = vcblogsPanel;
+    this.ctx.panels.vcblogs = vcblogsPanel;
 
     const regionalStartupsPanel = new NewsPanel('regionalStartups', t('panels.regionalStartups'));
     this.attachRelatedAssetHandlers(regionalStartupsPanel);
-    this.ctx.newsPanels['regionalStartups'] = regionalStartupsPanel;
-    this.ctx.panels['regionalStartups'] = regionalStartupsPanel;
+    this.ctx.newsPanels.regionalStartups = regionalStartupsPanel;
+    this.ctx.panels.regionalStartups = regionalStartupsPanel;
 
     const unicornsPanel = new NewsPanel('unicorns', t('panels.unicorns'));
     this.attachRelatedAssetHandlers(unicornsPanel);
-    this.ctx.newsPanels['unicorns'] = unicornsPanel;
-    this.ctx.panels['unicorns'] = unicornsPanel;
+    this.ctx.newsPanels.unicorns = unicornsPanel;
+    this.ctx.panels.unicorns = unicornsPanel;
 
     const acceleratorsPanel = new NewsPanel('accelerators', t('panels.accelerators'));
     this.attachRelatedAssetHandlers(acceleratorsPanel);
-    this.ctx.newsPanels['accelerators'] = acceleratorsPanel;
-    this.ctx.panels['accelerators'] = acceleratorsPanel;
+    this.ctx.newsPanels.accelerators = acceleratorsPanel;
+    this.ctx.panels.accelerators = acceleratorsPanel;
 
     const fundingPanel = new NewsPanel('funding', t('panels.funding'));
     this.attachRelatedAssetHandlers(fundingPanel);
-    this.ctx.newsPanels['funding'] = fundingPanel;
-    this.ctx.panels['funding'] = fundingPanel;
+    this.ctx.newsPanels.funding = fundingPanel;
+    this.ctx.panels.funding = fundingPanel;
 
     const producthuntPanel = new NewsPanel('producthunt', t('panels.producthunt'));
     this.attachRelatedAssetHandlers(producthuntPanel);
-    this.ctx.newsPanels['producthunt'] = producthuntPanel;
-    this.ctx.panels['producthunt'] = producthuntPanel;
+    this.ctx.newsPanels.producthunt = producthuntPanel;
+    this.ctx.panels.producthunt = producthuntPanel;
 
     const securityPanel = new NewsPanel('security', t('panels.security'));
     this.attachRelatedAssetHandlers(securityPanel);
-    this.ctx.newsPanels['security'] = securityPanel;
-    this.ctx.panels['security'] = securityPanel;
+    this.ctx.newsPanels.security = securityPanel;
+    this.ctx.panels.security = securityPanel;
 
     const policyPanel = new NewsPanel('policy', t('panels.policy'));
     this.attachRelatedAssetHandlers(policyPanel);
-    this.ctx.newsPanels['policy'] = policyPanel;
-    this.ctx.panels['policy'] = policyPanel;
+    this.ctx.newsPanels.policy = policyPanel;
+    this.ctx.panels.policy = policyPanel;
 
     const hardwarePanel = new NewsPanel('hardware', t('panels.hardware'));
     this.attachRelatedAssetHandlers(hardwarePanel);
-    this.ctx.newsPanels['hardware'] = hardwarePanel;
-    this.ctx.panels['hardware'] = hardwarePanel;
+    this.ctx.newsPanels.hardware = hardwarePanel;
+    this.ctx.panels.hardware = hardwarePanel;
 
     const cloudPanel = new NewsPanel('cloud', t('panels.cloud'));
     this.attachRelatedAssetHandlers(cloudPanel);
-    this.ctx.newsPanels['cloud'] = cloudPanel;
-    this.ctx.panels['cloud'] = cloudPanel;
+    this.ctx.newsPanels.cloud = cloudPanel;
+    this.ctx.panels.cloud = cloudPanel;
 
     const devPanel = new NewsPanel('dev', t('panels.dev'));
     this.attachRelatedAssetHandlers(devPanel);
-    this.ctx.newsPanels['dev'] = devPanel;
-    this.ctx.panels['dev'] = devPanel;
+    this.ctx.newsPanels.dev = devPanel;
+    this.ctx.panels.dev = devPanel;
 
     const githubPanel = new NewsPanel('github', t('panels.github'));
     this.attachRelatedAssetHandlers(githubPanel);
-    this.ctx.newsPanels['github'] = githubPanel;
-    this.ctx.panels['github'] = githubPanel;
+    this.ctx.newsPanels.github = githubPanel;
+    this.ctx.panels.github = githubPanel;
 
     const ipoPanel = new NewsPanel('ipo', t('panels.ipo'));
     this.attachRelatedAssetHandlers(ipoPanel);
-    this.ctx.newsPanels['ipo'] = ipoPanel;
-    this.ctx.panels['ipo'] = ipoPanel;
+    this.ctx.newsPanels.ipo = ipoPanel;
+    this.ctx.panels.ipo = ipoPanel;
 
     const thinktanksPanel = new NewsPanel('thinktanks', t('panels.thinktanks'));
     this.attachRelatedAssetHandlers(thinktanksPanel);
-    this.ctx.newsPanels['thinktanks'] = thinktanksPanel;
-    this.ctx.panels['thinktanks'] = thinktanksPanel;
+    this.ctx.newsPanels.thinktanks = thinktanksPanel;
+    this.ctx.panels.thinktanks = thinktanksPanel;
 
     const economicPanel = new EconomicPanel();
-    this.ctx.panels['economic'] = economicPanel;
+    this.ctx.panels.economic = economicPanel;
 
     if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
       const tradePolicyPanel = new TradePolicyPanel();
@@ -697,23 +693,23 @@ export class PanelLayoutManager implements AppModule {
 
     const africaPanel = new NewsPanel('africa', t('panels.africa'));
     this.attachRelatedAssetHandlers(africaPanel);
-    this.ctx.newsPanels['africa'] = africaPanel;
-    this.ctx.panels['africa'] = africaPanel;
+    this.ctx.newsPanels.africa = africaPanel;
+    this.ctx.panels.africa = africaPanel;
 
     const latamPanel = new NewsPanel('latam', t('panels.latam'));
     this.attachRelatedAssetHandlers(latamPanel);
-    this.ctx.newsPanels['latam'] = latamPanel;
-    this.ctx.panels['latam'] = latamPanel;
+    this.ctx.newsPanels.latam = latamPanel;
+    this.ctx.panels.latam = latamPanel;
 
     const asiaPanel = new NewsPanel('asia', t('panels.asia'));
     this.attachRelatedAssetHandlers(asiaPanel);
-    this.ctx.newsPanels['asia'] = asiaPanel;
-    this.ctx.panels['asia'] = asiaPanel;
+    this.ctx.newsPanels.asia = asiaPanel;
+    this.ctx.panels.asia = asiaPanel;
 
     const energyPanel = new NewsPanel('energy', t('panels.energy'));
     this.attachRelatedAssetHandlers(energyPanel);
-    this.ctx.newsPanels['energy'] = energyPanel;
-    this.ctx.panels['energy'] = energyPanel;
+    this.ctx.newsPanels.energy = energyPanel;
+    this.ctx.panels.energy = energyPanel;
 
     for (const key of Object.keys(FEEDS)) {
       if (this.ctx.newsPanels[key]) continue;
@@ -750,16 +746,16 @@ export class PanelLayoutManager implements AppModule {
       ciiPanel.setShareStoryHandler((code, name) => {
         this.callbacks.openCountryStory(code, name);
       });
-      this.ctx.panels['cii'] = ciiPanel;
+      this.ctx.panels.cii = ciiPanel;
 
       const cascadePanel = new CascadePanel();
-      this.ctx.panels['cascade'] = cascadePanel;
+      this.ctx.panels.cascade = cascadePanel;
 
       const satelliteFiresPanel = new SatelliteFiresPanel();
       this.ctx.panels['satellite-fires'] = satelliteFiresPanel;
 
       const earthquakesPanel = new EarthquakesPanel();
-      this.ctx.panels['earthquakes'] = earthquakesPanel;
+      this.ctx.panels.earthquakes = earthquakesPanel;
 
       const cyberThreatPanel = new CyberThreatPanel();
       this.ctx.panels['cyber-threats'] = cyberThreatPanel;
@@ -801,7 +797,7 @@ export class PanelLayoutManager implements AppModule {
       airstrikesPanel.setEventClickHandler((lat, lon) => {
         this.ctx.map?.setCenter(lat, lon, 6);
       });
-      this.ctx.panels['airstrikes'] = airstrikesPanel;
+      this.ctx.panels.airstrikes = airstrikesPanel;
 
       const gdacsAlertsPanel = new GDACSAlertsPanel();
       gdacsAlertsPanel.setEventClickHandler((lat, lon) => {
@@ -837,13 +833,13 @@ export class PanelLayoutManager implements AppModule {
       displacementPanel.setCountryClickHandler((lat, lon) => {
         this.ctx.map?.setCenter(lat, lon, 4);
       });
-      this.ctx.panels['displacement'] = displacementPanel;
+      this.ctx.panels.displacement = displacementPanel;
 
       const climatePanel = new ClimateAnomalyPanel();
       climatePanel.setZoneClickHandler((lat, lon) => {
         this.ctx.map?.setCenter(lat, lon, 4);
       });
-      this.ctx.panels['climate'] = climatePanel;
+      this.ctx.panels.climate = climatePanel;
 
       const populationExposurePanel = new PopulationExposurePanel();
       this.ctx.panels['population-exposure'] = populationExposurePanel;
@@ -885,7 +881,7 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.map?.setOnTechHubClick(focusTechHub);
       this.ctx.panels['tech-hubs'] = techHubsPanel;
 
-      this.ctx.panels['events'] = new TechEventsPanel('events');
+      this.ctx.panels.events = new TechEventsPanel('events');
 
       const serviceStatusPanel = new ServiceStatusPanel();
       this.ctx.panels['service-status'] = serviceStatusPanel;
@@ -895,14 +891,14 @@ export class PanelLayoutManager implements AppModule {
 
       this.ctx.panels['macro-signals'] = new MacroSignalsPanel();
       this.ctx.panels['etf-flows'] = new ETFFlowsPanel();
-      this.ctx.panels['stablecoins'] = new StablecoinPanel();
+      this.ctx.panels.stablecoins = new StablecoinPanel();
     }
 
     const insightsPanel = new InsightsPanel();
-    this.ctx.panels['insights'] = insightsPanel;
+    this.ctx.panels.insights = insightsPanel;
 
     // Global Giving panel (all variants)
-    this.ctx.panels['giving'] = new GivingPanel();
+    this.ctx.panels.giving = new GivingPanel();
 
     // Happy variant panels
     if (SITE_VARIANT === 'happy') {
@@ -910,30 +906,30 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.panels['positive-feed'] = this.ctx.positivePanel;
 
       this.ctx.countersPanel = new CountersPanel();
-      this.ctx.panels['counters'] = this.ctx.countersPanel;
+      this.ctx.panels.counters = this.ctx.countersPanel;
       this.ctx.countersPanel.startTicking();
 
       this.ctx.progressPanel = new ProgressChartsPanel();
-      this.ctx.panels['progress'] = this.ctx.progressPanel;
+      this.ctx.panels.progress = this.ctx.progressPanel;
 
       this.ctx.breakthroughsPanel = new BreakthroughsTickerPanel();
-      this.ctx.panels['breakthroughs'] = this.ctx.breakthroughsPanel;
+      this.ctx.panels.breakthroughs = this.ctx.breakthroughsPanel;
 
       this.ctx.heroPanel = new HeroSpotlightPanel();
-      this.ctx.panels['spotlight'] = this.ctx.heroPanel;
+      this.ctx.panels.spotlight = this.ctx.heroPanel;
       this.ctx.heroPanel.onLocationRequest = (lat: number, lon: number) => {
         this.ctx.map?.setCenter(lat, lon, 4);
         this.ctx.map?.flashLocation(lat, lon, 3000);
       };
 
       this.ctx.digestPanel = new GoodThingsDigestPanel();
-      this.ctx.panels['digest'] = this.ctx.digestPanel;
+      this.ctx.panels.digest = this.ctx.digestPanel;
 
       this.ctx.speciesPanel = new SpeciesComebackPanel();
-      this.ctx.panels['species'] = this.ctx.speciesPanel;
+      this.ctx.panels.species = this.ctx.speciesPanel;
 
       this.ctx.renewablePanel = new RenewableEnergyPanel();
-      this.ctx.panels['renewable'] = this.ctx.renewablePanel;
+      this.ctx.panels.renewable = this.ctx.renewablePanel;
     }
 
     const defaultOrder = Object.keys(DEFAULT_PANELS).filter(k => k !== 'map');
@@ -973,7 +969,7 @@ export class PanelLayoutManager implements AppModule {
       if (panel) {
         const el = panel.getElement();
         this.makeDraggable(el, key);
-        panelsGrid.appendChild(el);
+        panelsGrid.append(el);
       }
     });
 
@@ -1092,8 +1088,8 @@ export class PanelLayoutManager implements AppModule {
         });
         // Insert before ghost button if it exists
         const ghostModeBtn = section.querySelector('#ghostModeBtn');
-        if (ghostModeBtn) section.insertBefore(familyBtn, ghostModeBtn);
-        else section.appendChild(familyBtn);
+        if (ghostModeBtn) ghostModeBtn.before(familyBtn);
+        else section.append(familyBtn);
       } else if (mode !== 'war' && familyBtn) {
         familyBtn.remove();
       }
@@ -1231,7 +1227,7 @@ export class PanelLayoutManager implements AppModule {
     if (!grid) return;
 
     // Keys of panels currently in the DOM, in order
-    const currentKeys = Array.from(grid.children)
+    const currentKeys = [...grid.children]
       .map(el => (el as HTMLElement).dataset.panel ?? '')
       .filter(k => k.length > 0);
 
@@ -1240,7 +1236,7 @@ export class PanelLayoutManager implements AppModule {
       const order = this._preModeOrder.length > 0 ? this._preModeOrder : currentKeys;
       order.forEach(key => {
         const panel = this.ctx.panels[key];
-        if (panel) grid.appendChild(panel.getElement());
+        if (panel) grid.append(panel.getElement());
       });
       this._preModeOrder = [];
       return;
@@ -1262,7 +1258,7 @@ export class PanelLayoutManager implements AppModule {
 
     [...anchors, ...priorityPresent, ...rest].forEach(key => {
       const panel = this.ctx.panels[key];
-      if (panel) grid.appendChild(panel.getElement());
+      if (panel) grid.append(panel.getElement());
     });
   }
 
@@ -1347,7 +1343,7 @@ export class PanelLayoutManager implements AppModule {
   savePanelOrder(): void {
     const grid = document.getElementById('panelsGrid');
     if (!grid) return;
-    const order = Array.from(grid.children)
+    const order = [...grid.children]
       .map((el) => (el as HTMLElement).dataset.panel)
       .filter((key): key is string => !!key);
     localStorage.setItem(this.ctx.PANEL_ORDER_KEY, JSON.stringify(order));
@@ -1365,36 +1361,41 @@ export class PanelLayoutManager implements AppModule {
     if (!this.ctx.map) return;
 
     switch (asset.type) {
-      case 'pipeline':
+      case 'pipeline': {
         this.ctx.map.enableLayer('pipelines');
         this.ctx.mapLayers.pipelines = true;
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
         this.ctx.map.triggerPipelineClick(asset.id);
         break;
-      case 'cable':
+      }
+      case 'cable': {
         this.ctx.map.enableLayer('cables');
         this.ctx.mapLayers.cables = true;
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
         this.ctx.map.triggerCableClick(asset.id);
         break;
-      case 'datacenter':
+      }
+      case 'datacenter': {
         this.ctx.map.enableLayer('datacenters');
         this.ctx.mapLayers.datacenters = true;
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
         this.ctx.map.triggerDatacenterClick(asset.id);
         break;
-      case 'base':
+      }
+      case 'base': {
         this.ctx.map.enableLayer('bases');
         this.ctx.mapLayers.bases = true;
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
         this.ctx.map.triggerBaseClick(asset.id);
         break;
-      case 'nuclear':
+      }
+      case 'nuclear': {
         this.ctx.map.enableLayer('nuclear');
         this.ctx.mapLayers.nuclear = true;
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
         this.ctx.map.triggerNuclearClick(asset.id);
         break;
+      }
     }
   }
 
@@ -1489,7 +1490,7 @@ export class PanelLayoutManager implements AppModule {
     const targetRect = targetPanel.getBoundingClientRect();
     const draggingRect = dragging.getBoundingClientRect();
 
-    const children = Array.from(grid.children);
+    const children = [...grid.children];
     const dragIdx = children.indexOf(dragging);
     const targetIdx = children.indexOf(targetPanel);
     if (dragIdx === -1 || targetIdx === -1) return;
@@ -1506,7 +1507,7 @@ export class PanelLayoutManager implements AppModule {
       }
     } else {
       if (cursorPos < targetMid) {
-        grid.insertBefore(dragging, targetPanel);
+        targetPanel.before(dragging);
       }
     }
   }
@@ -1524,6 +1525,6 @@ export class PanelLayoutManager implements AppModule {
       if (feeds) feeds.forEach(f => sources.add(f.name));
     });
     INTEL_SOURCES.forEach(f => sources.add(f.name));
-    return Array.from(sources).sort((a, b) => a.localeCompare(b));
+    return [...sources].sort((a, b) => a.localeCompare(b));
   }
 }

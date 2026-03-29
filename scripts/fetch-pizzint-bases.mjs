@@ -124,10 +124,10 @@ async function fetchPage(pageIndex) {
       const contentRange = res.headers.get('content-range');
       const data = await res.json();
       return { data, contentRange };
-    } catch (err) {
+    } catch (error) {
       const backoff = Math.pow(2, attempt - 1) * 1000;
-      console.warn(`  Page ${pageIndex} attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}`);
-      if (attempt === MAX_RETRIES) throw err;
+      console.warn(`  Page ${pageIndex} attempt ${attempt}/${MAX_RETRIES} failed: ${error.message}`);
+      if (attempt === MAX_RETRIES) throw error;
       console.warn(`  Retrying in ${backoff}ms...`);
       await sleep(backoff);
     }
@@ -171,7 +171,7 @@ async function main() {
       if (contentRange && totalCount === null) {
         const match = contentRange.match(/\/(\d+)/);
         if (match) {
-          totalCount = parseInt(match[1], 10);
+          totalCount = Number.parseInt(match[1], 10);
           console.log(`  Total records reported by API: ${totalCount}`);
         }
       }
@@ -205,8 +205,8 @@ async function main() {
         console.log(`  Reached total count (${totalCount}). Stopping.`);
         break;
       }
-    } catch (err) {
-      console.error(`  FATAL: Page ${page} failed after ${MAX_RETRIES} retries: ${err.message}`);
+    } catch (error) {
+      console.error(`  FATAL: Page ${page} failed after ${MAX_RETRIES} retries: ${error.message}`);
       saveCheckpoint({ pages: fetchedPages, rows: allRows });
       console.error(`  Checkpoint saved. Re-run to resume from page ${page}.`);
       process.exit(1);
@@ -228,7 +228,7 @@ async function main() {
   const validRows = [];
 
   for (const row of allRows) {
-    if (row.lat == null || row.lon == null || !Number.isFinite(row.lat) || !Number.isFinite(row.lon)) {
+    if (row.lat == undefined || row.lon == undefined || !Number.isFinite(row.lat) || !Number.isFinite(row.lon)) {
       nullCoordCount++;
       if (nullCoordCount <= 20) {
         console.warn(`  Skipping row with null coords: osm_id=${row.osm_id}, name=${row.name}`);

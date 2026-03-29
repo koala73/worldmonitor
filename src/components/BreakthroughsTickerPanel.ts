@@ -28,12 +28,12 @@ export class BreakthroughsTickerPanel extends Panel {
     const track = document.createElement('div');
     track.className = 'breakthroughs-ticker-track';
 
-    wrapper.appendChild(track);
+    wrapper.append(track);
     this.tickerTrack = track;
 
     // Clear loading state and append the ticker
     this.content.innerHTML = '';
-    this.content.appendChild(wrapper);
+    this.content.append(wrapper);
   }
 
   /**

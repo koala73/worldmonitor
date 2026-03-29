@@ -201,7 +201,7 @@ export class DataLoaderManager implements AppModule {
   private ctx: AppContext;
   private callbacks: DataLoaderCallbacks;
 
-  private mapFlashCache: Map<string, number> = new Map();
+  private mapFlashCache = new Map<string, number>();
   private readonly MAP_FLASH_COOLDOWN_MS = 10 * 60 * 1000;
   private readonly applyTimeRangeFilterToNewsPanelsDebounced = debounce(() => {
     this.applyTimeRangeFilterToNewsPanels();
@@ -246,8 +246,8 @@ export class DataLoaderManager implements AppModule {
       this.persistDigest(data);
       this.digestBreaker = { state: 'closed', failures: 0, cooldownUntil: 0 };
       return data;
-    } catch (e) {
-      console.warn('[News] Digest fetch failed, using fallback:', e);
+    } catch (error) {
+      console.warn('[News] Digest fetch failed, using fallback:', error);
       this.digestBreaker.failures++;
       if (this.digestBreaker.failures >= 2) {
         this.digestBreaker.state = 'open';
@@ -281,14 +281,14 @@ export class DataLoaderManager implements AppModule {
       this.ctx.inFlight.add(name);
       try {
         await fn();
-      } catch (e) {
-        if (!this.ctx.isDestroyed) console.error(`[App] ${name} failed:`, e);
+      } catch (error) {
+        if (!this.ctx.isDestroyed) console.error(`[App] ${name} failed:`, error);
       } finally {
         this.ctx.inFlight.delete(name);
       }
     };
 
-    const tasks: Array<{ name: string; task: Promise<void> }> = [
+    const tasks: { name: string; task: Promise<void> }[] = [
       { name: 'news', task: runGuarded('news', () => this.loadNews()) },
     ];
 
@@ -349,7 +349,7 @@ export class DataLoaderManager implements AppModule {
           return;
         }
         const data = givingResult.data;
-        (this.ctx.panels['giving'] as GivingPanel)?.setData(data);
+        (this.ctx.panels.giving as GivingPanel)?.setData(data);
         if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
       }),
     });
@@ -397,56 +397,71 @@ export class DataLoaderManager implements AppModule {
     this.ctx.map?.setLayerLoading(layer, true);
     try {
       switch (layer) {
-        case 'natural':
+        case 'natural': {
           await this.loadNatural();
           break;
-        case 'fires':
+        }
+        case 'fires': {
           await this.loadFirmsData();
           break;
-        case 'weather':
+        }
+        case 'weather': {
           await this.loadWeatherAlerts();
           break;
-        case 'outages':
+        }
+        case 'outages': {
           await this.loadOutages();
           break;
-        case 'cyberThreats':
+        }
+        case 'cyberThreats': {
           await this.loadCyberThreats();
           break;
-        case 'ais':
+        }
+        case 'ais': {
           await this.loadAisSignals();
           break;
-        case 'cables':
+        }
+        case 'cables': {
           await Promise.all([this.loadCableActivity(), this.loadCableHealth()]);
           break;
-        case 'protests':
+        }
+        case 'protests': {
           await this.loadProtests();
           break;
-        case 'flights':
+        }
+        case 'flights': {
           await this.loadFlightDelays();
           break;
-        case 'military':
+        }
+        case 'military': {
           await this.loadMilitary();
           break;
-        case 'techEvents':
+        }
+        case 'techEvents': {
           console.log('[loadDataForLayer] Loading techEvents...');
           await this.loadTechEvents();
           console.log('[loadDataForLayer] techEvents loaded');
           break;
-        case 'positiveEvents':
+        }
+        case 'positiveEvents': {
           await this.loadPositiveEvents();
           break;
-        case 'kindness':
+        }
+        case 'kindness': {
           this.loadKindnessData();
           break;
-        case 'iranAttacks':
+        }
+        case 'iranAttacks': {
           await this.loadIranEvents();
           break;
+        }
         case 'ucdpEvents':
         case 'displacement':
         case 'climate':
-        case 'gpsJamming':
+        case 'gpsJamming': {
           await this.loadIntelligenceSignals();
           break;
+        }
       }
     } finally {
       this.ctx.inFlight.delete(layer);
@@ -586,7 +601,7 @@ export class DataLoaderManager implements AppModule {
       // Digest branch: server already aggregated feeds — map proto items to client types
       if (digest?.categories && category in digest.categories) {
         const enabledNames = new Set(enabledFeeds.map(f => f.name));
-        let items = (digest.categories[category]?.items ?? [])
+        const items = (digest.categories[category]?.items ?? [])
           .map(protoItemToNewsItem)
           .filter(i => enabledNames.has(i.source));
 
@@ -620,7 +635,7 @@ export class DataLoaderManager implements AppModule {
             const baseline = await updateBaseline(`news:${category}`, items.length);
             const deviation = calculateDeviation(items.length, baseline);
             panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-          } catch (e) { console.warn(`[Baseline] news:${category} write failed:`, e); }
+          } catch (error) { console.warn(`[Baseline] news:${category} write failed:`, error); }
         }
 
         return items;
@@ -689,7 +704,7 @@ export class DataLoaderManager implements AppModule {
           const baseline = await updateBaseline(`news:${category}`, items.length);
           const deviation = calculateDeviation(items.length, baseline);
           panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-        } catch (e) { console.warn(`[Baseline] news:${category} write failed:`, e); }
+        } catch (error) { console.warn(`[Baseline] news:${category} write failed:`, error); }
       }
 
       this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -756,15 +771,15 @@ export class DataLoaderManager implements AppModule {
 
     if (SITE_VARIANT === 'full') {
       const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
-      const intelPanel = this.ctx.newsPanels['intel'];
+      const intelPanel = this.ctx.newsPanels.intel;
       if (enabledIntelSources.length === 0) {
-        delete this.ctx.newsByCategory['intel'];
+        delete this.ctx.newsByCategory.intel;
         if (intelPanel) intelPanel.showError(t('common.allIntelSourcesDisabled'));
         this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
       } else if (digest?.categories && 'intel' in digest.categories) {
         // Digest branch for intel
         const enabledNames = new Set(enabledIntelSources.map(f => f.name));
-        const intel = (digest.categories['intel']?.items ?? [])
+        const intel = (digest.categories.intel?.items ?? [])
           .map(protoItemToNewsItem)
           .filter(i => enabledNames.has(i.source));
         checkBatchForBreakingAlerts(intel);
@@ -774,7 +789,7 @@ export class DataLoaderManager implements AppModule {
             const baseline = await updateBaseline('news:intel', intel.length);
             const deviation = calculateDeviation(intel.length, baseline);
             intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-          } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+          } catch (error) { console.warn('[Baseline] news:intel write failed:', error); }
         }
         this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
         collectedNews.push(...intel);
@@ -790,13 +805,13 @@ export class DataLoaderManager implements AppModule {
               const baseline = await updateBaseline('news:intel', intel.length);
               const deviation = calculateDeviation(intel.length, baseline);
               intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-            } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+            } catch (error) { console.warn('[Baseline] news:intel write failed:', error); }
           }
           this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
           collectedNews.push(...intel);
           this.flashMapForNews(intel);
         } else {
-          delete this.ctx.newsByCategory['intel'];
+          delete this.ctx.newsByCategory.intel;
           console.error('[App] Intel feed failed:', intelResult[0]?.reason);
         }
       }
@@ -819,9 +834,9 @@ export class DataLoaderManager implements AppModule {
       if (anomalies.length > 0) {
         signalAggregator.ingestTemporalAnomalies(anomalies);
         ingestTemporalAnomaliesForCII(anomalies);
-        (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+        (this.ctx.panels.cii as CIIPanel)?.refresh();
       }
-    }).catch(() => { });
+    }).catch(() => {});
 
     this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
 
@@ -833,12 +848,12 @@ export class DataLoaderManager implements AppModule {
         : await analysisWorker.clusterNews(this.ctx.allNews);
 
       if (this.ctx.latestClusters.length > 0) {
-        const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
+        const insightsPanel = this.ctx.panels.insights as InsightsPanel | undefined;
         insightsPanel?.updateInsights(this.ctx.latestClusters);
       }
 
       const geoLocated = this.ctx.latestClusters
-        .filter((c): c is typeof c & { lat: number; lon: number } => c.lat != null && c.lon != null)
+        .filter((c): c is typeof c & { lat: number; lon: number } => c.lat != undefined && c.lon != undefined)
         .map(c => ({
           lat: c.lat,
           lon: c.lon,
@@ -880,49 +895,49 @@ export class DataLoaderManager implements AppModule {
       const stocksResult = await fetchMultipleStocks(MARKET_SYMBOLS, {
         onBatch: (partialStocks) => {
           this.ctx.latestMarkets = partialStocks;
-          (this.ctx.panels['markets'] as MarketPanel).renderMarkets(partialStocks);
+          (this.ctx.panels.markets as MarketPanel).renderMarkets(partialStocks);
         },
       });
 
       const finnhubConfigMsg = 'FINNHUB_API_KEY not configured — add in Settings';
       this.ctx.latestMarkets = stocksResult.data;
-      (this.ctx.panels['markets'] as MarketPanel).renderMarkets(stocksResult.data, stocksResult.rateLimited);
+      (this.ctx.panels.markets as MarketPanel).renderMarkets(stocksResult.data, stocksResult.rateLimited);
 
       if (stocksResult.rateLimited && stocksResult.data.length === 0) {
         const rlMsg = 'Market data temporarily unavailable (rate limited) — retrying shortly';
-        this.ctx.panels['heatmap']?.showError(rlMsg);
-        this.ctx.panels['commodities']?.showError(rlMsg);
+        this.ctx.panels.heatmap?.showError(rlMsg);
+        this.ctx.panels.commodities?.showError(rlMsg);
       } else if (stocksResult.skipped) {
         this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
         if (stocksResult.data.length === 0) {
-          this.ctx.panels['markets']?.showConfigError(finnhubConfigMsg);
+          this.ctx.panels.markets?.showConfigError(finnhubConfigMsg);
         }
-        this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
+        this.ctx.panels.heatmap?.showConfigError(finnhubConfigMsg);
       } else {
         this.ctx.statusPanel?.updateApi('Finnhub', { status: 'ok' });
 
         const hydratedSectors = getHydratedData('sectors') as GetSectorSummaryResponse | undefined;
         if (hydratedSectors?.sectors?.length) {
           const mapped = hydratedSectors.sectors.map((s) => ({ name: s.name, change: s.change }));
-          (this.ctx.panels['heatmap'] as HeatmapPanel).renderHeatmap(mapped);
+          (this.ctx.panels.heatmap as HeatmapPanel).renderHeatmap(mapped);
         } else {
           const sectorsResult = await fetchMultipleStocks(
             SECTORS.map((s) => ({ ...s, display: s.name })),
             {
               onBatch: (partialSectors) => {
-                (this.ctx.panels['heatmap'] as HeatmapPanel).renderHeatmap(
+                (this.ctx.panels.heatmap as HeatmapPanel).renderHeatmap(
                   partialSectors.map((s) => ({ name: s.name, change: s.change }))
                 );
               },
             }
           );
-          (this.ctx.panels['heatmap'] as HeatmapPanel).renderHeatmap(
+          (this.ctx.panels.heatmap as HeatmapPanel).renderHeatmap(
             sectorsResult.data.map((s) => ({ name: s.name, change: s.change }))
           );
         }
       }
 
-      const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel;
+      const commoditiesPanel = this.ctx.panels.commodities as CommoditiesPanel;
       const mapCommodity = (c: MarketData) => ({ display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
 
       let commoditiesLoaded = stocksResult.rateLimited && stocksResult.data.length === 0;
@@ -956,11 +971,11 @@ export class DataLoaderManager implements AppModule {
     try {
       let crypto = await fetchCrypto();
       if (crypto.length === 0) {
-        (this.ctx.panels['crypto'] as CryptoPanel).showRetrying();
+        (this.ctx.panels.crypto as CryptoPanel).showRetrying();
         await new Promise(r => setTimeout(r, 20_000));
         crypto = await fetchCrypto();
       }
-      (this.ctx.panels['crypto'] as CryptoPanel).renderCrypto(crypto);
+      (this.ctx.panels.crypto as CryptoPanel).renderCrypto(crypto);
       this.ctx.statusPanel?.updateApi('CoinGecko', { status: crypto.length > 0 ? 'ok' : 'error' });
       // Auto-trigger Finance Mode if S&P 500 or BTC makes a significant move
       if (this.ctx.latestMarkets.length > 0 || crypto.length > 0) {
@@ -975,7 +990,7 @@ export class DataLoaderManager implements AppModule {
     try {
       const predictions = await fetchPredictions();
       this.ctx.latestPredictions = predictions;
-      (this.ctx.panels['polymarket'] as PredictionPanel).renderPredictions(predictions);
+      (this.ctx.panels.polymarket as PredictionPanel).renderPredictions(predictions);
 
       this.ctx.statusPanel?.updateFeed('Polymarket', { status: 'ok', itemCount: predictions.length });
       this.ctx.statusPanel?.updateApi('Polymarket', { status: 'ok' });
@@ -1001,13 +1016,13 @@ export class DataLoaderManager implements AppModule {
       this.ctx.intelligenceCache.earthquakes = earthquakeResult.value;
       this.ctx.map?.setEarthquakes(earthquakeResult.value);
       ingestEarthquakes(earthquakeResult.value);
-      (this.ctx.panels['earthquakes'] as EarthquakesPanel)?.update(earthquakeResult.value);
+      (this.ctx.panels.earthquakes as EarthquakesPanel)?.update(earthquakeResult.value);
       this.ctx.statusPanel?.updateApi('USGS', { status: 'ok' });
       dataFreshness.recordUpdate('usgs', earthquakeResult.value.length);
     } else {
       this.ctx.intelligenceCache.earthquakes = [];
       this.ctx.map?.setEarthquakes([]);
-      (this.ctx.panels['earthquakes'] as EarthquakesPanel)?.update([]);
+      (this.ctx.panels.earthquakes as EarthquakesPanel)?.update([]);
       this.ctx.statusPanel?.updateApi('USGS', { status: 'error' });
       dataFreshness.recordError('usgs', String(earthquakeResult.reason));
     }
@@ -1225,9 +1240,9 @@ export class DataLoaderManager implements AppModule {
           if (anomalies.length > 0) {
             signalAggregator.ingestTemporalAnomalies(anomalies);
             ingestTemporalAnomaliesForCII(anomalies);
-            (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+            (this.ctx.panels.cii as CIIPanel)?.refresh();
           }
-        }).catch(() => { });
+        }).catch(() => {});
         if (this.ctx.mapLayers.military) {
           this.ctx.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
           this.ctx.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
@@ -1293,7 +1308,7 @@ export class DataLoaderManager implements AppModule {
     tasks.push((async () => {
       try {
         const events = await fetchAirstrikes();
-        (this.ctx.panels['airstrikes'] as AirstrikesPanel)?.update(events);
+        (this.ctx.panels.airstrikes as AirstrikesPanel)?.update(events);
         if (this.ctx.mapLayers.airstrikes) {
           this.ctx.map?.setAirstrikes(events);
         }
@@ -1326,7 +1341,7 @@ export class DataLoaderManager implements AppModule {
           return;
         }
         const data = unhcrResult.data;
-        (this.ctx.panels['displacement'] as DisplacementPanel)?.setData(data);
+        (this.ctx.panels.displacement as DisplacementPanel)?.setData(data);
         ingestDisplacementForCII(data.countries);
         if (this.ctx.mapLayers.displacement && data.topFlows) {
           this.ctx.map?.setDisplacementFlows(data.topFlows);
@@ -1346,7 +1361,7 @@ export class DataLoaderManager implements AppModule {
           return;
         }
         const anomalies = climateResult.anomalies;
-        (this.ctx.panels['climate'] as ClimateAnomalyPanel)?.setAnomalies(anomalies);
+        (this.ctx.panels.climate as ClimateAnomalyPanel)?.setAnomalies(anomalies);
         ingestClimateForCII(anomalies);
         if (this.ctx.mapLayers.climate) {
           this.ctx.map?.setClimateAnomalies(anomalies);
@@ -1433,7 +1448,7 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordError('worldpop', String(error));
     }
 
-    (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+    (this.ctx.panels.cii as CIIPanel)?.refresh();
     console.log('[Intelligence] All signals loaded for CII calculation');
   }
 
@@ -1472,7 +1487,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setCyberThreats(this.ctx.cyberThreatsCache);
       this.ctx.map?.setLayerReady('cyberThreats', this.ctx.cyberThreatsCache.length > 0);
       ingestCyberThreatsForCII(this.ctx.cyberThreatsCache);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      (this.ctx.panels.cii as CIIPanel)?.refresh();
       (this.ctx.panels['cyber-threats'] as CyberThreatPanel)?.update(this.ctx.cyberThreatsCache);
       this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: this.ctx.cyberThreatsCache.length });
       return;
@@ -1492,7 +1507,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setCyberThreats(allThreats);
       this.ctx.map?.setLayerReady('cyberThreats', allThreats.length > 0);
       ingestCyberThreatsForCII(allThreats);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      (this.ctx.panels.cii as CIIPanel)?.refresh();
       (this.ctx.panels['cyber-threats'] as CyberThreatPanel)?.update(allThreats);
       this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: allThreats.length });
       this.ctx.statusPanel?.updateApi('Cyber Threats API', { status: 'ok' });
@@ -1608,7 +1623,7 @@ export class DataLoaderManager implements AppModule {
 
     const earthquakes = this.ctx.intelligenceCache?.earthquakes ?? [];
     for (const eq of earthquakes) {
-      if (eq.magnitude >= 5.0 && eq.place) {
+      if (eq.magnitude >= 5 && eq.place) {
         // Use the full place string as the EMA key rather than the trailing
         // component (e.g. "CA" or "Japan region") to avoid false merging with
         // protest-event region series that use ISO country codes.  Each seismic
@@ -1670,7 +1685,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('iranAttacks', events.length > 0);
       signalAggregator.ingestConflictEvents(events);
       ingestStrikesForCII(events);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      (this.ctx.panels.cii as CIIPanel)?.refresh();
     } catch {
       this.ctx.map?.setLayerReady('iranAttacks', false);
     }
@@ -1684,16 +1699,16 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setAisData(disruptions, density);
       signalAggregator.ingestAisDisruptions(disruptions);
       ingestAisDisruptionsForCII(disruptions);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      (this.ctx.panels.cii as CIIPanel)?.refresh();
       updateAndCheck([
         { type: 'ais_gaps', region: 'global', count: disruptions.length },
       ]).then(anomalies => {
         if (anomalies.length > 0) {
           signalAggregator.ingestTemporalAnomalies(anomalies);
           ingestTemporalAnomaliesForCII(anomalies);
-          (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+          (this.ctx.panels.cii as CIIPanel)?.refresh();
         }
-      }).catch(() => { });
+      }).catch(() => {});
 
       const hasData = disruptions.length > 0 || density.length > 0;
       this.ctx.map?.setLayerReady('ais', hasData);
@@ -1806,7 +1821,7 @@ export class DataLoaderManager implements AppModule {
       if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt_doc', protestData.sources.gdelt);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      (this.ctx.panels.cii as CIIPanel)?.refresh();
       const status = getProtestStatus();
       this.ctx.statusPanel?.updateFeed('Protests', {
         status: 'ok',
@@ -1855,7 +1870,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setMilitaryVessels(vessels, vesselClusters);
       this.ctx.map?.updateMilitaryForEscalation(flights, vessels);
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
+      const insightsPanel = this.ctx.panels.insights as InsightsPanel | undefined;
       insightsPanel?.setMilitaryFlights(flights);
       const hasData = flights.length > 0 || vessels.length > 0;
       this.ctx.map?.setLayerReady('military', hasData);
@@ -1899,11 +1914,11 @@ export class DataLoaderManager implements AppModule {
         if (anomalies.length > 0) {
           signalAggregator.ingestTemporalAnomalies(anomalies);
           ingestTemporalAnomaliesForCII(anomalies);
-          (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+          (this.ctx.panels.cii as CIIPanel)?.refresh();
         }
-      }).catch(() => { });
+      }).catch(() => {});
       this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      (this.ctx.panels.cii as CIIPanel)?.refresh();
       if (!isInLearningMode()) {
         const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
         if (surgeAlerts.length > 0) {
@@ -1928,7 +1943,7 @@ export class DataLoaderManager implements AppModule {
       ingestLocalPostures(getTheaterPostureSummaries(flightData.flights));
 
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
+      const insightsPanel = this.ctx.panels.insights as InsightsPanel | undefined;
       insightsPanel?.setMilitaryFlights(flightData.flights);
 
       const hasData = flightData.flights.length > 0 || vesselData.vessels.length > 0;
@@ -1963,7 +1978,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadFredData(): Promise<void> {
-    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+    const economicPanel = this.ctx.panels.economic as EconomicPanel;
     const cbInfo = getCircuitBreakerCooldownInfo('FRED Economic');
     if (cbInfo.onCooldown) {
       economicPanel?.setErrorState(true, `Temporarily unavailable (retry in ${cbInfo.remainingSeconds}s)`);
@@ -2029,7 +2044,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadOilAnalytics(): Promise<void> {
-    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+    const economicPanel = this.ctx.panels.economic as EconomicPanel;
     try {
       const data = await fetchOilAnalytics();
       economicPanel?.updateOil(data);
@@ -2041,15 +2056,15 @@ export class DataLoaderManager implements AppModule {
       } else {
         dataFreshness.recordError('oil', 'Oil analytics returned no values');
       }
-    } catch (e) {
-      console.error('[App] Oil analytics failed:', e);
+    } catch (error) {
+      console.error('[App] Oil analytics failed:', error);
       this.ctx.statusPanel?.updateApi('EIA', { status: 'error' });
-      dataFreshness.recordError('oil', String(e));
+      dataFreshness.recordError('oil', String(error));
     }
   }
 
   async loadGovernmentSpending(): Promise<void> {
-    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+    const economicPanel = this.ctx.panels.economic as EconomicPanel;
     try {
       const data = await fetchRecentAwards({ daysBack: 7, limit: 15 });
       economicPanel?.updateSpending(data);
@@ -2059,15 +2074,15 @@ export class DataLoaderManager implements AppModule {
       } else {
         dataFreshness.recordError('spending', 'No awards returned');
       }
-    } catch (e) {
-      console.error('[App] Government spending failed:', e);
+    } catch (error) {
+      console.error('[App] Government spending failed:', error);
       this.ctx.statusPanel?.updateApi('USASpending', { status: 'error' });
-      dataFreshness.recordError('spending', String(e));
+      dataFreshness.recordError('spending', String(error));
     }
   }
 
   async loadBisData(): Promise<void> {
-    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+    const economicPanel = this.ctx.panels.economic as EconomicPanel;
     try {
       const data = await fetchBisData();
       economicPanel?.updateBis(data);
@@ -2076,10 +2091,10 @@ export class DataLoaderManager implements AppModule {
       if (hasData) {
         dataFreshness.recordUpdate('bis', data.policyRates.length);
       }
-    } catch (e) {
-      console.error('[App] BIS data failed:', e);
+    } catch (error) {
+      console.error('[App] BIS data failed:', error);
       this.ctx.statusPanel?.updateApi('BIS', { status: 'error' });
-      dataFreshness.recordError('bis', String(e));
+      dataFreshness.recordError('bis', String(error));
     }
   }
 
@@ -2103,17 +2118,17 @@ export class DataLoaderManager implements AppModule {
       const totalItems = restrictions.restrictions.length + tariffs.datapoints.length + flows.flows.length + barriers.barriers.length;
       const anyUnavailable = restrictions.upstreamUnavailable || tariffs.upstreamUnavailable || flows.upstreamUnavailable || barriers.upstreamUnavailable;
 
-      this.ctx.statusPanel?.updateApi('WTO', { status: anyUnavailable ? 'warning' : totalItems > 0 ? 'ok' : 'error' });
+      this.ctx.statusPanel?.updateApi('WTO', { status: anyUnavailable ? 'warning' : (totalItems > 0 ? 'ok' : 'error') });
 
       if (totalItems > 0) {
         dataFreshness.recordUpdate('wto_trade', totalItems);
       } else if (anyUnavailable) {
         dataFreshness.recordError('wto_trade', 'WTO upstream temporarily unavailable');
       }
-    } catch (e) {
-      console.error('[App] Trade policy failed:', e);
+    } catch (error) {
+      console.error('[App] Trade policy failed:', error);
       this.ctx.statusPanel?.updateApi('WTO', { status: 'error' });
-      dataFreshness.recordError('wto_trade', String(e));
+      dataFreshness.recordError('wto_trade', String(error));
     }
   }
 
@@ -2139,22 +2154,22 @@ export class DataLoaderManager implements AppModule {
       const totalItems = (shippingData?.indices.length || 0) + (chokepointData?.chokepoints.length || 0) + (mineralsData?.minerals.length || 0);
       const anyUnavailable = shippingData?.upstreamUnavailable || chokepointData?.upstreamUnavailable || mineralsData?.upstreamUnavailable;
 
-      this.ctx.statusPanel?.updateApi('SupplyChain', { status: anyUnavailable ? 'warning' : totalItems > 0 ? 'ok' : 'error' });
+      this.ctx.statusPanel?.updateApi('SupplyChain', { status: anyUnavailable ? 'warning' : (totalItems > 0 ? 'ok' : 'error') });
 
       if (totalItems > 0) {
         dataFreshness.recordUpdate('supply_chain', totalItems);
       } else if (anyUnavailable) {
         dataFreshness.recordError('supply_chain', 'Supply chain upstream temporarily unavailable');
       }
-    } catch (e) {
-      console.error('[App] Supply chain failed:', e);
+    } catch (error) {
+      console.error('[App] Supply chain failed:', error);
       this.ctx.statusPanel?.updateApi('SupplyChain', { status: 'error' });
-      dataFreshness.recordError('supply_chain', String(e));
+      dataFreshness.recordError('supply_chain', String(error));
     }
   }
 
   updateMonitorResults(): void {
-    const monitorPanel = this.ctx.panels['monitors'] as MonitorPanel;
+    const monitorPanel = this.ctx.panels.monitors as MonitorPanel;
     monitorPanel.renderResults(this.ctx.allNews);
   }
 
@@ -2169,7 +2184,7 @@ export class DataLoaderManager implements AppModule {
       if (this.ctx.latestClusters.length > 0) {
         ingestNewsForCII(this.ctx.latestClusters);
         dataFreshness.recordUpdate('gdelt', this.ctx.latestClusters.length);
-        (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+        (this.ctx.panels.cii as CIIPanel)?.refresh();
       }
 
       const signals = await analysisWorker.analyzeCorrelations(
@@ -2220,7 +2235,7 @@ export class DataLoaderManager implements AppModule {
 
         signalAggregator.ingestSatelliteFires(satelliteFires);
         ingestSatelliteFiresForCII(satelliteFires);
-        (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+        (this.ctx.panels.cii as CIIPanel)?.refresh();
 
         this.ctx.map?.setFires(toMapFires(flat));
 
@@ -2234,20 +2249,20 @@ export class DataLoaderManager implements AppModule {
           if (anomalies.length > 0) {
             signalAggregator.ingestTemporalAnomalies(anomalies);
             ingestTemporalAnomaliesForCII(anomalies);
-            (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+            (this.ctx.panels.cii as CIIPanel)?.refresh();
           }
-        }).catch(() => { });
+        }).catch(() => {});
       } else {
         ingestSatelliteFiresForCII([]);
-        (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+        (this.ctx.panels.cii as CIIPanel)?.refresh();
         (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
       }
       this.ctx.statusPanel?.updateApi('FIRMS', { status: 'ok' });
-    } catch (e) {
-      console.warn('[App] FIRMS load failed:', e);
+    } catch (error) {
+      console.warn('[App] FIRMS load failed:', error);
       (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
       this.ctx.statusPanel?.updateApi('FIRMS', { status: 'error' });
-      dataFreshness.recordError('firms', String(e));
+      dataFreshness.recordError('firms', String(error));
     }
   }
 
@@ -2300,7 +2315,7 @@ export class DataLoaderManager implements AppModule {
     try {
       type CachedItem = Omit<NewsItem, 'pubDate'> & { pubDate: number };
       const entry = await getPersistentCache<CachedItem[]>(DataLoaderManager.HAPPY_ITEMS_CACHE_KEY);
-      if (!entry || !entry.data || entry.data.length === 0) return;
+      if (!entry?.data || entry.data.length === 0) return;
       if (Date.now() - entry.updatedAt > 24 * 60 * 60 * 1000) return;
 
       const items: NewsItem[] = entry.data.map(item => ({
@@ -2308,9 +2323,9 @@ export class DataLoaderManager implements AppModule {
         pubDate: new Date(item.pubDate),
       }));
 
-      const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
+      const scienceSources = new Set(['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)']);
       this.ctx.breakthroughsPanel?.setItems(
-        items.filter(item => scienceSources.includes(item.source) || item.happyCategory === 'science-health')
+        items.filter(item => scienceSources.has(item.source) || item.happyCategory === 'science-health')
       );
       this.ctx.heroPanel?.setHeroStory(
         items.filter(item => item.happyCategory === 'humanity-kindness')
@@ -2320,8 +2335,8 @@ export class DataLoaderManager implements AppModule {
         [...items].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime()).slice(0, 5)
       );
       this.ctx.positivePanel?.renderPositiveNews(items);
-    } catch (err) {
-      console.warn('[App] Happy panel cache hydration failed:', err);
+    } catch (error) {
+      console.warn('[App] Happy panel cache hydration failed:', error);
     }
   }
 
@@ -2347,8 +2362,8 @@ export class DataLoaderManager implements AppModule {
       );
 
       supplementary = await filterBySentiment(gdeltItems);
-    } catch (err) {
-      console.warn('[App] Happy supplementary pipeline failed, using curated only:', err);
+    } catch (error) {
+      console.warn('[App] Happy supplementary pipeline failed, using curated only:', error);
     }
 
     if (supplementary.length > 0) {
@@ -2357,9 +2372,9 @@ export class DataLoaderManager implements AppModule {
       this.ctx.positivePanel.renderPositiveNews(merged);
     }
 
-    const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
+    const scienceSources = new Set(['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)']);
     const scienceItems = this.ctx.happyAllItems.filter(item =>
-      scienceSources.includes(item.source) || item.happyCategory === 'science-health'
+      scienceSources.has(item.source) || item.happyCategory === 'science-health'
     );
     this.ctx.breakthroughsPanel?.setItems(scienceItems);
 

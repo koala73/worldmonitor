@@ -55,11 +55,11 @@ function parseCoordinates(text: string): { lat: number; lon: number }[] {
   while ((match = dmsPattern.exec(text)) !== null) {
     if (!match[1] || !match[2] || !match[3] || !match[4] || !match[5] || !match[6]) continue;
 
-    const latDeg = parseInt(match[1], 10);
-    const latMin = parseFloat(match[2]);
+    const latDeg = Number.parseInt(match[1], 10);
+    const latMin = Number.parseFloat(match[2]);
     const latDir = match[3].toUpperCase();
-    const lonDeg = parseInt(match[4], 10);
-    const lonMin = parseFloat(match[5]);
+    const lonDeg = Number.parseInt(match[4], 10);
+    const lonMin = Number.parseFloat(match[5]);
     const lonDir = match[6].toUpperCase();
 
     let lat = latDeg + latMin / 60;
@@ -78,8 +78,8 @@ function parseCoordinates(text: string): { lat: number; lon: number }[] {
   while ((match = decPattern.exec(text)) !== null) {
     if (!match[1] || !match[2] || !match[3] || !match[4]) continue;
 
-    let lat = parseFloat(match[1]);
-    let lon = parseFloat(match[3]);
+    let lat = Number.parseFloat(match[1]);
+    let lon = Number.parseFloat(match[3]);
 
     if (match[2].toUpperCase() === 'S') lat = -lat;
     if (match[4].toUpperCase() === 'W') lon = -lon;
@@ -126,12 +126,12 @@ function findNearestCable(lat: number, lon: number): UnderseaCable | null {
 
 function parseIssueDate(dateStr: string): Date {
   // Format: "081653Z MAY 2024" or "101200Z JAN 2025"
-  const match = dateStr.match(/(\d{2})(\d{4})Z\s+([A-Z]{3})\s+(\d{4})/i);
-  if (match && match[1] && match[2] && match[3] && match[4]) {
-    const day = parseInt(match[1], 10);
+  const match = /(\d{2})(\d{4})Z\s+([A-Z]{3})\s+(\d{4})/i.exec(dateStr);
+  if (match?.[1] && match[2] && match[3] && match[4]) {
+    const day = Number.parseInt(match[1], 10);
     const time = match[2];
     const monthStr = match[3].toUpperCase();
-    const year = parseInt(match[4], 10);
+    const year = Number.parseInt(match[4], 10);
 
     const months: Record<string, number> = {
       JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
@@ -139,8 +139,8 @@ function parseIssueDate(dateStr: string): Date {
     };
 
     const month = months[monthStr] ?? 0;
-    const hours = parseInt(time.slice(0, 2), 10);
-    const minutes = parseInt(time.slice(2, 4), 10);
+    const hours = Number.parseInt(time.slice(0, 2), 10);
+    const minutes = Number.parseInt(time.slice(2, 4), 10);
 
     return new Date(Date.UTC(year, month, day, hours, minutes));
   }
@@ -234,9 +234,9 @@ function processWarnings(warnings: NgaWarning[]): CableActivity {
         lon,
         impact: isOperation
           ? 'Cable operations in progress. Vessels requested to give wide berth.'
-          : matchedCable
+          : (matchedCable
             ? `Potential impact to ${matchedCable.name} cable route.`
-            : 'Navigation warning in effect for cable infrastructure.',
+            : 'Navigation warning in effect for cable infrastructure.'),
         repairEta: undefined,
       });
     }

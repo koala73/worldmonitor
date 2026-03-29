@@ -24,21 +24,31 @@ export class CIIPanel extends Panel {
 
   private getLevelColor(level: CountryScore['level']): string {
     switch (level) {
-      case 'critical': return getCSSColor('--semantic-critical');
-      case 'high': return getCSSColor('--semantic-high');
-      case 'elevated': return getCSSColor('--semantic-elevated');
-      case 'normal': return getCSSColor('--semantic-normal');
-      case 'low': return getCSSColor('--semantic-low');
+      case 'critical': { return getCSSColor('--semantic-critical');
+      }
+      case 'high': { return getCSSColor('--semantic-high');
+      }
+      case 'elevated': { return getCSSColor('--semantic-elevated');
+      }
+      case 'normal': { return getCSSColor('--semantic-normal');
+      }
+      case 'low': { return getCSSColor('--semantic-low');
+      }
     }
   }
 
   private getLevelEmoji(level: CountryScore['level']): string {
     switch (level) {
-      case 'critical': return '🔴';
-      case 'high': return '🟠';
-      case 'elevated': return '🟡';
-      case 'normal': return '🟢';
-      case 'low': return '⚪';
+      case 'critical': { return '🔴';
+      }
+      case 'high': { return '🟠';
+      }
+      case 'elevated': { return '🟡';
+      }
+      case 'normal': { return '🟢';
+      }
+      case 'low': { return '⚪';
+      }
     }
   }
 
@@ -59,7 +69,7 @@ export class CIIPanel extends Panel {
       dataset: { code: country.code, name: country.name },
       title: t('common.shareStory'),
     });
-    shareBtn.appendChild(rawHtml(CIIPanel.SHARE_SVG));
+    shareBtn.append(rawHtml(CIIPanel.SHARE_SVG));
 
     return h('div', { className: 'cii-country', dataset: { code: country.code } },
       h('div', { className: 'cii-header' },

@@ -28,18 +28,22 @@ function resolveCommandLabel(cmd: Command): string {
   const action = cmd.id.slice(colonIdx + 1);
 
   switch (prefix) {
-    case 'nav':
+    case 'nav': {
       return `${t('commands.prefixes.map')}: ${t('commands.regions.' + action, { defaultValue: cmd.label })}`;
-    case 'country-map':
+    }
+    case 'country-map': {
       return `${t('commands.prefixes.map')}: ${cmd.label}`;
+    }
     case 'panel': {
       const panelName = t('panels.' + kebabToCamel(action), { defaultValue: cmd.label });
       return `${t('commands.prefixes.panel')}: ${panelName}`;
     }
-    case 'country':
+    case 'country': {
       return `${t('commands.prefixes.brief')}: ${cmd.label}`;
-    default:
+    }
+    default: {
       return cmd.label;
+    }
   }
 }
 
@@ -85,7 +89,7 @@ export class SearchModal {
   private onSelect?: (result: SearchResult) => void;
   private onCommand?: (command: Command) => void;
   private placeholder: string;
-  private activePanelIds: Set<string> = new Set();
+  private activePanelIds = new Set<string>();
 
   constructor(container: HTMLElement, options?: SearchModalOptions) {
     this.container = container;
@@ -95,10 +99,10 @@ export class SearchModal {
 
   public registerSource(type: SearchResultType, items: SearchableSource['items']): void {
     const existingIndex = this.sources.findIndex(s => s.type === type);
-    if (existingIndex >= 0) {
-      this.sources[existingIndex] = { type, items };
-    } else {
+    if (existingIndex === -1) {
       this.sources.push({ type, items });
+    } else {
+      this.sources[existingIndex] = { type, items };
     }
   }
 
@@ -166,7 +170,7 @@ export class SearchModal {
     this.input?.addEventListener('input', () => this.handleSearch());
     this.input?.addEventListener('keydown', (e) => this.handleKeydown(e));
 
-    this.container.appendChild(this.overlay);
+    this.container.append(this.overlay);
   }
 
   private matchCommands(query: string): CommandResult[] {
@@ -181,7 +185,7 @@ export class SearchModal {
         if (keyword.includes(query) || (keyword.length >= 3 && query.includes(keyword))) {
           const isExact = keyword === query;
           const isPrefix = keyword.startsWith(query);
-          matched.push({ command: cmd, score: isExact ? 3 : isPrefix ? 2 : 1 });
+          matched.push({ command: cmd, score: isExact ? 3 : (isPrefix ? 2 : 1) });
           break;
         }
       }
@@ -235,7 +239,7 @@ export class SearchModal {
     for (const type of priority) {
       const matches = byType.get(type) || [];
       matches.sort((a, b) => b._score - a._score);
-      const limit = type === 'news' ? 6 : type === 'country' ? 4 : 3;
+      const limit = type === 'news' ? 6 : (type === 'country' ? 4 : 3);
       this.results.push(...matches.slice(0, limit));
       if (this.results.length >= MAX_RESULTS) break;
     }
@@ -274,15 +278,15 @@ export class SearchModal {
       title.className = 'search-result-title';
       title.textContent = term;
 
-      item.appendChild(icon);
-      item.appendChild(title);
+      item.append(icon);
+      item.append(title);
 
       item.addEventListener('click', () => {
         if (this.input) this.input.value = term;
         this.handleSearch();
       });
 
-      this.resultsList!.appendChild(item);
+      this.resultsList!.append(item);
     });
   }
 
@@ -407,7 +411,7 @@ export class SearchModal {
 
     this.resultsList.querySelectorAll('.search-result-item').forEach((el) => {
       el.addEventListener('click', () => {
-        const index = parseInt((el as HTMLElement).dataset.index || '0');
+        const index = Number.parseInt((el as HTMLElement).dataset.index || '0');
         this.selectResult(index);
       });
     });
@@ -419,28 +423,32 @@ export class SearchModal {
     if (!query) return escapedText;
 
     const escapedQuery = escapeHtml(query);
-    const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)})`, 'gi');
     return escapedText.replace(regex, '<mark>$1</mark>');
   }
 
   private handleKeydown(e: KeyboardEvent): void {
     switch (e.key) {
-      case 'ArrowDown':
+      case 'ArrowDown': {
         e.preventDefault();
         this.moveSelection(1);
         break;
-      case 'ArrowUp':
+      }
+      case 'ArrowUp': {
         e.preventDefault();
         this.moveSelection(-1);
         break;
-      case 'Enter':
+      }
+      case 'Enter': {
         e.preventDefault();
         this.selectResult(this.selectedIndex);
         break;
-      case 'Escape':
+      }
+      case 'Escape': {
         e.preventDefault();
         this.close();
         break;
+      }
     }
   }
 

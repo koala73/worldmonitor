@@ -78,8 +78,8 @@ export function parseCargoPackageMetadata(cargoToml) {
 }
 
 export function parseCargoLockVersion(cargoLock, packageName) {
-  const escapedPackageName = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const packageBlockRegex = new RegExp(`\\[\\[package\\]\\]\\nname = "${escapedPackageName}"\\nversion = "([^"]+)"`, 'm');
+  const escapedPackageName = packageName.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  const packageBlockRegex = new RegExp(String.raw`\[\[package\]\]\nname = "${escapedPackageName}"\nversion = "([^"]+)"`, 'm');
   const versionMatch = cargoLock.match(packageBlockRegex);
   if (!versionMatch) {
     throw new Error(`Could not find ${packageName} package version in src-tauri/Cargo.lock`);

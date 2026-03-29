@@ -37,9 +37,9 @@ export class MonitorPanel extends Panel {
     const monitorsList = h('div', { id: 'monitorsList' });
     const monitorsResults = h('div', { id: 'monitorsResults' });
 
-    this.content.appendChild(inputContainer);
-    this.content.appendChild(monitorsList);
-    this.content.appendChild(monitorsResults);
+    this.content.append(inputContainer);
+    this.content.append(monitorsList);
+    this.content.append(monitorsResults);
 
     this.renderMonitorsList();
   }
@@ -107,8 +107,8 @@ export class MonitorPanel extends Panel {
         const searchText = `${item.title} ${(item as unknown as { description?: string }).description || ''}`.toLowerCase();
         const matched = monitor.keywords.some((kw) => {
           // Use word boundary matching to avoid false positives like "ai" in "train"
-          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+          const regex = new RegExp(String.raw`\b${escaped}\b`, 'i');
           return regex.test(searchText);
         });
         if (matched) {

@@ -33,7 +33,7 @@ export class SignalModal {
       </div>
     `;
 
-    document.body.appendChild(this.element);
+    document.body.append(this.element);
     this.setupEventListeners();
 
     // Remove will-change after entrance animation to free GPU memory
@@ -68,8 +68,8 @@ export class SignalModal {
     this.element.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.classList.contains('location-link')) {
-        const lat = parseFloat(target.dataset.lat || '0');
-        const lon = parseFloat(target.dataset.lon || '0');
+        const lat = Number.parseFloat(target.dataset.lat || '0');
+        const lon = Number.parseFloat(target.dataset.lon || '0');
         if (this.onLocationClick && !isNaN(lat) && !isNaN(lon)) {
           this.onLocationClick(lat, lon);
           this.hide();

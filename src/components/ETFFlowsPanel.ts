@@ -35,7 +35,7 @@ export class ETFFlowsPanel extends Panel {
     super({ id: 'etf-flows', title: t('panels.etfFlows'), showCount: false });
     // Delay initial fetch by 8s to avoid competing with stock/commodity Yahoo calls
     // during cold start — all share a global yahooGate() rate limiter on the sidecar
-    setTimeout(() => void this.fetchData(), 8_000);
+    setTimeout(() => void this.fetchData(), 8000);
   }
 
   public async fetchData(): Promise<void> {
@@ -68,20 +68,20 @@ export class ETFFlowsPanel extends Panel {
         }
         this.error = null;
 
-        if (this.data && this.data.etfs.length === 0 && !this.data.rateLimited && attempt < 2) {
+        if (this.data?.etfs.length === 0 && !this.data.rateLimited && attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 20_000));
           continue;
         }
         break;
-      } catch (err) {
-        if (this.isAbortError(err)) return;
+      } catch (error) {
+        if (this.isAbortError(error)) return;
         if (attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 20_000));
           continue;
         }
-        this.error = err instanceof Error ? err.message : 'Failed to fetch';
+        this.error = error instanceof Error ? error.message : 'Failed to fetch';
       }
     }
     this.loading = false;
@@ -107,13 +107,13 @@ export class ETFFlowsPanel extends Panel {
     }
 
     const s = d.summary || { etfCount: 0, totalVolume: 0, totalEstFlow: 0, netDirection: 'NEUTRAL', inflowCount: 0, outflowCount: 0 };
-    const dirClass = s.netDirection.includes('INFLOW') ? 'flow-inflow' : s.netDirection.includes('OUTFLOW') ? 'flow-outflow' : 'flow-neutral';
+    const dirClass = s.netDirection.includes('INFLOW') ? 'flow-inflow' : (s.netDirection.includes('OUTFLOW') ? 'flow-outflow' : 'flow-neutral');
 
     const rows = d.etfs.map(etf => `
       <tr class="etf-row ${flowClass(etf.direction)}">
         <td class="etf-ticker">${escapeHtml(etf.ticker)}</td>
         <td class="etf-issuer">${escapeHtml(etf.issuer)}</td>
-        <td class="etf-flow ${flowClass(etf.direction)}">${etf.direction === 'inflow' ? '+' : etf.direction === 'outflow' ? '-' : ''}$${formatVolume(Math.abs(etf.estFlow))}</td>
+        <td class="etf-flow ${flowClass(etf.direction)}">${etf.direction === 'inflow' ? '+' : (etf.direction === 'outflow' ? '-' : '')}$${formatVolume(Math.abs(etf.estFlow))}</td>
         <td class="etf-volume">${formatVolume(etf.volume)}</td>
         <td class="etf-change ${changeClass(etf.priceChange)}">${etf.priceChange > 0 ? '+' : ''}${etf.priceChange.toFixed(2)}%</td>
       </tr>

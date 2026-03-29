@@ -185,12 +185,12 @@ async function validate(url, token, prefix, version, expectedCount) {
 
   const values = hmgetResult[0].result;
   let parseOk = 0;
-  for (let i = 0; i < values.length; i++) {
-    if (!values[i]) {
+  for (const [i, value] of values.entries()) {
+    if (!value) {
       throw new Error(`Sample ID "${sampleIds[i]}" missing from META hash`);
     }
     try {
-      JSON.parse(values[i]);
+      JSON.parse(value);
       parseOk++;
     } catch {
       throw new Error(`Sample ID "${sampleIds[i]}" has invalid JSON in META hash`);
@@ -253,7 +253,7 @@ async function main() {
     process.exit(1);
   }
 
-  const invalid = entries.filter(e => !e.id || e.lat == null || e.lon == null);
+  const invalid = entries.filter(e => !e.id || e.lat == undefined || e.lon == undefined);
   if (invalid.length > 0) {
     console.error(`Found ${invalid.length} entries missing id/lat/lon. First: ${JSON.stringify(invalid[0])}`);
     process.exit(1);
@@ -314,7 +314,7 @@ async function main() {
   console.log(`  Total entries:  ${entries.length.toLocaleString()}`);
 }
 
-main().catch(err => {
-  console.error('\nFATAL:', err.message || err);
+main().catch(error => {
+  console.error('\nFATAL:', error.message || error);
   process.exit(1);
 });

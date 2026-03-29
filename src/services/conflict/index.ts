@@ -22,7 +22,7 @@ const iranBreaker = createCircuitBreaker<ListIranEventsResponse>({ name: 'Iran E
 
 const emptyIranFallback: ListIranEventsResponse = { events: [], scrapedAt: 0 };
 
-export type { IranEvent };
+
 
 // ---- Exported Types (match legacy shapes exactly) ----
 
@@ -114,8 +114,8 @@ const VIOLENCE_TYPE_REVERSE: Record<string, UcdpEventType> = {
 function toUcdpGeoEvent(proto: ProtoUcdpEvent): UcdpGeoEvent {
   return {
     id: proto.id,
-    date_start: proto.dateStart ? new Date(proto.dateStart).toISOString().substring(0, 10) : '',
-    date_end: proto.dateEnd ? new Date(proto.dateEnd).toISOString().substring(0, 10) : '',
+    date_start: proto.dateStart ? new Date(proto.dateStart).toISOString().slice(0, 10) : '',
+    date_end: proto.dateEnd ? new Date(proto.dateEnd).toISOString().slice(0, 10) : '',
     latitude: proto.location?.latitude ?? 0,
     longitude: proto.location?.longitude ?? 0,
     country: proto.country,
@@ -347,7 +347,7 @@ export function deduplicateAgainstAcled(
       if (uDeaths === 0 && aDeaths === 0) return false;
       if (uDeaths > 0 && aDeaths > 0) {
         const ratio = uDeaths / aDeaths;
-        if (ratio >= 0.5 && ratio <= 2.0) return false;
+        if (ratio >= 0.5 && ratio <= 2) return false;
       }
     }
     return true;
@@ -381,3 +381,5 @@ export async function fetchIranEvents(): Promise<IranEvent[]> {
   }, emptyIranFallback);
   return resp.events;
 }
+
+export {type IranEvent} from '@/generated/client/worldmonitor/conflict/v1/service_client';

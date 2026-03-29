@@ -33,7 +33,7 @@ try {
   const { size } = await stat(outfile);
   const sizeKB = (size / 1024).toFixed(1);
   console.log(`build:sidecar-sebuf  api/[domain]/v1/[rpc].js  ${sizeKB} KB`);
-} catch (err) {
-  console.error('build:sidecar-sebuf failed:', err.message);
+} catch (error) {
+  console.error('build:sidecar-sebuf failed:', error.message);
   process.exit(1);
 }

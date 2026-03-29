@@ -32,7 +32,7 @@ function sanitizeAllowedOrigin(raw, fallback, allowList = ALLOWED_ORIGINS) {
     if (!['https:', 'http:', 'tauri:'].includes(parsed.protocol)) {
       return fallback;
     }
-    const origin = parsed.origin !== 'null' ? parsed.origin : raw;
+    const origin = parsed.origin === 'null' ? raw : parsed.origin;
     if (allowList.some(p => p.test(origin))) return origin;
   } catch { /* invalid URL */ }
   return fallback;

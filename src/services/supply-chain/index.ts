@@ -3,25 +3,16 @@ import {
   type GetShippingRatesResponse,
   type GetChokepointStatusResponse,
   type GetCriticalMineralsResponse,
-  type ShippingIndex,
-  type ChokepointInfo,
-  type CriticalMineral,
-  type MineralProducer,
-  type ShippingRatePoint,
+  
+  
+  
+  
+  
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 
-export type {
-  GetShippingRatesResponse,
-  GetChokepointStatusResponse,
-  GetCriticalMineralsResponse,
-  ShippingIndex,
-  ChokepointInfo,
-  CriticalMineral,
-  MineralProducer,
-  ShippingRatePoint,
-};
+
 
 const client = new SupplyChainServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
@@ -71,3 +62,5 @@ export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsRespon
     return emptyMinerals;
   }
 }
+
+export {type ShippingIndex, type ChokepointInfo, type CriticalMineral, type MineralProducer, type ShippingRatePoint, type GetShippingRatesResponse, type GetChokepointStatusResponse, type GetCriticalMineralsResponse} from '@/generated/client/worldmonitor/supply_chain/v1/service_client';

@@ -36,7 +36,7 @@ export class PinnedWebcamsPanel extends Panel {
   }
 
   private render(): void {
-    while (this.content.firstChild) this.content.removeChild(this.content.firstChild);
+    while (this.content.firstChild) this.content.firstChild.remove();
     this.content.className = 'panel-content pinned-webcams-content';
 
     const active   = getActiveWebcams();
@@ -60,7 +60,7 @@ export class PinnedWebcamsPanel extends Panel {
         iframe.allow = 'autoplay; encrypted-media';
         iframe.allowFullscreen = true;
         iframe.setAttribute('loading', 'lazy');
-        slot.appendChild(iframe);
+        slot.append(iframe);
 
         const labelBar = document.createElement('div');
         labelBar.className = 'pinned-webcam-label';
@@ -68,35 +68,35 @@ export class PinnedWebcamsPanel extends Panel {
         const titleSpan = document.createElement('span');
         titleSpan.className = 'pinned-webcam-title';
         titleSpan.textContent = cam.title || cam.webcamId;
-        labelBar.appendChild(titleSpan);
+        labelBar.append(titleSpan);
 
         const toggleBtn = document.createElement('button');
         toggleBtn.className = 'pinned-webcam-toggle';
         toggleBtn.title = 'Hide stream';
         toggleBtn.textContent = '⏸';
         toggleBtn.addEventListener('click', () => toggleWebcam(cam.webcamId));
-        labelBar.appendChild(toggleBtn);
+        labelBar.append(toggleBtn);
 
         const unpinBtn = document.createElement('button');
         unpinBtn.className = 'pinned-webcam-unpin';
         unpinBtn.title = 'Unpin';
         unpinBtn.textContent = '✖';
         unpinBtn.addEventListener('click', () => unpinWebcam(cam.webcamId));
-        labelBar.appendChild(unpinBtn);
+        labelBar.append(unpinBtn);
 
-        slot.appendChild(labelBar);
+        slot.append(labelBar);
       } else {
         slot.classList.add('pinned-webcam-slot--empty');
         const placeholder = document.createElement('div');
         placeholder.className = 'pinned-webcam-placeholder';
         placeholder.textContent = 'Right-click a webcam on the map to pin it here';
-        slot.appendChild(placeholder);
+        slot.append(placeholder);
       }
 
-      grid.appendChild(slot);
+      grid.append(slot);
     }
 
-    this.content.appendChild(grid);
+    this.content.append(grid);
 
     // Show overflow list when more than MAX_SLOTS webcams are pinned
     if (allPinned.length > MAX_SLOTS) {
@@ -106,7 +106,7 @@ export class PinnedWebcamsPanel extends Panel {
       const listHeader = document.createElement('div');
       listHeader.className = 'pinned-webcams-list-header';
       listHeader.textContent = `All pinned (${allPinned.length})`;
-      listSection.appendChild(listHeader);
+      listSection.append(listHeader);
 
       allPinned.forEach(cam => {
         const row = document.createElement('div');
@@ -115,30 +115,30 @@ export class PinnedWebcamsPanel extends Panel {
         const name = document.createElement('span');
         name.className = 'pinned-webcam-row-name';
         name.textContent = cam.title || cam.webcamId;
-        row.appendChild(name);
+        row.append(name);
 
         const country = document.createElement('span');
         country.className = 'pinned-webcam-row-country';
         country.textContent = cam.country;
-        row.appendChild(country);
+        row.append(country);
 
         const toggleBtn = document.createElement('button');
         toggleBtn.className = 'pinned-webcam-row-toggle';
         toggleBtn.textContent = cam.active ? 'ON' : 'OFF';
         toggleBtn.addEventListener('click', () => toggleWebcam(cam.webcamId));
-        row.appendChild(toggleBtn);
+        row.append(toggleBtn);
 
         const removeBtn = document.createElement('button');
         removeBtn.className = 'pinned-webcam-row-remove';
         removeBtn.textContent = '✖';
         removeBtn.title = 'Unpin';
         removeBtn.addEventListener('click', () => unpinWebcam(cam.webcamId));
-        row.appendChild(removeBtn);
+        row.append(removeBtn);
 
-        listSection.appendChild(row);
+        listSection.append(row);
       });
 
-      this.content.appendChild(listSection);
+      this.content.append(listSection);
     }
 
     // Empty state when nothing pinned yet
@@ -147,7 +147,7 @@ export class PinnedWebcamsPanel extends Panel {
       empty.className = 'pinned-webcams-empty';
       empty.innerHTML = '<div class="pinned-webcams-empty-icon">📷</div>' +
         '<div class="pinned-webcams-empty-text">No webcams pinned yet.<br>Right-click a webcam marker on the map to pin it.</div>';
-      this.content.appendChild(empty);
+      this.content.append(empty);
     }
   }
 

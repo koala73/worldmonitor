@@ -43,7 +43,7 @@ export class SpeciesComebackPanel extends Panel {
       const empty = document.createElement('div');
       empty.className = 'species-empty';
       empty.textContent = 'No conservation data available';
-      this.content.appendChild(empty);
+      this.content.append(empty);
       return;
     }
 
@@ -53,10 +53,10 @@ export class SpeciesComebackPanel extends Panel {
 
     for (const entry of species) {
       const card = this.createCard(entry);
-      grid.appendChild(card);
+      grid.append(card);
     }
 
-    this.content.appendChild(grid);
+    this.content.append(grid);
   }
 
   /**
@@ -67,15 +67,15 @@ export class SpeciesComebackPanel extends Panel {
     card.className = 'species-card';
 
     // 1. Photo section
-    card.appendChild(this.createPhotoSection(entry));
+    card.append(this.createPhotoSection(entry));
 
     // 2. Info section
-    card.appendChild(this.createInfoSection(entry));
+    card.append(this.createInfoSection(entry));
 
     // 3. Sparkline section
     const sparklineDiv = document.createElement('div');
     sparklineDiv.className = 'species-sparkline';
-    card.appendChild(sparklineDiv);
+    card.append(sparklineDiv);
 
     // Render sparkline after card is in DOM (needs measurable width)
     // Use a microtask so the card is attached before we draw
@@ -85,7 +85,7 @@ export class SpeciesComebackPanel extends Panel {
     });
 
     // 4. Summary section
-    card.appendChild(this.createSummarySection(entry));
+    card.append(this.createSummarySection(entry));
 
     return card;
   }
@@ -106,7 +106,7 @@ export class SpeciesComebackPanel extends Panel {
       img.src = FALLBACK_IMAGE_SVG;
     };
 
-    photoDiv.appendChild(img);
+    photoDiv.append(img);
     return photoDiv;
   }
 
@@ -120,13 +120,13 @@ export class SpeciesComebackPanel extends Panel {
     const name = document.createElement('h4');
     name.className = 'species-name';
     name.textContent = entry.commonName;
-    infoDiv.appendChild(name);
+    infoDiv.append(name);
 
     const scientific = document.createElement('span');
     scientific.className = 'species-scientific';
     scientific.style.fontStyle = 'italic';
     scientific.textContent = entry.scientificName;
-    infoDiv.appendChild(scientific);
+    infoDiv.append(scientific);
 
     // Badges
     const badgesDiv = document.createElement('div');
@@ -135,19 +135,19 @@ export class SpeciesComebackPanel extends Panel {
     const recoveryBadge = document.createElement('span');
     recoveryBadge.className = `species-badge badge-${entry.recoveryStatus}`;
     recoveryBadge.textContent = entry.recoveryStatus.charAt(0).toUpperCase() + entry.recoveryStatus.slice(1);
-    badgesDiv.appendChild(recoveryBadge);
+    badgesDiv.append(recoveryBadge);
 
     const iucnBadge = document.createElement('span');
     iucnBadge.className = 'species-badge badge-iucn';
     iucnBadge.textContent = entry.iucnCategory;
-    badgesDiv.appendChild(iucnBadge);
+    badgesDiv.append(iucnBadge);
 
-    infoDiv.appendChild(badgesDiv);
+    infoDiv.append(badgesDiv);
 
     const region = document.createElement('span');
     region.className = 'species-region';
     region.textContent = entry.region;
-    infoDiv.appendChild(region);
+    infoDiv.append(region);
 
     return infoDiv;
   }
@@ -161,12 +161,12 @@ export class SpeciesComebackPanel extends Panel {
 
     const text = document.createElement('p');
     text.textContent = entry.summaryText;
-    summaryDiv.appendChild(text);
+    summaryDiv.append(text);
 
     const cite = document.createElement('cite');
     cite.className = 'species-source';
     cite.textContent = entry.source;
-    summaryDiv.appendChild(cite);
+    summaryDiv.append(cite);
 
     return summaryDiv;
   }
@@ -177,7 +177,7 @@ export class SpeciesComebackPanel extends Panel {
    */
   private renderSparkline(
     container: HTMLDivElement,
-    data: Array<{ year: number; value: number }>,
+    data: { year: number; value: number }[],
     color: string,
   ): void {
     if (data.length < 2) return;

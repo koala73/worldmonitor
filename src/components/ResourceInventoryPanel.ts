@@ -46,7 +46,7 @@ async function openDB(): Promise<IDBDatabase> {
   });
 }
 
-const MAX_ITEMS = 5_000; // hard cap — prevents OOM on runaway imports
+const MAX_ITEMS = 5000; // hard cap — prevents OOM on runaway imports
 
 async function getAllItems(): Promise<ResourceItem[]> {
   const db = await openDB();
@@ -101,7 +101,7 @@ export class ResourceInventoryPanel extends Panel {
       this._items.sort((a, b) => this._daysLeft(a) - this._daysLeft(b));
       this._render();
       if (isDesktopRuntime()) void this._notifyLowStock();
-    } catch (err) {
+    } catch {
       this.showError('Unable to load inventory. Storage may be unavailable.');
     }
   }
@@ -215,9 +215,9 @@ export class ResourceInventoryPanel extends Panel {
       const item: ResourceItem = {
         id: existing?.id ?? crypto.randomUUID(),
         name: (data.get('name') as string).trim(),
-        quantity: parseFloat(data.get('quantity') as string) || 0,
+        quantity: Number.parseFloat(data.get('quantity') as string) || 0,
         unit: (data.get('unit') as string).trim() || 'units',
-        dailyRate: parseFloat(data.get('dailyRate') as string) || 0,
+        dailyRate: Number.parseFloat(data.get('dailyRate') as string) || 0,
         category: (data.get('category') as string).trim() || 'Misc',
         lastUpdated: Date.now(),
       };
@@ -251,7 +251,7 @@ export class ResourceInventoryPanel extends Panel {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = async () => {
+      reader.addEventListener('load', async () => {
         try {
           const parsed = JSON.parse(reader.result as string) as ResourceItem[];
           for (const item of parsed) {
@@ -259,7 +259,7 @@ export class ResourceInventoryPanel extends Panel {
           }
           void this._load();
         } catch { /* malformed JSON */ }
-      };
+      });
       reader.readAsText(file);
     });
 

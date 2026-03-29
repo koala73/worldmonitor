@@ -19,7 +19,7 @@ export const CURATED_COUNTRIES: Record<string, CuratedCountryConfig> = {
     scoringKeywords: ['russia', 'moscow', 'kremlin', 'putin'],
     searchAliases: ['russia', 'russian', 'moscow', 'kremlin', 'putin', 'ukraine war'],
     baselineRisk: 35,
-    eventMultiplier: 2.0,
+    eventMultiplier: 2,
   },
   CN: {
     name: 'China',
@@ -40,7 +40,7 @@ export const CURATED_COUNTRIES: Record<string, CuratedCountryConfig> = {
     scoringKeywords: ['iran', 'tehran', 'khamenei', 'irgc'],
     searchAliases: ['iran', 'iranian', 'tehran', 'persian', 'irgc', 'khamenei'],
     baselineRisk: 40,
-    eventMultiplier: 2.0,
+    eventMultiplier: 2,
   },
   IL: {
     name: 'Israel',
@@ -61,14 +61,14 @@ export const CURATED_COUNTRIES: Record<string, CuratedCountryConfig> = {
     scoringKeywords: ['north korea', 'pyongyang', 'kim jong'],
     searchAliases: ['north korea', 'pyongyang', 'kim jong'],
     baselineRisk: 45,
-    eventMultiplier: 3.0,
+    eventMultiplier: 3,
   },
   SA: {
     name: 'Saudi Arabia',
     scoringKeywords: ['saudi arabia', 'riyadh', 'mbs'],
     searchAliases: ['saudi', 'riyadh', 'mbs'],
     baselineRisk: 20,
-    eventMultiplier: 2.0,
+    eventMultiplier: 2,
   },
   TR: {
     name: 'Turkey',
@@ -166,56 +166,56 @@ export const CURATED_COUNTRIES: Record<string, CuratedCountryConfig> = {
     scoringKeywords: ['mexico', 'mexican', 'amlo', 'sheinbaum', 'cartel', 'sinaloa', 'jalisco', 'cjng', 'tijuana', 'juarez', 'sedena'],
     searchAliases: ['mexico', 'mexican', 'amlo', 'sheinbaum', 'cartel', 'sinaloa', 'jalisco', 'cjng', 'tijuana', 'juarez', 'sedena', 'fentanyl', 'narco'],
     baselineRisk: 35,
-    eventMultiplier: 1.0,
+    eventMultiplier: 1,
   },
   KR: {
     name: 'South Korea',
     scoringKeywords: ['south korea', 'seoul'],
     searchAliases: ['south korea', 'seoul'],
     baselineRisk: 15,
-    eventMultiplier: 1.0,
+    eventMultiplier: 1,
   },
   IQ: {
     name: 'Iraq',
     scoringKeywords: ['iraq', 'iraqi', 'baghdad'],
     searchAliases: ['iraq', 'iraqi', 'baghdad'],
     baselineRisk: 35,
-    eventMultiplier: 1.0,
+    eventMultiplier: 1,
   },
   AF: {
     name: 'Afghanistan',
     scoringKeywords: ['afghanistan', 'afghan', 'kabul', 'taliban'],
     searchAliases: ['afghanistan', 'afghan', 'kabul', 'taliban'],
     baselineRisk: 15,
-    eventMultiplier: 1.0,
+    eventMultiplier: 1,
   },
   LB: {
     name: 'Lebanon',
     scoringKeywords: ['lebanon', 'lebanese', 'beirut'],
     searchAliases: ['lebanon', 'lebanese', 'beirut'],
     baselineRisk: 15,
-    eventMultiplier: 1.0,
+    eventMultiplier: 1,
   },
   EG: {
     name: 'Egypt',
     scoringKeywords: ['egypt', 'egyptian', 'cairo', 'suez'],
     searchAliases: ['egypt', 'egyptian', 'cairo', 'suez'],
     baselineRisk: 15,
-    eventMultiplier: 1.0,
+    eventMultiplier: 1,
   },
   JP: {
     name: 'Japan',
     scoringKeywords: ['japan', 'japanese', 'tokyo'],
     searchAliases: ['japan', 'japanese', 'tokyo'],
     baselineRisk: 15,
-    eventMultiplier: 1.0,
+    eventMultiplier: 1,
   },
   QA: {
     name: 'Qatar',
     scoringKeywords: ['qatar', 'qatari', 'doha'],
     searchAliases: ['qatar', 'qatari', 'doha'],
     baselineRisk: 15,
-    eventMultiplier: 1.0,
+    eventMultiplier: 1,
   },
 };
 
@@ -246,7 +246,7 @@ export const TIER1_COUNTRIES: Record<string, string> = {
 };
 
 export const DEFAULT_BASELINE_RISK = 15;
-export const DEFAULT_EVENT_MULTIPLIER = 1.0;
+export const DEFAULT_EVENT_MULTIPLIER = 1;
 
 export const HOTSPOT_COUNTRY_MAP: Record<string, string | string[]> = {
   tehran: 'IR', moscow: 'RU', beijing: 'CN', kyiv: 'UA', taipei: 'TW',

@@ -18,7 +18,7 @@ import {
  */
 export class CountersPanel extends Panel {
   private animFrameId: number | null = null;
-  private valueElements: Map<string, HTMLElement> = new Map();
+  private valueElements = new Map<string, HTMLElement>();
 
   constructor() {
     super({ id: 'counters', title: 'Live Counters', trackActivity: false });
@@ -35,12 +35,12 @@ export class CountersPanel extends Panel {
 
     for (const metric of COUNTER_METRICS) {
       const card = this.createCounterCard(metric);
-      grid.appendChild(card);
+      grid.append(card);
     }
 
     // Clear loading state and append the grid
     this.content.innerHTML = '';
-    this.content.appendChild(grid);
+    this.content.append(grid);
   }
 
   /**
@@ -71,10 +71,10 @@ export class CountersPanel extends Panel {
     source.className = 'counter-source';
     source.textContent = metric.source;
 
-    card.appendChild(icon);
-    card.appendChild(value);
-    card.appendChild(label);
-    card.appendChild(source);
+    card.append(icon);
+    card.append(value);
+    card.append(label);
+    card.append(source);
 
     // Store reference for fast 60fps updates
     this.valueElements.set(metric.id, value);

@@ -107,9 +107,9 @@ function getTimeInZone(tz: string): { h: number; m: number; s: number; dayOfWeek
   }).formatToParts(now);
   let h = 0, m = 0, s = 0, dayOfWeek = '';
   for (const p of parts) {
-    if (p.type === 'hour')    h = parseInt(p.value, 10);
-    if (p.type === 'minute')  m = parseInt(p.value, 10);
-    if (p.type === 'second')  s = parseInt(p.value, 10);
+    if (p.type === 'hour')    h = Number.parseInt(p.value, 10);
+    if (p.type === 'minute')  m = Number.parseInt(p.value, 10);
+    if (p.type === 'second')  s = Number.parseInt(p.value, 10);
     if (p.type === 'weekday') dayOfWeek = p.value;
   }
   if (h === 24) h = 0;
@@ -156,7 +156,7 @@ export class WorldClockPanel extends Panel {
       e.stopPropagation();
       this.toggleSettings();
     });
-    this.header.appendChild(this.settingsBtn);
+    this.header.append(this.settingsBtn);
 
     this.content.addEventListener('change', (e) => {
       const target = e.target as HTMLInputElement;
@@ -293,7 +293,7 @@ export class WorldClockPanel extends Panel {
     for (const city of sorted) {
       const { h, m, s, dayOfWeek } = getTimeInZone(city.timezone);
       const isDay   = h >= 6 && h < 20;
-      const pct     = ((h * 3600 + m * 60 + s) / 86400) * 100;
+      const pct     = ((h * 3600 + m * 60 + s) / 86_400) * 100;
       const abbr    = getTzAbbr(city.timezone);
       const isHome  = city.id === this.homeCityId;
       const isWeekday = dayOfWeek !== 'Sat' && dayOfWeek !== 'Sun';

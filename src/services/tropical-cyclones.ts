@@ -68,12 +68,16 @@ function categoryFromWind(windKts: number): TcCategory {
 function categoryFromSaffirSimpson(cat: TcCategory): TropicalCyclone['severity'] {
   switch (cat) {
     case 'category_5':
-    case 'category_4': return 'critical';
+    case 'category_4': { return 'critical';
+    }
     case 'category_3':
-    case 'category_2': return 'high';
+    case 'category_2': { return 'high';
+    }
     case 'category_1':
-    case 'tropical_storm': return 'medium';
-    default: return 'low';
+    case 'tropical_storm': { return 'medium';
+    }
+    default: { return 'low';
+    }
   }
 }
 
@@ -99,21 +103,29 @@ interface NhcResponse {
 function basinFromAtcf(atcf: string): TcBasin {
   const prefix = atcf.slice(0, 2).toUpperCase();
   switch (prefix) {
-    case 'AL': return 'atlantic';
-    case 'EP': return 'east_pacific';
-    case 'CP': return 'central_pacific';
-    case 'WP': return 'west_pacific';
-    case 'IO': return 'north_indian';
-    case 'SH': return 'south_pacific';
-    case 'SI': return 'south_indian';
-    default: return 'atlantic';
+    case 'AL': { return 'atlantic';
+    }
+    case 'EP': { return 'east_pacific';
+    }
+    case 'CP': { return 'central_pacific';
+    }
+    case 'WP': { return 'west_pacific';
+    }
+    case 'IO': { return 'north_indian';
+    }
+    case 'SH': { return 'south_pacific';
+    }
+    case 'SI': { return 'south_indian';
+    }
+    default: { return 'atlantic';
+    }
   }
 }
 
 async function fetchNhcStorms(): Promise<TropicalCyclone[]> {
   try {
     const res = await fetch(NHC_STORMS_URL, {
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(10_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return [];
@@ -121,17 +133,17 @@ async function fetchNhcStorms(): Promise<TropicalCyclone[]> {
     const storms = data.activeStorms ?? [];
 
     return storms.map(s => {
-      const windKts = parseInt(s.intensity, 10) || null;
-      const category = windKts !== null ? categoryFromWind(windKts) : 'unknown';
-      const lat = parseFloat(s.lat) || 0;
-      const lon = parseFloat(s.lon) || 0;
+      const windKts = Number.parseInt(s.intensity, 10) || null;
+      const category = windKts === null ? 'unknown' : categoryFromWind(windKts);
+      const lat = Number.parseFloat(s.lat) || 0;
+      const lon = Number.parseFloat(s.lon) || 0;
       return {
         id: `nhc-${s.atcf ?? s.id}`,
         name: s.name ?? 'Unknown',
         basin: basinFromAtcf(s.atcf ?? ''),
         category,
         windKts,
-        pressureMb: parseInt(s.pressure, 10) || null,
+        pressureMb: Number.parseInt(s.pressure, 10) || null,
         lat,
         lon,
         movement: s.movement ?? '',
@@ -149,7 +161,7 @@ async function fetchNhcStorms(): Promise<TropicalCyclone[]> {
 async function fetchJtwcStorms(): Promise<TropicalCyclone[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(JTWC_RSS)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -160,23 +172,23 @@ async function fetchJtwcStorms(): Promise<TropicalCyclone[]> {
     const items = doc.querySelectorAll('item');
     const storms: TropicalCyclone[] = [];
 
-    for (const item of Array.from(items)) {
+    for (const item of items) {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const description = item.querySelector('description')?.textContent?.trim() ?? '';
       const link = item.querySelector('link')?.textContent?.trim() ?? '';
       const pubDateStr = item.querySelector('pubDate')?.textContent?.trim() ?? '';
 
       // JTWC titles like: "Tropical Storm 01W Advisory 001"
-      const windMatch = description.match(/(\d+)\s*KT/i);
-      const latMatch = description.match(/(\d+\.\d+)[NS]/i);
-      const lonMatch = description.match(/(\d+\.\d+)[EW]/i);
-      const latNeg = /S\b/.test(description.match(/\d+\.\d+([NS])/i)?.[0] ?? '' );
-      const lonNeg = /W\b/.test(description.match(/\d+\.\d+([EW])/i)?.[0] ?? '' );
+      const windMatch = /(\d+)\s*KT/i.exec(description);
+      const latMatch = /(\d+\.\d+)[NS]/i.exec(description);
+      const lonMatch = /(\d+\.\d+)[EW]/i.exec(description);
+      const latNeg = /S\b/.test((/\d+\.\d+([NS])/i.exec(description))?.[0] ?? '' );
+      const lonNeg = /W\b/.test((/\d+\.\d+([EW])/i.exec(description))?.[0] ?? '' );
 
-      const windKts = windMatch?.[1] ? parseInt(windMatch[1], 10) : null;
-      const lat = latMatch?.[1] ? (parseFloat(latMatch[1]) * (latNeg ? -1 : 1)) : 0;
-      const lon = lonMatch?.[1] ? (parseFloat(lonMatch[1]) * (lonNeg ? -1 : 1)) : 0;
-      const category = windKts !== null ? categoryFromWind(windKts) : 'unknown';
+      const windKts = windMatch?.[1] ? Number.parseInt(windMatch[1], 10) : null;
+      const lat = latMatch?.[1] ? (Number.parseFloat(latMatch[1]) * (latNeg ? -1 : 1)) : 0;
+      const lon = lonMatch?.[1] ? (Number.parseFloat(lonMatch[1]) * (lonNeg ? -1 : 1)) : 0;
+      const category = windKts === null ? 'unknown' : categoryFromWind(windKts);
 
       // Determine basin from lon/lat
       let basin: TcBasin = 'west_pacific';

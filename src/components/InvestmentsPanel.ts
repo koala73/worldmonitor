@@ -52,7 +52,7 @@ const FLAG: Record<string, string> = {
 
 function formatUSD(usd?: number): string {
   if (usd === undefined) return t('components.investments.undisclosed');
-  if (usd >= 100000) return `$${(usd / 1000).toFixed(0)}B`;
+  if (usd >= 100_000) return `$${(usd / 1000).toFixed(0)}B`;
   if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}B`;
   return `$${usd.toLocaleString()}M`;
 }
@@ -101,7 +101,7 @@ export class InvestmentsPanel extends Panel {
         const key = this.sortKey;
         const av = a[key] ?? '';
         const bv = b[key] ?? '';
-        const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+        const cmp = av < bv ? -1 : (av > bv ? 1 : 0);
         return this.sortAsc ? cmp : -cmp;
       });
   }
@@ -110,8 +110,8 @@ export class InvestmentsPanel extends Panel {
     const filtered = this.getFiltered();
 
     // Build unique entity list for dropdown
-    const entities = Array.from(new Set(GULF_INVESTMENTS.map(i => i.investingEntity))).sort();
-    const sectors = Array.from(new Set(GULF_INVESTMENTS.map(i => i.sector))).sort();
+    const entities = [...new Set(GULF_INVESTMENTS.map(i => i.investingEntity))].sort();
+    const sectors = [...new Set(GULF_INVESTMENTS.map(i => i.sector))].sort();
 
     const sortArrow = (key: keyof GulfInvestment) =>
       this.sortKey === key ? (this.sortAsc ? ' ↑' : ' ↓') : '';

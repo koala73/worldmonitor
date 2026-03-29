@@ -31,7 +31,7 @@ function toMarketData(proto: ProtoMarketQuote, meta?: { name?: string; display?:
     symbol: proto.symbol,
     name: meta?.name || proto.name,
     display: meta?.display || proto.display || proto.symbol,
-    price: proto.price != null ? proto.price : null,
+    price: proto.price == undefined ? null : proto.price,
     change: proto.change ?? null,
     sparkline: proto.sparkline.length > 0 ? proto.sparkline : undefined,
   };
@@ -73,7 +73,7 @@ const CRYPTO_META: Record<string, { name: string; symbol: string }> = {
 };
 
 async function fetchMarketQuotesFromSidecar(
-  symbols: Array<{ symbol: string; name: string; display: string }>,
+  symbols: { symbol: string; name: string; display: string }[],
 ): Promise<MarketData[] | null> {
   try {
     const base = getApiBaseUrl();
@@ -141,7 +141,7 @@ function symbolSetKey(symbols: string[]): string {
 }
 
 export async function fetchMultipleStocks(
-  symbols: Array<{ symbol: string; name: string; display: string }>,
+  symbols: { symbol: string; name: string; display: string }[],
   options: { onBatch?: (results: MarketData[]) => void } = {},
 ): Promise<MarketFetchResult> {
   const setKey = symbolSetKey(symbols.map(s => s.symbol));

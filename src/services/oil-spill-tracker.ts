@@ -71,10 +71,10 @@ function isLargeSpill(quantity: string | null, description: string): boolean {
 
   if (/million\s*gall/.test(text)) return true;
 
-  const gallonsMatch = text.match(/([0-9,]+)\s*gall/);
+  const gallonsMatch = /([0-9,]+)\s*gall/.exec(text);
   if (gallonsMatch) {
-    const gallons = parseInt((gallonsMatch[1] ?? '0').replace(/,/g, ''), 10);
-    if (!isNaN(gallons) && gallons > 10000) return true;
+    const gallons = Number.parseInt((gallonsMatch[1] ?? '0').replace(/,/g, ''), 10);
+    if (!isNaN(gallons) && gallons > 10_000) return true;
   }
 
   return false;
@@ -109,7 +109,7 @@ export async function fetchOilSpills(): Promise<OilSpillIncident[]> {
 
   let raw: NoaaIncident[] = [];
   try {
-    const res = await fetch(NOAA_INCIDENTS_URL, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(NOAA_INCIDENTS_URL, { signal: AbortSignal.timeout(12_000) });
     if (res.ok) {
       const json = (await res.json()) as NoaaResponse;
       raw = json.objects ?? [];
@@ -119,8 +119,8 @@ export async function fetchOilSpills(): Promise<OilSpillIncident[]> {
   }
 
   const now = Date.now();
-  const ninetyDaysMs = 90 * 24 * 3600_000;
-  const fourteenDaysMs = 14 * 24 * 3600_000;
+  const ninetyDaysMs = 90 * 24 * 3_600_000;
+  const fourteenDaysMs = 14 * 24 * 3_600_000;
 
   const incidents: OilSpillIncident[] = [];
 
@@ -146,11 +146,11 @@ export async function fetchOilSpills(): Promise<OilSpillIncident[]> {
 
     const lat =
       obj.lat !== null && obj.lat !== undefined && obj.lat !== ''
-        ? parseFloat(String(obj.lat))
+        ? Number.parseFloat(String(obj.lat))
         : null;
     const lon =
       obj.lon !== null && obj.lon !== undefined && obj.lon !== ''
-        ? parseFloat(String(obj.lon))
+        ? Number.parseFloat(String(obj.lon))
         : null;
 
     incidents.push({

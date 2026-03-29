@@ -40,15 +40,15 @@ export class SpaceWeatherPanel extends Panel {
     const d = this.data;
     const kpLabel = kpLabel_(d.kpIndex);
     const kpColor = kpColorClass(d.kpClass);
-    const windSpeed = d.solarWindSpeed !== null ? `${Math.round(d.solarWindSpeed)} km/s` : '—';
-    const windDensity = d.solarWindDensity !== null ? `${d.solarWindDensity.toFixed(1)} p/cm³` : '—';
-    const bzDisplay = d.bz !== null ? `${d.bz > 0 ? '+' : ''}${d.bz.toFixed(1)} nT` : '—';
-    const bzClass = d.bz !== null && d.bz < -10 ? 'sw-danger' : d.bz !== null && d.bz < -5 ? 'sw-warning' : '';
+    const windSpeed = d.solarWindSpeed === null ? '—' : `${Math.round(d.solarWindSpeed)} km/s`;
+    const windDensity = d.solarWindDensity === null ? '—' : `${d.solarWindDensity.toFixed(1)} p/cm³`;
+    const bzDisplay = d.bz === null ? '—' : `${d.bz > 0 ? '+' : ''}${d.bz.toFixed(1)} nT`;
+    const bzClass = d.bz !== null && d.bz < -10 ? 'sw-danger' : (d.bz !== null && d.bz < -5 ? 'sw-warning' : '');
     const xray = d.xrayClass ? escapeHtml(d.xrayClass) : '—';
     const updatedAgo = timeAgo(d.fetchedAt);
 
     const alertRows = d.alertMessages.slice(0, 8).map(a => {
-      const sevClass = a.severity === 'alert' ? 'sw-danger' : a.severity === 'warning' ? 'sw-warning' : 'sw-info';
+      const sevClass = a.severity === 'alert' ? 'sw-danger' : (a.severity === 'warning' ? 'sw-warning' : 'sw-info');
       return `<div class="sw-alert-row ${sevClass}">
         <span class="sw-alert-sev">${escapeHtml(a.severity.toUpperCase())}</span>
         <span class="sw-alert-msg">${escapeHtml(a.message)}</span>
@@ -61,7 +61,7 @@ export class SpaceWeatherPanel extends Panel {
         <div class="sw-grid">
           <div class="sw-metric">
             <div class="sw-metric-label">Kp Index</div>
-            <div class="sw-metric-value ${kpColor}">${d.kpIndex !== null ? d.kpIndex.toFixed(1) : '—'}</div>
+            <div class="sw-metric-value ${kpColor}">${d.kpIndex === null ? '—' : d.kpIndex.toFixed(1)}</div>
             <div class="sw-metric-sub">${kpLabel}</div>
           </div>
           <div class="sw-metric">

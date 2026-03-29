@@ -60,14 +60,14 @@ export function openStoryModal(data: StoryData): void {
   modalEl.querySelector('.story-linkedin')?.addEventListener('click', () => currentData && shareLinkedIn(currentData));
   modalEl.querySelector('.story-copy')?.addEventListener('click', () => currentData && copyDeepLink(currentData));
 
-  document.body.appendChild(modalEl);
+  document.body.append(modalEl);
 
   requestAnimationFrame(async () => {
     if (!modalEl) return;
     try {
       await renderAndDisplay(data);
-    } catch (err) {
-      console.error('[StoryModal] Render error:', err);
+    } catch (error) {
+      console.error('[StoryModal] Render error:', error);
       const content = modalEl?.querySelector('.story-modal-content');
       if (content) content.innerHTML = `<div class="story-error">${t('modals.story.error')}</div>`;
     }
@@ -90,7 +90,7 @@ async function renderAndDisplay(data: StoryData): Promise<void> {
     img.className = 'story-image';
     img.src = currentDataUrl;
     img.alt = `${data.countryName} Intelligence Story`;
-    content.appendChild(img);
+    content.append(img);
   }
 
   const shareBar = modalEl?.querySelector('.story-share-bar') as HTMLElement;

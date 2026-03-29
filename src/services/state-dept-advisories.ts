@@ -69,10 +69,10 @@ function stripHtml(html: string): string {
 
 function parseAdvisoryTitle(title: string): { country: string; level: AdvisoryLevel } | null {
   // Matches: "Chad - Level 3: Reconsider Travel" or with en-dash
-  const match = title.match(/^(.+?)\s*[-\u2013\u2014]\s*Level\s*(\d)/i);
+  const match = /^(.+?)\s*[-\u2013\u2014]\s*Level\s*(\d)/i.exec(title);
   if (!match) return null;
   const country = match[1]!.trim();
-  const levelNum = parseInt(match[2]!, 10);
+  const levelNum = Number.parseInt(match[2]!, 10);
   if (levelNum < 1 || levelNum > 4) return null;
   return { country, level: levelNum as AdvisoryLevel };
 }
@@ -80,7 +80,7 @@ function parseAdvisoryTitle(title: string): { country: string; level: AdvisoryLe
 async function fetchFeedAdvisories(feedUrl: string): Promise<TravelAdvisory[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -88,7 +88,7 @@ async function fetchFeedAdvisories(feedUrl: string): Promise<TravelAdvisory[]> {
     const doc = parser.parseFromString(text, 'text/xml');
     if (doc.querySelector('parsererror')) return [];
 
-    const items = Array.from(doc.querySelectorAll('item'));
+    const items = [...doc.querySelectorAll('item')];
     const advisories: TravelAdvisory[] = [];
 
     for (const item of items) {
@@ -152,7 +152,7 @@ export async function fetchTravelAdvisories(): Promise<TravelAdvisory[]> {
   }
 
   // Sort: Level 4 first, then 3, then 2
-  const sorted = Array.from(byCountry.values()).sort((a, b) => b.level - a.level);
+  const sorted = [...byCountry.values()].sort((a, b) => b.level - a.level);
 
   const advisories = sorted.slice(0, 100);
   _cache = { advisories, fetchedAt: Date.now() };
@@ -161,10 +161,14 @@ export async function fetchTravelAdvisories(): Promise<TravelAdvisory[]> {
 
 export function advisorySeverityClass(severity: TravelAdvisory['severity']): string {
   switch (severity) {
-    case 'critical': return 'text-red-500';
-    case 'high':     return 'text-orange-500';
-    case 'medium':   return 'text-yellow-500';
-    default:         return 'text-gray-400';
+    case 'critical': { return 'text-red-500';
+    }
+    case 'high': {     return 'text-orange-500';
+    }
+    case 'medium': {   return 'text-yellow-500';
+    }
+    default: {         return 'text-gray-400';
+    }
   }
 }
 

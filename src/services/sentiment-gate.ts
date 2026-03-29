@@ -27,7 +27,7 @@ export async function filterBySentiment(
   try {
     const override = localStorage.getItem('positive-threshold');
     if (override) {
-      const parsed = parseFloat(override);
+      const parsed = Number.parseFloat(override);
       if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
         threshold = parsed;
       }
@@ -41,7 +41,7 @@ export async function filterBySentiment(
 
   try {
     const titles = items.map(item => item.title);
-    const allResults: Array<{ label: string; score: number }> = [];
+    const allResults: { label: string; score: number }[] = [];
 
     // Batch to avoid overwhelming the worker
     for (let i = 0; i < titles.length; i += BATCH_SIZE) {
@@ -52,12 +52,12 @@ export async function filterBySentiment(
 
     const passed = items.filter((_, idx) => {
       const result = allResults[idx];
-      return result && result.label === 'positive' && result.score >= threshold;
+      return result?.label === 'positive' && result.score >= threshold;
     });
 
     return passed;
-  } catch (err) {
-    console.warn('[SentimentGate] Sentiment classification failed, passing all items through:', err);
+  } catch (error) {
+    console.warn('[SentimentGate] Sentiment classification failed, passing all items through:', error);
     return items;
   }
 }

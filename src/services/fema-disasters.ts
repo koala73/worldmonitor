@@ -137,9 +137,9 @@ export async function fetchFemaDeclarations(daysBack = 90): Promise<FemaDeclarat
   }
 
   try {
-    const since = new Date(Date.now() - daysBack * 24 * 3600_000).toISOString().slice(0, 10);
+    const since = new Date(Date.now() - daysBack * 24 * 3_600_000).toISOString().slice(0, 10);
     const url = `${FEMA_API}/DisasterDeclarationsSummaries?$filter=declarationDate ge '${since}'&$orderby=declarationDate desc&$top=100&$format=json`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
+    const res = await fetch(url, { signal: AbortSignal.timeout(12_000), headers: { Accept: 'application/json' } });
     if (!res.ok) return declarationsCache?.items ?? [];
 
     const data: FemaApiResponse<FemaApiDeclaration> = await res.json();
@@ -187,7 +187,7 @@ export async function fetchFemaShelters(): Promise<FemaShelter[]> {
 
   try {
     const url = `${FEMA_API}/OpenedShelters?$filter=shelterStatus eq 'Open'&$top=200&$format=json`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
+    const res = await fetch(url, { signal: AbortSignal.timeout(12_000), headers: { Accept: 'application/json' } });
     if (!res.ok) return sheltersCache?.items ?? [];
 
     const data: FemaApiResponse<FemaApiShelter> = await res.json();

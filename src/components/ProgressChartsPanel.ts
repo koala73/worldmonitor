@@ -77,7 +77,7 @@ export class ProgressChartsPanel extends Panel {
       boxShadow: `0 2px 6px ${getCSSColor('--shadow-color')}`,
     });
     this.content.style.position = 'relative';
-    this.content.appendChild(this.tooltip);
+    this.content.append(this.tooltip);
   }
 
   /**
@@ -124,20 +124,20 @@ export class ProgressChartsPanel extends Panel {
     const unitText = indicator.unit ? ` (${indicator.unit})` : '';
     meta.textContent = changeText + unitText;
 
-    header.appendChild(labelSpan);
-    header.appendChild(meta);
-    container.appendChild(header);
+    header.append(labelSpan);
+    header.append(meta);
+    container.append(header);
 
     // SVG chart area
     const chartDiv = document.createElement('div');
     chartDiv.className = 'progress-chart-svg-container';
-    container.appendChild(chartDiv);
+    container.append(chartDiv);
 
     // Insert before tooltip (tooltip should stay last)
-    if (this.tooltip && this.tooltip.parentElement === this.content) {
+    if (this.tooltip?.parentElement === this.content) {
       this.content.insertBefore(container, this.tooltip);
     } else {
-      this.content.appendChild(container);
+      this.content.append(container);
     }
 
     // Render the D3 chart

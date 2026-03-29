@@ -21,9 +21,9 @@ export const NEW_TAG_DURATION_MS = 2 * 60 * 1000;
 export const HIGHLIGHT_DURATION_MS = 30 * 1000;
 
 class ActivityTracker {
-  private panels: Map<string, ActivityState> = new Map();
-  private observers: Map<string, IntersectionObserver> = new Map();
-  private onChangeCallbacks: Map<string, (newCount: number) => void> = new Map();
+  private panels = new Map<string, ActivityState>();
+  private observers = new Map<string, IntersectionObserver>();
+  private onChangeCallbacks = new Map<string, (newCount: number) => void>();
 
   /**
    * Initialize tracking for a panel
@@ -152,13 +152,13 @@ class ActivityTracker {
 
     const elapsed = Date.now() - firstSeen;
 
-    if (elapsed < 60000) {
+    if (elapsed < 60_000) {
       return 'just now';
-    } else if (elapsed < 3600000) {
-      const mins = Math.floor(elapsed / 60000);
+    } else if (elapsed < 3_600_000) {
+      const mins = Math.floor(elapsed / 60_000);
       return `${mins}m ago`;
     } else {
-      const hours = Math.floor(elapsed / 3600000);
+      const hours = Math.floor(elapsed / 3_600_000);
       return `${hours}h ago`;
     }
   }

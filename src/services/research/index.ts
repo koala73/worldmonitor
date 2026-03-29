@@ -7,7 +7,7 @@ import {
 import { createCircuitBreaker } from '@/utils';
 
 // Re-export proto types (no legacy mapping needed -- proto types are clean)
-export type { ArxivPaper, GithubRepo, HackernewsItem };
+
 
 const client = new ResearchServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
@@ -60,3 +60,5 @@ export async function fetchHackernewsItems(
     return resp.items;
   }, []);
 }
+
+export {type ArxivPaper, type GithubRepo, type HackernewsItem} from '@/generated/client/worldmonitor/research/v1/service_client';

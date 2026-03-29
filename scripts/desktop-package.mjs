@@ -65,7 +65,7 @@ if ((syncVersionsResult.status ?? 1) !== 0) {
   process.exit(syncVersionsResult.status ?? 1);
 }
 
-const bundles = targetOs === 'macos' ? sign ? 'app,dmg' : 'app' : targetOs === 'linux' ? 'appimage' : 'nsis,msi';
+const bundles = targetOs === 'macos' ? (sign ? 'app,dmg' : 'app') : (targetOs === 'linux' ? 'appimage' : 'nsis,msi');
 const env = {
   ...process.env,
   VITE_VARIANT: variant,

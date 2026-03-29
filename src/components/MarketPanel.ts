@@ -9,7 +9,7 @@ function miniSparkline(data: number[] | undefined, change: number | null, w = 50
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
-  const color = change != null && change >= 0 ? 'var(--green)' : 'var(--red)';
+  const color = change != undefined && change >= 0 ? 'var(--green)' : 'var(--red)';
   const points = data.map((v, i) => {
     const x = (i / (data.length - 1)) * w;
     const y = h - ((v - min) / range) * (h - 2) - 1;
@@ -58,7 +58,7 @@ export class HeatmapPanel extends Panel {
     super({ id: 'heatmap', title: t('panels.heatmap') });
   }
 
-  public renderHeatmap(data: Array<{ name: string; change: number | null }>): void {
+  public renderHeatmap(data: { name: string; change: number | null }[]): void {
     const validData = data.filter((d) => d.change !== null);
 
     if (validData.length === 0) {
@@ -89,7 +89,7 @@ export class CommoditiesPanel extends Panel {
     super({ id: 'commodities', title: t('panels.commodities') });
   }
 
-  public renderCommodities(data: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
+  public renderCommodities(data: { display: string; price: number | null; change: number | null; sparkline?: number[] }[]): void {
     const validData = data.filter((d) => d.price !== null);
 
     if (validData.length === 0) {

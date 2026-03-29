@@ -39,7 +39,7 @@ const SOURCE_CATEGORY_MAP: Record<string, HappyContentCategory> = {
 // Priority-ordered keyword classification tuples
 // Most specific keywords first to avoid mis-classification
 // (e.g., "endangered species" should match nature before generic "technology")
-const CATEGORY_KEYWORDS: Array<[string, HappyContentCategory]> = [
+const CATEGORY_KEYWORDS: [string, HappyContentCategory][] = [
   // Science & Health (most specific first)
   ['clinical trial', 'science-health'],
   ['study finds', 'science-health'],

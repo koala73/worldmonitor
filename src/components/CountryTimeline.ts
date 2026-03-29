@@ -74,7 +74,7 @@ export class CountryTimeline {
       boxShadow: `0 2px 8px ${getCSSColor('--shadow-color')}`,
     });
     this.container.style.position = 'relative';
-    this.container.appendChild(this.tooltip);
+    this.container.append(this.tooltip);
   }
 
   render(events: TimelineEvent[]): void {

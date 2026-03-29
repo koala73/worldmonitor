@@ -13,7 +13,7 @@ export default async function handler() {
     });
 
     if (!res.ok) {
-      return new Response(JSON.stringify({ error: 'upstream' }), {
+      return Response.json({ error: 'upstream' }, {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -23,12 +23,12 @@ export default async function handler() {
     const tag = release.tag_name ?? '';
     const version = tag.replace(/^v/, '');
 
-    return new Response(JSON.stringify({
+    return Response.json({
       version,
       tag,
       url: release.html_url,
       prerelease: release.prerelease ?? false,
-    }), {
+    }, {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
@@ -37,7 +37,7 @@ export default async function handler() {
       },
     });
   } catch {
-    return new Response(JSON.stringify({ error: 'fetch_failed' }), {
+    return Response.json({ error: 'fetch_failed' }, {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
     });

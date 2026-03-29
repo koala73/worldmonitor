@@ -67,7 +67,7 @@ function sidecarSeriesToFredSeries(s: SidecarFredSeries, config: { name: string;
     const previous = obs[obs.length - 2]!;
     const prevDisplay = s.id === 'WALCL' ? previous.value / 1000 : previous.value;
     const change = displayValue - prevDisplay;
-    const changePercent = prevDisplay !== 0 ? (change / prevDisplay) * 100 : 0;
+    const changePercent = prevDisplay === 0 ? 0 : (change / prevDisplay) * 100;
     return {
       id: s.id, name: config.name,
       value: Number(displayValue.toFixed(config.precision)),
@@ -281,10 +281,10 @@ function protoEnergyToOilMetric(proto: ProtoEnergyPrice): OilMetric {
     name: proto.name,
     description: `${proto.name} price/volume`,
     current: proto.price,
-    previous: change !== 0 ? proto.price / (1 + change / 100) : proto.price,
+    previous: change === 0 ? proto.price : proto.price / (1 + change / 100),
     changePct: Math.round(change * 10) / 10,
     unit: proto.unit,
-    trend: change > 0.5 ? 'up' : change < -0.5 ? 'down' : 'stable',
+    trend: change > 0.5 ? 'up' : (change < -0.5 ? 'down' : 'stable'),
     lastUpdated: proto.priceAt ? new Date(proto.priceAt).toISOString() : new Date().toISOString(),
   };
 }
@@ -368,9 +368,12 @@ export function formatOilValue(value: number, unit: string): string {
 
 export function getTrendIndicator(trend: OilMetric['trend']): string {
   switch (trend) {
-    case 'up': return '\u25B2';
-    case 'down': return '\u25BC';
-    default: return '\u25CF';
+    case 'up': { return '\u25B2';
+    }
+    case 'down': { return '\u25BC';
+    }
+    default: { return '\u25CF';
+    }
   }
 }
 
@@ -378,9 +381,12 @@ export function getTrendColor(trend: OilMetric['trend'], inverse = false): strin
   const upColor = inverse ? getCSSColor('--semantic-normal') : getCSSColor('--semantic-critical');
   const downColor = inverse ? getCSSColor('--semantic-critical') : getCSSColor('--semantic-normal');
   switch (trend) {
-    case 'up': return upColor;
-    case 'down': return downColor;
-    default: return getCSSColor('--text-dim');
+    case 'up': { return upColor;
+    }
+    case 'down': { return downColor;
+    }
+    default: { return getCSSColor('--text-dim');
+    }
   }
 }
 
@@ -433,12 +439,12 @@ export interface WorldBankResponse {
   metadata: { page: number; pages: number; total: number };
   byCountry: Record<string, WbCountryData>;
   latestByCountry: Record<string, WbLatestValue>;
-  timeSeries: Array<{
+  timeSeries: {
     countryCode: string;
     countryName: string;
     year: string;
     value: number;
-  }>;
+  }[];
 }
 
 const TECH_INDICATORS: Record<string, string> = {
@@ -652,7 +658,7 @@ export async function getCountryComparison(
 // BIS -- Central bank policy data
 // ========================================================================
 
-export type { BisPolicyRate, BisExchangeRate, BisCreditToGdp };
+
 
 export interface BisData {
   policyRates: BisPolicyRate[];
@@ -684,3 +690,5 @@ export async function fetchBisData(): Promise<BisData> {
     return empty;
   }
 }
+
+export {type BisPolicyRate, type BisExchangeRate, type BisCreditToGdp} from '@/generated/client/worldmonitor/economic/v1/service_client';

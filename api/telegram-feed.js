@@ -5,7 +5,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 
 export const config = { runtime: 'edge' };
 
-async function fetchWithTimeout(url, options, timeoutMs = 25000) {
+async function fetchWithTimeout(url, options, timeoutMs = 25_000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -23,12 +23,12 @@ export default async function handler(req) {
   }
 
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
+    return Response.json({ error: 'Origin not allowed' }, { status: 403, headers: cors });
   }
 
   let relay = process.env.WS_RELAY_URL;
   if (!relay) {
-    return new Response(JSON.stringify({ error: 'WS_RELAY_URL not configured' }), {
+    return Response.json({ error: 'WS_RELAY_URL not configured' }, {
       status: 503,
       headers: { 'Content-Type': 'application/json', ...cors },
     });
@@ -40,7 +40,7 @@ export default async function handler(req) {
   if (relay.startsWith('ws://')) relay = relay.replace('ws://', 'http://');
 
   const url = new URL(req.url);
-  const limit = Math.max(1, Math.min(200, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
+  const limit = Math.max(1, Math.min(200, Number.parseInt(url.searchParams.get('limit') || '50', 10) || 50));
   const topic = (url.searchParams.get('topic') || '').trim();
   const channel = (url.searchParams.get('channel') || '').trim();
 
@@ -60,7 +60,7 @@ export default async function handler(req) {
   try {
     const res = await fetchWithTimeout(relayUrl.toString(), {
       headers: fetchHeaders,
-    }, 25000);
+    }, 25_000);
 
     const text = await res.text();
     return new Response(text, {
@@ -72,12 +72,12 @@ export default async function handler(req) {
         ...cors,
       },
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const isAbort = err && (err.name === 'AbortError' || /aborted/i.test(msg));
-    return new Response(JSON.stringify({
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const isAbort = error && (error.name === 'AbortError' || /aborted/i.test(msg));
+    return Response.json({
       error: isAbort ? 'Telegram relay request timed out' : 'Telegram relay fetch failed',
-    }), {
+    }, {
       status: isAbort ? 504 : 502,
       headers: { 'Content-Type': 'application/json', ...cors },
     });

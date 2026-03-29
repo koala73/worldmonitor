@@ -106,8 +106,8 @@ export function detectGeoConvergence(seenAlerts: Set<string>): GeoConvergenceAle
     if (cell.events.size >= CONVERGENCE_THRESHOLD) {
       if (seenAlerts.has(cellId)) continue;
 
-      const types = Array.from(cell.events.keys());
-      const totalEvents = Array.from(cell.events.values())
+      const types = [...cell.events.keys()];
+      const totalEvents = [...cell.events.values()]
         .reduce((sum, d) => sum + d.count, 0);
 
       const typeScore = cell.events.size * 25;
@@ -227,7 +227,7 @@ export function getAlertsNearLocation(lat: number, lon: number, radiusKm: number
     const dist = haversineKm(lat, lon, cell.lat, cell.lon);
     if (dist <= radiusKm && cell.events.size >= 2) {
       const types = cell.events.size;
-      const totalEvents = Array.from(cell.events.values()).reduce((sum, d) => sum + d.count, 0);
+      const totalEvents = [...cell.events.values()].reduce((sum, d) => sum + d.count, 0);
       const typeScore = types * 25;
       const countBoost = Math.min(25, totalEvents * 2);
       const score = Math.min(100, typeScore + countBoost);

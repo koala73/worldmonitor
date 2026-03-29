@@ -33,19 +33,19 @@ export async function fetchAirstrikes(): Promise<AirstrikeEvent[]> {
     if (!json.events) return _cache?.data ?? [];
 
     const events: AirstrikeEvent[] = (json.events as Record<string, unknown>[]).map(e => ({
-      id: String(e['event_id_cnty'] ?? ''),
-      date: String(e['event_date'] ?? ''),
-      country: String(e['country'] ?? ''),
-      region: String(e['admin1'] ?? ''),
-      location: String(e['location'] ?? ''),
-      lat: parseFloat(String(e['latitude'] ?? '0')),
-      lon: parseFloat(String(e['longitude'] ?? '0')),
-      actor: String(e['actor1'] ?? ''),
-      targetActor: String(e['actor2'] ?? ''),
-      eventType: String(e['event_type'] ?? ''),
-      subEventType: String(e['sub_event_type'] ?? ''),
-      fatalities: parseInt(String(e['fatalities'] ?? '0'), 10) || 0,
-      notes: String(e['notes'] ?? ''),
+      id: String(e.event_id_cnty ?? ''),
+      date: String(e.event_date ?? ''),
+      country: String(e.country ?? ''),
+      region: String(e.admin1 ?? ''),
+      location: String(e.location ?? ''),
+      lat: Number.parseFloat(String(e.latitude ?? '0')),
+      lon: Number.parseFloat(String(e.longitude ?? '0')),
+      actor: String(e.actor1 ?? ''),
+      targetActor: String(e.actor2 ?? ''),
+      eventType: String(e.event_type ?? ''),
+      subEventType: String(e.sub_event_type ?? ''),
+      fatalities: Number.parseInt(String(e.fatalities ?? '0'), 10) || 0,
+      notes: String(e.notes ?? ''),
     })).filter(e => e.id && !isNaN(e.lat) && !isNaN(e.lon));
 
     _cache = { data: events, ts: Date.now() };

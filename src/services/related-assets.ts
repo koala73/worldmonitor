@@ -85,28 +85,34 @@ function midpoint(points: [number, number][]): { lat: number; lon: number } | nu
   return { lon: mid[0], lat: mid[1] };
 }
 
-function buildAssetIndex(type: AssetType): Array<{ id: string; name: string; lat: number; lon: number } | null> {
+function buildAssetIndex(type: AssetType): ({ id: string; name: string; lat: number; lon: number } | null)[] {
   switch (type) {
-    case 'pipeline':
+    case 'pipeline': {
       return PIPELINES.map(pipeline => {
         const mid = midpoint(pipeline.points);
         if (!mid) return null;
         return { id: pipeline.id, name: pipeline.name, lat: mid.lat, lon: mid.lon };
       });
-    case 'cable':
+    }
+    case 'cable': {
       return UNDERSEA_CABLES.map(cable => {
         const mid = midpoint(cable.points);
         if (!mid) return null;
         return { id: cable.id, name: cable.name, lat: mid.lat, lon: mid.lon };
       });
-    case 'datacenter':
+    }
+    case 'datacenter': {
       return AI_DATA_CENTERS.map(dc => ({ id: dc.id, name: dc.name, lat: dc.lat, lon: dc.lon }));
-    case 'base':
+    }
+    case 'base': {
       return MILITARY_BASES.map(base => ({ id: base.id, name: base.name, lat: base.lat, lon: base.lon }));
-    case 'nuclear':
+    }
+    case 'nuclear': {
       return NUCLEAR_FACILITIES.map(site => ({ id: site.id, name: site.name, lat: site.lat, lon: site.lon }));
-    default:
+    }
+    default: {
       return [];
+    }
   }
 }
 

@@ -46,17 +46,22 @@ function getRadiusForEventType(type: string): number {
     case 'battle':
     case 'state-based':
     case 'non-state':
-    case 'one-sided':
+    case 'one-sided': {
       return 50;
-    case 'earthquake':
+    }
+    case 'earthquake': {
       return 100;
-    case 'flood':
+    }
+    case 'flood': {
       return 100;
+    }
     case 'fire':
-    case 'wildfire':
+    case 'wildfire': {
       return 30;
-    default:
+    }
+    default: {
       return 50;
+    }
   }
 }
 
@@ -95,6 +100,6 @@ export async function enrichEventsWithExposure(
 
 export function formatPopulation(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
   return String(n);
 }

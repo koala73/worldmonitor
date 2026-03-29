@@ -18,7 +18,7 @@ export class EarthquakesPanel extends Panel {
   }
 
   public update(earthquakes: Earthquake[]): void {
-    this.earthquakes = earthquakes.slice().sort((a, b) => b.magnitude - a.magnitude);
+    this.earthquakes = [...earthquakes].sort((a, b) => b.magnitude - a.magnitude);
     this.lastUpdated = new Date();
     this.setCount(this.earthquakes.length);
     this.render();
@@ -32,7 +32,7 @@ export class EarthquakesPanel extends Panel {
 
     const rows = this.earthquakes.map(eq => {
       const mag = eq.magnitude.toFixed(1);
-      const depth = eq.depthKm != null ? `${Math.round(eq.depthKm)} km` : '—';
+      const depth = eq.depthKm == undefined ? '—' : `${Math.round(eq.depthKm)} km`;
       const ago = timeAgo(eq.occurredAt);
       const rowClass = magClass(eq.magnitude);
       return `<tr class="${rowClass}">

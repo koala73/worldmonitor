@@ -34,7 +34,7 @@ export class DiseaseOutbreakPanel extends Panel {
     const rows = this.outbreaks.slice(0, 50).map(o => {
       const sevClass = sevRowClass(o.severity);
       // Validate scheme before using URL in href — prevents javascript:/data: injection
-      const safeUrl = o.url && o.url.startsWith('https://') ? o.url : null;
+      const safeUrl = o.url?.startsWith('https://') ? o.url : null;
       const link = safeUrl
         ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener" class="do-link">${escapeHtml(o.disease)}</a>`
         : escapeHtml(o.disease);

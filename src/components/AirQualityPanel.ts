@@ -32,7 +32,7 @@ export class AirQualityPanel extends Panel {
 
     const rows = this.readings.map(r => {
       const cls = aqiRowClass(r.aqiLevel);
-      const pm25 = r.pm25 !== null ? `${r.pm25.toFixed(1)}` : '—';
+      const pm25 = r.pm25 === null ? '—' : `${r.pm25.toFixed(1)}`;
       return `<tr class="${cls}">
         <td class="aq-city">${escapeHtml(r.city)}</td>
         <td class="aq-country">${escapeHtml(r.country)}</td>

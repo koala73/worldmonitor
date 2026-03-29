@@ -107,15 +107,15 @@ async function fetchProgressDataFresh(): Promise<ProgressDataSet[]> {
           years: indicator.years,
         });
 
-        const countryData = response.byCountry['WLD'];
+        const countryData = response.byCountry.WLD;
         if (!countryData || countryData.values.length === 0) {
           return fallbackDataSet(indicator);
         }
 
         const data: ProgressDataPoint[] = countryData.values
-          .filter(v => v.value != null && Number.isFinite(v.value))
+          .filter(v => v.value != undefined && Number.isFinite(v.value))
           .map(v => ({
-            year: parseInt(v.year, 10),
+            year: Number.parseInt(v.year, 10),
             value: v.value,
           }))
           .filter(d => !isNaN(d.year))
@@ -128,9 +128,9 @@ async function fetchProgressDataFresh(): Promise<ProgressDataSet[]> {
         const oldestValue = data[0]!.value;
         const latestValue = data[data.length - 1]!.value;
 
-        const rawChangePercent = oldestValue !== 0
-          ? ((latestValue - oldestValue) / Math.abs(oldestValue)) * 100
-          : 0;
+        const rawChangePercent = oldestValue === 0
+          ? 0
+          : ((latestValue - oldestValue) / Math.abs(oldestValue)) * 100;
         const changePercent = indicator.invertTrend
           ? -rawChangePercent
           : rawChangePercent;
@@ -179,13 +179,13 @@ const FALLBACK_DATA: Record<string, ProgressDataPoint[]> = {
   'SP.DYN.LE00.IN': [ // Life expectancy (years)
     { year: 1960, value: 52.6 }, { year: 1970, value: 58.7 }, { year: 1980, value: 62.8 },
     { year: 1990, value: 65.4 }, { year: 2000, value: 67.7 }, { year: 2005, value: 69.1 },
-    { year: 2010, value: 70.6 }, { year: 2015, value: 72.0 }, { year: 2020, value: 72.0 },
+    { year: 2010, value: 70.6 }, { year: 2015, value: 72 }, { year: 2020, value: 72 },
     { year: 2023, value: 73.3 },
   ],
   'SE.ADT.LITR.ZS': [ // Literacy rate (%)
     { year: 1975, value: 65.4 }, { year: 1985, value: 72.3 }, { year: 1995, value: 78.2 },
-    { year: 2000, value: 81.0 }, { year: 2005, value: 82.5 }, { year: 2010, value: 84.1 },
-    { year: 2015, value: 85.8 }, { year: 2020, value: 87.0 }, { year: 2023, value: 87.6 },
+    { year: 2000, value: 81 }, { year: 2005, value: 82.5 }, { year: 2010, value: 84.1 },
+    { year: 2015, value: 85.8 }, { year: 2020, value: 87 }, { year: 2023, value: 87.6 },
   ],
   'SH.DYN.MORT': [ // Child mortality (per 1,000)
     { year: 1960, value: 226.8 }, { year: 1970, value: 175.2 }, { year: 1980, value: 131.5 },
@@ -205,9 +205,9 @@ function fallbackDataSet(indicator: ProgressIndicator): ProgressDataSet {
   if (!data || data.length === 0) return emptyDataSet(indicator);
   const oldestValue = data[0]!.value;
   const latestValue = data[data.length - 1]!.value;
-  const rawChangePercent = oldestValue !== 0
-    ? ((latestValue - oldestValue) / Math.abs(oldestValue)) * 100
-    : 0;
+  const rawChangePercent = oldestValue === 0
+    ? 0
+    : ((latestValue - oldestValue) / Math.abs(oldestValue)) * 100;
   const changePercent = indicator.invertTrend ? -rawChangePercent : rawChangePercent;
   return {
     indicator,

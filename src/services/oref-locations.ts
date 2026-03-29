@@ -6,7 +6,7 @@
 export function sanitizeHebrew(text: string): string {
   return text
     .normalize('NFKC')
-    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '')
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
     .replace(/[\u2010-\u2015\u2212]/g, '-')
     .trim()
     .replace(/\s+/g, ' ');

@@ -7,7 +7,7 @@ import { STORAGE_KEYS, SITE_VARIANT } from '@/config';
 import { getStreamQuality } from '@/services/ai-flow-settings';
 
 // YouTube IFrame Player API types
-type YouTubePlayer = {
+interface YouTubePlayer {
   mute(): void;
   unMute(): void;
   playVideo(): void;
@@ -18,7 +18,7 @@ type YouTubePlayer = {
   getIframe?(): HTMLIFrameElement;
   getVolume?(): number;
   destroy(): void;
-};
+}
 
 type YouTubePlayerConstructor = new (
   elementId: string | HTMLElement,
@@ -33,9 +33,9 @@ type YouTubePlayerConstructor = new (
   },
 ) => YouTubePlayer;
 
-type YouTubeNamespace = {
+interface YouTubeNamespace {
   Player: YouTubePlayerConstructor;
-};
+}
 
 declare global {
   interface Window {
@@ -146,7 +146,7 @@ export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelI
   { key: 'osint', labelKey: 'components.liveNews.regionOsint', channelIds: ['s2underground', 'recoilmag', 'warzone', 'militarysummary'] },
 ];
 
-const DEFAULT_LIVE_CHANNELS = SITE_VARIANT === 'tech' ? TECH_LIVE_CHANNELS : SITE_VARIANT === 'happy' ? [] : FULL_LIVE_CHANNELS;
+const DEFAULT_LIVE_CHANNELS = SITE_VARIANT === 'tech' ? TECH_LIVE_CHANNELS : (SITE_VARIANT === 'happy' ? [] : FULL_LIVE_CHANNELS);
 
 /** Default channel list for the current variant (for restore in channel management). */
 export function getDefaultLiveChannels(): LiveChannel[] {
@@ -277,7 +277,7 @@ export class LiveNewsPanel extends Panel {
 
   private deferredInit = false;
   private lazyObserver: IntersectionObserver | null = null;
-  private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
+  private idleCallbackId: number   | null = null;
 
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide' });
@@ -313,10 +313,10 @@ export class LiveNewsPanel extends Panel {
       this.triggerInit();
     });
 
-    container.appendChild(label);
-    container.appendChild(playBtn);
+    container.append(label);
+    container.append(playBtn);
     container.addEventListener('click', () => this.triggerInit());
-    this.content.appendChild(container);
+    this.content.append(container);
   }
 
   private setupLazyInit(): void {
@@ -325,14 +325,10 @@ export class LiveNewsPanel extends Panel {
         if (entries.some(e => e.isIntersecting)) {
           this.lazyObserver?.disconnect();
           this.lazyObserver = null;
-          if ('requestIdleCallback' in window) {
-            this.idleCallbackId = (window as any).requestIdleCallback(
+          this.idleCallbackId = 'requestIdleCallback' in window ? (window as any).requestIdleCallback(
               () => { this.idleCallbackId = null; this.triggerInit(); },
               { timeout: 1000 },
-            );
-          } else {
-            this.idleCallbackId = setTimeout(() => { this.idleCallbackId = null; this.triggerInit(); }, 1000);
-          }
+            ) : setTimeout(() => { this.idleCallbackId = null; this.triggerInit(); }, 1000);
         }
       },
       { threshold: 0.1 },
@@ -365,7 +361,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private get embedOrigin(): string {
-    if (isDesktopRuntime()) return `http://localhost:${getLocalApiPort()}`;
+    if (isDesktopRuntime()) return `http://127.0.0.1:${getLocalApiPort()}`;
     try { return new URL(getRemoteApiBaseUrl()).origin; } catch { return 'https://worldmonitor.app'; }
   }
 
@@ -412,6 +408,7 @@ export class LiveNewsPanel extends Panel {
       if (protocol === 'http:' || protocol === 'https:') {
         // Desktop webviews commonly run from tauri.localhost which can trigger
         // YouTube embed restrictions. Use canonical public origin instead.
+        // eslint-disable-next-line no-restricted-syntax -- intentional: Tauri IPC origin check, not URL construction
         if (host === 'tauri.localhost' || host.endsWith('.tauri.localhost')) {
           return fallbackOrigin;
         }
@@ -511,13 +508,13 @@ export class LiveNewsPanel extends Panel {
     if (this.playerContainer) {
       this.playerContainer.innerHTML = '';
 
-      if (!this.useDesktopEmbedProxy) {
+      if (this.useDesktopEmbedProxy) {
+        this.playerElement = null;
+      } else {
         // Recreate player element for JS API mode
         this.playerElement = document.createElement('div');
         this.playerElement.id = this.playerElementId;
-        this.playerContainer.appendChild(this.playerElement);
-      } else {
-        this.playerElement = null;
+        this.playerContainer.append(this.playerElement);
       }
     }
   }
@@ -541,7 +538,7 @@ export class LiveNewsPanel extends Panel {
     });
 
     const header = this.element.querySelector('.panel-header');
-    header?.appendChild(this.liveBtn);
+    header?.append(this.liveBtn);
   }
 
   private updateLiveIndicator(): void {
@@ -575,7 +572,7 @@ export class LiveNewsPanel extends Panel {
     });
 
     const header = this.element.querySelector('.panel-header');
-    header?.appendChild(this.muteBtn);
+    header?.append(this.muteBtn);
   }
 
   private updateMuteIcon(): void {
@@ -616,7 +613,7 @@ export class LiveNewsPanel extends Panel {
     this.channelSwitcher.className = 'live-news-switcher';
 
     for (const channel of this.channels) {
-      this.channelSwitcher.appendChild(this.createChannelButton(channel));
+      this.channelSwitcher.append(this.createChannelButton(channel));
     }
 
     // Mouse-based drag reorder (works in WKWebView/Tauri)
@@ -645,7 +642,7 @@ export class LiveNewsPanel extends Panel {
       }
       const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-channel-btn') as HTMLElement | null;
       if (!target || target === dragging) return;
-      const all = Array.from(this.channelSwitcher!.querySelectorAll('.live-channel-btn'));
+      const all = [...this.channelSwitcher!.querySelectorAll('.live-channel-btn')];
       const idx = all.indexOf(dragging);
       const targetIdx = all.indexOf(target);
       if (idx === -1 || targetIdx === -1) return;
@@ -672,7 +669,7 @@ export class LiveNewsPanel extends Panel {
 
     const toolbar = document.createElement('div');
     toolbar.className = 'live-news-toolbar';
-    toolbar.appendChild(this.channelSwitcher);
+    toolbar.append(this.channelSwitcher);
     this.createManageButton(toolbar);
     this.element.insertBefore(toolbar, this.content);
   }
@@ -687,7 +684,7 @@ export class LiveNewsPanel extends Panel {
     openBtn.addEventListener('click', () => {
       this.openChannelManagementModal();
     });
-    toolbar.appendChild(openBtn);
+    toolbar.append(openBtn);
   }
 
   private openChannelManagementModal(): void {
@@ -709,10 +706,10 @@ export class LiveNewsPanel extends Panel {
 
     const container = document.createElement('div');
 
-    modal.appendChild(closeBtn);
-    modal.appendChild(container);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
+    modal.append(closeBtn);
+    modal.append(container);
+    overlay.append(modal);
+    document.body.append(overlay);
 
     requestAnimationFrame(() => overlay.classList.add('active'));
 
@@ -734,13 +731,13 @@ export class LiveNewsPanel extends Panel {
     if (!this.channelSwitcher) return;
     this.channelSwitcher.innerHTML = '';
     for (const channel of this.channels) {
-      this.channelSwitcher.appendChild(this.createChannelButton(channel));
+      this.channelSwitcher.append(this.createChannelButton(channel));
     }
   }
 
   private applyChannelOrderFromDom(): void {
     if (!this.channelSwitcher) return;
-    const ids = Array.from(this.channelSwitcher.querySelectorAll<HTMLElement>('.live-channel-btn'))
+    const ids = [...this.channelSwitcher.querySelectorAll<HTMLElement>('.live-channel-btn')]
       .map((el) => el.dataset.channelId)
       .filter((id): id is string => !!id);
     const orderMap = new Map(this.channels.map((c) => [c.id, c]));
@@ -853,15 +850,15 @@ export class LiveNewsPanel extends Panel {
     this.playerContainer = document.createElement('div');
     this.playerContainer.className = 'live-news-player';
 
-    if (!this.useDesktopEmbedProxy) {
+    if (this.useDesktopEmbedProxy) {
+      this.playerElement = null;
+    } else {
       this.playerElement = document.createElement('div');
       this.playerElement.id = this.playerElementId;
-      this.playerContainer.appendChild(this.playerElement);
-    } else {
-      this.playerElement = null;
+      this.playerContainer.append(this.playerElement);
     }
 
-    this.content.appendChild(this.playerContainer);
+    this.content.append(this.playerContainer);
   }
 
   private postToEmbed(msg: Record<string, unknown>): void {
@@ -897,7 +894,7 @@ export class LiveNewsPanel extends Panel {
     this.isPlayerReady = true;
 
     // Always recreate if container was removed from DOM (e.g. showEmbedError replaced content).
-    if (!this.playerContainer || !this.playerContainer.parentElement) {
+    if (!this.playerContainer?.parentElement) {
       this.ensurePlayerContainer();
     }
 
@@ -937,14 +934,14 @@ export class LiveNewsPanel extends Panel {
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
     iframe.setAttribute('loading', 'eager');
 
-    this.playerContainer.appendChild(iframe);
+    this.playerContainer.append(iframe);
     this.desktopEmbedIframe = iframe;
     this.startBotCheckTimeout();
   }
 
   private renderNativeHlsPlayer(): void {
     const hlsUrl = this.getDirectHlsUrl(this.activeChannel.id);
-    if (!hlsUrl || !hlsUrl.startsWith('https://')) return;
+    if (!hlsUrl?.startsWith('https://')) return;
 
     this.destroyPlayer();
     this.ensurePlayerContainer();
@@ -1003,7 +1000,7 @@ export class LiveNewsPanel extends Panel {
     });
 
     this.nativeVideoElement = video;
-    this.playerContainer.appendChild(video);
+    this.playerContainer.append(video);
     this.isPlayerReady = true;
     this.currentVideoId = this.activeChannel.videoId || null;
 
@@ -1071,7 +1068,7 @@ export class LiveNewsPanel extends Panel {
         script.remove();
         resolve();
       };
-      document.head.appendChild(script);
+      document.head.append(script);
     });
 
     return LiveNewsPanel.apiPromise;
@@ -1232,7 +1229,7 @@ export class LiveNewsPanel extends Panel {
 
     actions.append(signinBtn, retryBtn, ytLink);
     wrapper.append(icon, text, actions);
-    this.content.appendChild(wrapper);
+    this.content.append(wrapper);
   }
 
   private async openYouTubeSignIn(): Promise<void> {

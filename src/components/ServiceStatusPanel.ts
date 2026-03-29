@@ -59,10 +59,10 @@ export class ServiceStatusPanel extends Panel {
       this.services = data.services;
       this.error = null;
       return changed;
-    } catch (err) {
-      if (this.isAbortError(err)) return false;
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
-      console.error('[ServiceStatus] Fetch error:', err);
+    } catch (error) {
+      if (this.isAbortError(error)) return false;
+      this.error = error instanceof Error ? error.message : 'Failed to fetch';
+      console.error('[ServiceStatus] Fetch error:', error);
       return true;
     } finally {
       this.loading = false;
@@ -211,10 +211,14 @@ export class ServiceStatusPanel extends Panel {
 
   private getStatusIcon(status: string): string {
     switch (status) {
-      case 'operational': return '●';
-      case 'degraded': return '◐';
-      case 'outage': return '○';
-      default: return '?';
+      case 'operational': { return '●';
+      }
+      case 'degraded': { return '◐';
+      }
+      case 'outage': { return '○';
+      }
+      default: { return '?';
+      }
     }
   }
 

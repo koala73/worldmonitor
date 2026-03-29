@@ -92,13 +92,13 @@ function classifyHazardType(event: string): MarineHazardType {
 }
 
 function extractWaveHeight(text: string): string | null {
-  const m = text.match(/(\d+)\s*(?:to\s*(\d+))?\s*f(?:ee)?t/i);
+  const m = /(\d+)\s*(?:to\s*(\d+))?\s*f(?:ee)?t/i.exec(text);
   if (!m) return null;
   return m[2] ? `${m[1]} to ${m[2]} ft` : `${m[1]} ft`;
 }
 
 function extractWindSpeed(text: string): string | null {
-  const m = text.match(/(\d+)\s*(?:to\s*(\d+))?\s*mph/i);
+  const m = /(\d+)\s*(?:to\s*(\d+))?\s*mph/i.exec(text);
   if (!m) return null;
   return m[2] ? `${m[1]} to ${m[2]} mph` : `${m[1]} mph`;
 }
@@ -119,22 +119,28 @@ function computeSeverity(
 
   switch (hazardType) {
     case 'storm-surge':
-    case 'tsunami':
+    case 'tsunami': {
       return 'critical';
+    }
     case 'gale':
     case 'storm':
-    case 'hurricane-wind':
+    case 'hurricane-wind': {
       return 'high';
+    }
     case 'high-surf':
-    case 'coastal-flood':
+    case 'coastal-flood': {
       return 'medium';
+    }
     case 'fog':
-    case 'rip-current':
+    case 'rip-current': {
       return 'low';
-    case 'special-marine':
+    }
+    case 'special-marine': {
       return 'high';
-    default:
+    }
+    default: {
       return 'low';
+    }
   }
 }
 
@@ -147,7 +153,7 @@ function safeDate(raw: string | null | undefined): Date {
 async function fetchAlerts(): Promise<MarineHazard[]> {
   const res = await fetch(NWS_ALERTS_URL, {
     headers: { Accept: 'application/geo+json' },
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(12_000),
   });
   if (!res.ok) return [];
 
@@ -194,7 +200,7 @@ async function checkHighSeasForecasts(): Promise<boolean> {
   try {
     const res = await fetch(NWS_HSF_URL, {
       headers: { Accept: 'application/ld+json' },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return false;
 
@@ -210,7 +216,7 @@ async function checkHighSeasForecasts(): Promise<boolean> {
 
     const textRes = await fetch(productId, {
       headers: { Accept: 'application/ld+json' },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!textRes.ok) return false;
 
@@ -220,7 +226,7 @@ async function checkHighSeasForecasts(): Promise<boolean> {
     // Check for wave heights > 20ft
     const waveMatches = text.matchAll(/(\d+)\s*(?:to\s*(\d+))?\s*f(?:ee)?t/gi);
     for (const m of waveMatches) {
-      const high = m[2] ? parseInt(m[2], 10) : parseInt(m[1] ?? '0', 10);
+      const high = m[2] ? Number.parseInt(m[2], 10) : Number.parseInt(m[1] ?? '0', 10);
       if (high > 20) return true;
     }
     return false;
@@ -269,9 +275,13 @@ export async function fetchMarineHazards(): Promise<MarineHazard[]> {
 
 export function marineHazardSeverityClass(severity: MarineHazard['severity']): string {
   switch (severity) {
-    case 'critical': return 'eq-row eq-major';
-    case 'high': return 'eq-row eq-strong';
-    case 'medium': return 'eq-row eq-moderate';
-    case 'low': return 'eq-row';
+    case 'critical': { return 'eq-row eq-major';
+    }
+    case 'high': { return 'eq-row eq-strong';
+    }
+    case 'medium': { return 'eq-row eq-moderate';
+    }
+    case 'low': { return 'eq-row';
+    }
   }
 }

@@ -50,7 +50,7 @@ export default function handler(req, res) {
   const arcRadius = 90;
   const arcCx = 960;
   const arcCy = 340;
-  const scoreAngle = scoreNum !== null ? (scoreNum / 100) * Math.PI : 0;
+  const scoreAngle = scoreNum === null ? 0 : (scoreNum / 100) * Math.PI;
   const arcEndX = arcCx - arcRadius * Math.cos(scoreAngle);
   const arcEndY = arcCy - arcRadius * Math.sin(scoreAngle);
   const largeArc = scoreNum > 50 ? 1 : 0;
@@ -111,7 +111,30 @@ export default function handler(req, res) {
   <text x="60" y="200" font-family="system-ui, sans-serif" font-size="22" fill="#666" letter-spacing="3"
     >INTELLIGENCE BRIEF</text>
 
-  ${scoreNum !== null ? `
+  ${scoreNum === null ? `
+  <!-- No score available — show feature overview -->
+  <text x="60" y="290" font-family="system-ui, -apple-system, sans-serif" font-size="40" fill="#ddd" font-weight="600"
+    >Real-time intelligence analysis</text>
+
+  <line x1="60" y1="320" x2="1140" y2="320" stroke="#222" stroke-width="1"/>
+
+  <!-- Feature cards -->
+  <rect x="60" y="345" width="250" height="80" rx="8" fill="#111" stroke="#222" stroke-width="1"/>
+  <text x="80" y="375" font-family="system-ui, sans-serif" font-size="16" fill="${levelColor}" font-weight="700">Instability Index</text>
+  <text x="80" y="400" font-family="system-ui, sans-serif" font-size="13" fill="#888">20 countries monitored</text>
+
+  <rect x="330" y="345" width="250" height="80" rx="8" fill="#111" stroke="#222" stroke-width="1"/>
+  <text x="350" y="375" font-family="system-ui, sans-serif" font-size="16" fill="#f97316" font-weight="700">Military Tracking</text>
+  <text x="350" y="400" font-family="system-ui, sans-serif" font-size="13" fill="#888">Live flights &amp; vessels</text>
+
+  <rect x="600" y="345" width="250" height="80" rx="8" fill="#111" stroke="#222" stroke-width="1"/>
+  <text x="620" y="375" font-family="system-ui, sans-serif" font-size="16" fill="#eab308" font-weight="700">Prediction Markets</text>
+  <text x="620" y="400" font-family="system-ui, sans-serif" font-size="13" fill="#888">Polymarket integration</text>
+
+  <rect x="870" y="345" width="270" height="80" rx="8" fill="#111" stroke="#222" stroke-width="1"/>
+  <text x="890" y="375" font-family="system-ui, sans-serif" font-size="16" fill="#8b5cf6" font-weight="700">Signal Convergence</text>
+  <text x="890" y="400" font-family="system-ui, sans-serif" font-size="13" fill="#888">Multi-source correlation</text>
+  ` : `
   <!-- LEFT COLUMN: Data cards -->
   <!-- CII Score large display -->
   <text x="60" y="310" font-family="system-ui, -apple-system, sans-serif" font-size="120" font-weight="800" fill="${levelColor}"
@@ -171,29 +194,6 @@ export default function handler(req, res) {
   <rect x="860" y="448" width="10" height="10" rx="2" fill="#3b82f6"/>
   <text x="880" y="458" font-family="system-ui, sans-serif" font-size="15" fill="#aaa">Active Signals</text>
 
-  ` : `
-  <!-- No score available — show feature overview -->
-  <text x="60" y="290" font-family="system-ui, -apple-system, sans-serif" font-size="40" fill="#ddd" font-weight="600"
-    >Real-time intelligence analysis</text>
-
-  <line x1="60" y1="320" x2="1140" y2="320" stroke="#222" stroke-width="1"/>
-
-  <!-- Feature cards -->
-  <rect x="60" y="345" width="250" height="80" rx="8" fill="#111" stroke="#222" stroke-width="1"/>
-  <text x="80" y="375" font-family="system-ui, sans-serif" font-size="16" fill="${levelColor}" font-weight="700">Instability Index</text>
-  <text x="80" y="400" font-family="system-ui, sans-serif" font-size="13" fill="#888">20 countries monitored</text>
-
-  <rect x="330" y="345" width="250" height="80" rx="8" fill="#111" stroke="#222" stroke-width="1"/>
-  <text x="350" y="375" font-family="system-ui, sans-serif" font-size="16" fill="#f97316" font-weight="700">Military Tracking</text>
-  <text x="350" y="400" font-family="system-ui, sans-serif" font-size="13" fill="#888">Live flights &amp; vessels</text>
-
-  <rect x="600" y="345" width="250" height="80" rx="8" fill="#111" stroke="#222" stroke-width="1"/>
-  <text x="620" y="375" font-family="system-ui, sans-serif" font-size="16" fill="#eab308" font-weight="700">Prediction Markets</text>
-  <text x="620" y="400" font-family="system-ui, sans-serif" font-size="13" fill="#888">Polymarket integration</text>
-
-  <rect x="870" y="345" width="270" height="80" rx="8" fill="#111" stroke="#222" stroke-width="1"/>
-  <text x="890" y="375" font-family="system-ui, sans-serif" font-size="16" fill="#8b5cf6" font-weight="700">Signal Convergence</text>
-  <text x="890" y="400" font-family="system-ui, sans-serif" font-size="13" fill="#888">Multi-source correlation</text>
   `}
 
   <!-- Bottom bar -->

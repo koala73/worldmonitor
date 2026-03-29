@@ -13,7 +13,7 @@ export async function fetchOllamaModels(ollamaUrl: string): Promise<string[]> {
       signal: makeTimeout(5000),
     });
     if (res.ok) {
-      const data = await res.json() as { models?: Array<{ name: string }> };
+      const data = await res.json() as { models?: { name: string }[] };
       const models = (data.models?.map(m => m.name) || []).filter(n => !n.includes('embed'));
       if (models.length > 0) return models;
     }
@@ -24,7 +24,7 @@ export async function fetchOllamaModels(ollamaUrl: string): Promise<string[]> {
       signal: makeTimeout(5000),
     });
     if (res.ok) {
-      const data = await res.json() as { data?: Array<{ id: string }> };
+      const data = await res.json() as { data?: { id: string }[] };
       return (data.data?.map(m => m.id) || []).filter(n => !n.includes('embed'));
     }
   } catch { /* OpenAI endpoint also unavailable */ }

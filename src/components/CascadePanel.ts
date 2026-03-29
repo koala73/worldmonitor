@@ -46,30 +46,44 @@ export class CascadePanel extends Panel {
 
   private getImpactColor(level: CascadeImpactLevel): string {
     switch (level) {
-      case 'critical': return getCSSColor('--semantic-critical');
-      case 'high': return getCSSColor('--semantic-high');
-      case 'medium': return getCSSColor('--semantic-elevated');
-      case 'low': return getCSSColor('--semantic-normal');
+      case 'critical': { return getCSSColor('--semantic-critical');
+      }
+      case 'high': { return getCSSColor('--semantic-high');
+      }
+      case 'medium': { return getCSSColor('--semantic-elevated');
+      }
+      case 'low': { return getCSSColor('--semantic-normal');
+      }
     }
   }
 
   private getImpactEmoji(level: CascadeImpactLevel): string {
     switch (level) {
-      case 'critical': return '🔴';
-      case 'high': return '🟠';
-      case 'medium': return '🟡';
-      case 'low': return '🟢';
+      case 'critical': { return '🔴';
+      }
+      case 'high': { return '🟠';
+      }
+      case 'medium': { return '🟡';
+      }
+      case 'low': { return '🟢';
+      }
     }
   }
 
   private getNodeTypeEmoji(type: string): string {
     switch (type) {
-      case 'cable': return '🔌';
-      case 'pipeline': return '🛢️';
-      case 'port': return '⚓';
-      case 'chokepoint': return '🚢';
-      case 'country': return '🏳️';
-      default: return '📍';
+      case 'cable': { return '🔌';
+      }
+      case 'pipeline': { return '🛢️';
+      }
+      case 'port': { return '⚓';
+      }
+      case 'chokepoint': { return '🚢';
+      }
+      case 'country': { return '🏳️';
+      }
+      default: { return '📍';
+      }
     }
   }
 
@@ -87,11 +101,9 @@ export class CascadePanel extends Panel {
     if (!this.graph) return [];
     const nodes: InfrastructureNode[] = [];
     for (const node of this.graph.nodes.values()) {
-      if (this.filter === 'all' || node.type === this.filter) {
-        if (node.type !== 'country') {
+      if ((this.filter === 'all' || node.type === this.filter) && node.type !== 'country') {
           nodes.push(node);
         }
-      }
     }
     return nodes.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -118,7 +130,7 @@ export class CascadePanel extends Panel {
           <option value="">${t('components.cascade.selectPrompt', { type: selectedType })}</option>
           ${nodeOptions}
         </select>
-        <button class="cascade-analyze-btn" ${!this.selectedNode ? 'disabled' : ''}>
+        <button class="cascade-analyze-btn" ${this.selectedNode ? '' : 'disabled'}>
           ${t('components.cascade.analyzeImpact')}
         </button>
       </div>

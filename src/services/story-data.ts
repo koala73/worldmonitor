@@ -14,11 +14,11 @@ export interface StoryData {
     components: CountryScore['components'];
     change24h: number;
   } | null;
-  news: Array<{
+  news: {
     title: string;
     threatLevel: ThreatLevel;
     sourceCount: number;
-  }>;
+  }[];
   theater: {
     theaterName: string;
     postureLevel: string;
@@ -29,10 +29,10 @@ export interface StoryData {
     awacs: number;
     strikeCapable: boolean;
   } | null;
-  markets: Array<{
+  markets: {
     title: string;
     yesPrice: number;
-  }>;
+  }[];
   threats: {
     critical: number;
     high: number;
@@ -57,8 +57,8 @@ export function collectStoryData(
   countryCode: string,
   countryName: string,
   allNews: ClusteredEvent[],
-  theaterPostures: Array<{ theaterId: string; theaterName: string; shortName: string; targetNation: string | null; postureLevel: string; totalAircraft: number; totalVessels: number; fighters: number; tankers: number; awacs: number; strikeCapable: boolean }>,
-  predictionMarkets: Array<{ title: string; yesPrice: number }>,
+  theaterPostures: { theaterId: string; theaterName: string; shortName: string; targetNation: string | null; postureLevel: string; totalAircraft: number; totalVessels: number; fighters: number; tankers: number; awacs: number; strikeCapable: boolean }[],
+  predictionMarkets: { title: string; yesPrice: number }[],
   signals?: { protests: number; militaryFlights: number; militaryVessels: number; outages: number; gpsJammingHexes: number },
   convergence?: { score: number; signalTypes: string[]; regionalDescriptions: string[] } | null,
 ): StoryData {

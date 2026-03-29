@@ -6,7 +6,7 @@ export const config = { runtime: 'edge' };
 export default async function handler(req) {
   const cors = getCorsHeaders(req);
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
+    return Response.json({ error: 'Origin not allowed' }, { status: 403, headers: cors });
   }
 
   // Only allow GET and OPTIONS methods
@@ -79,8 +79,8 @@ export default async function handler(req) {
               }
             };
           }
-        } catch (e) {
-          console.error(`[EIA] Failed to fetch ${key}:`, e.message);
+        } catch (error) {
+          console.error(`[EIA] Failed to fetch ${key}:`, error.message);
         }
         return null;
       });

@@ -73,7 +73,7 @@ interface BriefContext {
   femaDeclarations: FemaDeclaration[];
   femaShelters: FemaShelter[];
   cemsActivations: CemsActivation[];
-  nwsAlerts: Array<{ event: string; severity: string; areaDesc: string }>;
+  nwsAlerts: { event: string; severity: string; areaDesc: string }[];
   tcStorms: TropicalCyclone[];
   pagerEvents: PagerEvent[];
 }
@@ -90,7 +90,7 @@ function findNearest<T extends HasCoordinates>(
   let nearest: T | null = null;
   let minDist = Infinity;
   for (const item of items) {
-    if (item.lat == null || item.lon == null) continue;
+    if (item.lat == undefined || item.lon == undefined) continue;
     const d = haversineKm(lat, lon, item.lat, item.lon);
     if (d < minDist && d <= maxKm) {
       minDist = d;
@@ -104,7 +104,7 @@ function findNearestShelter(shelters: FemaShelter[], lat: number, lon: number): 
   let nearest: FemaShelter | null = null;
   let minDist = Infinity;
   for (const s of shelters) {
-    if (s.lat == null || s.lon == null || !s.acceptingEvacuees) continue;
+    if (s.lat == undefined || s.lon == undefined || !s.acceptingEvacuees) continue;
     const d = haversineKm(lat, lon, s.lat, s.lon);
     if (d < minDist) { minDist = d; nearest = s; }
   }
@@ -189,7 +189,7 @@ function buildItems(
   // ---- SHELTERS section ----
   const shelter = findNearestShelter(ctx.femaShelters, lat, lon);
   if (shelter) {
-    const occ = shelter.currentOccupancy != null && shelter.capacity != null
+    const occ = shelter.currentOccupancy != undefined && shelter.capacity != undefined
       ? ` (${shelter.currentOccupancy}/${shelter.capacity})`
       : '';
     items.push({

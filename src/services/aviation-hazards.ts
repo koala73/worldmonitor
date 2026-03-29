@@ -110,7 +110,7 @@ interface AwcPirepItem {
 async function fetchSigmets(url: string, type: 'SIGMET' | 'AIRMET'): Promise<AviationSigmet[]> {
   try {
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(10_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return [];
@@ -120,8 +120,8 @@ async function fetchSigmets(url: string, type: 'SIGMET' | 'AIRMET'): Promise<Avi
     return items.map((item, i) => {
       const rawText = item.rawAirSigmet ?? item.rawText ?? '';
       const hazard = detectHazard(item.hazard ?? '', rawText);
-      const low = item.altLow1 != null ? `FL${Math.round(item.altLow1 / 100)}` : 'SFC';
-      const high = item.altHi1 != null ? `FL${Math.round(item.altHi1 / 100)}` : 'UNL';
+      const low = item.altLow1 == undefined ? 'SFC' : `FL${Math.round(item.altLow1 / 100)}`;
+      const high = item.altHi1 == undefined ? 'UNL' : `FL${Math.round(item.altHi1 / 100)}`;
       return {
         id: `sigmet-${item.isigmetId ?? `${type}-${i}`}`,
         type,
@@ -130,7 +130,7 @@ async function fetchSigmets(url: string, type: 'SIGMET' | 'AIRMET'): Promise<Avi
         issuingCenter: item.icaoId ?? '',
         flightLevels: `${low}-${high}`,
         validFrom: item.validTimeFrom ? new Date(item.validTimeFrom) : new Date(),
-        validTo: item.validTimeTo ? new Date(item.validTimeTo) : new Date(Date.now() + 2 * 3600_000),
+        validTo: item.validTimeTo ? new Date(item.validTimeTo) : new Date(Date.now() + 2 * 3_600_000),
         area: '',
         rawText: rawText.slice(0, 400),
       };
@@ -143,7 +143,7 @@ async function fetchSigmets(url: string, type: 'SIGMET' | 'AIRMET'): Promise<Avi
 async function fetchPireps(): Promise<AviationPirep[]> {
   try {
     const res = await fetch(AWC_PIREP_URL, {
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(10_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return [];
@@ -165,7 +165,7 @@ async function fetchPireps(): Promise<AviationPirep[]> {
           id: `pirep-${i}-${p.reportTime ?? Date.now()}`,
           lat: p.lat ?? 0,
           lon: p.lon ?? 0,
-          altitudeFt: p.fltlvl != null ? p.fltlvl * 100 : null,
+          altitudeFt: p.fltlvl == undefined ? null : p.fltlvl * 100,
           hazardType,
           intensity,
           severity: pirepSeverity(intensity, hazardType),

@@ -57,7 +57,7 @@ export class CountryIntelModal {
         <div class="country-intel-content"></div>
       </div>
     `;
-    document.body.appendChild(this.overlay);
+    document.body.append(this.overlay);
 
     this.headerEl = this.overlay.querySelector('.country-intel-title')!;
     this.contentEl = this.overlay.querySelector('.country-intel-content')!;
@@ -76,7 +76,7 @@ export class CountryIntelModal {
       return code
         .toUpperCase()
         .split('')
-        .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
+        .map((c) => String.fromCodePoint(0x1_F1_E6 + c.charCodeAt(0) - 65))
         .join('');
     } catch {
       return '🌍';
@@ -147,7 +147,7 @@ export class CountryIntelModal {
             <span title="${t('common.conflict')}">⚔ ${score.components.conflict.toFixed(0)}</span>
             <span title="${t('common.security')}">🛡️ ${score.components.security.toFixed(0)}</span>
             <span title="${t('common.information')}">📡 ${score.components.information.toFixed(0)}</span>
-            <span class="cii-trend ${score.trend}">${score.trend === 'rising' ? '↗' : score.trend === 'falling' ? '↘' : '→'} ${score.trend}</span>
+            <span class="cii-trend ${score.trend}">${score.trend === 'rising' ? '↗' : (score.trend === 'falling' ? '↘' : '→')} ${score.trend}</span>
           </div>
         </div>
       `;
@@ -250,7 +250,7 @@ export class CountryIntelModal {
       return;
     }
 
-    const pct = parseFloat(data.weekChangePercent);
+    const pct = Number.parseFloat(data.weekChangePercent);
     const sign = pct >= 0 ? '+' : '';
     const cls = pct >= 0 ? 'stock-up' : 'stock-down';
     const arrow = pct >= 0 ? '📈' : '📉';

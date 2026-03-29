@@ -10,7 +10,7 @@ export interface RefreshRegistration {
 
 export class RefreshScheduler implements AppModule {
   private ctx: AppContext;
-  private refreshTimeoutIds: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private refreshTimeoutIds = new Map<string, ReturnType<typeof setTimeout>>();
   private refreshRunners = new Map<string, { run: () => Promise<void>; intervalMs: number }>();
   private hiddenSince = 0;
 
@@ -80,13 +80,9 @@ export class RefreshScheduler implements AppModule {
       this.ctx.inFlight.add(name);
       try {
         const changed = await fn();
-        if (changed === false) {
-          currentMultiplier = Math.min(currentMultiplier * 2, MAX_BACKOFF_MULTIPLIER);
-        } else {
-          currentMultiplier = 1;
-        }
-      } catch (e) {
-        console.error(`[App] Refresh ${name} failed:`, e);
+        currentMultiplier = changed === false ? Math.min(currentMultiplier * 2, MAX_BACKOFF_MULTIPLIER) : 1;
+      } catch (error) {
+        console.error(`[App] Refresh ${name} failed:`, error);
         currentMultiplier = 1;
       } finally {
         this.ctx.inFlight.delete(name);

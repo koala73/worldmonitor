@@ -122,7 +122,7 @@ describe('channel data integrity', () => {
 
 describe('renderNativeHlsPlayer safety', () => {
   it('validates HLS URL starts with https://', () => {
-    assert.match(liveNewsSrc, /hlsUrl\.startsWith\('https:\/\/'\)/,
+    assert.match(liveNewsSrc, /hlsUrl\?\.startsWith\('https:\/\/'\)/,
       'Must validate HLS URL is HTTPS before creating video element');
   });
 
@@ -234,7 +234,7 @@ describe('YouTube API hlsManifestUrl extraction', () => {
   });
 
   it('includes hlsUrl in response JSON', () => {
-    assert.match(youtubeApi, /JSON\.stringify\(\{[^}]*hlsUrl/,
+    assert.match(youtubeApi, /Response\.json\(\{[\s\S]*?hlsUrl/,
       'Response must include hlsUrl field');
   });
 });

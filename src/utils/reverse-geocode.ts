@@ -50,8 +50,8 @@ export async function reverseGeocode(lat: number, lon: number): Promise<GeoResul
     const result: GeoResult = { country, code, displayName: data.display_name || country };
     cache.set(key, result);
     return result;
-  } catch (err) {
-    console.warn('[reverseGeocode] Failed:', err);
+  } catch (error) {
+    console.warn('[reverseGeocode] Failed:', error);
     cache.set(key, null);
     return null;
   }

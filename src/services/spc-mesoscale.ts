@@ -47,8 +47,8 @@ function stripHtml(html: string): string {
 }
 
 function extractText(xml: string, tag: string): string {
-  const cdataRe = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, 'i');
-  const plainRe = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
+  const cdataRe = new RegExp(String.raw`<${tag}[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/${tag}>`, 'i');
+  const plainRe = new RegExp(String.raw`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`, 'i');
   const cdataMatch = xml.match(cdataRe);
   if (cdataMatch) return (cdataMatch[1] ?? '').trim();
   const plainMatch = xml.match(plainRe);
@@ -114,11 +114,11 @@ function parseItems(xmlText: string): MesoscaleDiscussion[] {
     const pubDate = pubDateStr ? new Date(pubDateStr) : new Date();
     if (isNaN(pubDate.getTime()) || pubDate.getTime() < cutoff) continue;
 
-    const numMatch = title.match(/Mesoscale Discussion\s+(\d+)/i);
+    const numMatch = /Mesoscale Discussion\s+(\d+)/i.exec(title);
     if (!numMatch) continue;
-    const number = parseInt(numMatch[1] ?? '0', 10);
+    const number = Number.parseInt(numMatch[1] ?? '0', 10);
 
-    const watchIssued = /Watch/.test(title) && /Issued/.test(title);
+    const watchIssued = title.includes('Watch') && title.includes('Issued');
     const combinedText = title + ' ' + description;
     const pds =
       /Particularly Dangerous Situation/i.test(combinedText) ||
@@ -158,7 +158,7 @@ export async function fetchMesoscaleDiscussions(): Promise<MesoscaleDiscussion[]
 
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(SPC_RSS_URL)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return cache?.data ?? [];
 
     const xmlText = await res.text();
@@ -180,20 +180,30 @@ export async function fetchMesoscaleDiscussions(): Promise<MesoscaleDiscussion[]
 
 export function mdSeverityClass(severity: MesoscaleDiscussion['severity']): string {
   switch (severity) {
-    case 'critical': return 'eq-row eq-major';
-    case 'high': return 'eq-row eq-strong';
-    case 'medium': return 'eq-row eq-moderate';
-    case 'low': return 'eq-row';
+    case 'critical': { return 'eq-row eq-major';
+    }
+    case 'high': { return 'eq-row eq-strong';
+    }
+    case 'medium': { return 'eq-row eq-moderate';
+    }
+    case 'low': { return 'eq-row';
+    }
   }
 }
 
 export function mdTypeLabel(type: MdType): string {
   switch (type) {
-    case 'tornado': return 'Tornado Threat';
-    case 'severe-thunderstorm': return 'Severe Thunderstorm';
-    case 'fire-weather': return 'Fire Weather';
-    case 'flooding': return 'Flash Flooding';
-    case 'winter': return 'Winter Weather';
-    case 'general': return 'General Discussion';
+    case 'tornado': { return 'Tornado Threat';
+    }
+    case 'severe-thunderstorm': { return 'Severe Thunderstorm';
+    }
+    case 'fire-weather': { return 'Fire Weather';
+    }
+    case 'flooding': { return 'Flash Flooding';
+    }
+    case 'winter': { return 'Winter Weather';
+    }
+    case 'general': { return 'General Discussion';
+    }
   }
 }

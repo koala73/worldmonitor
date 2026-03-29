@@ -53,7 +53,7 @@ async function invokeDesktopAction(command: string, successLabel: string): Promi
 }
 
 function closeSettingsWindow(): void {
-  void tryInvokeTauri<void>('close_settings_window').then(() => { }, () => window.close());
+  void tryInvokeTauri<void>('close_settings_window').then(() => {}, () => window.close());
 }
 
 function getSidecarBase(): string {
@@ -110,20 +110,18 @@ function renderSidebar(): void {
   const items: string[] = [];
 
   const progress = getTotalProgress();
-  const overviewDotClass = progress.ready === progress.total ? 'dot-ok' : progress.ready > 0 ? 'dot-partial' : 'dot-warn';
+  const overviewDotClass = progress.ready === progress.total ? 'dot-ok' : (progress.ready > 0 ? 'dot-partial' : 'dot-warn');
   items.push(`
     <button class="settings-nav-item${activeSection === 'overview' ? ' active' : ''}" data-section="overview" role="tab" aria-selected="${activeSection === 'overview'}">
       ${SIDEBAR_ICONS.overview}
       <span class="settings-nav-label">Overview</span>
       <span class="settings-nav-dot ${overviewDotClass}"></span>
     </button>
-  `);
-
-  items.push('<div class="settings-nav-sep"></div>');
+  `, '<div class="settings-nav-sep"></div>');
 
   for (const cat of SETTINGS_CATEGORIES) {
     const { ready, total } = getFeatureStatusCounts(cat);
-    const dotClass = ready === total ? 'dot-ok' : ready > 0 ? 'dot-partial' : 'dot-warn';
+    const dotClass = ready === total ? 'dot-ok' : (ready > 0 ? 'dot-partial' : 'dot-warn');
     items.push(`
       <button class="settings-nav-item${activeSection === cat.id ? ' active' : ''}" data-section="${cat.id}" role="tab" aria-selected="${activeSection === cat.id}">
         ${SIDEBAR_ICONS[cat.id] || ''}
@@ -134,9 +132,7 @@ function renderSidebar(): void {
     `);
   }
 
-  items.push('<div class="settings-nav-sep"></div>');
-
-  items.push(`
+  items.push('<div class="settings-nav-sep"></div>', `
     <button class="settings-nav-item${activeSection === 'debug' ? ' active' : ''}" data-section="debug" role="tab" aria-selected="${activeSection === 'debug'}">
       ${SIDEBAR_ICONS.debug}
       <span class="settings-nav-label">Debug &amp; Logs</span>
@@ -183,11 +179,11 @@ function renderOverview(area: HTMLElement): void {
   const pct = total > 0 ? (ready / total) * 100 : 0;
   const circumference = 2 * Math.PI * 40;
   const dashOffset = circumference - (pct / 100) * circumference;
-  const ringColor = ready === total ? 'var(--settings-green)' : ready > 0 ? 'var(--settings-blue)' : 'var(--settings-yellow)';
+  const ringColor = ready === total ? 'var(--settings-green)' : (ready > 0 ? 'var(--settings-blue)' : 'var(--settings-yellow)');
 
   const catCards = SETTINGS_CATEGORIES.map(cat => {
     const { ready: catReady, total: catTotal } = getFeatureStatusCounts(cat);
-    const cls = catReady === catTotal ? 'ov-cat-ok' : catReady > 0 ? 'ov-cat-partial' : 'ov-cat-warn';
+    const cls = catReady === catTotal ? 'ov-cat-ok' : (catReady > 0 ? 'ov-cat-partial' : 'ov-cat-warn');
     return `<button class="settings-ov-cat ${cls}" data-section="${cat.id}">
       <span class="settings-ov-cat-label">${escapeHtml(cat.label)}</span>
       <span class="settings-ov-cat-count">${catReady}/${catTotal} ready</span>
@@ -238,9 +234,9 @@ function renderFeatureSection(area: HTMLElement, cat: SettingsCategory): void {
     const allStaged = !available && effectiveSecrets.every(
       k => getSecretState(k).valid || (settingsManager.hasPending(k) && settingsManager.getValidationState(k).validated !== false)
     );
-    const borderClass = available ? 'ready' : allStaged ? 'staged' : 'needs';
-    const pillClass = available ? 'ok' : allStaged ? 'staged' : 'warn';
-    const pillLabel = available ? 'Ready' : allStaged ? 'Staged' : 'Needs keys';
+    const borderClass = available ? 'ready' : (allStaged ? 'staged' : 'needs');
+    const pillClass = available ? 'ok' : (allStaged ? 'staged' : 'warn');
+    const pillLabel = available ? 'Ready' : (allStaged ? 'Staged' : 'Needs keys');
     const secretRows = effectiveSecrets.map(key => renderSecretInput(key, feature.id)).join('');
     const fallbackHtml = (available || allStaged) ? '' : `<p class="settings-feat-fallback">${escapeHtml(feature.fallback)}</p>`;
 
@@ -289,10 +285,10 @@ function renderSecretInput(key: RuntimeSecretKey, _featureId: RuntimeFeatureId):
 
   const statusText = pending
     ? (validated === false ? 'Invalid' : 'Staged')
-    : !state.present ? 'Missing' : state.valid ? 'Valid' : 'Looks invalid';
+    : state.present ? state.valid ? 'Valid' : 'Looks invalid' : 'Missing';
   const statusClass = pending
     ? (validated === false ? 'warn' : 'staged')
-    : state.valid ? 'ok' : 'warn';
+    : (state.valid ? 'ok' : 'warn');
   const inputClass = pending ? (validated === false ? 'invalid' : 'valid-staged') : '';
   const hintText = pending && validated === false ? (message || 'Invalid value') : null;
 
@@ -411,7 +407,7 @@ function initFeatureSectionListeners(area: HTMLElement): void {
         const hint = document.createElement('span');
         hint.className = 'settings-secret-hint';
         hint.textContent = result.hint;
-        row?.appendChild(hint);
+        row?.append(hint);
       }
 
       updateFeatureCardStatus(input.dataset.feature as RuntimeFeatureId);
@@ -473,19 +469,19 @@ function updateFeatureCardStatus(featureId: RuntimeFeatureId): void {
   );
 
   const wasExpanded = card.classList.contains('expanded');
-  card.className = `settings-feat ${available ? 'ready' : allStaged ? 'staged' : 'needs'}${wasExpanded ? ' expanded' : ''}`;
+  card.className = `settings-feat ${available ? 'ready' : (allStaged ? 'staged' : 'needs')}${wasExpanded ? ' expanded' : ''}`;
 
   const pill = card.querySelector('.settings-feat-pill');
   if (pill) {
-    pill.className = `settings-feat-pill ${available ? 'ok' : allStaged ? 'staged' : 'warn'}`;
-    pill.textContent = available ? 'Ready' : allStaged ? 'Staged' : 'Needs keys';
+    pill.className = `settings-feat-pill ${available ? 'ok' : (allStaged ? 'staged' : 'warn')}`;
+    pill.textContent = available ? 'Ready' : (allStaged ? 'Staged' : 'Needs keys');
   }
 }
 
 async function loadOllamaModelsIntoSelect(select: HTMLSelectElement): Promise<void> {
   const snapshot = getRuntimeConfigSnapshot();
   const ollamaUrl = settingsManager.getPending('OLLAMA_API_URL')
-    || snapshot.secrets['OLLAMA_API_URL']?.value
+    || snapshot.secrets.OLLAMA_API_URL?.value
     || '';
   if (!ollamaUrl) {
     select.innerHTML = '<option value="" disabled selected>Set Ollama URL first</option>';
@@ -493,7 +489,7 @@ async function loadOllamaModelsIntoSelect(select: HTMLSelectElement): Promise<vo
   }
 
   const currentModel = settingsManager.getPending('OLLAMA_MODEL')
-    || snapshot.secrets['OLLAMA_MODEL']?.value
+    || snapshot.secrets.OLLAMA_MODEL?.value
     || '';
 
   const models = await fetchOllamaModels(ollamaUrl);
@@ -612,7 +608,7 @@ function initDiagnostics(): void {
     try {
       const res = await diagFetch('/api/local-traffic-log');
       const data = await res.json();
-      const entries: Array<{ timestamp: string; method: string; path: string; status: number; durationMs: number }> = data.entries || [];
+      const entries: { timestamp: string; method: string; path: string; status: number; durationMs: number }[] = data.entries || [];
       if (trafficCount) trafficCount.textContent = `(${entries.length})`;
 
       if (entries.length === 0) {
@@ -620,9 +616,9 @@ function initDiagnostics(): void {
         return;
       }
 
-      const rows = entries.slice().reverse().map((e) => {
+      const rows = [...entries].reverse().map((e) => {
         const ts = e.timestamp.split('T')[1]?.replace('Z', '') || e.timestamp;
-        const cls = e.status < 300 ? 'ok' : e.status < 500 ? 'warn' : 'err';
+        const cls = e.status < 300 ? 'ok' : (e.status < 500 ? 'warn' : 'err');
         return `<tr class="diag-${cls}"><td>${escapeHtml(ts)}</td><td>${e.method}</td><td title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</td><td>${e.status}</td><td>${e.durationMs}ms</td></tr>`;
       }).join('');
 
@@ -667,7 +663,7 @@ function highlightMatch(text: string, query: string): string {
   const escaped = escapeHtml(text);
   const qEscaped = escapeHtml(query);
   if (!qEscaped) return escaped;
-  const regex = new RegExp(`(${qEscaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const regex = new RegExp(`(${qEscaped.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)})`, 'gi');
   return escaped.replace(regex, '<mark>$1</mark>');
 }
 
@@ -681,7 +677,7 @@ function handleSearch(query: string): void {
   }
 
   const q = query.toLowerCase();
-  const matches: Array<{ feature: RuntimeFeatureDefinition; catLabel: string }> = [];
+  const matches: { feature: RuntimeFeatureDefinition; catLabel: string }[] = [];
 
   for (const cat of SETTINGS_CATEGORIES) {
     for (const fid of cat.features) {
@@ -710,9 +706,9 @@ function handleSearch(query: string): void {
     const allStaged = !available && effectiveSecrets.every(
       k => getSecretState(k).valid || (settingsManager.hasPending(k) && settingsManager.getValidationState(k).validated !== false)
     );
-    const borderClass = available ? 'ready' : allStaged ? 'staged' : 'needs';
-    const pillClass = available ? 'ok' : allStaged ? 'staged' : 'warn';
-    const pillLabel = available ? 'Ready' : allStaged ? 'Staged' : 'Needs keys';
+    const borderClass = available ? 'ready' : (allStaged ? 'staged' : 'needs');
+    const pillClass = available ? 'ok' : (allStaged ? 'staged' : 'warn');
+    const pillLabel = available ? 'Ready' : (allStaged ? 'Staged' : 'Needs keys');
     const secretRows = effectiveSecrets.map(key => renderSecretInput(key, feature.id)).join('');
 
     return `
@@ -809,9 +805,9 @@ async function initSettingsWindow(): Promise<void> {
 
         setActionStatus(t('modals.settingsWindow.saved'), 'ok');
         closeSettingsWindow();
-      } catch (err) {
-        console.error('[settings] save error:', err);
-        setActionStatus(t('modals.settingsWindow.failed', { error: String(err) }), 'error');
+      } catch (error) {
+        console.error('[settings] save error:', error);
+        setActionStatus(t('modals.settingsWindow.failed', { error: String(error) }), 'error');
       }
     })();
   });

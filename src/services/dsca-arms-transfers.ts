@@ -58,7 +58,7 @@ const MAJOR_DEFENSE_SYSTEMS = /aircraft|f-16|f-35|f-15|c-130|ah-64|uh-60|m1a2|ab
 function extractSystems(text: string): string[] {
   const found: string[] = [];
   for (const sys of WEAPON_SYSTEMS) {
-    const re = new RegExp(sys.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const re = new RegExp(sys.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`), 'i');
     if (re.test(text)) found.push(sys);
   }
   return found;
@@ -66,29 +66,29 @@ function extractSystems(text: string): string[] {
 
 function extractRecipient(text: string): string {
   // "Government of [Country]"
-  const govMatch = text.match(/Government of ([A-Z][A-Za-z\s\-]+?)(?:\s+for|\s+to|\s*[,.(]|$)/);
+  const govMatch = /Government of ([A-Z][A-Za-z\s\-]+?)(?:\s+for|\s+to|\s*[,.(]|$)/.exec(text);
   if (govMatch?.[1]) return govMatch[1].trim();
 
   // "to [Country]"
-  const toMatch = text.match(/\bto\s+([A-Z][A-Za-z\s\-]+?)(?:\s+for|\s+a\s|\s+the\s|\s*[,.(]|$)/);
+  const toMatch = /\bto\s+([A-Z][A-Za-z\s\-]+?)(?:\s+for|\s+a\s|\s+the\s|\s*[,.(]|$)/.exec(text);
   if (toMatch?.[1]) return toMatch[1].trim();
 
   return 'Unknown';
 }
 
 function extractValue(text: string): string | null {
-  const m = text.match(/\$[\d,.]+\s*(?:million|billion)/i);
+  const m = /\$[\d,.]+\s*(?:million|billion)/i.exec(text);
   return m ? m[0] : null;
 }
 
 function extractTransmittal(text: string): string | null {
-  const m = text.match(/Transmittal\s+(?:No\.?\s*)?(\d{2}-\d+)/i);
+  const m = /Transmittal\s+(?:No\.?\s*)?(\d{2}-\d+)/i.exec(text);
   return m ? (m[1] ?? null) : null;
 }
 
 function detectCategory(text: string, systems: string[]): ArmsTransfer['category'] {
   const t = text.toLowerCase();
-  if (/training/.test(t) && !MAJOR_DEFENSE_SYSTEMS.test(t)) return 'training';
+  if (t.includes('training') && !MAJOR_DEFENSE_SYSTEMS.test(t)) return 'training';
   if (/spare parts|logistics|maintenance|support/.test(t) && !MAJOR_DEFENSE_SYSTEMS.test(t)) return 'logistics';
   if (/letter of offer|commercial/.test(t) && !MAJOR_DEFENSE_SYSTEMS.test(t)) return 'commercial';
   if (systems.length > 0 || MAJOR_DEFENSE_SYSTEMS.test(t)) return 'major-defense';
@@ -102,12 +102,12 @@ function detectSeverity(
   if (category !== 'major-defense') return 'low';
 
   if (valueEstimate) {
-    const billions = valueEstimate.match(/\$([\d,.]+)\s*billion/i);
+    const billions = /\$([\d,.]+)\s*billion/i.exec(valueEstimate);
     if (billions) return 'critical';
 
-    const millions = valueEstimate.match(/\$([\d,.]+)\s*million/i);
+    const millions = /\$([\d,.]+)\s*million/i.exec(valueEstimate);
     if (millions) {
-      const amount = parseFloat((millions[1] ?? '0').replace(/,/g, ''));
+      const amount = Number.parseFloat((millions[1] ?? '0').replace(/,/g, ''));
       if (amount >= 100) return 'high';
     }
   }
@@ -166,7 +166,7 @@ function parseDscaRss(xmlText: string): ArmsTransfer[] {
   const doc    = parser.parseFromString(xmlText, 'text/xml');
   if (doc.querySelector('parsererror')) return [];
 
-  const items  = Array.from(doc.querySelectorAll('item'));
+  const items  = [...doc.querySelectorAll('item')];
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
   return items.flatMap((item): ArmsTransfer[] => {
@@ -210,7 +210,7 @@ export async function fetchArmsTransfers(): Promise<ArmsTransfer[]> {
 
   const [frResult, dscaResult] = await Promise.allSettled([
     fetch(FEDERAL_REGISTER_URL, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/json' },
     }).then(res => {
       if (!res.ok) return [] as ArmsTransfer[];
@@ -219,7 +219,7 @@ export async function fetchArmsTransfers(): Promise<ArmsTransfer[]> {
       );
     }),
     fetch(proxyFeedUrl(DSCA_RSS_URL), {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
     }).then(res => {
       if (!res.ok) return [] as ArmsTransfer[];
@@ -250,9 +250,13 @@ export async function fetchArmsTransfers(): Promise<ArmsTransfer[]> {
 
 export function armsTransferSeverityClass(severity: ArmsTransfer['severity']): string {
   switch (severity) {
-    case 'critical': return 'text-red-500';
-    case 'high':     return 'text-orange-500';
-    case 'medium':   return 'text-yellow-500';
-    default:         return 'text-gray-400';
+    case 'critical': { return 'text-red-500';
+    }
+    case 'high': {     return 'text-orange-500';
+    }
+    case 'medium': {   return 'text-yellow-500';
+    }
+    default: {         return 'text-gray-400';
+    }
   }
 }

@@ -445,13 +445,13 @@ export const KNOWN_NAVAL_VESSELS: KnownNavalVessel[] = [
 // Names kept short for map cluster labels
 export const MILITARY_HOTSPOTS = [
   // East Asia: Taiwan + SCS + Korea + Japan Sea (combined)
-  { name: 'INDO-PACIFIC', lat: 28.0, lon: 125.0, radius: 18, priority: 'high' },
+  { name: 'INDO-PACIFIC', lat: 28, lon: 125, radius: 18, priority: 'high' },
   // Middle East: Persian Gulf + Aden + Mediterranean (combined)
-  { name: 'CENTCOM', lat: 28.0, lon: 42.0, radius: 15, priority: 'high' },
+  { name: 'CENTCOM', lat: 28, lon: 42, radius: 15, priority: 'high' },
   // Europe: Black Sea + Baltic (combined)
-  { name: 'EUCOM', lat: 52.0, lon: 28.0, radius: 15, priority: 'medium' },
+  { name: 'EUCOM', lat: 52, lon: 28, radius: 15, priority: 'medium' },
   // Keep Arctic separate (large but low activity)
-  { name: 'ARCTIC', lat: 75.0, lon: 0.0, radius: 10, priority: 'low' },
+  { name: 'ARCTIC', lat: 75, lon: 0, radius: 10, priority: 'low' },
 ] as const;
 
 export interface QueryRegion {
@@ -479,34 +479,34 @@ if (import.meta.env.DEV) {
 
 export const USNI_REGION_COORDINATES: Record<string, { lat: number; lon: number }> = {
   // Seas & Oceans
-  'Philippine Sea': { lat: 18.0, lon: 130.0 },
-  'South China Sea': { lat: 14.0, lon: 115.0 },
-  'East China Sea': { lat: 28.0, lon: 125.0 },
-  'Sea of Japan': { lat: 40.0, lon: 135.0 },
-  'Arabian Sea': { lat: 18.0, lon: 63.0 },
-  'Red Sea': { lat: 20.0, lon: 38.0 },
-  'Mediterranean Sea': { lat: 35.0, lon: 18.0 },
-  'Eastern Mediterranean': { lat: 34.5, lon: 33.0 },
-  'Western Mediterranean': { lat: 37.0, lon: 3.0 },
-  'Persian Gulf': { lat: 26.5, lon: 52.0 },
+  'Philippine Sea': { lat: 18, lon: 130 },
+  'South China Sea': { lat: 14, lon: 115 },
+  'East China Sea': { lat: 28, lon: 125 },
+  'Sea of Japan': { lat: 40, lon: 135 },
+  'Arabian Sea': { lat: 18, lon: 63 },
+  'Red Sea': { lat: 20, lon: 38 },
+  'Mediterranean Sea': { lat: 35, lon: 18 },
+  'Eastern Mediterranean': { lat: 34.5, lon: 33 },
+  'Western Mediterranean': { lat: 37, lon: 3 },
+  'Persian Gulf': { lat: 26.5, lon: 52 },
   'Gulf of Oman': { lat: 24.5, lon: 58.5 },
-  'Gulf of Aden': { lat: 12.0, lon: 47.0 },
-  'Caribbean Sea': { lat: 15.0, lon: -73.0 },
-  'North Atlantic': { lat: 45.0, lon: -30.0 },
-  'Atlantic Ocean': { lat: 30.0, lon: -40.0 },
-  'Western Atlantic': { lat: 30.0, lon: -60.0 },
-  'Pacific Ocean': { lat: 20.0, lon: -150.0 },
-  'Eastern Pacific': { lat: 18.0, lon: -125.0 },
-  'Western Pacific': { lat: 20.0, lon: 140.0 },
-  'Indian Ocean': { lat: -5.0, lon: 75.0 },
-  'Antarctic': { lat: -70.0, lon: 20.0 },
-  'Baltic Sea': { lat: 58.0, lon: 20.0 },
-  'Black Sea': { lat: 43.5, lon: 34.0 },
-  'Bay of Bengal': { lat: 14.0, lon: 87.0 },
+  'Gulf of Aden': { lat: 12, lon: 47 },
+  'Caribbean Sea': { lat: 15, lon: -73 },
+  'North Atlantic': { lat: 45, lon: -30 },
+  'Atlantic Ocean': { lat: 30, lon: -40 },
+  'Western Atlantic': { lat: 30, lon: -60 },
+  'Pacific Ocean': { lat: 20, lon: -150 },
+  'Eastern Pacific': { lat: 18, lon: -125 },
+  'Western Pacific': { lat: 20, lon: 140 },
+  'Indian Ocean': { lat: -5, lon: 75 },
+  'Antarctic': { lat: -70, lon: 20 },
+  'Baltic Sea': { lat: 58, lon: 20 },
+  'Black Sea': { lat: 43.5, lon: 34 },
+  'Bay of Bengal': { lat: 14, lon: 87 },
   'Bab el-Mandeb Strait': { lat: 12.5, lon: 43.5 },
   'Strait of Hormuz': { lat: 26.5, lon: 56.5 },
   'Taiwan Strait': { lat: 24.5, lon: 119.5 },
-  'Suez Canal': { lat: 30.0, lon: 32.5 },
+  'Suez Canal': { lat: 30, lon: 32.5 },
   // Ports & Bases
   'Yokosuka': { lat: 35.29, lon: 139.67 },
   'Japan': { lat: 35.29, lon: 139.67 },
@@ -514,8 +514,8 @@ export const USNI_REGION_COORDINATES: Record<string, { lat: number; lon: number 
   'Guam': { lat: 13.45, lon: 144.79 },
   'Pearl Harbor': { lat: 21.35, lon: -157.95 },
   'San Diego': { lat: 32.68, lon: -117.15 },
-  'Norfolk': { lat: 36.95, lon: -76.30 },
-  'Mayport': { lat: 30.39, lon: -81.40 },
+  'Norfolk': { lat: 36.95, lon: -76.3 },
+  'Mayport': { lat: 30.39, lon: -81.4 },
   'Bahrain': { lat: 26.23, lon: 50.55 },
   'Rota': { lat: 36.63, lon: -6.35 },
   'Rota Spain': { lat: 36.63, lon: -6.35 },
@@ -524,7 +524,7 @@ export const USNI_REGION_COORDINATES: Record<string, { lat: number; lon: number 
   'Naples': { lat: 40.84, lon: 14.25 },
   'Bremerton': { lat: 47.57, lon: -122.63 },
   'Everett': { lat: 47.97, lon: -122.22 },
-  'Kings Bay': { lat: 30.80, lon: -81.56 },
+  'Kings Bay': { lat: 30.8, lon: -81.56 },
   'Bangor': { lat: 47.73, lon: -122.71 },
   'Djibouti': { lat: 11.55, lon: 43.15 },
   'Singapore': { lat: 1.35, lon: 103.82 },
@@ -554,20 +554,20 @@ export function getUSNIRegionApproxCoords(regionText: string): { lat: number; lo
   if (direct) return direct;
 
   const normalized = normalizeUSNIRegion(regionText).toLowerCase();
-  if (normalized.includes('eastern pacific')) return { lat: 18.0, lon: -125.0 };
-  if (normalized.includes('western atlantic')) return { lat: 30.0, lon: -60.0 };
-  if (normalized.includes('pacific')) return { lat: 15.0, lon: -150.0 };
-  if (normalized.includes('atlantic')) return { lat: 30.0, lon: -40.0 };
-  if (normalized.includes('indian')) return { lat: -5.0, lon: 75.0 };
-  if (normalized.includes('mediterranean')) return { lat: 35.0, lon: 18.0 };
-  if (normalized.includes('antarctic') || normalized.includes('southern')) return { lat: -70.0, lon: 20.0 };
-  if (normalized.includes('arctic')) return { lat: 75.0, lon: 0.0 };
+  if (normalized.includes('eastern pacific')) return { lat: 18, lon: -125 };
+  if (normalized.includes('western atlantic')) return { lat: 30, lon: -60 };
+  if (normalized.includes('pacific')) return { lat: 15, lon: -150 };
+  if (normalized.includes('atlantic')) return { lat: 30, lon: -40 };
+  if (normalized.includes('indian')) return { lat: -5, lon: 75 };
+  if (normalized.includes('mediterranean')) return { lat: 35, lon: 18 };
+  if (normalized.includes('antarctic') || normalized.includes('southern')) return { lat: -70, lon: 20 };
+  if (normalized.includes('arctic')) return { lat: 75, lon: 0 };
 
   // Deterministic fallback so previously unseen regions are still rendered.
   let hash = 0;
   for (let i = 0; i < normalized.length; i++) {
     hash = ((hash << 5) - hash) + normalized.charCodeAt(i);
-    hash |= 0;
+    hash = Math.trunc(hash);
   }
   const lat = ((Math.abs(hash) % 120) - 60);
   const lon = ((Math.abs(hash * 31) % 300) - 150);

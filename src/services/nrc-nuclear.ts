@@ -49,12 +49,18 @@ function scoreEventType(title: string, desc: string): NrcEvent['eventType'] {
 
 function scoreSeverity(eventType: NrcEvent['eventType']): NrcEvent['severity'] {
   switch (eventType) {
-    case 'general-emergency': return 'critical';
-    case 'site-area-emergency': return 'critical';
-    case 'emergency': return 'high';
-    case 'alert': return 'high';
-    case 'unusual-event': return 'medium';
-    default: return 'low';
+    case 'general-emergency': { return 'critical';
+    }
+    case 'site-area-emergency': { return 'critical';
+    }
+    case 'emergency': { return 'high';
+    }
+    case 'alert': { return 'high';
+    }
+    case 'unusual-event': { return 'medium';
+    }
+    default: { return 'low';
+    }
   }
 }
 
@@ -62,7 +68,7 @@ export async function fetchNrcEvents(): Promise<NrcEvent[]> {
   if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) return cache.events;
 
   try {
-    const res = await fetch(rssProxyUrl(NRC_RSS), { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(rssProxyUrl(NRC_RSS), { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return cache?.events ?? [];
 
     const text = await res.text();
@@ -73,7 +79,7 @@ export async function fetchNrcEvents(): Promise<NrcEvent[]> {
     const items = doc.querySelectorAll('item');
     const events: NrcEvent[] = [];
 
-    for (const item of Array.from(items)) {
+    for (const item of items) {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const link = item.querySelector('link')?.textContent?.trim() ?? '';
       const description = item.querySelector('description')?.textContent?.trim() ?? '';

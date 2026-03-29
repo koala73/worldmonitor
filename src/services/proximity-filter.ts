@@ -117,7 +117,7 @@ export async function getCurrentGpsLocation(): Promise<UserLocation> {
         });
       },
       err => reject(err),
-      { timeout: 10000, maximumAge: 300_000 }
+      { timeout: 10_000, maximumAge: 300_000 }
     );
   });
 }

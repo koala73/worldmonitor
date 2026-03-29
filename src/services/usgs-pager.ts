@@ -44,7 +44,7 @@ interface UsgsFeature {
     tsunami: number;
     sig: number;
     products?: {
-      losspager?: Array<{
+      losspager?: {
         contents: {
           'alertecon.txt'?: { url: string };
           'alertfatal.txt'?: { url: string };
@@ -55,7 +55,7 @@ interface UsgsFeature {
           impact1?: string;  // economic impact description
           impact2?: string;  // population impact description
         };
-      }>;
+      }[];
     };
   };
 }
@@ -70,19 +70,27 @@ let cache: { events: PagerEvent[]; fetchedAt: number } | null = null;
 
 function alertLevelToSeverity(level: PagerAlertLevel): PagerEvent['severity'] {
   switch (level) {
-    case 'red': return 'critical';
-    case 'orange': return 'high';
-    case 'yellow': return 'medium';
-    default: return 'low';
+    case 'red': { return 'critical';
+    }
+    case 'orange': { return 'high';
+    }
+    case 'yellow': { return 'medium';
+    }
+    default: { return 'low';
+    }
   }
 }
 
 function alertLevelLabel(level: PagerAlertLevel): { fatalities: string; losses: string } {
   switch (level) {
-    case 'red': return { fatalities: '1,000+', losses: '>$1B' };
-    case 'orange': return { fatalities: '100–999', losses: '$100M–$1B' };
-    case 'yellow': return { fatalities: '1–99', losses: '$1M–$100M' };
-    default: return { fatalities: '< 1', losses: '< $1M' };
+    case 'red': { return { fatalities: '1,000+', losses: '>$1B' };
+    }
+    case 'orange': { return { fatalities: '100–999', losses: '$100M–$1B' };
+    }
+    case 'yellow': { return { fatalities: '1–99', losses: '$1M–$100M' };
+    }
+    default: { return { fatalities: '< 1', losses: '< $1M' };
+    }
   }
 }
 
@@ -91,7 +99,7 @@ export async function fetchPagerEvents(): Promise<PagerEvent[]> {
 
   try {
     const res = await fetch(PAGER_FEED, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return cache?.events ?? [];

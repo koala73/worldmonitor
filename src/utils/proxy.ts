@@ -4,13 +4,13 @@ import { getPersistentCache, setPersistentCache } from '../services/persistent-c
 const isDev = import.meta.env.DEV;
 const RESPONSE_CACHE_PREFIX = 'api-response:';
 
-type CachedResponsePayload = {
+interface CachedResponsePayload {
   url: string;
   status: number;
   statusText: string;
   headers: Record<string, string>;
   body: string;
-};
+}
 
 // In production browser deployments, routes are handled by Vercel serverless functions.
 // In local dev, Vite proxy handles these routes.

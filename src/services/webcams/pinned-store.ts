@@ -40,15 +40,15 @@ function showToast(msg: string): void {
   const el = document.createElement('div');
   el.className = 'wm-toast';
   el.textContent = msg;
-  document.body.appendChild(el);
+  document.body.append(el);
   setTimeout(() => el.remove(), 3000);
 }
 
 function save(webcams: PinnedWebcam[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(webcams));
-  } catch (err) {
-    console.warn('[pinned-webcams] localStorage save failed:', err);
+  } catch (error) {
+    console.warn('[pinned-webcams] localStorage save failed:', error);
     showToast('Could not save pinned webcams — storage full');
   }
   _cachedList = null;
@@ -91,7 +91,9 @@ export function toggleWebcam(webcamId: string): void {
   const list = load();
   const target = list.find(w => w.webcamId === webcamId);
   if (!target) return;
-  if (!target.active) {
+  if (target.active) {
+    target.active = false;
+  } else {
     const activeList = list
       .filter(w => w.active)
       .sort((a, b) => a.pinnedAt - b.pinnedAt);
@@ -99,8 +101,6 @@ export function toggleWebcam(webcamId: string): void {
       activeList[0].active = false;
     }
     target.active = true;
-  } else {
-    target.active = false;
   }
   save(list);
 }

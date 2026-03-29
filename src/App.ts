@@ -86,17 +86,7 @@ export class App {
     const storedVariant = localStorage.getItem('worldmonitor-variant');
     const currentVariant = SITE_VARIANT;
     console.log(`[App] Variant check: stored="${storedVariant}", current="${currentVariant}"`);
-    if (storedVariant !== currentVariant) {
-      // Variant changed - use defaults for new variant, clear old settings
-      console.log('[App] Variant changed - resetting to defaults');
-      localStorage.setItem('worldmonitor-variant', currentVariant);
-      localStorage.removeItem(STORAGE_KEYS.mapLayers);
-      localStorage.removeItem(STORAGE_KEYS.panels);
-      localStorage.removeItem(PANEL_ORDER_KEY);
-      localStorage.removeItem(PANEL_SPANS_KEY);
-      mapLayers = { ...defaultLayers };
-      panelSettings = { ...DEFAULT_PANELS };
-    } else {
+    if (storedVariant === currentVariant) {
       mapLayers = loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, defaultLayers);
       // Happy variant: force non-happy layers off even if localStorage has stale true values
       if (currentVariant === 'happy') {
@@ -125,9 +115,8 @@ export class App {
             const priorityPanels = ['insights', 'strategic-posture', 'cii', 'strategic-risk'];
             const filtered = order.filter(k => !priorityPanels.includes(k) && k !== 'live-news');
             const liveNewsIdx = order.indexOf('live-news');
-            const newOrder = liveNewsIdx !== -1 ? ['live-news'] : [];
-            newOrder.push(...priorityPanels.filter(p => order.includes(p)));
-            newOrder.push(...filtered);
+            const newOrder = liveNewsIdx === -1 ? [] : ['live-news'];
+            newOrder.push(...priorityPanels.filter(p => order.includes(p)), ...filtered);
             localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(newOrder));
             console.log('[App] Migrated panel order to v1.8 layout');
           } catch {
@@ -157,6 +146,16 @@ export class App {
         }
         localStorage.setItem(AI_OVERVIEW_MIGRATION_KEY, 'done');
       }
+    } else {
+      // Variant changed - use defaults for new variant, clear old settings
+      console.log('[App] Variant changed - resetting to defaults');
+      localStorage.setItem('worldmonitor-variant', currentVariant);
+      localStorage.removeItem(STORAGE_KEYS.mapLayers);
+      localStorage.removeItem(STORAGE_KEYS.panels);
+      localStorage.removeItem(PANEL_ORDER_KEY);
+      localStorage.removeItem(PANEL_SPANS_KEY);
+      mapLayers = { ...defaultLayers };
+      panelSettings = { ...DEFAULT_PANELS };
     }
 
     // One-time migration: clear stale panel ordering and sizing state
@@ -183,7 +182,7 @@ export class App {
       localStorage.setItem(RUNTIME_CONFIG_MIGRATION_KEY, 'done');
     }
 
-    let initialUrlState: ParsedMapUrlState | null = parseMapUrlState(window.location.search, mapLayers);
+    const initialUrlState: ParsedMapUrlState | null = parseMapUrlState(window.location.search, mapLayers);
     if (initialUrlState.layers) {
       if (currentVariant === 'tech') {
         const geoLayers: (keyof MapLayers)[] = ['conflicts', 'bases', 'hotspots', 'nuclear', 'irradiators', 'sanctions', 'military', 'protests', 'pipelines', 'waterways', 'ais', 'flights', 'spaceports', 'minerals'];
@@ -416,7 +415,7 @@ export class App {
     // Phase 7: Refresh scheduling
     this.setupRefreshIntervals();
     this.eventHandlers.setupSnapshotSaving();
-    cleanOldSnapshots().catch((e) => console.warn('[Storage] Snapshot cleanup failed:', e));
+    cleanOldSnapshots().catch((error) => console.warn('[Storage] Snapshot cleanup failed:', error));
 
     // Phase 8: Deep links + update checks
     this.handleDeepLinks();
@@ -552,9 +551,9 @@ export class App {
     );
     this.refreshScheduler.scheduleRefresh(
       'stablecoins',
-      () => (this.state.panels['stablecoins'] as StablecoinPanel).fetchData(),
+      () => (this.state.panels.stablecoins as StablecoinPanel).fetchData(),
       3 * 60_000,
-      () => !!this.state.panels['stablecoins']
+      () => !!this.state.panels.stablecoins
     );
     this.refreshScheduler.scheduleRefresh(
       'etf-flows',

@@ -584,13 +584,13 @@ test('preserves Origin in Vary when gzip compression is applied', async () => {
     assert.equal(response.headers.get('access-control-allow-origin'), 'https://tauri.localhost');
     assert.equal(response.headers.get('content-encoding'), 'gzip');
 
-    const vary = (response.headers.get('vary') || '')
+    const vary = new Set((response.headers.get('vary') || '')
       .split(',')
       .map((part) => part.trim().toLowerCase())
-      .filter(Boolean);
+      .filter(Boolean));
 
-    assert.equal(vary.includes('origin'), true);
-    assert.equal(vary.includes('accept-encoding'), true);
+    assert.equal(vary.has('origin'), true);
+    assert.equal(vary.has('accept-encoding'), true);
   } finally {
     await app.close();
     await localApi.cleanup();
@@ -1148,10 +1148,10 @@ test('auth-required behavior unchanged — rejects unauthenticated requests when
     });
     assert.equal(authedResponse.status, 200);
   } finally {
-    if (originalToken !== undefined) {
-      process.env.LOCAL_API_TOKEN = originalToken;
-    } else {
+    if (originalToken === undefined) {
       delete process.env.LOCAL_API_TOKEN;
+    } else {
+      process.env.LOCAL_API_TOKEN = originalToken;
     }
     delete process.env.OLLAMA_API_URL;
     await app.close();
@@ -1268,10 +1268,10 @@ test('rejects unauthenticated requests to /api/local-status when token is set', 
     });
     assert.equal(authed.status, 200);
   } finally {
-    if (originalToken !== undefined) {
-      process.env.LOCAL_API_TOKEN = originalToken;
-    } else {
+    if (originalToken === undefined) {
       delete process.env.LOCAL_API_TOKEN;
+    } else {
+      process.env.LOCAL_API_TOKEN = originalToken;
     }
     await app.close();
     await localApi.cleanup();
@@ -1294,10 +1294,10 @@ test('rejects unauthenticated requests to /api/local-traffic-log when token is s
     const response = await fetch(`http://127.0.0.1:${port}/api/local-traffic-log`);
     assert.equal(response.status, 401);
   } finally {
-    if (originalToken !== undefined) {
-      process.env.LOCAL_API_TOKEN = originalToken;
-    } else {
+    if (originalToken === undefined) {
       delete process.env.LOCAL_API_TOKEN;
+    } else {
+      process.env.LOCAL_API_TOKEN = originalToken;
     }
     await app.close();
     await localApi.cleanup();
@@ -1320,10 +1320,10 @@ test('rejects unauthenticated requests to /api/local-debug-toggle when token is 
     const response = await fetch(`http://127.0.0.1:${port}/api/local-debug-toggle`);
     assert.equal(response.status, 401);
   } finally {
-    if (originalToken !== undefined) {
-      process.env.LOCAL_API_TOKEN = originalToken;
-    } else {
+    if (originalToken === undefined) {
       delete process.env.LOCAL_API_TOKEN;
+    } else {
+      process.env.LOCAL_API_TOKEN = originalToken;
     }
     await app.close();
     await localApi.cleanup();
@@ -1346,10 +1346,10 @@ test('rejects unauthenticated requests to /api/rss-proxy when token is set', asy
     const response = await fetch(`http://127.0.0.1:${port}/api/rss-proxy?url=https://example.com/rss`);
     assert.equal(response.status, 401);
   } finally {
-    if (originalToken !== undefined) {
-      process.env.LOCAL_API_TOKEN = originalToken;
-    } else {
+    if (originalToken === undefined) {
       delete process.env.LOCAL_API_TOKEN;
+    } else {
+      process.env.LOCAL_API_TOKEN = originalToken;
     }
     await app.close();
     await localApi.cleanup();
@@ -1374,10 +1374,10 @@ test('allows unauthenticated requests to /api/service-status (health check exemp
     const body = await response.json();
     assert.equal(body.success, true);
   } finally {
-    if (originalToken !== undefined) {
-      process.env.LOCAL_API_TOKEN = originalToken;
-    } else {
+    if (originalToken === undefined) {
       delete process.env.LOCAL_API_TOKEN;
+    } else {
+      process.env.LOCAL_API_TOKEN = originalToken;
     }
     await app.close();
     await localApi.cleanup();

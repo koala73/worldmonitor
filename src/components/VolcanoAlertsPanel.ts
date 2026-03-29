@@ -34,7 +34,7 @@ export class VolcanoAlertsPanel extends Panel {
       return;
     }
 
-    const sorted = this.alerts.slice().sort((a, b) => {
+    const sorted = [...this.alerts].sort((a, b) => {
       const order = { Warning: 3, Watch: 2, Advisory: 1, Normal: 0 };
       return (order[b.alertLevel] ?? 0) - (order[a.alertLevel] ?? 0);
     });
@@ -75,8 +75,8 @@ export class VolcanoAlertsPanel extends Panel {
     el.addEventListener('click', (e) => {
       const row = (e.target as Element).closest('tr[data-lat]') as HTMLElement | null;
       if (!row) return;
-      const lat = parseFloat(row.dataset['lat'] ?? '0');
-      const lon = parseFloat(row.dataset['lon'] ?? '0');
+      const lat = Number.parseFloat(row.dataset.lat ?? '0');
+      const lon = Number.parseFloat(row.dataset.lon ?? '0');
       if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && this.onEventClick) this.onEventClick(lat, lon);
     });
   }

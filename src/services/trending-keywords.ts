@@ -67,7 +67,7 @@ const ROLLING_WINDOW_MS = 2 * HOUR_MS;
 const BASELINE_WINDOW_MS = 7 * DAY_MS;
 const BASELINE_REFRESH_MS = HOUR_MS;
 const SPIKE_COOLDOWN_MS = 30 * 60 * 1000;
-const MAX_TRACKED_TERMS = 10000;
+const MAX_TRACKED_TERMS = 10_000;
 const MAX_AUTO_SUMMARIES_PER_HOUR = 5;
 const MIN_TOKEN_LENGTH = 3;
 const MIN_SPIKE_SOURCE_COUNT = 2;
@@ -94,7 +94,7 @@ const LEADER_NAMES = [
 ];
 const LEADER_PATTERNS = LEADER_NAMES.map(name => ({
   name,
-  pattern: new RegExp(`\\b${escapeRegex(name)}\\b`, 'i'),
+  pattern: new RegExp(String.raw`\b${escapeRegex(name)}\b`, 'i'),
 }));
 
 const termFrequency = new Map<string, TermRecord>();
@@ -118,17 +118,15 @@ function asDisplayTerm(term: string): string {
 }
 
 function isStorageAvailable(): boolean {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+  return typeof window !== 'undefined' && window.localStorage !== undefined;
 }
 
 function uniqueBlockedTerms(terms: string[]): string[] {
-  return Array.from(
-    new Set(
+  return [...new Set(
       terms
         .map(term => toTermKey(term))
         .filter(term => term.length > 0)
-    )
-  );
+    )];
 }
 
 function sanitizeConfig(config: Partial<TrendingConfig> | null | undefined): TrendingConfig {
@@ -170,7 +168,7 @@ function persistConfig(config: TrendingConfig): void {
 
 function getBlockedTermSet(config: TrendingConfig): Set<string> {
   return new Set([
-    ...Array.from(SUPPRESSED_TRENDING_TERMS).map(term => toTermKey(term)),
+    ...[...SUPPRESSED_TRENDING_TERMS].map(term => toTermKey(term)),
     ...config.blockedTerms.map(term => toTermKey(term)),
   ]);
 }
@@ -232,7 +230,7 @@ function dedupeEntityTerms(entities: string[]): string[] {
     if (!key || deduped.has(key)) continue;
     deduped.set(key, entity);
   }
-  return Array.from(deduped.values());
+  return [...deduped.values()];
 }
 
 async function extractMLEntitiesForTexts(texts: string[]): Promise<string[][]> {
@@ -298,7 +296,7 @@ function pruneOldState(now: number): void {
 
   if (termFrequency.size <= MAX_TRACKED_TERMS) return;
 
-  const ordered = Array.from(termFrequency.entries())
+  const ordered = [...termFrequency.entries()]
     .map(([term, record]) => ({ term, latest: record.timestamps[record.timestamps.length - 1] ?? 0 }))
     .sort((a, b) => a.latest - b.latest);
 
@@ -454,7 +452,7 @@ function isLikelyProperNoun(term: string, headlines: StoredHeadline[]): boolean 
   if (/^\d/.test(term)) return true;
 
   const titles = headlines.slice(0, 8).map(h => h.title);
-  const termRe = new RegExp(`\\b${escapeRegex(term)}\\b`, 'gi');
+  const termRe = new RegExp(String.raw`\b${escapeRegex(term)}\b`, 'gi');
   let capitalizedCount = 0;
   let midSentenceCount = 0;
   for (const title of titles) {
@@ -467,7 +465,7 @@ function isLikelyProperNoun(term: string, headlines: StoredHeadline[]): boolean 
   }
   if (midSentenceCount === 0) {
     return titles.some(t => {
-      const allCaps = t.match(new RegExp(`\\b${escapeRegex(term)}\\b`, 'gi'));
+      const allCaps = t.match(new RegExp(String.raw`\b${escapeRegex(term)}\b`, 'gi'));
       return allCaps?.some(match => match === match.toUpperCase() && match.length >= 2);
     });
   }
@@ -535,7 +533,7 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
       }
     }
 
-    const priorityBoost = spike.multiplier >= 5 ? 0.9 : spike.multiplier >= 3 ? 0.75 : 0.6;
+    const priorityBoost = spike.multiplier >= 5 ? 0.9 : (spike.multiplier >= 3 ? 0.75 : 0.6);
     const confidence = spike.baseline > 0
       ? Math.min(0.95, priorityBoost)
       : Math.min(0.8, 0.45 + spike.count / 20);
@@ -574,8 +572,8 @@ async function enrichWithMLEntities(headlines: PendingMLEnrichmentHeadline[], in
     const blockedTerms = getBlockedTermSet(config);
 
     let addedAny = false;
-    for (let i = 0; i < headlines.length; i += 1) {
-      const pending = headlines[i]!;
+    for (const [i, headline] of headlines.entries()) {
+      const pending = headline!;
       const mlEntities = mlEntitiesByText[i] ?? [];
       if (mlEntities.length === 0) continue;
 
@@ -644,7 +642,7 @@ export function ingestHeadlines(headlines: TrendingHeadlineInput[]): void {
 
 export function drainTrendingSignals(): CorrelationSignal[] {
   if (pendingSignals.length === 0) return [];
-  return pendingSignals.splice(0, pendingSignals.length);
+  return pendingSignals.splice(0);
 }
 
 export function getTrendingConfig(): TrendingConfig {
@@ -665,7 +663,7 @@ export function suppressTrendingTerm(term: string): TrendingConfig {
   const config = readConfig();
   const blocked = new Set(config.blockedTerms);
   blocked.add(toTermKey(term));
-  return updateTrendingConfig({ blockedTerms: Array.from(blocked) });
+  return updateTrendingConfig({ blockedTerms: [...blocked] });
 }
 
 export function unsuppressTrendingTerm(term: string): TrendingConfig {

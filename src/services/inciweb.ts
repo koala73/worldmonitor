@@ -66,7 +66,7 @@ function extractNumber(text: string, patterns: RegExp[]): number | null {
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match?.[1]) {
-      const num = parseFloat(match[1].replace(/,/g, ''));
+      const num = Number.parseFloat(match[1].replace(/,/g, ''));
       if (!isNaN(num)) return num;
     }
   }
@@ -81,12 +81,12 @@ function scoreSeverity(
   if (hasEvacOrders) return 'critical';
   if (acres !== null && acres > 100_000 && (contained === null || contained < 50)) return 'critical';
   if (acres !== null && acres > 10_000 && (contained === null || contained < 30)) return 'high';
-  if (acres !== null && acres > 1_000) return 'medium';
+  if (acres !== null && acres > 1000) return 'medium';
   return 'low';
 }
 
 function extractState(text: string): string {
-  const match = text.match(/\b([A-Z]{2})\b(?=\s*,|\s*$)|(?:in|near|,)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
+  const match = /\b([A-Z]{2})\b(?=\s*,|\s*$)|(?:in|near|,)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/.exec(text);
   if (match?.[1]) return match[1];
   return '';
 }
@@ -128,8 +128,8 @@ function parseIncidentItem(item: Element, index: number): IncidentReport {
   const evacuationWarnings = /evacuation warning/i.test(fullText);
 
   // Extract coordinates from description if present (some RSS items include them)
-  const latMatch = fullText.match(/lat(?:itude)?[:\s]+(-?\d+\.\d+)/i);
-  const lonMatch = fullText.match(/lon(?:g(?:itude)?)?[:\s]+(-?\d+\.\d+)/i);
+  const latMatch = /lat(?:itude)?[:\s]+(-?\d+\.\d+)/i.exec(fullText);
+  const lonMatch = /lon(?:g(?:itude)?)?[:\s]+(-?\d+\.\d+)/i.exec(fullText);
 
   const updatedAt = pubDateStr ? new Date(pubDateStr) : new Date();
 
@@ -149,8 +149,8 @@ function parseIncidentItem(item: Element, index: number): IncidentReport {
     discoveryDate: null,
     updatedAt,
     url: link,
-    lat: latMatch?.[1] ? parseFloat(latMatch[1]) : null,
-    lon: lonMatch?.[1] ? parseFloat(lonMatch[1]) : null,
+    lat: latMatch?.[1] ? Number.parseFloat(latMatch[1]) : null,
+    lon: lonMatch?.[1] ? Number.parseFloat(lonMatch[1]) : null,
     incidentType: detectIncidentType(title, description),
     severity: scoreSeverity(acresBurned, percentContained, evacuationOrders),
   };
@@ -159,7 +159,7 @@ function parseIncidentItem(item: Element, index: number): IncidentReport {
 async function fetchFeed(url: string): Promise<IncidentReport[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -167,7 +167,7 @@ async function fetchFeed(url: string): Promise<IncidentReport[]> {
     const doc = parser.parseFromString(text, 'text/xml');
     if (doc.querySelector('parsererror')) return [];
 
-    return Array.from(doc.querySelectorAll('item')).map((item, i) => parseIncidentItem(item, i));
+    return [...doc.querySelectorAll('item')].map((item, i) => parseIncidentItem(item, i));
   } catch {
     return [];
   }
@@ -190,7 +190,7 @@ export async function fetchInciwebIncidents(): Promise<IncidentReport[]> {
     if (!byId.has(i.id)) byId.set(i.id, i);
   }
 
-  const incidents = Array.from(byId.values()).sort((a, b) => {
+  const incidents = [...byId.values()].sort((a, b) => {
     const sOrder: Record<IncidentReport['severity'], number> = { critical: 0, high: 1, medium: 2, low: 3 };
     return sOrder[a.severity] - sOrder[b.severity] || (b.acresBurned ?? 0) - (a.acresBurned ?? 0);
   });

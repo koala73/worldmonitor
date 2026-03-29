@@ -70,7 +70,7 @@ interface RawProblem {
 
 interface RawForecast {
   id?: number | string;
-  forecast_zone?: { id?: number; name?: string; state?: string; url?: string } | Array<{ id?: number; name?: string; state?: string; url?: string }>;
+  forecast_zone?: { id?: number; name?: string; state?: string; url?: string } | { id?: number; name?: string; state?: string; url?: string }[];
   danger?: RawDangerEntry[];
   forecast_avalanche_problems?: RawProblem[];
   avalanche_problems?: RawProblem[];
@@ -89,7 +89,7 @@ function extractDangerValue(v: number | RawDangerRating | undefined): AvalancheD
   if (typeof v === 'object' && v.danger_rating) {
     const val = v.danger_rating.value;
     if (typeof val === 'number') return clampDanger(val);
-    if (typeof val === 'string') return clampDanger(parseInt(val, 10));
+    if (typeof val === 'string') return clampDanger(Number.parseInt(val, 10));
   }
   return 0;
 }
@@ -127,7 +127,7 @@ function dangerToSeverity(danger: AvalancheDanger): AvalancheForecast['severity'
 
 async function fetchZoneList(): Promise<RawZone[]> {
   try {
-    const res = await fetch(ZONES_URL, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(ZONES_URL, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
     const json = await res.json() as { zones?: RawZone[] } | RawZone[];
     if (Array.isArray(json)) return json;
@@ -143,7 +143,7 @@ async function fetchZoneList(): Promise<RawZone[]> {
 async function fetchForecastForZone(zoneId: number): Promise<RawForecast | null> {
   try {
     const url = `${FORECAST_BASE_URL}?zone_id=${zoneId}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return null;
     const json = await res.json() as RawForecast | RawForecast[];
     if (Array.isArray(json)) return json[0] ?? null;
@@ -217,9 +217,8 @@ export async function fetchAvalancheHazard(): Promise<AvalancheReport> {
     );
 
     const forecasts: AvalancheForecast[] = [];
-    for (let i = 0; i < forecastResults.length; i++) {
-      const result = forecastResults[i];
-      if (!result || result.status !== 'fulfilled') continue;
+    for (const [i, result] of forecastResults.entries()) {
+      if (result?.status !== 'fulfilled') continue;
       if (!result.value) continue;
       const zone = limitedZones[i];
       if (!zone) continue;

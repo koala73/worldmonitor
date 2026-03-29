@@ -57,26 +57,26 @@ type PulseProtestScenario =
   | 'recent-protest';
 type NewsPulseScenario = 'none' | 'recent' | 'stale';
 
-type LayerSnapshot = {
+interface LayerSnapshot {
   id: string;
   dataCount: number;
-};
+}
 
-type OverlaySnapshot = {
+interface OverlaySnapshot {
   protestMarkers: number;
   datacenterMarkers: number;
   techEventMarkers: number;
   techHQMarkers: number;
   hotspotMarkers: number;
-};
+}
 
-type CameraState = {
+interface CameraState {
   lon: number;
   lat: number;
   zoom: number;
-};
+}
 
-type VisualScenario = {
+interface VisualScenario {
   id: string;
   variant: 'both' | HarnessVariant;
   enabledLayers: HarnessLayerKey[];
@@ -84,14 +84,14 @@ type VisualScenario = {
   expectedDeckLayers: string[];
   expectedSelectors: string[];
   includeNewsLocation?: boolean;
-};
+}
 
-type VisualScenarioSummary = {
+interface VisualScenarioSummary {
   id: string;
   variant: 'both' | HarnessVariant;
-};
+}
 
-type MapHarness = {
+interface MapHarness {
   ready: boolean;
   variant: HarnessVariant;
   seedAllDynamicData: () => void;
@@ -117,7 +117,7 @@ type MapHarness = {
   getOverlaySnapshot: () => OverlaySnapshot;
   getCyberTooltipHtml: (indicator: string) => string;
   destroy: () => void;
-};
+}
 
 declare global {
   interface Window {
@@ -233,12 +233,12 @@ const allLayersDisabled: MapLayers = {
   dayNight: false,
 };
 
-const SEEDED_NEWS_LOCATIONS: Array<{
+const SEEDED_NEWS_LOCATIONS: {
   lat: number;
   lon: number;
   title: string;
   threatLevel: string;
-}> = [
+}[] = [
   {
     lat: 48.85,
     lon: 2.35,
@@ -259,7 +259,7 @@ const map = new DeckGLMap(app, {
 const DETERMINISTIC_BODY_CLASS = 'e2e-deterministic';
 
 const internals = map as unknown as {
-  buildLayers?: () => Array<{ id: string; props?: { data?: unknown } }>;
+  buildLayers?: () => { id: string; props?: { data?: unknown } }[];
   maplibreMap?: MapLibreMap;
   getTooltip?: (info: { object?: unknown; layer?: { id?: string } }) => { html?: string } | null;
   newsLocationFirstSeen?: Map<string, number>;
@@ -356,7 +356,7 @@ const getFirstProtestTitle = (): string | null => {
   const data = protestLayer?.props?.data;
   if (!Array.isArray(data) || data.length === 0) return null;
 
-  const first = data[0] as { items?: Array<{ title?: string }> };
+  const first = data[0] as { items?: { title?: string }[] };
   const title = first.items?.[0]?.title;
   return typeof title === 'string' ? title : null;
 };
@@ -404,7 +404,7 @@ const firstConflictPoint = (fallback: [number, number]): [number, number] => {
 };
 
 const seededCameras = {
-  ais: toCamera(55.0, 25.0, 5.2),
+  ais: toCamera(55, 25, 5.2),
   weather: toCamera(-80.2, 25.7, 5.2),
   outages: toCamera(-0.1, 51.5, 5.2),
   cyber: toCamera(-0.12, 51.5, 5.2),
@@ -412,32 +412,32 @@ const seededCameras = {
   flights: toCamera(-73.9, 40.4, 5.2),
   military: toCamera(56.3, 26.1, 5.2),
   natural: toCamera(-118.2, 34.1, 4.8),
-  fires: toCamera(-60.1, -5.4, 5.0),
+  fires: toCamera(-60.1, -5.4, 5),
   techEvents: toCamera(-122.42, 37.77, 5.2),
-  news: toCamera(2.35, 48.85, 5.0),
+  news: toCamera(2.35, 48.85, 5),
 };
 
-const [conflictLon, conflictLat] = firstConflictPoint([36.0, 35.0]);
-const [baseLon, baseLat] = firstLatLon(MILITARY_BASES, [44.0, 33.0]);
-const [cableLon, cableLat] = firstPathPoint(UNDERSEA_CABLES, [38.0, 20.0]);
-const [pipelineLon, pipelineLat] = firstPathPoint(PIPELINES, [45.0, 30.0]);
-const [hotspotLon, hotspotLat] = firstLatLon(INTEL_HOTSPOTS, [0.0, 20.0]);
-const [nuclearLon, nuclearLat] = firstLatLon(NUCLEAR_FACILITIES, [14.0, 50.0]);
-const [irradiatorLon, irradiatorLat] = firstLatLon(GAMMA_IRRADIATORS, [12.0, 50.0]);
-const [waterwayLon, waterwayLat] = firstLatLon(STRATEGIC_WATERWAYS, [32.0, 30.0]);
-const [economicLon, economicLat] = firstLatLon(ECONOMIC_CENTERS, [-74.0, 40.7]);
+const [conflictLon, conflictLat] = firstConflictPoint([36, 35]);
+const [baseLon, baseLat] = firstLatLon(MILITARY_BASES, [44, 33]);
+const [cableLon, cableLat] = firstPathPoint(UNDERSEA_CABLES, [38, 20]);
+const [pipelineLon, pipelineLat] = firstPathPoint(PIPELINES, [45, 30]);
+const [hotspotLon, hotspotLat] = firstLatLon(INTEL_HOTSPOTS, [0, 20]);
+const [nuclearLon, nuclearLat] = firstLatLon(NUCLEAR_FACILITIES, [14, 50]);
+const [irradiatorLon, irradiatorLat] = firstLatLon(GAMMA_IRRADIATORS, [12, 50]);
+const [waterwayLon, waterwayLat] = firstLatLon(STRATEGIC_WATERWAYS, [32, 30]);
+const [economicLon, economicLat] = firstLatLon(ECONOMIC_CENTERS, [-74, 40.7]);
 const [datacenterLon, datacenterLat] = firstLatLon(AI_DATA_CENTERS, [-121.9, 37.3]);
 const [spaceportLon, spaceportLat] = firstLatLon(SPACEPORTS, [-80.6, 28.6]);
-const [mineralLon, mineralLat] = firstLatLon(CRITICAL_MINERALS, [135.0, -27.0]);
+const [mineralLon, mineralLat] = firstLatLon(CRITICAL_MINERALS, [135, -27]);
 const [startupLon, startupLat] = firstLatLon(STARTUP_HUBS, [-122.08, 37.38]);
 const [acceleratorLon, acceleratorLat] = firstLatLon(ACCELERATORS, [-122.41, 37.77]);
-const [techHQLon, techHQLat] = firstLatLon(TECH_HQS, [-122.0, 37.3]);
+const [techHQLon, techHQLat] = firstLatLon(TECH_HQS, [-122, 37.3]);
 const [cloudRegionLon, cloudRegionLat] = firstLatLon(CLOUD_REGIONS, [-122.3, 37.6]);
 const [aptLon, aptLat] = firstLatLon(APT_GROUPS, [116.4, 39.9]);
 const [portLon, portLat] = firstLatLon(PORTS, [32.5, 29.9]);
-const [exchangeLon, exchangeLat] = firstLatLon(STOCK_EXCHANGES, [-74.0, 40.7]);
-const [financialCenterLon, financialCenterLat] = firstLatLon(FINANCIAL_CENTERS, [-74.0, 40.7]);
-const [centralBankLon, centralBankLat] = firstLatLon(CENTRAL_BANKS, [-77.0, 38.9]);
+const [exchangeLon, exchangeLat] = firstLatLon(STOCK_EXCHANGES, [-74, 40.7]);
+const [financialCenterLon, financialCenterLat] = firstLatLon(FINANCIAL_CENTERS, [-74, 40.7]);
+const [centralBankLon, centralBankLat] = firstLatLon(CENTRAL_BANKS, [-77, 38.9]);
 const [commodityHubLon, commodityHubLat] = firstLatLon(COMMODITY_HUBS, [-87.6, 41.8]);
 
 const VISUAL_SCENARIOS: VisualScenario[] = [
@@ -445,7 +445,7 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
     id: 'conflicts-z4',
     variant: 'both',
     enabledLayers: ['conflicts'],
-    camera: toCamera(conflictLon, conflictLat, 4.0),
+    camera: toCamera(conflictLon, conflictLat, 4),
     expectedDeckLayers: ['conflict-zones-layer'],
     expectedSelectors: [],
   },
@@ -557,7 +557,7 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
     id: 'datacenters-cluster-z3',
     variant: 'both',
     enabledLayers: ['datacenters'],
-    camera: toCamera(datacenterLon, datacenterLat, 3.0),
+    camera: toCamera(datacenterLon, datacenterLat, 3),
     expectedDeckLayers: ['datacenter-clusters-layer'],
     expectedSelectors: [],
   },
@@ -565,7 +565,7 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
     id: 'datacenters-icons-z6',
     variant: 'both',
     enabledLayers: ['datacenters'],
-    camera: toCamera(datacenterLon, datacenterLat, 6.0),
+    camera: toCamera(datacenterLon, datacenterLat, 6),
     expectedDeckLayers: ['datacenters-layer'],
     expectedSelectors: [],
   },
@@ -732,9 +732,9 @@ const filterScenariosForVariant = (variant: HarnessVariant): VisualScenario[] =>
 
 const currentHarnessVariant: HarnessVariant = SITE_VARIANT === 'tech'
   ? 'tech'
-  : SITE_VARIANT === 'finance'
+  : (SITE_VARIANT === 'finance'
   ? 'finance'
-  : 'full';
+  : 'full');
 
 const buildProtests = (scenario: Scenario): SocialUnrestEvent[] => {
   const title =
@@ -881,8 +881,8 @@ const seedAllDynamicData = (): void => {
       id: 'e2e-ais-disruption-1',
       name: 'Harness Chokepoint',
       type: 'chokepoint_congestion',
-      lat: 25.0,
-      lon: 55.0,
+      lat: 25,
+      lon: 55,
       severity: 'high',
       changePct: 34,
       windowHours: 6,
@@ -961,7 +961,7 @@ const seedAllDynamicData = (): void => {
       operatorCountry: 'US',
       lat: 33.9,
       lon: -117.9,
-      altitude: 30000,
+      altitude: 30_000,
       heading: 92,
       speed: 430,
       onGround: false,
@@ -974,8 +974,8 @@ const seedAllDynamicData = (): void => {
     {
       id: 'e2e-mil-flight-cluster-1',
       name: 'Harness Air Cluster',
-      lat: 34.0,
-      lon: -118.0,
+      lat: 34,
+      lon: -118,
       flightCount: 3,
       flights: militaryFlights,
       activityType: 'exercise',
@@ -1140,7 +1140,7 @@ const ensureDeterministicStyles = (): void => {
       display: none !important;
     }
   `;
-  document.head.appendChild(style);
+  document.head.append(style);
 };
 
 const hideRasterBasemap = (): void => {
@@ -1268,7 +1268,7 @@ window.__mapHarness = {
     internals.startupTime = Date.now();
   },
   isPulseAnimationRunning: (): boolean => {
-    return internals.newsPulseIntervalId != null;
+    return internals.newsPulseIntervalId != undefined;
   },
   setZoom: (zoom: number): void => {
     map.setZoom(zoom);

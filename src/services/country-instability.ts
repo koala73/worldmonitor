@@ -39,7 +39,7 @@ interface CountryData {
   militaryVessels: MilitaryVessel[];
   newsEvents: ClusteredEvent[];
   outages: InternetOutage[];
-  strikes: Array<{ severity: string; timestamp: number; lat: number; lon: number; title: string; id: string }>;
+  strikes: { severity: string; timestamp: number; lat: number; lon: number; title: string; id: string }[];
   aviationDisruptions: AirportDelayAlert[];
   displacementOutflow: number;
   climateStress: number;
@@ -109,7 +109,7 @@ export function getLearningProgress(): { inLearning: boolean; remainingMinutes: 
 
   return {
     inLearning: remaining > 0,
-    remainingMinutes: Math.ceil(remaining / 60000),
+    remainingMinutes: Math.ceil(remaining / 60_000),
     progress: Math.round(progress),
   };
 }
@@ -301,7 +301,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 
 const hotspotActivityMap = new Map<string, number>();
 
-function trackHotspotActivity(lat: number, lon: number, weight: number = 1): void {
+function trackHotspotActivity(lat: number, lon: number, weight = 1): void {
   for (const hotspot of INTEL_HOTSPOTS) {
     const dist = haversineKm(lat, lon, hotspot.lat, hotspot.lon);
     if (dist < 150) {
@@ -423,11 +423,11 @@ export function ingestNewsForCII(events: ClusteredEvent[]): void {
       if (!newsEventIndexMap.has(code)) newsEventIndexMap.set(code, new Map());
       const idx = newsEventIndexMap.get(code)!;
       const existingIdx = idx.get(e.id);
-      if (existingIdx !== undefined) {
-        cd.newsEvents[existingIdx] = e;
-      } else {
+      if (existingIdx === undefined) {
         idx.set(e.id, cd.newsEvents.length);
         cd.newsEvents.push(e);
+      } else {
+        cd.newsEvents[existingIdx] = e;
       }
     }
   }
@@ -437,11 +437,11 @@ function coordsToBoundsCountry(lat: number, lon: number): string | null {
   return resolveCountryFromBounds(lat, lon, ME_STRIKE_BOUNDS);
 }
 
-export function ingestStrikesForCII(events: Array<{
+export function ingestStrikesForCII(events: {
   id: string; category: string; severity: string;
   latitude: number; longitude: number; timestamp: number;
   title: string; locationName: string;
-}>): void {
+}[]): void {
   for (const [, data] of countryDataMap) data.strikes = [];
 
   const seen = new Set<string>();
@@ -480,7 +480,7 @@ export function ingestOrefForCII(alertCount: number, historyCount24h: number): v
 
 function getOrefBlendBoost(code: string, data: CountryData): number {
   if (code !== 'IL') return 0;
-  return (data.orefAlertCount > 0 ? 15 : 0) + (data.orefHistoryCount24h >= 10 ? 10 : data.orefHistoryCount24h >= 3 ? 5 : 0);
+  return (data.orefAlertCount > 0 ? 15 : 0) + (data.orefHistoryCount24h >= 10 ? 10 : (data.orefHistoryCount24h >= 3 ? 5 : 0));
 }
 
 export function ingestAviationForCII(alerts: AirportDelayAlert[]): void {
@@ -523,10 +523,14 @@ function getAdvisoryBoost(data: CountryData): number {
   if (!data.advisoryMaxLevel) return 0;
   let boost = 0;
   switch (data.advisoryMaxLevel) {
-    case 'do-not-travel': boost = 15; break;
-    case 'reconsider': boost = 10; break;
-    case 'caution': boost = 5; break;
-    default: return 0;
+    case 'do-not-travel': { boost = 15; break;
+    }
+    case 'reconsider': { boost = 10; break;
+    }
+    case 'caution': { boost = 5; break;
+    }
+    default: { return 0;
+    }
   }
   if (data.advisorySources.size >= 3) boost += 5;
   else if (data.advisorySources.size >= 2) boost += 3;
@@ -616,13 +620,13 @@ export function ingestAisDisruptionsForCII(events: AisDisruptionEvent[]): void {
   }
 }
 
-export function ingestSatelliteFiresForCII(fires: Array<{
+export function ingestSatelliteFiresForCII(fires: {
   lat: number;
   lon: number;
   brightness: number;
   frp: number;
   region?: string;
-}>): void {
+}[]): void {
   for (const [, data] of countryDataMap) {
     data.satelliteFireCount = 0;
     data.satelliteFireHighCount = 0;
@@ -794,9 +798,12 @@ function getUcdpFloor(data: CountryData): number {
   const status = data.ucdpStatus;
   if (!status) return 0;
   switch (status.intensity) {
-    case 'war': return 70;
-    case 'minor': return 50;
-    case 'none': return 0;
+    case 'war': { return 70;
+    }
+    case 'minor': { return 50;
+    }
+    case 'none': { return 0;
+    }
   }
 }
 
@@ -883,20 +890,20 @@ export function calculateCII(): CountryScore[] {
       information: Math.round(calcInformationScore(data, code)),
     };
 
-    const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;
+    const eventScore = components.unrest * 0.25 + components.conflict * 0.3 + components.security * 0.2 + components.information * 0.25;
 
     const hotspotBoost = getHotspotBoost(code);
     const newsUrgencyBoost = components.information >= 70 ? 5
-      : components.information >= 50 ? 3
-      : 0;
+      : (components.information >= 50 ? 3
+      : 0);
     const focalUrgency = focalUrgencies.get(code);
     const focalBoost = focalUrgency === 'critical' ? 8
-      : focalUrgency === 'elevated' ? 4
-      : 0;
+      : (focalUrgency === 'elevated' ? 4
+      : 0);
 
     const displacementBoost = data.displacementOutflow >= 1_000_000 ? 8
-      : data.displacementOutflow >= 100_000 ? 4
-      : 0;
+      : (data.displacementOutflow >= 100_000 ? 4
+      : 0);
     const climateBoost = data.climateStress;
 
     const advisoryBoost = getAdvisoryBoost(data);
@@ -941,18 +948,18 @@ export function getCountryScore(code: string): number | null {
     information: calcInformationScore(data, code),
   };
 
-  const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;
+  const eventScore = components.unrest * 0.25 + components.conflict * 0.3 + components.security * 0.2 + components.information * 0.25;
   const hotspotBoost = getHotspotBoost(code);
   const newsUrgencyBoost = components.information >= 70 ? 5
-    : components.information >= 50 ? 3
-    : 0;
+    : (components.information >= 50 ? 3
+    : 0);
   const focalUrgency = focalPointDetector.getCountryUrgency(code);
   const focalBoost = focalUrgency === 'critical' ? 8
-    : focalUrgency === 'elevated' ? 4
-    : 0;
+    : (focalUrgency === 'elevated' ? 4
+    : 0);
   const displacementBoost = data.displacementOutflow >= 1_000_000 ? 8
-    : data.displacementOutflow >= 100_000 ? 4
-    : 0;
+    : (data.displacementOutflow >= 100_000 ? 4
+    : 0);
   const climateBoost = data.climateStress;
   const advisoryBoost = getAdvisoryBoost(data);
   const supplementalSignalBoost = getSupplementalSignalBoost(data);

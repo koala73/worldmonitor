@@ -66,7 +66,7 @@ export async function fetchGDACSEvents(): Promise<GDACSEvent[]> {
     const seen = new Set<string>();
     return data.features
       .filter(f => {
-        if (!f.geometry || f.geometry.type !== 'Point') return false;
+        if (f.geometry?.type !== 'Point') return false;
         const key = `${f.properties.eventtype}-${f.properties.eventid}`;
         if (seen.has(key)) return false;
         seen.add(key);
@@ -95,20 +95,30 @@ export function getGDACSStatus(): string {
 
 export function getEventTypeIcon(type: GDACSEvent['eventType']): string {
   switch (type) {
-    case 'EQ': return '🌍';
-    case 'FL': return '🌊';
-    case 'TC': return '🌀';
-    case 'VO': return '🌋';
-    case 'WF': return '🔥';
-    case 'DR': return '☀️';
-    default: return '⚠️';
+    case 'EQ': { return '🌍';
+    }
+    case 'FL': { return '🌊';
+    }
+    case 'TC': { return '🌀';
+    }
+    case 'VO': { return '🌋';
+    }
+    case 'WF': { return '🔥';
+    }
+    case 'DR': { return '☀️';
+    }
+    default: { return '⚠️';
+    }
   }
 }
 
 export function getAlertColor(level: GDACSEvent['alertLevel']): [number, number, number, number] {
   switch (level) {
-    case 'Red': return [255, 0, 0, 200];
-    case 'Orange': return [255, 140, 0, 180];
-    default: return [255, 200, 0, 160];
+    case 'Red': { return [255, 0, 0, 200];
+    }
+    case 'Orange': { return [255, 140, 0, 180];
+    }
+    default: { return [255, 200, 0, 160];
+    }
   }
 }

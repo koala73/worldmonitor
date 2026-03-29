@@ -58,7 +58,7 @@ export class DesktopUpdater implements AppModule {
     try {
       const res = await fetch(
         'https://api.github.com/repos/bradleybond512/worldmonitor-macos/releases/latest',
-        { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10000) }
+        { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10_000) }
       );
       if (!res.ok) {
         this.logUpdaterOutcome('fetch_failed', { status: res.status });
@@ -89,8 +89,8 @@ export class DesktopUpdater implements AppModule {
 
       // Find the macOS DMG asset that matches the current build architecture
       // __BUILD_ARCH__ is injected by Vite at build time ('aarch64' or 'x64')
-      const buildArch = (typeof __BUILD_ARCH__ !== 'undefined' ? __BUILD_ARCH__ : 'aarch64') as string;
-      const assets: Array<{ name: string; browser_download_url: string }> =
+      const buildArch = (typeof __BUILD_ARCH__ === 'undefined' ? 'aarch64' : __BUILD_ARCH__) as string;
+      const assets: { name: string; browser_download_url: string }[] =
         Array.isArray(data.assets) ? data.assets : [];
       // Prefer arch-specific DMG; fall back to any DMG if exact match not found
       const dmg =
@@ -146,7 +146,7 @@ export class DesktopUpdater implements AppModule {
         <div class="update-toast-detail">v${escapeHtml(__APP_VERSION__)} \u2192 v${escapeHtml(version)}</div>
       </div>
       <button class="update-toast-action" data-action="install">${actionLabel}</button>
-      <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
+      <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00D7</button>
     `;
 
     toast.addEventListener('click', (e) => {
@@ -194,7 +194,7 @@ export class DesktopUpdater implements AppModule {
       }
     });
 
-    document.body.appendChild(toast);
+    document.body.append(toast);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => toast.classList.add('visible'));
     });
@@ -210,13 +210,13 @@ export class DesktopUpdater implements AppModule {
         <div class="update-toast-title">World Monitor</div>
         <div class="update-toast-detail">${escapeHtml(message)}</div>
       </div>
-      <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
+      <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00D7</button>
     `;
     toast.addEventListener('click', () => {
       toast.classList.remove('visible');
       setTimeout(() => toast.remove(), 300);
     });
-    document.body.appendChild(toast);
+    document.body.append(toast);
     requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('visible')));
     setTimeout(() => {
       toast.classList.remove('visible');

@@ -66,9 +66,9 @@ export class InternetDisruptionsPanel extends Panel {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this.data = await res.json() as CommsHealthResponse;
       this.error = null;
-    } catch (err) {
-      if (this.isAbortError(err)) return;
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
+    } catch (error) {
+      if (this.isAbortError(error)) return;
+      this.error = error instanceof Error ? error.message : 'Failed to fetch';
     }
     this.loading = false;
     this.renderPanel();
@@ -89,7 +89,7 @@ export class InternetDisruptionsPanel extends Panel {
     const bgpDetail = `${d.bgp.hijacks} hijacks, ${d.bgp.leaks} leaks`;
 
     let ddosSeverity = d.ddos.l7 === 'elevated' ? 'elevated' : 'normal';
-    let ddosDetail = d.ddos.cloudflareKeyMissing
+    const ddosDetail = d.ddos.cloudflareKeyMissing
       ? '<span style="color:var(--text-muted,#9ca3af);font-style:italic;">Add Cloudflare API key for DDoS data</span>'
       : `L7: ${d.ddos.l7}, L3: ${d.ddos.l3}`;
     if (d.ddos.cloudflareKeyMissing) ddosSeverity = 'normal';

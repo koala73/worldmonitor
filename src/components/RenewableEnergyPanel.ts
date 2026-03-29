@@ -34,7 +34,7 @@ export class RenewableEnergyPanel extends Panel {
         fontSize: '13px',
       });
       empty.textContent = 'No renewable energy data available';
-      this.content.appendChild(empty);
+      this.content.append(empty);
       return;
     }
 
@@ -54,7 +54,7 @@ export class RenewableEnergyPanel extends Panel {
       marginBottom: '12px',
     });
     this.renderGauge(gaugeSection, data.globalPercentage, data.globalYear);
-    container.appendChild(gaugeSection);
+    container.append(gaugeSection);
 
     // Historical sparkline (bonus below gauge)
     if (data.historicalData.length > 2) {
@@ -64,7 +64,7 @@ export class RenewableEnergyPanel extends Panel {
         marginBottom: '12px',
       });
       this.renderSparkline(sparkSection, data.historicalData);
-      container.appendChild(sparkSection);
+      container.append(sparkSection);
     }
 
     // Section 2: Regional Breakdown
@@ -72,10 +72,10 @@ export class RenewableEnergyPanel extends Panel {
       const regionsSection = document.createElement('div');
       regionsSection.className = 'renewable-regions';
       this.renderRegions(regionsSection, data.regions);
-      container.appendChild(regionsSection);
+      container.append(regionsSection);
     }
 
-    this.content.appendChild(container);
+    this.content.append(container);
   }
 
   /**
@@ -161,7 +161,7 @@ export class RenewableEnergyPanel extends Panel {
       marginTop: '4px',
     });
     yearLabel.textContent = `Data from ${year}`;
-    container.appendChild(yearLabel);
+    container.append(yearLabel);
   }
 
   /**
@@ -169,7 +169,7 @@ export class RenewableEnergyPanel extends Panel {
    */
   private renderSparkline(
     container: HTMLElement,
-    historicalData: Array<{ year: number; value: number }>,
+    historicalData: { year: number; value: number }[],
   ): void {
     const containerWidth = this.content.clientWidth - 16 || 200;
     const height = 40;
@@ -273,8 +273,8 @@ export class RenewableEnergyPanel extends Panel {
       bar.className = 'region-bar';
       // Opacity fades from 1.0 (first/highest) to 0.5 (last/lowest)
       const opacity = regions.length > 1
-        ? 1.0 - (i / (regions.length - 1)) * 0.5
-        : 1.0;
+        ? 1 - (i / (regions.length - 1)) * 0.5
+        : 1;
       Object.assign(bar.style, {
         width: `${(region.percentage / maxPct) * 100}%`,
         height: '100%',
@@ -283,7 +283,7 @@ export class RenewableEnergyPanel extends Panel {
         borderRadius: '4px',
         transition: 'width 0.6s ease-out',
       });
-      barContainer.appendChild(bar);
+      barContainer.append(bar);
 
       // Value label
       const valueSpan = document.createElement('span');
@@ -298,10 +298,10 @@ export class RenewableEnergyPanel extends Panel {
       });
       valueSpan.textContent = `${region.percentage.toFixed(1)}%`;
 
-      row.appendChild(nameSpan);
-      row.appendChild(barContainer);
-      row.appendChild(valueSpan);
-      container.appendChild(row);
+      row.append(nameSpan);
+      row.append(barContainer);
+      row.append(valueSpan);
+      container.append(row);
     }
   }
 
@@ -325,11 +325,11 @@ export class RenewableEnergyPanel extends Panel {
     const header = document.createElement('div');
     header.className = 'capacity-header';
     header.textContent = 'US Installed Capacity (EIA)';
-    section.appendChild(header);
+    section.append(header);
 
     // Build the chart
     this.renderCapacityChart(section, series);
-    this.content.appendChild(section);
+    this.content.append(section);
   }
 
   /**
@@ -358,9 +358,9 @@ export class RenewableEnergyPanel extends Panel {
     const sortedYears = [...allYears].sort((a, b) => a - b);
 
     // Build combined dataset for stacked area: { year, solar, wind }
-    const solarMap = new Map(solarSeries?.data.map(d => [d.year, d.capacityMw]) ?? []);
-    const windMap = new Map(windSeries?.data.map(d => [d.year, d.capacityMw]) ?? []);
-    const coalMap = new Map(coalSeries?.data.map(d => [d.year, d.capacityMw]) ?? []);
+    const solarMap = new Map(solarSeries?.data.map(d => [d.year, d.capacityMw]));
+    const windMap = new Map(windSeries?.data.map(d => [d.year, d.capacityMw]));
+    const coalMap = new Map(coalSeries?.data.map(d => [d.year, d.capacityMw]));
 
     const combinedData = sortedYears.map(year => ({
       year,
@@ -483,7 +483,7 @@ export class RenewableEnergyPanel extends Panel {
     const legend = document.createElement('div');
     legend.className = 'capacity-legend';
 
-    const items: Array<{ color: string; label: string }> = [
+    const items: { color: string; label: string }[] = [
       { color: solarColor, label: 'Solar' },
       { color: windColor, label: 'Wind' },
       { color: coalColor, label: 'Coal' },
@@ -500,12 +500,12 @@ export class RenewableEnergyPanel extends Panel {
       const label = document.createElement('span');
       label.textContent = item.label;
 
-      el.appendChild(dot);
-      el.appendChild(label);
-      legend.appendChild(el);
+      el.append(dot);
+      el.append(label);
+      legend.append(el);
     }
 
-    container.appendChild(legend);
+    container.append(legend);
   }
 
   /**

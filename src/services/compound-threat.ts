@@ -59,11 +59,11 @@ export interface CompoundThreat {
 }
 
 // Known dangerous compound pairings (risk multiplier descriptions)
-const COMPOUND_RISK_PATTERNS: Array<{
+const COMPOUND_RISK_PATTERNS: {
   categories: HazardCategory[];
   description: string;
   severityBoost: boolean;
-}> = [
+}[] = [
   {
     categories: ['weather', 'grid'],
     description: 'Severe weather coinciding with power grid stress — blackout risk during extreme conditions',

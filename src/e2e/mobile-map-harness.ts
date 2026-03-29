@@ -2,7 +2,7 @@ import '../styles/main.css';
 import { MapPopup } from '../components/MapPopup';
 import type { Hotspot } from '../types';
 
-type MobileMapHarness = {
+interface MobileMapHarness {
   ready: boolean;
   getPopupRect: () => {
     left: number;
@@ -18,7 +18,7 @@ type MobileMapHarness = {
     width: number;
     height: number;
   } | null;
-};
+}
 
 declare global {
   interface Window {
@@ -42,13 +42,13 @@ app.style.overflow = 'hidden';
 
 const overlays = document.createElement('div');
 overlays.id = 'mapOverlays';
-app.appendChild(overlays);
+app.append(overlays);
 
 const sampleHotspot: Hotspot = {
   id: 'e2e-hotspot',
   name: 'E2E Hotspot',
-  lat: 33.0,
-  lon: 36.0,
+  lat: 33,
+  lon: 36,
   keywords: ['e2e', 'hotspot'],
   level: 'high',
   location: 'E2E Zone',
@@ -75,7 +75,7 @@ hotspot.addEventListener('click', (e) => {
     y: e.clientY - rect.top,
   });
 });
-overlays.appendChild(hotspot);
+overlays.append(hotspot);
 
 window.__mobileMapHarness = {
   ready: true,

@@ -51,16 +51,21 @@ export class RegulationPanel extends Panel {
 
   private renderContent(): string {
     switch (this.viewMode) {
-      case 'timeline':
+      case 'timeline': {
         return this.renderTimeline();
-      case 'deadlines':
+      }
+      case 'deadlines': {
         return this.renderDeadlines();
-      case 'regulations':
+      }
+      case 'regulations': {
         return this.renderRegulations();
-      case 'countries':
+      }
+      case 'countries': {
         return this.renderCountries();
-      default:
+      }
+      default: {
         return '';
+      }
     }
   }
 
@@ -157,7 +162,7 @@ export class RegulationPanel extends Panel {
       day: 'numeric',
     });
 
-    const urgencyClass = daysUntil < 90 ? 'urgent' : daysUntil < 180 ? 'warning' : 'normal';
+    const urgencyClass = daysUntil < 90 ? 'urgent' : (daysUntil < 180 ? 'warning' : 'normal');
 
     return `
       <div class="deadline-item ${urgencyClass}">

@@ -476,7 +476,7 @@ export function getUpcomingDeadlines(): AIRegulation[] {
 }
 
 // Helper function to get recent regulatory actions (last N months)
-export function getRecentActions(months: number = 6): RegulatoryAction[] {
+export function getRecentActions(months = 6): RegulatoryAction[] {
   const cutoffDate = new Date();
   cutoffDate.setMonth(cutoffDate.getMonth() - months);
 

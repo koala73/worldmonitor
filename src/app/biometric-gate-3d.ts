@@ -8,19 +8,19 @@ const MAX_PIXEL_RATIO = 2;
 
 type NavigatorWithMemory = Navigator & { deviceMemory?: number };
 
-export type BiometricGate3DCapability = {
+export interface BiometricGate3DCapability {
   webgl2: boolean;
   hardwareConcurrency: number;
   deviceMemory: number;
   prefersReducedMotion: boolean;
-};
+}
 
-export type BiometricGate3DController = {
+export interface BiometricGate3DController {
   setAuthenticating: (active: boolean) => void;
   setAccessGranted: () => void;
   setDoorOpenProgress: (progress: number) => void;
   destroy: () => void;
-};
+}
 
 export function detectBiometricGate3DCapability(target: Window = window): BiometricGate3DCapability {
   const canvas = target.document.createElement('canvas');
@@ -83,7 +83,7 @@ function buildStarfield(starCount: number): THREE.Points {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
   const material = new THREE.PointsMaterial({
-    color: 0xa5c8ff,
+    color: 0xA5_C8_FF,
     size: 0.028,
     sizeAttenuation: true,
     transparent: true,
@@ -115,7 +115,7 @@ export async function mountBiometricGate3D(stage: HTMLElement): Promise<Biometri
   renderer.setClearAlpha(0);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  host.appendChild(renderer.domElement);
+  host.append(renderer.domElement);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(43, 1, 0.1, 80);
@@ -132,39 +132,39 @@ export async function mountBiometricGate3D(stage: HTMLElement): Promise<Biometri
   scene.add(rig);
 
   const wallMaterial = new THREE.MeshStandardMaterial({
-    color: 0x676d75,
+    color: 0x67_6D_75,
     metalness: 0.88,
     roughness: 0.26,
     envMapIntensity: 1.25,
   });
   const floorMaterial = new THREE.MeshStandardMaterial({
-    color: 0x3b3f45,
+    color: 0x3B_3F_45,
     metalness: 0.86,
     roughness: 0.22,
     envMapIntensity: 1.4,
   });
   const doorMaterial = new THREE.MeshStandardMaterial({
-    color: 0x9da4af,
+    color: 0x9D_A4_AF,
     metalness: 0.94,
     roughness: 0.17,
     envMapIntensity: 1.45,
   });
   const frameMaterial = new THREE.MeshStandardMaterial({
-    color: 0x565d67,
+    color: 0x56_5D_67,
     metalness: 0.9,
     roughness: 0.23,
     envMapIntensity: 1.2,
   });
   const coreMaterial = new THREE.MeshStandardMaterial({
-    color: 0xbfd7ff,
-    emissive: 0x3f8bff,
+    color: 0xBF_D7_FF,
+    emissive: 0x3F_8B_FF,
     emissiveIntensity: 1.35,
     metalness: 0.2,
     roughness: 0.18,
   });
   const ringMaterial = new THREE.MeshStandardMaterial({
-    color: 0xd4e5ff,
-    emissive: 0x5ea0ff,
+    color: 0xD4_E5_FF,
+    emissive: 0x5E_A0_FF,
     emissiveIntensity: 0.8,
     metalness: 0.72,
     roughness: 0.24,
@@ -201,7 +201,7 @@ export async function mountBiometricGate3D(stage: HTMLElement): Promise<Biometri
   portalFrame.receiveShadow = true;
   rig.add(portalFrame);
 
-  const portalCutout = new THREE.Mesh(new THREE.BoxGeometry(3.95, 3.2, 0.6), new THREE.MeshBasicMaterial({ color: 0x0b0e12 }));
+  const portalCutout = new THREE.Mesh(new THREE.BoxGeometry(3.95, 3.2, 0.6), new THREE.MeshBasicMaterial({ color: 0x0B_0E_12 }));
   portalCutout.position.set(0, 0.35, 1.23);
   rig.add(portalCutout);
 
@@ -234,29 +234,29 @@ export async function mountBiometricGate3D(stage: HTMLElement): Promise<Biometri
   const starfield = buildStarfield(240);
   rig.add(starfield);
 
-  const hemisphere = new THREE.HemisphereLight(0xcfe2ff, 0x12161d, 0.45);
+  const hemisphere = new THREE.HemisphereLight(0xCF_E2_FF, 0x12_16_1D, 0.45);
   rig.add(hemisphere);
 
-  const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
+  const keyLight = new THREE.DirectionalLight(0xFF_FF_FF, 1.35);
   keyLight.position.set(2.8, 5.8, 5.2);
   keyLight.castShadow = true;
   keyLight.shadow.mapSize.set(1024, 1024);
   keyLight.shadow.bias = -0.0001;
   rig.add(keyLight);
 
-  const sideLightLeft = new THREE.PointLight(0x87b6ff, 1.6, 15, 2);
+  const sideLightLeft = new THREE.PointLight(0x87_B6_FF, 1.6, 15, 2);
   sideLightLeft.position.set(-2.6, 0.7, 0.8);
   rig.add(sideLightLeft);
 
-  const sideLightRight = new THREE.PointLight(0x87b6ff, 1.6, 15, 2);
+  const sideLightRight = new THREE.PointLight(0x87_B6_FF, 1.6, 15, 2);
   sideLightRight.position.set(2.6, 0.7, 0.8);
   rig.add(sideLightRight);
 
-  const coreLight = new THREE.PointLight(0x9ed0ff, 2.6, 9, 2);
+  const coreLight = new THREE.PointLight(0x9E_D0_FF, 2.6, 9, 2);
   coreLight.position.set(0, 0.35, 1.25);
   rig.add(coreLight);
 
-  const backLight = new THREE.PointLight(0x6e9fff, 1.4, 24, 2);
+  const backLight = new THREE.PointLight(0x6E_9F_FF, 1.4, 24, 2);
   backLight.position.set(0, 0.2, -14);
   rig.add(backLight);
 

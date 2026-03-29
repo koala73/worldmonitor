@@ -98,10 +98,14 @@ export class TradePolicyPanel extends Panel {
 
     let contentHtml = '';
     switch (this.activeTab) {
-      case 'restrictions': contentHtml = this.renderRestrictions(); break;
-      case 'tariffs': contentHtml = this.renderTariffs(); break;
-      case 'flows': contentHtml = this.renderFlows(); break;
-      case 'barriers': contentHtml = this.renderBarriers(); break;
+      case 'restrictions': { contentHtml = this.renderRestrictions(); break;
+      }
+      case 'tariffs': { contentHtml = this.renderTariffs(); break;
+      }
+      case 'flows': { contentHtml = this.renderFlows(); break;
+      }
+      case 'barriers': { contentHtml = this.renderBarriers(); break;
+      }
     }
 
     this.setContent(`
@@ -122,8 +126,8 @@ export class TradePolicyPanel extends Panel {
 
     return `<div class="trade-restrictions-list">
       ${this.restrictionsData.restrictions.map(r => {
-        const statusClass = r.status === 'high' ? 'status-active' : r.status === 'moderate' ? 'status-notified' : 'status-terminated';
-        const statusLabel = r.status === 'high' ? t('components.tradePolicy.highTariff') : r.status === 'moderate' ? t('components.tradePolicy.moderateTariff') : t('components.tradePolicy.lowTariff');
+        const statusClass = r.status === 'high' ? 'status-active' : (r.status === 'moderate' ? 'status-notified' : 'status-terminated');
+        const statusLabel = r.status === 'high' ? t('components.tradePolicy.highTariff') : (r.status === 'moderate' ? t('components.tradePolicy.moderateTariff') : t('components.tradePolicy.lowTariff'));
         const sourceLink = this.renderSourceUrl(r.sourceUrl);
         return `<div class="trade-restriction-card">
           <div class="trade-restriction-header">

@@ -71,15 +71,18 @@ function detectSeverity(category: AlliedMilitaryItem['category'], text: string):
   if (/\bwar\b|invasion|attack|conflict escalat/.test(t)) return 'critical';
   switch (category) {
     case 'operation':
-    case 'advisory':
+    case 'advisory': {
       return /combat|strike|attack|conflict/.test(t) ? 'high' : 'medium';
-    case 'exercise':
+    }
+    case 'exercise': {
       return 'medium';
+    }
     case 'procurement':
     case 'diplomatic':
     case 'general':
-    default:
+    default: {
       return 'low';
+    }
   }
 }
 
@@ -103,9 +106,9 @@ function parseFeed(xmlText: string, feed: AlliedFeed): AlliedMilitaryItem[] {
   if (doc.querySelector('parsererror')) return [];
 
   // Auto-detect format: try RSS items first, fall back to Atom entries
-  let items = Array.from(doc.querySelectorAll('item'));
+  let items = [...doc.querySelectorAll('item')];
   const isAtom = items.length === 0 || feed.isAtom === true;
-  if (isAtom) items = Array.from(doc.querySelectorAll('entry'));
+  if (isAtom) items = [...doc.querySelectorAll('entry')];
 
   const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
 
@@ -164,7 +167,7 @@ export async function fetchAlliedMilitary(): Promise<AlliedMilitaryItem[]> {
   const results = await Promise.allSettled(
     FEEDS.map(async (feed) => {
       const res = await fetch(proxyFeedUrl(feed.url), {
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(12_000),
         headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
       });
       if (!res.ok) return [] as AlliedMilitaryItem[];
@@ -197,9 +200,13 @@ export async function fetchAlliedMilitary(): Promise<AlliedMilitaryItem[]> {
 
 export function alliedSeverityClass(severity: AlliedMilitaryItem['severity']): string {
   switch (severity) {
-    case 'critical': return 'text-red-500';
-    case 'high':     return 'text-orange-500';
-    case 'medium':   return 'text-yellow-500';
-    default:         return 'text-gray-400';
+    case 'critical': { return 'text-red-500';
+    }
+    case 'high': {     return 'text-orange-500';
+    }
+    case 'medium': {   return 'text-yellow-500';
+    }
+    default: {         return 'text-gray-400';
+    }
   }
 }

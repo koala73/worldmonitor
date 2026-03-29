@@ -9,13 +9,13 @@ export function formatTime(date: Date): string {
 
     if (diff < 60) return rtf.format(-Math.round(diff), 'second');
     if (diff < 3600) return rtf.format(-Math.round(diff / 60), 'minute');
-    if (diff < 86400) return rtf.format(-Math.round(diff / 3600), 'hour');
-    return rtf.format(-Math.round(diff / 86400), 'day');
-  } catch (e) {
+    if (diff < 86_400) return rtf.format(-Math.round(diff / 3600), 'hour');
+    return rtf.format(-Math.round(diff / 86_400), 'day');
+  } catch {
     if (diff < 60) return 'Just now';
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    if (diff < 86_400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86_400)}d ago`;
   }
 }
 
@@ -106,8 +106,8 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
       }
       return parsed;
     }
-  } catch (e) {
-    console.warn(`Failed to load ${key} from storage:`, e);
+  } catch (error) {
+    console.warn(`Failed to load ${key} from storage:`, error);
   }
   return defaultValue;
 }
@@ -133,11 +133,11 @@ export function saveToStorage<T>(key: string, value: T): void {
   if (_storageQuotaExceeded) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    if (isQuotaError(e)) {
+  } catch (error) {
+    if (isQuotaError(error)) {
       markStorageQuotaExceeded();
     } else {
-      console.warn(`Failed to save ${key} to storage:`, e);
+      console.warn(`Failed to save ${key} to storage:`, error);
     }
   }
 }

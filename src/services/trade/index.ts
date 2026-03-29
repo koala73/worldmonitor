@@ -9,22 +9,17 @@ import {
   type GetTariffTrendsResponse,
   type GetTradeFlowsResponse,
   type GetTradeBarriersResponse,
-  type TradeRestriction,
-  type TariffDataPoint,
-  type TradeFlowRecord,
-  type TradeBarrier,
+  
+  
+  
+  
 } from '@/generated/client/worldmonitor/trade/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 
 // Re-export types for consumers
-export type { TradeRestriction, TariffDataPoint, TradeFlowRecord, TradeBarrier };
-export type {
-  GetTradeRestrictionsResponse,
-  GetTariffTrendsResponse,
-  GetTradeFlowsResponse,
-  GetTradeBarriersResponse,
-};
+
+
 
 const client = new TradeServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
@@ -81,3 +76,5 @@ export async function fetchTradeBarriers(countries: string[] = [], measureType =
     return emptyBarriers;
   }
 }
+
+export {type TradeRestriction, type TariffDataPoint, type TradeFlowRecord, type TradeBarrier, type GetTradeRestrictionsResponse, type GetTariffTrendsResponse, type GetTradeFlowsResponse, type GetTradeBarriersResponse} from '@/generated/client/worldmonitor/trade/v1/service_client';

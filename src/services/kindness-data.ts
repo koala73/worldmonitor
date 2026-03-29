@@ -18,7 +18,7 @@ export interface KindnessPoint {
  * Filters for humanity-kindness category and geocodes via title.
  */
 function extractKindnessEvents(
-  newsItems: Array<{ title: string; happyCategory?: string }>,
+  newsItems: { title: string; happyCategory?: string }[],
 ): KindnessPoint[] {
   const kindnessItems = newsItems.filter(
     item => item.happyCategory === 'humanity-kindness',
@@ -49,7 +49,7 @@ function extractKindnessEvents(
  * Only returns events that can be geocoded from article titles.
  */
 export function fetchKindnessData(
-  newsItems?: Array<{ title: string; happyCategory?: string }>,
+  newsItems?: { title: string; happyCategory?: string }[],
 ): KindnessPoint[] {
   return newsItems ? extractKindnessEvents(newsItems) : [];
 }

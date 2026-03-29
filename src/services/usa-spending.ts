@@ -80,7 +80,7 @@ export async function fetchRecentAwards(options: {
   if (awardTypes.includes('loan')) awardTypeCodes.push('07', '08');
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
     const response = await fetch(`${API_BASE}/search/spending_by_award/`, {
       method: 'POST',
@@ -118,7 +118,7 @@ export async function fetchRecentAwards(options: {
       recipientName: String(r['Recipient Name'] || 'Unknown'),
       amount: Number(r['Award Amount']) || 0,
       agency: String(r['Awarding Agency'] || 'Unknown'),
-      description: String(r['Description'] || '').slice(0, 200),
+      description: String(r.Description || '').slice(0, 200),
       startDate: String(r['Start Date'] || ''),
       awardType: AWARD_TYPE_MAP[String(r['Award Type'] || '')] || 'other',
     }));
@@ -162,8 +162,8 @@ export function formatAwardAmount(amount: number): string {
   if (amount >= 1_000_000) {
     return `$${(amount / 1_000_000).toFixed(1)}M`;
   }
-  if (amount >= 1_000) {
-    return `$${(amount / 1_000).toFixed(0)}K`;
+  if (amount >= 1000) {
+    return `$${(amount / 1000).toFixed(0)}K`;
   }
   return `$${amount.toFixed(0)}`;
 }
@@ -173,9 +173,13 @@ export function formatAwardAmount(amount: number): string {
  */
 export function getAwardTypeIcon(type: GovernmentAward['awardType']): string {
   switch (type) {
-    case 'contract': return '📄';
-    case 'grant': return '🎁';
-    case 'loan': return '💰';
-    default: return '📋';
+    case 'contract': { return '📄';
+    }
+    case 'grant': { return '🎁';
+    }
+    case 'loan': { return '💰';
+    }
+    default: { return '📋';
+    }
   }
 }

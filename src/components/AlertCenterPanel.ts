@@ -75,7 +75,7 @@ export class AlertCenterPanel extends Panel {
       kind: 'signal' as const,
       title: s.title,
       description: s.description,
-      severity: s.confidence > 0.8 ? 'high' : s.confidence > 0.65 ? 'medium' : 'info',
+      severity: s.confidence > 0.8 ? 'high' : (s.confidence > 0.65 ? 'medium' : 'info'),
       timestamp: s.timestamp,
     }));
     this.ingestEntries(entries);
@@ -117,7 +117,7 @@ export class AlertCenterPanel extends Panel {
       const pill = severityPill(a.severity);
       const ago = timeAgo(a.timestamp);
       // Only allow https:// links to prevent javascript: or data: href injection
-      const safeLink = a.link && a.link.startsWith('https://') ? a.link : null;
+      const safeLink = a.link?.startsWith('https://') ? a.link : null;
       const title = safeLink
         ? `<a href="${escHtml(safeLink)}" target="_blank" rel="noopener noreferrer">${escHtml(a.title)}</a>`
         : escHtml(a.title);
@@ -144,7 +144,7 @@ export class AlertCenterPanel extends Panel {
         </table>
         <div class="fires-footer">
           <span class="fires-source">Intelligence signals · Breaking alerts</span>
-          <span class="fires-updated">${this.alerts.length} event${this.alerts.length !== 1 ? 's' : ''}</span>
+          <span class="fires-updated">${this.alerts.length} event${this.alerts.length === 1 ? '' : 's'}</span>
         </div>
       </div>
     `);

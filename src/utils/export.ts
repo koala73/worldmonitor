@@ -21,8 +21,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
   const lines: string[] = [];
 
   if (data.news && data.news.length > 0) {
-    lines.push('=== NEWS ===');
-    lines.push('Title,Source,Link,Published,IsAlert');
+    lines.push('=== NEWS ===', 'Title,Source,Link,Published,IsAlert');
     data.news.forEach(item => {
       if ('primaryTitle' in item) {
         const cluster = item as ClusteredEvent;
@@ -48,8 +47,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
   }
 
   if (data.markets && data.markets.length > 0) {
-    lines.push('=== MARKETS ===');
-    lines.push('Symbol,Name,Price,Change');
+    lines.push('=== MARKETS ===', 'Symbol,Name,Price,Change');
     data.markets.forEach(m => {
       lines.push(csvRow([m.symbol, m.name, String(m.price ?? ''), String(m.change ?? '')]));
     });
@@ -57,8 +55,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
   }
 
   if (data.predictions && data.predictions.length > 0) {
-    lines.push('=== PREDICTIONS ===');
-    lines.push('Title,Yes Price,Volume');
+    lines.push('=== PREDICTIONS ===', 'Title,Yes Price,Volume');
     data.predictions.forEach(p => {
       lines.push(csvRow([p.title, String(p.yesPrice), String(p.volume ?? '')]));
     });
@@ -77,7 +74,7 @@ export interface CountryBriefExport {
   components?: { unrest: number; conflict: number; security: number; information: number };
   signals?: Record<string, number | string | null>;
   brief?: string;
-  headlines?: Array<{ title: string; source: string; link: string; pubDate?: string }>;
+  headlines?: { title: string; source: string; link: string; pubDate?: string }[];
   generatedAt: string;
 }
 
@@ -87,38 +84,25 @@ export function exportCountryBriefJSON(data: CountryBriefExport): void {
 }
 
 export function exportCountryBriefCSV(data: CountryBriefExport): void {
-  const lines: string[] = [];
-  lines.push(`Country Brief: ${data.country} (${data.code})`);
-  lines.push(`Generated: ${data.generatedAt}`);
-  lines.push('');
-  if (data.score != null) {
-    lines.push(`Score,${data.score}`);
-    lines.push(`Level,${data.level || ''}`);
-    lines.push(`Trend,${data.trend || ''}`);
+  const lines: string[] = [ `Country Brief: ${data.country} (${data.code})`, `Generated: ${data.generatedAt}`, ''];
+  if (data.score != undefined) {
+    lines.push(`Score,${data.score}`, `Level,${data.level || ''}`, `Trend,${data.trend || ''}`);
   }
   if (data.components) {
-    lines.push('');
-    lines.push('Component,Value');
-    lines.push(`Unrest,${data.components.unrest}`);
-    lines.push(`Conflict,${data.components.conflict}`);
-    lines.push(`Security,${data.components.security}`);
-    lines.push(`Information,${data.components.information}`);
+    lines.push('', 'Component,Value', `Unrest,${data.components.unrest}`, `Conflict,${data.components.conflict}`, `Security,${data.components.security}`, `Information,${data.components.information}`);
   }
   if (data.signals) {
-    lines.push('');
-    lines.push('Signal,Count');
+    lines.push('', 'Signal,Count');
     for (const [k, v] of Object.entries(data.signals)) {
       lines.push(csvRow([k, String(v)]));
     }
   }
   if (data.headlines && data.headlines.length > 0) {
-    lines.push('');
-    lines.push('Title,Source,Link,Published');
+    lines.push('', 'Title,Source,Link,Published');
     data.headlines.forEach(h => lines.push(csvRow([h.title, h.source, h.link, h.pubDate || ''])));
   }
   if (data.brief) {
-    lines.push('');
-    lines.push('Intelligence Brief');
+    lines.push('', 'Intelligence Brief');
     lines.push(`"${data.brief.replace(/"/g, '""')}"`);
   }
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -135,9 +119,9 @@ function downloadFile(content: string, filename: string, mimeType: string): void
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
-  document.body.appendChild(link);
+  document.body.append(link);
   link.click();
-  document.body.removeChild(link);
+  link.remove();
   URL.revokeObjectURL(url);
 }
 

@@ -57,7 +57,7 @@ function textToSeverity(title: string, description: string): FoodInsecurityAlert
 async function fetchFewsNet(): Promise<FoodInsecurityAlert[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(FEWS_NET_RSS)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -66,14 +66,14 @@ async function fetchFewsNet(): Promise<FoodInsecurityAlert[]> {
     if (doc.querySelector('parsererror')) return [];
 
     const items = doc.querySelectorAll('item');
-    return Array.from(items).slice(0, 30).map((item, i) => {
+    return [...items].slice(0, 30).map((item, i) => {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const description = (item.querySelector('description')?.textContent ?? '').replace(/<[^>]+>/g, '').trim();
       const link = item.querySelector('link')?.textContent?.trim() ?? '';
       const pubDateStr = item.querySelector('pubDate')?.textContent?.trim() ?? '';
 
       // FEWS NET titles often start with country name
-      const countryMatch = title.match(/^([A-Z][a-zA-Z\s]+?)(?:\s*[-–:|]|\s+Food)/);
+      const countryMatch = /^([A-Z][a-zA-Z\s]+?)(?:\s*[-–:|]|\s+Food)/.exec(title);
       const country = countryMatch?.[1]?.trim() ?? 'Unknown';
 
       return {
@@ -115,7 +115,7 @@ interface IpcResponse {
 async function fetchIpc(): Promise<FoodInsecurityAlert[]> {
   try {
     const res = await fetch(IPC_API, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return [];

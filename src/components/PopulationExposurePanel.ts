@@ -61,17 +61,22 @@ export class PopulationExposurePanel extends Panel {
       case 'non-state':
       case 'one-sided':
       case 'conflict':
-      case 'battle':
+      case 'battle': {
         return '\u2694\uFE0F';
-      case 'earthquake':
+      }
+      case 'earthquake': {
         return '\uD83C\uDF0D';
-      case 'flood':
+      }
+      case 'flood': {
         return '\uD83C\uDF0A';
+      }
       case 'fire':
-      case 'wildfire':
+      case 'wildfire': {
         return '\uD83D\uDD25';
-      default:
+      }
+      default: {
         return '\uD83D\uDCCD';
+      }
     }
   }
 }

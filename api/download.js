@@ -63,7 +63,7 @@ export default async function handler(req) {
           'Accept': 'application/vnd.github+json',
           'User-Agent': 'WorldMonitor-Download-Redirect',
         },
-        signal: AbortSignal.timeout(8_000),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (!res.ok) {

@@ -19,7 +19,7 @@ function getRelayHeaders(baseHeaders = {}) {
   return headers;
 }
 
-async function fetchWithTimeout(url, options, timeoutMs = 15000) {
+async function fetchWithTimeout(url, options, timeoutMs = 15_000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -33,7 +33,7 @@ export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+    return Response.json({ error: 'Origin not allowed' }, {
       status: 403,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -43,7 +43,7 @@ export default async function handler(req) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+    return Response.json({ error: 'Method not allowed' }, {
       status: 405,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -60,7 +60,7 @@ export default async function handler(req) {
       const relayPath = isHistory ? '/oref/history' : '/oref/alerts';
       const response = await fetchWithTimeout(`${relayBaseUrl}${relayPath}`, {
         headers: getRelayHeaders({ Accept: 'application/json' }),
-      }, 12000);
+      }, 12_000);
 
       if (response.ok) {
         const cacheControl = isHistory
@@ -80,13 +80,13 @@ export default async function handler(req) {
     }
   }
 
-  return new Response(JSON.stringify({
+  return Response.json({
     configured: false,
     alerts: [],
     historyCount24h: 0,
     timestamp: new Date().toISOString(),
     error: 'No data source available',
-  }), {
+  }, {
     status: 503,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });

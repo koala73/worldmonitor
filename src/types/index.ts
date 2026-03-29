@@ -49,7 +49,7 @@ export interface ClusteredEvent {
   primarySource: string;
   primaryLink: string;
   sourceCount: number;
-  topSources: Array<{ name: string; tier: number; url: string }>;
+  topSources: { name: string; tier: number; url: string }[];
   allItems: NewsItem[];
   firstSeen: Date;
   lastUpdated: Date;
@@ -125,7 +125,7 @@ export interface DynamicEscalationScore {
     geoConvergence: number;
     militaryActivity: number;
   };
-  history: Array<{ timestamp: number; score: number }>;
+  history: { timestamp: number; score: number }[];
   lastUpdated: Date;
 }
 
@@ -1287,7 +1287,7 @@ export interface MapTechEventCluster {
   lat: number;
   lon: number;
   count: number;
-  items: Array<{ id: string; title: string; location: string; lat: number; lng: number; country: string; startDate: string; endDate: string; url: string | null; daysUntil: number }>;
+  items: { id: string; title: string; location: string; lat: number; lng: number; country: string; startDate: string; endDate: string; url: string | null; daysUntil: number }[];
   location: string;
   country: string;
   soonestDaysUntil: number;

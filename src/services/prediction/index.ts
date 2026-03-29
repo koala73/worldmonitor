@@ -44,7 +44,7 @@ interface PolymarketEvent {
   volume?: number;
   liquidity?: number;
   markets?: PolymarketMarket[];
-  tags?: Array<{ slug: string }>;
+  tags?: { slug: string }[];
   closed?: boolean;
   endDate?: string;
 }
@@ -156,7 +156,7 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
     const resp = await client.listPredictionMarkets({
       category: params.tag_slug ?? '',
       query: '',
-      pageSize: parseInt(params.limit ?? '50', 10),
+      pageSize: Number.parseInt(params.limit ?? '50', 10),
       cursor: '',
     });
     if (resp.markets && resp.markets.length > 0) {
@@ -171,10 +171,9 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
         slug: m.id,
         endDate: m.closesAt ? new Date(m.closesAt).toISOString() : undefined,
       }));
-      return new Response(JSON.stringify(endpoint === 'events'
+      return Response.json(endpoint === 'events'
         ? [{ id: 'sebuf', title: gammaData[0]?.question, slug: '', volume: 0, markets: gammaData }]
-        : gammaData
-      ), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        : gammaData, { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
   } catch { /* sebuf handler failed (Cloudflare expected) */ }
 
@@ -213,7 +212,7 @@ function parseMarketPrice(market: PolymarketMarket): number {
     if (pricesStr) {
       const prices: string[] = JSON.parse(pricesStr);
       if (prices.length >= 1) {
-        const parsed = parseFloat(prices[0]!);
+        const parsed = Number.parseFloat(prices[0]!);
         if (!isNaN(parsed)) return parsed * 100;
       }
     }
@@ -260,7 +259,7 @@ async function fetchTopMarkets(): Promise<PredictionMarket[]> {
     .filter(m => m.question && !isExcluded(m.question))
     .map(m => {
       const yesPrice = parseMarketPrice(m);
-      const volume = m.volumeNum ?? (m.volume ? parseFloat(m.volume) : 0);
+      const volume = m.volumeNum ?? (m.volume ? Number.parseFloat(m.volume) : 0);
       return {
         title: m.question,
         yesPrice,
@@ -297,8 +296,8 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
           if (activeCandidates.length === 0) continue;
 
           const topMarket = activeCandidates.reduce((best, m) => {
-            const vol = m.volumeNum ?? (m.volume ? parseFloat(m.volume) : 0);
-            const bestVol = best.volumeNum ?? (best.volume ? parseFloat(best.volume) : 0);
+            const vol = m.volumeNum ?? (m.volume ? Number.parseFloat(m.volume) : 0);
+            const bestVol = best.volumeNum ?? (best.volume ? Number.parseFloat(best.volume) : 0);
             return vol > bestVol ? m : best;
           });
 
@@ -337,7 +336,7 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
       .filter(m => !isExpired(m.endDate))
       .filter(m => {
         const discrepancy = Math.abs(m.yesPrice - 50);
-        return discrepancy > 5 || (m.volume && m.volume > 50000);
+        return discrepancy > 5 || (m.volume && m.volume > 50_000);
       })
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 15);
@@ -467,8 +466,8 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
           if (candidates.length === 0) continue;
 
           const topMarket = candidates.reduce((best, m) => {
-            const vol = m.volumeNum ?? (m.volume ? parseFloat(m.volume) : 0);
-            const bestVol = best.volumeNum ?? (best.volume ? parseFloat(best.volume) : 0);
+            const vol = m.volumeNum ?? (m.volume ? Number.parseFloat(m.volume) : 0);
+            const bestVol = best.volumeNum ?? (best.volume ? Number.parseFloat(best.volume) : 0);
             return vol > bestVol ? m : best;
           });
           markets.push({
@@ -493,8 +492,8 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
     return markets
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 5);
-  } catch (e) {
-    console.error(`[Polymarket] fetchCountryMarkets(${country}) failed:`, e);
+  } catch (error) {
+    console.error(`[Polymarket] fetchCountryMarkets(${country}) failed:`, error);
     return [];
   }
 }

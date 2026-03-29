@@ -26,7 +26,7 @@ export function initSettingsWindow(): void {
   // This window shows only "which panels to display" (panel display settings).
   document.title = `${t('header.settings')} - World Monitor`;
 
-  let panelSettings = loadFromStorage<Record<string, PanelConfig>>(
+  const panelSettings = loadFromStorage<Record<string, PanelConfig>>(
     STORAGE_KEYS.panels,
     DEFAULT_PANELS
   );

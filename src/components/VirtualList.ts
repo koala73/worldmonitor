@@ -61,10 +61,10 @@ export class VirtualList {
     this.bottomSpacer = document.createElement('div');
     this.bottomSpacer.className = 'virtual-spacer virtual-spacer-bottom';
 
-    this.content.appendChild(this.topSpacer);
-    this.content.appendChild(this.bottomSpacer);
-    this.viewport.appendChild(this.content);
-    this.container.appendChild(this.viewport);
+    this.content.append(this.topSpacer);
+    this.content.append(this.bottomSpacer);
+    this.viewport.append(this.content);
+    this.container.append(this.viewport);
 
     // Bind scroll handler
     this.viewport.addEventListener('scroll', this.handleScroll, { passive: true });
@@ -309,7 +309,7 @@ export class WindowedList<T> {
       const placeholder = document.createElement('div');
       placeholder.className = 'windowed-chunk';
       placeholder.dataset.chunk = String(i);
-      this.container.appendChild(placeholder);
+      this.container.append(placeholder);
       this.chunkElements.set(i, placeholder);
     }
 

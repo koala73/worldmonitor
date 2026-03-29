@@ -14,7 +14,7 @@ export interface GeoHubActivity {
   score: number;
   newsCount: number;
   hasBreaking: boolean;
-  topStories: Array<{ title: string; link: string }>;
+  topStories: { title: string; link: string }[];
   trend: 'rising' | 'stable' | 'falling';
   matchedKeywords: string[];
 }
@@ -74,7 +74,7 @@ export function aggregateGeoActivity(clusters: ClusteredEvent[]): GeoHubActivity
     }
   }
 
-  const rawScores: Array<{ hubId: string; acc: HubAccumulator; rawScore: number }> = [];
+  const rawScores: { hubId: string; acc: HubAccumulator; rawScore: number }[] = [];
   let maxRawScore = 0;
 
   for (const [hubId, acc] of hubAccumulators) {
@@ -137,7 +137,7 @@ export function aggregateGeoActivity(clusters: ClusteredEvent[]): GeoHubActivity
       hasBreaking: acc.hasBreaking,
       topStories,
       trend,
-      matchedKeywords: Array.from(acc.matchedKeywords),
+      matchedKeywords: [...acc.matchedKeywords],
     });
   }
 

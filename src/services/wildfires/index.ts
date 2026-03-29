@@ -8,7 +8,7 @@ import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { getApiBaseUrl } from '@/services/runtime';
 
-export type { FireDetection };
+
 
 // -- Types --
 
@@ -168,9 +168,15 @@ export function toMapFires(fires: FireDetection[]): MapFire[] {
 
 function confidenceToNumber(c: FireConfidence): number {
   switch (c) {
-    case 'FIRE_CONFIDENCE_HIGH': return 95;
-    case 'FIRE_CONFIDENCE_NOMINAL': return 50;
-    case 'FIRE_CONFIDENCE_LOW': return 20;
-    default: return 0;
+    case 'FIRE_CONFIDENCE_HIGH': { return 95;
+    }
+    case 'FIRE_CONFIDENCE_NOMINAL': { return 50;
+    }
+    case 'FIRE_CONFIDENCE_LOW': { return 20;
+    }
+    default: { return 0;
+    }
   }
 }
+
+export {type FireDetection} from '@/generated/client/worldmonitor/wildfire/v1/service_client';

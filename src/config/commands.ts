@@ -183,7 +183,7 @@ export const COMMANDS: Command[] = [
 ];
 
 function toFlagEmoji(code: string): string {
-  return code.toUpperCase().split('').map(c => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65)).join('');
+  return code.toUpperCase().split('').map(c => String.fromCodePoint(0x1_F1_E6 + c.charCodeAt(0) - 65)).join('');
 }
 
 // All ISO 3166-1 alpha-2 codes — Intl.DisplayNames resolves human-readable names at runtime

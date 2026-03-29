@@ -36,14 +36,19 @@ interface AdvisoryFeed {
 const US_LEVEL_RE = /Level (\d)/i;
 
 function parseUsLevel(title: string): SecurityAdvisory['level'] {
-  const m = title.match(US_LEVEL_RE);
+  const m = US_LEVEL_RE.exec(title);
   if (!m) return 'info';
   switch (m[1]) {
-    case '4': return 'do-not-travel';
-    case '3': return 'reconsider';
-    case '2': return 'caution';
-    case '1': return 'normal';
-    default: return 'info';
+    case '4': { return 'do-not-travel';
+    }
+    case '3': { return 'reconsider';
+    }
+    case '2': { return 'caution';
+    }
+    case '1': { return 'normal';
+    }
+    default: { return 'info';
+    }
   }
 }
 
@@ -155,7 +160,7 @@ function parseFeedXml(
   const isAtom = items.length === 0;
   if (isAtom) items = doc.querySelectorAll('entry');
 
-  return Array.from(items).slice(0, 15).map(item => {
+  return [...items].slice(0, 15).map(item => {
     const title = item.querySelector('title')?.textContent?.trim() || '';
     let link = '';
     if (isAtom) {
@@ -186,11 +191,11 @@ function parseFeedXml(
   });
 }
 
-function toSerializable(items: SecurityAdvisory[]): Array<Omit<SecurityAdvisory, 'pubDate'> & { pubDate: string }> {
+function toSerializable(items: SecurityAdvisory[]): (Omit<SecurityAdvisory, 'pubDate'> & { pubDate: string })[] {
   return items.map(item => ({ ...item, pubDate: item.pubDate.toISOString() }));
 }
 
-function fromSerializable(items: Array<Omit<SecurityAdvisory, 'pubDate'> & { pubDate: string }>): SecurityAdvisory[] {
+function fromSerializable(items: (Omit<SecurityAdvisory, 'pubDate'> & { pubDate: string })[]): SecurityAdvisory[] {
   return items.map(item => ({ ...item, pubDate: new Date(item.pubDate) }));
 }
 
@@ -218,9 +223,9 @@ export async function fetchSecurityAdvisories(
         }
         const text = await response.text();
         return parseFeedXml(text, feed);
-      } catch (e) {
-        if (e instanceof DOMException && e.name === 'AbortError') throw e;
-        console.warn(`[SecurityAdvisories] ${feed.name} failed:`, e);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') throw error;
+        console.warn(`[SecurityAdvisories] ${feed.name} failed:`, error);
         return [];
       }
     }),
@@ -257,7 +262,7 @@ export async function fetchSecurityAdvisories(
 }
 
 export async function loadCachedAdvisories(): Promise<SecurityAdvisory[] | null> {
-  const entry = await getPersistentCache<Array<Omit<SecurityAdvisory, 'pubDate'> & { pubDate: string }>>(CACHE_KEY);
+  const entry = await getPersistentCache<(Omit<SecurityAdvisory, 'pubDate'> & { pubDate: string })[]>(CACHE_KEY);
   if (!entry?.data?.length) return null;
   return fromSerializable(entry.data);
 }

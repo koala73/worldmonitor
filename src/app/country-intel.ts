@@ -68,8 +68,8 @@ export class CountryIntelManager implements AppModule {
         a.href = dataUrl;
         a.download = `country-brief-${code.toLowerCase()}-${Date.now()}.png`;
         a.click();
-      } catch (err) {
-        console.error('[CountryBrief] Image export failed:', err);
+      } catch (error) {
+        console.error('[CountryBrief] Image export failed:', error);
       }
     });
 
@@ -213,7 +213,7 @@ export class CountryIntelManager implements AppModule {
 
       const [stockData, wbProfile] = await Promise.all([stockPromise, worldBankPromise]);
       if (stockData.available) {
-        const pct = parseFloat(stockData.weekChangePercent);
+        const pct = Number.parseFloat(stockData.weekChangePercent);
         context.stockIndex = `${stockData.indexName}: ${stockData.price} (${pct >= 0 ? '+' : ''}${stockData.weekChangePercent}% week)`;
       }
       if (wbProfile) {
@@ -271,8 +271,8 @@ export class CountryIntelManager implements AppModule {
           }
         }
       }
-    } catch (err) {
-      console.error('[CountryBrief] fetch error:', err);
+    } catch (error) {
+      console.error('[CountryBrief] fetch error:', error);
       this.ctx.countryBriefPage!.updateBrief({ brief: '', country, code, error: 'Failed to generate brief' });
     }
   }
@@ -302,8 +302,7 @@ export class CountryIntelManager implements AppModule {
     signals: CountryBriefSignals,
     context: Record<string, unknown>,
   ): string {
-    const lines: string[] = [];
-    lines.push(`Country: ${country} (${code})`);
+    const lines: string[] = [ `Country: ${country} (${code})`];
 
     if (score) {
       lines.push(`CII: ${score.score}/100 (${score.level}), trend=${score.trend}, 24h_change=${score.change24h}`);
@@ -326,7 +325,7 @@ export class CountryIntelManager implements AppModule {
 
     const convergenceScore = typeof context.convergenceScore === 'number' ? context.convergenceScore : null;
     const signalTypes = Array.isArray(context.signalTypes) ? context.signalTypes as string[] : [];
-    if (convergenceScore != null || signalTypes.length > 0) {
+    if (convergenceScore != undefined || signalTypes.length > 0) {
       lines.push(`Signal convergence: score=${convergenceScore ?? 0}, types=${signalTypes.slice(0, 8).join(', ')}`);
     }
 
@@ -363,7 +362,7 @@ export class CountryIntelManager implements AppModule {
             timestamp: new Date(e.time).getTime(),
             lane: 'protest',
             label: e.title || `${e.eventType} in ${e.city || e.country}`,
-            severity: e.severity === 'high' ? 'high' : e.severity === 'medium' ? 'medium' : 'low',
+            severity: e.severity === 'high' ? 'high' : (e.severity === 'medium' ? 'medium' : 'low'),
           });
         }
       }
@@ -532,7 +531,7 @@ export class CountryIntelManager implements AppModule {
     let cyberThreats = 0;
     if (this.ctx.cyberThreatsCache) {
       cyberThreats = this.ctx.cyberThreatsCache.filter((threat) => {
-        if (threat.country && threat.country.length === 2) return threat.country.toUpperCase() === code;
+        if (threat.country?.length === 2) return threat.country.toUpperCase() === code;
         return hasGeoShape && this.isInCountry(threat.lat, threat.lon, code);
       }).length;
     }
@@ -586,7 +585,7 @@ export class CountryIntelManager implements AppModule {
     const el = document.createElement('div');
     el.className = 'toast-notification';
     el.textContent = msg;
-    document.body.appendChild(el);
+    document.body.append(el);
     requestAnimationFrame(() => el.classList.add('visible'));
     setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 3000);
   }
@@ -603,7 +602,7 @@ export class CountryIntelManager implements AppModule {
 
   private isInCountry(lat: number, lon: number, code: string): boolean {
     const precise = isCoordinateInCountry(lat, lon, code);
-    if (precise != null) return precise;
+    if (precise != undefined) return precise;
     const b = CountryIntelManager.COUNTRY_BOUNDS[code];
     if (!b) return false;
     return lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e;
@@ -613,13 +612,13 @@ export class CountryIntelManager implements AppModule {
     ...ME_STRIKE_BOUNDS,
     CN: { n: 53.6, s: 18.2, e: 134.8, w: 73.5 }, TW: { n: 25.3, s: 21.9, e: 122, w: 120 },
     JP: { n: 45.5, s: 24.2, e: 153.9, w: 122.9 }, KR: { n: 38.6, s: 33.1, e: 131.9, w: 124.6 },
-    KP: { n: 43.0, s: 37.7, e: 130.7, w: 124.2 }, IN: { n: 35.5, s: 6.7, e: 97.4, w: 68.2 },
+    KP: { n: 43, s: 37.7, e: 130.7, w: 124.2 }, IN: { n: 35.5, s: 6.7, e: 97.4, w: 68.2 },
     PK: { n: 37, s: 24, e: 77, w: 61 }, AF: { n: 38.5, s: 29.4, e: 74.9, w: 60.5 },
     UA: { n: 52.4, s: 44.4, e: 40.2, w: 22.1 }, RU: { n: 82, s: 41.2, e: 180, w: 19.6 },
     BY: { n: 56.2, s: 51.3, e: 32.8, w: 23.2 }, PL: { n: 54.8, s: 49, e: 24.1, w: 14.1 },
     EG: { n: 31.7, s: 22, e: 36.9, w: 25 }, LY: { n: 33, s: 19.5, e: 25, w: 9.4 },
     SD: { n: 22, s: 8.7, e: 38.6, w: 21.8 }, US: { n: 49, s: 24.5, e: -66.9, w: -125 },
-    GB: { n: 58.7, s: 49.9, e: 1.8, w: -8.2 }, DE: { n: 55.1, s: 47.3, e: 15.0, w: 5.9 },
+    GB: { n: 58.7, s: 49.9, e: 1.8, w: -8.2 }, DE: { n: 55.1, s: 47.3, e: 15, w: 5.9 },
     FR: { n: 51.1, s: 41.3, e: 9.6, w: -5.1 }, TR: { n: 42.1, s: 36, e: 44.8, w: 26 },
     BR: { n: 5.3, s: -33.8, e: -34.8, w: -73.9 },
   };
@@ -649,7 +648,7 @@ export class CountryIntelManager implements AppModule {
     AE: ['united arab emirates', 'uae', 'emirati', 'dubai', 'abu dhabi'],
   };
 
-  private static otherCountryTermsCache: Map<string, string[]> = new Map();
+  private static otherCountryTermsCache = new Map<string, string[]>();
 
   static firstMentionPosition(text: string, terms: string[]): number {
     let earliest = Infinity;
@@ -706,7 +705,7 @@ export class CountryIntelManager implements AppModule {
     if (!/^[A-Z]{2}$/.test(upperCode)) return '🏳️';
     return upperCode
       .split('')
-      .map((char) => String.fromCodePoint(0x1f1e6 + char.charCodeAt(0) - 65))
+      .map((char) => String.fromCodePoint(0x1_F1_E6 + char.charCodeAt(0) - 65))
       .join('');
   }
 }

@@ -9,8 +9,8 @@ import { trackFindingClicked } from '@/services/analytics';
 
 const LOW_COUNT_THRESHOLD = 3;
 const MAX_VISIBLE_FINDINGS = 10;
-const SORT_TIME_TOLERANCE_MS = 60000;
-const REFRESH_INTERVAL_MS = 180000;
+const SORT_TIME_TOLERANCE_MS = 60_000;
+const REFRESH_INTERVAL_MS = 180_000;
 const ALERT_HOURS = 6;
 const STORAGE_KEY = 'worldmonitor-intel-findings';
 const POPUP_STORAGE_KEY = 'wm-alert-popup-enabled';
@@ -201,7 +201,7 @@ export class IntelligenceFindingsBadge {
     document.addEventListener('click', dismiss, { once: true });
 
     this.contextMenu = menu;
-    document.body.appendChild(menu);
+    document.body.append(menu);
   }
 
   private dismissContextMenu(): void {
@@ -214,7 +214,7 @@ export class IntelligenceFindingsBadge {
   private mount(): void {
     const headerRight = document.querySelector('.header-right');
     if (headerRight) {
-      this.badge.appendChild(this.dropdown);
+      this.badge.append(this.dropdown);
       headerRight.insertBefore(this.badge, headerRight.firstChild);
     }
   }
@@ -274,7 +274,7 @@ export class IntelligenceFindingsBadge {
       title: s.title,
       description: s.description,
       confidence: s.confidence,
-      priority: s.confidence >= 0.7 ? 'high' as const : s.confidence >= 0.5 ? 'medium' as const : 'low' as const,
+      priority: s.confidence >= 0.7 ? 'high' as const : (s.confidence >= 0.5 ? 'medium' as const : 'low' as const),
       timestamp: s.timestamp,
       original: s,
     }));
@@ -441,10 +441,10 @@ export class IntelligenceFindingsBadge {
 
   private formatTimeAgo(date: Date): string {
     const ms = Date.now() - date.getTime();
-    if (ms < 60000) return t('components.intelligenceFindings.time.justNow');
-    if (ms < 3600000) return t('components.intelligenceFindings.time.minutesAgo', { count: String(Math.floor(ms / 60000)) });
-    if (ms < 86400000) return t('components.intelligenceFindings.time.hoursAgo', { count: String(Math.floor(ms / 3600000)) });
-    return t('components.intelligenceFindings.time.daysAgo', { count: String(Math.floor(ms / 86400000)) });
+    if (ms < 60_000) return t('components.intelligenceFindings.time.justNow');
+    if (ms < 3_600_000) return t('components.intelligenceFindings.time.minutesAgo', { count: String(Math.floor(ms / 60_000)) });
+    if (ms < 86_400_000) return t('components.intelligenceFindings.time.hoursAgo', { count: String(Math.floor(ms / 3_600_000)) });
+    return t('components.intelligenceFindings.time.daysAgo', { count: String(Math.floor(ms / 86_400_000)) });
   }
 
   private toggleDropdown(): void {
@@ -525,7 +525,7 @@ export class IntelligenceFindingsBadge {
       });
     });
 
-    document.body.appendChild(overlay);
+    document.body.append(overlay);
   }
 
   public destroy(): void {

@@ -19,7 +19,7 @@
 import { Panel } from '@/components/Panel';
 
 const SHELTER_FACTORS: Record<string, { label: string; factor: number }> = {
-  open:        { label: 'Open — No shelter',            factor: 1.0  },
+  open:        { label: 'Open — No shelter',            factor: 1  },
   car:         { label: 'Car interior',                 factor: 0.5  },
   wood:        { label: 'Wood frame house',             factor: 0.3  },
   brick:       { label: 'Brick / masonry building',     factor: 0.1  },
@@ -188,12 +188,12 @@ export class RadiationDecayPanel extends Panel {
     if (!el) return;
 
     el.querySelector<HTMLInputElement>('#rdpDose')?.addEventListener('change', (e) => {
-      const v = parseFloat((e.target as HTMLInputElement).value);
+      const v = Number.parseFloat((e.target as HTMLInputElement).value);
       if (v > 0) { this._doseAt1h = v; this._render(); }
     });
 
     el.querySelector<HTMLInputElement>('#rdpHours')?.addEventListener('input', (e) => {
-      this._hoursElapsed = parseInt((e.target as HTMLInputElement).value, 10);
+      this._hoursElapsed = Number.parseInt((e.target as HTMLInputElement).value, 10);
       const label = el.querySelector<HTMLElement>('#rdpHoursVal');
       if (label) label.textContent = `H+${this._hoursElapsed}h`;
       this._render();
@@ -205,7 +205,7 @@ export class RadiationDecayPanel extends Panel {
     });
 
     el.querySelector<HTMLInputElement>('#rdpShelterHours')?.addEventListener('input', (e) => {
-      this._shelterHours = parseInt((e.target as HTMLInputElement).value, 10);
+      this._shelterHours = Number.parseInt((e.target as HTMLInputElement).value, 10);
       const label = el.querySelector<HTMLElement>('#rdpShelterHoursVal');
       if (label) label.textContent = `${this._shelterHours}h`;
       this._render();

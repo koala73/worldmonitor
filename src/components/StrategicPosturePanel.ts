@@ -10,10 +10,10 @@ export class StrategicPosturePanel extends Panel {
   private postures: TheaterPostureSummary[] = [];
   private vesselTimeouts: ReturnType<typeof setTimeout>[] = [];
   private loadingElapsedInterval: ReturnType<typeof setInterval> | null = null;
-  private loadingStartTime: number = 0;
+  private loadingStartTime = 0;
   private onLocationClick?: (lat: number, lon: number) => void;
-  private lastTimestamp: string = '';
-  private isStale: boolean = false;
+  private lastTimestamp = '';
+  private isStale = false;
 
   constructor() {
     super({
@@ -362,30 +362,36 @@ export class StrategicPosturePanel extends Panel {
 
   private getPostureBadge(level: string): string {
     switch (level) {
-      case 'critical':
+      case 'critical': {
         return `<span class="posture-badge posture-critical">${t('components.strategicPosture.badges.critical')}</span>`;
-      case 'elevated':
+      }
+      case 'elevated': {
         return `<span class="posture-badge posture-elevated">${t('components.strategicPosture.badges.elevated')}</span>`;
-      default:
+      }
+      default: {
         return `<span class="posture-badge posture-normal">${t('components.strategicPosture.badges.normal')}</span>`;
+      }
     }
   }
 
   private getTrendIcon(trend: string, change: number): string {
     switch (trend) {
-      case 'increasing':
+      case 'increasing': {
         return `<span class="posture-trend trend-up">↗ +${change}%</span>`;
-      case 'decreasing':
+      }
+      case 'decreasing': {
         return `<span class="posture-trend trend-down">↘ ${change}%</span>`;
-      default:
+      }
+      default: {
         return `<span class="posture-trend trend-stable">→ ${t('components.strategicPosture.trendStable')}</span>`;
+      }
     }
   }
 
   private theaterDisplayName(p: TheaterPostureSummary): string {
     const key = `components.strategicPosture.theaters.${p.theaterId}`;
     const translated = t(key);
-    return translated !== key ? translated : p.theaterName;
+    return translated === key ? p.theaterName : translated;
   }
 
   private renderTheater(p: TheaterPostureSummary): string {
@@ -496,8 +502,8 @@ export class StrategicPosturePanel extends Panel {
     const theaters = this.content.querySelectorAll('.posture-theater');
     theaters.forEach((el) => {
       el.addEventListener('click', () => {
-        const lat = parseFloat((el as HTMLElement).dataset.lat || '0');
-        const lon = parseFloat((el as HTMLElement).dataset.lon || '0');
+        const lat = Number.parseFloat((el as HTMLElement).dataset.lat || '0');
+        const lon = Number.parseFloat((el as HTMLElement).dataset.lon || '0');
         console.log('[StrategicPosturePanel] Theater clicked:', {
           lat,
           lon,

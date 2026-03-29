@@ -233,7 +233,7 @@ export function resolveTradeRouteSegments(): TradeRouteSegment[] {
     const fromCoord = portMap.get(route.from);
     const toCoord = portMap.get(route.to);
     if (!fromCoord || !toCoord) {
-      if (import.meta.env.DEV) console.error(`[trade-routes] Missing port: ${!fromCoord ? route.from : route.to}`);
+      if (import.meta.env.DEV) console.error(`[trade-routes] Missing port: ${fromCoord ? route.to : route.from}`);
       continue;
     }
 

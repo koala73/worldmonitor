@@ -53,17 +53,17 @@ function playMotorWhine(ctx: AudioContext): void {
   humG.gain.setValueAtTime(0.24, t0 + 1.1);
   humG.gain.linearRampToValueAtTime(0, t0 + 1.9);
   hum.connect(humG).connect(ctx.destination);
-  hum.start(t0); hum.stop(t0 + 2.0);
+  hum.start(t0); hum.stop(t0 + 2);
 
   // Mid electrical buzz (sawtooth, filtered to ~200 Hz band)
   const buzz = ctx.createOscillator(); buzz.type = 'sawtooth';
   buzz.frequency.setValueAtTime(105, t0 + 0.08);
-  buzz.frequency.exponentialRampToValueAtTime(190, t0 + 1.0);
+  buzz.frequency.exponentialRampToValueAtTime(190, t0 + 1);
   const buzzF = ctx.createBiquadFilter(); buzzF.type = 'lowpass'; buzzF.frequency.value = 550;
   const buzzG = ctx.createGain();
   buzzG.gain.setValueAtTime(0, t0 + 0.08);
   buzzG.gain.linearRampToValueAtTime(0.08, t0 + 0.35);
-  buzzG.gain.setValueAtTime(0.08, t0 + 1.0);
+  buzzG.gain.setValueAtTime(0.08, t0 + 1);
   buzzG.gain.linearRampToValueAtTime(0, t0 + 1.6);
   buzz.connect(buzzF).connect(buzzG).connect(ctx.destination);
   buzz.start(t0 + 0.08); buzz.stop(t0 + 1.7);
@@ -91,9 +91,9 @@ function playBoltRetracts(ctx: AudioContext): void {
     // Sub-bass impact thud (60 → 22 Hz decay)
     const thud = ctx.createOscillator(); thud.type = 'sine';
     thud.frequency.setValueAtTime(60, t);
-    thud.frequency.exponentialRampToValueAtTime(22, t + 0.20);
+    thud.frequency.exponentialRampToValueAtTime(22, t + 0.2);
     const tg = ctx.createGain();
-    tg.gain.setValueAtTime(0.90, t);
+    tg.gain.setValueAtTime(0.9, t);
     tg.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
     thud.connect(tg).connect(ctx.destination);
     thud.start(t); thud.stop(t + 0.26);
@@ -103,7 +103,7 @@ function playBoltRetracts(ctx: AudioContext): void {
     ring.frequency.setValueAtTime(380, t + 0.01);
     ring.frequency.exponentialRampToValueAtTime(240, t + 0.5);
     const rg = ctx.createGain();
-    rg.gain.setValueAtTime(0.20, t + 0.01);
+    rg.gain.setValueAtTime(0.2, t + 0.01);
     rg.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
     ring.connect(rg).connect(ctx.destination);
     ring.start(t + 0.01); ring.stop(t + 0.58);
@@ -137,7 +137,7 @@ function playDoorOpen(ctx: AudioContext): void {
   wpOsc.frequency.exponentialRampToValueAtTime(24, t0 + 0.28);
   const wpG = ctx.createGain();
   wpG.gain.setValueAtTime(0.95, t0);
-  wpG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.30);
+  wpG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.3);
   wpOsc.connect(wpG).connect(ctx.destination);
   wpOsc.start(t0); wpOsc.stop(t0 + 0.32);
 
@@ -148,7 +148,7 @@ function playDoorOpen(ctx: AudioContext): void {
   const popSrc = ctx.createBufferSource(); popSrc.buffer = popBuf;
   const popF = ctx.createBiquadFilter(); popF.type = 'lowpass'; popF.frequency.value = 140;
   const popG = ctx.createGain();
-  popG.gain.setValueAtTime(0.70, t0);
+  popG.gain.setValueAtTime(0.7, t0);
   popG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.22);
   popSrc.connect(popF).connect(popG).connect(ctx.destination);
   popSrc.start(t0);
@@ -162,9 +162,9 @@ function playDoorOpen(ctx: AudioContext): void {
   const rF2 = ctx.createBiquadFilter(); rF2.type = 'highpass'; rF2.frequency.value = 18;
   const rG = ctx.createGain();
   rG.gain.setValueAtTime(0, t0 + 0.05);
-  rG.gain.linearRampToValueAtTime(0.58, t0 + 0.30);
-  rG.gain.setValueAtTime(0.58, t0 + 1.30);
-  rG.gain.linearRampToValueAtTime(0, t0 + 2.60);
+  rG.gain.linearRampToValueAtTime(0.58, t0 + 0.3);
+  rG.gain.setValueAtTime(0.58, t0 + 1.3);
+  rG.gain.linearRampToValueAtTime(0, t0 + 2.6);
   rSrc.connect(rF1).connect(rF2).connect(rG).connect(ctx.destination);
   rSrc.start(t0 + 0.05);
 
@@ -172,23 +172,23 @@ function playDoorOpen(ctx: AudioContext): void {
   const srvOsc = ctx.createOscillator(); srvOsc.type = 'sawtooth';
   srvOsc.frequency.setValueAtTime(1800, t0 + 0.02);
   srvOsc.frequency.exponentialRampToValueAtTime(3200, t0 + 0.25);
-  srvOsc.frequency.exponentialRampToValueAtTime(950, t0 + 1.90);
+  srvOsc.frequency.exponentialRampToValueAtTime(950, t0 + 1.9);
   const srvF = ctx.createBiquadFilter(); srvF.type = 'bandpass'; srvF.frequency.value = 2200; srvF.Q.value = 3.5;
   const srvG = ctx.createGain();
   srvG.gain.setValueAtTime(0, t0 + 0.02);
   srvG.gain.linearRampToValueAtTime(0.065, t0 + 0.18);
-  srvG.gain.setValueAtTime(0.065, t0 + 1.50);
-  srvG.gain.linearRampToValueAtTime(0, t0 + 2.10);
+  srvG.gain.setValueAtTime(0.065, t0 + 1.5);
+  srvG.gain.linearRampToValueAtTime(0, t0 + 2.1);
   srvOsc.connect(srvF).connect(srvG).connect(ctx.destination);
   srvOsc.start(t0 + 0.02); srvOsc.stop(t0 + 2.15);
 
   // ── 4. Structural resonance — low bell of the vault's mass ──
   const bellOsc = ctx.createOscillator(); bellOsc.type = 'sine';
   bellOsc.frequency.setValueAtTime(88, t0 + 0.08);
-  bellOsc.frequency.exponentialRampToValueAtTime(62, t0 + 1.40);
+  bellOsc.frequency.exponentialRampToValueAtTime(62, t0 + 1.4);
   const bellG = ctx.createGain();
   bellG.gain.setValueAtTime(0.32, t0 + 0.08);
-  bellG.gain.exponentialRampToValueAtTime(0.001, t0 + 2.20);
+  bellG.gain.exponentialRampToValueAtTime(0.001, t0 + 2.2);
   bellOsc.connect(bellG).connect(ctx.destination);
   bellOsc.start(t0 + 0.08); bellOsc.stop(t0 + 2.25);
 
@@ -200,7 +200,7 @@ function playDoorOpen(ctx: AudioContext): void {
   const airF = ctx.createBiquadFilter(); airF.type = 'bandpass'; airF.frequency.value = 2800; airF.Q.value = 0.45;
   const airG = ctx.createGain();
   airG.gain.setValueAtTime(0, t0 + 0.18);
-  airG.gain.linearRampToValueAtTime(0.22, t0 + 0.50);
+  airG.gain.linearRampToValueAtTime(0.22, t0 + 0.5);
   airG.gain.setValueAtTime(0.22, t0 + 0.85);
   airG.gain.linearRampToValueAtTime(0, t0 + 1.45);
   airSrc.connect(airF).connect(airG).connect(ctx.destination);
@@ -212,27 +212,27 @@ function playAuthConfirmed(ctx: AudioContext): void {
   const t0 = ctx.currentTime;
 
   // Two crisp electronic beeps (ascending)
-  for (const [delay, freq] of [[0, 660], [0.20, 990]] as const) {
+  for (const [delay, freq] of [[0, 660], [0.2, 990]] as const) {
     const o = ctx.createOscillator(); o.type = 'sine';
     o.frequency.value = freq;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, t0 + delay);
     g.gain.linearRampToValueAtTime(0.15, t0 + delay + 0.018);
-    g.gain.setValueAtTime(0.15, t0 + delay + 0.10);
+    g.gain.setValueAtTime(0.15, t0 + delay + 0.1);
     g.gain.linearRampToValueAtTime(0, t0 + delay + 0.19);
     o.connect(g).connect(ctx.destination);
     o.start(t0 + delay); o.stop(t0 + delay + 0.22);
   }
 
   // Warm confirmation chord (minor 3rd + 5th, sustains)
-  for (const [freq, del] of [[330, 0.36], [392, 0.38], [494, 0.40]] as const) {
+  for (const [freq, del] of [[330, 0.36], [392, 0.38], [494, 0.4]] as const) {
     const o = ctx.createOscillator(); o.type = 'sine';
     o.frequency.value = freq;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, t0 + del);
-    g.gain.linearRampToValueAtTime(0.060, t0 + del + 0.04);
-    g.gain.setValueAtTime(0.060, t0 + del + 0.28);
-    g.gain.linearRampToValueAtTime(0, t0 + del + 0.60);
+    g.gain.linearRampToValueAtTime(0.06, t0 + del + 0.04);
+    g.gain.setValueAtTime(0.06, t0 + del + 0.28);
+    g.gain.linearRampToValueAtTime(0, t0 + del + 0.6);
     o.connect(g).connect(ctx.destination);
     o.start(t0 + del); o.stop(t0 + del + 0.65);
   }
@@ -242,9 +242,9 @@ function playVoiceAuthenticated(): void {
   if (!('speechSynthesis' in window)) return;
   const utter = new SpeechSynthesisUtterance('Authenticated');
   utter.lang   = 'en-US';
-  utter.rate   = 1.0;
-  utter.pitch  = 1.0;
-  utter.volume = 1.0;
+  utter.rate   = 1;
+  utter.pitch  = 1;
+  utter.volume = 1;
   window.speechSynthesis.speak(utter);
 }
 
@@ -262,7 +262,7 @@ function drawFingerprintRidges(
   const cx = size * 0.5;
   const cy = size * 0.5 + size * 0.016;
   const padW = size * 0.78;
-  const padH = size * 0.80;
+  const padH = size * 0.8;
   const ridgeCount = 28;
   const STEPS = 80;
 
@@ -292,7 +292,7 @@ function drawFingerprintRidges(
       const noise =
         Math.sin(tx * 9  + i * 2.31) * padH * 0.0042 +
         Math.sin(tx * 17 - i * 1.58) * padH * 0.0021 +
-        Math.sin(tx * 31 + i * 3.77) * padH * 0.0010;
+        Math.sin(tx * 31 + i * 3.77) * padH * 0.001;
 
       const y = y0 - arch + noise;
       if (s === 0) c.moveTo(x, y); else c.lineTo(x, y);
@@ -375,8 +375,8 @@ function createTurnedPlateTexture(): THREE.CanvasTexture {
   for (let r = 1; r < size * 0.72; r += 1.4) {
     const n    = Math.random();
     const band = Math.floor(r / 2.8) % 3;
-    const lum  = band === 0 ? 155 + n * 60 : band === 1 ? 90 + n * 45 : 38 + n * 30;
-    const a    = band === 0 ? 0.45 + n * 0.40 : 0.20 + n * 0.35;
+    const lum  = band === 0 ? 155 + n * 60 : (band === 1 ? 90 + n * 45 : 38 + n * 30);
+    const a    = band === 0 ? 0.45 + n * 0.4 : 0.2 + n * 0.35;
     ctx.strokeStyle = `rgba(${Math.floor(lum)},${Math.floor(lum + 4)},${Math.floor(lum + 8)},${a})`;
     ctx.lineWidth   = 0.6 + Math.random() * 1.1;
     ctx.beginPath();
@@ -463,7 +463,7 @@ function createEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
   t1.addColorStop(0, 'rgba(255,255,255,1)');
   t1.addColorStop(1, 'rgba(255,255,255,0)');
   c.fillStyle = t1;
-  c.fillRect(W * 0.15, 0, W * 0.70, 6);
+  c.fillRect(W * 0.15, 0, W * 0.7, 6);
 
   // Halo around tube 1 (soft fall-off so it bleeds into chrome naturally)
   const t1halo = c.createLinearGradient(0, 0, 0, 28);
@@ -471,7 +471,7 @@ function createEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
   t1halo.addColorStop(0.5, 'rgba(100,155,220,0.30)');
   t1halo.addColorStop(1,   'rgba(0,0,0,0)');
   c.fillStyle = t1halo;
-  c.fillRect(W * 0.15, 0, W * 0.70, 28);
+  c.fillRect(W * 0.15, 0, W * 0.7, 28);
 
   // Tube 2 — secondary, slightly offset (two-tube fixture look)
   const t2 = c.createLinearGradient(0, 6, 0, 12);
@@ -496,7 +496,7 @@ function createEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
   c.fillRect(0, 0, W * 0.38, H);
 
   // ── Right rim light (slightly cooler, dimmer) ─────────────────────────────
-  const rightRim = c.createRadialGradient(W * 0.97, H * 0.22, 0, W * 0.97, H * 0.22, W * 0.20);
+  const rightRim = c.createRadialGradient(W * 0.97, H * 0.22, 0, W * 0.97, H * 0.22, W * 0.2);
   rightRim.addColorStop(0,   'rgba(100,165,230,0.40)');
   rightRim.addColorStop(0.6, 'rgba(45,85,145,0.12)');
   rightRim.addColorStop(1,   'rgba(0,0,0,0)');
@@ -510,7 +510,7 @@ function createEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
   eqBand.addColorStop(0.5, 'rgba(12,18,28,0.55)');
   eqBand.addColorStop(1,   'rgba(0,0,0,0)');
   c.fillStyle = eqBand;
-  c.fillRect(W * 0.15, H * 0.35, W * 0.70, H * 0.30);
+  c.fillRect(W * 0.15, H * 0.35, W * 0.7, H * 0.3);
 
   // ── Floor bounce: faint warm uptick (concrete floor below door) ───────────
   const floor = c.createLinearGradient(0, H * 0.78, 0, H);
@@ -545,7 +545,7 @@ function injectStyles(): void {
       opacity:0.038; mix-blend-mode:overlay;
     }
   `;
-  document.head.appendChild(s);
+  document.head.append(s);
 }
 
 // ── Half-geometry helpers ─────────────────────────────────────────────────────
@@ -594,8 +594,8 @@ async function loadVaultTextures(): Promise<VaultTextures | null> {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
     }
     return { diffuse, normal, roughness, ao };
-  } catch (e) {
-    console.warn('[vault-intro] PBR textures not available, using procedural fallback:', e);
+  } catch (error) {
+    console.warn('[vault-intro] PBR textures not available, using procedural fallback:', error);
     return null;
   }
 }
@@ -604,7 +604,7 @@ async function loadVaultTextures(): Promise<VaultTextures | null> {
 
 // W bolt in doorLeft, E bolt in doorRight.  N/S slots null.
 interface BoltCfg { x: number; y: number; dx: number; dy: number; rz: number; }
-const BOLT_CFG: Array<BoltCfg | null> = [
+const BOLT_CFG: (BoltCfg | null)[] = [
   { x:  0,    y:  2.42, dx:  0, dy:  1, rz:  0           },  // N (rightDoor)
   { x:  1.84, y:  0,    dx:  1, dy:  0, rz: -Math.PI / 2 },  // E (rightDoor)
   { x:  0,    y: -2.42, dx:  0, dy: -1, rz:  Math.PI     },  // S (leftDoor)
@@ -619,7 +619,7 @@ interface VaultScene {
   doorLeft:      THREE.Group;   // slides left on open
   doorRight:     THREE.Group;   // slides right on open
   scannerGroup:  THREE.Group;   // centered — fades then camera flies through
-  boltGroups:    Array<THREE.Group | null>;
+  boltGroups:    (THREE.Group | null)[];
   scannerRing:   THREE.Mesh;
   scanArc:       THREE.Mesh;
   ledMeshes:     THREE.Mesh[];
@@ -641,14 +641,14 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
   renderer.toneMapping = THREE.NeutralToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 1;
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x06101a);
-  scene.fog = new THREE.Fog(0x06101a, 10, 24);
+  scene.background = new THREE.Color(0x06_10_1A);
+  scene.fog = new THREE.Fog(0x06_10_1A, 10, 24);
   scene.environment = createEnvMap(renderer);
   scene.environmentIntensity = 0.85;
 
@@ -704,10 +704,10 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
   composer.addPass(new OutputPass());
 
   // ── Lighting ─────────────────────────────────────────────────────────────
-  scene.add(new THREE.AmbientLight(0x050810, 0.12));
+  scene.add(new THREE.AmbientLight(0x05_08_10, 0.12));
 
   // Hard key light from upper-left — creates shadows in door recesses
-  const key = new THREE.DirectionalLight(0xd8eaff, 3.8);
+  const key = new THREE.DirectionalLight(0xD8_EA_FF, 3.8);
   key.position.set(-4, 10, 5);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
@@ -721,20 +721,20 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
   scene.add(key);
 
   // Warm fill from lower-right (floor bounce off polished floor)
-  const fill = new THREE.DirectionalLight(0x503020, 0.9);
+  const fill = new THREE.DirectionalLight(0x50_30_20, 0.9);
   fill.position.set(5, -3, 3);
   scene.add(fill);
 
   // Cool rim from behind-left — edge glow on chrome
-  const rimL = new THREE.DirectionalLight(0x1a3060, 1.6);
+  const rimL = new THREE.DirectionalLight(0x1A_30_60, 1.6);
   rimL.position.set(-6, 1, -2);
   scene.add(rimL);
 
-  const ledLight = new THREE.PointLight(0x3070cc, 0.2, 5.5);
-  ledLight.position.set(0, 0, 2.0);
+  const ledLight = new THREE.PointLight(0x30_70_CC, 0.2, 5.5);
+  ledLight.position.set(0, 0, 2);
   scene.add(ledLight);
 
-  const interiorLight = new THREE.PointLight(0xa0c0ff, 0, 22);
+  const interiorLight = new THREE.PointLight(0xA0_C0_FF, 0, 22);
   interiorLight.position.set(0, 0, -7);
   scene.add(interiorLight);
 
@@ -749,12 +749,12 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
   const bumpTex = createBumpMap();
   const doorFaceMat = pbr
     ? new THREE.MeshPhysicalMaterial({
-        color:              0xd0d8e0,
+        color:              0xD0_D8_E0,
         map:                pbr.diffuse,
         normalMap:          pbr.normal,
         normalScale:        new THREE.Vector2(1.8, 1.8),
         roughnessMap:       pbr.roughness,
-        roughness:          1.0,
+        roughness:          1,
         aoMap:              pbr.ao,
         aoMapIntensity:     1.2,
         metalness:          0.92,
@@ -762,14 +762,14 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
         clearcoatRoughness: 0.18,
       })
     : new THREE.MeshPhysicalMaterial({
-        color: 0xffffff, map: turnedTex, bumpMap: bumpTex, bumpScale: 0.005,
-        metalness: 0.88, roughness: 0.28, clearcoat: 0.20, clearcoatRoughness: 0.22,
+        color: 0xFF_FF_FF, map: turnedTex, bumpMap: bumpTex, bumpScale: 0.005,
+        metalness: 0.88, roughness: 0.28, clearcoat: 0.2, clearcoatRoughness: 0.22,
       });
-  const steelMat    = new THREE.MeshPhysicalMaterial({ color: 0x1a2530, map: brushedTex, metalness: 0.86, roughness: 0.30, clearcoat: 0.15, clearcoatRoughness: 0.25 });
-  const chromeMat   = new THREE.MeshPhysicalMaterial({ color: 0x8899aa, metalness: 0.99, roughness: 0.02, clearcoat: 1.0,  clearcoatRoughness: 0.02 });
-  const darkMat     = new THREE.MeshPhysicalMaterial({ color: 0x030508, metalness: 0.55, roughness: 0.88, clearcoat: 0.0,  clearcoatRoughness: 0.5  });
-  const boltMat     = new THREE.MeshPhysicalMaterial({ color: 0x283240, metalness: 0.90, roughness: 0.18, clearcoat: 0.3,  clearcoatRoughness: 0.15 });
-  const pistonMat   = new THREE.MeshPhysicalMaterial({ color: 0x3a5060, metalness: 0.94, roughness: 0.10, clearcoat: 0.6,  clearcoatRoughness: 0.08 });
+  const steelMat    = new THREE.MeshPhysicalMaterial({ color: 0x1A_25_30, map: brushedTex, metalness: 0.86, roughness: 0.3, clearcoat: 0.15, clearcoatRoughness: 0.25 });
+  const chromeMat   = new THREE.MeshPhysicalMaterial({ color: 0x88_99_AA, metalness: 0.99, roughness: 0.02, clearcoat: 1,  clearcoatRoughness: 0.02 });
+  const darkMat     = new THREE.MeshPhysicalMaterial({ color: 0x03_05_08, metalness: 0.55, roughness: 0.88, clearcoat: 0,  clearcoatRoughness: 0.5  });
+  const boltMat     = new THREE.MeshPhysicalMaterial({ color: 0x28_32_40, metalness: 0.9, roughness: 0.18, clearcoat: 0.3,  clearcoatRoughness: 0.15 });
+  const pistonMat   = new THREE.MeshPhysicalMaterial({ color: 0x3A_50_60, metalness: 0.94, roughness: 0.1, clearcoat: 0.6,  clearcoatRoughness: 0.08 });
 
   // ── doorLeft & doorRight — rectangular steel plate vault door ─────────────
   const doorLeft  = new THREE.Group();
@@ -779,7 +779,7 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
 
   // Door dimensions — each half is 1.54 wide
   const DW = 1.54;   // half-width
-  const DH = 4.20;   // full height
+  const DH = 4.2;   // full height
   const DD = 0.56;   // thickness (depth)
 
   // Tile the PBR textures properly for BoxGeometry rectangular UVs
@@ -791,7 +791,7 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
 
   // Slightly darker chrome for raised bands (more contrast against bright chrome rings)
   const bandMat = new THREE.MeshPhysicalMaterial({
-    color: 0x4a5a6a, metalness: 0.94, roughness: 0.14, clearcoat: 0.4, clearcoatRoughness: 0.12,
+    color: 0x4A_5A_6A, metalness: 0.94, roughness: 0.14, clearcoat: 0.4, clearcoatRoughness: 0.12,
   });
 
   for (const [grp, side] of [[doorLeft, -1], [doorRight, 1]] as [THREE.Group, -1|1][]) {
@@ -854,20 +854,20 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
     for (const py of [-0.96, 0.96]) {
       // Back face of inset
       const insetBack = new THREE.Mesh(
-        new THREE.BoxGeometry(DW - 0.20, 0.80, 0.002), recessPanelMat,
+        new THREE.BoxGeometry(DW - 0.2, 0.8, 0.002), recessPanelMat,
       );
       insetBack.position.set(cx, py, DD * 0.5 - 0.048);
       grp.add(insetBack);
 
       // Four thin chrome lips framing each inset well
       const lipH = new THREE.BoxGeometry(DW - 0.18, 0.014, 0.048);
-      const lipV = new THREE.BoxGeometry(0.014, 0.80, 0.048);
+      const lipV = new THREE.BoxGeometry(0.014, 0.8, 0.048);
       for (const [gy, gx] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][]) {
         const isHoriz = gx === 0;
         const lip = new THREE.Mesh(isHoriz ? lipH : lipV, chromeMat);
         lip.position.set(
           cx + gx * ((DW - 0.18) * 0.5 - 0.002),
-          py + gy * (0.80 * 0.5 - 0.002),
+          py + gy * (0.8 * 0.5 - 0.002),
           DD * 0.5 - 0.022,
         );
         grp.add(lip);
@@ -877,7 +877,7 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
     // ── Scanner mounting disc — half-circle on door face, split between halves ──
     // Uses halfDisc so the two halves form a complete circle when door is closed.
     const mountMat = new THREE.MeshPhysicalMaterial({
-      color: 0x2a3540, metalness: 0.92, roughness: 0.10, clearcoat: 0.5, clearcoatRoughness: 0.08,
+      color: 0x2A_35_40, metalness: 0.92, roughness: 0.1, clearcoat: 0.5, clearcoatRoughness: 0.08,
     });
     const mount = new THREE.Mesh(halfDisc(0.75, 0.036, side), mountMat);
     mount.rotation.x = Math.PI / 2;
@@ -895,18 +895,18 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
 
   for (const [grp, side] of [[doorLeft, -1], [doorRight, 1]] as [THREE.Group, -1|1][]) {
     const ledX = side * (DW * 0.5 - 0.12);
-    for (const ledY of [-1.50, -0.50, 0.50, 1.50]) {
+    for (const ledY of [-1.5, -0.5, 0.5, 1.5]) {
       const housing = new THREE.Mesh(new THREE.BoxGeometry(0.088, 0.088, 0.018), darkMat);
       housing.position.set(ledX, ledY, DD * 0.5 + 0.005);
       grp.add(housing);
 
       const ledMat = new THREE.MeshStandardMaterial({
-        color: 0xb8d8ff,
-        emissive: new THREE.Color(0xb8d8ff),
+        color: 0xB8_D8_FF,
+        emissive: new THREE.Color(0xB8_D8_FF),
         emissiveIntensity: 2.5,
         metalness: 0, roughness: 0.5,
       });
-      const led = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.016, 0.020), ledMat);
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.016, 0.02), ledMat);
       led.position.set(ledX, ledY, DD * 0.5 + 0.016);
       grp.add(led);
       ledMeshes.push(led);
@@ -914,7 +914,7 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
   }
 
   // ── Bolt arms (W in doorLeft, E in doorRight) ─────────────────────────────
-  const boltGroups: Array<THREE.Group | null> = [null, null, null, null];
+  const boltGroups: (THREE.Group | null)[] = [null, null, null, null];
 
   // N/E bolts → rightDoor; S/W bolts → leftDoor
   boltGroups[0] = buildBoltArm(doorRight, BOLT_CFG[0]!, boltMat, pistonMat, chromeMat);
@@ -930,7 +930,7 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
   const barrelSteps = [
     { r: 0.55, z: 0.09, rw: 0.028 },
     { r: 0.43, z: -0.02, rw: 0.022 },
-    { r: 0.32, z: -0.10, rw: 0.018 },
+    { r: 0.32, z: -0.1, rw: 0.018 },
     { r: 0.22, z: -0.16, rw: 0.014 },
   ];
   for (let si = 0; si < barrelSteps.length; si++) {
@@ -952,31 +952,31 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
 
   // Dark scanner glass at deepest recess
   const scanFloor = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.20, 0.20, 0.04, 48),
-    new THREE.MeshStandardMaterial({ color: 0x030208, metalness: 0.22, roughness: 0.94 }),
+    new THREE.CylinderGeometry(0.2, 0.2, 0.04, 48),
+    new THREE.MeshStandardMaterial({ color: 0x03_02_08, metalness: 0.22, roughness: 0.94 }),
   );
   scanFloor.rotation.x = Math.PI / 2;
-  scanFloor.position.z = -0.20;
+  scanFloor.position.z = -0.2;
   scannerGroup.add(scanFloor);
 
   // Main scanner glow ring
   const scannerRingMat = new THREE.MeshStandardMaterial({
-    color: 0x100c1c,
+    color: 0x10_0C_1C,
     metalness: 0.85,
     roughness: 0.14,
-    emissive: new THREE.Color(0x3a0606),
-    emissiveIntensity: 1.0,
+    emissive: new THREE.Color(0x3A_06_06),
+    emissiveIntensity: 1,
   });
   const scannerRing = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.038, 36, 128), scannerRingMat);
   scannerRing.rotation.x = 0.16;
-  scannerRing.position.z = 0.10;
+  scannerRing.position.z = 0.1;
   scannerGroup.add(scannerRing);
 
   // Rotating scan arc
   const scanArcMat = new THREE.MeshStandardMaterial({
-    color: 0xff1a00,
-    emissive: new THREE.Color(0xff1a00),
-    emissiveIntensity: 5.0,
+    color: 0xFF_1A_00,
+    emissive: new THREE.Color(0xFF_1A_00),
+    emissiveIntensity: 5,
     transparent: true,
     opacity: 0,
   });
@@ -986,8 +986,8 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
 
   // ── Sensor glass face ─────────────────────────────────────────────────────
   const sensorGlassMat = new THREE.MeshPhysicalMaterial({
-    color: 0x040810,
-    metalness: 0.0,
+    color: 0x04_08_10,
+    metalness: 0,
     roughness: 0.08,
     transmission: 0.55,
     thickness: 0.04,
@@ -996,7 +996,7 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
     opacity: 0.92,
   });
   const sensorDisc = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.20, 0.20, 0.018, 80),
+    new THREE.CylinderGeometry(0.2, 0.2, 0.018, 80),
     sensorGlassMat,
   );
   sensorDisc.rotation.x = Math.PI / 2;
@@ -1005,7 +1005,7 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
 
   // Thin chrome bezel ring around the sensor
   const sensorBezel = new THREE.Mesh(
-    new THREE.TorusGeometry(0.205, 0.010, 16, 96),
+    new THREE.TorusGeometry(0.205, 0.01, 16, 96),
     chromeMat,
   );
   sensorBezel.position.z = 0.03;
@@ -1022,7 +1022,7 @@ function buildVaultScene(canvas: HTMLCanvasElement, pbr: VaultTextures | null): 
     map: fpTexture,
     emissive: new THREE.Color(1, 1, 1),
     emissiveMap: fpTexture,
-    emissiveIntensity: 3.0,
+    emissiveIntensity: 3,
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
@@ -1089,8 +1089,8 @@ function buildBoltArm(
 // ── Room geometry ─────────────────────────────────────────────────────────────
 
 function buildRoom(scene: THREE.Scene): void {
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x05070f, roughness: 0.95, metalness: 0.04 });
-  const panelMat = new THREE.MeshStandardMaterial({ color: 0x090c18, roughness: 0.88, metalness: 0.14 });
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x05_07_0F, roughness: 0.95, metalness: 0.04 });
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0x09_0C_18, roughness: 0.88, metalness: 0.14 });
 
   const bwall = new THREE.Mesh(new THREE.PlaneGeometry(32, 18), wallMat);
   bwall.position.z = -4.5; scene.add(bwall);
@@ -1108,21 +1108,21 @@ function buildRoom(scene: THREE.Scene): void {
 
   // Overhead fluorescent fixtures
   const fixMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff, emissive: new THREE.Color(0xd4eeff), emissiveIntensity: 1.0,
+    color: 0xFF_FF_FF, emissive: new THREE.Color(0xD4_EE_FF), emissiveIntensity: 1,
   });
   for (const fz of [-0.6, -2.2]) {
     const fix = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.055, 0.35), fixMat);
     fix.position.set(0, 3.84, fz); scene.add(fix);
-    const fl = new THREE.PointLight(0xc0d8f0, 2.0, 14);
+    const fl = new THREE.PointLight(0xC0_D8_F0, 2, 14);
     fl.position.set(0, 3.65, fz); scene.add(fl);
   }
 
   // Rectangular vault door frame (matches the rectangular door)
-  const recessMat = new THREE.MeshStandardMaterial({ color: 0x060c18, metalness: 0.88, roughness: 0.22 });
+  const recessMat = new THREE.MeshStandardMaterial({ color: 0x06_0C_18, metalness: 0.88, roughness: 0.22 });
   const FW = 3.28;  // frame inner width (matches door)
   const FH = 4.28;  // frame inner height
   const FT = 0.52;  // frame thickness
-  const FZ = -0.30; // z position
+  const FZ = -0.3; // z position
 
   // Top bar
   const frameTop = new THREE.Mesh(new THREE.BoxGeometry(FW + FT * 2 + 0.1, FT, FT + 0.2), recessMat);
@@ -1187,7 +1187,7 @@ function updateFingerprintTexture(vs: VaultScene, st: AnimState): void {
   c.strokeStyle = `rgba(${fpRGB},1)`;
   c.lineCap = 'round';
   c.lineJoin = 'round';
-  drawFingerprintRidges(c, size, st.fingerAlpha * 0.40, 7.0);
+  drawFingerprintRidges(c, size, st.fingerAlpha * 0.4, 7);
   c.restore();
 
   // ── Crisp core pass ───────────────────────────────────────────────────────
@@ -1206,7 +1206,7 @@ function updateFingerprintTexture(vs: VaultScene, st: AnimState): void {
   if (isScanning) {
     const scanY = (Math.sin(st.glowPhase * 1.4) + 1) * 0.5;
     const lineY  = scanY * size;
-    const spread = size * 0.10;
+    const spread = size * 0.1;
     const sg = c.createLinearGradient(0, lineY - spread, 0, lineY + spread);
     sg.addColorStop(0,    'rgba(255,255,255,0)');
     sg.addColorStop(0.45, `rgba(${fpRGB},0.18)`);
@@ -1231,13 +1231,13 @@ function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[],
   const isSuccess = st.scanner === 'success';
   const isActive  = st.scanner === 'warmup' || st.scanner === 'peak';
   const glow      = (Math.sin(st.glowPhase) + 1) * 0.5;
-  const pulse     = isSuccess ? 0.20 : (0.50 + Math.sin(st.glowPhase * 1.2) * 0.30);
+  const pulse     = isSuccess ? 0.2 : (0.5 + Math.sin(st.glowPhase * 1.2) * 0.3);
 
   updateFingerprintTexture(vs, st);
 
   // ── LEDs ──
   const ledColor = isSuccess
-    ? new THREE.Color(0.04, 0.90, 0.30)
+    ? new THREE.Color(0.04, 0.9, 0.3)
     : new THREE.Color(0.88, 0.16, 0.04);
   const ledIntensity = 0.7 + pulse * 0.4;
   for (const led of ledMeshes) {
@@ -1246,24 +1246,24 @@ function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[],
     m.emissiveIntensity = ledIntensity;
   }
   ledLight.color.copy(isSuccess
-    ? new THREE.Color(0, 0.90, 0.30)
-    : new THREE.Color(0.90, 0.14, 0.04));
-  ledLight.intensity = isSuccess ? 1.0 : (0.5 + pulse * 1.0);
+    ? new THREE.Color(0, 0.9, 0.3)
+    : new THREE.Color(0.9, 0.14, 0.04));
+  ledLight.intensity = isSuccess ? 1 : (0.5 + pulse * 1);
 
   // ── Scanner ring ──
   const ringMat = scannerRing.material as THREE.MeshStandardMaterial;
   ringMat.emissive.copy(
-    isSuccess ? new THREE.Color(0, 0.82, 0.30)
-    : new THREE.Color(0.78, 0.10, 0.04),
+    isSuccess ? new THREE.Color(0, 0.82, 0.3)
+    : new THREE.Color(0.78, 0.1, 0.04),
   );
   ringMat.emissiveIntensity = isSuccess ? 0.9 : (0.4 + pulse * 0.5);
   scannerRing.rotation.z += 0.0022;
 
   // ── Scan arc ──
   const arcMat = scanArc.material as THREE.MeshStandardMaterial;
-  arcMat.opacity = isActive ? 0.90 : 0;
+  arcMat.opacity = isActive ? 0.9 : 0;
   if (isActive) {
-    arcMat.emissiveIntensity = 3.5 + glow * 2.0;
+    arcMat.emissiveIntensity = 3.5 + glow * 2;
     scanArc.rotation.z = st.glowPhase * 2.3;
   }
 
@@ -1273,26 +1273,28 @@ function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[],
     if (!bg) continue;
     const cfg = BOLT_CFG[i]!;
     const prog = boltProgress[i] ?? 0;
-    const slide = prog * 1.0;
+    const slide = prog * 1;
     bg.position.set(cfg.x + cfg.dx * slide, cfg.y + cfg.dy * slide, 0.02);
     bg.visible = prog < 0.92;
   }
 
   // ── Door split opening animation ──
-  if (st.openStartTime !== null) {
+  if (st.openStartTime === null) {
+    vs.camera.position.y = -0.1 + Math.sin(st.glowPhase * 0.5) * 0.005;
+  } else {
     const raw  = Math.min(1, (now - st.openStartTime) / OPEN_DURATION);
     // Ease: fast start, smooth end
     const ease = raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2;
 
     // Halves slide apart
-    vs.doorLeft.position.x  = -ease * 6.0;
-    vs.doorRight.position.x =  ease * 6.0;
+    vs.doorLeft.position.x  = -ease * 6;
+    vs.doorRight.position.x =  ease * 6;
 
     // Scanner group disappears quickly as halves separate
     vs.scannerGroup.visible = raw < 0.18;
 
     // Camera pushes forward through the gap
-    vs.camera.position.z = vs.cameraStartZ - ease * 5.0;
+    vs.camera.position.z = vs.cameraStartZ - ease * 5;
 
     // Interior light floods in
     interiorLight.intensity = ease * 28;
@@ -1304,15 +1306,13 @@ function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[],
     }
 
     // Fade overlay when done
-    if (vs.overlayEl && raw >= 1 && !vs.overlayEl.dataset['fading']) {
-      vs.overlayEl.dataset['fading'] = '1';
+    if (vs.overlayEl && raw >= 1 && !vs.overlayEl.dataset.fading) {
+      vs.overlayEl.dataset.fading = '1';
       vs.overlayEl.style.transition = 'opacity 1.2s ease';
       vs.overlayEl.style.opacity = '0';
       document.querySelector('.vi-vignette')?.remove();
       document.querySelector('.vi-grain')?.remove();
     }
-  } else {
-    vs.camera.position.y = -0.10 + Math.sin(st.glowPhase * 0.5) * 0.005;
   }
 
   vs.camera.lookAt(0, 0, 0);
@@ -1321,7 +1321,7 @@ function renderVaultFrame(vs: VaultScene, st: AnimState, boltProgress: number[],
 
 // ── Overlay ───────────────────────────────────────────────────────────────────
 
-type OverlayRefs = {
+interface OverlayRefs {
   overlay:  HTMLDivElement;
   scanBtn:  HTMLDivElement;
   quitBtn:  HTMLButtonElement;
@@ -1329,7 +1329,7 @@ type OverlayRefs = {
   flashEl:  HTMLDivElement;
   state:    AnimState;
   vault:    VaultScene;
-};
+}
 
 function buildOverlay(pbr: VaultTextures | null): OverlayRefs {
   injectStyles();
@@ -1343,14 +1343,14 @@ function buildOverlay(pbr: VaultTextures | null): OverlayRefs {
 
   const threeCanvas = document.createElement('canvas');
   threeCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:block;';
-  overlay.appendChild(threeCanvas);
+  overlay.append(threeCanvas);
 
   const scanBtn = document.createElement('div');
   scanBtn.style.cssText = `
     position:absolute;top:50%;left:50%;width:200px;height:200px;
     transform:translate(-50%,-50%);border-radius:50%;cursor:pointer;z-index:2;
   `;
-  overlay.appendChild(scanBtn);
+  overlay.append(scanBtn);
 
   const statusEl = document.createElement('div');
   statusEl.style.cssText = `
@@ -1363,7 +1363,7 @@ function buildOverlay(pbr: VaultTextures | null): OverlayRefs {
     color:rgba(0,210,240,1);pointer-events:none;z-index:3;
     opacity:0;transition:opacity 0.28s ease;
   `;
-  overlay.appendChild(statusEl);
+  overlay.append(statusEl);
 
   const flashEl = document.createElement('div');
   flashEl.style.cssText = `
@@ -1373,7 +1373,7 @@ function buildOverlay(pbr: VaultTextures | null): OverlayRefs {
       rgba(90,170,255,0.65) 48%,rgba(0,0,0,0) 80%);
     opacity:0;pointer-events:none;
   `;
-  overlay.appendChild(flashEl);
+  overlay.append(flashEl);
 
   const quitBtn = document.createElement('button');
   quitBtn.textContent = 'Quit';
@@ -1385,18 +1385,18 @@ function buildOverlay(pbr: VaultTextures | null): OverlayRefs {
   `;
   quitBtn.addEventListener('mouseenter', () => { quitBtn.style.color = 'rgba(180,200,220,0.58)'; });
   quitBtn.addEventListener('mouseleave', () => { quitBtn.style.color = 'rgba(120,140,160,0.28)'; });
-  overlay.appendChild(quitBtn);
+  overlay.append(quitBtn);
 
   const vignette = document.createElement('div');
   vignette.className = 'vi-vignette';
-  document.body.appendChild(vignette);
+  document.body.append(vignette);
 
   // Film grain canvas — animates every 2 frames so it looks like real grain
   const grainCanvas = document.createElement('canvas');
   grainCanvas.className = 'vi-grain';
   grainCanvas.width  = 384;
   grainCanvas.height = 216;
-  document.body.appendChild(grainCanvas);
+  document.body.append(grainCanvas);
   (function tickGrain(frame: number) {
     if (!document.body.contains(grainCanvas)) return;
     if (frame % 2 === 0) {
@@ -1444,7 +1444,7 @@ function startLoop(refs: OverlayRefs): () => void {
       statusEl.textContent    = state.statusText;
       const isSuccess = state.scanner === 'success';
       const isError   = state.scanner === 'error';
-      const rgb = isSuccess ? '0,220,155' : isError ? '238,65,35' : '0,210,240';
+      const rgb = isSuccess ? '0,220,155' : (isError ? '238,65,35' : '0,210,240');
       statusEl.style.color       = `rgba(${rgb},1)`;
       statusEl.style.borderColor = `rgba(${rgb},0.50)`;
     } else {
@@ -1453,8 +1453,8 @@ function startLoop(refs: OverlayRefs): () => void {
 
     try {
       renderVaultFrame(refs.vault, state, bp, now);
-    } catch (e) {
-      console.error('[vault-intro] render error:', e);
+    } catch (error) {
+      console.error('[vault-intro] render error:', error);
     }
     rafId = requestAnimationFrame(loop);
   };
@@ -1476,16 +1476,16 @@ function handleResize(refs: OverlayRefs): void {
 // ── Scanner state helpers ─────────────────────────────────────────────────────
 
 function setIdle(st: AnimState): void {
-  st.scanner = 'idle'; st.statusText = ''; st.statusAlpha = 0; st.fingerAlpha = 0.40;
+  st.scanner = 'idle'; st.statusText = ''; st.statusAlpha = 0; st.fingerAlpha = 0.4;
 }
 function setWarmup(st: AnimState): void {
   st.scanner = 'warmup'; st.statusText = 'SCANNING…'; st.statusAlpha = 0.84; st.fingerAlpha = 0.56;
 }
 function setPeak(st: AnimState): void {
-  st.scanner = 'peak'; st.statusText = 'PLACE FINGER ON SENSOR'; st.statusAlpha = 0.94; st.fingerAlpha = 0.70;
+  st.scanner = 'peak'; st.statusText = 'PLACE FINGER ON SENSOR'; st.statusAlpha = 0.94; st.fingerAlpha = 0.7;
 }
 function setError(st: AnimState, msg: string): void {
-  st.scanner = 'error'; st.statusText = msg; st.statusAlpha = 0.90; st.fingerAlpha = 0.30;
+  st.scanner = 'error'; st.statusText = msg; st.statusAlpha = 0.9; st.fingerAlpha = 0.3;
 }
 function setSuccess(st: AnimState): void {
   st.scanner = 'success'; st.statusText = 'ACCESS GRANTED'; st.statusAlpha = 0.94; st.fingerAlpha = 0.82;
@@ -1561,10 +1561,10 @@ async function runBiometricFlow(
       settled = true;
       await playOpenSequence(refs, audioCtx, appReady);
       resolveFlow(true);
-    } catch (err) {
+    } catch (error) {
       if (settled) return;
       inFlight = false;
-      const msg  = err instanceof Error ? err.message : '';
+      const msg  = error instanceof Error ? error.message : '';
       const text = msg.toLowerCase().includes('cancel') ? 'CANCELLED — TAP TO RETRY' : 'TAP TO RETRY';
       setError(refs.state, text);
       setTimeout(() => { if (!settled) setIdle(refs.state); }, 1500);
@@ -1583,7 +1583,7 @@ export async function runVaultIntro(appReady?: Promise<void>): Promise<boolean> 
   const pbr      = await loadVaultTextures();
   const refs     = buildOverlay(pbr);
   const stopLoop = startLoop(refs);
-  document.body.appendChild(refs.overlay);
+  document.body.append(refs.overlay);
 
   // Pre-load voices list so speech fires instantly on auth
   if ('speechSynthesis' in window) window.speechSynthesis.getVoices();

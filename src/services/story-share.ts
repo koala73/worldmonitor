@@ -28,7 +28,7 @@ export function parseStoryParams(url: URL): { countryCode: string; type: string 
 }
 
 // Generate QR code data URL (simple implementation)
-export function generateQRCode(data: string, size: number = 200): string {
+export function generateQRCode(data: string, size = 200): string {
   // Using a simple QR code library pattern
   // In production, use a library like qrcode or node-qrcode
   const canvas = document.createElement('canvas');
@@ -43,7 +43,7 @@ export function generateQRCode(data: string, size: number = 200): string {
   ctx.font = '14px monospace';
   ctx.textAlign = 'center';
   ctx.fillText('Scan to view', size/2, size/2 - 10);
-  ctx.fillText(data.substring(0, 20) + '...', size/2, size/2 + 10);
+  ctx.fillText(data.slice(0, 20) + '...', size/2, size/2 + 10);
   
   return canvas.toDataURL('image/png');
 }
@@ -53,8 +53,8 @@ function countryFlag(code: string): string {
   const upper = code.toUpperCase();
   if (upper.length !== 2) return '';
   return String.fromCodePoint(
-    0x1F1E6 + upper.charCodeAt(0) - 65,
-    0x1F1E6 + upper.charCodeAt(1) - 65
+    0x1_F1_E6 + upper.charCodeAt(0) - 65,
+    0x1_F1_E6 + upper.charCodeAt(1) - 65
   );
 }
 

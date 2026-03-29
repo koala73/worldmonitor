@@ -33,7 +33,7 @@ type WorkerResult = ClusterResult | CorrelationResult | { type: 'ready' };
 
 class AnalysisWorkerManager {
   private worker: Worker | null = null;
-  private pendingRequests: Map<string, PendingRequest<unknown>> = new Map();
+  private pendingRequests = new Map<string, PendingRequest<unknown>>();
   private requestIdCounter = 0;
   private isReady = false;
   private readyPromise: Promise<void> | null = null;
@@ -41,7 +41,7 @@ class AnalysisWorkerManager {
   private readyReject: ((error: Error) => void) | null = null;
   private readyTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  private static readonly READY_TIMEOUT_MS = 10000; // 10 seconds to become ready
+  private static readonly READY_TIMEOUT_MS = 10_000; // 10 seconds to become ready
 
   /**
    * Initialize the worker. Called lazily on first use.
@@ -183,7 +183,7 @@ class AnalysisWorkerManager {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error('Clustering request timed out'));
-      }, 30000);
+      }, 30_000);
 
       this.pendingRequests.set(id, {
         resolve: resolve as (value: unknown) => void,
@@ -218,7 +218,7 @@ class AnalysisWorkerManager {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error('Correlation analysis request timed out'));
-      }, 10000);
+      }, 10_000);
 
       this.pendingRequests.set(id, {
         resolve: resolve as (value: unknown) => void,
@@ -278,4 +278,6 @@ class AnalysisWorkerManager {
 export const analysisWorker = new AnalysisWorkerManager();
 
 // Export types for consumers
-export type { CorrelationSignal };
+
+
+export {type CorrelationSignal} from './correlation';

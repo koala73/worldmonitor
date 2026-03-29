@@ -46,13 +46,7 @@ interface TopicVelocityPoint {
 }
 
 // Re-export for convenience
-export {
-  SIMILARITY_THRESHOLD,
-  tokenize,
-  jaccardSimilarity,
-  generateSignalId,
-  generateDedupeKey,
-};
+
 
 // ============================================================================
 // TYPES
@@ -81,7 +75,7 @@ export interface ClusteredEventCore {
   primarySource: string;
   primaryLink: string;
   sourceCount: number;
-  topSources: Array<{ name: string; tier: number; url: string }>;
+  topSources: { name: string; tier: number; url: string }[];
   allItems: NewsItemCore[];
   firstSeen: Date;
   lastUpdated: Date;
@@ -190,8 +184,8 @@ export function clusterNewsCore(
     tokenList.push(tokens);
   }
 
-  for (let index = 0; index < tokenList.length; index++) {
-    const tokens = tokenList[index]!;
+  for (const [index, element] of tokenList.entries()) {
+    const tokens = element!;
     for (const token of tokens) {
       const bucket = invertedIndex.get(token);
       if (bucket) {
@@ -224,7 +218,7 @@ export function clusterNewsCore(
       }
     }
 
-    const sortedCandidates = Array.from(candidateIndices).sort((a, b) => a - b);
+    const sortedCandidates = [...candidateIndices].sort((a, b) => a - b);
     for (const j of sortedCandidates) {
       if (assigned.has(j)) {
         continue;
@@ -264,7 +258,7 @@ export function clusterNewsCore(
     const threat = aggregateThreats(cluster);
 
     // Pick most common geo location across items
-    const locItems = cluster.filter((i): i is NewsItemWithTier & { lat: number; lon: number } => i.lat != null && i.lon != null);
+    const locItems = cluster.filter((i): i is NewsItemWithTier & { lat: number; lon: number } => i.lat != undefined && i.lon != undefined);
     let clusterLat: number | undefined;
     let clusterLon: number | undefined;
     if (locItems.length > 0) {
@@ -275,7 +269,7 @@ export function clusterNewsCore(
         entry.count++;
         locCounts.set(key, entry);
       }
-      const best = Array.from(locCounts.values()).sort((a, b) => b.count - a.count)[0]!;
+      const best = [...locCounts.values()].sort((a, b) => b.count - a.count)[0]!;
       clusterLat = best.lat;
       clusterLon = best.lon;
     }
@@ -293,7 +287,7 @@ export function clusterNewsCore(
       isAlert: cluster.some(i => i.isAlert),
       monitorColor: cluster.find(i => i.monitorColor)?.monitorColor,
       threat,
-      ...(clusterLat != null && { lat: clusterLat, lon: clusterLon }),
+      ...(clusterLat != undefined && { lat: clusterLat, lon: clusterLon }),
       lang: primary.lang,
     };
   }).sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
@@ -395,7 +389,7 @@ export function detectConvergence(
     }
 
     if (sourceTypes.size >= 3) {
-      const types = Array.from(sourceTypes).filter(t => t !== 'other');
+      const types = [...sourceTypes].filter(t => t !== 'other');
       const dedupeKey = generateDedupeKey('convergence', event.id, sourceTypes.size);
 
       if (!isRecentDuplicate(dedupeKey) && types.length >= 3) {
@@ -453,7 +447,7 @@ export function detectTriangulation(
           timestamp: new Date(),
           data: {
             newsVelocity: event.sourceCount,
-            relatedTopics: Array.from(typePresent),
+            relatedTopics: [...typePresent],
           },
         });
       }
@@ -615,7 +609,7 @@ export function analyzeCorrelationsCore(
         });
       }
     } else {
-      const oldRelatedNews = Array.from(newsTopics.entries())
+      const oldRelatedNews = [...newsTopics.entries()]
         .filter(([k]) => market.name.toLowerCase().includes(k) || k.includes(market.symbol.toLowerCase()))
         .reduce((sum, [, v]) => sum + v, 0);
 
@@ -648,7 +642,7 @@ export function analyzeCorrelationsCore(
 
     const change = market.change ?? 0;
     if (change >= FLOW_PRICE_THRESHOLD) {
-      const relatedNews = Array.from(newsTopics.entries())
+      const relatedNews = [...newsTopics.entries()]
         .filter(([k]) => market.name.toLowerCase().includes(k) || k.includes(market.symbol.toLowerCase()))
         .reduce((sum, [, v]) => sum + v, 0);
 
@@ -674,8 +668,7 @@ export function analyzeCorrelationsCore(
 
   // Add convergence and triangulation signals
   signals.push(...detectConvergence(events, getSourceType, isRecentDuplicate, markSignalSeen));
-  signals.push(...detectTriangulation(events, getSourceType, isRecentDuplicate, markSignalSeen));
-  signals.push(...pipelineFlowSignals);
+  signals.push(...detectTriangulation(events, getSourceType, isRecentDuplicate, markSignalSeen), ...pipelineFlowSignals);
 
   // Dedupe by type to avoid spam
   const uniqueSignals = signals.filter((sig, idx) =>
@@ -688,3 +681,5 @@ export function analyzeCorrelationsCore(
     snapshot: currentSnapshot,
   };
 }
+
+export {SIMILARITY_THRESHOLD, tokenize, jaccardSimilarity, generateSignalId, generateDedupeKey} from '@/utils/analysis-constants';

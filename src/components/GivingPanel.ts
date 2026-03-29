@@ -72,18 +72,22 @@ export class GivingPanel extends Panel {
     // Tab content
     let contentHtml: string;
     switch (this.activeTab) {
-      case 'platforms':
+      case 'platforms': {
         contentHtml = this.renderPlatforms(d.platforms);
         break;
-      case 'categories':
+      }
+      case 'categories': {
         contentHtml = this.renderCategories(d.categories);
         break;
-      case 'crypto':
+      }
+      case 'crypto': {
         contentHtml = this.renderCrypto();
         break;
-      case 'institutional':
+      }
+      case 'institutional': {
         contentHtml = this.renderInstitutional();
         break;
+      }
     }
 
     // Write directly to bypass debounced setContent — tabs need immediate listeners

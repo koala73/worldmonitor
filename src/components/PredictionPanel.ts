@@ -15,7 +15,7 @@ export class PredictionPanel extends Panel {
   private formatVolume(volume?: number): string {
     if (!volume) return '';
     if (volume >= 1_000_000) return `$${(volume / 1_000_000).toFixed(1)}M`;
-    if (volume >= 1_000) return `$${(volume / 1_000).toFixed(0)}K`;
+    if (volume >= 1000) return `$${(volume / 1000).toFixed(0)}K`;
     return `$${volume.toFixed(0)}`;
   }
 

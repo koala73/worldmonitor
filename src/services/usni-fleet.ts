@@ -80,7 +80,7 @@ function scatterOffset(hullNumber: string, index: number): { lat: number; lon: n
   const str = hullNumber || String(index);
   for (let i = 0; i < str.length; i++) {
     hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
+    hash = Math.trunc(hash);
   }
   const angle = (hash % 360) * (Math.PI / 180);
   const dist = 0.2 + (Math.abs(hash) % 30) * 0.01;

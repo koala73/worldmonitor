@@ -190,7 +190,7 @@ export class MapPopup {
     }
 
     // Append to body to avoid container overflow clipping
-    document.body.appendChild(this.popup);
+    document.body.append(this.popup);
 
     // Close button handler
     this.popup.querySelector('.popup-close')?.addEventListener('click', () => this.hide());
@@ -234,9 +234,9 @@ export class MapPopup {
     this.popup.style.visibility = 'hidden';
     this.popup.style.top = '0';
     this.popup.style.left = '-9999px';
-    document.body.appendChild(this.popup);
+    document.body.append(this.popup);
     const popupHeight = this.popup.offsetHeight;
-    document.body.removeChild(this.popup);
+    this.popup.remove();
     this.popup.style.visibility = '';
 
     // Convert container-relative coords to viewport coords
@@ -309,7 +309,7 @@ export class MapPopup {
     if (!this.popup || !this.isMobileSheet || this.sheetTouchStartY === null) return;
 
     const currentY = e.touches[0]?.clientY;
-    if (currentY == null) return;
+    if (currentY == undefined) return;
 
     const delta = Math.max(0, currentY - this.sheetTouchStartY);
     if (delta <= 0) return;
@@ -370,99 +370,143 @@ export class MapPopup {
 
   private renderContent(data: PopupData): string {
     switch (data.type) {
-      case 'conflict':
+      case 'conflict': {
         return this.renderConflictPopup(data.data as ConflictZone);
-      case 'hotspot':
+      }
+      case 'hotspot': {
         return this.renderHotspotPopup(data.data as Hotspot, data.relatedNews);
-      case 'earthquake':
+      }
+      case 'earthquake': {
         return this.renderEarthquakePopup(data.data as Earthquake);
-      case 'weather':
+      }
+      case 'weather': {
         return this.renderWeatherPopup(data.data as WeatherAlert);
-      case 'base':
+      }
+      case 'base': {
         return this.renderBasePopup(data.data as MilitaryBase);
-      case 'waterway':
+      }
+      case 'waterway': {
         return this.renderWaterwayPopup(data.data as StrategicWaterway);
-      case 'apt':
+      }
+      case 'apt': {
         return this.renderAPTPopup(data.data as APTGroup);
-      case 'cyberThreat':
+      }
+      case 'cyberThreat': {
         return this.renderCyberThreatPopup(data.data as CyberThreat);
-      case 'nuclear':
+      }
+      case 'nuclear': {
         return this.renderNuclearPopup(data.data as NuclearFacility);
-      case 'economic':
+      }
+      case 'economic': {
         return this.renderEconomicPopup(data.data as EconomicCenter);
-      case 'irradiator':
+      }
+      case 'irradiator': {
         return this.renderIrradiatorPopup(data.data as GammaIrradiator);
-      case 'pipeline':
+      }
+      case 'pipeline': {
         return this.renderPipelinePopup(data.data as Pipeline);
-      case 'cable':
+      }
+      case 'cable': {
         return this.renderCablePopup(data.data as UnderseaCable);
-      case 'cable-advisory':
+      }
+      case 'cable-advisory': {
         return this.renderCableAdvisoryPopup(data.data as CableAdvisory);
-      case 'repair-ship':
+      }
+      case 'repair-ship': {
         return this.renderRepairShipPopup(data.data as RepairShip);
-      case 'outage':
+      }
+      case 'outage': {
         return this.renderOutagePopup(data.data as InternetOutage);
-      case 'datacenter':
+      }
+      case 'datacenter': {
         return this.renderDatacenterPopup(data.data as AIDataCenter);
-      case 'datacenterCluster':
+      }
+      case 'datacenterCluster': {
         return this.renderDatacenterClusterPopup(data.data as DatacenterClusterData);
-      case 'ais':
+      }
+      case 'ais': {
         return this.renderAisPopup(data.data as AisDisruptionEvent);
-      case 'protest':
+      }
+      case 'protest': {
         return this.renderProtestPopup(data.data as SocialUnrestEvent);
-      case 'protestCluster':
+      }
+      case 'protestCluster': {
         return this.renderProtestClusterPopup(data.data as ProtestClusterData);
-      case 'flight':
+      }
+      case 'flight': {
         return this.renderFlightPopup(data.data as AirportDelayAlert);
-      case 'militaryFlight':
+      }
+      case 'militaryFlight': {
         return this.renderMilitaryFlightPopup(data.data as MilitaryFlight);
-      case 'militaryVessel':
+      }
+      case 'militaryVessel': {
         return this.renderMilitaryVesselPopup(data.data as MilitaryVessel);
-      case 'militaryFlightCluster':
+      }
+      case 'militaryFlightCluster': {
         return this.renderMilitaryFlightClusterPopup(data.data as MilitaryFlightCluster);
-      case 'militaryVesselCluster':
+      }
+      case 'militaryVesselCluster': {
         return this.renderMilitaryVesselClusterPopup(data.data as MilitaryVesselCluster);
-      case 'natEvent':
+      }
+      case 'natEvent': {
         return this.renderNaturalEventPopup(data.data as NaturalEvent);
-      case 'port':
+      }
+      case 'port': {
         return this.renderPortPopup(data.data as Port);
-      case 'spaceport':
+      }
+      case 'spaceport': {
         return this.renderSpaceportPopup(data.data as Spaceport);
-      case 'mineral':
+      }
+      case 'mineral': {
         return this.renderMineralPopup(data.data as CriticalMineralProject);
-      case 'startupHub':
+      }
+      case 'startupHub': {
         return this.renderStartupHubPopup(data.data as StartupHub);
-      case 'cloudRegion':
+      }
+      case 'cloudRegion': {
         return this.renderCloudRegionPopup(data.data as CloudRegion);
-      case 'techHQ':
+      }
+      case 'techHQ': {
         return this.renderTechHQPopup(data.data as TechHQ);
-      case 'accelerator':
+      }
+      case 'accelerator': {
         return this.renderAcceleratorPopup(data.data as Accelerator);
-      case 'techEvent':
+      }
+      case 'techEvent': {
         return this.renderTechEventPopup(data.data as TechEventPopupData);
-      case 'techHQCluster':
+      }
+      case 'techHQCluster': {
         return this.renderTechHQClusterPopup(data.data as TechHQClusterData);
-      case 'techEventCluster':
+      }
+      case 'techEventCluster': {
         return this.renderTechEventClusterPopup(data.data as TechEventClusterData);
-      case 'stockExchange':
+      }
+      case 'stockExchange': {
         return this.renderStockExchangePopup(data.data as StockExchangePopupData);
-      case 'financialCenter':
+      }
+      case 'financialCenter': {
         return this.renderFinancialCenterPopup(data.data as FinancialCenterPopupData);
-      case 'centralBank':
+      }
+      case 'centralBank': {
         return this.renderCentralBankPopup(data.data as CentralBankPopupData);
-      case 'commodityHub':
+      }
+      case 'commodityHub': {
         return this.renderCommodityHubPopup(data.data as CommodityHubPopupData);
-      case 'iranEvent':
+      }
+      case 'iranEvent': {
         return this.renderIranEventPopup(data.data as IranEventPopupData);
-      case 'gpsJamming':
+      }
+      case 'gpsJamming': {
         return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
-      default:
+      }
+      default: {
         return '';
+      }
     }
   }
 
   private renderConflictPopup(conflict: ConflictZone): string {
-    const severityClass = conflict.intensity === 'high' ? 'high' : conflict.intensity === 'medium' ? 'medium' : 'low';
+    const severityClass = conflict.intensity === 'high' ? 'high' : (conflict.intensity === 'medium' ? 'medium' : 'low');
     const severityLabel = escapeHtml(conflict.intensity?.toUpperCase() || t('popups.unknown').toUpperCase());
 
     return `
@@ -733,7 +777,7 @@ export class MapPopup {
           ${articles.slice(0, 5).map(article => this.renderGdeltArticle(article)).join('')}
         </div>
       `;
-    } catch (error) {
+    } catch {
       if (container.isConnected) {
         container.innerHTML = `
           <div class="hotspot-gdelt-header">${t('popups.liveIntel')}</div>
@@ -759,8 +803,8 @@ export class MapPopup {
   }
 
   private renderEarthquakePopup(earthquake: Earthquake): string {
-    const severity = earthquake.magnitude >= 6 ? 'high' : earthquake.magnitude >= 5 ? 'medium' : 'low';
-    const severityLabel = earthquake.magnitude >= 6 ? t('popups.earthquake.levels.major') : earthquake.magnitude >= 5 ? t('popups.earthquake.levels.moderate') : t('popups.earthquake.levels.minor');
+    const severity = earthquake.magnitude >= 6 ? 'high' : (earthquake.magnitude >= 5 ? 'medium' : 'low');
+    const severityLabel = earthquake.magnitude >= 6 ? t('popups.earthquake.levels.major') : (earthquake.magnitude >= 5 ? t('popups.earthquake.levels.moderate') : t('popups.earthquake.levels.minor'));
 
     const timeAgo = this.getTimeAgo(new Date(earthquake.occurredAt));
 
@@ -948,7 +992,7 @@ export class MapPopup {
     const severityClass = escapeHtml(event.severity);
     const severityLabel = escapeHtml(event.severity.toUpperCase());
     const eventTypeLabel = escapeHtml(event.eventType.replace('_', ' ').toUpperCase());
-    const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
+    const icon = event.eventType === 'riot' ? '🔥' : (event.eventType === 'strike' ? '✊' : '📢');
     const sourceLabel = event.sourceType === 'acled' ? t('popups.protest.acledVerified') : t('popups.protest.gdelt');
     const validatedBadge = event.validated ? `<span class="popup-badge verified">${t('popups.verified')}</span>` : '';
     const fatalitiesSection = event.fatalities
@@ -1009,7 +1053,7 @@ export class MapPopup {
     });
 
     const listItems = sortedItems.slice(0, 10).map(event => {
-      const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
+      const icon = event.eventType === 'riot' ? '🔥' : (event.eventType === 'strike' ? '✊' : '📢');
       const sevClass = event.severity;
       const dateStr = event.time.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       const city = event.city ? escapeHtml(event.city) : '';
@@ -1020,7 +1064,7 @@ export class MapPopup {
     const renderedCount = Math.min(10, data.items.length);
     const remainingCount = Math.max(0, totalCount - renderedCount);
     const moreCount = remainingCount > 0 ? `<li class="cluster-more">+${remainingCount} ${t('popups.moreEvents')}</li>` : '';
-    const headerClass = highSeverity > 0 ? 'high' : riots > 0 ? 'medium' : 'low';
+    const headerClass = highSeverity > 0 ? 'high' : (riots > 0 ? 'medium' : 'low');
 
     return `
       <div class="popup-header protest ${headerClass} cluster">
@@ -1335,7 +1379,7 @@ export class MapPopup {
       'operating': t('popups.pipeline.status.operating'),
       'construction': t('popups.pipeline.status.construction'),
     };
-    const typeIcon = pipeline.type === 'oil' ? '🛢' : pipeline.type === 'gas' ? '🔥' : '⛽';
+    const typeIcon = pipeline.type === 'oil' ? '🛢' : (pipeline.type === 'gas' ? '🔥' : '⛽');
 
     return `
       <div class="popup-header pipeline ${pipeline.type}">
@@ -1629,7 +1673,7 @@ export class MapPopup {
     };
 
     const formatNumber = (n: number) => {
-      if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+      if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
       if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
       return n.toString();
     };
@@ -1678,7 +1722,7 @@ export class MapPopup {
     const plannedCount = data.plannedCount ?? data.items.filter(dc => dc.status === 'planned').length;
 
     const formatNumber = (n: number) => {
-      if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+      if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
       if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
       return n.toString();
     };
@@ -1860,12 +1904,12 @@ export class MapPopup {
       ? ` - ${endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
       : '';
 
-    const urgencyClass = event.daysUntil <= 7 ? 'urgent' : event.daysUntil <= 30 ? 'soon' : '';
+    const urgencyClass = event.daysUntil <= 7 ? 'urgent' : (event.daysUntil <= 30 ? 'soon' : '');
     const daysLabel = event.daysUntil === 0
       ? t('popups.techEvent.days.today')
-      : event.daysUntil === 1
+      : (event.daysUntil === 1
       ? t('popups.techEvent.days.tomorrow')
-      : t('popups.techEvent.days.inDays', { count: String(event.daysUntil) });
+      : t('popups.techEvent.days.inDays', { count: String(event.daysUntil) }));
 
     return `
       <div class="popup-header tech-event ${urgencyClass}">
@@ -1906,7 +1950,7 @@ export class MapPopup {
     });
 
     const listItems = sortedItems.map(hq => {
-      const icon = hq.type === 'faang' ? '🏛️' : hq.type === 'unicorn' ? '🦄' : '🏢';
+      const icon = hq.type === 'faang' ? '🏛️' : (hq.type === 'unicorn' ? '🦄' : '🏢');
       const marketCap = hq.marketCap ? ` (${escapeHtml(hq.marketCap)})` : '';
       return `<li class="cluster-item ${hq.type}">${icon} ${escapeHtml(hq.company)}${marketCap}</li>`;
     }).join('');
@@ -1938,7 +1982,7 @@ export class MapPopup {
     const listItems = sortedItems.map(event => {
       const startDate = new Date(event.startDate);
       const dateStr = startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      const urgencyClass = event.daysUntil <= 7 ? 'urgent' : event.daysUntil <= 30 ? 'soon' : '';
+      const urgencyClass = event.daysUntil <= 7 ? 'urgent' : (event.daysUntil <= 30 ? 'soon' : '');
       return `<li class="cluster-item ${urgencyClass}">📅 ${dateStr}: ${escapeHtml(event.title)}</li>`;
     }).join('');
 
@@ -2102,7 +2146,7 @@ export class MapPopup {
 
     // USNI deployment status badge
     const deploymentBadge = vessel.usniDeploymentStatus && vessel.usniDeploymentStatus !== 'unknown'
-      ? `<span class="popup-badge ${vessel.usniDeploymentStatus === 'deployed' ? 'high' : vessel.usniDeploymentStatus === 'underway' ? 'elevated' : 'low'}">${vessel.usniDeploymentStatus.toUpperCase().replace('-', ' ')}</span>`
+      ? `<span class="popup-badge ${vessel.usniDeploymentStatus === 'deployed' ? 'high' : (vessel.usniDeploymentStatus === 'underway' ? 'elevated' : 'low')}">${vessel.usniDeploymentStatus.toUpperCase().replace('-', ' ')}</span>`
       : '';
 
     // Show AIS ship type when military type is unknown
@@ -2463,7 +2507,7 @@ export class MapPopup {
     };
 
     // Icon based on mineral type
-    const icon = mine.mineral === 'Lithium' ? '🔋' : mine.mineral === 'Rare Earths' ? '🧲' : '💎';
+    const icon = mine.mineral === 'Lithium' ? '🔋' : (mine.mineral === 'Rare Earths' ? '🧲' : '💎');
 
     return `
       <div class="popup-header mineral ${mine.status}">
@@ -2495,7 +2539,7 @@ export class MapPopup {
 
   private renderStockExchangePopup(exchange: StockExchangePopupData): string {
     const tierLabel = exchange.tier.toUpperCase();
-    const tierClass = exchange.tier === 'mega' ? 'high' : exchange.tier === 'major' ? 'medium' : 'low';
+    const tierClass = exchange.tier === 'mega' ? 'high' : (exchange.tier === 'major' ? 'medium' : 'low');
 
     return `
       <div class="popup-header exchange">

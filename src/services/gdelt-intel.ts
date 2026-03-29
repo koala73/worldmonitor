@@ -219,9 +219,9 @@ export function formatArticleDate(dateStr: string): string {
     const diff = now - date.getTime();
 
     if (diff < 0) return 'just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return `${Math.floor(diff / 86400000)}d ago`;
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+    return `${Math.floor(diff / 86_400_000)}d ago`;
   } catch {
     return '';
   }

@@ -76,7 +76,7 @@ function clearEntry(serviceId: string): void {
 export async function withOfflineCache<T>(
   serviceId: string,
   fetchFn: () => Promise<T>,
-  staleMs = 4 * 3600_000
+  staleMs = 4 * 3_600_000
 ): Promise<CachedSnapshot<T>> {
   try {
     const data = await fetchFn();
@@ -90,7 +90,7 @@ export async function withOfflineCache<T>(
       staleDurationMs: 0,
       source: 'network',
     };
-  } catch (err) {
+  } catch (error) {
     // Network failed — try offline cache
     const entry = readEntry<T>(serviceId);
     if (entry) {
@@ -115,7 +115,7 @@ export async function withOfflineCache<T>(
         source: 'offline-cache',
       };
     }
-    throw err; // No cache, re-throw
+    throw error; // No cache, re-throw
   }
 }
 
@@ -123,13 +123,13 @@ export async function withOfflineCache<T>(
  * Pre-warm the offline cache by fetching all registered services.
  * Call this when the app is online and idle.
  */
-type CachableService = { id: string; fetch: () => Promise<unknown>; staleMs?: number };
+interface CachableService { id: string; fetch: () => Promise<unknown>; staleMs?: number }
 const registeredServices: CachableService[] = [];
 
 export function registerForOfflineCache(
   serviceId: string,
   fetchFn: () => Promise<unknown>,
-  staleMs = 4 * 3600_000
+  staleMs = 4 * 3_600_000
 ): void {
   if (!registeredServices.find(s => s.id === serviceId)) {
     registeredServices.push({ id: serviceId, fetch: fetchFn, staleMs });

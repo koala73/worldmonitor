@@ -73,14 +73,14 @@ function extractRegion(title: string, description: string): string {
   for (const r of regions) {
     if (text.includes(r)) return r;
   }
-  const states = text.match(/\b(California|Texas|New York|Florida|New England|Midwest|Southeast|Northwest|Southwest)\b/);
+  const states = /\b(California|Texas|New York|Florida|New England|Midwest|Southeast|Northwest|Southwest)\b/.exec(text);
   return states?.[0] ?? 'North America';
 }
 
 async function fetchRssFeed(feedUrl: string, source: PowerGridAlert['source']): Promise<PowerGridAlert[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -91,7 +91,7 @@ async function fetchRssFeed(feedUrl: string, source: PowerGridAlert['source']): 
     const items = doc.querySelectorAll('item');
     const alerts: PowerGridAlert[] = [];
 
-    for (const item of Array.from(items)) {
+    for (const item of items) {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const description = (item.querySelector('description')?.textContent ?? '').replace(/<[^>]+>/g, '').trim();
       const link = item.querySelector('link')?.textContent?.trim() ?? '';
@@ -147,7 +147,7 @@ export async function fetchPowerGridAlerts(): Promise<PowerGridAlert[]> {
 
   // Keep last 14 days
   const recent = deduped
-    .filter(a => Date.now() - a.pubDate.getTime() < 14 * 24 * 3600_000)
+    .filter(a => Date.now() - a.pubDate.getTime() < 14 * 24 * 3_600_000)
     .slice(0, 40);
 
   cache = { alerts: recent, fetchedAt: Date.now() };

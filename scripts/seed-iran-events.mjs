@@ -9,46 +9,46 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REDIS_KEY = 'conflict:iran-events:v1';
 
 const LOCATION_COORDS = {
-  'tehran': { lat: 35.6892, lon: 51.3890, name: 'Tehran, Iran' },
-  'isfahan': { lat: 32.6546, lon: 51.6680, name: 'Isfahan, Iran' },
+  'tehran': { lat: 35.6892, lon: 51.389, name: 'Tehran, Iran' },
+  'isfahan': { lat: 32.6546, lon: 51.668, name: 'Isfahan, Iran' },
   'shiraz': { lat: 29.5918, lon: 52.5837, name: 'Shiraz, Iran' },
   'bushehr': { lat: 28.9684, lon: 50.8385, name: 'Bushehr, Iran' },
-  'karaj': { lat: 35.8400, lon: 50.9391, name: 'Karaj, Iran' },
+  'karaj': { lat: 35.84, lon: 50.9391, name: 'Karaj, Iran' },
   'zanjan': { lat: 36.6736, lon: 48.4787, name: 'Zanjan, Iran' },
   'sanandaj': { lat: 35.3219, lon: 46.9862, name: 'Sanandaj, Iran' },
-  'chabahar': { lat: 25.2919, lon: 60.6430, name: 'Chabahar, Iran' },
+  'chabahar': { lat: 25.2919, lon: 60.643, name: 'Chabahar, Iran' },
   'marand': { lat: 38.4319, lon: 45.7742, name: 'Marand, Iran' },
   'minab': { lat: 27.1061, lon: 57.0801, name: 'Minab, Iran' },
   'kish': { lat: 26.5396, lon: 53.9801, name: 'Kish Island, Iran' },
   'tel aviv': { lat: 32.0853, lon: 34.7818, name: 'Tel Aviv, Israel' },
-  'haifa': { lat: 32.7940, lon: 34.9896, name: 'Haifa, Israel' },
+  'haifa': { lat: 32.794, lon: 34.9896, name: 'Haifa, Israel' },
   'israel': { lat: 31.7683, lon: 35.2137, name: 'Israel' },
-  'sharon': { lat: 32.3500, lon: 34.8833, name: 'Sharon, Israel' },
+  'sharon': { lat: 32.35, lon: 34.8833, name: 'Sharon, Israel' },
   'dubai': { lat: 25.2048, lon: 55.2708, name: 'Dubai, UAE' },
   'abu dhabi': { lat: 24.4539, lon: 54.3773, name: 'Abu Dhabi, UAE' },
-  'palm jumeirah': { lat: 25.1124, lon: 55.1390, name: 'Palm Jumeirah, Dubai' },
+  'palm jumeirah': { lat: 25.1124, lon: 55.139, name: 'Palm Jumeirah, Dubai' },
   'burj khalifa': { lat: 25.1972, lon: 55.2744, name: 'Burj Khalifa, Dubai' },
-  'doha': { lat: 25.2854, lon: 51.5310, name: 'Doha, Qatar' },
+  'doha': { lat: 25.2854, lon: 51.531, name: 'Doha, Qatar' },
   'qatar': { lat: 25.3548, lon: 51.1839, name: 'Qatar' },
   'bahrain': { lat: 26.0667, lon: 50.5577, name: 'Bahrain' },
-  'manama': { lat: 26.2285, lon: 50.5860, name: 'Manama, Bahrain' },
+  'manama': { lat: 26.2285, lon: 50.586, name: 'Manama, Bahrain' },
   'riyadh': { lat: 24.7136, lon: 46.6753, name: 'Riyadh, Saudi Arabia' },
   'saudi': { lat: 24.7136, lon: 46.6753, name: 'Saudi Arabia' },
   'kuwait': { lat: 29.3759, lon: 47.9774, name: 'Kuwait' },
   'ali al salem': { lat: 29.3467, lon: 47.5211, name: 'Ali Al Salem Air Base, Kuwait' },
   'erbil': { lat: 36.1912, lon: 44.0119, name: 'Erbil, Iraq' },
   'baghdad': { lat: 33.3152, lon: 44.3661, name: 'Baghdad, Iraq' },
-  'jurf al-sakhr': { lat: 32.8500, lon: 44.1000, name: 'Jurf al-Sakhr, Iraq' },
+  'jurf al-sakhr': { lat: 32.85, lon: 44.1, name: 'Jurf al-Sakhr, Iraq' },
   'iraq': { lat: 33.3152, lon: 44.3661, name: 'Iraq' },
   'jordan': { lat: 31.9454, lon: 35.9284, name: 'Jordan' },
   'daraa': { lat: 32.6189, lon: 36.1021, name: 'Daraa, Syria' },
   'syria': { lat: 34.8021, lon: 38.9968, name: 'Syria' },
   'lebanon': { lat: 33.8547, lon: 35.8623, name: 'Lebanon' },
   'hormuz': { lat: 26.5944, lon: 56.4667, name: 'Strait of Hormuz' },
-  'iran': { lat: 32.4279, lon: 53.6880, name: 'Iran' },
+  'iran': { lat: 32.4279, lon: 53.688, name: 'Iran' },
   'uae': { lat: 24.4539, lon: 54.3773, name: 'UAE' },
   'united arab emirates': { lat: 24.4539, lon: 54.3773, name: 'UAE' },
-  'oman': { lat: 23.5880, lon: 58.3829, name: 'Oman' },
+  'oman': { lat: 23.588, lon: 58.3829, name: 'Oman' },
   'egypt': { lat: 30.0444, lon: 31.2357, name: 'Egypt' },
   'turkey': { lat: 39.9334, lon: 32.8597, name: 'Turkey' },
   'china': { lat: 39.9042, lon: 116.4074, name: 'China' },
@@ -77,7 +77,7 @@ function geocodeFromTitle(title) {
       return coords;
     }
   }
-  return { lat: 32.4279, lon: 53.6880, name: 'Iran' };
+  return { lat: 32.4279, lon: 53.688, name: 'Iran' };
 }
 
 function loadEnvFile() {
@@ -183,7 +183,7 @@ async function main() {
   // Verify
   const getResp = await fetch(`${redisUrl}/get/${encodeURIComponent(REDIS_KEY)}`, {
     headers: { Authorization: `Bearer ${redisToken}` },
-    signal: AbortSignal.timeout(5_000),
+    signal: AbortSignal.timeout(5000),
   });
   if (getResp.ok) {
     const getData = await getResp.json();
@@ -197,7 +197,7 @@ async function main() {
   console.log('\n=== Done ===');
 }
 
-main().catch(err => {
-  console.error('FATAL:', err.message || err);
+main().catch(error => {
+  console.error('FATAL:', error.message || error);
   process.exit(1);
 });

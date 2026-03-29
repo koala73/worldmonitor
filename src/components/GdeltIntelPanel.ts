@@ -63,9 +63,9 @@ export class GdeltIntelPanel extends Panel {
       const json = await res.json() as GdeltIntelResponse;
       this.data = json;
       this.error = null;
-    } catch (err) {
-      if (this.isAbortError(err)) return;
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
+    } catch (error) {
+      if (this.isAbortError(error)) return;
+      this.error = error instanceof Error ? error.message : 'Failed to fetch';
     }
 
     this.loading = false;

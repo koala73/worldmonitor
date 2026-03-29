@@ -45,6 +45,6 @@ export function showMapContextMenu(x: number, y: number, items: MapContextMenuIt
     document.addEventListener('click', dismissMapContextMenu, { once: true });
   });
   document.addEventListener('keydown', onEscape);
-  document.body.appendChild(menu);
+  document.body.append(menu);
   activeMenu = menu;
 }

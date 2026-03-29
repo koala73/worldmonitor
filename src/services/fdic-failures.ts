@@ -56,9 +56,9 @@ let cache: { data: FdicFailureSummary; ts: number } | null = null;
 function parseFailDate(dateStr: string): Date {
   // FAILDATE is "YYYYMMDD"
   return new Date(
-    parseInt(dateStr.slice(0, 4), 10),
-    parseInt(dateStr.slice(4, 6), 10) - 1,
-    parseInt(dateStr.slice(6, 8), 10),
+    Number.parseInt(dateStr.slice(0, 4), 10),
+    Number.parseInt(dateStr.slice(4, 6), 10) - 1,
+    Number.parseInt(dateStr.slice(6, 8), 10),
   );
 }
 
@@ -80,7 +80,7 @@ function parseBankType(savr: string | undefined): 'commercial' | 'savings' | 'ot
 }
 
 function computeSeverity(totalAssetsM: number): BankFailure['severity'] {
-  if (totalAssetsM > 10000) return 'critical';
+  if (totalAssetsM > 10_000) return 'critical';
   if (totalAssetsM > 1000) return 'high';
   if (totalAssetsM > 100) return 'medium';
   return 'low';
@@ -92,7 +92,7 @@ export async function fetchBankFailures(): Promise<FdicFailureSummary> {
 
   try {
     const res = await fetch(FDIC_API_URL, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/json' },
     });
 
@@ -156,15 +156,20 @@ export async function fetchBankFailures(): Promise<FdicFailureSummary> {
 
 export function bankFailureSeverityClass(severity: BankFailure['severity']): string {
   switch (severity) {
-    case 'critical':
+    case 'critical': {
       return 'eq-row eq-major';
-    case 'high':
+    }
+    case 'high': {
       return 'eq-row eq-strong';
-    case 'medium':
+    }
+    case 'medium': {
       return 'eq-row eq-moderate';
-    case 'low':
+    }
+    case 'low': {
       return 'eq-row';
-    default:
+    }
+    default: {
       return 'eq-row';
+    }
   }
 }

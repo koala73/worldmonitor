@@ -31,7 +31,7 @@ export class TvModeController {
 
     // Read persisted interval or use provided / default
     const stored = localStorage.getItem(TV_INTERVAL_KEY);
-    const parsed = stored ? parseInt(stored, 10) : NaN;
+    const parsed = stored ? Number.parseInt(stored, 10) : Number.NaN;
     this.intervalMs = clampInterval(
       Number.isFinite(parsed) ? parsed : (opts.intervalMs ?? DEFAULT_INTERVAL)
     );

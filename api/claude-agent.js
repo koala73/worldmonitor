@@ -102,19 +102,24 @@ const TOOLS = [
 async function runTool(toolName, toolInput, baseUrl) {
   try {
     switch (toolName) {
-      case 'get_news_headlines':
+      case 'get_news_headlines': {
         return await toolGetNewsHeadlines(toolInput.topic);
-      case 'get_risk_scores':
+      }
+      case 'get_risk_scores': {
         return await toolGetRiskScores(toolInput.countries, baseUrl);
-      case 'get_market_summary':
+      }
+      case 'get_market_summary': {
         return await toolGetMarketSummary(baseUrl);
-      case 'get_cyber_threats':
+      }
+      case 'get_cyber_threats': {
         return await toolGetCyberThreats(baseUrl);
-      default:
+      }
+      default: {
         return { error: `Unknown tool: ${toolName}` };
+      }
     }
-  } catch (err) {
-    return { error: `Tool execution failed: ${err instanceof Error ? err.message : 'unknown error'}` };
+  } catch (error) {
+    return { error: `Tool execution failed: ${error instanceof Error ? error.message : 'unknown error'}` };
   }
 }
 
@@ -228,7 +233,7 @@ async function runAgentLoop(apiKey, userQuery, baseUrl) {
 
   const messages = [{ role: 'user', content: userQuery }];
 
-  let toolCallLog = [];
+  const toolCallLog = [];
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const body = JSON.stringify({
@@ -320,7 +325,7 @@ export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'POST, OPTIONS');
 
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+    return Response.json({ error: 'Origin not allowed' }, {
       status: 403,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -331,7 +336,7 @@ export default async function handler(req) {
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+    return Response.json({ error: 'Method not allowed' }, {
       status: 405,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -340,7 +345,7 @@ export default async function handler(req) {
   // API key validation
   const authResult = validateApiKey(req);
   if (!authResult.valid) {
-    return new Response(JSON.stringify({ error: authResult.error || 'Unauthorized' }), {
+    return Response.json({ error: authResult.error || 'Unauthorized' }, {
       status: 403,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -349,7 +354,7 @@ export default async function handler(req) {
   // Require Anthropic key
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Claude AI is not configured. Set ANTHROPIC_API_KEY to enable the agent.' }), {
+    return Response.json({ error: 'Claude AI is not configured. Set ANTHROPIC_API_KEY to enable the agent.' }, {
       status: 503,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -360,7 +365,7 @@ export default async function handler(req) {
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+    return Response.json({ error: 'Invalid JSON body' }, {
       status: 400,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -368,13 +373,13 @@ export default async function handler(req) {
 
   const rawQuery = typeof body?.query === 'string' ? body.query.trim() : '';
   if (!rawQuery) {
-    return new Response(JSON.stringify({ error: 'query is required' }), {
+    return Response.json({ error: 'query is required' }, {
       status: 400,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
   }
   // Sanitize: strip control chars and angle brackets (prevent prompt/log injection), then truncate
-  const query = rawQuery.replace(/[\x00-\x1F\x7F<>]/g, ' ').slice(0, MAX_QUERY_LEN);
+  const query = rawQuery.replace(/[\u0000-\u001F\u007F<>]/g, ' ').slice(0, MAX_QUERY_LEN);
 
   // Derive base URL for internal tool calls
   const requestUrl = new URL(req.url);
@@ -382,14 +387,14 @@ export default async function handler(req) {
 
   try {
     const result = await runAgentLoop(apiKey, query, baseUrl);
-    return new Response(JSON.stringify(result), {
+    return Response.json(result, {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     const isRateLimit = message.includes('rate limit');
-    return new Response(JSON.stringify({ error: message }), {
+    return Response.json({ error: message }, {
       status: isRateLimit ? 429 : 502,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });

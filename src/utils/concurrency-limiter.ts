@@ -26,7 +26,7 @@ export function createConcurrencyLimiter(concurrency: number): ConcurrencyLimite
       items: T[],
       fn: (item: T, index: number) => Promise<R>,
     ): Promise<PromiseSettledResult<R>[]> {
-      const results: PromiseSettledResult<R>[] = new Array(items.length);
+      const results: PromiseSettledResult<R>[] = Array.from({length: items.length});
       let next = 0;
 
       async function worker(): Promise<void> {
@@ -36,8 +36,8 @@ export function createConcurrencyLimiter(concurrency: number): ConcurrencyLimite
           try {
             const value = await fn(item as T, idx);
             results[idx] = { status: 'fulfilled', value };
-          } catch (reason) {
-            results[idx] = { status: 'rejected', reason };
+          } catch (error) {
+            results[idx] = { status: 'rejected', reason: error };
           }
         }
       }

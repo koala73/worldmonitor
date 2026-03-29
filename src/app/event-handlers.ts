@@ -121,15 +121,15 @@ export class EventHandlerManager implements AppModule {
     const panelKeys = Object.keys(DEFAULT_PANELS).filter(
       key => this.ctx.panelSettings[key]?.enabled !== false
     );
-    if (!this.ctx.tvMode) {
+    if (this.ctx.tvMode) {
+      this.ctx.tvMode.updatePanelKeys(panelKeys);
+    } else {
       this.ctx.tvMode = new TvModeController({
         panelKeys,
         onPanelChange: () => {
           document.getElementById('tvModeBtn')?.classList.toggle('active', this.ctx.tvMode?.active ?? false);
         }
       });
-    } else {
-      this.ctx.tvMode.updatePanelKeys(panelKeys);
     }
     this.ctx.tvMode.toggle();
     document.getElementById('tvModeBtn')?.classList.toggle('active', this.ctx.tvMode.active);
@@ -211,7 +211,7 @@ export class EventHandlerManager implements AppModule {
           this.ctx.panelSettings = JSON.parse(e.newValue) as Record<string, PanelConfig>;
           this.applyPanelSettings();
           this.ctx.unifiedSettings?.refreshPanelToggles();
-        } catch (_) {}
+        } catch {}
       }
       if (e.key === STORAGE_KEYS.liveChannels && e.newValue) {
         const panel = this.ctx.panels['live-news'];
@@ -280,7 +280,7 @@ export class EventHandlerManager implements AppModule {
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
     window.addEventListener('focal-points-ready', () => {
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh(true);
+      (this.ctx.panels.cii as CIIPanel)?.refresh(true);
     });
 
     window.addEventListener('theme-changed', () => {
@@ -370,7 +370,7 @@ export class EventHandlerManager implements AppModule {
     const collapsed = document.body.classList.toggle('sidebar-collapsed');
     localStorage.setItem('worldmonitor-sidebar-collapsed', collapsed ? '1' : '0');
     const btn = document.getElementById('sidebarCollapseBtn');
-    if (btn) btn.title = collapsed ? 'Show sidebar (⌘\\)' : 'Hide sidebar (⌘\\)';
+    if (btn) btn.title = collapsed ? String.raw`Show sidebar (⌘\)` : String.raw`Hide sidebar (⌘\)`;
   }
 
   private _initSidebarCollapse(): void {
@@ -420,7 +420,7 @@ export class EventHandlerManager implements AppModule {
     toast.id = 'wm-share-toast';
     toast.className = 'wm-share-toast';
     toast.textContent = message;
-    document.body.appendChild(toast);
+    document.body.append(toast);
     // Trigger fade-in then fade-out
     requestAnimationFrame(() => {
       toast.classList.add('visible');
@@ -514,20 +514,26 @@ export class EventHandlerManager implements AppModule {
     textarea.value = text;
     textarea.style.position = 'fixed';
     textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
+    document.body.append(textarea);
     textarea.select();
     document.execCommand('copy');
-    document.body.removeChild(textarea);
+    textarea.remove();
   }
 
   private platformLabel(p: Platform): string {
     switch (p) {
-      case 'macos-arm64': return '\uF8FF Silicon';
-      case 'macos-x64': return '\uF8FF Intel';
-      case 'macos': return '\uF8FF macOS';
-      case 'windows': return 'Windows';
-      case 'linux': return 'Linux';
-      default: return t('header.downloadApp');
+      case 'macos-arm64': { return '\uF8FF Silicon';
+      }
+      case 'macos-x64': { return '\uF8FF Intel';
+      }
+      case 'macos': { return '\uF8FF macOS';
+      }
+      case 'windows': { return 'Windows';
+      }
+      case 'linux': { return 'Linux';
+      }
+      default: { return t('header.downloadApp');
+      }
     }
   }
 
@@ -659,7 +665,7 @@ export class EventHandlerManager implements AppModule {
     this.ctx.pizzintIndicator = new PizzIntIndicator();
     const headerLeft = this.ctx.container.querySelector('.header-left');
     if (headerLeft) {
-      headerLeft.appendChild(this.ctx.pizzintIndicator.getElement());
+      headerLeft.append(this.ctx.pizzintIndicator.getElement());
     }
   }
 
@@ -697,14 +703,14 @@ export class EventHandlerManager implements AppModule {
         } else {
           this.ctx.disabledSources.add(name);
         }
-        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        saveToStorage(STORAGE_KEYS.disabledFeeds, [...this.ctx.disabledSources]);
       },
       setSourcesEnabled: (names: string[], enabled: boolean) => {
         for (const name of names) {
           if (enabled) this.ctx.disabledSources.delete(name);
           else this.ctx.disabledSources.add(name);
         }
-        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        saveToStorage(STORAGE_KEYS.disabledFeeds, [...this.ctx.disabledSources]);
       },
       getAllSourceNames: () => this.getAllSourceNames(),
       getLocalizedPanelName: (key: string, fallback: string) => this.getLocalizedPanelName(key, fallback),
@@ -718,7 +724,7 @@ export class EventHandlerManager implements AppModule {
 
     const mount = document.getElementById('unifiedSettingsMount');
     if (mount) {
-      mount.appendChild(this.ctx.unifiedSettings.getButton());
+      mount.append(this.ctx.unifiedSettings.getButton());
     }
   }
 
@@ -761,8 +767,8 @@ export class EventHandlerManager implements AppModule {
       });
     };
 
-    void saveCurrentSnapshot().catch((e) => console.warn('[Snapshot] save failed:', e));
-    this.snapshotIntervalId = setInterval(() => void saveCurrentSnapshot().catch((e) => console.warn('[Snapshot] save failed:', e)), 15 * 60 * 1000);
+    void saveCurrentSnapshot().catch((error) => console.warn('[Snapshot] save failed:', error));
+    this.snapshotIntervalId = setInterval(() => void saveCurrentSnapshot().catch((error) => console.warn('[Snapshot] save failed:', error)), 15 * 60 * 1000);
   }
 
   restoreSnapshot(snapshot: DashboardSnapshot): void {
@@ -782,7 +788,7 @@ export class EventHandlerManager implements AppModule {
       liquidity: 0,
     }));
     this.ctx.latestPredictions = predictions;
-    (this.ctx.panels['polymarket'] as PredictionPanel).renderPredictions(predictions);
+    (this.ctx.panels.polymarket as PredictionPanel).renderPredictions(predictions);
 
     this.ctx.map?.setHotspotLevels(snapshot.hotspotLevels);
   }
@@ -835,7 +841,7 @@ export class EventHandlerManager implements AppModule {
 
     const grid = document.getElementById('panelsGrid');
     if (grid) {
-      for (const child of Array.from(grid.children)) {
+      for (const child of grid.children) {
         if ((child as HTMLElement).dataset.panel) {
           observer.observe(child);
         }
@@ -848,7 +854,7 @@ export class EventHandlerManager implements AppModule {
     const el = document.createElement('div');
     el.className = 'toast-notification';
     el.textContent = msg;
-    document.body.appendChild(el);
+    document.body.append(el);
     requestAnimationFrame(() => el.classList.add('visible'));
     setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 3000);
   }
@@ -950,7 +956,7 @@ export class EventHandlerManager implements AppModule {
       if (feeds) feeds.forEach(f => sources.add(f.name));
     });
     INTEL_SOURCES.forEach(f => sources.add(f.name));
-    return Array.from(sources).sort((a, b) => a.localeCompare(b));
+    return [...sources].sort((a, b) => a.localeCompare(b));
   }
 
   applyPanelSettings(): void {

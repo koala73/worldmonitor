@@ -46,15 +46,15 @@ export class TechEventsPanel extends Panel {
           continue;
         }
         break;
-      } catch (err) {
-        if (this.isAbortError(err)) return;
+      } catch (error) {
+        if (this.isAbortError(error)) return;
         if (attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 15_000));
           continue;
         }
-        this.error = err instanceof Error ? err.message : 'Failed to fetch events';
-        console.error('[TechEvents] Fetch error:', err);
+        this.error = error instanceof Error ? error.message : 'Failed to fetch events';
+        console.error('[TechEvents] Fetch error:', error);
       }
     }
     this.loading = false;
@@ -124,23 +124,28 @@ export class TechEventsPanel extends Panel {
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     switch (this.viewMode) {
-      case 'upcoming':
+      case 'upcoming': {
         return this.events.filter(e => {
           const start = new Date(e.startDate);
           return start >= now && start <= thirtyDaysFromNow;
         }).slice(0, 20);
+      }
 
-      case 'conferences':
+      case 'conferences': {
         return this.events.filter(e => e.type === 'conference' && new Date(e.startDate) >= now).slice(0, 30);
+      }
 
-      case 'earnings':
+      case 'earnings': {
         return this.events.filter(e => e.type === 'earnings' && new Date(e.startDate) >= now).slice(0, 30);
+      }
 
-      case 'all':
+      case 'all': {
         return this.events.filter(e => new Date(e.startDate) >= now).slice(0, 50);
+      }
 
-      default:
+      default: {
         return [];
+      }
     }
   }
 

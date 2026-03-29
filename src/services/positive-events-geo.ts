@@ -51,7 +51,7 @@ export async function fetchPositiveGeoEvents(): Promise<PositiveGeoEvent[]> {
  * Items without location mentions in their titles are filtered out.
  */
 export function geocodePositiveNewsItems(
-  items: Array<{ title: string; category?: HappyContentCategory }>,
+  items: { title: string; category?: HappyContentCategory }[],
 ): PositiveGeoEvent[] {
   const events: PositiveGeoEvent[] = [];
 

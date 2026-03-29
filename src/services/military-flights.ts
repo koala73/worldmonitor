@@ -233,16 +233,16 @@ function parseOpenSkyResponse(data: OpenSkyResponse): MilitaryFlight[] {
 
     const flight: MilitaryFlight = {
       id: `opensky-${icao24}`,
-      callsign: callsign || `UNKN-${icao24.substring(0, 4).toUpperCase()}`,
+      callsign: callsign || `UNKN-${icao24.slice(0, 4).toUpperCase()}`,
       hexCode: icao24.toUpperCase(),
       aircraftType: info.type,
       operator: info.operator,
       operatorCountry: info.country,
       lat,
       lon,
-      altitude: baroAlt ? Math.round(baroAlt * 3.28084) : 0, // Convert m to ft
+      altitude: baroAlt ? Math.round(baroAlt * 3.280_84) : 0, // Convert m to ft
       heading: track || 0,
-      speed: velocity ? Math.round(velocity * 1.94384) : 0, // Convert m/s to knots
+      speed: velocity ? Math.round(velocity * 1.943_84) : 0, // Convert m/s to knots
       verticalRate: vertRate ? Math.round(vertRate * 196.85) : undefined, // Convert m/s to ft/min
       onGround: state[8],
       squawk: state[14] || undefined,
@@ -348,7 +348,7 @@ async function enrichFlightsWithWingbits(flights: MilitaryFlight[]): Promise<Mil
   }
 
   // Use deterministic ordering to improve cache locality across refreshes.
-  const hexCodes = Array.from(new Set(flights.map((f) => f.hexCode.toLowerCase()))).sort();
+  const hexCodes = [...new Set(flights.map((f) => f.hexCode.toLowerCase()))].sort();
 
   // Batch fetch aircraft details
   const detailsMap = await getAircraftDetailsBatch(hexCodes);
@@ -365,10 +365,7 @@ async function enrichFlightsWithWingbits(flights: MilitaryFlight[]): Promise<Mil
     const analysis = analyzeAircraftDetails(details);
 
     // Update flight with enrichment data
-    const enrichedFlight = { ...flight };
-
-    // Add enrichment info
-    enrichedFlight.enriched = {
+    const enrichedFlight = { ...flight , enriched: {
       manufacturer: analysis.manufacturer || undefined,
       owner: analysis.owner || undefined,
       operatorName: analysis.operator || undefined,
@@ -376,7 +373,9 @@ async function enrichFlightsWithWingbits(flights: MilitaryFlight[]): Promise<Mil
       builtYear: analysis.builtYear || undefined,
       confirmedMilitary: analysis.isMilitary,
       militaryBranch: analysis.militaryBranch || undefined,
-    };
+    },};
+
+    // Add enrichment info
 
     // Add registration if not already set
     if (!enrichedFlight.registration && analysis.registration) {

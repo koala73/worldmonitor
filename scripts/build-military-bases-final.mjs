@@ -271,7 +271,7 @@ function main() {
   if (pizzintRaw) {
     console.log('Step 1: Normalize pizzint entries (primary)...');
     for (const row of pizzintRaw) {
-      if (row.lat == null || row.lon == null) continue;
+      if (row.lat == undefined || row.lon == undefined) continue;
       const entry = normalizePizzintEntry(row);
       merged.push(entry);
       if (entry._osmId) osmIdSet.add(entry._osmId);
@@ -289,7 +289,7 @@ function main() {
   if (osmRaw) {
     console.log('Step 2: Merge OSM entries...');
     for (const row of osmRaw) {
-      if (row.lat == null || row.lon == null) continue;
+      if (row.lat == undefined || row.lon == undefined) continue;
       const osmId = row.osm_id || row.id || '';
       if (osmId && osmIdSet.has(osmId)) {
         osmSkipped++;
@@ -315,7 +315,7 @@ function main() {
     for (const row of mirtaRaw) {
       const lat = row.lat || row.latitude;
       const lon = row.lon || row.longitude;
-      if (lat == null || lon == null) continue;
+      if (lat == undefined || lon == undefined) continue;
       const mirtaId = row.id || row.osm_id || '';
       const mirtaPrefixed = mirtaId ? `mirta:${mirtaId}` : '';
       if (mirtaId && osmIdSet.has(mirtaId)) {
@@ -356,7 +356,7 @@ function main() {
   if (curatedRaw) {
     console.log('Step 4: Merge curated bases (proximity + name match)...');
     for (const row of curatedRaw) {
-      if (row.lat == null || row.lon == null) continue;
+      if (row.lat == undefined || row.lon == undefined) continue;
       const curated = normalizeCuratedEntry(row);
       let matched = false;
 
@@ -435,7 +435,7 @@ function main() {
     }
   }
 
-  let pass1Entries = [...byOsmId.values()];
+  const pass1Entries = [...byOsmId.values()];
   const pass1Dropped = merged.length - pass1Entries.length;
   console.log(`  Pass 1: ${pass1Dropped} duplicates removed, ${pass1Entries.length} remaining`);
 

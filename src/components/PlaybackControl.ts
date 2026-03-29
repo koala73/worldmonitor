@@ -56,7 +56,7 @@ export class PlaybackControl {
     });
 
     slider.addEventListener('input', () => {
-      const idx = parseInt(slider.value);
+      const idx = Number.parseInt(slider.value);
       this.currentIndex = idx;
       this.loadSnapshot(idx);
     });
@@ -119,21 +119,26 @@ export class PlaybackControl {
 
   private handleAction(action: string): void {
     switch (action) {
-      case 'start':
+      case 'start': {
         this.currentIndex = 0;
         break;
-      case 'prev':
+      }
+      case 'prev': {
         this.currentIndex = Math.max(0, this.currentIndex - 1);
         break;
-      case 'next':
+      }
+      case 'next': {
         this.currentIndex = Math.min(this.timestamps.length - 1, this.currentIndex + 1);
         break;
-      case 'end':
+      }
+      case 'end': {
         this.currentIndex = this.timestamps.length - 1;
         break;
-      case 'live':
+      }
+      case 'live': {
         this.goLive();
         return;
+      }
     }
 
     const slider = this.element.querySelector('.playback-slider') as HTMLInputElement;

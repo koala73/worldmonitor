@@ -107,7 +107,7 @@ export class NewsPanel extends Panel {
     if (header) {
       this.deviationEl = document.createElement('span');
       this.deviationEl.className = 'deviation-indicator';
-      header.appendChild(this.deviationEl);
+      header.append(this.deviationEl);
     }
   }
 
@@ -130,7 +130,7 @@ export class NewsPanel extends Panel {
     if (countEl) {
       this.header.insertBefore(this.summaryBtn, countEl);
     } else {
-      this.header.appendChild(this.summaryBtn);
+      this.header.append(this.summaryBtn);
     }
   }
 
@@ -204,8 +204,8 @@ export class NewsPanel extends Panel {
         element.innerHTML = '文';
         // Shake animation or error state could be added here
       }
-    } catch (e) {
-      console.error('Translation failed', e);
+    } catch (error) {
+      console.error('Translation failed', error);
       element.innerHTML = '文';
     } finally {
       element.style.pointerEvents = 'auto';
@@ -349,7 +349,7 @@ export class NewsPanel extends Panel {
         <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
         <div class="item-time">
           ${formatTime(item.pubDate)}
-          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
+          ${getCurrentLanguage() === 'en' ? '' : `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>`}
         </div>
       </div>
     `
@@ -457,7 +457,7 @@ export class NewsPanel extends Panel {
       ? `<span class="velocity-badge ${velocity.level}">${velocity.trend === 'rising' ? '↑' : ''}+${velocity.sourcesPerHour}/hr</span>`
       : '';
 
-    const sentimentIcon = velocity?.sentiment === 'negative' ? '⚠' : velocity?.sentiment === 'positive' ? '✓' : '';
+    const sentimentIcon = velocity?.sentiment === 'negative' ? '⚠' : (velocity?.sentiment === 'positive' ? '✓' : '');
     const sentimentBadge = sentimentIcon && Math.abs(velocity?.sentimentScore || 0) > 2
       ? `<span class="sentiment-badge ${velocity?.sentiment}">${sentimentIcon}</span>`
       : '';
@@ -469,16 +469,16 @@ export class NewsPanel extends Panel {
 
     // Propaganda risk indicator for primary source
     const primaryPropRisk = getSourcePropagandaRisk(cluster.primarySource);
-    const primaryPropBadge = primaryPropRisk.risk !== 'low'
-      ? `<span class="propaganda-badge ${primaryPropRisk.risk}" title="${escapeHtml(primaryPropRisk.note || `State-affiliated: ${primaryPropRisk.stateAffiliated || 'Unknown'}`)}">${primaryPropRisk.risk === 'high' ? '⚠ State Media' : '! Caution'}</span>`
-      : '';
+    const primaryPropBadge = primaryPropRisk.risk === 'low'
+      ? ''
+      : `<span class="propaganda-badge ${primaryPropRisk.risk}" title="${escapeHtml(primaryPropRisk.note || `State-affiliated: ${primaryPropRisk.stateAffiliated || 'Unknown'}`)}">${primaryPropRisk.risk === 'high' ? '⚠ State Media' : '! Caution'}</span>`;
 
     // Source credibility badge for primary source (T1=Wire, T2=Verified outlet)
     const primaryTier = getSourceTier(cluster.primarySource);
     const primaryType = getSourceType(cluster.primarySource);
     const tierLabel = primaryTier === 1 ? 'Wire' : ''; // Don't show "Major" - confusing with story importance
     const tierBadge = primaryTier <= 2
-      ? `<span class="tier-badge tier-${primaryTier}" title="${primaryType === 'wire' ? 'Wire Service - Highest reliability' : primaryType === 'gov' ? 'Official Government Source' : 'Verified News Outlet'}">${primaryTier === 1 ? '★' : '●'}${tierLabel ? ` ${tierLabel}` : ''}</span>`
+      ? `<span class="tier-badge tier-${primaryTier}" title="${primaryType === 'wire' ? 'Wire Service - Highest reliability' : (primaryType === 'gov' ? 'Official Government Source' : 'Verified News Outlet')}">${primaryTier === 1 ? '★' : '●'}${tierLabel ? ` ${tierLabel}` : ''}</span>`
       : '';
 
     // Build "Also reported by" section for multi-source confirmation
@@ -487,9 +487,9 @@ export class NewsPanel extends Panel {
       ? `<span class="also-reported">Also:</span>` + otherSources
         .map(s => {
           const propRisk = getSourcePropagandaRisk(s.name);
-          const propBadge = propRisk.risk !== 'low'
-            ? `<span class="propaganda-badge ${propRisk.risk}" title="${escapeHtml(propRisk.note || `State-affiliated: ${propRisk.stateAffiliated || 'Unknown'}`)}">${propRisk.risk === 'high' ? '⚠' : '!'}</span>`
-            : '';
+          const propBadge = propRisk.risk === 'low'
+            ? ''
+            : `<span class="propaganda-badge ${propRisk.risk}" title="${escapeHtml(propRisk.note || `State-affiliated: ${propRisk.stateAffiliated || 'Unknown'}`)}">${propRisk.risk === 'high' ? '⚠' : '!'}</span>`;
           return `<span class="top-source tier-${s.tier}">${escapeHtml(s.name)}${propBadge}</span>`;
         })
         .join('')
@@ -556,7 +556,7 @@ export class NewsPanel extends Panel {
         <div class="cluster-meta">
           <span class="top-sources">${topSourcesHtml}</span>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>
-          ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>` : ''}
+          ${getCurrentLanguage() === 'en' ? '' : `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>`}
         </div>
         ${relatedAssetsHtml}
       </div>

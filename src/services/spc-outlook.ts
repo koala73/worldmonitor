@@ -87,7 +87,7 @@ function extractRings(geometry: { type: string; coordinates: unknown }): [number
   if (geometry.type === 'MultiPolygon') {
     const polys = (geometry.coordinates as [number, number][][][]) ?? [];
     // Flatten to array of rings
-    return polys.flatMap(poly => poly);
+    return polys.flat();
   }
   return [];
 }
@@ -95,18 +95,17 @@ function extractRings(geometry: { type: string; coordinates: unknown }): [number
 async function fetchOutlookDay(day: 1 | 2): Promise<ConvectiveOutlook[]> {
   const url = day === 1 ? SPC_DAY1_URL : SPC_DAY2_URL;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
     const json = await res.json() as {
-      features?: Array<{
+      features?: {
         properties?: { DN?: string; LABEL?: string; LABEL2?: string; VALID?: string; EXPIRE?: string };
         geometry?: { type: string; coordinates: unknown };
-      }>;
+      }[];
     };
     const features = json.features ?? [];
     const results: ConvectiveOutlook[] = [];
-    for (let i = 0; i < features.length; i++) {
-      const f = features[i];
+    for (const [i, f] of features.entries()) {
       if (!f) continue;
       const props = f.properties ?? {};
       const dn = (props.DN ?? '').trim().toUpperCase();
@@ -175,10 +174,10 @@ export async function fetchStormReports(): Promise<StormReport[]> {
   }
 
   try {
-    const res = await fetch(LSR_URL, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(LSR_URL, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return reportsCache?.items ?? [];
     const json = await res.json() as {
-      features?: Array<{
+      features?: {
         properties?: {
           type?: string;
           magnitude?: string | number;
@@ -189,12 +188,11 @@ export async function fetchStormReports(): Promise<StormReport[]> {
           remark?: string;
         };
         geometry?: { coordinates?: [number, number] };
-      }>;
+      }[];
     };
     const features = json.features ?? [];
     const items: StormReport[] = [];
-    for (let i = 0; i < features.length; i++) {
-      const f = features[i];
+    for (const [i, f] of features.entries()) {
       if (!f) continue;
       const props = f.properties ?? {};
       const coords = f.geometry?.coordinates;

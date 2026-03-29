@@ -44,7 +44,7 @@ export async function fetchGpsInterference(): Promise<GpsJamData | null> {
       fetchedAt: string;
       source: string;
       stats: { totalHexes: number; highCount: number; mediumCount: number };
-      hexes: Array<{ h3: string; pct: number; good: number; bad: number; total: number; level: string }>;
+      hexes: { h3: string; pct: number; good: number; bad: number; total: number; level: string }[];
     };
 
     // Convert H3 hex IDs to lat/lon

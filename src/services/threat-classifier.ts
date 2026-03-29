@@ -301,11 +301,11 @@ const keywordRegexCache = new Map<string, RegExp>();
 function getKeywordRegex(kw: string): RegExp {
   let re = keywordRegexCache.get(kw);
   if (!re) {
-    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
     if (SHORT_KEYWORDS.has(kw)) {
-      re = new RegExp(`\\b${escaped}\\b`);
+      re = new RegExp(String.raw`\b${escaped}\b`);
     } else if (TRAILING_BOUNDARY_KEYWORDS.has(kw)) {
-      re = new RegExp(`${escaped}(?![\\w-])`);
+      re = new RegExp(String.raw`${escaped}(?![\w-])`);
     } else {
       re = new RegExp(escaped);
     }
@@ -409,12 +409,12 @@ function toThreat(resp: ClassifyEventResponse): ThreatClassification | null {
   };
 }
 
-type BatchJob = {
+interface BatchJob {
   title: string;
   variant: string;
   resolve: (v: ThreatClassification | null) => void;
   attempts?: number;
-};
+}
 
 const BATCH_SIZE = 20;
 const BATCH_DELAY_MS = 500;
@@ -461,11 +461,11 @@ function flushBatch(): void {
             title: job.title, description: '', source: '', country: '',
           });
           job.resolve(toThreat(resp));
-        } catch (err) {
-          if (err instanceof ApiError && (err.statusCode === 429 || err.statusCode >= 500)) {
+        } catch (error) {
+          if (error instanceof ApiError && (error.statusCode === 429 || error.statusCode >= 500)) {
             batchPaused = true;
-            const delay = err.statusCode === 429 ? 60_000 : 30_000;
-            console.warn(`[Classify] ${err.statusCode} — pausing AI classification for ${delay / 1000}s`);
+            const delay = error.statusCode === 429 ? 60_000 : 30_000;
+            console.warn(`[Classify] ${error.statusCode} — pausing AI classification for ${delay / 1000}s`);
             const remaining = batch.slice(i + 1);
             // Failed job: increment attempts, requeue if under limit
             if ((job.attempts ?? 0) < MAX_RETRIES) {
@@ -519,7 +519,7 @@ export function classifyWithAI(
 }
 
 export function aggregateThreats(
-  items: Array<{ threat?: ThreatClassification; tier?: number }>
+  items: { threat?: ThreatClassification; tier?: number }[]
 ): ThreatClassification {
   const withThreat = items.filter(i => i.threat);
   if (withThreat.length === 0) {

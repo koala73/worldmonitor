@@ -5,7 +5,7 @@ import { tryInvokeTauri } from '@/services/tauri-bridge';
 import { isGhostMode } from '@/services/mode-manager';
 
 export class CommsHealthPanel extends Panel {
-  private _previousOverall: string = 'normal';
+  private _previousOverall = 'normal';
 
   constructor() {
     super({ id: 'comms-health', title: 'Communications Health' });
@@ -50,9 +50,9 @@ export class CommsHealthPanel extends Panel {
     const TEXT_C: Record<string, string> = {
       normal: '#22c55e', warning: '#eab308', critical: '#ef4444',
     };
-    const bc = BANNER_BG[overall] ?? BANNER_BG['warning'];
-    const tc = TEXT_C[overall] ?? TEXT_C['warning'];
-    const label = overall === 'normal' ? 'NORMAL' : overall === 'warning' ? 'DEGRADED' : 'CRITICAL';
+    const bc = BANNER_BG[overall] ?? BANNER_BG.warning;
+    const tc = TEXT_C[overall] ?? TEXT_C.warning;
+    const label = overall === 'normal' ? 'NORMAL' : (overall === 'warning' ? 'DEGRADED' : 'CRITICAL');
 
     const summaryParts: string[] = [];
     if (bgp.hijacks > 0) summaryParts.push(`${bgp.hijacks} BGP hijacks`);
@@ -96,7 +96,7 @@ export class CommsHealthPanel extends Panel {
     const cableCard = renderStatusCard({
       label: 'Submarine Cables',
       value: cables.degraded.length > 0 ? `${cables.degraded.length} degraded` : 'All normal',
-      severity: cables.degraded.length > 1 ? 'critical' : cables.degraded.length === 1 ? 'warning' : 'normal',
+      severity: cables.degraded.length > 1 ? 'critical' : (cables.degraded.length === 1 ? 'warning' : 'normal'),
       wide: true,
     });
 

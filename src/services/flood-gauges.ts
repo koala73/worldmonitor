@@ -63,7 +63,7 @@ export async function fetchFloodGauges(): Promise<FloodGauge[]> {
 
   try {
     const res = await fetch(WATERWATCH_API, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return cache?.gauges ?? [];

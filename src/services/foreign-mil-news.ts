@@ -105,7 +105,7 @@ function parseRssAndAtom(doc: Document): ParsedRawItem[] {
   const results: ParsedRawItem[] = [];
 
   // RSS <item>
-  for (const item of Array.from(doc.querySelectorAll('item'))) {
+  for (const item of doc.querySelectorAll('item')) {
     const title = item.querySelector('title')?.textContent?.trim() ?? '';
     const description = stripHtml(item.querySelector('description')?.textContent ?? '');
     const link = item.querySelector('link')?.textContent?.trim() ?? '';
@@ -114,7 +114,7 @@ function parseRssAndAtom(doc: Document): ParsedRawItem[] {
   }
 
   // Atom <entry>
-  for (const entry of Array.from(doc.querySelectorAll('entry'))) {
+  for (const entry of doc.querySelectorAll('entry')) {
     const title = entry.querySelector('title')?.textContent?.trim() ?? '';
     const rawContent = entry.querySelector('content')?.textContent
       ?? entry.querySelector('summary')?.textContent
@@ -134,7 +134,7 @@ function parseRssAndAtom(doc: Document): ParsedRawItem[] {
 async function fetchFeedItems(config: FeedConfig): Promise<ForeignMilNewsItem[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(config.url)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -226,9 +226,13 @@ export async function fetchForeignMilNews(): Promise<ForeignMilNewsItem[]> {
 
 export function foreignMilSeverityClass(severity: ForeignMilNewsItem['severity']): string {
   switch (severity) {
-    case 'critical': return 'text-red-500';
-    case 'high':     return 'text-orange-500';
-    case 'medium':   return 'text-yellow-500';
-    default:         return 'text-gray-400';
+    case 'critical': { return 'text-red-500';
+    }
+    case 'high': {     return 'text-orange-500';
+    }
+    case 'medium': {   return 'text-yellow-500';
+    }
+    default: {         return 'text-gray-400';
+    }
   }
 }

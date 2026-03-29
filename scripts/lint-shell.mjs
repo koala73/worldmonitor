@@ -106,11 +106,9 @@ function main() {
       failures.push(`${relativePath}: ${details || 'shell syntax check failed'}`);
     }
 
-    if (relativePath.startsWith('scripts/')) {
-      if (!source.includes('set -euo pipefail')) {
+    if (relativePath.startsWith('scripts/') && !source.includes('set -euo pipefail')) {
         failures.push(`${relativePath}: expected strict mode "set -euo pipefail"`);
       }
-    }
   }
 
   if (failures.length > 0) {

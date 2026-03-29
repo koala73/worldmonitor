@@ -87,7 +87,7 @@ function scoreSeverity(title: string, description: string): HazmatIncident['seve
 }
 
 function extractState(text: string): string {
-  const stateMatch = text.match(/\b([A-Z]{2})\b(?=\s*\d{5}|,\s+USA?|,\s+United States)/);
+  const stateMatch = /\b([A-Z]{2})\b(?=\s*\d{5}|,\s+USA?|,\s+United States)/.exec(text);
   if (stateMatch?.[1]) return stateMatch[1];
   const states = [
     'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado',
@@ -110,7 +110,7 @@ function extractState(text: string): string {
 async function fetchRss(feedUrl: string, source: HazmatIncident['source']): Promise<HazmatIncident[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -121,7 +121,7 @@ async function fetchRss(feedUrl: string, source: HazmatIncident['source']): Prom
     const items = doc.querySelectorAll('item');
     const incidents: HazmatIncident[] = [];
 
-    for (const item of Array.from(items)) {
+    for (const item of items) {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const description = (item.querySelector('description')?.textContent ?? '').replace(/<[^>]+>/g, '').trim();
       const link = item.querySelector('link')?.textContent?.trim() ?? '';
@@ -180,7 +180,7 @@ export async function fetchHazmatIncidents(): Promise<HazmatIncident[]> {
   }
 
   const recent = deduped
-    .filter(i => Date.now() - i.reportedAt.getTime() < 30 * 24 * 3600_000)
+    .filter(i => Date.now() - i.reportedAt.getTime() < 30 * 24 * 3_600_000)
     .slice(0, 50);
 
   cache = { incidents: recent, fetchedAt: Date.now() };

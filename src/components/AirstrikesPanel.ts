@@ -47,7 +47,7 @@ export class AirstrikesPanel extends Panel {
     const merged = new Map<string, AirstrikeEvent>();
     for (const e of this.events) merged.set(e.id, e);
     for (const e of events) merged.set(e.id, e);
-    this.events = Array.from(merged.values())
+    this.events = [...merged.values()]
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 200);
 
@@ -86,9 +86,9 @@ export class AirstrikesPanel extends Panel {
       const typeLabel = (SUB_TYPE_LABELS[e.subEventType] ?? SUB_TYPE_LABELS[e.eventType] ?? e.subEventType) || e.eventType;
       const pillClass = e.subEventType.toLowerCase().includes('drone') || e.subEventType.toLowerCase().includes('loiter')
         ? 'as-pill-drone'
-        : e.subEventType.toLowerCase().includes('missile')
+        : (e.subEventType.toLowerCase().includes('missile')
         ? 'as-pill-missile'
-        : 'as-pill-air';
+        : 'as-pill-air');
       const fatBadge = e.fatalities > 0
         ? `<span class="as-fatalities">${e.fatalities}✝</span>`
         : '';
@@ -115,8 +115,8 @@ export class AirstrikesPanel extends Panel {
     // Wire click-to-fly handlers
     this.getContentElement().querySelectorAll<HTMLElement>('.as-row[data-lat]').forEach(row => {
       row.addEventListener('click', () => {
-        const lat = parseFloat(row.dataset['lat'] ?? '0');
-        const lon = parseFloat(row.dataset['lon'] ?? '0');
+        const lat = Number.parseFloat(row.dataset.lat ?? '0');
+        const lon = Number.parseFloat(row.dataset.lon ?? '0');
         if (!isNaN(lat) && !isNaN(lon) && this.onEventClick) {
           this.onEventClick(lat, lon);
         }

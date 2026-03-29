@@ -19,7 +19,7 @@ export interface SpeciesRecovery {
   iucnCategory: string;
   populationTrend: 'increasing' | 'stable';
   recoveryStatus: 'recovered' | 'recovering' | 'stabilized';
-  populationData: Array<{ year: number; value: number }>;
+  populationData: { year: number; value: number }[];
   summaryText: string;
   source: string;
   region: string;

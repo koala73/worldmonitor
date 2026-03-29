@@ -29,7 +29,7 @@ export class MobileWarningModal {
       </div>
     `;
 
-    document.body.appendChild(this.element);
+    document.body.append(this.element);
     this.setupEventListeners();
 
     // Remove will-change after entrance animation to free GPU memory

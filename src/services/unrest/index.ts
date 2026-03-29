@@ -19,35 +19,49 @@ const unrestBreaker = createCircuitBreaker<ListUnrestEventsResponse>({
 
 function mapSeverity(s: string): ProtestSeverity {
   switch (s) {
-    case 'SEVERITY_LEVEL_HIGH': return 'high';
-    case 'SEVERITY_LEVEL_MEDIUM': return 'medium';
-    default: return 'low';
+    case 'SEVERITY_LEVEL_HIGH': { return 'high';
+    }
+    case 'SEVERITY_LEVEL_MEDIUM': { return 'medium';
+    }
+    default: { return 'low';
+    }
   }
 }
 
 function mapEventType(t: string): ProtestEventType {
   switch (t) {
-    case 'UNREST_EVENT_TYPE_PROTEST': return 'protest';
-    case 'UNREST_EVENT_TYPE_RIOT': return 'riot';
-    case 'UNREST_EVENT_TYPE_STRIKE': return 'strike';
-    case 'UNREST_EVENT_TYPE_DEMONSTRATION': return 'demonstration';
-    default: return 'civil_unrest';
+    case 'UNREST_EVENT_TYPE_PROTEST': { return 'protest';
+    }
+    case 'UNREST_EVENT_TYPE_RIOT': { return 'riot';
+    }
+    case 'UNREST_EVENT_TYPE_STRIKE': { return 'strike';
+    }
+    case 'UNREST_EVENT_TYPE_DEMONSTRATION': { return 'demonstration';
+    }
+    default: { return 'civil_unrest';
+    }
   }
 }
 
 function mapSourceType(s: string): ProtestSource {
   switch (s) {
-    case 'UNREST_SOURCE_TYPE_ACLED': return 'acled';
-    case 'UNREST_SOURCE_TYPE_GDELT': return 'gdelt';
-    default: return 'rss';
+    case 'UNREST_SOURCE_TYPE_ACLED': { return 'acled';
+    }
+    case 'UNREST_SOURCE_TYPE_GDELT': { return 'gdelt';
+    }
+    default: { return 'rss';
+    }
   }
 }
 
 function mapConfidence(c: string): 'high' | 'medium' | 'low' {
   switch (c) {
-    case 'CONFIDENCE_LEVEL_HIGH': return 'high';
-    case 'CONFIDENCE_LEVEL_MEDIUM': return 'medium';
-    default: return 'low';
+    case 'CONFIDENCE_LEVEL_HIGH': { return 'high';
+    }
+    case 'CONFIDENCE_LEVEL_MEDIUM': { return 'medium';
+    }
+    default: { return 'low';
+    }
   }
 }
 

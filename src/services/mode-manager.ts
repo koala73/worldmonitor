@@ -138,11 +138,11 @@ function _computeNormalizedWarScore(signals: CorrelationSignal[]): number {
 /** S&P 500 daily move (absolute %) that auto-triggers Finance Mode from Peace Mode */
 const FINANCE_TRIGGER_SP500_PCT = 2.5;
 /** BTC daily move (absolute %) that auto-triggers Finance Mode from Peace Mode */
-const FINANCE_TRIGGER_BTC_PCT = 5.0;
+const FINANCE_TRIGGER_BTC_PCT = 5;
 /** Crude Oil (CL=F) daily move (absolute %) that auto-triggers Finance Mode */
-const FINANCE_TRIGGER_OIL_PCT = 4.0;
+const FINANCE_TRIGGER_OIL_PCT = 4;
 /** Gold (GC=F) daily move (absolute %) that auto-triggers Finance Mode (safe-haven flight) */
-const FINANCE_TRIGGER_GOLD_PCT = 2.0;
+const FINANCE_TRIGGER_GOLD_PCT = 2;
 
 /** After this many ms with normalized markets, auto-triggered Finance Mode restores to Peace */
 const FINANCE_QUIET_RESTORE_MS = 60 * 60 * 1000; // 60 minutes
@@ -309,8 +309,8 @@ export function evaluateFinanceTrigger(
     ) {
       const sp500 = markets.find(m => m.symbol === '^GSPC');
       const btc = crypto.find(c => c.symbol === 'BTC');
-      const sp500Calm = sp500?.change != null && Math.abs(sp500.change) < FINANCE_TRIGGER_SP500_PCT * 0.6;
-      const btcCalm = btc?.change != null && Math.abs(btc.change) < FINANCE_TRIGGER_BTC_PCT * 0.6;
+      const sp500Calm = sp500?.change != undefined && Math.abs(sp500.change) < FINANCE_TRIGGER_SP500_PCT * 0.6;
+      const btcCalm = btc?.change != undefined && Math.abs(btc.change) < FINANCE_TRIGGER_BTC_PCT * 0.6;
       if (sp500Calm && btcCalm) {
         _autoTriggeredMode = null;
         setMode('peace', true);
@@ -322,8 +322,8 @@ export function evaluateFinanceTrigger(
   const sp500 = markets.find(m => m.symbol === '^GSPC');
   const btc = crypto.find(c => c.symbol === 'BTC');
 
-  const sp500Big = sp500?.change != null && Math.abs(sp500.change) >= FINANCE_TRIGGER_SP500_PCT;
-  const btcBig = btc?.change != null && Math.abs(btc.change) >= FINANCE_TRIGGER_BTC_PCT;
+  const sp500Big = sp500?.change != undefined && Math.abs(sp500.change) >= FINANCE_TRIGGER_SP500_PCT;
+  const btcBig = btc?.change != undefined && Math.abs(btc.change) >= FINANCE_TRIGGER_BTC_PCT;
 
   if (sp500Big || btcBig) {
     _financeAutoTriggerTime = Date.now();
@@ -364,8 +364,8 @@ export function evaluateCommodityTrigger(commodities: MarketData[]): void {
   const oil = commodities.find(c => c.symbol === 'CL=F');
   const gold = commodities.find(c => c.symbol === 'GC=F');
 
-  const oilBig = oil?.change != null && Math.abs(oil.change) >= FINANCE_TRIGGER_OIL_PCT;
-  const goldBig = gold?.change != null && Math.abs(gold.change) >= FINANCE_TRIGGER_GOLD_PCT;
+  const oilBig = oil?.change != undefined && Math.abs(oil.change) >= FINANCE_TRIGGER_OIL_PCT;
+  const goldBig = gold?.change != undefined && Math.abs(gold.change) >= FINANCE_TRIGGER_GOLD_PCT;
 
   if (oilBig || goldBig) {
     _financeAutoTriggerTime = Date.now();

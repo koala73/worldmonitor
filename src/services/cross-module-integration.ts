@@ -264,7 +264,7 @@ function generateCompositeSummary(a: UnifiedAlert, b: UnifiedAlert): string {
   const ciiA = a.components.ciiChange;
   const ciiB = b.components.ciiChange;
 
-  if (ciiA && ciiB && ciiA.country === ciiB.country) {
+  if (ciiA && ciiA.country === ciiB?.country) {
     // Same country, multiple updates - show the progression
     const latest = ciiB.currentScore > ciiA.currentScore ? ciiB : ciiA;
     const earliest = ciiB.currentScore > ciiA.currentScore ? ciiA : ciiB;
@@ -492,8 +492,7 @@ function calculateCIIRiskScore(scores: CountryScore[]): number {
   const weights = [0.4, 0.25, 0.2, 0.1, 0.05];
   let weightedScore = 0;
 
-  for (let i = 0; i < top5.length; i++) {
-    const country = top5[i];
+  for (const [i, country] of top5.entries()) {
     const weight = weights[i];
     if (country && weight !== undefined) {
       weightedScore += country.score * weight;
@@ -548,7 +547,7 @@ export function getAlerts(): UnifiedAlert[] {
   return [...alerts];
 }
 
-export function getRecentAlerts(hours: number = 24): UnifiedAlert[] {
+export function getRecentAlerts(hours = 24): UnifiedAlert[] {
   const cutoff = Date.now() - hours * 60 * 60 * 1000;
   return alerts.filter(a => a.timestamp.getTime() > cutoff);
 }

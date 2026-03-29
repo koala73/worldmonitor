@@ -46,8 +46,8 @@ import { t } from '../services/i18n';
 import { Panel } from './Panel';
 
 export class StatusPanel extends Panel {
-  private feeds: Map<string, FeedStatus> = new Map();
-  private apis: Map<string, ApiStatus> = new Map();
+  private feeds = new Map<string, FeedStatus>();
+  private apis = new Map<string, ApiStatus>();
   private allowedFeeds!: Set<string>;
   private allowedApis!: Set<string>;
   public onUpdate: (() => void) | null = null;
@@ -110,8 +110,8 @@ export class StatusPanel extends Panel {
   public formatTime(date: Date): string {
     const now = Date.now();
     const diff = now - date.getTime();
-    if (diff < 60000) return 'just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 60_000) return 'just now';
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   }
 

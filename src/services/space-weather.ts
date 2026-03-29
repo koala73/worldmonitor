@@ -55,7 +55,7 @@ export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
     // Latest X-ray flux class
     fetchJson<number[][]>(`${getApiBaseUrl()}/api/space-weather-feeds`),
     // Active alerts and warnings
-    fetchJson<Array<{ message: string; issue_datetime: string }>>(`${getApiBaseUrl()}/api/space-weather-feeds`),
+    fetchJson<{ message: string; issue_datetime: string }[]>(`${getApiBaseUrl()}/api/space-weather-feeds`),
   ]);
 
   // Parse Kp index
@@ -63,7 +63,7 @@ export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
   if (kpRaw.status === 'fulfilled' && Array.isArray(kpRaw.value) && kpRaw.value.length > 1) {
     const rows = kpRaw.value as number[][];
     const last = rows[rows.length - 1];
-    const kpVal = last ? Number(last[1]) : NaN;
+    const kpVal = last ? Number(last[1]) : Number.NaN;
     if (!isNaN(kpVal)) kpIndex = kpVal;
   }
 
@@ -72,24 +72,24 @@ export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
   let solarWindDensity: number | null = null;
   let bz: number | null = null;
   if (solarWindRaw.status === 'fulfilled' && Array.isArray(solarWindRaw.value) && solarWindRaw.value.length > 1) {
-    const rows = solarWindRaw.value as unknown as Array<[string, string, string, string, string]>;
+    const rows = solarWindRaw.value as unknown as [string, string, string, string, string][];
     // Skip header row (index 0), get last data row
     const last = rows[rows.length - 1];
     if (last) {
-      const bzVal = parseFloat(last[3] ?? '');
+      const bzVal = Number.parseFloat(last[3] ?? '');
       if (!isNaN(bzVal)) bz = bzVal;
     }
   }
 
   // Fetch plasma data for speed and density separately
-  const plasmaRaw = await fetchJson<Array<[string, string, string, string]>>(
+  const plasmaRaw = await fetchJson<[string, string, string, string][]>(
     `${getApiBaseUrl()}/api/space-weather-feeds`,
   );
   if (Array.isArray(plasmaRaw) && plasmaRaw.length > 1) {
     const last = plasmaRaw[plasmaRaw.length - 1];
     if (last) {
-      const speed = parseFloat(last[1] ?? '');
-      const density = parseFloat(last[2] ?? '');
+      const speed = Number.parseFloat(last[1] ?? '');
+      const density = Number.parseFloat(last[2] ?? '');
       if (!isNaN(speed)) solarWindSpeed = speed;
       if (!isNaN(density)) solarWindDensity = density;
     }
@@ -98,7 +98,7 @@ export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
   // Parse X-ray flares
   let xrayClass: string | null = null;
   if (xrayRaw.status === 'fulfilled' && Array.isArray(xrayRaw.value) && xrayRaw.value.length > 0) {
-    const flares = xrayRaw.value as Array<{ max_class?: string; class?: string }>;
+    const flares = xrayRaw.value as { max_class?: string; class?: string }[];
     const latest = flares[0];
     xrayClass = latest?.max_class ?? latest?.class ?? null;
   }
@@ -106,7 +106,7 @@ export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
   // Parse alerts
   const alertMessages: SpaceWeatherAlert[] = [];
   if (alertsRaw.status === 'fulfilled' && Array.isArray(alertsRaw.value)) {
-    const raw = alertsRaw.value as Array<{ message: string; issue_datetime: string }>;
+    const raw = alertsRaw.value as { message: string; issue_datetime: string }[];
     const cutoff = Date.now() - 24 * 60 * 60 * 1000; // last 24h
     for (const entry of raw.slice(0, 20)) {
       const issued = new Date(entry.issue_datetime + 'Z');
@@ -128,7 +128,7 @@ export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
 
   const data: SpaceWeatherData = {
     kpIndex,
-    kpClass: kpIndex !== null ? kpClass(kpIndex) : 'quiet',
+    kpClass: kpIndex === null ? 'quiet' : kpClass(kpIndex),
     solarWindSpeed,
     solarWindDensity,
     bz,

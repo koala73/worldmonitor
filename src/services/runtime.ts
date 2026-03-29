@@ -7,7 +7,7 @@ const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
   happy: WS_API_URL,
 };
 
-const DEFAULT_LOCAL_API_PORT = 46123;
+const DEFAULT_LOCAL_API_PORT = 46_123;
 const FORCE_DESKTOP_RUNTIME = import.meta.env.VITE_DESKTOP_RUNTIME === '1';
 
 let _resolvedPort: number | null = null;
@@ -42,13 +42,13 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, '');
 }
 
-type RuntimeProbe = {
+interface RuntimeProbe {
   hasTauriGlobals: boolean;
   userAgent: string;
   locationProtocol: string;
   locationHost: string;
   locationOrigin: string;
-};
+}
 
 export function detectDesktopRuntime(probe: RuntimeProbe): boolean {
   const tauriInUserAgent = probe.userAgent.includes('Tauri');
@@ -284,7 +284,7 @@ export function installRuntimeFetchPatch(): void {
 
     if (!target?.startsWith('/api/')) {
       if (debug) {
-        const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        const raw = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
         console.log(`[fetch] passthrough → ${raw.slice(0, 120)}`);
       }
       return nativeFetch(input, init);

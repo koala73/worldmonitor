@@ -20,7 +20,7 @@ export class CyberThreatPanel extends Panel {
   }
 
   public update(threats: CyberThreat[]): void {
-    this.threats = threats.slice().sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
+    this.threats = [...threats].sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
     this.lastUpdated = new Date();
     this.setCount(this.threats.length);
     this.render();

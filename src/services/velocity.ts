@@ -32,7 +32,7 @@ function analyzeSentiment(text: string): { sentiment: SentimentType; score: numb
     if (POSITIVE_WORDS.has(word)) score += 1;
   }
 
-  const sentiment: SentimentType = score < -1 ? 'negative' : score > 1 ? 'positive' : 'neutral';
+  const sentiment: SentimentType = score < -1 ? 'negative' : (score > 1 ? 'positive' : 'neutral');
   return { sentiment, score };
 }
 
@@ -95,7 +95,7 @@ export async function calculateVelocityWithML(cluster: ClusteredEvent): Promise<
     if (!sentiment) return baseMetrics;
 
     const mlSentiment: SentimentType = sentiment.label === 'positive' ? 'positive' :
-      sentiment.label === 'negative' ? 'negative' : 'neutral';
+      (sentiment.label === 'negative' ? 'negative' : 'neutral');
     const mlScore = sentiment.label === 'negative' ? -sentiment.score : sentiment.score;
 
     return {
@@ -125,7 +125,7 @@ export async function enrichWithVelocityML(clusters: ClusteredEvent[]): Promise<
       }
 
       const mlSentiment: SentimentType = sentiment.label === 'positive' ? 'positive' :
-        sentiment.label === 'negative' ? 'negative' : 'neutral';
+        (sentiment.label === 'negative' ? 'negative' : 'neutral');
 
       return {
         ...cluster,

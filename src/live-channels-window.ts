@@ -34,7 +34,7 @@ function parseYouTubeInput(raw: string): { handle: string } | { videoId: string 
   } catch {
     return null;
   }
-  if (!url.hostname.match(/^(www\.)?(youtube\.com|youtu\.be)$/)) return null;
+  if (!/^(www\.)?(youtube\.com|youtu\.be)$/.test(url.hostname)) return null;
 
   // youtu.be/VIDEO_ID
   if (url.hostname.includes('youtu.be')) {
@@ -46,10 +46,10 @@ function parseYouTubeInput(raw: string): { handle: string } | { videoId: string 
   const v = url.searchParams.get('v');
   if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return { videoId: v };
   // youtube.com/@Handle
-  const handleMatch = url.pathname.match(/^\/@([\w.-]{3,30})$/);
+  const handleMatch = /^\/@([\w.-]{3,30})$/.exec(url.pathname);
   if (handleMatch) return { handle: `@${handleMatch[1]}` };
   // youtube.com/c/ChannelName or /channel/ID
-  const channelMatch = url.pathname.match(/^\/(c|channel)\/([\w.-]+)$/);
+  const channelMatch = /^\/(c|channel)\/([\w.-]+)$/.exec(url.pathname);
   if (channelMatch) return { handle: `@${channelMatch[2]}` };
 
   return null;
@@ -80,7 +80,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
   /** Reads current row order from DOM and persists to storage. */
   function applyOrderFromDom(listEl: HTMLElement): void {
     const rows = listEl.querySelectorAll<HTMLElement>('.live-news-manage-row');
-    const ids = Array.from(rows).map((el) => el.dataset.channelId).filter((id): id is string => !!id);
+    const ids = [...rows].map((el) => el.dataset.channelId).filter((id): id is string => !!id);
     const map = new Map(channels.map((c) => [c.id, c]));
     channels = ids.map((id) => map.get(id)).filter((c): c is LiveChannel => !!c);
     saveChannelsToStorage(channels);
@@ -113,7 +113,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       }
       const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-news-manage-row') as HTMLElement | null;
       if (!target || target === dragging) return;
-      const all = Array.from(listEl.querySelectorAll('.live-news-manage-row'));
+      const all = [...listEl.querySelectorAll('.live-news-manage-row')];
       const idx = all.indexOf(dragging);
       const targetIdx = all.indexOf(target);
       if (idx === -1 || targetIdx === -1) return;
@@ -149,7 +149,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       const nameSpan = document.createElement('span');
       nameSpan.className = 'live-news-manage-row-name';
       nameSpan.textContent = ch.name ?? '';
-      row.appendChild(nameSpan);
+      row.append(nameSpan);
 
       row.addEventListener('click', (e) => {
         // Suppress click immediately after drag-drop to avoid accidental edit open.
@@ -159,7 +159,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
         showEditForm(row, ch, listEl);
       });
 
-      listEl.appendChild(row);
+      listEl.append(row);
     }
     updateRestoreButton();
     renderAvailableChannels(listEl);
@@ -198,12 +198,12 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
         const newId = customChannelIdFromHandle(handle);
         const existing = channels.find((c) => c.id === newId && c.id !== currentCh.id);
         if (existing) return null;
-        const next = channels.slice();
+        const next = [...channels];
         next[idx] = { ...currentCh, id: newId, handle, name: displayName };
         return next;
       }
     }
-    const next = channels.slice();
+    const next = [...channels];
     next[idx] = { ...currentCh, name: displayName };
     return next;
   }
@@ -219,7 +219,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       handleInput.className = 'live-news-manage-edit-handle';
       handleInput.value = ch.handle;
       handleInput.placeholder = t('components.liveNews.youtubeHandle') ?? 'YouTube handle';
-      row.appendChild(handleInput);
+      row.append(handleInput);
     }
 
     const nameInput = document.createElement('input');
@@ -227,7 +227,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
     nameInput.className = 'live-news-manage-edit-name';
     nameInput.value = ch.name ?? '';
     nameInput.placeholder = t('components.liveNews.displayName') ?? 'Display name';
-    row.appendChild(nameInput);
+    row.append(nameInput);
 
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
@@ -238,7 +238,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       saveChannelsToStorage(channels);
       renderList(listEl);
     });
-    row.appendChild(removeBtn);
+    row.append(removeBtn);
 
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
@@ -253,7 +253,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
       }
       renderList(listEl);
     });
-    row.appendChild(saveBtn);
+    row.append(saveBtn);
 
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
@@ -262,7 +262,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
     cancelBtn.addEventListener('click', () => {
       renderList(listEl);
     });
-    row.appendChild(cancelBtn);
+    row.append(cancelBtn);
   }
 
   // ── Available Channels: Tab-based region cards ──
@@ -287,7 +287,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
         activeRegionTab = region.key;
         renderAvailableChannels(listEl);
       });
-      tabBar.appendChild(btn);
+      tabBar.append(btn);
     }
 
     // Render tab content panels
@@ -303,11 +303,11 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
         const ch = optionalChannelMap.get(chId);
         if (!ch) continue;
         const isAdded = currentIds.has(chId);
-        grid.appendChild(createCard(ch, isAdded, listEl));
+        grid.append(createCard(ch, isAdded, listEl));
       }
 
-      panel.appendChild(grid);
-      tabContents.appendChild(panel);
+      panel.append(grid);
+      tabContents.append(panel);
     }
   }
 
@@ -327,16 +327,16 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
     const handleEl = document.createElement('span');
     handleEl.className = 'live-news-manage-card-handle';
     handleEl.textContent = ch.handle;
-    info.appendChild(nameEl);
-    info.appendChild(handleEl);
+    info.append(nameEl);
+    info.append(handleEl);
 
     const action = document.createElement('span');
     action.className = 'live-news-manage-card-action';
     action.textContent = isAdded ? '✓' : '+';
 
-    card.appendChild(icon);
-    card.appendChild(info);
-    card.appendChild(action);
+    card.append(icon);
+    card.append(info);
+    card.append(action);
 
     if (!isAdded) {
       card.addEventListener('click', () => {
@@ -454,7 +454,7 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
     // Extract handle from URL, or treat raw input as handle
     const handle = parsed && 'handle' in parsed
       ? parsed.handle
-      : raw.startsWith('@') ? raw : `@${raw}`;
+      : (raw.startsWith('@') ? raw : `@${raw}`);
 
     // Validate YouTube handle format: @<3-30 alphanumeric/dot/hyphen/underscore chars>
     if (!/^@[\w.-]{3,30}$/i.test(handle)) {
@@ -490,9 +490,9 @@ export function initLiveChannelsWindow(containerEl?: HTMLElement): void {
         resolvedName = data.channelName || '';
       }
       // Non-OK status (429, 5xx) or ambiguous response — allow adding anyway
-    } catch (e) {
+    } catch (error) {
       // Network/parse error — allow adding anyway (offline tolerance)
-      console.warn('[LiveChannels] YouTube validation failed, allowing add:', e);
+      console.warn('[LiveChannels] YouTube validation failed, allowing add:', error);
     } finally {
       if (addBtn) {
         addBtn.disabled = false;

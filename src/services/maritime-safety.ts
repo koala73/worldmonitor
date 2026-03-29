@@ -73,14 +73,22 @@ function scoreCategory(text: string): MaritimeWarning['category'] {
 
 function scoreSeverity(category: MaritimeWarning['category']): MaritimeWarning['severity'] {
   switch (category) {
-    case 'search-rescue': return 'critical';
-    case 'mine': return 'high';
-    case 'hazard': return 'high';
-    case 'wreck': return 'medium';
-    case 'military': return 'medium';
-    case 'cable': return 'low';
-    case 'navigation': return 'low';
-    default: return 'low';
+    case 'search-rescue': { return 'critical';
+    }
+    case 'mine': { return 'high';
+    }
+    case 'hazard': { return 'high';
+    }
+    case 'wreck': { return 'medium';
+    }
+    case 'military': { return 'medium';
+    }
+    case 'cable': { return 'low';
+    }
+    case 'navigation': { return 'low';
+    }
+    default: { return 'low';
+    }
   }
 }
 
@@ -95,7 +103,7 @@ export async function fetchMaritimeWarnings(): Promise<MaritimeWarning[]> {
 
   try {
     const res = await fetch(NGA_MSI_API, {
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(15_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return cache?.warnings ?? [];

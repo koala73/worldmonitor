@@ -119,7 +119,7 @@ class SignalAggregator {
         countryName: o.country,
         lat: o.lat,
         lon: o.lon,
-        severity: o.severity === 'total' ? 'high' : o.severity === 'major' ? 'medium' : 'low',
+        severity: o.severity === 'total' ? 'high' : (o.severity === 'major' ? 'medium' : 'low'),
         title: o.title,
         timestamp: o.pubDate,
       });
@@ -143,7 +143,7 @@ class SignalAggregator {
         countryName: getCountryName(code),
         lat: 0,
         lon: 0,
-        severity: count >= 10 ? 'high' : count >= 5 ? 'medium' : 'low',
+        severity: count >= 10 ? 'high' : (count >= 5 ? 'medium' : 'low'),
         title: `${count} military aircraft detected`,
         timestamp: new Date(),
       });
@@ -172,7 +172,7 @@ class SignalAggregator {
         countryName: getCountryName(code),
         lat: data.lat,
         lon: data.lon,
-        severity: data.count >= 5 ? 'high' : data.count >= 2 ? 'medium' : 'low',
+        severity: data.count >= 5 ? 'high' : (data.count >= 2 ? 'medium' : 'low'),
         title: `${data.count} naval vessels near region`,
         timestamp: new Date(),
       });
@@ -201,7 +201,7 @@ class SignalAggregator {
         countryName: getCountryName(code),
         lat: data.lat,
         lon: data.lon,
-        severity: data.count >= 10 ? 'high' : data.count >= 5 ? 'medium' : 'low',
+        severity: data.count >= 10 ? 'high' : (data.count >= 5 ? 'medium' : 'low'),
         title: `${data.count} protest events`,
         timestamp: new Date(),
       });
@@ -235,19 +235,19 @@ class SignalAggregator {
    * Ingest satellite fire detection from NASA FIRMS
    * Source: src/services/wildfires
    */
-  ingestSatelliteFires(fires: Array<{
+  ingestSatelliteFires(fires: {
     lat: number;
     lon: number;
     brightness: number;
     frp: number;
     region: string;
     acq_date: string;
-  }>): void {
+  }[]): void {
     this.clearSignalType('satellite_fire');
     
     for (const fire of fires) {
       const code = this.coordsToCountry(fire.lat, fire.lon) || normalizeCountryCode(fire.region);
-      const severity = fire.brightness > 360 ? 'high' : fire.brightness > 320 ? 'medium' : 'low';
+      const severity = fire.brightness > 360 ? 'high' : (fire.brightness > 320 ? 'medium' : 'low');
       
       this.signals.push({
         type: 'satellite_fire',
@@ -270,7 +270,7 @@ class SignalAggregator {
    * Ingest temporal baseline anomalies.
    * Deduplicates by message — safe to call from multiple async sources.
    */
-  ingestTemporalAnomalies(anomalies: Array<{
+  ingestTemporalAnomalies(anomalies: {
     type: string;
     region: string;
     currentCount: number;
@@ -278,7 +278,7 @@ class SignalAggregator {
     zScore: number;
     message: string;
     severity: 'medium' | 'high' | 'critical';
-  }>): void {
+  }[]): void {
     // Remove existing temporal signals that match incoming source types
     const incomingSourceTypes = new Set(anomalies.map(a => a.type));
     this.signals = this.signals.filter(s =>
@@ -293,7 +293,7 @@ class SignalAggregator {
         countryName: a.region,
         lat: 0,
         lon: 0,
-        severity: a.severity === 'critical' ? 'high' : a.severity === 'high' ? 'high' : 'medium',
+        severity: a.severity === 'critical' ? 'high' : (a.severity === 'high' ? 'high' : 'medium'),
         title: a.message,
         timestamp: new Date(),
       };
@@ -303,14 +303,14 @@ class SignalAggregator {
     this.pruneOld();
   }
 
-  ingestConflictEvents(events: Array<{
+  ingestConflictEvents(events: {
     id: string;
     category: string;
     severity: string;
     latitude: number;
     longitude: number;
     timestamp: number;
-  }>): void {
+  }[]): void {
     this.clearSignalType('active_strike');
 
     const seen = new Set<string>();
@@ -346,7 +346,7 @@ class SignalAggregator {
         countryName: getCountryName(code),
         lat: capped[0]!.latitude,
         lon: capped[0]!.longitude,
-        severity: highCount >= 5 ? 'high' : highCount >= 2 ? 'medium' : 'low',
+        severity: highCount >= 5 ? 'high' : (highCount >= 2 ? 'medium' : 'low'),
         title: `${capped.length} strikes (${highCount} high severity)`,
         timestamp: new Date(safeTs),
         strikeCount: capped.length,
@@ -356,13 +356,13 @@ class SignalAggregator {
     this.pruneOld();
   }
 
-  ingestTheaterPostures(postures: Array<{
+  ingestTheaterPostures(postures: {
     targetNation: string | null;
     totalAircraft: number;
     totalVessels: number;
     postureLevel: 'normal' | 'elevated' | 'critical';
     theaterName: string;
-  }>): void {
+  }[]): void {
     const TARGET_CODES: Record<string, string> = {
       'Iran': 'IR', 'Taiwan': 'TW', 'North Korea': 'KP',
       'Gaza': 'PS', 'Yemen': 'YE',

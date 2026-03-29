@@ -123,7 +123,7 @@ function computeHabSeverity(
 ): HabObservation['severity'] {
   const highRiskSpecies =
     species === 'Karenia' || species === 'Alexandrium' || species === 'Pseudo-nitzschia';
-  if (highRiskSpecies && cellCount !== null && cellCount > 100000) return 'critical';
+  if (highRiskSpecies && cellCount !== null && cellCount > 100_000) return 'critical';
   if (impacts.length > 0) return 'high';
   if (species !== 'Unknown') return 'medium';
   return 'low';
@@ -192,8 +192,8 @@ function stripHtml(html: string): string {
 }
 
 function extractText(xml: string, tag: string): string {
-  const cdataRe = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, 'i');
-  const plainRe = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
+  const cdataRe = new RegExp(String.raw`<${tag}[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/${tag}>`, 'i');
+  const plainRe = new RegExp(String.raw`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`, 'i');
   const cdataMatch = xml.match(cdataRe);
   if (cdataMatch) return (cdataMatch[1] ?? '').trim();
   const plainMatch = xml.match(plainRe);
@@ -225,7 +225,7 @@ function fromRssFallback(xmlText: string): HabObservation[] {
     const severity = computeHabSeverity(species, null, impacts);
 
     // Try to detect state from title/description
-    const stateMatch = combinedText.match(/\b([A-Z]{2})\b/);
+    const stateMatch = /\b([A-Z]{2})\b/.exec(combinedText);
     const state = stateMatch ? (stateMatch[1] ?? '') : '';
     const region = state ? detectRegion(state) : 'Other';
 
@@ -262,7 +262,7 @@ export async function fetchHabObservations(): Promise<HabObservation[]> {
 
   // Try ESRI Feature Service first
   try {
-    const res = await fetch(ESRI_URL, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(ESRI_URL, { signal: AbortSignal.timeout(12_000) });
     if (res.ok) {
       const json: EsriResponse = await res.json();
       if (Array.isArray(json.features) && json.features.length > 0) {
@@ -277,7 +277,7 @@ export async function fetchHabObservations(): Promise<HabObservation[]> {
   if (observations.length === 0) {
     try {
       const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(RSS_FALLBACK_URL)}`;
-      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
       if (res.ok) {
         const xmlText = await res.text();
         observations = fromRssFallback(xmlText);
@@ -302,10 +302,14 @@ export async function fetchHabObservations(): Promise<HabObservation[]> {
 
 export function habSeverityClass(severity: HabObservation['severity']): string {
   switch (severity) {
-    case 'critical': return 'eq-row eq-major';
-    case 'high': return 'eq-row eq-strong';
-    case 'medium': return 'eq-row eq-moderate';
-    case 'low': return 'eq-row';
+    case 'critical': { return 'eq-row eq-major';
+    }
+    case 'high': { return 'eq-row eq-strong';
+    }
+    case 'medium': { return 'eq-row eq-moderate';
+    }
+    case 'low': { return 'eq-row';
+    }
   }
 }
 

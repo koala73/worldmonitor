@@ -25,7 +25,7 @@ export async function fetchNWSAlerts(): Promise<NWSAlert[]> {
   if (cache && Date.now() - cache.ts < CACHE_TTL_MS) return cache.data;
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/nws-alerts`, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return cache?.data ?? [];
     const data = (await res.json()) as NWSAlert[];

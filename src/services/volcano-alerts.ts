@@ -23,7 +23,7 @@ export async function fetchVolcanoAlerts(): Promise<VolcanoAlert[]> {
   if (cache && Date.now() - cache.ts < CACHE_TTL_MS) return cache.data;
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/volcano-alerts`, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return cache?.data ?? [];
     const data = (await res.json()) as VolcanoAlert[];

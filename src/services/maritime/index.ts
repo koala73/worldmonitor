@@ -130,7 +130,7 @@ let latestStatus: SnapshotStatus = {
 const SNAPSHOT_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const SNAPSHOT_STALE_MS = 6 * 60 * 1000;
 const CALLBACK_RETENTION_MS = 2 * 60 * 60 * 1000; // 2 hours
-const MAX_CALLBACK_TRACKED_VESSELS = 20000;
+const MAX_CALLBACK_TRACKED_VESSELS = 20_000;
 
 // ---- Raw Relay URL (for candidate reports path) ----
 
@@ -248,7 +248,7 @@ function pruneCallbackTimestampIndex(now: number): void {
     return;
   }
 
-  const oldest = Array.from(lastCallbackTimestampByMmsi.entries())
+  const oldest = [...lastCallbackTimestampByMmsi.entries()]
     .sort((a, b) => a[1] - b[1]);
   const toDelete = lastCallbackTimestampByMmsi.size - MAX_CALLBACK_TRACKED_VESSELS;
   for (let i = 0; i < toDelete; i++) {

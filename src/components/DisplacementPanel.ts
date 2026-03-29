@@ -59,15 +59,11 @@ export class DisplacementPanel extends Panel {
     `;
 
     let countries: CountryDisplacement[];
-    if (this.activeTab === 'origins') {
-      countries = [...this.data.countries]
+    countries = this.activeTab === 'origins' ? [...this.data.countries]
         .filter(c => c.refugees + c.asylumSeekers > 0)
-        .sort((a, b) => (b.refugees + b.asylumSeekers) - (a.refugees + a.asylumSeekers));
-    } else {
-      countries = [...this.data.countries]
+        .sort((a, b) => (b.refugees + b.asylumSeekers) - (a.refugees + a.asylumSeekers)) : [...this.data.countries]
         .filter(c => (c.hostTotal || 0) > 0)
         .sort((a, b) => (b.hostTotal || 0) - (a.hostTotal || 0));
-    }
 
     const displayed = countries.slice(0, 30);
     let tableHtml: string;

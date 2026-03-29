@@ -41,7 +41,7 @@ const LOGO_URL = '/favico/worldmonitor-icon-1024.png';
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
+    img.addEventListener('load', () => resolve(img));
     img.onerror = reject;
     img.src = src;
   });
@@ -117,13 +117,13 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
   if (data.cii?.change24h) {
     const ch = data.cii.change24h;
     const chSign = ch > 0 ? '+' : '';
-    ctx.fillStyle = ch > 0 ? '#ef4444' : ch < 0 ? '#22c55e' : '#888';
+    ctx.fillStyle = ch > 0 ? '#ef4444' : (ch < 0 ? '#22c55e' : '#888');
     ctx.font = '600 28px Inter, system-ui, sans-serif';
     ctx.fillText(`${chSign}${ch} 24h`, PAD + scoreNumW + 4 + slashW + 16, y);
   }
 
   // Trend + level badges
-  const trendIcon = data.cii?.trend === 'rising' ? '▲' : data.cii?.trend === 'falling' ? '▼' : '●';
+  const trendIcon = data.cii?.trend === 'rising' ? '▲' : (data.cii?.trend === 'falling' ? '▼' : '●');
   const trendLabel = (data.cii?.trend || 'stable').toUpperCase();
   const levelLabel = (data.cii?.level || 'normal').toUpperCase();
 
@@ -225,7 +225,7 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
 
     y += 46;
     const convScore = Math.round(data.convergence.score);
-    const convColor = convScore >= 70 ? '#ef4444' : convScore >= 40 ? '#eab308' : '#22c55e';
+    const convColor = convScore >= 70 ? '#ef4444' : (convScore >= 40 ? '#eab308' : '#22c55e');
     ctx.fillStyle = convColor;
     ctx.font = '800 48px Inter, system-ui, sans-serif';
     ctx.fillText(`${convScore}`, PAD, y);
@@ -310,7 +310,7 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
     drawSectionHeader(ctx, 'MILITARY POSTURE', PAD, y);
 
     const postureColor = data.theater.postureLevel === 'critical' ? '#ef4444'
-      : data.theater.postureLevel === 'elevated' ? '#f97316' : '#22c55e';
+      : (data.theater.postureLevel === 'elevated' ? '#f97316' : '#22c55e');
 
     y += 52;
     ctx.fillStyle = '#e0e0e0';
@@ -368,7 +368,7 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
 
       const pct = Math.round(m.yesPrice);
       const pctStr = `${pct}%`;
-      const pctColor = pct >= 70 ? '#ef4444' : pct >= 40 ? '#eab308' : '#22c55e';
+      const pctColor = pct >= 70 ? '#ef4444' : (pct >= 40 ? '#eab308' : '#22c55e');
       ctx.fillStyle = pctColor;
       ctx.font = '700 28px Inter, system-ui, sans-serif';
       const pctW = ctx.measureText(pctStr).width;

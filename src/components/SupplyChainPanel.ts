@@ -61,17 +61,20 @@ export class SupplyChainPanel extends Panel {
     `;
 
     const activeData = this.activeTab === 'chokepoints' ? this.chokepointData
-      : this.activeTab === 'shipping' ? this.shippingData
-      : this.mineralsData;
+      : (this.activeTab === 'shipping' ? this.shippingData
+      : this.mineralsData);
     const unavailableBanner = activeData?.upstreamUnavailable
       ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
       : '';
 
     let contentHtml = '';
     switch (this.activeTab) {
-      case 'chokepoints': contentHtml = this.renderChokepoints(); break;
-      case 'shipping': contentHtml = this.renderShipping(); break;
-      case 'minerals': contentHtml = this.renderMinerals(); break;
+      case 'chokepoints': { contentHtml = this.renderChokepoints(); break;
+      }
+      case 'shipping': { contentHtml = this.renderShipping(); break;
+      }
+      case 'minerals': { contentHtml = this.renderMinerals(); break;
+      }
     }
 
     this.setContent(`
@@ -91,8 +94,8 @@ export class SupplyChainPanel extends Panel {
 
     return `<div class="trade-restrictions-list">
       ${[...this.chokepointData.chokepoints].sort((a, b) => b.disruptionScore - a.disruptionScore).map(cp => {
-        const statusClass = cp.status === 'red' ? 'status-active' : cp.status === 'yellow' ? 'status-notified' : 'status-terminated';
-        const statusDot = cp.status === 'red' ? 'sc-dot-red' : cp.status === 'yellow' ? 'sc-dot-yellow' : 'sc-dot-green';
+        const statusClass = cp.status === 'red' ? 'status-active' : (cp.status === 'yellow' ? 'status-notified' : 'status-terminated');
+        const statusDot = cp.status === 'red' ? 'sc-dot-red' : (cp.status === 'yellow' ? 'sc-dot-yellow' : 'sc-dot-green');
         return `<div class="trade-restriction-card">
           <div class="trade-restriction-header">
             <span class="trade-country">${escapeHtml(cp.name)}</span>

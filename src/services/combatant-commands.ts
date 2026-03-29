@@ -76,12 +76,16 @@ function detectCategory(text: string): CommandRelease['category'] {
 
 function detectSeverity(category: CommandRelease['category']): CommandRelease['severity'] {
   switch (category) {
-    case 'airstrike':  return 'critical';
+    case 'airstrike': {  return 'critical';
+    }
     case 'operation':
-    case 'advisory':   return 'high';
+    case 'advisory': {   return 'high';
+    }
     case 'deployment':
-    case 'exercise':   return 'medium';
-    default:           return 'low';
+    case 'exercise': {   return 'medium';
+    }
+    default: {           return 'low';
+    }
   }
 }
 
@@ -104,7 +108,7 @@ function parseFeed(xmlText: string, command: CombatantCommand): CommandRelease[]
   const doc = parser.parseFromString(xmlText, 'text/xml');
   if (doc.querySelector('parsererror')) return [];
 
-  const items = Array.from(doc.querySelectorAll('item'));
+  const items = [...doc.querySelectorAll('item')];
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
   return items.flatMap((item): CommandRelease[] => {
@@ -151,7 +155,7 @@ export async function fetchCombatantCommands(): Promise<CommandRelease[]> {
   const results = await Promise.allSettled(
     FEEDS.map(async ({ command, url }) => {
       const res = await fetch(proxyFeedUrl(url), {
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(12_000),
         headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
       });
       if (!res.ok) return [] as CommandRelease[];
@@ -188,9 +192,13 @@ export async function fetchCombatantCommands(): Promise<CommandRelease[]> {
 
 export function commandSeverityClass(severity: CommandRelease['severity']): string {
   switch (severity) {
-    case 'critical': return 'text-red-500';
-    case 'high':     return 'text-orange-500';
-    case 'medium':   return 'text-yellow-500';
-    default:         return 'text-gray-400';
+    case 'critical': { return 'text-red-500';
+    }
+    case 'high': {     return 'text-orange-500';
+    }
+    case 'medium': {   return 'text-yellow-500';
+    }
+    default: {         return 'text-gray-400';
+    }
   }
 }

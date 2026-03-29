@@ -70,12 +70,12 @@ function detectAlertType(event: string, headline: string): DamSafetyAlert['alert
 function extractDamName(headline: string, description: string): string {
   const text = headline + ' ' + description;
   // Patterns: "XYZ Dam", "XYZ Lake Dam", "XYZ Reservoir"
-  const match = text.match(/\b([A-Z][a-zA-Z\s]{1,30}(?:Dam|Reservoir|Levee|Lake|Embankment))\b/);
+  const match = /\b([A-Z][a-zA-Z\s]{1,30}(?:Dam|Reservoir|Levee|Lake|Embankment))\b/.exec(text);
   return match?.[1]?.trim() ?? 'Unknown Dam';
 }
 
 function extractState(text: string): string {
-  const stateAbbr = text.match(/\b([A-Z]{2})\b(?=\s*\d{5}|,\s*USA?|\s*\()/);
+  const stateAbbr = /\b([A-Z]{2})\b(?=\s*\d{5}|,\s*USA?|\s*\()/.exec(text);
   if (stateAbbr?.[1]) return stateAbbr[1];
   return '';
 }
@@ -95,7 +95,7 @@ interface NwsAlertRaw {
 async function fetchNwsDamAlerts(): Promise<DamSafetyAlert[]> {
   try {
     const baseUrl = getApiBaseUrl();
-    const res = await fetch(`${baseUrl}/api/nws-alerts`, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(`${baseUrl}/api/nws-alerts`, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
     const alerts: NwsAlertRaw[] = await res.json();
     if (!Array.isArray(alerts)) return [];
@@ -119,8 +119,8 @@ async function fetchNwsDamAlerts(): Promise<DamSafetyAlert[]> {
           issuedAt: a.onset ? new Date(a.onset) : new Date(),
           url: `https://alerts.weather.gov/cap/us.php?x=0`,
           severity: isEmergency ? 'critical'
-            : alertType === 'levee_failure' || a.severity === 'Severe' ? 'high'
-            : 'medium',
+            : (alertType === 'levee_failure' || a.severity === 'Severe' ? 'high'
+            : 'medium'),
         };
       });
   } catch {
@@ -131,7 +131,7 @@ async function fetchNwsDamAlerts(): Promise<DamSafetyAlert[]> {
 async function fetchFercAlerts(): Promise<DamSafetyAlert[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(FERC_RSS)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -142,7 +142,7 @@ async function fetchFercAlerts(): Promise<DamSafetyAlert[]> {
     const items = doc.querySelectorAll('item');
     const alerts: DamSafetyAlert[] = [];
 
-    for (const item of Array.from(items)) {
+    for (const item of items) {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const description = (item.querySelector('description')?.textContent ?? '').replace(/<[^>]+>/g, '').trim();
       const link = item.querySelector('link')?.textContent?.trim() ?? '';

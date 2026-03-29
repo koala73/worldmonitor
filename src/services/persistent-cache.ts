@@ -2,11 +2,11 @@ import { isDesktopRuntime } from './runtime';
 import { invokeTauri } from './tauri-bridge';
 import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from '@/utils';
 
-type CacheEnvelope<T> = {
+interface CacheEnvelope<T> {
   key: string;
   updatedAt: number;
   data: T;
-};
+}
 
 const CACHE_PREFIX = 'worldmonitor-persistent-cache:';
 const CACHE_DB_NAME = 'worldmonitor_persistent_cache';
@@ -16,7 +16,7 @@ const CACHE_STORE = 'entries';
 let cacheDbPromise: Promise<IDBDatabase> | null = null;
 
 function isIndexedDbAvailable(): boolean {
-  return typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined';
+  return typeof window !== 'undefined' && window.indexedDB !== undefined;
 }
 
 function getCacheDb(): Promise<IDBDatabase> {
@@ -40,7 +40,7 @@ function getCacheDb(): Promise<IDBDatabase> {
 
     request.onsuccess = () => {
       const db = request.result;
-      db.onclose = () => { cacheDbPromise = null; };
+      db.addEventListener('close', () => { cacheDbPromise = null; });
       resolve(db);
     };
   });
@@ -167,7 +167,7 @@ export function cacheAgeMs(updatedAt: number): number {
 
 export function describeFreshness(updatedAt: number): string {
   const age = cacheAgeMs(updatedAt);
-  const mins = Math.floor(age / 60000);
+  const mins = Math.floor(age / 60_000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);

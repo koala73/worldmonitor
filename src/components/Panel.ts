@@ -80,14 +80,14 @@ function getGridColumnCount(element: HTMLElement): number {
   if (!template || template === 'none') return 3;
 
   if (template.includes('repeat(')) {
-    const repeatCountMatch = template.match(/repeat\(\s*(\d+)\s*,/i);
+    const repeatCountMatch = /repeat\(\s*(\d+)\s*,/i.exec(template);
     if (repeatCountMatch) {
       const parsed = Number.parseInt(repeatCountMatch[1] ?? '0', 10);
       if (Number.isFinite(parsed) && parsed > 0) return parsed;
     }
 
     // For repeat(auto-fill/auto-fit, minmax(...)), infer count from rendered width.
-    const autoRepeatMatch = template.match(/repeat\(\s*auto-(fill|fit)\s*,/i);
+    const autoRepeatMatch = /repeat\(\s*auto-(fill|fit)\s*,/i.exec(template);
     if (autoRepeatMatch) {
       const gap = Number.parseFloat(style.columnGap || '0') || 0;
       const width = grid.getBoundingClientRect().width;
@@ -154,8 +154,7 @@ function deltaToRowSpan(startSpan: number, deltaY: number): number {
 
 function setSpanClass(element: HTMLElement, span: number): void {
   element.classList.remove('span-1', 'span-2', 'span-3', 'span-4');
-  element.classList.add(`span-${span}`);
-  element.classList.add('resized');
+  element.classList.add(`span-${span}`, 'resized');
 }
 
 export class Panel {
@@ -218,13 +217,13 @@ export class Panel {
     const title = document.createElement('span');
     title.className = 'panel-title';
     title.textContent = options.title;
-    headerLeft.appendChild(title);
+    headerLeft.append(title);
 
     if (options.infoTooltip) {
       const infoBtn = h('button', { className: 'panel-info-btn', 'aria-label': t('components.panel.showMethodologyInfo') }, '?');
 
       const tooltip = h('div', { className: 'panel-info-tooltip' });
-      tooltip.appendChild(safeHtml(options.infoTooltip));
+      tooltip.append(safeHtml(options.infoTooltip));
 
       infoBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -236,9 +235,9 @@ export class Panel {
 
       const infoWrapper = document.createElement('div');
       infoWrapper.className = 'panel-info-wrapper';
-      infoWrapper.appendChild(infoBtn);
-      infoWrapper.appendChild(tooltip);
-      headerLeft.appendChild(infoWrapper);
+      infoWrapper.append(infoBtn);
+      infoWrapper.append(tooltip);
+      headerLeft.append(infoWrapper);
     }
 
     // Add "new" badge element (hidden by default)
@@ -246,21 +245,21 @@ export class Panel {
       this.newBadgeEl = document.createElement('span');
       this.newBadgeEl.className = 'panel-new-badge';
       this.newBadgeEl.style.display = 'none';
-      headerLeft.appendChild(this.newBadgeEl);
+      headerLeft.append(this.newBadgeEl);
     }
 
-    this.header.appendChild(headerLeft);
+    this.header.append(headerLeft);
 
     this.statusBadgeEl = document.createElement('span');
     this.statusBadgeEl.className = 'panel-data-badge';
     this.statusBadgeEl.style.display = 'none';
-    this.header.appendChild(this.statusBadgeEl);
+    this.header.append(this.statusBadgeEl);
 
     if (options.showCount) {
       this.countEl = document.createElement('span');
       this.countEl.className = 'panel-count';
       this.countEl.textContent = '0';
-      this.header.appendChild(this.countEl);
+      this.header.append(this.countEl);
     }
 
     // AI Summary button — skip video/live panels and the map
@@ -274,28 +273,28 @@ export class Panel {
         e.stopPropagation();
         void this._runAiSummary(aiBtn);
       });
-      this.header.appendChild(aiBtn);
+      this.header.append(aiBtn);
     }
 
     this.content = document.createElement('div');
     this.content.className = 'panel-content';
     this.content.id = `${options.id}Content`;
 
-    this.element.appendChild(this.header);
-    this.element.appendChild(this.content);
+    this.element.append(this.header);
+    this.element.append(this.content);
 
     // Add resize handle
     this.resizeHandle = document.createElement('div');
     this.resizeHandle.className = 'panel-resize-handle';
     this.resizeHandle.title = t('components.panel.dragToResize');
-    this.element.appendChild(this.resizeHandle);
+    this.element.append(this.resizeHandle);
     this.setupResizeHandlers();
 
     // Right-edge handle for width resizing
     this.colResizeHandle = document.createElement('div');
     this.colResizeHandle.className = 'panel-col-resize-handle';
     this.colResizeHandle.title = t('components.panel.dragToResize');
-    this.element.appendChild(this.colResizeHandle);
+    this.element.append(this.colResizeHandle);
     this.setupColResizeHandlers();
 
     // Restore saved span
@@ -671,11 +670,11 @@ export class Panel {
   public showConfigError(message: string): void {
     const msgEl = h('div', { className: 'config-error-message' }, message);
     if (isDesktopRuntime()) {
-      msgEl.appendChild(
+      msgEl.append(
         h('button', {
           type: 'button',
           className: 'config-error-settings-btn',
-          onClick: () => void invokeTauri<void>('open_settings_window_command').catch(() => { }),
+          onClick: () => void invokeTauri<void>('open_settings_window_command').catch(() => {}),
         }, t('components.panel.openSettings')),
       );
     }
@@ -758,11 +757,7 @@ export class Panel {
     this.newBadgeEl.style.display = 'inline-flex';
     this.element.classList.add('has-new');
 
-    if (pulse) {
-      this.newBadgeEl.classList.add('pulse');
-    } else {
-      this.newBadgeEl.classList.remove('pulse');
-    }
+    this.newBadgeEl.classList.toggle('pulse', pulse);
   }
 
   /**
@@ -836,7 +831,7 @@ export class Panel {
     // Build overlay
     const overlay = h('div', { className: 'panel-ai-overlay panel-ai-overlay--loading' });
     overlay.innerHTML = '<span class="panel-ai-spinner"></span> Generating AI summary…';
-    this.element.appendChild(overlay);
+    this.element.append(overlay);
     this.aiSummaryOverlay = overlay;
     triggerBtn.classList.add('panel-ai-btn--active');
     triggerBtn.setAttribute('disabled', '');
@@ -871,8 +866,8 @@ export class Panel {
           resetOnFailure();
           return;
         }
-      } catch (e) {
-        if (this.isAbortError(e)) { resetOnFailure(); return; }
+      } catch (error) {
+        if (this.isAbortError(error)) { resetOnFailure(); return; }
         // Network error reaching sidecar → fall through to chain
         ollamaSkipped = true;
       }
@@ -885,7 +880,7 @@ export class Panel {
       if (result?.summary) {
         const providerLabel = result.cached ? 'cached' : result.provider;
         overlay.innerHTML = '';
-        overlay.appendChild(
+        overlay.append(
           h('div', { className: 'panel-ai-result' },
             h('div', { className: 'panel-ai-result-header' },
               h('span', { className: 'panel-ai-provider' }, `AI · ${providerLabel}`),
@@ -937,7 +932,7 @@ export class Panel {
     const providerSpan = h('span', { className: 'panel-ai-provider' }, 'AI · ollama ⋯');
     const headerEl = h('div', { className: 'panel-ai-result-header' }, providerSpan, stopBtn);
     overlay.innerHTML = '';
-    overlay.appendChild(h('div', { className: 'panel-ai-result' }, headerEl, textEl));
+    overlay.append(h('div', { className: 'panel-ai-result' }, headerEl, textEl));
 
     let accumulated = '';
     const reader = (streamResp.body as ReadableStream<Uint8Array>).getReader();
@@ -969,9 +964,9 @@ export class Panel {
                   await new Promise<void>(r => setTimeout(r, 20));
                 }
               }
-            } catch (e) {
-              if (e instanceof SyntaxError) continue;
-              throw e;
+            } catch (error) {
+              if (error instanceof SyntaxError) continue;
+              throw error;
             }
           }
         }
@@ -995,7 +990,7 @@ export class Panel {
         triggerBtn.classList.remove('panel-ai-btn--active');
       },
     }, '×');
-    if (stopBtn.parentElement) headerEl.replaceChild(closeBtn, stopBtn);
+    if (stopBtn.parentElement) stopBtn.replaceWith(closeBtn);
 
     // If nothing was generated at all, remove the overlay
     if (!accumulated.trim()) {

@@ -50,56 +50,77 @@ export class SecurityAdvisoriesPanel extends Panel {
 
   private getFiltered(): SecurityAdvisory[] {
     switch (this.activeFilter) {
-      case 'critical':
+      case 'critical': {
         return this.advisories.filter(a => a.level === 'do-not-travel' || a.level === 'reconsider');
-      case 'health':
+      }
+      case 'health': {
         return this.advisories.filter(a => a.sourceCountry === 'EU' || a.sourceCountry === 'INT');
+      }
       case 'US':
       case 'AU':
       case 'UK':
-      case 'NZ':
+      case 'NZ': {
         return this.advisories.filter(a => a.sourceCountry === this.activeFilter);
-      default:
+      }
+      default: {
         return this.advisories;
+      }
     }
   }
 
   private getLevelClass(level?: SecurityAdvisory['level']): string {
     switch (level) {
-      case 'do-not-travel': return 'sa-level-dnt';
-      case 'reconsider': return 'sa-level-reconsider';
-      case 'caution': return 'sa-level-caution';
-      case 'normal': return 'sa-level-normal';
-      default: return 'sa-level-info';
+      case 'do-not-travel': { return 'sa-level-dnt';
+      }
+      case 'reconsider': { return 'sa-level-reconsider';
+      }
+      case 'caution': { return 'sa-level-caution';
+      }
+      case 'normal': { return 'sa-level-normal';
+      }
+      default: { return 'sa-level-info';
+      }
     }
   }
 
   private getLevelLabel(level?: SecurityAdvisory['level']): string {
     switch (level) {
-      case 'do-not-travel': return t('components.securityAdvisories.levels.doNotTravel');
-      case 'reconsider': return t('components.securityAdvisories.levels.reconsider');
-      case 'caution': return t('components.securityAdvisories.levels.caution');
-      case 'normal': return t('components.securityAdvisories.levels.normal');
-      default: return t('components.securityAdvisories.levels.info');
+      case 'do-not-travel': { return t('components.securityAdvisories.levels.doNotTravel');
+      }
+      case 'reconsider': { return t('components.securityAdvisories.levels.reconsider');
+      }
+      case 'caution': { return t('components.securityAdvisories.levels.caution');
+      }
+      case 'normal': { return t('components.securityAdvisories.levels.normal');
+      }
+      default: { return t('components.securityAdvisories.levels.info');
+      }
     }
   }
 
   private getSourceFlag(sourceCountry: string): string {
     switch (sourceCountry) {
-      case 'US': return '\u{1F1FA}\u{1F1F8}';
-      case 'AU': return '\u{1F1E6}\u{1F1FA}';
-      case 'UK': return '\u{1F1EC}\u{1F1E7}';
-      case 'NZ': return '\u{1F1F3}\u{1F1FF}';
-      case 'EU': return '\u{1F1EA}\u{1F1FA}';
-      case 'INT': return '\u{1F3E5}';
-      default: return '\u{1F310}';
+      case 'US': { return '\u{1F1FA}\u{1F1F8}';
+      }
+      case 'AU': { return '\u{1F1E6}\u{1F1FA}';
+      }
+      case 'UK': { return '\u{1F1EC}\u{1F1E7}';
+      }
+      case 'NZ': { return '\u{1F1F3}\u{1F1FF}';
+      }
+      case 'EU': { return '\u{1F1EA}\u{1F1FA}';
+      }
+      case 'INT': { return '\u{1F3E5}';
+      }
+      default: { return '\u{1F310}';
+      }
     }
   }
 
   private formatTime(date: Date): string {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
+    const minutes = Math.floor(diff / 60_000);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
 
@@ -154,10 +175,7 @@ export class SecurityAdvisoriesPanel extends Panel {
     const displayed = filtered.slice(0, 30);
     let itemsHtml: string;
 
-    if (displayed.length === 0) {
-      itemsHtml = `<div class="panel-empty">${t('components.securityAdvisories.noMatching')}</div>`;
-    } else {
-      itemsHtml = displayed.map(a => {
+    itemsHtml = displayed.length === 0 ? `<div class="panel-empty">${t('components.securityAdvisories.noMatching')}</div>` : displayed.map(a => {
         const levelCls = this.getLevelClass(a.level);
         const levelLabel = this.getLevelLabel(a.level);
         const flag = this.getSourceFlag(a.sourceCountry);
@@ -171,7 +189,6 @@ export class SecurityAdvisoriesPanel extends Panel {
           <div class="sa-time">${this.formatTime(a.pubDate)}</div>
         </div>`;
       }).join('');
-    }
 
     const footerHtml = `
       <div class="sa-footer">

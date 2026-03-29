@@ -78,7 +78,7 @@ function expandParams(search: string): URLSearchParams {
   const compressed = raw.get('z');
   if (compressed) {
     // Reject suspiciously large compressed values before decompression
-    if (compressed.length > 8_000) return raw;
+    if (compressed.length > 8000) return raw;
     try {
       const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
       if (decompressed && decompressed.length <= MAX_DECOMPRESSED_BYTES) {
@@ -102,13 +102,13 @@ export function parseMapUrlState(
   const view = VIEW_VALUES.includes(viewParam as MapView) ? (viewParam as MapView) : undefined;
 
   const zoomParam = params.get('zoom');
-  const zoomValue = zoomParam ? Number.parseFloat(zoomParam) : NaN;
+  const zoomValue = zoomParam ? Number.parseFloat(zoomParam) : Number.NaN;
   const zoom = Number.isFinite(zoomValue) ? clamp(zoomValue, 1, 10) : undefined;
 
   const latParam = params.get('lat');
   const lonParam = params.get('lon');
-  const latValue = latParam ? Number.parseFloat(latParam) : NaN;
-  const lonValue = lonParam ? Number.parseFloat(lonParam) : NaN;
+  const latValue = latParam ? Number.parseFloat(latParam) : Number.NaN;
+  const lonValue = lonParam ? Number.parseFloat(lonParam) : Number.NaN;
   const lat = Number.isFinite(latValue) ? clamp(latValue, -90, 90) : undefined;
   const lon = Number.isFinite(lonValue) ? clamp(lonValue, -180, 180) : undefined;
 

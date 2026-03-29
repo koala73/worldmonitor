@@ -14,8 +14,8 @@ export class PositiveNewsFeedPanel extends Panel {
   private activeFilter: HappyContentCategory | 'all' = 'all';
   private allItems: NewsItem[] = [];
   private filteredItems: NewsItem[] = [];
-  private filterButtons: Map<string, HTMLButtonElement> = new Map();
-  private filterClickHandlers: Map<HTMLButtonElement, () => void> = new Map();
+  private filterButtons = new Map<string, HTMLButtonElement>();
+  private filterClickHandlers = new Map<HTMLButtonElement, () => void>();
 
   constructor() {
     super({ id: 'positive-feed', title: 'Good News Feed', showCount: true, trackActivity: true });
@@ -39,7 +39,7 @@ export class PositiveNewsFeedPanel extends Panel {
     allBtn.addEventListener('click', allHandler);
     this.filterClickHandlers.set(allBtn, allHandler);
     this.filterButtons.set('all', allBtn);
-    filterBar.appendChild(allBtn);
+    filterBar.append(allBtn);
 
     // Per-category buttons
     for (const category of HAPPY_CATEGORY_ALL) {
@@ -51,7 +51,7 @@ export class PositiveNewsFeedPanel extends Panel {
       btn.addEventListener('click', handler);
       this.filterClickHandlers.set(btn, handler);
       this.filterButtons.set(category, btn);
-      filterBar.appendChild(btn);
+      filterBar.append(btn);
     }
 
     // Insert filter bar before content
@@ -66,11 +66,7 @@ export class PositiveNewsFeedPanel extends Panel {
 
     // Update button active states
     for (const [key, btn] of this.filterButtons) {
-      if (key === filter) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
+      btn.classList.toggle('active', key === filter);
     }
 
     this.applyFilter();
@@ -127,7 +123,7 @@ export class PositiveNewsFeedPanel extends Panel {
     e.preventDefault();
     e.stopPropagation();
 
-    const idx = parseInt(shareBtn.dataset.idx ?? '', 10);
+    const idx = Number.parseInt(shareBtn.dataset.idx ?? '', 10);
     const item = this.filteredItems[idx];
     if (!item) return;
 

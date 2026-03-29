@@ -40,12 +40,12 @@ async function fetchIndicator(iso: string, indicator: string): Promise<{ value: 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return { value: null, year: null };
-    const json = await res.json() as [unknown, Array<{ value: number | null; date: string }> | null];
+    const json = await res.json() as [unknown, { value: number | null; date: string }[] | null];
     const rows = json[1];
     if (!Array.isArray(rows)) return { value: null, year: null };
     for (const row of rows) {
-      if (row.value != null) {
-        return { value: row.value, year: parseInt(row.date, 10) };
+      if (row.value != undefined) {
+        return { value: row.value, year: Number.parseInt(row.date, 10) };
       }
     }
     return { value: null, year: null };
@@ -99,21 +99,21 @@ export async function fetchWorldBankProfile(iso: string): Promise<WorldBankProfi
 export function formatWorldBankContext(wb: WorldBankProfile): string {
   const parts: string[] = [];
 
-  if (wb.gdpUsd != null) {
+  if (wb.gdpUsd != undefined) {
     const t = wb.gdpUsd / 1e12;
     parts.push(t >= 0.1 ? `GDP $${t.toFixed(2)}T` : `GDP $${(wb.gdpUsd / 1e9).toFixed(1)}B`);
   }
-  if (wb.gdpPerCapita != null) {
+  if (wb.gdpPerCapita != undefined) {
     parts.push(`GDP/cap $${Math.round(wb.gdpPerCapita).toLocaleString()}`);
   }
-  if (wb.militaryPctGdp != null) {
+  if (wb.militaryPctGdp != undefined) {
     parts.push(`Military ${wb.militaryPctGdp.toFixed(1)}% GDP`);
   }
-  if (wb.population != null) {
+  if (wb.population != undefined) {
     const m = wb.population / 1e6;
     parts.push(m >= 1 ? `Pop ${m.toFixed(1)}M` : `Pop ${Math.round(wb.population / 1e3)}K`);
   }
-  if (wb.tradePctGdp != null) {
+  if (wb.tradePctGdp != undefined) {
     parts.push(`Trade ${wb.tradePctGdp.toFixed(0)}% GDP`);
   }
 

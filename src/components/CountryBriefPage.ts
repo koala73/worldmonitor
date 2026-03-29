@@ -35,13 +35,13 @@ export class CountryBriefPage {
     ...ME_STRIKE_BOUNDS,
     CN: { n: 53.6, s: 18.2, e: 134.8, w: 73.5 }, TW: { n: 25.3, s: 21.9, e: 122, w: 120 },
     JP: { n: 45.5, s: 24.2, e: 153.9, w: 122.9 }, KR: { n: 38.6, s: 33.1, e: 131.9, w: 124.6 },
-    KP: { n: 43.0, s: 37.7, e: 130.7, w: 124.2 }, IN: { n: 35.5, s: 6.7, e: 97.4, w: 68.2 },
+    KP: { n: 43, s: 37.7, e: 130.7, w: 124.2 }, IN: { n: 35.5, s: 6.7, e: 97.4, w: 68.2 },
     PK: { n: 37, s: 24, e: 77, w: 61 }, AF: { n: 38.5, s: 29.4, e: 74.9, w: 60.5 },
     UA: { n: 52.4, s: 44.4, e: 40.2, w: 22.1 }, RU: { n: 82, s: 41.2, e: 180, w: 19.6 },
     BY: { n: 56.2, s: 51.3, e: 32.8, w: 23.2 }, PL: { n: 54.8, s: 49, e: 24.1, w: 14.1 },
     EG: { n: 31.7, s: 22, e: 36.9, w: 25 }, LY: { n: 33, s: 19.5, e: 25, w: 9.4 },
     SD: { n: 22, s: 8.7, e: 38.6, w: 21.8 }, US: { n: 49, s: 24.5, e: -66.9, w: -125 },
-    GB: { n: 58.7, s: 49.9, e: 1.8, w: -8.2 }, DE: { n: 55.1, s: 47.3, e: 15.0, w: 5.9 },
+    GB: { n: 58.7, s: 49.9, e: 1.8, w: -8.2 }, DE: { n: 55.1, s: 47.3, e: 15, w: 5.9 },
     FR: { n: 51.1, s: 41.3, e: 9.6, w: -5.1 }, TR: { n: 42.1, s: 36, e: 44.8, w: 26 },
   };
 
@@ -81,7 +81,7 @@ export class CountryBriefPage {
   constructor() {
     this.overlay = document.createElement('div');
     this.overlay.className = 'country-brief-overlay';
-    document.body.appendChild(this.overlay);
+    document.body.append(this.overlay);
 
     this.overlay.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).classList.contains('country-brief-overlay')) this.hide();
@@ -96,7 +96,7 @@ export class CountryBriefPage {
       return code
         .toUpperCase()
         .split('')
-        .map((c) => String.fromCodePoint(0x1f1e6 + c.charCodeAt(0) - 65))
+        .map((c) => String.fromCodePoint(0x1_F1_E6 + c.charCodeAt(0) - 65))
         .join('');
     } catch {
       return '🌍';
@@ -122,8 +122,8 @@ export class CountryBriefPage {
   }
 
   private trendIndicator(trend: string): string {
-    const arrow = trend === 'rising' ? '↗' : trend === 'falling' ? '↘' : '→';
-    const cls = trend === 'rising' ? 'trend-up' : trend === 'falling' ? 'trend-down' : 'trend-stable';
+    const arrow = trend === 'rising' ? '↗' : (trend === 'falling' ? '↘' : '→');
+    const cls = trend === 'rising' ? 'trend-up' : (trend === 'falling' ? 'trend-down' : 'trend-stable');
     const trendKey = trend as 'rising' | 'falling' | 'stable';
     const trendLabel = t(`countryBrief.trends.${trendKey}`);
     return `<span class="cb-trend ${cls}">${arrow} ${trendLabel}</span>`;
@@ -191,11 +191,11 @@ export class CountryBriefPage {
     if (signals.activeStrikes > 0) chips.push(`<span class="signal-chip conflict">\u{1F4A5} ${signals.activeStrikes} ${t('modals.countryBrief.signals.activeStrikes')}</span>`);
     if (signals.travelAdvisories > 0 && signals.travelAdvisoryMaxLevel) {
       const advisoryClass = signals.travelAdvisoryMaxLevel === 'do-not-travel' ? 'conflict'
-        : signals.travelAdvisoryMaxLevel === 'reconsider' ? 'outage'
-        : 'military';
+        : (signals.travelAdvisoryMaxLevel === 'reconsider' ? 'outage'
+        : 'military');
       const advisoryLabel = signals.travelAdvisoryMaxLevel === 'do-not-travel' ? 'Do Not Travel'
-        : signals.travelAdvisoryMaxLevel === 'reconsider' ? 'Reconsider Travel'
-        : 'Exercise Caution';
+        : (signals.travelAdvisoryMaxLevel === 'reconsider' ? 'Reconsider Travel'
+        : 'Exercise Caution');
       chips.push(`<span class="signal-chip ${advisoryClass}">\u26A0\uFE0F ${signals.travelAdvisories} Advisory: ${advisoryLabel}</span>`);
     }
     if (signals.orefSirens > 0) chips.push(`<span class="signal-chip conflict">\u{1F6A8} ${signals.orefSirens} Active Sirens</span>`);
@@ -255,9 +255,9 @@ export class CountryBriefPage {
     this.currentHeadlineCount = 0;
     const flag = this.countryFlag(code);
 
-    const tierBadge = !signals.isTier1
-      ? `<span class="cb-tier-badge">${t('modals.countryBrief.limitedCoverage')}</span>`
-      : '';
+    const tierBadge = signals.isTier1
+      ? ''
+      : `<span class="cb-tier-badge">${t('modals.countryBrief.limitedCoverage')}</span>`;
 
     this.overlay.innerHTML = `
       <div class="country-brief-page">
@@ -302,14 +302,14 @@ export class CountryBriefPage {
                       ${this.componentBars(score.components)}
                     </div>
                   </div>
-                </section>` : signals.isTier1 ? '' : `
+                </section>` : (signals.isTier1 ? '' : `
                 <section class="cb-section cb-risk-section">
                   <h3 class="cb-section-title">${t('modals.countryBrief.instabilityIndex')}</h3>
                   <div class="cb-not-tracked">
                     <span class="cb-not-tracked-icon">📊</span>
                     <span>${t('modals.countryBrief.notTracked', { country: escapeHtml(country) })}</span>
                   </div>
-                </section>`}
+                </section>`)}
 
               <section class="cb-section cb-brief-section">
                 <h3 class="cb-section-title">${t('modals.countryBrief.intelBrief')}</h3>
@@ -524,7 +524,7 @@ export class CountryBriefPage {
       return;
     }
 
-    const pct = parseFloat(data.weekChangePercent);
+    const pct = Number.parseFloat(data.weekChangePercent);
     const sign = pct >= 0 ? '+' : '';
     const cls = pct >= 0 ? 'stock-up' : 'stock-down';
     const arrow = pct >= 0 ? '📈' : '📉';
@@ -578,7 +578,7 @@ export class CountryBriefPage {
       .sort((a, b) => a.dist - b.dist)
       .slice(0, 5);
 
-    const grouped = new Map<BriefAssetType, Array<{ name: string; distanceKm: number }>>();
+    const grouped = new Map<BriefAssetType, { name: string; distanceKm: number }[]>();
     for (const a of assets) {
       const list = grouped.get(a.type) || [];
       list.push({ name: a.name, distanceKm: a.distanceKm });
@@ -628,8 +628,8 @@ export class CountryBriefPage {
 
   private timeAgo(date: Date): string {
     const ms = Date.now() - new Date(date).getTime();
-    const hours = Math.floor(ms / 3600000);
-    if (hours < 1) return t('modals.countryBrief.timeAgo.m', { count: Math.floor(ms / 60000) });
+    const hours = Math.floor(ms / 3_600_000);
+    if (hours < 1) return t('modals.countryBrief.timeAgo.m', { count: Math.floor(ms / 60_000) });
     if (hours < 24) return t('modals.countryBrief.timeAgo.h', { count: hours });
     return t('modals.countryBrief.timeAgo.d', { count: Math.floor(hours / 24) });
   }
@@ -644,7 +644,7 @@ export class CountryBriefPage {
 
     if (headlineCount > 0) {
       html = html.replace(/\[(\d{1,2})\]/g, (_match, numStr) => {
-        const n = parseInt(numStr, 10);
+        const n = Number.parseInt(numStr, 10);
         if (n >= 1 && n <= headlineCount) {
           return `<a href="#cb-news-${n}" class="cb-citation" title="${t('components.countryBrief.sourceRef', { n: String(n) })}">[${n}]</a>`;
         }
@@ -712,11 +712,11 @@ export class CountryBriefPage {
 
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;left:-9999px;width:0;height:0;border:none';
-    document.body.appendChild(iframe);
+    document.body.append(iframe);
     const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) { document.body.removeChild(iframe); return; }
+    if (!doc) { iframe.remove(); return; }
 
-    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+    const styles = [...document.querySelectorAll('link[rel="stylesheet"], style')]
       .map(el => el.outerHTML).join('\n');
 
     doc.open();
@@ -734,10 +734,10 @@ export class CountryBriefPage {
     </head><body>${header ? header.outerHTML : ''}${content.outerHTML}</body></html>`);
     doc.close();
 
-    iframe.contentWindow!.onafterprint = () => document.body.removeChild(iframe);
+    iframe.contentWindow!.addEventListener('afterprint', () => document.body.removeChild(iframe));
     setTimeout(() => {
       iframe.contentWindow!.print();
-      setTimeout(() => { if (iframe.parentNode) document.body.removeChild(iframe); }, 5000);
+      setTimeout(() => { if (iframe.parentNode) iframe.remove(); }, 5000);
     }, 300);
   }
 

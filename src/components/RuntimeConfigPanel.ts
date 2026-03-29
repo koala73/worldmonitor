@@ -108,15 +108,15 @@ export class RuntimeConfigPanel extends Panel {
     const context = Object.fromEntries(this.pendingSecrets.entries()) as Partial<Record<RuntimeSecretKey, string>>;
 
     // Split into local-only failures vs keys needing remote verification
-    const toVerifyRemotely: Array<[RuntimeSecretKey, string]> = [];
+    const toVerifyRemotely: [RuntimeSecretKey, string][] = [];
     for (const [key, value] of this.pendingSecrets) {
       const localResult = validateSecret(key, value);
-      if (!localResult.valid) {
+      if (localResult.valid) {
+        toVerifyRemotely.push([key, value]);
+      } else {
         this.validatedKeys.set(key, false);
         this.validationMessages.set(key, localResult.hint || 'Invalid format');
         errors.push(`${key}: ${localResult.hint || 'Invalid format'}`);
-      } else {
-        toVerifyRemotely.push([key, value]);
       }
     }
 
@@ -127,19 +127,19 @@ export class RuntimeConfigPanel extends Panel {
           const result = await verifySecretWithApi(key, value, context);
           return { key, result };
         })),
-        new Promise<Array<{ key: RuntimeSecretKey; result: { valid: boolean; message?: string } }>>(resolve =>
+        new Promise<{ key: RuntimeSecretKey; result: { valid: boolean; message?: string } }[]>(resolve =>
           setTimeout(() => resolve(toVerifyRemotely.map(([key]) => ({
             key, result: { valid: true, message: 'Saved (verification timed out)' },
-          }))), 15000)
+          }))), 15_000)
         ),
       ]);
       for (const { key, result: verifyResult } of results) {
         this.validatedKeys.set(key, verifyResult.valid);
-        if (!verifyResult.valid) {
+        if (verifyResult.valid) {
+          this.validationMessages.delete(key);
+        } else {
           this.validationMessages.set(key, verifyResult.message || 'Verification failed');
           errors.push(`${key}: ${verifyResult.message || 'Verification failed'}`);
-        } else {
-          this.validationMessages.delete(key);
         }
       }
     }
@@ -259,14 +259,14 @@ export class RuntimeConfigPanel extends Panel {
     const allStaged = !available && effectiveSecrets.every(
       (k) => getSecretState(k).valid || (this.pendingSecrets.has(k) && this.validatedKeys.get(k) !== false)
     );
-    const pillClass = available ? 'ok' : allStaged ? 'staged' : 'warn';
-    const pillLabel = available ? t('modals.runtimeConfig.status.ready') : allStaged ? t('modals.runtimeConfig.status.staged') : t('modals.runtimeConfig.status.needsKeys');
+    const pillClass = available ? 'ok' : (allStaged ? 'staged' : 'warn');
+    const pillLabel = available ? t('modals.runtimeConfig.status.ready') : (allStaged ? t('modals.runtimeConfig.status.staged') : t('modals.runtimeConfig.status.needsKeys'));
     const secrets = effectiveSecrets.map((key) => this.renderSecretRow(key)).join('');
     const desktop = isDesktopRuntime();
     const fallbackHtml = available || allStaged ? '' : `<p class="runtime-feature-fallback fallback">${escapeHtml(feature.fallback)}</p>`;
 
     return `
-      <section class="runtime-feature ${available ? 'available' : allStaged ? 'staged' : 'degraded'}">
+      <section class="runtime-feature ${available ? 'available' : (allStaged ? 'staged' : 'degraded')}">
         <header class="runtime-feature-header">
           <label>
             <input type="checkbox" data-toggle="${feature.id}" ${enabled ? 'checked' : ''} ${desktop ? '' : 'disabled'}>
@@ -286,14 +286,14 @@ export class RuntimeConfigPanel extends Panel {
     const pendingValid = pending ? this.validatedKeys.get(key) : undefined;
     const status = pending
       ? (pendingValid === false ? t('modals.runtimeConfig.status.invalid') : t('modals.runtimeConfig.status.staged'))
-      : !state.present ? t('modals.runtimeConfig.status.missing') : state.valid ? t('modals.runtimeConfig.status.valid') : t('modals.runtimeConfig.status.looksInvalid');
+      : state.present ? state.valid ? t('modals.runtimeConfig.status.valid') : t('modals.runtimeConfig.status.looksInvalid') : t('modals.runtimeConfig.status.missing');
     const statusClass = pending
       ? (pendingValid === false ? 'warn' : 'staged')
-      : state.valid ? 'ok' : 'warn';
+      : (state.valid ? 'ok' : 'warn');
     const signupUrl = SIGNUP_URLS[key];
     const helpKey = `modals.runtimeConfig.help.${key}`;
     const helpRaw = t(helpKey);
-    const helpText = helpRaw !== helpKey ? helpRaw : '';
+    const helpText = helpRaw === helpKey ? '' : helpRaw;
     const showGetKey = signupUrl && !state.present && !pending;
     const validated = this.validatedKeys.get(key);
     const inputClass = pending ? (validated === false ? 'invalid' : 'valid-staged') : '';
@@ -496,7 +496,7 @@ export class RuntimeConfigPanel extends Panel {
               const hint = document.createElement('span');
               hint.className = 'runtime-secret-hint';
               hint.textContent = result.hint;
-              row?.appendChild(hint);
+              row?.append(hint);
             }
           }
           this.updateFeatureCardStatus(key);
@@ -524,7 +524,7 @@ export class RuntimeConfigPanel extends Panel {
   private updateFeatureCardStatus(secretKey: RuntimeSecretKey): void {
     const feature = RUNTIME_FEATURES.find(f => getEffectiveSecrets(f).includes(secretKey));
     if (!feature) return;
-    const section = Array.from(this.content.querySelectorAll('.runtime-feature')).find(el => {
+    const section = [...this.content.querySelectorAll('.runtime-feature')].find(el => {
       const toggle = el.querySelector<HTMLInputElement>(`input[data-toggle="${feature.id}"]`);
       return !!toggle;
     });
@@ -534,11 +534,11 @@ export class RuntimeConfigPanel extends Panel {
     const allStaged = !available && effectiveSecrets.every(
       (k) => getSecretState(k).valid || (this.pendingSecrets.has(k) && this.validatedKeys.get(k) !== false)
     );
-    section.className = `runtime-feature ${available ? 'available' : allStaged ? 'staged' : 'degraded'}`;
+    section.className = `runtime-feature ${available ? 'available' : (allStaged ? 'staged' : 'degraded')}`;
     const pill = section.querySelector('.runtime-pill');
     if (pill) {
-      pill.className = `runtime-pill ${available ? 'ok' : allStaged ? 'staged' : 'warn'}`;
-      pill.textContent = available ? t('modals.runtimeConfig.status.ready') : allStaged ? t('modals.runtimeConfig.status.staged') : t('modals.runtimeConfig.status.needsKeys');
+      pill.className = `runtime-pill ${available ? 'ok' : (allStaged ? 'staged' : 'warn')}`;
+      pill.textContent = available ? t('modals.runtimeConfig.status.ready') : (allStaged ? t('modals.runtimeConfig.status.staged') : t('modals.runtimeConfig.status.needsKeys'));
     }
     const fallback = section.querySelector('.runtime-feature-fallback');
     if (available || allStaged) {
@@ -573,7 +573,7 @@ export class RuntimeConfigPanel extends Panel {
   private async fetchOllamaModels(select: HTMLSelectElement): Promise<void> {
     const snapshot = getRuntimeConfigSnapshot();
     const ollamaUrl = this.pendingSecrets.get('OLLAMA_API_URL')
-      || snapshot.secrets['OLLAMA_API_URL']?.value
+      || snapshot.secrets.OLLAMA_API_URL?.value
       || '';
     if (!ollamaUrl) {
       select.innerHTML = '<option value="" disabled selected>Set Ollama URL first</option>';
@@ -581,7 +581,7 @@ export class RuntimeConfigPanel extends Panel {
     }
 
     const currentModel = this.pendingSecrets.get('OLLAMA_MODEL')
-      || snapshot.secrets['OLLAMA_MODEL']?.value
+      || snapshot.secrets.OLLAMA_MODEL?.value
       || '';
 
     try {
@@ -592,7 +592,7 @@ export class RuntimeConfigPanel extends Panel {
           signal: RuntimeConfigPanel.makeTimeout(5000),
         });
         if (res.ok) {
-          const data = await res.json() as { models?: Array<{ name: string }> };
+          const data = await res.json() as { models?: { name: string }[] };
           models = (data.models?.map(m => m.name) || []).filter(n => !n.includes('embed'));
         }
       } catch { /* Ollama endpoint not available, try OpenAI format */ }
@@ -603,7 +603,7 @@ export class RuntimeConfigPanel extends Panel {
             signal: RuntimeConfigPanel.makeTimeout(5000),
           });
           if (res.ok) {
-            const data = await res.json() as { data?: Array<{ id: string }> };
+            const data = await res.json() as { data?: { id: string }[] };
             models = (data.data?.map(m => m.id) || []).filter(n => !n.includes('embed'));
           }
         } catch { /* OpenAI endpoint also unavailable */ }

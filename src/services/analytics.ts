@@ -130,7 +130,7 @@ const EVENT_SCHEMAS: Record<string, Set<string>> = {
   wm_update_dismissed: new Set(['target_version']),
   wm_critical_banner_action: new Set(['action', 'theater_id']),
   wm_download_clicked: new Set(['platform']),
-  wm_download_banner_dismissed: new Set([]),
+  wm_download_banner_dismissed: new Set(),
   wm_webcam_selected: new Set(['webcam_id', 'city', 'view_mode']),
   wm_webcam_region_filtered: new Set(['region']),
   wm_deeplink_opened: new Set(['deeplink_type', 'target']),
@@ -173,11 +173,11 @@ function deepStripSecrets(props: Record<string, unknown>): Record<string, unknow
 
 // ── PostHog instance management ──
 
-type PostHogInstance = {
+interface PostHogInstance {
   init: (key: string, config: Record<string, unknown>) => void;
   register: (props: Record<string, unknown>) => void;
   capture: (event: string, props?: Record<string, unknown>, options?: { transport?: 'XHR' | 'sendBeacon' }) => void;
-};
+}
 
 let posthogInstance: PostHogInstance | null = null;
 let initPromise: Promise<void> | null = null;
@@ -271,7 +271,7 @@ const OFFLINE_QUEUE_CAP = 200;
 function enqueueOffline(name: string, props: Record<string, unknown>): void {
   try {
     const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
-    const queue: Array<{ name: string; props: Record<string, unknown>; ts: number }> = raw ? JSON.parse(raw) : [];
+    const queue: { name: string; props: Record<string, unknown>; ts: number }[] = raw ? JSON.parse(raw) : [];
     queue.push({ name, props, ts: Date.now() });
     if (queue.length > OFFLINE_QUEUE_CAP) queue.splice(0, queue.length - OFFLINE_QUEUE_CAP);
     localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
@@ -283,7 +283,7 @@ function flushOfflineQueue(): void {
   try {
     const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
     if (!raw) return;
-    const queue: Array<{ name: string; props: Record<string, unknown> }> = JSON.parse(raw);
+    const queue: { name: string; props: Record<string, unknown> }[] = JSON.parse(raw);
     localStorage.removeItem(OFFLINE_QUEUE_KEY);
     for (const { name, props } of queue) {
       posthogInstance.capture(name, props);

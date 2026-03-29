@@ -27,11 +27,11 @@ const UA = 'Mozilla/5.0 (compatible; WorldMonitor/1.0)';
 const args = process.argv.slice(2);
 function getArg(name, fallback) {
   const idx = args.indexOf(`--${name}`);
-  return idx >= 0 && args[idx + 1] ? args[idx + 1] : fallback;
+  return idx !== -1 && args[idx + 1] ? args[idx + 1] : fallback;
 }
 
 const requestedDate = getArg('date', null);
-const minAircraft = parseInt(getArg('min-aircraft', '3'), 10);
+const minAircraft = Number.parseInt(getArg('min-aircraft', '3'), 10);
 const outputPath = getArg('output', null);
 
 // ---------------------------------------------------------------------------
@@ -79,8 +79,8 @@ async function fetchHexData(date) {
     if (parts.length < 3) continue;
 
     const hex = parts[0];
-    const good = parseInt(parts[1], 10);
-    const bad = parseInt(parts[2], 10);
+    const good = Number.parseInt(parts[1], 10);
+    const bad = Number.parseInt(parts[2], 10);
     const total = good + bad;
 
     // Skip hexes with too few aircraft (noisy data)
@@ -197,7 +197,7 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error(`[gpsjam] Fatal: ${err.message}`);
+main().catch(error => {
+  console.error(`[gpsjam] Fatal: ${error.message}`);
   process.exit(1);
 });

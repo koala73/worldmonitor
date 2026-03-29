@@ -89,18 +89,22 @@ export class EconomicPanel extends Panel {
     let contentHtml = '';
 
     switch (this.activeTab) {
-      case 'indicators':
+      case 'indicators': {
         contentHtml = this.renderIndicators();
         break;
-      case 'oil':
+      }
+      case 'oil': {
         contentHtml = this.renderOil();
         break;
-      case 'spending':
+      }
+      case 'spending': {
         contentHtml = this.renderSpending();
         break;
-      case 'centralBanks':
+      }
+      case 'centralBanks': {
         contentHtml = this.renderCentralBanks();
         break;
+      }
     }
 
     const updateTime = this.lastUpdate
@@ -121,10 +125,14 @@ export class EconomicPanel extends Panel {
 
   private getSourceLabel(): string {
     switch (this.activeTab) {
-      case 'indicators': return 'FRED';
-      case 'oil': return 'EIA';
-      case 'spending': return 'USASpending.gov';
-      case 'centralBanks': return 'BIS';
+      case 'indicators': { return 'FRED';
+      }
+      case 'oil': { return 'EIA';
+      }
+      case 'spending': { return 'USASpending.gov';
+      }
+      case 'centralBanks': { return 'BIS';
+      }
     }
   }
 
@@ -141,9 +149,9 @@ export class EconomicPanel extends Panel {
         ${this.fredData.map(series => {
       const changeClass = getChangeClass(series.change);
       const changeStr = formatChange(series.change, series.unit);
-      const arrow = series.change !== null
-        ? (series.change > 0 ? '▲' : series.change < 0 ? '▼' : '–')
-        : '';
+      const arrow = series.change === null
+        ? ''
+        : (series.change > 0 ? '▲' : series.change < 0 ? '▼' : '–');
 
       return `
             <div class="economic-indicator" data-series="${escapeHtml(series.id)}">
@@ -152,7 +160,7 @@ export class EconomicPanel extends Panel {
                 <span class="indicator-id">${escapeHtml(series.id)}</span>
               </div>
               <div class="indicator-value">
-                <span class="value">${escapeHtml(String(series.value !== null ? series.value : 'N/A'))}${escapeHtml(series.unit)}</span>
+                <span class="value">${escapeHtml(String(series.value === null ? 'N/A' : series.value))}${escapeHtml(series.unit)}</span>
                 <span class="change ${escapeHtml(changeClass)}">${escapeHtml(arrow)} ${escapeHtml(changeStr)}</span>
               </div>
               <div class="indicator-date">${escapeHtml(series.date)}</div>
@@ -252,9 +260,9 @@ export class EconomicPanel extends Panel {
         <div class="economic-indicators">
           ${sortedRates.map(r => {
       const diff = r.rate - r.previousRate;
-      const color = diff < 0 ? greenColor : diff > 0 ? redColor : neutralColor;
-      const label = diff < 0 ? t('components.economic.cut') : diff > 0 ? t('components.economic.hike') : t('components.economic.hold');
-      const arrow = diff < 0 ? '▼' : diff > 0 ? '▲' : '–';
+      const color = diff < 0 ? greenColor : (diff > 0 ? redColor : neutralColor);
+      const label = diff < 0 ? t('components.economic.cut') : (diff > 0 ? t('components.economic.hike') : t('components.economic.hold'));
+      const arrow = diff < 0 ? '▼' : (diff > 0 ? '▲' : '–');
       return `
               <div class="economic-indicator">
                 <div class="indicator-header">
@@ -280,8 +288,8 @@ export class EconomicPanel extends Panel {
           <div class="bis-section-title">${t('components.economic.realEer')}</div>
           <div class="economic-indicators">
             ${this.bisData.exchangeRates.map(r => {
-        const color = r.realChange > 0 ? redColor : r.realChange < 0 ? greenColor : neutralColor;
-        const arrow = r.realChange > 0 ? '▲' : r.realChange < 0 ? '▼' : '–';
+        const color = r.realChange > 0 ? redColor : (r.realChange < 0 ? greenColor : neutralColor);
+        const arrow = r.realChange > 0 ? '▲' : (r.realChange < 0 ? '▼' : '–');
         return `
                 <div class="economic-indicator">
                   <div class="indicator-header">
@@ -310,9 +318,9 @@ export class EconomicPanel extends Panel {
           <div class="economic-indicators">
             ${sortedCredit.map(r => {
         const diff = r.creditGdpRatio - r.previousRatio;
-        const color = diff > 0 ? redColor : diff < 0 ? greenColor : neutralColor;
-        const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '–';
-        const changeStr = diff !== 0 ? `${diff > 0 ? '+' : ''}${(Math.round(diff * 10) / 10)}pp` : '–';
+        const color = diff > 0 ? redColor : (diff < 0 ? greenColor : neutralColor);
+        const arrow = diff > 0 ? '▲' : (diff < 0 ? '▼' : '–');
+        const changeStr = diff === 0 ? '–' : `${diff > 0 ? '+' : ''}${(Math.round(diff * 10) / 10)}pp`;
         return `
                 <div class="economic-indicator">
                   <div class="indicator-header">

@@ -72,7 +72,7 @@ function ensureCanvas(wrapper: HTMLElement): void {
   canvas.style.cssText =
     'position:absolute;top:0;left:0;width:100%;height:100%;' +
     'pointer-events:none;z-index:10;';
-  wrapper.appendChild(canvas);
+  wrapper.append(canvas);
 
   const ro = new ResizeObserver(() => resizeCanvas(wrapper));
   ro.observe(wrapper);
@@ -284,7 +284,7 @@ export function setCoronaTargets(hotspots: Pick<Hotspot, 'lat' | 'lon' | 'level'
       coronas.push({
         lat: h.lat,
         lon: h.lon,
-        color: THREAT_COLORS['conflict'],
+        color: THREAT_COLORS.conflict,
         phase: Math.random() * Math.PI * 2,
       });
     }
@@ -312,8 +312,10 @@ export function triggerGlobalFlare(type: ThreatType = 'generic'): void {
 function originToThreatType(origin: BreakingAlert['origin']): ThreatType {
   switch (origin) {
     case 'military_surge':
-    case 'hotspot_escalation': return 'conflict';
-    default: return 'generic';
+    case 'hotspot_escalation': { return 'conflict';
+    }
+    default: { return 'generic';
+    }
   }
 }
 

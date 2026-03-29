@@ -17,7 +17,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 700,
     foundedYear: 2015,
     keyProducts: ['GPT-4', 'ChatGPT', 'DALL-E', 'API Platform'],
-    valuation: 80000000000, // $80B
+    valuation: 80_000_000_000, // $80B
   },
   {
     id: 'anthropic-hq',
@@ -31,7 +31,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 500,
     foundedYear: 2021,
     keyProducts: ['Claude', 'Constitutional AI'],
-    valuation: 18400000000, // $18.4B
+    valuation: 18_400_000_000, // $18.4B
   },
   {
     id: 'google-deepmind-uk',
@@ -40,7 +40,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     officeType: 'headquarters',
     city: 'London',
     country: 'United Kingdom',
-    lat: 51.5310,
+    lat: 51.531,
     lon: -0.1247,
     employees: 2500,
     foundedYear: 2010,
@@ -53,13 +53,13 @@ export const TECH_COMPANIES: TechCompany[] = [
     officeType: 'headquarters',
     city: 'Mountain View',
     country: 'United States',
-    lat: 37.4220,
+    lat: 37.422,
     lon: -122.0841,
-    employees: 182502,
+    employees: 182_502,
     foundedYear: 1998,
     keyProducts: ['Search', 'Cloud', 'Gemini AI', 'YouTube'],
     stockSymbol: 'GOOGL',
-    valuation: 2000000000000, // $2T
+    valuation: 2_000_000_000_000, // $2T
   },
   {
     id: 'meta-hq',
@@ -70,11 +70,11 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'United States',
     lat: 37.4848,
     lon: -122.1482,
-    employees: 67317,
+    employees: 67_317,
     foundedYear: 2004,
     keyProducts: ['Facebook', 'Instagram', 'WhatsApp', 'Llama AI'],
     stockSymbol: 'META',
-    valuation: 1200000000000, // $1.2T
+    valuation: 1_200_000_000_000, // $1.2T
   },
   {
     id: 'microsoft-hq',
@@ -84,12 +84,12 @@ export const TECH_COMPANIES: TechCompany[] = [
     city: 'Redmond',
     country: 'United States',
     lat: 47.6423,
-    lon: -122.1390,
-    employees: 221000,
+    lon: -122.139,
+    employees: 221_000,
     foundedYear: 1975,
     keyProducts: ['Azure', 'Office 365', 'GitHub', 'OpenAI Investment'],
     stockSymbol: 'MSFT',
-    valuation: 3000000000000, // $3T
+    valuation: 3_000_000_000_000, // $3T
   },
   {
     id: 'amazon-hq',
@@ -100,11 +100,11 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'United States',
     lat: 47.6223,
     lon: -122.3389,
-    employees: 1541000,
+    employees: 1_541_000,
     foundedYear: 1994,
     keyProducts: ['AWS', 'E-commerce', 'Alexa', 'Bedrock AI'],
     stockSymbol: 'AMZN',
-    valuation: 1900000000000, // $1.9T
+    valuation: 1_900_000_000_000, // $1.9T
   },
 
   // Semiconductor / AI Chips
@@ -117,11 +117,11 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'United States',
     lat: 37.3708,
     lon: -121.9646,
-    employees: 29600,
+    employees: 29_600,
     foundedYear: 1993,
     keyProducts: ['H100', 'A100', 'GB200', 'CUDA'],
     stockSymbol: 'NVDA',
-    valuation: 3500000000000, // $3.5T
+    valuation: 3_500_000_000_000, // $3.5T
   },
   {
     id: 'amd-hq',
@@ -132,7 +132,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'United States',
     lat: 37.3861,
     lon: -121.9633,
-    employees: 26000,
+    employees: 26_000,
     foundedYear: 1969,
     keyProducts: ['MI300X', 'EPYC', 'Ryzen'],
     stockSymbol: 'AMD',
@@ -146,11 +146,11 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'Taiwan',
     lat: 24.7799,
     lon: 121.0371,
-    employees: 77000,
+    employees: 77_000,
     foundedYear: 1987,
     keyProducts: ['3nm Process', '5nm Process', 'Chip Manufacturing'],
     stockSymbol: 'TSM',
-    valuation: 900000000000, // $900B
+    valuation: 900_000_000_000, // $900B
   },
 
   // AI Startups
@@ -166,7 +166,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 240,
     foundedYear: 2023,
     keyProducts: ['Mistral Large', 'Mixtral'],
-    valuation: 6000000000, // $6B
+    valuation: 6_000_000_000, // $6B
   },
   {
     id: 'cohere-hq',
@@ -180,7 +180,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 400,
     foundedYear: 2019,
     keyProducts: ['Command', 'Embed', 'Rerank'],
-    valuation: 5000000000, // $5B
+    valuation: 5_000_000_000, // $5B
   },
   {
     id: 'inflection-hq',
@@ -190,11 +190,11 @@ export const TECH_COMPANIES: TechCompany[] = [
     city: 'Palo Alto',
     country: 'United States',
     lat: 37.4419,
-    lon: -122.1430,
+    lon: -122.143,
     employees: 35,
     foundedYear: 2022,
     keyProducts: ['Pi Assistant'],
-    valuation: 4000000000, // $4B
+    valuation: 4_000_000_000, // $4B
   },
   {
     id: 'adept-hq',
@@ -208,7 +208,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 50,
     foundedYear: 2022,
     keyProducts: ['ACT-1', 'AI Automation'],
-    valuation: 1000000000, // $1B
+    valuation: 1_000_000_000, // $1B
   },
   {
     id: 'perplexity-hq',
@@ -222,7 +222,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 80,
     foundedYear: 2022,
     keyProducts: ['AI Search'],
-    valuation: 9000000000, // $9B
+    valuation: 9_000_000_000, // $9B
   },
 
   // Chinese AI Companies
@@ -235,7 +235,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'China',
     lat: 39.9925,
     lon: 116.3272,
-    employees: 36000,
+    employees: 36_000,
     foundedYear: 2000,
     keyProducts: ['ERNIE Bot', 'Search', 'Apollo'],
     stockSymbol: 'BIDU',
@@ -249,10 +249,10 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'China',
     lat: 39.9163,
     lon: 116.4896,
-    employees: 150000,
+    employees: 150_000,
     foundedYear: 2012,
     keyProducts: ['TikTok', 'Douyin', 'AI Recommendations'],
-    valuation: 225000000000, // $225B
+    valuation: 225_000_000_000, // $225B
   },
   {
     id: 'alibaba-hq',
@@ -263,7 +263,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'China',
     lat: 30.2741,
     lon: 120.1551,
-    employees: 239000,
+    employees: 239_000,
     foundedYear: 1999,
     keyProducts: ['Alibaba Cloud', 'Tongyi Qianwen', 'E-commerce'],
     stockSymbol: 'BABA',
@@ -277,7 +277,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'China',
     lat: 22.5431,
     lon: 114.0579,
-    employees: 105000,
+    employees: 105_000,
     foundedYear: 1998,
     keyProducts: ['WeChat', 'Tencent Cloud', 'Gaming'],
   },
@@ -293,7 +293,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 200,
     foundedYear: 2023,
     keyProducts: ['Kimi Chat'],
-    valuation: 2500000000, // $2.5B
+    valuation: 2_500_000_000, // $2.5B
   },
 
   // Enterprise AI
@@ -309,7 +309,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 5500,
     foundedYear: 2013,
     keyProducts: ['Lakehouse', 'MLOps', 'DBRX'],
-    valuation: 43000000000, // $43B
+    valuation: 43_000_000_000, // $43B
   },
   {
     id: 'scale-ai-hq',
@@ -323,7 +323,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 600,
     foundedYear: 2016,
     keyProducts: ['Data Labeling', 'Foundation Model Platforms'],
-    valuation: 14000000000, // $14B
+    valuation: 14_000_000_000, // $14B
   },
   {
     id: 'huggingface-hq',
@@ -333,11 +333,11 @@ export const TECH_COMPANIES: TechCompany[] = [
     city: 'New York',
     country: 'United States',
     lat: 40.7128,
-    lon: -74.0060,
+    lon: -74.006,
     employees: 400,
     foundedYear: 2016,
     keyProducts: ['Model Hub', 'Transformers', 'Inference'],
-    valuation: 4500000000, // $4.5B
+    valuation: 4_500_000_000, // $4.5B
   },
 
   // AI Hardware Startups
@@ -367,7 +367,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     employees: 350,
     foundedYear: 2016,
     keyProducts: ['LPU', 'Inference Chips'],
-    valuation: 2800000000, // $2.8B
+    valuation: 2_800_000_000, // $2.8B
   },
   {
     id: 'sambanova-hq',
@@ -377,11 +377,11 @@ export const TECH_COMPANIES: TechCompany[] = [
     city: 'Palo Alto',
     country: 'United States',
     lat: 37.4419,
-    lon: -122.1430,
+    lon: -122.143,
     employees: 600,
     foundedYear: 2017,
     keyProducts: ['DataScale', 'RDU Chips'],
-    valuation: 5000000000, // $5B
+    valuation: 5_000_000_000, // $5B
   },
 
   // European Tech
@@ -394,7 +394,7 @@ export const TECH_COMPANIES: TechCompany[] = [
     country: 'Germany',
     lat: 49.3044,
     lon: 8.6434,
-    employees: 105000,
+    employees: 105_000,
     foundedYear: 1972,
     keyProducts: ['ERP', 'SAP AI', 'Cloud'],
     stockSymbol: 'SAP',
@@ -448,8 +448,8 @@ export const TECH_COMPANIES: TechCompany[] = [
     officeType: 'major office',
     city: 'Berlin',
     country: 'Germany',
-    lat: 52.5200,
-    lon: 13.4050,
+    lat: 52.52,
+    lon: 13.405,
     employees: 3500,
     foundedYear: 2013,
     keyProducts: ['AWS Europe'],

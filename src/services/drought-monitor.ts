@@ -137,7 +137,7 @@ interface RawDroughtRow {
 
 function toNum(v: number | string | undefined): number {
   if (v === undefined || v === null) return 0;
-  const n = typeof v === 'string' ? parseFloat(v) : v;
+  const n = typeof v === 'string' ? Number.parseFloat(v) : v;
   return isNaN(n) ? 0 : n;
 }
 
@@ -147,7 +147,7 @@ export async function fetchDroughtMonitor(): Promise<DroughtSummary> {
   }
 
   try {
-    const res = await fetch(DROUGHT_API_URL, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(DROUGHT_API_URL, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) {
       return cache?.summary ?? emptyDroughtSummary();
     }

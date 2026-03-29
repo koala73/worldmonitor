@@ -65,7 +65,7 @@ export async function fetchFaaTfrs(): Promise<FaaTfr[]> {
 
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(TFR_FEED)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) return cache?.tfrs ?? [];
 
     const text = await res.text();
@@ -85,7 +85,7 @@ export async function fetchFaaTfrs(): Promise<FaaTfr[]> {
 
     // Parse the FAA TFR XML structure
     const notams = doc.querySelectorAll('NOTAM');
-    for (const notam of Array.from(notams)) {
+    for (const notam of notams) {
       const notamId = getText(notam, 'notamID') || getText(notam, 'NOTAMID');
       const facilityDesig = getText(notam, 'facilityDesig') || getText(notam, 'FACILITYDESIG');
       const type = getText(notam, 'type') || getText(notam, 'TYPE');

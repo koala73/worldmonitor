@@ -136,16 +136,16 @@ function detectGoTeam(title: string, description: string): boolean {
 
 function extractNumber(text: string, pattern: RegExp): number {
   const m = text.match(pattern);
-  return m && m[1] ? parseInt(m[1] ?? '0', 10) : 0;
+  return m?.[1] ? Number.parseInt(m[1] ?? '0', 10) : 0;
 }
 
 function extractLocation(title: string, description: string): string {
   // Try "in {City}, {State}" or "{City}, {State}" patterns
   const combined = `${title} ${description}`;
   const m =
-    combined.match(/\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)(?:,\s*([A-Z]{2})|\s+([A-Z][a-z]+))/i) ??
-    combined.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\b/);
-  if (m && m[1]) {
+    (/\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)(?:,\s*([A-Z]{2})|\s+([A-Z][a-z]+))/i.exec(combined)) ??
+    (/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\b/.exec(combined));
+  if (m?.[1]) {
     const city = m[1] ?? '';
     const state = m[2] ?? m[3] ?? '';
     return state ? `${city}, ${state}` : city;
@@ -184,18 +184,14 @@ function parseFeedXml(text: string, _feedUrl: string): NtsbInvestigation[] {
 
   const results: NtsbInvestigation[] = [];
 
-  Array.from(items).forEach((item) => {
+  [...items].forEach((item) => {
     const title = item.querySelector('title')?.textContent?.trim() ?? '';
     const description =
       item.querySelector('description')?.textContent?.trim() ??
       item.querySelector('summary')?.textContent?.trim() ??
       '';
     let url = '';
-    if (isAtom) {
-      url = item.querySelector('link[href]')?.getAttribute('href') ?? '';
-    } else {
-      url = item.querySelector('link')?.textContent?.trim() ?? '';
-    }
+    url = isAtom ? item.querySelector('link[href]')?.getAttribute('href') ?? '' : item.querySelector('link')?.textContent?.trim() ?? '';
 
     const pubDateStr = isAtom
       ? (item.querySelector('updated')?.textContent ?? item.querySelector('published')?.textContent ?? '')
@@ -243,7 +239,7 @@ export async function fetchNtsbInvestigations(): Promise<NtsbInvestigation[]> {
   const results = await Promise.allSettled(
     NTSB_FEEDS.map(async (feedUrl) => {
       const res = await fetch(rssProxyUrl(feedUrl), {
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(12_000),
         headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
       });
       if (!res.ok) return [] as NtsbInvestigation[];
@@ -287,36 +283,49 @@ export async function fetchNtsbInvestigations(): Promise<NtsbInvestigation[]> {
 
 export function ntsbSeverityClass(severity: NtsbInvestigation['severity']): string {
   switch (severity) {
-    case 'critical':
+    case 'critical': {
       return 'eq-row eq-major';
-    case 'high':
+    }
+    case 'high': {
       return 'eq-row eq-strong';
-    case 'medium':
+    }
+    case 'medium': {
       return 'eq-row eq-moderate';
-    case 'low':
+    }
+    case 'low': {
       return 'eq-row';
-    default:
+    }
+    default: {
       return 'eq-row';
+    }
   }
 }
 
 export function ntsbModeLabel(mode: NtsbMode): string {
   switch (mode) {
-    case 'aviation':
+    case 'aviation': {
       return 'Aviation';
-    case 'rail':
+    }
+    case 'rail': {
       return 'Rail';
-    case 'highway':
+    }
+    case 'highway': {
       return 'Highway';
-    case 'marine':
+    }
+    case 'marine': {
       return 'Marine';
-    case 'pipeline':
+    }
+    case 'pipeline': {
       return 'Pipeline';
-    case 'multi-modal':
+    }
+    case 'multi-modal': {
       return 'Multi-Modal';
-    case 'general':
+    }
+    case 'general': {
       return 'General';
-    default:
+    }
+    default: {
       return 'General';
+    }
   }
 }

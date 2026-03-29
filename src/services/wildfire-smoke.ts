@@ -58,8 +58,8 @@ function parseCoordinateString(coordStr: string): [number, number][] {
   for (const entry of entries) {
     const parts = entry.split(',');
     if (parts.length < 2) continue;
-    const lon = parseFloat(parts[0] ?? 'NaN');
-    const lat = parseFloat(parts[1] ?? 'NaN');
+    const lon = Number.parseFloat(parts[0] ?? 'NaN');
+    const lat = Number.parseFloat(parts[1] ?? 'NaN');
     if (!isNaN(lon) && !isNaN(lat)) {
       points.push([lon, lat]);
     }
@@ -83,7 +83,7 @@ async function fetchKml(dateStr: string): Promise<SmokePolygon[] | null> {
   const kmlUrl = buildKmlUrl(dateStr);
   const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(kmlUrl)}`;
   try {
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return null;
     const text = await res.text();
     if (!text || text.length < 100) return null;
@@ -92,15 +92,14 @@ async function fetchKml(dateStr: string): Promise<SmokePolygon[] | null> {
     const doc = parser.parseFromString(text, 'text/xml');
     if (doc.querySelector('parsererror')) return null;
 
-    const placemarks = Array.from(doc.querySelectorAll('Placemark'));
+    const placemarks = [...doc.querySelectorAll('Placemark')];
     if (placemarks.length === 0) return null;
 
     const heavy: SmokePolygon[] = [];
     const medium: SmokePolygon[] = [];
     const light: SmokePolygon[] = [];
 
-    for (let i = 0; i < placemarks.length; i++) {
-      const el = placemarks[i];
+    for (const [i, el] of placemarks.entries()) {
       if (!el) continue;
       const nameEl = el.querySelector('name');
       const name = nameEl?.textContent?.trim() ?? '';

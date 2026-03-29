@@ -15,7 +15,7 @@ export interface TsunamiAlert {
   url: string;
 }
 
-const FEEDS: Array<{ url: string; region: TsunamiAlert['region'] }> = [
+const FEEDS: { url: string; region: TsunamiAlert['region'] }[] = [
   { url: 'https://www.tsunami.gov/events/xml/PAAQAtom.xml', region: 'Pacific' },
   { url: 'https://www.tsunami.gov/events/xml/ATAQAtom.xml', region: 'Atlantic' },
 ];
@@ -38,7 +38,7 @@ function scoreSeverity(title: string): TsunamiAlert['severity'] {
 
 async function fetchFeed(feedUrl: string, region: TsunamiAlert['region']): Promise<TsunamiAlert[]> {
   try {
-    const res = await fetch(rssProxyUrl(feedUrl), { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(rssProxyUrl(feedUrl), { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return [];
     const text = await res.text();
     const parser = new DOMParser();
@@ -46,7 +46,7 @@ async function fetchFeed(feedUrl: string, region: TsunamiAlert['region']): Promi
     if (doc.querySelector('parsererror')) return [];
 
     const entries = doc.querySelectorAll('entry');
-    return Array.from(entries).map((entry, i) => {
+    return [...entries].map((entry, i) => {
       const title = entry.querySelector('title')?.textContent?.trim() ?? '';
       const link = entry.querySelector('link[href]')?.getAttribute('href') ?? '';
       const updated = entry.querySelector('updated')?.textContent ?? entry.querySelector('published')?.textContent ?? '';

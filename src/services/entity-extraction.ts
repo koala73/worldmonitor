@@ -56,7 +56,7 @@ export function extractEntitiesFromCluster(cluster: ClusteredEventCore): NewsEnt
     }
   }
 
-  const entities = Array.from(entityMap.values())
+  const entities = [...entityMap.values()]
     .sort((a, b) => b.confidence - a.confidence);
 
   const primaryEntity = entities[0]?.entityId;
@@ -74,7 +74,7 @@ export function extractEntitiesFromCluster(cluster: ClusteredEventCore): NewsEnt
     title: cluster.primaryTitle,
     entities,
     primaryEntity,
-    relatedEntityIds: Array.from(relatedEntityIds),
+    relatedEntityIds: [...relatedEntityIds],
   };
 }
 
@@ -94,14 +94,14 @@ export function extractEntitiesFromClusters(
 export function findNewsForEntity(
   entityId: string,
   newsContexts: Map<string, NewsEntityContext>
-): Array<{ clusterId: string; title: string; confidence: number }> {
+): { clusterId: string; title: string; confidence: number }[] {
   const index = getEntityIndex();
   const entity = index.byId.get(entityId);
   if (!entity) return [];
 
   const relatedIds = new Set<string>([entityId, ...(entity.related ?? [])]);
 
-  const matches: Array<{ clusterId: string; title: string; confidence: number }> = [];
+  const matches: { clusterId: string; title: string; confidence: number }[] = [];
 
   for (const [clusterId, context] of newsContexts) {
     const directMatch = context.entities.find(e => e.entityId === entityId);
@@ -130,14 +130,14 @@ export function findNewsForEntity(
 export function findNewsForMarketSymbol(
   symbol: string,
   newsContexts: Map<string, NewsEntityContext>
-): Array<{ clusterId: string; title: string; confidence: number }> {
+): { clusterId: string; title: string; confidence: number }[] {
   return findNewsForEntity(symbol, newsContexts);
 }
 
 export function getTopEntitiesFromNews(
   newsContexts: Map<string, NewsEntityContext>,
   limit = 10
-): Array<{ entityId: string; name: string; mentionCount: number; avgConfidence: number }> {
+): { entityId: string; name: string; mentionCount: number; avgConfidence: number }[] {
   const entityStats = new Map<string, { count: number; totalConfidence: number }>();
 
   for (const context of newsContexts.values()) {
@@ -149,7 +149,7 @@ export function getTopEntitiesFromNews(
     }
   }
 
-  return Array.from(entityStats.entries())
+  return [...entityStats.entries()]
     .map(([entityId, stats]) => ({
       entityId,
       name: getEntityDisplayName(entityId),

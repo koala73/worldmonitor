@@ -43,9 +43,9 @@ export class NationalDebtPanel extends Panel {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json() as NationalDebtResponse;
       this.data = json;
-    } catch (err) {
-      if (this.isAbortError(err)) return;
-      this.showError(err instanceof Error ? err.message : 'Failed to fetch');
+    } catch (error) {
+      if (this.isAbortError(error)) return;
+      this.showError(error instanceof Error ? error.message : 'Failed to fetch');
       return;
     }
     this.renderPanel();

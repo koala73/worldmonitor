@@ -19,7 +19,7 @@ const brotliCompressAsync = promisify(brotliCompress);
 const _originalFetch = globalThis.fetch;
 
 function normalizeRequestBody(body) {
-  if (body == null) return null;
+  if (body == undefined) return null;
   if (typeof body === 'string' || Buffer.isBuffer(body) || body instanceof Uint8Array) return body;
   if (body instanceof URLSearchParams) return body.toString();
   if (ArrayBuffer.isView(body)) return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
@@ -30,7 +30,7 @@ function normalizeRequestBody(body) {
 async function resolveRequestBody(input, init, method, isRequest) {
   if (method === 'GET' || method === 'HEAD') return null;
 
-  if (init?.body != null) {
+  if (init?.body != undefined) {
     return normalizeRequestBody(init.body);
   }
 
@@ -71,7 +71,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
   const rawHeaders = init?.headers || (isRequest ? input.headers : null);
   if (rawHeaders) {
     const h = rawHeaders instanceof Headers ? Object.fromEntries(rawHeaders.entries())
-      : Array.isArray(rawHeaders) ? Object.fromEntries(rawHeaders) : rawHeaders;
+      : (Array.isArray(rawHeaders) ? Object.fromEntries(rawHeaders) : rawHeaders);
     Object.assign(headers, h);
   }
   return new Promise((resolve, reject) => {
@@ -93,7 +93,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
     });
     req.on('error', reject);
     if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
-    if (body != null) req.write(body);
+    if (body != undefined) req.write(body);
     req.end();
   });
 };
@@ -251,7 +251,7 @@ async function isSafeUrl(urlString) {
 }
 
 function json(data, status = 200, extraHeaders = {}) {
-  return new Response(JSON.stringify(data), {
+  return Response.json(data, {
     status,
     headers: { 'content-type': 'application/json', ...extraHeaders },
   });
@@ -398,18 +398,18 @@ async function readBody(req) {
 function toHeaders(nodeHeaders, options = {}) {
   const stripOrigin = options.stripOrigin === true;
   const headers = new Headers();
-  Object.entries(nodeHeaders).forEach(([key, value]) => {
+  for (const [key, value] of Object.entries(nodeHeaders)) {
     const lowerKey = key.toLowerCase();
-    if (lowerKey === 'host') return;
+    if (lowerKey === 'host') continue;
     if (stripOrigin && (lowerKey === 'origin' || lowerKey === 'referer' || lowerKey.startsWith('sec-fetch-'))) {
-      return;
+      continue;
     }
     if (Array.isArray(value)) {
-      value.forEach(v => headers.append(key, v));
+      for (const v of value) headers.append(key, v);
     } else if (typeof value === 'string') {
       headers.set(key, value);
     }
-  });
+  }
   return headers;
 }
 
@@ -417,7 +417,7 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
   const target = `${remoteBase}${requestUrl.pathname}${requestUrl.search}`;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), 15_000);
   try {
     return await fetch(target, {
       method: req.method,
@@ -507,7 +507,7 @@ async function importHandler(modulePath) {
 }
 
 function resolveConfig(options = {}) {
-  const port = Number(options.port ?? process.env.LOCAL_API_PORT ?? 46123);
+  const port = Number(options.port ?? process.env.LOCAL_API_PORT ?? 46_123);
   const remoteBase = String(options.remoteBase ?? process.env.LOCAL_API_REMOTE_BASE ?? 'https://worldmonitor.app').replace(/\/$/, '');
   const resourceDir = String(options.resourceDir ?? process.env.LOCAL_API_RESOURCE_DIR ?? process.cwd());
   const apiDir = options.apiDir
@@ -601,7 +601,7 @@ function makeCorsHeaders(req) {
   };
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 12_000) {
   // Use node:https with IPv4 forced — Node.js built-in fetch (undici) tries IPv6
   // first and some servers (EIA, NASA FIRMS) have broken IPv6 causing ETIMEDOUT.
   const u = new URL(url);
@@ -638,7 +638,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
       req.setTimeout(timeoutMs, () => { req.destroy(new Error('Request timed out')); });
       if (options.body) {
         const body = normalizeRequestBody(options.body);
-        if (body != null) req.write(body);
+        if (body != undefined) req.write(body);
       }
       req.end();
     });
@@ -647,7 +647,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   // For pinned addresses on plain HTTP, rewrite the URL to connect to the
   // validated IP and set the Host header so virtual-host routing still works.
   let fetchUrl = url;
-  const fetchHeaders = { ...(options.headers || {}) };
+  const fetchHeaders = { ...options.headers };
   if (options.resolvedAddress && u.protocol === 'http:') {
     const pinned = new URL(url);
     fetchHeaders['Host'] = pinned.host;
@@ -684,30 +684,30 @@ async function fetchFredSeries(seriesId, apiKey) {
   try { data = JSON.parse(text); } catch { throw new Error(`No data for ${seriesId}: non-JSON response`); }
   const obs = data?.observations?.[0];
   if (!obs || obs.value === '.') throw new Error(`No data for ${seriesId}`);
-  return parseFloat(obs.value);
+  return Number.parseFloat(obs.value);
 }
 
 function clamp(x) { return Math.min(100, Math.max(0, x)); }
 
 function computeStressIndex(yieldVal, spreadVal, vixVal, fsiVal, scVal, claimsVal) {
   const yieldScore  = clamp((0.5 - yieldVal)  / (0.5 - (-1.5)) * 100);
-  const spreadScore = clamp((0.5 - spreadVal)  / (0.5 - (-1.0)) * 100);
+  const spreadScore = clamp((0.5 - spreadVal)  / (0.5 - (-1)) * 100);
   const vixScore    = clamp((vixVal - 15)      / (80 - 15)      * 100);
   const fsiScore    = clamp((fsiVal - (-1))    / (5 - (-1))     * 100);
   const scScore     = clamp((scVal - (-2))     / (4 - (-2))     * 100);
-  const claimsScore = clamp((claimsVal - 180000) / (500000 - 180000) * 100);
+  const claimsScore = clamp((claimsVal - 180_000) / (500_000 - 180_000) * 100);
   return Math.round(
-    yieldScore  * 0.20 +
+    yieldScore  * 0.2 +
     spreadScore * 0.15 +
-    vixScore    * 0.20 +
-    fsiScore    * 0.20 +
+    vixScore    * 0.2 +
+    fsiScore    * 0.2 +
     scScore     * 0.15 +
-    claimsScore * 0.10
+    claimsScore * 0.1
   );
 }
 
 function indicatorSeverity(score) {
-  return score >= 70 ? 'critical' : score >= 40 ? 'warning' : 'normal';
+  return score >= 70 ? 'critical' : (score >= 40 ? 'warning' : 'normal');
 }
 
 function relayToHttpUrl(rawUrl) {
@@ -968,8 +968,9 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       return ok('Ollama endpoint verified');
     }
 
-    case 'OLLAMA_MODEL':
+    case 'OLLAMA_MODEL': {
       return ok('Model name stored');
+    }
 
     case 'WS_RELAY_URL':
     case 'VITE_WS_RELAY_URL':
@@ -1029,62 +1030,20 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       return ok('AISStream key stored — format valid (live test requires WebSocket)');
     }
 
-    case 'WTO_API_KEY':
+    case 'WTO_API_KEY': {
       return ok('WTO API key stored (live verification not available in sidecar)');
+    }
 
-    case 'WORLDMONITOR_API_KEY':
+    case 'WORLDMONITOR_API_KEY': {
       if (!/^[A-Za-z0-9_-]{16,}$/.test(value)) {
         return fail('WorldMonitor key must be at least 16 URL-safe characters');
       }
       return ok('WorldMonitor API key stored');
-
-    case 'NEWSAPI_KEY': {
-      const resp = await fetchWithTimeout(
-        `https://newsapi.org/v2/top-headlines?country=us&pageSize=1&apiKey=${encodeURIComponent(value)}`,
-        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
-        10000,
-      );
-      const text = await resp.text();
-      if (isAuthFailure(resp.status, text)) return fail('NewsAPI rejected this key');
-      if (!resp.ok) return fail(`NewsAPI probe failed (${resp.status})`);
-      return ok('NewsAPI key verified');
     }
 
-    case 'NEWSDATA_API_KEY': {
-      const resp = await fetchWithTimeout(
-        `https://newsdata.io/api/1/latest?apikey=${encodeURIComponent(value)}&country=us&size=1`,
-        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
-        10000,
-      );
-      const text = await resp.text();
-      if (isAuthFailure(resp.status, text)) return fail('NewsData rejected this key');
-      if (!resp.ok) return fail(`NewsData probe failed (${resp.status})`);
-      return ok('NewsData API key verified');
-    }
-
-    case 'VIRUSTOTAL_API_KEY': {
-      const resp = await fetchWithTimeout(
-        'https://www.virustotal.com/api/v3/ip_addresses/8.8.8.8',
-        { headers: { 'x-apikey': value, Accept: 'application/json', 'User-Agent': CHROME_UA } },
-        10000,
-      );
-      const text = await resp.text();
-      if (isAuthFailure(resp.status, text)) return fail('VirusTotal rejected this key');
-      if (!resp.ok) return fail(`VirusTotal probe failed (${resp.status})`);
-      return ok('VirusTotal key verified');
-    }
-
-    case 'BGPVIEW_API_KEY': {
-      const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA, 'X-Api-Key': value };
-      const resp = await fetchWithTimeout('https://api.bgpview.io/asn/15169', { headers }, 10000);
-      const text = await resp.text();
-      if (isAuthFailure(resp.status, text)) return fail('BGPView rejected this key');
-      if (!resp.ok) return fail(`BGPView probe failed (${resp.status})`);
-      return ok('BGPView key verified');
-    }
-
-      default:
+      default: {
         return ok('Key stored');
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'provider probe failed';
@@ -1255,8 +1214,8 @@ async function handleOllamaStream(requestUrl, req, res, context) {
       ollamaReq.write(requestBody);
       ollamaReq.end();
     });
-  } catch (err) {
-    context.logger.error('[ollama-stream] fatal:', err.message);
+  } catch (error) {
+    context.logger.error('[ollama-stream] fatal:', error.message);
     try { res.write(`data: ${JSON.stringify({ error: 'Streaming failed' })}\n\n`); res.write('data: [DONE]\n\n'); res.end(); } catch { /* already ended */ }
   }
 }
@@ -1360,7 +1319,7 @@ async function dispatch(requestUrl, req, routes, context) {
           args: { email, source: parsed.source || 'desktop', appVersion: parsed.appVersion || 'unknown' },
           format: 'json',
         }),
-      }, 15000);
+      }, 15_000);
       const responseBody = await response.text();
       let result;
       try { result = JSON.parse(responseBody); } catch { result = { status: 'registered' }; }
@@ -1368,8 +1327,8 @@ async function dispatch(requestUrl, req, routes, context) {
         return json({ error: result.errorMessage || 'Registration failed' }, 500);
       }
       return json(result.value || result);
-    } catch (e) {
-      context.logger.error(`[register-interest] error: ${e.message}`);
+    } catch (error) {
+      context.logger.error(`[register-interest] error: ${error.message}`);
       return json({ error: 'Registration service unreachable' }, 502);
     }
   }
@@ -1395,7 +1354,7 @@ async function dispatch(requestUrl, req, routes, context) {
           ...(relaySecret ? { [relayHeader]: relaySecret, Authorization: `Bearer ${relaySecret}` } : {}),
         };
         const relayPath = isHistory ? '/oref/history' : '/oref/alerts';
-        const relayResp = await fetchWithTimeout(`${relayBase}${relayPath}`, { headers: relayHeaders }, 12000);
+        const relayResp = await fetchWithTimeout(`${relayBase}${relayPath}`, { headers: relayHeaders }, 12_000);
         if (relayResp.ok) {
           return new Response(await relayResp.text(), {
             status: 200,
@@ -1432,13 +1391,13 @@ async function dispatch(requestUrl, req, routes, context) {
         historyCount24h: 0,
         timestamp: new Date().toISOString(),
       });
-    } catch (e) {
+    } catch (error) {
       return json({
         configured: false,
         alerts: [],
         historyCount24h: 0,
         timestamp: new Date().toISOString(),
-        error: String(e.message ?? e),
+        error: String(error.message ?? error),
       });
     }
   }
@@ -1455,14 +1414,14 @@ async function dispatch(requestUrl, req, routes, context) {
     const fields = 'event_id_cnty|event_date|event_type|sub_event_type|actor1|actor2|country|admin1|location|latitude|longitude|fatalities|notes';
     const acledUrl = `https://api.acleddata.com/acled/read?key=${encodeURIComponent(key)}&email=${encodeURIComponent(email)}&event_type=Air%2Fdrone+strike%7CShelling%2Fartillery%2Fmissile+attack&event_date=${since}%7C${today}&event_date_where=BETWEEN&fields=${encodeURIComponent(fields)}&limit=200&sort=event_date&order=desc&_format=json`;
     try {
-      const resp = await fetchWithTimeout(acledUrl, {}, 15000);
+      const resp = await fetchWithTimeout(acledUrl, {}, 15_000);
       if (!resp.ok) {
         return json({ events: [], error: `ACLED error: ${resp.status}` });
       }
       const data = await resp.json();
       return json({ events: data.data ?? [] });
-    } catch (e) {
-      return json({ events: [], error: String(e.message ?? e) });
+    } catch (error) {
+      return json({ events: [], error: String(error.message ?? error) });
     }
   }
 
@@ -1479,7 +1438,7 @@ async function dispatch(requestUrl, req, routes, context) {
           'User-Agent': CHROME_UA,
         },
         body: JSON.stringify({ query: 'get_iocs', days: 7 }),
-      }, 15000);
+      }, 15_000);
       if (!resp.ok) return json([], 200);
       const data = await resp.json();
       const iocs = Array.isArray(data?.data) ? data.data : [];
@@ -1488,18 +1447,18 @@ async function dispatch(requestUrl, req, routes, context) {
         type: ioc.ioc_type?.startsWith('ip') ? 'c2_server' : 'malware_host',
         source: 'threatfox',
         indicator: String(ioc.ioc ?? ''),
-        indicatorType: ioc.ioc_type?.startsWith('ip') ? 'ip' : ioc.ioc_type?.startsWith('url') ? 'url' : 'domain',
+        indicatorType: ioc.ioc_type?.startsWith('ip') ? 'ip' : (ioc.ioc_type?.startsWith('url') ? 'url' : 'domain'),
         lat: 0,
         lon: 0,
         country: ioc.country ?? '',
-        severity: (ioc.confidence_level ?? 0) >= 90 ? 'critical' : (ioc.confidence_level ?? 0) >= 70 ? 'high' : 'medium',
+        severity: (ioc.confidence_level ?? 0) >= 90 ? 'critical' : ((ioc.confidence_level ?? 0) >= 70 ? 'high' : 'medium'),
         malwareFamily: ioc.malware_printable ?? ioc.malware ?? '',
         tags: Array.isArray(ioc.tags) ? ioc.tags : [],
         firstSeen: ioc.first_seen ?? '',
         lastSeen: ioc.last_seen ?? ioc.first_seen ?? '',
       }));
       return json(threats);
-    } catch (e) {
+    } catch {
       return json([], 200);
     }
   }
@@ -1509,7 +1468,7 @@ async function dispatch(requestUrl, req, routes, context) {
     try {
       const resp = await fetchWithTimeout('https://openphish.com/feed.txt', {
         headers: { 'User-Agent': CHROME_UA },
-      }, 12000);
+      }, 12_000);
       if (!resp.ok) return json([], 200);
       const text = await resp.text();
       const urls = text.split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
@@ -1529,7 +1488,7 @@ async function dispatch(requestUrl, req, routes, context) {
         lastSeen: new Date().toISOString(),
       }));
       return json(threats);
-    } catch (e) {
+    } catch {
       return json([], 200);
     }
   }
@@ -1538,8 +1497,8 @@ async function dispatch(requestUrl, req, routes, context) {
   if (requestUrl.pathname === '/api/spamhaus-drop') {
     try {
       const [dropResp, edropResp] = await Promise.all([
-        fetchWithTimeout('https://www.spamhaus.org/drop/drop.txt', { headers: { 'User-Agent': CHROME_UA } }, 12000),
-        fetchWithTimeout('https://www.spamhaus.org/drop/edrop.txt', { headers: { 'User-Agent': CHROME_UA } }, 12000),
+        fetchWithTimeout('https://www.spamhaus.org/drop/drop.txt', { headers: { 'User-Agent': CHROME_UA } }, 12_000),
+        fetchWithTimeout('https://www.spamhaus.org/drop/edrop.txt', { headers: { 'User-Agent': CHROME_UA } }, 12_000),
       ]);
       const dropText = dropResp.ok ? await dropResp.text() : '';
       const edropText = edropResp.ok ? await edropResp.text() : '';
@@ -1565,7 +1524,7 @@ async function dispatch(requestUrl, req, routes, context) {
         };
       });
       return json(threats);
-    } catch (e) {
+    } catch {
       return json([], 200);
     }
   }
@@ -1576,7 +1535,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const resp = await fetchWithTimeout(
         'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json',
         { headers: { 'User-Agent': CHROME_UA } },
-        15000,
+        15_000,
       );
       if (!resp.ok) return json([], 200);
       const data = await resp.json();
@@ -1600,7 +1559,7 @@ async function dispatch(requestUrl, req, routes, context) {
         lastSeen: v.dueDate ?? v.dateAdded ?? '',
       }));
       return json(threats);
-    } catch (e) {
+    } catch {
       return json([], 200);
     }
   }
@@ -1795,7 +1754,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const resp = await fetchWithTimeout(
         'https://volcanoes.usgs.gov/vsc/api/volcanoApi/volcanoesGet',
         { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } },
-        15000,
+        15_000,
       );
       if (!resp.ok) return json([], 200);
       const data = await resp.json();
@@ -1813,13 +1772,13 @@ async function dispatch(requestUrl, req, routes, context) {
           location: [v.state ?? '', v.country ?? ''].filter(Boolean).join(', '),
           alertLevel: cap(v.alertLevel ?? v.alert_level ?? v.currentAlertLevel ?? 'Advisory'),
           color: v.colorCode ?? v.color_code ?? 'Yellow',
-          lat: parseFloat(v.latitude ?? v.lat ?? 0),
-          lon: parseFloat(v.longitude ?? v.lon ?? 0),
+          lat: Number.parseFloat(v.latitude ?? v.lat ?? 0),
+          lon: Number.parseFloat(v.longitude ?? v.lon ?? 0),
           updatedAt: v.activityChangedDate ?? v.updatedAt ?? '',
           observatory: v.observatoryName ?? v.observatory ?? '',
         }));
       return json(alerts);
-    } catch (e) {
+    } catch {
       return json([], 200);
     }
   }
@@ -1830,7 +1789,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const resp = await fetchWithTimeout(
         'https://api.weather.gov/alerts/active?status=actual&message_type=alert&urgency=Immediate,Expected&severity=Extreme,Severe,Moderate',
         { headers: { Accept: 'application/geo+json', 'User-Agent': 'WorldMonitor-NWS/1.0 (https://github.com/bradleybond512/worldmonitor-macos)' } },
-        12000,
+        12_000,
       );
       if (!resp.ok) return json([], 200);
       const data = await resp.json();
@@ -1851,7 +1810,7 @@ async function dispatch(requestUrl, req, routes, context) {
         };
       });
       return json(alerts);
-    } catch (e) {
+    } catch {
       return json([], 200);
     }
   }
@@ -1862,8 +1821,8 @@ async function dispatch(requestUrl, req, routes, context) {
     const WHO_URL = 'https://www.who.int/api/hubs/cms/s3fs-public/attachments/disease-outbreak-news.json';
     try {
       const [rwResp, whoResp] = await Promise.allSettled([
-        fetchWithTimeout(RELIEFWEB_URL, { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }, 15000),
-        fetchWithTimeout(WHO_URL, { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }, 15000),
+        fetchWithTimeout(RELIEFWEB_URL, { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }, 15_000),
+        fetchWithTimeout(WHO_URL, { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }, 15_000),
       ]);
       const reliefweb = (rwResp.status === 'fulfilled' && rwResp.value.ok)
         ? await rwResp.value.json()
@@ -1872,8 +1831,8 @@ async function dispatch(requestUrl, req, routes, context) {
         ? await whoResp.value.json()
         : null;
       return json({ reliefweb, who });
-    } catch (e) {
-      return json({ error: `disease-outbreaks fetch error: ${e.message ?? e}` }, 502);
+    } catch (error) {
+      return json({ error: `disease-outbreaks fetch error: ${error.message ?? error}` }, 502);
     }
   }
 
@@ -1889,17 +1848,16 @@ async function dispatch(requestUrl, req, routes, context) {
     try {
       const entries = Object.entries(SW_URLS);
       const settled = await Promise.allSettled(
-        entries.map(([, url]) => fetchWithTimeout(url, { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }, 15000)),
+        entries.map(([, url]) => fetchWithTimeout(url, { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }, 15_000)),
       );
       const result = {};
-      for (let i = 0; i < entries.length; i++) {
-        const [key] = entries[i];
+      for (const [i, [key]] of entries.entries()) {
         const r = settled[i];
         result[key] = (r.status === 'fulfilled' && r.value.ok) ? await r.value.json() : null;
       }
       return json(result);
-    } catch (e) {
-      return json({ error: `space-weather-feeds fetch error: ${e.message ?? e}` }, 502);
+    } catch (error) {
+      return json({ error: `space-weather-feeds fetch error: ${error.message ?? error}` }, 502);
     }
   }
 
@@ -1910,12 +1868,12 @@ async function dispatch(requestUrl, req, routes, context) {
     if (!lat || !lon) return json({ error: 'Missing lat or lon query parameters' }, 400);
     const aqUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide&timezone=auto`;
     try {
-      const resp = await fetchWithTimeout(aqUrl, { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }, 15000);
+      const resp = await fetchWithTimeout(aqUrl, { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }, 15_000);
       if (!resp.ok) return json({ error: `air-quality upstream error: ${resp.status}` }, 502);
       const data = await resp.json();
       return json(data);
-    } catch (e) {
-      return json({ error: `air-quality-proxy fetch error: ${e.message ?? e}` }, 502);
+    } catch (error) {
+      return json({ error: `air-quality-proxy fetch error: ${error.message ?? error}` }, 502);
     }
   }
 
@@ -1944,11 +1902,11 @@ async function dispatch(requestUrl, req, routes, context) {
       const cols = lines[i].split(',');
       const sym   = (cols[0] ?? '').trim().toLowerCase();
       const date  = (cols[1] ?? '').trim();
-      const close = parseFloat(cols[6]);
-      const prev  = parseFloat(cols[8]);
+      const close = Number.parseFloat(cols[6]);
+      const prev  = Number.parseFloat(cols[8]);
       if (!sym || date === 'N/D' || isNaN(close)) continue;
       const change = (!isNaN(prev) && prev > 0)
-        ? parseFloat(((close - prev) / prev * 100).toFixed(2))
+        ? Number.parseFloat(((close - prev) / prev * 100).toFixed(2))
         : 0;
       map.set(sym, { price: close, change, prev: isNaN(prev) ? close : prev });
     }
@@ -1959,8 +1917,8 @@ async function dispatch(requestUrl, req, routes, context) {
   function parseFredCsvLatest(text) {
     const lines = (text ?? '').trim().split('\n').slice(1).filter(l => l && !/^observation/i.test(l));
     const recent = lines.slice(-2);
-    const cur = parseFloat((recent[recent.length - 1] ?? '').split(',')?.[1] ?? '');
-    const prv = parseFloat((recent[0] ?? '').split(',')?.[1] ?? '');
+    const cur = Number.parseFloat((recent[recent.length - 1] ?? '').split(',')?.[1] ?? '');
+    const prv = Number.parseFloat((recent[0] ?? '').split(',')?.[1] ?? '');
     return { current: cur, previous: prv };
   }
 
@@ -1980,7 +1938,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const stooqSyms = BTC_ETFS.map(e => e.ticker.toLowerCase() + '.us').join('+');
       const r = await fetchWithTimeout(
         `https://stooq.com/q/l/?s=${stooqSyms}&f=sd2t2ohlcvp&h&e=csv`,
-        { headers: { 'User-Agent': CHROME_UA } }, 10000
+        { headers: { 'User-Agent': CHROME_UA } }, 10_000
       );
       if (!r.ok) throw new Error(`Stooq ${r.status}`);
       const stooq = parseStooqBatchCsv(await r.text());
@@ -1991,22 +1949,22 @@ async function dispatch(requestUrl, req, routes, context) {
         const priceChange = d.change;
         // Estimate flow from price momentum (no avg-volume history available from Stooq batch)
         const estFlow = Math.round(d.price * 1_000_000 * (priceChange / 100));
-        const direction = priceChange > 0.5 ? 'inflow' : priceChange < -0.5 ? 'outflow' : 'neutral';
+        const direction = priceChange > 0.5 ? 'inflow' : (priceChange < -0.5 ? 'outflow' : 'neutral');
         totalVolume += d.price;
         totalEstFlow += estFlow;
         if (direction === 'inflow') inflowCount++;
         if (direction === 'outflow') outflowCount++;
         return { ticker, issuer, price: d.price, priceChange: d.change, volume: 0, avgVolume: 0, volumeRatio: 1, direction, estFlow };
       });
-      const netDirection = totalEstFlow > 0 ? 'inflow' : totalEstFlow < 0 ? 'outflow' : 'neutral';
+      const netDirection = totalEstFlow > 0 ? 'inflow' : (totalEstFlow < 0 ? 'outflow' : 'neutral');
       return json({
         timestamp: new Date().toISOString(),
         rateLimited: false,
         summary: { etfCount: etfs.length, totalVolume: Math.round(totalVolume), totalEstFlow: Math.round(totalEstFlow), netDirection, inflowCount, outflowCount },
         etfs,
       });
-    } catch (e) {
-      return json({ timestamp: new Date().toISOString(), rateLimited: false, etfs: [], error: String(e.message ?? e) });
+    } catch (error) {
+      return json({ timestamp: new Date().toISOString(), rateLimited: false, etfs: [], error: String(error.message ?? error) });
     }
   }
 
@@ -2017,7 +1975,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const r = await fetchWithTimeout(
         `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(STABLECOINS.join(','))}&price_change_percentage=24h,7d`,
         { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' } },
-        12000
+        12_000
       );
       if (!r.ok) throw new Error(`CoinGecko ${r.status}`);
       const data = await r.json();
@@ -2025,7 +1983,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const stablecoins = data.map(c => {
         const price = c.current_price ?? 1;
         const deviation = Math.abs(price - 1);
-        const pegStatus = deviation < 0.002 ? 'ON PEG' : deviation < 0.01 ? 'SLIGHT DEPEG' : 'DEPEGGED';
+        const pegStatus = deviation < 0.002 ? 'ON PEG' : (deviation < 0.01 ? 'SLIGHT DEPEG' : 'DEPEGGED');
         if (pegStatus !== 'ON PEG') depeggedCount++;
         totalMarketCap += c.market_cap ?? 0;
         totalVolume24h += c.total_volume ?? 0;
@@ -2034,23 +1992,23 @@ async function dispatch(requestUrl, req, routes, context) {
           symbol: (c.symbol ?? '').toUpperCase(),
           name: c.name,
           price,
-          deviation: parseFloat(deviation.toFixed(4)),
+          deviation: Number.parseFloat(deviation.toFixed(4)),
           pegStatus,
           marketCap: c.market_cap ?? 0,
           volume24h: c.total_volume ?? 0,
-          change24h: parseFloat((c.price_change_percentage_24h ?? 0).toFixed(4)),
-          change7d: parseFloat((c.price_change_percentage_7d_in_currency ?? 0).toFixed(4)),
+          change24h: Number.parseFloat((c.price_change_percentage_24h ?? 0).toFixed(4)),
+          change7d: Number.parseFloat((c.price_change_percentage_7d_in_currency ?? 0).toFixed(4)),
           image: c.image ?? '',
         };
       });
-      const healthStatus = depeggedCount === 0 ? 'HEALTHY' : depeggedCount <= 1 ? 'CAUTION' : 'STRESSED';
+      const healthStatus = depeggedCount === 0 ? 'HEALTHY' : (depeggedCount <= 1 ? 'CAUTION' : 'STRESSED');
       return json({
         timestamp: new Date().toISOString(),
         summary: { totalMarketCap, totalVolume24h, coinCount: stablecoins.length, depeggedCount, healthStatus },
         stablecoins,
       });
-    } catch (e) {
-      return json({ timestamp: new Date().toISOString(), stablecoins: [], error: String(e.message ?? e) });
+    } catch (error) {
+      return json({ timestamp: new Date().toISOString(), stablecoins: [], error: String(error.message ?? error) });
     }
   }
 
@@ -2062,7 +2020,7 @@ async function dispatch(requestUrl, req, routes, context) {
         fetchWithTimeout('https://api.alternative.me/fng/?limit=1', { headers: { 'User-Agent': CHROME_UA } }, 8000),
         fetchWithTimeout(
           'https://stooq.com/q/l/?s=btc.v+qqq.us+xlp.us+spy.us+gc.f&f=sd2t2ohlcvp&h&e=csv',
-          { headers: { 'User-Agent': CHROME_UA } }, 10000
+          { headers: { 'User-Agent': CHROME_UA } }, 10_000
         ),
       ]);
 
@@ -2070,7 +2028,7 @@ async function dispatch(requestUrl, req, routes, context) {
       let fearGreed = null;
       if (fngResp.status === 'fulfilled' && fngResp.value.ok) {
         const fng = await fngResp.value.json();
-        const val = parseInt(fng?.data?.[0]?.value ?? '50', 10);
+        const val = Number.parseInt(fng?.data?.[0]?.value ?? '50', 10);
         const classification = fng?.data?.[0]?.value_classification ?? '';
         const status = val >= 75 ? 'EXTREME_GREED' : val >= 55 ? 'GREED' : val >= 45 ? 'NEUTRAL' : val >= 25 ? 'FEAR' : 'EXTREME_FEAR';
         fearGreed = { status, value: val, classification };
@@ -2086,19 +2044,19 @@ async function dispatch(requestUrl, req, routes, context) {
         const btcChange5 = btc?.change ?? 0;
         const qqqChange5 = qqq?.change ?? 0;
         const xlpChange5 = xlp?.change ?? 0;
-        const flowStatus = btcChange5 > 2 && qqqChange5 > 0.5 ? 'RISK_ON' : btcChange5 < -2 && qqqChange5 < -0.5 ? 'RISK_OFF' : 'NEUTRAL';
+        const flowStatus = btcChange5 > 2 && qqqChange5 > 0.5 ? 'RISK_ON' : (btcChange5 < -2 && qqqChange5 < -0.5 ? 'RISK_OFF' : 'NEUTRAL');
         flowStructure = { status: flowStatus, btcReturn5: btcChange5, qqqReturn5: qqqChange5 };
-        const regimeStatus = qqqChange5 > 0.5 && xlpChange5 < qqqChange5 ? 'RISK_ON' : qqqChange5 < -0.5 ? 'RISK_OFF' : 'NEUTRAL';
+        const regimeStatus = qqqChange5 > 0.5 && xlpChange5 < qqqChange5 ? 'RISK_ON' : (qqqChange5 < -0.5 ? 'RISK_OFF' : 'NEUTRAL');
         macroRegime = { status: regimeStatus, qqqRoc20: qqqChange5, xlpRoc20: xlpChange5 };
         const btcPrice = btc?.price ?? 0;
-        const techStatus = btcChange5 > 1 ? 'BULLISH' : btcChange5 < -1 ? 'BEARISH' : 'NEUTRAL';
+        const techStatus = btcChange5 > 1 ? 'BULLISH' : (btcChange5 < -1 ? 'BEARISH' : 'NEUTRAL');
         technicalTrend = { status: techStatus, btcPrice, sma50: 0, sma200: 0, vwap30d: 0, mayerMultiple: 0, sparkline: [] };
       }
 
       const signals = { fearGreed, flowStructure, macroRegime, technicalTrend };
       const bullishCount = [fearGreed?.value > 50, flowStructure?.status === 'RISK_ON', macroRegime?.status === 'RISK_ON', technicalTrend?.status === 'BULLISH'].filter(Boolean).length;
       const totalCount = Object.values(signals).filter(s => s !== null).length;
-      const verdict = bullishCount / totalCount > 0.6 ? 'BULLISH' : bullishCount / totalCount < 0.4 ? 'BEARISH' : 'NEUTRAL';
+      const verdict = bullishCount / totalCount > 0.6 ? 'BULLISH' : (bullishCount / totalCount < 0.4 ? 'BEARISH' : 'NEUTRAL');
 
       return json({
         timestamp: new Date().toISOString(),
@@ -2108,8 +2066,8 @@ async function dispatch(requestUrl, req, routes, context) {
         unavailable: false,
         signals,
       });
-    } catch (e) {
-      return json({ timestamp: new Date().toISOString(), verdict: 'UNAVAILABLE', bullishCount: 0, totalCount: 0, unavailable: true, signals: null, error: String(e.message ?? e) });
+    } catch (error) {
+      return json({ timestamp: new Date().toISOString(), verdict: 'UNAVAILABLE', bullishCount: 0, totalCount: 0, unavailable: true, signals: null, error: String(error.message ?? error) });
     }
   }
 
@@ -2132,7 +2090,7 @@ async function dispatch(requestUrl, req, routes, context) {
             const d = await r.json();
             if (typeof d?.c !== 'number') return { symbol: sym, price: null, change: null };
             const change = d.pc > 0 ? ((d.c - d.pc) / d.pc) * 100 : 0;
-            return { symbol: sym, price: d.c, change: parseFloat(change.toFixed(2)) };
+            return { symbol: sym, price: d.c, change: Number.parseFloat(change.toFixed(2)) };
           } catch { return { symbol: sym, price: null, change: null }; }
         }));
         const valid = quotes.filter(q => q.price !== null);
@@ -2150,7 +2108,7 @@ async function dispatch(requestUrl, req, routes, context) {
       if (stooqSyms.length > 0) {
         const r = await fetchWithTimeout(
           `https://stooq.com/q/l/?s=${stooqSyms.join('+')}&f=sd2t2ohlcvp&h&e=csv`,
-          { headers: { 'User-Agent': CHROME_UA } }, 10000
+          { headers: { 'User-Agent': CHROME_UA } }, 10_000
         );
         if (!r.ok) throw new Error(`Stooq ${r.status}`);
         stooq = parseStooqBatchCsv(await r.text());
@@ -2171,17 +2129,17 @@ async function dispatch(requestUrl, req, routes, context) {
             const { current, previous } = parseFredCsvLatest(await fr.text());
             if (!isNaN(current)) {
               const vixChange = (!isNaN(previous) && previous > 0)
-                ? parseFloat(((current - previous) / previous * 100).toFixed(2)) : 0;
+                ? Number.parseFloat(((current - previous) / previous * 100).toFixed(2)) : 0;
               const vixIdx = symbols.indexOf('^VIX');
-              if (vixIdx >= 0) quotes[vixIdx] = { symbol: '^VIX', price: current, change: vixChange };
+              if (vixIdx !== -1) quotes[vixIdx] = { symbol: '^VIX', price: current, change: vixChange };
             }
           }
         } catch { /* leave VIX null */ }
       }
 
       return json({ quotes, source: 'stooq' });
-    } catch (e) {
-      return json({ quotes: symbols.map(sym => ({ symbol: sym, price: null, change: null })), error: String(e.message ?? e) });
+    } catch (error) {
+      return json({ quotes: symbols.map(sym => ({ symbol: sym, price: null, change: null })), error: String(error.message ?? error) });
     }
   }
 
@@ -2192,7 +2150,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const r = await fetchWithTimeout(
         `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`,
         { headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/json' } },
-        12000
+        12_000
       );
       if (!r.ok) throw new Error(`CoinGecko ${r.status}`);
       const data = await r.json();
@@ -2201,12 +2159,12 @@ async function dispatch(requestUrl, req, routes, context) {
         return {
           id: id.trim(),
           price: d?.usd ?? null,
-          change: d?.usd_24h_change != null ? parseFloat(d.usd_24h_change.toFixed(2)) : null,
+          change: d?.usd_24h_change == undefined ? null : Number.parseFloat(d.usd_24h_change.toFixed(2)),
         };
       });
       return json({ quotes });
-    } catch (e) {
-      return json({ quotes: [], error: String(e.message ?? e) });
+    } catch (error) {
+      return json({ quotes: [], error: String(error.message ?? error) });
     }
   }
 
@@ -2221,21 +2179,21 @@ async function dispatch(requestUrl, req, routes, context) {
         try {
           const r = await fetchWithTimeout(
             `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(id)}&api_key=${encodeURIComponent(apiKey)}&file_type=json&limit=120&sort_order=asc&observation_start=2020-01-01`,
-            { headers: { 'User-Agent': CHROME_UA } }, 10000
+            { headers: { 'User-Agent': CHROME_UA } }, 10_000
           );
           if (!r.ok) return { id, observations: [], error: `FRED ${r.status}` };
           const data = await r.json();
           const obs = (data.observations ?? [])
             .filter(o => o.value !== '.')
-            .map(o => ({ date: o.date, value: parseFloat(o.value) }));
+            .map(o => ({ date: o.date, value: Number.parseFloat(o.value) }));
           return { id, observations: obs };
-        } catch (e) {
-          return { id, observations: [], error: String(e.message ?? e) };
+        } catch (error) {
+          return { id, observations: [], error: String(error.message ?? error) };
         }
       }));
       return json({ series: results });
-    } catch (e) {
-      return json({ series: [], error: String(e.message ?? e) }, 500);
+    } catch (error) {
+      return json({ series: [], error: String(error.message ?? error) }, 500);
     }
   }
 
@@ -2253,17 +2211,17 @@ async function dispatch(requestUrl, req, routes, context) {
         // US Treasury daily yield curve (free, no auth)
         fetchWithTimeout(
           `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=${new Date().getFullYear()}`,
-          { headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml' } }, 10000
+          { headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml' } }, 10_000
         ),
         // BLS unemployment rate series (no key, public tier 1)
         fetchWithTimeout(
           'https://api.bls.gov/publicAPI/v1/timeseries/data/LNS14000000',
-          { headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json' } }, 10000
+          { headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json' } }, 10_000
         ),
         // BLS CPI-U series (no key, public tier 1)
         fetchWithTimeout(
           'https://api.bls.gov/publicAPI/v1/timeseries/data/CUUR0000SA0',
-          { headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json' } }, 10000
+          { headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json' } }, 10_000
         ),
       ]);
 
@@ -2293,15 +2251,15 @@ async function dispatch(requestUrl, req, routes, context) {
         const y2 = xml.match(/<d:BC_2YEAR[^>]*>([0-9.]+)<\/d:BC_2YEAR>/)?.[1];
         const y10 = xml.match(/<d:BC_10YEAR[^>]*>([0-9.]+)<\/d:BC_10YEAR>/)?.[1];
         if (y2 && y10) {
-          const spread = parseFloat((parseFloat(y10) - parseFloat(y2)).toFixed(2));
+          const spread = Number.parseFloat((Number.parseFloat(y10) - Number.parseFloat(y2)).toFixed(2));
           // Overwrite the T10Y2Y approximation with accurate Treasury data
           const idx = series.findIndex(s => s.id === 'T10Y2Y');
-          if (idx >= 0) series[idx] = { id: 'T10Y2Y', observations: [{ date: today, value: spread }] };
-          else series.push({ id: 'T10Y2Y', observations: [{ date: today, value: spread }] });
+          if (idx === -1) {series.push({ id: 'T10Y2Y', observations: [{ date: today, value: spread }] });}
+          else {series[idx] = { id: 'T10Y2Y', observations: [{ date: today, value: spread }] };}
           // Also refine DGS10 with Treasury official value
           if (y10) {
             const idx10 = series.findIndex(s => s.id === 'DGS10');
-            if (idx10 >= 0) series[idx10] = { id: 'DGS10', observations: [{ date: today, value: parseFloat(y10) }] };
+            if (idx10 !== -1) series[idx10] = { id: 'DGS10', observations: [{ date: today, value: Number.parseFloat(y10) }] };
           }
         }
       }
@@ -2313,7 +2271,7 @@ async function dispatch(requestUrl, req, routes, context) {
         const pts = d?.Results?.series?.[0]?.data ?? [];
         return pts.slice(0, 6).reverse().map(p => ({
           date: `${p.year}-${String(p.period.replace('M', '')).padStart(2, '0')}-01`,
-          value: parseFloat(p.value),
+          value: Number.parseFloat(p.value),
         }));
       })();
       if (blsUnrateObs?.length) series.push({ id: 'UNRATE', observations: blsUnrateObs });
@@ -2325,14 +2283,14 @@ async function dispatch(requestUrl, req, routes, context) {
         const pts = d?.Results?.series?.[0]?.data ?? [];
         return pts.slice(0, 6).reverse().map(p => ({
           date: `${p.year}-${String(p.period.replace('M', '')).padStart(2, '0')}-01`,
-          value: parseFloat(p.value),
+          value: Number.parseFloat(p.value),
         }));
       })();
       if (blsCpiObs?.length) series.push({ id: 'CPIAUCSL', observations: blsCpiObs });
 
       return json({ series, source: 'free-fallback' });
-    } catch (e) {
-      return json({ series: [], error: String(e.message ?? e) }, 500);
+    } catch (error) {
+      return json({ series: [], error: String(error.message ?? error) }, 500);
     }
   }
 
@@ -2344,7 +2302,7 @@ async function dispatch(requestUrl, req, routes, context) {
         // Stooq: WTI crude + Natural Gas (real-time futures)
         fetchWithTimeout(
           'https://stooq.com/q/l/?s=cl.f+ng.f&f=sd2t2ohlcvp&h&e=csv',
-          { headers: { 'User-Agent': CHROME_UA } }, 10000
+          { headers: { 'User-Agent': CHROME_UA } }, 10_000
         ),
         // FRED: Brent crude daily spot price (1-day lag, free, no auth)
         fetchWithTimeout('https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILBRENTEU', {}, 8000),
@@ -2359,15 +2317,15 @@ async function dispatch(requestUrl, req, routes, context) {
         if (wti && wti.price > 0) prices.push({
           commodity: 'wti', name: 'WTI Crude Oil', price: wti.price, unit: '$/bbl',
           change: wti.change,
-          trend: wti.change > 0.5 ? 'up' : wti.change < -0.5 ? 'down' : 'stable',
-          previous: parseFloat(wti.prev.toFixed(2)), priceAt: now,
+          trend: wti.change > 0.5 ? 'up' : (wti.change < -0.5 ? 'down' : 'stable'),
+          previous: Number.parseFloat(wti.prev.toFixed(2)), priceAt: now,
         });
         const ng = stooq.get('ng.f');
         if (ng && ng.price > 0) prices.push({
           commodity: 'natgas', name: 'Natural Gas', price: ng.price, unit: '$/MMBtu',
           change: ng.change,
-          trend: ng.change > 0.5 ? 'up' : ng.change < -0.5 ? 'down' : 'stable',
-          previous: parseFloat(ng.prev.toFixed(2)), priceAt: now,
+          trend: ng.change > 0.5 ? 'up' : (ng.change < -0.5 ? 'down' : 'stable'),
+          previous: Number.parseFloat(ng.prev.toFixed(2)), priceAt: now,
         });
       }
 
@@ -2375,19 +2333,19 @@ async function dispatch(requestUrl, req, routes, context) {
         const { current, previous } = parseFredCsvLatest(await brentResp.value.text());
         if (!isNaN(current) && current > 0) {
           const change = (!isNaN(previous) && previous > 0)
-            ? parseFloat(((current - previous) / previous * 100).toFixed(2)) : 0;
+            ? Number.parseFloat(((current - previous) / previous * 100).toFixed(2)) : 0;
           prices.push({
             commodity: 'brent', name: 'Brent Crude Oil', price: current, unit: '$/bbl',
             change,
-            trend: change > 0.5 ? 'up' : change < -0.5 ? 'down' : 'stable',
-            previous: isNaN(previous) ? current : parseFloat(previous.toFixed(2)), priceAt: now,
+            trend: change > 0.5 ? 'up' : (change < -0.5 ? 'down' : 'stable'),
+            previous: isNaN(previous) ? current : Number.parseFloat(previous.toFixed(2)), priceAt: now,
           });
         }
       }
 
       return json({ prices, source: 'stooq+fred' });
-    } catch (e) {
-      return json({ prices: [], error: String(e.message ?? e) }, 500);
+    } catch (error) {
+      return json({ prices: [], error: String(error.message ?? error) }, 500);
     }
   }
 
@@ -2403,15 +2361,15 @@ async function dispatch(requestUrl, req, routes, context) {
 
       const r = await fetchWithTimeout(
         `https://stooq.com/q/d/l/?s=${encodeURIComponent(stooqSym)}&i=d`,
-        { headers: { 'User-Agent': CHROME_UA } }, 12000
+        { headers: { 'User-Agent': CHROME_UA } }, 12_000
       );
       if (!r.ok) throw new Error(`Stooq chart ${r.status}`);
       const text = await r.text();
 
       // Stooq returns: Date,Open,High,Low,Close,Volume (header + oldest-first rows)
-      const RANGE_DAYS = { '1d': 1, '5d': 5, '1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730, '5y': 1825, 'max': 999999 };
+      const RANGE_DAYS = { '1d': 1, '5d': 5, '1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730, '5y': 1825, 'max': 999_999 };
       const days = RANGE_DAYS[range] ?? 30;
-      const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+      const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
 
       const points = text.trim().split('\n')
         .filter(l => /^\d{4}-\d{2}-\d{2}/.test(l))   // data rows only (skip header)
@@ -2419,14 +2377,14 @@ async function dispatch(requestUrl, req, routes, context) {
         .map(l => {
           const cols = l.split(',');
           const date = cols[0]?.trim();
-          const close = parseFloat(cols[4]);
+          const close = Number.parseFloat(cols[4]);
           return (!date || isNaN(close)) ? null : { date, close };
         })
         .filter(Boolean);
 
       return json({ symbol, points, closes: points.map(p => p.close) });
-    } catch (e) {
-      return json({ symbol, points: [], closes: [], error: String(e.message ?? e) });
+    } catch (error) {
+      return json({ symbol, points: [], closes: [], error: String(error.message ?? error) });
     }
   }
 
@@ -2458,21 +2416,21 @@ async function dispatch(requestUrl, req, routes, context) {
       const confIdx  = header.indexOf('confidence');
       const dateIdx  = header.indexOf('acq_date');
       const dnIdx    = header.indexOf('daynight');
-      if (latIdx < 0 || lonIdx < 0) return [];
+      if (latIdx === -1 || lonIdx === -1) return [];
       return lines.slice(1).flatMap(line => {
         const cols = line.split(',').map(c => c.trim().replace(/"/g, ''));
-        const lat  = parseFloat(cols[latIdx]);
-        const lon  = parseFloat(cols[lonIdx]);
+        const lat  = Number.parseFloat(cols[latIdx]);
+        const lon  = Number.parseFloat(cols[lonIdx]);
         if (isNaN(lat) || isNaN(lon)) return [];
         const confRaw = (cols[confIdx] ?? '').toLowerCase();
         const confidence = confRaw === 'h' || confRaw === 'high' ? 'FIRE_CONFIDENCE_HIGH'
-                         : confRaw === 'n' || confRaw === 'nominal' ? 'FIRE_CONFIDENCE_NOMINAL'
-                         : 'FIRE_CONFIDENCE_LOW';
+                         : (confRaw === 'n' || confRaw === 'nominal' ? 'FIRE_CONFIDENCE_NOMINAL'
+                         : 'FIRE_CONFIDENCE_LOW');
         return [{
           lat,
           lon,
-          brightness: parseFloat(cols[brightIdx]) || 0,
-          frp:        parseFloat(cols[frpIdx])    || 0,
+          brightness: Number.parseFloat(cols[brightIdx]) || 0,
+          frp:        Number.parseFloat(cols[frpIdx])    || 0,
           confidence,
           region:     regionName,
           acq_date:   cols[dateIdx] ?? '',
@@ -2486,15 +2444,15 @@ async function dispatch(requestUrl, req, routes, context) {
         REGIONS.map(({ name, bbox }) => {
           const [w, s, e, n] = bbox;
           const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(apiKey)}/VIIRS_SNPP_NRT/${w},${s},${e},${n}/1`;
-          return fetchWithTimeout(url, { headers: { 'User-Agent': CHROME_UA } }, 20000)
+          return fetchWithTimeout(url, { headers: { 'User-Agent': CHROME_UA } }, 20_000)
             .then(r => r.ok ? r.text() : Promise.resolve(''))
             .then(csv => parseFiresCsv(csv, name));
         })
       );
       const fires = results.flatMap(r => r.status === 'fulfilled' ? r.value : []);
       return json({ fires, count: fires.length });
-    } catch (e) {
-      return json({ fires: [], error: String(e.message ?? e) }, 500);
+    } catch (error) {
+      return json({ fires: [], error: String(error.message ?? error) }, 500);
     }
   }
 
@@ -2523,15 +2481,15 @@ async function dispatch(requestUrl, req, routes, context) {
           'Accept-Language': 'en-US,en;q=0.9',
         },
         ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
-      }, parsed.hostname.includes('news.google.com') ? 20000 : 12000);
+      }, parsed.hostname.includes('news.google.com') ? 20_000 : 12_000);
       const contentType = response.headers?.get?.('content-type') || 'application/xml';
       const rssBody = await response.text();
       return new Response(rssBody || '', {
         status: response.status,
         headers: { 'content-type': contentType },
       });
-    } catch (e) {
-      const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
+    } catch (error) {
+      const isTimeout = error.name === 'AbortError' || error.message?.includes('timeout');
       return json({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed' }, isTimeout ? 504 : 502);
     }
   }
@@ -2543,7 +2501,7 @@ async function dispatch(requestUrl, req, routes, context) {
         try {
           const { key, value } = JSON.parse(body.toString());
           if (typeof key === 'string' && key.length > 0 && ALLOWED_ENV_KEYS.has(key)) {
-            if (value == null || value === '') {
+            if (value == undefined || value === '') {
               delete process.env[key];
               context.logger.log(`[local-api] env unset: ${key}`);
             } else {
@@ -2601,7 +2559,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const cloudUrl = 'https://api.worldmonitor.app/api/military/v1/get-theater-posture' + requestUrl.search;
       const cloudResp = await fetchWithTimeout(cloudUrl, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      }, 10000);
+      }, 10_000);
       if (cloudResp.ok) {
         const body = await cloudResp.json();
         // Validate shape before forwarding
@@ -2621,16 +2579,16 @@ async function dispatch(requestUrl, req, routes, context) {
     const cfHeaders = cfToken ? { Authorization: `Bearer ${cfToken}`, 'Content-Type': 'application/json' } : null;
 
     const cfHijacksPromise = cfHeaders
-      ? fetchWithTimeout('https://api.cloudflare.com/client/v4/radar/bgp/hijacks/events?limit=50', { headers: cfHeaders }, 10000)
+      ? fetchWithTimeout('https://api.cloudflare.com/client/v4/radar/bgp/hijacks/events?limit=50', { headers: cfHeaders }, 10_000)
       : Promise.reject(new Error('no CF token'));
     const cfLeaksPromise = cfHeaders
-      ? fetchWithTimeout('https://api.cloudflare.com/client/v4/radar/bgp/leaks/events?limit=50', { headers: cfHeaders }, 10000)
+      ? fetchWithTimeout('https://api.cloudflare.com/client/v4/radar/bgp/leaks/events?limit=50', { headers: cfHeaders }, 10_000)
       : Promise.reject(new Error('no CF token'));
     const cfDdosPromise = cfHeaders
-      ? fetchWithTimeout('https://api.cloudflare.com/client/v4/radar/attacks/layer7/summary', { headers: cfHeaders }, 10000)
+      ? fetchWithTimeout('https://api.cloudflare.com/client/v4/radar/attacks/layer7/summary', { headers: cfHeaders }, 10_000)
       : Promise.reject(new Error('no CF token'));
-    const ripeStatusPromise = fetchWithTimeout('https://stat.ripe.net/data/routing-status/data.json?resource=0.0.0.0/0', {}, 10000);
-    const ihrPromise = fetchWithTimeout('https://ihr.iijlab.net/ihr/api/network/?format=json&search=&last=1', {}, 10000);
+    const ripeStatusPromise = fetchWithTimeout('https://stat.ripe.net/data/routing-status/data.json?resource=0.0.0.0/0', {}, 10_000);
+    const ihrPromise = fetchWithTimeout('https://ihr.iijlab.net/ihr/api/network/?format=json&search=&last=1', {}, 10_000);
 
     const [cfHijacksRes, cfLeaksRes, cfDdosRes, ripeStatusRes, ihrRes] =
       await Promise.allSettled([cfHijacksPromise, cfLeaksPromise, cfDdosPromise, ripeStatusPromise, ihrPromise]);
@@ -2650,11 +2608,11 @@ async function dispatch(requestUrl, req, routes, context) {
         leakCount = d?.result?.events?.length ?? d?.result?.total ?? 0;
       }
 
-      const bgpSeverity = hijackCount > 15 ? 'critical' : hijackCount >= 5 ? 'warning' : 'normal';
+      const bgpSeverity = hijackCount > 15 ? 'critical' : (hijackCount >= 5 ? 'warning' : 'normal');
 
       // DDoS
       let ddosL7 = 'normal';
-      let ddosMissing = !cfToken;
+      const ddosMissing = !cfToken;
       if (cfDdosRes.status === 'fulfilled' && cfDdosRes.value.ok) {
         const d = await cfDdosRes.value.json().catch(() => null);
         const pct = d?.result?.summary_0?.total ?? 0;
@@ -2669,7 +2627,7 @@ async function dispatch(requestUrl, req, routes, context) {
         const networks = d?.results ?? [];
         const degradedAsns = new Set(
           networks
-            .filter(n => n.ihr_score != null && n.ihr_score < 0.5)
+            .filter(n => n.ihr_score != undefined && n.ihr_score < 0.5)
             .map(n => String(n.asn ?? ''))
         );
         for (const [asn, cable] of Object.entries(CABLE_AS_MAP)) {
@@ -2688,12 +2646,12 @@ async function dispatch(requestUrl, req, routes, context) {
         if (visibility < 0.9) ixpStatus = 'warning';
       }
 
-      const severityRank = s => s === 'critical' ? 2 : s === 'warning' ? 1 : 0;
+      const severityRank = s => s === 'critical' ? 2 : (s === 'warning' ? 1 : 0);
       let overallRank = severityRank(bgpSeverity);
       if (!ddosMissing) overallRank = Math.max(overallRank, severityRank(ddosL7 === 'elevated' ? 'warning' : 'normal'));
       if (ixpStatus !== 'normal') overallRank = Math.max(overallRank, 1);
       if (degradedCables.length > 0) overallRank = Math.max(overallRank, 1);
-      const overall = overallRank === 2 ? 'critical' : overallRank === 1 ? 'warning' : 'normal';
+      const overall = overallRank === 2 ? 'critical' : (overallRank === 1 ? 'warning' : 'normal');
 
       const result = {
         overall,
@@ -2705,7 +2663,7 @@ async function dispatch(requestUrl, req, routes, context) {
       };
       setCached('comms-health', result);
       return json(result);
-    } catch (e) {
+    } catch (error) {
       return json({
         overall: 'unknown',
         bgp: { hijacks: 0, leaks: 0, severity: 'normal' },
@@ -2713,7 +2671,7 @@ async function dispatch(requestUrl, req, routes, context) {
         ddos: { l7: 'normal', l3: 'normal', cloudflareKeyMissing: !cfToken },
         cables: { degraded: [], normal: Object.values(CABLE_AS_MAP) },
         updatedAt: new Date().toISOString(),
-        error: e?.message ?? 'unknown',
+        error: error?.message ?? 'unknown',
       });
     }
   }
@@ -2741,14 +2699,14 @@ async function dispatch(requestUrl, req, routes, context) {
       const vixVal    = vixRes.status   === 'fulfilled' ? vixRes.value   : 20;
       const fsiVal    = fsiRes.status   === 'fulfilled' ? fsiRes.value   : 0;
       const scVal     = gscpiRes.status === 'fulfilled' ? gscpiRes.value : 0;
-      const claimsVal = icsaRes.status  === 'fulfilled' ? icsaRes.value  : 220000;
+      const claimsVal = icsaRes.status  === 'fulfilled' ? icsaRes.value  : 220_000;
 
       const yieldScore  = clamp((0.5 - yieldVal)  / (0.5 - (-1.5)) * 100);
-      const spreadScore = clamp((0.5 - spreadVal)  / (0.5 - (-1.0)) * 100);
+      const spreadScore = clamp((0.5 - spreadVal)  / (0.5 - (-1)) * 100);
       const vixScore    = clamp((vixVal - 15)      / (80 - 15)      * 100);
       const fsiScore    = clamp((fsiVal - (-1))    / (5 - (-1))     * 100);
       const scScore     = clamp((scVal - (-2))     / (4 - (-2))     * 100);
-      const claimsScore = clamp((claimsVal - 180000) / (500000 - 180000) * 100);
+      const claimsScore = clamp((claimsVal - 180_000) / (500_000 - 180_000) * 100);
 
       const stressIndex = computeStressIndex(yieldVal, spreadVal, vixVal, fsiVal, scVal, claimsVal);
 
@@ -2763,9 +2721,9 @@ async function dispatch(requestUrl, req, routes, context) {
         try {
           const wbData = await wbRes.value.json();
           const val = wbData?.[1]?.[0]?.value;
-          foodSecurity = val != null
-            ? { value: Math.round(val * 10) / 10, severity: val < 50 ? 'critical' : val < 65 ? 'warning' : 'normal' }
-            : { value: null, severity: 'unknown' };
+          foodSecurity = val == undefined
+            ? { value: null, severity: 'unknown' }
+            : { value: Math.round(val * 10) / 10, severity: val < 50 ? 'critical' : (val < 65 ? 'warning' : 'normal') };
         } catch {
           foodSecurity = { value: null, severity: 'unknown' };
         }
@@ -2777,20 +2735,161 @@ async function dispatch(requestUrl, req, routes, context) {
         stressIndex,
         trend,
         indicators: {
-          yieldCurve:  { value: yieldVal,  label: yieldVal < -0.1 ? 'INVERTED' : yieldVal < 0.2 ? 'FLAT' : 'NORMAL',    severity: indicatorSeverity(yieldScore)  },
+          yieldCurve:  { value: yieldVal,  label: yieldVal < -0.1 ? 'INVERTED' : (yieldVal < 0.2 ? 'FLAT' : 'NORMAL'),    severity: indicatorSeverity(yieldScore)  },
           bankSpread:  { value: spreadVal, label: spreadVal < -0.1 ? 'INVERTED' : 'NORMAL',                               severity: indicatorSeverity(spreadScore) },
-          vix:         { value: vixVal,    label: vixVal > 30 ? 'ELEVATED' : vixVal > 20 ? 'RISING' : 'NORMAL',          severity: indicatorSeverity(vixScore)    },
-          fsi:         { value: fsiVal,    label: fsiVal > 1 ? 'ELEVATED' : fsiVal > 0 ? 'RISING' : 'NORMAL',            severity: indicatorSeverity(fsiScore)    },
+          vix:         { value: vixVal,    label: vixVal > 30 ? 'ELEVATED' : (vixVal > 20 ? 'RISING' : 'NORMAL'),          severity: indicatorSeverity(vixScore)    },
+          fsi:         { value: fsiVal,    label: fsiVal > 1 ? 'ELEVATED' : (fsiVal > 0 ? 'RISING' : 'NORMAL'),            severity: indicatorSeverity(fsiScore)    },
           supplyChain: { value: scVal,     label: scVal > 1 ? 'STRAINED' : 'NORMAL',                                      severity: indicatorSeverity(scScore),    lagWeeks: 6 },
-          jobClaims:   { value: claimsVal, label: claimsVal > 300000 ? 'RISING' : 'NORMAL',                               severity: indicatorSeverity(claimsScore) },
+          jobClaims:   { value: claimsVal, label: claimsVal > 300_000 ? 'RISING' : 'NORMAL',                               severity: indicatorSeverity(claimsScore) },
         },
         foodSecurity,
         updatedAt: new Date().toISOString(),
       };
       setCached('economic-stress', result);
       return json(result);
-    } catch (e) {
-      return json({ stressIndex: 0, error: e?.message ?? 'unknown', fredKeyMissing: false });
+    } catch (error) {
+      return json({ stressIndex: 0, error: error?.message ?? 'unknown', fredKeyMissing: false });
+    }
+  }
+
+  // ── Fear & Greed Index (alternative.me, no key required) ─────────────────
+  if (requestUrl.pathname === '/api/fear-greed') {
+    const cached = getCached('fear-greed', 60 * 60 * 1000); // 1 hour
+    if (cached) return json(cached);
+    try {
+      const res = await fetchWithTimeout('https://api.alternative.me/fng/?limit=7', {}, 8000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const entries = data?.data ?? [];
+      const [latest, ...rest] = entries;
+      const result = {
+        score: Number.parseInt(latest?.value ?? '50', 10),
+        classification: latest?.value_classification ?? 'Neutral',
+        history: rest.map(e => ({ value: Number.parseInt(e.value, 10), timestamp: e.timestamp })),
+        updatedAt: Number.parseInt(latest?.timestamp ?? String(Math.floor(Date.now() / 1000)), 10),
+      };
+      setCached('fear-greed', result);
+      return json(result);
+    } catch (error) {
+      return json({ score: 50, classification: 'Neutral', history: [], updatedAt: Math.floor(Date.now() / 1000), error: error?.message ?? 'unknown' });
+    }
+  }
+
+  // ── National Debt / GDP (World Bank, no key required) ─────────────────────
+  if (requestUrl.pathname === '/api/national-debt') {
+    const cached = getCached('national-debt', 24 * 60 * 60 * 1000); // 24 hours
+    if (cached) return json(cached);
+    try {
+      const url = 'https://api.worldbank.org/v2/country/all/indicator/GC.DOD.TOTL.GD.ZS?format=json&mrv=5&per_page=300';
+      const res = await fetchWithTimeout(url, {}, 12_000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const rows = data?.[1] ?? [];
+      const seen = new Map();
+      for (const row of rows) {
+        if (!row.country?.value || row.value == undefined) continue;
+        const code = row.countryiso3code || row.country?.id || '';
+        // skip aggregates (all-caps 3-char codes are typically regional aggregates from WB)
+        if (!code || code.length !== 3) continue;
+        if (!seen.has(code)) {
+          seen.set(code, { code, name: row.country.value, debtPctGdp: Number.parseFloat(row.value.toFixed(1)), year: row.date });
+        }
+      }
+      const countries = [...seen.values()].sort((a, b) => b.debtPctGdp - a.debtPctGdp).slice(0, 30);
+      const result = { countries, updatedAt: Math.floor(Date.now() / 1000) };
+      setCached('national-debt', result);
+      return json(result);
+    } catch (error) {
+      return json({ countries: [], updatedAt: Math.floor(Date.now() / 1000), error: error?.message ?? 'unknown' });
+    }
+  }
+
+  // ── Fuel Prices (EIA v2, free key required) ───────────────────────────────
+  if (requestUrl.pathname === '/api/fuel-prices') {
+    const eiaKey = process.env.EIA_API_KEY;
+    if (!eiaKey) return json({ regions: [], keyMissing: true, updatedAt: Math.floor(Date.now() / 1000) });
+    const cached = getCached('fuel-prices', 12 * 60 * 60 * 1000); // 12 hours
+    if (cached) return json(cached);
+    try {
+      const base = 'https://api.eia.gov/v2/petroleum/pri/gnd/data/';
+      const params = new URLSearchParams({
+        'api_key': eiaKey,
+        'frequency': 'weekly',
+        'data[0]': 'value',
+        'facets[duoarea][]': 'NUS',
+        'facets[process][]': 'PTE',
+        'sort[0][column]': 'period',
+        'sort[0][direction]': 'desc',
+        'length': '20',
+      });
+      // fetch gasoline (EPM0) and diesel (EPD2D) together
+      const paramStr = params.toString() + '&facets[duoarea][]=R10&facets[duoarea][]=R20&facets[duoarea][]=R30&facets[duoarea][]=R40&facets[duoarea][]=R50&facets[product][]=EPM0&facets[product][]=EPD2D';
+      const res = await fetchWithTimeout(`${base}?${paramStr}`, {}, 12_000);
+      if (!res.ok) throw new Error(`EIA HTTP ${res.status}`);
+      const data = await res.json();
+      const rows = data?.response?.data ?? [];
+
+      const AREA_NAMES = { NUS: 'U.S. Average', R10: 'East Coast', R20: 'Midwest', R30: 'Gulf Coast', R40: 'Rocky Mountain', R50: 'West Coast' };
+      const AREA_ORDER = ['NUS', 'R10', 'R20', 'R30', 'R40', 'R50'];
+
+      // Group latest value per (duoarea, product)
+      const latest = new Map();
+      for (const row of rows) {
+        const key = `${row.duoarea}|${row.product}`;
+        if (!latest.has(key)) latest.set(key, row);
+      }
+
+      const regions = AREA_ORDER.map(area => {
+        const gasRow = latest.get(`${area}|EPM0`);
+        const dslRow = latest.get(`${area}|EPD2D`);
+        return {
+          name: AREA_NAMES[area] ?? area,
+          gasolineUsd: gasRow ? Number.parseFloat(gasRow.value) : 0,
+          dieselUsd: dslRow ? Number.parseFloat(dslRow.value) : 0,
+          period: gasRow?.period ?? dslRow?.period ?? '',
+        };
+      }).filter(r => r.gasolineUsd > 0 || r.dieselUsd > 0);
+
+      const result = { regions, keyMissing: false, updatedAt: Math.floor(Date.now() / 1000) };
+      setCached('fuel-prices', result);
+      return json(result);
+    } catch (error) {
+      return json({ regions: [], keyMissing: false, updatedAt: Math.floor(Date.now() / 1000), error: error?.message ?? 'unknown' });
+    }
+  }
+
+  // ── GDELT Intelligence (no key required, public API) ──────────────────────
+  if (requestUrl.pathname === '/api/gdelt-intel') {
+    const cached = getCached('gdelt-intel', 15 * 60 * 1000); // 15 minutes
+    if (cached) return json(cached);
+    try {
+      const params = new URLSearchParams({
+        query: 'war OR conflict OR crisis OR military OR sanctions OR nuclear',
+        mode: 'artlist',
+        maxrecords: '25',
+        format: 'json',
+        sort: 'ToneAsc',
+        timespan: '3h',
+      });
+      const res = await fetchWithTimeout(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`, { headers: { 'User-Agent': CHROME_UA } }, 12_000);
+      if (!res.ok) throw new Error(`GDELT HTTP ${res.status}`);
+      const data = await res.json();
+      const articles = data?.articles ?? [];
+      const events = articles.map(a => ({
+        title: a.title ?? '',
+        url: a.url ?? '',
+        source: a.domain ?? '',
+        tone: typeof a.tone === 'number' ? Math.round(a.tone * 10) / 10 : 0,
+        country: a.sourcecountry ?? '',
+        timestamp: a.seendate
+          ? new Date(a.seendate.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, '$1-$2-$3T$4:$5:$6Z')).getTime()
+          : Date.now(),
+      })).filter(e => e.title && e.url);
+      const result = { events, updatedAt: Math.floor(Date.now() / 1000) };
+      setCached('gdelt-intel', result);
+      return json(result);
+    } catch (error) {
+      return json({ events: [], updatedAt: Math.floor(Date.now() / 1000), error: error?.message ?? 'unknown' });
     }
   }
 
@@ -3095,14 +3194,14 @@ export async function createLocalApiServer(options = {}) {
 
       try {
         await tryListen(context.port);
-      } catch (err) {
-        if (err?.code === 'EADDRINUSE') {
+      } catch (error) {
+        if (error?.code === 'EADDRINUSE') {
           // Never kill arbitrary listeners on occupied ports. Instead, bind to a
           // random OS-assigned port and publish it through service-status/port file.
           context.logger.log(`[local-api] port ${context.port} already in use; falling back to OS-assigned port`);
           await tryListen(0);
         } else {
-          throw err;
+          throw error;
         }
       }
 

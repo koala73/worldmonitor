@@ -95,9 +95,9 @@ function detectAdvisoryType(title: string): CisaAdvisoryType {
 }
 
 function extractCvss(description: string): number | null {
-  const match = description.match(/cvss(?:\s+v[23])?\s*(?:score|base)?\s*[:\-–]?\s*(\d+(?:\.\d+)?)/i);
+  const match = /cvss(?:\s+v[23])?\s*(?:score|base)?\s*[:\-–]?\s*(\d+(?:\.\d+)?)/i.exec(description);
   if (match?.[1]) {
-    const score = parseFloat(match[1]);
+    const score = Number.parseFloat(match[1]);
     if (score >= 0 && score <= 10) return score;
   }
   return null;
@@ -129,7 +129,7 @@ function cvssToSeverity(cvss: number | null, type: CisaAdvisoryType, activelyExp
 async function fetchRss(feedUrl: string): Promise<CisaAdvisory[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -138,7 +138,7 @@ async function fetchRss(feedUrl: string): Promise<CisaAdvisory[]> {
     if (doc.querySelector('parsererror')) return [];
 
     const items = doc.querySelectorAll('item');
-    return Array.from(items).map((item) => {
+    return [...items].map((item) => {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const description = (item.querySelector('description')?.textContent ?? '').replace(/<[^>]+>/g, '').trim();
       const link = item.querySelector('link')?.textContent?.trim() ?? '';
@@ -195,7 +195,7 @@ export async function fetchCisaAdvisories(): Promise<CisaAdvisory[]> {
 
   // Last 30 days
   const recent = deduped
-    .filter(a => Date.now() - a.pubDate.getTime() < 30 * 24 * 3600_000)
+    .filter(a => Date.now() - a.pubDate.getTime() < 30 * 24 * 3_600_000)
     .slice(0, 60);
 
   cache = { advisories: recent, fetchedAt: Date.now() };

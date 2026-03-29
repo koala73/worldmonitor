@@ -14,7 +14,7 @@ export interface DynamicEscalationScore {
     geoConvergence: number;
     militaryActivity: number;
   };
-  history: Array<{ timestamp: number; score: number }>;
+  history: { timestamp: number; score: number }[];
   lastUpdated: Date;
 }
 
@@ -106,7 +106,7 @@ function blendScores(staticBaseline: number, dynamicScore: number): number {
   return staticBaseline * 0.3 + dynamicScore * 0.7;
 }
 
-function pruneHistory(history: Array<{ timestamp: number; score: number }>): Array<{ timestamp: number; score: number }> {
+function pruneHistory(history: { timestamp: number; score: number }[]): { timestamp: number; score: number }[] {
   const cutoff = Date.now() - HISTORY_WINDOW_MS;
   const pruned = history.filter(h => h.timestamp >= cutoff);
   if (pruned.length > MAX_HISTORY_POINTS) {
@@ -115,14 +115,13 @@ function pruneHistory(history: Array<{ timestamp: number; score: number }>): Arr
   return pruned;
 }
 
-function detectTrend(history: Array<{ timestamp: number; score: number }>): EscalationTrend {
+function detectTrend(history: { timestamp: number; score: number }[]): EscalationTrend {
   if (history.length < 3) return 'stable';
 
   let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
   let validCount = 0;
 
-  for (let i = 0; i < history.length; i++) {
-    const entry = history[i];
+  for (const entry of history) {
     if (!entry) continue;
     sumX += validCount;
     sumY += entry.score;
@@ -193,7 +192,7 @@ export function getHotspotEscalation(hotspotId: string): DynamicEscalationScore 
 }
 
 export function getAllEscalationScores(): DynamicEscalationScore[] {
-  return Array.from(scores.values());
+  return [...scores.values()];
 }
 
 export interface EscalationSignalReason {
@@ -242,7 +241,7 @@ export function countMilitaryNearHotspot(
   hotspot: Hotspot,
   flights: MilitaryFlight[],
   vessels: MilitaryVessel[],
-  radiusKm: number = 200
+  radiusKm = 200
 ): { flights: number; vessels: number } {
   let flightCount = 0;
   let vesselCount = 0;

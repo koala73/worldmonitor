@@ -13,7 +13,7 @@ export interface TechHubActivity {
   score: number;
   newsCount: number;
   hasBreaking: boolean;
-  topStories: Array<{ title: string; link: string }>;
+  topStories: { title: string; link: string }[];
   trend: 'rising' | 'stable' | 'falling';
   matchedKeywords: string[];
 }
@@ -69,7 +69,7 @@ export function aggregateTechActivity(clusters: ClusteredEvent[]): TechHubActivi
   }
 
   // First pass: calculate raw scores to find max
-  const rawScores: Array<{ hubId: string; acc: HubAccumulator; rawScore: number }> = [];
+  const rawScores: { hubId: string; acc: HubAccumulator; rawScore: number }[] = [];
   let maxRawScore = 0;
 
   for (const [hubId, acc] of hubAccumulators) {
@@ -135,7 +135,7 @@ export function aggregateTechActivity(clusters: ClusteredEvent[]): TechHubActivi
       hasBreaking: acc.hasBreaking,
       topStories,
       trend,
-      matchedKeywords: Array.from(acc.matchedKeywords),
+      matchedKeywords: [...acc.matchedKeywords],
     });
   }
 

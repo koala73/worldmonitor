@@ -259,10 +259,10 @@ export function getHubById(hubId: string): TechHubLocation | undefined {
 
 export function getAllHubs(): TechHubLocation[] {
   const index = buildTechHubIndex();
-  return Array.from(index.hubs.values());
+  return [...index.hubs.values()];
 }
 
 export function getHubsByTier(tier: 'mega' | 'major' | 'emerging'): TechHubLocation[] {
   const index = buildTechHubIndex();
-  return Array.from(index.hubs.values()).filter(h => h.tier === tier);
+  return [...index.hubs.values()].filter(h => h.tier === tier);
 }

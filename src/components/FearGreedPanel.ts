@@ -5,7 +5,7 @@ import { getApiBaseUrl } from '@/services/runtime';
 interface FearGreedResponse {
   score: number;
   classification: string;
-  history: Array<{ value: number; timestamp: string }>;
+  history: { value: number; timestamp: string }[];
   updatedAt: number;
 }
 
@@ -75,9 +75,9 @@ export class FearGreedPanel extends Panel {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this.data = await res.json() as FearGreedResponse;
       this.error = null;
-    } catch (err) {
-      if (this.isAbortError(err)) return;
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
+    } catch (error) {
+      if (this.isAbortError(error)) return;
+      this.error = error instanceof Error ? error.message : 'Failed to fetch';
     }
 
     this.loading = false;

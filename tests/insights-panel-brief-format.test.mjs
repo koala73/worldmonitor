@@ -12,7 +12,7 @@ const insightsPanelSrc = readFileSync(
 it('keeps world-brief caching and cooldown safeguards wired', () => {
   assert.match(
     insightsPanelSrc,
-    /BRIEF_COOLDOWN_MS = 120000/,
+    /BRIEF_COOLDOWN_MS\s*=\s*120_?000/,
     'world-brief generation should retain a defensive cooldown to avoid rapid re-runs',
   );
   assert.match(
@@ -22,12 +22,12 @@ it('keeps world-brief caching and cooldown safeguards wired', () => {
   );
   assert.match(
     insightsPanelSrc,
-    /getPersistentCache<\{ summary: string \}>\(InsightsPanel\.BRIEF_CACHE_KEY\)/,
+    /getPersistentCache<\{\s*summary:\s*string\s*\}>\(InsightsPanel\.BRIEF_CACHE_KEY\)/,
     'world-brief should load from persistent cache when available',
   );
   assert.match(
     insightsPanelSrc,
-    /setPersistentCache\(InsightsPanel\.BRIEF_CACHE_KEY, \{ summary: worldBrief \}\)/,
+    /setPersistentCache\(InsightsPanel\.BRIEF_CACHE_KEY,\s*\{\s*summary:\s*worldBrief\s*\}\)/,
     'world-brief should persist fresh summaries back into persistent cache',
   );
 });

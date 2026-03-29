@@ -78,13 +78,13 @@ interface CemsJsonItem {
 
 interface CemsJsonResponse {
   activations?: CemsJsonItem[];
-  features?: Array<{ properties?: CemsJsonItem; geometry?: { coordinates?: number[] } }>;
+  features?: { properties?: CemsJsonItem; geometry?: { coordinates?: number[] } }[];
 }
 
 async function fetchCemsJson(): Promise<CemsActivation[]> {
   try {
     const res = await fetch(CEMS_JSON_URL, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return [];
@@ -101,7 +101,7 @@ async function fetchCemsJson(): Promise<CemsActivation[]> {
       const p = f.properties ?? {};
       const coords = f.geometry?.coordinates;
       const status = ((p.status ?? 'Ongoing') as string).includes('Ongoing') ? 'Ongoing'
-        : (p.status ?? '').includes('Complet') ? 'Completed' : 'Delineation';
+        : ((p.status ?? '').includes('Complet') ? 'Completed' : 'Delineation');
       const hazard = (p.type ?? 'Other') as CemsHazard;
       const activationDate = p.date ? new Date(p.date) : new Date();
 
@@ -115,7 +115,7 @@ async function fetchCemsJson(): Promise<CemsActivation[]> {
         status: status as CemsActivation['status'],
         lat: coords?.[1] ?? (typeof p.latitude === 'number' ? p.latitude : null),
         lon: coords?.[0] ?? (typeof p.longitude === 'number' ? p.longitude : null),
-        affectedAreaKm2: p.affectedArea ? parseFloat(String(p.affectedArea)) : null,
+        affectedAreaKm2: p.affectedArea ? Number.parseFloat(String(p.affectedArea)) : null,
         requestingCountry: p.requestingCountry ?? p.country ?? '',
         url: p.url ?? `https://emergency.copernicus.eu/mapping/list-of-components/${p.activationCode}`,
         severity: hazardSeverity(String(hazard), status as CemsActivation['status']),
@@ -125,7 +125,7 @@ async function fetchCemsJson(): Promise<CemsActivation[]> {
     // Plain array format
     for (const r of raw) {
       const status = ((r.status ?? 'Ongoing') as string).includes('Ongoing') ? 'Ongoing'
-        : (r.status ?? '').includes('Complet') ? 'Completed' : 'Delineation';
+        : ((r.status ?? '').includes('Complet') ? 'Completed' : 'Delineation');
       const hazard = (r.type ?? 'Other') as CemsHazard;
       const activationDate = r.date ? new Date(r.date) : new Date();
 
@@ -137,9 +137,9 @@ async function fetchCemsJson(): Promise<CemsActivation[]> {
         activationDate,
         lastUpdateDate: r.lastModifiedDate ? new Date(r.lastModifiedDate) : activationDate,
         status: status as CemsActivation['status'],
-        lat: typeof r.latitude === 'number' ? r.latitude : parseFloat(String(r.latitude)) || null,
-        lon: typeof r.longitude === 'number' ? r.longitude : parseFloat(String(r.longitude)) || null,
-        affectedAreaKm2: r.affectedArea ? parseFloat(String(r.affectedArea)) : null,
+        lat: typeof r.latitude === 'number' ? r.latitude : Number.parseFloat(String(r.latitude)) || null,
+        lon: typeof r.longitude === 'number' ? r.longitude : Number.parseFloat(String(r.longitude)) || null,
+        affectedAreaKm2: r.affectedArea ? Number.parseFloat(String(r.affectedArea)) : null,
         requestingCountry: r.requestingCountry ?? r.country ?? '',
         url: r.url ?? `https://emergency.copernicus.eu/mapping/list-of-components/${r.activationCode}`,
         severity: hazardSeverity(String(hazard), status as CemsActivation['status']),
@@ -155,7 +155,7 @@ async function fetchCemsJson(): Promise<CemsActivation[]> {
 async function fetchCemsRss(): Promise<CemsActivation[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(CEMS_FEED_ALT)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -164,14 +164,14 @@ async function fetchCemsRss(): Promise<CemsActivation[]> {
     if (doc.querySelector('parsererror')) return [];
 
     const items = doc.querySelectorAll('item');
-    return Array.from(items).map((item, i) => {
+    return [...items].map((item, i) => {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const description = (item.querySelector('description')?.textContent ?? '').replace(/<[^>]+>/g, '').trim();
       const link = item.querySelector('link')?.textContent?.trim() ?? '';
       const pubDateStr = item.querySelector('pubDate')?.textContent?.trim() ?? '';
 
       // Extract EMSR code from title or link
-      const emsrMatch = (title + link).match(/EMSR\d+/);
+      const emsrMatch = /EMSR\d+/.exec((title + link));
       const id = emsrMatch?.[0] ?? `cems-rss-${i}`;
 
       // Guess hazard from text
@@ -222,7 +222,7 @@ export async function fetchCemsActivations(): Promise<CemsActivation[]> {
   const merged = [...json, ...rss.filter(a => !seen.has(a.id))];
 
   // Keep last 6 months, sort ongoing first then by date
-  const cutoff = Date.now() - 180 * 24 * 3600_000;
+  const cutoff = Date.now() - 180 * 24 * 3_600_000;
   const activations = merged
     .filter(a => a.activationDate.getTime() > cutoff)
     .sort((a, b) => {

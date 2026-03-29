@@ -64,8 +64,8 @@ export class UcdpEventsPanel extends Panel {
     } else {
       const rows = displayed.map(e => {
         const deathsClass = e.type_of_violence === 'state-based' ? 'ucdp-deaths-state'
-          : e.type_of_violence === 'non-state' ? 'ucdp-deaths-nonstate'
-            : 'ucdp-deaths-onesided';
+          : (e.type_of_violence === 'non-state' ? 'ucdp-deaths-nonstate'
+            : 'ucdp-deaths-onesided');
         const deathsHtml = e.deaths_best > 0
           ? `<span class="${deathsClass}">${e.deaths_best}</span> <small class="ucdp-range">(${e.deaths_low}-${e.deaths_high})</small>`
           : '<span class="ucdp-deaths-zero">0</span>';

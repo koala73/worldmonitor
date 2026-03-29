@@ -100,7 +100,7 @@ export class SearchManager implements AppModule {
       this.ctx.searchModal.registerSource('techhq', TECH_HQS.map(h => ({
         id: h.id,
         title: h.company,
-        subtitle: `${h.type === 'faang' ? 'Big Tech' : h.type === 'unicorn' ? 'Unicorn' : 'Public'} • ${h.city}, ${h.country}`,
+        subtitle: `${h.type === 'faang' ? 'Big Tech' : (h.type === 'unicorn' ? 'Unicorn' : 'Public')} • ${h.city}, ${h.country}`,
         data: h,
       })));
 
@@ -294,9 +294,10 @@ export class SearchManager implements AppModule {
         break;
       }
       case 'earthquake':
-      case 'outage':
+      case 'outage': {
         this.ctx.map?.setView('global');
         break;
+      }
       case 'techcompany': {
         const company = result.data as typeof TECH_COMPANIES[0];
         this.ctx.map?.setView('global');
@@ -319,11 +320,12 @@ export class SearchManager implements AppModule {
         setTimeout(() => { this.ctx.map?.setCenter(ecosystem.lat, ecosystem.lon, 4); }, 300);
         break;
       }
-      case 'techevent':
+      case 'techevent': {
         this.ctx.map?.setView('global');
         this.ctx.map?.enableLayer('techEvents');
         this.ctx.mapLayers.techEvents = true;
         break;
+      }
       case 'techhq': {
         const hq = result.data as typeof TECH_HQS[0];
         this.ctx.map?.setView('global');
@@ -388,13 +390,14 @@ export class SearchManager implements AppModule {
     const action = cmd.id.slice(colonIdx + 1);
 
     switch (category) {
-      case 'nav':
+      case 'nav': {
         this.ctx.map?.setView(action as MapView);
         {
           const sel = document.getElementById('regionSelect') as HTMLSelectElement;
           if (sel) sel.value = action;
         }
         break;
+      }
 
       case 'layers': {
         if (action === 'all') {
@@ -430,11 +433,12 @@ export class SearchManager implements AppModule {
         break;
       }
 
-      case 'panel':
+      case 'panel': {
         this.scrollToPanel(action);
         break;
+      }
 
-      case 'view':
+      case 'view': {
         if (action === 'dark' || action === 'light') {
           setTheme(action);
         } else if (action === 'fullscreen') {
@@ -454,10 +458,12 @@ export class SearchManager implements AppModule {
           window.location.reload();
         }
         break;
+      }
 
-      case 'time':
+      case 'time': {
         this.ctx.map?.setTimeRange(action as import('@/components').TimeRange);
         break;
+      }
 
       case 'country': {
         const name = TIER1_COUNTRIES[action]
@@ -539,7 +545,7 @@ export class SearchManager implements AppModule {
   }
 
   private buildCountrySearchItems(): { id: string; title: string; subtitle: string; data: { code: string; name: string } }[] {
-    const panelScores = (this.ctx.panels['cii'] as CIIPanel | undefined)?.getScores() ?? [];
+    const panelScores = (this.ctx.panels.cii as CIIPanel | undefined)?.getScores() ?? [];
     const scores = panelScores.length > 0 ? panelScores : calculateCII();
     const ciiByCode = new Map(scores.map((score) => [score.code, score]));
     return Object.entries(TIER1_COUNTRIES).map(([code, name]) => {

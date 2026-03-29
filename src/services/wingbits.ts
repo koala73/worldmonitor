@@ -72,7 +72,7 @@ function sweepLocalCache(now = Date.now()): void {
 
   if (localCache.size <= MAX_LOCAL_CACHE_ENTRIES) return;
 
-  const oldestFirst = Array.from(localCache.entries())
+  const oldestFirst = [...localCache.entries()]
     .sort((a, b) => a[1].timestamp - b[1].timestamp);
   const toDelete = oldestFirst.slice(0, localCache.size - MAX_LOCAL_CACHE_ENTRIES);
   for (const [key] of toDelete) {
@@ -242,7 +242,7 @@ export async function getAircraftDetailsBatch(icao24List: string[]): Promise<Map
   if (!isFeatureAvailable('wingbitsEnrichment')) return new Map();
   const results = new Map<string, WingbitsAircraftDetails>();
   const toFetch: string[] = [];
-  const requestedKeys = Array.from(new Set(icao24List.map((icao24) => icao24.toLowerCase()))).sort();
+  const requestedKeys = [...new Set(icao24List.map((icao24) => icao24.toLowerCase()))].sort();
 
   // Check local cache first
   for (const key of requestedKeys) {
@@ -313,7 +313,7 @@ export function analyzeAircraftDetails(details: WingbitsAircraftDetails): Enrich
     owner: details.owner,
     operator: details.operator,
     operatorIcao: details.operatorIcao,
-    builtYear: details.built?.substring(0, 4) || null,
+    builtYear: details.built?.slice(0, 4) || null,
     isMilitary: false,
     militaryBranch: null,
     confidence: 'civilian',
@@ -390,7 +390,7 @@ function extractMilitaryBranch(text: string): string | null {
  */
 export async function enrichAircraft(icao24: string): Promise<EnrichedAircraftInfo | null> {
   const details = await getAircraftDetails(icao24);
-  if (!details || !details.registration) return null;
+  if (!details?.registration) return null;
   return analyzeAircraftDetails(details);
 }
 

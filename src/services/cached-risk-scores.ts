@@ -36,12 +36,12 @@ export interface CachedStrategicRisk {
   level: string;
   trend: string;
   lastUpdated: string;
-  contributors: Array<{
+  contributors: {
     country: string;
     code: string;
     score: number;
     level: string;
-  }>;
+  }[];
 }
 
 export interface CachedRiskScores {

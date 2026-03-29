@@ -108,7 +108,7 @@ function mergeSemanticallySimilarClusters(
     }
 
     // Sort top sources by tier, keep top 5
-    const sortedTopSources = Array.from(topSourcesSet.values())
+    const sortedTopSources = [...topSourcesSet.values()]
       .sort((a, b) => a.tier - b.tier)
       .slice(0, 5);
 

@@ -226,8 +226,8 @@ export async function shareHappyCard(item: NewsItem): Promise<void> {
   const a = document.createElement('a');
   a.href = url;
   a.download = 'happymonitor-story.png';
-  document.body.appendChild(a);
+  document.body.append(a);
   a.click();
-  document.body.removeChild(a);
+  a.remove();
   URL.revokeObjectURL(url);
 }

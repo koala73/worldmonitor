@@ -134,7 +134,7 @@ function detectCause(text: string): PipelineIncidentCause {
 
 function extractNumber(text: string, pattern: RegExp): number {
   const m = text.match(pattern);
-  return m && m[1] ? parseInt(m[1], 10) : 0;
+  return m?.[1] ? Number.parseInt(m[1], 10) : 0;
 }
 
 function detectIgnition(text: string): boolean {
@@ -149,8 +149,8 @@ function detectIgnition(text: string): boolean {
 
 function extractState(text: string): string {
   // Look for US state abbreviations in context
-  const m = text.match(/\b([A-Z]{2})\b/);
-  return m && m[1] ? m[1] : '';
+  const m = /\b([A-Z]{2})\b/.exec(text);
+  return m?.[1] ? m[1] : '';
 }
 
 function computeSeverity(
@@ -193,18 +193,14 @@ function parseFeedXml(text: string, _feedUrl: string): PipelineIncident[] {
 
   const results: PipelineIncident[] = [];
 
-  Array.from(items).forEach((item) => {
+  [...items].forEach((item) => {
     const title = item.querySelector('title')?.textContent?.trim() ?? '';
     const description =
       item.querySelector('description')?.textContent?.trim() ??
       item.querySelector('summary')?.textContent?.trim() ??
       '';
     let url = '';
-    if (isAtom) {
-      url = item.querySelector('link[href]')?.getAttribute('href') ?? '';
-    } else {
-      url = item.querySelector('link')?.textContent?.trim() ?? '';
-    }
+    url = isAtom ? item.querySelector('link[href]')?.getAttribute('href') ?? '' : item.querySelector('link')?.textContent?.trim() ?? '';
 
     const pubDateStr = isAtom
       ? (item.querySelector('updated')?.textContent ?? item.querySelector('published')?.textContent ?? '')
@@ -255,7 +251,7 @@ export async function fetchPipelineIncidents(): Promise<PipelineIncident[]> {
   const results = await Promise.allSettled(
     PHMSA_FEEDS.map(async (feedUrl) => {
       const res = await fetch(rssProxyUrl(feedUrl), {
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(12_000),
         headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
       });
       if (!res.ok) return [] as PipelineIncident[];
@@ -299,15 +295,20 @@ export async function fetchPipelineIncidents(): Promise<PipelineIncident[]> {
 
 export function pipelineSeverityClass(severity: PipelineIncident['severity']): string {
   switch (severity) {
-    case 'critical':
+    case 'critical': {
       return 'eq-row eq-major';
-    case 'high':
+    }
+    case 'high': {
       return 'eq-row eq-strong';
-    case 'medium':
+    }
+    case 'medium': {
       return 'eq-row eq-moderate';
-    case 'low':
+    }
+    case 'low': {
       return 'eq-row';
-    default:
+    }
+    default: {
       return 'eq-row';
+    }
   }
 }

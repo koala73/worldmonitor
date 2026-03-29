@@ -90,7 +90,7 @@ function parseBuoyLine(line: string, headers: string[]): Record<string, string> 
 
 function toNum(val: string | undefined): number | null {
   if (!val || val === 'MM' || val === 'N/A') return null;
-  const n = parseFloat(val);
+  const n = Number.parseFloat(val);
   return isNaN(n) ? null : n;
 }
 
@@ -98,32 +98,32 @@ function computeAlertCondition(obs: Partial<BuoyObservation>): { isAlert: boolea
   const reasons: string[] = [];
   let severity: BuoyObservation['severity'] = 'normal';
 
-  const windKts = obs.windSpeedMs != null ? obs.windSpeedMs * 1.944 : null;
-  const gust = obs.windGustMs != null ? obs.windGustMs * 1.944 : null;
+  const windKts = obs.windSpeedMs == undefined ? null : obs.windSpeedMs * 1.944;
+  const gust = obs.windGustMs == undefined ? null : obs.windGustMs * 1.944;
 
-  if (obs.waveHeightM != null) {
+  if (obs.waveHeightM != undefined) {
     if (obs.waveHeightM >= 14) { reasons.push(`Extreme waves ${obs.waveHeightM.toFixed(1)}m`); severity = 'critical'; }
     else if (obs.waveHeightM >= 9) { reasons.push(`Very high waves ${obs.waveHeightM.toFixed(1)}m`); if (severity === 'normal') severity = 'high'; }
     else if (obs.waveHeightM >= 6) { reasons.push(`High waves ${obs.waveHeightM.toFixed(1)}m`); if (severity === 'normal') severity = 'medium'; }
   }
 
-  if (windKts != null) {
+  if (windKts != undefined) {
     if (windKts >= 64) { reasons.push(`Hurricane-force winds ${windKts.toFixed(0)}kt`); severity = 'critical'; }
     else if (windKts >= 48) { reasons.push(`Storm-force winds ${windKts.toFixed(0)}kt`); if (severity !== 'critical') severity = 'high'; }
     else if (windKts >= 34) { reasons.push(`Gale-force winds ${windKts.toFixed(0)}kt`); if (severity === 'normal') severity = 'medium'; }
   }
 
-  if (gust != null && gust >= 64 && !reasons.some(r => r.includes('winds'))) {
+  if (gust != undefined && gust >= 64 && !reasons.some(r => r.includes('winds'))) {
     reasons.push(`Hurricane-force gusts ${gust.toFixed(0)}kt`);
     severity = 'critical';
   }
 
-  if (obs.airPressureMb != null) {
+  if (obs.airPressureMb != undefined) {
     if (obs.airPressureMb < 960) { reasons.push(`Extreme low pressure ${obs.airPressureMb}mb`); severity = 'critical'; }
     else if (obs.airPressureMb < 980) { reasons.push(`Very low pressure ${obs.airPressureMb}mb`); if (severity === 'normal') severity = 'high'; }
   }
 
-  if (obs.pressureTendencyMb != null && obs.pressureTendencyMb <= -6) {
+  if (obs.pressureTendencyMb != undefined && obs.pressureTendencyMb <= -6) {
     reasons.push(`Rapid pressure fall ${obs.pressureTendencyMb}mb/3h`);
     if (severity === 'normal') severity = 'high';
   }
@@ -151,11 +151,11 @@ async function fetchBuoyData(stationId: string): Promise<BuoyObservation | null>
 
     const row = parseBuoyLine(dataLine, headers);
 
-    const year = row['YY'] ?? row['YYYY'] ?? '';
-    const mm = (row['MM'] ?? '').padStart(2, '0');
-    const dd = (row['DD'] ?? '').padStart(2, '0');
-    const hh = (row['HH'] ?? row['HR'] ?? '00').padStart(2, '0');
-    const mn = (row['MN'] ?? row['MIN'] ?? '00').padStart(2, '0');
+    const year = row.YY ?? row.YYYY ?? '';
+    const mm = (row.MM ?? '').padStart(2, '0');
+    const dd = (row.DD ?? '').padStart(2, '0');
+    const hh = (row.HH ?? row.HR ?? '00').padStart(2, '0');
+    const mn = (row.MN ?? row.MIN ?? '00').padStart(2, '0');
     const dateStr = `20${year.length === 2 ? year : year.slice(2)}-${mm}-${dd}T${hh}:${mn}:00Z`;
 
     const obs: Partial<BuoyObservation> = {
@@ -164,15 +164,15 @@ async function fetchBuoyData(stationId: string): Promise<BuoyObservation | null>
       lat: 0,
       lon: 0,
       observedAt: new Date(dateStr),
-      windSpeedMs: toNum(row['WSPD'] ?? row['WS']),
-      windGustMs: toNum(row['GST'] ?? row['WGST']),
-      windDirectionDeg: toNum(row['WDIR']),
-      airPressureMb: toNum(row['PRES'] ?? row['BAR']),
-      pressureTendencyMb: toNum(row['PTDY']),
-      airTempC: toNum(row['ATMP']),
-      waveHeightM: toNum(row['WVHT']),
-      dominantWavePeriodS: toNum(row['DPD']),
-      waterTempC: toNum(row['WTMP']),
+      windSpeedMs: toNum(row.WSPD ?? row.WS),
+      windGustMs: toNum(row.GST ?? row.WGST),
+      windDirectionDeg: toNum(row.WDIR),
+      airPressureMb: toNum(row.PRES ?? row.BAR),
+      pressureTendencyMb: toNum(row.PTDY),
+      airTempC: toNum(row.ATMP),
+      waveHeightM: toNum(row.WVHT),
+      dominantWavePeriodS: toNum(row.DPD),
+      waterTempC: toNum(row.WTMP),
     };
 
     const { isAlert, reason, severity } = computeAlertCondition(obs);
@@ -204,7 +204,7 @@ async function fetchReconRss(): Promise<HurricaneReconFix[]> {
 
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(NHC_VDM_RSS)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return reconCache?.fixes ?? [];
 
     const text = await res.text();
@@ -215,7 +215,7 @@ async function fetchReconRss(): Promise<HurricaneReconFix[]> {
     const items = doc.querySelectorAll('item');
     const fixes: HurricaneReconFix[] = [];
 
-    for (const item of Array.from(items)) {
+    for (const item of items) {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const description = (item.querySelector('description')?.textContent ?? '').replace(/<[^>]+>/g, ' ').trim();
       const pubDateStr = item.querySelector('pubDate')?.textContent?.trim() ?? '';
@@ -223,14 +223,14 @@ async function fetchReconRss(): Promise<HurricaneReconFix[]> {
 
       const fullText = title + ' ' + description;
 
-      const latMatch = fullText.match(/(\d+\.\d+)\s*[Nn]/);
-      const lonMatch = fullText.match(/(\d+\.\d+)\s*[Ww]/);
-      const pressMatch = fullText.match(/MSLP[:\s]+(\d+)\s*MB/i);
-      const surfWindMatch = fullText.match(/SFC\s+WND[:\s]+(\d+)\s*KT/i);
-      const flWindMatch = fullText.match(/(?:FL|FLVL)\s+WND[:\s]+(\d+)\s*KT/i);
-      const altMatch = fullText.match(/(\d{3,5})\s*FT/i);
-      const aircraftMatch = fullText.match(/\b(NOAA\d+|AF\d+|N[A-Z0-9]{3,6})\b/);
-      const stormMatch = fullText.match(/\b([A-Z]{2}AL\d{2}|[A-Z]{2}EP\d{2}|[A-Z]{2}WP\d{2}|HURRICANE\s+[A-Z]+|TROPICAL\s+STORM\s+[A-Z]+)\b/i);
+      const latMatch = /(\d+\.\d+)\s*[Nn]/.exec(fullText);
+      const lonMatch = /(\d+\.\d+)\s*[Ww]/.exec(fullText);
+      const pressMatch = /MSLP[:\s]+(\d+)\s*MB/i.exec(fullText);
+      const surfWindMatch = /SFC\s+WND[:\s]+(\d+)\s*KT/i.exec(fullText);
+      const flWindMatch = /(?:FL|FLVL)\s+WND[:\s]+(\d+)\s*KT/i.exec(fullText);
+      const altMatch = /(\d{3,5})\s*FT/i.exec(fullText);
+      const aircraftMatch = /\b(NOAA\d+|AF\d+|N[A-Z0-9]{3,6})\b/.exec(fullText);
+      const stormMatch = /\b([A-Z]{2}AL\d{2}|[A-Z]{2}EP\d{2}|[A-Z]{2}WP\d{2}|HURRICANE\s+[A-Z]+|TROPICAL\s+STORM\s+[A-Z]+)\b/i.exec(fullText);
 
       if (!latMatch?.[1] || !lonMatch?.[1]) continue;
 
@@ -238,12 +238,12 @@ async function fetchReconRss(): Promise<HurricaneReconFix[]> {
         id: `recon-${guid || `${pubDateStr}-${latMatch[1]}`}`,
         stormId: stormMatch?.[1] ?? 'unknown',
         stormName: stormMatch?.[1]?.replace(/^(HURRICANE|TROPICAL STORM)\s+/i, '') ?? 'Unknown',
-        lat: parseFloat(latMatch[1]),
-        lon: -parseFloat(lonMatch[1]), // West longitude
-        altitudeFt: altMatch?.[1] ? parseInt(altMatch[1], 10) : 10000,
-        flightLevelWindKts: flWindMatch?.[1] ? parseInt(flWindMatch[1], 10) : null,
-        surfaceWindKts: surfWindMatch?.[1] ? parseInt(surfWindMatch[1], 10) : null,
-        minPressureMb: pressMatch?.[1] ? parseInt(pressMatch[1], 10) : null,
+        lat: Number.parseFloat(latMatch[1]),
+        lon: -Number.parseFloat(lonMatch[1]), // West longitude
+        altitudeFt: altMatch?.[1] ? Number.parseInt(altMatch[1], 10) : 10_000,
+        flightLevelWindKts: flWindMatch?.[1] ? Number.parseInt(flWindMatch[1], 10) : null,
+        surfaceWindKts: surfWindMatch?.[1] ? Number.parseInt(surfWindMatch[1], 10) : null,
+        minPressureMb: pressMatch?.[1] ? Number.parseInt(pressMatch[1], 10) : null,
         eyewallDiameterNm: null,
         observedAt: pubDateStr ? new Date(pubDateStr) : new Date(),
         aircraft: aircraftMatch?.[1] ?? 'Unknown',

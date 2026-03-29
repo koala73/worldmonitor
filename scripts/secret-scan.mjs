@@ -295,9 +295,9 @@ function main() {
   const files =
     options.mode === 'staged'
       ? listStagedFiles(repoRoot)
-      : options.mode === 'files'
+      : (options.mode === 'files'
         ? options.files
-        : listRepoFiles(repoRoot);
+        : listRepoFiles(repoRoot));
 
   const findings = normalizeFiles(files).flatMap((filePath) => scanFile(filePath));
 

@@ -86,9 +86,9 @@ function toPostureSummary(proto: TheaterPosture): TheaterPostureSummary {
     summary: '',
     headline: postureLevel === 'critical'
       ? `Critical military buildup - ${meta?.name ?? proto.theater}`
-      : postureLevel === 'elevated'
+      : (postureLevel === 'elevated'
         ? `Elevated military activity - ${meta?.name ?? proto.theater}`
-        : `Normal activity - ${meta?.name ?? proto.theater}`,
+        : `Normal activity - ${meta?.name ?? proto.theater}`),
     centerLat: meta?.centerLat ?? 0,
     centerLon: meta?.centerLon ?? 0,
     bounds: meta?.bounds,

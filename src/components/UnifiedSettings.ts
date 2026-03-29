@@ -219,7 +219,7 @@ export class UnifiedSettings {
     });
 
     this.render();
-    document.body.appendChild(this.overlay);
+    document.body.append(this.overlay);
 
     if (this.config.isDesktopApp) {
       initYouTubeAccountListeners(() => this.refreshGeneralTab());
@@ -336,7 +336,7 @@ export class UnifiedSettings {
         if (!this.apiConfigPanel) {
           this.apiConfigPanel = new RuntimeConfigPanel({ mode: 'full', buffered: false });
         }
-        apiContainer.appendChild(this.apiConfigPanel.getContentElement());
+        apiContainer.append(this.apiConfigPanel.getContentElement());
       }
     }
 
@@ -657,10 +657,10 @@ export class UnifiedSettings {
     }
   }
 
-  private getAvailablePanelCategories(): Array<{ key: string; label: string }> {
+  private getAvailablePanelCategories(): { key: string; label: string }[] {
     const panelKeys = new Set(Object.keys(this.config.getPanelSettings()));
     const variant = SITE_VARIANT || 'full';
-    const categories: Array<{ key: string; label: string }> = [
+    const categories: { key: string; label: string }[] = [
       { key: 'all', label: t('header.sourceRegionAll') }
     ];
 
@@ -675,7 +675,7 @@ export class UnifiedSettings {
     return categories;
   }
 
-  private getVisiblePanelEntries(): Array<[string, PanelConfig]> {
+  private getVisiblePanelEntries(): [string, PanelConfig][] {
     const panelSettings = this.config.getPanelSettings();
     const variant = SITE_VARIANT || 'full';
     let entries = Object.entries(panelSettings)
@@ -724,9 +724,9 @@ export class UnifiedSettings {
     `).join('');
   }
 
-  private getAvailableRegions(): Array<{ key: string; label: string }> {
+  private getAvailableRegions(): { key: string; label: string }[] {
     const feedKeys = new Set(Object.keys(FEEDS));
-    const regions: Array<{ key: string; label: string }> = [
+    const regions: { key: string; label: string }[] = [
       { key: 'all', label: t('header.sourceRegionAll') }
     ];
 
@@ -891,16 +891,16 @@ export class UnifiedSettings {
     if (!logEl) return;
     try {
       const res = await this._diagFetch('/api/local-traffic-log');
-      const data = await res.json() as { entries?: Array<{ timestamp: string; method: string; path: string; status: number; durationMs: number }> };
+      const data = await res.json() as { entries?: { timestamp: string; method: string; path: string; status: number; durationMs: number }[] };
       const entries = data.entries || [];
       if (countEl) countEl.textContent = `(${entries.length})`;
       if (entries.length === 0) {
         logEl.innerHTML = '<p class="us-debug-empty">No traffic recorded.</p>';
         return;
       }
-      const rows = entries.slice().reverse().map(e => {
+      const rows = [...entries].reverse().map(e => {
         const ts = e.timestamp.split('T')[1]?.replace('Z', '') || e.timestamp;
-        const cls = e.status < 300 ? 'ok' : e.status < 500 ? 'warn' : 'err';
+        const cls = e.status < 300 ? 'ok' : (e.status < 500 ? 'warn' : 'err');
         return `<tr class="us-diag-${cls}"><td>${escapeHtml(ts)}</td><td>${e.method}</td><td title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</td><td>${e.status}</td><td>${e.durationMs}ms</td></tr>`;
       }).join('');
       logEl.innerHTML = `<table class="us-debug-table"><thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>Duration</th></tr></thead><tbody>${rows}</tbody></table>`;

@@ -58,7 +58,7 @@ let previousSnapshot: StreamSnapshot | null = null;
 
 // Tracks seen signal keys with expiry timestamps instead of a Set+setTimeout.
 // Avoids spawning up to 5,000 concurrent timers; expiry is checked lazily on read/write.
-const RECENT_SIGNAL_MAX = 5_000;
+const RECENT_SIGNAL_MAX = 5000;
 const RECENT_SIGNAL_TTL_MS = 30 * 60 * 1000;
 const recentSignalKeys = new Map<string, number>(); // key → expiresAt
 

@@ -40,32 +40,32 @@ const breaker = createCircuitBreaker<{ vessels: MilitaryVessel[]; clusters: Mili
 // Strategic chokepoints for naval monitoring
 const NAVAL_CHOKEPOINTS = [
   { name: 'Strait of Hormuz', lat: 26.5, lon: 56.5, radius: 2 },
-  { name: 'Suez Canal', lat: 30.0, lon: 32.5, radius: 1 },
+  { name: 'Suez Canal', lat: 30, lon: 32.5, radius: 1 },
   { name: 'Strait of Malacca', lat: 2.5, lon: 101.5, radius: 2 },
   { name: 'Bab el-Mandeb', lat: 12.5, lon: 43.5, radius: 1.5 },
-  { name: 'Panama Canal', lat: 9.0, lon: -79.5, radius: 1 },
+  { name: 'Panama Canal', lat: 9, lon: -79.5, radius: 1 },
   { name: 'Taiwan Strait', lat: 24.5, lon: 119.5, radius: 2 },
-  { name: 'South China Sea', lat: 15.0, lon: 115.0, radius: 5 },
-  { name: 'Black Sea', lat: 43.5, lon: 34.0, radius: 3 },
-  { name: 'Baltic Sea', lat: 58.0, lon: 20.0, radius: 4 },
-  { name: 'Sea of Japan', lat: 40.0, lon: 135.0, radius: 4 },
-  { name: 'Persian Gulf', lat: 26.5, lon: 52.0, radius: 4 },
-  { name: 'Eastern Mediterranean', lat: 34.5, lon: 33.0, radius: 3 },
+  { name: 'South China Sea', lat: 15, lon: 115, radius: 5 },
+  { name: 'Black Sea', lat: 43.5, lon: 34, radius: 3 },
+  { name: 'Baltic Sea', lat: 58, lon: 20, radius: 4 },
+  { name: 'Sea of Japan', lat: 40, lon: 135, radius: 4 },
+  { name: 'Persian Gulf', lat: 26.5, lon: 52, radius: 4 },
+  { name: 'Eastern Mediterranean', lat: 34.5, lon: 33, radius: 3 },
 ];
 
 // Naval base locations for proximity detection
 const NAVAL_BASES = [
-  { name: 'Norfolk Naval Station', lat: 36.95, lon: -76.30, country: 'USA' },
+  { name: 'Norfolk Naval Station', lat: 36.95, lon: -76.3, country: 'USA' },
   { name: 'San Diego Naval Base', lat: 32.68, lon: -117.15, country: 'USA' },
   { name: 'Pearl Harbor', lat: 21.35, lon: -157.95, country: 'USA' },
   { name: 'Yokosuka Naval Base', lat: 35.29, lon: 139.67, country: 'Japan' },
   { name: 'Qingdao Naval Base', lat: 36.07, lon: 120.38, country: 'China' },
   { name: 'Sevastopol', lat: 44.62, lon: 33.53, country: 'Russia' },
-  { name: 'Portsmouth Naval Base', lat: 50.80, lon: -1.10, country: 'UK' },
+  { name: 'Portsmouth Naval Base', lat: 50.8, lon: -1.1, country: 'UK' },
   { name: 'Toulon Naval Base', lat: 43.12, lon: 5.93, country: 'France' },
   { name: 'Tartus Naval Base', lat: 34.89, lon: 35.87, country: 'Syria' },
-  { name: 'Zhanjiang Naval Base', lat: 21.20, lon: 110.40, country: 'China' },
-  { name: 'Vladivostok', lat: 43.12, lon: 131.90, country: 'Russia' },
+  { name: 'Zhanjiang Naval Base', lat: 21.2, lon: 110.4, country: 'China' },
+  { name: 'Vladivostok', lat: 43.12, lon: 131.9, country: 'Russia' },
   { name: 'Diego Garcia', lat: -7.32, lon: 72.42, country: 'UK/USA' },
 ];
 
@@ -77,7 +77,7 @@ const NAVAL_BASES = [
 function analyzeMmsi(mmsi: string): { isPotentialMilitary: boolean; country?: string } {
   if (!mmsi || mmsi.length < 9) return { isPotentialMilitary: false };
 
-  const mid = mmsi.substring(0, 3);
+  const mid = mmsi.slice(0, 3);
 
   // MIDs for countries with significant navies
   const militaryMids: Record<string, string> = {
@@ -163,7 +163,7 @@ function analyzeMmsi(mmsi: string): { isPotentialMilitary: boolean; country?: st
 
   // Check last digits - some patterns indicate warships
   // Government vessels often have specific MMSI patterns
-  const suffix = mmsi.substring(3);
+  const suffix = mmsi.slice(3);
   if (suffix.startsWith('00') || suffix.startsWith('99')) {
     return { isPotentialMilitary: true, country };
   }
@@ -399,7 +399,7 @@ function processAisPosition(data: AisPositionData): void {
     nearChokepoint,
     nearBase,
     track: history.positions.length > 1 ? [...history.positions] : undefined,
-    confidence: knownVessel ? 'high' : mmsiAnalysis.isPotentialMilitary ? 'medium' : 'low',
+    confidence: knownVessel ? 'high' : (mmsiAnalysis.isPotentialMilitary ? 'medium' : 'low'),
     isInteresting: Boolean(nearHotspot?.priority === 'high' || isDark || nearChokepoint),
     note: isDark ? 'Returned after AIS silence' : (nearChokepoint ? `Near ${nearChokepoint}` : undefined),
   };
@@ -561,7 +561,7 @@ export async function fetchMilitaryVessels(): Promise<{
       cleanup();
 
       // Convert tracked vessels to array
-      vessels = Array.from(trackedVessels.values());
+      vessels = [...trackedVessels.values()];
 
       // Only cache non-empty results - empty results due to timing shouldn't block future calls
       if (vessels.length > 0) {
@@ -579,8 +579,8 @@ export async function fetchMilitaryVessels(): Promise<{
         const merged = mergeUSNIWithAIS(vessels, usniReport, aisClusters);
         return merged;
       }
-    } catch (e) {
-      console.warn('[Military Vessels] USNI merge failed, using AIS only:', (e as Error).message);
+    } catch (error) {
+      console.warn('[Military Vessels] USNI merge failed, using AIS only:', (error as Error).message);
     }
 
     return { vessels, clusters: aisClusters };
@@ -604,7 +604,7 @@ export function getVesselByMmsi(mmsi: string): MilitaryVessel | undefined {
 /**
  * Get vessels near a specific location
  */
-export function getVesselsNearLocation(lat: number, lon: number, radiusDeg: number = 2): MilitaryVessel[] {
+export function getVesselsNearLocation(lat: number, lon: number, radiusDeg = 2): MilitaryVessel[] {
   const result: MilitaryVessel[] = [];
   for (const vessel of trackedVessels.values()) {
     const distance = Math.sqrt(Math.pow(vessel.lat - lat, 2) + Math.pow(vessel.lon - lon, 2));
@@ -619,7 +619,7 @@ export function getVesselsNearLocation(lat: number, lon: number, radiusDeg: numb
  * Get dark (AIS-disabled) vessels
  */
 export function getDarkVessels(): MilitaryVessel[] {
-  return Array.from(trackedVessels.values()).filter((v) => v.isDark);
+  return [...trackedVessels.values()].filter((v) => v.isDark);
 }
 
 /**

@@ -117,7 +117,7 @@ function computeSurvivability(massKg: number | null, objectType: ReentryObjectTy
     if (mass > 500) return 'partial';
     return 'partial'; // even small rocket bodies have metallic parts
   }
-  if (mass > 10000) return 'high';
+  if (mass > 10_000) return 'high';
   if (mass >= 1000) return 'partial';
   return 'low';
 }
@@ -148,13 +148,13 @@ function parseAerospaceHtml(html: string): DebrisReentry[] {
 
   const results: DebrisReentry[] = [];
 
-  for (const table of Array.from(tables)) {
+  for (const table of tables) {
     const rows = table.querySelectorAll('tr');
     if (rows.length < 2) continue;
 
     // Try to detect header row to find column indices
     const headerRow = rows[0]!;
-    const headers = Array.from(headerRow.querySelectorAll('th, td')).map(
+    const headers = [...headerRow.querySelectorAll('th, td')].map(
       th => th.textContent?.toLowerCase().trim() ?? '',
     );
 
@@ -182,7 +182,7 @@ function parseAerospaceHtml(html: string): DebrisReentry[] {
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i]!;
-      const cells = Array.from(row.querySelectorAll('td'));
+      const cells = [...row.querySelectorAll('td')];
       if (cells.length < 3) continue;
 
       const getText = (idx: number): string =>
@@ -199,17 +199,17 @@ function parseAerospaceHtml(html: string): DebrisReentry[] {
 
       if (!objectName && !cosparId) continue;
 
-      const massKg = massStr ? parseFloat(massStr.replace(/[^\d.]/g, '')) || null : null;
+      const massKg = massStr ? Number.parseFloat(massStr.replace(/[^\d.]/g, '')) || null : null;
       const predictedTime = timeStr ? new Date(timeStr) : null;
       const validTime = predictedTime && !isNaN(predictedTime.getTime()) ? predictedTime : null;
-      const predictedLat = latStr ? parseFloat(latStr) : null;
-      const predictedLon = lonStr ? parseFloat(lonStr) : null;
+      const predictedLat = latStr ? Number.parseFloat(latStr) : null;
+      const predictedLon = lonStr ? Number.parseFloat(lonStr) : null;
 
       const objectType = detectObjectType(objectName);
       const country = detectCountry(cosparId, objectName);
       const isAdversaryObject = isAdversaryCountry(country);
       const survivability = computeSurvivability(
-        isFinite(massKg ?? NaN) ? massKg : null,
+        isFinite(massKg ?? Number.NaN) ? massKg : null,
         objectType,
       );
       const severity = computeSeverity(survivability, isAdversaryObject, predictedLat, predictedLon);
@@ -218,13 +218,13 @@ function parseAerospaceHtml(html: string): DebrisReentry[] {
         id: cosparId || `aero-${objectName.replace(/\W/g, '').slice(0, 20)}-${i}`,
         objectName: objectName || 'Unknown Object',
         cosparId: cosparId || '',
-        massKg: isFinite(massKg ?? NaN) ? massKg : null,
+        massKg: isFinite(massKg ?? Number.NaN) ? massKg : null,
         objectType,
         country,
         predictedTime: validTime,
         uncertainty: '',
-        predictedLat: isFinite(predictedLat ?? NaN) ? predictedLat : null,
-        predictedLon: isFinite(predictedLon ?? NaN) ? predictedLon : null,
+        predictedLat: isFinite(predictedLat ?? Number.NaN) ? predictedLat : null,
+        predictedLon: isFinite(predictedLon ?? Number.NaN) ? predictedLon : null,
         survivability,
         isAdversaryObject,
         severity,
@@ -274,7 +274,7 @@ function parseCelesTrakDecay(entries: CelesTrakSatCatEntry[]): DebrisReentry[] {
     const isAdversaryObject = isAdversaryCountry(country);
 
     // CelesTrak doesn't give mass — use type heuristics
-    const massKg = objectType === 'rocket-body' ? 2000 : objectType === 'satellite' ? 500 : 100;
+    const massKg = objectType === 'rocket-body' ? 2000 : (objectType === 'satellite' ? 500 : 100);
     const survivability = computeSurvivability(massKg, objectType);
     const severity = computeSeverity(survivability, isAdversaryObject, null, null);
 
@@ -301,14 +301,14 @@ export async function fetchDebrisReentries(): Promise<ReentryReport> {
 
   const [aerospaceResult, celestrakResult] = await Promise.allSettled([
     fetch(proxyUrl(AEROSPACE_ORG_URL), {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'text/html,*/*' },
     }).then(res => {
       if (!res.ok) return [] as DebrisReentry[];
       return res.text().then(parseAerospaceHtml);
     }),
     fetch(CELESTRAK_DECAY_URL, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/json' },
     }).then(res => {
       if (!res.ok) return [] as DebrisReentry[];

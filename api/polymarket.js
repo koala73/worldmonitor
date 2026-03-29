@@ -19,7 +19,7 @@ function getRelayHeaders(baseHeaders = {}) {
   return headers;
 }
 
-async function fetchWithTimeout(url, options, timeoutMs = 15000) {
+async function fetchWithTimeout(url, options, timeoutMs = 15_000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -33,7 +33,7 @@ export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+    return Response.json({ error: 'Origin not allowed' }, {
       status: 403,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -43,7 +43,7 @@ export default async function handler(req) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+    return Response.json({ error: 'Method not allowed' }, {
       status: 405,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -51,7 +51,7 @@ export default async function handler(req) {
 
   const relayBaseUrl = getRelayBaseUrl();
   if (!relayBaseUrl) {
-    return new Response(JSON.stringify({ error: 'WS_RELAY_URL is not configured' }), {
+    return Response.json({ error: 'WS_RELAY_URL is not configured' }, {
       status: 503,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -62,7 +62,7 @@ export default async function handler(req) {
     const relayUrl = `${relayBaseUrl}/polymarket${requestUrl.search || ''}`;
     const response = await fetchWithTimeout(relayUrl, {
       headers: getRelayHeaders({ Accept: 'application/json' }),
-    }, 15000);
+    }, 15_000);
 
     const body = await response.text();
     const headers = {
@@ -77,10 +77,10 @@ export default async function handler(req) {
     });
   } catch (error) {
     const isTimeout = error?.name === 'AbortError';
-    return new Response(JSON.stringify({
+    return Response.json({
       error: isTimeout ? 'Relay timeout' : 'Relay request failed',
       details: error?.message || String(error),
-    }), {
+    }, {
       status: isTimeout ? 504 : 502,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });

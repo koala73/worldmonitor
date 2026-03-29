@@ -17,7 +17,7 @@ export function maybeShowDownloadBanner(): void {
   setTimeout(() => {
     if (localStorage.getItem(STORAGE_KEY)) return;
     const panel = buildPanel();
-    document.body.appendChild(panel);
+    document.body.append(panel);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => panel.classList.add('wm-dl-show'));
     });
@@ -72,14 +72,22 @@ export function allButtons(): DlButton[] {
 export function buttonsForPlatform(p: Platform): DlButton[] {
   const buttons = allButtons();
   switch (p) {
-    case 'macos-arm64': return buttons.filter(b => b.href.includes('macos-arm64'));
-    case 'macos-x64': return buttons.filter(b => b.href.includes('macos-x64'));
-    case 'macos': return buttons.filter(b => b.cls === 'mac');
-    case 'windows': return buttons.filter(b => b.cls === 'win');
-    case 'linux': return buttons.filter(b => b.cls === 'linux');
-    case 'linux-x64': return buttons.filter(b => b.href.includes('linux-appimage') && !b.href.includes('arm64'));
-    case 'linux-arm64': return buttons.filter(b => b.href.includes('linux-appimage-arm64'));
-    default: return buttons;
+    case 'macos-arm64': { return buttons.filter(b => b.href.includes('macos-arm64'));
+    }
+    case 'macos-x64': { return buttons.filter(b => b.href.includes('macos-x64'));
+    }
+    case 'macos': { return buttons.filter(b => b.cls === 'mac');
+    }
+    case 'windows': { return buttons.filter(b => b.cls === 'win');
+    }
+    case 'linux': { return buttons.filter(b => b.cls === 'linux');
+    }
+    case 'linux-x64': { return buttons.filter(b => b.href.includes('linux-appimage') && !b.href.includes('arm64'));
+    }
+    case 'linux-arm64': { return buttons.filter(b => b.href.includes('linux-appimage-arm64'));
+    }
+    default: { return buttons;
+    }
   }
 }
 

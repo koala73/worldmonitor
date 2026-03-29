@@ -16,7 +16,7 @@ import confetti from 'canvas-confetti';
 // ---- Types ----
 
 export interface MilestoneData {
-  speciesRecoveries?: Array<{ name: string; status: string }>;
+  speciesRecoveries?: { name: string; status: string }[];
   renewablePercent?: number;
   newSpeciesCount?: number;
 }
@@ -24,9 +24,9 @@ export interface MilestoneData {
 // ---- Constants ----
 
 /** Checked once at module load -- if user prefers reduced motion, skip all celebrations. */
-const REDUCED_MOTION = typeof window !== 'undefined'
-  ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  : false;
+const REDUCED_MOTION = typeof window === 'undefined'
+  ? false
+  : window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Nature-inspired warm palette matching the happy theme. */
 const WARM_COLORS = ['#6B8F5E', '#C4A35A', '#7BA5C4', '#8BAF7A', '#E8B96E', '#7FC4C4'];
@@ -98,7 +98,7 @@ export function checkMilestones(data: MilestoneData): void {
   }
 
   // --- Renewable energy record (every 5% threshold) ---
-  if (data.renewablePercent != null && data.renewablePercent > 0) {
+  if (data.renewablePercent != undefined && data.renewablePercent > 0) {
     const threshold = Math.floor(data.renewablePercent / 5) * 5;
     const key = `renewable:${threshold}`;
     if (!celebrated.has(key)) {
@@ -109,7 +109,7 @@ export function checkMilestones(data: MilestoneData): void {
   }
 
   // --- New species count ---
-  if (data.newSpeciesCount != null && data.newSpeciesCount > 0) {
+  if (data.newSpeciesCount != undefined && data.newSpeciesCount > 0) {
     const key = `species-count:${data.newSpeciesCount}`;
     if (!celebrated.has(key)) {
       celebrated.add(key);

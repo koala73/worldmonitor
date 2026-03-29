@@ -116,7 +116,7 @@ export class LiveWebcamsPanel extends Panel {
       btn.dataset.region = key;
       btn.textContent = label;
       btn.addEventListener('click', () => this.setRegionFilter(key));
-      regionGroup.appendChild(btn);
+      regionGroup.append(btn);
     });
 
     const viewGroup = document.createElement('div');
@@ -136,11 +136,11 @@ export class LiveWebcamsPanel extends Panel {
     singleBtn.title = 'Single view';
     singleBtn.addEventListener('click', () => this.setViewMode('single'));
 
-    viewGroup.appendChild(gridBtn);
-    viewGroup.appendChild(singleBtn);
+    viewGroup.append(gridBtn);
+    viewGroup.append(singleBtn);
 
-    this.toolbar.appendChild(regionGroup);
-    this.toolbar.appendChild(viewGroup);
+    this.toolbar.append(regionGroup);
+    this.toolbar.append(viewGroup);
     this.element.insertBefore(this.toolbar, this.content);
   }
 
@@ -177,7 +177,7 @@ export class LiveWebcamsPanel extends Panel {
       if (quality !== 'auto') params.set('vq', quality);
       return `${getApiBaseUrl()}/api/youtube-embed?${params.toString()}`;
     }
-    const vq = quality !== 'auto' ? `&vq=${quality}` : '';
+    const vq = quality === 'auto' ? '' : `&vq=${quality}`;
     return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0${vq}`;
   }
 
@@ -242,7 +242,7 @@ export class LiveWebcamsPanel extends Panel {
           this.activeFeed = feed;
           this.setViewMode('single');
         });
-        label.appendChild(expandBtn);
+        label.append(expandBtn);
       } else {
         cell.addEventListener('click', () => {
           trackWebcamSelected(feed.id, feed.city, 'grid');
@@ -251,25 +251,25 @@ export class LiveWebcamsPanel extends Panel {
         });
       }
 
-      cell.appendChild(label);
-      grid.appendChild(cell);
+      cell.append(label);
+      grid.append(cell);
 
       if (desktop && i > 0) {
         // Stagger iframe creation on desktop — WKWebView throttles concurrent autoplay.
         setTimeout(() => {
           if (!this.isVisible || this.isIdle) return;
           const iframe = this.createIframe(feed);
-          cell.insertBefore(iframe, label);
+          label.before(iframe);
           this.iframes.push(iframe);
         }, i * 800);
       } else {
         const iframe = this.createIframe(feed);
-        cell.insertBefore(iframe, label);
+        label.before(iframe);
         this.iframes.push(iframe);
       }
     });
 
-    this.content.appendChild(grid);
+    this.content.append(grid);
   }
 
   private renderSingle(): void {
@@ -280,7 +280,7 @@ export class LiveWebcamsPanel extends Panel {
     wrapper.className = 'webcam-single';
 
     const iframe = this.createIframe(this.activeFeed);
-    wrapper.appendChild(iframe);
+    wrapper.append(iframe);
     this.iframes.push(iframe);
 
     const switcher = document.createElement('div');
@@ -290,7 +290,7 @@ export class LiveWebcamsPanel extends Panel {
     backBtn.className = 'webcam-feed-btn webcam-back-btn';
     backBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg> Grid';
     backBtn.addEventListener('click', () => this.setViewMode('grid'));
-    switcher.appendChild(backBtn);
+    switcher.append(backBtn);
 
     this.filteredFeeds.forEach(feed => {
       const btn = document.createElement('button');
@@ -301,11 +301,11 @@ export class LiveWebcamsPanel extends Panel {
         this.activeFeed = feed;
         this.render();
       });
-      switcher.appendChild(btn);
+      switcher.append(btn);
     });
 
-    this.content.appendChild(wrapper);
-    this.content.appendChild(switcher);
+    this.content.append(wrapper);
+    this.content.append(switcher);
   }
 
   private destroyIframes(): void {
@@ -352,7 +352,7 @@ export class LiveWebcamsPanel extends Panel {
         'background:rgba(0,0,0,0.72);color:#ff6b6b;font-size:11px;font-family:monospace;' +
         'pointer-events:none;z-index:6;padding:8px;text-align:center;';
       cell.style.position = 'relative';
-      cell.appendChild(overlay);
+      cell.append(overlay);
     }
     overlay.textContent = msg;
   }

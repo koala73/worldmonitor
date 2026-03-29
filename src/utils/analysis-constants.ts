@@ -189,13 +189,13 @@ export function includesKeyword(text: string, keywords: string[]): boolean {
 }
 
 export function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 export function containsTopicKeyword(text: string, keyword: string): boolean {
   const normalizedKeyword = keyword.trim().toLowerCase();
   if (!normalizedKeyword) return false;
-  const pattern = new RegExp(`\\b${escapeRegex(normalizedKeyword)}\\b`, 'i');
+  const pattern = new RegExp(String.raw`\b${escapeRegex(normalizedKeyword)}\b`, 'i');
   return pattern.test(text);
 }
 

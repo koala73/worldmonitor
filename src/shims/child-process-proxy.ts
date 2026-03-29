@@ -10,5 +10,5 @@ export default class ChildProcessProxy {
 
   async stop(): Promise<void> {}
 
-  async exit(_statusCode: number = 0): Promise<void> {}
+  async exit(_statusCode = 0): Promise<void> {}
 }

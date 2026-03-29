@@ -30,7 +30,7 @@ export class StrategicRiskPanel extends Panel {
   private unsubscribeFreshness: (() => void) | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
   private usedCachedScores = false;
-  private breakingAlerts: Map<string, { threatLevel: 'critical' | 'high'; timestamp: number }> = new Map();
+  private breakingAlerts = new Map<string, { threatLevel: 'critical' | 'high'; timestamp: number }>();
   private boundOnBreaking: ((e: Event) => void) | null = null;
   private breakingExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -170,46 +170,65 @@ export class StrategicRiskPanel extends Panel {
 
   private getTrendEmoji(trend: string): string {
     switch (trend) {
-      case 'escalating': return '📈';
-      case 'de-escalating': return '📉';
-      default: return '➡️';
+      case 'escalating': { return '📈';
+      }
+      case 'de-escalating': { return '📉';
+      }
+      default: { return '➡️';
+      }
     }
   }
 
   private getTrendColor(trend: string): string {
     switch (trend) {
-      case 'escalating': return getCSSColor('--semantic-critical');
-      case 'de-escalating': return getCSSColor('--semantic-normal');
-      default: return getCSSColor('--text-dim');
+      case 'escalating': { return getCSSColor('--semantic-critical');
+      }
+      case 'de-escalating': { return getCSSColor('--semantic-normal');
+      }
+      default: { return getCSSColor('--text-dim');
+      }
     }
   }
 
 
   private getPriorityColor(priority: AlertPriority): string {
     switch (priority) {
-      case 'critical': return getCSSColor('--semantic-critical');
-      case 'high': return getCSSColor('--semantic-high');
-      case 'medium': return getCSSColor('--semantic-elevated');
-      case 'low': return getCSSColor('--semantic-normal');
+      case 'critical': { return getCSSColor('--semantic-critical');
+      }
+      case 'high': { return getCSSColor('--semantic-high');
+      }
+      case 'medium': { return getCSSColor('--semantic-elevated');
+      }
+      case 'low': { return getCSSColor('--semantic-normal');
+      }
     }
   }
 
   private getPriorityEmoji(priority: AlertPriority): string {
     switch (priority) {
-      case 'critical': return '🔴';
-      case 'high': return '🟠';
-      case 'medium': return '🟡';
-      case 'low': return '🟢';
+      case 'critical': { return '🔴';
+      }
+      case 'high': { return '🟠';
+      }
+      case 'medium': { return '🟡';
+      }
+      case 'low': { return '🟢';
+      }
     }
   }
 
   private getTypeEmoji(type: string): string {
     switch (type) {
-      case 'convergence': return '🎯';
-      case 'cii_spike': return '📊';
-      case 'cascade': return '🔗';
-      case 'composite': return '⚠️';
-      default: return '📍';
+      case 'convergence': { return '🎯';
+      }
+      case 'cii_spike': { return '📊';
+      }
+      case 'cascade': { return '🔗';
+      }
+      case 'composite': { return '⚠️';
+      }
+      default: { return '📍';
+      }
     }
   }
 
@@ -300,7 +319,7 @@ export class StrategicRiskPanel extends Panel {
           <div class="risk-trend-container">
             <span class="risk-trend-label">${t('components.strategicRisk.trend')}</span>
             <div class="risk-trend" style="color: ${this.getTrendColor(this.overview.trend)}">
-              ${this.getTrendEmoji(this.overview.trend)} ${this.overview.trend === 'escalating' ? t('components.strategicRisk.trends.escalating') : this.overview.trend === 'de-escalating' ? t('components.strategicRisk.trends.deEscalating') : t('components.strategicRisk.trends.stable')}
+              ${this.getTrendEmoji(this.overview.trend)} ${this.overview.trend === 'escalating' ? t('components.strategicRisk.trends.escalating') : (this.overview.trend === 'de-escalating' ? t('components.strategicRisk.trends.deEscalating') : t('components.strategicRisk.trends.stable'))}
             </div>
           </div>
         </div>
@@ -410,7 +429,7 @@ export class StrategicRiskPanel extends Panel {
         <div class="risk-section-title">${t('components.strategicRisk.recentAlerts', { count: String(this.alerts.length) })}</div>
         <div class="risk-alerts">
           ${displayAlerts.map(alert => {
-      const hasLocation = alert.location && alert.location.lat && alert.location.lon;
+      const hasLocation = alert.location?.lat && alert.location.lon;
       const clickableClass = hasLocation ? 'risk-alert-clickable' : '';
       const locationAttrs = hasLocation
         ? `data-lat="${alert.location!.lat}" data-lon="${alert.location!.lon}"`
@@ -437,7 +456,7 @@ export class StrategicRiskPanel extends Panel {
   private formatTime(date: Date): string {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
+    const minutes = Math.floor(diff / 60_000);
     const hours = Math.floor(minutes / 60);
 
     if (minutes < 1) return t('components.strategicRisk.time.justNow');
@@ -458,11 +477,7 @@ export class StrategicRiskPanel extends Panel {
     // Only show insufficient state if zero sources after 60s (true failure)
     let html: string;
     const uptime = performance.now();
-    if (this.freshnessSummary.overallStatus === 'insufficient' && uptime > 60_000) {
-      html = this.renderInsufficientData();
-    } else {
-      html = this.renderFullData();
-    }
+    html = this.freshnessSummary.overallStatus === 'insufficient' && uptime > 60_000 ? this.renderInsufficientData() : this.renderFullData();
 
     this.content.innerHTML = html;
     this.attachEventListeners();
@@ -503,8 +518,8 @@ export class StrategicRiskPanel extends Panel {
     const clickableRisks = this.content.querySelectorAll('.risk-item-clickable');
     clickableRisks.forEach(item => {
       item.addEventListener('click', () => {
-        const lat = parseFloat((item as HTMLElement).dataset.lat || '0');
-        const lon = parseFloat((item as HTMLElement).dataset.lon || '0');
+        const lat = Number.parseFloat((item as HTMLElement).dataset.lat || '0');
+        const lon = Number.parseFloat((item as HTMLElement).dataset.lon || '0');
         if (this.onLocationClick && !isNaN(lat) && !isNaN(lon)) {
           this.onLocationClick(lat, lon);
         }
@@ -515,8 +530,8 @@ export class StrategicRiskPanel extends Panel {
     const clickableAlerts = this.content.querySelectorAll('.risk-alert-clickable');
     clickableAlerts.forEach(alert => {
       alert.addEventListener('click', () => {
-        const lat = parseFloat((alert as HTMLElement).dataset.lat || '0');
-        const lon = parseFloat((alert as HTMLElement).dataset.lon || '0');
+        const lat = Number.parseFloat((alert as HTMLElement).dataset.lat || '0');
+        const lon = Number.parseFloat((alert as HTMLElement).dataset.lon || '0');
         if (this.onLocationClick && !isNaN(lat) && !isNaN(lon)) {
           this.onLocationClick(lat, lon);
         }

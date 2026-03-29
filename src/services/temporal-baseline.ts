@@ -52,19 +52,19 @@ function formatAnomalyMessage(
 }
 
 function getSeverity(zScore: number): 'medium' | 'high' | 'critical' {
-  if (zScore >= 3.0) return 'critical';
-  if (zScore >= 2.0) return 'high';
+  if (zScore >= 3) return 'critical';
+  if (zScore >= 2) return 'high';
   return 'medium';
 }
 
 // Fire-and-forget baseline update
 export async function reportMetrics(
-  updates: Array<{ type: TemporalEventType; region: string; count: number }>
+  updates: { type: TemporalEventType; region: string; count: number }[]
 ): Promise<void> {
   try {
     await client.recordBaselineSnapshot({ updates });
-  } catch (e) {
-    console.warn('[TemporalBaseline] Update failed:', e);
+  } catch (error) {
+    console.warn('[TemporalBaseline] Update failed:', error);
   }
 }
 
@@ -87,15 +87,15 @@ export async function checkAnomaly(
       severity: getSeverity(data.anomaly.zScore),
       message: formatAnomalyMessage(type, region, count, data.baseline?.mean ?? 0, data.anomaly.multiplier),
     };
-  } catch (e) {
-    console.warn('[TemporalBaseline] Check failed:', e);
+  } catch (error) {
+    console.warn('[TemporalBaseline] Check failed:', error);
     return null;
   }
 }
 
 // Batch: report metrics AND check for anomalies in one flow
 export async function updateAndCheck(
-  metrics: Array<{ type: TemporalEventType; region: string; count: number }>
+  metrics: { type: TemporalEventType; region: string; count: number }[]
 ): Promise<TemporalAnomaly[]> {
   // Fire-and-forget the update
   reportMetrics(metrics).catch(() => {});

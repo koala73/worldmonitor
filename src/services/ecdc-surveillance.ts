@@ -204,7 +204,7 @@ function parseFeedXml(text: string, feedUrl: string): EcdcAlert[] {
 
   const results: EcdcAlert[] = [];
 
-  Array.from(items).forEach((item) => {
+  [...items].forEach((item) => {
     const title = item.querySelector('title')?.textContent?.trim() ?? '';
     const description =
       item.querySelector('description')?.textContent?.trim() ??
@@ -212,11 +212,7 @@ function parseFeedXml(text: string, feedUrl: string): EcdcAlert[] {
       item.querySelector('content')?.textContent?.trim() ??
       '';
     let url = '';
-    if (isAtom) {
-      url = item.querySelector('link[href]')?.getAttribute('href') ?? '';
-    } else {
-      url = item.querySelector('link')?.textContent?.trim() ?? '';
-    }
+    url = isAtom ? item.querySelector('link[href]')?.getAttribute('href') ?? '' : item.querySelector('link')?.textContent?.trim() ?? '';
 
     const pubDateStr = isAtom
       ? (item.querySelector('updated')?.textContent ?? item.querySelector('published')?.textContent ?? '')
@@ -259,7 +255,7 @@ export async function fetchEcdcAlerts(): Promise<EcdcAlert[]> {
   const results = await Promise.allSettled(
     ECDC_FEEDS.map(async (feedUrl) => {
       const res = await fetch(rssProxyUrl(feedUrl), {
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(12_000),
         headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
       });
       if (!res.ok) return [] as EcdcAlert[];
@@ -303,15 +299,20 @@ export async function fetchEcdcAlerts(): Promise<EcdcAlert[]> {
 
 export function ecdcSeverityClass(severity: EcdcAlert['severity']): string {
   switch (severity) {
-    case 'critical':
+    case 'critical': {
       return 'eq-row eq-major';
-    case 'high':
+    }
+    case 'high': {
       return 'eq-row eq-strong';
-    case 'medium':
+    }
+    case 'medium': {
       return 'eq-row eq-moderate';
-    case 'low':
+    }
+    case 'low': {
       return 'eq-row';
-    default:
+    }
+    default: {
       return 'eq-row';
+    }
   }
 }

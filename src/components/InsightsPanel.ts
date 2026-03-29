@@ -26,7 +26,7 @@ export class InsightsPanel extends Panel {
   private lastClusters: ClusteredEvent[] = [];
   private aiFlowUnsubscribe: (() => void) | null = null;
   private updateGeneration = 0;
-  private static readonly BRIEF_COOLDOWN_MS = 120000; // 2 min cooldown (API has limits)
+  private static readonly BRIEF_COOLDOWN_MS = 120_000; // 2 min cooldown (API has limits)
   private static readonly BRIEF_CACHE_KEY = 'summary:world-brief';
 
   constructor() {
@@ -70,8 +70,7 @@ export class InsightsPanel extends Panel {
     }
 
     const lines = significant.map((p) => {
-      const parts: string[] = [];
-      parts.push(`${p.theaterName}: ${p.totalAircraft} aircraft`);
+      const parts: string[] = [ `${p.theaterName}: ${p.totalAircraft} aircraft`];
       parts.push(`(${p.postureLevel.toUpperCase()})`);
       if (p.strikeCapable) parts.push('STRIKE CAPABLE');
       parts.push(`- ${p.summary}`);
@@ -196,7 +195,7 @@ export class InsightsPanel extends Panel {
 
     // Recency bonus (decay over 12 hours)
     const ageMs = Date.now() - cluster.firstSeen.getTime();
-    const ageHours = ageMs / 3600000;
+    const ageHours = ageMs / 3_600_000;
     const recencyMultiplier = Math.max(0.5, 1 - (ageHours / 12));
     score *= recencyMultiplier;
 
@@ -294,8 +293,8 @@ export class InsightsPanel extends Panel {
       // This analyzes ALL clusters, not just the keyword-filtered ones
       const parallelPromise = parallelAnalysis.analyzeHeadlines(clusters).then(report => {
         this.lastMissedStories = report.missedByKeywords;
-      }).catch(err => {
-        console.warn('[ParallelAnalysis] Error:', err);
+      }).catch(error => {
+        console.warn('[ParallelAnalysis] Error:', error);
       });
 
       // Get geographic signal correlations (geopolitical variant only)
@@ -353,7 +352,7 @@ export class InsightsPanel extends Panel {
 
       // Step 2: Analyze sentiment (browser-based, fast)
       this.setProgress(2, totalSteps, t('components.insights.analyzingSentiment'));
-      let sentiments: Array<{ label: string; score: number }> | null = null;
+      let sentiments: { label: string; score: number }[] | null = null;
 
       if (mlWorker.isAvailable) {
         sentiments = await mlWorker.classifySentiment(titles).catch(() => null);
@@ -413,7 +412,7 @@ export class InsightsPanel extends Panel {
 
   private renderInsights(
     clusters: ClusteredEvent[],
-    sentiments: Array<{ label: string; score: number }> | null,
+    sentiments: { label: string; score: number }[] | null,
     worldBrief: string | null
   ): void {
     const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief) : '';
@@ -474,7 +473,7 @@ export class InsightsPanel extends Panel {
         if (items) html += `<div class="insights-brief-developments">${items}</div>`;
       } else if (trimmed.startsWith('THREAT ASSESSMENT')) {
         const body = trimmed.replace(/^THREAT ASSESSMENT:?\s*/,'').trim();
-        const levelMatch = body.match(/^(NORMAL|ELEVATED|HIGH|CRITICAL)/i);
+        const levelMatch = /^(NORMAL|ELEVATED|HIGH|CRITICAL)/i.exec(body);
         const level = levelMatch?.[1]?.toUpperCase() ?? '';
         const detail = body.replace(/^(NORMAL|ELEVATED|HIGH|CRITICAL)[\s:—-]*/i,'').trim();
         const levelClass = level === 'CRITICAL' ? 'threat-critical' : level === 'HIGH' ? 'threat-high' : level === 'ELEVATED' ? 'threat-elevated' : 'threat-normal';
@@ -490,12 +489,12 @@ export class InsightsPanel extends Panel {
 
   private renderBreakingStories(
     clusters: ClusteredEvent[],
-    sentiments: Array<{ label: string; score: number }> | null
+    sentiments: { label: string; score: number }[] | null
   ): string {
     return clusters.map((cluster, i) => {
       const sentiment = sentiments?.[i];
       const sentimentClass = sentiment?.label === 'negative' ? 'negative' :
-        sentiment?.label === 'positive' ? 'positive' : 'neutral';
+        (sentiment?.label === 'positive' ? 'positive' : 'neutral');
 
       const badges: string[] = [];
 
@@ -526,7 +525,7 @@ export class InsightsPanel extends Panel {
     }).join('');
   }
 
-  private renderSentimentOverview(sentiments: Array<{ label: string; score: number }> | null): string {
+  private renderSentimentOverview(sentiments: { label: string; score: number }[] | null): string {
     if (!sentiments || sentiments.length === 0) {
       return '';
     }

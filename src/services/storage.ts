@@ -22,7 +22,7 @@ export async function initDB(): Promise<IDBDatabase> {
 
     request.onsuccess = () => {
       db = request.result;
-      db.onclose = () => { db = null; };
+      db.addEventListener('close', () => { db = null; });
       resolve(db);
     };
 
@@ -62,15 +62,15 @@ async function withTransaction<T>(
           tx.onerror = () => reject(tx.error);
         }
       });
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'InvalidStateError') {
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'InvalidStateError') {
         db = null;
         if (attempt === 0) continue;
         console.warn('[Storage] IndexedDB connection closing after retry');
         if (mode === 'readwrite') throw new DOMException('IndexedDB write failed — connection closing', 'InvalidStateError');
         return undefined as T;
       }
-      throw err;
+      throw error;
     }
   }
   throw new Error('IndexedDB transaction failed after retry');
@@ -89,16 +89,7 @@ export async function updateBaseline(key: string, currentCount: number): Promise
 
   let entry = await getBaseline(key);
 
-  if (!entry) {
-    entry = {
-      key,
-      counts: [currentCount],
-      timestamps: [now],
-      avg7d: currentCount,
-      avg30d: currentCount,
-      lastUpdated: now,
-    };
-  } else {
+  if (entry) {
     entry.counts.push(currentCount);
     entry.timestamps.push(now);
 
@@ -122,6 +113,15 @@ export async function updateBaseline(key: string, currentCount: number): Promise
       : currentCount;
 
     entry.lastUpdated = now;
+  } else {
+    entry = {
+      key,
+      counts: [currentCount],
+      timestamps: [now],
+      avg7d: currentCount,
+      avg30d: currentCount,
+      lastUpdated: now,
+    };
   }
 
   await withTransaction<void>(
@@ -171,7 +171,7 @@ export interface DashboardSnapshot {
   timestamp: number;
   events: unknown[];
   marketPrices: Record<string, number>;
-  predictions: Array<{ title: string; yesPrice: number }>;
+  predictions: { title: string; yesPrice: number }[];
   hotspotLevels: Record<string, string>;
 }
 

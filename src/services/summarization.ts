@@ -154,7 +154,7 @@ export async function generateSummary(
   headlines: string[],
   onProgress?: ProgressCallback,
   geoContext?: string,
-  lang: string = 'en',
+  lang = 'en',
   options?: SummarizeOptions,
 ): Promise<SummarizationResult | null> {
   if (!headlines || headlines.length < 2) {
@@ -284,8 +284,8 @@ export async function translateText(
       if (resp.fallback || resp.skipped) continue;
       const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';
       if (summary) return summary;
-    } catch (e) {
-      console.warn(`${providerDef.label} translation failed`, e);
+    } catch (error) {
+      console.warn(`${providerDef.label} translation failed`, error);
     }
   }
 

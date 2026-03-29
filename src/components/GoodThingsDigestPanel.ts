@@ -45,8 +45,8 @@ export class GoodThingsDigestPanel extends Panel {
     list.className = 'digest-list';
     this.cardElements = [];
 
-    for (let i = 0; i < top5.length; i++) {
-      const item = top5[i]!;
+    for (const [i, element] of top5.entries()) {
+      const item = element!;
       const card = document.createElement('div');
       card.className = 'digest-card';
       card.innerHTML = `
@@ -59,10 +59,10 @@ export class GoodThingsDigestPanel extends Panel {
           <p class="digest-card-summary digest-card-summary--loading">Summarizing\u2026</p>
         </div>
       `;
-      list.appendChild(card);
+      list.append(card);
       this.cardElements.push(card);
     }
-    this.content.appendChild(list);
+    this.content.append(list);
 
     // Summarize in parallel with progressive updates
     const signal = this.summaryAbort.signal;

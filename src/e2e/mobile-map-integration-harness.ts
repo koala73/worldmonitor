@@ -2,7 +2,7 @@ import '../styles/main.css';
 import { MapComponent } from '../components/Map';
 import { initI18n } from '../services/i18n';
 
-type MobileMapIntegrationHarness = {
+interface MobileMapIntegrationHarness {
   ready: boolean;
   getPopupRect: () => {
     left: number;
@@ -14,7 +14,7 @@ type MobileMapIntegrationHarness = {
     viewportWidth: number;
     viewportHeight: number;
   } | null;
-};
+}
 
 declare global {
   interface Window {
@@ -70,12 +70,12 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url =
     typeof input === 'string'
       ? input
-      : input instanceof URL
+      : (input instanceof URL
       ? input.toString()
-      : input.url;
+      : input.url);
 
   if (url.includes('world-atlas@2/countries-50m.json')) {
-    return new Response(JSON.stringify(MINIMAL_WORLD_TOPOLOGY), {
+    return Response.json(MINIMAL_WORLD_TOPOLOGY, {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -157,7 +157,7 @@ const ensureHotspotsRendered = (): void => {
       worldData: unknown;
       countryFeatures: unknown;
       baseRendered: boolean;
-      hotspots: Array<{
+      hotspots: {
         id: string;
         name: string;
         lat: number;
@@ -166,7 +166,7 @@ const ensureHotspotsRendered = (): void => {
         level: 'low' | 'elevated' | 'high';
         description: string;
         status: string;
-      }>;
+      }[];
       state: { layers: { hotspots: boolean } };
     };
     mapInternals.worldData = MINIMAL_WORLD_TOPOLOGY;

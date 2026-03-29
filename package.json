@@ -86,10 +86,15 @@
     "@types/topojson-specification": "^1.0.5",
     "cross-env": "^10.1.0",
     "esbuild": "^0.27.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-sonarjs": "^4.0.2",
+    "eslint-plugin-unicorn": "^63.0.0",
     "h3-js": "^4.4.0",
+    "lint-staged": "^16.4.0",
     "markdownlint-cli2": "^0.21.0",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.2",
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0"
   },
@@ -134,5 +139,8 @@
   },
   "bugs": {
     "url": "https://github.com/bradleybond512/worldmonitor-macos/issues"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs}": "eslint --fix --quiet"
   }
 }

@@ -126,14 +126,14 @@ export default async function handler(req) {
   }
 
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+    return Response.json({ error: 'Origin not allowed' }, {
       status: 403,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
   }
 
   if (req.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+    return Response.json({ error: 'Method not allowed' }, {
       status: 405,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -141,7 +141,7 @@ export default async function handler(req) {
 
   try {
     const data = await fetchS2UndergroundData();
-    return new Response(JSON.stringify(data), {
+    return Response.json(data, {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
@@ -149,8 +149,8 @@ export default async function handler(req) {
         ...corsHeaders,
       },
     });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message || 'S2 Underground fetch failed' }), {
+  } catch (error) {
+    return Response.json({ error: error.message || 'S2 Underground fetch failed' }, {
       status: 502,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });

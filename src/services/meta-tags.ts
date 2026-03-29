@@ -79,7 +79,7 @@ function generateDescription(
   }
   
   if (trend) {
-    const trendText = trend === 'rising' ? 'trending upward' : trend === 'falling' ? 'trending downward' : 'stable';
+    const trendText = trend === 'rising' ? 'trending upward' : (trend === 'falling' ? 'trending downward' : 'stable');
     parts.push(`Risk is ${trendText}`);
   }
   
@@ -110,7 +110,7 @@ function setMetaTag(property: string, content: string): void {
     meta.setAttribute('name', property);
   }
   meta.setAttribute('content', content);
-  document.head.appendChild(meta);
+  document.head.append(meta);
 }
 
 function setCanonicalLink(href: string): void {
@@ -118,7 +118,7 @@ function setCanonicalLink(href: string): void {
   if (!link) {
     link = document.createElement('link');
     link.setAttribute('rel', 'canonical');
-    document.head.appendChild(link);
+    document.head.append(link);
   }
   link.setAttribute('href', href);
 }

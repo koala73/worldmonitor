@@ -7,7 +7,7 @@ import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 
 // Re-export the proto Earthquake type as the domain's public type
-export type { Earthquake };
+
 
 const client = new SeismologyServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListEarthquakesResponse>({ name: 'Seismology', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
@@ -23,3 +23,5 @@ export async function fetchEarthquakes(): Promise<Earthquake[]> {
   }, emptyFallback);
   return response.earthquakes;
 }
+
+export {type Earthquake} from '@/generated/client/worldmonitor/seismology/v1/service_client';

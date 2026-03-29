@@ -64,7 +64,7 @@ export async function fetchIodaOutages(): Promise<IodaOutage[]> {
     const url = `${IODA_API}?from=${from}&until=${until}&limit=50&page=1`;
 
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return cache?.outages ?? [];
@@ -80,7 +80,7 @@ export async function fetchIodaOutages(): Promise<IodaOutage[]> {
         const endTime = a.until ? new Date(a.until * 1000) : null;
         const isOngoing = !endTime || endTime.getTime() > Date.now();
         const entityType = (a.entity?.type === 'country' ? 'country'
-          : a.entity?.type === 'asn' ? 'asn' : 'region') as IodaOutage['entityType'];
+          : (a.entity?.type === 'asn' ? 'asn' : 'region')) as IodaOutage['entityType'];
 
         return {
           id: `ioda-${a.entity?.code ?? i}-${a.from}`,

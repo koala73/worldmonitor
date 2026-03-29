@@ -32,7 +32,7 @@ export class TropicalCyclonesPanel extends Panel {
     const rows = this.storms.map(s => {
       const rowClass = tcSeverityClass(s.severity);
       const catLabel = tcCategoryLabel(s.category);
-      const windCell = s.windKts !== null ? `${s.windKts} kt` : '—';
+      const windCell = s.windKts === null ? '—' : `${s.windKts} kt`;
       const movCell = s.movement ? escapeHtml(s.movement) : '—';
       const basinLabel = escapeHtml(basinName(s.basin));
       return `<tr class="${rowClass}">

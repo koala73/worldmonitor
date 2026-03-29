@@ -36,10 +36,10 @@ function isPrivateHostname(hostname: string): boolean {
       const hi = Number.parseInt(v4MappedHex[1] ?? '0', 16);
       const lo = Number.parseInt(v4MappedHex[2] ?? '0', 16);
       ipCandidate = [
-        (hi >> 8) & 0xff,
-        hi & 0xff,
-        (lo >> 8) & 0xff,
-        lo & 0xff,
+        (hi >> 8) & 0xFF,
+        hi & 0xFF,
+        (lo >> 8) & 0xFF,
+        lo & 0xFF,
       ].join('.');
     }
   }
@@ -85,7 +85,7 @@ export function sanitizeUrl(url: string): string {
   }
 
   try {
-    const base = typeof window !== 'undefined' ? window.location.origin : 'https://example.com';
+    const base = typeof window === 'undefined' ? 'https://example.com' : window.location.origin;
     const resolved = new URL(trimmed, base);
     if (!isAllowedProtocol(resolved.protocol)) {
       return '';

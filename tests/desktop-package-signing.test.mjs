@@ -50,7 +50,7 @@ test('macOS desktop packaging signs and verifies the app bundle before creating 
   );
   assert.match(
     desktopPackageScript,
-    /const bundles = targetOs === 'macos' \? sign \? 'app,dmg' : 'app'/,
+    /const bundles = targetOs === 'macos'\s*\?\s*\(sign \? 'app,dmg' : 'app'\)/,
     'macOS packaging should preserve Tauri dmg bundling when signing is requested',
   );
   assert.match(

@@ -12,8 +12,8 @@ Sentry.init({
   dsn: sentryDsn || undefined,
   release: `worldmonitor@${__APP_VERSION__}`,
   environment: location.hostname === 'worldmonitor.app' ? 'production'
-    : location.hostname.includes('vercel.app') ? 'preview'
-    : 'development',
+    : (location.hostname.includes('vercel.app') ? 'preview'
+    : 'development'),
   // eslint-disable-next-line no-restricted-syntax -- intentional: Sentry suppression for local web dev (localhost); Tauri runtime is covered by __TAURI_INTERNALS__ check
   enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
   sendDefaultPii: false,
@@ -136,20 +136,18 @@ Sentry.init({
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
     const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
-    if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
-      if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''))) return null;
-    }
+    if (/this\.style\._layers|reading '_layers'|this\.light is null|can't access property "(id|type|setFilter)", \w+ is (null|undefined)|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg) && frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress any TypeError that happens entirely within maplibre or deck.gl internals
-    if (/^TypeError:/.test(msg) && frames.length > 0) {
+    if (msg.startsWith('TypeError:') && frames.length > 0) {
       const nonSentryFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && !/\/sentry-[A-Za-z0-9-]+\.js/.test(f.filename));
       if (nonSentryFrames.length > 0 && nonSentryFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress errors originating entirely from blob: URLs (browser extensions)
-    if (frames.length > 0 && frames.every(f => /^blob:/.test(f.filename ?? ''))) return null;
+    if (frames.length > 0 && frames.every(f => (f.filename ?? '').startsWith('blob:'))) return null;
     // Suppress YouTube IFrame widget API internal errors
-    if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
+    if (frames.some(f => (f.filename ?? '').includes('www-widgetapi.js'))) return null;
     // Suppress Sentry SDK internal crashes (logs.js)
-    if (frames.some(f => /\/ingest\/static\/logs\.js/.test(f.filename ?? ''))) return null;
+    if (frames.some(f => (f.filename ?? '').includes('/ingest/static/logs.js'))) return null;
     return event;
   },
 });
@@ -174,14 +172,14 @@ const DESKTOP_BOOTSTRAP_TIMEOUT_MS = 2200;
 const DESKTOP_BOOTSTRAP_POLL_MS = 50;
 const FORCE_DESKTOP_GATE = import.meta.env.VITE_DESKTOP_RUNTIME === '1';
 
-type DesktopRuntimeSnapshot = {
+interface DesktopRuntimeSnapshot {
   detected: boolean;
   forcedDesktopBuild: boolean;
   hasTauriGlobals: boolean;
   userAgent: string;
   protocol: string;
   host: string;
-};
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -241,7 +239,7 @@ function showDesktopRuntimeDebugNotice(snapshot: DesktopRuntimeSnapshot): void {
     font: '600 13px/1.45 "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif',
     letterSpacing: '0.01em',
   } as CSSStyleDeclaration);
-  document.body.appendChild(banner);
+  document.body.append(banner);
 }
 
 // Initialize Vercel Analytics

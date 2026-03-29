@@ -20,7 +20,7 @@ export interface AirQualityReading {
 export type AqiLevel = 'good' | 'moderate' | 'sensitive' | 'unhealthy' | 'very_unhealthy' | 'hazardous';
 
 // Major world cities for global air quality snapshot
-const MONITORED_CITIES: Array<{ city: string; country: string; lat: number; lon: number }> = [
+const MONITORED_CITIES: { city: string; country: string; lat: number; lon: number }[] = [
   { city: 'New York', country: 'US', lat: 40.71, lon: -74.01 },
   { city: 'Los Angeles', country: 'US', lat: 34.05, lon: -118.24 },
   { city: 'London', country: 'UK', lat: 51.51, lon: -0.13 },
@@ -43,8 +43,8 @@ const MONITORED_CITIES: Array<{ city: string; country: string; lat: number; lon:
 
 function aqiFromPm25(pm25: number): number {
   // EPA breakpoints
-  const bp: Array<[number, number, number, number]> = [
-    [0, 12.0, 0, 50],
+  const bp: [number, number, number, number][] = [
+    [0, 12, 0, 50],
     [12.1, 35.4, 51, 100],
     [35.5, 55.4, 101, 150],
     [55.5, 150.4, 151, 200],
@@ -88,7 +88,7 @@ async function fetchCityAQ(city: typeof MONITORED_CITIES[0]): Promise<AirQuality
     };
     const c = json.current ?? {};
     const pm25 = c.pm2_5 ?? null;
-    const rawAqi = c.us_aqi ?? (pm25 !== null ? aqiFromPm25(pm25) : null);
+    const rawAqi = c.us_aqi ?? (pm25 === null ? null : aqiFromPm25(pm25));
     if (rawAqi === null) return null;
     return {
       city: city.city,

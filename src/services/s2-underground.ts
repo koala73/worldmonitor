@@ -26,14 +26,14 @@ export async function fetchS2Underground(): Promise<S2UndergroundEvent[]> {
 
     const events: S2UndergroundEvent[] = (json.events as Record<string, unknown>[])
       .map((e) => ({
-        lon: Number(e['lon'] ?? 0),
-        lat: Number(e['lat'] ?? 0),
-        layerTitle: String(e['layerTitle'] ?? ''),
-        name: String(e['name'] ?? ''),
-        description: String(e['description'] ?? ''),
-        eventType: String(e['eventType'] ?? ''),
-        date: String(e['date'] ?? ''),
-        popupInfo: String(e['popupInfo'] ?? ''),
+        lon: Number(e.lon ?? 0),
+        lat: Number(e.lat ?? 0),
+        layerTitle: String(e.layerTitle ?? ''),
+        name: String(e.name ?? ''),
+        description: String(e.description ?? ''),
+        eventType: String(e.eventType ?? ''),
+        date: String(e.date ?? ''),
+        popupInfo: String(e.popupInfo ?? ''),
       }))
       .filter((e) => !isNaN(e.lat) && !isNaN(e.lon) && (e.lat !== 0 || e.lon !== 0));
 

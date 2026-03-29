@@ -18,7 +18,7 @@ interface MacroSignalData {
     technicalTrend: { status: string; btcPrice: number | null; sma50: number | null; sma200: number | null; vwap30d: number | null; mayerMultiple: number | null; sparkline: number[] };
     hashRate: { status: string; change30d: number | null };
     miningCost: { status: string };
-    fearGreed: { status: string; value: number | null; history: Array<{ value: number; date: string }> };
+    fearGreed: { status: string; value: number | null; history: { value: number; date: string }[] };
   };
   meta: { qqqSparkline: number[] };
   unavailable?: boolean;
@@ -163,14 +163,14 @@ export class MacroSignalsPanel extends Panel {
           continue;
         }
         break;
-      } catch (err) {
-        if (this.isAbortError(err)) return false;
+      } catch (error) {
+        if (this.isAbortError(error)) return false;
         if (attempt < 2) {
           this.showRetrying();
           await new Promise(r => setTimeout(r, 20_000));
           continue;
         }
-        this.error = err instanceof Error ? err.message : 'Failed to fetch';
+        this.error = error instanceof Error ? error.message : 'Failed to fetch';
       }
     }
     this.loading = false;
@@ -201,13 +201,13 @@ export class MacroSignalsPanel extends Panel {
     const d = this.data;
     const s = d.signals;
 
-    const verdictClass = d.verdict === 'BUY' ? 'verdict-buy' : d.verdict === 'CASH' ? 'verdict-cash' : 'verdict-unknown';
+    const verdictClass = d.verdict === 'BUY' ? 'verdict-buy' : (d.verdict === 'CASH' ? 'verdict-cash' : 'verdict-unknown');
 
     const html = `
       <div class="macro-signals-container">
         <div class="macro-verdict ${verdictClass}">
           <span class="verdict-label">${t('components.macroSignals.overall')}</span>
-          <span class="verdict-value">${d.verdict === 'BUY' ? t('components.macroSignals.verdict.buy') : d.verdict === 'CASH' ? t('components.macroSignals.verdict.cash') : escapeHtml(d.verdict)}</span>
+          <span class="verdict-value">${d.verdict === 'BUY' ? t('components.macroSignals.verdict.buy') : (d.verdict === 'CASH' ? t('components.macroSignals.verdict.cash') : escapeHtml(d.verdict))}</span>
           <span class="verdict-detail">${t('components.macroSignals.bullish', { count: String(d.bullishCount), total: String(d.totalCount) })}</span>
         </div>
         <div class="signals-grid">

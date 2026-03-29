@@ -55,7 +55,7 @@ async function fetchProductList(type: string, limit: number): Promise<NWSProduct
     const url = `${NWS_PRODUCTS_BASE}?type=${type}&limit=${limit}`;
     const res = await fetch(url, {
       headers: { Accept: 'application/ld+json' },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return [];
     const json: NWSProductListResponse = await res.json();
@@ -69,7 +69,7 @@ async function fetchProductText(id: string): Promise<NWSProductText | null> {
   try {
     const res = await fetch(id, {
       headers: { Accept: 'application/ld+json' },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) return null;
     return (await res.json()) as NWSProductText;
@@ -125,14 +125,19 @@ function detectOutlookType(
   if (lower.includes('drought')) return 'drought-outlook';
 
   switch (code) {
-    case 'RCM': return 'monthly-discussion';
-    case 'HLS': return 'seasonal-hazard';
-    case 'REC': return 'climate-assessment';
-    case 'CCD': return 'climate-assessment';
-    default:
+    case 'RCM': { return 'monthly-discussion';
+    }
+    case 'HLS': { return 'seasonal-hazard';
+    }
+    case 'REC': { return 'climate-assessment';
+    }
+    case 'CCD': { return 'climate-assessment';
+    }
+    default: {
       if (/temperature/i.test(productText)) return 'temperature-outlook';
       if (/precipitation/i.test(productText)) return 'precipitation-outlook';
       return 'monthly-discussion';
+    }
   }
 }
 
@@ -170,10 +175,9 @@ async function processProductList(
   const now = Date.now();
   const cutoff = now - 30 * 24 * 60 * 60 * 1000;
 
-  for (let i = 0; i < toFetch.length; i++) {
-    const item = toFetch[i];
+  for (const [i, item] of toFetch.entries()) {
     const textResult = textResults[i];
-    if (!item || !textResult || textResult.status !== 'fulfilled' || !textResult.value) continue;
+    if (!item || textResult?.status !== 'fulfilled' || !textResult.value) continue;
 
     const product = textResult.value;
     const issuanceTime = safeDate(item.issuanceTime ?? product.issuanceTime);
@@ -254,9 +258,13 @@ export async function fetchCpcOutlooks(): Promise<ClimateOutlook[]> {
 
 export function cpcSeverityClass(severity: ClimateOutlook['severity']): string {
   switch (severity) {
-    case 'critical': return 'eq-row eq-major';
-    case 'high': return 'eq-row eq-strong';
-    case 'medium': return 'eq-row eq-moderate';
-    case 'low': return 'eq-row';
+    case 'critical': { return 'eq-row eq-major';
+    }
+    case 'high': { return 'eq-row eq-strong';
+    }
+    case 'medium': { return 'eq-row eq-moderate';
+    }
+    case 'low': { return 'eq-row';
+    }
   }
 }

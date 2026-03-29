@@ -207,9 +207,9 @@ class FocalPointDetector {
     const conflictScore = signals ? this.calculateConflictScore(signals) : 0;
     const rawScore = newsScore + signalScore + correlationBonus + conflictScore;
 
-    const signalTypes = signals ? Array.from(signals.signalTypes) : [];
+    const signalTypes = signals ? [...signals.signalTypes] : [];
     const urgency = this.determineUrgency(rawScore, signalTypes.length);
-    const urgencyMultiplier = urgency === 'critical' ? 1.3 : urgency === 'elevated' ? 1.15 : 1.0;
+    const urgencyMultiplier = urgency === 'critical' ? 1.3 : (urgency === 'elevated' ? 1.15 : 1);
     const focalScore = Math.min(100, rawScore * urgencyMultiplier);
 
     const signalDescriptions = signals
@@ -341,7 +341,7 @@ class FocalPointDetector {
     }
 
     if (signals && signals.signalTypes.size >= 2) {
-      const types = Array.from(signals.signalTypes).map(t => SIGNAL_TYPE_LABELS[t]);
+      const types = [...signals.signalTypes].map(t => SIGNAL_TYPE_LABELS[t]);
       evidence.push(`Multiple signal convergence: ${types.join(' + ')}`);
     }
 
@@ -367,8 +367,7 @@ class FocalPointDetector {
     const correlatedFPs = focalPoints.filter(fp => fp.newsMentions > 0 && fp.signalCount > 0).slice(0, 5);
 
     if (critical.length > 0) {
-      lines.push('');
-      lines.push('CRITICAL FOCAL POINTS:');
+      lines.push('', 'CRITICAL FOCAL POINTS:');
       for (const fp of critical) {
         const icons = fp.signalTypes.map(t => SIGNAL_TYPE_ICONS[t as SignalType]).join('');
         lines.push(`- ${fp.displayName} [CRITICAL] ${icons}: ${fp.narrative}`);
@@ -379,16 +378,14 @@ class FocalPointDetector {
     }
 
     if (elevated.length > 0) {
-      lines.push('');
-      lines.push('ELEVATED WATCH:');
+      lines.push('', 'ELEVATED WATCH:');
       for (const fp of elevated) {
         lines.push(`- ${fp.displayName}: ${fp.newsMentions} news, ${fp.signalCount} signals`);
       }
     }
 
     if (correlatedFPs.length > 0) {
-      lines.push('');
-      lines.push('NEWS-SIGNAL CORRELATIONS:');
+      lines.push('', 'NEWS-SIGNAL CORRELATIONS:');
       for (const fp of correlatedFPs) {
         const signalDesc = fp.signalTypes.map(t => SIGNAL_TYPE_LABELS[t as SignalType]).join(', ');
         lines.push(`- ${fp.displayName}: news coverage + ${signalDesc} detected`);

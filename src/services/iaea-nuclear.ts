@@ -60,16 +60,16 @@ function scoreSeverity(title: string, description: string): IaeaEvent['severity'
 
 function extractCountry(title: string, description: string): string {
   const text = title + ' ' + description;
-  const parenMatch = text.match(/\(([A-Z][a-zA-Z\s]+)\)/);
+  const parenMatch = /\(([A-Z][a-zA-Z\s]+)\)/.exec(text);
   if (parenMatch?.[1]) return parenMatch[1].trim();
-  const inMatch = text.match(/\bin\s+([A-Z][a-zA-Z\s]+?)(?:\s*[-–,.]|\s*$)/);
+  const inMatch = /\bin\s+([A-Z][a-zA-Z\s]+?)(?:\s*[-–,.]|\s*$)/.exec(text);
   if (inMatch?.[1]) return inMatch[1].trim();
   return 'Unknown';
 }
 
 async function fetchFeed(feedUrl: string): Promise<IaeaEvent[]> {
   try {
-    const res = await fetch(rssProxyUrl(feedUrl), { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(rssProxyUrl(feedUrl), { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
     const text = await res.text();
     const parser = new DOMParser();
@@ -79,7 +79,7 @@ async function fetchFeed(feedUrl: string): Promise<IaeaEvent[]> {
     const items = doc.querySelectorAll('item');
     const events: IaeaEvent[] = [];
 
-    for (const item of Array.from(items)) {
+    for (const item of items) {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const description = (item.querySelector('description')?.textContent ?? '').replace(/<[^>]+>/g, '').trim();
       const link = item.querySelector('link')?.textContent?.trim() ?? '';
@@ -130,7 +130,7 @@ export async function fetchIaeaEvents(): Promise<IaeaEvent[]> {
 
   // Keep last 30 days
   const recent = deduped
-    .filter(e => Date.now() - e.pubDate.getTime() < 30 * 24 * 3600_000)
+    .filter(e => Date.now() - e.pubDate.getTime() < 30 * 24 * 3_600_000)
     .slice(0, 40);
 
   cache = { events: recent, fetchedAt: Date.now() };

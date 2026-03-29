@@ -104,7 +104,7 @@ export class PizzIntIndicator {
 
     replaceChildren(listEl,
       ...this.tensions.map(tp => {
-        const trendIcon = tp.trend === 'rising' ? '↑' : tp.trend === 'falling' ? '↓' : '→';
+        const trendIcon = tp.trend === 'rising' ? '↑' : (tp.trend === 'falling' ? '↓' : '→');
         const changeText = tp.changePercent > 0 ? `+${tp.changePercent}%` : `${tp.changePercent}%`;
         return h('div', { className: 'pizzint-tension-row' },
           h('span', { className: 'pizzint-tension-label' }, tp.label),
@@ -137,9 +137,9 @@ export class PizzIntIndicator {
 
   private formatTimeAgo(date: Date): string {
     const diff = Date.now() - date.getTime();
-    if (diff < 60000) return t('components.pizzint.justNow');
-    if (diff < 3600000) return t('components.pizzint.minutesAgo', { m: String(Math.floor(diff / 60000)) });
-    return t('components.pizzint.hoursAgo', { h: String(Math.floor(diff / 3600000)) });
+    if (diff < 60_000) return t('components.pizzint.justNow');
+    if (diff < 3_600_000) return t('components.pizzint.minutesAgo', { m: String(Math.floor(diff / 60_000)) });
+    return t('components.pizzint.hoursAgo', { h: String(Math.floor(diff / 3_600_000)) });
   }
 
   private getDefconLabel(level: number): string {

@@ -72,7 +72,7 @@ function convertGDACSToNaturalEvent(gdacs: GDACSEvent): NaturalEvent {
   const category = GDACS_TO_CATEGORY[gdacs.eventType] || 'manmade';
   return {
     id: gdacs.id,
-    title: `${gdacs.alertLevel === 'Red' ? '🔴 ' : gdacs.alertLevel === 'Orange' ? '🟠 ' : ''}${gdacs.name}`,
+    title: `${gdacs.alertLevel === 'Red' ? '🔴 ' : (gdacs.alertLevel === 'Orange' ? '🟠 ' : '')}${gdacs.name}`,
     description: `${gdacs.description}${gdacs.severity ? ` - ${gdacs.severity}` : ''}`,
     category,
     categoryTitle: gdacs.description,
@@ -136,7 +136,7 @@ async function fetchEonetEvents(days: number): Promise<NaturalEvent[]> {
 
       // Get most recent geometry point
       const latestGeo = event.geometry[event.geometry.length - 1];
-      if (!latestGeo || latestGeo.type !== 'Point') continue;
+      if (latestGeo?.type !== 'Point') continue;
 
       const eventDate = new Date(latestGeo.date);
       const [lon, lat] = latestGeo.coordinates;

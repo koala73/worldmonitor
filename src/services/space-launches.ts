@@ -44,12 +44,18 @@ function isAdversaryCountry(code: string, name: string): boolean {
 
 function mapStatus(abbrev: string): LaunchStatus {
   switch (abbrev) {
-    case 'Go':      return 'go';
-    case 'TBD':     return 'tbd';
-    case 'Success': return 'success';
-    case 'Failure': return 'failure';
-    case 'Hold':    return 'hold';
-    default:        return 'other';
+    case 'Go': {      return 'go';
+    }
+    case 'TBD': {     return 'tbd';
+    }
+    case 'Success': { return 'success';
+    }
+    case 'Failure': { return 'failure';
+    }
+    case 'Hold': {    return 'hold';
+    }
+    default: {        return 'other';
+    }
   }
 }
 
@@ -212,7 +218,7 @@ export async function fetchSpaceLaunches(): Promise<SpaceLaunch[]> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) return _cache.launches;
 
   try {
-    const res = await fetch(API_URL, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(API_URL, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) {
       _cache = { launches: [], ts: Date.now() };
       return [];

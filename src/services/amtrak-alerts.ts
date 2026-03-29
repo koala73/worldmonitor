@@ -169,7 +169,7 @@ function extractTrainName(text: string): string | null {
 }
 
 function extractTrainNumber(text: string): string | null {
-  const match = text.match(/\b(?:train\s*(?:#|number|no\.?\s*)?|#\s*)(\d{1,4})\b/i);
+  const match = /\b(?:train\s*(?:#|number|no\.?\s*)?|#\s*)(\d{1,4})\b/i.exec(text);
   return match ? (match[1] ?? null) : null;
 }
 
@@ -201,8 +201,8 @@ function detectAlertType(
 }
 
 function parseDelayHours(text: string): number | null {
-  const match = text.match(/(\d+)\s*(?:hour|hr)s?\s*(?:delay|late)?/i);
-  return match ? parseInt(match[1] ?? '0', 10) : null;
+  const match = /(\d+)\s*(?:hour|hr)s?\s*(?:delay|late)?/i.exec(text);
+  return match ? Number.parseInt(match[1] ?? '0', 10) : null;
 }
 
 function computeSeverity(
@@ -229,7 +229,7 @@ function parseAtomEntries(doc: Document): AmtrakAlert[] {
   const entries = doc.querySelectorAll('entry');
   if (entries.length === 0) return [];
 
-  return Array.from(entries).map((entry) => {
+  return [...entries].map((entry) => {
     const title = entry.querySelector('title')?.textContent?.trim() ?? '';
     const summary = (
       entry.querySelector('summary')?.textContent ??
@@ -268,7 +268,7 @@ function parseRssItems(doc: Document): AmtrakAlert[] {
   const items = doc.querySelectorAll('item');
   if (items.length === 0) return [];
 
-  return Array.from(items).map((item) => {
+  return [...items].map((item) => {
     const title = item.querySelector('title')?.textContent?.trim() ?? '';
     const description = (item.querySelector('description')?.textContent ?? '')
       .replace(/<[^>]+>/g, '')
@@ -302,7 +302,7 @@ function parseRssItems(doc: Document): AmtrakAlert[] {
 async function fetchFeed(feedUrl: string): Promise<AmtrakAlert[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -343,7 +343,7 @@ export async function fetchAmtrakAlerts(): Promise<AmtrakAlert[]> {
     }
   }
 
-  const sevenDaysMs = 7 * 24 * 3600_000;
+  const sevenDaysMs = 7 * 24 * 3_600_000;
   const now = Date.now();
 
   const recent = deduped

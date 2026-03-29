@@ -76,7 +76,7 @@ export async function fetchRadiationReadings(): Promise<RadiationReading[]> {
 
   try {
     const res = await fetch(SAFECAST_API, {
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(15_000),
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return cache?.readings ?? [];
@@ -84,11 +84,11 @@ export async function fetchRadiationReadings(): Promise<RadiationReading[]> {
     const data: SafecastMeasurement[] = await res.json();
     if (!Array.isArray(data)) return cache?.readings ?? [];
 
-    const cutoff = Date.now() - 24 * 3600_000; // last 24 hours only
+    const cutoff = Date.now() - 24 * 3_600_000; // last 24 hours only
     const readings: RadiationReading[] = [];
 
     for (const m of data) {
-      const cpm = typeof m.value === 'number' ? m.value : parseFloat(String(m.value));
+      const cpm = typeof m.value === 'number' ? m.value : Number.parseFloat(String(m.value));
       if (isNaN(cpm) || cpm <= 0) continue;
 
       // Normalize to CPM if unit is different
@@ -100,8 +100,8 @@ export async function fetchRadiationReadings(): Promise<RadiationReading[]> {
       const capturedAt = m.captured_at ? new Date(m.captured_at) : new Date();
       if (capturedAt.getTime() < cutoff) continue;
 
-      const lat = typeof m.latitude === 'number' ? m.latitude : parseFloat(String(m.latitude));
-      const lon = typeof m.longitude === 'number' ? m.longitude : parseFloat(String(m.longitude));
+      const lat = typeof m.latitude === 'number' ? m.latitude : Number.parseFloat(String(m.latitude));
+      const lon = typeof m.longitude === 'number' ? m.longitude : Number.parseFloat(String(m.longitude));
       if (isNaN(lat) || isNaN(lon)) continue;
 
       readings.push({
@@ -111,7 +111,7 @@ export async function fetchRadiationReadings(): Promise<RadiationReading[]> {
         locationName: m.location_name ?? '',
         countryCode: m.country_code ?? '',
         cpm: Math.round(normalizedCpm),
-        usvh: parseFloat((normalizedCpm * CPM_TO_USVH).toFixed(3)),
+        usvh: Number.parseFloat((normalizedCpm * CPM_TO_USVH).toFixed(3)),
         level: cpmToLevel(normalizedCpm),
         capturedAt,
         deviceId: String(m.device_id ?? ''),
@@ -144,8 +144,8 @@ export async function fetchRadiationAlerts(): Promise<RadiationAlert[]> {
       level: r.level as Exclude<RadiationReading['level'], 'normal' | 'elevated'>,
       capturedAt: r.capturedAt,
       severity: r.level === 'extreme' ? 'critical'
-        : r.level === 'very_high' ? 'high'
-        : 'medium',
+        : (r.level === 'very_high' ? 'high'
+        : 'medium'),
     }));
 }
 

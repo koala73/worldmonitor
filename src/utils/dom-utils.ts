@@ -19,7 +19,7 @@ export function h(
   let allChildren: DomChild[];
 
   if (
-    propsOrChild != null &&
+    propsOrChild != undefined &&
     typeof propsOrChild === 'object' &&
     !(propsOrChild instanceof Node)
   ) {
@@ -44,14 +44,14 @@ export function fragment(...children: DomChild[]): DocumentFragment {
 }
 
 export function clearChildren(el: Element): void {
-  while (el.lastChild) el.removeChild(el.lastChild);
+  while (el.lastChild) el.lastChild.remove();
 }
 
 export function replaceChildren(el: Element, ...children: DomChild[]): void {
   const frag = document.createDocumentFragment();
   appendChildren(frag, children);
   clearChildren(el);
-  el.appendChild(frag);
+  el.append(frag);
 }
 
 export function rawHtml(html: string): DocumentFragment {
@@ -70,18 +70,18 @@ export function safeHtml(html: string): DocumentFragment {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   const walk = (parent: Element | DocumentFragment) => {
-    const children = Array.from(parent.childNodes);
+    const children = [...parent.childNodes];
     for (const node of children) {
       if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as Element;
         if (!SAFE_TAGS.has(el.tagName.toLowerCase())) {
           // Unwrap: keep children, remove the element itself
           while (el.firstChild) parent.insertBefore(el.firstChild, el);
-          parent.removeChild(el);
+          el.remove();
           continue;
         }
         // Strip unsafe attributes
-        for (const attr of Array.from(el.attributes)) {
+        for (const attr of el.attributes) {
           if (!SAFE_ATTRS.has(attr.name.toLowerCase())) {
             el.removeAttribute(attr.name);
           }
@@ -104,7 +104,7 @@ export function safeHtml(html: string): DocumentFragment {
 function applyProps(el: HTMLElement, props: DomProps): void {
   for (const key in props) {
     const value = props[key];
-    if (value == null || value === false) continue;
+    if (value == undefined || value === false) continue;
 
     if (key === 'className') {
       el.className = value as string;
@@ -137,11 +137,11 @@ function appendChildren(
   children: DomChild[],
 ): void {
   for (const child of children) {
-    if (child == null || child === false) continue;
+    if (child == undefined || child === false) continue;
     if (child instanceof Node) {
-      parent.appendChild(child);
+      parent.append(child);
     } else {
-      parent.appendChild(document.createTextNode(String(child)));
+      parent.append(document.createTextNode(String(child)));
     }
   }
 }

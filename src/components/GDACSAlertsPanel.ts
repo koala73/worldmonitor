@@ -37,7 +37,7 @@ export class GDACSAlertsPanel extends Panel {
     const rows = this.events.slice(0, 80).map(e => {
       const [lng, lat] = e.coordinates;
       const icon = getEventTypeIcon(e.eventType);
-      const levelClass = e.alertLevel === 'Red' ? 'eq-row eq-major' : e.alertLevel === 'Orange' ? 'eq-row eq-strong' : 'eq-row eq-moderate';
+      const levelClass = e.alertLevel === 'Red' ? 'eq-row eq-major' : (e.alertLevel === 'Orange' ? 'eq-row eq-strong' : 'eq-row eq-moderate');
       const date = e.fromDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       return `<tr class="${levelClass}" role="button" tabindex="0" data-lat="${lat}" data-lon="${lng}" style="cursor:pointer">
         <td>${icon}</td>
@@ -74,8 +74,8 @@ export class GDACSAlertsPanel extends Panel {
     el.addEventListener('click', (e) => {
       const row = (e.target as Element).closest('tr[data-lat]') as HTMLElement | null;
       if (!row) return;
-      const lat = parseFloat(row.dataset['lat'] ?? '0');
-      const lon = parseFloat(row.dataset['lon'] ?? '0');
+      const lat = Number.parseFloat(row.dataset.lat ?? '0');
+      const lon = Number.parseFloat(row.dataset.lon ?? '0');
       if (!isNaN(lat) && !isNaN(lon) && this.onEventClick) this.onEventClick(lat, lon);
     });
   }

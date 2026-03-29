@@ -11,19 +11,25 @@ function timezoneToRegion(tz: string): MapView | null {
   switch (prefix) {
     case 'America':
     case 'US':
-    case 'Canada':
+    case 'Canada': {
       return 'america';
-    case 'Europe':
+    }
+    case 'Europe': {
       return 'eu';
-    case 'Africa':
+    }
+    case 'Africa': {
       return 'africa';
-    case 'Asia':
+    }
+    case 'Asia': {
       return 'mena';
+    }
     case 'Australia':
-    case 'Pacific':
+    case 'Pacific': {
       return 'oceania';
-    default:
+    }
+    default: {
       return null;
+    }
   }
 }
 

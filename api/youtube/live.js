@@ -26,7 +26,7 @@ export default async function handler(request) {
   const cors = getCorsHeaders(request);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (isDisallowedOrigin(request)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
+    return Response.json({ error: 'Origin not allowed' }, { status: 403, headers: cors });
   }
   const url = new URL(request.url);
   const channel = url.searchParams.get('channel');
@@ -38,7 +38,7 @@ export default async function handler(request) {
   const qs = params.toString();
 
   if (!qs) {
-    return new Response(JSON.stringify({ error: 'Missing channel or videoId parameter' }), {
+    return Response.json({ error: 'Missing channel or videoId parameter' }, {
       status: 400,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
@@ -53,7 +53,7 @@ export default async function handler(request) {
       if (relayRes.ok) {
         const data = await relayRes.json();
         const cacheTime = videoIdParam ? 3600 : 300;
-        return new Response(JSON.stringify(data), {
+        return Response.json(data, {
           status: 200,
           headers: {
             ...cors,
@@ -74,20 +74,20 @@ export default async function handler(request) {
       );
       if (oembedRes.ok) {
         const data = await oembedRes.json();
-        return new Response(JSON.stringify({ channelName: data.author_name || null, title: data.title || null, videoId: videoIdParam }), {
+        return Response.json({ channelName: data.author_name || null, title: data.title || null, videoId: videoIdParam }, {
           status: 200,
           headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600' },
         });
       }
     } catch { /* oembed failed — return minimal response */ }
-    return new Response(JSON.stringify({ channelName: null, title: null, videoId: videoIdParam }), {
+    return Response.json({ channelName: null, title: null, videoId: videoIdParam }, {
       status: 200,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
   if (!channel) {
-    return new Response(JSON.stringify({ error: 'Missing channel parameter' }), {
+    return Response.json({ error: 'Missing channel parameter' }, {
       status: 400,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
@@ -101,7 +101,7 @@ export default async function handler(request) {
       redirect: 'follow',
     });
     if (!response.ok) {
-      return new Response(JSON.stringify({ videoId: null, channelExists: false }), {
+      return Response.json({ videoId: null, channelExists: false }, {
         status: 200, headers: { ...cors, 'Content-Type': 'application/json' },
       });
     }
@@ -125,12 +125,12 @@ export default async function handler(request) {
     const hlsMatch = html.match(/"hlsManifestUrl"\s*:\s*"([^"]+)"/);
     if (hlsMatch && videoId) hlsUrl = hlsMatch[1].replace(/\\u0026/g, '&');
 
-    return new Response(JSON.stringify({ videoId, isLive: videoId !== null, channelExists, channelName, hlsUrl }), {
+    return Response.json({ videoId, isLive: videoId !== null, channelExists, channelName, hlsUrl }, {
       status: 200,
       headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60' },
     });
   } catch {
-    return new Response(JSON.stringify({ videoId: null, error: 'Failed to fetch channel data' }), {
+    return Response.json({ videoId: null, error: 'Failed to fetch channel data' }, {
       status: 200, headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }

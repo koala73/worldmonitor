@@ -9,7 +9,7 @@ const MIN_AIRCRAFT = 3;
 // In-memory cache (per-isolate, Vercel Edge)
 let cached = null;
 let cachedAt = 0;
-const CACHE_TTL = 3600_000; // 1 hour
+const CACHE_TTL = 3_600_000; // 1 hour
 
 async function fetchGpsJamData() {
   const now = Date.now();
@@ -40,8 +40,8 @@ async function fetchGpsJamData() {
     const parts = rows[i].split(',');
     if (parts.length < 3) continue;
     const hex = parts[0];
-    const good = parseInt(parts[1], 10);
-    const bad = parseInt(parts[2], 10);
+    const good = Number.parseInt(parts[1], 10);
+    const bad = Number.parseInt(parts[2], 10);
     const total = good + bad;
     if (total < MIN_AIRCRAFT) continue;
     const pct = (bad / total) * 100;
@@ -83,7 +83,7 @@ export default async function handler(req) {
   }
 
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+    return Response.json({ error: 'Origin not allowed' }, {
       status: 403,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -91,7 +91,7 @@ export default async function handler(req) {
 
   try {
     const data = await fetchGpsJamData();
-    return new Response(JSON.stringify(data), {
+    return Response.json(data, {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
@@ -99,8 +99,8 @@ export default async function handler(req) {
         ...corsHeaders,
       },
     });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
+  } catch (error) {
+    return Response.json({ error: error.message }, {
       status: 502,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });

@@ -9,7 +9,7 @@ export interface EntityIndex {
 }
 
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 export function buildEntityIndex(entities: EntityEntry[]): EntityIndex {
@@ -66,7 +66,7 @@ export function lookupEntitiesByKeyword(keyword: string): EntityEntry[] {
   const index = getEntityIndex();
   const ids = index.byKeyword.get(keyword.toLowerCase());
   if (!ids) return [];
-  return Array.from(ids)
+  return [...ids]
     .map(id => index.byId.get(id))
     .filter((e): e is EntityEntry => e !== undefined);
 }
@@ -75,7 +75,7 @@ export function lookupEntitiesBySector(sector: string): EntityEntry[] {
   const index = getEntityIndex();
   const ids = index.bySector.get(sector.toLowerCase());
   if (!ids) return [];
-  return Array.from(ids)
+  return [...ids]
     .map(id => index.byId.get(id))
     .filter((e): e is EntityEntry => e !== undefined);
 }
@@ -104,7 +104,7 @@ export function findEntitiesInText(text: string): EntityMatch[] {
   for (const [alias, entityId] of index.byAlias) {
     if (alias.length < 3) continue;
 
-    const regex = new RegExp(`\\b${escapeRegex(alias)}\\b`, 'gi');
+    const regex = new RegExp(String.raw`\b${escapeRegex(alias)}\b`, 'gi');
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
       if (!seen.has(entityId)) {

@@ -114,7 +114,7 @@ export class ClaudeAgentPanel extends Panel {
 
     // Replace panel content with the wrapper element
     this.content.innerHTML = '';
-    this.content.appendChild(wrapper);
+    this.content.append(wrapper);
 
     // Store reference to history element for updates
     this.content.dataset.historyInit = 'true';
@@ -149,13 +149,13 @@ export class ClaudeAgentPanel extends Panel {
       this.history.unshift(entry);
       if (this.history.length > 5) this.history.pop();
       this.renderHistory();
-    } catch (err: unknown) {
-      if ((err as Error).name === 'AbortError') return;
+    } catch (error: unknown) {
+      if ((error as Error).name === 'AbortError') return;
       const entry: SessionEntry = {
         query,
         toolCalls: [],
         response: '',
-        error: (err as Error).message || 'Agent request failed',
+        error: (error as Error).message || 'Agent request failed',
         model: '',
         turns: 0,
         timestamp: new Date(),
@@ -234,7 +234,7 @@ export class ClaudeAgentPanel extends Panel {
 
     const responseHtml = this.formatResponseText(entry.response);
     const metaHtml = entry.model
-      ? `<div class="agent-meta">${escapeHtml(entry.model)} · ${entry.turns} turn${entry.turns !== 1 ? 's' : ''} · ${timeStr}</div>`
+      ? `<div class="agent-meta">${escapeHtml(entry.model)} · ${entry.turns} turn${entry.turns === 1 ? '' : 's'} · ${timeStr}</div>`
       : `<div class="agent-meta">${timeStr}</div>`;
 
     return `<div class="agent-entry">

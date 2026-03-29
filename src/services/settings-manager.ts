@@ -75,24 +75,24 @@ export class SettingsManager {
     const errors: string[] = [];
     const context = Object.fromEntries(this.pendingSecrets.entries()) as Partial<Record<RuntimeSecretKey, string>>;
 
-    const toVerifyRemotely: Array<[RuntimeSecretKey, string]> = [];
+    const toVerifyRemotely: [RuntimeSecretKey, string][] = [];
     for (const [key, value] of this.pendingSecrets) {
       const localResult = validateSecret(key, value);
-      if (!localResult.valid) {
+      if (localResult.valid) {
+        toVerifyRemotely.push([key, value]);
+      } else {
         this.validatedKeys.set(key, false);
         this.validationMessages.set(key, localResult.hint || 'Invalid format');
         errors.push(`${key}: ${localResult.hint || 'Invalid format'}`);
-      } else {
-        toVerifyRemotely.push([key, value]);
       }
     }
 
     if (toVerifyRemotely.length > 0) {
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<Array<{ key: RuntimeSecretKey; result: { valid: boolean; message?: string } }>>(
+      const timeoutPromise = new Promise<{ key: RuntimeSecretKey; result: { valid: boolean; message?: string } }[]>(
         resolve => { timeoutId = setTimeout(() => resolve(toVerifyRemotely.map(([key]) => ({
           key, result: { valid: false, message: 'Verification timed out — please try again' },
-        }))), 15000); }
+        }))), 15_000); }
       );
       const verifyPromise = Promise.all(toVerifyRemotely.map(async ([key, value]) => {
         const result = await verifySecretWithApi(key, value, context);
@@ -103,11 +103,11 @@ export class SettingsManager {
       clearTimeout(timeoutId);
       for (const { key, result: verifyResult } of results) {
         this.validatedKeys.set(key, verifyResult.valid);
-        if (!verifyResult.valid) {
+        if (verifyResult.valid) {
+          this.validationMessages.delete(key);
+        } else {
           this.validationMessages.set(key, verifyResult.message || 'Verification failed');
           errors.push(`${key}: ${verifyResult.message || 'Verification failed'}`);
-        } else {
-          this.validationMessages.delete(key);
         }
       }
     }

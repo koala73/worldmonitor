@@ -26,7 +26,7 @@ export interface RegionRenewableData {
 export interface RenewableEnergyData {
   globalPercentage: number;          // Latest global renewable electricity %
   globalYear: number;                // Year of latest global data
-  historicalData: Array<{ year: number; value: number }>;  // Global time-series
+  historicalData: { year: number; value: number }[];  // Global time-series
   regions: RegionRenewableData[];    // Regional breakdown
 }
 
@@ -36,7 +36,7 @@ export interface RenewableEnergyData {
 const INDICATOR_CODE = 'EG.ELC.RNEW.ZS';
 
 // World Bank region codes for breakdown
-const REGIONS: Array<{ code: string; name: string }> = [
+const REGIONS: { code: string; name: string }[] = [
   { code: '1W', name: 'World' },
   { code: 'EAS', name: 'East Asia & Pacific' },
   { code: 'ECS', name: 'Europe & Central Asia' },
@@ -56,8 +56,8 @@ const FALLBACK_DATA: RenewableEnergyData = {
   globalYear: 2022,
   historicalData: [
     { year: 1990, value: 19.8 }, { year: 1995, value: 19.2 }, { year: 2000, value: 18.6 },
-    { year: 2005, value: 18.0 }, { year: 2010, value: 20.3 }, { year: 2012, value: 21.6 },
-    { year: 2014, value: 22.6 }, { year: 2016, value: 24.0 }, { year: 2018, value: 25.7 },
+    { year: 2005, value: 18 }, { year: 2010, value: 20.3 }, { year: 2012, value: 21.6 },
+    { year: 2014, value: 22.6 }, { year: 2016, value: 24 }, { year: 2018, value: 25.7 },
     { year: 2020, value: 28.2 }, { year: 2021, value: 28.7 }, { year: 2022, value: 29.6 },
   ],
   regions: [
@@ -96,16 +96,16 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
 
     // --- Extract global (World = "WLD") data ---
     // World Bank API returns countryiso3code "WLD" for world aggregate (request code "1W").
-    const worldData = response.byCountry['WLD'];
+    const worldData = response.byCountry.WLD;
     if (!worldData || worldData.values.length === 0) {
       return FALLBACK_DATA;
     }
 
     // Build historical time-series, filtering out null/NaN values
     const historicalData = worldData.values
-      .filter(v => v.value != null && Number.isFinite(v.value))
+      .filter(v => v.value != undefined && Number.isFinite(v.value))
       .map(v => ({
-        year: parseInt(v.year, 10),
+        year: Number.parseInt(v.year, 10),
         value: v.value,
       }))
       .filter(d => !isNaN(d.year))
@@ -132,9 +132,9 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
 
         // Find the most recent non-null value
         const validValues = countryData.values
-          .filter(v => v.value != null && Number.isFinite(v.value))
+          .filter(v => v.value != undefined && Number.isFinite(v.value))
           .map(v => ({
-            year: parseInt(v.year, 10),
+            year: Number.parseInt(v.year, 10),
             value: v.value,
           }))
           .filter(d => !isNaN(d.year))

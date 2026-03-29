@@ -6,7 +6,7 @@ export const config = { runtime: 'edge' };
 export default async function handler(req) {
   const cors = getCorsHeaders(req);
   if (isDisallowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
+    return Response.json({ error: 'Origin not allowed' }, { status: 403, headers: cors });
   }
   try {
     const response = await fetch('https://www.fwdstart.me/archive', {
@@ -14,7 +14,7 @@ export default async function handler(req) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'text/html,application/xhtml+xml',
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!response.ok) {
@@ -96,10 +96,10 @@ export default async function handler(req) {
     });
   } catch (error) {
     console.error('FwdStart scraper error:', error);
-    return new Response(JSON.stringify({
+    return Response.json({
       error: 'Failed to fetch FwdStart archive',
       details: error.message
-    }), {
+    }, {
       status: 502,
       headers: {
         'Content-Type': 'application/json',

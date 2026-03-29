@@ -97,7 +97,7 @@ export class TechHubsPanel extends Panel {
     }
 
     const html = this.activities.map((hub, index) => {
-      const trendIcon = hub.trend === 'rising' ? '↑' : hub.trend === 'falling' ? '↓' : '';
+      const trendIcon = hub.trend === 'rising' ? '↑' : (hub.trend === 'falling' ? '↓' : '');
       const breakingTag = hub.hasBreaking ? '<span class="hub-breaking">ALERT</span>' : '';
       const topStory = hub.topStories[0];
 

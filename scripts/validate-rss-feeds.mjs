@@ -42,8 +42,7 @@ function extractFeeds() {
   const lines = src.split('\n');
   let currentName = null;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (const line of lines) {
 
     const nameMatch = line.match(nameRe);
     if (nameMatch) currentName = nameMatch[1] || nameMatch[2];
@@ -118,7 +117,7 @@ function parseNewestDate(xml) {
 
   const dates = [];
   const addDate = (value) => {
-    if (value == null) return;
+    if (value == undefined) return;
     const values = Array.isArray(value) ? value : [value];
     for (const raw of values) {
       const parsed = parseFeedDate(raw);
@@ -134,7 +133,7 @@ function parseNewestDate(xml) {
     addDate(channel['dc:date']);
     addDate(channel.updated);
 
-    const items = Array.isArray(channel.item) ? channel.item : channel.item ? [channel.item] : [];
+    const items = Array.isArray(channel.item) ? channel.item : (channel.item ? [channel.item] : []);
     for (const item of items) {
       addDate(item.pubDate);
       addDate(item['dc:date']);
@@ -153,7 +152,7 @@ function parseNewestDate(xml) {
     addDate(atomFeed['atom:updated']);
     addDate(atomFeed['atom:published']);
 
-    const entries = Array.isArray(atomFeed.entry) ? atomFeed.entry : atomFeed.entry ? [atomFeed.entry] : [];
+    const entries = Array.isArray(atomFeed.entry) ? atomFeed.entry : (atomFeed.entry ? [atomFeed.entry] : []);
     for (const entry of entries) {
       addDate(entry.updated);
       addDate(entry.published);
@@ -169,7 +168,7 @@ function parseNewestDate(xml) {
     addDate(rdf['dc:date']);
     addDate(rdf.pubDate);
     addDate(rdf.lastBuildDate);
-    const items = Array.isArray(rdf.item) ? rdf.item : rdf.item ? [rdf.item] : [];
+    const items = Array.isArray(rdf.item) ? rdf.item : (rdf.item ? [rdf.item] : []);
     for (const item of items) {
       addDate(item['dc:date']);
       addDate(item.pubDate);
@@ -219,7 +218,7 @@ function parseFeedDate(rawDate) {
       .normalize('NFD')
       .replace(/\p{Diacritic}/gu, '');
     const month = MONTH_INDEX[rawMonth] ?? MONTH_INDEX[rawMonth.slice(0, 3)];
-    if (month != null) {
+    if (month != undefined) {
       const day = Number.parseInt(localizedMatch[2], 10);
       const year = Number.parseInt(localizedMatch[3], 10);
       const hour = Number.parseInt(localizedMatch[4], 10);
@@ -252,8 +251,8 @@ async function validateFeed(feed) {
     }
 
     return { ...feed, status: 'OK', newest };
-  } catch (err) {
-    const msg = err.name === 'AbortError' ? 'Timeout (15s)' : err.message;
+  } catch (error) {
+    const msg = error.name === 'AbortError' ? 'Timeout (15s)' : error.message;
     return { ...feed, status: 'DEAD', detail: msg };
   }
 }
@@ -327,7 +326,7 @@ async function main() {
   if (stale.length || dead.length) process.exit(1);
 }
 
-main().catch(err => {
-  console.error('Fatal:', err);
+main().catch(error => {
+  console.error('Fatal:', error);
   process.exit(2);
 });

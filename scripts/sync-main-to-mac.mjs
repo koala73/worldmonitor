@@ -144,11 +144,11 @@ async function acquireLock(lockFile) {
 async function ensureClone(options) {
   await mkdir(path.dirname(options.repoDir), { recursive: true });
 
-  if (!(await pathExists(path.join(options.repoDir, '.git')))) {
+  if (await pathExists(path.join(options.repoDir, '.git'))) {
+    runCommand('git', ['remote', 'set-url', 'origin', options.remoteUrl], { cwd: options.repoDir });
+  } else {
     await rm(options.repoDir, { recursive: true, force: true });
     runLoggedCommand('git', ['clone', '--branch', options.branch, '--single-branch', options.remoteUrl, options.repoDir]);
-  } else {
-    runCommand('git', ['remote', 'set-url', 'origin', options.remoteUrl], { cwd: options.repoDir });
   }
 
   runCommand('git', ['fetch', 'origin', options.branch, '--tags', '--prune'], { cwd: options.repoDir });

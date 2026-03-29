@@ -33,7 +33,7 @@ function promedProxyUrl(): string {
 
 async function fetchProMED(): Promise<DiseaseOutbreak[]> {
   try {
-    const res = await fetch(promedProxyUrl(), { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(promedProxyUrl(), { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return [];
     const text = await res.text();
     const parser = new DOMParser();
@@ -41,7 +41,7 @@ async function fetchProMED(): Promise<DiseaseOutbreak[]> {
     if (doc.querySelector('parsererror')) return [];
 
     const items = doc.querySelectorAll('item');
-    return Array.from(items).slice(0, 30).map((item, i) => {
+    return [...items].slice(0, 30).map((item, i) => {
       const title = item.querySelector('title')?.textContent?.trim() ?? '';
       const link = item.querySelector('link')?.textContent?.trim() ?? '';
       const pubDateStr = item.querySelector('pubDate')?.textContent?.trim() ?? '';
@@ -81,9 +81,9 @@ function extractDiseaseName(title: string): string {
 function extractCountry(title: string, countryField?: string): string {
   if (countryField) return countryField;
   // Heuristic: last parenthetical or "in <Country>"
-  const parenMatch = title.match(/\(([^)]+)\)\s*$/);
+  const parenMatch = /\(([^)]+)\)\s*$/.exec(title);
   if (parenMatch?.[1]) return parenMatch[1];
-  const inMatch = title.match(/\bin\s+([A-Z][a-zA-Z\s]+?)(?:\s*[-–]|\s*$)/);
+  const inMatch = /\bin\s+([A-Z][a-zA-Z\s]+?)(?:\s*[-–]|\s*$)/.exec(title);
   if (inMatch?.[1]) return inMatch[1].trim();
   return 'Unknown';
 }
@@ -98,18 +98,18 @@ function scoreSeverity(title: string): DiseaseOutbreak['severity'] {
 
 async function fetchReliefWeb(): Promise<DiseaseOutbreak[]> {
   try {
-    const res = await fetch(RELIEFWEB_API, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(RELIEFWEB_API, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return [];
     const json = await res.json() as {
-      data: Array<{
+      data: {
         id: string;
         fields: {
           title: string;
           date: { created: string };
-          country?: Array<{ name: string }>;
+          country?: { name: string }[];
           url: string;
         };
-      }>;
+      }[];
     };
     return (json.data ?? []).map(item => {
       const f = item.fields;
@@ -132,9 +132,9 @@ async function fetchReliefWeb(): Promise<DiseaseOutbreak[]> {
 
 async function fetchWHOEmergencies(): Promise<DiseaseOutbreak[]> {
   try {
-    const res = await fetch(WHO_EMERGENCIES, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(WHO_EMERGENCIES, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return [];
-    const json = await res.json() as Array<{
+    const json = await res.json() as {
       Title?: string;
       title?: string;
       Date?: string;
@@ -143,7 +143,7 @@ async function fetchWHOEmergencies(): Promise<DiseaseOutbreak[]> {
       country?: string;
       Url?: string;
       url?: string;
-    }>;
+    }[];
     if (!Array.isArray(json)) return [];
     return json.slice(0, 30).map((item, i) => {
       const title = item.Title ?? item.title ?? '';

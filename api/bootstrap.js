@@ -44,12 +44,12 @@ async function getCachedJsonBatch(keys) {
   if (!resp.ok) return result;
 
   const data = await resp.json();
-  for (let i = 0; i < keys.length; i++) {
+  for (const [i, key] of keys.entries()) {
     const raw = data[i]?.result;
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
-        if (parsed !== NEG_SENTINEL) result.set(keys[i], parsed);
+        if (parsed !== NEG_SENTINEL) result.set(key, parsed);
       } catch { /* skip malformed */ }
     }
   }
@@ -66,7 +66,7 @@ export default async function handler(req) {
 
   const apiKeyResult = validateApiKey(req);
   if (apiKeyResult.required && !apiKeyResult.valid)
-    return new Response(JSON.stringify({ error: apiKeyResult.error }), {
+    return Response.json({ error: apiKeyResult.error }, {
       status: 401, headers: { ...cors, 'Content-Type': 'application/json' },
     });
 
@@ -83,7 +83,7 @@ export default async function handler(req) {
   try {
     cached = await getCachedJsonBatch(keys);
   } catch {
-    return new Response(JSON.stringify({ data: {}, missing: names }), {
+    return Response.json({ data: {}, missing: names }, {
       status: 200,
       headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
     });
@@ -91,13 +91,13 @@ export default async function handler(req) {
 
   const data = {};
   const missing = [];
-  for (let i = 0; i < names.length; i++) {
+  for (const [i, name] of names.entries()) {
     const val = cached.get(keys[i]);
-    if (val !== undefined) data[names[i]] = val;
-    else missing.push(names[i]);
+    if (val === undefined) {missing.push(name);}
+    else {data[name] = val;}
   }
 
-  return new Response(JSON.stringify({ data, missing }), {
+  return Response.json({ data, missing }, {
     status: 200,
     headers: {
       ...cors,

@@ -44,9 +44,9 @@ export class FuelPricesPanel extends Panel {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this.data = await res.json() as FuelPricesResponse;
       this.error = null;
-    } catch (err) {
-      if (this.isAbortError(err)) return;
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
+    } catch (error) {
+      if (this.isAbortError(error)) return;
+      this.error = error instanceof Error ? error.message : 'Failed to fetch';
     }
 
     this.loading = false;

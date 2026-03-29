@@ -45,11 +45,11 @@ interface FaaAirportStatus {
   name?: string;
   delay?: boolean;
   delayCount?: number;
-  status?: Array<{
+  status?: {
     type?: string;
     avgDelay?: string;
     reason?: string;
-  }>;
+  }[];
   weather?: {
     weather?: string;
     temp?: string;
@@ -62,11 +62,11 @@ function parseDelayMinutes(delayStr: string): number | null {
   const normalized = delayStr.toLowerCase().trim();
 
   // Match "2 hrs 15 mins", "1 hr 20 mins", "45 mins", "1 hr", "2 hours", etc.
-  const hoursMatch = normalized.match(/(\d+)\s*hr(?:s|ours?)?/);
-  const minsMatch = normalized.match(/(\d+)\s*min(?:s|utes?)?/);
+  const hoursMatch = /(\d+)\s*hr(?:s|ours?)?/.exec(normalized);
+  const minsMatch = /(\d+)\s*min(?:s|utes?)?/.exec(normalized);
 
-  const hours = hoursMatch ? parseInt(hoursMatch[1] ?? '0', 10) : 0;
-  const minutes = minsMatch ? parseInt(minsMatch[1] ?? '0', 10) : 0;
+  const hours = hoursMatch ? Number.parseInt(hoursMatch[1] ?? '0', 10) : 0;
+  const minutes = minsMatch ? Number.parseInt(minsMatch[1] ?? '0', 10) : 0;
 
   if (!hoursMatch && !minsMatch) return null;
   return hours * 60 + minutes;
@@ -130,7 +130,7 @@ function computeSeverity(
 async function fetchAirportStatus(iata: string): Promise<NasDelay | null> {
   try {
     const url = `${FAA_BASE}/${iata}?format=application/json`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return null;
 
     const data = (await res.json()) as FaaAirportStatus;

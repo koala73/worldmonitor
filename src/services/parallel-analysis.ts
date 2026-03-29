@@ -74,7 +74,7 @@ const BUSINESS_DEMOTE = [
 
 class ParallelAnalysisService {
   private lastReport: AnalysisReport | null = null;
-  private recentEmbeddings: Map<string, number[]> = new Map();
+  private recentEmbeddings = new Map<string, number[]>();
   private analysisCount = 0;
 
   async analyzeHeadlines(clusters: ClusteredEvent[]): Promise<AnalysisReport> {
@@ -84,7 +84,7 @@ class ParallelAnalysisService {
     const analyzed: AnalyzedHeadline[] = [];
     const titles = clusters.map(c => c.primaryTitle);
 
-    let sentiments: Array<{ label: string; score: number }> | null = null;
+    let sentiments: { label: string; score: number }[] | null = null;
     let entities: NEREntity[][] | null = null;
     let embeddings: number[][] | null = null;
 
@@ -99,8 +99,8 @@ class ParallelAnalysisService {
       embeddings = emb;
     }
 
-    for (let i = 0; i < clusters.length; i++) {
-      const cluster = clusters[i]!;
+    for (const [i, cluster_] of clusters.entries()) {
+      const cluster = cluster_!;
       const title = cluster.primaryTitle;
       const titleLower = title.toLowerCase();
 
@@ -130,9 +130,9 @@ class ParallelAnalysisService {
 
       const flagged = disagreement > 0.3 || (finalScore > 0.5 && this.isLowKeywordScore(perspectives));
       const flagReason = flagged
-        ? disagreement > 0.3
+        ? (disagreement > 0.3
           ? 'High disagreement between perspectives'
-          : 'ML scores high but keyword score low - potential missed story'
+          : 'ML scores high but keyword score low - potential missed story')
         : undefined;
 
       analyzed.push({
@@ -393,8 +393,8 @@ class ParallelAnalysisService {
     const weights: Record<string, number> = {
       keywords: 0.25,
       sentiment: 0.15,
-      entities: 0.20,
-      novelty: 0.10,
+      entities: 0.2,
+      novelty: 0.1,
       velocity: 0.15,
       sources: 0.15,
     };
@@ -480,8 +480,8 @@ class ParallelAnalysisService {
     let normA = 0;
     let normB = 0;
 
-    for (let i = 0; i < a.length; i++) {
-      const ai = a[i] ?? 0;
+    for (const [i, element] of a.entries()) {
+      const ai = element ?? 0;
       const bi = b[i] ?? 0;
       dot += ai * bi;
       normA += ai * ai;

@@ -125,7 +125,7 @@ function addCountriesAsNodes(graph: DependencyGraph): void {
 
   for (const pipeline of PIPELINES) {
     pipeline.countries?.forEach(c => {
-      const code = c === 'USA' ? 'US' : c === 'Canada' ? 'CA' : c;
+      const code = c === 'USA' ? 'US' : (c === 'Canada' ? 'CA' : c);
       countries.add(code);
     });
   }
@@ -187,7 +187,7 @@ function buildPipelineCountryEdges(graph: DependencyGraph): void {
     const pipelineId = `pipeline:${pipeline.id}`;
 
     pipeline.countries?.forEach(country => {
-      const code = country === 'USA' ? 'US' : country === 'Canada' ? 'CA' : country;
+      const code = country === 'USA' ? 'US' : (country === 'Canada' ? 'CA' : country);
       const countryId = `country:${code}`;
 
       if (graph.nodes.has(countryId)) {
@@ -494,16 +494,15 @@ function categorizeImpact(strength: number): CascadeImpactLevel {
 
 export function calculateCascade(
   sourceId: string,
-  disruptionLevel: number = 1.0
+  disruptionLevel = 1
 ): CascadeResult | null {
   const graph = buildDependencyGraph();
   const source = graph.nodes.get(sourceId);
 
   if (!source) return null;
 
-  const affected: Map<string, CascadeAffectedNode> = new Map();
-  const visited = new Set<string>();
-  visited.add(sourceId);
+  const affected = new Map<string, CascadeAffectedNode>();
+  const visited = new Set<string>([sourceId]);
 
   const queue: { nodeId: string; depth: number; path: string[] }[] = [
     { nodeId: sourceId, depth: 0, path: [sourceId] },
@@ -563,7 +562,7 @@ export function calculateCascade(
 
   return {
     source,
-    affectedNodes: Array.from(affected.values()),
+    affectedNodes: [...affected.values()],
     countriesAffected,
     redundancies,
   };

@@ -71,7 +71,7 @@ function detectItemType(title: string, description: string): UnScItemType {
   const combined = title + ' ' + description;
   const lc = combined.toLowerCase();
 
-  if (/resolution/.test(lc) && /s\/res\/\d+/i.test(combined)) return 'resolution';
+  if (lc.includes('resolution') && /s\/res\/\d+/i.test(combined)) return 'resolution';
   if (/presidential statement|prst\b/.test(lc)) return 'presidential-statement';
   if (/press statement|sc\/\d{5}/.test(lc)) return 'press-statement';
   if (/sanction|asset freeze|arms embargo|travel ban/.test(lc)) return 'sanctions';
@@ -83,7 +83,7 @@ function detectItemType(title: string, description: string): UnScItemType {
 function detectRegion(title: string, description: string): string {
   const combined = title + ' ' + description;
   for (const region of CONFLICT_REGIONS) {
-    const re = new RegExp(`\\b${region}\\b`, 'i');
+    const re = new RegExp(String.raw`\b${region}\b`, 'i');
     if (re.test(combined)) return region;
   }
   return 'Global';
@@ -97,7 +97,7 @@ function detectSeverity(
   const combined = (title + ' ' + description).toLowerCase();
 
   if (
-    /emergency session/.test(combined) ||
+    combined.includes('emergency session') ||
     (/meeting|session/.test(combined) && /chapter vii|threat to (?:international )?peace/.test(combined))
   ) {
     return 'critical';
@@ -125,7 +125,7 @@ function parseItems(doc: Document, sourceUrl: string): ParsedItem[] {
   const results: ParsedItem[] = [];
 
   // RSS <item>
-  for (const item of Array.from(doc.querySelectorAll('item'))) {
+  for (const item of doc.querySelectorAll('item')) {
     const title = item.querySelector('title')?.textContent?.trim() ?? '';
     const description = stripHtml(item.querySelector('description')?.textContent ?? '');
     const link = item.querySelector('link')?.textContent?.trim() ?? '';
@@ -134,7 +134,7 @@ function parseItems(doc: Document, sourceUrl: string): ParsedItem[] {
   }
 
   // Atom <entry>
-  for (const entry of Array.from(doc.querySelectorAll('entry'))) {
+  for (const entry of doc.querySelectorAll('entry')) {
     const title = entry.querySelector('title')?.textContent?.trim() ?? '';
     const rawContent = entry.querySelector('content')?.textContent
       ?? entry.querySelector('summary')?.textContent
@@ -154,7 +154,7 @@ function parseItems(doc: Document, sourceUrl: string): ParsedItem[] {
 async function fetchFeedItems(feedUrl: string): Promise<UnScItem[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -244,9 +244,13 @@ export async function fetchUnSecurityCouncil(): Promise<UnScItem[]> {
 
 export function unScSeverityClass(severity: UnScItem['severity']): string {
   switch (severity) {
-    case 'critical': return 'text-red-500';
-    case 'high':     return 'text-orange-500';
-    case 'medium':   return 'text-yellow-500';
-    default:         return 'text-gray-400';
+    case 'critical': { return 'text-red-500';
+    }
+    case 'high': {     return 'text-orange-500';
+    }
+    case 'medium': {   return 'text-yellow-500';
+    }
+    default: {         return 'text-gray-400';
+    }
   }
 }

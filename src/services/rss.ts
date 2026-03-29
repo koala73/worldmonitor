@@ -17,11 +17,11 @@ const feedFailures = new Map<string, { count: number; cooldownUntil: number }>()
 const feedCache = new Map<string, { items: NewsItem[]; timestamp: number }>();
 const CACHE_TTL = 10 * 60 * 1000;
 
-function toSerializable(items: NewsItem[]): Array<Omit<NewsItem, 'pubDate'> & { pubDate: string }> {
+function toSerializable(items: NewsItem[]): (Omit<NewsItem, 'pubDate'> & { pubDate: string })[] {
   return items.map(item => ({ ...item, pubDate: item.pubDate.toISOString() }));
 }
 
-function fromSerializable(items: Array<Omit<NewsItem, 'pubDate'> & { pubDate: string }>): NewsItem[] {
+function fromSerializable(items: (Omit<NewsItem, 'pubDate'> & { pubDate: string })[]): NewsItem[] {
   return items.map(item => ({ ...item, pubDate: new Date(item.pubDate) }));
 }
 
@@ -43,7 +43,7 @@ function getPersistentFeedKey(feedScope: string): string {
 }
 
 async function readPersistentFeed(key: string): Promise<NewsItem[] | null> {
-  const entry = await getPersistentCache<Array<Omit<NewsItem, 'pubDate'> & { pubDate: string }>>(key);
+  const entry = await getPersistentCache<(Omit<NewsItem, 'pubDate'> & { pubDate: string })[]>(key);
   if (!entry?.data?.length) return null;
   return fromSerializable(entry.data);
 }
@@ -77,7 +77,7 @@ function cleanupCaches(): void {
   }
 
   if (feedCache.size > MAX_CACHE_ENTRIES) {
-    const entries = Array.from(feedCache.entries())
+    const entries = [...feedCache.entries()]
       .sort((a, b) => a[1].timestamp - b[1].timestamp);
     const toRemove = entries.slice(0, entries.length - MAX_CACHE_ENTRIES);
     for (const [key] of toRemove) {
@@ -140,8 +140,8 @@ function extractImageUrl(item: Element): string | undefined {
   try {
     // 1. media:content with MRSS namespace
     const mediaContents = item.getElementsByTagNameNS(MRSS_NS, 'content');
-    for (let i = 0; i < mediaContents.length; i++) {
-      const el = mediaContents[i]!;
+    for (const mediaContent of mediaContents) {
+      const el = mediaContent!;
       const url = el.getAttribute('url');
       if (!url) continue;
       const medium = el.getAttribute('medium');
@@ -158,8 +158,8 @@ function extractImageUrl(item: Element): string | undefined {
   try {
     // 2. media:thumbnail with MRSS namespace
     const thumbnails = item.getElementsByTagNameNS(MRSS_NS, 'thumbnail');
-    for (let i = 0; i < thumbnails.length; i++) {
-      const url = thumbnails[i]!.getAttribute('url');
+    for (const thumbnail of thumbnails) {
+      const url = thumbnail!.getAttribute('url');
       if (url) return url;
     }
   } catch {
@@ -169,8 +169,8 @@ function extractImageUrl(item: Element): string | undefined {
   try {
     // 3. <enclosure> with image type
     const enclosures = item.getElementsByTagName('enclosure');
-    for (let i = 0; i < enclosures.length; i++) {
-      const el = enclosures[i]!;
+    for (const enclosure of enclosures) {
+      const el = enclosure!;
       const type = el.getAttribute('type');
       const url = el.getAttribute('url');
       if (url && type?.startsWith('image/')) return url;
@@ -185,7 +185,7 @@ function extractImageUrl(item: Element): string | undefined {
     const contentEncoded = item.getElementsByTagNameNS('http://purl.org/rss/1.0/modules/content/', 'encoded');
     const contentText = contentEncoded.length > 0 ? (contentEncoded[0]!.textContent || '') : '';
     const htmlContent = contentText || description;
-    const imgMatch = htmlContent.match(/<img[^>]+src=["']([^"']+)["']/);
+    const imgMatch = /<img[^>]+src=["']([^"']+)["']/.exec(htmlContent);
     if (imgMatch?.[1]) return imgMatch[1];
   } catch {
     // Fall through
@@ -211,9 +211,9 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
   }
 
   try {
-    let url = typeof feed.url === 'string' ? feed.url : feed.url['en'];
+    let url = typeof feed.url === 'string' ? feed.url : feed.url.en;
     if (typeof feed.url !== 'string') {
-      url = feed.url[currentLang] || feed.url['en'] || Object.values(feed.url)[0] || '';
+      url = feed.url[currentLang] || feed.url.en || Object.values(feed.url)[0] || '';
     }
 
     if (!url) throw new Error(`No URL found for feed ${feed.name}`);
@@ -236,7 +236,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     const isAtom = items.length === 0;
     if (isAtom) items = doc.querySelectorAll('entry');
 
-    const parsed = Array.from(items)
+    const parsed = [...items]
       .slice(0, 5)
       .map((item) => {
         const title = item.querySelector('title')?.textContent || '';
@@ -293,12 +293,12 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
           item.threat = aiResult;
           item.isAlert = aiResult.level === 'critical' || aiResult.level === 'high';
         }
-      }).catch(() => { });
+      }).catch(() => {});
     }
 
     return parsed;
-  } catch (e) {
-    console.error(`Failed to fetch ${feed.name}:`, e);
+  } catch (error) {
+    console.error(`Failed to fetch ${feed.name}:`, error);
     recordFeedFailure(feedScope);
     const persistent = await loadPersistentFeed(feedScope);
     return cached?.items || persistent || [];

@@ -52,7 +52,7 @@ function entryToEnriched(e: MilitaryBaseEntry): MilitaryBaseEnriched {
 let lastResult: CachedResult | null = null;
 let pendingFetch: Promise<CachedResult | null> | null = null;
 
-export type { MilitaryBaseCluster };
+
 
 export async function fetchMilitaryBases(
   swLat: number, swLon: number, neLat: number, neLon: number,
@@ -63,7 +63,7 @@ export async function fetchMilitaryBases(
   const floorZoom = Math.floor(zoom);
   const cacheKey = `${qBbox}:${floorZoom}:${filters?.type || ''}:${filters?.kind || ''}:${filters?.country || ''}`;
 
-  if (lastResult && lastResult.cacheKey === cacheKey) {
+  if (lastResult?.cacheKey === cacheKey) {
     return lastResult;
   }
 
@@ -89,8 +89,8 @@ export async function fetchMilitaryBases(
       };
       lastResult = result;
       return result;
-    } catch (err) {
-      console.error('[bases-svc] error', err);
+    } catch (error) {
+      console.error('[bases-svc] error', error);
       return lastResult;
     } finally {
       pendingFetch = null;
@@ -99,3 +99,5 @@ export async function fetchMilitaryBases(
 
   return pendingFetch;
 }
+
+export {type MilitaryBaseCluster} from '@/generated/client/worldmonitor/military/v1/service_client';

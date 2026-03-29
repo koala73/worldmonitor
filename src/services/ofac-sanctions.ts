@@ -41,7 +41,7 @@ let _cache: SanctionsCache | null = null;
 
 const RELEVANCE_TERMS = /sanction|ofac|sdn|designat|treasury action|blocked/i;
 
-const PROGRAM_PATTERNS: Array<{ program: SanctionProgram; pattern: RegExp }> = [
+const PROGRAM_PATTERNS: { program: SanctionProgram; pattern: RegExp }[] = [
   { program: 'Russia',       pattern: /russia|ukraine|belarus|kremlin|putin/i },
   { program: 'Iran',         pattern: /iran|irgc|iranian|tehran/i },
   { program: 'North Korea',  pattern: /north korea|dprk|kim jong/i },
@@ -123,7 +123,7 @@ function parseRssItems(doc: Document): ParsedItem[] {
   const results: ParsedItem[] = [];
 
   // RSS <item> elements
-  const rssItems = Array.from(doc.querySelectorAll('item'));
+  const rssItems = [...doc.querySelectorAll('item')];
   for (const item of rssItems) {
     const title = item.querySelector('title')?.textContent?.trim() ?? '';
     const description = stripHtml(item.querySelector('description')?.textContent ?? '');
@@ -134,7 +134,7 @@ function parseRssItems(doc: Document): ParsedItem[] {
   }
 
   // Atom <entry> elements
-  const entries = Array.from(doc.querySelectorAll('entry'));
+  const entries = [...doc.querySelectorAll('entry')];
   for (const entry of entries) {
     const title = entry.querySelector('title')?.textContent?.trim() ?? '';
     const rawContent = entry.querySelector('content')?.textContent
@@ -156,7 +156,7 @@ function parseRssItems(doc: Document): ParsedItem[] {
 async function fetchFeedDesignations(feedUrl: string): Promise<SanctionDesignation[]> {
   try {
     const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
-    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -244,9 +244,13 @@ export async function fetchSanctions(): Promise<SanctionDesignation[]> {
 
 export function sanctionSeverityClass(severity: SanctionDesignation['severity']): string {
   switch (severity) {
-    case 'critical': return 'text-red-500';
-    case 'high':     return 'text-orange-500';
-    case 'medium':   return 'text-yellow-500';
-    default:         return 'text-gray-400';
+    case 'critical': { return 'text-red-500';
+    }
+    case 'high': {     return 'text-orange-500';
+    }
+    case 'medium': {   return 'text-yellow-500';
+    }
+    default: {         return 'text-gray-400';
+    }
   }
 }
