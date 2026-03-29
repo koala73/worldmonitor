@@ -227,8 +227,8 @@ message IceTrendPoint {
 |--------|----------|-----|-----|
 | `seed-climate-anomalies.mjs` | Every 3h (existing, fix baseline) | `climate:anomalies:v1` | 3h |
 | `seed-co2-monitoring.mjs` | Daily 06:00 UTC | `climate:co2-monitoring:v1` | 24h |
-| `seed-climate-disasters.mjs` | Every 6h | `climate:disasters:v1` | 12h |
-| `seed-health-air-quality.mjs` | Every 1h (shared) | `climate:air-quality:v1` | 3h |
+| `seed-climate-disasters.mjs` | Every 6h | `climate:disasters:v1` | 6h |
+| `seed-health-air-quality.mjs` | Every 1h (shared) | `climate:air-quality:v1` | 1h |
 | `seed-climate-ocean-ice.mjs` | Daily 08:00 UTC | `climate:ocean-ice:v1` | 24h |
 | `seed-climate-news.mjs` | Every 30min (or relay loop) | `climate:news-intelligence:v1` | 1h |
 
@@ -261,16 +261,24 @@ service ClimateService {
 
 ## Cache Keys to Register
 
-In `server/_shared/cache-keys.ts` and `api/health.js` BOOTSTRAP_KEYS:
+Per AGENTS.md, adding a new seeded key requires changes in **4 files**:
+
+1. **`server/_shared/cache-keys.ts`** — add to `BOOTSTRAP_CACHE_KEYS`:
 
 ```ts
-// Add to BOOTSTRAP_CACHE_KEYS:
 co2Monitoring: 'climate:co2-monitoring:v1',
 climateDisasters: 'climate:disasters:v1',
 climateAirQuality: 'climate:air-quality:v1',
 oceanIce: 'climate:ocean-ice:v1',
 climateNews: 'climate:news-intelligence:v1',
+climateZoneNormals: 'climate:zone-normals:v1',
 ```
+
+2. **`api/health.js`** — add each data key (not zone-normals) to the `BOOTSTRAP_KEYS` array (startup hydration on deploy)
+
+3. **`api/mcp.ts`** — add keys to the `get_climate_data` tool's `_cacheKeys` array (see MCP Tool section below)
+
+4. **Each seed script** — must call `runSeed()` with the correct canonical key so it writes `seed-meta:<domain>:<name>` automatically. The seed-meta key is required for health monitoring (`_seedMetaKey` in the MCP tool).
 
 ---
 
@@ -327,12 +335,12 @@ Replace current entry in `api/mcp.ts`:
 
 ```js
 // WRONG (current): compare last 7d vs previous 23d of same 30d window
-// RIGHT: compare last 7d vs 30-year monthly mean (1991–2020)
+// RIGHT: compare last 7d vs 30-year monthly mean (1991–2020 WMO standard)
 
-// Open-Meteo archive supports this:
-const REFERENCE_YEARS = Array.from({length: 10}, (_, i) => 2014 + i); // 2014-2023 (decade proxy for 30yr normal)
-// Or fetch 1991-2020 mean by requesting archive with start_date/end_date spanning 30 years
-// and grouping by calendar month. Cache this reference data separately.
+// Implementation: fetch Open-Meteo archive with start_date=1991-01-01 end_date=2020-12-31,
+// aggregate daily values by calendar month to get monthly mean per zone.
+// IMPORTANT: use the full 1991-2020 period — do NOT use a shorter "proxy" window
+// (e.g., 2014-2023) as a warm decade would systematically understate current anomalies.
 const NORMALS_KEY = 'climate:zone-normals:v1';
 const NORMALS_TTL = 30 * 86400; // 30 days — recalculate monthly
 ```

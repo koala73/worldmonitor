@@ -82,6 +82,7 @@ message DataPoint {
 
 ```proto
 message VaccinationCoverageItem {
+  string id = 1;                // "{country_code}:{vaccine}:{year}"
   string country_code = 2;
   string country = 3;
   string vaccine = 4;           // "MCV1", "DTP3", etc.
@@ -187,7 +188,7 @@ message PathogenAlert {
 | `seed-vpd-tracker.mjs` | Daily (existing) | `health:vpd-tracker:realtime:v1` | 72h |
 | `seed-epidemic-trends.mjs` | Daily | `health:epidemic-trends:v1` | 24h |
 | `seed-vaccination-coverage.mjs` | Weekly (Sunday 02:00 UTC) | `health:vaccination-coverage:v1` | 7 days |
-| `seed-health-air-quality.mjs` | Every 1h | `health:air-quality:v1` | 3h |
+| `seed-health-air-quality.mjs` | Every 1h | `health:air-quality:v1` | 1h |
 | `seed-pathogen-surveillance.mjs` | Every 12h | `health:pathogen-surveillance:v1` | 24h |
 | `seed-health-news.mjs` | Every 30min (or relay loop) | `health:news-intelligence:v1` | 1h |
 
@@ -221,16 +222,23 @@ service HealthService {
 
 ## Cache Keys to Register
 
-In `server/_shared/cache-keys.ts` and `api/health.js` BOOTSTRAP_KEYS:
+Per AGENTS.md, adding a new seeded key requires changes in **4 files**:
+
+1. **`server/_shared/cache-keys.ts`** — add to `BOOTSTRAP_CACHE_KEYS`:
 
 ```ts
-// Add to BOOTSTRAP_CACHE_KEYS:
 epidemicTrends: 'health:epidemic-trends:v1',
 vaccinationCoverage: 'health:vaccination-coverage:v1',
 airQuality: 'health:air-quality:v1',
 pathogenSurveillance: 'health:pathogen-surveillance:v1',
 healthNews: 'health:news-intelligence:v1',
 ```
+
+2. **`api/health.js`** — add each key to the `BOOTSTRAP_KEYS` array (startup hydration on deploy)
+
+3. **`api/mcp.ts`** — add keys to the relevant MCP tool's `_cacheKeys` array (see MCP Tool section below)
+
+4. **Each seed script** — must call `runSeed()` with the correct canonical key so it writes `seed-meta:<domain>:<name>` automatically. The seed-meta key is required for health monitoring (`_seedMetaKey` in the MCP tool).
 
 ---
 
