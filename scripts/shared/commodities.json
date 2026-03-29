@@ -22,6 +22,15 @@
     { "symbol": "KC=F", "name": "Coffee", "display": "COFFEE" },
     { "symbol": "SB=F", "name": "Sugar No. 11", "display": "SUGAR" },
     { "symbol": "CC=F", "name": "Cocoa", "display": "COCOA" },
-    { "symbol": "CT=F", "name": "Cotton", "display": "COTTON" }
+    { "symbol": "CT=F", "name": "Cotton", "display": "COTTON" },
+    { "symbol": "EURUSD=X", "name": "EUR/USD", "display": "EUR/USD" },
+    { "symbol": "GBPUSD=X", "name": "GBP/USD", "display": "GBP/USD" },
+    { "symbol": "USDJPY=X", "name": "USD/JPY", "display": "USD/JPY" },
+    { "symbol": "USDCNY=X", "name": "USD/CNY", "display": "USD/CNY" },
+    { "symbol": "USDINR=X", "name": "USD/INR", "display": "USD/INR" },
+    { "symbol": "AUDUSD=X", "name": "AUD/USD", "display": "AUD/USD" },
+    { "symbol": "USDCHF=X", "name": "USD/CHF", "display": "USD/CHF" },
+    { "symbol": "USDCAD=X", "name": "USD/CAD", "display": "USD/CAD" },
+    { "symbol": "USDTRY=X", "name": "USD/TRY", "display": "USD/TRY" }
   ]
 }

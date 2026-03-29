@@ -11,6 +11,8 @@ import { resolveApiKeyFromBearer } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
+// @ts-expect-error — generated JS module, no declaration file
+import MINING_SITES_RAW from '../shared/mining-sites.js';
 
 export const config = { runtime: 'edge' };
 
@@ -67,7 +69,7 @@ type ToolDef = CacheToolDef | RpcToolDef;
 const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_market_data',
-    description: 'Real-time equity quotes, commodity prices, crypto prices, sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
+    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'market:stocks-bootstrap:v1',
@@ -606,6 +608,25 @@ const TOOL_REGISTRY: ToolDef[] = [
       });
       if (!res.ok) throw new Error(`search-google-dates HTTP ${res.status}`);
       return res.json();
+    },
+  },
+  {
+    name: 'get_commodity_geo',
+    description: 'Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mineral: { type: 'string', description: 'Filter by mineral type (e.g. "Gold", "Copper", "Lithium")' },
+        country: { type: 'string', description: 'Filter by country name (e.g. "Australia", "Chile")' },
+      },
+      required: [],
+    },
+    _execute: async (params: Record<string, unknown>) => {
+      type MineSite = { id: string; name: string; lat: number; lon: number; mineral: string; country: string; operator: string; status: string; significance: string; annualOutput?: string; productionRank?: number; openPitOrUnderground?: string };
+      let sites = MINING_SITES_RAW as MineSite[];
+      if (params.mineral) sites = sites.filter((s) => s.mineral === String(params.mineral));
+      if (params.country) sites = sites.filter((s) => s.country.toLowerCase().includes(String(params.country).toLowerCase()));
+      return { sites, total: sites.length };
     },
   },
 ];

@@ -9,6 +9,7 @@ import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
+import { computeEmaWindows, computeRisk24h } from './_ema-threat-engine.mjs';
 
 const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (_isDirectRun) loadEnvFile(import.meta.url);
@@ -678,6 +679,8 @@ async function readInputKeys() {
     MARKET_INPUT_KEYS.bisPolicy,
     MARKET_INPUT_KEYS.shippingRates,
     MARKET_INPUT_KEYS.correlationCards,
+    'conflict:acled:v1:all:0:0',
+    'conflict:ema-windows:v1',
     ...fredKeys,
   ];
   const pipeline = keys.map(k => ['GET', k]);
@@ -728,6 +731,12 @@ async function readInputKeys() {
     bisPolicyRates: parsedByKey[MARKET_INPUT_KEYS.bisPolicy],
     shippingRates: parsedByKey[MARKET_INPUT_KEYS.shippingRates],
     correlationCards: parsedByKey[MARKET_INPUT_KEYS.correlationCards],
+    acledEvents: (() => {
+      const raw = parsedByKey['conflict:acled:v1:all:0:0'];
+      if (!raw) return [];
+      return Array.isArray(raw) ? raw : (raw?.events ?? []);
+    })(),
+    emaWindowsRaw: results[keys.indexOf('conflict:ema-windows:v1')]?.result ?? null,
     fredSeries,
   };
 }
@@ -893,7 +902,7 @@ function extractCiiScores(inputs) {
   return arr.map(normalizeCiiEntry);
 }
 
-function detectConflictScenarios(inputs) {
+function detectConflictScenarios(inputs, emaRiskScores) {
   const predictions = [];
   const scores = extractCiiScores(inputs);
   const theaters = inputs.theaterPosture?.theaters || [];
@@ -932,7 +941,19 @@ function detectConflictScenarios(inputs) {
 
     const ciiNorm = normalize(c.score, 50, 100);
     const eventBoost = (matchingIran.length + matchingUcdp.length) > 0 ? 0.1 : 0;
-    const prob = Math.min(0.9, ciiNorm * 0.6 + eventBoost + (c.trend === 'rising' ? 0.1 : 0));
+    let prob = Math.min(0.9, ciiNorm * 0.6 + eventBoost + (c.trend === 'rising' ? 0.1 : 0));
+
+    const emaRisk = emaRiskScores?.get(countryName ?? '');
+    if (emaRisk?.velocitySpike) {
+      signals.push({
+        type: 'velocity_spike',
+        value: `EMA z-score: ${emaRisk.zscore.toFixed(1)} (${emaRisk.risk24h}/100 risk)`,
+        weight: 0.35,
+      });
+      prob = Math.min(0.99, prob + 0.08);
+      sourceCount++;
+    }
+
     const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
@@ -1757,7 +1778,7 @@ function detectInfraScenarios(inputs) {
 }
 
 // ── Phase 4: Standalone detectors ───────────────────────────
-function detectUcdpConflictZones(inputs) {
+function detectUcdpConflictZones(inputs, emaRiskScores) {
   const predictions = [];
   const ucdp = Array.isArray(inputs.ucdpEvents) ? inputs.ucdpEvents : inputs.ucdpEvents?.events || [];
   if (ucdp.length === 0) return predictions;
@@ -1771,12 +1792,24 @@ function detectUcdpConflictZones(inputs) {
 
   for (const [country, count] of Object.entries(byCountry)) {
     if (count < 10) continue;
+
+    const signals = [{ type: 'ucdp', value: `${count} UCDP conflict events`, weight: 0.5 }];
+    let prob = Math.min(0.85, normalize(count, 5, 100) * 0.7);
+
+    const emaRisk = emaRiskScores?.get(country?.toLowerCase?.() ?? '');
+    if (emaRisk?.velocitySpike) {
+      signals.push({
+        type: 'velocity_spike',
+        value: `EMA z-score: ${emaRisk.zscore.toFixed(1)} (${emaRisk.risk24h}/100 risk)`,
+        weight: 0.35,
+      });
+      prob = Math.min(0.99, prob + 0.08);
+    }
+
     predictions.push(makePrediction(
       'conflict', country,
       `Active armed conflict: ${country}`,
-      Math.min(0.85, normalize(count, 5, 100) * 0.7),
-      0.3, '30d',
-      [{ type: 'ucdp', value: `${count} UCDP conflict events`, weight: 0.5 }],
+      prob, 0.3, '30d', signals,
     ));
   }
   return predictions;
@@ -14753,6 +14786,38 @@ async function enrichScenariosWithLLM(predictions) {
   return enrichmentMeta;
 }
 
+async function updateEmaWindows(inputs, url, token) {
+  let priorWindows = new Map();
+  try {
+    const raw = inputs.emaWindowsRaw;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      priorWindows = new Map(Object.entries(parsed));
+    }
+  } catch { /* cold start */ }
+
+  const ucdpEvents = Array.isArray(inputs.ucdpEvents) ? inputs.ucdpEvents : (inputs.ucdpEvents?.events ?? []);
+  const acledEvents = inputs.acledEvents ?? [];
+
+  const updatedWindows = computeEmaWindows(priorWindows, acledEvents, ucdpEvents);
+  const riskScores = computeRisk24h(updatedWindows);
+
+  const windowsObj = Object.fromEntries(updatedWindows);
+  const ttl = 26 * 3600;
+  await redisCommand(url, token, ['SET', 'conflict:ema-windows:v1', JSON.stringify(windowsObj), 'EX', ttl])
+    .catch(err => console.warn(`  [EMA] Failed to persist windows: ${err.message}`));
+  await redisCommand(url, token, ['SET', 'seed-meta:conflict:ema-windows:v1', JSON.stringify({ fetchedAt: new Date().toISOString(), recordCount: updatedWindows.size }), 'EX', ttl])
+    .catch(err => console.warn(`  [EMA] Failed to persist seed-meta: ${err.message}`));
+
+  const spikeCount = [...riskScores.values()].filter(r => r.velocitySpike).length;
+  if (spikeCount > 0) {
+    console.log(`  [EMA] ${spikeCount} velocity spike(s) detected:`,
+      [...riskScores.entries()].filter(([, v]) => v.velocitySpike).map(([k, v]) => `${k}(${v.risk24h})`).join(', '));
+  }
+
+  return riskScores;
+}
+
 // ── Main pipeline ──────────────────────────────────────────
 async function fetchForecasts() {
   await warmPingChokepoints();
@@ -14775,14 +14840,16 @@ async function fetchForecasts() {
   const prior = await readPriorPredictions();
 
   console.log('  Running domain detectors...');
+  const { url: emaUrl, token: emaToken } = getRedisCredentials();
+  const emaRiskScores = await updateEmaWindows(inputs, emaUrl, emaToken);
   const predictions = [
-    ...detectConflictScenarios(inputs),
+    ...detectConflictScenarios(inputs, emaRiskScores),
     ...detectMarketScenarios(inputs),
     ...detectSupplyChainScenarios(inputs),
     ...detectPoliticalScenarios(inputs),
     ...detectMilitaryScenarios(inputs),
     ...detectInfraScenarios(inputs),
-    ...detectUcdpConflictZones(inputs),
+    ...detectUcdpConflictZones(inputs, emaRiskScores),
     ...detectCyberScenarios(inputs),
     ...detectGpsJammingScenarios(inputs),
     ...detectFromPredictionMarkets(inputs),

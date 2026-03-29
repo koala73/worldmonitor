@@ -276,6 +276,8 @@ export default [
   "www.aviationpros.com",
   "www.aviationweek.com",
   "www.kitco.com",
+  "goldsilverworlds.com",
+  "www.fxempire.com",
   "www.mining.com",
   "www.commoditytrademantra.com",
   "oilprice.com",

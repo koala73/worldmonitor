@@ -676,6 +676,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-economic-stress:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEconomicStress
+            description: GetEconomicStress retrieves the composite Economic Stress Index (0-100) from 6 FRED series.
+            operationId: GetEconomicStress
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEconomicStressResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1857,3 +1883,39 @@ components:
                 value:
                     type: number
                     format: double
+        GetEconomicStressRequest:
+            type: object
+        GetEconomicStressResponse:
+            type: object
+            properties:
+                compositeScore:
+                    type: number
+                    format: double
+                label:
+                    type: string
+                components:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EconomicStressComponent'
+                seededAt:
+                    type: string
+                unavailable:
+                    type: boolean
+        EconomicStressComponent:
+            type: object
+            properties:
+                id:
+                    type: string
+                label:
+                    type: string
+                rawValue:
+                    type: number
+                    format: double
+                score:
+                    type: number
+                    format: double
+                weight:
+                    type: number
+                    format: double
+                missing:
+                    type: boolean

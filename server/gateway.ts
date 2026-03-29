@@ -197,6 +197,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-eurostat-country-data': 'slow',
   '/api/economic/v1/get-eu-gas-storage': 'slow',
   '/api/economic/v1/get-eu-fsi': 'slow',
+  '/api/economic/v1/get-economic-stress': 'slow',
   '/api/supply-chain/v1/get-shipping-stress': 'medium',
   '/api/health/v1/list-disease-outbreaks': 'slow',
   '/api/intelligence/v1/get-social-velocity': 'fast',

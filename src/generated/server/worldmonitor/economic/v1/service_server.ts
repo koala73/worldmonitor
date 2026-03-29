@@ -507,6 +507,26 @@ export interface EuFsiObservation {
   value: number;
 }
 
+export interface GetEconomicStressRequest {
+}
+
+export interface GetEconomicStressResponse {
+  compositeScore: number;
+  label: string;
+  components: EconomicStressComponent[];
+  seededAt: string;
+  unavailable: boolean;
+}
+
+export interface EconomicStressComponent {
+  id: string;
+  label: string;
+  rawValue: number;
+  score: number;
+  weight: number;
+  missing: boolean;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -574,6 +594,7 @@ export interface EconomicServiceHandler {
   getEuGasStorage(ctx: ServerContext, req: GetEuGasStorageRequest): Promise<GetEuGasStorageResponse>;
   getEuYieldCurve(ctx: ServerContext, req: GetEuYieldCurveRequest): Promise<GetEuYieldCurveResponse>;
   getEuFsi(ctx: ServerContext, req: GetEuFsiRequest): Promise<GetEuFsiResponse>;
+  getEconomicStress(ctx: ServerContext, req: GetEconomicStressRequest): Promise<GetEconomicStressResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -1448,6 +1469,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getEuFsi(ctx, body);
           return new Response(JSON.stringify(result as GetEuFsiResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-economic-stress",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetEconomicStressRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getEconomicStress(ctx, body);
+          return new Response(JSON.stringify(result as GetEconomicStressResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

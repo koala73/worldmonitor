@@ -1304,6 +1304,8 @@ const YAHOO_ONLY = new Set([
   '^GSPC', '^DJI', '^IXIC', '^RUT',
   ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=F') || s.startsWith('^')),
   'URA', 'LIT',
+  // Spot gold and forex pairs (=X suffix) — not on Finnhub
+  ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=X')),
 ]);
 
 function fetchYahooChartDirect(symbol) {
