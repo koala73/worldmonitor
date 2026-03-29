@@ -28,6 +28,24 @@ function stressFormatRaw(id: string, raw: number): string {
   return raw.toFixed(2);
 }
 
+const STRESS_NOTIFICATION_KEY = 'wm:economic-stress:last-notified-level';
+
+function notifyIfStressCrossed(score: number): void {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const level = score >= 85 ? 2 : score >= 70 ? 1 : 0;
+  if (level === 0) return;
+  try {
+    const lastLevel = parseInt(sessionStorage.getItem(STRESS_NOTIFICATION_KEY) ?? '0', 10);
+    if (level <= lastLevel) return;
+    sessionStorage.setItem(STRESS_NOTIFICATION_KEY, String(level));
+    new Notification('Economic Stress Alert', {
+      body: `Composite stress index reached ${score.toFixed(1)} (${score >= 85 ? 'Critical' : 'Severe'})`,
+      icon: '/favico/favicon-32x32.png',
+      tag: 'economic-stress',
+    });
+  } catch { /* Notification API can throw in some environments */ }
+}
+
 function stressComponentCard(c: EconomicStressComponent): string {
   if (c.missing) {
     return `<div style="background:rgba(255,255,255,0.02);border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,0.05)">
@@ -182,6 +200,7 @@ export class EconomicPanel extends Panel {
 
   public updateStress(data: GetEconomicStressResponse): void {
     this.stressData = data;
+    if (Number.isFinite(data.compositeScore)) notifyIfStressCrossed(data.compositeScore);
     this.render();
   }
 

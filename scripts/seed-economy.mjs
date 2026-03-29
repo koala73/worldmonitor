@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, fredFetchJson, curlFetch } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, fredFetchJson, curlFetch, getRedisCredentials } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -53,7 +53,30 @@ function stressLabel(score) {
 }
 
 /**
+ * Read GSCPI from Redis (seeded by ais-relay from NY Fed, not available via FRED API).
+ * Format stored: { observations: [{ date, value }] } — no series wrapper.
+ * @returns {Promise<{ observations: { date: string; value: number }[] } | null>}
+ */
+async function fetchGscpiFromRedis() {
+  try {
+    const { url, token } = getRedisCredentials();
+    const resp = await fetch(`${url}/get/economic:fred:v1:GSCPI:0`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return null;
+    const body = /** @type {{ result: string | null }} */ (await resp.json());
+    if (!body.result) return null;
+    const parsed = JSON.parse(body.result);
+    return Array.isArray(parsed.observations) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Compute the composite stress index from freshly-fetched FRED data.
+ * Scan backwards through observations to skip FRED's end-of-series null sentinels.
  * @param {Record<string, { observations: { date: string; value: number }[] }>} fr
  * @returns {{ compositeScore: number; label: string; components: object[]; seededAt: string; unavailable: false } | null}
  */
@@ -65,9 +88,15 @@ function computeStressIndex(fr) {
 
   for (const comp of STRESS_COMPONENTS) {
     const obs = fr[comp.id]?.observations;
-    const rawValue = (obs?.length > 0) ? (obs[obs.length - 1]?.value ?? null) : null;
+    let rawValue = null;
+    if (obs?.length > 0) {
+      for (let j = obs.length - 1; j >= 0; j--) {
+        const v = obs[j]?.value;
+        if (typeof v === 'number' && Number.isFinite(v)) { rawValue = v; break; }
+      }
+    }
 
-    if (rawValue === null || !Number.isFinite(rawValue)) {
+    if (rawValue === null) {
       missingCount++;
       if (comp.id !== 'GSCPI') console.warn(`  [StressIndex] ${comp.id} missing from FRED — excluding`);
       components.push({ id: comp.id, label: comp.label, rawValue: null, missing: true, score: 0, weight: comp.weight });
@@ -637,8 +666,15 @@ async function fetchAll() {
     console.warn(`  NatGasStorage: skipped write — ${ng.weeks?.length ?? 0} weeks or schema invalid`);
   }
 
-  // Compute stress index from this FRED run (no extra API calls — reads from fr directly)
+  // Compute stress index — GSCPI is seeded by ais-relay (NY Fed), not FRED; read from Redis
   if (frHasData) {
+    const gscpi = await fetchGscpiFromRedis();
+    if (gscpi) {
+      fr['GSCPI'] = gscpi;
+      console.log('  [StressIndex] GSCPI loaded from Redis');
+    } else {
+      console.warn('  [StressIndex] GSCPI not in Redis yet (ais-relay lag or first run) — excluding');
+    }
     const stressResult = computeStressIndex(fr);
     if (stressResult) {
       await writeExtraKeyWithMeta(STRESS_INDEX_KEY, stressResult, STRESS_INDEX_TTL, STRESS_COMPONENTS.length);
