@@ -25,11 +25,15 @@ function resolveIata(token: string): string | undefined {
     const up = token.toUpperCase();
     if (/^[A-Z]{3}$/.test(up)) return up;
     const low = token.toLowerCase();
-    const match = MONITORED_AIRPORTS.find(a =>
-        a.city.toLowerCase() === low ||
-        a.iata.toLowerCase() === low
+    const cityMatch = MONITORED_AIRPORTS.find(a => a.city.toLowerCase() === low);
+    if (cityMatch) return cityMatch.iata;
+    // Whole-word name match — only if the token uniquely identifies one airport
+    // (prevents common words like "John", "International" matching multiple airports)
+    const nameMatches = MONITORED_AIRPORTS.filter(a =>
+        a.name.toLowerCase().split(/[\s\-–./]+/).includes(low)
     );
-    return match?.iata;
+    if (nameMatches.length === 1) return nameMatches[0]!.iata;
+    return undefined;
 }
 
 function extractAirports(words: string[]): string[] {
