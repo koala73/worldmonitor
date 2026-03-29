@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-03-19T00:00:00Z",
+  "updatedAt": "2026-03-29T00:00:00Z",
   "note": "Product-managed curated list. Not user-configurable.",
   "channels": {
     "full": [
@@ -77,8 +77,8 @@
         "maxMessages": 25
       },
       {
-        "handle": "iranintltv",
-        "label": "Iran International",
+        "handle": "IranIntl_En",
+        "label": "Iran International EN",
         "topic": "politics",
         "tier": 2,
         "enabled": true,
@@ -309,6 +309,78 @@
         "enabled": true,
         "region": "middleeast",
         "maxMessages": 20
+      },
+      {
+        "handle": "ReportingFromUkraine",
+        "label": "Reporting from Ukraine",
+        "topic": "conflict",
+        "tier": 2,
+        "enabled": true,
+        "region": "ukraine",
+        "maxMessages": 20
+      },
+      {
+        "handle": "middleeastobserver",
+        "label": "Middle East Observer",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 20
+      },
+      {
+        "handle": "MiddleEastEye",
+        "label": "Middle East Eye",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 20
+      },
+      {
+        "handle": "syriahr",
+        "label": "Syrian Observatory",
+        "topic": "conflict",
+        "tier": 3,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 15
+      },
+      {
+        "handle": "dragonwatch",
+        "label": "Dragon Watch",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "asia",
+        "maxMessages": 20
+      },
+      {
+        "handle": "indopacificnews",
+        "label": "Indo-Pacific News",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "asia",
+        "maxMessages": 20
+      },
+      {
+        "handle": "sahelwatch",
+        "label": "Sahel Watch",
+        "topic": "conflict",
+        "tier": 3,
+        "enabled": true,
+        "region": "africa",
+        "maxMessages": 15
+      },
+      {
+        "handle": "sudanwarmonitor",
+        "label": "Sudan War Monitor",
+        "topic": "conflict",
+        "tier": 3,
+        "enabled": true,
+        "region": "africa",
+        "maxMessages": 15
       }
     ],
     "tech": [
@@ -365,6 +437,24 @@
         "enabled": true,
         "region": "global",
         "maxMessages": 20
+      },
+      {
+        "handle": "vxunderground",
+        "label": "vx-underground",
+        "topic": "cyber",
+        "tier": 2,
+        "enabled": true,
+        "region": "global",
+        "maxMessages": 20
+      },
+      {
+        "handle": "falconfeeds",
+        "label": "FalconFeeds.io",
+        "topic": "cyber",
+        "tier": 3,
+        "enabled": true,
+        "region": "global",
+        "maxMessages": 15
       }
     ],
     "finance": []
