@@ -950,7 +950,7 @@ function detectConflictScenarios(inputs, emaRiskScores) {
         value: `EMA z-score: ${emaRisk.zscore.toFixed(1)} (${emaRisk.risk24h}/100 risk)`,
         weight: 0.35,
       });
-      prob = Math.min(0.99, (prob ?? 0) + 0.08);
+      prob = Math.min(0.99, prob + 0.08);
       sourceCount++;
     }
 
@@ -14806,6 +14806,8 @@ async function updateEmaWindows(inputs, url, token) {
   const ttl = 26 * 3600;
   await redisCommand(url, token, ['SET', 'conflict:ema-windows:v1', JSON.stringify(windowsObj), 'EX', ttl])
     .catch(err => console.warn(`  [EMA] Failed to persist windows: ${err.message}`));
+  await redisCommand(url, token, ['SET', 'seed-meta:conflict:ema-windows:v1', JSON.stringify({ fetchedAt: new Date().toISOString(), recordCount: updatedWindows.size }), 'EX', ttl])
+    .catch(err => console.warn(`  [EMA] Failed to persist seed-meta: ${err.message}`));
 
   const spikeCount = [...riskScores.values()].filter(r => r.velocitySpike).length;
   if (spikeCount > 0) {

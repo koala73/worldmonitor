@@ -36,23 +36,17 @@ function normalizeCountry(name) {
 
 /**
  * @param {number[]} window
- * @returns {{ ema: number, mean: number, stddev: number }}
+ * @returns {{ mean: number, stddev: number }}
  */
 export function computeWindowStats(window) {
-  if (window.length === 0) return { ema: 0, mean: 0, stddev: 0 };
+  if (window.length === 0) return { mean: 0, stddev: 0 };
 
   const mean = window.reduce((s, v) => s + v, 0) / window.length;
 
   const variance = window.reduce((s, v) => s + (v - mean) ** 2, 0) / window.length;
   const stddev = Math.sqrt(variance);
 
-  const last = window[window.length - 1] ?? 0;
-  let ema = window[0] ?? 0;
-  for (let i = 1; i < window.length; i++) {
-    ema = ALPHA * window[i] + (1 - ALPHA) * ema;
-  }
-
-  return { ema, mean, stddev };
+  return { mean, stddev };
 }
 
 /**
