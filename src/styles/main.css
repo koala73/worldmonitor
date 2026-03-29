@@ -19850,6 +19850,10 @@ body.map-width-resizing {
     grid-template-columns: 1fr;
   }
 
+  .main-content.map-hidden .map-width-resize-handle {
+    display: none;
+  }
+
   .main-content.map-hidden .panels-grid {
     grid-column: 1;
   }
@@ -19938,6 +19942,10 @@ body.map-width-resizing {
 
 .main-content.desktop-grid.map-hidden {
   grid-template-columns: 1fr;
+}
+
+.main-content.desktop-grid.map-hidden .map-width-resize-handle {
+  display: none;
 }
 
 .main-content.desktop-grid.map-hidden .panels-grid {
