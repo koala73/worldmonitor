@@ -20,6 +20,13 @@ export const CLOUD_SYNC_KEYS = [
   'wm-ai-flow-cloud-llm',
   'wm-analysis-frameworks',
   'wm-panel-frameworks',
+  // Provider-specific map themes (wm-map-theme:<provider>)
+  'wm-map-theme:auto',
+  'wm-map-theme:pmtiles',
+  'wm-map-theme:openfreemap',
+  'wm-map-theme:carto',
+  // Live-stream mode
+  'wm-live-streams-always-on',
 ] as const;
 
 export type CloudSyncKey = (typeof CLOUD_SYNC_KEYS)[number];
