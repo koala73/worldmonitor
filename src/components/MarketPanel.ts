@@ -207,9 +207,10 @@ interface EcbFxRateItem {
 
 type CommoditiesTab = 'commodities' | 'fx' | 'xau';
 
-// XAU/currency config: symbol → { label, flag, multiply }
-// multiply=true: rate is units-of-FC-per-USD → XAU_FC = XAU_USD × rate
-// multiply=false: rate is USD-per-FC → XAU_FC = XAU_USD / rate
+// XAU/currency config: symbol → { label, flag }
+// Direction derived from symbol: startsWith('USD') means USD is base (rate = FC/USD) → XAU_FC = XAU_USD * rate
+// Otherwise USD is quote (rate = USD/FC) → XAU_FC = XAU_USD / rate
+// Exception: USDCHF=X — Yahoo quotes as USD/CHF (USD per CHF), so divide despite USD prefix
 const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; multiply: boolean }> = [
   { symbol: 'EURUSD=X',  label: 'EUR', flag: '🇪🇺', multiply: false },
   { symbol: 'GBPUSD=X',  label: 'GBP', flag: '🇬🇧', multiply: false },
@@ -217,7 +218,7 @@ const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; 
   { symbol: 'USDCNY=X',  label: 'CNY', flag: '🇨🇳', multiply: true  },
   { symbol: 'USDINR=X',  label: 'INR', flag: '🇮🇳', multiply: true  },
   { symbol: 'AUDUSD=X',  label: 'AUD', flag: '🇦🇺', multiply: false },
-  { symbol: 'USDCHF=X',  label: 'CHF', flag: '🇨🇭', multiply: true  },
+  { symbol: 'USDCHF=X',  label: 'CHF', flag: '🇨🇭', multiply: false },
   { symbol: 'USDCAD=X',  label: 'CAD', flag: '🇨🇦', multiply: true  },
   { symbol: 'USDTRY=X',  label: 'TRY', flag: '🇹🇷', multiply: true  },
 ];
@@ -251,8 +252,9 @@ export class CommoditiesPanel extends Panel {
   }
 
   private _buildTabBar(hasFx: boolean, hasXau: boolean): string {
+    const firstTabLabel = SITE_VARIANT === 'commodity' ? 'Metals' : 'Commodities';
     const tabs: string[] = [
-      `<button class="panel-tab${this._tab === 'commodities' ? ' active' : ''}" data-tab="commodities" style="font-size:11px;padding:3px 10px">Metals</button>`,
+      `<button class="panel-tab${this._tab === 'commodities' ? ' active' : ''}" data-tab="commodities" style="font-size:11px;padding:3px 10px">${firstTabLabel}</button>`,
     ];
     if (hasFx) tabs.push(`<button class="panel-tab${this._tab === 'fx' ? ' active' : ''}" data-tab="fx" style="font-size:11px;padding:3px 10px">EUR FX</button>`);
     if (hasXau) tabs.push(`<button class="panel-tab${this._tab === 'xau' ? ' active' : ''}" data-tab="xau" style="font-size:11px;padding:3px 10px">XAU/FX</button>`);
@@ -264,15 +266,14 @@ export class CommoditiesPanel extends Panel {
     if (!gcf?.price) return `<div style="padding:8px;color:var(--text-dim);font-size:12px">Gold price unavailable</div>`;
 
     const goldUsd = gcf.price;
-    const fxMap = new Map(this._commodityData.filter(d => d.symbol).map(d => [d.symbol!, d]));
+    const fxMap = new Map(this._commodityData.filter(d => d.symbol?.endsWith('=X')).map(d => [d.symbol!, d]));
 
     const rows = XAU_CURRENCY_CONFIG.map(cfg => {
       const fx = fxMap.get(cfg.symbol);
-      if (!fx?.price) return null;
+      if (!fx?.price || !Number.isFinite(fx.price)) return null;
       const xauPrice = cfg.multiply ? goldUsd * fx.price : goldUsd / fx.price;
-      const formatted = cfg.label === 'JPY' || cfg.label === 'INR' || cfg.label === 'TRY'
-        ? Math.round(xauPrice).toLocaleString()
-        : xauPrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      if (!Number.isFinite(xauPrice) || xauPrice <= 0) return null;
+      const formatted = Math.round(xauPrice).toLocaleString();
       return `<div class="commodity-item">
         <div class="commodity-name">${escapeHtml(cfg.flag)} XAU/${escapeHtml(cfg.label)}</div>
         <div class="commodity-price" style="font-size:11px">${escapeHtml(formatted)}</div>
@@ -285,6 +286,7 @@ export class CommoditiesPanel extends Panel {
   private _render(): void {
     const hasFx = this._fxRates.length > 0;
     const hasXau = SITE_VARIANT === 'commodity' && this._commodityData.some(d => d.symbol === 'GC=F' && d.price !== null);
+    if (this._tab === 'xau' && !hasXau) this._tab = 'commodities';
     const tabBar = this._buildTabBar(hasFx, hasXau);
 
     if (this._tab === 'fx' && hasFx) {

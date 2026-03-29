@@ -2,7 +2,6 @@
   "commodities": [
     { "symbol": "^VIX", "name": "VIX", "display": "VIX" },
     { "symbol": "GC=F", "name": "Gold", "display": "GOLD" },
-    { "symbol": "XAUUSD=X", "name": "Gold Spot", "display": "XAU SPOT" },
     { "symbol": "SI=F", "name": "Silver", "display": "SILVER" },
     { "symbol": "HG=F", "name": "Copper", "display": "COPPER" },
     { "symbol": "PL=F", "name": "Platinum", "display": "PLATINUM" },

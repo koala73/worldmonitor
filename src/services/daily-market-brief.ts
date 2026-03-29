@@ -183,8 +183,9 @@ function matchesMarketHeadline(market: Pick<MarketData, 'symbol' | 'display' | '
   });
 }
 
-function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>, categories?: string[]): NewsItem[] {
-  return (categories ?? BRIEF_NEWS_CATEGORIES)
+function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>, extraCategories?: string[]): NewsItem[] {
+  const cats = extraCategories ? [...BRIEF_NEWS_CATEGORIES, ...extraCategories] : BRIEF_NEWS_CATEGORIES;
+  return cats
     .flatMap((category) => newsByCategory[category] || [])
     .filter((item) => !!item?.title)
     .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
