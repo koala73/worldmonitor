@@ -132,4 +132,16 @@
     "node-forge": "^1.4.0",
     "srvx": "^0.11.13"
   }
+
+  {
+  "name": "news-api",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
 }
