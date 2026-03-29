@@ -198,7 +198,10 @@ export const callLlmTool = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelO
 export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
   callLlmProfile(opts, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
 
-export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider'>;
+export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider'> & {
+  /** When fired, aborts the active provider fetch and stops the stream. */
+  signal?: AbortSignal;
+};
 
 /**
  * Streaming variant of callLlmReasoning.
@@ -221,6 +224,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
     maxTokens = 600,
     timeoutMs = 90_000,
     systemAppend,
+    signal: clientSignal,
   } = opts;
 
   let messages = rawMessages;
@@ -236,14 +240,24 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
   }
 
   const enc = new TextEncoder();
+  let activeController: AbortController | null = null;
+  let streamClosed = false;
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = (obj: Record<string, unknown>) => {
+        if (streamClosed) return;
         controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      };
+      const closeStream = () => {
+        if (streamClosed) return;
+        streamClosed = true;
+        controller.close();
       };
 
       for (const providerName of providerOrder) {
+        if (streamClosed) break;
+
         const creds = getProviderCredentials(providerName, {
           model: modelOverrides?.[providerName as LlmProviderName],
         });
@@ -254,6 +268,13 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
           continue;
         }
 
+        // Per-fetch abort controller merges client signal + per-request timeout
+        activeController = new AbortController();
+        const timeoutId = setTimeout(() => activeController?.abort(), timeoutMs);
+        if (clientSignal?.aborted) { clearTimeout(timeoutId); break; }
+        clientSignal?.addEventListener('abort', () => activeController?.abort(), { once: true });
+
+        let hasContent = false;
         try {
           const resp = await fetch(creds.apiUrl, {
             method: 'POST',
@@ -266,8 +287,9 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
               max_tokens: maxTokens,
               stream: true,
             }),
-            signal: AbortSignal.timeout(timeoutMs),
+            signal: activeController.signal,
           });
+          clearTimeout(timeoutId);
 
           if (!resp.ok || !resp.body) {
             console.warn(`[llm-stream:${providerName}] HTTP ${resp.status}`);
@@ -277,9 +299,8 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
           const reader = resp.body.getReader();
           const decoder = new TextDecoder();
           let buf = '';
-          let hasContent = false;
 
-          while (true) {
+          while (!streamClosed) {
             const { done, value } = await reader.read();
             if (done) break;
             buf += decoder.decode(value, { stream: true });
@@ -304,16 +325,31 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
 
           if (hasContent) {
             emit({ done: true });
-            controller.close();
+            closeStream();
             return;
           }
         } catch (err) {
+          clearTimeout(timeoutId);
+          if (hasContent) {
+            // Partial stream received — close cleanly rather than splicing a second provider answer
+            emit({ done: true });
+            closeStream();
+            return;
+          }
+          if (streamClosed) return;
           console.warn(`[llm-stream:${providerName}] ${(err as Error).message}`);
         }
       }
 
-      emit({ error: 'llm_unavailable' });
-      controller.close();
+      if (!streamClosed) {
+        emit({ error: 'llm_unavailable' });
+        closeStream();
+      }
+    },
+    cancel() {
+      // Client disconnected — abort the active provider fetch immediately
+      streamClosed = true;
+      activeController?.abort();
     },
   });
 }

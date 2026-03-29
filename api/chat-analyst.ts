@@ -50,15 +50,19 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
 function prependSseEvent(event: Record<string, unknown>, stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   const prefix = enc.encode(`data: ${JSON.stringify(event)}\n\n`);
+  let innerReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       controller.enqueue(prefix);
-      const reader = stream.getReader();
+      innerReader = stream.getReader();
       while (true) {
-        const { done, value } = await reader.read();
+        const { done, value } = await innerReader.read();
         if (done) { controller.close(); return; }
         controller.enqueue(value);
       }
+    },
+    cancel() {
+      innerReader?.cancel();
     },
   });
 }
@@ -138,6 +142,7 @@ export default async function handler(req: Request): Promise<Response> {
     maxTokens: 600,
     temperature: 0.35,
     timeoutMs: 25_000,
+    signal: req.signal,
   });
 
   // Always prepend a meta event so the client knows which sources are live
