@@ -168,8 +168,8 @@ interface SimulationAdjustmentDetail {
   actorSource: 'stateSummary' | 'affectedAssets' | 'none';
   /** Resolved channel used for bucket-channel matching. */
   resolvedChannel: string;
-  /** Source of resolved channel: 'direct' | 'market' | 'none'. */
-  channelSource: string;
+  /** Source of resolved channel. */
+  channelSource: 'direct' | 'market' | 'none';
 }
 
 interface SimulationAdjustmentRecord {
