@@ -8,7 +8,7 @@ const ALPHA = 0.3;
 const MIN_WINDOW = 6; // min points before z-score is meaningful
 
 /**
- * @typedef {{ region: string, window: number[], ema: number, mean: number, stddev: number, updatedAt: number }} WindowState
+ * @typedef {{ region: string, window: number[], ema: number, mean: number, stddev: number, updatedAt: number, lastRawCount: number }} WindowState
  */
 
 /**
@@ -58,7 +58,7 @@ export function computeWindowStats(window) {
  */
 export function computeEmaWindows(priorWindows, acledEvents, ucdpEvents) {
   /** @type {Map<string, number>} */
-  const counts = new Map();
+  const currentCounts = new Map();
 
   const safeAcled = Array.isArray(acledEvents) ? acledEvents : [];
   const safeUcdp = Array.isArray(ucdpEvents) ? ucdpEvents : [];
@@ -66,21 +66,28 @@ export function computeEmaWindows(priorWindows, acledEvents, ucdpEvents) {
   for (const e of safeAcled) {
     const country = (e?.country ?? '').toString().toLowerCase().trim();
     if (!country) continue;
-    counts.set(country, (counts.get(country) ?? 0) + 1);
+    currentCounts.set(country, (currentCounts.get(country) ?? 0) + 1);
   }
 
   for (const e of safeUcdp) {
     const country = ((e?.country ?? e?.country_name ?? '')).toString().toLowerCase().trim();
     if (!country) continue;
-    counts.set(country, (counts.get(country) ?? 0) + 1);
+    currentCounts.set(country, (currentCounts.get(country) ?? 0) + 1);
   }
 
   /** @type {Map<string, WindowState>} */
   const updated = new Map();
 
-  for (const [country, count] of counts) {
-    const prior = priorWindows instanceof Map ? (priorWindows.get(country) ?? null) : null;
-    updated.set(country, updateWindow(country, count, prior));
+  const safePrior = priorWindows instanceof Map ? priorWindows : new Map();
+  const allCountries = new Set([...safePrior.keys(), ...currentCounts.keys()]);
+
+  for (const country of allCountries) {
+    const currentRaw = currentCounts.get(country) ?? 0;
+    const prior = safePrior.get(country) ?? null;
+    const priorRaw = typeof prior?.lastRawCount === 'number' ? prior.lastRawCount : currentRaw;
+    const delta = Math.max(0, currentRaw - priorRaw);
+    const windowState = updateWindow(country, delta, prior);
+    updated.set(country, { ...windowState, lastRawCount: currentRaw });
   }
 
   return updated;
@@ -100,8 +107,7 @@ export function computeRisk24h(windows) {
       continue;
     }
 
-    const currentCount = state.window[state.window.length - 1] ?? 0;
-    const zscore = state.stddev === 0 ? 0 : (currentCount - state.mean) / state.stddev;
+    const zscore = state.stddev > 0 ? (state.ema - state.mean) / state.stddev : 0;
     const risk24h = Math.min(100, Math.max(0, Math.round(50 + zscore * 20)));
     const velocitySpike = risk24h >= 75;
 
