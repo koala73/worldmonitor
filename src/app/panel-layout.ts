@@ -68,7 +68,6 @@ import {
   DiseaseOutbreaksPanel,
   SocialVelocityPanel,
 } from '@/components';
-import { EconomicStressPanel } from '@/components/EconomicStressPanel';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
 import { debounce, saveToStorage, loadFromStorage } from '@/utils';
@@ -697,7 +696,6 @@ export class PanelLayoutManager implements AppModule {
     this.createNewsPanel('github', 'panels.github');
     this.createNewsPanel('ipo', 'panels.ipo');
     this.createNewsPanel('thinktanks', 'panels.thinktanks');
-    this.createPanel('economic-stress', () => new EconomicStressPanel());
     this.createPanel('economic', () => new EconomicPanel());
     this.createPanel('consumer-prices', () => new ConsumerPricesPanel());
 
