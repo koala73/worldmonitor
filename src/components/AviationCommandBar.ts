@@ -38,15 +38,17 @@ function resolveIata(token: string): string | undefined {
 
 function extractAirports(words: string[]): string[] {
     const result: string[] = [];
+    const seen = new Set<string>();
     let i = 0;
     while (i < words.length) {
         if (i + 1 < words.length) {
             const two = `${words[i]} ${words[i + 1]}`;
             const m = MONITORED_AIRPORTS.find(a => a.city.toLowerCase() === two.toLowerCase());
-            if (m) { result.push(m.iata); i += 2; continue; }
+            if (m) { if (!seen.has(m.iata)) { result.push(m.iata); seen.add(m.iata); } i += 2; continue; }
         }
         const iata = resolveIata(words[i]!);
-        if (iata) result.push(iata);
+        if (iata && !seen.has(iata)) { result.push(iata); seen.add(iata); }
+        else if (iata) seen.add(iata); // consume the token even if already seen
         i++;
     }
     return result;
