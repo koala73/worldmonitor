@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { internalQuery, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { channelTypeValidator } from "./constants";
 
 export const getChannelsByUserId = internalQuery({
@@ -100,6 +100,23 @@ export const deleteChannel = mutation({
       if (filtered.length !== rule.channels.length) {
         await ctx.db.patch(rule._id, { channels: filtered });
       }
+    }
+  },
+});
+
+// Called by the notification relay via /relay/deactivate HTTP action
+// when Telegram returns 403 or Slack returns 404/410.
+export const deactivateChannelForUser = internalMutation({
+  args: { userId: v.string(), channelType: channelTypeValidator },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("notificationChannels")
+      .withIndex("by_user_channel", (q) =>
+        q.eq("userId", args.userId).eq("channelType", args.channelType),
+      )
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, { verified: false });
     }
   },
 });

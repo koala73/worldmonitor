@@ -53,6 +53,25 @@ async function checkDedup(userId, eventType, title) {
   return result === 'OK'; // true = new, false = duplicate
 }
 
+// ── Channel deactivation ──────────────────────────────────────────────────────
+
+async function deactivateChannel(userId, channelType) {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/relay/deactivate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${RELAY_SECRET}`,
+      },
+      body: JSON.stringify({ userId, channelType }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) console.warn(`[relay] Deactivate failed ${userId}/${channelType}: ${res.status}`);
+  } catch (err) {
+    console.warn(`[relay] Deactivate request failed for ${userId}/${channelType}:`, err.message);
+  }
+}
+
 // ── Private IP guard ─────────────────────────────────────────────────────────
 
 function isPrivateIP(ip) {
@@ -72,8 +91,7 @@ async function sendTelegram(userId, chatId, text) {
     const body = await res.json().catch(() => ({}));
     if (res.status === 403 || body.description?.includes('chat not found')) {
       console.warn(`[relay] Telegram 403/400 for ${userId} — deactivating channel`);
-      // deactivateChannel is auth-gated; log warning only — Phase 4 limitation
-      console.warn(`[relay] Manual deactivation required for userId=${userId} channelType=telegram`);
+      await deactivateChannel(userId, 'telegram');
     }
     return;
   }
@@ -122,8 +140,7 @@ async function sendSlack(userId, webhookEnvelope, text) {
   });
   if (res.status === 404 || res.status === 410) {
     console.warn(`[relay] Slack webhook gone for ${userId} — deactivating`);
-    // deactivateChannel is auth-gated; log warning only — Phase 4 limitation
-    console.warn(`[relay] Manual deactivation required for userId=${userId} channelType=slack`);
+    await deactivateChannel(userId, 'slack');
   } else if (!res.ok) {
     console.warn(`[relay] Slack send failed: ${res.status}`);
   }
@@ -173,7 +190,8 @@ async function processEvent(event) {
 
   const matching = enabledRules.filter(r =>
     (r.eventTypes.length === 0 || r.eventTypes.includes(event.eventType)) &&
-    matchesSensitivity(r.sensitivity, event.severity ?? 'high')
+    matchesSensitivity(r.sensitivity, event.severity ?? 'high') &&
+    (!event.variant || !r.variant || r.variant === event.variant)
   );
 
   if (matching.length === 0) return;

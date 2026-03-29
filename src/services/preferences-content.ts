@@ -698,6 +698,21 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
         reloadNotifSection();
 
+        // When a new channel is linked, auto-update the rule's channels list
+        // so it includes the new channel without requiring a manual toggle.
+        function saveRuleWithNewChannel(newChannel: ChannelType): void {
+          const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
+          const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
+          if (!enabledEl) return;
+          const enabled = enabledEl.checked;
+          const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
+          const existing = Array.from(container.querySelectorAll<HTMLElement>('[data-channel-type]'))
+            .filter(el => el.querySelector('.us-notif-disconnect'))
+            .map(el => el.dataset.channelType as ChannelType);
+          const channels = [...new Set([...existing, newChannel])];
+          void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels });
+        }
+
         let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
         signal.addEventListener('abort', () => {
           if (alertRuleDebounceTimer !== null) {
@@ -758,6 +773,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                 getChannelsData().then((data) => {
                   const tg = data.channels.find(c => c.channelType === 'telegram');
                   if (tg?.verified || expired) {
+                    if (tg?.verified) saveRuleWithNewChannel('telegram');
                     reloadNotifSection();
                   }
                 }).catch(() => {
@@ -780,7 +796,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               return;
             }
             setEmailChannel(email).then(() => {
-              if (!signal.aborted) reloadNotifSection();
+              if (!signal.aborted) { saveRuleWithNewChannel('email'); reloadNotifSection(); }
             }).catch(() => {});
             return;
           }
@@ -799,7 +815,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               return;
             }
             setSlackChannel(url).then(() => {
-              if (!signal.aborted) reloadNotifSection();
+              if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
             }).catch(() => {});
             return;
           }

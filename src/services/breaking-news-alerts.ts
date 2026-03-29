@@ -3,6 +3,7 @@ import type { OrefAlert } from '@/services/oref-alerts';
 import { getSourceTier } from '@/config/feeds';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
+import { SITE_VARIANT } from '@/config/variant';
 
 export interface BreakingAlert {
   id: string;
@@ -167,6 +168,7 @@ function dispatchAlert(alert: BreakingAlert): void {
           eventType: alert.origin,
           payload: { title: alert.headline, source: alert.source, link: alert.link },
           severity: alert.threatLevel,
+          variant: SITE_VARIANT,
         }),
       }).catch(() => {});
     })();
