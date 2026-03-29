@@ -45,9 +45,10 @@ export async function getCountryRisk(
     getCachedJson(SANCTIONS_COUNTS_KEY, true),
   ]);
 
-  // Sanctions-specific outage: return unavailable immediately rather than
-  // silently emitting sanctionsActive:false (a false negative for screening use).
-  if (sanctionsRaw === null) {
+  // Any missing upstream key: fail closed to prevent CDN-caching of partial
+  // data as if it were valid (e.g. sanctionsActive:false or cii:undefined when
+  // the Redis key itself is simply absent, not just untracked for this country).
+  if (sanctionsRaw === null || riskRaw === null || advisoriesRaw === null) {
     return {
       countryCode: code,
       countryName: resolveCountryName(code, (advisoriesRaw as any)?.byCountryName),
