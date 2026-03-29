@@ -74,6 +74,7 @@ import {
   contradictsPremise,
   negatesDisruption,
   normalizeActorName,
+  summarizeImpactPathScore,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -6663,7 +6664,7 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     assert.equal(details.simPathConfidence, 1.0);
   });
 
-  it('T-N5: confidence=0 falls back to 1.0 → full +0.08 (no penalty for legacy zero)', () => {
+  it('T-N5: explicit confidence=0 → simConf=0, no positive adjustment (simulation rated path unsupported)', () => {
     const path = makePath('energy', 'energy_supply_shock', []);
     const candidatePacket = makeCandidatePacket();
     const simResult = {
@@ -6671,8 +6672,26 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
       invalidators: [], stabilizers: [],
     };
     const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
-    assert.equal(adjustment, 0.08);
-    assert.equal(details.simPathConfidence, 1.0);
+    assert.equal(adjustment, 0);
+    assert.equal(details.simPathConfidence, 0);
+    assert.equal(details.bucketChannelMatch, true);  // match found but zero-weighted
+  });
+
+  it('T-N5b: zero confidence + invalidator → negative adjustment fires flat, positive bonus stays 0', () => {
+    // The invalidator check is independent of simConf. A zero-confidence bucket-channel match
+    // contributes 0 positive bonus but the invalidator's -0.12 still fires.
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();  // routeFacilityKey='Strait of Hormuz'
+    const simResult = {
+      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0, keyActors: [] }],
+      invalidators: ['Strait of Hormuz fully operational'],
+      stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, -0.12);
+    assert.equal(details.simPathConfidence, 0);  // zero conf from explicit 0
+    assert.equal(details.bucketChannelMatch, true);
+    assert.equal(details.invalidatorHit, true);
   });
 
   it('T-N6: invalidator hit produces flat -0.12 regardless of sim path confidence', () => {
@@ -6988,6 +7007,29 @@ describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
     assert.ok(path.simulationSignal, 'simulationSignal written');
     assert.equal(path.simulationSignal.demoted, true);
     assert.ok(path.simulationSignal.adjustmentDelta < 0);
+  });
+
+  it('T-O5: summarizeImpactPathScore includes simulationSignal when present (path-scorecards / impact-expansion-debug coverage)', () => {
+    const signal = { backed: true, adjustmentDelta: 0.08, channelSource: 'market', demoted: false, simPathConfidence: 0.9 };
+    const path = {
+      pathId: 'p-o5',
+      type: 'expanded',
+      candidateStateId: 'state-o5',
+      acceptanceScore: 0.7,
+      simulationAdjustment: 0.08,
+      mergedAcceptanceScore: 0.78,
+      simulationSignal: signal,
+    };
+    const summary = summarizeImpactPathScore(path);
+    assert.ok(summary, 'summarizeImpactPathScore should return non-null');
+    assert.deepStrictEqual(summary.simulationSignal, signal, 'simulationSignal must be forwarded into scorecard summary');
+  });
+
+  it('T-O6: summarizeImpactPathScore omits simulationSignal when absent (no spurious undefined field)', () => {
+    const path = { pathId: 'p-o6', type: 'expanded', candidateStateId: 'state-o6', acceptanceScore: 0.6 };
+    const summary = summarizeImpactPathScore(path);
+    assert.ok(summary);
+    assert.equal(Object.prototype.hasOwnProperty.call(summary, 'simulationSignal'), false);
   });
 });
 

@@ -4588,6 +4588,9 @@ function summarizeImpactPathScore(path = null) {
   if (path.simulationAdjustment !== undefined) {
     summary.simulationAdjustment = Number(path.simulationAdjustment);
     summary.mergedAcceptanceScore = Number(path.mergedAcceptanceScore || path.acceptanceScore || 0);
+    if (path.simulationSignal !== undefined) {
+      summary.simulationSignal = path.simulationSignal;
+    }
   }
   return summary;
 }
@@ -11445,12 +11448,13 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
     (sp) => matchesBucket(sp, pathBucket) && matchesChannel(sp, pathChannel)
   );
   if (bucketChannelMatch) {
-    // Scale bonuses by sim path confidence. Missing/null/zero confidence falls back to 1.0
-    // (no penalty for legacy LLM output that omitted the field).
+    // Scale bonuses by sim path confidence.
+    // Absent or non-finite → 1.0 (conservative fallback for legacy LLM output without this field).
+    // Explicit 0 → simConf=0, no positive adjustment (if no negatives fire, adj=0 and early exit).
     const rawConf = bucketChannelMatch.confidence;
-    const simConf = typeof rawConf === 'number' && Number.isFinite(rawConf) && rawConf > 0
-      ? Math.min(1, rawConf)
-      : 1.0;
+    const simConf = (typeof rawConf !== 'number' || !Number.isFinite(rawConf))
+      ? 1.0
+      : Math.min(1, Math.max(0, rawConf));
     adjustment += +parseFloat((0.08 * simConf).toFixed(3));
     details.bucketChannelMatch = true;
     details.simPathConfidence = simConf;
@@ -16803,6 +16807,7 @@ export {
   contradictsPremise,
   negatesDisruption,
   normalizeActorName,
+  summarizeImpactPathScore,
   SIMULATION_MERGE_ACCEPT_THRESHOLD,
   scoreImpactExpansionQuality,
   buildImpactExpansionDebugPayload,
