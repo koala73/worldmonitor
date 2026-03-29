@@ -186,7 +186,7 @@ http.route({
   path: "/relay/channels",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const secret = process.env.RELAY_SECRET ?? "";
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
     const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
 
     if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
