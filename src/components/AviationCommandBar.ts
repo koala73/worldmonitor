@@ -1,5 +1,6 @@
 import { fetchFlightStatus, fetchAirportOpsSummary, fetchFlightPrices, fetchAviationNews, fetchGoogleFlights } from '@/services/aviation';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { MONITORED_AIRPORTS } from '@/config/airports';
 
 // ---- Intent types ----
 
@@ -18,15 +19,45 @@ function fmtDur(m: number): string {
     return min > 0 ? `${h}h ${min}m` : `${h}h`;
 }
 
+// ---- Airport resolver (IATA or city/name fuzzy match) ----
+
+function resolveIata(token: string): string | undefined {
+    const up = token.toUpperCase();
+    if (/^[A-Z]{3}$/.test(up)) return up;
+    const low = token.toLowerCase();
+    const match = MONITORED_AIRPORTS.find(a =>
+        a.city.toLowerCase() === low ||
+        a.name.toLowerCase().includes(low) ||
+        a.iata.toLowerCase() === low
+    );
+    return match?.iata;
+}
+
+function extractAirports(words: string[]): string[] {
+    const result: string[] = [];
+    let i = 0;
+    while (i < words.length) {
+        if (i + 1 < words.length) {
+            const two = `${words[i]} ${words[i + 1]}`;
+            const m = MONITORED_AIRPORTS.find(a => a.city.toLowerCase() === two.toLowerCase());
+            if (m) { result.push(m.iata); i += 2; continue; }
+        }
+        const iata = resolveIata(words[i]!);
+        if (iata) result.push(iata);
+        i++;
+    }
+    return result;
+}
+
 // ---- Intent parser ----
 
 function parseIntent(raw: string): Intent {
     const q = raw.trim().toUpperCase();
     const words = q.split(/\s+/);
 
-    // OPS <AIRPORT...>
-    if (/^OPS\s/.test(q) || /^STATUS\s/.test(q)) {
-        const airports = words.slice(1).filter(w => /^[A-Z]{3}$/.test(w));
+    // OPS <AIRPORT | city name ...>
+    if (/^OPS\b/.test(q) || /^STATUS\s/.test(q)) {
+        const airports = extractAirports(words.slice(1));
         if (airports.length) return { type: 'OPS', airports };
     }
 
@@ -39,11 +70,12 @@ function parseIntent(raw: string): Intent {
         }
     }
 
-    // PRICE / PRICES <ORG> <DST>  or  <ORG> TO <DST> PRICE[S]
+    // PRICE / PRICES <ORG> <DST>  or  <ORG> TO <DST> PRICE[S]  (supports city names)
     if (words.some(w => /^PRICE[S]?$/.test(w))) {
-        const priceAirports = words.filter(w => /^[A-Z]{3}$/.test(w) && w !== 'TO');
+        const nonKeywords = words.filter(w => !/^(PRICE[S]?|TO|FROM|ON|FOR)$/.test(w) && !/^\d{4}-\d{2}-\d{2}$/.test(w));
+        const priceAirports = extractAirports(nonKeywords);
         if (priceAirports.length >= 2) {
-            const date = words.find(w => /^\d{4}-\d{2}-\d{2}$/.test(w));
+            const date = raw.match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1];
             return { type: 'PRICE_WATCH', origin: priceAirports[0]!, destination: priceAirports[1]!, date };
         }
     }
@@ -110,30 +142,51 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
 
     if (intent.type === 'PRICE_WATCH') {
         const date = intent.date ?? new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-        // Try Google Flights first (real data)
+        const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
+        const header = `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <strong>💸 ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}</strong>
+          <span style="color:#6b7280;font-size:11px">${escapeHtml(dateLabel)}</span>
+        </div>`;
+
+        // Try Google Flights first — sort nonstop first, then by price
         const gfResult = await fetchGoogleFlights({ origin: intent.origin, destination: intent.destination, departureDate: date });
         if (gfResult.flights.length) {
-            const best = gfResult.flights[0]!;
-            const leg = best.legs[0];
-            const carrier = leg ? `${leg.airlineCode} ${leg.flightNumber}` : '';
-            const stops = best.stops === 0 ? 'nonstop' : `${best.stops} stop`;
+            const sorted = [...gfResult.flights].sort((a, b) => a.stops !== b.stops ? a.stops - b.stops : a.price - b.price);
+            const rows = sorted.slice(0, 5).map(f => {
+                const leg = f.legs[0];
+                const carrier = leg ? `${escapeHtml(leg.airlineCode)} ${escapeHtml(leg.flightNumber)}` : '';
+                const depTime = leg?.departureDatetime?.slice(11, 16) ?? '';
+                const arrTime = f.legs[f.legs.length - 1]?.arrivalDatetime?.slice(11, 16) ?? '';
+                const stopColor = f.stops === 0 ? '#22c55e' : '#9ca3af';
+                const stopLabel = f.stops === 0 ? 'nonstop' : `${f.stops} stop`;
+                return `<div class="cmd-row" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <div style="flex:1;min-width:0">
+            <span style="font-size:13px">${carrier}</span>
+            <span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span>
+          </div>
+          <div style="color:#9ca3af;font-size:11px;margin:0 10px">${depTime}${arrTime ? `–${arrTime}` : ''} · ${escapeHtml(fmtDur(f.durationMinutes))}</div>
+          <div style="color:#60a5fa;font-weight:600">$${Math.round(f.price).toLocaleString()}</div>
+        </div>`;
+            }).join('');
             return {
-                html: `<div class="cmd-section">
-      <strong>💸 ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}</strong>
-      <div>Best: <strong style="color:#60a5fa">$${Math.round(best.price).toLocaleString()}</strong> · ${escapeHtml(carrier)} · ${stops} · ${escapeHtml(fmtDur(best.durationMinutes))}</div>
-      ${gfResult.degraded ? '<div style="color:#f59e0b;font-size:11px">Partial results</div>' : ''}
-    </div>` };
+                html: `<div class="cmd-section">${header}${rows}${gfResult.degraded ? '<div style="color:#f59e0b;font-size:11px;margin-top:4px">Partial results</div>' : ''}</div>`,
+            };
         }
+
         // Fallback to TravelPayouts / demo
         const { quotes, isDemoMode } = await fetchFlightPrices({ origin: intent.origin, destination: intent.destination, departureDate: date });
         if (!quotes.length) return { html: '<div class="cmd-empty">No prices found.</div>' };
-        const best = quotes[0]!;
+        const rows = quotes.slice(0, 5).sort((a, b) => a.stops !== b.stops ? a.stops - b.stops : a.priceAmount - b.priceAmount).map(q => {
+            const stopColor = q.stops === 0 ? '#22c55e' : '#9ca3af';
+            const stopLabel = q.stops === 0 ? 'nonstop' : `${q.stops} stop`;
+            return `<div class="cmd-row" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <div style="flex:1">${escapeHtml(q.carrierName || q.carrierIata)}<span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span></div>
+          <div style="color:#60a5fa;font-weight:600">$${Math.round(q.priceAmount)}</div>
+        </div>`;
+        }).join('');
         return {
-            html: `<div class="cmd-section">
-      <strong>💸 ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}</strong>
-      ${isDemoMode ? '<span class="demo-badge" style="margin-left:6px">DEMO</span>' : ''}
-      <div>Best: <strong style="color:#60a5fa">$${Math.round(best.priceAmount)}</strong> via ${escapeHtml(best.carrierName || best.carrierIata)} · ${best.stops === 0 ? 'nonstop' : `${best.stops} stop`}</div>
-    </div>` };
+            html: `<div class="cmd-section">${header}${rows}${isDemoMode ? '<div style="color:#6b7280;font-size:11px;margin-top:4px">Indicative prices</div>' : ''}</div>`,
+        };
     }
 
     if (intent.type === 'NEWS_BRIEF') {
@@ -148,7 +201,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
     }
 
     return {
-        html: `<div class="cmd-empty">Unrecognized command. Try: <code>ops IST</code>, <code>flight TK1</code>, <code>price IST LHR</code>, <code>brief</code></div>`,
+        html: `<div class="cmd-empty">Try: <code>ops Dubai</code>, <code>flight EK3</code>, <code>price London Dubai</code>, <code>brief TK</code></div>`,
         error: true,
     };
 }
@@ -191,7 +244,7 @@ export class AviationCommandBar {
           <span>✈️ Aviation Command</span>
           <button id="aviation-cmd-close">×</button>
         </div>
-        <input id="aviation-cmd-input" type="text" placeholder="ops IST  /  flight TK1  /  price IST LHR  /  brief" autocomplete="off" spellcheck="false">
+        <input id="aviation-cmd-input" type="text" placeholder="ops Dubai  ·  flight EK3  ·  price London Dubai  ·  brief" autocomplete="off" spellcheck="false">
         <div id="aviation-cmd-suggestions"></div>
         <div id="aviation-cmd-result"></div>
         <div id="aviation-cmd-history-list"></div>
@@ -277,7 +330,10 @@ export class AviationCommandBar {
         const el = this.overlay?.querySelector('#aviation-cmd-suggestions');
         if (!el) return;
         const suggestions = [
-            'ops IST', 'ops LHR FRA', 'flight TK1', 'price IST LHR', 'brief', 'brief TK',
+            'ops IST', 'ops Dubai', 'ops London', 'ops LHR FRA', 'ops Lisbon',
+            'flight TK1', 'flight EK3', 'ME426 status',
+            'price IST LHR', 'price Dubai London', 'price LHR to DXB', 'price BEY DXB',
+            'brief', 'brief TK',
         ].filter(s => s.toLowerCase().startsWith(val.toLowerCase()) && s.toLowerCase() !== val.toLowerCase());
         if (!val || !suggestions.length) { el.innerHTML = ''; return; }
         el.innerHTML = suggestions.slice(0, 4).map(s =>
