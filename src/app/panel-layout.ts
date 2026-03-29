@@ -104,6 +104,7 @@ const WEB_PREMIUM_PANELS = new Set([
   'daily-market-brief',
   'market-implications',
   'deduction',
+  'chat-analyst',
 ]);
 
 export interface PanelLayoutManagerCallbacks {
@@ -862,8 +863,12 @@ export class PanelLayoutManager implements AppModule {
     this.lazyPanel('market-implications', () =>
       import('@/components/MarketImplicationsPanel').then(m => new m.MarketImplicationsPanel()),
     );
-    // Gating for daily-market-brief and market-implications is handled reactively
-    // by updatePanelGating() via auth state subscription (both are in WEB_PREMIUM_PANELS).
+    // Gating for daily-market-brief, market-implications, and chat-analyst is handled
+    // reactively by updatePanelGating() via auth state subscription (all in WEB_PREMIUM_PANELS).
+
+    this.lazyPanel('chat-analyst', () =>
+      import('@/components/ChatAnalystPanel').then(m => new m.ChatAnalystPanel()),
+    );
 
     this.lazyPanel('forecast', () =>
       import('@/components/ForecastPanel').then(m => new m.ForecastPanel()),

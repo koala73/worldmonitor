@@ -198,6 +198,126 @@ export const callLlmTool = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelO
 export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
   callLlmProfile(opts, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
 
+export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides'>;
+
+/**
+ * Streaming variant of callLlmReasoning.
+ * Returns a ReadableStream that emits SSE lines:
+ *   data: {"delta":"..."}  — one per content chunk
+ *   data: {"done":true}    — terminal event
+ * Returns null if no provider is available.
+ */
+export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<Uint8Array> | null {
+  const envProvider = process.env.LLM_REASONING_PROVIDER;
+  const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : 'openrouter') as LlmProviderName;
+  const model = process.env.LLM_REASONING_MODEL;
+  const remaining = PROVIDER_CHAIN.filter((p) => p !== provider);
+  const providerOrder = [provider, ...remaining];
+  const modelOverrides = model ? { [provider]: model } as Partial<Record<LlmProviderName, string>> : undefined;
+
+  const {
+    messages: rawMessages,
+    temperature = 0.3,
+    maxTokens = 600,
+    timeoutMs = 90_000,
+    systemAppend,
+  } = opts;
+
+  let messages = rawMessages;
+  const firstMsg = messages[0];
+  if (systemAppend && firstMsg?.role === 'system') {
+    const sanitized = sanitizeForPrompt(systemAppend);
+    if (sanitized) {
+      messages = [
+        { role: 'system', content: `${firstMsg.content}\n\n---\n\n${sanitized}` },
+        ...messages.slice(1),
+      ];
+    }
+  }
+
+  const enc = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const emit = (obj: Record<string, unknown>) => {
+        controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      };
+
+      for (const providerName of providerOrder) {
+        const creds = getProviderCredentials(providerName, {
+          model: modelOverrides?.[providerName as LlmProviderName],
+        });
+        if (!creds) continue;
+
+        if (!(await isProviderAvailable(creds.apiUrl))) {
+          console.warn(`[llm-stream:${providerName}] Offline, skipping`);
+          continue;
+        }
+
+        try {
+          const resp = await fetch(creds.apiUrl, {
+            method: 'POST',
+            headers: { ...creds.headers, 'User-Agent': CHROME_UA },
+            body: JSON.stringify({
+              ...creds.extraBody,
+              model: creds.model,
+              messages,
+              temperature,
+              max_tokens: maxTokens,
+              stream: true,
+            }),
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+
+          if (!resp.ok || !resp.body) {
+            console.warn(`[llm-stream:${providerName}] HTTP ${resp.status}`);
+            continue;
+          }
+
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = '';
+          let hasContent = false;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop() ?? '';
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const payload = line.slice(6).trim();
+              if (payload === '[DONE]') break;
+              try {
+                const chunk = JSON.parse(payload) as {
+                  choices?: Array<{ delta?: { content?: string }; finish_reason?: string }>;
+                };
+                const delta = chunk.choices?.[0]?.delta?.content;
+                if (delta) {
+                  hasContent = true;
+                  emit({ delta });
+                }
+              } catch { /* malformed chunk — skip */ }
+            }
+          }
+
+          if (hasContent) {
+            emit({ done: true });
+            controller.close();
+            return;
+          }
+        } catch (err) {
+          console.warn(`[llm-stream:${providerName}] ${(err as Error).message}`);
+        }
+      }
+
+      emit({ error: 'llm_unavailable' });
+      controller.close();
+    },
+  });
+}
+
 export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | null> {
   const {
     messages: rawMessages,
