@@ -65,3 +65,7 @@ api-cache.json
 verbose-mode.json
 skills-lock.json
 tmp/
+
+# Local planning documents (not for public repo)
+docs/plans/
+docs/brainstorms/
