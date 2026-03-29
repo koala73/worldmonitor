@@ -1,4 +1,4 @@
-import { fetchFlightStatus, fetchAirportOpsSummary, fetchFlightPrices, fetchAviationNews } from '@/services/aviation';
+import { fetchFlightStatus, fetchAirportOpsSummary, fetchFlightPrices, fetchAviationNews, fetchGoogleFlights } from '@/services/aviation';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 
 // ---- Intent types ----
@@ -10,6 +10,13 @@ type Intent =
     | { type: 'NEWS_BRIEF'; entities: string[] }
     | { type: 'TRACK'; callsign?: string; icao24?: string }
     | { type: 'UNKNOWN'; raw: string };
+
+function fmtDur(m: number): string {
+    if (!m) return '';
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return min > 0 ? `${h}h ${min}m` : `${h}h`;
+}
 
 // ---- Intent parser ----
 
@@ -23,21 +30,21 @@ function parseIntent(raw: string): Intent {
         if (airports.length) return { type: 'OPS', airports };
     }
 
-    // FLIGHT <IATA-FLIGHT>
-    if (/^(FLIGHT|FLT|STATUS)\s+[A-Z]{2}\d{1,4}/.test(q)) {
-        const match = q.match(/[A-Z]{2}\d{1,4}/);
+    // FLIGHT <IATA-FLIGHT> or <IATA-FLIGHT> [STATUS|FLIGHT|FLT]
+    if (/^(FLIGHT|FLT)\s+[A-Z]{2,3}\d{1,4}/.test(q) || /[A-Z]{2,3}\d{1,4}\s+(STATUS|FLIGHT|FLT)/.test(q) || /^STATUS\s+[A-Z]{2,3}\d{1,4}/.test(q)) {
+        const match = q.match(/[A-Z]{2,3}\d{1,4}/);
         if (match) {
             const origin = words.find(w => /^[A-Z]{3}$/.test(w) && w !== match[0]);
             return { type: 'FLIGHT_STATUS', flightNumber: match[0], origin };
         }
     }
 
-    // PRICE / PRICES <ORG> <DST>
-    if (/^PRICE[S]?\s+[A-Z]{3}\s+[A-Z]{3}/.test(q)) {
-        const airports = words.slice(1).filter(w => /^[A-Z]{3}$/.test(w));
-        if (airports.length >= 2) {
+    // PRICE / PRICES <ORG> <DST>  or  <ORG> TO <DST> PRICE[S]
+    if (words.some(w => /^PRICE[S]?$/.test(w))) {
+        const priceAirports = words.filter(w => /^[A-Z]{3}$/.test(w) && w !== 'TO');
+        if (priceAirports.length >= 2) {
             const date = words.find(w => /^\d{4}-\d{2}-\d{2}$/.test(w));
-            return { type: 'PRICE_WATCH', origin: airports[0]!, destination: airports[1]!, date };
+            return { type: 'PRICE_WATCH', origin: priceAirports[0]!, destination: priceAirports[1]!, date };
         }
     }
 
@@ -79,19 +86,45 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
         const flights = await fetchFlightStatus(intent.flightNumber, undefined, intent.origin);
         if (!flights.length) return { html: `<div class="cmd-empty">No results for ${escapeHtml(intent.flightNumber)}.</div>` };
         const f = flights[0]!;
-        const timeStr = f.estimatedDeparture
+        const depStr = f.estimatedDeparture
             ? `Dep ${f.estimatedDeparture.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`
+            : '';
+        const arrStr = f.estimatedArrival
+            ? ` · Arr ${f.estimatedArrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`
+            : '';
+        const carrierLabel = f.carrier.name || f.carrier.iata;
+        const gateLine = (f.gate || f.terminal)
+            ? `<div style="color:#9ca3af;font-size:11px">Gate ${escapeHtml(f.gate || '—')}${f.terminal ? ` · Terminal ${escapeHtml(f.terminal)}` : ''}</div>`
+            : '';
+        const acLine = f.aircraftType
+            ? `<div style="color:#9ca3af;font-size:11px">${escapeHtml(f.aircraftType)}</div>`
             : '';
         return {
             html: `<div class="cmd-section">
-      <strong>✈️ ${escapeHtml(f.flightNumber)}</strong>
-      <div>${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)} · ${f.status} · ${timeStr}</div>
+      <strong>✈️ ${escapeHtml(f.flightNumber)}</strong>${carrierLabel ? ` <span style="color:#9ca3af">(${escapeHtml(carrierLabel)})</span>` : ''}
+      <div>${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)} · ${f.status}${depStr ? ` · ${depStr}` : ''}${arrStr}</div>
+      ${acLine}${gateLine}
       ${f.delayMinutes > 0 ? `<div style="color:#f97316">+${f.delayMinutes}m delay</div>` : ''}
     </div>` };
     }
 
     if (intent.type === 'PRICE_WATCH') {
         const date = intent.date ?? new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+        // Try Google Flights first (real data)
+        const gfResult = await fetchGoogleFlights({ origin: intent.origin, destination: intent.destination, departureDate: date });
+        if (gfResult.flights.length) {
+            const best = gfResult.flights[0]!;
+            const leg = best.legs[0];
+            const carrier = leg ? `${leg.airlineCode} ${leg.flightNumber}` : '';
+            const stops = best.stops === 0 ? 'nonstop' : `${best.stops} stop`;
+            return {
+                html: `<div class="cmd-section">
+      <strong>💸 ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}</strong>
+      <div>Best: <strong style="color:#60a5fa">$${Math.round(best.price).toLocaleString()}</strong> · ${escapeHtml(carrier)} · ${stops} · ${escapeHtml(fmtDur(best.durationMinutes))}</div>
+      ${gfResult.degraded ? '<div style="color:#f59e0b;font-size:11px">Partial results</div>' : ''}
+    </div>` };
+        }
+        // Fallback to TravelPayouts / demo
         const { quotes, isDemoMode } = await fetchFlightPrices({ origin: intent.origin, destination: intent.destination, departureDate: date });
         if (!quotes.length) return { html: '<div class="cmd-empty">No prices found.</div>' };
         const best = quotes[0]!;

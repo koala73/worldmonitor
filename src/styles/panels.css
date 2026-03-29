@@ -16,6 +16,9 @@
   background: var(--bg);
   scrollbar-width: none;
   -ms-overflow-style: none;
+  /* Fade hint on right edge when tabs overflow */
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
 }
 
 /* When .panel-content contains tabs (at any depth), remove top padding

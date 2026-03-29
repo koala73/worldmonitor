@@ -316,11 +316,19 @@ export function install(variant: string): void {
   _installed = true;
   _currentVariant = variant;
 
-  // Patch localStorage.setItem to detect pref changes in this tab.
+  // Patch localStorage.setItem and removeItem to detect pref changes in this tab.
   // Use _suppressPatch to prevent applyCloudBlob from triggering spurious uploads.
   const originalSetItem = Storage.prototype.setItem;
   Storage.prototype.setItem = function setItem(key: string, value: string) {
     originalSetItem.call(this, key, value);
+    if (this === localStorage && !_suppressPatch && CLOUD_SYNC_KEYS.includes(key as CloudSyncKey)) {
+      schedulePrefUpload(_currentVariant);
+    }
+  };
+
+  const originalRemoveItem = Storage.prototype.removeItem;
+  Storage.prototype.removeItem = function removeItem(key: string) {
+    originalRemoveItem.call(this, key);
     if (this === localStorage && !_suppressPatch && CLOUD_SYNC_KEYS.includes(key as CloudSyncKey)) {
       schedulePrefUpload(_currentVariant);
     }

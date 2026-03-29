@@ -562,6 +562,11 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
       ttl: CACHE_TTL,
       transform: (data) => data._state,
     },
+    {
+      key: COUNTRY_COUNTS_KEY,
+      ttl: CACHE_TTL,
+      transform: (data) => data._countryCounts,
+    },
   ],
   afterPublish: async (data, _ctx) => {
     // Write entity lookup index with seed-meta so health.js can monitor it.

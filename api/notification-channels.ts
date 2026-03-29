@@ -14,6 +14,27 @@ import { ConvexHttpClient } from 'convex/browser';
 
 const CONVEX_URL = process.env.CONVEX_URL ?? '';
 
+// AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).
+// Format stored: v1:<base64(iv[12] || tag[16] || ciphertext)>
+async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
+  const rawKey = process.env.NOTIFICATION_ENCRYPTION_KEY;
+  if (!rawKey) throw new Error('NOTIFICATION_ENCRYPTION_KEY not set');
+  const keyBytes = Uint8Array.from(atob(rawKey), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(webhookUrl);
+  const result = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, encoded));
+  // Web Crypto returns ciphertext || tag (tag is last 16 bytes)
+  const ciphertext = result.slice(0, -16);
+  const tag = result.slice(-16);
+  const payload = new Uint8Array(12 + 16 + ciphertext.length);
+  payload.set(iv, 0);
+  payload.set(tag, 12);
+  payload.set(ciphertext, 28);
+  const binary = Array.from(payload, (b) => String.fromCharCode(b)).join('');
+  return `v1:${btoa(binary)}`;
+}
+
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -109,7 +130,14 @@ export default async function handler(req: Request): Promise<Response> {
         if (!channelType) return json({ error: 'channelType required' }, 400, corsHeaders);
         const args: Record<string, string> = { channelType };
         if (email !== undefined) args.email = email;
-        if (webhookEnvelope !== undefined) args.webhookEnvelope = webhookEnvelope;
+        if (webhookEnvelope !== undefined) {
+          // Encrypt the raw webhook URL before storing — relay expects AES-GCM envelope
+          try {
+            args.webhookEnvelope = await encryptSlackWebhook(webhookEnvelope);
+          } catch {
+            return json({ error: 'Encryption unavailable' }, 503, corsHeaders);
+          }
+        }
         await client.mutation('notificationChannels:setChannel' as any, args);
         return json({ ok: true }, 200, corsHeaders);
       }
