@@ -135,6 +135,8 @@ export class AirlineIntelPanel extends Panel {
             const modeBtn = target.closest('[data-price-mode]') as HTMLElement | null;
             if (modeBtn) {
                 this.pricesMode = modeBtn.dataset.priceMode as 'search' | 'dates';
+                this.pricesError = '';
+                this.pricesDegraded = false;
                 this.renderTab();
                 return;
             }
@@ -218,7 +220,8 @@ export class AirlineIntelPanel extends Panel {
             if (errEl) errEl.textContent = 'Trip duration must be at least 1 day';
             return;
         }
-        if (errEl) errEl.textContent = '';
+        const daysDiff = (new Date(end).getTime() - new Date(start).getTime()) / 86400000;
+        if (errEl) errEl.textContent = daysDiff > 90 ? 'Range exceeds 90 days — results may be incomplete' : '';
         this.pricesOrigin = origin;
         this.pricesDest = dest;
         this.datesStart = start;
