@@ -114,6 +114,11 @@ const FALLBACK_USER_ID = "test-user-001";
  */
 const isDevDeployment = process.env.CONVEX_IS_DEV === "true";
 
+// Log dev mode warning at module load time (once) instead of per-call
+if (isDevDeployment) {
+  console.warn("[subscriptionHelpers] WARNING: Running in dev mode — webhook userId resolution will use fallback for unmapped customers");
+}
+
 /**
  * Resolves a Dodo product ID to a plan key via the productPlans table.
  * Throws if the product ID is not mapped — the webhook will be retried
@@ -186,19 +191,20 @@ async function resolveUserId(
  * Dodo may send strings or Date-like objects (Pitfall 5 from research).
  *
  * Warns on missing/invalid values to surface data issues instead of
- * silently defaulting. Falls back to eventTimestamp (not Date.now())
- * which is at least related to the webhook event.
+ * silently defaulting. Falls back to the provided fallback (typically
+ * eventTimestamp) or Date.now() if no fallback is given.
  */
-function toEpochMs(value: unknown, fieldName?: string): number {
+function toEpochMs(value: unknown, fieldName?: string, fallback?: number): number {
   if (typeof value === "number") return value;
   if (typeof value === "string" || value instanceof Date) {
     const ms = new Date(value).getTime();
     if (!Number.isNaN(ms)) return ms;
   }
+  const fb = fallback ?? Date.now();
   console.warn(
-    `[subscriptionHelpers] toEpochMs: missing or invalid ${fieldName ?? "date"} value (${String(value)}) — falling back to Date.now()`,
+    `[subscriptionHelpers] toEpochMs: missing or invalid ${fieldName ?? "date"} value (${String(value)}) — falling back to ${fallback !== undefined ? "eventTimestamp" : "Date.now()"}`,
   );
-  return Date.now();
+  return fb;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,8 +228,8 @@ export async function handleSubscriptionActive(
     data.metadata,
   );
 
-  const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date");
-  const currentPeriodEnd = toEpochMs(data.next_billing_date, "next_billing_date");
+  const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date", eventTimestamp);
+  const currentPeriodEnd = toEpochMs(data.next_billing_date, "next_billing_date", eventTimestamp);
 
   const existing = await ctx.db
     .query("subscriptions")
@@ -314,8 +320,8 @@ export async function handleSubscriptionRenewed(
 
   if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
 
-  const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date");
-  const currentPeriodEnd = toEpochMs(data.next_billing_date, "next_billing_date");
+  const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date", eventTimestamp);
+  const currentPeriodEnd = toEpochMs(data.next_billing_date, "next_billing_date", eventTimestamp);
 
   await ctx.db.patch(existing._id, {
     status: "active",
@@ -400,7 +406,7 @@ export async function handleSubscriptionCancelled(
   if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
 
   const cancelledAt = data.cancelled_at
-    ? toEpochMs(data.cancelled_at)
+    ? toEpochMs(data.cancelled_at, "cancelled_at", eventTimestamp)
     : eventTimestamp;
 
   await ctx.db.patch(existing._id, {
@@ -589,7 +595,22 @@ export async function handleDisputeEvent(
 
   if (eventType === "dispute.lost") {
     console.warn(
-      `[subscriptionHelpers] Dispute LOST for user ${userId}, payment ${data.payment_id} — manual entitlement review may be needed`,
+      `[subscriptionHelpers] Dispute LOST for user ${userId}, payment ${data.payment_id} — revoking entitlements`,
     );
+
+    // Revoke entitlements: find the subscription (if any) and downgrade to free tier
+    if (data.subscription_id) {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", data.subscription_id!))
+        .unique();
+      if (sub) {
+        await ctx.db.patch(sub._id, { status: "expired", updatedAt: eventTimestamp });
+        await upsertEntitlements(ctx, userId, "free", eventTimestamp, eventTimestamp);
+      }
+    } else {
+      // No subscription_id — revoke based on userId directly
+      await upsertEntitlements(ctx, userId, "free", eventTimestamp, eventTimestamp);
+    }
   }
 }

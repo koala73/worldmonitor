@@ -26,6 +26,7 @@ export interface EntitlementState {
 let currentState: EntitlementState | null = null;
 const listeners = new Set<(state: EntitlementState | null) => void>();
 let initialized = false;
+let unsubscribeFn: (() => void) | null = null;
 
 /**
  * Initialize the entitlement subscription for a given user.
@@ -48,7 +49,7 @@ export async function initEntitlementSubscription(userId: string): Promise<void>
       return;
     }
 
-    client.onUpdate(
+    const watch = client.onUpdate(
       api.entitlements.getEntitlementsForUser,
       { userId },
       (result: EntitlementState | null) => {
@@ -57,11 +58,25 @@ export async function initEntitlementSubscription(userId: string): Promise<void>
       },
     );
 
+    unsubscribeFn = watch.unsubscribe;
     initialized = true;
   } catch (err) {
     console.error('[entitlements] Failed to initialize Convex subscription:', err);
     // Do not rethrow — entitlement service failure must not break the dashboard
   }
+}
+
+/**
+ * Tears down the entitlement subscription and resets state.
+ * Call on logout or when the user identity changes.
+ */
+export function destroyEntitlementSubscription(): void {
+  if (unsubscribeFn) {
+    unsubscribeFn();
+    unsubscribeFn = null;
+  }
+  initialized = false;
+  currentState = null;
 }
 
 /**

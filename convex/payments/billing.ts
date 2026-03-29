@@ -57,7 +57,7 @@ export const getSubscriptionForUser = query({
     const allSubs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .collect();
+      .take(10);
 
     if (allSubs.length === 0) return null;
 
@@ -114,7 +114,7 @@ export const getActiveSubscription = internalQuery({
     const allSubs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .collect();
+      .take(10);
 
     const activeSub = allSubs.find((s) => s.status === "active");
     return activeSub ?? null;
@@ -232,10 +232,11 @@ export const claimSubscription = mutation({
     }
 
     // Reassign entitlements — compare by tier first, then validUntil
+    // Use .first() instead of .unique() to avoid throwing on duplicate rows
     const entitlement = await ctx.db
       .query("entitlements")
       .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
-      .unique();
+      .first();
     let winningPlanKey: string | null = null;
     let winningFeatures: ReturnType<typeof getFeaturesForPlan> | null = null;
     let winningValidUntil: number | null = null;
@@ -243,7 +244,7 @@ export const claimSubscription = mutation({
       const existingEntitlement = await ctx.db
         .query("entitlements")
         .withIndex("by_userId", (q) => q.eq("userId", realUserId))
-        .unique();
+        .first();
       if (existingEntitlement) {
         // Compare by tier first, break ties with validUntil
         const anonTier = entitlement.features?.tier ?? 0;
