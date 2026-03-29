@@ -1,11 +1,10 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { channelTypeValidator } from "./constants";
 
-export const getChannelsByUserId = query({
+export const getChannelsByUserId = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    // This query is for internal relay use only — no auth required
     return await ctx.db
       .query("notificationChannels")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))

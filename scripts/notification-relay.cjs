@@ -11,12 +11,16 @@ const { decrypt } = require('./lib/crypto.cjs');
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 const CONVEX_URL = process.env.CONVEX_URL ?? '';
+// Convex HTTP actions are hosted at *.convex.site (not *.convex.cloud)
+const CONVEX_SITE_URL = process.env.CONVEX_SITE_URL ?? CONVEX_URL.replace('.convex.cloud', '.convex.site');
+const RELAY_SECRET = process.env.RELAY_SECRET ?? '';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
 const RESEND_FROM = process.env.RESEND_FROM_EMAIL ?? 'WorldMonitor <alerts@worldmonitor.app>';
 
 if (!UPSTASH_URL || !UPSTASH_TOKEN) { console.error('[relay] UPSTASH_REDIS_REST_URL/TOKEN not set'); process.exit(1); }
 if (!CONVEX_URL) { console.error('[relay] CONVEX_URL not set'); process.exit(1); }
+if (!RELAY_SECRET) { console.error('[relay] RELAY_SECRET not set'); process.exit(1); }
 
 const convex = new ConvexHttpClient(CONVEX_URL);
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
@@ -28,6 +32,10 @@ async function upstashRest(...args) {
     method: 'POST',
     headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
   });
+  if (!res.ok) {
+    console.warn(`[relay] Upstash error ${res.status} for command ${args[0]}`);
+    return null;
+  }
   const json = await res.json();
   return json.result;
 }
@@ -57,7 +65,8 @@ async function sendTelegram(userId, chatId, text) {
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    body: JSON.stringify({ chat_id: chatId, text }),
+    signal: AbortSignal.timeout(10000),
   });
   if (res.status === 403 || res.status === 400) {
     const body = await res.json().catch(() => ({}));
@@ -178,8 +187,17 @@ async function processEvent(event) {
 
     let channels = [];
     try {
-      channels = await convex.query('notificationChannels:getChannelsByUserId', { userId: rule.userId });
-      channels = channels ?? [];
+      const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${RELAY_SECRET}`,
+        },
+        body: JSON.stringify({ userId: rule.userId }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!chRes.ok) throw new Error(`HTTP ${chRes.status}`);
+      channels = (await chRes.json()) ?? [];
     } catch (err) {
       console.warn(`[relay] Failed to fetch channels for ${rule.userId}:`, err.message);
       channels = [];
