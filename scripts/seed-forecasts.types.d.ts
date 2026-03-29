@@ -102,7 +102,7 @@ interface SimulationSignal {
   channelSource: 'direct' | 'market' | 'none';
   /** Path was demoted below the 0.50 acceptance threshold by simulation. */
   demoted: boolean;
-  /** Confidence of the matched simulation top-path (0–1). Only meaningful when backed=true. */
+  /** Confidence of the matched simulation top-path (0–1). 1.0 when absent/non-finite (fallback). Explicit 0 preserved. Only meaningful when backed=true. */
   simPathConfidence: number;
 }
 
@@ -189,7 +189,7 @@ interface SimulationAdjustmentDetail {
   resolvedChannel: string;
   /** Source of resolved channel. */
   channelSource: 'direct' | 'market' | 'none';
-  /** Confidence of the matched simulation top-path (0–1). 1.0 when no bucketChannelMatch or when confidence is missing/null/zero in LLM output. */
+  /** Confidence of the matched simulation top-path (0–1). 1.0 when absent or non-finite (legacy LLM output fallback). Explicit 0 is preserved as 0 — simulation rated the path unsupported. */
   simPathConfidence: number;
 }
 

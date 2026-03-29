@@ -11514,6 +11514,15 @@ function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, s
 
   for (const path of allPaths) {
     if (path.type !== 'expanded') continue;
+    // Clear stale simulation metadata from prior cycles before re-evaluating.
+    // Must happen before any `continue` so paths with no matching theater or zero
+    // adjustment don't retain fields written by a different simulation run.
+    delete path.simulationAdjustment;
+    delete path.mergedAcceptanceScore;
+    delete path.simulationSignal;
+    delete path.demotedBySimulation;
+    delete path.promotedBySimulation;
+
     const simResult = simByTheater.get(path.candidateStateId);
     if (!simResult) continue;
 

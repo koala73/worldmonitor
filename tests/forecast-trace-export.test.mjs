@@ -7025,6 +7025,89 @@ describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
     assert.deepStrictEqual(summary.simulationSignal, signal, 'simulationSignal must be forwarded into scorecard summary');
   });
 
+  it('T-O7: applySimulationMerge clears stale sim fields on zero-adjustment paths from prior cycles', () => {
+    // Simulate the applyPostSimulationRescore scenario: a reloaded path already carries
+    // simulationAdjustment/simulationSignal from a previous run. The fresh simulation
+    // returns this theater but with zero-weight confidence=0, so adjustment=0.
+    // The stale fields must be cleared, not left intact.
+    const stateId = 'state-stale-test';
+    const candidatePacket = {
+      candidateStateId: stateId,
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const stalePath = {
+      pathId: 'p-stale',
+      type: 'expanded',
+      candidateStateId: stateId,
+      acceptanceScore: 0.70,
+      direct: { variableKey: 'route_disruption', targetBucket: 'energy', channel: 'energy_supply_shock', affectedAssets: [] },
+      // Stale fields from a previous simulation cycle:
+      simulationAdjustment: 0.08,
+      mergedAcceptanceScore: 0.78,
+      simulationSignal: { backed: true, adjustmentDelta: 0.08, channelSource: 'market', demoted: false, simPathConfidence: 0.9 },
+      demotedBySimulation: false,
+      promotedBySimulation: false,
+    };
+    const evaluation = makeEval('completed', [stalePath], []);
+    const simOutcome = {
+      runId: 'sim-stale', isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1', candidateStateId: stateId,
+        topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0, keyActors: [] }],
+        invalidators: [], stabilizers: [],
+      }],
+    };
+    const snapshot = { generatedAt: Date.now(), impactExpansionCandidates: [candidatePacket], fullRunPredictions: [], predictions: [], inputs: {}, deepForecast: {} };
+    applySimulationMerge(evaluation, simOutcome, [candidatePacket], snapshot, null);
+    // confidence=0 → simConf=0 → adjustment=0 → path was skipped, stale fields must be cleared
+    assert.equal(stalePath.simulationAdjustment, undefined, 'stale simulationAdjustment must be cleared');
+    assert.equal(stalePath.simulationSignal, undefined, 'stale simulationSignal must be cleared');
+    assert.equal(stalePath.mergedAcceptanceScore, undefined, 'stale mergedAcceptanceScore must be cleared');
+    assert.equal(stalePath.demotedBySimulation, undefined, 'stale demotedBySimulation must be cleared');
+    assert.equal(stalePath.promotedBySimulation, undefined, 'stale promotedBySimulation must be cleared');
+  });
+
+  it('T-O8: applySimulationMerge clears stale sim fields when theater has no matching result in fresh simulation', () => {
+    // A path carried stale fields from a prior run that included its theater.
+    // The fresh simulation has no result for this theater (different theaters selected).
+    const stateId = 'state-no-theater';
+    const candidatePacket = {
+      candidateStateId: stateId,
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const stalePath = {
+      pathId: 'p-no-theater',
+      type: 'expanded',
+      candidateStateId: stateId,
+      acceptanceScore: 0.65,
+      direct: { variableKey: 'route_disruption', targetBucket: 'energy', channel: 'energy_supply_shock', affectedAssets: [] },
+      simulationAdjustment: -0.12,
+      mergedAcceptanceScore: 0.53,
+      simulationSignal: { backed: false, adjustmentDelta: -0.12, channelSource: 'none', demoted: false, simPathConfidence: 1.0 },
+    };
+    const evaluation = makeEval('completed', [stalePath], []);
+    // simOutcome contains a DIFFERENT theater — not stateId
+    const simOutcome = {
+      runId: 'sim-other', isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1', candidateStateId: 'state-different',
+        topPaths: [{ label: 'Other path', summary: 'different theater', confidence: 0.8, keyActors: [] }],
+        invalidators: [], stabilizers: [],
+      }],
+    };
+    const snapshot = { generatedAt: Date.now(), impactExpansionCandidates: [candidatePacket], fullRunPredictions: [], predictions: [], inputs: {}, deepForecast: {} };
+    applySimulationMerge(evaluation, simOutcome, [candidatePacket], snapshot, null);
+    assert.equal(stalePath.simulationAdjustment, undefined, 'stale simulationAdjustment must be cleared when no theater matches');
+    assert.equal(stalePath.simulationSignal, undefined, 'stale simulationSignal must be cleared when no theater matches');
+    assert.equal(stalePath.mergedAcceptanceScore, undefined, 'stale mergedAcceptanceScore must be cleared when no theater matches');
+  });
+
   it('T-O6: summarizeImpactPathScore omits simulationSignal when absent (no spurious undefined field)', () => {
     const path = { pathId: 'p-o6', type: 'expanded', candidateStateId: 'state-o6', acceptanceScore: 0.6 };
     const summary = summarizeImpactPathScore(path);
