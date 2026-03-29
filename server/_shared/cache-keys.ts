@@ -80,6 +80,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   shippingStress:   'supply_chain:shipping_stress:v1',
   socialVelocity:   'intelligence:social:reddit:v1',
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
+  economicStress:   'economic:stress-index:v1',
 };
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
@@ -121,4 +122,5 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   shippingStress: 'fast',
   socialVelocity: 'fast',
   diseaseOutbreaks: 'slow',
+  economicStress: 'slow',
 };

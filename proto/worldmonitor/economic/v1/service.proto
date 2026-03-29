@@ -25,6 +25,7 @@ import "worldmonitor/economic/v1/get_eurostat_country_data.proto";
 import "worldmonitor/economic/v1/get_eu_gas_storage.proto";
 import "worldmonitor/economic/v1/get_eu_yield_curve.proto";
 import "worldmonitor/economic/v1/get_eu_fsi.proto";
+import "worldmonitor/economic/v1/get_economic_stress.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -138,5 +139,10 @@ service EconomicService {
   // GetEuFsi retrieves the ECB CISS (Composite Indicator of Systemic Stress) for the Euro area.
   rpc GetEuFsi(GetEuFsiRequest) returns (GetEuFsiResponse) {
     option (sebuf.http.config) = {path: "/get-eu-fsi", method: HTTP_METHOD_GET};
+  }
+
+  // GetEconomicStress retrieves the composite Economic Stress Index (0-100) from 6 FRED series.
+  rpc GetEconomicStress(GetEconomicStressRequest) returns (GetEconomicStressResponse) {
+    option (sebuf.http.config) = {path: "/get-economic-stress", method: HTTP_METHOD_GET};
   }
 }
