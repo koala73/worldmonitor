@@ -29,19 +29,17 @@ export default async function handler(req, ctx) {
 
   const cacheKey = `geocode:${latN.toFixed(1)},${lonN.toFixed(1)}`;
 
-  try {
-    const cached = await readJsonFromUpstash(cacheKey, 1500);
-    if (cached) {
-      return new Response(JSON.stringify(cached), {
-        status: 200,
-        headers: {
-          ...cors,
-          'Content-Type': 'application/json',
-          'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=3600',
-        },
-      });
-    }
-  } catch { /* cache miss, fetch fresh */ }
+  const cached = await readJsonFromUpstash(cacheKey, 1500);
+  if (cached) {
+    return new Response(JSON.stringify(cached), {
+      status: 200,
+      headers: {
+        ...cors,
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=3600',
+      },
+    });
+  }
 
   try {
     const resp = await fetch(

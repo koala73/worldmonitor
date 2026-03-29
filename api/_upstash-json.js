@@ -60,8 +60,7 @@ export async function redisPipeline(commands, timeoutMs = 5_000) {
  */
 export async function setCachedData(key, value, ttlSeconds) {
   const results = await redisPipeline([
-    ['SET', key, JSON.stringify(value)],
-    ['EXPIRE', key, String(ttlSeconds)],
+    ['SET', key, JSON.stringify(value), 'EX', String(ttlSeconds)],
   ]);
   return results !== null;
 }
