@@ -289,9 +289,10 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
             }),
             signal: activeController.signal,
           });
-          clearTimeout(timeoutId);
+          // Timeout stays active — it must bound the streaming body read, not just the connection
 
           if (!resp.ok || !resp.body) {
+            clearTimeout(timeoutId);
             console.warn(`[llm-stream:${providerName}] HTTP ${resp.status}`);
             continue;
           }
@@ -322,6 +323,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
               } catch { /* malformed chunk — skip */ }
             }
           }
+          clearTimeout(timeoutId);
 
           if (hasContent) {
             emit({ done: true });
@@ -331,8 +333,7 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
         } catch (err) {
           clearTimeout(timeoutId);
           if (hasContent) {
-            // Partial stream received — close cleanly rather than splicing a second provider answer
-            emit({ done: true });
+            // Partial stream — close without done so the client sees it as truncated, not success
             closeStream();
             return;
           }

@@ -301,10 +301,10 @@ export class ChatAnalystPanel extends Panel {
         return;
       }
 
-      // Stream ended without done event — finalize with what we have
+      // Stream ended without a done event — response was truncated mid-stream
       if (accumulatedText) {
-        this.finalizeStreamingBubble(streamingBody, accumulatedText, true);
-        this.pushHistory(trimmedQuery, accumulatedText);
+        this.finalizeStreamingBubble(streamingBody, `${accumulatedText}\n\n⚠ *Response may be incomplete.*`, false);
+        // Do not push to history — a truncated answer would corrupt the conversation context
       } else {
         this.finalizeStreamingBubble(streamingBody, '⚠ Response cut off. Try again.', false);
       }
