@@ -83,7 +83,7 @@ http.route({
       schemaVersion?: number;
     };
     try {
-      body = await request.json();
+      body = await request.json() as typeof body;
     } catch {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -153,7 +153,7 @@ http.route({
       };
     };
     try {
-      update = await request.json();
+      update = await request.json() as typeof update;
     } catch {
       return new Response("OK", { status: 200 });
     }
@@ -198,7 +198,7 @@ http.route({
 
     let body: { userId?: string; channelType?: string };
     try {
-      body = await request.json();
+      body = await request.json() as typeof body;
     } catch {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
@@ -244,7 +244,7 @@ http.route({
 
     let body: { userId?: string };
     try {
-      body = await request.json();
+      body = await request.json() as typeof body;
     } catch {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
