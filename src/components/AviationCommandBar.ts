@@ -21,14 +21,25 @@ function fmtDur(m: number): string {
 
 // ---- Airport resolver (IATA or city/name fuzzy match) ----
 
+// Airports not in MONITORED_AIRPORTS but commonly searched by city name
+const EXTRA_CITY_IATA: Record<string, string> = {
+    newcastle: 'NCL', manchester: 'MAN', birmingham: 'BHX', edinburgh: 'EDI',
+    glasgow: 'GLA', brussels: 'BRU', milan: 'MXP', rome: 'FCO',
+    moscow: 'SVO', bangkok: 'BKK', osaka: 'KIX', montreal: 'YUL',
+    lagos: 'LOS', nairobi: 'NBO', casablanca: 'CMN', cairo: 'CAI',
+    athens: 'ATH', oslo: 'OSL', stockholm: 'ARN', copenhagen: 'CPH',
+    helsinki: 'HEL', vienna: 'VIE', warsaw: 'WAW', prague: 'PRG',
+    budapest: 'BUD', bucharest: 'OTP',
+};
+
 function resolveIata(token: string): string | undefined {
     const up = token.toUpperCase();
     if (/^[A-Z]{3}$/.test(up)) return up;
     const low = token.toLowerCase();
     const cityMatch = MONITORED_AIRPORTS.find(a => a.city.toLowerCase() === low);
     if (cityMatch) return cityMatch.iata;
+    if (EXTRA_CITY_IATA[low]) return EXTRA_CITY_IATA[low];
     // Whole-word name match — only if the token uniquely identifies one airport
-    // (prevents common words like "John", "International" matching multiple airports)
     const nameMatches = MONITORED_AIRPORTS.filter(a =>
         a.name.toLowerCase().split(/[\s\-–./]+/).includes(low)
     );
@@ -146,11 +157,23 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
     }
 
     if (intent.type === 'PRICE_WATCH') {
-        const date = intent.date ?? new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+        const date = intent.date ?? new Date(Date.now() + 86400000).toISOString().slice(0, 10); // default: tomorrow
         const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
-        const header = `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+        const gfUrl = `https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`;
+        const todayBase = new Date(); todayBase.setHours(12, 0, 0, 0);
+        const dateChips = ([1, 3, 7, 14, 30] as const).map(days => {
+            const d = new Date(todayBase.getTime() + days * 86400000).toISOString().slice(0, 10);
+            const lbl = days === 1 ? 'Tomorrow' : `+${days}d`;
+            const active = d === date;
+            const cmd = `price ${intent.origin} ${intent.destination} ${d}`;
+            return `<button data-rerun="${escapeHtml(cmd)}" style="background:${active ? 'rgba(96,165,250,.15)' : 'none'};border:1px solid ${active ? '#60a5fa' : '#374151'};border-radius:3px;color:${active ? '#60a5fa' : '#6b7280'};cursor:pointer;font-size:10px;padding:1px 6px">${lbl}</button>`;
+        }).join('');
+        const header = `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
           <strong>💸 ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}</strong>
-          <span style="color:#6b7280;font-size:11px">${escapeHtml(dateLabel)}</span>
+          <a href="${sanitizeUrl(gfUrl)}" target="_blank" rel="noopener" style="color:#60a5fa;font-size:11px;text-decoration:none">Google Flights →</a>
+        </div>
+        <div style="margin-bottom:8px;display:flex;gap:4px;align-items:center">
+          <span style="color:#6b7280;font-size:10px;margin-right:2px">${escapeHtml(dateLabel)}</span>${dateChips}
         </div>`;
 
         // Try Google Flights first — sort nonstop first, then by price
@@ -261,7 +284,13 @@ export class AviationCommandBar {
         document.body.appendChild(this.overlay);
 
         this.overlay.addEventListener('click', (e) => {
-            if (e.target === this.overlay) this.close();
+            if (e.target === this.overlay) { this.close(); return; }
+            const rerunBtn = (e.target as HTMLElement).closest('[data-rerun]') as HTMLElement | null;
+            if (rerunBtn?.dataset['rerun']) {
+                const cmd = rerunBtn.dataset['rerun'];
+                const inp = this.overlay?.querySelector('#aviation-cmd-input') as HTMLInputElement;
+                if (inp && cmd) { inp.value = cmd; this.addToHistory(cmd); void this.run(cmd); }
+            }
         });
 
         this.overlay.querySelector('#aviation-cmd-close')?.addEventListener('click', () => this.close());
