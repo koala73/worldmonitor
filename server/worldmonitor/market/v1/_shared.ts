@@ -42,7 +42,6 @@ export async function fetchYahooQuotesBatch(
 export const YAHOO_ONLY_SYMBOLS = new Set([
   '^GSPC', '^DJI', '^IXIC', '^VIX',
   'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F',
-  'XAUUSD=X',
   'EURUSD=X', 'GBPUSD=X', 'AUDUSD=X',
   'USDJPY=X', 'USDCNY=X', 'USDINR=X', 'USDCHF=X', 'USDCAD=X', 'USDTRY=X',
 ]);
