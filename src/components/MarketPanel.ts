@@ -278,6 +278,15 @@ export class CommoditiesPanel extends Panel {
       </div>`;
     }).filter(Boolean);
 
+    if (rows.length === 0) {
+      const placeholders = XAU_CURRENCY_CONFIG.map(cfg =>
+        `<div class="commodity-item">
+          <div class="commodity-name">${escapeHtml(cfg.flag)} XAU/${escapeHtml(cfg.label)}</div>
+          <div class="commodity-price" style="font-size:11px">--</div>
+        </div>`
+      ).join('');
+      return `<div class="commodities-grid">${placeholders}</div><div style="margin-top:6px;font-size:9px;color:var(--text-dim)">FX rates unavailable</div>`;
+    }
     return `<div class="commodities-grid">${rows.join('')}</div><div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Computed from GC=F + Yahoo FX</div>`;
   }
 
