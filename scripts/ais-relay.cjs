@@ -5023,7 +5023,7 @@ const SHIPPING_CARRIERS = [
   { symbol: 'ZIM',  name: 'ZIM Integrated Shipping', carrierType: 'carrier' },
   { symbol: 'MATX', name: 'Matson Inc',              carrierType: 'carrier' },
   { symbol: 'SBLK', name: 'Star Bulk Carriers',      carrierType: 'carrier' },
-  { symbol: 'GOGL', name: 'Golden Ocean Group',       carrierType: 'carrier' },
+  { symbol: 'GOGL.OL', name: 'Golden Ocean Group',       carrierType: 'carrier' },
 ];
 
 let shippingStressInFlight = false;
