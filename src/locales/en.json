@@ -807,7 +807,17 @@
       "enterRoute": "Enter route and search for prices.",
       "cachedInsight": "Cached insight",
       "demoMode": "DEMO MODE",
-      "pricesIndicative": "All prices indicative"
+      "pricesIndicative": "All prices indicative",
+      "searchFlights": "Search Flights",
+      "bestDates": "Best Dates",
+      "cabinClass": "Cabin",
+      "enterRouteAndDate": "Enter a route and date to search",
+      "enterDateRange": "Enter a route and date range",
+      "degradedResults": "Some results may be incomplete",
+      "nonstop": "nonstop",
+      "roundTrip": "Round-trip",
+      "tripDays": "Trip days",
+      "cheapest": "Cheapest"
     },
     "goodThingsDigest": {
       "noStories": "No stories available",

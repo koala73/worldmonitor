@@ -1972,51 +1972,12 @@
 }
 
 /* ---- Prices tab ---- */
-.prices-list {
+.price-controls {
   display: flex;
-  flex-direction: column;
-}
-
-.price-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto auto auto;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 0;
   align-items: center;
-  gap: 0 8px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.price-row:hover {
-  background: var(--surface-hover);
-}
-
-.price-carrier {
-  font-weight: 600;
-  color: var(--text);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.price-route {
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.price-amount {
-  font-variant-numeric: tabular-nums;
-}
-
-.price-dur {
-  font-size: 11px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.price-stops {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-align: right;
 }
 
 .price-input {
@@ -2035,23 +1996,145 @@
   border-color: var(--accent);
 }
 
-.tp-badge,
-.demo-badge {
-  font-size: 9px;
+.price-mode-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  margin-bottom: 6px;
+  width: fit-content;
+}
+
+.price-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.price-mode-btn.active {
+  background: var(--accent);
+  color: var(--bg);
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 3px;
-  letter-spacing: 0.3px;
 }
 
-.tp-badge {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+.price-mode-btn:not(.active):hover {
+  background: var(--surface-hover);
+}
+
+/* Google Flights itinerary cards */
+.gf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gf-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  padding: 8px;
+}
+
+.gf-summary {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.gf-price {
+  font-weight: 700;
   color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
 }
 
-.demo-badge {
-  background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
-  color: var(--semantic-elevated);
+.gf-total-dur {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.gf-stops {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.gf-leg {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+
+.gf-airline {
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  min-width: 60px;
+}
+
+.gf-dur {
+  color: var(--text-dim);
+}
+
+.gf-degraded {
+  font-size: 11px;
+  color: #92400e;
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  border: 1px solid color-mix(in srgb, #f59e0b 30%, transparent);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+}
+
+/* Best Dates grid */
+.dp-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.dp-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 8px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dp-row:hover {
+  background: var(--surface-hover);
+}
+
+.dp-date {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  min-width: 80px;
+}
+
+.dp-return {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 80px;
+}
+
+.dp-price {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+.dp-cheap {
+  color: #22c55e;
+}
+
+.dp-expensive {
+  color: #f97316;
 }
 
 /* ---- News tab ---- */
