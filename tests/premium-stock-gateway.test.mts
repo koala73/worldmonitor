@@ -35,15 +35,14 @@ describe('premium stock gateway enforcement', () => {
     }));
     assert.equal(browserNoKey.status, 401);
 
-    // Trusted browser origin with valid key but no auth session — 403 (fail-closed entitlement check:
-    // key is valid but no userId for entitlement verification)
+    // Trusted browser origin with valid API key — 200 (API-key holders bypass entitlement check)
     const browserWithKey = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: {
         Origin: 'https://worldmonitor.app',
         'X-WorldMonitor-Key': 'real-key-123',
       },
     }));
-    assert.equal(browserWithKey.status, 403);
+    assert.equal(browserWithKey.status, 200);
 
     // Unknown origin — blocked (403 from isDisallowedOrigin before key check)
     const unknownNoKey = await handler(new Request('https://external.example.com/api/market/v1/analyze-stock?symbol=AAPL', {

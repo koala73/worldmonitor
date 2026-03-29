@@ -88,7 +88,7 @@ import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { getProWidgetKey, isProUser, loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { initEntitlementSubscription, isEntitled, onEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { getUserId } from '@/services/user-identity';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
@@ -141,39 +141,37 @@ export class PanelLayoutManager implements AppModule {
       this.applyTimeRangeFilterToNewsPanels();
     }, 120);
 
-    // Dodo Payments: entitlement + billing init gated behind isProUser().
-    // Same gate as Clerk auth — remove both gates once ready for all users.
-    if (isProUser()) {
-      if (handleCheckoutReturn()) {
-        showCheckoutSuccess();
-      }
-
-      const userId = getUserId();
-      if (userId) {
-        initEntitlementSubscription(userId).catch(() => {});
-        initSubscriptionWatch(userId).catch(() => {});
-        initPaymentFailureBanner();
-      }
-
-      initCheckoutOverlay(() => showCheckoutSuccess());
+    // Dodo Payments: entitlement subscription + billing watch for ALL users.
+    // Free users need the subscription active so they receive real-time
+    // entitlement updates after purchasing (P1: newly upgraded users must
+    // see their premium access without a manual page reload).
+    if (handleCheckoutReturn()) {
+      showCheckoutSuccess();
     }
+
+    const userId = getUserId();
+    if (userId) {
+      initEntitlementSubscription(userId).catch(() => {});
+      initSubscriptionWatch(userId).catch(() => {});
+      initPaymentFailureBanner();
+    }
+
+    initCheckoutOverlay(() => showCheckoutSuccess());
 
     // Listen for entitlement changes — reload panels to pick up new gating state.
     // Skip the initial snapshot to avoid a reload loop for users who already have
     // premium via legacy signals (API key / wm-pro-key).
-    if (isProUser()) {
-      let skipInitialSnapshot = true;
-      onEntitlementChange(() => {
-        if (skipInitialSnapshot) {
-          skipInitialSnapshot = false;
-          return;
-        }
-        if (isEntitled()) {
-          console.log('[entitlements] Subscription activated — reloading to unlock panels');
-          window.location.reload();
-        }
-      });
-    }
+    let skipInitialSnapshot = true;
+    onEntitlementChange(() => {
+      if (skipInitialSnapshot) {
+        skipInitialSnapshot = false;
+        return;
+      }
+      if (isEntitled()) {
+        console.log('[entitlements] Subscription activated — reloading to unlock panels');
+        window.location.reload();
+      }
+    });
   }
 
   init(): void {
@@ -230,8 +228,9 @@ export class PanelLayoutManager implements AppModule {
     this.aviationCommandBar = null;
     this.ctx.panels['airline-intel']?.destroy();
 
-    // Clean up billing subscription watch
+    // Clean up billing subscription watch + entitlement subscription
     destroySubscriptionWatch();
+    destroyEntitlementSubscription();
 
     window.removeEventListener('resize', this.ensureCorrectZones);
   }

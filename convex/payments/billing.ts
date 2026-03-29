@@ -46,9 +46,9 @@ export const getSubscriptionForUser = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
     // Prefer auth identity when available; fall back to client-provided userId.
-    // This pattern matches entitlements.ts/getEntitlementsForUser — both accept
-    // userId as a public arg because the ConvexClient has no auth wired yet.
-    // Once Clerk JWT is wired into ConvexClient.setAuth(), switch to requireUserId(ctx).
+    // TODO(clerk-auth): Once Clerk JWT is wired into ConvexClient.setAuth(),
+    // remove userId from args and use requireUserId(ctx). Until then, an
+    // unauthenticated caller who knows a userId can read subscription status.
     const authedUserId = await resolveUserId(ctx);
     const userId = authedUserId ?? args.userId;
 

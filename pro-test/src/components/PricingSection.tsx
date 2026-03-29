@@ -90,8 +90,30 @@ const CHECKOUT_DOMAIN = import.meta.env.VITE_DODO_ENVIRONMENT === 'live_mode'
   ? 'https://checkout.dodopayments.com'
   : 'https://test.checkout.dodopayments.com';
 
+/**
+ * Returns a stable anonymous ID for this browser (shared with the main SPA).
+ * Uses the same localStorage key as src/services/user-identity.ts so that
+ * the webhook identity bridge can link the purchase back to the user.
+ */
+function getOrCreateAnonId(): string {
+  const key = 'wm-anon-id';
+  try {
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
 function buildCheckoutUrl(productId: string, refCode?: string): string {
   let url = `${CHECKOUT_DOMAIN}/buy/${productId}?quantity=1`;
+  // Attach user identity as checkout metadata so the webhook can resolve userId
+  const userId = getOrCreateAnonId();
+  url += `&metadata[wm_user_id]=${encodeURIComponent(userId)}`;
   if (refCode) {
     url += `&referral_code=${encodeURIComponent(refCode)}`;
   }

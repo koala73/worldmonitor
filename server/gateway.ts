@@ -316,9 +316,13 @@ export function createDomainGateway(
       }
     }
 
-    // Entitlement check — blocks tier-gated endpoints for users below required tier
-    const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
-    if (entitlementResponse) return entitlementResponse;
+    // Entitlement check — blocks tier-gated endpoints for users below required tier.
+    // Valid API-key holders bypass entitlement checks (they have full access by virtue
+    // of possessing a key). Only bearer-token users go through the tier gate.
+    if (!(keyCheck.valid && request.headers.get('X-WorldMonitor-Key'))) {
+      const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
+      if (entitlementResponse) return entitlementResponse;
+    }
 
     // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback
     const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders);

@@ -5,8 +5,16 @@
  * server-side, keeping the API key on the backend. Supports discount
  * codes (PROMO-01) and affiliate referral tracking (PROMO-02).
  *
- * Authentication is required — the userId is always resolved from the
- * server-side session. Client-supplied userId is not accepted.
+ * Auth strategy: Prefer server-side session identity (Clerk JWT via
+ * ConvexClient.setAuth). Falls back to client-provided userId (the
+ * browser's stable anon ID) when Clerk auth isn't wired into the
+ * ConvexClient yet. This fallback is safe because:
+ *   - The userId only populates checkout metadata for the webhook
+ *     identity bridge — it does NOT grant entitlements directly.
+ *   - Entitlements are written server-side by the webhook handler.
+ *
+ * Once Clerk JWT is wired into ConvexClient.setAuth(), remove the
+ * userId arg and use requireUserId(ctx) exclusively.
  */
 
 import { v } from "convex/values";
@@ -20,23 +28,24 @@ import { resolveUserId } from "../lib/auth";
  * Called from dashboard upgrade CTAs, pricing page checkout buttons,
  * and E2E tests. The returned checkout_url can be used with the
  * dodopayments-checkout overlay SDK or as a direct redirect target.
- *
- * Requires authentication — throws if no authenticated user is available.
  */
 export const createCheckout = action({
   args: {
     productId: v.string(),
+    userId: v.optional(v.string()),
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Auth: require authenticated session — no client-provided userId fallback
+    // Prefer server-side auth; fall back to client-provided userId for the
+    // pre-Clerk-auth period. The userId is only used for checkout metadata
+    // (webhook identity bridge) — it does not grant entitlements.
     const authedUserId = await resolveUserId(ctx);
-    if (!authedUserId) {
-      throw new Error("Authentication required to create a checkout session");
+    const userId = authedUserId ?? args.userId;
+    if (!userId) {
+      throw new Error("User identity required to create a checkout session");
     }
-    const userId = authedUserId;
 
     // Build metadata: userId for webhook identity bridge + affiliate tracking (PROMO-02)
     const metadata: Record<string, string> = {};
