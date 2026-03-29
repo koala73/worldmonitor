@@ -39,7 +39,7 @@ export class ChatAnalystPanel extends Panel {
   private domainFocus = 'all';
   private streamAbort: AbortController | null = null;
   private isStreaming = false;
-  private messagesEl: HTMLElement | null = null;
+  private messagesEl!: HTMLElement;
   private inputEl: HTMLTextAreaElement | null = null;
 
   constructor() {
@@ -161,7 +161,6 @@ export class ChatAnalystPanel extends Panel {
   }
 
   private showWelcome(): void {
-    if (!this.messagesEl) return;
     const bubble = h('div', { className: 'chat-msg chat-msg-assistant' },
       h('div', { className: 'chat-msg-label' }, 'ANALYST'),
       h('div', { className: 'chat-msg-body' },
@@ -171,8 +170,7 @@ export class ChatAnalystPanel extends Panel {
     replaceChildren(this.messagesEl, bubble);
   }
 
-  private appendMessage(role: 'user' | 'assistant', content: string): HTMLElement {
-    if (!this.messagesEl) return document.createElement('div');
+  private appendMessage(role: 'user' | 'assistant', content: string): void {
     const label = role === 'user' ? 'YOU' : 'ANALYST';
     const body = h('div', { className: 'chat-msg-body' });
     if (role === 'assistant') {
@@ -185,12 +183,10 @@ export class ChatAnalystPanel extends Panel {
       body,
     );
     this.messagesEl.appendChild(bubble);
-    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
-    return body;
+    this.scrollToBottom();
   }
 
-  private appendStreamingIndicator(): HTMLElement {
-    if (!this.messagesEl) return document.createElement('div');
+  private appendStreamingBubble(): HTMLElement {
     const body = h('div', { className: 'chat-msg-body' },
       h('span', { className: 'chat-streaming-dot' }),
     );
@@ -199,8 +195,14 @@ export class ChatAnalystPanel extends Panel {
       body,
     );
     this.messagesEl.appendChild(bubble);
-    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    this.scrollToBottom();
     return body;
+  }
+
+  private scrollToBottom(): void {
+    requestAnimationFrame(() => {
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    });
   }
 
   private setSendDisabled(disabled: boolean): void {
@@ -228,7 +230,7 @@ export class ChatAnalystPanel extends Panel {
       content: m.content.slice(0, 800),
     }));
 
-    const streamingBody = this.appendStreamingIndicator();
+    const streamingBody = this.appendStreamingBubble();
     let accumulatedText = '';
 
     this.streamAbort = new AbortController();
@@ -248,7 +250,6 @@ export class ChatAnalystPanel extends Panel {
       if (!res.ok) {
         const err = res.status === 403 ? 'Pro subscription required.' : `Error ${res.status}`;
         this.finalizeStreamingBubble(streamingBody, `⚠ ${err}`, false);
-        this.history.push({ role: 'user', content: trimmedQuery });
         return;
       }
 
@@ -269,9 +270,7 @@ export class ChatAnalystPanel extends Panel {
       // Stream ended without done event — finalize with what we have
       if (accumulatedText) {
         this.finalizeStreamingBubble(streamingBody, accumulatedText, true);
-        this.history.push({ role: 'user', content: trimmedQuery });
-        this.history.push({ role: 'assistant', content: accumulatedText });
-        if (this.history.length > MAX_HISTORY) this.history = this.history.slice(-MAX_HISTORY);
+        this.pushHistory(trimmedQuery, accumulatedText);
       } else {
         this.finalizeStreamingBubble(streamingBody, '⚠ Response cut off. Try again.', false);
       }
@@ -318,16 +317,24 @@ export class ChatAnalystPanel extends Panel {
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         try {
-          const payload = JSON.parse(line.slice(6)) as { delta?: string; done?: boolean; error?: string };
+          const payload = JSON.parse(line.slice(6)) as { delta?: string; done?: boolean; error?: string; degraded?: boolean };
           if (payload.error) {
             this.finalizeStreamingBubble(bodyEl, '⚠ Analyst unavailable. Try again shortly.', false);
             return 'error';
+          }
+          if (payload.degraded) {
+            const notice = document.createElement('em');
+            notice.className = 'chat-degraded-notice';
+            notice.textContent = '⚠ Partial live data — some sources unavailable';
+            bodyEl.innerHTML = '';
+            bodyEl.appendChild(notice);
+            bodyEl.appendChild(document.createElement('br'));
           }
           if (payload.delta) {
             accumulated += payload.delta;
             bodyEl.innerHTML = basicMarkdownToHtml(accumulated);
             onToken(accumulated);
-            if (this.messagesEl) this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+            this.scrollToBottom();
           }
           if (payload.done) return 'done';
         } catch { /* malformed SSE chunk */ }
@@ -339,7 +346,7 @@ export class ChatAnalystPanel extends Panel {
   private finalizeStreamingBubble(bodyEl: HTMLElement, text: string, success: boolean): void {
     bodyEl.innerHTML = basicMarkdownToHtml(text);
     if (!success) bodyEl.classList.add('chat-msg-error');
-    if (this.messagesEl) this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    this.scrollToBottom();
   }
 
   clear(): void {

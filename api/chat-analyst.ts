@@ -5,9 +5,10 @@
  * Body: { history: {role,content}[], query: string, domainFocus?: string, geoContext?: string }
  *
  * Returns text/event-stream SSE:
- *   data: {"delta":"..."}   — one per content token
- *   data: {"done":true}     — terminal event
- *   data: {"error":"..."}   — on auth/llm failure
+ *   data: {"degraded":true}  — optional first event when context is partial
+ *   data: {"delta":"..."}    — one per content token
+ *   data: {"done":true}      — terminal event
+ *   data: {"error":"..."}    — on auth/llm failure
  */
 
 export const config = { runtime: 'edge' };
@@ -24,6 +25,7 @@ const MAX_QUERY_LEN = 500;
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_MESSAGE_CHARS = 800;
 const MAX_GEO_LEN = 2;
+const VALID_DOMAINS = new Set(['all', 'geo', 'market', 'military', 'economic']);
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -44,16 +46,18 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-function sseError(message: string, cors: Record<string, string>): Response {
+function prependSseEvent(event: Record<string, unknown>, stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
-  const body = enc.encode(`data: ${JSON.stringify({ error: message })}\n\n`);
-  return new Response(body, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-store',
-      'X-Accel-Buffering': 'no',
-      ...cors,
+  const prefix = enc.encode(`data: ${JSON.stringify(event)}\n\n`);
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      controller.enqueue(prefix);
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) { controller.close(); return; }
+        controller.enqueue(value);
+      }
     },
   });
 }
@@ -94,7 +98,10 @@ export default async function handler(req: Request): Promise<Response> {
   const query = sanitizeForPrompt(rawQuery);
   if (!query) return json({ error: 'query is required' }, 400, corsHeaders);
 
-  const domainFocus = typeof body.domainFocus === 'string' ? body.domainFocus.trim() : 'all';
+  // Validate domainFocus against the fixed domain set to prevent prompt injection
+  const rawDomain = typeof body.domainFocus === 'string' ? body.domainFocus.trim() : '';
+  const domainFocus = VALID_DOMAINS.has(rawDomain) ? rawDomain : 'all';
+
   const geoContext = typeof body.geoContext === 'string'
     ? body.geoContext.trim().toUpperCase().slice(0, MAX_GEO_LEN)
     : undefined;
@@ -107,9 +114,13 @@ export default async function handler(req: Request): Promise<Response> {
       return (msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string';
     })
     .slice(-MAX_HISTORY_MESSAGES)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_MESSAGE_CHARS) }));
+    .map((m) => {
+      const sanitized = sanitizeForPrompt(m.content.slice(0, MAX_MESSAGE_CHARS)) ?? '';
+      return { role: m.role, content: sanitized };
+    })
+    .filter((m) => m.content.length > 0);
 
-  const context = await assembleAnalystContext(geoContext, domainFocus);
+  const context = await assembleAnalystContext(geoContext);
   const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
 
   const messages = [
@@ -118,16 +129,14 @@ export default async function handler(req: Request): Promise<Response> {
     { role: 'user', content: query },
   ];
 
-  const stream = callLlmReasoningStream({
+  const llmStream = callLlmReasoningStream({
     messages,
     maxTokens: 600,
     temperature: 0.35,
-    timeoutMs: 90_000,
+    timeoutMs: 25_000,
   });
 
-  if (!stream) {
-    return sseError('llm_unavailable', corsHeaders);
-  }
+  const stream = context.degraded ? prependSseEvent({ degraded: true }, llmStream) : llmStream;
 
   return new Response(stream, {
     status: 200,

@@ -207,7 +207,7 @@ export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'valid
  *   data: {"done":true}    — terminal event
  * Returns null if no provider is available.
  */
-export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<Uint8Array> | null {
+export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<Uint8Array> {
   const envProvider = process.env.LLM_REASONING_PROVIDER;
   const provider = (envProvider && PROVIDER_SET.has(envProvider) ? envProvider : 'openrouter') as LlmProviderName;
   const model = process.env.LLM_REASONING_MODEL;

@@ -195,7 +195,6 @@ function buildCountryBrief(data: unknown): string {
 
 export async function assembleAnalystContext(
   geoContext?: string,
-  _domainFocus?: string,
 ): Promise<AnalystContext> {
   const keys = {
     insights: 'news:insights:v1',
@@ -223,15 +222,15 @@ export async function assembleAnalystContext(
     predResult,
     countryResult,
   ] = await Promise.allSettled([
-    getCachedJson(keys.insights, true).catch(() => null),
-    getCachedJson(keys.riskScores, true).catch(() => null),
-    getCachedJson(keys.marketImplications, true).catch(() => null),
-    getCachedJson(keys.forecasts, true).catch(() => null),
-    getCachedJson(keys.stocks, true).catch(() => null),
-    getCachedJson(keys.commodities, true).catch(() => null),
-    getCachedJson(keys.macroSignals, true).catch(() => null),
-    getCachedJson(keys.predictions, true).catch(() => null),
-    countryKey ? getCachedJson(countryKey, true).catch(() => null) : Promise.resolve(null),
+    getCachedJson(keys.insights, true),
+    getCachedJson(keys.riskScores, true),
+    getCachedJson(keys.marketImplications, true),
+    getCachedJson(keys.forecasts, true),
+    getCachedJson(keys.stocks, true),
+    getCachedJson(keys.commodities, true),
+    getCachedJson(keys.macroSignals, true),
+    getCachedJson(keys.predictions, true),
+    countryKey ? getCachedJson(countryKey, true) : Promise.resolve(null),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
