@@ -76,6 +76,8 @@ function applyCloudBlob(data: Record<string, unknown>): void {
       const val = data[key];
       if (typeof val === 'string') {
         localStorage.setItem(key, val);
+      } else if (!(key in data)) {
+        localStorage.removeItem(key);
       }
     }
   } finally {
@@ -164,7 +166,7 @@ async function postCloudPrefs(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ variant, data, expectedSyncVersion }),
+    body: JSON.stringify({ variant, data, expectedSyncVersion, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION }),
   });
   if (res.status === 409) return { conflict: true };
   if (!res.ok) throw new Error(`post prefs: ${res.status}`);
@@ -211,8 +213,10 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
           const migrated = applyMigrations(fresh.data, fresh.schemaVersion ?? 1);
           applyCloudBlob(migrated);
           setSyncVersion(fresh.syncVersion);
+          setState('synced');
+        } else {
+          setState('error');
         }
-        setState('synced');
       } else {
         setSyncVersion(result.syncVersion);
         Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
@@ -230,7 +234,18 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
 export function onSignOut(): void {
   if (!isEnabled()) return;
 
-  if (_debounceTimer !== null) {
+  if (_debounceTimer !== null && _cachedToken) {
+    // Flush pending upload synchronously before clearing credentials
+    clearTimeout(_debounceTimer);
+    _debounceTimer = null;
+    const blob = buildCloudBlob();
+    fetch('/api/user-prefs', {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_cachedToken}` },
+      body: JSON.stringify({ variant: _currentVariant, data: blob, expectedSyncVersion: getSyncVersion(), schemaVersion: CURRENT_PREFS_SCHEMA_VERSION }),
+    }).catch(() => { /* best-effort on sign-out */ });
+  } else if (_debounceTimer !== null) {
     clearTimeout(_debounceTimer);
     _debounceTimer = null;
   }
@@ -264,8 +279,10 @@ async function uploadNow(variant: string): Promise<void> {
           setSyncVersion(retryResult.syncVersion);
           Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
         }
+        setState('synced');
+      } else {
+        setState('error');
       }
-      setState('synced');
     } else {
       setSyncVersion(result.syncVersion);
       Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
@@ -332,7 +349,7 @@ export function install(variant: string): void {
     _debounceTimer = null;
 
     const blob = buildCloudBlob();
-    const payload = JSON.stringify({ variant: _currentVariant, data: blob, expectedSyncVersion: getSyncVersion() });
+    const payload = JSON.stringify({ variant: _currentVariant, data: blob, expectedSyncVersion: getSyncVersion(), schemaVersion: CURRENT_PREFS_SCHEMA_VERSION });
     fetch('/api/user-prefs', {
       method: 'POST',
       keepalive: true,
