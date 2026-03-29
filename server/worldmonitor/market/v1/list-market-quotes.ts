@@ -46,6 +46,7 @@ export async function listMarketQuotes(
   try {
   const result = await cachedFetchJson<ListMarketQuotesResponse>(redisKey, REDIS_CACHE_TTL, async () => {
     const apiKey = process.env.FINNHUB_API_KEY;
+    const fmpApiKey = process.env.FMP_API_KEY;
     const symbols = req.symbols;
     if (!symbols.length) return { quotes: [], finnhubSkipped: !apiKey, skipReason: !apiKey ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false };
 
@@ -79,10 +80,10 @@ export async function listMarketQuotes(
       : finnhubSymbols;
     const allYahoo = [...yahooSymbols, ...missedFinnhub];
 
-    // Fetch Yahoo Finance quotes (staggered to avoid 429)
+    // Fetch Yahoo Finance quotes (with FMP fallback on 429)
     let yahooRateLimited = false;
     if (allYahoo.length > 0) {
-      const batch = await fetchYahooQuotesBatch(allYahoo);
+      const batch = await fetchYahooQuotesBatch(allYahoo, fmpApiKey);
       yahooRateLimited = batch.rateLimited;
       for (const s of allYahoo) {
         if (quotes.some((q) => q.symbol === s)) continue;

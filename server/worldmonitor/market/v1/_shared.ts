@@ -14,11 +14,12 @@ export const UPSTREAM_TIMEOUT_MS = 10_000;
 
 export async function fetchYahooQuotesBatch(
   symbols: string[],
+  fmpApiKey?: string,
 ): Promise<{ results: Map<string, { price: number; change: number; sparkline: number[] }>; rateLimited: boolean }> {
   const results = new Map<string, { price: number; change: number; sparkline: number[] }>();
   let rateLimitHits = 0;
   for (let i = 0; i < symbols.length; i++) {
-    const q = await fetchYahooQuote(symbols[i]!);
+    const q = await fetchYahooQuote(symbols[i]!, fmpApiKey);
     if (q) {
       results.set(symbols[i]!, q);
     } else {
@@ -34,6 +35,15 @@ export const YAHOO_ONLY_SYMBOLS = new Set([
   '^GSPC', '^DJI', '^IXIC', '^VIX',
   'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F',
 ]);
+
+// Yahoo symbol → FMP symbol mapping (where format differs)
+const FMP_SYMBOL_MAP: Record<string, string> = {
+  'GC=F': 'GCUSD',
+  'CL=F': 'CLUSD',
+  'NG=F': 'NGUSD',
+  'SI=F': 'SIUSD',
+  'HG=F': 'HGUSD',
+};
 
 // Known crypto IDs and their metadata
 export const CRYPTO_META: Record<string, { name: string; symbol: string }> = {
@@ -97,53 +107,59 @@ export async function fetchFinnhubQuote(
 // ========================================================================
 // Yahoo Finance quote fetcher
 // ========================================================================
-// TODO: Add Financial Modeling Prep (FMP) as Yahoo Finance fallback.
-//
-// FMP API docs: https://site.financialmodelingprep.com/developer/docs
-// Auth: API key required — env var FMP_API_KEY
-// Free tier: 250 requests/day (paid tiers for higher volume)
-//
-// Endpoint mapping (Yahoo → FMP):
-//   Quote:      /stable/quote?symbol=AAPL           (batch: comma-separated)
-//   Indices:    /stable/quote?symbol=^GSPC           (^GSPC, ^DJI, ^IXIC supported)
-//   Commodities:/stable/quote?symbol=GCUSD           (gold=GCUSD, oil=CLUSD, etc.)
-//   Forex:      /stable/batch-forex-quotes            (JPY/USD pairs)
-//   Crypto:     /stable/batch-crypto-quotes           (BTC, ETH, etc.)
-//   Sparkline:  /stable/historical-price-eod/light?symbol=AAPL  (daily close)
-//   Intraday:   /stable/historical-chart/1min?symbol=AAPL
-//
-// Symbol mapping needed:
-//   ^GSPC → ^GSPC (same), ^VIX → ^VIX (same)
-//   GC=F → GCUSD, CL=F → CLUSD, NG=F → NGUSD, SI=F → SIUSD, HG=F → HGUSD
-//   JPY=X → JPYUSD (forex pair format differs)
-//   BTC-USD → BTCUSD
-//
-// Implementation plan:
-//   1. Add FMP_API_KEY to SUPPORTED_SECRET_KEYS in main.rs + settings UI
-//   2. Create fetchFMPQuote() here returning same shape as fetchYahooQuote()
-//   3. fetchYahooQuote() tries Yahoo first → on 429/failure, tries FMP if key exists
-//   4. economic/_shared.ts fetchJSON() same fallback for Yahoo chart URLs
-//   5. get-macro-signals.ts needs chart data (1y range) — use /stable/historical-price-eod/light
 // ========================================================================
+// Financial Modeling Prep (FMP) fallback fetcher
+// Docs: https://site.financialmodelingprep.com/developer/docs
+// Activated when FMP_API_KEY is set and Yahoo returns 429/403 or fails.
+// ========================================================================
+
+export async function fetchFMPQuote(
+  yahooSymbol: string,
+  apiKey: string,
+): Promise<{ price: number; change: number; sparkline: number[] } | null> {
+  try {
+    const fmpSymbol = FMP_SYMBOL_MAP[yahooSymbol] ?? yahooSymbol;
+    const url = `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(fmpSymbol)}&apikey=${apiKey}`;
+    const resp = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!resp.ok) return null;
+
+    const data = await resp.json() as Array<{ price: number; changesPercentage: number }>;
+    if (!Array.isArray(data) || data.length === 0) return null;
+
+    const item = data[0]!;
+    if (!item.price) return null;
+    return { price: item.price, change: item.changesPercentage ?? 0, sparkline: [] };
+  } catch {
+    return null;
+  }
+}
 
 export async function fetchYahooQuote(
   symbol: string,
+  fmpApiKey?: string,
 ): Promise<{ price: number; change: number; sparkline: number[] } | null> {
   try {
     await yahooGate();
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
     const resp = await fetch(url, {
-      headers: {
-        'User-Agent': CHROME_UA,
-      },
+      headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    if (!resp.ok) return null;
+    if (resp.status === 429 || resp.status === 403) {
+      // Rate-limited or blocked — fall back to FMP if key is available
+      return fmpApiKey ? fetchFMPQuote(symbol, fmpApiKey) : null;
+    }
+    if (!resp.ok) {
+      return fmpApiKey ? fetchFMPQuote(symbol, fmpApiKey) : null;
+    }
 
     const data: YahooChartResponse = await resp.json();
     const result = data.chart.result[0];
     const meta = result?.meta;
-    if (!meta) return null;
+    if (!meta) return fmpApiKey ? fetchFMPQuote(symbol, fmpApiKey) : null;
 
     const price = meta.regularMarketPrice;
     const prevClose = meta.chartPreviousClose || meta.previousClose || price;
@@ -154,7 +170,7 @@ export async function fetchYahooQuote(
 
     return { price, change, sparkline };
   } catch {
-    return null;
+    return fmpApiKey ? fetchFMPQuote(symbol, fmpApiKey) : null;
   }
 }
 

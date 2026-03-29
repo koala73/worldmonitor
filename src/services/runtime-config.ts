@@ -32,7 +32,9 @@ export type RuntimeSecretKey =
   | 'NEWSAPI_KEY'
   | 'NEWSDATA_API_KEY'
   | 'VIRUSTOTAL_API_KEY'
-  | 'BGPVIEW_API_KEY';
+  | 'BGPVIEW_API_KEY'
+  | 'SHODAN_API_KEY'
+  | 'FMP_API_KEY';
 
 export type RuntimeFeatureId =
   | 'cloudApiFallbackAuth'
@@ -64,7 +66,9 @@ export type RuntimeFeatureId =
   | 'newsApiHeadlines'
   | 'newsDataFeed'
   | 'virusTotalEnrichment'
-  | 'bgpViewEnrichment';
+  | 'bgpViewEnrichment'
+  | 'shodanIcsExposure'
+  | 'fmpMarketsFallback';
 
 export interface RuntimeFeatureDefinition {
   id: RuntimeFeatureId;
@@ -124,6 +128,8 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   newsDataFeed: true,
   virusTotalEnrichment: true,
   bgpViewEnrichment: true,
+  shodanIcsExposure: true,
+  fmpMarketsFallback: true,
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
@@ -364,6 +370,22 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     requiredSecrets: ['BGPVIEW_API_KEY'],
     desktopRequiredSecrets: [],
     fallback: 'BGPView ASN enrichment is disabled.',
+  },
+  {
+    id: 'shodanIcsExposure',
+    name: 'Shodan ICS internet exposure',
+    description: 'Shodan search for internet-exposed ICS/SCADA systems (Modbus, S7, DNP3, EtherNet/IP, BACnet).',
+    requiredSecrets: ['SHODAN_API_KEY'],
+    desktopRequiredSecrets: [],
+    fallback: 'Shodan ICS exposure feed is disabled.',
+  },
+  {
+    id: 'fmpMarketsFallback',
+    name: 'Financial Modeling Prep fallback',
+    description: 'FMP provides quotes for indices, commodities, and equities when Yahoo Finance is rate-limited (429). Free tier: 250 req/day.',
+    requiredSecrets: ['FMP_API_KEY'],
+    desktopRequiredSecrets: [],
+    fallback: 'Markets panel falls back to Yahoo Finance only — may show stale data when rate-limited.',
   },
 ];
 

@@ -1,7 +1,9 @@
 /**
  * RPC: ListCommodityQuotes
- * Fetches commodity futures quotes from Yahoo Finance.
+ * Fetches commodity futures quotes from Yahoo Finance (FMP fallback on 429).
  */
+
+declare const process: { env: Record<string, string | undefined> };
 
 import type {
   ServerContext,
@@ -30,7 +32,8 @@ export async function listCommodityQuotes(
 
   try {
   const result = await cachedFetchJson<ListCommodityQuotesResponse>(redisKey, REDIS_CACHE_TTL, async () => {
-    const batch = await fetchYahooQuotesBatch(symbols);
+    const fmpApiKey = process.env.FMP_API_KEY;
+    const batch = await fetchYahooQuotesBatch(symbols, fmpApiKey);
     const quotes: CommodityQuote[] = [];
     for (const s of symbols) {
       const yahoo = batch.results.get(s);

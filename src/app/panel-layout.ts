@@ -56,6 +56,7 @@ import { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel'
 import { NationalDebtPanel } from '@/components/NationalDebtPanel';
 import { FuelPricesPanel } from '@/components/FuelPricesPanel';
 import { EconomicStressPanel } from '@/components/EconomicStressPanel';
+import { NuclearRiskPanel } from '@/components/NuclearRiskPanel';
 import { RadiationDecayPanel } from '@/components/RadiationDecayPanel';
 import { ResourceInventoryPanel } from '@/components/ResourceInventoryPanel';
 import { WorldClockPanel } from '@/components/WorldClockPanel';
@@ -90,6 +91,8 @@ import { trackCriticalBannerAction } from '@/services/analytics';
 import { initMode, setMode, alertFamily, getMode, toggleGhostMode, type AppMode } from '@/services/mode-manager';
 import { isLowPowerMode, setLowPowerMode } from '@/services/low-power';
 import { tryInvokeTauri } from '@/services/tauri-bridge';
+import { initModeTransitionCards } from '@/services/mode-transition-card';
+import { initPanelCorrelation } from '@/services/panel-correlation';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import type { TechHubActivity } from '@/services/tech-activity';
 
@@ -792,6 +795,8 @@ export class PanelLayoutManager implements AppModule {
       });
       this.ctx.panels['ucdp-events'] = ucdpEventsPanel;
 
+      this.ctx.panels['nuclear-risk'] = new NuclearRiskPanel('nuclear-risk', 'Nuclear Risk Tracker');
+
       const airstrikesPanel = new AirstrikesPanel();
       airstrikesPanel.setEventClickHandler((lat, lon) => {
         this.ctx.map?.setCenter(lat, lon, 6);
@@ -1052,6 +1057,11 @@ export class PanelLayoutManager implements AppModule {
       const { mode } = e.detail as { mode: AppMode };
       document.body.dataset.appMode = mode;
 
+      // Sync macOS menu bar mode indicator
+      if (this.ctx.isDesktopApp) {
+        tryInvokeTauri('update_mode_label', { mode }).catch(() => {/* silent */});
+      }
+
       // Update button active states
       document.querySelectorAll<HTMLElement>('.mac-mode-btn[data-mode]').forEach(btn => {
         const btnMode = btn.dataset.mode as AppMode;
@@ -1103,6 +1113,44 @@ export class PanelLayoutManager implements AppModule {
       }
     }) as EventListener);
 
+    // EMA forecast sparklines — show top high-risk regions near the war mode button
+    document.addEventListener('wm:ema-forecast', ((e: CustomEvent) => {
+      const { regions } = e.detail as { regions: Array<{ region: string; risk24h: number; trending: string }> };
+      let widget = document.getElementById('wm-ema-forecast-widget');
+      if (!regions || regions.length === 0) {
+        widget?.remove();
+        return;
+      }
+      if (!widget) {
+        widget = document.createElement('div');
+        widget.id = 'wm-ema-forecast-widget';
+        Object.assign(widget.style, {
+          fontSize:     '10px',
+          color:        '#9ca3af',
+          padding:      '4px 6px',
+          marginTop:    '4px',
+          background:   'rgba(255,255,255,0.03)',
+          borderRadius: '6px',
+          lineHeight:   '1.6',
+        });
+        const section = document.getElementById('modeSelectorSection');
+        section?.appendChild(widget);
+      }
+      const trendIcon = (t: string) => t === 'up' ? '\u2197' : t === 'down' ? '\u2198' : '\u2192';
+      const riskColor = (r: number) => r >= 80 ? '#ef4444' : r >= 65 ? '#f97316' : '#f59e0b';
+      widget.innerHTML = regions.slice(0, 4).map(r =>
+        `<span style="display:inline-block;margin-right:8px">` +
+        `<span style="color:${riskColor(r.risk24h)}">${trendIcon(r.trending)}</span> ` +
+        `${r.region} <span style="color:${riskColor(r.risk24h)};font-weight:600">${r.risk24h}%</span>` +
+        `</span>`
+      ).join('');
+    }) as EventListener);
+
+    // Sync initial mode to macOS menu bar
+    if (this.ctx.isDesktopApp) {
+      tryInvokeTauri('update_mode_label', { mode: getMode() }).catch(() => {/* silent */});
+    }
+
     // Apply panel reorder for the initial mode on startup
     this._applyModePanelOrder(getMode());
 
@@ -1110,6 +1158,33 @@ export class PanelLayoutManager implements AppModule {
     document.addEventListener('wm:mode-changed', ((e: CustomEvent) => {
       this._applyModePanelOrder((e.detail as { mode: AppMode }).mode);
     }) as EventListener);
+
+    // Mode transition "why" cards — explains auto-triggered mode changes
+    initModeTransitionCards();
+
+    // Panel correlation detector — fires compound alerts when 3+ panels are elevated
+    initPanelCorrelation();
+
+    // Native macOS notifications on auto-triggered War / Disaster mode
+    if (this.ctx.isDesktopApp) {
+      document.addEventListener('wm:mode-changed', ((e: CustomEvent) => {
+        const { mode, auto } = e.detail as { mode: AppMode; auto: boolean };
+        if (!auto) return;
+        if (mode === 'war') {
+          tryInvokeTauri('send_notification', {
+            title: '\u2694 War Mode Activated',
+            body: 'Multiple conflict signals exceeded the escalation threshold.',
+            sound: 'Basso',
+          }).catch(() => {/* silent */});
+        } else if (mode === 'disaster') {
+          tryInvokeTauri('send_notification', {
+            title: '\u{1F30B} Disaster Mode Activated',
+            body: 'A major disaster event was detected (GDACS Red, M6.5+ quake, or 3+ Orange events).',
+            sound: 'Basso',
+          }).catch(() => {/* silent */});
+        }
+      }) as EventListener);
+    }
   }
 
   /**

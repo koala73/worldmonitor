@@ -59,6 +59,7 @@ import {
 } from '@/services';
 import { checkBatchForBreakingAlerts } from '@/services/breaking-news-alerts';
 import { evaluateWarThreat, evaluateFinanceTrigger, evaluateCommodityTrigger, evaluateDisasterTrigger, checkFinanceAutoTriggerTimeout } from '@/services/mode-manager';
+import { reportElevatedPanel } from '@/services/panel-correlation';
 import { fetchGDACSEvents } from '@/services/gdacs';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -1030,7 +1031,18 @@ export class DataLoaderManager implements AppModule {
 
     // Evaluate disaster auto-trigger (uses cached GDACS data — no extra fetch)
     const earthquakes = earthquakeResult.status === 'fulfilled' ? earthquakeResult.value : [];
-    fetchGDACSEvents().then(gdacs => evaluateDisasterTrigger(gdacs, earthquakes)).catch(() => {});
+
+    // Report elevated panels for correlation detector
+    if (earthquakes.some(eq => eq.magnitude >= 6.5)) {
+      reportElevatedPanel('earthquakes', 'Earthquakes');
+    }
+
+    fetchGDACSEvents().then(gdacs => {
+      evaluateDisasterTrigger(gdacs, earthquakes);
+      if (gdacs.some(e => e.alertLevel === 'Red')) {
+        reportElevatedPanel('gdacs-alerts', 'GDACS Disaster Alerts');
+      }
+    }).catch(() => {});
   }
 
   async loadTechEvents(): Promise<void> {
@@ -1613,6 +1625,22 @@ export class DataLoaderManager implements AppModule {
 
     // Check for high-risk regions and emit velocity_spike signals into war threat evaluation
     const highRisk = getHighRiskRegions();
+
+    // Dispatch EMA forecast event for sidebar sparklines
+    document.dispatchEvent(new CustomEvent('wm:ema-forecast', {
+      detail: {
+        regions: highRisk.slice(0, 6).map(r => ({
+          region:  r.region,
+          risk24h: r.risk24h,
+          trending: r.trending,
+        })),
+      },
+    }));
+
+    if (highRisk.length >= 2) {
+      // 2+ high-risk regions = elevated conflict intelligence signal
+      reportElevatedPanel('ucdp-events', 'UCDP Conflict Events');
+    }
     if (highRisk.length > 0) {
       const signals = highRisk.slice(0, 3).map(forecast => ({
         id: `ema-forecast-${forecast.region}-${Date.now()}`,

@@ -51,7 +51,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
   'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
-  'airstrikes': { name: 'Air Strikes & Drones', enabled: false, priority: 2 },
+  'nuclear-risk': { name: 'Nuclear Risk Tracker', enabled: true, priority: 2 },
+  'airstrikes': { name: 'Air Strikes & Drones', enabled: true, priority: 2 },
   giving: { name: 'Global Giving', enabled: false, priority: 2 },
   displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
   climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
@@ -102,8 +103,8 @@ const FULL_MAP_LAYERS: MapLayers = {
   minerals: false,
   fires: false,
   // Data source layers
-  ucdpEvents: false,
-  airstrikes: false,
+  ucdpEvents: true,
+  airstrikes: true,
   displacement: false,
   climate: false,
   // Tech layers (disabled in full variant)
@@ -652,7 +653,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
-    panelKeys: ['monitors', 'cyber-threats', 'comms-health', 'ucdp-events', 'airstrikes', 'displacement', 'security-advisories', 'oref-sirens', 'space-weather', 'population-exposure'],
+    panelKeys: ['monitors', 'cyber-threats', 'comms-health', 'ucdp-events', 'nuclear-risk', 'airstrikes', 'displacement', 'security-advisories', 'oref-sirens', 'space-weather', 'population-exposure'],
     variants: ['full'],
   },
   hazards: {

@@ -53,6 +53,11 @@ export function validateApiKey(req) {
 
   // Trusted browser requests must look like real browser fetches, not just spoofed headers.
   if (isTrustedBrowserRequest(req, origin)) {
+    const method = (req.method ?? 'GET').toUpperCase();
+    const isReadMethod = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+    if (!isReadMethod && !key) {
+      return { valid: false, required: true, error: 'API key required for non-read requests' };
+    }
     if (key) {
       if (!validKeys.includes(key)) return { valid: false, required: true, error: 'Invalid API key' };
     }

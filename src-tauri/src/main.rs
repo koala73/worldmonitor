@@ -16,7 +16,7 @@ use keyring::Entry;
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::{Map, Value};
-use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, Menu, MenuItemKind, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_biometry;
 
@@ -31,10 +31,11 @@ const MENU_FILE_GHOST_MODE_ID: &str = "file.ghost_mode";
 const MENU_HELP_GITHUB_ID: &str = "help.github";
 const MENU_HELP_CHECK_UPDATES_ID: &str = "help.check_updates";
 const MENU_HELP_OPEN_LOGS_ID: &str = "help.open_logs";
+const MENU_VIEW_MODE_ID: &str = "view.mode_status";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
-const SUPPORTED_SECRET_KEYS: [&str; 32] = [
+const SUPPORTED_SECRET_KEYS: [&str; 33] = [
     "WORLDMONITOR_API_KEY",
     "ANTHROPIC_API_KEY",
     "GROQ_API_KEY",
@@ -67,6 +68,7 @@ const SUPPORTED_SECRET_KEYS: [&str; 32] = [
     "NEWSDATA_API_KEY",
     "VIRUSTOTAL_API_KEY",
     "BGPVIEW_API_KEY",
+    "FMP_API_KEY",
 ];
 
 // Rate-limit native notifications: no more than 1 per 30 seconds across all threads.
@@ -1095,6 +1097,26 @@ async fn open_youtube_logout(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn update_mode_label(app: AppHandle, mode: String) -> Result<(), String> {
+    let label = match mode.as_str() {
+        "peace"   => "Mode: \u{1F54A} Peace",
+        "finance" => "Mode: \u{1F4B0} Finance",
+        "war"     => "Mode: \u{2694} War",
+        "disaster"=> "Mode: \u{1F30B} Disaster",
+        "ghost"   => "Mode: \u{1F47B} Ghost",
+        _         => "Mode: \u{1F54A} Peace",
+    };
+    if let Some(menu) = app.menu() {
+        if let Some(item_kind) = menu.get(MENU_VIEW_MODE_ID) {
+            if let MenuItemKind::MenuItem(item) = item_kind {
+                item.set_text(label).map_err(|e| format!("Failed to update mode label: {e}"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let settings_item = MenuItem::with_id(
         handle,
@@ -1179,6 +1201,21 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[&about_item, &help_separator, &check_updates_item, &github_item, &help_separator2, &open_logs_item],
     )?;
 
+    let mode_status_item = MenuItem::with_id(
+        handle,
+        MENU_VIEW_MODE_ID,
+        "Mode: \u{1F54A} Peace",
+        false, // non-interactive — status display only
+        None::<&str>,
+    )?;
+    let view_mode_sep = PredefinedMenuItem::separator(handle)?;
+    let view_menu = Submenu::with_items(
+        handle,
+        "View",
+        true,
+        &[&mode_status_item, &view_mode_sep],
+    )?;
+
     let window_menu = {
         let minimize = PredefinedMenuItem::minimize(handle, None)?;
         let maximize = PredefinedMenuItem::maximize(handle, None)?;
@@ -1202,7 +1239,7 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         )?
     };
 
-    Menu::with_items(handle, &[&file_menu, &edit_menu, &window_menu, &help_menu])
+    Menu::with_items(handle, &[&file_menu, &edit_menu, &view_menu, &window_menu, &help_menu])
 }
 
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
@@ -1785,7 +1822,8 @@ fn main() {
             open_youtube_logout,
             fetch_polymarket,
             send_notification,
-            install_update
+            install_update,
+            update_mode_label
         ])
         .setup(|app| {
             // Load persistent cache into memory (avoids 14MB file I/O on every IPC call)
