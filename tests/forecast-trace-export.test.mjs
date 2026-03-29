@@ -7843,4 +7843,81 @@ describe('writeSimulationDecorations and applySimulationDecorationsToForecasts',
     assert.equal(predictions[1].simulationAdjustment, 0.12, 'fc-006 decorated (same candidate)');
     assert.equal(predictions[2].simulationAdjustment, 0, 'fc-007 unaffected');
   });
+
+  it('WD-15: inline deep path — applySimulationMerge result + snapshot.fullRunStateUnits writes decorations (covers processDeepForecastTask call site)', async () => {
+    // Reproduces the inline sequence in processDeepForecastTask:
+    //   mergeResult = applySimulationMerge(evaluation, simulationOutcome, candidates, snapshot, priorWorldState)
+    //   writeSimulationDecorations(mergeResult, snapshot)   ← the call that was missing pre-fix
+    // snapshot.fullRunStateUnits is the R2-loaded artifact that maps candidateStateId → forecastIds.
+    const store = {};
+    __setRedisStoreForTests(store);
+
+    const candidateStateId = 'state-deep-inline';
+    const candidatePacket = {
+      candidateStateId,
+      candidateIndex: 0,
+      routeFacilityKey: 'Strait of Hormuz',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const snapshot = {
+      runId: 'run-deep-inline-01',
+      generatedAt: Date.now(),
+      // fullRunStateUnits links candidateStateId → forecastIds — this is what
+      // processDeepForecastTask reads from R2 and passes to both applySimulationMerge
+      // and writeSimulationDecorations.
+      fullRunStateUnits: [{ id: candidateStateId, label: 'Hormuz disruption', forecastIds: ['fc-inline-001', 'fc-inline-002'] }],
+      impactExpansionCandidates: [candidatePacket],
+    };
+    // Path already selected with high acceptanceScore (0.70) — simulation gives +0.08 but path
+    // stays selected (0.78 > 0.50). anyPathChanged stays false → buildDeepWorldStateFromSnapshot
+    // is NOT called, avoiding the need for a full R2-loaded snapshot in this unit test.
+    const path = {
+      pathId: 'path-deep-inline',
+      candidateStateId,
+      type: 'expanded',
+      acceptanceScore: 0.70,
+      pathScore: 0.75,
+      candidate: candidatePacket,
+      direct: { variableKey: 'route_disruption', targetBucket: '', channel: 'energy_supply_shock', affectedAssets: [] },
+      second: null,
+      third: null,
+    };
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [path],
+      rejectedPaths: [],
+      impactExpansionBundle: null,
+      deepWorldState: { deepForecast: {} },
+      validation: { mapped: [], hypotheses: [] },
+    };
+    const simulationOutcome = {
+      runId: 'sim-deep-inline',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId,
+        topPaths: [{ label: 'Hormuz energy shock', summary: 'oil supply disruption from energy supply shock', keyActors: [] }],
+        invalidators: [],
+        stabilizers: [],
+      }],
+    };
+
+    // This is the exact sequence in processDeepForecastTask (post-fix)
+    const mergeResult = applySimulationMerge(
+      evaluation, simulationOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    await writeSimulationDecorations(mergeResult, snapshot);
+
+    const written = store[SIMULATION_DECORATIONS_KEY];
+    assert.ok(written, 'decorations written from inline deep path (was missing pre-fix)');
+    assert.equal(written.runId, 'run-deep-inline-01');
+    // Both forecasts linked to the candidate must be decorated
+    assert.ok('fc-inline-001' in written.byForecastId, 'fc-inline-001 decorated via fullRunStateUnits');
+    assert.ok('fc-inline-002' in written.byForecastId, 'fc-inline-002 decorated via fullRunStateUnits');
+    // bucket+channel match → +0.08 adjustment
+    assert.equal(written.byForecastId['fc-inline-001'].simulationAdjustment, 0.08);
+    assert.equal(written.byForecastId['fc-inline-002'].simulationAdjustment, 0.08);
+  });
 });

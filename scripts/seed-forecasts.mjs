@@ -15206,6 +15206,11 @@ async function processDeepForecastTask(task = {}) {
         priorWorldState,
       );
       simulationEvidence = mergeResult.simulationEvidence;
+      // Write decorations fire-and-forget so ForecastPanel sub-bar reflects this run's
+      // simulation evidence on the SAME run (not stale-by-one like the rescore path).
+      writeSimulationDecorations(mergeResult, snapshot).catch((err) =>
+        console.warn(`  [SimulationDecorations] Fire-and-forget write failed (deep path): ${err.message}`)
+      );
     }
   } catch (err) {
     console.warn('[SimulationMerge] Error during merge:', err.message);
