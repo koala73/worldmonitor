@@ -10,7 +10,15 @@ import { TIER1_COUNTRIES } from './_shared';
 
 const RISK_SCORES_KEY = 'risk:scores:sebuf:stale:v1';
 const ADVISORIES_KEY = 'intelligence:advisories:v1';
-const SANCTIONS_KEY = 'sanctions:pressure:v1';
+// Full ISO2 → entryCount map across all OFAC entries (not the top-12 summary slice).
+const SANCTIONS_COUNTS_KEY = 'sanctions:country-counts:v1';
+
+function resolveCountryName(
+  code: string,
+  byCountryName: Record<string, string> | undefined,
+): string {
+  return TIER1_COUNTRIES[code] ?? byCountryName?.[code] ?? code;
+}
 
 export async function getCountryRisk(
   _ctx: ServerContext,
@@ -34,13 +42,15 @@ export async function getCountryRisk(
   const [riskRaw, advisoriesRaw, sanctionsRaw] = await Promise.all([
     getCachedJson(RISK_SCORES_KEY, true),
     getCachedJson(ADVISORIES_KEY, true),
-    getCachedJson(SANCTIONS_KEY, true),
+    getCachedJson(SANCTIONS_COUNTS_KEY, true),
   ]);
 
-  if (riskRaw === null && advisoriesRaw === null && sanctionsRaw === null) {
+  // Sanctions-specific outage: return unavailable immediately rather than
+  // silently emitting sanctionsActive:false (a false negative for screening use).
+  if (sanctionsRaw === null) {
     return {
       countryCode: code,
-      countryName: TIER1_COUNTRIES[code] ?? code,
+      countryName: resolveCountryName(code, (advisoriesRaw as any)?.byCountryName),
       cii: undefined,
       advisoryLevel: '',
       sanctionsActive: false,
@@ -56,16 +66,13 @@ export async function getCountryRisk(
   const byCountry: Record<string, string> = (advisoriesRaw as any)?.byCountry ?? {};
   const advisoryLevel = byCountry[code] ?? '';
 
-  const sanctionCountries: Array<{ countryCode: string; entryCount: number }> =
-    (sanctionsRaw as any)?.countries ?? [];
-  const sanctionEntry = sanctionCountries.find(
-    (c) => c.countryCode?.toUpperCase() === code,
-  );
-  const sanctionsCount = sanctionEntry?.entryCount ?? 0;
+  const byCountryName: Record<string, string> | undefined = (advisoriesRaw as any)?.byCountryName;
+
+  const sanctionsCount = (sanctionsRaw as Record<string, number>)[code] ?? 0;
 
   return {
     countryCode: code,
-    countryName: TIER1_COUNTRIES[code] ?? code,
+    countryName: resolveCountryName(code, byCountryName),
     cii,
     advisoryLevel,
     sanctionsActive: sanctionsCount > 0,
