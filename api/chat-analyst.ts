@@ -5,7 +5,7 @@
  * Body: { history: {role,content}[], query: string, domainFocus?: string, geoContext?: string }
  *
  * Returns text/event-stream SSE:
- *   data: {"degraded":true}  — optional first event when context is partial
+ *   data: {"meta":{"sources":["Brief","Risk",...],"degraded":false}}  — always first event
  *   data: {"delta":"..."}    — one per content token
  *   data: {"done":true}      — terminal event
  *   data: {"error":"..."}    — on auth/llm failure
@@ -120,7 +120,7 @@ export default async function handler(req: Request): Promise<Response> {
     })
     .filter((m) => m.content.length > 0);
 
-  const context = await assembleAnalystContext(geoContext);
+  const context = await assembleAnalystContext(geoContext, domainFocus);
   const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
 
   const messages = [
@@ -136,7 +136,12 @@ export default async function handler(req: Request): Promise<Response> {
     timeoutMs: 25_000,
   });
 
-  const stream = context.degraded ? prependSseEvent({ degraded: true }, llmStream) : llmStream;
+  // Always prepend a meta event so the client knows which sources are live
+  // and whether context is degraded — before the first token arrives
+  const stream = prependSseEvent(
+    { meta: { sources: context.activeSources, degraded: context.degraded } },
+    llmStream,
+  );
 
   return new Response(stream, {
     status: 200,

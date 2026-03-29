@@ -1,6 +1,16 @@
 import { getCachedJson } from '../../../_shared/redis';
 import { sanitizeHeadline } from '../../../_shared/llm-sanitize.js';
 
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+const GDELT_TOPICS: Record<string, string> = {
+  geo: 'geopolitical conflict crisis diplomacy',
+  market: 'financial markets economy trade stocks',
+  military: 'military conflict war airstrike',
+  economic: 'economy sanctions trade monetary policy',
+  all: 'geopolitical conflict markets economy',
+};
+
 export interface AnalystContext {
   timestamp: string;
   worldBrief: string;
@@ -11,6 +21,8 @@ export interface AnalystContext {
   macroSignals: string;
   predictionMarkets: string;
   countryBrief: string;
+  liveHeadlines: string;
+  activeSources: string[];
   degraded: boolean;
 }
 
@@ -193,8 +205,56 @@ function buildCountryBrief(data: unknown): string {
   return `Country Focus${country ? ` — ${country}` : ''}:\n${brief.slice(0, 500)}`;
 }
 
+async function buildLiveHeadlines(domainFocus: string): Promise<string> {
+  const topic = GDELT_TOPICS[domainFocus] ?? 'geopolitical conflict markets economy';
+  try {
+    const url = new URL('https://api.gdeltproject.org/api/v2/doc/doc');
+    url.searchParams.set('mode', 'ArtList');
+    url.searchParams.set('maxrecords', '5');
+    url.searchParams.set('query', topic);
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('timespan', '2h');
+    url.searchParams.set('sort', 'DateDesc');
+
+    const res = await fetch(url.toString(), {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    if (!res.ok) return '';
+
+    const data = await res.json() as { articles?: Array<{ title?: string; domain?: string; seendate?: string }> };
+    const articles = (data.articles ?? []).slice(0, 5);
+    if (articles.length === 0) return '';
+
+    const lines = articles.map((a) => {
+      const title = sanitizeHeadline(safeStr(a.title));
+      const source = safeStr(a.domain).slice(0, 40);
+      if (!title) return null;
+      return `- ${title}${source ? ` (${source})` : ''}`;
+    }).filter((l): l is string => l !== null);
+
+    return lines.length ? `Latest Headlines:\n${lines.join('\n')}` : '';
+  } catch {
+    return '';
+  }
+}
+
+const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' | 'activeSources'>, string]> = [
+  ['worldBrief', 'Brief'],
+  ['riskScores', 'Risk'],
+  ['marketImplications', 'Signals'],
+  ['forecasts', 'Forecasts'],
+  ['marketData', 'Markets'],
+  ['macroSignals', 'Macro'],
+  ['predictionMarkets', 'Prediction'],
+  ['countryBrief', 'Country'],
+  ['liveHeadlines', 'Live'],
+];
+
 export async function assembleAnalystContext(
   geoContext?: string,
+  domainFocus?: string,
 ): Promise<AnalystContext> {
   const keys = {
     insights: 'news:insights:v1',
@@ -211,6 +271,8 @@ export async function assembleAnalystContext(
     ? `intelligence:country-brief:v1:${geoContext.toUpperCase()}`
     : null;
 
+  const resolvedDomain = domainFocus ?? 'all';
+
   const [
     insightsResult,
     riskResult,
@@ -221,6 +283,7 @@ export async function assembleAnalystContext(
     macroResult,
     predResult,
     countryResult,
+    headlinesResult,
   ] = await Promise.allSettled([
     getCachedJson(keys.insights, true),
     getCachedJson(keys.riskScores, true),
@@ -231,16 +294,20 @@ export async function assembleAnalystContext(
     getCachedJson(keys.macroSignals, true),
     getCachedJson(keys.predictions, true),
     countryKey ? getCachedJson(countryKey, true) : Promise.resolve(null),
+    buildLiveHeadlines(resolvedDomain),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
     r.status === 'fulfilled' ? r.value : null;
 
+  const getStr = (r: PromiseSettledResult<unknown>): string =>
+    r.status === 'fulfilled' && typeof r.value === 'string' ? r.value : '';
+
   const failCount = [insightsResult, riskResult, marketImplResult, forecastsResult,
     stocksResult, commoditiesResult, macroResult, predResult]
     .filter((r) => r.status === 'rejected' || !r.value).length;
 
-  return {
+  const ctx: AnalystContext = {
     timestamp: new Date().toUTCString(),
     worldBrief: buildWorldBrief(get(insightsResult)),
     riskScores: buildRiskScores(get(riskResult)),
@@ -250,6 +317,14 @@ export async function assembleAnalystContext(
     macroSignals: buildMacroSignals(get(macroResult)),
     predictionMarkets: buildPredictionMarkets(get(predResult)),
     countryBrief: buildCountryBrief(get(countryResult)),
+    liveHeadlines: getStr(headlinesResult),
+    activeSources: [],
     degraded: failCount > 4,
   };
+
+  ctx.activeSources = SOURCE_LABELS
+    .filter(([field]) => Boolean(ctx[field]))
+    .map(([, label]) => label);
+
+  return ctx;
 }

@@ -6,12 +6,18 @@ import { h, replaceChildren } from '@/utils/dom-utils';
 const API_URL = '/api/chat-analyst';
 const MAX_HISTORY = 20;
 
-const QUICK_ACTIONS = [
-  'Summarize today\'s situation',
-  'Key market moves & signals',
-  'Top active conflicts',
-  'Active forecasts & outlook',
-  'Highest risk countries',
+interface QuickAction {
+  label: string;
+  icon: string;
+  query: string;
+}
+
+const QUICK_ACTIONS: QuickAction[] = [
+  { label: 'Situation',  icon: '🌍', query: "Summarize today's geopolitical situation" },
+  { label: 'Markets',    icon: '📈', query: 'Key market moves, macro signals, and commodity moves today' },
+  { label: 'Conflicts',  icon: '⚔️',  query: 'Top active conflicts and military developments' },
+  { label: 'Forecasts',  icon: '🔮', query: 'Active forecasts and prediction market outlook' },
+  { label: 'Risk',       icon: '⚠️',  query: 'Highest risk countries and instability hotspots' },
 ];
 
 const DOMAINS = [
@@ -25,6 +31,11 @@ const DOMAINS = [
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+interface MetaEvent {
+  sources: string[];
+  degraded: boolean;
 }
 
 function basicMarkdownToHtml(raw: string): string {
@@ -74,8 +85,8 @@ export class ChatAnalystPanel extends Panel {
     for (const qa of QUICK_ACTIONS) {
       const btn = h('button', {
         className: 'chat-quick-btn',
-        dataset: { quickAction: qa },
-      }, qa);
+        dataset: { quickAction: qa.query },
+      }, `${qa.icon} ${qa.label}`);
       quickBar.appendChild(btn);
     }
 
@@ -186,7 +197,7 @@ export class ChatAnalystPanel extends Panel {
     this.scrollToBottom();
   }
 
-  private appendStreamingBubble(): HTMLElement {
+  private appendStreamingBubble(): { bubble: HTMLElement; body: HTMLElement } {
     const body = h('div', { className: 'chat-msg-body' },
       h('span', { className: 'chat-streaming-dot' }),
     );
@@ -196,7 +207,28 @@ export class ChatAnalystPanel extends Panel {
     );
     this.messagesEl.appendChild(bubble);
     this.scrollToBottom();
-    return body;
+    return { bubble, body };
+  }
+
+  private renderSourceChips(bubble: HTMLElement, meta: MetaEvent): void {
+    if (meta.sources.length === 0 && !meta.degraded) return;
+    const chipsRow = document.createElement('div');
+    chipsRow.className = 'chat-source-chips';
+    for (const src of meta.sources) {
+      const chip = document.createElement('span');
+      chip.className = 'chat-source-chip';
+      chip.textContent = src;
+      chipsRow.appendChild(chip);
+    }
+    if (meta.degraded) {
+      const warn = document.createElement('span');
+      warn.className = 'chat-source-chip chat-source-chip--warn';
+      warn.textContent = '⚠ partial';
+      chipsRow.appendChild(warn);
+    }
+    // Insert chips row before the body element inside the bubble
+    const body = bubble.querySelector('.chat-msg-body');
+    if (body) bubble.insertBefore(chipsRow, body);
   }
 
   private scrollToBottom(): void {
@@ -230,7 +262,7 @@ export class ChatAnalystPanel extends Panel {
       content: m.content.slice(0, 800),
     }));
 
-    const streamingBody = this.appendStreamingBubble();
+    const { bubble, body: streamingBody } = this.appendStreamingBubble();
     let accumulatedText = '';
 
     this.streamAbort = new AbortController();
@@ -259,7 +291,7 @@ export class ChatAnalystPanel extends Panel {
         return;
       }
 
-      const finished = await this.readStream(reader, streamingBody, (text) => { accumulatedText = text; });
+      const finished = await this.readStream(reader, bubble, streamingBody, (text) => { accumulatedText = text; });
       if (finished === 'error') return;
       if (finished === 'done') {
         this.finalizeStreamingBubble(streamingBody, accumulatedText, true);
@@ -288,8 +320,7 @@ export class ChatAnalystPanel extends Panel {
       this.streamAbort = null;
       this.isStreaming = false;
       this.setSendDisabled(false);
-      const bubble = streamingBody.closest('.chat-msg-streaming');
-      if (bubble) bubble.classList.remove('chat-msg-streaming');
+      bubble.classList.remove('chat-msg-streaming');
     }
   }
 
@@ -301,6 +332,7 @@ export class ChatAnalystPanel extends Panel {
 
   private async readStream(
     reader: ReadableStreamDefaultReader<Uint8Array>,
+    bubble: HTMLElement,
     bodyEl: HTMLElement,
     onToken: (text: string) => void,
   ): Promise<'done' | 'error' | 'incomplete'> {
@@ -317,18 +349,18 @@ export class ChatAnalystPanel extends Panel {
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         try {
-          const payload = JSON.parse(line.slice(6)) as { delta?: string; done?: boolean; error?: string; degraded?: boolean };
+          const payload = JSON.parse(line.slice(6)) as {
+            delta?: string;
+            done?: boolean;
+            error?: string;
+            meta?: MetaEvent;
+          };
           if (payload.error) {
             this.finalizeStreamingBubble(bodyEl, '⚠ Analyst unavailable. Try again shortly.', false);
             return 'error';
           }
-          if (payload.degraded) {
-            const notice = document.createElement('em');
-            notice.className = 'chat-degraded-notice';
-            notice.textContent = '⚠ Partial live data — some sources unavailable';
-            bodyEl.innerHTML = '';
-            bodyEl.appendChild(notice);
-            bodyEl.appendChild(document.createElement('br'));
+          if (payload.meta) {
+            this.renderSourceChips(bubble, payload.meta);
           }
           if (payload.delta) {
             accumulated += payload.delta;
