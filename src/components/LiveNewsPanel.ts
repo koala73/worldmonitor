@@ -432,6 +432,16 @@ export class LiveNewsPanel extends Panel {
     document.addEventListener('keydown', this.boundFullscreenEscHandler);
   }
 
+  protected override onCollapse(collapsed: boolean): void {
+    if (collapsed) {
+      this.player?.pauseVideo();
+      this.nativeVideoElement?.pause();
+    } else {
+      this.player?.playVideo();
+      if (this.nativeVideoElement) this.nativeVideoElement.play().catch(() => {});
+    }
+  }
+
   private renderPlaceholder(): void {
     this.content.innerHTML = '';
     const container = document.createElement('div');

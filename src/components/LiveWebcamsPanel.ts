@@ -201,6 +201,17 @@ export class LiveWebcamsPanel extends Panel {
     return this.filteredFeeds.slice(0, MAX_GRID_CELLS);
   }
 
+  protected override onCollapse(collapsed: boolean): void {
+    for (const iframe of this.iframes) {
+      if (collapsed) {
+        iframe.dataset.src = iframe.src;
+        iframe.src = '';
+      } else if (iframe.dataset.src) {
+        iframe.src = iframe.dataset.src;
+      }
+    }
+  }
+
   private createToolbar(): void {
     this.toolbar = document.createElement('div');
     this.toolbar.className = 'webcam-toolbar';
