@@ -156,6 +156,12 @@ export class AirlineIntelPanel extends Panel {
             if (target.id === 'trackSearchBtn' || target.closest('#trackSearchBtn')) {
                 this.handleTrackSearch();
             }
+            if (target.id === 'trackClearBtn' || target.closest('#trackClearBtn')) {
+                this.trackingQuery = '';
+                this.trackingFlightData = [];
+                this.trackingData = [];
+                void this.loadTab('tracking');
+            }
         });
 
         this.content.addEventListener('keydown', (e) => {
@@ -259,7 +265,6 @@ export class AirlineIntelPanel extends Panel {
 
     private handleTrackSearch(): void {
         const q = ((this.content.querySelector('#trackQueryInput') as HTMLInputElement)?.value || '').trim().toUpperCase();
-        if (!q) return;
         this.trackingQuery = q;
         this.trackingFlightData = [];
         this.trackingData = [];
@@ -426,10 +431,13 @@ export class AirlineIntelPanel extends Panel {
 
     // ---- Tracking tab ----
     private renderTracking(): void {
+        const clearBtn = this.trackingQuery
+            ? `<button id="trackClearBtn" class="icon-btn" style="padding:4px 8px;color:#9ca3af" title="Back to live feed">×</button>`
+            : '';
         const searchBar = `
       <div class="track-search" style="display:flex;gap:6px;padding:8px 0 6px">
         <input id="trackQueryInput" class="price-input" placeholder="Flight (EK3) or callsign (UAE3)" value="${escapeHtml(this.trackingQuery)}" style="flex:1;min-width:0">
-        <button id="trackSearchBtn" class="icon-btn" style="padding:4px 10px">Track</button>
+        ${clearBtn}<button id="trackSearchBtn" class="icon-btn" style="padding:4px 10px">Track</button>
       </div>`;
 
         if (this.loading) {
