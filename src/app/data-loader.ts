@@ -1331,7 +1331,7 @@ export class DataLoaderManager implements AppModule {
 
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
       const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
-      const mapCommodity = (c: MarketData) => ({ display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
+      const mapCommodity = (c: MarketData) => ({ symbol: c.symbol, display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
       const energySymbols = new Set(['CL=F', 'BZ=F', 'NG=F']);
       const filterCommodityTape = (data: MarketData[]) => data.filter((item) => item.symbol !== '^VIX' && !energySymbols.has(item.symbol));
       const filterEnergyTape = (data: MarketData[]) => data.filter((item) => energySymbols.has(item.symbol));
@@ -1491,6 +1491,9 @@ export class DataLoaderManager implements AppModule {
         yieldCurveContext,
         sectorContext,
         frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
+        newsCategories: SITE_VARIANT === 'commodity'
+          ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
+          : undefined,
       });
 
       if (this.dailyBriefGeneration !== gen) return;
