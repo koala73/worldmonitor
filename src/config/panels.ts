@@ -257,6 +257,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   events: { name: 'Tech Events', enabled: true, priority: 1 },
   'internet-disruptions': { name: 'Internet Disruptions', enabled: true, priority: 2 },
   'service-status': { name: 'Service Status', enabled: true, priority: 2 },
+  'economic-stress': { name: 'Economic Stress Index', enabled: true, priority: 1 },
   economic: { name: 'Macro Stress', enabled: true, priority: 2 },
   'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },

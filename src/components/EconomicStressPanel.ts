@@ -50,9 +50,18 @@ function notifyIfCrossed(score: number): void {
 }
 
 function componentCard(c: EconomicStressComponent): string {
+  if (c.missing) {
+    return `<div style="background:rgba(255,255,255,0.02);border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,0.05)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">${escapeHtml(c.label)}</span>
+      <span style="font-size:10px;color:#888">N/A</span>
+    </div>
+    <div style="font-size:9px;color:#666;font-style:italic">Data unavailable</div>
+  </div>`;
+  }
   const color = scoreColor(c.score);
   const barWidth = Math.min(100, Math.max(0, c.score)).toFixed(1);
-  const rawDisplay = c.rawValue !== 0 ? formatRaw(c.id, c.rawValue) : 'N/A';
+  const rawDisplay = formatRaw(c.id, c.rawValue);
   return `<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,0.07)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <span style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">${escapeHtml(c.label)}</span>

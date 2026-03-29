@@ -10,6 +10,7 @@ message EconomicStressComponent {
   double raw_value = 3;
   double score = 4;
   double weight = 5;
+  bool missing = 6;
 }
 
 message GetEconomicStressRequest {}

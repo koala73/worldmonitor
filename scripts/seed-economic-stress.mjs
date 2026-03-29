@@ -164,7 +164,8 @@ async function fetchEconomicStress() {
       components.push({
         id: comp.id,
         label: comp.label,
-        rawValue: 0,
+        rawValue: null,
+        missing: true,
         score: 0,
         weight: comp.weight,
       });

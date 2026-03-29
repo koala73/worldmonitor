@@ -524,6 +524,7 @@ export interface EconomicStressComponent {
   rawValue: number;
   score: number;
   weight: number;
+  missing: boolean;
 }
 
 export interface FieldViolation {

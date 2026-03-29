@@ -27,13 +27,17 @@ export async function getEconomicStress(
     if (!raw || raw.unavailable) return buildFallbackResult();
 
     const components = (Array.isArray(raw.components) ? raw.components : []).map(
-      (c: Record<string, unknown>): EconomicStressComponent => ({
-        id: String(c.id ?? ''),
-        label: String(c.label ?? ''),
-        rawValue: Number(c.rawValue ?? 0),
-        score: Number(c.score ?? 0),
-        weight: Number(c.weight ?? 0),
-      }),
+      (c: Record<string, unknown>): EconomicStressComponent => {
+        const isMissing = c.missing === true || c.rawValue === null || c.rawValue === undefined;
+        return {
+          id: String(c.id ?? ''),
+          label: String(c.label ?? ''),
+          rawValue: isMissing ? 0 : Number(c.rawValue),
+          score: Number(c.score ?? 0),
+          weight: Number(c.weight ?? 0),
+          missing: isMissing,
+        };
+      },
     );
 
     return {

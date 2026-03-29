@@ -1917,3 +1917,5 @@ components:
                 weight:
                     type: number
                     format: double
+                missing:
+                    type: boolean
