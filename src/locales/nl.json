@@ -572,8 +572,8 @@
         "stockExchanges": "Beurzen",
         "financialCenters": "Financiële centra",
         "centralBanks": "Centrale banken",
-      "laborMarket": "Labor Market",
-      "metroUnemployment": "Metro Unemployment",
+        "laborMarket": "Labor Market",
+        "metroUnemployment": "Metro Unemployment",
         "commodityHubs": "Grondstoffenhubs",
         "gulfInvestments": "GCC-investeringen",
         "tradeRoutes": "Handelsroutes",
@@ -1066,7 +1066,9 @@
       "filterPolitics": "Politiek",
       "filterMiddleeast": "Midden-Oosten",
       "live": "LIVE",
-      "viewSource": "Bron bekijken"
+      "viewSource": "Bron bekijken",
+      "filterGeopolitics": "Geopolitiek",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Database van directe buitenlandse investeringen van Saoedi-Arabië en de VAE in mondiale kritieke infrastructuur. Klik op een rij om naar de investering op de kaart te vliegen.",

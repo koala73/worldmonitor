@@ -7,7 +7,7 @@
       {
         "handle": "VahidOnline",
         "label": "Vahid Online",
-        "topic": "politics",
+        "topic": "geopolitics",
         "tier": 1,
         "enabled": true,
         "region": "iran",
@@ -79,7 +79,7 @@
       {
         "handle": "IranIntl_En",
         "label": "Iran International EN",
-        "topic": "politics",
+        "topic": "geopolitics",
         "tier": 2,
         "enabled": true,
         "region": "iran",
@@ -88,7 +88,7 @@
       {
         "handle": "kpszsu",
         "label": "Air Force of the Armed Forces of Ukraine",
-        "topic": "alerts",
+        "topic": "breaking",
         "tier": 2,
         "enabled": true,
         "region": "ukraine",
@@ -169,7 +169,7 @@
       {
         "handle": "nexta_tv",
         "label": "NEXTA",
-        "topic": "politics",
+        "topic": "geopolitics",
         "tier": 3,
         "enabled": true,
         "region": "europe",
@@ -232,7 +232,7 @@
       {
         "handle": "war_monitor",
         "label": "monitor",
-        "topic": "alerts",
+        "topic": "breaking",
         "tier": 3,
         "enabled": true,
         "region": "ukraine",
@@ -241,7 +241,7 @@
       {
         "handle": "nayaforiraq",
         "label": "Naya for Iraq",
-        "topic": "politics",
+        "topic": "geopolitics",
         "tier": 3,
         "enabled": true,
         "region": "middleeast",

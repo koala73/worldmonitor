@@ -572,8 +572,8 @@
         "stockExchanges": "Börser",
         "financialCenters": "Finansiella centra",
         "centralBanks": "centralbanker",
-      "laborMarket": "Labor Market",
-      "metroUnemployment": "Metro Unemployment",
+        "laborMarket": "Labor Market",
+        "metroUnemployment": "Metro Unemployment",
         "commodityHubs": "Råvaruhubbar",
         "gulfInvestments": "GCC-investeringar",
         "tradeRoutes": "Handelsrutter",
@@ -1066,7 +1066,9 @@
       "filterPolitics": "Politik",
       "filterMiddleeast": "Mellanöstern",
       "live": "LIVE",
-      "viewSource": "Visa källa"
+      "viewSource": "Visa källa",
+      "filterGeopolitics": "Geopolitik",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Databas över Saudiarabien och Förenade Arabemiratens utländska direktinvesteringar i global kritisk infrastruktur. Klicka på en rad för att flyga till investeringen på kartan.",
