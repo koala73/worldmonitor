@@ -1081,7 +1081,10 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: 'Data freshness timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                upstreamUnavailable:
+                    type: boolean
+                    description: True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
             description: GetCountryRiskResponse contains composite risk intelligence for a specific country.
         GetCountryIntelBriefRequest:
             type: object

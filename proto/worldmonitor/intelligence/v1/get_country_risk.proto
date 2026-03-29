@@ -31,6 +31,8 @@ message GetCountryRiskResponse {
   bool sanctions_active = 5;
   // Count of sanctioned entities associated with this country.
   int32 sanctions_count = 6;
-  // Data freshness timestamp, as Unix epoch milliseconds.
+  // Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.
   int64 fetched_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
+  bool upstream_unavailable = 8;
 }

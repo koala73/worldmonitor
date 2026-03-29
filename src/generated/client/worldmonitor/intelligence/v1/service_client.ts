@@ -115,6 +115,7 @@ export interface GetCountryRiskResponse {
   sanctionsActive: boolean;
   sanctionsCount: number;
   fetchedAt: number;
+  upstreamUnavailable: boolean;
 }
 
 export interface GetCountryIntelBriefRequest {

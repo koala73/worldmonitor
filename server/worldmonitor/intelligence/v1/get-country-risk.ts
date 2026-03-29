@@ -18,23 +18,37 @@ export async function getCountryRisk(
 ): Promise<GetCountryRiskResponse> {
   const code = req.countryCode?.toUpperCase() ?? '';
 
-  const empty: GetCountryRiskResponse = {
-    countryCode: code,
-    countryName: TIER1_COUNTRIES[code] ?? code,
-    cii: undefined,
-    advisoryLevel: '',
-    sanctionsActive: false,
-    sanctionsCount: 0,
-    fetchedAt: Date.now(),
-  };
-
-  if (!code) return empty;
+  if (!code) {
+    return {
+      countryCode: code,
+      countryName: '',
+      cii: undefined,
+      advisoryLevel: '',
+      sanctionsActive: false,
+      sanctionsCount: 0,
+      fetchedAt: Date.now(),
+      upstreamUnavailable: false,
+    };
+  }
 
   const [riskRaw, advisoriesRaw, sanctionsRaw] = await Promise.all([
-    getCachedJson(RISK_SCORES_KEY, true).catch(() => null),
-    getCachedJson(ADVISORIES_KEY, true).catch(() => null),
-    getCachedJson(SANCTIONS_KEY, true).catch(() => null),
+    getCachedJson(RISK_SCORES_KEY, true),
+    getCachedJson(ADVISORIES_KEY, true),
+    getCachedJson(SANCTIONS_KEY, true),
   ]);
+
+  if (riskRaw === null && advisoriesRaw === null && sanctionsRaw === null) {
+    return {
+      countryCode: code,
+      countryName: TIER1_COUNTRIES[code] ?? code,
+      cii: undefined,
+      advisoryLevel: '',
+      sanctionsActive: false,
+      sanctionsCount: 0,
+      fetchedAt: Date.now(),
+      upstreamUnavailable: true,
+    };
+  }
 
   const ciiScores: CiiScore[] = (riskRaw as any)?.ciiScores ?? [];
   const cii = ciiScores.find((s) => s.region === code);
@@ -56,6 +70,7 @@ export async function getCountryRisk(
     advisoryLevel,
     sanctionsActive: sanctionsCount > 0,
     sanctionsCount,
-    fetchedAt: Date.now(),
+    fetchedAt: cii?.computedAt ?? Date.now(),
+    upstreamUnavailable: false,
   };
 }
