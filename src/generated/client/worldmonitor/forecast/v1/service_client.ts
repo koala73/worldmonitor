@@ -32,6 +32,9 @@ export interface Forecast {
   perspectives?: Perspectives;
   projections?: Projections;
   caseFile?: ForecastCase;
+  simulationAdjustment: number;
+  simPathConfidence: number;
+  demotedBySimulation: boolean;
 }
 
 export interface ForecastSignal {

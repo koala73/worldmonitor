@@ -4923,6 +4923,9 @@ function buildPublishedForecastPayload(pred) {
       d30: Number(pred.projections.d30 || 0),
     } : null,
     caseFile: slimForecastCaseForPublish(pred.caseFile),
+    simulationAdjustment: Number(pred.simulationAdjustment || 0),
+    simPathConfidence: Number(pred.simPathConfidence || 0),
+    demotedBySimulation: !!pred.demotedBySimulation,
   };
 }
 
