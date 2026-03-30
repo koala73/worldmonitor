@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { postProcessAnalystHtml } from '../../server/worldmonitor/intelligence/v1/chat-analyst-markdown';
+import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
 import { premiumFetch } from '@/services/premium-fetch';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
