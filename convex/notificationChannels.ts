@@ -12,6 +12,86 @@ export const getChannelsByUserId = internalQuery({
   },
 });
 
+export const setChannelForUser = internalMutation({
+  args: {
+    userId: v.string(),
+    channelType: channelTypeValidator,
+    chatId: v.optional(v.string()),
+    webhookEnvelope: v.optional(v.string()),
+    email: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { userId, channelType, chatId, webhookEnvelope, email } = args;
+    const existing = await ctx.db
+      .query("notificationChannels")
+      .withIndex("by_user_channel", (q) =>
+        q.eq("userId", userId).eq("channelType", channelType),
+      )
+      .unique();
+    const now = Date.now();
+    if (channelType === "telegram") {
+      if (!chatId) throw new ConvexError("chatId required for telegram channel");
+      const doc = { userId, channelType: "telegram" as const, chatId, verified: true, linkedAt: now };
+      if (existing) { await ctx.db.replace(existing._id, doc); } else { await ctx.db.insert("notificationChannels", doc); }
+    } else if (channelType === "slack") {
+      if (!webhookEnvelope) throw new ConvexError("webhookEnvelope required for slack channel");
+      const doc = { userId, channelType: "slack" as const, webhookEnvelope, verified: true, linkedAt: now };
+      if (existing) { await ctx.db.replace(existing._id, doc); } else { await ctx.db.insert("notificationChannels", doc); }
+    } else if (channelType === "email") {
+      if (!email) throw new ConvexError("email required for email channel");
+      const doc = { userId, channelType: "email" as const, email, verified: true, linkedAt: now };
+      if (existing) { await ctx.db.replace(existing._id, doc); } else { await ctx.db.insert("notificationChannels", doc); }
+    }
+  },
+});
+
+export const deleteChannelForUser = internalMutation({
+  args: { userId: v.string(), channelType: channelTypeValidator },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("notificationChannels")
+      .withIndex("by_user_channel", (q) =>
+        q.eq("userId", args.userId).eq("channelType", args.channelType),
+      )
+      .unique();
+    if (!existing) return;
+    await ctx.db.delete(existing._id);
+    const rules = await ctx.db
+      .query("alertRules")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    for (const rule of rules) {
+      const filtered = rule.channels.filter((c) => c !== args.channelType);
+      if (filtered.length !== rule.channels.length) {
+        await ctx.db.patch(rule._id, { channels: filtered });
+      }
+    }
+  },
+});
+
+export const createPairingTokenForUser = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = args;
+    const existing = await ctx.db
+      .query("telegramPairingTokens")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const t of existing) {
+      if (!t.used) await ctx.db.patch(t._id, { used: true });
+    }
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const token = btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+    await ctx.db.insert("telegramPairingTokens", { userId, token, expiresAt, used: false });
+    return { token, expiresAt };
+  },
+});
+
 export const getChannels = query({
   args: {},
   handler: async (ctx) => {
