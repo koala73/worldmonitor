@@ -61,7 +61,7 @@ function basicMarkdownToHtml(raw: string): string {
     }
     if (inList) { out.push('</ul>'); inList = false; }
 
-    if (!trimmed) { out.push('<br>'); continue; }
+    if (!trimmed) { continue; }
 
     // **SECTION HEADER** — e.g. **SIGNAL**, **SITUATION / ANALYSIS**
     const boldHdr = trimmed.match(/^\*\*([A-Z][A-Z\s/]{1,29})\*\*$/);
@@ -71,7 +71,8 @@ function basicMarkdownToHtml(raw: string): string {
     }
 
     // Plain ALL-CAPS header line — e.g. SIGNAL, THESIS, RISK, WATCH
-    if (/^[A-Z][A-Z\s]{1,24}$/.test(trimmed)) {
+    // Require ≥4 chars total to avoid false-positives on 2–3-letter acronyms (US, EU, GDP)
+    if (/^[A-Z][A-Z\s]{3,24}$/.test(trimmed)) {
       out.push(`<div class="chat-section-header">${escapeHtml(trimmed)}</div>`);
       continue;
     }
