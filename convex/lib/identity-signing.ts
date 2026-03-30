@@ -5,14 +5,19 @@
  * the webhook. The createCheckout action signs the userId server-side;
  * the webhook verifies the signature before trusting metadata.wm_user_id.
  *
- * Uses DODO_PAYMENTS_WEBHOOK_SECRET as the HMAC key (available in all
- * Convex functions via process.env).
+ * Uses DODO_IDENTITY_SIGNING_SECRET as the HMAC key — a dedicated secret
+ * that is SEPARATE from DODO_PAYMENTS_WEBHOOK_SECRET. This ensures rotating
+ * the webhook secret does not break identity verification, and vice versa.
  */
 
 function getSigningKey(): string {
-  const key = process.env.DODO_PAYMENTS_WEBHOOK_SECRET;
+  const key = process.env.DODO_IDENTITY_SIGNING_SECRET;
   if (!key) {
-    throw new Error("[identity-signing] DODO_PAYMENTS_WEBHOOK_SECRET not set");
+    throw new Error(
+      "[identity-signing] DODO_IDENTITY_SIGNING_SECRET not set. " +
+      "Set it in the Convex dashboard environment variables. " +
+      "This is SEPARATE from DODO_PAYMENTS_WEBHOOK_SECRET — do not reuse."
+    );
   }
   return key;
 }

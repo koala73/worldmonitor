@@ -53,6 +53,29 @@ export const processWebhookEvent = internalMutation({
     //    The HTTP handler catches thrown errors and returns 500 to trigger retries.
     const data = args.rawPayload.data;
 
+    // Minimum shape guard — prevents runtime crashes on Dodo API schema changes
+    if (!data || typeof data !== 'object') {
+      console.error("[webhook] rawPayload.data is missing or not an object", {
+        eventType: args.eventType,
+        webhookId: args.webhookId,
+      });
+      return;
+    }
+
+    const subscriptionEvents = [
+      "subscription.active", "subscription.renewed", "subscription.on_hold",
+      "subscription.cancelled", "subscription.plan_changed", "subscription.expired",
+    ] as const;
+
+    if (subscriptionEvents.includes(args.eventType as typeof subscriptionEvents[number]) && !(data as Record<string, unknown>).subscription_id) {
+      console.error("[webhook] Missing subscription_id for subscription event", {
+        eventType: args.eventType,
+        webhookId: args.webhookId,
+        dataKeys: Object.keys(data as object),
+      });
+      return;
+    }
+
     switch (args.eventType) {
       case "subscription.active":
         await handleSubscriptionActive(ctx, data, args.timestamp);

@@ -17,7 +17,7 @@ const TEST_CUSTOMER_ID = "cust_checkout_e2e";
  * Helper to call the seedProductPlans mutation and return plans list.
  */
 async function seedAndListPlans(t: ReturnType<typeof convexTest>) {
-  await t.mutation(api.payments.seedProductPlans.seedProductPlans, {});
+  await t.mutation(internal.payments.seedProductPlans.seedProductPlans, {});
   return t.query(api.payments.seedProductPlans.listProductPlans, {});
 }
 

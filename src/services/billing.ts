@@ -114,12 +114,32 @@ export function getSubscription(): SubscriptionInfo | null {
 /**
  * Open the Dodo Customer Portal in a new tab.
  *
- * getCustomerPortalUrl is an internal action (not callable from browser)
- * to prevent IDOR attacks before Clerk auth is wired. Falls back to the
- * generic Dodo customer portal. Once Clerk auth lands and getCustomerPortalUrl
- * is promoted to a public action, this will call it directly.
+ * Calls the Convex getCustomerPortalUrl action to get a personalized portal
+ * session URL. Falls back to the generic Dodo customer portal on error.
  */
 export async function openBillingPortal(): Promise<void> {
-  // TODO: Once Clerk auth is wired, call getCustomerPortalUrl for personalized portal URL
-  window.open('https://customer.dodopayments.com', '_blank');
+  try {
+    const client = await getConvexClient();
+    if (!client) {
+      window.open('https://customer.dodopayments.com', '_blank');
+      return;
+    }
+
+    const api = await getConvexApi();
+    if (!api) {
+      window.open('https://customer.dodopayments.com', '_blank');
+      return;
+    }
+
+    const result = await client.action(api.payments.billing.getCustomerPortalUrl, {});
+
+    if (result && result.portal_url) {
+      window.open(result.portal_url, '_blank');
+    } else {
+      window.open('https://customer.dodopayments.com', '_blank');
+    }
+  } catch (err) {
+    console.warn('[billing] Failed to get customer portal URL, falling back:', err);
+    window.open('https://customer.dodopayments.com', '_blank');
+  }
 }

@@ -68,6 +68,7 @@ import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinat
 import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
 import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignOut as cloudPrefsSignOut } from '@/utils/cloud-prefs-sync';
+import { getConvexClient, getConvexApi } from '@/services/convex-client';
 import {
   CorrelationEngine,
   militaryAdapter,
@@ -795,6 +796,24 @@ export class App {
       const userId = session.user?.id ?? null;
       if (userId !== null && userId !== _prevUserId) {
         void cloudPrefsSignIn(userId, SITE_VARIANT);
+
+        // Claim any anonymous purchase made before sign-in (anon → real user migration)
+        const anonId = localStorage.getItem('wm-anon-id');
+        if (anonId) {
+          void Promise.all([getConvexClient(), getConvexApi()])
+            .then(async ([client, api]) => {
+              if (!client || !api) return;
+              const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
+              if (result.claimed.subscriptions > 0 || result.claimed.entitlements > 0) {
+                console.log('[billing] Claimed anon subscription on sign-in:', result.claimed);
+                localStorage.removeItem('wm-anon-id');
+              }
+            })
+            .catch((err: unknown) => {
+              console.warn('[billing] claimSubscription failed:', err);
+              // Non-fatal — anon ID preserved for retry
+            });
+        }
       } else if (userId === null && _prevUserId !== null) {
         cloudPrefsSignOut();
       }

@@ -10,7 +10,7 @@
  */
 
 import { v } from "convex/values";
-import { internalAction, mutation, query, internalQuery } from "../_generated/server";
+import { action, mutation, query, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
 import { resolveUserId, requireUserId } from "../lib/auth";
@@ -142,15 +142,12 @@ export const getActiveSubscription = internalQuery({
 /**
  * Creates a Dodo Customer Portal session and returns the portal URL.
  *
- * Internal action — not callable from the browser directly. The frontend
- * opens the fallback portal URL instead. Once Clerk auth is wired into
- * the ConvexClient, this can be promoted to a public action with
- * requireUserId(ctx) for auth gating.
+ * Public action callable from the browser. Auth-gated via requireUserId(ctx).
  */
-export const getCustomerPortalUrl = internalAction({
-  args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    const userId = args.userId;
+export const getCustomerPortalUrl = action({
+  args: {},
+  handler: async (ctx, _args) => {
+    const userId = await requireUserId(ctx);
 
     const customer = await ctx.runQuery(
       internal.payments.billing.getCustomerByUserId,
@@ -194,6 +191,15 @@ export const claimSubscription = mutation({
   args: { anonId: v.string() },
   handler: async (ctx, args) => {
     const realUserId = await requireUserId(ctx);
+
+    // Rate limit: prevent rapid repeated claim calls from same user
+    const recentEntitlement = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", realUserId))
+      .first();
+    if (recentEntitlement?.updatedAt && Date.now() - recentEntitlement.updatedAt < 60_000) {
+      throw new Error("Too many claim attempts. Wait 60 seconds before retrying.");
+    }
 
     // Reassign subscriptions
     const subs = await ctx.db

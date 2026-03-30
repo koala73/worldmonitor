@@ -31,7 +31,7 @@ export const webhookHandler = httpAction(async (ctx, request) => {
   const body = await request.text();
 
   // 4. Verify signature using @dodopayments/core
-  let payload;
+  let payload: Awaited<ReturnType<typeof verifyWebhookPayload>>;
   try {
     payload = await verifyWebhookPayload({
       webhookKey,

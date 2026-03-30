@@ -59,8 +59,3 @@ export function getDodoApi() {
 export function checkout(...args: Parameters<ReturnType<DodoPayments['api']>['checkout']>) {
   return getDodoApi().checkout(...args);
 }
-
-/** Shorthand for customer portal API. */
-export function customerPortal(...args: Parameters<ReturnType<DodoPayments['api']>['customerPortal']>) {
-  return getDodoApi().customerPortal(...args);
-}
