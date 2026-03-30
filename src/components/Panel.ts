@@ -65,6 +65,10 @@ function getDefaultColSpan(element: HTMLElement): number {
   return element.classList.contains('panel-wide') ? 2 : 1;
 }
 
+function getDefaultRowSpan(): number {
+  return 2;
+}
+
 function getColSpan(element: HTMLElement): number {
   if (element.classList.contains('col-span-3')) return 3;
   if (element.classList.contains('col-span-2')) return 2;
@@ -142,7 +146,8 @@ function getRowSpan(element: HTMLElement): number {
   if (element.classList.contains('span-4')) return 4;
   if (element.classList.contains('span-3')) return 3;
   if (element.classList.contains('span-2')) return 2;
-  return 1;
+  if (element.classList.contains('span-1')) return 1;
+  return getDefaultRowSpan();
 }
 
 function deltaToRowSpan(startSpan: number, deltaY: number): number {
@@ -300,8 +305,11 @@ export class Panel {
     // Restore saved span
     const savedSpans = loadPanelSpans();
     const savedSpan = savedSpans[this.panelId];
-    if (savedSpan && savedSpan > 1) {
-      setSpanClass(this.element, savedSpan);
+    if (typeof savedSpan === 'number' && Number.isInteger(savedSpan) && savedSpan >= 1 && savedSpan <= 4) {
+      const naturalSpan = getDefaultRowSpan();
+      if (savedSpan !== naturalSpan) {
+        setSpanClass(this.element, savedSpan);
+      }
     }
 
     // Restore saved col-span

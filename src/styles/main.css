@@ -988,6 +988,12 @@ canvas,
   contain: content;
 }
 
+/* Default info panels start at two rows; the map lives outside .panels-grid. */
+.panels-grid > .panel:not(.span-1):not(.span-2):not(.span-3):not(.span-4):not(.panel-wide) {
+  grid-row: span 2;
+  min-height: 400px;
+}
+
 /* .panel.resized: Custom height set - use grid-row span for height */
 
 /* Row span classes for resizable panels */
