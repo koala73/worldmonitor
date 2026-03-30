@@ -11,7 +11,7 @@
  *   data: {"error":"..."}    — on auth/llm failure
  */
 
-export const config = { runtime: 'edge' };
+export const config = { runtime: 'edge', regions: ['iad1', 'lhr1', 'fra1', 'sfo1'] };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
