@@ -1304,6 +1304,8 @@ const YAHOO_ONLY = new Set([
   '^GSPC', '^DJI', '^IXIC', '^RUT',
   ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=F') || s.startsWith('^')),
   'URA', 'LIT',
+  // Spot gold and forex pairs (=X suffix) — not on Finnhub
+  ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=X')),
 ]);
 
 function fetchYahooChartDirect(symbol) {
@@ -5021,7 +5023,7 @@ const SHIPPING_CARRIERS = [
   { symbol: 'ZIM',  name: 'ZIM Integrated Shipping', carrierType: 'carrier' },
   { symbol: 'MATX', name: 'Matson Inc',              carrierType: 'carrier' },
   { symbol: 'SBLK', name: 'Star Bulk Carriers',      carrierType: 'carrier' },
-  { symbol: 'GOGL', name: 'Golden Ocean Group',       carrierType: 'carrier' },
+  { symbol: 'GOGL.OL', name: 'Golden Ocean Group',       carrierType: 'carrier' },
 ];
 
 let shippingStressInFlight = false;

@@ -70,6 +70,7 @@ export interface BuildDailyMarketBriefOptions {
   yieldCurveContext?: YieldCurveContext;
   sectorContext?: SectorBriefContext;
   frameworkAppend?: string;
+  newsCategories?: string[];
   summarize?: (
     headlines: string[],
     onProgress?: undefined,
@@ -182,8 +183,9 @@ function matchesMarketHeadline(market: Pick<MarketData, 'symbol' | 'display' | '
   });
 }
 
-function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>): NewsItem[] {
-  return BRIEF_NEWS_CATEGORIES
+function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>, extraCategories?: string[]): NewsItem[] {
+  const cats = extraCategories ?? BRIEF_NEWS_CATEGORIES;
+  return cats
     .flatMap((category) => newsByCategory[category] || [])
     .filter((item) => !!item?.title)
     .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
@@ -377,7 +379,7 @@ export async function buildDailyMarketBrief(options: BuildDailyMarketBriefOption
   const now = options.now || new Date();
   const timezone = resolveTimeZone(options.timezone);
   const trackedMarkets = resolveTargets(options.markets, options.targets).slice(0, DEFAULT_TARGET_COUNT);
-  const relevantHeadlines = collectHeadlinePool(options.newsByCategory);
+  const relevantHeadlines = collectHeadlinePool(options.newsByCategory, options.newsCategories);
 
   const items: DailyMarketBriefItem[] = trackedMarkets.map((market) => {
     const relatedHeadline = relevantHeadlines.find((headline) => matchesMarketHeadline(market, headline.title))?.title;

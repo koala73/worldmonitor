@@ -18,56 +18,105 @@ export class FrameworkSelector {
   readonly el: HTMLElement;
   private select: HTMLSelectElement | null = null;
   private panelId: AnalysisPanelId;
+  private popup: HTMLElement | null = null;
+  private btn: HTMLButtonElement;
+  private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
+  private note: string | undefined;
 
   constructor(opts: FrameworkSelectorOptions) {
     this.panelId = opts.panelId;
+    this.note = opts.note;
+
+    const btn = document.createElement('button');
+    btn.className = 'icon-btn framework-settings-btn';
+    btn.innerHTML = '⚙';
+    this.btn = btn;
 
     if (opts.isPremium) {
       const select = document.createElement('select');
-      select.className = 'framework-selector';
+      select.className = 'framework-popup-select';
       this.select = select;
-
       this.populateOptions(select);
       select.value = getActiveFrameworkForPanel(opts.panelId)?.id ?? '';
-
       select.addEventListener('change', () => {
         setActiveFrameworkForPanel(opts.panelId, select.value || null);
+        this.updateBtnTitle();
+        this.closePopup();
       });
 
-      if (opts.note) {
-        const wrap = document.createElement('span');
-        wrap.className = 'framework-selector-wrap';
-        const noteEl = document.createElement('span');
-        noteEl.className = 'framework-selector-note';
-        noteEl.title = opts.note;
-        noteEl.textContent = '*';
-        wrap.append(select, noteEl);
-        this.el = wrap;
-      } else {
-        this.el = select;
-      }
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.popup) {
+          this.closePopup();
+        } else {
+          this.openPopup();
+        }
+      });
     } else {
-      const select = document.createElement('select');
-      select.className = 'framework-selector framework-selector--locked';
-      select.disabled = true;
-      const defaultOpt = document.createElement('option');
-      defaultOpt.value = '';
-      defaultOpt.textContent = 'Default (Neutral)';
-      select.appendChild(defaultOpt);
+      btn.classList.add('framework-settings-btn--locked');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        opts.panel?.showGatedCta(PanelGateReason.FREE_TIER, () => {});
+      });
+    }
 
-      const badge = document.createElement('span');
-      badge.className = 'framework-selector-pro-badge';
-      badge.textContent = 'PRO';
+    this.updateBtnTitle();
+    this.el = btn;
+  }
 
-      const wrap = document.createElement('span');
-      wrap.className = 'framework-selector-wrap';
-      wrap.append(select, badge);
-      if (opts.panel) {
-        wrap.addEventListener('click', () => {
-          opts.panel!.showGatedCta(PanelGateReason.FREE_TIER, () => {});
-        });
+  private updateBtnTitle(): void {
+    const fw = this.select ? getActiveFrameworkForPanel(this.panelId) : null;
+    this.btn.title = fw ? `Framework: ${fw.name}` : 'Analysis framework';
+  }
+
+  private openPopup(): void {
+    const btnRect = this.btn.getBoundingClientRect();
+
+    const popup = document.createElement('div');
+    popup.className = 'framework-settings-popup';
+    popup.style.top = `${btnRect.bottom + 4}px`;
+    popup.style.right = `${document.documentElement.clientWidth - btnRect.right}px`;
+
+    const label = document.createElement('div');
+    label.className = 'framework-settings-label';
+    label.textContent = 'Analysis Framework';
+    popup.appendChild(label);
+
+    if (this.select) {
+      popup.appendChild(this.select);
+    }
+
+    if (this.note) {
+      const noteEl = document.createElement('div');
+      noteEl.className = 'framework-settings-note';
+      noteEl.textContent = this.note;
+      popup.appendChild(noteEl);
+    }
+
+    document.body.appendChild(popup);
+    this.popup = popup;
+    this.btn.setAttribute('aria-expanded', 'true');
+
+    const handler = (e: MouseEvent) => {
+      if (!popup.contains(e.target as Node) && e.target !== this.btn) {
+        this.closePopup();
       }
-      this.el = wrap;
+    };
+    this.outsideClickHandler = handler;
+    setTimeout(() => document.addEventListener('click', handler), 0);
+  }
+
+  private closePopup(): void {
+    if (!this.popup) return;
+    if (this.select && this.popup.contains(this.select)) {
+      this.popup.removeChild(this.select);
+    }
+    this.popup.remove();
+    this.popup = null;
+    this.btn.setAttribute('aria-expanded', 'false');
+    if (this.outsideClickHandler) {
+      document.removeEventListener('click', this.outsideClickHandler);
+      this.outsideClickHandler = null;
     }
   }
 
@@ -91,9 +140,10 @@ export class FrameworkSelector {
     const current = this.select.value;
     this.populateOptions(this.select);
     this.select.value = getActiveFrameworkForPanel(this.panelId)?.id ?? current;
+    this.updateBtnTitle();
   }
 
   destroy(): void {
-    // No async listeners to clean up; GC handles the rest
+    this.closePopup();
   }
 }

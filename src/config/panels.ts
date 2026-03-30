@@ -46,6 +46,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'stock-analysis': { name: 'Stock Analysis', enabled: true, priority: 1, premium: 'locked' as const },
   'stock-backtest': { name: 'Backtesting', enabled: true, priority: 1, premium: 'locked' as const },
   'daily-market-brief': { name: 'Daily Market Brief', enabled: true, priority: 1, premium: 'locked' as const },
+  'chat-analyst': { name: 'WM Analyst', enabled: true, priority: 1, premium: 'locked' as const },
   economic: { name: 'Macro Stress', enabled: true, priority: 1 },
   'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
@@ -930,7 +931,7 @@ export const FREE_MAX_SOURCES = 80;
  */
 export function isPanelEntitled(key: string, config: PanelConfig, isPro = false): boolean {
   if (!config.premium) return true;
-  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'deduction'];
+  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'deduction', 'chat-analyst'];
   if (apiKeyPanels.includes(key)) {
     return getSecretState('WORLDMONITOR_API_KEY').present || isPro;
   }

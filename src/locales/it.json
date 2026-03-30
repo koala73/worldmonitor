@@ -1386,7 +1386,9 @@
       "filterPolitics": "Politica",
       "filterMiddleeast": "Medio Oriente",
       "live": "IN DIRETTA",
-      "viewSource": "Vedi fonte"
+      "viewSource": "Vedi fonte",
+      "filterGeopolitics": "Geopolitica",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Database degli investimenti diretti esteri dell'Arabia Saudita e degli Emirati Arabi Uniti nelle infrastrutture critiche globali. Fai clic su una riga per raggiungere l'investimento sulla mappa.",

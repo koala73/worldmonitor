@@ -1,4 +1,6 @@
 import { jsonResponse } from './_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { redisPipeline, getRedisCredentials } from './_upstash-json.js';
 
 export const config = { runtime: 'edge' };
 
@@ -261,20 +263,6 @@ const CASCADE_GROUPS = {
 
 const NEG_SENTINEL = '__WM_NEG__';
 
-async function redisPipeline(commands) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) throw new Error('Redis not configured');
-
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(commands),
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
-  return resp.json();
-}
 
 function parseRedisValue(raw) {
   if (!raw || raw === NEG_SENTINEL) return null;
@@ -311,7 +299,9 @@ export default async function handler(req) {
       ...allDataKeys.map(k => ['STRLEN', k]),
       ...allMetaKeys.map(k => ['GET', k]),
     ];
-    results = await redisPipeline(commands);
+    if (!getRedisCredentials()) throw new Error('Redis not configured');
+    results = await redisPipeline(commands, 8_000);
+    if (!results) throw new Error('Redis request failed');
   } catch (err) {
     return jsonResponse({
       status: 'REDIS_DOWN',

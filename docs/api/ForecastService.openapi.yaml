@@ -209,6 +209,20 @@ components:
                     $ref: '#/components/schemas/Projections'
                 caseFile:
                     $ref: '#/components/schemas/ForecastCase'
+                simulationAdjustment:
+                    type: number
+                    format: double
+                    description: |-
+                        Simulation-scoring fields — populated when the deep forecast simulation pipeline
+                         has run for this forecast's state and produced a non-zero adjustment.
+                         simulation_adjustment: raw score delta (+0.08–+0.12 positive, -0.12/-0.15 negative).
+                         sim_path_confidence: clamped [0,1] confidence of the matched sim top-path; 0 = not set.
+                         demoted_by_simulation: true when a negative adjustment crossed the 0.50 acceptance threshold.
+                simPathConfidence:
+                    type: number
+                    format: double
+                demotedBySimulation:
+                    type: boolean
         ForecastSignal:
             type: object
             properties:

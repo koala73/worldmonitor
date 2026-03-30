@@ -395,10 +395,13 @@ export class InsightsPanel extends Panel {
 
         // Pass focal point context + theater posture to AI for correlation-aware summarization
         // Tech variant: no geopolitical context, just tech news summarization
+        // Commodity variant: commodities-specific framing for gold/metals/energy markets
         const theaterContext = SITE_VARIANT === 'full' ? this.getTheaterPostureContext() : '';
         let geoContext = SITE_VARIANT === 'full'
           ? (focalSummary.aiContext || signalSummary.aiContext) + theaterContext
-          : '';
+          : SITE_VARIANT === 'commodity'
+            ? 'You are generating a commodities market brief. Focus on gold and precious metals price movements, mining supply risks, energy market dynamics, and macro factors driving commodity prices. Highlight supply disruptions, geopolitical risks to mining regions, central bank gold activity, and USD/inflation trends.'
+            : '';
         const insightsFw = getActiveFrameworkForPanel('insights');
         if (insightsFw) {
           geoContext = `${geoContext}\n\n---\nAnalytical Framework:\n${insightsFw.systemPromptAppend}`;
@@ -550,7 +553,7 @@ export class InsightsPanel extends Panel {
   private renderWorldBrief(brief: string): string {
     return `
       <div class="insights-brief">
-        <div class="insights-section-title">${SITE_VARIANT === 'tech' ? '🚀 TECH BRIEF' : '🌍 WORLD BRIEF'}</div>
+        <div class="insights-section-title">${SITE_VARIANT === 'tech' ? '🚀 TECH BRIEF' : SITE_VARIANT === 'commodity' ? '⛏️ COMMODITY BRIEF' : '🌍 WORLD BRIEF'}</div>
         <div class="insights-brief-text">${escapeHtml(brief)}</div>
       </div>
     `;

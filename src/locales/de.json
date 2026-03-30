@@ -1386,7 +1386,9 @@
       "filterPolitics": "Politik",
       "filterMiddleeast": "Naher Osten",
       "live": "LIVE",
-      "viewSource": "Quelle anzeigen"
+      "viewSource": "Quelle anzeigen",
+      "filterGeopolitics": "Geopolitik",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Datenbank über ausländische Direktinvestitionen Saudi-Arabiens und der VAE in globale kritische Infrastruktur. Klicken Sie auf eine Zeile, um zur Investition auf der Karte zu fliegen.",

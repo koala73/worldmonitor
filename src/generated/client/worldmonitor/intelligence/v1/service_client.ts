@@ -103,6 +103,21 @@ export interface EventClassification {
   entities: string[];
 }
 
+export interface GetCountryRiskRequest {
+  countryCode: string;
+}
+
+export interface GetCountryRiskResponse {
+  countryCode: string;
+  countryName: string;
+  cii?: CiiScore;
+  advisoryLevel: string;
+  sanctionsActive: boolean;
+  sanctionsCount: number;
+  fetchedAt: number;
+  upstreamUnavailable: boolean;
+}
+
 export interface GetCountryIntelBriefRequest {
   countryCode: string;
   framework: string;
@@ -606,6 +621,31 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as ClassifyEventResponse;
+  }
+
+  async getCountryRisk(req: GetCountryRiskRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryRiskResponse> {
+    let path = "/api/intelligence/v1/get-country-risk";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryRiskResponse;
   }
 
   async getCountryIntelBrief(req: GetCountryIntelBriefRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryIntelBriefResponse> {

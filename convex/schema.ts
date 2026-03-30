@@ -1,7 +1,67 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { channelTypeValidator, sensitivityValidator } from "./constants";
 
 export default defineSchema({
+  userPreferences: defineTable({
+    userId: v.string(),
+    variant: v.string(),
+    data: v.any(),
+    schemaVersion: v.number(),
+    updatedAt: v.number(),
+    syncVersion: v.number(),
+  }).index("by_user_variant", ["userId", "variant"]),
+
+  notificationChannels: defineTable(
+    v.union(
+      v.object({
+        userId: v.string(),
+        channelType: v.literal("telegram"),
+        chatId: v.string(),
+        verified: v.boolean(),
+        linkedAt: v.number(),
+      }),
+      v.object({
+        userId: v.string(),
+        channelType: v.literal("slack"),
+        webhookEnvelope: v.string(),
+        verified: v.boolean(),
+        linkedAt: v.number(),
+      }),
+      v.object({
+        userId: v.string(),
+        channelType: v.literal("email"),
+        email: v.string(),
+        verified: v.boolean(),
+        linkedAt: v.number(),
+      }),
+    ),
+  )
+    .index("by_user", ["userId"])
+    .index("by_user_channel", ["userId", "channelType"]),
+
+  alertRules: defineTable({
+    userId: v.string(),
+    variant: v.string(),
+    enabled: v.boolean(),
+    eventTypes: v.array(v.string()),
+    sensitivity: sensitivityValidator,
+    channels: v.array(channelTypeValidator),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_variant", ["userId", "variant"])
+    .index("by_enabled", ["enabled"]),
+
+  telegramPairingTokens: defineTable({
+    userId: v.string(),
+    token: v.string(),
+    expiresAt: v.number(),
+    used: v.boolean(),
+  })
+    .index("by_token", ["token"])
+    .index("by_user", ["userId"]),
+
   registrations: defineTable({
     email: v.string(),
     normalizedEmail: v.string(),

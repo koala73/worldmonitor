@@ -1328,7 +1328,9 @@
       "filterPolitics": "Polityka",
       "filterMiddleeast": "Bliski Wschód",
       "live": "NA ŻYWO",
-      "viewSource": "Zobacz źródło"
+      "viewSource": "Zobacz źródło",
+      "filterGeopolitics": "Geopolityka",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Baza danych bezpośrednich inwestycji zagranicznych Arabii Saudyjskiej i Zjednoczonych Emiratów Arabskich w globalną infrastrukturę krytyczną. Kliknij wiersz, aby przejść do inwestycji na mapie.",

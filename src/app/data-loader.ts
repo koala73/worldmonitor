@@ -527,6 +527,7 @@ export class DataLoaderManager implements AppModule {
     if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
     if (this.ctx.mapLayers.diseaseOutbreaks || shouldLoad('disease-outbreaks')) tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
     if (shouldLoad('social-velocity')) tasks.push({ name: 'socialVelocity', task: runGuarded('socialVelocity', () => this.loadSocialVelocity()) });
+    if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: runGuarded('economicStress', () => this.loadEconomicStress()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
     if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
@@ -1331,7 +1332,7 @@ export class DataLoaderManager implements AppModule {
 
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
       const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
-      const mapCommodity = (c: MarketData) => ({ display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
+      const mapCommodity = (c: MarketData) => ({ symbol: c.symbol, display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
       const energySymbols = new Set(['CL=F', 'BZ=F', 'NG=F']);
       const filterCommodityTape = (data: MarketData[]) => data.filter((item) => item.symbol !== '^VIX' && !energySymbols.has(item.symbol));
       const filterEnergyTape = (data: MarketData[]) => data.filter((item) => energySymbols.has(item.symbol));
@@ -1491,6 +1492,9 @@ export class DataLoaderManager implements AppModule {
         yieldCurveContext,
         sectorContext,
         frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
+        newsCategories: SITE_VARIANT === 'commodity'
+          ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
+          : undefined,
       });
 
       if (this.dailyBriefGeneration !== gen) return;
@@ -2760,6 +2764,28 @@ export class DataLoaderManager implements AppModule {
       }
     } catch (e) {
       console.error('[App] Social velocity load failed:', e);
+    }
+  }
+
+  async loadEconomicStress(): Promise<void> {
+    try {
+      const economicPanel = this.ctx.panels['economic'] as EconomicPanel | undefined;
+      if (!economicPanel) return;
+
+      const hydrated = getHydratedData('economicStress') as import('@/generated/client/worldmonitor/economic/v1/service_client').GetEconomicStressResponse | undefined;
+      if (hydrated && !hydrated.unavailable && Number.isFinite(hydrated.compositeScore)) {
+        economicPanel.updateStress(hydrated);
+        return;
+      }
+
+      const { EconomicServiceClient } = await import('@/generated/client/worldmonitor/economic/v1/service_client');
+      const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+      const resp = await client.getEconomicStress({});
+      if (!resp.unavailable && Number.isFinite(resp.compositeScore)) {
+        economicPanel.updateStress(resp);
+      }
+    } catch (e) {
+      console.error('[App] Economic stress load failed:', e);
     }
   }
 

@@ -22,6 +22,7 @@ import { getEurostatCountryData } from './get-eurostat-country-data';
 import { getEuGasStorage } from './get-eu-gas-storage';
 import { getEuYieldCurve } from './get-eu-yield-curve';
 import { getEuFsi } from './get-eu-fsi';
+import { getEconomicStress } from './get-economic-stress';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
@@ -46,4 +47,5 @@ export const economicHandler: EconomicServiceHandler = {
   getEuGasStorage,
   getEuYieldCurve,
   getEuFsi,
+  getEconomicStress,
 };

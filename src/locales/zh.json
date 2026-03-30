@@ -281,7 +281,6 @@
     "gulfIndices": "海湾指数",
     "gulfCurrencies": "海湾货币",
     "gulfOil": "海湾石油",
-
     "bigmac": "Real Big Mac Index",
     "fearGreed": "Fear & Greed"
   },
@@ -1550,7 +1549,9 @@
       "filterPolitics": "政治",
       "filterMiddleeast": "中东",
       "live": "直播",
-      "viewSource": "查看来源"
+      "viewSource": "查看来源",
+      "filterGeopolitics": "地缘政治",
+      "filterCyber": "网络"
     },
     "investments": {
       "infoTooltip": "沙特阿拉伯和阿联酋在全球关键基础设施领域的对外直接投资数据库。点击某行可在地图上飞到该投资所在位置。",

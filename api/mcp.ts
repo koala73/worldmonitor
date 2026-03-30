@@ -11,6 +11,8 @@ import { resolveApiKeyFromBearer } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
+// @ts-expect-error — generated JS module, no declaration file
+import MINING_SITES_RAW from '../shared/mining-sites.js';
 
 export const config = { runtime: 'edge' };
 
@@ -67,7 +69,7 @@ type ToolDef = CacheToolDef | RpcToolDef;
 const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_market_data',
-    description: 'Real-time equity quotes, commodity prices, crypto prices, sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
+    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'market:stocks-bootstrap:v1',
@@ -347,6 +349,29 @@ const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
+    name: 'get_country_risk',
+    description: 'Structured risk intelligence for a specific country: Composite Instability Index (CII) score 0-100, component breakdown (unrest/conflict/security/news), travel advisory level, and OFAC sanctions exposure. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?"',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, e.g. "RU", "IR", "CN", "UA"' },
+      },
+      required: ['country_code'],
+    },
+    _execute: async (params, base, apiKey) => {
+      const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
+      const res = await fetch(
+        `${base}/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`,
+        {
+          headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+          signal: AbortSignal.timeout(8_000),
+        },
+      );
+      if (!res.ok) throw new Error(`get-country-risk HTTP ${res.status}`);
+      return res.json();
+    },
+  },
+  {
     name: 'get_airspace',
     description: 'Live ADS-B aircraft over a country. Returns civilian flights (OpenSky) and identified military aircraft with callsigns, positions, altitudes, and headings. Answers questions like "how many planes are over the UAE right now?" or "are there military aircraft over Taiwan?"',
     inputSchema: {
@@ -606,6 +631,25 @@ const TOOL_REGISTRY: ToolDef[] = [
       });
       if (!res.ok) throw new Error(`search-google-dates HTTP ${res.status}`);
       return res.json();
+    },
+  },
+  {
+    name: 'get_commodity_geo',
+    description: 'Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mineral: { type: 'string', description: 'Filter by mineral type (e.g. "Gold", "Copper", "Lithium")' },
+        country: { type: 'string', description: 'Filter by country name (e.g. "Australia", "Chile")' },
+      },
+      required: [],
+    },
+    _execute: async (params: Record<string, unknown>) => {
+      type MineSite = { id: string; name: string; lat: number; lon: number; mineral: string; country: string; operator: string; status: string; significance: string; annualOutput?: string; productionRank?: number; openPitOrUnderground?: string };
+      let sites = MINING_SITES_RAW as MineSite[];
+      if (params.mineral) sites = sites.filter((s) => s.mineral === String(params.mineral));
+      if (params.country) sites = sites.filter((s) => s.country.toLowerCase().includes(String(params.country).toLowerCase()));
+      return { sites, total: sites.length };
     },
   },
 ];

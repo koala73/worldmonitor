@@ -572,8 +572,8 @@
         "stockExchanges": "Bolsas de Valores",
         "financialCenters": "Centros Financeiros",
         "centralBanks": "Bancos Centrais",
-      "laborMarket": "Labor Market",
-      "metroUnemployment": "Metro Unemployment",
+        "laborMarket": "Labor Market",
+        "metroUnemployment": "Metro Unemployment",
         "commodityHubs": "Centros de commodities",
         "gulfInvestments": "Investimentos do CCG",
         "tradeRoutes": "Rotas Comerciais",
@@ -1066,7 +1066,9 @@
       "filterPolitics": "Política",
       "filterMiddleeast": "Oriente Médio",
       "live": "AO VIVO",
-      "viewSource": "Ver fonte"
+      "viewSource": "Ver fonte",
+      "filterGeopolitics": "Geopolítica",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Banco de dados de investimentos diretos estrangeiros da Arábia Saudita e dos Emirados Árabes Unidos em infraestrutura crítica global. Clique em uma linha para ir até o investimento no mapa.",

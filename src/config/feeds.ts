@@ -1112,6 +1112,8 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
     { name: 'World Gold Council', url: rss('https://news.google.com/rss/search?q="World+Gold+Council"+OR+"central+bank+gold"+OR+"gold+reserves"+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'GoldSeek', url: rss('https://news.goldseek.com/GoldSeek/rss.xml') },
     { name: 'SilverSeek', url: rss('https://news.silverseek.com/SilverSeek/rss.xml') },
+    { name: 'Gold Silver Worlds', url: rss('https://goldsilverworlds.com/feed/') },
+    { name: 'FX Empire Gold', url: rss('https://www.fxempire.com/api/v1/en/markets/commodity/Gold/news/feed') },
   ],
   energy: [
     { name: 'OilPrice.com', url: rss('https://oilprice.com/rss/main') },

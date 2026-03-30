@@ -10,6 +10,18 @@ import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
 import {
+  getChannelsData,
+  createPairingToken,
+  setEmailChannel,
+  setSlackChannel,
+  deleteChannel,
+  saveAlertRules,
+  type NotificationChannel,
+  type ChannelType,
+} from '@/services/notification-channels';
+import { getCurrentClerkUser } from '@/services/clerk';
+import { SITE_VARIANT } from '@/config/variant';
+import {
   loadFrameworkLibrary,
   saveImportedFramework,
   deleteImportedFramework,
@@ -23,6 +35,7 @@ const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 export interface PreferencesHost {
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
+  isSignedIn?: boolean;
 }
 
 export interface PreferencesResult {
@@ -330,6 +343,20 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   </a>`;
   html += `</div></details>`;
 
+  // ── Notifications group (web-only, signed-in) ──
+  if (!host.isDesktopApp) {
+    if (!host.isSignedIn) {
+      html += `<div class="ai-flow-toggle-desc us-notif-signin">Sign in to link notification channels.</div>`;
+    } else {
+      html += `<details class="wm-pref-group" id="usNotifGroup">`;
+      html += `<summary>Notifications</summary>`;
+      html += `<div class="wm-pref-group-content">`;
+      html += `<div class="us-notif-loading" id="usNotifLoading">Loading...</div>`;
+      html += `<div class="us-notif-content" id="usNotifContent" style="display:none"></div>`;
+      html += `</div></details>`;
+    }
+  }
+
   // AI status footer (web-only)
   if (!host.isDesktopApp) {
     html += `<div class="ai-flow-popup-footer"><span class="ai-flow-status-dot" id="usStatusDot"></span><span class="ai-flow-status-text" id="usStatusText"></span></div>`;
@@ -577,6 +604,232 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       }, { signal });
 
       if (!host.isDesktopApp) updateAiStatus(container);
+
+      // ── Notifications section ──
+      if (!host.isDesktopApp && host.isSignedIn) {
+        let notifPollInterval: ReturnType<typeof setInterval> | null = null;
+
+        function clearNotifPoll(): void {
+          if (notifPollInterval !== null) {
+            clearInterval(notifPollInterval);
+            notifPollInterval = null;
+          }
+        }
+
+        signal.addEventListener('abort', clearNotifPoll);
+
+        function renderChannelRow(channel: NotificationChannel | null, type: ChannelType): string {
+          if (channel?.verified) {
+            const label = type === 'telegram' ? `@${channel.chatId ?? 'Telegram'}`
+              : type === 'email' ? (channel.email ?? 'Email')
+              : 'Slack webhook';
+            return `<div class="us-notif-channel-row" data-channel-type="${type}">
+              <span class="us-notif-channel-label">${escapeHtml(label)}</span>
+              <button type="button" class="settings-btn settings-btn-secondary us-notif-disconnect" data-channel="${type}">Disconnect</button>
+            </div>`;
+          }
+          if (type === 'telegram') {
+            return `<div class="us-notif-channel-row" data-channel-type="telegram">
+              <button type="button" class="settings-btn us-notif-telegram-connect" id="usConnectTelegram">Connect Telegram</button>
+            </div>`;
+          }
+          if (type === 'email') {
+            return `<div class="us-notif-channel-row" data-channel-type="email">
+              <button type="button" class="settings-btn us-notif-email-connect" id="usConnectEmail">Link Email</button>
+            </div>`;
+          }
+          if (type === 'slack') {
+            return `<div class="us-notif-channel-row" data-channel-type="slack">
+              <input type="url" class="unified-settings-select" id="usSlackWebhookUrl" placeholder="https://hooks.slack.com/services/..." />
+              <button type="button" class="settings-btn us-notif-slack-connect" id="usConnectSlack">Connect Slack</button>
+            </div>`;
+          }
+          return '';
+        }
+
+        function renderNotifContent(data: Awaited<ReturnType<typeof getChannelsData>>): string {
+          const channelTypes: ChannelType[] = ['telegram', 'email', 'slack'];
+          const alertRule = data.alertRules?.[0] ?? null;
+          const sensitivity = alertRule?.sensitivity ?? 'all';
+
+          let html = '<div class="ai-flow-section-label">Channels</div>';
+          for (const type of channelTypes) {
+            const channel = data.channels.find(c => c.channelType === type) ?? null;
+            html += renderChannelRow(channel, type);
+          }
+
+          html += `<div class="ai-flow-section-label">Alert Rules</div>
+            <div class="ai-flow-toggle-row">
+              <div class="ai-flow-toggle-label-wrap">
+                <div class="ai-flow-toggle-label">Enable notifications</div>
+                <div class="ai-flow-toggle-desc">Receive alerts for events matching your filters</div>
+              </div>
+              <label class="ai-flow-switch">
+                <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled ? ' checked' : ''}>
+                <span class="ai-flow-slider"></span>
+              </label>
+            </div>
+            <div class="ai-flow-section-label">Sensitivity</div>
+            <select class="unified-settings-select" id="usNotifSensitivity">
+              <option value="all"${sensitivity === 'all' ? ' selected' : ''}>All events</option>
+              <option value="high"${sensitivity === 'high' ? ' selected' : ''}>High &amp; critical</option>
+              <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
+            </select>`;
+          return html;
+        }
+
+        function reloadNotifSection(): void {
+          const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
+          const contentEl = container.querySelector<HTMLElement>('#usNotifContent');
+          if (!loadingEl || !contentEl) return;
+          loadingEl.style.display = 'block';
+          contentEl.style.display = 'none';
+          if (signal.aborted) return;
+          getChannelsData().then((data) => {
+            if (signal.aborted) return;
+            contentEl.innerHTML = renderNotifContent(data);
+            loadingEl.style.display = 'none';
+            contentEl.style.display = 'block';
+          }).catch(() => {
+            if (signal.aborted) return;
+            if (loadingEl) loadingEl.textContent = 'Failed to load notification settings.';
+          });
+        }
+
+        reloadNotifSection();
+
+        // When a new channel is linked, auto-update the rule's channels list
+        // so it includes the new channel without requiring a manual toggle.
+        function saveRuleWithNewChannel(newChannel: ChannelType): void {
+          const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
+          const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
+          if (!enabledEl) return;
+          const enabled = enabledEl.checked;
+          const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
+          const existing = Array.from(container.querySelectorAll<HTMLElement>('[data-channel-type]'))
+            .filter(el => el.querySelector('.us-notif-disconnect'))
+            .map(el => el.dataset.channelType as ChannelType);
+          const channels = [...new Set([...existing, newChannel])];
+          void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels });
+        }
+
+        let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+        signal.addEventListener('abort', () => {
+          if (alertRuleDebounceTimer !== null) {
+            clearTimeout(alertRuleDebounceTimer);
+            alertRuleDebounceTimer = null;
+          }
+        });
+
+        container.addEventListener('change', (e) => {
+          const target = e.target as HTMLInputElement;
+          if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
+            if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
+            alertRuleDebounceTimer = setTimeout(() => {
+              const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
+              const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
+              const enabled = enabledEl?.checked ?? false;
+              const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
+              const connectedChannelTypes = Array.from(
+                container.querySelectorAll<HTMLElement>('[data-channel-type]'),
+              )
+                .filter(el => el.querySelector('.us-notif-disconnect'))
+                .map(el => el.dataset.channelType as ChannelType);
+              void saveAlertRules({
+                variant: SITE_VARIANT,
+                enabled,
+                eventTypes: [],
+                sensitivity,
+                channels: connectedChannelTypes,
+              });
+            }, 1000);
+          }
+        }, { signal });
+
+        container.addEventListener('click', (e) => {
+          const target = e.target as HTMLElement;
+
+          if (target.closest('#usConnectTelegram')) {
+            const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
+            if (!rowEl) return;
+            createPairingToken().then(({ token, expiresAt }) => {
+              if (signal.aborted) return;
+              const botUsername = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'WorldMonitorBot';
+              const deepLink = `https://t.me/${botUsername}?start=${token}`;
+              const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+              rowEl.innerHTML = `
+                <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="settings-btn us-notif-tg-link">Open Telegram to pair</a>
+                <span class="us-notif-tg-countdown" id="usTgCountdown">${secsLeft}s</span>
+              `;
+              let remaining = secsLeft;
+              clearNotifPoll();
+              notifPollInterval = setInterval(() => {
+                if (signal.aborted) { clearNotifPoll(); return; }
+                remaining -= 3;
+                const countdownEl = container.querySelector<HTMLElement>('#usTgCountdown');
+                if (countdownEl) countdownEl.textContent = `${Math.max(0, remaining)}s`;
+                const expired = remaining <= 0;
+                if (expired) clearNotifPoll();
+                getChannelsData().then((data) => {
+                  const tg = data.channels.find(c => c.channelType === 'telegram');
+                  if (tg?.verified || expired) {
+                    if (tg?.verified) saveRuleWithNewChannel('telegram');
+                    reloadNotifSection();
+                  }
+                }).catch(() => {
+                  if (expired) reloadNotifSection();
+                });
+              }, 3000);
+            }).catch(() => {});
+            return;
+          }
+
+          if (target.closest('#usConnectEmail')) {
+            const user = getCurrentClerkUser();
+            const email = user?.email;
+            if (!email) {
+              const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
+              if (rowEl) {
+                rowEl.querySelector('.us-notif-error')?.remove();
+                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">No email found on your account</span>');
+              }
+              return;
+            }
+            setEmailChannel(email).then(() => {
+              if (!signal.aborted) { saveRuleWithNewChannel('email'); reloadNotifSection(); }
+            }).catch(() => {});
+            return;
+          }
+
+          if (target.closest('#usConnectSlack')) {
+            const input = container.querySelector<HTMLInputElement>('#usSlackWebhookUrl');
+            const url = input?.value?.trim() ?? '';
+            const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
+            if (!SLACK_RE.test(url)) {
+              const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
+              if (rowEl) {
+                const existing = rowEl.querySelector('.us-notif-error');
+                if (existing) existing.remove();
+                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Invalid Slack webhook URL format</span>');
+              }
+              return;
+            }
+            setSlackChannel(url).then(() => {
+              if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
+            }).catch(() => {});
+            return;
+          }
+
+          const disconnectBtn = target.closest<HTMLElement>('.us-notif-disconnect[data-channel]');
+          if (disconnectBtn?.dataset.channel) {
+            const channelType = disconnectBtn.dataset.channel as ChannelType;
+            deleteChannel(channelType).then(() => {
+              if (!signal.aborted) reloadNotifSection();
+            }).catch(() => {});
+            return;
+          }
+        }, { signal });
+      }
 
       return () => ac.abort();
     },

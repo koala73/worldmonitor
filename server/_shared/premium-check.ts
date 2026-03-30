@@ -8,6 +8,15 @@ import { validateBearerToken } from '../auth-session';
  * (e.g. framework/systemAppend) should only be honored for premium callers.
  */
 export async function isCallerPremium(request: Request): Promise<boolean> {
+  // Browser tester keys — validateApiKey returns required:false for trusted origins
+  // even when a valid key is present, so we check the header directly first.
+  const wmKey = request.headers.get('X-WorldMonitor-Key') ?? '';
+  if (wmKey) {
+    const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
+      .split(',').map((k) => k.trim()).filter(Boolean);
+    if (validKeys.length > 0 && validKeys.includes(wmKey)) return true;
+  }
+
   const keyCheck = validateApiKey(request, {}) as { valid: boolean; required: boolean };
   // Only treat as premium when an explicit API key was validated (required: true).
   // Trusted-origin short-circuits (required: false) do NOT imply PRO entitlement.

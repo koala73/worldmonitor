@@ -60,6 +60,13 @@ function parseLevel(title, parser) {
 
 const COUNTRY_NAMES = loadSharedConfig('country-names.json');
 const SORTED_COUNTRY_ENTRIES = Object.entries(COUNTRY_NAMES).sort((a, b) => b[0].length - a[0].length);
+// Reverse map: ISO2 → display name (title-cased from the config keys).
+const BY_COUNTRY_NAME = Object.fromEntries(
+  Object.entries(COUNTRY_NAMES).map(([name, code]) => [
+    code,
+    name.replace(/\b\w/g, (c) => c.toUpperCase()),
+  ]),
+);
 
 function extractCountry(title, feed) {
   if (feed.targetCountry) return feed.targetCountry;
@@ -195,7 +202,7 @@ async function fetchAll() {
   deduped.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
 
   const byCountry = buildByCountryMap(deduped);
-  const report = { byCountry, advisories: deduped, fetchedAt: new Date().toISOString() };
+  const report = { byCountry, byCountryName: BY_COUNTRY_NAME, advisories: deduped, fetchedAt: new Date().toISOString() };
 
   console.log(`  ${deduped.length} advisories, ${Object.keys(byCountry).length} countries with levels`);
 

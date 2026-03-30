@@ -105,6 +105,7 @@ const WEB_PREMIUM_PANELS = new Set([
   'daily-market-brief',
   'market-implications',
   'deduction',
+  'chat-analyst',
 ]);
 
 export interface PanelLayoutManagerCallbacks {
@@ -126,6 +127,7 @@ export class PanelLayoutManager implements AppModule {
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeAuth: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
+  private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -143,6 +145,17 @@ export class PanelLayoutManager implements AppModule {
       this.updatePanelGating(state);
     });
     this.fetchGitHubStars();
+
+    // Handle analyst action chip "Create chart widget →" click
+    this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
+      openWidgetChatModal({
+        mode: 'create',
+        tier: 'pro',
+        initialMessage: e.detail.initialMessage,
+        onComplete: (spec) => this.addCustomWidget(spec),
+      });
+    }) as EventListener;
+    this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
   }
 
   destroy(): void {
@@ -152,6 +165,10 @@ export class PanelLayoutManager implements AppModule {
     this.unsubscribeAuth = null;
     this.proBlockUnsubscribe?.();
     this.proBlockUnsubscribe = null;
+    if (this.boundWidgetCreatorHandler) {
+      this.ctx.container.removeEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
+      this.boundWidgetCreatorHandler = null;
+    }
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
     if (this.criticalBannerEl) {
@@ -870,8 +887,12 @@ export class PanelLayoutManager implements AppModule {
     this.lazyPanel('market-implications', () =>
       import('@/components/MarketImplicationsPanel').then(m => new m.MarketImplicationsPanel()),
     );
-    // Gating for daily-market-brief and market-implications is handled reactively
-    // by updatePanelGating() via auth state subscription (both are in WEB_PREMIUM_PANELS).
+    // Gating for daily-market-brief, market-implications, and chat-analyst is handled
+    // reactively by updatePanelGating() via auth state subscription (all in WEB_PREMIUM_PANELS).
+
+    this.lazyPanel('chat-analyst', () =>
+      import('@/components/ChatAnalystPanel').then(m => new m.ChatAnalystPanel()),
+    );
 
     this.lazyPanel('forecast', () =>
       import('@/components/ForecastPanel').then(m => new m.ForecastPanel()),

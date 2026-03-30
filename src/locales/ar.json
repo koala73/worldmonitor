@@ -281,7 +281,6 @@
     "gulfIndices": "مؤشرات الخليج",
     "gulfCurrencies": "عملات الخليج",
     "gulfOil": "نفط الخليج",
-
     "bigmac": "Real Big Mac Index",
     "fearGreed": "Fear & Greed"
   },
@@ -1437,7 +1436,9 @@
       "filterPolitics": "سياسة",
       "filterMiddleeast": "الشرق الأوسط",
       "live": "مباشر",
-      "viewSource": "عرض المصدر"
+      "viewSource": "عرض المصدر",
+      "filterGeopolitics": "جيوسياسية",
+      "filterCyber": "إلكتروني"
     },
     "investments": {
       "infoTooltip": "قاعدة بيانات الاستثمارات الأجنبية المباشرة للمملكة العربية السعودية والإمارات في البنية التحتية الحيوية العالمية. انقر على صف للانتقال إلى موقع الاستثمار على الخريطة.",

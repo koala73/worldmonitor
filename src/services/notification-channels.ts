@@ -1,0 +1,89 @@
+import { getClerkToken } from '@/services/clerk';
+
+export type ChannelType = 'telegram' | 'slack' | 'email';
+export type Sensitivity = 'all' | 'high' | 'critical';
+
+export interface NotificationChannel {
+  channelType: ChannelType;
+  verified: boolean;
+  linkedAt: number;
+  chatId?: string;
+  email?: string;
+}
+
+export interface AlertRule {
+  variant: string;
+  enabled: boolean;
+  eventTypes: string[];
+  sensitivity: Sensitivity;
+  channels: ChannelType[];
+}
+
+export interface ChannelsData {
+  channels: NotificationChannel[];
+  alertRules: AlertRule[];
+}
+
+async function authFetch(path: string, init?: RequestInit): Promise<Response> {
+  const token = await getClerkToken();
+  if (!token) throw new Error('Not authenticated');
+  return fetch(path, {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export async function getChannelsData(): Promise<ChannelsData> {
+  const res = await authFetch('/api/notification-channels');
+  if (!res.ok) throw new Error(`get channels: ${res.status}`);
+  return res.json() as Promise<ChannelsData>;
+}
+
+export async function createPairingToken(): Promise<{ token: string; expiresAt: number }> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'create-pairing-token' }),
+  });
+  if (!res.ok) throw new Error(`create pairing token: ${res.status}`);
+  return res.json();
+}
+
+export async function setEmailChannel(email: string): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-channel', channelType: 'email', email }),
+  });
+  if (!res.ok) throw new Error(`set email channel: ${res.status}`);
+}
+
+export async function setSlackChannel(webhookEnvelope: string): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-channel', channelType: 'slack', webhookEnvelope }),
+  });
+  if (!res.ok) throw new Error(`set slack channel: ${res.status}`);
+}
+
+export async function deleteChannel(channelType: ChannelType): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'delete-channel', channelType }),
+  });
+  if (!res.ok) throw new Error(`delete channel: ${res.status}`);
+}
+
+export async function saveAlertRules(rules: AlertRule): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-alert-rules', ...rules }),
+  });
+  if (!res.ok) throw new Error(`save alert rules: ${res.status}`);
+}
