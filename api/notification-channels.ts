@@ -15,7 +15,10 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from './_cors.js';
 import { validateBearerToken } from '../server/auth-session';
 
-const CONVEX_SITE_URL = process.env.CONVEX_SITE_URL ?? '';
+// Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
+const CONVEX_SITE_URL =
+  process.env.CONVEX_SITE_URL ??
+  (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 
 // AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).

@@ -358,13 +358,23 @@ http.route({
       }
 
       if (action === "set-alert-rules") {
+        const VALID_SENSITIVITY = new Set(["all", "high", "critical"]);
+        if (
+          typeof body.variant !== "string" || !body.variant ||
+          typeof body.enabled !== "boolean" ||
+          !Array.isArray(body.eventTypes) ||
+          !Array.isArray(body.channels) ||
+          (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string))
+        ) {
+          return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
         await ctx.runMutation(internal.alertRules.setAlertRulesForUser, {
           userId,
-          variant: body.variant ?? "",
-          enabled: body.enabled ?? false,
-          eventTypes: body.eventTypes ?? [],
+          variant: body.variant,
+          enabled: body.enabled,
+          eventTypes: body.eventTypes as string[],
           sensitivity: (body.sensitivity ?? "all") as "all" | "high" | "critical",
-          channels: (body.channels ?? []) as Array<"telegram" | "slack" | "email">,
+          channels: body.channels as Array<"telegram" | "slack" | "email">,
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
