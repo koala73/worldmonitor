@@ -2023,6 +2023,10 @@ async function dispatch(requestUrl, req, routes, context) {
     try { body = JSON.parse(rawBody.toString()); } catch { return json({ error: 'Invalid request body' }, 400); }
     const { imageUrl, cameraName, alertLabel } = body ?? {};
     if (!imageUrl || typeof imageUrl !== 'string') return json({ error: 'imageUrl required' }, 400);
+    const safety = await isSafeUrl(imageUrl);
+    if (!safety.safe) {
+      return json({ error: `Invalid image URL: ${safety.reason}` }, 400);
+    }
 
     // Fetch and base64-encode the camera image
     let imageB64;
@@ -2123,7 +2127,7 @@ async function dispatch(requestUrl, req, routes, context) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model: ollamaModel, prompt, stream: false }),
           },
-          20000,
+          25000,
         );
         if (resp.ok) {
           const data = await resp.json();
@@ -2150,7 +2154,7 @@ async function dispatch(requestUrl, req, routes, context) {
               messages: [{ role: 'user', content: prompt }],
             }),
           },
-          20000,
+          25000,
         );
         if (resp.ok) {
           const data = await resp.json();
