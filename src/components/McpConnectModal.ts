@@ -141,7 +141,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         </div>
         <div class="mcp-form-group mcp-refresh-group">
           <label class="mcp-label">${escapeHtml(t('mcp.refreshEvery'))}</label>
-          <input class="mcp-input mcp-refresh-input" type="number" min="10" max="86400"
+          <input class="mcp-input mcp-refresh-input" type="number" min="60" max="86400"
             value="${existing ? Math.round(existing.refreshIntervalMs / 1000) : 60}" />
           <span class="mcp-refresh-unit">${escapeHtml(t('mcp.seconds'))}</span>
         </div>
@@ -428,7 +428,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       customHeaders: getEffectiveHeaders(),
       toolName: selectedTool.name,
       toolArgs,
-      refreshIntervalMs: Math.max(10, parseInt(refreshInput.value, 10) || 60) * 1000,
+      refreshIntervalMs: Math.max(60, parseInt(refreshInput.value, 10) || 60) * 1000,
       createdAt: existing?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
     };
