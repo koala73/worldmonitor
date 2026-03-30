@@ -35,7 +35,8 @@ function resolveCommandLabel(cmd: Command): string {
     case 'country-map':
       return `${t('commands.prefixes.map')}: ${cmd.label}`;
     case 'panel': {
-      const panelName = t('panels.' + kebabToCamel(action), { defaultValue: cmd.label });
+      const fallback = cmd.label.startsWith('Panel: ') ? cmd.label.slice(7) : cmd.label;
+      const panelName = t('panels.' + kebabToCamel(action), { defaultValue: fallback });
       return `${t('commands.prefixes.panel')}: ${panelName}`;
     }
     case 'country':
