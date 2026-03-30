@@ -45,11 +45,15 @@ function getDodoClient(): DodoPayments {
 export const getSubscriptionForUser = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    // Prefer auth identity when available; fall back to client-provided userId.
-    // TODO(clerk-auth): Once Clerk JWT is wired into ConvexClient.setAuth(),
-    // remove userId from args and use requireUserId(ctx). Until then, an
-    // unauthenticated caller who knows a userId can read subscription status.
+    // When authenticated, enforce that the caller can only read their own data.
+    // When unauthenticated (pre-Clerk-auth), allow the userId arg as fallback.
+    // TODO(clerk-auth): Once ConvexClient.setAuth() is wired, remove userId
+    // arg and use requireUserId(ctx) exclusively.
     const authedUserId = await resolveUserId(ctx);
+    if (authedUserId && authedUserId !== args.userId) {
+      // Authenticated user trying to read someone else's data — reject
+      return null;
+    }
     const userId = authedUserId ?? args.userId;
 
     // Fetch all subscriptions for user and prefer active/on_hold over cancelled/expired.
@@ -57,7 +61,7 @@ export const getSubscriptionForUser = query({
     const allSubs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .take(10);
+      .take(50);
 
     if (allSubs.length === 0) return null;
 
@@ -114,7 +118,7 @@ export const getActiveSubscription = internalQuery({
     const allSubs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .take(10);
+      .take(50);
 
     const activeSub = allSubs.find((s) => s.status === "active");
     return activeSub ?? null;

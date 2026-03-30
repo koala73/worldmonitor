@@ -9,6 +9,7 @@
 import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { verifyUserId } from "../lib/identity-signing";
 
 // ---------------------------------------------------------------------------
 // Types for webhook payload data (narrowed from `any`)
@@ -143,20 +144,33 @@ async function resolvePlanKey(
 
 /**
  * Resolves a user identity from webhook data using multiple sources:
- *   1. Checkout metadata (wm_user_id) — most reliable, set during checkout
+ *   1. HMAC-verified checkout metadata (wm_user_id + wm_user_id_sig)
  *   2. Customer table lookup by dodoCustomerId
- *   3. Dev-only fallback to test-user-001
+ *   3. Synthetic "dodo:{customerId}" for unclaimed purchases (new buyers via /pro)
+ *   4. Dev-only fallback to test-user-001
  *
- * Fails closed in production when no identity can be resolved.
+ * Only trusts metadata.wm_user_id when accompanied by a valid HMAC signature
+ * (created server-side by createCheckout). Unsigned metadata is ignored to
+ * prevent client-controlled identity injection.
  */
 async function resolveUserId(
   ctx: MutationCtx,
   dodoCustomerId: string,
   metadata?: Record<string, string>,
 ): Promise<string> {
-  // 1. Checkout metadata — the identity bridge set during createCheckout
-  if (metadata?.wm_user_id) {
-    return metadata.wm_user_id;
+  // 1. HMAC-verified checkout metadata — only trust signed identity
+  if (metadata?.wm_user_id && metadata?.wm_user_id_sig) {
+    const isValid = await verifyUserId(metadata.wm_user_id, metadata.wm_user_id_sig);
+    if (isValid) {
+      return metadata.wm_user_id;
+    }
+    console.warn(
+      `[subscriptionHelpers] Invalid HMAC signature for wm_user_id="${metadata.wm_user_id}" — ignoring metadata`,
+    );
+  } else if (metadata?.wm_user_id && !metadata?.wm_user_id_sig) {
+    console.warn(
+      `[subscriptionHelpers] Unsigned wm_user_id="${metadata.wm_user_id}" — ignoring (requires HMAC signature)`,
+    );
   }
 
   // 2. Customer table lookup
@@ -172,7 +186,17 @@ async function resolveUserId(
     }
   }
 
-  // 3. Dev-only fallback
+  // 3. Synthetic userId for unclaimed purchases (e.g. new buyers from /pro page).
+  // The subscription is stored under "dodo:{customerId}" and can be claimed later
+  // via claimSubscription() when the user signs in.
+  if (dodoCustomerId) {
+    console.info(
+      `[subscriptionHelpers] No verified identity for customer="${dodoCustomerId}" — creating unclaimed record with synthetic userId`,
+    );
+    return `dodo:${dodoCustomerId}`;
+  }
+
+  // 4. Dev-only fallback
   if (isDevDeployment) {
     console.warn(
       `[subscriptionHelpers] No user identity found for customer="${dodoCustomerId}" — using dev fallback "${FALLBACK_USER_ID}"`,
@@ -181,8 +205,7 @@ async function resolveUserId(
   }
 
   throw new Error(
-    `[subscriptionHelpers] Cannot resolve userId for dodoCustomerId="${dodoCustomerId}" ` +
-      `and no wm_user_id in checkout metadata. Webhook will retry.`,
+    `[subscriptionHelpers] Cannot resolve userId: no verified metadata, no customer record, no dodoCustomerId.`,
   );
 }
 

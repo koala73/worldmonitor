@@ -4,7 +4,7 @@
  * Provides a single getUserId() that all payment/entitlement code should use
  * instead of reading localStorage keys directly. Resolution order:
  *
- *   1. Clerk auth (when Clerk JS is loaded and user is signed in)
+ *   1. Clerk auth (via getCurrentClerkUser() — the initialized clerkInstance)
  *   2. Legacy wm-pro-key from localStorage
  *   3. Stable anonymous ID (auto-generated, persisted in localStorage)
  *
@@ -25,6 +25,8 @@
  *
  * @see https://github.com/koala73/worldmonitor/issues/2078
  */
+
+import { getCurrentClerkUser } from './clerk';
 
 const LEGACY_PRO_KEY = 'wm-pro-key';
 const ANON_KEY = 'wm-anon-id';
@@ -57,7 +59,7 @@ export function getOrCreateAnonId(): string {
  */
 export function getUserId(): string | null {
   // 1. Clerk auth — returns real Clerk user ID when signed in
-  const clerkUser = (window as any).Clerk?.user;
+  const clerkUser = getCurrentClerkUser();
   if (clerkUser?.id) return clerkUser.id;
 
   // 2. Legacy wm-pro-key
@@ -76,7 +78,7 @@ export function getUserId(): string | null {
  */
 export function hasUserIdentity(): boolean {
   // 1. Clerk auth
-  const clerkUser = (window as any).Clerk?.user;
+  const clerkUser = getCurrentClerkUser();
   if (clerkUser?.id) return true;
 
   // 2. Legacy pro key

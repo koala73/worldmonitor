@@ -21,6 +21,7 @@ import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { checkout } from "../lib/dodo";
 import { resolveUserId } from "../lib/auth";
+import { signUserId } from "../lib/identity-signing";
 
 /**
  * Create a Dodo Payments checkout session and return the checkout URL.
@@ -47,9 +48,11 @@ export const createCheckout = action({
       throw new Error("User identity required to create a checkout session");
     }
 
-    // Build metadata: userId for webhook identity bridge + affiliate tracking (PROMO-02)
+    // Build metadata: HMAC-signed userId for webhook identity bridge + affiliate tracking (PROMO-02).
+    // The signature prevents client-controlled userId from being blindly trusted by the webhook.
     const metadata: Record<string, string> = {};
     metadata.wm_user_id = userId;
+    metadata.wm_user_id_sig = await signUserId(userId);
     if (args.referralCode) {
       metadata.affonso_referral = args.referralCode;
     }

@@ -1,19 +1,15 @@
 /**
- * Entitlement queries for frontend subscriptions and gateway fallback.
+ * Entitlement queries.
  *
- * Returns the user's entitlements with free-tier defaults for unknown or
- * expired users. Used by:
- *   - Frontend ConvexClient subscription for reactive panel gating
- *   - Gateway ConvexHttpClient as cache-miss fallback
- *
- * AUTH NOTE: This query accepts a userId arg because both the frontend
- * ConvexClient and the gateway ConvexHttpClient do not have Clerk JWT
- * auth wired yet. Once ConvexClient.setAuth() is wired, replace
- * args.userId with requireUserId(ctx) and make the gateway use an
- * internal query instead.
+ * Two versions:
+ *   - getEntitlementsForUser (public query): for frontend ConvexClient subscription.
+ *     Requires authenticated identity; falls back to args.userId only for the
+ *     pre-Clerk-auth period (TODO: remove fallback once ConvexClient.setAuth() is wired).
+ *   - getEntitlementsByUserId (internal query): for the gateway ConvexHttpClient
+ *     cache-miss fallback. Trusted server-to-server call with no auth gap.
  */
 
-import { query } from "./_generated/server";
+import { query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { getFeaturesForPlan } from "./lib/entitlements";
 import { resolveUserId } from "./lib/auth";
@@ -24,41 +20,63 @@ const FREE_TIER_DEFAULTS = {
   validUntil: 0,
 };
 
+/** Shared handler logic for both public and internal queries. */
+async function getEntitlementsHandler(
+  ctx: { db: any },
+  userId: string,
+) {
+  const entitlement = await ctx.db
+    .query("entitlements")
+    .withIndex("by_userId", (q: any) => q.eq("userId", userId))
+    .unique();
+
+  if (!entitlement) {
+    return FREE_TIER_DEFAULTS;
+  }
+
+  // Expired entitlements fall back to free tier (Pitfall 7 from research)
+  if (entitlement.validUntil < Date.now()) {
+    return FREE_TIER_DEFAULTS;
+  }
+
+  return {
+    planKey: entitlement.planKey,
+    features: entitlement.features,
+    validUntil: entitlement.validUntil,
+  };
+}
+
 /**
- * Returns the entitlements for a given userId.
+ * Public query: returns entitlements for the authenticated user.
  *
- * Prefers authenticated identity when available; falls back to the
- * client-provided userId for the pre-Clerk-auth period.
- *
- * - No row found -> free-tier defaults
- * - Row found but validUntil < now -> free-tier defaults (expired)
- * - Row found and valid -> actual entitlements
+ * Prefers server-side auth identity. Falls back to args.userId for the
+ * pre-Clerk-auth period (frontend ConvexClient has no setAuth wired).
+ * TODO(clerk-auth): Remove userId arg and use requireUserId(ctx) once
+ * ConvexClient.setAuth() is wired.
  */
 export const getEntitlementsForUser = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    // Prefer auth identity when available; fall back to client-provided userId
+    // When authenticated, enforce that the caller can only read their own data.
+    // When unauthenticated (pre-Clerk-auth), allow the userId arg as fallback.
     const authedUserId = await resolveUserId(ctx);
+    if (authedUserId && authedUserId !== args.userId) {
+      return FREE_TIER_DEFAULTS;
+    }
     const userId = authedUserId ?? args.userId;
+    return getEntitlementsHandler(ctx, userId);
+  },
+});
 
-    const entitlement = await ctx.db
-      .query("entitlements")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .unique();
-
-    if (!entitlement) {
-      return FREE_TIER_DEFAULTS;
-    }
-
-    // Expired entitlements fall back to free tier (Pitfall 7 from research)
-    if (entitlement.validUntil < Date.now()) {
-      return FREE_TIER_DEFAULTS;
-    }
-
-    return {
-      planKey: entitlement.planKey,
-      features: entitlement.features,
-      validUntil: entitlement.validUntil,
-    };
+/**
+ * Internal query: returns entitlements for a given userId.
+ *
+ * Used by the gateway ConvexHttpClient for cache-miss fallback.
+ * Trusted server-to-server call — no auth gap.
+ */
+export const getEntitlementsByUserId = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    return getEntitlementsHandler(ctx, args.userId);
   },
 });

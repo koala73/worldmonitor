@@ -138,6 +138,11 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
     const singleton = await getConvexSingleton();
     if (!singleton) return null;
 
+    // NOTE: Uses the public query because ConvexHttpClient cannot call internal
+    // functions. The gateway provides a verified userId (from Clerk JWT), so the
+    // public query's userId arg is server-trusted here. The internal query
+    // (getEntitlementsByUserId) is available for future use once we switch to
+    // a Convex HTTP action endpoint with shared-secret auth.
     const result = await singleton.client.query(singleton.api.entitlements.getEntitlementsForUser, { userId });
 
     if (result) {
