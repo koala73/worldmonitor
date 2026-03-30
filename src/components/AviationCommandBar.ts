@@ -164,7 +164,6 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
         };
         const date = intent.date ?? addLocalDays(1); // default: tomorrow in user's local timezone
         const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
-        const gfUrl = `https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`;
         const dateChips = ([1, 3, 7, 14, 30] as const).map(days => {
             const d = addLocalDays(days);
             const lbl = days === 1 ? 'Tomorrow' : `+${days}d`;
@@ -172,9 +171,8 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
             const cmd = `price ${intent.origin} ${intent.destination} ${d}`;
             return `<button data-rerun="${escapeHtml(cmd)}" style="background:${active ? 'rgba(96,165,250,.15)' : 'none'};border:1px solid ${active ? '#60a5fa' : '#374151'};border-radius:3px;color:${active ? '#60a5fa' : '#6b7280'};cursor:pointer;font-size:10px;padding:1px 6px">${lbl}</button>`;
         }).join('');
-        const header = `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+        const header = `<div style="margin-bottom:4px">
           <strong>💸 ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}</strong>
-          <a href="${sanitizeUrl(gfUrl)}" target="_blank" rel="noopener" style="color:#60a5fa;font-size:11px;text-decoration:none">Google Flights →</a>
         </div>
         <div style="margin-bottom:8px;display:flex;gap:4px;align-items:center">
           <span style="color:#6b7280;font-size:10px;margin-right:2px">${escapeHtml(dateLabel)}</span>${dateChips}
@@ -193,14 +191,16 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
                 const stopLabel = f.stops === 0 ? 'nonstop' : `${f.stops} stop${f.stops > 1 ? 's' : ''}`;
                 const safeDepTime = escapeHtml(depTime);
                 const safeArrTime = escapeHtml(arrTime);
-                return `<div class="cmd-row" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+                const flightCode = leg ? `${leg.airlineCode}${leg.flightNumber}` : '';
+                const rowUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=${encodeURIComponent(flightCode)}+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`);
+                return `<a class="cmd-row" href="${rowUrl}" target="_blank" rel="noopener" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);text-decoration:none;cursor:pointer">
           <div style="flex:1;min-width:0">
             <span style="font-size:13px">${carrier}</span>
             <span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span>
           </div>
           <div style="color:#9ca3af;font-size:11px;margin:0 10px">${safeDepTime}${safeArrTime ? `–${safeArrTime}` : ''} · ${escapeHtml(fmtDur(f.durationMinutes))}</div>
           <div style="color:#60a5fa;font-weight:600">$${Math.round(f.price).toLocaleString()}</div>
-        </div>`;
+        </a>`;
             }).join('');
             return {
                 html: `<div class="cmd-section">${header}${rows}${gfResult.degraded ? '<div style="color:#f59e0b;font-size:11px;margin-top:4px">Partial results</div>' : ''}</div>`,
@@ -213,10 +213,11 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
         const rows = [...quotes].sort((a, b) => a.stops !== b.stops ? a.stops - b.stops : a.priceAmount - b.priceAmount).slice(0, 5).map(q => {
             const stopColor = q.stops === 0 ? '#22c55e' : '#9ca3af';
             const stopLabel = q.stops === 0 ? 'nonstop' : `${q.stops} stop${q.stops > 1 ? 's' : ''}`;
-            return `<div class="cmd-row" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+            const rowUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=${encodeURIComponent(q.carrierIata)}+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`);
+            return `<a class="cmd-row" href="${rowUrl}" target="_blank" rel="noopener" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);text-decoration:none;cursor:pointer">
           <div style="flex:1">${escapeHtml(q.carrierName || q.carrierIata)}<span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span></div>
           <div style="color:#60a5fa;font-weight:600">$${Math.round(q.priceAmount)}</div>
-        </div>`;
+        </a>`;
         }).join('');
         return {
             html: `<div class="cmd-section">${header}${rows}${isDemoMode ? '<div style="color:#6b7280;font-size:11px;margin-top:4px">Indicative prices</div>' : ''}</div>`,
