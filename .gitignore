@@ -32,6 +32,15 @@ src-tauri/sidecar/node/*
 api/[[][[].*.js
 .claudedocs/
 
+# Vault animation frames/videos (replaced by Three.js 3D renderer)
+public/vault-idle-frames*.png
+public/vault-open-frames*.png
+public/vault-idle.mp4
+public/vault-open.mp4
+
+# Codex permission probe (ephemeral, never commit)
+.codex-perm-test
+
 # Large generated data files (reproduced by scripts/)
 scripts/data/pizzint-processed.json
 scripts/data/osm-military-processed.json
