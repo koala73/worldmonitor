@@ -2,8 +2,10 @@ import type { ClimateServiceHandler } from '../../../../src/generated/server/wor
 
 import { getCo2Monitoring } from './get-co2-monitoring';
 import { listClimateAnomalies } from './list-climate-anomalies';
+import { listClimateNews } from './list-climate-news';
 
 export const climateHandler: ClimateServiceHandler = {
   getCo2Monitoring,
   listClimateAnomalies,
+  listClimateNews,
 };
