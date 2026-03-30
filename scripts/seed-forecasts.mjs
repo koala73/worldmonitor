@@ -15206,10 +15206,10 @@ async function processDeepForecastTask(task = {}) {
         priorWorldState,
       );
       simulationEvidence = mergeResult.simulationEvidence;
-      // Write decorations fire-and-forget so ForecastPanel sub-bar reflects this run's
-      // simulation evidence on the SAME run (not stale-by-one like the rescore path).
-      writeSimulationDecorations(mergeResult, snapshot).catch((err) =>
-        console.warn(`  [SimulationDecorations] Fire-and-forget write failed (deep path): ${err.message}`)
+      // Awaited so patchPublishedForecastsWithSimDecorations completes before artifact writing
+      // continues. Fast path (~200ms Redis ops) so no meaningful delay to artifact export.
+      await writeSimulationDecorations(mergeResult, snapshot).catch((err) =>
+        console.warn(`  [SimulationDecorations] write failed (deep path): ${err.message}`)
       );
     }
   } catch (err) {
@@ -16545,8 +16545,10 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
 
     // Always write decorations when adjustments exist — even if no path crossed the
     // promotion/demotion threshold, any non-zero adjustment is worth showing in ForecastPanel.
-    writeSimulationDecorations(mergeResult, snapshot).catch((err) =>
-      console.warn(`  [SimulationDecorations] Fire-and-forget write failed: ${err.message}`)
+    // Awaited (not fire-and-forget) because applyPostSimulationRescore may return immediately
+    // on the no_path_changes branch before the process exits, abandoning a fire-and-forget promise.
+    await writeSimulationDecorations(mergeResult, snapshot).catch((err) =>
+      console.warn(`  [SimulationDecorations] write failed: ${err.message}`)
     );
 
     if (!ev?.pathsPromoted && !ev?.pathsDemoted) {
@@ -16808,10 +16810,13 @@ async function processNextSimulationTask(options = {}) {
       const writeResult = await writeSimulationOutcome(pkgData, outcome, { storageConfig });
       await completeSimulationTask(runId);
       console.log(`  [Simulation] Completed ${runId}: ${theaterResults.length} theaters → ${writeResult?.outcomeKey}`);
-      // Fire-and-forget: re-score the deep forecast that may have run with stale simulation data.
-      applyPostSimulationRescore(runId, outcome, storageConfig)
-        .then((r) => { if (r && !r.skipped) console.log(`  [SimulationRescore] ${runId}: ${JSON.stringify(r)}`); })
-        .catch((err) => console.warn(`  [SimulationRescore] Error for ${runId}: ${err.message}`));
+      // Awaited (not fire-and-forget): re-score must complete before process.exit() so that
+      // writeSimulationDecorations + patchPublishedForecastsWithSimDecorations update the
+      // canonical key in the same run. A fire-and-forget here is abandoned when runSimulationWorker
+      // returns and the process exits, leaving forecast:predictions:v2 stale until the next seed.
+      const rescoreResult = await applyPostSimulationRescore(runId, outcome, storageConfig)
+        .catch((err) => { console.warn(`  [SimulationRescore] Error for ${runId}: ${err.message}`); return null; });
+      if (rescoreResult && !rescoreResult.skipped) console.log(`  [SimulationRescore] ${runId}: ${JSON.stringify(rescoreResult)}`);
       return { status: 'completed', runId, theaterCount: theaterResults.length, outcomeKey: writeResult?.outcomeKey };
     } catch (err) {
       console.warn(`  [Simulation] Task failed for ${runId}: ${err.message}`);
