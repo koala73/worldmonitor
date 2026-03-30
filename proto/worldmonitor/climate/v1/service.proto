@@ -4,6 +4,7 @@ package worldmonitor.climate.v1;
 
 import "sebuf/http/annotations.proto";
 import "worldmonitor/climate/v1/list_climate_anomalies.proto";
+import "worldmonitor/climate/v1/list_climate_disasters.proto";
 
 // ClimateService provides APIs for climate anomaly data sourced from Open-Meteo.
 service ClimateService {
@@ -12,5 +13,10 @@ service ClimateService {
   // ListClimateAnomalies retrieves temperature and precipitation anomalies from ERA5 data.
   rpc ListClimateAnomalies(ListClimateAnomaliesRequest) returns (ListClimateAnomaliesResponse) {
     option (sebuf.http.config) = {path: "/list-climate-anomalies", method: HTTP_METHOD_GET};
+  }
+
+  // ListClimateDisasters retrieves climate-relevant disaster events from seeded data.
+  rpc ListClimateDisasters(ListClimateDisastersRequest) returns (ListClimateDisastersResponse) {
+    option (sebuf.http.config) = {path: "/list-climate-disasters", method: HTTP_METHOD_GET};
   }
 }

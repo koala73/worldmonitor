@@ -33,6 +33,32 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface ListClimateDisastersRequest {
+  pageSize: number;
+  cursor: string;
+}
+
+export interface ListClimateDisastersResponse {
+  disasters: ClimateDisaster[];
+  pagination?: PaginationResponse;
+}
+
+export interface ClimateDisaster {
+  id: string;
+  type: string;
+  name: string;
+  country: string;
+  countryCode: string;
+  lat: number;
+  lng: number;
+  severity: string;
+  startedAt: number;
+  status: string;
+  affectedPopulation: number;
+  source: string;
+  sourceUrl: string;
+}
+
 export type AnomalySeverity = "ANOMALY_SEVERITY_UNSPECIFIED" | "ANOMALY_SEVERITY_NORMAL" | "ANOMALY_SEVERITY_MODERATE" | "ANOMALY_SEVERITY_EXTREME";
 
 export type AnomalyType = "ANOMALY_TYPE_UNSPECIFIED" | "ANOMALY_TYPE_WARM" | "ANOMALY_TYPE_COLD" | "ANOMALY_TYPE_WET" | "ANOMALY_TYPE_DRY" | "ANOMALY_TYPE_MIXED";
@@ -83,6 +109,7 @@ export interface RouteDescriptor {
 
 export interface ClimateServiceHandler {
   listClimateAnomalies(ctx: ServerContext, req: ListClimateAnomaliesRequest): Promise<ListClimateAnomaliesResponse>;
+  listClimateDisasters(ctx: ServerContext, req: ListClimateDisastersRequest): Promise<ListClimateDisastersResponse>;
 }
 
 export function createClimateServiceRoutes(
@@ -118,6 +145,54 @@ export function createClimateServiceRoutes(
 
           const result = await handler.listClimateAnomalies(ctx, body);
           return new Response(JSON.stringify(result as ListClimateAnomaliesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/climate/v1/list-climate-disasters",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListClimateDisastersRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listClimateDisasters", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listClimateDisasters(ctx, body);
+          return new Response(JSON.stringify(result as ListClimateDisastersResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

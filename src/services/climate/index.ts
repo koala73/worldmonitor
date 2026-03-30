@@ -5,6 +5,7 @@ import {
   type AnomalySeverity as ProtoAnomalySeverity,
   type AnomalyType as ProtoAnomalyType,
   type ListClimateAnomaliesResponse,
+  type ListClimateDisastersResponse,
 } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -58,6 +59,14 @@ export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
     .map(toDisplayAnomaly)
     .filter(a => a.severity !== 'normal');
   return { ok: true, anomalies };
+}
+
+/**
+ * Dedicated hydration accessor for climate disaster bootstrap payload.
+ * Kept separate from anomalies to avoid consuming unrelated hydrated data.
+ */
+export function getHydratedClimateDisasters(): ListClimateDisastersResponse | undefined {
+  return getHydratedData('climateDisasters') as ListClimateDisastersResponse | undefined;
 }
 
 // Presentation helpers (used by ClimateAnomalyPanel)
