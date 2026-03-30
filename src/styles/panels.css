@@ -445,3 +445,22 @@
 .agent-submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .agent-unavailable { padding: 16px; color: var(--text-dim); font-size: 12px; line-height: 1.6; }
 .agent-unavailable code { background: var(--panel-bg-alt, rgba(255,255,255,0.1)); padding: 1px 4px; border-radius: 3px; font-size: 10px; }
+
+/* ----------------------------------------------------------
+   Live Intelligence (GDELT) Panel
+   ---------------------------------------------------------- */
+.gdelt-stale-banner { padding: 5px 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: #f59e0b; background: color-mix(in srgb, #f59e0b 10%, transparent); border-bottom: 1px solid color-mix(in srgb, #f59e0b 25%, transparent); }
+.gdelt-list { display: flex; flex-direction: column; }
+.gdelt-item { padding: 7px 10px; border-bottom: 1px solid var(--panel-border, rgba(255,255,255,0.06)); }
+.gdelt-item:last-child { border-bottom: none; }
+.gdelt-title { display: block; font-size: 11px; color: var(--text-primary); line-height: 1.4; text-decoration: none; }
+.gdelt-title:hover { color: var(--accent); text-decoration: underline; }
+.gdelt-item-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+.gdelt-source { font-size: 10px; color: var(--text-muted); }
+.gdelt-flag { font-size: 11px; }
+.gdelt-time { font-size: 10px; color: var(--text-dim); margin-left: auto; white-space: nowrap; }
+.gdelt-badge { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.3px; text-transform: uppercase; white-space: nowrap; }
+.gdelt-badge--alarming { background: color-mix(in srgb, #ef4444 18%, transparent); color: #f87171; }
+.gdelt-badge--tense    { background: color-mix(in srgb, #f97316 15%, transparent); color: #fb923c; }
+.gdelt-badge--neutral  { background: color-mix(in srgb, #6b7280 15%, transparent); color: #9ca3af; }
+

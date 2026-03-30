@@ -808,6 +808,10 @@ function getCached(key, ttlMs) {
   if (entry && Date.now() - entry.ts < ttlMs) return entry.data;
   return null;
 }
+function getCachedStale(key) {
+  const entry = _sidecarCache.get(key);
+  return entry ? entry.data : null;
+}
 function setCached(key, data) {
   _sidecarCache.set(key, { data, ts: Date.now() });
 }
@@ -3028,6 +3032,9 @@ async function dispatch(requestUrl, req, routes, context) {
       setCached('gdelt-intel', result);
       return json(result);
     } catch (error) {
+      // Serve last-known data rather than an empty response — GDELT 503s are transient
+      const stale = getCachedStale('gdelt-intel');
+      if (stale) return json({ ...stale, stale: true, error: error?.message ?? 'unknown' });
       return json({ events: [], updatedAt: Math.floor(Date.now() / 1000), error: error?.message ?? 'unknown' });
     }
   }
@@ -3135,41 +3142,6 @@ async function dispatch(requestUrl, req, routes, context) {
       return json(result);
     } catch (e) {
       return json({ regions: [], keyMissing: false, updatedAt: Math.floor(Date.now() / 1000), error: e?.message ?? 'unknown' });
-    }
-  }
-
-  // ── GDELT Intelligence (no key required, public API) ──────────────────────
-  if (requestUrl.pathname === '/api/gdelt-intel') {
-    const cached = getCached('gdelt-intel', 15 * 60 * 1000); // 15 minutes
-    if (cached) return json(cached);
-    try {
-      const params = new URLSearchParams({
-        query: 'war OR conflict OR crisis OR military OR sanctions OR nuclear',
-        mode: 'artlist',
-        maxrecords: '25',
-        format: 'json',
-        sort: 'ToneAsc',
-        timespan: '3h',
-      });
-      const res = await fetchWithTimeout(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`, { headers: { 'User-Agent': CHROME_UA } }, 12000);
-      if (!res.ok) throw new Error(`GDELT HTTP ${res.status}`);
-      const data = await res.json();
-      const articles = data?.articles ?? [];
-      const events = articles.map(a => ({
-        title: a.title ?? '',
-        url: a.url ?? '',
-        source: a.domain ?? '',
-        tone: typeof a.tone === 'number' ? Math.round(a.tone * 10) / 10 : 0,
-        country: a.sourcecountry ?? '',
-        timestamp: a.seendate
-          ? new Date(a.seendate.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, '$1-$2-$3T$4:$5:$6Z')).getTime()
-          : Date.now(),
-      })).filter(e => e.title && e.url);
-      const result = { events, updatedAt: Math.floor(Date.now() / 1000) };
-      setCached('gdelt-intel', result);
-      return json(result);
-    } catch (e) {
-      return json({ events: [], updatedAt: Math.floor(Date.now() / 1000), error: e?.message ?? 'unknown' });
     }
   }
 
