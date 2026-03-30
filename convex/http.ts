@@ -270,4 +270,121 @@ http.route({
   }),
 });
 
+// Service-to-service notification channel management (no user JWT required).
+// Authenticated via RELAY_SHARED_SECRET; caller supplies the validated userId.
+http.route({
+  path: "/relay/notification-channels",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: {
+      action?: string;
+      userId?: string;
+      channelType?: string;
+      chatId?: string;
+      webhookEnvelope?: string;
+      email?: string;
+      variant?: string;
+      enabled?: boolean;
+      eventTypes?: string[];
+      sensitivity?: string;
+      channels?: string[];
+    };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { action = "get", userId } = body;
+    if (typeof userId !== "string" || !userId) {
+      return new Response(JSON.stringify({ error: "MISSING_USER_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      if (action === "get") {
+        const [channels, alertRules] = await Promise.all([
+          ctx.runQuery(internal.notificationChannels.getChannelsByUserId, { userId }),
+          ctx.runQuery(internal.alertRules.getAlertRulesByUserId, { userId }),
+        ]);
+        return new Response(JSON.stringify({ channels: channels ?? [], alertRules: alertRules ?? [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (action === "create-pairing-token") {
+        const result = await ctx.runMutation(internal.notificationChannels.createPairingTokenForUser, { userId });
+        return new Response(JSON.stringify(result), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (action === "set-channel") {
+        if (!body.channelType) {
+          return new Response(JSON.stringify({ error: "channelType required" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        await ctx.runMutation(internal.notificationChannels.setChannelForUser, {
+          userId,
+          channelType: body.channelType as "telegram" | "slack" | "email",
+          chatId: body.chatId,
+          webhookEnvelope: body.webhookEnvelope,
+          email: body.email,
+        });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (action === "delete-channel") {
+        if (!body.channelType) {
+          return new Response(JSON.stringify({ error: "channelType required" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        await ctx.runMutation(internal.notificationChannels.deleteChannelForUser, {
+          userId,
+          channelType: body.channelType as "telegram" | "slack" | "email",
+        });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (action === "set-alert-rules") {
+        const VALID_SENSITIVITY = new Set(["all", "high", "critical"]);
+        if (
+          typeof body.variant !== "string" || !body.variant ||
+          typeof body.enabled !== "boolean" ||
+          !Array.isArray(body.eventTypes) ||
+          !Array.isArray(body.channels) ||
+          (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string))
+        ) {
+          return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        await ctx.runMutation(internal.alertRules.setAlertRulesForUser, {
+          userId,
+          variant: body.variant,
+          enabled: body.enabled,
+          eventTypes: body.eventTypes as string[],
+          sensitivity: (body.sensitivity ?? "all") as "all" | "high" | "critical",
+          channels: body.channels as Array<"telegram" | "slack" | "email">,
+        });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
+  }),
+});
+
 export default http;

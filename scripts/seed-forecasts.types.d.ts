@@ -118,6 +118,8 @@ interface ExpandedPath {
   promotedBySimulation?: boolean;
   /** Compact simulation signal. Present only when applySimulationMerge produced a non-zero adjustment. */
   simulationSignal?: SimulationSignal;
+  /** Full SimulationAdjustmentDetail for audit. Present only when simulationAdjustment is set. */
+  simulationAdjustmentDetail?: SimulationAdjustmentDetail;
   direct?: ExpandedPathDirect;
   candidate?: ExpandedPathCandidate;
 }
@@ -202,6 +204,18 @@ interface SimulationAdjustmentRecord {
   details: SimulationAdjustmentDetail;
   wasAccepted: boolean;
   nowAccepted: boolean;
+}
+
+/** Flat projection of SimulationAdjustmentDetail written into path-scorecards.json entries. simPathConfidence is omitted (already in simulationSignal). */
+interface ScorecardSimDetail {
+  bucketChannelMatch:  boolean;
+  actorOverlapCount:   number;
+  candidateActorCount: number;
+  actorSource:         'stateSummary' | 'affectedAssets' | 'none';
+  resolvedChannel:     string;
+  channelSource:       'direct' | 'market' | 'none';
+  invalidatorHit:      boolean;
+  stabilizerHit:       boolean;
 }
 
 interface SimulationEvidence {

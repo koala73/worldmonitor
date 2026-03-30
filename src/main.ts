@@ -337,11 +337,17 @@ window.addEventListener('unhandledrejection', (e) => {
 window.addEventListener('securitypolicyviolation', (e) => {
   const src = e.sourceFile ?? '';
   const blocked = e.blockedURI ?? '';
-  // Skip violations originating from browser extensions or injected scripts
-  if (/^(?:chrome|moz|safari(?:-web)?)-extension:/.test(src) || /^(?:chrome|moz|safari(?:-web)?)-extension:/.test(blocked)) return;
-  if (/^blob:/.test(src) || /^blob:/.test(blocked)) return;
-  // Skip eval/inline/data: blocked URIs — browser extensions injecting eval, inline handlers, or data: URIs
-  if (blocked === 'eval' || blocked === 'inline' || /^data:/.test(blocked)) return;
+  // Skip violations originating from browser extensions or injected scripts.
+  // Browsers may report blockedURI as scheme-only ("chrome-extension") or with origin ("chrome-extension://...").
+  if (/^(?:chrome|moz|safari(?:-web)?)-extension/.test(src) || /^(?:chrome|moz|safari(?:-web)?)-extension/.test(blocked)) return;
+  // Browsers may report blob: as "blob" (scheme-only) or "blob:https://..." — both are noise.
+  if (blocked === 'blob' || /^blob:/.test(src) || /^blob:/.test(blocked)) return;
+  // Skip eval/inline/data: blocked URIs — browsers may report "data" (scheme-only) or full data: URI.
+  if (blocked === 'eval' || blocked === 'inline' || blocked === 'data' || /^data:/.test(blocked)) return;
+  // Skip Android WebView video poster injection.
+  if (blocked === 'android-webview-video-poster') return;
+  // Skip own manifest.webmanifest — stale CSP cache hit, not a real violation (default-src 'self' covers it).
+  if (/manifest\.webmanifest$/.test(blocked)) return;
   // Skip third-party injectors: Google Translate, Facebook Pixel
   if (/gstatic\.com\/_\/translate/.test(blocked) || /facebook\.net/.test(blocked)) return;
   // Skip Sentry reporting itself (connect-src bootstrap paradox — SDK blocked before it can report)
