@@ -1983,6 +1983,38 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
+  // ── FAA Aviation Weather Cameras (public, no auth) ───────────────────────────
+  if (requestUrl.pathname === '/api/faa-cameras') {
+    const CACHE_KEY = 'faa-cameras';
+    const CACHE_TTL = 15 * 60 * 1000;
+    const cached = getCached(CACHE_KEY, CACHE_TTL);
+    if (cached) return json(cached);
+    try {
+      const resp = await fetchWithTimeout(
+        'https://avcams.faa.gov/api/cameras',
+        { headers: { Accept: 'application/json', 'User-Agent': 'WorldMonitor/1.0' } },
+        15000,
+      );
+      if (!resp.ok) return json(getCachedStale(CACHE_KEY) ?? [], 200);
+      const raw = await resp.json();
+      const cameras = (Array.isArray(raw) ? raw : raw?.cameras ?? []).map(c => ({
+        id: String(c.id ?? c.cameraId ?? ''),
+        name: String(c.name ?? c.cameraName ?? ''),
+        lat: Number(c.lat ?? c.latitude ?? 0),
+        lon: Number(c.lon ?? c.longitude ?? 0),
+        state: String(c.state ?? ''),
+        category: String(c.category ?? 'weather').toLowerCase(),
+        imageUrl: String(c.imageUrl ?? c.image_url ?? ''),
+        isOnline: Boolean(c.isOnline ?? c.active ?? true),
+        lastUpdated: String(c.lastUpdated ?? c.last_updated ?? new Date().toISOString()),
+      })).filter(c => c.id && c.lat !== 0 && c.lon !== 0);
+      setCached(CACHE_KEY, cameras);
+      return json(cameras);
+    } catch (e) {
+      return json(getCachedStale(CACHE_KEY) ?? [], 200);
+    }
+  }
+
   // ── Disease Outbreak proxy (ReliefWeb + WHO, no API key) ─────────────────
   if (requestUrl.pathname === '/api/disease-outbreaks') {
     const RELIEFWEB_URL = 'https://api.reliefweb.int/v1/reports?appname=worldmonitor&filter[field]=type.name&filter[value]=Situation%20Report&filter[conditions][0][field]=theme.name&filter[conditions][0][value]=Health&limit=25&sort[]=date:desc&fields[include][]=title&fields[include][]=date&fields[include][]=country&fields[include][]=url';
