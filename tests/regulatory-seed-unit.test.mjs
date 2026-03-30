@@ -11,6 +11,7 @@ const seedSrc = readFileSync('scripts/seed-regulatory-actions.mjs', 'utf8');
 
 const pureSrc = seedSrc
   .replace(/^import\s.*$/gm, '')
+  .replace(/loadEnvFile\([^)]+\);\n/, '')
   .replace(/const isDirectRun[\s\S]*?}\n\nexport\s*{[\s\S]*?};?\s*$/m, '');
 
 const ctx = vm.createContext({
@@ -26,6 +27,8 @@ const ctx = vm.createContext({
   URLSearchParams,
   AbortSignal,
   CHROME_UA: 'Mozilla/5.0 (test)',
+  loadEnvFile: () => {},
+  runSeed: async () => {},
 });
 
 vm.runInContext(pureSrc, ctx);
@@ -40,6 +43,10 @@ const {
   normalizeFeedItems,
   dedupeAndSortActions,
   fetchAllFeeds,
+  classifyAction,
+  buildSeedPayload,
+  fetchRegulatoryActionPayload,
+  main,
 } = ctx;
 
 describe('decodeEntities', () => {
@@ -181,5 +188,115 @@ describe('fetchAllFeeds', () => {
       fetchAllFeeds(async () => { throw new Error('nope'); }, feeds),
       /All regulatory feeds failed/
     );
+  });
+});
+
+describe('classifyAction', () => {
+  it('marks high priority actions and captures matched keywords', () => {
+    const action = normalize(classifyAction({
+      id: 'sec-a',
+      agency: 'SEC',
+      title: 'SEC Charges Bank for Accounting Fraud',
+      link: 'https://example.test/sec-a',
+      publishedAt: '2026-03-30T18:00:00.000Z',
+    }));
+
+    assert.equal(action.tier, 'high');
+    assert.deepEqual(action.matchedKeywords, ['charges', 'fraud']);
+  });
+
+  it('falls back to medium and then low', () => {
+    const medium = normalize(classifyAction({
+      id: 'fed-a',
+      agency: 'Federal Reserve',
+      title: 'Federal Reserve Issues Capital Requirement Guidance',
+      link: 'https://example.test/fed-a',
+      publishedAt: '2026-03-30T18:00:00.000Z',
+    }));
+    const low = normalize(classifyAction({
+      id: 'finra-a',
+      agency: 'FINRA',
+      title: 'FINRA Publishes Monthly Highlights',
+      link: 'https://example.test/finra-a',
+      publishedAt: '2026-03-30T18:00:00.000Z',
+    }));
+
+    assert.equal(medium.tier, 'medium');
+    assert.deepEqual(medium.matchedKeywords, ['guidance', 'capital requirement']);
+    assert.equal(low.tier, 'low');
+    assert.deepEqual(low.matchedKeywords, []);
+  });
+});
+
+describe('buildSeedPayload', () => {
+  it('adds fetchedAt and aggregate counts', () => {
+    const payload = normalize(buildSeedPayload([
+      {
+        id: 'sec-a',
+        agency: 'SEC',
+        title: 'SEC Charges Bank for Fraud',
+        link: 'https://example.test/sec-a',
+        publishedAt: '2026-03-30T18:00:00.000Z',
+      },
+      {
+        id: 'fed-a',
+        agency: 'Federal Reserve',
+        title: 'Federal Reserve Issues Guidance',
+        link: 'https://example.test/fed-a',
+        publishedAt: '2026-03-29T18:00:00.000Z',
+      },
+      {
+        id: 'finra-a',
+        agency: 'FINRA',
+        title: 'FINRA Monthly Bulletin',
+        link: 'https://example.test/finra-a',
+        publishedAt: '2026-03-28T18:00:00.000Z',
+      },
+    ], 1711718400000));
+
+    assert.equal(payload.fetchedAt, 1711718400000);
+    assert.equal(payload.recordCount, 3);
+    assert.equal(payload.highCount, 1);
+    assert.equal(payload.mediumCount, 1);
+    assert.equal(payload.actions[2].tier, 'low');
+  });
+});
+
+describe('fetchRegulatoryActionPayload', () => {
+  it('returns classified payload from fetched actions', async () => {
+    const payload = normalize(await fetchRegulatoryActionPayload(async (url) => ({
+      ok: true,
+      text: async () => `<rss><channel><item><title>FDIC Publishes Enforcement Orders</title><link>${url}/item</link><pubDate>Mon, 30 Mar 2026 18:00:00 GMT</pubDate></item></channel></rss>`,
+    })));
+
+    assert.equal(payload.actions.length, 5);
+    assert.equal(payload.recordCount, 5);
+    assert.ok(typeof payload.fetchedAt === 'number');
+    assert.equal(payload.actions[0].tier, 'high');
+    assert.deepEqual(payload.actions[0].matchedKeywords, ['enforcement']);
+  });
+});
+
+describe('main', () => {
+  it('wires runSeed with the regulatory key, TTL, and validateFn', async () => {
+    const calls = [];
+    const runSeedStub = async (domain, resource, canonicalKey, fetchFn, opts) => {
+      calls.push({ domain, resource, canonicalKey, opts, payload: await fetchFn() });
+      return 'ok';
+    };
+    const fetchStub = async (url) => ({
+      ok: true,
+      text: async () => `<rss><channel><item><title>CFTC Issues Advisory</title><link>${url}/item</link><pubDate>Mon, 30 Mar 2026 18:00:00 GMT</pubDate></item></channel></rss>`,
+    });
+
+    const result = await main(fetchStub, runSeedStub);
+    assert.equal(result, 'ok');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].domain, 'regulatory');
+    assert.equal(calls[0].resource, 'actions');
+    assert.equal(calls[0].canonicalKey, 'regulatory:actions:v1');
+    assert.equal(calls[0].opts.ttlSeconds, 7200);
+    assert.equal(calls[0].opts.validateFn({ actions: [] }), true);
+    assert.equal(calls[0].payload.recordCount, 5);
   });
 });
