@@ -949,7 +949,7 @@ export class MapPopup {
         const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
         const flightQ = live.callsignIata ? `${encodeURIComponent(live.callsignIata)}+` : '';
         const bookUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=${flightQ}from+${encodeURIComponent(live.depIata)}+to+${encodeURIComponent(live.arrIata)}+on+${encodeURIComponent(todayStr)}`);
-        parts.push(`<a href="${bookUrl}" target="_blank" rel="noopener" style="display:block;margin-top:8px;padding:7px 12px;background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.18);border-radius:6px;color:#60a5fa;text-decoration:none;font-size:12px;text-align:center">Book this route &rarr;</a>`);
+        parts.push(`<a href="${bookUrl}" target="_blank" rel="noopener" style="display:block;margin-top:8px;padding:7px 12px;background:rgba(68,255,136,.06);border:1px solid rgba(68,255,136,.18);border-radius:6px;color:var(--green,#44ff88);text-decoration:none;font-size:12px;text-align:center">Book this route &rarr;</a>`);
       }
 
       // Enrichment stats row

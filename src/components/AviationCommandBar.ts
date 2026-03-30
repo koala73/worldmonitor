@@ -169,7 +169,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
             const lbl = days === 1 ? 'Tomorrow' : `+${days}d`;
             const active = d === date;
             const cmd = `fly ${intent.origin} ${intent.destination} ${d}`;
-            return `<button data-rerun="${escapeHtml(cmd)}" style="background:${active ? 'rgba(96,165,250,.15)' : 'none'};border:1px solid ${active ? '#60a5fa' : '#374151'};border-radius:3px;color:${active ? '#60a5fa' : '#6b7280'};cursor:pointer;font-size:10px;padding:1px 6px">${lbl}</button>`;
+            return `<button data-rerun="${escapeHtml(cmd)}" style="background:${active ? 'rgba(68,255,136,.1)' : 'none'};border:1px solid ${active ? 'var(--green,#44ff88)' : 'var(--border,#2a2a2a)'};border-radius:3px;color:${active ? 'var(--green,#44ff88)' : 'var(--text-dim,#6b7280)'};cursor:pointer;font-size:10px;padding:1px 6px">${lbl}</button>`;
         }).join('');
         const header = `<div style="margin-bottom:4px">
           <strong>💸 ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}</strong>
@@ -187,7 +187,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
                 const carrier = leg ? `${escapeHtml(leg.airlineCode)} ${escapeHtml(leg.flightNumber)}` : '';
                 const depTime = leg?.departureDatetime?.slice(11, 16) ?? '';
                 const arrTime = f.legs[f.legs.length - 1]?.arrivalDatetime?.slice(11, 16) ?? '';
-                const stopColor = f.stops === 0 ? '#22c55e' : '#9ca3af';
+                const stopColor = f.stops === 0 ? 'var(--green,#44ff88)' : 'var(--text-dim,#9ca3af)';
                 const stopLabel = f.stops === 0 ? 'nonstop' : `${f.stops} stop${f.stops > 1 ? 's' : ''}`;
                 const safeDepTime = escapeHtml(depTime);
                 const safeArrTime = escapeHtml(arrTime);
@@ -199,7 +199,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
             <span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span>
           </div>
           <div style="color:#9ca3af;font-size:11px;margin:0 10px">${safeDepTime}${safeArrTime ? `–${safeArrTime}` : ''} · ${escapeHtml(fmtDur(f.durationMinutes))}</div>
-          <div style="color:#60a5fa;font-weight:600">$${Math.round(f.price).toLocaleString()}</div>
+          <div style="color:var(--green,#44ff88);font-weight:600">$${Math.round(f.price).toLocaleString()}</div>
         </a>`;
             }).join('');
             return {
@@ -216,7 +216,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
             const rowUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=${encodeURIComponent(q.carrierIata)}+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`);
             return `<a class="cmd-row" href="${rowUrl}" target="_blank" rel="noopener" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);text-decoration:none;cursor:pointer">
           <div style="flex:1">${escapeHtml(q.carrierName || q.carrierIata)}<span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span></div>
-          <div style="color:#60a5fa;font-weight:600">$${Math.round(q.priceAmount)}</div>
+          <div style="color:var(--green,#44ff88);font-weight:600">$${Math.round(q.priceAmount)}</div>
         </a>`;
         }).join('');
         return {
@@ -329,7 +329,7 @@ export class AviationCommandBar {
     private async run(raw: string): Promise<void> {
         const resultEl = this.overlay?.querySelector('#aviation-cmd-result');
         if (!resultEl) return;
-        resultEl.innerHTML = '<div style="color:#9ca3af;font-size:12px">Running…</div>';
+        resultEl.innerHTML = '<div style="color:var(--text-dim,#9ca3af);font-size:12px">Running…</div>';
 
         try {
             const intent = parseIntent(raw);
@@ -378,7 +378,7 @@ export class AviationCommandBar {
         ].filter(s => s.toLowerCase().startsWith(val.toLowerCase()) && s.toLowerCase() !== val.toLowerCase());
         if (!val || !suggestions.length) { el.innerHTML = ''; return; }
         el.innerHTML = suggestions.slice(0, 4).map(s =>
-            `<button class="cmd-sug-btn" style="background:none;border:1px solid #374151;border-radius:3px;color:#9ca3af;cursor:pointer;font-size:11px;padding:2px 6px;margin:2px">${escapeHtml(s)}</button>`
+            `<button class="cmd-sug-btn" style="background:none;border:1px solid var(--border,#2a2a2a);border-radius:3px;color:var(--text-dim,#9ca3af);cursor:pointer;font-size:11px;padding:2px 6px;margin:2px">${escapeHtml(s)}</button>`
         ).join('');
         el.querySelectorAll('.cmd-sug-btn').forEach((btn) => {
             btn.addEventListener('click', async () => {
@@ -393,21 +393,24 @@ export class AviationCommandBar {
         const style = document.createElement('style');
         style.id = 'aviation-cmd-styles';
         style.textContent = `
-      #aviation-cmd-overlay { position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:80px; }
-      #aviation-cmd-box { background:var(--surface,#141414);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px;width:min(560px,92vw);box-shadow:0 24px 60px rgba(0,0,0,.7);max-height:80vh;overflow-y:auto; }
-      #aviation-cmd-header { display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:14px;font-weight:600;color:var(--text,#e8e8e8); }
-      #aviation-cmd-close { background:none;border:none;color:#6b7280;cursor:pointer;font-size:18px;line-height:1; }
-      #aviation-cmd-input { width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--border,#2a2a2a);border-radius:6px;color:var(--text,#e8e8e8);font-size:14px;padding:10px;outline:none; }
-      #aviation-cmd-input:focus { border-color:var(--accent,#60a5fa); }
-      #aviation-cmd-result { margin-top:12px;font-size:13px; }
-      .cmd-row { display:flex;gap:10px;align-items:center;padding:4px 0;font-size:13px; }
-      .cmd-section { padding:8px 0; }
-      .cmd-empty { color:#6b7280;font-size:12px;padding:8px 0; }
+      #aviation-cmd-overlay { position:fixed;inset:0;background:var(--bg,#0a0a0a);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;backdrop-filter:blur(4px); }
+      #aviation-cmd-box { background:var(--surface,#141414);border:1px solid var(--border,#2a2a2a);border-radius:8px;width:min(560px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.8);max-height:80vh;overflow-y:auto; }
+      #aviation-cmd-header { display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:13px;font-weight:600;color:var(--text,#e8e8e8);border-bottom:1px solid var(--border,#2a2a2a); }
+      #aviation-cmd-close { background:none;border:none;color:var(--text-dim,#6b7280);cursor:pointer;font-size:16px;line-height:1; }
+      #aviation-cmd-input { width:100%;box-sizing:border-box;background:transparent;border:none;border-bottom:1px solid var(--border,#2a2a2a);color:var(--text,#e8e8e8);font-family:inherit;font-size:14px;padding:12px 16px;outline:none; }
+      #aviation-cmd-input:focus { border-bottom-color:var(--green,#44ff88); }
+      #aviation-cmd-input::placeholder { color:var(--text-dim,#6b7280); }
+      #aviation-cmd-suggestions { padding:4px 16px; }
+      #aviation-cmd-result { padding:8px 16px 12px;font-size:13px; }
+      #aviation-cmd-history-list { padding:0 16px; }
+      .cmd-row { display:flex;gap:10px;align-items:center;font-size:13px; }
+      .cmd-section { padding:4px 0; }
+      .cmd-empty { color:var(--text-dim,#6b7280);font-size:12px;padding:8px 0; }
       .cmd-news-item { padding:4px 0; }
       .cmd-news-item a { color:var(--text,#e8e8e8);text-decoration:none;font-size:12px; }
-      .cmd-news-item a:hover { color:var(--accent,#60a5fa); }
-      #aviation-cmd-hint { font-size:11px;color:#4b5563;margin-top:10px;text-align:right; }
-      #aviation-cmd-hint kbd { background:#374151;border-radius:2px;padding:1px 4px;font-family:monospace; }
+      .cmd-news-item a:hover { color:var(--green,#44ff88); }
+      #aviation-cmd-hint { font-size:11px;color:var(--text-dim,#6b7280);padding:10px 16px;text-align:right;border-top:1px solid var(--border,#2a2a2a); }
+      #aviation-cmd-hint kbd { background:var(--border,#2a2a2a);border-radius:3px;padding:1px 5px;font-family:inherit; }
     `;
         document.head.appendChild(style);
     }
