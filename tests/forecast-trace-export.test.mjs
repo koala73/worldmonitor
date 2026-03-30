@@ -7123,6 +7123,74 @@ describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
     assert.ok(summary);
     assert.equal(Object.prototype.hasOwnProperty.call(summary, 'simulationSignal'), false);
   });
+
+  it('T-SC-1: simDetail written when simulationAdjustment and simulationAdjustmentDetail are set', () => {
+    const path = {
+      pathId: 'p-sc1', type: 'expanded', candidateStateId: 'state-sc1',
+      acceptanceScore: 0.45, mergedAcceptanceScore: 0.53,
+      simulationAdjustment: 0.08,
+      simulationAdjustmentDetail: {
+        bucketChannelMatch: true, actorOverlapCount: 0, candidateActorCount: 2,
+        actorSource: 'stateSummary', resolvedChannel: 'energy_supply_shock',
+        channelSource: 'direct', invalidatorHit: false, stabilizerHit: false,
+        simPathConfidence: 0.7,
+      },
+    };
+    const result = summarizeImpactPathScore(path);
+    assert.ok(result.simDetail, 'simDetail must be present');
+    assert.strictEqual(result.simDetail.bucketChannelMatch, true);
+    assert.strictEqual(result.simDetail.actorOverlapCount, 0);
+    assert.strictEqual(result.simDetail.candidateActorCount, 2);
+    assert.strictEqual(result.simDetail.actorSource, 'stateSummary');
+    assert.strictEqual(result.simDetail.resolvedChannel, 'energy_supply_shock');
+    assert.strictEqual(result.simDetail.channelSource, 'direct');
+    assert.strictEqual(result.simDetail.invalidatorHit, false);
+    assert.strictEqual(result.simDetail.stabilizerHit, false);
+    assert.strictEqual(result.simDetail.simPathConfidence, undefined, 'simPathConfidence must not be duplicated in simDetail');
+  });
+
+  it('T-SC-2: simDetail absent when simulationAdjustment not set', () => {
+    const path = { pathId: 'p-sc2', type: 'expanded', candidateStateId: 'state-sc2', acceptanceScore: 0.45 };
+    const result = summarizeImpactPathScore(path);
+    assert.strictEqual(result.simDetail, undefined);
+  });
+
+  it('T-SC-3: simDetail absent when simulationAdjustment set but simulationAdjustmentDetail absent (backward compat)', () => {
+    const path = {
+      pathId: 'p-sc3', type: 'expanded', candidateStateId: 'state-sc3',
+      acceptanceScore: 0.45, simulationAdjustment: 0.08,
+    };
+    const result = summarizeImpactPathScore(path);
+    assert.strictEqual(result.simDetail, undefined);
+    assert.strictEqual(result.simulationAdjustment, 0.08);
+  });
+
+  it('T-SC-4: computeSimulationAdjustment details flow through to summarizeImpactPathScore simDetail', () => {
+    const path = {
+      type: 'expanded', pathId: 'path-sc4', candidateStateId: 'state-sc4',
+      direct: { variableKey: 'route_disruption', targetBucket: 'energy', channel: 'energy_supply_shock', affectedAssets: [] },
+      second: null, third: null, pathScore: 0.60, acceptanceScore: 0.55,
+    };
+    const candidatePacket = {
+      candidateStateId: 'state-sc4', candidateIndex: 0,
+      routeFacilityKey: 'Strait of Hormuz', commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: ['Iran', 'Saudi Arabia'] },
+    };
+    const simResult = {
+      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi_Arabia'] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    path.simulationAdjustment = adjustment;
+    path.simulationAdjustmentDetail = details;
+    const scorecard = summarizeImpactPathScore(path);
+    assert.ok(scorecard.simDetail, 'simDetail must be present after flow-through');
+    assert.strictEqual(scorecard.simDetail.bucketChannelMatch, true);
+    assert.ok(scorecard.simDetail.actorOverlapCount >= 2, `actorOverlapCount should be >=2, got ${scorecard.simDetail.actorOverlapCount}`);
+    assert.strictEqual(scorecard.simDetail.actorSource, 'stateSummary');
+    assert.strictEqual(scorecard.simDetail.channelSource, 'direct');
+  });
 });
 
 describe('phase 3 simulation re-ingestion — matching helpers', () => {
