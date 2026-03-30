@@ -253,7 +253,7 @@ describe('Bootstrap key hydration coverage', () => {
     const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
     // Keys with planned but not-yet-wired consumers
-    const PENDING_CONSUMERS = new Set(['chokepointTransits', 'climateZoneNormals', 'correlationCards', 'euGasStorage']);
+    const PENDING_CONSUMERS = new Set(['chokepointTransits', 'correlationCards', 'euGasStorage']);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
       assert.ok(
@@ -261,6 +261,23 @@ describe('Bootstrap key hydration coverage', () => {
         `Bootstrap key '${key}' has no getHydratedData('${key}') consumer in src/ — data is fetched but never used`,
       );
     }
+  });
+});
+
+describe('Health key registries', () => {
+  it('does not duplicate Redis keys across BOOTSTRAP_KEYS and STANDALONE_KEYS', () => {
+    const healthSrc = readFileSync(join(root, 'api', 'health.js'), 'utf-8');
+    const extractValues = (name) => {
+      const block = healthSrc.match(new RegExp(`${name}\\s*=\\s*\\{([\\s\\S]*?)\\n\\};`));
+      if (!block) return [];
+      return [...block[1].matchAll(/:\s+'([^']+)'/g)].map((m) => m[1]);
+    };
+
+    const bootstrap = new Set(extractValues('BOOTSTRAP_KEYS'));
+    const standalone = new Set(extractValues('STANDALONE_KEYS'));
+    const overlap = [...bootstrap].filter((key) => standalone.has(key));
+
+    assert.deepEqual(overlap, [], `health.js duplicates keys across registries: ${overlap.join(', ')}`);
   });
 });
 

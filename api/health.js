@@ -10,7 +10,6 @@ const BOOTSTRAP_KEYS = {
   sectors:           'market:sectors:v1',
   etfFlows:          'market:etf-flows:v1',
   climateAnomalies:  'climate:anomalies:v1',
-  climateZoneNormals: 'climate:zone-normals:v1',
   co2Monitoring:     'climate:co2-monitoring:v1',
   wildfires:         'wildfire:fires:v1',
   marketQuotes:      'market:stocks-bootstrap:v1',

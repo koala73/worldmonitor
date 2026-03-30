@@ -7,6 +7,7 @@ import { chunkItems, fetchOpenMeteoArchiveBatch } from './_open-meteo-archive.mj
 loadEnvFile(import.meta.url);
 
 export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
+// Keep the previous baseline available across monthly cron gaps; health.js enforces freshness separately.
 const NORMALS_TTL = 90 * 24 * 60 * 60; // 90 days
 const NORMALS_START = '1991-01-01';
 const NORMALS_END = '2020-12-31';
@@ -76,18 +77,19 @@ export function computeMonthlyNormals(daily) {
 }
 
 export function buildZoneNormalsFromBatch(zones, batchPayloads) {
-  return zones.map((zone, index) => {
+  return zones.flatMap((zone, index) => {
     const data = batchPayloads[index];
     const months = computeMonthlyNormals(data?.daily);
     if (months.length !== 12) {
-      throw new Error(`Open-Meteo normals incomplete for ${zone.name}: expected 12 months, got ${months.length}`);
+      console.warn(`  [CLIMATE_NORMALS] Open-Meteo normals incomplete for ${zone.name}: expected 12 months, got ${months.length}`);
+      return [];
     }
 
-    return {
+    return [{
       zone: zone.name,
       location: { latitude: zone.lat, longitude: zone.lon },
       months,
-    };
+    }];
   });
 }
 
@@ -106,7 +108,9 @@ export async function fetchClimateZoneNormals() {
         retryBaseMs: 5_000,
         label: `normals batch (${batch.map((zone) => zone.name).join(', ')})`,
       });
-      normals.push(...buildZoneNormalsFromBatch(batch, payloads));
+      const batchNormals = buildZoneNormalsFromBatch(batch, payloads);
+      normals.push(...batchNormals);
+      failures += Math.max(0, batch.length - batchNormals.length);
     } catch (err) {
       console.log(`  [CLIMATE_NORMALS] ${err?.message ?? err}`);
       failures += batch.length;
