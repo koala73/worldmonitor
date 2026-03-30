@@ -319,7 +319,10 @@ export function installRuntimeFetchPatch(): void {
       const cloudHeaders = new Headers(init?.headers);
       const cloudApiKey = await getWorldMonitorCloudApiKey();
       if (!cloudApiKey) {
-        throw new Error(`Cloud fallback blocked for ${target}: WORLDMONITOR_API_KEY missing`);
+        return new Response(JSON.stringify({ error: 'WORLDMONITOR_API_KEY not configured' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
       cloudHeaders.set('X-WorldMonitor-Key', cloudApiKey);
       return nativeFetch(cloudUrl, { ...init, headers: cloudHeaders });
