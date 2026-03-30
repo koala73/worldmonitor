@@ -11,6 +11,8 @@ interface WidgetChatOptions {
   mode: 'create' | 'modify';
   tier?: 'basic' | 'pro';
   existingSpec?: CustomWidgetSpec;
+  /** Pre-fill the chat input with this text. Used when opening from the analyst action chip. */
+  initialMessage?: string;
   onComplete: (spec: CustomWidgetSpec) => void;
 }
 
@@ -121,6 +123,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   let requestInFlight = false;
   let preflightReady = false;
   let pendingSaveSpec: CustomWidgetSpec | null = null;
+
+  if (options.initialMessage) inputEl.value = options.initialMessage;
 
   if (isModify && options.existingSpec) {
     for (const msg of sessionHistory) {

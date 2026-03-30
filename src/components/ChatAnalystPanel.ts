@@ -38,6 +38,12 @@ interface MetaEvent {
   degraded: boolean;
 }
 
+interface ActionEvent {
+  type: string;
+  label: string;
+  prefill?: string;
+}
+
 function formatInline(escaped: string): string {
   return escaped
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -270,6 +276,22 @@ export class ChatAnalystPanel extends Panel {
     if (body) bubble.insertBefore(chipsRow, body);
   }
 
+  private renderActionChip(bubble: HTMLElement, action: ActionEvent): void {
+    if (action.type !== 'suggest-widget') return;
+    const chip = document.createElement('button');
+    chip.className = 'chat-action-chip';
+    chip.textContent = `${action.label} →`;
+    chip.addEventListener('click', () => {
+      this.element.dispatchEvent(new CustomEvent('wm:open-widget-creator', {
+        bubbles: true,
+        detail: { initialMessage: action.prefill ?? '' },
+      }));
+    });
+    const body = bubble.querySelector('.chat-msg-body');
+    if (body) bubble.insertBefore(chip, body);
+    else bubble.appendChild(chip);
+  }
+
   private scrollToBottom(): void {
     requestAnimationFrame(() => {
       this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
@@ -395,6 +417,7 @@ export class ChatAnalystPanel extends Panel {
             done?: boolean;
             error?: string;
             meta?: MetaEvent;
+            action?: ActionEvent;
           };
           if (payload.error) {
             this.finalizeStreamingBubble(bodyEl, '⚠ Analyst unavailable. Try again shortly.', false);
@@ -402,6 +425,9 @@ export class ChatAnalystPanel extends Panel {
           }
           if (payload.meta) {
             this.renderSourceChips(bubble, payload.meta);
+          }
+          if (payload.action) {
+            this.renderActionChip(bubble, payload.action);
           }
           if (payload.delta) {
             accumulated += payload.delta;

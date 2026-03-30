@@ -6,6 +6,7 @@
  *
  * Returns text/event-stream SSE:
  *   data: {"meta":{"sources":["Brief","Risk",...],"degraded":false}}  — always first event
+ *   data: {"action":{"type":"suggest-widget","label":"...","prefill":"..."}}  — optional, visual queries only
  *   data: {"delta":"..."}    — one per content token
  *   data: {"done":true}      — terminal event
  *   data: {"error":"..."}    — on auth/llm failure
@@ -47,13 +48,24 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-function prependSseEvent(event: Record<string, unknown>, stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+// Detects user intent to view a chart, graph, or visual comparison.
+// Uses specific compound keywords to reduce false-positives on single nouns like "chart" in "UN Charter".
+const VISUAL_INTENT_RE = /\b(chart\s+(prices?|data|rates?|trends?|performance|comparison|history)|graph\s+(prices?|data|trends?)|plot\s+(prices?|data|trends?)|visuali[sz]e|create\s+a\s+(chart|graph|dashboard|visualization)|show\s+(me\s+)?(a\s+)?(chart|graph|plot|dashboard|trend)|price\s+(history|over\s+time|comparison|trend|chart)|compare\s+(prices?|rates?|data|performance)|dashboard|candlestick)\b/i;
+
+function buildActionEvents(query: string): Array<Record<string, unknown>> {
+  if (!VISUAL_INTENT_RE.test(query)) return [];
+  return [{
+    action: { type: 'suggest-widget', label: 'Create chart widget', prefill: query },
+  }];
+}
+
+function prependSseEvents(events: Array<Record<string, unknown>>, stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
-  const prefix = enc.encode(`data: ${JSON.stringify(event)}\n\n`);
+  const prefixes = events.map((e) => enc.encode(`data: ${JSON.stringify(e)}\n\n`));
   let innerReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(prefix);
+      for (const p of prefixes) controller.enqueue(p);
       innerReader = stream.getReader();
       while (true) {
         const { done, value } = await innerReader.read();
@@ -61,9 +73,7 @@ function prependSseEvent(event: Record<string, unknown>, stream: ReadableStream<
         controller.enqueue(value);
       }
     },
-    cancel() {
-      innerReader?.cancel();
-    },
+    cancel() { innerReader?.cancel(); },
   });
 }
 
@@ -146,9 +156,13 @@ export default async function handler(req: Request): Promise<Response> {
   });
 
   // Always prepend a meta event so the client knows which sources are live
-  // and whether context is degraded — before the first token arrives
-  const stream = prependSseEvent(
-    { meta: { sources: context.activeSources, degraded: context.degraded } },
+  // and whether context is degraded — before the first token arrives.
+  // Optionally follows with an action event for visual/chart queries.
+  const stream = prependSseEvents(
+    [
+      { meta: { sources: context.activeSources, degraded: context.degraded } },
+      ...buildActionEvents(query),
+    ],
     llmStream,
   );
 

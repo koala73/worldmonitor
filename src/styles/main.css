@@ -22376,3 +22376,21 @@ body.map-width-resizing {
   color: var(--yellow, #eab308);
   border-color: var(--yellow, #eab308);
 }
+.chat-action-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 6px 0 2px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.chat-action-chip:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
