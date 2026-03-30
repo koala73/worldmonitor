@@ -22203,7 +22203,7 @@ body.map-width-resizing {
 .chat-chip.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--bg);
 }
 .chat-analyst-messages {
   flex: 1;
