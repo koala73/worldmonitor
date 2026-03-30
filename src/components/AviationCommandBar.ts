@@ -406,7 +406,7 @@ export class AviationCommandBar {
       #aviation-cmd-suggestions { padding:4px 16px; }
       #aviation-cmd-result { padding:8px 16px 12px;font-size:13px; }
       #aviation-cmd-history-list { padding:0 16px; }
-      .cmd-row { display:flex;gap:10px;align-items:center;font-size:13px; }
+      .cmd-row { display:flex;gap:10px;align-items:center;font-size:13px;color:var(--text,#e8e8e8);text-decoration:none; }
       .cmd-section { padding:4px 0; }
       .cmd-empty { color:var(--text-dim,#6b7280);font-size:12px;padding:8px 0; }
       .cmd-news-item { padding:4px 0; }
