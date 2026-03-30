@@ -216,6 +216,24 @@ describe('buildActionEvents — visual intent detection', () => {
     assert.equal(events[0]?.prefill, 'chart prices of oil vs gold');
   });
 
+  it('returns suggest-widget action for chart with intermediate subject noun', () => {
+    const events = buildActionEvents('chart oil prices vs gold');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
+  it('returns suggest-widget action for graph with intermediate subject noun', () => {
+    const events = buildActionEvents('graph interest rates over time');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
+  it('returns suggest-widget action for plot with intermediate subject noun', () => {
+    const events = buildActionEvents('plot oil performance');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
   it('returns suggest-widget action for show me a chart', () => {
     const events = buildActionEvents('show me a chart of S&P 500 performance');
     assert.equal(events.length, 1);
@@ -273,7 +291,8 @@ describe('buildActionEvents — visual intent detection', () => {
   });
 
   it('VISUAL_INTENT_RE is case-insensitive', () => {
-    assert.ok(VISUAL_INTENT_RE.test('Chart Performance Over Time'));
+    assert.ok(VISUAL_INTENT_RE.test('Chart oil Performance Over Time'));
     assert.ok(VISUAL_INTENT_RE.test('SHOW ME A GRAPH of inflation trends'));
+    assert.ok(VISUAL_INTENT_RE.test('CHART OIL PRICES vs gold'));
   });
 });
