@@ -42,6 +42,8 @@ import {
   SavedPlacesPanel,
   LocalLogisticsPanel,
   CommsPlanPanel,
+  StoicQuotePanel,
+  BiblicalQuotePanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { EarthquakesPanel } from '@/components/EarthquakesPanel';
@@ -865,6 +867,8 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.panels['internet-disruptions'] = new InternetDisruptionsPanel();
       this.ctx.panels['national-debt'] = new NationalDebtPanel();
       this.ctx.panels['fuel-prices'] = new FuelPricesPanel();
+      this.ctx.panels['stoic-reflections'] = new StoicQuotePanel();
+      this.ctx.panels['biblical-encouragement'] = new BiblicalQuotePanel();
 
       this.ctx.panels['radiation-decay'] = new RadiationDecayPanel();
       this.ctx.panels['resource-inventory'] = new ResourceInventoryPanel();

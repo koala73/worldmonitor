@@ -204,7 +204,7 @@ export class Panel {
 
   /** Panel IDs that should not offer AI Summary (video streams or already-AI panels). */
   private static readonly AI_SUMMARY_EXCLUDED = new Set([
-    'live-webcams', 'live-news', 'map',
+    'live-webcams', 'live-news', 'map', 'stoic-reflections', 'biblical-encouragement',
   ]);
 
   constructor(options: PanelOptions) {

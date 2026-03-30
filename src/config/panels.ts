@@ -58,6 +58,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'nuclear-risk': { name: 'Nuclear Risk Tracker', enabled: true, priority: 2 },
   'airstrikes': { name: 'Air Strikes & Drones', enabled: true, priority: 2 },
   giving: { name: 'Global Giving', enabled: true, priority: 2 },
+  'stoic-reflections': { name: 'Stoic Reflections', enabled: true, priority: 3 },
+  'biblical-encouragement': { name: 'Biblical Encouragement', enabled: true, priority: 3 },
   displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
   climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
   'population-exposure': { name: 'Population Exposure', enabled: true, priority: 2 },
@@ -667,7 +669,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   healthEnv: {
     labelKey: 'header.panelCatHealthEnv',
-    panelKeys: ['giving', 'disease-outbreaks', 'air-quality', 'food-insecurity', 'radiation-decay', 'resource-inventory'],
+    panelKeys: ['giving', 'stoic-reflections', 'biblical-encouragement', 'disease-outbreaks', 'air-quality', 'food-insecurity', 'radiation-decay', 'resource-inventory'],
     variants: ['full'],
   },
 
