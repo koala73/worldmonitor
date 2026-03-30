@@ -110,7 +110,7 @@ export default async function handler(req: Request): Promise<Response> {
       return json(data, 200, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
-      await captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
+      void captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
       return json({ error: 'Failed to fetch' }, 500, corsHeaders);
     }
   }
@@ -187,7 +187,7 @@ export default async function handler(req: Request): Promise<Response> {
       return json({ error: 'Unknown action' }, 400, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
-      await captureEdgeException(err, { handler: 'notification-channels', method: 'POST' });
+      void captureEdgeException(err, { handler: 'notification-channels', method: 'POST' });
       return json({ error: 'Operation failed' }, 500, corsHeaders);
     }
   }
