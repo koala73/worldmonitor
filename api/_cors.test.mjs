@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 
 function makeRequest(origin) {
   const headers = new Headers();
@@ -37,4 +37,10 @@ test('rejects unrelated external origins', () => {
 test('requests without origin remain allowed', () => {
   const req = makeRequest(null);
   assert.equal(isDisallowedOrigin(req), false);
+});
+
+test('getPublicCorsHeaders returns ACAO: * with no Vary', () => {
+  const headers = getPublicCorsHeaders();
+  assert.equal(headers['Access-Control-Allow-Origin'], '*');
+  assert.equal(headers['Vary'], undefined, 'Should not include Vary header');
 });

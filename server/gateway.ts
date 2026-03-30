@@ -10,7 +10,7 @@
  */
 
 import { createRouter, type RouteDescriptor } from './router';
-import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../api/_api-key.js';
 import { mapErrorToResponse } from './error-mapper';
@@ -370,13 +370,18 @@ export function createDomainGateway(
         // bypassing auth entirely.
         const reqOrigin = request.headers.get('origin') || '';
         const cdnCache = isAllowedOrigin(reqOrigin) ? TIER_CDN_CACHE[tier] : null;
-        if (cdnCache) mergedHeaders.set('CDN-Cache-Control', cdnCache);
+        if (cdnCache) {
+          mergedHeaders.set('CDN-Cache-Control', cdnCache);
+          // For non-premium public GET routes: use ACAO: * to eliminate
+          // per-origin CDN cache fragmentation. Premium routes keep per-origin
+          // CORS to prevent cache-level auth bypass.
+          if (!PREMIUM_RPC_PATHS.has(pathname)) {
+            const pub = getPublicCorsHeaders();
+            for (const [k, v] of Object.entries(pub)) mergedHeaders.set(k, v);
+            mergedHeaders.delete('Vary');
+          }
+        }
         mergedHeaders.set('X-Cache-Tier', tier);
-
-        // Keep per-origin ACAO (already set from corsHeaders above) and preserve Vary: Origin.
-        // ACAO: * with no Vary would collapse all origins into one cache entry, bypassing
-        // isDisallowedOrigin() for cache hits — Vercel CDN serves s-maxage responses without
-        // re-invoking the function, so a disallowed origin could read a cached ACAO: * response.
       }
       mergedHeaders.delete('X-No-Cache');
       if (!new URL(request.url).searchParams.has('_debug')) {

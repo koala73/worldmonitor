@@ -40,6 +40,20 @@ export function getCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
+/**
+ * CORS headers for public cacheable responses (no per-user variation).
+ * Uses ACAO: * so Vercel CDN stores ONE cache entry per URL instead of one per
+ * unique Origin. Eliminates Vary: Origin cache fragmentation.
+ */
+export function getPublicCorsHeaders(): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Widget-Key, X-Pro-Key',
+    'Access-Control-Max-Age': '3600',
+  };
+}
+
 export function isDisallowedOrigin(req: Request): boolean {
   const origin = req.headers.get('origin');
   if (!origin) return false;

@@ -122,7 +122,7 @@ export default function middleware(request: Request) {
   if (BOT_UA.test(ua)) {
     return new Response('{"error":"Forbidden"}', {
       status: 403,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400' },
     });
   }
 
@@ -130,7 +130,7 @@ export default function middleware(request: Request) {
   if (!ua || ua.length < 10) {
     return new Response('{"error":"Forbidden"}', {
       status: 403,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400' },
     });
   }
 }
