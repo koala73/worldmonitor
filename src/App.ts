@@ -804,9 +804,9 @@ export class App {
             .then(async ([client, api]) => {
               if (!client || !api) return;
               const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
-              const claimed = result?.claimed;
-              const totalClaimed = (claimed?.subscriptions ?? 0) + (claimed?.entitlements ?? 0) +
-                                   (claimed?.customers ?? 0) + (claimed?.payments ?? 0);
+              const claimed = result.claimed;
+              const totalClaimed = claimed.subscriptions + claimed.entitlements +
+                                   claimed.customers + claimed.payments;
               if (totalClaimed > 0) {
                 console.log('[billing] Claimed anon subscription on sign-in:', claimed);
               }

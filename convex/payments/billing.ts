@@ -16,6 +16,10 @@ import { DodoPayments } from "dodopayments";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 
+// UUID v4 regex matching values produced by crypto.randomUUID() in user-identity.ts.
+// Hoisted to module scope to avoid re-allocation on every claimSubscription call.
+const ANON_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 // ---------------------------------------------------------------------------
 // Shared SDK config (direct REST SDK, not the Convex component from lib/dodo.ts)
 // ---------------------------------------------------------------------------
@@ -195,8 +199,7 @@ export const claimSubscription = mutation({
     // Validate anonId is a UUID v4 (format produced by crypto.randomUUID() in user-identity.ts).
     // Rejects injected Clerk IDs ("user_xxx") which are structurally distinct from UUID v4,
     // preventing cross-user subscription theft via localStorage injection.
-    const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!UUID_V4_REGEX.test(args.anonId) || args.anonId === realUserId) {
+    if (!ANON_ID_REGEX.test(args.anonId) || args.anonId === realUserId) {
       return { claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 } };
     }
 
