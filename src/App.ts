@@ -804,10 +804,15 @@ export class App {
             .then(async ([client, api]) => {
               if (!client || !api) return;
               const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
-              if (result.claimed.subscriptions > 0 || result.claimed.entitlements > 0) {
-                console.log('[billing] Claimed anon subscription on sign-in:', result.claimed);
-                localStorage.removeItem('wm-anon-id');
+              const claimed = result?.claimed;
+              const totalClaimed = (claimed?.subscriptions ?? 0) + (claimed?.entitlements ?? 0) +
+                                   (claimed?.customers ?? 0) + (claimed?.payments ?? 0);
+              if (totalClaimed > 0) {
+                console.log('[billing] Claimed anon subscription on sign-in:', claimed);
               }
+              // Always remove after non-throwing completion — mutation is idempotent.
+              // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
+              localStorage.removeItem('wm-anon-id');
             })
             .catch((err: unknown) => {
               console.warn('[billing] claimSubscription failed:', err);

@@ -192,13 +192,12 @@ export const claimSubscription = mutation({
   handler: async (ctx, args) => {
     const realUserId = await requireUserId(ctx);
 
-    // Rate limit: prevent rapid repeated claim calls from same user
-    const recentEntitlement = await ctx.db
-      .query("entitlements")
-      .withIndex("by_userId", (q) => q.eq("userId", realUserId))
-      .first();
-    if (recentEntitlement?.updatedAt && Date.now() - recentEntitlement.updatedAt < 60_000) {
-      throw new Error("Too many claim attempts. Wait 60 seconds before retrying.");
+    // Validate anonId is a UUID v4 (format produced by crypto.randomUUID() in user-identity.ts).
+    // Rejects injected Clerk IDs ("user_xxx") which are structurally distinct from UUID v4,
+    // preventing cross-user subscription theft via localStorage injection.
+    const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!UUID_V4_REGEX.test(args.anonId) || args.anonId === realUserId) {
+      return { claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 } };
     }
 
     // Reassign subscriptions
