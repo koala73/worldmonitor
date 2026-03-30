@@ -283,7 +283,7 @@ export class PanelLayoutManager implements AppModule {
             </a>`;
       })()}</div>
           ${isGantorDeploy() ? `<span class="gantor-services">
-            <a href="https://gantor.ir" target="_blank" rel="noopener" title="OpenHands AI Dev Platform">OpenHands</a>
+            <a href="https://hands.gantor.ir" target="_blank" rel="noopener" title="OpenHands AI Dev Platform">OpenHands</a>
             <span class="gantor-sep">&middot;</span>
             <a href="https://freegpt.ir" target="_blank" rel="noopener" title="FreeGPT Chat">FreeGPT</a>
           </span>` : ''}
@@ -378,7 +378,7 @@ export class PanelLayoutManager implements AppModule {
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">Blog</a>
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
-          ${isGantorDeploy() ? '<a href="https://gantor.ir" target="_blank" rel="noopener">OpenHands</a><a href="https://freegpt.ir" target="_blank" rel="noopener">FreeGPT</a>' : ''}
+          ${isGantorDeploy() ? '<a href="https://hands.gantor.ir" target="_blank" rel="noopener">OpenHands</a><a href="https://freegpt.ir" target="_blank" rel="noopener">FreeGPT</a>' : ''}
         </div>
         <div class="mobile-menu-version">v${__APP_VERSION__}</div>
       </nav>
@@ -449,7 +449,7 @@ export class PanelLayoutManager implements AppModule {
           <a href="https://github.com/danialsamiei/worldmonitor" target="_blank" rel="noopener">GitHub</a>
           <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener">X</a>
-          ${isGantorDeploy() ? '<a href="https://gantor.ir" target="_blank" rel="noopener">OpenHands</a><a href="https://freegpt.ir" target="_blank" rel="noopener">FreeGPT</a>' : ''}
+          ${isGantorDeploy() ? '<a href="https://hands.gantor.ir" target="_blank" rel="noopener">OpenHands</a><a href="https://freegpt.ir" target="_blank" rel="noopener">FreeGPT</a>' : ''}
           ${this.ctx.isDesktopApp ? '' : `<span id="footerDownloadMount"></span>`}
         </nav>
         <span class="site-footer-copy">&copy; ${new Date().getFullYear()} Gantor WorldMonitor</span>
