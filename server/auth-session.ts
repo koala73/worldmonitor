@@ -19,8 +19,10 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 
 // Module-scope JWKS resolver -- cached across warm invocations.
 // jose handles key rotation and caching internally.
+// Exported so server/_shared/auth-session.ts can reuse the same singleton
+// (avoids duplicate JWKS HTTP fetches on cold start).
 let _jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-function getJWKS() {
+export function getJWKS() {
   if (!_jwks && CLERK_JWT_ISSUER_DOMAIN) {
     const jwksUrl = new URL('/.well-known/jwks.json', CLERK_JWT_ISSUER_DOMAIN);
     _jwks = createRemoteJWKSet(jwksUrl);

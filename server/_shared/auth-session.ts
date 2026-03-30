@@ -2,28 +2,18 @@
  * Gateway-level JWT verification for Clerk bearer tokens.
  *
  * Extracts and verifies the `Authorization: Bearer <token>` header using
- * the JWKS endpoint from CLERK_JWT_ISSUER_DOMAIN. Returns the userId
- * (JWT `sub` claim) on success, or null on any failure (fail-open).
+ * the shared JWKS singleton from `server/auth-session.ts`. Returns the userId
+ * (JWT `sub` claim) on success, or null on any failure.
+ *
+ * Shares the same JWKS cache as `validateBearerToken` — no duplicate
+ * key fetches on cold start.
  *
  * Activated by setting CLERK_JWT_ISSUER_DOMAIN env var. When not set,
  * all calls return null and the gateway falls back to API-key-only auth.
  */
 
-import { createRemoteJWKSet, jwtVerify } from 'jose';
-
-// Cached JWKS — singleton per cold start, refreshed by jose internally.
-let _jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-
-function getJwks(): ReturnType<typeof createRemoteJWKSet> | null {
-  if (_jwks) return _jwks;
-
-  const issuerDomain = process.env.CLERK_JWT_ISSUER_DOMAIN;
-  if (!issuerDomain) return null;
-
-  const jwksUrl = new URL('/.well-known/jwks.json', issuerDomain);
-  _jwks = createRemoteJWKSet(jwksUrl);
-  return _jwks;
-}
+import { jwtVerify } from 'jose';
+import { getJWKS } from '../auth-session';
 
 /**
  * Extracts and verifies a bearer token from the request.
@@ -39,7 +29,7 @@ export async function resolveSessionUserId(request: Request): Promise<string | n
     const token = authHeader.slice(7);
     if (!token) return null;
 
-    const jwks = getJwks();
+    const jwks = getJWKS();
     if (!jwks) return null; // CLERK_JWT_ISSUER_DOMAIN not configured
 
     const issuerDomain = process.env.CLERK_JWT_ISSUER_DOMAIN!;

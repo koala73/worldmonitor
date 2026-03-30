@@ -123,17 +123,3 @@ export async function openBillingPortal(): Promise<void> {
   // TODO: Once Clerk auth is wired, call getCustomerPortalUrl for personalized portal URL
   window.open('https://customer.dodopayments.com', '_blank');
 }
-
-/**
- * Change the user's subscription plan.
- *
- * changePlan is an internal action (not callable from browser) to prevent
- * IDOR attacks before Clerk auth is wired. Plan changes are handled via
- * the Dodo Customer Portal for now. Once Clerk auth lands, this will call
- * the action directly.
- */
-export async function changePlan(_newProductId: string): Promise<{ success: boolean }> {
-  // TODO: Once Clerk auth is wired, call changePlan action directly
-  console.warn('[billing] Plan changes are handled via the Dodo Customer Portal');
-  return { success: false };
-}

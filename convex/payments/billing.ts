@@ -6,7 +6,7 @@
  * - getCustomerByUserId: internal query for portal session creation
  * - getActiveSubscription: internal query for plan change validation
  * - getCustomerPortalUrl: authenticated action to create a Dodo Customer Portal session
- * - changePlan: authenticated action to upgrade/downgrade subscription via Dodo SDK
+ * - claimSubscription: mutation to migrate entitlements from anon ID to authed user
  */
 
 import { v } from "convex/values";
@@ -158,47 +158,6 @@ export const getCustomerPortalUrl = internalAction({
     );
 
     return { portal_url: session.link };
-  },
-});
-
-/**
- * Changes the subscription plan for a user (upgrade or downgrade).
- *
- * Internal action — not callable from the browser directly. Plan changes
- * are delegated to the Dodo Customer Portal UI for now. Once Clerk auth
- * is wired into the ConvexClient, this can be promoted to a public action
- * with requireUserId(ctx) for auth gating.
- */
-export const changePlan = internalAction({
-  args: {
-    userId: v.string(),
-    newProductId: v.string(),
-    prorationMode: v.union(
-      v.literal("prorated_immediately"),
-      v.literal("full_immediately"),
-      v.literal("difference_immediately"),
-    ),
-  },
-  handler: async (ctx, args) => {
-    const userId = args.userId;
-
-    const subscription = await ctx.runQuery(
-      internal.payments.billing.getActiveSubscription,
-      { userId },
-    );
-
-    if (!subscription) {
-      throw new Error("No active subscription found");
-    }
-
-    const client = getDodoClient();
-    await client.subscriptions.changePlan(subscription.dodoSubscriptionId, {
-      product_id: args.newProductId,
-      quantity: 1,
-      proration_billing_mode: args.prorationMode,
-    });
-
-    return { success: true };
   },
 });
 

@@ -39,13 +39,12 @@ export const processWebhookEvent = internalMutation({
       .first();
 
     if (existing) {
-      if (existing.status === "processed") {
-        console.warn(`[webhook] Duplicate webhook ${args.webhookId}, already processed — skipping`);
-        return;
-      }
-      // Previously failed — delete the stale record so we can retry cleanly
-      console.warn(`[webhook] Retrying previously failed webhook ${args.webhookId}`);
-      await ctx.db.delete(existing._id);
+      // Records are only inserted after successful processing (see step 3 below).
+      // If the handler throws, Convex rolls back the transaction and no record
+      // is written. So `existing` always has status "processed" — it's a true
+      // duplicate we can safely skip.
+      console.warn(`[webhook] Duplicate webhook ${args.webhookId}, already processed — skipping`);
+      return;
     }
 
     // 2. Dispatch to event-type-specific handlers.

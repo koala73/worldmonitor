@@ -30,26 +30,21 @@ export const FREE_FEATURES: PlanFeatures = {
  * Plan keys match the `planKey` field in the `productPlans` and
  * `subscriptions` tables.
  */
+/** Shared features for all Pro billing cycles (monthly/annual). */
+const PRO_FEATURES: PlanFeatures = {
+  tier: 1,
+  maxDashboards: 10,
+  apiAccess: false,
+  apiRateLimit: 0,
+  prioritySupport: false,
+  exportFormats: ["csv", "pdf"],
+};
+
 export const PLAN_FEATURES: Record<string, PlanFeatures> = {
   free: FREE_FEATURES,
 
-  pro_monthly: {
-    tier: 1,
-    maxDashboards: 10,
-    apiAccess: false,
-    apiRateLimit: 0,
-    prioritySupport: false,
-    exportFormats: ["csv", "pdf"],
-  },
-
-  pro_annual: {
-    tier: 1,
-    maxDashboards: 10,
-    apiAccess: false,
-    apiRateLimit: 0,
-    prioritySupport: false,
-    exportFormats: ["csv", "pdf"],
-  },
+  pro_monthly: PRO_FEATURES,
+  pro_annual: PRO_FEATURES,
 
   api_starter: {
     tier: 2,

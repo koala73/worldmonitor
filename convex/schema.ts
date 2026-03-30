@@ -126,8 +126,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
-    .index("by_status", ["status"]),
+    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
 
   entitlements: defineTable({
     userId: v.string(),
