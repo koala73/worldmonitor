@@ -86,9 +86,9 @@ function parseIntent(raw: string): Intent {
         }
     }
 
-    // PRICE / PRICES <ORG> <DST>  or  <ORG> TO <DST> PRICE[S]  (supports city names)
-    if (words.some(w => /^PRICE[S]?$/.test(w))) {
-        const nonKeywords = words.filter(w => !/^(PRICE[S]?|TO|FROM|ON|FOR)$/.test(w) && !/^\d{4}-\d{2}-\d{2}$/.test(w));
+    // FLY / FLIGHTS / FARES / BOOK <ORG> <DST>  (supports city names)
+    if (words.some(w => /^(FLY|FLIGHTS?|FARES?|BOOK)$/.test(w))) {
+        const nonKeywords = words.filter(w => !/^(FLY|FLIGHTS?|FARES?|BOOK|TO|FROM|ON|FOR)$/.test(w) && !/^\d{4}-\d{2}-\d{2}$/.test(w));
         const priceAirports = extractAirports(nonKeywords);
         if (priceAirports.length >= 2) {
             const date = raw.match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1];
@@ -168,7 +168,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
             const d = addLocalDays(days);
             const lbl = days === 1 ? 'Tomorrow' : `+${days}d`;
             const active = d === date;
-            const cmd = `price ${intent.origin} ${intent.destination} ${d}`;
+            const cmd = `fly ${intent.origin} ${intent.destination} ${d}`;
             return `<button data-rerun="${escapeHtml(cmd)}" style="background:${active ? 'rgba(96,165,250,.15)' : 'none'};border:1px solid ${active ? '#60a5fa' : '#374151'};border-radius:3px;color:${active ? '#60a5fa' : '#6b7280'};cursor:pointer;font-size:10px;padding:1px 6px">${lbl}</button>`;
         }).join('');
         const header = `<div style="margin-bottom:4px">
@@ -236,7 +236,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
     }
 
     return {
-        html: `<div class="cmd-empty">Try: <code>ops Dubai</code>, <code>flight EK3</code>, <code>price London Dubai</code>, <code>brief TK</code></div>`,
+        html: `<div class="cmd-empty">Try: <code>ops Dubai</code>, <code>flight EK3</code>, <code>fly London Dubai</code>, <code>brief TK</code></div>`,
         error: true,
     };
 }
@@ -279,7 +279,7 @@ export class AviationCommandBar {
           <span>✈️ Aviation Command</span>
           <button id="aviation-cmd-close">×</button>
         </div>
-        <input id="aviation-cmd-input" type="text" placeholder="ops Dubai  ·  flight EK3  ·  price London Dubai  ·  brief" autocomplete="off" spellcheck="false">
+        <input id="aviation-cmd-input" type="text" placeholder="ops Dubai  ·  flight EK3  ·  fly London Dubai  ·  brief" autocomplete="off" spellcheck="false">
         <div id="aviation-cmd-suggestions"></div>
         <div id="aviation-cmd-result"></div>
         <div id="aviation-cmd-history-list"></div>
@@ -373,7 +373,7 @@ export class AviationCommandBar {
         const suggestions = [
             'ops IST', 'ops Dubai', 'ops London', 'ops LHR FRA', 'ops Lisbon',
             'flight TK1', 'flight EK3', 'ME426 status',
-            'price IST LHR', 'price Dubai London', 'price LHR to DXB', 'price BEY DXB',
+            'fly IST LHR', 'fly Dubai London', 'fly LHR to DXB', 'fly BEY DXB',
             'brief', 'brief TK',
         ].filter(s => s.toLowerCase().startsWith(val.toLowerCase()) && s.toLowerCase() !== val.toLowerCase());
         if (!val || !suggestions.length) { el.innerHTML = ''; return; }
