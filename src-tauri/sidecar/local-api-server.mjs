@@ -8,8 +8,145 @@ import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { WebSocket as AisWebSocket } from 'ws';
 
 const brotliCompressAsync = promisify(brotliCompress);
+
+// ── AIS Stream Manager ────────────────────────────────────────────────────
+// Connects directly to aisstream.io using AISSTREAM_API_KEY (set via settings).
+// Maintains in-memory vessel state; serves /api/ais-snapshot with no relay needed.
+const AISSTREAM_WS_URL = 'wss://stream.aisstream.io/v0/stream';
+const AIS_VESSEL_TTL_MS = 30 * 60 * 1000;
+const AIS_MAX_VESSELS = 20_000;
+const AIS_RECONNECT_DELAY_MS = 5_000;
+const AIS_NAVAL_PREFIX_RE = /^(USS|USNS|HMS|HMAS|HMCS|INS|JS|ROKS|TCG|FS|BNS|RFS|PLAN|PLA|CGC|PNS|KRI|ITS|SNS)/i;
+
+const aisState = {
+  socket: null,
+  vessels: new Map(),
+  candidateReports: new Map(),
+  reconnectTimer: null,
+  messageCount: 0,
+  sequence: 0,
+  lastSnapshotAt: 0,
+  lastSnapshotJson: null,
+  activeKey: null,
+};
+
+function aisBuildSnapshot() {
+  const now = Date.now();
+  if (aisState.lastSnapshotJson && now - aisState.lastSnapshotAt < 2500) {
+    return aisState.lastSnapshotJson;
+  }
+  const cutoff = now - AIS_VESSEL_TTL_MS;
+  for (const [mmsi, v] of aisState.vessels) {
+    if (v.timestamp < cutoff) aisState.vessels.delete(mmsi);
+  }
+  if (aisState.vessels.size > AIS_MAX_VESSELS) {
+    const sorted = [...aisState.vessels.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+    for (const [mmsi] of sorted.slice(0, aisState.vessels.size - AIS_MAX_VESSELS)) aisState.vessels.delete(mmsi);
+  }
+  const snapshot = {
+    sequence: ++aisState.sequence,
+    timestamp: new Date(now).toISOString(),
+    status: {
+      connected: aisState.socket?.readyState === 1,
+      vessels: aisState.vessels.size,
+      messages: aisState.messageCount,
+    },
+    disruptions: [],
+    density: [],
+    candidateReports: [...aisState.candidateReports.values()].slice(0, 1500),
+  };
+  aisState.lastSnapshotJson = JSON.stringify(snapshot);
+  aisState.lastSnapshotAt = now;
+  return aisState.lastSnapshotJson;
+}
+
+function aisIsLikelyMilitary(meta) {
+  const shipType = Number(meta?.ShipType);
+  if (shipType === 35 || shipType === 55 || (shipType >= 50 && shipType <= 59)) return true;
+  const name = (meta?.ShipName || '').trim();
+  if (name && AIS_NAVAL_PREFIX_RE.test(name)) return true;
+  const mmsi = String(meta?.MMSI || '');
+  if (mmsi.length >= 9 && (mmsi.substring(3).startsWith('00') || mmsi.substring(3).startsWith('99'))) return true;
+  return false;
+}
+
+function aisProcessMessage(raw) {
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { return; }
+  if (parsed?.MessageType !== 'PositionReport') return;
+  const meta = parsed.MetaData;
+  const pos = parsed.Message?.PositionReport;
+  if (!meta || !pos) return;
+  const mmsi = String(meta.MMSI || '');
+  if (!mmsi) return;
+  const lat = Number.isFinite(pos.Latitude) ? pos.Latitude : meta.latitude;
+  const lon = Number.isFinite(pos.Longitude) ? pos.Longitude : meta.longitude;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  const now = Date.now();
+  aisState.vessels.set(mmsi, {
+    mmsi, name: meta.ShipName || '', lat, lon, timestamp: now,
+    shipType: meta.ShipType, heading: pos.TrueHeading, speed: pos.Sog, course: pos.Cog,
+  });
+  aisState.messageCount++;
+  aisState.lastSnapshotJson = null; // invalidate cache
+  if (aisIsLikelyMilitary(meta)) {
+    aisState.candidateReports.set(mmsi, {
+      mmsi, name: meta.ShipName || '', lat, lon,
+      shipType: meta.ShipType, heading: pos.TrueHeading, speed: pos.Sog, course: pos.Cog, timestamp: now,
+    });
+  }
+}
+
+function aisConnect(apiKey) {
+  if (!apiKey) return;
+  if (aisState.socket && (aisState.socket.readyState === 0 || aisState.socket.readyState === 1)) return;
+  aisState.activeKey = apiKey;
+  const socket = new AisWebSocket(AISSTREAM_WS_URL);
+  aisState.socket = socket;
+
+  socket.on('open', () => {
+    socket.send(JSON.stringify({
+      APIKey: apiKey,
+      BoundingBoxes: [[[-90, -180], [90, 180]]],
+      FilterMessageTypes: ['PositionReport'],
+    }));
+  });
+
+  socket.on('message', (data) => {
+    aisProcessMessage(typeof data === 'string' ? data : data.toString());
+  });
+
+  socket.on('close', () => {
+    if (aisState.socket === socket) {
+      aisState.socket = null;
+      const currentKey = process.env.AISSTREAM_API_KEY;
+      if (currentKey && currentKey === aisState.activeKey) {
+        aisState.reconnectTimer = setTimeout(() => aisConnect(currentKey), AIS_RECONNECT_DELAY_MS);
+      }
+    }
+  });
+
+  socket.on('error', () => { /* close event handles reconnect */ });
+}
+
+function aisDisconnect() {
+  aisState.activeKey = null;
+  if (aisState.reconnectTimer) { clearTimeout(aisState.reconnectTimer); aisState.reconnectTimer = null; }
+  if (aisState.socket) { try { aisState.socket.close(); } catch {} aisState.socket = null; }
+}
+
+function aisOnKeyChanged(newKey) {
+  aisDisconnect();
+  if (newKey) aisConnect(newKey);
+}
+
+if (process.env.AISSTREAM_API_KEY) {
+  aisConnect(process.env.AISSTREAM_API_KEY);
+}
+// ── end AIS Stream Manager ────────────────────────────────────────────────
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -2508,6 +2645,7 @@ async function dispatch(requestUrl, req, routes, context) {
               process.env[key] = String(value);
               context.logger.log(`[local-api] env set: ${key}`);
             }
+            if (key === 'AISSTREAM_API_KEY') aisOnKeyChanged(value || null);
             moduleCache.clear();
             failedImports.clear();
             cloudPreferred.clear();
@@ -3032,6 +3170,20 @@ async function dispatch(requestUrl, req, routes, context) {
     } catch (e) {
       return json({ events: [], updatedAt: Math.floor(Date.now() / 1000), error: e?.message ?? 'unknown' });
     }
+  }
+
+  // ── AIS snapshot — served from sidecar's own aisstream.io connection ────────
+  if (requestUrl.pathname === '/api/ais-snapshot') {
+    const apiKey = process.env.AISSTREAM_API_KEY;
+    if (!apiKey) {
+      return json({ error: 'AISSTREAM_API_KEY not configured — add your key in Settings → Tracking & Sensing' }, 503);
+    }
+    // Ensure connected (handles case where key was just set and connect hasn't fired yet)
+    if (!aisState.socket || aisState.socket.readyState > 1) aisConnect(apiKey);
+    return new Response(aisBuildSnapshot(), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+    });
   }
 
   if (context.cloudFallback && cloudPreferred.has(requestUrl.pathname)) {
