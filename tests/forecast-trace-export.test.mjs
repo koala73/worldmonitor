@@ -7911,6 +7911,62 @@ describe('writeSimulationDecorations and applySimulationDecorationsToForecasts',
     assert.equal(canon[1].demotedBySimulation, false, 'fc-stale-02 demotion cleared');
   });
 
+  it('WD-18: patchPublishedForecastsWithSimDecorations skips when canonical key is from a newer run', async () => {
+    // Scenario: run A (older) finishes its deep task late and tries to patch the canonical key
+    // that was already overwritten by run B (newer fast-path seed). The guard must prevent
+    // run A from stamping stale simulation adjustments onto run B's payload.
+    const newerRunGeneratedAt = Date.now();
+    const olderRunGeneratedAt = newerRunGeneratedAt - 120_000; // 2 min earlier
+    const store = {
+      [CANONICAL_KEY]: {
+        generatedAt: newerRunGeneratedAt,  // run B's publish
+        predictions: [
+          { id: 'fc-newer-01', simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false, title: 'Newer 01' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    // Run A's deep task produces adjustments but snapshot is from the older run
+    const stateUnits = [makeStateUnit('state-old', ['fc-newer-01'])];
+    const adjs = [makeAdj('state-old', 0.12, 0.99)];
+    const olderSnapshot = { runId: 'run-older', generatedAt: olderRunGeneratedAt, fullRunStateUnits: stateUnits };
+    await writeSimulationDecorations(makeMergeResult(adjs), olderSnapshot);
+
+    // Side key written (decorations recorded)
+    assert.ok(store[SIMULATION_DECORATIONS_KEY], 'side key still written for the run record');
+
+    // Canonical key must NOT have been touched — still has run B's values
+    const canon = store[CANONICAL_KEY].predictions;
+    assert.equal(canon[0].simulationAdjustment, 0.08, 'run B sim adjustment preserved — run A must not overwrite');
+    assert.equal(canon[0].simPathConfidence, 0.9, 'run B sim confidence preserved');
+    assert.equal(store[CANONICAL_KEY].generatedAt, newerRunGeneratedAt, 'canonical generatedAt unchanged');
+  });
+
+  it('WD-19: patchPublishedForecastsWithSimDecorations patches when canonical key matches run (same generatedAt)', async () => {
+    // Scenario: deep forecast and canonical key share the same generatedAt — same run.
+    // The guard must NOT fire and the patch must proceed normally.
+    const sharedGeneratedAt = Date.now() - 1000;
+    const store = {
+      [CANONICAL_KEY]: {
+        generatedAt: sharedGeneratedAt,
+        predictions: [
+          { id: 'fc-same-01', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Same 01' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    const stateUnits = [makeStateUnit('state-same', ['fc-same-01'])];
+    const adjs = [makeAdj('state-same', 0.12, 0.88)];
+    const sameRunSnapshot = { runId: 'run-same', generatedAt: sharedGeneratedAt, fullRunStateUnits: stateUnits };
+    await writeSimulationDecorations(makeMergeResult(adjs), sameRunSnapshot);
+
+    const canon = store[CANONICAL_KEY].predictions;
+    assert.equal(canon[0].simulationAdjustment, 0.12, 'same-run patch applied');
+    assert.equal(canon[0].simPathConfidence, 0.88, 'same-run confidence applied');
+  });
+
   it('WD-15: inline deep path — applySimulationMerge result + snapshot.fullRunStateUnits writes decorations (covers processDeepForecastTask call site)', async () => {
     // Reproduces the inline sequence in processDeepForecastTask:
     //   mergeResult = applySimulationMerge(evaluation, simulationOutcome, candidates, snapshot, priorWorldState)

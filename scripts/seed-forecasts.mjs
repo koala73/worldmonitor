@@ -16381,8 +16381,9 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
     }, SIMULATION_DECORATIONS_TTL_SECONDS);
     console.log(`  [SimulationDecorations] Written ${decorationCount} decorations from ${byCandidateId.size} candidates (runId=${snapshot?.runId || 'unknown'})`);
     // Immediately patch forecast:predictions:v2 so the panel sees this run's simulation data
-    // without waiting for the next fast-path seed.
-    await patchPublishedForecastsWithSimDecorations(byForecastId);
+    // without waiting for the next fast-path seed. Pass runGeneratedAt so the patch can reject
+    // a newer run's payload (prevents cross-run stamping when workers finish out of order).
+    await patchPublishedForecastsWithSimDecorations(byForecastId, snapshot?.generatedAt);
   } catch (err) {
     console.warn(`  [SimulationDecorations] Write failed: ${err.message}`);
   }
@@ -16398,16 +16399,29 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
  * Forecasts NOT in byForecastId have their sim fields reset to 0 / false, so that
  * any stale values from a prior run are cleared at the same time.
  *
+ * Run-mismatch guard: if the canonical key's generatedAt is strictly greater than
+ * runGeneratedAt, the key belongs to a newer fast-path seed and must NOT be patched
+ * with this run's (older) simulation data. Deep-forecast and simulation workers can
+ * finish out of order; without this guard an older worker would stamp stale adjustments
+ * onto a newer published payload or reset newer sim fields back to zero.
+ *
  * Non-fatal: any failure is logged as a warning and the function returns.
  *
  * @param {Record<string, {simulationAdjustment: number, simPathConfidence: number, demotedBySimulation: boolean}>} byForecastId
+ * @param {number} [runGeneratedAt] — generatedAt from the snapshot that produced byForecastId
  */
-async function patchPublishedForecastsWithSimDecorations(byForecastId) {
+async function patchPublishedForecastsWithSimDecorations(byForecastId, runGeneratedAt) {
   try {
     const { url, token } = getRedisCredentials();
     const published = await redisGet(url, token, CANONICAL_KEY);
     if (!Array.isArray(published?.predictions)) {
       console.warn('  [SimulationDecorations] Cannot patch canonical key — predictions missing or not an array');
+      return;
+    }
+    // Run-mismatch guard: skip if the canonical key belongs to a newer fast-path seed.
+    if (typeof runGeneratedAt === 'number' && typeof published.generatedAt === 'number'
+        && published.generatedAt > runGeneratedAt) {
+      console.log(`  [SimulationDecorations] Skipping patch — canonical key is from a newer run (published=${published.generatedAt}, sim_run=${runGeneratedAt})`);
       return;
     }
     let patched = 0;
