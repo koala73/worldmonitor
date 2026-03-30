@@ -17,8 +17,9 @@ export interface ConflictSceneConfig {
    */
   kmlUrl?: string;
   /**
-   * KML folder names → English labels shown in the conflict legend.
-   * Only folders listed here are rendered; all others are hidden.
+   * KML folder names → English labels shown in the conflict legend panel.
+   * All non-Point geometry is rendered on the map regardless; this mapping
+   * only controls which folders appear as named swatches in the legend.
    */
   folderTranslations?: Record<string, string>;
 }
