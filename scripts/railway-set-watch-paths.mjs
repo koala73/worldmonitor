@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Sets watchPatterns and validates startCommand on all Railway seed services.
+ * Sets watchPatterns, validates startCommand, and syncs cronSchedule on Railway seed services.
  *
  * All seed services use rootDirectory="scripts", so the correct startCommand
  * is `node seed-<name>.mjs` (NOT `node scripts/seed-<name>.mjs` — that path
@@ -22,6 +22,10 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const PROJECT_ID = '29419572-0b0d-437f-8e71-4fa68daf514f';
 const ENV_ID = '91a05726-0b83-4d44-a33e-6aec94e58780';
 const API = 'https://backboard.railway.app/graphql/v2';
+const REQUIRED_SEED_SERVICES = new Set(['seed-regulatory-actions']);
+const EXPECTED_CRON_SCHEDULES = new Map([
+  ['seed-regulatory-actions', '0 */2 * * *'],
+]);
 
 // Seeds that use loadSharedConfig (depend on scripts/shared/*.json)
 const USES_SHARED_CONFIG = new Set([
@@ -50,6 +54,21 @@ async function gql(token, query, variables = {}) {
   return json.data;
 }
 
+function buildExpectedPatterns(serviceName) {
+  const scriptFile = `scripts/${serviceName}.mjs`;
+  const patterns = [scriptFile, 'scripts/_seed-utils.mjs', 'scripts/package.json'];
+
+  if (USES_SHARED_CONFIG.has(serviceName)) {
+    patterns.push('scripts/shared/**', 'shared/**');
+  }
+
+  if (serviceName === 'seed-iran-events') {
+    patterns.push('scripts/data/iran-events-latest.json');
+  }
+
+  return patterns;
+}
+
 async function main() {
   const token = getToken();
 
@@ -66,15 +85,22 @@ async function main() {
     .map(e => e.node)
     .filter(s => s.name.startsWith('seed-'));
 
+  const missingRequiredServices = [...REQUIRED_SEED_SERVICES].filter(
+    (name) => !services.some((service) => service.name === name)
+  );
+  if (missingRequiredServices.length > 0) {
+    throw new Error(`Missing required seed service(s): ${missingRequiredServices.join(', ')}`);
+  }
+
   console.log(`Found ${services.length} seed services\n`);
 
-  // 2. Check each service's watchPatterns and startCommand
+  // 2. Check each service's watchPatterns, startCommand, and cronSchedule
   for (const svc of services) {
     const { service } = await gql(token, `
       query ($id: String!, $envId: String!) {
         service(id: $id) {
           serviceInstances(first: 1, environmentId: $envId) {
-            edges { node { watchPatterns startCommand } }
+            edges { node { watchPatterns startCommand cronSchedule } }
           }
         }
       }
@@ -83,26 +109,20 @@ async function main() {
     const instance = service.serviceInstances.edges[0]?.node || {};
     const currentPatterns = instance.watchPatterns || [];
     const currentStartCmd = instance.startCommand || '';
+    const currentCronSchedule = instance.cronSchedule || '';
 
     // rootDirectory="scripts" so startCommand must NOT include the scripts/ prefix
     const expectedStartCmd = `node ${svc.name}.mjs`;
     const startCmdOk = currentStartCmd === expectedStartCmd;
+    const expectedCronSchedule = EXPECTED_CRON_SCHEDULES.get(svc.name) || '';
+    const hasExpectedCronSchedule = EXPECTED_CRON_SCHEDULES.has(svc.name);
+    const cronScheduleOk = !hasExpectedCronSchedule || currentCronSchedule === expectedCronSchedule;
 
     // Build expected watch patterns (relative to git repo root)
-    const scriptFile = `scripts/${svc.name}.mjs`;
-    const patterns = [scriptFile, 'scripts/_seed-utils.mjs', 'scripts/package.json'];
-
-    if (USES_SHARED_CONFIG.has(svc.name)) {
-      patterns.push('scripts/shared/**', 'shared/**');
-    }
-
-    if (svc.name === 'seed-iran-events') {
-      patterns.push('scripts/data/iran-events-latest.json');
-    }
-
+    const patterns = buildExpectedPatterns(svc.name);
     const patternsOk = JSON.stringify(currentPatterns.sort()) === JSON.stringify([...patterns].sort());
 
-    if (patternsOk && startCmdOk) {
+    if (patternsOk && startCmdOk && cronScheduleOk) {
       console.log(`  ${svc.name}: already correct`);
       continue;
     }
@@ -116,6 +136,10 @@ async function main() {
       console.log(`    watchPatterns current:  ${currentPatterns.length ? currentPatterns.join(', ') : '(none)'}`);
       console.log(`    watchPatterns setting:  ${patterns.join(', ')}`);
     }
+    if (hasExpectedCronSchedule && !cronScheduleOk) {
+      console.log(`    cronSchedule current: ${currentCronSchedule || '(none)'}`);
+      console.log(`    cronSchedule expected: ${expectedCronSchedule}`);
+    }
 
     if (DRY_RUN) {
       console.log(`    [DRY RUN] skipped\n`);
@@ -126,6 +150,7 @@ async function main() {
     const input = {};
     if (!patternsOk) input.watchPatterns = patterns;
     if (!startCmdOk) input.startCommand = expectedStartCmd;
+    if (hasExpectedCronSchedule && !cronScheduleOk) input.cronSchedule = expectedCronSchedule;
 
     await gql(token, `
       mutation ($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
