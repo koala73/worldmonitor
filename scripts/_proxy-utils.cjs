@@ -82,12 +82,15 @@ function resolveProxyString() {
 /**
  * Returns proxy as "user:pass@host:port" string for use with HTTP CONNECT tunneling.
  * Does NOT replace gate.decodo.com → us.decodo.com; CONNECT endpoint is gate.decodo.com.
+ * When PROXY_URL uses https:// (TLS proxy), returns "https://user:pass@host:port" so
+ * httpsProxyFetchJson can detect and use https.request instead of http.request.
  * Returns empty string if no proxy configured.
  */
 function resolveProxyStringConnect() {
   const cfg = resolveProxyConfigWithFallback();
   if (!cfg) return '';
-  return cfg.auth ? `${cfg.auth}@${cfg.host}:${cfg.port}` : `${cfg.host}:${cfg.port}`;
+  const base = cfg.auth ? `${cfg.auth}@${cfg.host}:${cfg.port}` : `${cfg.host}:${cfg.port}`;
+  return cfg.tls ? `https://${base}` : base;
 }
 
 module.exports = { parseProxyConfig, resolveProxyConfig, resolveProxyConfigWithFallback, resolveProxyString, resolveProxyStringConnect };

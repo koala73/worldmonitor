@@ -342,43 +342,60 @@ export function curlFetch(url, proxyAuth, headers = {}) {
   return raw.slice(0, nl);
 }
 
-// Pure Node.js HTTPS-through-HTTP-proxy (CONNECT tunnel).
-// Replaces curlFetch for seeder scripts running in containers without curl.
-// proxyAuth format: "user:pass@host:port"
+// Pure Node.js HTTPS-through-TLS-proxy (CONNECT tunnel).
+// Always connects to the proxy over TLS (tls.connect), then manually sends the HTTP
+// CONNECT request over the TLS socket. This works for both plain PROXY_URL values
+// ("user:pass@host:port") and https:// prefixed values — always uses TLS to proxy.
+// proxyAuth format: "user:pass@host:port" OR "https://user:pass@host:port"
 async function httpsProxyFetchJson(url, proxyAuth) {
   const targetUrl = new URL(url);
-  const atIdx = proxyAuth.lastIndexOf('@');
-  const credentials = atIdx >= 0 ? proxyAuth.slice(0, atIdx) : '';
-  const hostPort = atIdx >= 0 ? proxyAuth.slice(atIdx + 1) : proxyAuth;
+
+  // Normalise proxyAuth: strip https:// prefix if present, parse user:pass@host:port.
+  let proxyAuthStr = proxyAuth;
+  if (proxyAuth.startsWith('https://') || proxyAuth.startsWith('http://')) {
+    const u = new URL(proxyAuth);
+    proxyAuthStr = (u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}@` : '') + `${u.hostname}:${u.port}`;
+  }
+
+  const atIdx = proxyAuthStr.lastIndexOf('@');
+  const credentials = atIdx >= 0 ? proxyAuthStr.slice(0, atIdx) : '';
+  const hostPort = atIdx >= 0 ? proxyAuthStr.slice(atIdx + 1) : proxyAuthStr;
   const colonIdx = hostPort.lastIndexOf(':');
   const proxyHost = hostPort.slice(0, colonIdx);
   const proxyPort = parseInt(hostPort.slice(colonIdx + 1), 10);
 
-  const connectHeaders = {};
-  if (credentials) {
-    connectHeaders['Proxy-Authorization'] = `Basic ${Buffer.from(credentials).toString('base64')}`;
-  }
-
-  const { socket } = await new Promise((resolve, reject) => {
-    http.request({
-      host: proxyHost, port: proxyPort,
-      method: 'CONNECT',
-      path: `${targetUrl.hostname}:443`,
-      headers: connectHeaders,
-    }).on('connect', (res, socket) => {
-      if (res.statusCode !== 200) {
-        socket.destroy();
-        return reject(Object.assign(new Error(`Proxy CONNECT: ${res.statusCode}`), { status: res.statusCode }));
-      }
-      resolve({ socket });
-    }).on('error', reject).end();
+  // Step 1: TLS connect to proxy (always TLS — Decodo gate.decodo.com requires it).
+  const proxySock = await new Promise((resolve, reject) => {
+    const s = tls.connect({ host: proxyHost, port: proxyPort, servername: proxyHost, ALPNProtocols: ['http/1.1'] }, () => resolve(s));
+    s.on('error', reject);
   });
 
-  const tlsSock = tls.connect({ socket, servername: targetUrl.hostname, ALPNProtocols: ['http/1.1'] });
+  // Step 2: Send HTTP CONNECT over the TLS socket manually (avoids Node.js http.request
+  // auto-setting Host to the proxy hostname, which Decodo rejects with SOCKS5 bytes).
+  const authHeader = credentials ? `\r\nProxy-Authorization: Basic ${Buffer.from(credentials).toString('base64')}` : '';
+  proxySock.write(`CONNECT ${targetUrl.hostname}:443 HTTP/1.1\r\nHost: ${targetUrl.hostname}:443${authHeader}\r\n\r\n`);
+
+  // Step 3: Read CONNECT response (first data chunk contains the status line).
+  await new Promise((resolve, reject) => {
+    proxySock.once('data', (chunk) => {
+      const resp = chunk.toString('ascii');
+      if (!resp.startsWith('HTTP/1.1 200') && !resp.startsWith('HTTP/1.0 200')) {
+        proxySock.destroy();
+        return reject(Object.assign(new Error(`Proxy CONNECT: ${resp.split('\r\n')[0]}`), { status: parseInt(resp.split(' ')[1]) || 0 }));
+      }
+      proxySock.pause();
+      resolve();
+    });
+    proxySock.on('error', reject);
+  });
+
+  // Step 4: TLS over the proxy tunnel (TLS-in-TLS) to reach the target server.
+  const tlsSock = tls.connect({ socket: proxySock, servername: targetUrl.hostname, ALPNProtocols: ['http/1.1'] });
   await new Promise((resolve, reject) => {
     tlsSock.on('secureConnect', resolve);
     tlsSock.on('error', reject);
   });
+  proxySock.resume();
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { tlsSock.destroy(); reject(new Error('FRED proxy fetch timeout')); }, 20000);
