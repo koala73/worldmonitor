@@ -16375,8 +16375,55 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
       byForecastId,
     }, SIMULATION_DECORATIONS_TTL_SECONDS);
     console.log(`  [SimulationDecorations] Written ${decorationCount} decorations from ${byCandidateId.size} candidates (runId=${snapshot?.runId || 'unknown'})`);
+    // Immediately patch forecast:predictions:v2 so the panel sees this run's simulation data
+    // without waiting for the next fast-path seed. Fire-and-forget inside the existing try/catch.
+    await patchPublishedForecastsWithSimDecorations(byForecastId);
   } catch (err) {
     console.warn(`  [SimulationDecorations] Write failed: ${err.message}`);
+  }
+}
+
+/**
+ * Patch forecast:predictions:v2 in-place with simulation decoration fields.
+ * Called immediately after writeSimulationDecorations to update the canonical key
+ * for same-run consumers — without this, ForecastPanel only sees the prior run's
+ * simulation data until the next fast-path seed re-applies decorations.
+ *
+ * Forecasts present in byForecastId get updated sim fields.
+ * Forecasts NOT in byForecastId have their sim fields reset to 0 / false, so that
+ * any stale values from a prior run are cleared at the same time.
+ *
+ * Non-fatal: any failure is logged as a warning and the function returns.
+ *
+ * @param {Record<string, {simulationAdjustment: number, simPathConfidence: number, demotedBySimulation: boolean}>} byForecastId
+ */
+async function patchPublishedForecastsWithSimDecorations(byForecastId) {
+  try {
+    const { url, token } = getRedisCredentials();
+    const published = await redisGet(url, token, CANONICAL_KEY);
+    if (!Array.isArray(published?.predictions)) {
+      console.warn('  [SimulationDecorations] Cannot patch canonical key — predictions missing or not an array');
+      return;
+    }
+    let patched = 0;
+    for (const pred of published.predictions) {
+      const dec = byForecastId[pred.id];
+      const newAdj = dec ? Number(dec.simulationAdjustment || 0) : 0;
+      const newConf = dec ? Number(dec.simPathConfidence ?? 1.0) : 0;
+      const newDemoted = dec ? !!dec.demotedBySimulation : false;
+      if (pred.simulationAdjustment !== newAdj || pred.simPathConfidence !== newConf || pred.demotedBySimulation !== newDemoted) {
+        pred.simulationAdjustment = newAdj;
+        pred.simPathConfidence = newConf;
+        pred.demotedBySimulation = newDemoted;
+        patched++;
+      }
+    }
+    if (patched > 0) {
+      await redisSet(url, token, CANONICAL_KEY, published, TTL_SECONDS);
+      console.log(`  [SimulationDecorations] Patched ${patched} forecasts in ${CANONICAL_KEY}`);
+    }
+  } catch (err) {
+    console.warn(`  [SimulationDecorations] Canonical key patch failed (non-fatal): ${err.message}`);
   }
 }
 
@@ -16958,6 +17005,7 @@ export {
   applyPostSimulationRescore,
   writeSimulationDecorations,
   applySimulationDecorationsToForecasts,
+  patchPublishedForecastsWithSimDecorations,
   SIMULATION_DECORATIONS_KEY,
   SIMULATION_DECORATIONS_MAX_AGE_MS,
   computeSimulationAdjustment,

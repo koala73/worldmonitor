@@ -71,8 +71,10 @@ import {
   applyPostSimulationRescore,
   writeSimulationDecorations,
   applySimulationDecorationsToForecasts,
+  patchPublishedForecastsWithSimDecorations,
   SIMULATION_DECORATIONS_KEY,
   SIMULATION_DECORATIONS_MAX_AGE_MS,
+  CANONICAL_KEY,
   __setRedisStoreForTests,
   matchesBucket,
   matchesChannel,
@@ -7842,6 +7844,71 @@ describe('writeSimulationDecorations and applySimulationDecorationsToForecasts',
     assert.equal(predictions[0].simPathConfidence, 0.78);
     assert.equal(predictions[1].simulationAdjustment, 0.12, 'fc-006 decorated (same candidate)');
     assert.equal(predictions[2].simulationAdjustment, 0, 'fc-007 unaffected');
+  });
+
+  it('WD-16: writeSimulationDecorations patches forecast:predictions:v2 in-place so same-run consumers see sim fields', async () => {
+    // Verifies the canonical key (not just the side key) is updated on the same run.
+    // This is the claim in the PR: "plumb simulation decorations to Forecast Redis key".
+    const store = {
+      // Pre-populate canonical key as it would exist after runSeed() published it
+      [CANONICAL_KEY]: {
+        generatedAt: Date.now() - 5000,
+        predictions: [
+          { id: 'fc-canon-01', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Test 01' },
+          { id: 'fc-canon-02', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Test 02' },
+          { id: 'fc-canon-03', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Test 03' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    // Deep path / rescore produces adjustments for fc-canon-01 and fc-canon-02
+    const stateUnits = [
+      makeStateUnit('state-canon-a', ['fc-canon-01', 'fc-canon-02']),
+    ];
+    const adjs = [makeAdj('state-canon-a', 0.12, 0.88)];
+    await writeSimulationDecorations(makeMergeResult(adjs), makeSnapshot(stateUnits, 'run-canon'));
+
+    // Side key written
+    assert.ok(store[SIMULATION_DECORATIONS_KEY], 'side key written');
+
+    // Canonical key patched for matched forecasts
+    const canon = store[CANONICAL_KEY].predictions;
+    assert.equal(canon[0].simulationAdjustment, 0.12, 'fc-canon-01 sim field updated in canonical key');
+    assert.equal(canon[0].simPathConfidence, 0.88);
+    assert.equal(canon[1].simulationAdjustment, 0.12, 'fc-canon-02 sim field updated in canonical key');
+    // fc-canon-03 not in decoration — reset to 0 (was already 0, but confirm no contamination)
+    assert.equal(canon[2].simulationAdjustment, 0, 'fc-canon-03 unaffected');
+    // generatedAt is preserved from the original publish
+    assert.ok(store[CANONICAL_KEY].generatedAt < Date.now() - 4000, 'original generatedAt preserved');
+  });
+
+  it('WD-17: writeSimulationDecorations with empty byForecastId resets stale sim fields in canonical key', async () => {
+    // Scenario: run N wrote sim fields into canonical key. Run N+1 has no adjustments.
+    // After writeSimulationDecorations with empty adjustments, canonical key must have
+    // all sim fields reset to 0 — the sub-bar shows nothing.
+    const store = {
+      [CANONICAL_KEY]: {
+        generatedAt: Date.now() - 3000,
+        predictions: [
+          { id: 'fc-stale-01', simulationAdjustment: 0.12, simPathConfidence: 0.85, demotedBySimulation: false, title: 'Stale 01' },
+          { id: 'fc-stale-02', simulationAdjustment: -0.15, simPathConfidence: 0.95, demotedBySimulation: true, title: 'Stale 02' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    // Run N+1: simulation ran but produced no adjustments
+    await writeSimulationDecorations(makeMergeResult([]), makeSnapshot([], 'run-n+1-empty'));
+
+    assert.deepEqual(store[SIMULATION_DECORATIONS_KEY].byForecastId, {}, 'side key empty');
+
+    const canon = store[CANONICAL_KEY].predictions;
+    assert.equal(canon[0].simulationAdjustment, 0, 'fc-stale-01 reset to 0 in canonical key');
+    assert.equal(canon[0].simPathConfidence, 0, 'fc-stale-01 confidence reset');
+    assert.equal(canon[0].demotedBySimulation, false, 'fc-stale-01 demotion cleared');
+    assert.equal(canon[1].simulationAdjustment, 0, 'fc-stale-02 reset to 0 in canonical key');
+    assert.equal(canon[1].demotedBySimulation, false, 'fc-stale-02 demotion cleared');
   });
 
   it('WD-15: inline deep path — applySimulationMerge result + snapshot.fullRunStateUnits writes decorations (covers processDeepForecastTask call site)', async () => {
