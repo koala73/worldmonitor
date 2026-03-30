@@ -37,6 +37,7 @@ import type {
 } from '@/types';
 import { fetchMilitaryBases, type MilitaryBaseCluster as ServerBaseCluster } from '@/services/military-bases';
 import type { AirportDelayAlert } from '@/services/aviation';
+import type { ScoredFAACamera } from '@/services/faa-cameras';
 import type { IranEvent } from '@/services/conflict';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { DisplacementFlow } from '@/services/displacement';
@@ -353,6 +354,7 @@ export class DeckGLMap {
   private firmsFireData: { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }[] = [];
   private techEvents: TechEventMarker[] = [];
   private flightDelays: AirportDelayAlert[] = [];
+  private faaCameras: ScoredFAACamera[] = [];
   private news: NewsItem[] = [];
   private newsLocations: { lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }[] = [];
   private newsLocationFirstSeen = new Map<string, number>();
@@ -1224,6 +1226,11 @@ export class DeckGLMap {
       layers.push(this.createFlightDelaysLayer(filteredFlightDelays));
     }
 
+    // FAA weather cameras layer
+    if (mapLayers.faaWeatherCams && this.faaCameras.length > 0) {
+      layers.push(this.createFAACamerasLayer(this.faaCameras));
+    }
+
     // Protests layer (Supercluster-based deck.gl layers)
     if (mapLayers.protests && this.protests.length > 0) {
       layers.push(...this.createProtestClusterLayers());
@@ -1683,6 +1690,21 @@ export class DeckGLMap {
       radiusMinPixels: 4,
       radiusMaxPixels: 15,
       pickable: true,
+    });
+  }
+
+  private createFAACamerasLayer(cameras: ScoredFAACamera[]): ScatterplotLayer<ScoredFAACamera> {
+    return new ScatterplotLayer<ScoredFAACamera>({
+      id: 'faa-cameras',
+      data: cameras,
+      getPosition: d => [d.lon, d.lat],
+      getRadius: d => (d.alertProximityMi !== null ? 8 : 4),
+      getFillColor: d =>
+        d.alertProximityMi !== null ? [255, 160, 60, 220] : [100, 180, 255, 80],
+      radiusMinPixels: 4,
+      radiusMaxPixels: 12,
+      pickable: true,
+      autoHighlight: true,
     });
   }
 
@@ -3176,6 +3198,10 @@ export class DeckGLMap {
         const dateStr = obj.date ? `<span style="opacity:.6">${text(String(obj.date))}</span>` : '';
         return { html: `<div class="deckgl-tooltip">${nameStr}${typeStr}${descStr}${dateStr}<br/><span style="opacity:.5;font-size:0.8em">S2 Underground — ${text(obj.layerTitle)}</span></div>` };
       }
+      case 'faa-cameras': {
+        const alertStr = obj.alertLabel ? `<br/><span style="color:#ffa03c">${text(obj.alertLabel)}</span>` : '';
+        return { html: `<div class="deckgl-tooltip">&#128247; <strong>${text(obj.name)}</strong><br/>${text(obj.state)} · ${text(obj.category)}${alertStr}</div>` };
+      }
       default: {
         return null;
       }
@@ -3349,6 +3375,7 @@ export class DeckGLMap {
       'gps-jamming-layer': 'gpsJamming',
       'cable-advisories-layer': 'cable-advisory',
       'repair-ships-layer': 'repair-ship',
+      'faa-cameras': 'faaCamera',
     };
 
     const popupType = layerToPopupType[layerId];
@@ -3534,6 +3561,7 @@ export class DeckGLMap {
         { key: 'ais', label: t('components.deckgl.layers.shipTraffic'), icon: '&#128674;' },
         { key: 'tradeRoutes', label: t('components.deckgl.layers.tradeRoutes'), icon: '&#9875;' },
         { key: 'flights', label: t('components.deckgl.layers.flightDelays'), icon: '&#9992;' },
+        { key: 'faaWeatherCams', label: t('components.deckgl.layers.faaWeatherCams'), icon: '&#128247;' },
         { key: 'protests', label: t('components.deckgl.layers.protests'), icon: '&#128226;' },
         { key: 'ucdpEvents', label: t('components.deckgl.layers.ucdpEvents'), icon: '&#9876;' },
         { key: 's2pimu', label: t('components.deckgl.layers.s2pimu'), icon: '&#128123;' },
@@ -4295,6 +4323,11 @@ export class DeckGLMap {
 
   public setFlightDelays(delays: AirportDelayAlert[]): void {
     this.flightDelays = delays;
+    this.render();
+  }
+
+  public setFAACameras(cameras: ScoredFAACamera[]): void {
+    this.faaCameras = cameras;
     this.render();
   }
 

@@ -855,6 +855,7 @@
         "militaryActivity": "Military Activity",
         "shipTraffic": "Ship Traffic",
         "flightDelays": "Flight Delays",
+        "faaWeatherCams": "FAA Weather Cams",
         "protests": "Protests",
         "ucdpEvents": "UCDP Events",
         "displacementFlows": "Displacement Flows",
@@ -1539,6 +1540,12 @@
       "aircraftAffected": "Aircraft Affected",
       "aircraftNormal": "Aircraft Normal",
       "h3Hex": "H3 Hex"
+    },
+    "faaCamera": {
+      "status": "Status",
+      "online": "Online",
+      "offline": "Offline",
+      "nearbyAlert": "Nearby Alert"
     },
     "flight": {
       "groundStop": "GROUND STOP",
