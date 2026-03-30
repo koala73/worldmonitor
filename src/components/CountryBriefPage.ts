@@ -15,6 +15,8 @@ import type { Port } from '@/config/ports';
 import { exportCountryBriefJSON, exportCountryBriefCSV } from '@/utils/export';
 import type { CountryBriefExport } from '@/utils/export';
 import { ME_STRIKE_BOUNDS } from '@/services/country-geometry';
+import { buildCountryConsequences } from '@/services/country-consequence-engine';
+import { isCountryWatched, toggleCountryWatchlist } from '@/services/watchlist-playbooks';
 
 type BriefAssetType = AssetType | 'port';
 
@@ -71,6 +73,8 @@ export class CountryBriefPage {
   private currentSignals: CountryBriefSignals | null = null;
   private currentBrief: string | null = null;
   private currentHeadlines: NewsItem[] = [];
+  private currentMarkets: PredictionMarket[] = [];
+  private currentInfrastructureCounts: Partial<Record<BriefAssetType, number>> = {};
   private onCloseCallback?: () => void;
   private onShareStory?: (code: string, name: string) => void;
   private onExportImage?: (code: string, name: string) => void;
@@ -252,6 +256,8 @@ export class CountryBriefPage {
     this.currentSignals = signals;
     this.currentBrief = null;
     this.currentHeadlines = [];
+    this.currentMarkets = [];
+    this.currentInfrastructureCounts = {};
     this.currentHeadlineCount = 0;
     const flag = this.countryFlag(code);
 
@@ -270,6 +276,9 @@ export class CountryBriefPage {
             ${tierBadge}
           </div>
           <div class="cb-header-right">
+            <button class="cb-watch-btn${isCountryWatched(code) ? ' active' : ''}" title="Toggle watchlist">
+              ${isCountryWatched(code) ? 'Watching' : 'Watch'}
+            </button>
             <button class="cb-share-btn" title="${t('components.countryBrief.shareStory')}">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
             </button>
@@ -338,6 +347,13 @@ export class CountryBriefPage {
                 </div>
               </section>
 
+              <section class="cb-section cb-consequences-section">
+                <h3 class="cb-section-title">Downstream Impact</h3>
+                <div class="cb-consequences-content">
+                  <span class="intel-loading-text">Assessing second-order effects...</span>
+                </div>
+              </section>
+
               <section class="cb-section cb-timeline-section">
                 <h3 class="cb-section-title">${t('modals.countryBrief.timeline')}</h3>
                 <div class="cb-timeline-mount"></div>
@@ -371,6 +387,11 @@ export class CountryBriefPage {
       </div>`;
 
     this.overlay.querySelector('.cb-close')?.addEventListener('click', () => this.hide());
+    this.overlay.querySelector('.cb-watch-btn')?.addEventListener('click', () => {
+      if (!this.currentCode || !this.currentName) return;
+      const watched = toggleCountryWatchlist({ code: this.currentCode, name: this.currentName });
+      this.updateWatchButton(watched);
+    });
     this.overlay.querySelector('.cb-share-btn')?.addEventListener('click', () => {
       if (this.onShareStory && this.currentCode && this.currentName) {
         this.onShareStory(this.currentCode, this.currentName);
@@ -424,6 +445,7 @@ export class CountryBriefPage {
     this.overlay.addEventListener('click', this.boundCitationClick);
 
     this.overlay.classList.add('active');
+    this.refreshConsequences();
     void this.loadCountryEnrichment(code, country);
   }
 
@@ -433,7 +455,7 @@ export class CountryBriefPage {
       fetchWikiSummary(name).catch(() => null),
     ]);
 
-    if (this.currentCode !== code) return; // stale response
+    if (this.currentCode !== code) return;
 
     if (meta) {
       const factsEl = this.overlay.querySelector('.cb-facts-section') as HTMLElement | null;
@@ -489,11 +511,13 @@ export class CountryBriefPage {
   }
 
   public updateMarkets(markets: PredictionMarket[]): void {
+    this.currentMarkets = markets;
     const section = this.overlay.querySelector('.cb-markets-content');
     if (!section) return;
 
     if (markets.length === 0) {
       section.innerHTML = `<span class="cb-empty">${t('modals.countryBrief.noMarkets')}</span>`;
+      this.refreshConsequences();
       return;
     }
 
@@ -513,6 +537,7 @@ export class CountryBriefPage {
           ${vol ? `<div class="market-vol">${vol}</div>` : ''}
         </div>`;
     }).join('');
+    this.refreshConsequences();
   }
 
   public updateStock(data: StockIndexData): void {
@@ -588,6 +613,10 @@ export class CountryBriefPage {
       grouped.set('port', nearbyPorts.map(({ port, dist }) => ({ name: port.name, distanceKm: dist })));
     }
 
+    this.currentInfrastructureCounts = Object.fromEntries(
+      [...grouped.entries()].map(([type, items]) => [type, items.length]),
+    ) as Partial<Record<BriefAssetType, number>>;
+
     if (grouped.size === 0) return;
 
     const section = this.overlay.querySelector('.cb-infra-section') as HTMLElement | null;
@@ -612,6 +641,7 @@ export class CountryBriefPage {
 
     content.innerHTML = html;
     section.style.display = '';
+    this.refreshConsequences();
   }
 
   public getTimelineMount(): HTMLElement | null {
@@ -755,5 +785,47 @@ export class CountryBriefPage {
 
   public isVisible(): boolean {
     return this.overlay.classList.contains('active');
+  }
+
+  private updateWatchButton(active: boolean): void {
+    const watchBtn = this.overlay.querySelector('.cb-watch-btn');
+    if (!watchBtn) return;
+    watchBtn.classList.toggle('active', active);
+    watchBtn.textContent = active ? 'Watching' : 'Watch';
+  }
+
+  private refreshConsequences(): void {
+    if (!this.currentName || !this.currentSignals) return;
+    const section = this.overlay.querySelector('.cb-consequences-content');
+    if (!section) return;
+
+    const consequences = buildCountryConsequences({
+      country: this.currentName,
+      score: this.currentScore?.score ?? null,
+      trend: this.currentScore?.trend ?? 'stable',
+      signals: this.currentSignals,
+      infrastructureCounts: this.currentInfrastructureCounts,
+      markets: this.currentMarkets.map((market) => ({
+        title: market.title,
+        yesPrice: market.yesPrice,
+      })),
+    });
+
+    section.innerHTML = consequences.slice(0, 3).map((consequence) => `
+      <div class="cb-consequence-card" data-severity="${consequence.severity}">
+        <div class="cb-consequence-top">
+          <span class="cb-consequence-kind">${escapeHtml(consequence.kind.replace(/-/g, ' '))}</span>
+          <span class="cb-consequence-severity">${consequence.severity.toUpperCase()}</span>
+        </div>
+        <div class="cb-consequence-title">${escapeHtml(consequence.title)}</div>
+        <div class="cb-consequence-summary">${escapeHtml(consequence.summary)}</div>
+        ${consequence.evidence.length > 0 ? `
+          <div class="cb-consequence-evidence">
+            ${consequence.evidence.slice(0, 3).map((item) => `<span class="cb-consequence-evidence-chip">${escapeHtml(item)}</span>`).join('')}
+          </div>
+        ` : ''}
+        <div class="cb-consequence-panels">${consequence.watchPanels.slice(0, 3).map((panel) => `<span class="cb-consequence-chip">${escapeHtml(panel.replace(/-/g, ' '))}</span>`).join('')}</div>
+      </div>
+    `).join('');
   }
 }

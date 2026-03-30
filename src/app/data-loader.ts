@@ -389,6 +389,7 @@ export class DataLoaderManager implements AppModule {
     });
 
     this.updateSearchIndex();
+    document.dispatchEvent(new CustomEvent('wm:data-refreshed'));
   }
 
   async loadDataForLayer(layer: keyof MapLayers): Promise<void> {

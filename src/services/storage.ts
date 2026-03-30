@@ -1,3 +1,5 @@
+import type { ReplayWatchSummary } from '@/services/replay-narrative';
+
 const DB_NAME = 'worldmonitor_db';
 const DB_VERSION = 1;
 
@@ -173,6 +175,7 @@ export interface DashboardSnapshot {
   marketPrices: Record<string, number>;
   predictions: { title: string; yesPrice: number }[];
   hotspotLevels: Record<string, string>;
+  watchlistSummary?: ReplayWatchSummary | null;
 }
 
 const SNAPSHOT_RETENTION_DAYS = 7;

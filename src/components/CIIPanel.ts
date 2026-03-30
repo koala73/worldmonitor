@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { getCSSColor } from '@/utils';
 import { calculateCII, type CountryScore } from '@/services/country-instability';
+import { getWatchedCountries, subscribeWatchlist } from '@/services/watchlist-playbooks';
 import { t } from '../services/i18n';
 import { h, replaceChildren, rawHtml } from '@/utils/dom-utils';
 
@@ -8,6 +9,8 @@ export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
   private focalPointsReady = false;
   private onShareStory?: (code: string, name: string) => void;
+  private watchedCodes = new Set<string>();
+  private unsubscribeWatchlist: (() => void) | null = null;
 
   constructor() {
     super({
@@ -15,7 +18,18 @@ export class CIIPanel extends Panel {
       title: t('panels.cii'),
       infoTooltip: t('components.cii.infoTooltip'),
     });
+    this.syncWatchedCodes();
+    this.unsubscribeWatchlist = subscribeWatchlist(() => {
+      this.syncWatchedCodes();
+      if (this.focalPointsReady) void this.refresh();
+    });
     this.showLoading(t('common.loading'));
+  }
+
+  override destroy(): void {
+    this.unsubscribeWatchlist?.();
+    this.unsubscribeWatchlist = null;
+    super.destroy();
   }
 
   public setShareStoryHandler(handler: (code: string, name: string) => void): void {
@@ -54,6 +68,10 @@ export class CIIPanel extends Panel {
 
   private static readonly SHARE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>';
 
+  private syncWatchedCodes(): void {
+    this.watchedCodes = new Set(getWatchedCountries().map((country) => country.code));
+  }
+
   private buildTrendArrow(trend: CountryScore['trend'], change: number): HTMLElement {
     if (trend === 'rising') return h('span', { className: 'trend-up' }, `↑${change > 0 ? change : ''}`);
     if (trend === 'falling') return h('span', { className: 'trend-down' }, `↓${Math.abs(change)}`);
@@ -63,6 +81,7 @@ export class CIIPanel extends Panel {
   private buildCountry(country: CountryScore): HTMLElement {
     const color = this.getLevelColor(country.level);
     const emoji = this.getLevelEmoji(country.level);
+    const watched = this.watchedCodes.has(country.code);
 
     const shareBtn = h('button', {
       className: 'cii-share-btn',
@@ -75,6 +94,7 @@ export class CIIPanel extends Panel {
       h('div', { className: 'cii-header' },
         h('span', { className: 'cii-emoji' }, emoji),
         h('span', { className: 'cii-name' }, country.name),
+        watched ? h('span', { className: 'cii-watch-badge' }, 'WATCH') : null,
         h('span', { className: 'cii-score' }, String(country.score)),
         this.buildTrendArrow(country.trend, country.change24h),
         shareBtn,
@@ -123,6 +143,7 @@ export class CIIPanel extends Panel {
       console.log(`[CIIPanel] Calculated ${localWithData} countries with focal point intelligence`);
 
       const withData = this.scores.filter(s => s.score > 0);
+      const watchedCountries = withData.filter((country) => this.watchedCodes.has(country.code)).slice(0, 4);
       this.setCount(withData.length);
 
       if (withData.length === 0) {
@@ -130,7 +151,25 @@ export class CIIPanel extends Panel {
         return;
       }
 
-      const listEl = h('div', { className: 'cii-list' }, ...withData.map(s => this.buildCountry(s)));
+      const listChildren = [];
+      if (watchedCountries.length > 0) {
+        listChildren.push(
+          h('div', { className: 'cii-watch-strip' },
+            h('div', { className: 'cii-watch-label' }, 'Pinned watchlist countries'),
+            h(
+              'div',
+              { className: 'cii-watch-chips' },
+              ...watchedCountries.map((country) =>
+                h('span', { className: 'cii-watch-chip' }, `${country.name} ${country.score}`),
+              ),
+            ),
+          ),
+        );
+      }
+
+      listChildren.push(...withData.map(s => this.buildCountry(s)));
+
+      const listEl = h('div', { className: 'cii-list' }, ...listChildren);
       replaceChildren(this.content, listEl);
       this.bindShareButtons();
     } catch (error) {

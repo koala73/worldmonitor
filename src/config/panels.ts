@@ -5,12 +5,14 @@ import { SITE_VARIANT } from './variant';
 // ============================================
 // FULL VARIANT (Geopolitical)
 // ============================================
-// Panel order matters. Lead with AI overview panels before raw feeds.
+// Panel order matters. Lead with watchlists and escalation workflow before raw feeds.
 const FULL_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Global Map', enabled: true, priority: 1 },
-  insights: { name: 'AI Insights', enabled: true, priority: 1 },
-  'strategic-posture': { name: 'AI Strategic Posture', enabled: true, priority: 1 },
+  watchlist: { name: 'Watchlist & Playbooks', enabled: true, priority: 1 },
+  'alert-center': { name: 'Alert Center', enabled: true, priority: 1 },
   'strategic-risk': { name: 'Strategic Risk Overview', enabled: true, priority: 1 },
+  'strategic-posture': { name: 'AI Strategic Posture', enabled: true, priority: 1 },
+  insights: { name: 'AI Insights', enabled: true, priority: 1 },
   cii: { name: 'Country Instability', enabled: true, priority: 1 },
   'geo-hubs': { name: 'Geopolitical Hubs', enabled: true, priority: 1 },
   'live-news': { name: 'Live News', enabled: true, priority: 1 },
@@ -46,7 +48,6 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   earthquakes: { name: 'Earthquakes', enabled: true, priority: 2 },
   'cyber-threats': { name: 'Cyber Threats', enabled: true, priority: 2 },
   'comms-health': { name: 'Communications Health', enabled: true, priority: 2 },
-  'alert-center': { name: 'Alert Center', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
@@ -633,7 +634,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // Full (geopolitical) variant
   intelligence: {
     labelKey: 'header.panelCatIntelligence',
-    panelKeys: ['alert-center', 'strategic-risk', 'cii', 'geo-hubs', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel'],
+    panelKeys: ['watchlist', 'alert-center', 'strategic-risk', 'cii', 'geo-hubs', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel'],
     variants: ['full'],
   },
   regionalNews: {

@@ -42,9 +42,10 @@ import { EventHandlerManager } from '@/app/event-handlers';
 import { resolveUserRegion } from '@/utils/user-location';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
-const AI_OVERVIEW_PRIORITY_PANELS: Record<string, string[]> = {
-  full: ['insights', 'strategic-posture', 'strategic-risk', 'cii', 'geo-hubs'],
+const CRITICAL_PRIORITY_PANELS: Record<string, string[]> = {
+  full: ['watchlist', 'alert-center', 'strategic-risk', 'strategic-posture', 'insights', 'cii', 'geo-hubs', 'live-news', 'live-webcams'],
   tech: ['insights', 'regulation', 'tech-readiness', 'ai', 'tech-hubs', 'tech', 'policy'],
+  finance: ['insights', 'markets', 'macro-signals', 'economic', 'commodities', 'live-news', 'live-webcams'],
 };
 
 export type { CountryBriefSignals } from '@/app/app-context';
@@ -126,25 +127,25 @@ export class App {
         localStorage.setItem(PANEL_ORDER_MIGRATION_KEY, 'done');
       }
 
-      const aiOverviewPriorityPanels = AI_OVERVIEW_PRIORITY_PANELS[currentVariant] ?? [];
-      const AI_OVERVIEW_MIGRATION_KEY = 'worldmonitor-ai-overview-top-v2.7.1';
-      if (aiOverviewPriorityPanels.length > 0 && !localStorage.getItem(AI_OVERVIEW_MIGRATION_KEY)) {
+      const criticalPriorityPanels = CRITICAL_PRIORITY_PANELS[currentVariant] ?? [];
+      const CRITICAL_PRIORITY_MIGRATION_KEY = 'worldmonitor-critical-top-v2.7.5';
+      if (criticalPriorityPanels.length > 0 && !localStorage.getItem(CRITICAL_PRIORITY_MIGRATION_KEY)) {
         const savedOrder = localStorage.getItem(PANEL_ORDER_KEY);
         if (savedOrder) {
           try {
             const order: string[] = JSON.parse(savedOrder);
-            const filtered = order.filter(k => !aiOverviewPriorityPanels.includes(k));
+            const filtered = order.filter(k => !criticalPriorityPanels.includes(k));
             const newOrder = [
-              ...aiOverviewPriorityPanels.filter(panelKey => order.includes(panelKey)),
+              ...criticalPriorityPanels.filter(panelKey => order.includes(panelKey)),
               ...filtered,
             ];
             localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(newOrder));
-            console.log(`[App] ${currentVariant} variant: moved AI overview panels to top`);
+            console.log(`[App] ${currentVariant} variant: moved critical panels to top`);
           } catch {
             // Invalid saved order, will use defaults
           }
         }
-        localStorage.setItem(AI_OVERVIEW_MIGRATION_KEY, 'done');
+        localStorage.setItem(CRITICAL_PRIORITY_MIGRATION_KEY, 'done');
       }
     } else {
       // Variant changed - use defaults for new variant, clear old settings
@@ -276,6 +277,8 @@ export class App {
 
     this.panelLayout = new PanelLayoutManager(this.state, {
       openCountryStory: (code, name) => this.countryIntel.openCountryStory(code, name),
+      openCountryBriefByCode: (code, name) => this.countryIntel.openCountryBriefByCode(code, name),
+      getCountryWatchSnapshot: (code, name) => this.countryIntel.getCountryWatchSnapshot(code, name),
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),

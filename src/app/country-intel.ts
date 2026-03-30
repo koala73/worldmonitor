@@ -18,6 +18,8 @@ import { t } from '@/services/i18n';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import { fetchWorldBankProfile, formatWorldBankContext } from '@/services/world-bank';
+import { evaluateWatchlistPlaybook } from '@/services/watchlist-playbooks';
+import type { WatchCountrySnapshot } from '@/components/WatchlistPanel';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -558,6 +560,25 @@ export class CountryIntelManager implements AppModule {
       travelAdvisoryMaxLevel,
       gpsJammingHexes: (ciiData?.gpsJammingHighCount ?? 0) + (ciiData?.gpsJammingMediumCount ?? 0),
       isTier1,
+    };
+  }
+
+  public getCountryWatchSnapshot(code: string, country: string): WatchCountrySnapshot {
+    const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code) || country;
+    const score = calculateCII().find((entry) => entry.code === code) ?? null;
+    const signals = this.getCountrySignals(code, canonicalName);
+    return {
+      code,
+      name: canonicalName,
+      score: score?.score ?? 0,
+      trend: score?.trend ?? 'stable',
+      playbook: evaluateWatchlistPlaybook({
+        code,
+        name: canonicalName,
+        score: score?.score ?? 0,
+        trend: score?.trend ?? 'stable',
+        signals,
+      }),
     };
   }
 

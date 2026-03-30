@@ -38,6 +38,7 @@ import {
   SecurityAdvisoriesPanel,
   OrefSirensPanel,
   TelegramIntelPanel,
+  WatchlistPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { EarthquakesPanel } from '@/components/EarthquakesPanel';
@@ -98,6 +99,8 @@ import type { TechHubActivity } from '@/services/tech-activity';
 
 export interface PanelLayoutCallbacks {
   openCountryStory: (code: string, name: string) => void;
+  openCountryBriefByCode: (code: string, country: string) => void;
+  getCountryWatchSnapshot: (code: string, country: string) => import('@/components/WatchlistPanel').WatchCountrySnapshot | null;
   loadAllData: () => Promise<void>;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
@@ -114,7 +117,7 @@ export class PanelLayoutManager implements AppModule {
   private _preModeOrder: string[] = [];
 
   /** Panels always kept at the top regardless of mode (video feeds / live streams). */
-  private static readonly MODE_ANCHORS = ['live-news', 'live-webcams'];
+  private static readonly MODE_ANCHORS = ['watchlist', 'alert-center', 'live-news', 'live-webcams'];
 
   /** Panels floated to top in Finance Mode. */
   private static readonly FINANCE_PRIORITY = [
@@ -734,6 +737,12 @@ export class PanelLayoutManager implements AppModule {
         this.ctx.map?.flashLocation(hub.lat, hub.lon, 3000);
       };
 
+      const watchlistPanel = new WatchlistPanel({
+        getCountrySnapshot: (code, country) => this.callbacks.getCountryWatchSnapshot(code, country),
+        openCountryBrief: (code, country) => this.callbacks.openCountryBriefByCode(code, country),
+      });
+      this.ctx.panels.watchlist = watchlistPanel;
+
       const gdeltIntelPanel = new GdeltIntelPanel();
       this.ctx.panels['gdelt-intel'] = gdeltIntelPanel;
 
@@ -950,18 +959,9 @@ export class PanelLayoutManager implements AppModule {
     }
 
     if (SITE_VARIANT !== 'happy') {
-      const liveNewsIdx = panelOrder.indexOf('live-news');
-      if (liveNewsIdx > 0) {
-        panelOrder.splice(liveNewsIdx, 1);
-        panelOrder.unshift('live-news');
-      }
-
-      const webcamsIdx = panelOrder.indexOf('live-webcams');
-      if (webcamsIdx !== -1 && webcamsIdx !== panelOrder.indexOf('live-news') + 1) {
-        panelOrder.splice(webcamsIdx, 1);
-        const afterNews = panelOrder.indexOf('live-news') + 1;
-        panelOrder.splice(afterNews, 0, 'live-webcams');
-      }
+      const anchors = PanelLayoutManager.MODE_ANCHORS.filter((key) => panelOrder.includes(key));
+      const rest = panelOrder.filter((key) => !anchors.includes(key));
+      panelOrder = [...anchors, ...rest];
     }
 
     panelOrder.forEach((key: string) => {
