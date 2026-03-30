@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import * as net from 'node:net';
 import * as http from 'node:http';
 import * as tls from 'node:tls';
 import * as https from 'node:https';
@@ -342,15 +343,21 @@ export function curlFetch(url, proxyAuth, headers = {}) {
   return raw.slice(0, nl);
 }
 
-// Pure Node.js HTTPS-through-TLS-proxy (CONNECT tunnel).
-// Always connects to the proxy over TLS (tls.connect), then manually sends the HTTP
-// CONNECT request over the TLS socket. This works for both plain PROXY_URL values
-// ("user:pass@host:port") and https:// prefixed values — always uses TLS to proxy.
-// proxyAuth format: "user:pass@host:port" OR "https://user:pass@host:port"
+// Pure Node.js HTTPS-through-proxy (CONNECT tunnel).
+// proxyAuth format: "user:pass@host:port" (bare/Decodo → TLS) OR
+//                  "https://user:pass@host:port" (explicit TLS) OR
+//                  "http://user:pass@host:port"  (explicit plain TCP)
+// Bare/undeclared-scheme proxies always use TLS (Decodo gate.decodo.com requires it).
+// Explicit http:// proxies use plain TCP to avoid breaking non-TLS setups.
 async function httpsProxyFetchJson(url, proxyAuth) {
   const targetUrl = new URL(url);
 
-  // Normalise proxyAuth: strip https:// prefix if present, parse user:pass@host:port.
+  // Detect whether the proxy URL specifies http:// explicitly (plain TCP) or not
+  // (bare format or https:// → TLS). User instruction: bare → always TLS.
+  const explicitHttp = proxyAuth.startsWith('http://') && !proxyAuth.startsWith('https://');
+  const useTls = !explicitHttp;
+
+  // Strip scheme prefix, parse user:pass@host:port.
   let proxyAuthStr = proxyAuth;
   if (proxyAuth.startsWith('https://') || proxyAuth.startsWith('http://')) {
     const u = new URL(proxyAuth);
@@ -364,28 +371,40 @@ async function httpsProxyFetchJson(url, proxyAuth) {
   const proxyHost = hostPort.slice(0, colonIdx);
   const proxyPort = parseInt(hostPort.slice(colonIdx + 1), 10);
 
-  // Step 1: TLS connect to proxy (always TLS — Decodo gate.decodo.com requires it).
+  // Step 1: Open socket to proxy (TLS for https:// or bare, plain TCP for http://).
   const proxySock = await new Promise((resolve, reject) => {
-    const s = tls.connect({ host: proxyHost, port: proxyPort, servername: proxyHost, ALPNProtocols: ['http/1.1'] }, () => resolve(s));
-    s.on('error', reject);
+    if (useTls) {
+      const s = tls.connect({ host: proxyHost, port: proxyPort, servername: proxyHost, ALPNProtocols: ['http/1.1'] }, () => resolve(s));
+      s.on('error', reject);
+    } else {
+      const s = net.connect({ host: proxyHost, port: proxyPort }, () => resolve(s));
+      s.on('error', reject);
+    }
   });
 
-  // Step 2: Send HTTP CONNECT over the TLS socket manually (avoids Node.js http.request
-  // auto-setting Host to the proxy hostname, which Decodo rejects with SOCKS5 bytes).
+  // Step 2: Send HTTP CONNECT manually (avoids Node.js http.request auto-setting
+  // Host to the proxy hostname, which Decodo rejects with SOCKS5 bytes).
   const authHeader = credentials ? `\r\nProxy-Authorization: Basic ${Buffer.from(credentials).toString('base64')}` : '';
   proxySock.write(`CONNECT ${targetUrl.hostname}:443 HTTP/1.1\r\nHost: ${targetUrl.hostname}:443${authHeader}\r\n\r\n`);
 
-  // Step 3: Read CONNECT response (first data chunk contains the status line).
+  // Step 3: Buffer until the full CONNECT response headers arrive (\r\n\r\n).
+  // Using a single 'data' event is not safe — headers may arrive fragmented across
+  // multiple packets, leaving unread bytes that corrupt the subsequent TLS handshake.
   await new Promise((resolve, reject) => {
-    proxySock.once('data', (chunk) => {
-      const resp = chunk.toString('ascii');
-      if (!resp.startsWith('HTTP/1.1 200') && !resp.startsWith('HTTP/1.0 200')) {
+    let buf = '';
+    const onData = (chunk) => {
+      buf += chunk.toString('ascii');
+      if (!buf.includes('\r\n\r\n')) return;
+      proxySock.removeListener('data', onData);
+      const statusLine = buf.split('\r\n')[0];
+      if (!statusLine.startsWith('HTTP/1.1 200') && !statusLine.startsWith('HTTP/1.0 200')) {
         proxySock.destroy();
-        return reject(Object.assign(new Error(`Proxy CONNECT: ${resp.split('\r\n')[0]}`), { status: parseInt(resp.split(' ')[1]) || 0 }));
+        return reject(Object.assign(new Error(`Proxy CONNECT: ${statusLine}`), { status: parseInt(statusLine.split(' ')[1]) || 0 }));
       }
       proxySock.pause();
       resolve();
-    });
+    };
+    proxySock.on('data', onData);
     proxySock.on('error', reject);
   });
 
