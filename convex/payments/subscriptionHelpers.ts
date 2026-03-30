@@ -618,7 +618,32 @@ export async function handleDisputeEvent(
 
   if (eventType === "dispute.lost") {
     console.warn(
-      `[subscriptionHelpers] Dispute LOST for user ${userId}, payment ${data.payment_id} — manual entitlement review may be needed`,
+      `[subscriptionHelpers] Dispute LOST for user ${userId}, payment ${data.payment_id} — revoking entitlement`,
     );
+    // Chargeback = no longer entitled. Downgrade to free immediately.
+    const existing = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        planKey: "free",
+        features: getFeaturesForPlan("free"),
+        validUntil: Date.now(),
+        updatedAt: Date.now(),
+      });
+      if (process.env.UPSTASH_REDIS_REST_URL) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.payments.cacheActions.syncEntitlementCache,
+          {
+            userId,
+            planKey: "free",
+            features: getFeaturesForPlan("free"),
+            validUntil: Date.now(),
+          },
+        );
+      }
+    }
   }
 }

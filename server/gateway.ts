@@ -246,24 +246,30 @@ export function createDomainGateway(
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
+    // Tier gate check first — JWT resolution is expensive (JWKS + RS256) and only needed
+    // for tier-gated endpoints. Non-tier-gated endpoints never use sessionUserId.
+    const isTierGated = getRequiredTier(pathname) !== null;
+
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
-    // Sets x-user-id header so downstream entitlement check can use it.
-    const sessionUserId = await resolveSessionUserId(request);
-    if (sessionUserId) {
-      request = new Request(request.url, {
-        method: request.method,
-        headers: (() => {
-          const h = new Headers(request.headers);
-          h.set('x-user-id', sessionUserId);
-          return h;
-        })(),
-        body: request.body,
-      });
+    // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
+    let sessionUserId: string | null = null;
+    if (isTierGated) {
+      sessionUserId = await resolveSessionUserId(request);
+      if (sessionUserId) {
+        request = new Request(request.url, {
+          method: request.method,
+          headers: (() => {
+            const h = new Headers(request.headers);
+            h.set('x-user-id', sessionUserId);
+            return h;
+          })(),
+          body: request.body,
+        });
+      }
     }
 
     // API key validation — tier-gated endpoints require EITHER an API key OR a valid bearer token.
     // Authenticated users (sessionUserId present) bypass the API key requirement.
-    const isTierGated = getRequiredTier(pathname) !== null;
     const keyCheck = validateApiKey(request, {
       forceKey: isTierGated && !sessionUserId,
     });

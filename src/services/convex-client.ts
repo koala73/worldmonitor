@@ -10,6 +10,7 @@
  */
 
 import type { ConvexClient } from 'convex/browser';
+import { getClerkToken, clearClerkTokenCache } from './clerk';
 
 // Use typeof to get the exact generated API type without importing statically
 type ConvexApi = typeof import('../../convex/_generated/api').api;
@@ -29,6 +30,12 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
 
   const { ConvexClient: CC } = await import('convex/browser');
   client = new CC(convexUrl);
+  client.setAuth(async ({ forceRefreshToken }: { forceRefreshToken?: boolean } = {}) => {
+    if (forceRefreshToken) {
+      clearClerkTokenCache();
+    }
+    return getClerkToken();
+  });
   return client;
 }
 

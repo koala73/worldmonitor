@@ -266,11 +266,11 @@ export const claimSubscription = mutation({
       await ctx.db.patch(customer._id, { userId: realUserId });
     }
 
-    // Reassign payment events
+    // Reassign payment events — bounded to prevent runaway memory on pathological sessions
     const payments = await ctx.db
       .query("paymentEvents")
       .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
-      .collect();
+      .take(1000);
     for (const payment of payments) {
       await ctx.db.patch(payment._id, { userId: realUserId });
     }
