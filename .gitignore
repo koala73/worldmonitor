@@ -50,3 +50,4 @@ scripts/data/gpsjam-latest.json
 .claude.local.md
 .superpowers/
 research/runs/
+.worktrees/
