@@ -72,3 +72,4 @@ export * from './WatchlistPanel';
 export * from './SavedPlacesPanel';
 export * from './LocalLogisticsPanel';
 export * from './CommsPlanPanel';
+export { FAAWeatherCamsPanel } from './FAAWeatherCamsPanel';
