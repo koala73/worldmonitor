@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { postProcessAnalystHtml } from '../../server/worldmonitor/intelligence/v1/chat-analyst-markdown';
 import { premiumFetch } from '@/services/premium-fetch';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
@@ -45,14 +46,20 @@ interface ActionEvent {
   prefill?: string;
 }
 
+// Narrow allowlist: text formatting + tables only. No img/a/iframe so
+// prompt-injected or hallucinated URLs cannot trigger third-party requests.
+const ANALYST_PURIFY_CONFIG = {
+  ALLOWED_TAGS: ['p', 'strong', 'em', 'b', 'i', 'br', 'hr',
+    'ul', 'ol', 'li', 'code', 'pre',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'div', 'span'],
+  ALLOWED_ATTR: ['class'],
+  ALLOW_DATA_ATTR: false,
+};
+
 function renderMarkdown(raw: string): string {
-  const html = DOMPurify.sanitize(marked.parse(raw) as string);
-  // Post-process: promote ALL-CAPS-only paragraphs to section-header divs.
-  // Covers **SIGNAL** (bold) and plain SIGNAL formats used by the analyst prompt.
-  // Minimum 4 chars to avoid false-positives on acronyms (US, EU, GDP).
-  return html
-    .replace(/<p><strong>([A-Z][A-Z\s/]{1,29})<\/strong><\/p>/g, '<div class="chat-section-header">$1</div>')
-    .replace(/<p>([A-Z][A-Z\s]{3,24})<\/p>/g, '<div class="chat-section-header">$1</div>');
+  const sanitized = DOMPurify.sanitize(marked.parse(raw) as string, ANALYST_PURIFY_CONFIG);
+  return postProcessAnalystHtml(sanitized as string);
 }
 
 export class ChatAnalystPanel extends Panel {
