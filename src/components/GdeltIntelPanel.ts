@@ -14,6 +14,8 @@ interface GdeltEvent {
 interface GdeltIntelResponse {
   events: GdeltEvent[];
   updatedAt: number;
+  stale?: boolean;
+  error?: string;
 }
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -87,9 +89,20 @@ export class GdeltIntelPanel extends Panel {
     this.setCount(events.length);
 
     if (events.length === 0) {
-      this.setContent('<div class="panel-loading-text">No events available.</div>');
+      const msg = this.data.error
+        ? `GDELT unavailable — ${this.data.error}`
+        : 'No events available.';
+      this.setContent(`<div class="panel-loading-text">${msg}</div>`);
       return;
     }
+
+    // TODO: implement staleBanner — shown above the list when this.data.stale is true.
+    // The sidecar sets stale:true when GDELT returns 503 and we're serving cached data.
+    // Trade-offs to consider:
+    //   - How prominent should it be? A subtle footer vs a top banner vs a badge on the title?
+    //   - Should it include the age of the cache (this.data.updatedAt)?
+    //   - Example: `<div class="gdelt-stale-banner">Cached — GDELT unavailable</div>`
+    const staleBanner = '';
 
     const items = events.map(ev => {
       const flag = COUNTRY_FLAGS[ev.country] ?? '';
@@ -114,6 +127,6 @@ export class GdeltIntelPanel extends Panel {
       `;
     }).join('');
 
-    this.setContent(`<div class="gdelt-list">${items}</div>`);
+    this.setContent(`${staleBanner}<div class="gdelt-list">${items}</div>`);
   }
 }
