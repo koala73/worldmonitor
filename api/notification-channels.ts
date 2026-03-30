@@ -9,6 +9,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureEdgeException } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { ConvexHttpClient } from 'convex/browser';
 
@@ -49,11 +51,17 @@ function buildClient(token: string): ConvexHttpClient {
 }
 
 function convexErrorStatus(err: unknown): number {
-  if (err !== null && typeof err === 'object' && 'data' in err) {
-    const msg = typeof (err as Record<string, unknown>).data === 'string'
-      ? String((err as Record<string, unknown>).data)
-      : '';
-    if (msg.includes('UNAUTHENTICATED')) return 401;
+  if (err !== null && typeof err === 'object') {
+    if ('data' in err) {
+      const msg = typeof (err as Record<string, unknown>).data === 'string'
+        ? String((err as Record<string, unknown>).data)
+        : '';
+      if (msg.includes('UNAUTHENTICATED')) return 401;
+    }
+    if ('message' in err) {
+      const msg = String((err as Record<string, unknown>).message);
+      if (msg.includes('NoAuthProvider') || msg.includes('UNAUTHENTICATED')) return 401;
+    }
   }
   return 500;
 }
@@ -103,7 +111,9 @@ export default async function handler(req: Request): Promise<Response> {
       return json({ channels, alertRules }, 200, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
-      return json({ error: 'Failed to fetch' }, convexErrorStatus(err), corsHeaders);
+      const status = convexErrorStatus(err);
+      if (status === 500) await captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
+      return json({ error: 'Failed to fetch' }, status, corsHeaders);
     }
   }
 
@@ -164,7 +174,9 @@ export default async function handler(req: Request): Promise<Response> {
       return json({ error: 'Unknown action' }, 400, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
-      return json({ error: 'Operation failed' }, convexErrorStatus(err), corsHeaders);
+      const status = convexErrorStatus(err);
+      if (status === 500) await captureEdgeException(err, { handler: 'notification-channels', method: 'POST' });
+      return json({ error: 'Operation failed' }, status, corsHeaders);
     }
   }
 
