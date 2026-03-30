@@ -95,6 +95,7 @@ import { getTopActiveGeoHubs } from '@/services/geo-activity';
 import { getTopActiveHubs } from '@/services/tech-activity';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { isFeatureAvailable } from '@/services/runtime-config';
+import { getApiBaseUrl } from '@/services/runtime';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
@@ -2622,6 +2623,29 @@ export class DataLoaderManager implements AppModule {
       const scored = scoreCamerasAgainstAlerts(raw, nws, gdacs);
       this.ctx.map?.setFAACameras(scored);
       (this.ctx.panels['faa-weather-cams'] as FAAWeatherCamsPanel | undefined)?.refresh();
+      const alertCams = scored.filter(c => c.alertProximityMi !== null);
+      if (alertCams.length >= 2) {
+        void fetch(`${getApiBaseUrl()}/api/faa-cam-digest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cameras: alertCams.slice(0, 6).map(c => ({
+              name: c.name,
+              location: c.state,
+              alertLabel: c.alertLabel,
+            })),
+          }),
+          signal: AbortSignal.timeout(25000),
+        })
+          .then(r => r.ok ? r.json() : null)
+          .then((data: { digest?: string } | null) => {
+            if (data?.digest) {
+              (this.ctx.panels['faa-weather-cams'] as FAAWeatherCamsPanel | undefined)
+                ?.setDigest(data.digest);
+            }
+          })
+          .catch(() => {});
+      }
     } catch (error) {
       console.error('[App] FAA cameras fetch failed:', error);
     }
