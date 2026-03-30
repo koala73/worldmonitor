@@ -1362,6 +1362,31 @@ async function handleOllamaStream(requestUrl, req, res, context) {
   }
 }
 
+function extractAlertCentroid(feature) {
+  const geom = feature?.geometry;
+  if (!geom) return null;
+  if (geom.type === 'Point') return [geom.coordinates[0], geom.coordinates[1]];
+  if (geom.type === 'Polygon' && geom.coordinates?.[0]?.length) {
+    const ring = geom.coordinates[0];
+    const lons = ring.map(c => c[0]);
+    const lats = ring.map(c => c[1]);
+    return [
+      (Math.min(...lons) + Math.max(...lons)) / 2,
+      (Math.min(...lats) + Math.max(...lats)) / 2,
+    ];
+  }
+  if (geom.type === 'MultiPolygon' && geom.coordinates?.[0]?.[0]?.length) {
+    const ring = geom.coordinates[0][0];
+    const lons = ring.map(c => c[0]);
+    const lats = ring.map(c => c[1]);
+    return [
+      (Math.min(...lons) + Math.max(...lons)) / 2,
+      (Math.min(...lats) + Math.max(...lats)) / 2,
+    ];
+  }
+  return null;
+}
+
 async function dispatch(requestUrl, req, routes, context) {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: makeCorsHeaders(req) });
@@ -1949,6 +1974,7 @@ async function dispatch(requestUrl, req, routes, context) {
           onset: p.onset ?? '',
           expires: p.expires ?? '',
           status: p.status ?? '',
+          centroid: extractAlertCentroid(f),
         };
       });
       return json(alerts);
