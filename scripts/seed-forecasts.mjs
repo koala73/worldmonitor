@@ -16367,14 +16367,23 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
 
   // Always write — even when byForecastId is empty — so later runs clear stale decorations
   // from prior runs. Without this, old simulation flags persist for the full 3-day TTL.
+  // Run-order guard: if a newer run has already written, skip to avoid poisoning the side key
+  // with stale data that would be applied by the next fast-path seed.
   const decorationCount = Object.keys(byForecastId).length;
+  // Store the originating run's generatedAt (not Date.now()) so the age check in
+  // applySimulationDecorationsToForecasts measures run age, not write timestamp.
+  const runGeneratedAt = snapshot?.generatedAt || Date.now();
   try {
     const { url, token } = getRedisCredentials();
-    await redisSet(url, token, SIMULATION_DECORATIONS_KEY, {
+    const sideKeyStatus = await redisAtomicWriteSimDecorations(url, token, SIMULATION_DECORATIONS_KEY, {
       runId: snapshot?.runId || '',
-      generatedAt: Date.now(),
+      generatedAt: runGeneratedAt,
       byForecastId,
     }, SIMULATION_DECORATIONS_TTL_SECONDS);
+    if (sideKeyStatus.startsWith('SKIPPED:')) {
+      console.log(`  [SimulationDecorations] Skipping side key write — existing is from a newer run (existing=${sideKeyStatus.slice(8)}, this_run=${runGeneratedAt})`);
+      return;
+    }
     await redisSet(url, token, SIMULATION_DECORATIONS_META_KEY, {
       fetchedAt: Date.now(),
       recordCount: decorationCount,
@@ -16383,10 +16392,170 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
     // Immediately patch forecast:predictions:v2 so the panel sees this run's simulation data
     // without waiting for the next fast-path seed. Pass runGeneratedAt so the patch can reject
     // a newer run's payload (prevents cross-run stamping when workers finish out of order).
-    await patchPublishedForecastsWithSimDecorations(byForecastId, snapshot?.generatedAt);
+    await patchPublishedForecastsWithSimDecorations(byForecastId, runGeneratedAt);
   } catch (err) {
     console.warn(`  [SimulationDecorations] Write failed: ${err.message}`);
   }
+}
+
+// Lua script for atomic write-if-newer of the simulation decoration side key.
+// Prevents a late older worker from overwriting a newer run's decorations.
+//
+// KEYS[1]  = SIMULATION_DECORATIONS_KEY (forecast:sim-decorations:v1)
+// ARGV[1]  = runGeneratedAt of this run (decimal string; '0' = unconditional write)
+// ARGV[2]  = new payload JSON string
+// ARGV[3]  = TTL in seconds
+//
+// Returns: 'WRITTEN' | 'SKIPPED:<existingGeneratedAt>'
+const _SIM_SIDE_WRITE_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if raw then
+  local ok, existing = pcall(cjson.decode, raw)
+  local existingTs = ok and tonumber(existing.generatedAt) or 0
+  local runTs = tonumber(ARGV[1]) or 0
+  if runTs > 0 and existingTs > runTs then
+    return 'SKIPPED:' .. tostring(existingTs)
+  end
+end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+return 'WRITTEN'
+`.trim();
+
+/**
+ * Atomically write the simulation decoration side key only if this run is newer
+ * than any existing value. Prevents a late older worker from poisoning the side key
+ * with stale byForecastId data.
+ *
+ * Production path: single Redis EVAL (atomic read-compare-write).
+ * Test path (_testRedisStore set): equivalent JavaScript logic.
+ *
+ * Returns: 'WRITTEN' | 'SKIPPED:<existingGeneratedAt>'
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} key  SIMULATION_DECORATIONS_KEY
+ * @param {{ runId: string, generatedAt: number, byForecastId: object }} payload
+ * @param {number} ttlSeconds
+ * @returns {Promise<string>}
+ */
+async function redisAtomicWriteSimDecorations(url, token, key, payload, ttlSeconds) {
+  // ── Test path ────────────────────────────────────────────────────────────────
+  if (_testRedisStore) {
+    const existing = _testRedisStore[key] ?? null;
+    const existingTs = typeof existing?.generatedAt === 'number' ? existing.generatedAt : 0;
+    const runTs = typeof payload.generatedAt === 'number' ? payload.generatedAt : 0;
+    if (runTs > 0 && existingTs > runTs) return `SKIPPED:${existingTs}`;
+    _testRedisStore[key] = JSON.parse(JSON.stringify(payload));
+    return 'WRITTEN';
+  }
+  // ── Production path: Lua EVAL ────────────────────────────────────────────────
+  const result = await redisCommand(url, token, [
+    'EVAL', _SIM_SIDE_WRITE_LUA, '1',
+    key,
+    String(typeof payload.generatedAt === 'number' ? payload.generatedAt : 0),
+    JSON.stringify(payload),
+    String(ttlSeconds),
+  ]);
+  return result?.result ?? 'WRITTEN';
+}
+
+// Lua script for atomic compare-and-swap patch of the canonical forecast key.
+// Executed via EVAL so the read-guard-modify-write is a single Redis operation with no TOCTOU gap.
+//
+// KEYS[1]  = canonical key (forecast:predictions:v2)
+// ARGV[1]  = runGeneratedAt as a decimal string ('0' means no guard)
+// ARGV[2]  = byForecastId JSON string
+// ARGV[3]  = TTL in seconds
+//
+// Returns: 'MISSING' | 'SKIPPED:<publishedAt>' | 'UNCHANGED' | 'PATCHED:<count>'
+const _SIM_PATCH_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return 'MISSING' end
+local ok, payload = pcall(cjson.decode, raw)
+if not ok then return 'MISSING' end
+if type(payload.predictions) ~= 'table' then return 'MISSING' end
+local runTs = tonumber(ARGV[1]) or 0
+local pubTs = tonumber(payload.generatedAt) or 0
+if runTs > 0 and pubTs > runTs then
+  return 'SKIPPED:' .. tostring(pubTs)
+end
+local ok2, decs = pcall(cjson.decode, ARGV[2])
+if not ok2 then return 'MISSING' end
+local patched = 0
+for _, pred in ipairs(payload.predictions) do
+  local id = pred.id
+  local dec = decs[id]
+  local newAdj  = dec and tonumber(dec.simulationAdjustment) or 0
+  local newConf = dec and tonumber(dec.simPathConfidence)    or 0
+  local newDem  = dec and dec.demotedBySimulation            or false
+  if pred.simulationAdjustment ~= newAdj or pred.simPathConfidence ~= newConf or pred.demotedBySimulation ~= newDem then
+    pred.simulationAdjustment  = newAdj
+    pred.simPathConfidence     = newConf
+    pred.demotedBySimulation   = newDem
+    patched = patched + 1
+  end
+end
+if patched == 0 then return 'UNCHANGED' end
+local ttl = tonumber(ARGV[3]) or 21600
+redis.call('SET', KEYS[1], cjson.encode(payload), 'EX', ttl)
+return 'PATCHED:' .. tostring(patched)
+`.trim();
+
+/**
+ * Atomically patch forecast:predictions:v2 with simulation decoration fields.
+ *
+ * Production path: single Redis EVAL (Lua) — the read, generatedAt guard, field mutations,
+ * and write happen in one atomic operation with no TOCTOU gap. A newer fast-path seed that
+ * publishes between GET and SET in a plain read-modify-write would be silently overwritten;
+ * this Lua script prevents that.
+ *
+ * Test path (_testRedisStore set): equivalent JavaScript logic — safe because the test store
+ * is single-threaded and there is no real concurrent writer.
+ *
+ * Returns a status string: 'MISSING' | 'SKIPPED:<publishedAt>' | 'UNCHANGED' | 'PATCHED:<count>'
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} canonicalKey
+ * @param {Record<string, {simulationAdjustment: number, simPathConfidence: number, demotedBySimulation: boolean}>} byForecastId
+ * @param {number} [runGeneratedAt]
+ * @param {number} ttlSeconds
+ * @returns {Promise<string>}
+ */
+async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForecastId, runGeneratedAt, ttlSeconds) {
+  // ── Test path: JavaScript equivalent (no real concurrency in tests) ──────────
+  if (_testRedisStore) {
+    const published = _testRedisStore[canonicalKey] ?? null;
+    if (!Array.isArray(published?.predictions)) return 'MISSING';
+    const runTs = typeof runGeneratedAt === 'number' ? runGeneratedAt : 0;
+    const pubTs = typeof published.generatedAt === 'number' ? published.generatedAt : 0;
+    if (runTs > 0 && pubTs > runTs) return `SKIPPED:${pubTs}`;
+    let patched = 0;
+    for (const pred of published.predictions) {
+      const dec = byForecastId[pred.id];
+      const newAdj  = dec ? Number(dec.simulationAdjustment || 0) : 0;
+      const newConf = dec ? Number(dec.simPathConfidence ?? 0) : 0;
+      const newDem  = dec ? !!dec.demotedBySimulation : false;
+      if (pred.simulationAdjustment !== newAdj || pred.simPathConfidence !== newConf || pred.demotedBySimulation !== newDem) {
+        pred.simulationAdjustment  = newAdj;
+        pred.simPathConfidence     = newConf;
+        pred.demotedBySimulation   = newDem;
+        patched++;
+      }
+    }
+    if (patched === 0) return 'UNCHANGED';
+    _testRedisStore[canonicalKey] = JSON.parse(JSON.stringify(published));
+    return `PATCHED:${patched}`;
+  }
+  // ── Production path: Lua EVAL (atomic) ───────────────────────────────────────
+  const result = await redisCommand(url, token, [
+    'EVAL', _SIM_PATCH_LUA, '1',
+    canonicalKey,
+    String(typeof runGeneratedAt === 'number' ? runGeneratedAt : 0),
+    JSON.stringify(byForecastId),
+    String(ttlSeconds),
+  ]);
+  return result?.result ?? 'MISSING';
 }
 
 /**
@@ -16399,11 +16568,8 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
  * Forecasts NOT in byForecastId have their sim fields reset to 0 / false, so that
  * any stale values from a prior run are cleared at the same time.
  *
- * Run-mismatch guard: if the canonical key's generatedAt is strictly greater than
- * runGeneratedAt, the key belongs to a newer fast-path seed and must NOT be patched
- * with this run's (older) simulation data. Deep-forecast and simulation workers can
- * finish out of order; without this guard an older worker would stamp stale adjustments
- * onto a newer published payload or reset newer sim fields back to zero.
+ * The patch is atomic via Lua EVAL: the read, generatedAt guard, mutations, and write
+ * happen in a single Redis operation so a concurrent fast-path seed cannot be overwritten.
  *
  * Non-fatal: any failure is logged as a warning and the function returns.
  *
@@ -16413,34 +16579,15 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
 async function patchPublishedForecastsWithSimDecorations(byForecastId, runGeneratedAt) {
   try {
     const { url, token } = getRedisCredentials();
-    const published = await redisGet(url, token, CANONICAL_KEY);
-    if (!Array.isArray(published?.predictions)) {
+    const status = await redisAtomicPatchSimDecorations(url, token, CANONICAL_KEY, byForecastId, runGeneratedAt, TTL_SECONDS);
+    if (status.startsWith('PATCHED:')) {
+      console.log(`  [SimulationDecorations] Patched ${status.slice(8)} forecasts in ${CANONICAL_KEY} (atomic)`);
+    } else if (status.startsWith('SKIPPED:')) {
+      console.log(`  [SimulationDecorations] Skipping patch — canonical key is from a newer run (published=${status.slice(8)}, sim_run=${runGeneratedAt})`);
+    } else if (status === 'MISSING') {
       console.warn('  [SimulationDecorations] Cannot patch canonical key — predictions missing or not an array');
-      return;
     }
-    // Run-mismatch guard: skip if the canonical key belongs to a newer fast-path seed.
-    if (typeof runGeneratedAt === 'number' && typeof published.generatedAt === 'number'
-        && published.generatedAt > runGeneratedAt) {
-      console.log(`  [SimulationDecorations] Skipping patch — canonical key is from a newer run (published=${published.generatedAt}, sim_run=${runGeneratedAt})`);
-      return;
-    }
-    let patched = 0;
-    for (const pred of published.predictions) {
-      const dec = byForecastId[pred.id];
-      const newAdj = dec ? Number(dec.simulationAdjustment || 0) : 0;
-      const newConf = dec ? Number(dec.simPathConfidence ?? 1.0) : 0;
-      const newDemoted = dec ? !!dec.demotedBySimulation : false;
-      if (pred.simulationAdjustment !== newAdj || pred.simPathConfidence !== newConf || pred.demotedBySimulation !== newDemoted) {
-        pred.simulationAdjustment = newAdj;
-        pred.simPathConfidence = newConf;
-        pred.demotedBySimulation = newDemoted;
-        patched++;
-      }
-    }
-    if (patched > 0) {
-      await redisSet(url, token, CANONICAL_KEY, published, TTL_SECONDS);
-      console.log(`  [SimulationDecorations] Patched ${patched} forecasts in ${CANONICAL_KEY}`);
-    }
+    // UNCHANGED: no-op, no log needed
   } catch (err) {
     console.warn(`  [SimulationDecorations] Canonical key patch failed (non-fatal): ${err.message}`);
   }
@@ -17030,6 +17177,8 @@ export {
   writeSimulationDecorations,
   applySimulationDecorationsToForecasts,
   patchPublishedForecastsWithSimDecorations,
+  redisAtomicPatchSimDecorations,
+  redisAtomicWriteSimDecorations,
   SIMULATION_DECORATIONS_KEY,
   SIMULATION_DECORATIONS_MAX_AGE_MS,
   computeSimulationAdjustment,

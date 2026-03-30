@@ -72,6 +72,8 @@ import {
   writeSimulationDecorations,
   applySimulationDecorationsToForecasts,
   patchPublishedForecastsWithSimDecorations,
+  redisAtomicPatchSimDecorations,
+  redisAtomicWriteSimDecorations,
   SIMULATION_DECORATIONS_KEY,
   SIMULATION_DECORATIONS_MAX_AGE_MS,
   CANONICAL_KEY,
@@ -7965,6 +7967,143 @@ describe('writeSimulationDecorations and applySimulationDecorationsToForecasts',
     const canon = store[CANONICAL_KEY].predictions;
     assert.equal(canon[0].simulationAdjustment, 0.12, 'same-run patch applied');
     assert.equal(canon[0].simPathConfidence, 0.88, 'same-run confidence applied');
+  });
+
+  it('WD-20: redisAtomicPatchSimDecorations — interleaving race: newer fast-path payload wins even when it arrives after the check', async () => {
+    // Scenario: the TOCTOU race that a plain read-modify-write cannot prevent.
+    // 1. Older worker starts: reads canonical key (generatedAt = sharedTs, same run → guard passes)
+    // 2. Newer fast-path seed publishes: canonical key updated to generatedAt = newerTs
+    // 3. Older worker tries to write back → must NOT overwrite newerTs payload
+    //
+    // In production, this is prevented atomically by the Lua EVAL. In tests, we verify
+    // redisAtomicPatchSimDecorations honours the guard on the value it actually reads inside
+    // the atomic call (not a stale snapshot from an earlier read).
+    //
+    // We simulate the race by: setting the store to newerTs BEFORE calling the atomic function.
+    // The test-path implementation reads the store at call time, so it sees newerTs → skips.
+    // This proves the atomic helper's guard fires on the live value, not a captured snapshot.
+    const olderRunTs = Date.now() - 5_000;
+    const newerTs    = olderRunTs + 3_000;  // 3s newer — a real concurrent fast-path seed
+
+    const store = {
+      [CANONICAL_KEY]: {
+        // Fast-path seed has already published with newerTs by the time our atomic call runs
+        generatedAt: newerTs,
+        predictions: [
+          { id: 'fc-race-01', simulationAdjustment: 0.05, simPathConfidence: 0.75, demotedBySimulation: false, title: 'Race 01' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    const byForecastId = { 'fc-race-01': { simulationAdjustment: 0.12, simPathConfidence: 0.99, demotedBySimulation: false } };
+    const { url, token } = { url: 'http://test', token: 'test' };  // values irrelevant — test-store path
+
+    // olderRunTs < newerTs: atomic helper must skip
+    const status = await redisAtomicPatchSimDecorations(url, token, CANONICAL_KEY, byForecastId, olderRunTs, 21600);
+
+    assert.ok(status.startsWith('SKIPPED:'), `expected SKIPPED, got ${status}`);
+    // Canonical key is unchanged — the faster publish's values survive
+    assert.equal(store[CANONICAL_KEY].predictions[0].simulationAdjustment, 0.05, 'newer payload untouched by older run');
+    assert.equal(store[CANONICAL_KEY].predictions[0].simPathConfidence, 0.75, 'newer confidence untouched');
+    assert.equal(store[CANONICAL_KEY].generatedAt, newerTs, 'canonical generatedAt preserved');
+  });
+
+  it('WD-21: writeSimulationDecorations skips side key and canonical patch when existing side key is from a newer run', async () => {
+    // Scenario: run B (newer) has already written forecast:sim-decorations:v1.
+    // run A (older) finishes late and calls writeSimulationDecorations — must not overwrite.
+    // Without the fix: run A writes generatedAt: Date.now() (fresh) → side key poisoned.
+    // With the fix: atomic write-if-newer detects existingTs > runATs → skips both side key and canonical patch.
+    const runBTs = Date.now() - 1_000;   // run B wrote 1 second ago
+    const runATs = runBTs - 60_000;      // run A originated 61 seconds ago (older)
+
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: {
+        runId: 'run-B', generatedAt: runBTs,
+        byForecastId: { 'fc-b-01': { simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false } },
+      },
+      [CANONICAL_KEY]: {
+        generatedAt: runBTs,
+        predictions: [
+          { id: 'fc-b-01', simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false, title: 'B 01' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    // Run A tries to write its stale decorations
+    const stateUnits = [makeStateUnit('state-a', ['fc-b-01'])];
+    const adjs = [makeAdj('state-a', 0.12, 0.99)];
+    const snapshotA = { runId: 'run-A', generatedAt: runATs, fullRunStateUnits: stateUnits };
+    await writeSimulationDecorations(makeMergeResult(adjs), snapshotA);
+
+    // Side key must still have run B's data
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].runId, 'run-B', 'side key runId preserved');
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].generatedAt, runBTs, 'side key generatedAt preserved (not poisoned with Date.now())');
+    assert.deepStrictEqual(
+      store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-b-01'],
+      { simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false },
+      'side key byForecastId not overwritten by run A',
+    );
+
+    // Canonical key must also be untouched (both guards fired)
+    assert.equal(store[CANONICAL_KEY].predictions[0].simulationAdjustment, 0.08, 'canonical untouched');
+    assert.equal(store[CANONICAL_KEY].generatedAt, runBTs, 'canonical generatedAt unchanged');
+  });
+
+  it('WD-22: writeSimulationDecorations stores snapshot.generatedAt (not Date.now()) so age check uses run origin time', async () => {
+    // Verifies that byForecastId is stored with the originating run's generatedAt, not
+    // the wall-clock write time. applySimulationDecorationsToForecasts uses this timestamp
+    // for its SIMULATION_DECORATIONS_MAX_AGE_MS freshness check — if we stored Date.now()
+    // a run from 2 days ago would always look fresh.
+    const runOriginTs = Date.now() - 120_000;  // run started 2 minutes ago
+    const store = {};
+    __setRedisStoreForTests(store);
+
+    const stateUnits = [makeStateUnit('state-ts-check', ['fc-ts-01'])];
+    const adjs = [makeAdj('state-ts-check', 0.08, 0.8)];
+    const snap = { runId: 'run-ts', generatedAt: runOriginTs, fullRunStateUnits: stateUnits };
+    await writeSimulationDecorations(makeMergeResult(adjs), snap);
+
+    assert.ok(store[SIMULATION_DECORATIONS_KEY], 'side key written');
+    const storedTs = store[SIMULATION_DECORATIONS_KEY].generatedAt;
+    // Must equal the snapshot's generatedAt, not wall-clock time (which would be ~runOriginTs + epsilon)
+    assert.strictEqual(storedTs, runOriginTs, 'stored generatedAt equals snapshot.generatedAt, not Date.now()');
+  });
+
+  it('WD-23: redisAtomicWriteSimDecorations skips when existing has newer generatedAt', async () => {
+    const newerTs = Date.now();
+    const olderTs = newerTs - 5_000;
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: { runId: 'run-newer', generatedAt: newerTs, byForecastId: {} },
+    };
+    __setRedisStoreForTests(store);
+
+    const status = await redisAtomicWriteSimDecorations('http://test', 'test', SIMULATION_DECORATIONS_KEY, {
+      runId: 'run-older', generatedAt: olderTs, byForecastId: { 'fc-x': { simulationAdjustment: 0.12, simPathConfidence: 1, demotedBySimulation: false } },
+    }, 259200);
+
+    assert.ok(status.startsWith('SKIPPED:'), `expected SKIPPED, got ${status}`);
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].runId, 'run-newer', 'newer run preserved');
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].generatedAt, newerTs, 'newer generatedAt preserved');
+  });
+
+  it('WD-24: redisAtomicWriteSimDecorations writes when existing has older generatedAt', async () => {
+    const olderTs = Date.now() - 10_000;
+    const newerTs = olderTs + 8_000;
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: { runId: 'run-older', generatedAt: olderTs, byForecastId: {} },
+    };
+    __setRedisStoreForTests(store);
+
+    const status = await redisAtomicWriteSimDecorations('http://test', 'test', SIMULATION_DECORATIONS_KEY, {
+      runId: 'run-newer', generatedAt: newerTs, byForecastId: { 'fc-y': { simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false } },
+    }, 259200);
+
+    assert.strictEqual(status, 'WRITTEN');
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].runId, 'run-newer');
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].generatedAt, newerTs);
+    assert.ok(store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-y'], 'new byForecastId written');
   });
 
   it('WD-15: inline deep path — applySimulationMerge result + snapshot.fullRunStateUnits writes decorations (covers processDeepForecastTask call site)', async () => {
