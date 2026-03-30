@@ -157,12 +157,16 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
     }
 
     if (intent.type === 'PRICE_WATCH') {
-        const date = intent.date ?? new Date(Date.now() + 86400000).toISOString().slice(0, 10); // default: tomorrow
+        // Use local calendar arithmetic — never toISOString() which truncates at UTC midnight
+        const addLocalDays = (n: number): string => {
+            const d = new Date(); d.setDate(d.getDate() + n);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        };
+        const date = intent.date ?? addLocalDays(1); // default: tomorrow in user's local timezone
         const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
         const gfUrl = `https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`;
-        const todayBase = new Date(); todayBase.setHours(12, 0, 0, 0);
         const dateChips = ([1, 3, 7, 14, 30] as const).map(days => {
-            const d = new Date(todayBase.getTime() + days * 86400000).toISOString().slice(0, 10);
+            const d = addLocalDays(days);
             const lbl = days === 1 ? 'Tomorrow' : `+${days}d`;
             const active = d === date;
             const cmd = `price ${intent.origin} ${intent.destination} ${d}`;
