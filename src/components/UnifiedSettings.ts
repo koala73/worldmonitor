@@ -210,8 +210,7 @@ export class UnifiedSettings {
       isDesktopApp: this.config.isDesktopApp,
       onMapProviderChange: this.config.onMapProviderChange,
       isSignedIn: !this.config.isDesktopApp && (getAuthState().user !== null),
-      isSignedIn: !this.config.isDesktopApp && (getAuthState().user !== null),
-      onSettingSaved: () => showToast(t('modals.settingsWindow.saved')),
+      onSettingSaved: () => showToast(t('modals.settingsWindow.saved'), 4000),
     });
 
     this.overlay.innerHTML = `
@@ -399,7 +398,7 @@ export class UnifiedSettings {
     if (!panel.enabled && !isProUser()) {
       const enabledCount = Object.entries(this.draftPanelSettings).filter(([k, p]) => p.enabled && !k.startsWith('cw-')).length;
       if (enabledCount >= FREE_MAX_PANELS) {
-        showToast(t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }));
+        showToast(t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }), 4000);
         return;
       }
     }

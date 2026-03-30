@@ -37,13 +37,14 @@ describe('settings save feedback guardrails', () => {
   const countryIntelSrc = src('src/app/country-intel.ts');
 
   it('uses a shared body-level toast utility with role=status', () => {
-    assert.match(toastSrc, /export function showToast\(message: string\): void/);
+    assert.match(toastSrc, /export function showToast\(message: string, durationMs = 3000\): void/);
     assert.match(toastSrc, /toast\.setAttribute\('role', 'status'\)/);
     assert.match(toastSrc, /document\.querySelector\('\.toast-notification'\)\?\.remove\(\)/);
+    assert.match(toastSrc, /}, durationMs\);/);
   });
 
   it('shows saved feedback for Preferences through renderPreferences callback', () => {
-    assert.match(settingsSrc, /onSettingSaved:\s*\(\)\s*=>\s*showToast\(t\('modals\.settingsWindow\.saved'\)\)/);
+    assert.match(settingsSrc, /onSettingSaved:\s*\(\)\s*=>\s*showToast\(t\('modals\.settingsWindow\.saved'\), 4000\)/);
     assert.match(prefsSrc, /onSettingSaved\?: \(\) => void;/);
     assert.match(prefsSrc, /host\.onSettingSaved\?\.\(\);/);
   });
@@ -58,5 +59,9 @@ describe('settings save feedback guardrails', () => {
     assert.match(countryIntelSrc, /import \{ showToast \} from '@\/utils\/toast';/);
     assert.doesNotMatch(handlersSrc, /\n\s*showToast\(msg: string\): void \{/);
     assert.doesNotMatch(countryIntelSrc, /\n\s*showToast\(msg: string\): void \{/);
+  });
+
+  it('preserves UnifiedSettings toast duration for modal-originated feedback', () => {
+    assert.match(settingsSrc, /showToast\(t\('modals\.settingsWindow\.freePanelLimit', \{ max: String\(FREE_MAX_PANELS\) \}\), 4000\)/);
   });
 });

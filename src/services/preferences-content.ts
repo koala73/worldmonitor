@@ -37,8 +37,6 @@ export interface PreferencesHost {
   onMapProviderChange?: (provider: MapProvider) => void;
   isSignedIn?: boolean;
   onSettingSaved?: () => void;
-  isSignedIn?: boolean;
-  onSettingSaved?: () => void;
 }
 
 export interface PreferencesResult {

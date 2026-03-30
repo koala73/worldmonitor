@@ -1,4 +1,4 @@
-export function showToast(message: string): void {
+export function showToast(message: string, durationMs = 3000): void {
   document.querySelector('.toast-notification')?.remove();
 
   const toast = document.createElement('div');
@@ -11,5 +11,5 @@ export function showToast(message: string): void {
   setTimeout(() => {
     toast.classList.remove('visible');
     setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  }, durationMs);
 }
