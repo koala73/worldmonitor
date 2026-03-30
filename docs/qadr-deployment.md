@@ -41,5 +41,16 @@ monitor    IN A   5.235.208.128
 
 - `worldmonitor` joins `fgpt_ingress` so Caddy can reach it.
 - `worldmonitor` joins `fgpt_ai` so it can use the internal LiteLLM gateway.
+- `worldmonitor` uses `Dockerfile.qadr-prebuilt` on QADR, not the full build-stage `Dockerfile`.
+- Build the frontend and compiled handler bundle on a stable workstation first:
+
+```bash
+npm ci --ignore-scripts
+node docker/build-handlers.mjs
+npx tsc
+npx vite build
+```
+
+- Then sync the repo contents, including `dist/` and generated `api/**/*.js`, to `/home/saman/workspaces/worldmonitor` before running `docker compose` on QADR.
 - `seeders` uses `node:22-alpine` and runs `./scripts/run-seeders.sh` every 30 minutes by default.
 - Redis state stays local to this stack through the `redis-data` volume.

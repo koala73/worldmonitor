@@ -2,7 +2,7 @@ services:
   worldmonitor:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.qadr-prebuilt
     image: gantor-worldmonitor:20260330
     container_name: qadr-worldmonitor
     ports:
