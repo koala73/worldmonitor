@@ -10,7 +10,7 @@
  */
 
 import { createRouter, type RouteDescriptor } from './router';
-import { getCorsHeaders, isDisallowedOrigin } from './cors';
+import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../api/_api-key.js';
 import { mapErrorToResponse } from './error-mapper';
@@ -144,6 +144,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/military/v1/list-military-flights': 'slow',
   '/api/market/v1/list-etf-flows': 'slow',
   '/api/research/v1/list-hackernews-items': 'slow',
+  '/api/intelligence/v1/get-country-risk': 'slow',
   '/api/intelligence/v1/get-risk-scores': 'slow',
   '/api/intelligence/v1/get-pizzint-status': 'slow',
   '/api/intelligence/v1/classify-event': 'static',
@@ -362,7 +363,13 @@ export function createDomainGateway(
         const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
         const tier = (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';
         mergedHeaders.set('Cache-Control', TIER_HEADERS[tier]);
-        const cdnCache = TIER_CDN_CACHE[tier];
+        // Only allow Vercel CDN caching for trusted origins (worldmonitor.app, Vercel previews,
+        // Tauri). No-origin server-side requests (external scrapers) must always reach the edge
+        // function so the auth check in validateApiKey() can run. Without this guard, a cached
+        // 200 from a trusted-origin browser request could be served to a no-origin scraper,
+        // bypassing auth entirely.
+        const reqOrigin = request.headers.get('origin') || '';
+        const cdnCache = isAllowedOrigin(reqOrigin) ? TIER_CDN_CACHE[tier] : null;
         if (cdnCache) mergedHeaders.set('CDN-Cache-Control', cdnCache);
         mergedHeaders.set('X-Cache-Tier', tier);
 

@@ -49,6 +49,10 @@ interface CandidatePacket {
    * BUG HISTORY: PRs #2404/#2410 fixed crashes caused by reading candidatePacket.topBucketId directly.
    */
   marketContext: CandidateMarketContext;
+  stateSummary?: {
+    actors: string[];
+    [key: string]: unknown;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +89,23 @@ interface ExpandedPathCandidate {
   topBucketId?: string;
 }
 
+/**
+ * Compact simulation signal attached to an ExpandedPath when a non-zero adjustment was applied.
+ * Written by applySimulationMerge; rendered as a chip in ForecastPanel.
+ */
+interface SimulationSignal {
+  /** Simulation added a positive bonus to this path (bucket-channel match fired). False for negative-only adjustments (invalidator/stabilizer hit without a bucket-channel match). */
+  backed: boolean;
+  /** Raw adjustment delta (+0.08/+0.04 weighted by simPathConfidence; -0.12/-0.15 flat). */
+  adjustmentDelta: number;
+  /** Source of the matched channel: 'direct' (from path.direct.channel) | 'market' (from marketContext.topChannel) | 'none'. */
+  channelSource: 'direct' | 'market' | 'none';
+  /** Path was demoted below the 0.50 acceptance threshold by simulation. */
+  demoted: boolean;
+  /** Confidence of the matched simulation top-path (0–1). 1.0 when absent/non-finite (fallback). Explicit 0 preserved. Only meaningful when backed=true. */
+  simPathConfidence: number;
+}
+
 /** A single expanded path produced by the deep forecast LLM evaluation. */
 interface ExpandedPath {
   pathId: string;
@@ -95,6 +116,8 @@ interface ExpandedPath {
   simulationAdjustment?: number;
   demotedBySimulation?: boolean;
   promotedBySimulation?: boolean;
+  /** Compact simulation signal. Present only when applySimulationMerge produced a non-zero adjustment. */
+  simulationSignal?: SimulationSignal;
   direct?: ExpandedPathDirect;
   candidate?: ExpandedPathCandidate;
 }
@@ -158,6 +181,16 @@ interface SimulationAdjustmentDetail {
   actorOverlapCount: number;
   invalidatorHit: boolean;
   stabilizerHit: boolean;
+  /** Number of candidate-theater actors used for overlap matching. Source is stateSummary.actors if raw list present, else affectedAssets. Never a union. */
+  candidateActorCount: number;
+  /** Source of candidate actors used for overlap matching (candidate-theater scoped, no union). */
+  actorSource: 'stateSummary' | 'affectedAssets' | 'none';
+  /** Resolved channel used for bucket-channel matching. */
+  resolvedChannel: string;
+  /** Source of resolved channel. */
+  channelSource: 'direct' | 'market' | 'none';
+  /** Confidence of the matched simulation top-path (0–1). 1.0 when absent or non-finite (legacy LLM output fallback). Explicit 0 is preserved as 0 — simulation rated the path unsupported. */
+  simPathConfidence: number;
 }
 
 interface SimulationAdjustmentRecord {

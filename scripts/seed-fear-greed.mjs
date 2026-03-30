@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, sleep, resolveProxyForConnect } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
+
+const _proxyAuth = resolveProxyForConnect();
 
 const FEAR_GREED_KEY = 'market:fear-greed:v1';
 const FEAR_GREED_TTL = 64800; // 18h = 3x 6h interval

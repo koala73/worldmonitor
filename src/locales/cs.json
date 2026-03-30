@@ -1528,7 +1528,9 @@
       "filterPolitics": "Politika",
       "filterMiddleeast": "Blízký východ",
       "live": "ŽIVĚ",
-      "viewSource": "Zobrazit zdroj"
+      "viewSource": "Zobrazit zdroj",
+      "filterGeopolitics": "Geopolitika",
+      "filterCyber": "Kyber"
     },
     "investments": {
       "infoTooltip": "Databáze přímých zahraničních investic Saúdské Arábie a SAE do globální kritické infrastruktury. Kliknutím na řádek přejdete k investici na mapě.",

@@ -13,6 +13,7 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'sanctions:pressure:v1';
 const STATE_KEY = 'sanctions:pressure:state:v1';
 const ENTITY_INDEX_KEY = 'sanctions:entities:v1';
+const COUNTRY_COUNTS_KEY = 'sanctions:country-counts:v1';
 const CACHE_TTL = 15 * 60 * 60; // 15h — 3h buffer over 12h cron cadence (was 12h = 0 buffer)
 // Compact entity type codes for the lookup index (saves space vs full enum strings)
 const ET_CODE = {
@@ -77,6 +78,18 @@ function buildCountryPressure(entries) {
   return [...map.values()]
     .sort((a, b) => b.newEntryCount - a.newEntryCount || b.entryCount - a.entryCount || a.countryName.localeCompare(b.countryName))
     .slice(0, 12);
+}
+
+// Full ISO2 → entryCount map across ALL entries (not truncated like buildCountryPressure).
+// Used by get-country-risk RPC for accurate per-country sanctions screening.
+function buildCountryCounts(entries) {
+  const map = {};
+  for (const entry of entries) {
+    for (const code of entry.countryCodes) {
+      if (code && code !== 'XX') map[code] = (map[code] ?? 0) + 1;
+    }
+  }
+  return map;
 }
 
 function buildProgramPressure(entries) {
@@ -521,6 +534,7 @@ async function fetchSanctionsPressure() {
     programs: buildProgramPressure(entries),
     entries: sortedEntries.slice(0, DEFAULT_RECENT_LIMIT),
     _entityIndex,
+    _countryCounts: buildCountryCounts(entries),
     _state: {
       entryIds: entries.map((entry) => entry.id),
     },
@@ -539,7 +553,7 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   // Strip internal-only fields before writing the main key so the pressure payload
   // does not include the entity index (~hundreds of KB) or state snapshot.
   publishTransform: (data) => {
-    const { _entityIndex: _ei, _state: _s, ...rest } = data;
+    const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, ...rest } = data;
     return rest;
   },
   extraKeys: [
@@ -547,6 +561,11 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
       key: STATE_KEY,
       ttl: CACHE_TTL,
       transform: (data) => data._state,
+    },
+    {
+      key: COUNTRY_COUNTS_KEY,
+      ttl: CACHE_TTL,
+      transform: (data) => data._countryCounts,
     },
   ],
   afterPublish: async (data, _ctx) => {
@@ -561,7 +580,17 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
         data._entityIndex.length,
       );
     }
+    // Write full ISO2→count map for per-country sanctions lookup (no top-12 truncation).
+    if (data._countryCounts) {
+      await writeExtraKeyWithMeta(
+        COUNTRY_COUNTS_KEY,
+        data._countryCounts,
+        CACHE_TTL,
+        Object.keys(data._countryCounts).length,
+      );
+    }
     delete data._state;
     delete data._entityIndex;
+    delete data._countryCounts;
   },
 });

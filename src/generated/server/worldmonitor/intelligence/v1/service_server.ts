@@ -103,6 +103,21 @@ export interface EventClassification {
   entities: string[];
 }
 
+export interface GetCountryRiskRequest {
+  countryCode: string;
+}
+
+export interface GetCountryRiskResponse {
+  countryCode: string;
+  countryName: string;
+  cii?: CiiScore;
+  advisoryLevel: string;
+  sanctionsActive: boolean;
+  sanctionsCount: number;
+  fetchedAt: number;
+  upstreamUnavailable: boolean;
+}
+
 export interface GetCountryIntelBriefRequest {
   countryCode: string;
   framework: string;
@@ -530,6 +545,7 @@ export interface IntelligenceServiceHandler {
   getRiskScores(ctx: ServerContext, req: GetRiskScoresRequest): Promise<GetRiskScoresResponse>;
   getPizzintStatus(ctx: ServerContext, req: GetPizzintStatusRequest): Promise<GetPizzintStatusResponse>;
   classifyEvent(ctx: ServerContext, req: ClassifyEventRequest): Promise<ClassifyEventResponse>;
+  getCountryRisk(ctx: ServerContext, req: GetCountryRiskRequest): Promise<GetCountryRiskResponse>;
   getCountryIntelBrief(ctx: ServerContext, req: GetCountryIntelBriefRequest): Promise<GetCountryIntelBriefResponse>;
   searchGdeltDocuments(ctx: ServerContext, req: SearchGdeltDocumentsRequest): Promise<SearchGdeltDocumentsResponse>;
   deductSituation(ctx: ServerContext, req: DeductSituationRequest): Promise<DeductSituationResponse>;
@@ -675,6 +691,53 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.classifyEvent(ctx, body);
           return new Response(JSON.stringify(result as ClassifyEventResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-country-risk",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCountryRiskRequest = {
+            countryCode: params.get("country_code") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryRisk", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCountryRisk(ctx, body);
+          return new Response(JSON.stringify(result as GetCountryRiskResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

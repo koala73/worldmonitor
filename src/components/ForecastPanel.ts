@@ -194,11 +194,21 @@ function injectStyles(): void {
     .fc-perspective { font-size: 11px; color: var(--text-secondary, #999); padding: 2px 0; line-height: 1.4; }
     .fc-perspective strong { color: var(--text-primary, #ccc); font-weight: 600; }
     .fc-scenario { font-style: italic; }
-    .fc-signals { padding: 8px 14px 4px; border-top: 1px solid var(--border-color, #2a2a2a); display: grid; gap: 2px; }
+    .fc-signals { padding: 8px 14px 4px; border-top: 1px solid var(--border-color, #2a2a2a); }
     .fc-signals-title { color: var(--text-secondary, #888); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
-    .fc-signal { color: var(--text-secondary, #a0a0a0); font-size: 11px; padding: 3px 0 3px 12px; line-height: 1.45; position: relative; }
+    .fc-signal { color: var(--text-secondary, #a0a0a0); font-size: 11px; padding: 3px 0 3px 12px; line-height: 1.45; position: relative; margin-top: 2px; }
     .fc-signal::before { content: ''; position: absolute; left: 0; top: 9px; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #555); }
     .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
+
+    /* ── Simulation confidence sub-bar (Option D) ────────────────────────── */
+    /* Thin colored underbar below the forecast title. Width encodes sim       */
+    /* path confidence. At rest: barely visible. On row hover: full opacity   */
+    /* + text label reveals below the bar. Zero extra columns needed.         */
+    .fc-sim-bar-wrap { margin-top: 4px; }
+    .fc-sim-bar { height: 2px; border-radius: 1px; opacity: 0.45; transition: opacity 0.15s; }
+    .fc-prob-item:hover .fc-sim-bar { opacity: 0.9; }
+    .fc-sim-label { font-size: 9px; display: none; margin-top: 2px; line-height: 1.2; }
+    .fc-prob-item:hover .fc-sim-label { display: block; }
   `;
   document.head.appendChild(style);
 }
@@ -434,18 +444,22 @@ export class ForecastPanel extends Panel {
 
     const sigs = f.signals || [];
     const signalsHtml = sigs.length > 0
-      ? `<div class="fc-signals-title">Analysis Signals (${sigs.length})</div>${sigs.map(s =>
+      ? sigs.map(s =>
           `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014\-]+/, ''))}</div>`
-        ).join('')}`
+        ).join('')
       : '';
+
+    const simBarHtml = this.renderSimBar(f);
+    const demoted = f.demotedBySimulation ?? false;
 
     return `
       <div class="fc-prob-item">
-        <div class="fc-prob-row">
-          <span class="fc-prob-label"
-                style="border-left:2px solid ${catColor}47;padding-left:6px">
+        <div class="fc-prob-row"${demoted ? ' style="opacity:0.5"' : ''}>
+          <div class="fc-prob-label"
+               style="border-left:2px solid ${catColor}47;padding-left:6px">
             ${escapeHtml(f.title)}
-          </span>
+            ${simBarHtml}
+          </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">
               <div class="fc-prob-bar-fill" style="background:${probColor};width:${pct}%"></div>
@@ -466,6 +480,40 @@ export class ForecastPanel extends Panel {
         ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}
       </div>
     `;
+  }
+
+  // ── Simulation confidence sub-bar ───────────────────────────────────────
+
+  private renderSimBar(f: Forecast): string {
+    const adj = f.simulationAdjustment ?? 0;
+    if (adj === 0) return '';
+
+    const conf = f.simPathConfidence ?? 1.0;
+    const demoted = f.demotedBySimulation ?? false;
+    const adjPct = Math.round(Math.abs(adj) * 100);
+
+    let barColor: string;
+    let labelText: string;
+
+    if (demoted) {
+      barColor = '#e05252';
+      labelText = `AI flag: dropped · −${adjPct}%`;
+    } else if (adj > 0) {
+      barColor = conf >= 0.70 ? '#3fb950' : '#d29922';
+      labelText = conf < 0.70 ? `AI signal (moderate) · +${adjPct}%` : `AI signal · +${adjPct}%`;
+    } else {
+      barColor = '#ea580c';
+      labelText = `AI caution · −${adjPct}%`;
+    }
+
+    // Width encodes sim-path confidence for positive adjustments (at least 20% so bar is visible).
+    // Negative adjustments use 100% width — structural signal, not confidence-dependent.
+    const barWidthPct = adj > 0 ? Math.round(Math.max(20, conf * 100)) : 100;
+
+    return `<div class="fc-sim-bar-wrap">
+      <div class="fc-sim-bar" style="width:${barWidthPct}%;background:${barColor}"></div>
+      <span class="fc-sim-label" style="color:${barColor}">${escapeHtml(labelText)}</span>
+    </div>`;
   }
 
   // ── Detail sections (shared by rows) ────────────────────────────────────

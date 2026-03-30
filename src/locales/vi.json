@@ -1548,7 +1548,9 @@
       "filterPolitics": "Chính trị",
       "filterMiddleeast": "Trung Đông",
       "live": "TRỰC TIẾP",
-      "viewSource": "Xem nguồn"
+      "viewSource": "Xem nguồn",
+      "filterGeopolitics": "Địa chính trị",
+      "filterCyber": "Mạng"
     },
     "investments": {
       "infoTooltip": "Cơ sở dữ liệu đầu tư trực tiếp nước ngoài của Ả Rập Saudi và UAE vào hạ tầng quan trọng toàn cầu. Nhấp vào hàng để bay đến vị trí đầu tư trên bản đồ.",

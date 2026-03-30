@@ -4,11 +4,11 @@
 // FRED mirrors the national BLS series with identical data and no IP restrictions.
 // Metro-area unemployment rates (LAUMT*) are dropped; no FRED equivalent exists.
 
-import { loadEnvFile, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, fredFetchJson } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, writeExtraKeyWithMeta, sleep, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const _proxyAuth = resolveProxy();
+const _proxyAuth = resolveProxyForConnect();
 
 const CANONICAL_KEY = 'bls:series:v1';
 const KEY_PREFIX = 'bls:series';

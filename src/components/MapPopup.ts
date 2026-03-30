@@ -943,6 +943,13 @@ export class MapPopup {
             <span style="opacity:0.5;font-size:10px">${t('popups.flight.estimated') || 'Est'}</span><span></span><span style="opacity:0.5;font-size:10px;text-align:right">${t('popups.flight.estimated') || 'Est'}</span>
             <span>${depEst}${fmtDelayMin(live.depDelayedMin)}</span><span style="opacity:0.3;text-align:center">\u2194</span><span style="text-align:right">${arrEst}${fmtDelayMin(live.arrDelayedMin)}</span>` : ''}
           </div>`);
+
+        // Book this route CTA
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const flightQ = live.callsignIata ? `${encodeURIComponent(live.callsignIata)}+` : '';
+        const bookUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=${flightQ}from+${encodeURIComponent(live.depIata)}+to+${encodeURIComponent(live.arrIata)}+on+${encodeURIComponent(todayStr)}`);
+        parts.push(`<a href="${bookUrl}" target="_blank" rel="noopener" style="display:block;margin-top:8px;padding:7px 12px;background:rgba(68,255,136,.06);border:1px solid rgba(68,255,136,.18);border-radius:6px;color:var(--green,#44ff88);text-decoration:none;font-size:12px;text-align:center">Book this route &rarr;</a>`);
       }
 
       // Enrichment stats row

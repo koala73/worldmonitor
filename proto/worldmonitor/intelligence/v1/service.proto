@@ -7,6 +7,7 @@ import "worldmonitor/intelligence/v1/deduct_situation.proto";
 import "worldmonitor/intelligence/v1/get_company_enrichment.proto";
 import "worldmonitor/intelligence/v1/get_country_facts.proto";
 import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
+import "worldmonitor/intelligence/v1/get_country_risk.proto";
 import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
 import "worldmonitor/intelligence/v1/get_risk_scores.proto";
 import "worldmonitor/intelligence/v1/list_security_advisories.proto";
@@ -44,6 +45,14 @@ service IntelligenceService {
   // ClassifyEvent analyzes a news event using AI models.
   rpc ClassifyEvent(ClassifyEventRequest) returns (ClassifyEventResponse) {
     option (sebuf.http.config) = {path: "/classify-event", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryRisk retrieves composite risk intelligence for a specific country.
+  rpc GetCountryRisk(GetCountryRiskRequest) returns (GetCountryRiskResponse) {
+    option (sebuf.http.config) = {
+      path: "/get-country-risk"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // GetCountryIntelBrief generates a strategic brief for a specific country.

@@ -28,10 +28,10 @@ export const TELEGRAM_TOPICS = [
   { id: 'all', labelKey: 'components.telegramIntel.filterAll' },
   { id: 'breaking', labelKey: 'components.telegramIntel.filterBreaking' },
   { id: 'conflict', labelKey: 'components.telegramIntel.filterConflict' },
-  { id: 'alerts', labelKey: 'components.telegramIntel.filterAlerts' },
-  { id: 'osint', labelKey: 'components.telegramIntel.filterOsint' },
-  { id: 'politics', labelKey: 'components.telegramIntel.filterPolitics' },
+  { id: 'geopolitics', labelKey: 'components.telegramIntel.filterGeopolitics' },
   { id: 'middleeast', labelKey: 'components.telegramIntel.filterMiddleeast' },
+  { id: 'osint', labelKey: 'components.telegramIntel.filterOsint' },
+  { id: 'cyber', labelKey: 'components.telegramIntel.filterCyber' },
 ] as const;
 
 let cachedResponse: TelegramFeedResponse | null = null;

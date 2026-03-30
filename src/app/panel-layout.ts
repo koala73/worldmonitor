@@ -68,7 +68,6 @@ import {
   DiseaseOutbreaksPanel,
   SocialVelocityPanel,
 } from '@/components';
-import { EconomicStressPanel } from '@/components/EconomicStressPanel';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
 import { debounce, saveToStorage, loadFromStorage } from '@/utils';
@@ -128,6 +127,7 @@ export class PanelLayoutManager implements AppModule {
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeAuth: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
+  private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -146,6 +146,17 @@ export class PanelLayoutManager implements AppModule {
       this.updatePanelGating(state);
     });
     this.fetchGitHubStars();
+
+    // Handle analyst action chip "Create chart widget →" click
+    this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
+      openWidgetChatModal({
+        mode: 'create',
+        tier: 'pro',
+        initialMessage: e.detail.initialMessage,
+        onComplete: (spec) => this.addCustomWidget(spec),
+      });
+    }) as EventListener;
+    this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
   }
 
   destroy(): void {
@@ -155,6 +166,10 @@ export class PanelLayoutManager implements AppModule {
     this.unsubscribeAuth = null;
     this.proBlockUnsubscribe?.();
     this.proBlockUnsubscribe = null;
+    if (this.boundWidgetCreatorHandler) {
+      this.ctx.container.removeEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
+      this.boundWidgetCreatorHandler = null;
+    }
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
     if (this.criticalBannerEl) {
@@ -699,7 +714,6 @@ export class PanelLayoutManager implements AppModule {
     this.createNewsPanel('github', 'panels.github');
     this.createNewsPanel('ipo', 'panels.ipo');
     this.createNewsPanel('thinktanks', 'panels.thinktanks');
-    this.createPanel('economic-stress', () => new EconomicStressPanel());
     this.createPanel('economic', () => new EconomicPanel());
     this.createPanel('consumer-prices', () => new ConsumerPricesPanel());
 

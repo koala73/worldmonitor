@@ -1,0 +1,17 @@
+import { v } from "convex/values";
+
+export const channelTypeValidator = v.union(
+  v.literal("telegram"),
+  v.literal("slack"),
+  v.literal("email"),
+);
+
+export const sensitivityValidator = v.union(
+  v.literal("all"),
+  v.literal("high"),
+  v.literal("critical"),
+);
+
+export const CURRENT_PREFS_SCHEMA_VERSION = 1;
+
+export const MAX_PREFS_BLOB_SIZE = 65536;

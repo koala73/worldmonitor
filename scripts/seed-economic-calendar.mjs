@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, resolveProxy, fredFetchJson } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const _proxyAuth = resolveProxy();
+const _proxyAuth = resolveProxyForConnect();
 
 const CANONICAL_KEY = 'economic:econ-calendar:v1';
 const CACHE_TTL = 129600; // 36h — 3× a 12h cron interval

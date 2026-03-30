@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, fredFetchJson, curlFetch } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, resolveProxyForConnect, fredFetchJson, curlFetch, getRedisCredentials } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const _proxyAuth = resolveProxy();
+const _proxyAuth = resolveProxyForConnect(); // gate.decodo.com — HTTP CONNECT tunneling for FRED
+const _curlProxyAuth = resolveProxy();       // us.decodo.com  — curl for Yahoo/macro signals
 
 // ─── Keys (must match handler cache keys exactly) ───
 const KEYS = {
@@ -16,6 +17,8 @@ const KEYS = {
 };
 
 const FRED_KEY_PREFIX = 'economic:fred:v1';
+const STRESS_INDEX_KEY = 'economic:stress-index:v1';
+const STRESS_INDEX_TTL = 21600; // 6h
 const FRED_TTL = 93600; // 26h — survive daily cron scheduling drift
 const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
@@ -26,6 +29,98 @@ const NAT_GAS_TTL = 1_814_400; // 21 days — EIA publishes weekly; 3x cadence p
 const NAT_GAS_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 
 const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30', 'T10Y3M', 'STLFSI4'];
+
+// ─── Economic Stress Index (computed last from FRED data in fetchAll) ───
+
+/** @param {number} v */
+function clamp(v) { return Math.min(100, Math.max(0, v)); }
+
+const STRESS_COMPONENTS = [
+  { id: 'T10Y2Y',  label: 'Yield Curve',      weight: 0.20, /** @param {number} v */ score: (v) => clamp((0.5 - v) / (0.5 - (-1.5)) * 100) },
+  { id: 'T10Y3M',  label: 'Bank Spread',       weight: 0.15, /** @param {number} v */ score: (v) => clamp((0.5 - v) / (0.5 - (-1.0)) * 100) },
+  { id: 'VIXCLS',  label: 'Volatility',        weight: 0.20, /** @param {number} v */ score: (v) => clamp((v - 15) / (80 - 15) * 100) },
+  { id: 'STLFSI4', label: 'Financial Stress',  weight: 0.20, /** @param {number} v */ score: (v) => clamp((v - (-1)) / (5 - (-1)) * 100) },
+  { id: 'GSCPI',   label: 'Supply Chain',      weight: 0.15, /** @param {number} v */ score: (v) => clamp((v - (-2)) / (4 - (-2)) * 100) },
+  { id: 'ICSA',    label: 'Job Claims',        weight: 0.10, /** @param {number} v */ score: (v) => clamp((v - 180000) / (500000 - 180000) * 100) },
+];
+
+/** @param {number} score */
+function stressLabel(score) {
+  if (score < 20) return 'Low';
+  if (score < 40) return 'Moderate';
+  if (score < 60) return 'Elevated';
+  if (score < 80) return 'Severe';
+  return 'Critical';
+}
+
+/**
+ * Read GSCPI from Redis (seeded by ais-relay from NY Fed, not available via FRED API).
+ * Format stored: { observations: [{ date, value }] } — no series wrapper.
+ * @returns {Promise<{ observations: { date: string; value: number }[] } | null>}
+ */
+async function fetchGscpiFromRedis() {
+  try {
+    const { url, token } = getRedisCredentials();
+    const resp = await fetch(`${url}/get/${encodeURIComponent(`${FRED_KEY_PREFIX}:GSCPI:0`)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return null;
+    const body = /** @type {{ result: string | null }} */ (await resp.json());
+    if (!body.result) return null;
+    const parsed = JSON.parse(body.result);
+    return Array.isArray(parsed.observations) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compute the composite stress index from freshly-fetched FRED data.
+ * Scan backwards through observations to skip FRED's end-of-series null sentinels.
+ * @param {Record<string, { observations: { date: string; value: number }[] }>} fr
+ * @returns {{ compositeScore: number; label: string; components: object[]; seededAt: string; unavailable: false } | null}
+ */
+function computeStressIndex(fr) {
+  const components = [];
+  let weightedSum = 0;
+  let totalWeight = 0;
+  let missingCount = 0;
+
+  for (const comp of STRESS_COMPONENTS) {
+    const obs = fr[comp.id]?.observations;
+    let rawValue = null;
+    if (obs?.length > 0) {
+      for (let j = obs.length - 1; j >= 0; j--) {
+        const v = obs[j]?.value;
+        if (typeof v === 'number' && Number.isFinite(v)) { rawValue = v; break; }
+      }
+    }
+
+    if (rawValue === null) {
+      missingCount++;
+      if (comp.id !== 'GSCPI') console.warn(`  [StressIndex] ${comp.id} missing from FRED — excluding`);
+      components.push({ id: comp.id, label: comp.label, rawValue: null, missing: true, score: 0, weight: comp.weight });
+      continue;
+    }
+
+    const score = comp.score(rawValue);
+    weightedSum += score * comp.weight;
+    totalWeight += comp.weight;
+    console.log(`  [StressIndex] ${comp.id}: raw=${rawValue.toFixed(4)} score=${score.toFixed(1)}`);
+    components.push({ id: comp.id, label: comp.label, rawValue, score, weight: comp.weight });
+  }
+
+  if (totalWeight === 0) {
+    console.warn('  [StressIndex] No FRED data — skipping write');
+    return null;
+  }
+
+  const compositeScore = Math.round((weightedSum / totalWeight) * 10) / 10;
+  const label = stressLabel(compositeScore);
+  console.log(`  [StressIndex] Composite: ${compositeScore} (${label}) — ${STRESS_COMPONENTS.length - missingCount}/${STRESS_COMPONENTS.length} components`);
+  return { compositeScore, label, components, seededAt: new Date().toISOString(), unavailable: false };
+}
 
 // ─── EIA Energy Prices (WTI + Brent) ───
 
@@ -201,13 +296,18 @@ async function fetchFredSeries() {
 // ─── Macro Signals (Yahoo, Alternative.me, Mempool) ───
 
 async function fetchJsonSafe(url, timeout = 8000, proxyAuth = null) {
-  if (proxyAuth) return JSON.parse(curlFetch(url, proxyAuth, { 'User-Agent': CHROME_UA }));
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(timeout),
-  });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return resp.json();
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(timeout),
+    });
+    if (resp.ok) return resp.json();
+    throw new Error(`HTTP ${resp.status}`);
+  } catch (directErr) {
+    if (!proxyAuth) throw directErr;
+    // Direct fetch failed; retry via proxy
+    return JSON.parse(curlFetch(url, proxyAuth, { 'User-Agent': CHROME_UA }));
+  }
 }
 
 function extractClosePrices(chart) {
@@ -525,7 +625,7 @@ async function fetchAll() {
     fetchEnergyPrices(),
     fetchEnergyCapacity(),
     fetchFredSeries(),
-    fetchMacroSignals(_proxyAuth),
+    fetchMacroSignals(_curlProxyAuth),
     fetchCrudeInventories(),
     fetchNatGasStorage(),
   ]);
@@ -570,6 +670,21 @@ async function fetchAll() {
     await writeExtraKeyWithMeta(KEYS.natGasStorage, ng, NAT_GAS_TTL, ng.weeks.length);
   } else if (ng) {
     console.warn(`  NatGasStorage: skipped write — ${ng.weeks?.length ?? 0} weeks or schema invalid`);
+  }
+
+  // Compute stress index — GSCPI is seeded by ais-relay (NY Fed), not FRED; read from Redis
+  if (frHasData) {
+    const gscpi = await fetchGscpiFromRedis();
+    if (gscpi) {
+      fr['GSCPI'] = gscpi;
+      console.log('  [StressIndex] GSCPI loaded from Redis');
+    } else {
+      console.warn('  [StressIndex] GSCPI not in Redis yet (ais-relay lag or first run) — excluding');
+    }
+    const stressResult = computeStressIndex(fr);
+    if (stressResult) {
+      await writeExtraKeyWithMeta(STRESS_INDEX_KEY, stressResult, STRESS_INDEX_TTL, STRESS_COMPONENTS.length);
+    }
   }
 
   return ep || { prices: [] };

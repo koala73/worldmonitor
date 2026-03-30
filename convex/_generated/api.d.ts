@@ -10,6 +10,10 @@
 
 import type * as contactMessages from "../contactMessages.js";
 import type * as registerInterest from "../registerInterest.js";
+import type * as userPreferences from "../userPreferences.js";
+import type * as notificationChannels from "../notificationChannels.js";
+import type * as alertRules from "../alertRules.js";
+import type * as telegramPairingTokens from "../telegramPairingTokens.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +24,10 @@ import type {
 declare const fullApi: ApiFromModules<{
   contactMessages: typeof contactMessages;
   registerInterest: typeof registerInterest;
+  userPreferences: typeof userPreferences;
+  notificationChannels: typeof notificationChannels;
+  alertRules: typeof alertRules;
+  telegramPairingTokens: typeof telegramPairingTokens;
 }>;
 
 /**

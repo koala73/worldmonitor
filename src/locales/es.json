@@ -281,7 +281,6 @@
     "gulfIndices": "Índices del Golfo",
     "gulfCurrencies": "Monedas del Golfo",
     "gulfOil": "Petróleo del Golfo",
-
     "bigmac": "Real Big Mac Index",
     "fearGreed": "Fear & Greed"
   },
@@ -1388,7 +1387,9 @@
       "filterPolitics": "Política",
       "filterMiddleeast": "Medio Oriente",
       "live": "EN VIVO",
-      "viewSource": "Ver fuente"
+      "viewSource": "Ver fuente",
+      "filterGeopolitics": "Geopolítica",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Base de datos de inversiones extranjeras directas de Arabia Saudita y Emiratos Árabes Unidos en infraestructura crítica global. Haga clic en una fila para volar a la inversión en el mapa.",

@@ -3496,8 +3496,7 @@ export class DeckGLMap {
         } catch { return []; }
       },
       getFillColor: [0, 180, 255, 40] as [number, number, number, number],
-      getLineColor: [0, 180, 255, 180] as [number, number, number, number],
-      lineWidthMinPixels: 1,
+      stroked: false,
       pickable: true,
     });
   }

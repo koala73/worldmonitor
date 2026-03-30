@@ -349,6 +349,29 @@ const TOOL_REGISTRY: ToolDef[] = [
     },
   },
   {
+    name: 'get_country_risk',
+    description: 'Structured risk intelligence for a specific country: Composite Instability Index (CII) score 0-100, component breakdown (unrest/conflict/security/news), travel advisory level, and OFAC sanctions exposure. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?"',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, e.g. "RU", "IR", "CN", "UA"' },
+      },
+      required: ['country_code'],
+    },
+    _execute: async (params, base, apiKey) => {
+      const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
+      const res = await fetch(
+        `${base}/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`,
+        {
+          headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+          signal: AbortSignal.timeout(8_000),
+        },
+      );
+      if (!res.ok) throw new Error(`get-country-risk HTTP ${res.status}`);
+      return res.json();
+    },
+  },
+  {
     name: 'get_airspace',
     description: 'Live ADS-B aircraft over a country. Returns civilian flights (OpenSky) and identified military aircraft with callsigns, positions, altitudes, and headings. Answers questions like "how many planes are over the UAE right now?" or "are there military aircraft over Taiwan?"',
     inputSchema: {

@@ -120,6 +120,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-risk:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryRisk
+            description: GetCountryRisk retrieves composite risk intelligence for a specific country.
+            operationId: GetCountryRisk
+            parameters:
+                - name: country_code
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryRiskResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/intelligence/v1/get-country-intel-brief:
         get:
             tags:
@@ -1014,6 +1047,45 @@ components:
                         type: string
                         description: Related entities identified.
             description: EventClassification represents an AI-generated classification of a real-world event.
+        GetCountryRiskRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code.
+            required:
+                - countryCode
+            description: GetCountryRiskRequest specifies which country to retrieve risk intelligence for.
+        GetCountryRiskResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                countryName:
+                    type: string
+                    description: Country name.
+                cii:
+                    $ref: '#/components/schemas/CiiScore'
+                advisoryLevel:
+                    type: string
+                    description: Travel advisory level from government sources (e.g. "do-not-travel", "reconsider", "caution"). Empty if none.
+                sanctionsActive:
+                    type: boolean
+                    description: Whether this country has active OFAC sanctions designations.
+                sanctionsCount:
+                    type: integer
+                    format: int32
+                    description: Count of sanctioned entities associated with this country.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                upstreamUnavailable:
+                    type: boolean
+                    description: True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
+            description: GetCountryRiskResponse contains composite risk intelligence for a specific country.
         GetCountryIntelBriefRequest:
             type: object
             properties:

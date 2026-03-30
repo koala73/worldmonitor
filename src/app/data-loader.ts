@@ -154,7 +154,6 @@ import {
   DiseaseOutbreaksPanel,
   SocialVelocityPanel,
 } from '@/components';
-import { EconomicStressPanel } from '@/components/EconomicStressPanel';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
@@ -528,7 +527,7 @@ export class DataLoaderManager implements AppModule {
     if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
     if (this.ctx.mapLayers.diseaseOutbreaks || shouldLoad('disease-outbreaks')) tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
     if (shouldLoad('social-velocity')) tasks.push({ name: 'socialVelocity', task: runGuarded('socialVelocity', () => this.loadSocialVelocity()) });
-    if (shouldLoad('economic-stress')) tasks.push({ name: 'economicStress', task: runGuarded('economicStress', () => this.loadEconomicStress()) });
+    if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: runGuarded('economicStress', () => this.loadEconomicStress()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
     if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
@@ -2770,8 +2769,21 @@ export class DataLoaderManager implements AppModule {
 
   async loadEconomicStress(): Promise<void> {
     try {
-      const panel = this.ctx.panels['economic-stress'] as EconomicStressPanel | undefined;
-      await panel?.fetchData();
+      const economicPanel = this.ctx.panels['economic'] as EconomicPanel | undefined;
+      if (!economicPanel) return;
+
+      const hydrated = getHydratedData('economicStress') as import('@/generated/client/worldmonitor/economic/v1/service_client').GetEconomicStressResponse | undefined;
+      if (hydrated && !hydrated.unavailable && Number.isFinite(hydrated.compositeScore)) {
+        economicPanel.updateStress(hydrated);
+        return;
+      }
+
+      const { EconomicServiceClient } = await import('@/generated/client/worldmonitor/economic/v1/service_client');
+      const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+      const resp = await client.getEconomicStress({});
+      if (!resp.unavailable && Number.isFinite(resp.compositeScore)) {
+        economicPanel.updateStress(resp);
+      }
     } catch (e) {
       console.error('[App] Economic stress load failed:', e);
     }
