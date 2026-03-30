@@ -13,6 +13,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureEdgeException } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
@@ -108,6 +110,7 @@ export default async function handler(req: Request): Promise<Response> {
       return json(data, 200, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
+      await captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
       return json({ error: 'Failed to fetch' }, 500, corsHeaders);
     }
   }
@@ -184,6 +187,7 @@ export default async function handler(req: Request): Promise<Response> {
       return json({ error: 'Unknown action' }, 400, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
+      await captureEdgeException(err, { handler: 'notification-channels', method: 'POST' });
       return json({ error: 'Operation failed' }, 500, corsHeaders);
     }
   }

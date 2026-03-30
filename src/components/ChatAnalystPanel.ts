@@ -1,5 +1,7 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
 import { premiumFetch } from '@/services/premium-fetch';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
@@ -44,50 +46,20 @@ interface ActionEvent {
   prefill?: string;
 }
 
-function formatInline(escaped: string): string {
-  return escaped
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
-}
+// Narrow allowlist: text formatting + tables only. No img/a/iframe so
+// prompt-injected or hallucinated URLs cannot trigger third-party requests.
+const ANALYST_PURIFY_CONFIG = {
+  ALLOWED_TAGS: ['p', 'strong', 'em', 'b', 'i', 'br', 'hr',
+    'ul', 'ol', 'li', 'code', 'pre',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'div', 'span'],
+  ALLOWED_ATTR: ['class'],
+  ALLOW_DATA_ATTR: false,
+};
 
-function basicMarkdownToHtml(raw: string): string {
-  const lines = raw.split('\n');
-  const out: string[] = [];
-  let inList = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Bullet point: "* text" or "- text" (with space after marker)
-    if (/^[*-]\s+\S/.test(trimmed)) {
-      if (!inList) { out.push('<ul>'); inList = true; }
-      const content = trimmed.replace(/^[*-]\s+/, '');
-      out.push(`<li>${formatInline(escapeHtml(content))}</li>`);
-      continue;
-    }
-    if (inList) { out.push('</ul>'); inList = false; }
-
-    if (!trimmed) { continue; }
-
-    // **SECTION HEADER** — e.g. **SIGNAL**, **SITUATION / ANALYSIS**
-    const boldHdr = trimmed.match(/^\*\*([A-Z][A-Z\s/]{1,29})\*\*$/);
-    if (boldHdr) {
-      out.push(`<div class="chat-section-header">${escapeHtml(boldHdr[1] ?? '')}</div>`);
-      continue;
-    }
-
-    // Plain ALL-CAPS header line — e.g. SIGNAL, THESIS, RISK, WATCH
-    // Require ≥4 chars total to avoid false-positives on 2–3-letter acronyms (US, EU, GDP)
-    if (/^[A-Z][A-Z\s]{3,24}$/.test(trimmed)) {
-      out.push(`<div class="chat-section-header">${escapeHtml(trimmed)}</div>`);
-      continue;
-    }
-
-    out.push(`<p>${formatInline(escapeHtml(trimmed))}</p>`);
-  }
-
-  if (inList) out.push('</ul>');
-  return out.join('');
+function renderMarkdown(raw: string): string {
+  const sanitized = DOMPurify.sanitize(marked.parse(raw) as string, ANALYST_PURIFY_CONFIG);
+  return postProcessAnalystHtml(sanitized as string);
 }
 
 export class ChatAnalystPanel extends Panel {
@@ -230,7 +202,7 @@ export class ChatAnalystPanel extends Panel {
     const label = role === 'user' ? 'YOU' : 'ANALYST';
     const body = h('div', { className: 'chat-msg-body' });
     if (role === 'assistant') {
-      body.innerHTML = basicMarkdownToHtml(content);
+      body.innerHTML = renderMarkdown(content);
     } else {
       body.textContent = content;
     }
@@ -443,7 +415,7 @@ export class ChatAnalystPanel extends Panel {
   }
 
   private finalizeStreamingBubble(bodyEl: HTMLElement, text: string, success: boolean): void {
-    bodyEl.innerHTML = basicMarkdownToHtml(text);
+    bodyEl.innerHTML = renderMarkdown(text);
     if (!success) bodyEl.classList.add('chat-msg-error');
     this.scrollToBottom();
   }

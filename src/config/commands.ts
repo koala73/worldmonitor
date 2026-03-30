@@ -130,6 +130,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:map', keywords: ['map', 'globe', 'global map'], label: 'Panel: Global Map', icon: '\u{1F5FA}\uFE0F', category: 'panels' },
   { id: 'panel:live-webcams', keywords: ['webcams', 'live cameras', 'cctv'], label: 'Panel: Live Webcams', icon: '\u{1F4F7}', category: 'panels' },
   { id: 'panel:windy-webcams', keywords: ['windy', 'weather cam', 'weather webcam', 'weather cameras'], label: 'Panel: Live Weather Cams', icon: '\u{1F4F9}', category: 'panels' },
+  { id: 'panel:chat-analyst', keywords: ['wm analyst', 'analyst', 'ai analyst', 'chat analyst', 'ask ai', 'intelligence analyst'], label: 'Panel: WM Analyst', icon: '\u{1F916}', category: 'panels' },
   { id: 'panel:insights', keywords: ['insights', 'ai insights', 'analysis'], label: 'Panel: AI Insights', icon: '\u{1F4A1}', category: 'panels' },
   { id: 'panel:strategic-posture', keywords: ['strategic posture', 'ai posture', 'posture assessment'], label: 'Panel: AI Strategic Posture', icon: '\u{1F3AF}', category: 'panels' },
   { id: 'panel:forecast', keywords: ['forecast', 'ai forecast', 'predictions ai'], label: 'Panel: AI Forecasts', icon: '\u{1F52E}', category: 'panels' },

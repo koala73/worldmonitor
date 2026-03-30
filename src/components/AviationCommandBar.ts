@@ -191,11 +191,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
                 const stopLabel = f.stops === 0 ? 'nonstop' : `${f.stops} stop${f.stops > 1 ? 's' : ''}`;
                 const safeDepTime = escapeHtml(depTime);
                 const safeArrTime = escapeHtml(arrTime);
-                const flightCode = leg ? `${leg.airlineCode}${leg.flightNumber}` : '';
-                const qParam = flightCode
-                    ? `${encodeURIComponent(flightCode)}+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`
-                    : `Flights+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`;
-                const rowUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=${qParam}`);
+                const rowUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`);
                 return `<a class="cmd-row" href="${rowUrl}" target="_blank" rel="noopener" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);text-decoration:none;cursor:pointer;color:var(--text,#e8e8e8)">
           <div style="flex:1;min-width:0">
             <span style="font-size:13px">${carrier}</span>
@@ -216,7 +212,7 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
         const rows = [...quotes].sort((a, b) => a.stops !== b.stops ? a.stops - b.stops : a.priceAmount - b.priceAmount).slice(0, 5).map(q => {
             const stopColor = q.stops === 0 ? 'var(--green,#44ff88)' : 'var(--text-dim,#9ca3af)';
             const stopLabel = q.stops === 0 ? 'nonstop' : `${q.stops} stop${q.stops > 1 ? 's' : ''}`;
-            const rowUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=${encodeURIComponent(q.carrierIata)}+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`);
+            const rowUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`);
             return `<a class="cmd-row" href="${rowUrl}" target="_blank" rel="noopener" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);text-decoration:none;cursor:pointer;color:var(--text,#e8e8e8)">
           <div style="flex:1">${escapeHtml(q.carrierName || q.carrierIata)}<span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span></div>
           <div style="color:var(--green,#44ff88);font-weight:600">$${Math.round(q.priceAmount)}</div>

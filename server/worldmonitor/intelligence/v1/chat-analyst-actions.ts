@@ -13,7 +13,7 @@ export interface AnalystActionEvent {
 // (e.g. "UN Charter", "GDP", "chart a course"). Requires visual-specific
 // compound phrases or unambiguous single terms like "dashboard".
 export const VISUAL_INTENT_RE =
-  /\b(chart(\s+\w+)?\s+(prices?|data|rates?|trends?|performance|comparison|history)|graph(\s+\w+)?\s+(prices?|data|rates?|trends?|performance)|plot(\s+\w+)?\s+(prices?|data|rates?|trends?|performance)|visuali[sz]e|create\s+a\s+(chart|graph|dashboard|visualization)|show\s+(me\s+)?(a\s+)?(chart|graph|plot|dashboard|trend)|price\s+(history|over\s+time|comparison|trend|chart)|compare\s+(prices?|rates?|data|performance)|dashboard|candlestick)\b/i;
+  /\b(chart(\s+\w+)?\s+(prices?|data|rates?|trends?|performance|comparison|history)|graph(\s+\w+)?\s+(prices?|data|rates?|trends?|performance)|plot(\s+\w+)?\s+(prices?|data|rates?|trends?|performance)|visuali[sz]e|(show|give|get|make|build)\s+(me\s+)?(a\s+)?(chart|graph|plot|dashboard|trend|visualization)|create\s+a\s+(chart|graph|dashboard|visualization)|price\s+(history|over\s+time|comparison|trend|chart)|compare\s+(prices?|rates?|data|performance)|dashboard|candlestick)\b/i;
 
 export function buildActionEvents(query: string): AnalystActionEvent[] {
   if (!VISUAL_INTENT_RE.test(query)) return [];

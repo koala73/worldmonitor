@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt.ts';
 import { buildActionEvents, VISUAL_INTENT_RE } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions.ts';
+import { postProcessAnalystHtml } from '../src/utils/analyst-markdown.ts';
 import type { AnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context.ts';
 
 // ---------------------------------------------------------------------------
@@ -240,6 +241,18 @@ describe('buildActionEvents — visual intent detection', () => {
     assert.equal(events[0]?.type, 'suggest-widget');
   });
 
+  it('returns suggest-widget action for give me a chart', () => {
+    const events = buildActionEvents('give me a chart of the gold over past 30 days');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
+  it('returns suggest-widget action for get me a chart', () => {
+    const events = buildActionEvents('get me a chart of oil prices');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
   it('returns suggest-widget action for price history query', () => {
     const events = buildActionEvents('What is the price history of crude oil?');
     assert.equal(events.length, 1);
@@ -294,5 +307,55 @@ describe('buildActionEvents — visual intent detection', () => {
     assert.ok(VISUAL_INTENT_RE.test('Chart oil Performance Over Time'));
     assert.ok(VISUAL_INTENT_RE.test('SHOW ME A GRAPH of inflation trends'));
     assert.ok(VISUAL_INTENT_RE.test('CHART OIL PRICES vs gold'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// postProcessAnalystHtml — section-header promotion
+// ---------------------------------------------------------------------------
+
+describe('postProcessAnalystHtml — section-header promotion', () => {
+  it('converts bold ALL-CAPS paragraph to section-header div', () => {
+    const out = postProcessAnalystHtml('<p><strong>SIGNAL</strong></p>');
+    assert.equal(out, '<div class="chat-section-header">SIGNAL</div>');
+  });
+
+  it('converts plain ALL-CAPS paragraph (≥4 chars) to section-header div', () => {
+    const out = postProcessAnalystHtml('<p>WATCH</p>');
+    assert.equal(out, '<div class="chat-section-header">WATCH</div>');
+  });
+
+  it('converts SITUATION / ANALYSIS style slash-header', () => {
+    const out = postProcessAnalystHtml('<p><strong>SITUATION / ANALYSIS</strong></p>');
+    assert.equal(out, '<div class="chat-section-header">SITUATION / ANALYSIS</div>');
+  });
+
+  it('does NOT promote short acronyms (US, EU, GDP)', () => {
+    assert.equal(postProcessAnalystHtml('<p>US</p>'), '<p>US</p>');
+    assert.equal(postProcessAnalystHtml('<p>EU</p>'), '<p>EU</p>');
+    assert.equal(postProcessAnalystHtml('<p>GDP</p>'), '<p>GDP</p>');
+  });
+
+  it('does NOT promote mixed-case paragraphs', () => {
+    const input = '<p>Gold is trading at $4,595.</p>';
+    assert.equal(postProcessAnalystHtml(input), input);
+  });
+
+  it('does NOT promote inline bold inside prose', () => {
+    const input = '<p>The <strong>SIGNAL</strong> is bullish.</p>';
+    assert.equal(postProcessAnalystHtml(input), input);
+  });
+
+  it('passes through table HTML unchanged', () => {
+    const table = '<table><thead><tr><th>Date</th><th>Price</th></tr></thead></table>';
+    assert.equal(postProcessAnalystHtml(table), table);
+  });
+
+  it('handles multiple headers in one string', () => {
+    const input = '<p><strong>SIGNAL</strong></p><p>text</p><p><strong>THESIS</strong></p>';
+    const out = postProcessAnalystHtml(input);
+    assert.ok(out.includes('<div class="chat-section-header">SIGNAL</div>'));
+    assert.ok(out.includes('<div class="chat-section-header">THESIS</div>'));
+    assert.ok(out.includes('<p>text</p>'));
   });
 });
