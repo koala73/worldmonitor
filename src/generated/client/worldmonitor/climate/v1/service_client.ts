@@ -216,3 +216,4 @@ export class ClimateServiceClient {
     throw new ApiError(resp.status, `Request failed with status ${resp.status}`, body);
   }
 }
+
