@@ -17,11 +17,21 @@ import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 
 // ---------------------------------------------------------------------------
-// Shared SDK config (for direct API calls, not the Convex component)
+// Shared SDK config (direct REST SDK, not the Convex component from lib/dodo.ts)
 // ---------------------------------------------------------------------------
 
+/**
+ * Returns a direct DodoPayments REST SDK client.
+ *
+ * This uses the "dodopayments" npm package (REST SDK) for API calls
+ * such as customer portal creation and plan changes. It is distinct from
+ * the @dodopayments/convex component SDK in lib/dodo.ts, which handles
+ * checkout and webhook verification.
+ *
+ * Canonical env var: DODO_API_KEY.
+ */
 function getDodoClient(): DodoPayments {
-  const apiKey = process.env.DODO_API_KEY ?? process.env.DODO_PAYMENTS_API_KEY;
+  const apiKey = process.env.DODO_API_KEY;
   if (!apiKey) {
     throw new Error("[billing] DODO_API_KEY not set — cannot call Dodo API");
   }
@@ -257,6 +267,8 @@ export const claimSubscription = mutation({
       await ctx.db.patch(payment._id, { userId: realUserId });
     }
 
+    // ACCEPTED BOUND: cache sync runs after mutation commits. Stale cache
+    // survives up to ENTITLEMENT_CACHE_TTL_SECONDS (900s) if scheduler fails.
     // Sync Redis cache: clear stale anon entry + write real user's entitlement
     if (process.env.UPSTASH_REDIS_REST_URL) {
       // Delete the anon ID's stale Redis cache entry

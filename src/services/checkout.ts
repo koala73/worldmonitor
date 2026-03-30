@@ -56,6 +56,15 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
 }
 
 /**
+ * Destroy the checkout overlay — resets initialized flag and clears the
+ * stored success callback so a new layout can register its own callback.
+ */
+export function destroyCheckoutOverlay(): void {
+  initialized = false;
+  onSuccessCallback = null;
+}
+
+/**
  * Open the Dodo checkout overlay for a given checkout URL.
  * Lazily initializes the SDK if not already done.
  */

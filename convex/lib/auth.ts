@@ -1,13 +1,13 @@
 import { QueryCtx, MutationCtx, ActionCtx } from "../_generated/server";
 
-const DEV_USER_ID = "test-user-001";
+export const DEV_USER_ID = "test-user-001";
 
 /**
  * True only when explicitly running `convex dev` (which sets CONVEX_IS_DEV).
  * Never infer dev mode from missing env vars — that would make production
  * behave like dev if CONVEX_CLOUD_URL happens to be unset.
  */
-const isDev = process.env.CONVEX_IS_DEV === "true";
+export const isDev = process.env.CONVEX_IS_DEV === "true";
 
 /**
  * Returns the current user's ID, or null if unauthenticated.

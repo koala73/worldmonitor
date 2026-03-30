@@ -10,6 +10,16 @@ const subscriptionStatus = v.union(
   v.literal("expired"),
 );
 
+// Payment event status enum — covers charge outcomes and dispute lifecycle
+const paymentEventStatus = v.union(
+  v.literal("succeeded"),
+  v.literal("failed"),
+  v.literal("dispute_opened"),
+  v.literal("dispute_won"),
+  v.literal("dispute_lost"),
+  v.literal("dispute_closed"),
+);
+
 export default defineSchema({
   userPreferences: defineTable({
     userId: v.string(),
@@ -169,7 +179,7 @@ export default defineSchema({
     type: v.union(v.literal("charge"), v.literal("refund")),
     amount: v.number(),
     currency: v.string(),
-    status: v.string(),
+    status: paymentEventStatus,
     dodoSubscriptionId: v.optional(v.string()),
     rawPayload: v.any(),
     occurredAt: v.number(),

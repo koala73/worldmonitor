@@ -67,16 +67,29 @@ export async function initEntitlementSubscription(userId: string): Promise<void>
 }
 
 /**
- * Tears down the entitlement subscription and resets state.
- * Call on logout or when the user identity changes.
+ * Tears down the entitlement subscription and clears all listeners.
+ * Resets initialized flag so a new subscription can be started.
+ * Does NOT null currentState — use resetEntitlementState() for explicit
+ * reset (e.g., on logout) to avoid stale closure reload loops on
+ * destroy/re-init cycles.
  */
 export function destroyEntitlementSubscription(): void {
   if (unsubscribeFn) {
     unsubscribeFn();
     unsubscribeFn = null;
   }
+  listeners.clear();
   initialized = false;
+}
+
+/**
+ * Explicitly reset the entitlement state to null (e.g., on logout).
+ * Separate from destroyEntitlementSubscription so that destroy/re-init
+ * cycles do not clear state mid-flight for other listeners.
+ */
+export function resetEntitlementState(): void {
   currentState = null;
+  for (const cb of listeners) cb(null);
 }
 
 /**

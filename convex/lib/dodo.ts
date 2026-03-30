@@ -1,9 +1,16 @@
 /**
- * Shared DodoPayments configuration.
+ * Shared DodoPayments Convex component SDK configuration.
  *
- * Centralizes the DodoPayments component instance and API exports
- * so that all Convex modules (checkout, billing, etc.) share the
- * same config and API key handling.
+ * This file initializes the @dodopayments/convex component SDK, which handles
+ * the checkout overlay lifecycle and webhook signature verification via the
+ * Convex component system. It is the SDK used by checkout.ts and the HTTP
+ * webhook action.
+ *
+ * DUAL SDK NOTE: billing.ts uses the direct dodopayments REST SDK
+ * (npm: "dodopayments") for customer portal and plan-change API calls.
+ * These are two separate packages with different responsibilities:
+ *   - @dodopayments/convex (this file): checkout + webhook component
+ *   - dodopayments (billing.ts): REST API for subscriptions/customers
  *
  * Config is read lazily (on first use) rather than at module scope,
  * so missing env vars fail at the action boundary with a clear error

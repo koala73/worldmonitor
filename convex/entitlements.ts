@@ -28,7 +28,7 @@ async function getEntitlementsHandler(
   const entitlement = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q: any) => q.eq("userId", userId))
-    .unique();
+    .first();
 
   if (!entitlement) {
     return FREE_TIER_DEFAULTS;

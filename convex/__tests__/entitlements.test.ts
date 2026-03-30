@@ -130,4 +130,31 @@ describe("entitlement query", () => {
       /Unknown planKey "nonexistent_plan"/,
     );
   });
+
+  test("does not throw when duplicate entitlement rows exist for same userId", async () => {
+    const t = convexTest(schema, modules);
+
+    // Seed two rows for the same userId (simulates concurrent webhook retry scenario)
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", {
+        userId: "user-dup",
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: FUTURE,
+        updatedAt: NOW,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: "user-dup",
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: FUTURE,
+        updatedAt: NOW + 1,
+      });
+    });
+
+    // getEntitlementsForUser must not throw (uses .first() not .unique())
+    await expect(
+      t.query(api.entitlements.getEntitlementsForUser, { userId: "user-dup" }),
+    ).resolves.toMatchObject({ planKey: "pro_monthly" });
+  });
 });
