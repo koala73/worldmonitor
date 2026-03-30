@@ -148,7 +148,10 @@ export function getConfiguredWebApiBaseUrl(): string {
 }
 
 export function getCanonicalApiOrigin(): string {
-  return getConfiguredWebApiBaseUrl() || DEFAULT_WEB_API_URL;
+  const configured = getConfiguredWebApiBaseUrl();
+  if (configured) return configured;
+  if (typeof window !== 'undefined' && !isDesktopRuntime()) return window.location.origin;
+  return DEFAULT_WEB_API_URL;
 }
 
 export function getRemoteApiBaseUrl(): string {
@@ -167,6 +170,7 @@ export function getRemoteApiBaseUrl(): string {
 
   // Desktop builds may not set VITE_WS_API_URL; default to production.
   if (isDesktopRuntime()) return 'https://worldmonitor.app';
+  if (typeof window !== 'undefined') return window.location.origin;
   return '';
 }
 

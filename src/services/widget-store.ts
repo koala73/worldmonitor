@@ -101,11 +101,15 @@ export function getWidget(id: string): CustomWidgetSpec | null {
 // (worldmonitor.app, tech., finance., commodity., happy., etc.).
 // We read cookie first and fall back to localStorage for migration compat.
 
-const COOKIE_DOMAIN = '.worldmonitor.app';
+function getCookieDomain(): string {
+  if (location.hostname.endsWith('worldmonitor.app')) return '.worldmonitor.app';
+  if (location.hostname.endsWith('gantor.ir')) return '.gantor.ir';
+  return '';
+}
 const KEY_MAX_AGE = 365 * 24 * 60 * 60;
 
 function usesCookies(): boolean {
-  return location.hostname.endsWith('worldmonitor.app');
+  return location.hostname.endsWith('worldmonitor.app') || location.hostname.endsWith('gantor.ir');
 }
 
 function getCookieValue(name: string): string {
@@ -119,7 +123,9 @@ function getCookieValue(name: string): string {
 
 function setDomainCookie(name: string, value: string): void {
   if (!usesCookies()) return;
-  document.cookie = `${name}=${encodeURIComponent(value)}; domain=${COOKIE_DOMAIN}; path=/; max-age=${KEY_MAX_AGE}; SameSite=Lax; Secure`;
+  const domain = getCookieDomain();
+  const domainPart = domain ? `; domain=${domain}` : '';
+  document.cookie = `${name}=${encodeURIComponent(value)}${domainPart}; path=/; max-age=${KEY_MAX_AGE}; SameSite=Lax; Secure`;
 }
 
 function getKey(name: string): string {

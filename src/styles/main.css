@@ -70,6 +70,10 @@
   --font-body: 'Tajawal', 'Geeza Pro', 'SF Arabic', 'Tahoma', var(--font-body-base);
 }
 
+:lang(fa) {
+  --font-body: 'Vazirmatn', 'Tajawal', 'Vazir', 'Tahoma', var(--font-body-base);
+}
+
 :lang(zh-CN),
 :lang(zh) {
   --font-body: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', var(--font-body-base);
