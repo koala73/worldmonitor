@@ -44,6 +44,7 @@ const SIMULATION_TASK_KEY_PREFIX = 'forecast:simulation-task:v1';
 const SIMULATION_TASK_QUEUE_KEY = 'forecast:simulation-task-queue:v1';
 const SIMULATION_LOCK_KEY_PREFIX = 'forecast:simulation-lock:v1';
 const SIMULATION_DECORATIONS_KEY = 'forecast:sim-decorations:v1';
+const SIMULATION_DECORATIONS_META_KEY = `seed-meta:${SIMULATION_DECORATIONS_KEY}`;
 const SIMULATION_DECORATIONS_TTL_SECONDS = 86400 * 3; // 3 days — outlasts typical run cadence
 const SIMULATION_DECORATIONS_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48h — skip apply if no simulation ran recently
 const VALID_RUN_ID_RE = /^\d{13,}-[a-z0-9-]{1,64}$/i;
@@ -16374,9 +16375,13 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
       generatedAt: Date.now(),
       byForecastId,
     }, SIMULATION_DECORATIONS_TTL_SECONDS);
+    await redisSet(url, token, SIMULATION_DECORATIONS_META_KEY, {
+      fetchedAt: Date.now(),
+      recordCount: decorationCount,
+    }, SIMULATION_DECORATIONS_TTL_SECONDS);
     console.log(`  [SimulationDecorations] Written ${decorationCount} decorations from ${byCandidateId.size} candidates (runId=${snapshot?.runId || 'unknown'})`);
     // Immediately patch forecast:predictions:v2 so the panel sees this run's simulation data
-    // without waiting for the next fast-path seed. Fire-and-forget inside the existing try/catch.
+    // without waiting for the next fast-path seed.
     await patchPublishedForecastsWithSimDecorations(byForecastId);
   } catch (err) {
     console.warn(`  [SimulationDecorations] Write failed: ${err.message}`);
