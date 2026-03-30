@@ -22210,14 +22210,14 @@ body.map-width-resizing {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   min-height: 120px;
   padding-right: 4px;
 }
 .chat-msg {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 .chat-msg-label {
   font-size: 9px;
@@ -22226,22 +22226,43 @@ body.map-width-resizing {
   text-transform: uppercase;
   opacity: 0.5;
 }
-.chat-msg-user .chat-msg-label { color: var(--accent); opacity: 0.7; }
+.chat-msg-user .chat-msg-label { color: var(--accent); opacity: 0.8; }
 .chat-msg-assistant .chat-msg-label { color: var(--text-dim); }
 .chat-msg-body {
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   background: var(--panel-inner-bg, rgba(255,255,255,0.03));
   border-radius: 4px;
-  padding: 6px 8px;
-  white-space: pre-wrap;
+  padding: 7px 9px;
 }
+.chat-msg-body p {
+  margin: 0 0 5px;
+}
+.chat-msg-body p:last-child { margin-bottom: 0; }
+.chat-msg-body ul {
+  margin: 3px 0 5px;
+  padding-left: 14px;
+}
+.chat-msg-body li { margin-bottom: 3px; line-height: 1.5; }
+.chat-section-header {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 10px 0 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.chat-section-header:first-child { margin-top: 0; }
 .chat-msg-user .chat-msg-body {
-  background: var(--accent-subtle, rgba(var(--accent-rgb, 99,102,241),0.12));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .chat-msg-error { color: var(--yellow) !important; }
-.chat-msg-streaming .chat-msg-body { opacity: 0.8; }
+.chat-msg-streaming .chat-msg-body { opacity: 0.75; white-space: pre-wrap; }
 .chat-streaming-dot {
   display: inline-block;
   width: 6px;

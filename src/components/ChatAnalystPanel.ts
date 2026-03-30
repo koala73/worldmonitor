@@ -38,12 +38,49 @@ interface MetaEvent {
   degraded: boolean;
 }
 
-function basicMarkdownToHtml(raw: string): string {
-  const escaped = escapeHtml(raw);
+function formatInline(escaped: string): string {
   return escaped
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
-    .replace(/\n/g, '<br>');
+    .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+}
+
+function basicMarkdownToHtml(raw: string): string {
+  const lines = raw.split('\n');
+  const out: string[] = [];
+  let inList = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Bullet point: "* text" or "- text" (with space after marker)
+    if (/^[*-]\s+\S/.test(trimmed)) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      const content = trimmed.replace(/^[*-]\s+/, '');
+      out.push(`<li>${formatInline(escapeHtml(content))}</li>`);
+      continue;
+    }
+    if (inList) { out.push('</ul>'); inList = false; }
+
+    if (!trimmed) { out.push('<br>'); continue; }
+
+    // **SECTION HEADER** — e.g. **SIGNAL**, **SITUATION / ANALYSIS**
+    const boldHdr = trimmed.match(/^\*\*([A-Z][A-Z\s/]{1,29})\*\*$/);
+    if (boldHdr) {
+      out.push(`<div class="chat-section-header">${escapeHtml(boldHdr[1] ?? '')}</div>`);
+      continue;
+    }
+
+    // Plain ALL-CAPS header line — e.g. SIGNAL, THESIS, RISK, WATCH
+    if (/^[A-Z][A-Z\s]{1,24}$/.test(trimmed)) {
+      out.push(`<div class="chat-section-header">${escapeHtml(trimmed)}</div>`);
+      continue;
+    }
+
+    out.push(`<p>${formatInline(escapeHtml(trimmed))}</p>`);
+  }
+
+  if (inList) out.push('</ul>');
+  return out.join('');
 }
 
 export class ChatAnalystPanel extends Panel {

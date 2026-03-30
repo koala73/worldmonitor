@@ -444,9 +444,9 @@ export class ForecastPanel extends Panel {
 
     const sigs = f.signals || [];
     const signalsHtml = sigs.length > 0
-      ? `<div class="fc-signals-title">Analysis Signals (${sigs.length})</div>${sigs.map(s =>
+      ? sigs.map(s =>
           `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014\-]+/, ''))}</div>`
-        ).join('')}`
+        ).join('')
       : '';
 
     const simBarHtml = this.renderSimBar(f);
