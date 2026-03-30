@@ -564,6 +564,8 @@ export interface MapLayers {
   gpsJamming: boolean;
   // Overlay layers
   dayNight: boolean;
+  // FAA Weather Cameras layer
+  faaWeatherCams: boolean;
 }
 
 export interface AIDataCenter {

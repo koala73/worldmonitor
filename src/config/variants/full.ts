@@ -101,6 +101,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   airstrikes: false,
   s2pimu: false,
   dayNight: false,
+  faaWeatherCams: false,
 };
 
 // Mobile-specific defaults for geopolitical
@@ -154,6 +155,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   airstrikes: false,
   s2pimu: false,
   dayNight: false,
+  faaWeatherCams: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

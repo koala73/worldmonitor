@@ -182,6 +182,7 @@ const allLayersEnabled: MapLayers = {
   airstrikes: false,
   s2pimu: false,
   dayNight: true,
+  faaWeatherCams: true,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -231,6 +232,7 @@ const allLayersDisabled: MapLayers = {
   airstrikes: false,
   s2pimu: false,
   dayNight: false,
+  faaWeatherCams: false,
 };
 
 const SEEDED_NEWS_LOCATIONS: {

@@ -251,6 +251,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   airstrikes: false,
   s2pimu: false,
   dayNight: false,
+  faaWeatherCams: false,
 };
 
 // Mobile defaults for tech variant
@@ -304,6 +305,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   airstrikes: false,
   s2pimu: false,
   dayNight: false,
+  faaWeatherCams: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {
