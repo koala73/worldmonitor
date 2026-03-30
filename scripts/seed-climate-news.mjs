@@ -66,47 +66,39 @@ function extractLink(block) {
 function parseRssItems(xml, sourceName) {
   const bounded = xml.length > RSS_MAX_BYTES ? xml.slice(0, RSS_MAX_BYTES) : xml;
   const items = [];
+  const seenIds = new Set();
 
-  const itemRe = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
-  let match;
-  while ((match = itemRe.exec(bounded)) !== null) {
-    const block = match[1];
+  const pushParsedItem = (block, summaryTags) => {
     const title = decodeHtmlEntities(extractTag(block, 'title'));
     const url = extractLink(block);
     const publishedAt = parseDateMs(block);
-    const rawSummary = extractTag(block, 'description')
-      || extractTag(block, 'summary')
-      || extractTag(block, 'content:encoded');
-    if (!title || !url || !publishedAt) continue;
+    const rawSummary = summaryTags.map((tag) => extractTag(block, tag)).find(Boolean) || '';
+    if (!title || !url || !publishedAt) return;
+
+    const id = `${stableHash(url)}-${publishedAt}`;
+    if (seenIds.has(id)) return;
+    seenIds.add(id);
+
     items.push({
-      id: `${stableHash(url)}-${publishedAt}`,
+      id,
       title,
       url,
       sourceName,
       publishedAt,
       summary: cleanSummary(rawSummary),
     });
+  };
+
+  const itemRe = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
+  let match;
+  while ((match = itemRe.exec(bounded)) !== null) {
+    pushParsedItem(match[1], ['description', 'summary', 'content:encoded']);
   }
 
-  // Some feeds expose Atom entries.
-  if (items.length === 0) {
-    const entryRe = /<entry\b[^>]*>([\s\S]*?)<\/entry>/gi;
-    while ((match = entryRe.exec(bounded)) !== null) {
-      const block = match[1];
-      const title = decodeHtmlEntities(extractTag(block, 'title'));
-      const url = extractLink(block);
-      const publishedAt = parseDateMs(block);
-      const rawSummary = extractTag(block, 'summary') || extractTag(block, 'content');
-      if (!title || !url || !publishedAt) continue;
-      items.push({
-        id: `${stableHash(url)}-${publishedAt}`,
-        title,
-        url,
-        sourceName,
-        publishedAt,
-        summary: cleanSummary(rawSummary),
-      });
-    }
+  // Parse Atom entries per-feed as well; do not gate on RSS <item> presence.
+  const entryRe = /<entry\b[^>]*>([\s\S]*?)<\/entry>/gi;
+  while ((match = entryRe.exec(bounded)) !== null) {
+    pushParsedItem(match[1], ['summary', 'content']);
   }
 
   return items;
