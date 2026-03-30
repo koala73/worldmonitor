@@ -30,14 +30,6 @@ describe('cache-only handlers read from seed keys', () => {
       'Climate handler should not call external APIs');
   });
 
-  it('climate disasters is pure cache read (seed controls TTL)', () => {
-    const src = readSrc('server/worldmonitor/climate/v1/list-climate-disasters.ts');
-    assert.match(src, /getCachedJson/,
-      'Climate disasters handler should use getCachedJson (seed-only)');
-    assert.doesNotMatch(src, /cachedFetchJson/,
-      'Climate disasters handler should not call external APIs');
-  });
-
   it('fire detections is pure cache read (seed controls TTL)', () => {
     const src = readSrc('server/worldmonitor/wildfire/v1/list-fire-detections.ts');
     assert.match(src, /getCachedJson/,

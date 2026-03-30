@@ -27,12 +27,7 @@ const API = 'https://backboard.railway.app/graphql/v2';
 const USES_SHARED_CONFIG = new Set([
   'seed-commodity-quotes', 'seed-crypto-quotes', 'seed-etf-flows',
   'seed-gulf-quotes', 'seed-market-quotes', 'seed-stablecoin-markets',
-  'seed-climate-disasters',
 ]);
-
-const EXTRA_WATCH_PATTERNS = {
-  'seed-climate-disasters': ['public/data/countries.geojson'],
-};
 
 function getToken() {
   if (process.env.RAILWAY_TOKEN) return process.env.RAILWAY_TOKEN;
@@ -99,10 +94,6 @@ async function main() {
 
     if (USES_SHARED_CONFIG.has(svc.name)) {
       patterns.push('scripts/shared/**', 'shared/**');
-    }
-
-    if (EXTRA_WATCH_PATTERNS[svc.name]) {
-      patterns.push(...EXTRA_WATCH_PATTERNS[svc.name]);
     }
 
     if (svc.name === 'seed-iran-events') {

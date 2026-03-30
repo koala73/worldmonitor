@@ -180,9 +180,9 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_climate_data',
-    description: 'Climate anomalies, climate-relevant disaster alerts (GDACS, ReliefWeb, NASA FIRMS), weather alerts, and natural environmental events.',
+    description: 'Climate anomalies (Open-Meteo temperature/precipitation deviations), weather alerts, and natural environmental events from NASA EONET.',
     inputSchema: { type: 'object', properties: {}, required: [] },
-    _cacheKeys: ['climate:anomalies:v1', 'climate:disasters:v1', 'weather:alerts:v1'],
+    _cacheKeys: ['climate:anomalies:v1', 'weather:alerts:v1'],
     _seedMetaKey: 'seed-meta:climate:anomalies',
     _maxStaleMin: 120,
   },
