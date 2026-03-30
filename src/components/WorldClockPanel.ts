@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
 import { getLocale } from '@/services/i18n';
+import { isGantorDeploy } from '@/utils/iran-date';
 
 interface CityEntry {
   id: string;
@@ -22,6 +23,7 @@ const WORLD_CITIES: CityEntry[] = [
   { id: 'istanbul', city: 'Istanbul', label: 'BIST', timezone: 'Europe/Istanbul', marketOpen: 10, marketClose: 18 },
   { id: 'riyadh', city: 'Riyadh', label: 'Tadawul', timezone: 'Asia/Riyadh', marketOpen: 10, marketClose: 15 },
   { id: 'dubai', city: 'Dubai', label: 'DFM', timezone: 'Asia/Dubai', marketOpen: 10, marketClose: 14 },
+  { id: 'tehran', city: 'Tehran', label: 'TSE', timezone: 'Asia/Tehran', marketOpen: 9, marketClose: 12 },
   { id: 'mumbai', city: 'Mumbai', label: 'NSE', timezone: 'Asia/Kolkata', marketOpen: 9, marketClose: 15 },
   { id: 'bangkok', city: 'Bangkok', label: 'SET', timezone: 'Asia/Bangkok', marketOpen: 10, marketClose: 16 },
   { id: 'singapore', city: 'Singapore', label: 'SGX', timezone: 'Asia/Singapore', marketOpen: 9, marketClose: 17 },
@@ -46,7 +48,7 @@ const WORLD_CITIES: CityEntry[] = [
 const CITY_REGIONS: { name: string; ids: string[] }[] = [
   { name: 'Americas', ids: ['new-york', 'chicago', 'toronto', 'los-angeles', 'mexico-city', 'sao-paulo', 'buenos-aires'] },
   { name: 'Europe', ids: ['london', 'paris', 'frankfurt', 'zurich', 'moscow', 'istanbul'] },
-  { name: 'Middle East & Africa', ids: ['riyadh', 'dubai', 'cairo', 'lagos', 'johannesburg'] },
+  { name: 'Middle East & Africa', ids: ['riyadh', 'dubai', 'tehran', 'cairo', 'lagos', 'johannesburg'] },
   { name: 'Asia-Pacific', ids: ['mumbai', 'bangkok', 'jakarta', 'kuala-lumpur', 'singapore', 'hong-kong', 'shanghai', 'taipei', 'seoul', 'tokyo', 'sydney', 'auckland'] },
 ];
 
@@ -64,7 +66,9 @@ TIMEZONE_TO_CITY['Asia/Saigon'] = 'bangkok';
 TIMEZONE_TO_CITY['Pacific/Sydney'] = 'sydney';
 
 const STORAGE_KEY = 'worldmonitor-world-clock-cities';
-const DEFAULT_CITIES = ['new-york', 'london', 'dubai', 'bangkok', 'tokyo', 'sydney'];
+const DEFAULT_CITIES = isGantorDeploy()
+  ? ['tehran', 'new-york', 'london', 'dubai', 'tokyo', 'sydney']
+  : ['new-york', 'london', 'dubai', 'bangkok', 'tokyo', 'sydney'];
 
 function detectHomeCity(): string | null {
   try {

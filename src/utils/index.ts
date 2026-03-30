@@ -3,20 +3,23 @@ export function formatTime(date: Date): string {
   const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
   const lang = getCurrentLanguage();
 
+  let relative: string;
   // Safe fallback if Intl is not available (though it is in all modern browsers)
   try {
     const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
 
-    if (diff < 60) return rtf.format(-Math.round(diff), 'second');
-    if (diff < 3600) return rtf.format(-Math.round(diff / 60), 'minute');
-    if (diff < 86400) return rtf.format(-Math.round(diff / 3600), 'hour');
-    return rtf.format(-Math.round(diff / 86400), 'day');
+    if (diff < 60) relative = rtf.format(-Math.round(diff), 'second');
+    else if (diff < 3600) relative = rtf.format(-Math.round(diff / 60), 'minute');
+    else if (diff < 86400) relative = rtf.format(-Math.round(diff / 3600), 'hour');
+    else relative = rtf.format(-Math.round(diff / 86400), 'day');
   } catch (e) {
-    if (diff < 60) return 'Just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    if (diff < 60) relative = 'Just now';
+    else if (diff < 3600) relative = `${Math.floor(diff / 60)}m ago`;
+    else if (diff < 86400) relative = `${Math.floor(diff / 3600)}h ago`;
+    else relative = `${Math.floor(diff / 86400)}d ago`;
   }
+
+  return enhanceWithIranTime(relative, date);
 }
 
 export function formatPrice(price: number): string {
@@ -188,4 +191,6 @@ export { toFlagEmoji } from './country-flag';
 
 import { getCurrentLanguage } from '../services/i18n';
 import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';
+import { enhanceWithIranTime } from './iran-date';
 export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded };
+export { isGantorDeploy, formatJalaliDate, formatJalaliDateLong, formatTehranTime, enhanceWithIranTime } from './iran-date';

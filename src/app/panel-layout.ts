@@ -71,6 +71,7 @@ import {
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { focusInvestmentOnMap } from '@/services/investments-focus';
 import { debounce, saveToStorage, loadFromStorage } from '@/utils';
+import { isGantorDeploy } from '@/utils/iran-date';
 import { escapeHtml } from '@/utils/sanitize';
 import {
   FEEDS,
@@ -281,6 +282,11 @@ export class PanelLayoutManager implements AppModule {
               <span class="variant-label">${t('header.panelCatHappyNews')}</span>
             </a>`;
       })()}</div>
+          ${isGantorDeploy() ? `<span class="gantor-services">
+            <a href="https://gantor.ir" target="_blank" rel="noopener" title="OpenHands AI Dev Platform">OpenHands</a>
+            <span class="gantor-sep">&middot;</span>
+            <a href="https://freegpt.ir" target="_blank" rel="noopener" title="FreeGPT Chat">FreeGPT</a>
+          </span>` : ''}
           <span class="logo">MONITOR</span><span class="logo-mobile">Gantor WorldMonitor</span><span class="version">v${__APP_VERSION__}</span>${BETA_MODE ? '<span class="beta-badge">BETA</span>' : ''}
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener" class="credit-link">
             <svg class="x-logo" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
@@ -372,6 +378,7 @@ export class PanelLayoutManager implements AppModule {
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">Blog</a>
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener">Status</a>
+          ${isGantorDeploy() ? '<a href="https://gantor.ir" target="_blank" rel="noopener">OpenHands</a><a href="https://freegpt.ir" target="_blank" rel="noopener">FreeGPT</a>' : ''}
         </div>
         <div class="mobile-menu-version">v${__APP_VERSION__}</div>
       </nav>
@@ -442,6 +449,7 @@ export class PanelLayoutManager implements AppModule {
           <a href="https://github.com/danialsamiei/worldmonitor" target="_blank" rel="noopener">GitHub</a>
           <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noopener">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener">X</a>
+          ${isGantorDeploy() ? '<a href="https://gantor.ir" target="_blank" rel="noopener">OpenHands</a><a href="https://freegpt.ir" target="_blank" rel="noopener">FreeGPT</a>' : ''}
           ${this.ctx.isDesktopApp ? '' : `<span id="footerDownloadMount"></span>`}
         </nav>
         <span class="site-footer-copy">&copy; ${new Date().getFullYear()} Gantor WorldMonitor</span>
