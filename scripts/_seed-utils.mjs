@@ -6,7 +6,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import * as net from 'node:net';
-import * as http from 'node:http';
 import * as tls from 'node:tls';
 import * as https from 'node:https';
 import { promisify } from 'node:util';
