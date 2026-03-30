@@ -68,7 +68,7 @@ async function fetchAviationStackFlights(airports) {
 async function fetchNotamClosures() {
   try {
     const { url, token } = getRedisCredentialsFromEnv();
-    const resp = await fetch(`${url}/get/aviation:notam:closures:v2`, {
+    const resp = await fetch(`${url}/get/${encodeURIComponent('aviation:notam:closures:v2')}`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
     });
