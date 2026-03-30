@@ -41,6 +41,7 @@ import type { AirstrikeEvent } from '@/services/airstrikes';
 import type { S2UndergroundEvent } from '@/services/s2-underground';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import type { TechHubActivity } from '@/services/tech-activity';
+import type { ScoredFAACamera } from '@/services/faa-cameras';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -450,6 +451,13 @@ export class MapContainer {
       this.deckGLMap?.setRenewableInstallations(installations);
     }
     // SVG map does not support renewable installations layer
+  }
+
+  public setFAACameras(cameras: ScoredFAACamera[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setFAACameras(cameras);
+    }
+    // SVG map does not support FAA camera layer
   }
 
   public updateHotspotActivity(news: NewsItem[]): void {

@@ -613,6 +613,16 @@ export class App {
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), 10 * 60 * 1000);
     }
 
+    // FAA weather cameras — scored against NWS/GDACS alerts, slow-changing data
+    if (SITE_VARIANT === 'full') {
+      this.refreshScheduler.scheduleRefresh(
+        'faa-weather-cams',
+        () => this.dataLoader.loadFAACameras(),
+        20 * 60_000,
+        () => !!this.state.panels['faa-weather-cams']
+      );
+    }
+
     // Telegram Intel (near real-time, 60s refresh)
     this.refreshScheduler.scheduleRefresh(
       'telegram-intel',

@@ -149,6 +149,9 @@ import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { fetchVolcanoAlerts } from '@/services/volcano-alerts';
 import { fetchNWSAlerts } from '@/services/nws-alerts';
+import { fetchFAACameras, scoreCamerasAgainstAlerts, getDisasterProximateCameras } from '@/services/faa-cameras';
+import { FAAWeatherCamsPanel } from '@/components/FAAWeatherCamsPanel';
+import type { ModeChangedDetail } from '@/services/mode-manager';
 import { fetchCommsHealth } from '@/services/comms-health';
 import { fetchEconomicStress } from '@/services/economic-stress';
 import { updateRegionCount, getHighRiskRegions } from '@/services/ema-forecast';
@@ -229,7 +232,25 @@ export class DataLoaderManager implements AppModule {
     this.callbacks = callbacks;
   }
 
-  init(): void {}
+  init(): void {
+    document.addEventListener('wm:mode-changed', ((e: CustomEvent<ModeChangedDetail>) => {
+      const { mode, prev } = e.detail;
+      if (mode === 'disaster') {
+        void (async () => {
+          const [raw, nws, gdacs] = await Promise.all([
+            fetchFAACameras(),
+            fetchNWSAlerts(),
+            fetchGDACSEvents(),
+          ]);
+          const proximate = getDisasterProximateCameras(raw, nws, gdacs);
+          this.ctx.map?.setFAACameras(proximate);
+          (this.ctx.panels['faa-weather-cams'] as FAAWeatherCamsPanel | undefined)?.setDisasterMode(true, proximate);
+        })();
+      } else if (prev === 'disaster') {
+        (this.ctx.panels['faa-weather-cams'] as FAAWeatherCamsPanel | undefined)?.setDisasterMode(false);
+      }
+    }) as EventListener);
+  }
 
   destroy(): void {
     stopOrefPolling();
@@ -2587,6 +2608,21 @@ export class DataLoaderManager implements AppModule {
       (this.ctx.panels['food-insecurity'] as FoodInsecurityPanel | undefined)?.update(data);
     } catch (error) {
       console.error('[App] Food insecurity fetch failed:', error);
+    }
+  }
+
+  async loadFAACameras(): Promise<void> {
+    try {
+      const [raw, nws, gdacs] = await Promise.all([
+        fetchFAACameras(),
+        fetchNWSAlerts(),
+        fetchGDACSEvents(),
+      ]);
+      const scored = scoreCamerasAgainstAlerts(raw, nws, gdacs);
+      this.ctx.map?.setFAACameras(scored);
+      (this.ctx.panels['faa-weather-cams'] as FAAWeatherCamsPanel | undefined)?.refresh();
+    } catch (error) {
+      console.error('[App] FAA cameras fetch failed:', error);
     }
   }
 }
