@@ -125,7 +125,10 @@ export default async function handler(req: Request): Promise<Response> {
     try {
       if (action === 'create-pairing-token') {
         const resp = await convexRelay({ action: 'create-pairing-token', userId: session.userId });
-        if (!resp.ok) return json({ error: 'Operation failed' }, 500, corsHeaders);
+        if (!resp.ok) {
+          console.error('[notification-channels] POST create-pairing-token relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
         return json(await resp.json(), 200, corsHeaders);
       }
 
@@ -142,7 +145,10 @@ export default async function handler(req: Request): Promise<Response> {
           }
         }
         const resp = await convexRelay(relayBody);
-        if (!resp.ok) return json({ error: 'Operation failed' }, 500, corsHeaders);
+        if (!resp.ok) {
+          console.error('[notification-channels] POST set-channel relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
         return json({ ok: true }, 200, corsHeaders);
       }
 
@@ -150,7 +156,10 @@ export default async function handler(req: Request): Promise<Response> {
         const { channelType } = body;
         if (!channelType) return json({ error: 'channelType required' }, 400, corsHeaders);
         const resp = await convexRelay({ action: 'delete-channel', userId: session.userId, channelType });
-        if (!resp.ok) return json({ error: 'Operation failed' }, 500, corsHeaders);
+        if (!resp.ok) {
+          console.error('[notification-channels] POST delete-channel relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
         return json({ ok: true }, 200, corsHeaders);
       }
 
@@ -165,7 +174,10 @@ export default async function handler(req: Request): Promise<Response> {
           sensitivity,
           channels,
         });
-        if (!resp.ok) return json({ error: 'Operation failed' }, 500, corsHeaders);
+        if (!resp.ok) {
+          console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
         return json({ ok: true }, 200, corsHeaders);
       }
 
