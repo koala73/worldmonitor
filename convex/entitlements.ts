@@ -9,6 +9,7 @@
  *     cache-miss fallback. Trusted server-to-server call with no auth gap.
  */
 
+import type { QueryCtx } from "./_generated/server";
 import { query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { getFeaturesForPlan } from "./lib/entitlements";
@@ -22,12 +23,12 @@ const FREE_TIER_DEFAULTS = {
 
 /** Shared handler logic for both public and internal queries. */
 async function getEntitlementsHandler(
-  ctx: { db: any },
+  ctx: QueryCtx,
   userId: string,
 ) {
   const entitlement = await ctx.db
     .query("entitlements")
-    .withIndex("by_userId", (q: any) => q.eq("userId", userId))
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
     .first();
 
   if (!entitlement) {

@@ -82,13 +82,26 @@ export async function upsertEntitlements(
       updatedAt,
     });
   } else {
-    await ctx.db.insert("entitlements", {
-      userId,
-      planKey,
-      features,
-      validUntil,
-      updatedAt,
-    });
+    // Re-check immediately before insert: Convex OCC serializes mutations, but two
+    // concurrent webhooks for the same userId (e.g. subscription.active + payment.succeeded)
+    // can both read null above and both reach this branch. Convex's OCC will retry the
+    // second mutation — on retry it will find the row and fall into the patch branch above.
+    // This explicit re-check makes the upsert semantics clear even without OCC retry context.
+    const existingNow = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (existingNow) {
+      await ctx.db.patch(existingNow._id, { planKey, features, validUntil, updatedAt });
+    } else {
+      await ctx.db.insert("entitlements", {
+        userId,
+        planKey,
+        features,
+        validUntil,
+        updatedAt,
+      });
+    }
   }
 
   // ACCEPTED BOUND: cache sync runs after mutation commits. If scheduler
@@ -621,16 +634,18 @@ export async function handleDisputeEvent(
       `[subscriptionHelpers] Dispute LOST for user ${userId}, payment ${data.payment_id} — revoking entitlement`,
     );
     // Chargeback = no longer entitled. Downgrade to free immediately.
+    // Use eventTimestamp (not Date.now()) to preserve isNewerEvent out-of-order protection.
     const existing = await ctx.db
       .query("entitlements")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
     if (existing) {
+      const freeFeatures = getFeaturesForPlan("free");
       await ctx.db.patch(existing._id, {
         planKey: "free",
-        features: getFeaturesForPlan("free"),
-        validUntil: Date.now(),
-        updatedAt: Date.now(),
+        features: freeFeatures,
+        validUntil: eventTimestamp,
+        updatedAt: eventTimestamp,
       });
       if (process.env.UPSTASH_REDIS_REST_URL) {
         await ctx.scheduler.runAfter(
@@ -639,8 +654,8 @@ export async function handleDisputeEvent(
           {
             userId,
             planKey: "free",
-            features: getFeaturesForPlan("free"),
-            validUntil: Date.now(),
+            features: freeFeatures,
+            validUntil: eventTimestamp,
           },
         );
       }
