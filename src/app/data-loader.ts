@@ -56,6 +56,18 @@ import {
   fetchShippingRates,
   fetchChokepointStatus,
   fetchCriticalMinerals,
+  fetchTropicalCyclones,
+  fetchSpcSummary,
+  fetchMarineHazards,
+  fetchExcessiveRainfallOutlooks,
+  fetchWinterWeatherOutlooks,
+  fetchBuoyAlerts,
+  fetchHurricaneRecon,
+  fetchSavedPlaceWeather,
+  getSavedPlaces,
+  getStormPreparednessContext,
+  getStormPreparednessSummary,
+  updateStormPreparednessContext,
 } from '@/services';
 import { checkBatchForBreakingAlerts } from '@/services/breaking-news-alerts';
 import { evaluateWarThreat, evaluateFinanceTrigger, evaluateCommodityTrigger, evaluateDisasterTrigger, checkFinanceAutoTriggerTimeout } from '@/services/mode-manager';
@@ -374,6 +386,7 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT === 'full') tasks.push({ name: 'gdacsAlerts', task: runGuarded('gdacsAlerts', () => this.loadGDACSAlerts()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'volcanoAlerts', task: runGuarded('volcanoAlerts', () => this.loadVolcanoAlerts()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'nwsAlerts', task: runGuarded('nwsAlerts', () => this.loadNWSAlerts()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'savedPlaceWeather', task: runGuarded('savedPlaceWeather', () => this.loadSavedPlaceWeather()) });
     if (SITE_VARIANT === 'full') tasks.push({ name: 'emaForecast', task: runGuarded('emaForecast', () => this.runEMAForecast()) });
 
     if (SITE_VARIANT === 'tech') {
@@ -1119,6 +1132,12 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('weather', alerts.length > 0);
       this.ctx.statusPanel?.updateFeed('Weather', { status: 'ok', itemCount: alerts.length });
       dataFreshness.recordUpdate('weather', alerts.length);
+      updateStormPreparednessContext({ weatherAlerts: alerts });
+      void evaluateDisasterTrigger(
+        this.ctx.intelligenceCache.gdacsAlerts ?? [],
+        this.ctx.intelligenceCache.earthquakes ?? [],
+        getStormPreparednessSummary(),
+      );
     } catch (error) {
       this.ctx.map?.setLayerReady('weather', false);
       this.ctx.statusPanel?.updateFeed('Weather', { status: 'error' });
@@ -1558,6 +1577,7 @@ export class DataLoaderManager implements AppModule {
   async loadGDACSAlerts(): Promise<void> {
     try {
       const events = await fetchGDACSEvents();
+      this.ctx.intelligenceCache.gdacsAlerts = events;
       (this.ctx.panels['gdacs-alerts'] as GDACSAlertsPanel)?.update(events);
       // Note: intelligenceCache.earthquakes is only populated when the natural
       // events map layer is enabled. When that layer is disabled the array will
@@ -1565,7 +1585,11 @@ export class DataLoaderManager implements AppModule {
       // GDACS Red/Orange alert path (first argument) still works normally.
       // The earthquake trigger remains reachable via loadNatural() when the
       // natural layer is active.
-      void evaluateDisasterTrigger(events, this.ctx.intelligenceCache?.earthquakes ?? []);
+      void evaluateDisasterTrigger(
+        events,
+        this.ctx.intelligenceCache?.earthquakes ?? [],
+        getStormPreparednessSummary(),
+      );
     } catch (error) {
       console.warn('[gdacs-alerts] fetch failed', error);
       (this.ctx.panels['gdacs-alerts'] as GDACSAlertsPanel)?.update([]);
@@ -1584,11 +1608,53 @@ export class DataLoaderManager implements AppModule {
 
   async loadNWSAlerts(): Promise<void> {
     try {
-      const alerts = await fetchNWSAlerts();
+      const stormContext = getStormPreparednessContext();
+      const [alertsResult, spcResult, marineResult, rainfallResult, winterResult] = await Promise.allSettled([
+        fetchNWSAlerts(),
+        fetchSpcSummary(),
+        fetchMarineHazards(),
+        fetchExcessiveRainfallOutlooks(),
+        fetchWinterWeatherOutlooks(),
+      ]);
+      const alerts = alertsResult.status === 'fulfilled' ? alertsResult.value : stormContext.nwsAlerts;
+      const spcSummary = spcResult.status === 'fulfilled' ? spcResult.value : stormContext.spcSummary;
+      const marineHazards = marineResult.status === 'fulfilled' ? marineResult.value : stormContext.marineHazards;
+      const excessiveRainfallOutlooks = rainfallResult.status === 'fulfilled'
+        ? rainfallResult.value
+        : stormContext.excessiveRainfallOutlooks;
+      const winterWeatherOutlooks = winterResult.status === 'fulfilled'
+        ? winterResult.value
+        : stormContext.winterWeatherOutlooks;
       (this.ctx.panels['nws-alerts'] as NWSAlertsPanel)?.update(alerts);
+      updateStormPreparednessContext({
+        nwsAlerts: alerts,
+        spcSummary,
+        excessiveRainfallOutlooks,
+        winterWeatherOutlooks,
+        marineHazards,
+      });
+      void evaluateDisasterTrigger(
+        this.ctx.intelligenceCache.gdacsAlerts ?? [],
+        this.ctx.intelligenceCache.earthquakes ?? [],
+        getStormPreparednessSummary(),
+      );
     } catch (error) {
       console.warn('[nws-alerts] fetch failed', error);
       (this.ctx.panels['nws-alerts'] as NWSAlertsPanel)?.update([]);
+    }
+  }
+
+  async loadSavedPlaceWeather(): Promise<void> {
+    const places = getSavedPlaces().slice(0, 6);
+    if (places.length === 0) return;
+
+    const results = await Promise.allSettled(
+      places.map((place) => fetchSavedPlaceWeather(place)),
+    );
+
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (failures.length === results.length) {
+      throw new Error('saved-place weather refresh failed');
     }
   }
 
@@ -2489,9 +2555,26 @@ export class DataLoaderManager implements AppModule {
 
   async loadTropicalCyclones(): Promise<void> {
     try {
-      const { fetchTropicalCyclones } = await import('@/services/tropical-cyclones');
-      const data = await fetchTropicalCyclones();
+      const stormContext = getStormPreparednessContext();
+      const [cyclonesResult, buoyResult, reconResult] = await Promise.allSettled([
+        fetchTropicalCyclones(),
+        fetchBuoyAlerts(),
+        fetchHurricaneRecon(),
+      ]);
+      const data = cyclonesResult.status === 'fulfilled' ? cyclonesResult.value : stormContext.tropicalCyclones;
+      const buoyAlerts = buoyResult.status === 'fulfilled' ? buoyResult.value : stormContext.buoyAlerts;
+      const reconFixes = reconResult.status === 'fulfilled' ? reconResult.value : stormContext.reconFixes;
       (this.ctx.panels['tropical-cyclones'] as TropicalCyclonesPanel | undefined)?.update(data);
+      updateStormPreparednessContext({
+        tropicalCyclones: data,
+        buoyAlerts,
+        reconFixes,
+      });
+      void evaluateDisasterTrigger(
+        this.ctx.intelligenceCache.gdacsAlerts ?? [],
+        this.ctx.intelligenceCache.earthquakes ?? [],
+        getStormPreparednessSummary(),
+      );
     } catch (error) {
       console.error('[App] Tropical cyclones fetch failed:', error);
     }

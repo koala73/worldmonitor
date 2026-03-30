@@ -20,6 +20,7 @@ import { STARTUP_ECOSYSTEMS } from '@/config/startup-ecosystems';
 import { TECH_HQS, ACCELERATORS } from '@/config/tech-geo';
 import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } from '@/config/finance-geo';
 import { trackSearchResultSelected, trackCountrySelected } from '@/services/analytics';
+import { getSavedPlaces, type SavedPlace } from '@/services/saved-places';
 import { t } from '@/services/i18n';
 import { saveToStorage, setTheme } from '@/utils';
 import { CountryIntelManager } from '@/app/country-intel';
@@ -199,6 +200,7 @@ export class SearchManager implements AppModule {
     }
 
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
+    this.ctx.searchModal.registerSource('place', this.buildPlaceSearchItems());
 
     this.ctx.searchModal.setActivePanels(Object.keys(this.ctx.panels));
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
@@ -380,6 +382,14 @@ export class SearchManager implements AppModule {
         this.callbacks.openCountryBriefByCode(code, name);
         break;
       }
+
+      case 'place': {
+        const place = result.data as SavedPlace;
+        this.scrollToPanel('saved-places');
+        this.ctx.map?.setCenter(place.lat, place.lon, 6);
+        this.ctx.map?.flashLocation(place.lat, place.lon, 3000);
+        break;
+      }
     }
   }
 
@@ -515,6 +525,7 @@ export class SearchManager implements AppModule {
     if (!this.ctx.searchModal) return;
 
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
+    this.ctx.searchModal.registerSource('place', this.buildPlaceSearchItems());
 
     const newsItems = this.ctx.allNews.slice(0, 500).map(n => ({
       id: n.link,
@@ -557,5 +568,21 @@ export class SearchManager implements AppModule {
         data: { code, name },
       };
     });
+  }
+
+  private buildPlaceSearchItems(): { id: string; title: string; subtitle: string; data: SavedPlace }[] {
+    return getSavedPlaces().map((place) => ({
+      id: place.id,
+      title: place.name,
+      subtitle: this.buildPlaceSubtitle(place),
+      data: place,
+    }));
+  }
+
+  private buildPlaceSubtitle(place: SavedPlace): string {
+    const tags = place.tags.map((tag) => tag === 'bugout' ? 'bug-out' : tag).join(', ');
+    const primary = place.primary ? 'Primary' : '';
+    const radius = `${place.radiusKm} km`;
+    return [primary, tags, radius].filter(Boolean).join(' • ');
   }
 }

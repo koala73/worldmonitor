@@ -11,6 +11,8 @@ import type { CorrelationSignal } from '@/services/correlation';
 import type { MarketData, CryptoData } from '@/types';
 import type { GDACSEvent } from '@/services/gdacs';
 import type { Earthquake } from '@/services/earthquakes';
+import type { StormPreparednessSummary } from '@/services/storm-preparedness';
+import { buildPrimaryCommsMessage } from '@/services/comms-plan';
 
 export type AppMode = 'peace' | 'finance' | 'war' | 'disaster' | 'ghost';
 
@@ -374,19 +376,38 @@ export function evaluateCommodityTrigger(commodities: MarketData[]): void {
 }
 
 /**
- * Evaluate GDACS events and earthquake data and auto-switch from Peace → Disaster Mode
- * when a major natural disaster is detected.
+ * Evaluate GDACS events, earthquake data, and major storm systems and auto-switch
+ * from Peace → Disaster Mode when a major disaster is detected.
  *
  * Triggers:
  *  - Any GDACS Red alert event
  *  - 3+ simultaneous GDACS Orange alert events
  *  - Any earthquake with magnitude ≥ 6.5
+ *  - Any major storm system summary from the storm preparedness layer
  *
  * Auto-deescalation: if Disaster Mode was auto-triggered and no new trigger fires
  * within DISASTER_QUIET_RESTORE_MS, restores to Peace Mode.
  */
-export function evaluateDisasterTrigger(gdacs: GDACSEvent[], earthquakes: Earthquake[]): void {
+export function evaluateDisasterTrigger(
+  gdacs: GDACSEvent[],
+  earthquakes: Earthquake[],
+  stormSummary?: StormPreparednessSummary | null,
+): void {
   const now = Date.now();
+  const hasRedAlert = DISASTER_GDACS_RED && gdacs.some(e => e.alertLevel === 'Red');
+  const orangeCount = gdacs.filter(e => e.alertLevel === 'Orange').length;
+  const hasManyOrange = orangeCount >= DISASTER_GDACS_ORANGE_COUNT;
+  const hasMajorQuake = earthquakes.some(eq => (eq.magnitude ?? 0) >= DISASTER_EQ_MAGNITUDE);
+  const hasMajorStormSystem = (stormSummary?.majorSystemCount ?? 0) > 0;
+  const hasTrigger = hasRedAlert || hasManyOrange || hasMajorQuake || hasMajorStormSystem;
+
+  if (hasTrigger) {
+    _disasterAutoTriggerTime = now;
+    if (currentMode === 'peace') {
+      setMode('disaster', true);
+    }
+    return;
+  }
 
   // Auto-deescalation check (runs regardless of current mode)
   if (
@@ -399,18 +420,6 @@ export function evaluateDisasterTrigger(gdacs: GDACSEvent[], earthquakes: Earthq
     setMode('peace', true);
     return;
   }
-
-  if (currentMode !== 'peace') return;
-
-  const hasRedAlert = DISASTER_GDACS_RED && gdacs.some(e => e.alertLevel === 'Red');
-  const orangeCount = gdacs.filter(e => e.alertLevel === 'Orange').length;
-  const hasManyOrange = orangeCount >= DISASTER_GDACS_ORANGE_COUNT;
-  const hasMajorQuake = earthquakes.some(eq => (eq.magnitude ?? 0) >= DISASTER_EQ_MAGNITUDE);
-
-  if (hasRedAlert || hasManyOrange || hasMajorQuake) {
-    _disasterAutoTriggerTime = now;
-    setMode('disaster', true);
-  }
 }
 
 /**
@@ -418,29 +427,7 @@ export function evaluateDisasterTrigger(gdacs: GDACSEvent[], earthquakes: Earthq
  * The user can then paste it into SMS / messaging apps.
  */
 export function alertFamily(): void {
-  const now = new Date();
-  const dateStr = now.toLocaleDateString(undefined, {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  const msg = [
-    '⚠️  WORLD MONITOR — SAFETY ALERT',
-    `Time: ${dateStr}`,
-    '',
-    'World Monitor has detected elevated conflict or crisis signals.',
-    'Please stay informed, follow local emergency guidance,',
-    'and check in with each other.',
-    '',
-    'Stay safe,',
-    '— World Monitor',
-  ].join('\n');
-
-  navigator.clipboard.writeText(msg).catch(() => {
+  navigator.clipboard.writeText(buildPrimaryCommsMessage('safe')).catch(() => {
     // Clipboard API unavailable — silently ignore
   });
 }

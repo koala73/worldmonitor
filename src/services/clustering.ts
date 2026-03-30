@@ -9,6 +9,7 @@ import { getSourceTier } from '@/config';
 import { clusterNewsCore } from './analysis-core';
 import { mlWorker } from './ml-worker';
 import { ML_THRESHOLDS } from '@/config/ml-config';
+import { buildClusterEvidencePack } from './evidence-pack';
 
 export function clusterNews(items: NewsItem[]): ClusteredEvent[] {
   return clusterNewsCore(items, getSourceTier) as ClusteredEvent[];
@@ -132,6 +133,7 @@ function mergeSemanticallySimilarClusters(
       velocity: primary.velocity,
       threat: primary.threat,
     };
+    mergedCluster.evidence = buildClusterEvidencePack(mergedCluster);
     merged.push(mergedCluster);
   }
 

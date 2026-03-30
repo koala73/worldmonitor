@@ -4,7 +4,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { buildLaunchAgentPlist } from '../scripts/setup-main-sync-agent.mjs';
-import { buildSyncPaths } from '../scripts/sync-main-to-mac.mjs';
+import {
+  buildSyncPaths,
+  collectCheckStates,
+  collectStatusCheckRollupStates,
+  evaluateRequiredChecks,
+  findMergedPullRequestForCommit,
+} from '../scripts/sync-main-to-mac.mjs';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
 const syncScriptPath = path.join(repoRoot, 'scripts', 'sync-main-to-mac.mjs');
@@ -27,6 +33,66 @@ test('main sync helper paths stay inside the dedicated sync root', () => {
     lockFile: '/Users/bradleybond/.worldmonitor-main-sync/sync.lock',
     logDir: '/Users/bradleybond/.worldmonitor-main-sync/logs',
   });
+});
+
+test('main sync can fall back to a merged PR status rollup when merge-commit checks are sparse', () => {
+  const requiredChecks = [
+    'release-integrity',
+    'typecheck',
+    'Analyze (actions)',
+    'Analyze (javascript-typescript)',
+    'Analyze (rust)',
+    'actionlint',
+    'secret-scan',
+  ];
+
+  const mergeCommitStates = collectCheckStates({
+    check_runs: [
+      { name: 'Analyze (actions)', conclusion: 'success' },
+      { name: 'Analyze (javascript-typescript)', conclusion: 'success' },
+      { name: 'Analyze (rust)', conclusion: 'success' },
+      { name: 'Analyze (python)', conclusion: 'success' },
+    ],
+  }, { statuses: [] });
+  assert.deepEqual(evaluateRequiredChecks(requiredChecks, mergeCommitStates), {
+    isGreen: false,
+    missing: ['release-integrity', 'typecheck', 'actionlint', 'secret-scan'],
+    nonSuccess: [],
+  });
+
+  const prRollupStates = collectStatusCheckRollupStates([
+    { __typename: 'CheckRun', name: 'release-integrity', conclusion: 'SUCCESS' },
+    { __typename: 'CheckRun', name: 'typecheck', conclusion: 'SUCCESS' },
+    { __typename: 'CheckRun', name: 'Analyze (actions)', conclusion: 'SUCCESS' },
+    { __typename: 'CheckRun', name: 'Analyze (javascript-typescript)', conclusion: 'SUCCESS' },
+    { __typename: 'CheckRun', name: 'Analyze (rust)', conclusion: 'SUCCESS' },
+    { __typename: 'CheckRun', name: 'actionlint', conclusion: 'SUCCESS' },
+    { __typename: 'CheckRun', name: 'secret-scan', conclusion: 'SUCCESS' },
+  ]);
+  assert.deepEqual(evaluateRequiredChecks(requiredChecks, prRollupStates), {
+    isGreen: true,
+    missing: [],
+    nonSuccess: [],
+  });
+});
+
+test('main sync can identify the merged pull request that produced a main commit', () => {
+  const pull = findMergedPullRequestForCommit([
+    {
+      number: 91,
+      merged_at: '2026-03-30T04:00:00Z',
+      merge_commit_sha: '3dc674eb7cb5d6bc55d29a503169b0b6f0fc0435',
+      base: { ref: 'main' },
+    },
+    {
+      number: 92,
+      merged_at: '2026-03-30T17:13:22Z',
+      merge_commit_sha: '0d629b8ff7b57e5235868e5c5fd641cae6020760',
+      base: { ref: 'main' },
+    },
+  ], '0d629b8ff7b57e5235868e5c5fd641cae6020760', 'main');
+
+  assert.equal(pull?.number, 92);
 });
 
 test('main sync launch agent plist runs Node on a fixed interval', () => {
@@ -73,6 +139,11 @@ test('main-to-mac sync uses a local clean clone instead of a GitHub self-hosted 
     syncScript,
     /install-built-app\.mjs/,
     'sync-main-to-mac should install via the verified app installer script',
+  );
+  assert.match(
+    syncScript,
+    /commits\/\$\{sha\}\/pulls[\s\S]*statusCheckRollup/,
+    'sync-main-to-mac should fall back to the merged pull request check rollup when the merge commit lacks required contexts',
   );
   assert.doesNotMatch(
     syncScript,

@@ -14,7 +14,7 @@ export default tseslint.config(
       'src/workers/ml.worker.ts',
       'src/generated/**',
       'convex/**',
-      'api/[domain]/**',    // esbuild artifact — not source
+      'api/\\[domain\\]/**', // esbuild artifact — not source; brackets escaped to prevent glob char-class interpretation
     ],
   },
 
@@ -68,7 +68,7 @@ export default tseslint.config(
       '@typescript-eslint/no-unnecessary-type-assertion': 'off', // removes Element→HTMLElement casts downstream code requires
       '@typescript-eslint/non-nullable-type-assertion-style': 'off', // converts `as T` to `!`, losing type narrowing
       'unicorn/no-null': 'off',                                 // codebase convention: null used for nullable DOM/library values
-      'unicorn/prefer-to-sorted': 'off',                        // Array#toSorted requires ES2022; tsconfig targets ES2020
+      'unicorn/no-array-sort': 'off',                           // Array#toSorted requires ES2022; tsconfig targets ES2020
     },
   },
 
@@ -106,6 +106,8 @@ export default tseslint.config(
       'unicorn/prefer-switch': 'off',                   // can expose invalid case values
       'unicorn/explicit-length-check': 'off',           // > 0 breaks truthiness checks on non-number types
       'unicorn/no-useless-undefined': 'off',            // removes .reduce() initial value
+      'unicorn/no-null': 'off',                         // codebase convention: null used for nullable values
+      'unicorn/no-array-sort': 'off',                   // Array#toSorted requires ES2022
     },
   },
 

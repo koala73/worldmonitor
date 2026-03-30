@@ -52,7 +52,7 @@ function resolveCategoryLabel(cmd: Command): string {
   return key ? t(key, { defaultValue: cmd.category }) : cmd.category;
 }
 
-export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub';
+export type SearchResultType = 'country' | 'place' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub';
 
 export interface SearchResult {
   type: SearchResultType;
@@ -230,7 +230,7 @@ export class SearchModal {
 
     const priority: SearchResultType[] = [
       'news', 'prediction', 'market', 'earthquake', 'outage',
-      'conflict', 'hotspot', 'country',
+      'conflict', 'hotspot', 'place', 'country',
       'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
       'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator'
     ];
@@ -239,7 +239,7 @@ export class SearchModal {
     for (const type of priority) {
       const matches = byType.get(type) || [];
       matches.sort((a, b) => b._score - a._score);
-      const limit = type === 'news' ? 6 : (type === 'country' ? 4 : 3);
+      const limit = type === 'news' ? 6 : (type === 'country' || type === 'place' ? 4 : 3);
       this.results.push(...matches.slice(0, limit));
       if (this.results.length >= MAX_RESULTS) break;
     }
@@ -348,6 +348,7 @@ export class SearchModal {
 
     const icons: Record<SearchResultType, string> = {
       country: '\u{1F3F3}\uFE0F',
+      place: '\u{1F4CD}',
       news: '\u{1F4F0}',
       hotspot: '\u{1F4CD}',
       market: '\u{1F4C8}',

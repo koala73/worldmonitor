@@ -161,22 +161,39 @@ async function ensureClone(options) {
   return targetSha;
 }
 
-function collectCheckStates(checkRunsPayload, statusPayload) {
+function normalizeCheckState(value) {
+  return String(value ?? 'unknown').toLowerCase();
+}
+
+export function collectCheckStates(checkRunsPayload, statusPayload) {
   const states = new Map();
   for (const checkRun of checkRunsPayload?.check_runs ?? []) {
     if (checkRun?.name) {
-      states.set(checkRun.name, checkRun.conclusion ?? checkRun.status ?? 'unknown');
+      states.set(checkRun.name, normalizeCheckState(checkRun.conclusion ?? checkRun.status));
     }
   }
   for (const status of statusPayload?.statuses ?? []) {
     if (status?.context) {
-      states.set(status.context, status.state ?? 'unknown');
+      states.set(status.context, normalizeCheckState(status.state));
     }
   }
   return states;
 }
 
-function requireGreenChecks(requiredChecks, checkStates, sha) {
+export function collectStatusCheckRollupStates(statusCheckRollup = []) {
+  const states = new Map();
+  for (const entry of statusCheckRollup) {
+    const name = entry?.context ?? entry?.name;
+    if (!name) {
+      continue;
+    }
+    const state = entry?.state ?? entry?.conclusion ?? entry?.status;
+    states.set(name, normalizeCheckState(state));
+  }
+  return states;
+}
+
+export function evaluateRequiredChecks(requiredChecks, checkStates) {
   const missing = [];
   const nonSuccess = [];
 
@@ -191,12 +208,56 @@ function requireGreenChecks(requiredChecks, checkStates, sha) {
     }
   }
 
-  if (missing.length > 0 || nonSuccess.length > 0) {
-    const details = [];
-    if (missing.length > 0) details.push(`missing [${missing.join(', ')}]`);
-    if (nonSuccess.length > 0) details.push(`non-success [${nonSuccess.join(', ')}]`);
-    throw new SyncBlockedError(`Required GitHub checks are not green for ${sha}: ${details.join('; ')}`);
+  return {
+    isGreen: missing.length === 0 && nonSuccess.length === 0,
+    missing,
+    nonSuccess,
+  };
+}
+
+function formatCheckFailure(subject, result) {
+  const details = [];
+  if (result.missing.length > 0) details.push(`missing [${result.missing.join(', ')}]`);
+  if (result.nonSuccess.length > 0) details.push(`non-success [${result.nonSuccess.join(', ')}]`);
+  return `Required GitHub checks are not green for ${subject}: ${details.join('; ')}`;
+}
+
+export function findMergedPullRequestForCommit(pulls, sha, branch) {
+  return (pulls ?? []).find((pull) => (
+    pull?.merged_at
+    && pull?.merge_commit_sha === sha
+    && pull?.base?.ref === branch
+  )) ?? null;
+}
+
+function readMergedPullRequestCheckStates(repoSlug, branch, sha) {
+  const pullsPayload = JSON.parse(
+    runCommand('gh', ['api', `repos/${repoSlug}/commits/${sha}/pulls`]),
+  );
+  const mergedPull = findMergedPullRequestForCommit(pullsPayload, sha, branch);
+  if (!mergedPull?.number) {
+    return null;
   }
+
+  const prPayload = JSON.parse(
+    runCommand('gh', [
+      'pr',
+      'view',
+      String(mergedPull.number),
+      '--repo',
+      repoSlug,
+      '--json',
+      'number,mergedAt,baseRefName,mergeCommit,statusCheckRollup',
+    ]),
+  );
+  if (!prPayload?.mergedAt || prPayload?.baseRefName !== branch || prPayload?.mergeCommit?.oid !== sha) {
+    return null;
+  }
+
+  return {
+    prNumber: prPayload.number,
+    checkStates: collectStatusCheckRollupStates(prPayload.statusCheckRollup),
+  };
 }
 
 async function verifyRemoteChecks(options, sha) {
@@ -210,8 +271,36 @@ async function verifyRemoteChecks(options, sha) {
   const statusPayload = JSON.parse(
     runCommand('gh', ['api', `repos/${options.repoSlug}/commits/${sha}/status`]),
   );
-  requireGreenChecks(requiredChecks, collectCheckStates(checkRunsPayload, statusPayload), sha);
-  return requiredChecks;
+  const commitCheckStates = collectCheckStates(checkRunsPayload, statusPayload);
+  const commitResult = evaluateRequiredChecks(requiredChecks, commitCheckStates);
+  if (commitResult.isGreen) {
+    return {
+      requiredChecks,
+      verificationSource: 'commit',
+      verifiedPrNumber: null,
+    };
+  }
+
+  // Auto-merged PRs created by github-actions[bot] can land on main without
+  // emitting the required push workflow contexts on the merge commit itself.
+  // In that case, fall back to the merged PR's status rollup, which is the
+  // source GitHub used to allow the merge in the first place.
+  const mergedPullVerification = readMergedPullRequestCheckStates(options.repoSlug, options.branch, sha);
+  if (mergedPullVerification) {
+    const prResult = evaluateRequiredChecks(requiredChecks, mergedPullVerification.checkStates);
+    if (prResult.isGreen) {
+      return {
+        requiredChecks,
+        verificationSource: 'pull_request',
+        verifiedPrNumber: mergedPullVerification.prNumber,
+      };
+    }
+    throw new SyncBlockedError(
+      `${formatCheckFailure(sha, commitResult)}; ${formatCheckFailure(`PR #${mergedPullVerification.prNumber}`, prResult)}`,
+    );
+  }
+
+  throw new SyncBlockedError(formatCheckFailure(sha, commitResult));
 }
 
 async function isInstalledCommitHealthy(state, installPath) {
@@ -281,7 +370,7 @@ async function main() {
       repoDir: options.repoDir,
     });
 
-    const requiredChecks = await verifyRemoteChecks(options, targetSha);
+    const { requiredChecks, verificationSource, verifiedPrNumber } = await verifyRemoteChecks(options, targetSha);
 
     if (state?.installedSha === targetSha && (await isInstalledCommitHealthy(state, options.installPath))) {
       await writeJson(options.statusFile, {
@@ -290,6 +379,8 @@ async function main() {
         targetSha,
         installedSha: state.installedSha,
         requiredChecks,
+        verificationSource,
+        verifiedPrNumber,
       });
       console.log(`[sync-main-to-mac] ${targetSha} already installed and healthy`);
       return;
@@ -307,14 +398,16 @@ async function main() {
       if (mergeBase.status !== 0) {
         await writeJson(options.statusFile, {
           phase: 'idle',
-          checkedAt: new Date().toISOString(),
-          targetSha,
-          localBuildSha: state.localBuildSha,
-          skippedReason: 'local-build-ahead',
-          requiredChecks,
-        });
-        console.log(`[sync-main-to-mac] Local build ${state.localBuildSha.slice(0, 8)} is ahead of main — skipping install`);
-        return;
+        checkedAt: new Date().toISOString(),
+        targetSha,
+        localBuildSha: state.localBuildSha,
+        skippedReason: 'local-build-ahead',
+        requiredChecks,
+        verificationSource,
+        verifiedPrNumber,
+      });
+      console.log(`[sync-main-to-mac] Local build ${state.localBuildSha.slice(0, 8)} is ahead of main — skipping install`);
+      return;
       }
     }
 
@@ -338,6 +431,8 @@ async function main() {
       repoSlug: options.repoSlug,
       branch: options.branch,
       requiredChecks,
+      verificationSource,
+      verifiedPrNumber,
     });
     await writeJson(options.statusFile, {
       phase: 'installed',
@@ -345,6 +440,8 @@ async function main() {
       targetSha,
       installPath: options.installPath,
       appSha256: installResult.appSha,
+      verificationSource,
+      verifiedPrNumber,
     });
     console.log(`[sync-main-to-mac] Installed ${targetSha} to ${options.installPath}`);
   } catch (error) {

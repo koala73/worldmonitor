@@ -39,6 +39,11 @@ function isTrustedBrowserRequest(req, origin) {
   return isTrustedBrowserOrigin(origin);
 }
 
+function isReadRequest(req) {
+  const method = (req.method || 'GET').toUpperCase();
+  return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+}
+
 export function validateApiKey(req) {
   const key = req.headers.get('X-WorldMonitor-Key');
   const origin = req.headers.get('Origin') || '';
@@ -53,9 +58,8 @@ export function validateApiKey(req) {
 
   // Trusted browser requests must look like real browser fetches, not just spoofed headers.
   if (isTrustedBrowserRequest(req, origin)) {
-    const isReadRequest = ['GET', 'HEAD', 'OPTIONS'].includes((req.method || 'GET').toUpperCase());
-    if (!isReadRequest) {
-      if (!key) return { valid: false, required: true, error: 'API key required for non-read requests' };
+    if (!isReadRequest(req)) {
+      if (!key) return { valid: false, required: true, error: 'API key required for trusted browser non-read requests' };
       if (!validKeys.has(key)) return { valid: false, required: true, error: 'Invalid API key' };
       return { valid: true, required: true };
     }

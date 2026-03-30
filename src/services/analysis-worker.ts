@@ -98,6 +98,11 @@ class AnalysisWorkerManager {
               ...cluster,
               firstSeen: new Date(cluster.firstSeen),
               lastUpdated: new Date(cluster.lastUpdated),
+              evidence: cluster.evidence ? {
+                ...cluster.evidence,
+                firstSeen: new Date(cluster.evidence.firstSeen),
+                lastUpdated: new Date(cluster.evidence.lastUpdated),
+              } : undefined,
               allItems: cluster.allItems.map(item => ({
                 ...item,
                 pubDate: new Date(item.pubDate),
@@ -109,6 +114,11 @@ class AnalysisWorkerManager {
             const signals = data.signals.map(signal => ({
               ...signal,
               timestamp: new Date(signal.timestamp),
+              evidence: signal.evidence ? {
+                ...signal.evidence,
+                firstSeen: new Date(signal.evidence.firstSeen),
+                lastUpdated: new Date(signal.evidence.lastUpdated),
+              } : undefined,
             }));
             pending.resolve(signals);
           }

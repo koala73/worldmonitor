@@ -720,7 +720,7 @@ test('accepts AVIATIONSTACK_API via /api/local-env-update', async () => {
   }
 });
 
-test('rejects ANTHROPIC_API_KEY via /api/local-env-update (not in allowlist)', async () => {
+test('accepts ANTHROPIC_API_KEY via /api/local-env-update (in allowlist)', async () => {
   const localApi = await setupApiDir({});
 
   const app = await createLocalApiServer({
@@ -736,9 +736,9 @@ test('rejects ANTHROPIC_API_KEY via /api/local-env-update (not in allowlist)', a
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'ANTHROPIC_API_KEY', value: 'anthropic-test-key' }),
     });
-    assert.equal(response.status, 403);
+    assert.equal(response.status, 200);
     const body = await response.json();
-    assert.equal(body.ok, undefined);
+    assert.equal(body.ok, true);
   } finally {
     await app.close();
     await localApi.cleanup();

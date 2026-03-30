@@ -1,14 +1,22 @@
 import type { NewsItem } from '@/types';
-import { getSourceTier } from '@/config/feeds';
+import { getSourceTier, getSourceType } from '@/config/feeds';
+import { haversineKm } from '@/services/proximity-filter';
+import { getSavedPlaces, type SavedPlace } from '@/services/saved-places';
+import { buildBreakingAlertEvidencePack, type EvidencePack } from './evidence-pack';
 
 export interface BreakingAlert {
   id: string;
   headline: string;
   source: string;
   link?: string;
+  lat?: number;
+  lon?: number;
+  placeIds?: string[];
+  placeSummary?: string;
   threatLevel: 'critical' | 'high';
   timestamp: Date;
   origin: 'rss_alert' | 'keyword_spike' | 'hotspot_escalation' | 'military_surge';
+  evidence?: EvidencePack;
 }
 
 export interface AlertSettings {
@@ -31,6 +39,7 @@ const DEFAULT_SETTINGS: AlertSettings = {
 };
 
 const dedupeMap = new Map<string, number>();
+const alertHistory: BreakingAlert[] = [];
 let lastGlobalAlertMs = 0;
 let lastGlobalAlertLevel: 'critical' | 'high' | null = null;
 let storageListener: ((e: StorageEvent) => void) | null = null;
@@ -108,12 +117,66 @@ function isGlobalCooldown(candidateLevel: 'critical' | 'high'): boolean {
   return true;
 }
 
+function summarizePlaceNames(places: SavedPlace[]): string {
+  const names = places.slice(0, 2).map((place) => place.name);
+  const extra = places.length - names.length;
+  return extra > 0 ? `Near ${names.join(', ')} +${extra}` : `Near ${names.join(', ')}`;
+}
+
+export function tagBreakingAlertPlaces(
+  alert: BreakingAlert,
+  places: SavedPlace[] = getSavedPlaces(),
+): BreakingAlert {
+  if (alert.placeSummary && Array.isArray(alert.placeIds) && alert.placeIds.length > 0) {
+    return alert;
+  }
+
+  let matchedPlaces: SavedPlace[] = [];
+  if (Array.isArray(alert.placeIds) && alert.placeIds.length > 0) {
+    matchedPlaces = places.filter((place) => alert.placeIds?.includes(place.id));
+  } else if (Number.isFinite(alert.lat) && Number.isFinite(alert.lon)) {
+    matchedPlaces = places.filter(
+      (place) => haversineKm(alert.lat as number, alert.lon as number, place.lat, place.lon) <= place.radiusKm,
+    );
+  }
+
+  if (matchedPlaces.length === 0) return alert;
+
+  return {
+    ...alert,
+    placeIds: matchedPlaces.map((place) => place.id),
+    placeSummary: alert.placeSummary ?? summarizePlaceNames(matchedPlaces),
+  };
+}
+
+function recordAlertHistory(alert: BreakingAlert): void {
+  alertHistory.unshift(alert);
+  if (alertHistory.length > 100) {
+    alertHistory.splice(100);
+  }
+}
+
+function attachAlertEvidence(alert: BreakingAlert): BreakingAlert {
+  if (alert.evidence) return alert;
+
+  return {
+    ...alert,
+    evidence: buildBreakingAlertEvidencePack(
+      alert,
+      getSourceTier(alert.source),
+      getSourceType(alert.source),
+    ),
+  };
+}
+
 function dispatchAlert(alert: BreakingAlert): void {
+  const enrichedAlert = tagBreakingAlertPlaces(attachAlertEvidence(alert));
   pruneDedupeMap();
-  dedupeMap.set(alert.id, Date.now());
+  dedupeMap.set(enrichedAlert.id, Date.now());
   lastGlobalAlertMs = Date.now();
-  lastGlobalAlertLevel = alert.threatLevel;
-  document.dispatchEvent(new CustomEvent('wm:breaking-news', { detail: alert }));
+  lastGlobalAlertLevel = enrichedAlert.threatLevel;
+  recordAlertHistory(enrichedAlert);
+  document.dispatchEvent(new CustomEvent('wm:breaking-news', { detail: enrichedAlert }));
 }
 
 /** Dispatch a breaking alert directly (for non-RSS sources like natural hazards). */
@@ -174,12 +237,18 @@ export function initBreakingNewsAlerts(): void {
   window.addEventListener('storage', storageListener);
 }
 
+export function getRecentBreakingAlerts(): BreakingAlert[] {
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  return alertHistory.filter((alert) => alert.timestamp.getTime() > cutoff);
+}
+
 export function destroyBreakingNewsAlerts(): void {
   if (storageListener) {
     window.removeEventListener('storage', storageListener);
     storageListener = null;
   }
   dedupeMap.clear();
+  alertHistory.length = 0;
   cachedSettings = null;
   lastGlobalAlertMs = 0;
   lastGlobalAlertLevel = null;

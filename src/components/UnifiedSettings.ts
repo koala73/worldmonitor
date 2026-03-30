@@ -20,6 +20,7 @@ const DESKTOP_RELEASES_URL = 'https://github.com/bradleybond512/worldmonitor-mac
 export interface UnifiedSettingsConfig {
   getPanelSettings: () => Record<string, PanelConfig>;
   togglePanel: (key: string) => void;
+  setPanelsEnabled: (keys: string[], enabled: boolean) => void;
   getDisabledSources: () => Set<string>;
   toggleSource: (name: string) => void;
   setSourcesEnabled: (names: string[], enabled: boolean) => void;
@@ -96,6 +97,18 @@ export class UnifiedSettings {
       const panelItem = target.closest<HTMLElement>('.panel-toggle-item');
       if (panelItem?.dataset.panel) {
         this.config.togglePanel(panelItem.dataset.panel);
+        this.renderPanelsTab();
+        return;
+      }
+
+      if (target.closest('.panels-select-all')) {
+        this.config.setPanelsEnabled(this.getVisiblePanelKeys(), true);
+        this.renderPanelsTab();
+        return;
+      }
+
+      if (target.closest('.panels-select-none')) {
+        this.config.setPanelsEnabled(this.getVisiblePanelKeys(), false);
         this.renderPanelsTab();
         return;
       }
@@ -298,6 +311,11 @@ export class UnifiedSettings {
             <input type="text" placeholder="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
           </div>
           <div class="panel-toggle-grid" id="usPanelToggles"></div>
+          <div class="sources-footer panels-footer">
+            <span class="sources-counter panels-counter" id="usPanelsCounter"></span>
+            <button class="panels-select-all">${t('common.selectAll')}</button>
+            <button class="panels-select-none">${t('common.selectNone')}</button>
+          </div>
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'sources' ? ' active' : ''}" data-panel-id="sources">
           <div class="unified-settings-region-wrapper">
@@ -701,6 +719,10 @@ export class UnifiedSettings {
     return entries;
   }
 
+  private getVisiblePanelKeys(): string[] {
+    return this.getVisiblePanelEntries().map(([key]) => key);
+  }
+
   private renderPanelCategoryPills(): void {
     const bar = this.overlay.querySelector('#usPanelCatBar');
     if (!bar) return;
@@ -722,6 +744,7 @@ export class UnifiedSettings {
         <span class="panel-toggle-label">${escapeHtml(this.config.getLocalizedPanelName(key, panel.name))}</span>
       </div>
     `).join('');
+    this.updatePanelsCounter();
   }
 
   private getAvailableRegions(): { key: string; label: string }[] {
@@ -824,6 +847,18 @@ export class UnifiedSettings {
     const enabledTotal = allSources.length - disabled.size;
 
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
+  }
+
+  private updatePanelsCounter(): void {
+    const counter = this.overlay.querySelector('#usPanelsCounter');
+    if (!counter) return;
+
+    const allPanels = Object.entries(this.config.getPanelSettings())
+      .filter(([key]) => key !== 'runtime-config' || this.config.isDesktopApp)
+      .map(([, panel]) => panel);
+    const enabledTotal = allPanels.filter((panel) => panel.enabled).length;
+
+    counter.textContent = `${enabledTotal}/${allPanels.length} enabled`;
   }
 
   // ── Debug tab ──────────────────────────────────────────────────────────────

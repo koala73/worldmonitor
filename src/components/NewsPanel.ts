@@ -8,6 +8,7 @@ import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTA
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
+import { EvidenceDrawer } from './EvidenceDrawer';
 
 /** Threshold for enabling virtual scrolling */
 const VIRTUAL_SCROLL_THRESHOLD = 15;
@@ -36,6 +37,9 @@ export class NewsPanel extends Panel {
   private renderRequestId = 0;
   private boundScrollHandler: (() => void) | null = null;
   private boundClickHandler: (() => void) | null = null;
+  private boundEvidenceClickHandler: ((e: Event) => void) | null = null;
+  private currentClustersById = new Map<string, ClusteredEvent>();
+  private readonly evidenceDrawer = new EvidenceDrawer();
 
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
@@ -90,6 +94,27 @@ export class NewsPanel extends Panel {
       activityTracker.markAsSeen(this.panelId);
     };
     this.element.addEventListener('click', this.boundClickHandler);
+
+    this.boundEvidenceClickHandler = (event: Event) => {
+      const target = event.target as HTMLElement;
+      const whyBtn = target.closest('.cluster-why-btn') as HTMLElement | null;
+      if (!whyBtn) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const clusterId = whyBtn.dataset.clusterId;
+      if (!clusterId) return;
+      const cluster = this.currentClustersById.get(clusterId);
+      if (!cluster?.evidence) return;
+
+      this.evidenceDrawer.show({
+        title: cluster.primaryTitle,
+        subtitle: cluster.primarySource,
+        evidence: cluster.evidence,
+      });
+    };
+    this.content.addEventListener('click', this.boundEvidenceClickHandler);
   }
 
   public setRelatedAssetHandlers(options: {
@@ -308,6 +333,7 @@ export class NewsPanel extends Panel {
     this.setDataBadge('live');
     this.setCount(0);
     this.relatedAssetContext.clear();
+    this.currentClustersById.clear();
     this.currentHeadlines = [];
     this.updateHeadlineSignature();
     this.setContent(`<div class="panel-empty">${escapeHtml(message)}</div>`);
@@ -330,6 +356,7 @@ export class NewsPanel extends Panel {
 
   private renderFlat(items: NewsItem[]): void {
     this.setCount(items.length);
+    this.currentClustersById.clear();
     this.currentHeadlines = items
       .slice(0, 5)
       .map(item => item.title)
@@ -371,6 +398,7 @@ export class NewsPanel extends Panel {
     const totalItems = sorted.reduce((sum, c) => sum + c.sourceCount, 0);
     this.setCount(totalItems);
     this.relatedAssetContext.clear();
+    this.currentClustersById = new Map(sorted.map((cluster) => [cluster.id, cluster]));
 
     // Store headlines for summarization (cap at 5 to reduce entity conflation in small models)
     this.currentHeadlines = sorted.slice(0, 5).map(c => c.primaryTitle);
@@ -494,6 +522,9 @@ export class NewsPanel extends Panel {
         })
         .join('')
       : '';
+    const whyButton = cluster.evidence
+      ? `<button class="cluster-why-btn" data-cluster-id="${escapeHtml(cluster.id)}" type="button">Why we believe this</button>`
+      : '';
 
     const assetContext = getClusterAssetContext(cluster);
     if (assetContext && assetContext.assets.length > 0) {
@@ -556,6 +587,7 @@ export class NewsPanel extends Panel {
         <div class="cluster-meta">
           <span class="top-sources">${topSourcesHtml}</span>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>
+          ${whyButton}
           ${getCurrentLanguage() === 'en' ? '' : `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(cluster.primaryTitle)}">文</button>`}
         </div>
         ${relatedAssetsHtml}
@@ -634,6 +666,10 @@ export class NewsPanel extends Panel {
     if (this.boundClickHandler) {
       this.element.removeEventListener('click', this.boundClickHandler);
       this.boundClickHandler = null;
+    }
+    if (this.boundEvidenceClickHandler) {
+      this.content.removeEventListener('click', this.boundEvidenceClickHandler);
+      this.boundEvidenceClickHandler = null;
     }
 
     // Unregister from activity tracker

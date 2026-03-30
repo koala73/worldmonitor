@@ -1,12 +1,14 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { getApiBaseUrl } from '@/services/runtime';
+import { readJsonResponse } from '@/utils/http-json';
 
 interface FearGreedResponse {
   score: number;
   classification: string;
   history: { value: number; timestamp: string }[];
   updatedAt: number;
+  error?: string;
 }
 
 function scoreColor(score: number): string {
@@ -51,6 +53,7 @@ function formatUpdated(updatedAt: number): string {
 }
 
 export class FearGreedPanel extends Panel {
+  private static readonly UNAVAILABLE_MESSAGE = 'Sentiment data unavailable right now';
   private data: FearGreedResponse | null = null;
   private loading = true;
   private error: string | null = null;
@@ -73,11 +76,11 @@ export class FearGreedPanel extends Panel {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/fear-greed`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json() as FearGreedResponse;
+      this.data = await readJsonResponse<FearGreedResponse>(res, FearGreedPanel.UNAVAILABLE_MESSAGE);
       this.error = null;
     } catch (error) {
       if (this.isAbortError(error)) return;
-      this.error = error instanceof Error ? error.message : 'Failed to fetch';
+      this.error = error instanceof Error ? error.message : FearGreedPanel.UNAVAILABLE_MESSAGE;
     }
 
     this.loading = false;
@@ -92,6 +95,11 @@ export class FearGreedPanel extends Panel {
 
     if (this.error || !this.data) {
       this.showError(this.error ?? 'No data');
+      return;
+    }
+
+    if (this.data.error && this.data.history.length === 0) {
+      this.showError(FearGreedPanel.UNAVAILABLE_MESSAGE);
       return;
     }
 

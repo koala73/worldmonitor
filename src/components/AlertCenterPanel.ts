@@ -1,8 +1,10 @@
 import { Panel } from './Panel';
 import type { CorrelationSignal } from '@/services/correlation';
 import { getRecentSignals } from '@/services/correlation';
-import type { BreakingAlert } from '@/services/breaking-news-alerts';
+import { getRecentBreakingAlerts, type BreakingAlert } from '@/services/breaking-news-alerts';
 import { t } from '@/services/i18n';
+import type { EvidencePack } from '@/services/evidence-pack';
+import { EvidenceDrawer } from './EvidenceDrawer';
 
 interface AlertEntry {
   id: string;
@@ -11,13 +13,17 @@ interface AlertEntry {
   description: string;
   severity: 'critical' | 'high' | 'medium' | 'info';
   timestamp: Date;
+  placeSummary?: string;
   link?: string;
+  evidence?: EvidencePack;
 }
 
 export class AlertCenterPanel extends Panel {
   private alerts: AlertEntry[] = [];
   private lastViewedAt: number = Date.now();
   private readonly boundOnBreaking: (e: Event) => void;
+  private readonly boundOnClick: (e: Event) => void;
+  private readonly evidenceDrawer = new EvidenceDrawer();
 
   constructor() {
     super({
@@ -27,6 +33,11 @@ export class AlertCenterPanel extends Panel {
       trackActivity: true,
       infoTooltip: 'Persistent history of intelligence signals and breaking alerts — last 100 events.',
     });
+
+    const recentBreakingAlerts = getRecentBreakingAlerts();
+    if (recentBreakingAlerts.length > 0) {
+      this.ingestBreakingAlerts(recentBreakingAlerts);
+    }
 
     // Seed with any recent signals already in the history buffer
     const recent = getRecentSignals();
@@ -44,11 +55,34 @@ export class AlertCenterPanel extends Panel {
         description: `${alert.origin.replace(/_/g, ' ')} · ${alert.source}`,
         severity: alert.threatLevel,
         timestamp: alert.timestamp,
+        placeSummary: alert.placeSummary,
         link: alert.link,
+        evidence: alert.evidence,
       };
       this.ingestEntries([entry]);
     };
     document.addEventListener('wm:breaking-news', this.boundOnBreaking);
+
+    this.boundOnClick = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const whyBtn = target.closest('.ac-why-btn') as HTMLElement | null;
+      if (!whyBtn) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const alertId = whyBtn.dataset.alertId;
+      if (!alertId) return;
+      const entry = this.alerts.find((item) => item.id === alertId);
+      if (!entry?.evidence) return;
+
+      this.evidenceDrawer.show({
+        title: entry.title,
+        subtitle: entry.description,
+        evidence: entry.evidence,
+      });
+    };
+    this.content.addEventListener('click', this.boundOnClick);
 
     // Reset unread badge when user interacts with the panel
     this.element.addEventListener('click', () => {
@@ -66,6 +100,7 @@ export class AlertCenterPanel extends Panel {
 
   override destroy(): void {
     document.removeEventListener('wm:breaking-news', this.boundOnBreaking);
+    this.content.removeEventListener('click', this.boundOnClick);
     super.destroy();
   }
 
@@ -75,8 +110,25 @@ export class AlertCenterPanel extends Panel {
       kind: 'signal' as const,
       title: s.title,
       description: s.description,
-      severity: s.confidence > 0.8 ? 'high' : (s.confidence > 0.65 ? 'medium' : 'info'),
+      severity: signalSeverity(s),
       timestamp: s.timestamp,
+      placeSummary: typeof s.data.placeSummary === 'string' ? s.data.placeSummary : undefined,
+      evidence: s.evidence,
+    }));
+    this.ingestEntries(entries);
+  }
+
+  private ingestBreakingAlerts(alerts: BreakingAlert[]): void {
+    const entries: AlertEntry[] = alerts.map((alert) => ({
+      id: alert.id,
+      kind: 'breaking',
+      title: alert.headline,
+      description: `${alert.origin.replace(/_/g, ' ')} · ${alert.source}`,
+      severity: alert.threatLevel,
+      timestamp: alert.timestamp,
+      placeSummary: alert.placeSummary,
+      link: alert.link,
+      evidence: alert.evidence,
     }));
     this.ingestEntries(entries);
   }
@@ -121,10 +173,14 @@ export class AlertCenterPanel extends Panel {
       const title = safeLink
         ? `<a href="${escHtml(safeLink)}" target="_blank" rel="noopener noreferrer">${escHtml(a.title)}</a>`
         : escHtml(a.title);
+      const detail = a.placeSummary ? `${a.description} · ${a.placeSummary}` : a.description;
+      const whyButton = a.evidence
+        ? `<button class="ac-why-btn" data-alert-id="${escHtml(a.id)}" type="button">Why</button>`
+        : '';
       return `<tr class="${rowClass(a.severity)}">
         <td class="ac-sev">${pill}</td>
         <td class="ac-title">${title}</td>
-        <td class="ac-desc">${escHtml(a.description)}</td>
+        <td class="ac-desc"><div>${escHtml(detail)}</div>${whyButton}</td>
         <td class="ac-age">${ago}</td>
       </tr>`;
     }).join('');
@@ -159,6 +215,12 @@ function severityPill(s: AlertEntry['severity']): string {
     info: 'INFO',
   };
   return `<span class="ac-pill ac-pill-${s}">${labels[s]}</span>`;
+}
+
+function signalSeverity(signal: CorrelationSignal): AlertEntry['severity'] {
+  if (signal.confidence > 0.8) return 'high';
+  if (signal.confidence > 0.65) return 'medium';
+  return 'info';
 }
 
 function rowClass(s: AlertEntry['severity']): string {

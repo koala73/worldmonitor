@@ -696,6 +696,19 @@ export class EventHandlerManager implements AppModule {
           this.applyPanelSettings();
         }
       },
+      setPanelsEnabled: (keys, enabled) => {
+        let changed = false;
+        for (const key of keys) {
+          const config = this.ctx.panelSettings[key];
+          if (!config || config.enabled === enabled) continue;
+          config.enabled = enabled;
+          trackPanelToggled(key, config.enabled);
+          changed = true;
+        }
+        if (!changed) return;
+        saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+        this.applyPanelSettings();
+      },
       getDisabledSources: () => this.ctx.disabledSources,
       toggleSource: (name: string) => {
         if (this.ctx.disabledSources.has(name)) {

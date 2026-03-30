@@ -73,13 +73,22 @@ const KEY_STATIONS = [
 ];
 
 const NDBC_REALTIME = 'https://www.ndbc.noaa.gov/data/realtime2';
+const NDBC_ACTIVE_STATIONS_XML = 'https://www.ndbc.noaa.gov/activestations.xml';
 
 // NHC recon: vortex data messages RSS
 const NHC_VDM_RSS = 'https://www.nhc.noaa.gov/recon/recon.rss';
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
+const STATION_METADATA_TTL_MS = 24 * 60 * 60 * 1000;
 let buoyCache: { observations: BuoyObservation[]; fetchedAt: number } | null = null;
 let reconCache: { fixes: HurricaneReconFix[]; fetchedAt: number } | null = null;
+let stationMetadataCache: { data: Map<string, BuoyStationMetadata>; fetchedAt: number } | null = null;
+
+interface BuoyStationMetadata {
+  lat: number;
+  lon: number;
+  name: string;
+}
 
 function parseBuoyLine(line: string, headers: string[]): Record<string, string> {
   const vals = line.trim().split(/\s+/);
@@ -131,7 +140,59 @@ function computeAlertCondition(obs: Partial<BuoyObservation>): { isAlert: boolea
   return { isAlert: reasons.length > 0, reason: reasons.join('; '), severity };
 }
 
-async function fetchBuoyData(stationId: string): Promise<BuoyObservation | null> {
+function parseStationMetadata(xml: string): Map<string, BuoyStationMetadata> {
+  const stationMetadata = new Map<string, BuoyStationMetadata>();
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'application/xml');
+    if (!doc.querySelector('parsererror')) {
+      doc.querySelectorAll('station').forEach((station) => {
+        const id = station.getAttribute('id')?.trim();
+        const lat = Number.parseFloat(station.getAttribute('lat') ?? '');
+        const lon = Number.parseFloat(station.getAttribute('lon') ?? '');
+        const name = station.getAttribute('name')?.trim() ?? id ?? '';
+        if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        stationMetadata.set(id, { lat, lon, name });
+      });
+      if (stationMetadata.size > 0) return stationMetadata;
+    }
+  } catch {}
+
+  const stationMatches = xml.matchAll(/<station\b[^>]*\bid="([^"]+)"[^>]*\blat="([^"]+)"[^>]*\blon="([^"]+)"[^>]*\bname="([^"]*)"/gi);
+  for (const match of stationMatches) {
+    const id = match[1]?.trim();
+    const lat = Number.parseFloat(match[2] ?? '');
+    const lon = Number.parseFloat(match[3] ?? '');
+    const name = match[4]?.trim() ?? id ?? '';
+    if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    stationMetadata.set(id, { lat, lon, name });
+  }
+
+  return stationMetadata;
+}
+
+async function fetchStationMetadata(): Promise<Map<string, BuoyStationMetadata>> {
+  if (stationMetadataCache && Date.now() - stationMetadataCache.fetchedAt < STATION_METADATA_TTL_MS) {
+    return stationMetadataCache.data;
+  }
+
+  try {
+    const res = await fetch(NDBC_ACTIVE_STATIONS_XML, { signal: AbortSignal.timeout(12_000) });
+    if (!res.ok) return stationMetadataCache?.data ?? new Map();
+    const xml = await res.text();
+    const stationMetadata = parseStationMetadata(xml);
+    stationMetadataCache = { data: stationMetadata, fetchedAt: Date.now() };
+    return stationMetadata;
+  } catch {
+    return stationMetadataCache?.data ?? new Map();
+  }
+}
+
+async function fetchBuoyData(
+  stationId: string,
+  stationMeta?: BuoyStationMetadata | null,
+): Promise<BuoyObservation | null> {
   try {
     const url = `${NDBC_REALTIME}/${stationId}.txt`;
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -160,9 +221,9 @@ async function fetchBuoyData(stationId: string): Promise<BuoyObservation | null>
 
     const obs: Partial<BuoyObservation> = {
       stationId,
-      stationName: stationId,
-      lat: 0,
-      lon: 0,
+      stationName: stationMeta?.name ?? stationId,
+      lat: stationMeta?.lat ?? 0,
+      lon: stationMeta?.lon ?? 0,
       observedAt: new Date(dateStr),
       windSpeedMs: toNum(row.WSPD ?? row.WS),
       windGustMs: toNum(row.GST ?? row.WGST),
@@ -185,7 +246,10 @@ async function fetchBuoyData(stationId: string): Promise<BuoyObservation | null>
 export async function fetchBuoyAlerts(): Promise<BuoyObservation[]> {
   if (buoyCache && Date.now() - buoyCache.fetchedAt < CACHE_TTL_MS) return buoyCache.observations;
 
-  const results = await Promise.allSettled(KEY_STATIONS.map(id => fetchBuoyData(id)));
+  const stationMetadata = await fetchStationMetadata();
+  const results = await Promise.allSettled(
+    KEY_STATIONS.map((id) => fetchBuoyData(id, stationMetadata.get(id) ?? null)),
+  );
   const observations: BuoyObservation[] = results
     .filter((r): r is PromiseFulfilledResult<BuoyObservation> => r.status === 'fulfilled' && r.value !== null)
     .map(r => r.value)

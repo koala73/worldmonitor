@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { getApiBaseUrl } from '@/services/runtime';
+import { readJsonResponse } from '@/utils/http-json';
 
 interface FuelRegion {
   name: string;
@@ -13,6 +14,7 @@ interface FuelPricesResponse {
   regions: FuelRegion[];
   keyMissing: boolean;
   updatedAt: number;
+  error?: string;
 }
 
 function formatPrice(usd: number): string {
@@ -20,6 +22,7 @@ function formatPrice(usd: number): string {
 }
 
 export class FuelPricesPanel extends Panel {
+  private static readonly UNAVAILABLE_MESSAGE = 'Fuel price data unavailable right now';
   private data: FuelPricesResponse | null = null;
   private loading = true;
   private error: string | null = null;
@@ -42,11 +45,11 @@ export class FuelPricesPanel extends Panel {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/fuel-prices`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json() as FuelPricesResponse;
+      this.data = await readJsonResponse<FuelPricesResponse>(res, FuelPricesPanel.UNAVAILABLE_MESSAGE);
       this.error = null;
     } catch (error) {
       if (this.isAbortError(error)) return;
-      this.error = error instanceof Error ? error.message : 'Failed to fetch';
+      this.error = error instanceof Error ? error.message : FuelPricesPanel.UNAVAILABLE_MESSAGE;
     }
 
     this.loading = false;
@@ -61,6 +64,11 @@ export class FuelPricesPanel extends Panel {
 
     if (this.error || !this.data) {
       this.showError(this.error ?? 'No data');
+      return;
+    }
+
+    if (this.data.error && this.data.regions.length === 0 && !this.data.keyMissing) {
+      this.showError(FuelPricesPanel.UNAVAILABLE_MESSAGE);
       return;
     }
 
