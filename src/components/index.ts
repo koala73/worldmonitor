@@ -39,6 +39,7 @@ export * from './StablecoinPanel';
 export * from './UcdpEventsPanel';
 export * from './GivingPanel';
 export * from './InspirationQuotePanel';
+export * from './DailyWisdomPanel';
 export * from './DisplacementPanel';
 export * from './ClimateAnomalyPanel';
 export * from './PopulationExposurePanel';

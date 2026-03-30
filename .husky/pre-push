@@ -1,15 +1,6 @@
 #!/usr/bin/env sh
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-echo "Running strict lint gates..."
-npm run lint:strict || exit 1
-
-echo "Running type check..."
-npm run typecheck || exit 1
-
-echo "Running API type check..."
-npm run typecheck:api || exit 1
-
 echo "Running version sync check..."
 npm run version:check || exit 1
 

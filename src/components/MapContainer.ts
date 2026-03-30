@@ -662,6 +662,10 @@ export class MapContainer {
     }
   }
 
+  public setPickLocationMode(callback: ((lat: number, lon: number) => void) | null): void {
+    this.deckGLMap?.setPickLocationMode(callback);
+  }
+
   public fitCountry(code: string): void {
     if (this.useDeckGL) {
       this.deckGLMap?.fitCountry(code);

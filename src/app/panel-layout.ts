@@ -44,6 +44,9 @@ import {
   CommsPlanPanel,
   StoicQuotePanel,
   BiblicalQuotePanel,
+  AlanWattsQuotePanel,
+  McKennaQuotePanel,
+  DailyWisdomPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { EarthquakesPanel } from '@/components/EarthquakesPanel';
@@ -100,6 +103,7 @@ import { tryInvokeTauri } from '@/services/tauri-bridge';
 import { initModeTransitionCards } from '@/services/mode-transition-card';
 import { initPanelCorrelation } from '@/services/panel-correlation';
 import { getPrimarySavedPlace, getSavedPlace } from '@/services/saved-places';
+import { SavedPlaceModal } from '@/components/SavedPlaceModal';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import type { TechHubActivity } from '@/services/tech-activity';
 
@@ -760,10 +764,26 @@ export class PanelLayoutManager implements AppModule {
       });
       this.ctx.panels.watchlist = watchlistPanel;
 
+      const savedPlaceModal = new SavedPlaceModal({
+        onPickLocationMode: (active, callback) => {
+          this.ctx.map?.setPickLocationMode(active ? callback : null);
+        },
+      });
+
+      const openCreate = () => savedPlaceModal.openCreate();
+      const openEdit = (placeId: string) => {
+        const place = getSavedPlace(placeId);
+        if (place) savedPlaceModal.openEdit(place);
+      };
+
       const savedPlacesPanel = new SavedPlacesPanel({
         focusPlace: focusSavedPlace,
+        createPlace: openCreate,
+        editPlace: openEdit,
       });
       this.ctx.panels['saved-places'] = savedPlacesPanel;
+
+      this.ctx.unifiedSettings?.setPlaceCallbacks(openCreate, openEdit);
 
       localLogisticsPanel = new LocalLogisticsPanel({
         focusNode: (lat, lon) => {
@@ -869,6 +889,9 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.panels['fuel-prices'] = new FuelPricesPanel();
       this.ctx.panels['stoic-reflections'] = new StoicQuotePanel();
       this.ctx.panels['biblical-encouragement'] = new BiblicalQuotePanel();
+      this.ctx.panels['alan-watts-reflections'] = new AlanWattsQuotePanel();
+      this.ctx.panels['mckenna-visions'] = new McKennaQuotePanel();
+      this.ctx.panels['daily-wisdom'] = new DailyWisdomPanel();
 
       this.ctx.panels['radiation-decay'] = new RadiationDecayPanel();
       this.ctx.panels['resource-inventory'] = new ResourceInventoryPanel();

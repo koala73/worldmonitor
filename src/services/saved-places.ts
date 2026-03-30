@@ -1,7 +1,7 @@
 import { loadProximityConfig } from './proximity-filter';
 
 export type SavedPlaceSource = 'manual' | 'gps' | 'search' | 'migrated-proximity';
-export type SavedPlaceTag = 'home' | 'work' | 'family' | 'bugout' | 'travel' | 'medical' | 'supply';
+export type SavedPlaceTag = 'home' | 'work' | 'family' | 'bugout' | 'travel' | 'medical' | 'supply' | 'concern' | 'school' | 'shelter' | 'critical';
 
 export interface SavedPlace {
   id: string;
@@ -43,7 +43,7 @@ const CHANGE_EVENT = 'wm:saved-places-changed';
 const DEFAULT_RADIUS_KM = 50;
 const MIN_RADIUS_KM = 1;
 const MAX_RADIUS_KM = 3000;
-const VALID_TAGS = new Set<SavedPlaceTag>(['home', 'work', 'family', 'bugout', 'travel', 'medical', 'supply']);
+const VALID_TAGS = new Set<SavedPlaceTag>(['home', 'work', 'family', 'bugout', 'travel', 'medical', 'supply', 'concern', 'school', 'shelter', 'critical']);
 let fallbackPlaceCounter = 0;
 
 function defaultStorage(): SavedPlacesStorageLike | null {

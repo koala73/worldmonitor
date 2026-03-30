@@ -383,6 +383,7 @@ export class DeckGLMap {
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
+  private onLocationPick?: (lat: number, lon: number) => void;
   private onLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void;
   private onStateChange?: (state: DeckMapState) => void;
 
@@ -3182,7 +3183,17 @@ export class DeckGLMap {
     }
   }
 
+  public setPickLocationMode(callback: ((lat: number, lon: number) => void) | null): void {
+    this.onLocationPick = callback ?? undefined;
+  }
+
   private handleClick(info: PickingInfo): void {
+    if (info.coordinate && this.onLocationPick) {
+      const [lon, lat] = info.coordinate as [number, number];
+      this.onLocationPick(lat, lon);
+      return;
+    }
+
     if (!info.object) {
       // Empty map click → country detection
       if (info.coordinate && this.onCountryClick) {

@@ -29,6 +29,7 @@ type YouTubePlayerConstructor = new (
     events: {
       onReady: () => void;
       onError?: (event: { data: number }) => void;
+      onStateChange?: (event: { data: number }) => void;
     };
   },
 ) => YouTubePlayer;
@@ -53,12 +54,13 @@ export interface LiveChannel {
   isLive?: boolean;
   hlsUrl?: string; // HLS manifest URL for native <video> playback (desktop)
   useFallbackOnly?: boolean; // Skip auto-detection, always use fallback
+  autoPlaylist?: boolean; // Fetch recent uploads and cycle newest-to-oldest; live stream takes priority
 }
 
 
 // Full variant: World news channels (24/7 live streams)
 const FULL_LIVE_CHANNELS: LiveChannel[] = [
-  { id: 'bloomberg', name: 'Bloomberg', handle: '@markets', fallbackVideoId: 'iEpJwprxDdk' },
+  { id: 's2underground', name: 'S2 Underground', handle: '@S2Underground', fallbackVideoId: 'c7SRaYZVToY', autoPlaylist: true },
   { id: 'sky', name: 'SkyNews', handle: '@SkyNews', fallbackVideoId: 'uvviIF4725I' },
   { id: 'euronews', name: 'Euronews', handle: '@euronews', fallbackVideoId: 'pykpO5kQJ98' },
   { id: 'dw', name: 'DW', handle: '@DWNews', fallbackVideoId: 'LuKwFajn37U' },
@@ -66,6 +68,7 @@ const FULL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'france24', name: 'France24', handle: '@France24_en', fallbackVideoId: 'Ap-UM1O9RBU' },
   { id: 'alarabiya', name: 'AlArabiya', handle: '@AlArabiya', fallbackVideoId: 'n7eQejkXbnM', useFallbackOnly: true },
   { id: 'aljazeera', name: 'AlJazeera', handle: '@AlJazeeraEnglish', fallbackVideoId: 'gCNeDWCI0vo', useFallbackOnly: true },
+  { id: 'bloomberg', name: 'Bloomberg', handle: '@markets', fallbackVideoId: 'iEpJwprxDdk' },
 ];
 
 // Tech variant: Tech & business channels
@@ -130,7 +133,6 @@ export const OPTIONAL_LIVE_CHANNELS: LiveChannel[] = [
   { id: 'enca', name: 'eNCA', handle: '@encanews' },
   { id: 'sabc-news', name: 'SABC News', handle: '@SABCDigitalNews' },
   // Intelligence & OSINT
-  { id: 's2underground', name: 'S2 Underground', handle: '@S2Underground', fallbackVideoId: 'c7SRaYZVToY', useFallbackOnly: false },
   { id: 'recoilmag', name: 'Task & Purpose', handle: '@TaskandPurpose', fallbackVideoId: 'I0Ro7j4mFGk', useFallbackOnly: false },
   { id: 'warzone', name: 'The War Zone', handle: '@TheWarZone', fallbackVideoId: 'vXzmpBHoIac', useFallbackOnly: false },
   { id: 'militarysummary', name: 'Military Summary', handle: '@MilitarySummaryChannel', fallbackVideoId: 'hQ2sB_bFLWE', useFallbackOnly: false },
@@ -143,7 +145,7 @@ export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelI
   { key: 'asia', labelKey: 'components.liveNews.regionAsia', channelIds: ['tbs-news', 'ann-news', 'ntv-news', 'cti-news', 'wion', 'cna-asia', 'nhk-world'] },
   { key: 'me', labelKey: 'components.liveNews.regionMiddleEast', channelIds: ['al-hadath', 'sky-news-arabia', 'trt-world', 'iran-intl', 'cgtn-arabic'] },
   { key: 'africa', labelKey: 'components.liveNews.regionAfrica', channelIds: ['africanews', 'channels-tv', 'ktn-news', 'enca', 'sabc-news'] },
-  { key: 'osint', labelKey: 'components.liveNews.regionOsint', channelIds: ['s2underground', 'recoilmag', 'warzone', 'militarysummary'] },
+  { key: 'osint', labelKey: 'components.liveNews.regionOsint', channelIds: ['recoilmag', 'warzone', 'militarysummary'] },
 ];
 
 const DEFAULT_LIVE_CHANNELS = SITE_VARIANT === 'tech' ? TECH_LIVE_CHANNELS : (SITE_VARIANT === 'happy' ? [] : FULL_LIVE_CHANNELS);
@@ -279,6 +281,10 @@ export class LiveNewsPanel extends Panel {
   private lazyObserver: IntersectionObserver | null = null;
   private idleCallbackId: number   | null = null;
 
+  // Playlist state for autoPlaylist channels (e.g. S2 Underground)
+  private playlistVideoIds: string[] = [];
+  private playlistIndex = 0;
+
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide' });
     this.youtubeOrigin = LiveNewsPanel.resolveYouTubeOrigin();
@@ -392,6 +398,15 @@ export class LiveNewsPanel extends Panel {
         if (this.isMuted !== muted) {
           this.isMuted = muted;
           this.updateMuteIcon();
+        }
+      } else if (msg.type === 'yt-state' && msg.state === 0) {
+        // Video ended — advance to next in playlist (loops back to newest when exhausted)
+        if (this.activeChannel.autoPlaylist && this.playlistVideoIds.length > 0 && !this.activeChannel.isLive) {
+          this.playlistIndex = (this.playlistIndex + 1) % this.playlistVideoIds.length;
+          const nextId = this.playlistVideoIds[this.playlistIndex]!;
+          this.activeChannel.videoId = nextId;
+          this.currentVideoId = null;
+          this.postToEmbed({ type: 'loadVideo', videoId: nextId });
         }
       }
     };
@@ -745,7 +760,35 @@ export class LiveNewsPanel extends Panel {
     this.saveChannels();
   }
 
+  private async fetchChannelPlaylist(channel: LiveChannel): Promise<void> {
+    try {
+      const res = await fetch(`/api/local-youtube-recent-videos?channel=${encodeURIComponent(channel.handle)}&count=15`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { videoIds?: unknown };
+      if (Array.isArray(data.videoIds) && data.videoIds.length > 0) {
+        this.playlistVideoIds = (data.videoIds as unknown[]).filter((id): id is string => typeof id === 'string');
+        this.playlistIndex = 0;
+        channel.videoId = this.playlistVideoIds[0];
+        channel.isLive = false;
+        channel.hlsUrl = undefined;
+        return;
+      }
+    } catch (err) {
+      console.warn('[LiveNews] Failed to fetch playlist for', channel.handle, err);
+    }
+    // Fallback: use the static fallback video ID
+    this.playlistVideoIds = channel.fallbackVideoId ? [channel.fallbackVideoId] : [];
+    this.playlistIndex = 0;
+    channel.videoId = channel.fallbackVideoId;
+    channel.isLive = false;
+    channel.hlsUrl = undefined;
+  }
+
   private async resolveChannelVideo(channel: LiveChannel, forceFallback = false): Promise<void> {
+    // Reset playlist state whenever we're resolving a channel fresh
+    this.playlistVideoIds = [];
+    this.playlistIndex = 0;
+
     const useFallbackVideo = channel.useFallbackOnly || forceFallback;
 
     if (isDesktopRuntime() && this.getDirectHlsUrl(channel.id)) {
@@ -760,6 +803,21 @@ export class LiveNewsPanel extends Panel {
       channel.hlsUrl = undefined;
       return;
     }
+
+    if (channel.autoPlaylist) {
+      // Check if they're currently live — live stream takes priority over the playlist
+      const info = await fetchLiveVideoInfo(channel.handle);
+      if (info.videoId) {
+        channel.videoId = info.videoId;
+        channel.isLive = true;
+        channel.hlsUrl = info.hlsUrl || undefined;
+        return;
+      }
+      // Not live: load the recent-uploads playlist, newest first
+      await this.fetchChannelPlaylist(channel);
+      return;
+    }
+
     const info = await fetchLiveVideoInfo(channel.handle);
     channel.videoId = info.videoId || channel.fallbackVideoId;
     channel.isLive = !!info.videoId;
@@ -1126,6 +1184,15 @@ export class LiveNewsPanel extends Panel {
           if (quality !== 'auto') this.player?.setPlaybackQuality?.(quality);
           this.syncPlayerState();
           this.startMuteSyncPolling();
+        },
+        onStateChange: (event) => {
+          if (event?.data === 0 && this.activeChannel.autoPlaylist && this.playlistVideoIds.length > 0 && !this.activeChannel.isLive) {
+            this.playlistIndex = (this.playlistIndex + 1) % this.playlistVideoIds.length;
+            const nextId = this.playlistVideoIds[this.playlistIndex]!;
+            this.activeChannel.videoId = nextId;
+            this.currentVideoId = nextId;
+            this.player?.loadVideoById(nextId);
+          }
         },
         onError: (event) => {
           this.clearBotCheckTimeout();

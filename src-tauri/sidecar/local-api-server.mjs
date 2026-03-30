@@ -808,6 +808,10 @@ function getCached(key, ttlMs) {
   if (entry && Date.now() - entry.ts < ttlMs) return entry.data;
   return null;
 }
+function getCachedStale(key) {
+  const entry = _sidecarCache.get(key);
+  return entry ? entry.data : null;
+}
 function setCached(key, data) {
   _sidecarCache.set(key, { data, ts: Date.now() });
 }
@@ -1395,6 +1399,59 @@ async function dispatch(requestUrl, req, routes, context) {
     if (authHeader !== `Bearer ${expectedToken}`) {
       context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
       return json({ error: 'Unauthorized' }, 401);
+    }
+  }
+
+  if (requestUrl.pathname === '/api/local-youtube-recent-videos') {
+    const channelParam = requestUrl.searchParams.get('channel');
+    if (!channelParam) return json({ error: 'Missing channel parameter', videoIds: [] }, 400);
+    const count = Math.min(Math.max(1, parseInt(requestUrl.searchParams.get('count') || '15', 10)), 30);
+    const handle = channelParam.startsWith('@') ? channelParam : `@${channelParam}`;
+
+    // In-memory channel ID cache (handle → { channelId, ts }) to avoid re-scraping on every call
+    if (!context._ytChannelIdCache) context._ytChannelIdCache = new Map();
+    const cache = context._ytChannelIdCache;
+    const CHANNEL_ID_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+    try {
+      let channelId = null;
+      const cached = cache.get(handle);
+      if (cached && Date.now() - cached.ts < CHANNEL_ID_CACHE_TTL) {
+        channelId = cached.channelId;
+      } else {
+        // Resolve handle → channel ID by scraping the channel page
+        const pageRes = await fetch(`https://www.youtube.com/${handle}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+          redirect: 'follow',
+        });
+        if (pageRes.ok) {
+          const html = await pageRes.text();
+          const idMatch = html.match(/"externalId"\s*:\s*"(UC[A-Za-z0-9_-]{22})"/);
+          if (idMatch) {
+            channelId = idMatch[1];
+            cache.set(handle, { channelId, ts: Date.now() });
+          }
+        }
+      }
+
+      if (!channelId) return json({ videoIds: [], error: 'Could not resolve channel ID' }, 200);
+
+      // Fetch the public RSS feed (no API key required, returns up to 15 videos newest-to-oldest)
+      const rssRes = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WorldMonitor/1.0)' },
+      });
+      if (!rssRes.ok) throw new Error(`RSS ${rssRes.status}`);
+      const xml = await rssRes.text();
+
+      // Extract video IDs — RSS lists videos newest-to-oldest by default
+      const videoIds = [...xml.matchAll(/<yt:videoId>([A-Za-z0-9_-]{11})<\/yt:videoId>/g)]
+        .map(m => m[1])
+        .slice(0, count);
+
+      return json({ videoIds, channelId }, 200, { 'cache-control': 'public, max-age=900, stale-while-revalidate=300' });
+    } catch (err) {
+      context.logger.warn(`[local-api] youtube-recent-videos failed for ${handle}: ${err?.message}`);
+      return json({ videoIds: [], error: 'Failed to fetch recent videos' }, 200);
     }
   }
 
@@ -3028,6 +3085,9 @@ async function dispatch(requestUrl, req, routes, context) {
       setCached('gdelt-intel', result);
       return json(result);
     } catch (error) {
+      // Serve last-known data rather than an empty response — GDELT 503s are transient
+      const stale = getCachedStale('gdelt-intel');
+      if (stale) return json({ ...stale, stale: true, error: error?.message ?? 'unknown' });
       return json({ events: [], updatedAt: Math.floor(Date.now() / 1000), error: error?.message ?? 'unknown' });
     }
   }
@@ -3138,39 +3198,18 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  // ── GDELT Intelligence (no key required, public API) ──────────────────────
-  if (requestUrl.pathname === '/api/gdelt-intel') {
-    const cached = getCached('gdelt-intel', 15 * 60 * 1000); // 15 minutes
-    if (cached) return json(cached);
-    try {
-      const params = new URLSearchParams({
-        query: 'war OR conflict OR crisis OR military OR sanctions OR nuclear',
-        mode: 'artlist',
-        maxrecords: '25',
-        format: 'json',
-        sort: 'ToneAsc',
-        timespan: '3h',
-      });
-      const res = await fetchWithTimeout(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`, { headers: { 'User-Agent': CHROME_UA } }, 12000);
-      if (!res.ok) throw new Error(`GDELT HTTP ${res.status}`);
-      const data = await res.json();
-      const articles = data?.articles ?? [];
-      const events = articles.map(a => ({
-        title: a.title ?? '',
-        url: a.url ?? '',
-        source: a.domain ?? '',
-        tone: typeof a.tone === 'number' ? Math.round(a.tone * 10) / 10 : 0,
-        country: a.sourcecountry ?? '',
-        timestamp: a.seendate
-          ? new Date(a.seendate.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/, '$1-$2-$3T$4:$5:$6Z')).getTime()
-          : Date.now(),
-      })).filter(e => e.title && e.url);
-      const result = { events, updatedAt: Math.floor(Date.now() / 1000) };
-      setCached('gdelt-intel', result);
-      return json(result);
-    } catch (e) {
-      return json({ events: [], updatedAt: Math.floor(Date.now() / 1000), error: e?.message ?? 'unknown' });
+  // ── AIS snapshot — served from sidecar's own aisstream.io connection ────────
+  if (requestUrl.pathname === '/api/ais-snapshot') {
+    const apiKey = process.env.AISSTREAM_API_KEY;
+    if (!apiKey) {
+      return json({ error: 'AISSTREAM_API_KEY not configured — add your key in Settings → Tracking & Sensing' }, 503);
     }
+    // Ensure connected (handles case where key was just set and connect hasn't fired yet)
+    if (!aisState.socket || aisState.socket.readyState > 1) aisConnect(apiKey);
+    return new Response(aisBuildSnapshot(), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+    });
   }
 
   // ── AIS snapshot — served from sidecar's own aisstream.io connection ────────

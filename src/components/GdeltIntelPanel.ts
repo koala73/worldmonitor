@@ -96,13 +96,9 @@ export class GdeltIntelPanel extends Panel {
       return;
     }
 
-    // TODO: implement staleBanner — shown above the list when this.data.stale is true.
-    // The sidecar sets stale:true when GDELT returns 503 and we're serving cached data.
-    // Trade-offs to consider:
-    //   - How prominent should it be? A subtle footer vs a top banner vs a badge on the title?
-    //   - Should it include the age of the cache (this.data.updatedAt)?
-    //   - Example: `<div class="gdelt-stale-banner">Cached — GDELT unavailable</div>`
-    const staleBanner = '';
+    const staleBanner = this.data.stale
+      ? `<div class="gdelt-stale-banner">Cached ${relativeTime(this.data.updatedAt * 1000)} — GDELT unavailable</div>`
+      : '';
 
     const items = events.map(ev => {
       const flag = COUNTRY_FLAGS[ev.country] ?? '';

@@ -16,5 +16,5 @@
     "MD039": true,
     "MD047": true
   },
-  "ignores": ["node_modules/**", "dist/**", "src-tauri/target/**", ".planning/**"]
+  "ignores": ["node_modules/**", "dist/**", "src-tauri/target/**", ".planning/**", ".worktrees/**"]
 }

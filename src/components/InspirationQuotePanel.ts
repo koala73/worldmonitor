@@ -1,15 +1,28 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import {
+  ALAN_WATTS_QUOTES,
   BIBLICAL_QUOTES,
+  MCKENNA_QUOTES,
   STOIC_QUOTES,
   getInitialQuoteIndex,
+  saveDailyQuoteIndex,
   type InspiringQuote,
 } from '@/config/inspiration-quotes';
+import { getMode, type AppMode } from '@/services/mode-manager';
 
 const QUOTE_ROTATION_MS = 45_000;
 
-type InspirationTone = 'stoic' | 'biblical';
+type InspirationTone = 'stoic' | 'biblical' | 'watts' | 'mckenna';
+
+const MODE_TAG_AFFINITY: Partial<Record<AppMode, ReadonlySet<string>>> = {
+  war: new Set(['Courage', 'Fortitude', 'Strength', 'Endurance', 'Steadiness', 'Resilience', 'Duty', 'Action']),
+  disaster: new Set(['Stillness', 'Trust', 'Presence', 'Comfort', 'Hope', 'Refuge', 'Rest', 'Acceptance', 'Peace', 'Calm']),
+  ghost: new Set(['Mystery', 'Awareness', 'Being', 'Nature', 'Oneness', 'Identity', 'Paradox', 'Flow', 'Cosmos', 'Wonder']),
+  finance: new Set(['Detachment', 'Perspective', 'Freedom', 'Wisdom', 'Simplicity', 'Priorities']),
+};
+
+const MIN_FILTERED = 5;
 
 interface InspirationQuotePanelOptions {
   id: string;
@@ -23,8 +36,10 @@ export class InspirationQuotePanel extends Panel {
   private readonly quotes: readonly InspiringQuote[];
   private readonly tone: InspirationTone;
   private readonly eyebrow: string;
+  private activeQuotes: readonly InspiringQuote[];
   private currentIndex: number;
   private rotationTimer: number | null = null;
+  private modeChangedHandler: (() => void) | null = null;
 
   constructor(options: InspirationQuotePanelOptions) {
     super({
@@ -38,11 +53,31 @@ export class InspirationQuotePanel extends Panel {
     this.quotes = options.quotes;
     this.tone = options.tone;
     this.eyebrow = options.eyebrow;
-    this.currentIndex = getInitialQuoteIndex(options.id, options.quotes.length);
-    this.setCount(options.quotes.length);
+    this.activeQuotes = this.computeActiveQuotes();
+    this.currentIndex = getInitialQuoteIndex(options.id, this.activeQuotes.length);
+    this.setCount(this.activeQuotes.length);
     this.content.addEventListener('click', this.handleContentClick);
+
+    this.modeChangedHandler = () => {
+      const next = this.computeActiveQuotes();
+      this.activeQuotes = next;
+      this.currentIndex = 0;
+      this.setCount(next.length);
+      this.renderQuote();
+      this.startRotation();
+    };
+    window.addEventListener('wm:mode-changed', this.modeChangedHandler);
+
     this.renderQuote();
     this.startRotation();
+  }
+
+  private computeActiveQuotes(): readonly InspiringQuote[] {
+    const mode = getMode();
+    const affinityTags = MODE_TAG_AFFINITY[mode];
+    if (!affinityTags) return this.quotes;
+    const filtered = this.quotes.filter(q => q.tags.some(t => affinityTags.has(t)));
+    return filtered.length >= MIN_FILTERED ? filtered : this.quotes;
   }
 
   private startRotation(): void {
@@ -60,23 +95,25 @@ export class InspirationQuotePanel extends Panel {
   }
 
   private stepQuote(step: number): void {
-    if (this.quotes.length === 0) return;
-    this.currentIndex = (this.currentIndex + step + this.quotes.length) % this.quotes.length;
+    if (this.activeQuotes.length === 0) return;
+    this.currentIndex = (this.currentIndex + step + this.activeQuotes.length) % this.activeQuotes.length;
+    saveDailyQuoteIndex(this.panelId, this.currentIndex);
     this.renderQuote();
   }
 
   private shuffleQuote(): void {
-    if (this.quotes.length <= 1) return;
-    let nextIndex = (Date.now() + this.currentIndex * 17) % this.quotes.length;
+    if (this.activeQuotes.length <= 1) return;
+    let nextIndex = (Date.now() + this.currentIndex * 17) % this.activeQuotes.length;
     if (nextIndex === this.currentIndex) {
-      nextIndex = (nextIndex + 1) % this.quotes.length;
+      nextIndex = (nextIndex + 1) % this.activeQuotes.length;
     }
     this.currentIndex = nextIndex;
+    saveDailyQuoteIndex(this.panelId, this.currentIndex);
     this.renderQuote();
   }
 
   private renderQuote(): void {
-    const quote = this.quotes[this.currentIndex];
+    const quote = this.activeQuotes[this.currentIndex];
     if (!quote) {
       this.showError('No quote available right now.');
       return;
@@ -88,7 +125,7 @@ export class InspirationQuotePanel extends Panel {
     const translationHtml = quote.translation
       ? `<span class="wisdom-panel-translation">${escapeHtml(quote.translation)}</span>`
       : '';
-    const position = `${this.currentIndex + 1} / ${this.quotes.length}`;
+    const position = `${this.currentIndex + 1} / ${this.activeQuotes.length}`;
 
     this.content.innerHTML = `
       <div class="wisdom-panel-card wisdom-panel-card--${this.tone}">
@@ -137,6 +174,10 @@ export class InspirationQuotePanel extends Panel {
   public destroy(): void {
     this.stopRotation();
     this.content.removeEventListener('click', this.handleContentClick);
+    if (this.modeChangedHandler) {
+      window.removeEventListener('wm:mode-changed', this.modeChangedHandler);
+      this.modeChangedHandler = null;
+    }
     super.destroy();
   }
 }
@@ -161,6 +202,30 @@ export class BiblicalQuotePanel extends InspirationQuotePanel {
       tone: 'biblical',
       quotes: BIBLICAL_QUOTES,
       eyebrow: 'King James rotation',
+    });
+  }
+}
+
+export class AlanWattsQuotePanel extends InspirationQuotePanel {
+  constructor() {
+    super({
+      id: 'alan-watts-reflections',
+      title: 'Alan Watts',
+      tone: 'watts',
+      quotes: ALAN_WATTS_QUOTES,
+      eyebrow: 'Alan Watts',
+    });
+  }
+}
+
+export class McKennaQuotePanel extends InspirationQuotePanel {
+  constructor() {
+    super({
+      id: 'mckenna-visions',
+      title: 'Terence McKenna',
+      tone: 'mckenna',
+      quotes: MCKENNA_QUOTES,
+      eyebrow: 'Terence McKenna',
     });
   }
 }

@@ -60,6 +60,9 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   giving: { name: 'Global Giving', enabled: true, priority: 2 },
   'stoic-reflections': { name: 'Stoic Reflections', enabled: true, priority: 3 },
   'biblical-encouragement': { name: 'Biblical Encouragement', enabled: true, priority: 3 },
+  'alan-watts-reflections': { name: 'Alan Watts', enabled: true, priority: 3 },
+  'mckenna-visions': { name: 'Terence McKenna', enabled: true, priority: 3 },
+  'daily-wisdom': { name: 'Daily Wisdom', enabled: true, priority: 3 },
   displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
   climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
   'population-exposure': { name: 'Population Exposure', enabled: true, priority: 2 },
@@ -669,7 +672,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   healthEnv: {
     labelKey: 'header.panelCatHealthEnv',
-    panelKeys: ['giving', 'stoic-reflections', 'biblical-encouragement', 'disease-outbreaks', 'air-quality', 'food-insecurity', 'radiation-decay', 'resource-inventory'],
+    panelKeys: ['giving', 'daily-wisdom', 'stoic-reflections', 'biblical-encouragement', 'alan-watts-reflections', 'mckenna-visions', 'disease-outbreaks', 'air-quality', 'food-insecurity', 'radiation-decay', 'resource-inventory'],
     variants: ['full'],
   },
 
