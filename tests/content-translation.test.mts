@@ -11,6 +11,14 @@ import {
 class FakeStorage {
   private values = new Map<string, string>();
 
+  get length(): number {
+    return this.values.size;
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.values.keys())[index] ?? null;
+  }
+
   getItem(key: string): string | null {
     return this.values.has(key) ? this.values.get(key) ?? null : null;
   }
@@ -28,13 +36,16 @@ class FakeStorage {
   }
 }
 
+let fakeStorage: FakeStorage;
+
 const originalLocalStorage = {
   exists: Object.prototype.hasOwnProperty.call(globalThis, 'localStorage'),
   value: globalThis.localStorage,
 };
 
 beforeEach(() => {
-  globalThis.localStorage = new FakeStorage() as unknown as Storage;
+  fakeStorage = new FakeStorage();
+  globalThis.localStorage = fakeStorage as unknown as Storage;
   resetContentTranslationCacheForTests();
 });
 
@@ -100,5 +111,34 @@ describe('content translation helpers', () => {
     resetContentTranslationCacheForTests();
 
     assert.equal(getCachedContentTranslation('Oil prices jump', 'es'), 'es:Oil prices jump');
+  });
+
+  it('reads legacy stored translations that predate savedAt metadata', async () => {
+    const source = 'Legacy headline';
+    const translated = 'pt:Legacy headline';
+    const translator = async (): Promise<string> => translated;
+
+    await translateContentText(source, 'pt', { translator });
+    const key = fakeStorage.key(0);
+    assert.ok(key, 'expected persisted translation key');
+    fakeStorage.setItem(key, JSON.stringify({ source, translated }));
+    resetContentTranslationCacheForTests();
+
+    assert.equal(getCachedContentTranslation(source, 'pt'), translated);
+  });
+
+  it('caps persisted translations to the newest 500 entries', async () => {
+    const translator = async (input: string, lang: string): Promise<string> => `${lang}:${input}`;
+
+    for (let i = 0; i < 501; i += 1) {
+      // Ensure each entry gets a strictly newer timestamp for deterministic eviction.
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      await translateContentText(`Headline ${i}`, 'fr', { translator });
+    }
+
+    assert.equal(fakeStorage.length, 500);
+    resetContentTranslationCacheForTests();
+    assert.equal(getCachedContentTranslation('Headline 0', 'fr'), undefined);
+    assert.equal(getCachedContentTranslation('Headline 500', 'fr'), 'fr:Headline 500');
   });
 });

@@ -1,4 +1,6 @@
 const CACHE_PREFIX = 'wm-content-translation:v1';
+const STORAGE_PREFIX = `${CACHE_PREFIX}:`;
+const MAX_STORED_TRANSLATIONS = 500;
 
 const memoryCache = new Map<string, string>();
 const inFlight = new Map<string, Promise<string | null>>();
@@ -6,6 +8,7 @@ const inFlight = new Map<string, Promise<string | null>>();
 interface CachedTranslationEntry {
   source: string;
   translated: string;
+  savedAt?: number;
 }
 
 function normalizeLanguage(language: string): string {
@@ -32,16 +35,67 @@ function memoryKey(text: string, targetLang: string): string {
 function storageKey(text: string, targetLang: string): string {
   const normalizedText = normalizeText(text);
   const normalizedLang = normalizeLanguage(targetLang);
-  return `${CACHE_PREFIX}:${normalizedLang}:${hashText(normalizedText)}:${normalizedText.length}`;
+  return `${STORAGE_PREFIX}${normalizedLang}:${hashText(normalizedText)}:${normalizedText.length}`;
+}
+
+function removeStorageKey(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
+function readStoredEntry(key: string): CachedTranslationEntry | undefined {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as CachedTranslationEntry;
+    if (typeof parsed?.source !== 'string' || typeof parsed.translated !== 'string') {
+      removeStorageKey(key);
+      return undefined;
+    }
+    if (parsed.savedAt !== undefined && !Number.isFinite(parsed.savedAt)) {
+      removeStorageKey(key);
+      return undefined;
+    }
+    return parsed;
+  } catch {
+    removeStorageKey(key);
+    return undefined;
+  }
+}
+
+function trimStoredTranslations(maxEntries = MAX_STORED_TRANSLATIONS): void {
+  try {
+    const entries: Array<{ key: string; savedAt: number }> = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(STORAGE_PREFIX)) continue;
+      const entry = readStoredEntry(key);
+      if (!entry) continue;
+      entries.push({ key, savedAt: Number.isFinite(entry.savedAt) ? entry.savedAt ?? 0 : 0 });
+    }
+
+    if (entries.length <= maxEntries) return;
+
+    entries
+      .sort((a, b) => b.savedAt - a.savedAt || a.key.localeCompare(b.key))
+      .slice(maxEntries)
+      .forEach((entry) => removeStorageKey(entry.key));
+  } catch {
+    // Ignore localStorage iteration failures and keep in-memory cache hot.
+  }
 }
 
 function readStoredTranslation(text: string, targetLang: string): string | undefined {
+  const key = storageKey(text, targetLang);
+  const normalizedText = normalizeText(text);
   try {
-    const raw = localStorage.getItem(storageKey(text, targetLang));
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as CachedTranslationEntry;
-    const normalizedText = normalizeText(text);
-    if (parsed?.source !== normalizedText || typeof parsed.translated !== 'string') {
+    const parsed = readStoredEntry(key);
+    if (!parsed) return undefined;
+    if (parsed.source !== normalizedText) {
+      removeStorageKey(key);
       return undefined;
     }
     return parsed.translated;
@@ -53,10 +107,12 @@ function readStoredTranslation(text: string, targetLang: string): string | undef
 function persistTranslation(text: string, targetLang: string, translated: string): void {
   try {
     const normalizedText = normalizeText(text);
-    localStorage.setItem(
-      storageKey(normalizedText, targetLang),
-      JSON.stringify({ source: normalizedText, translated } satisfies CachedTranslationEntry),
-    );
+    localStorage.setItem(storageKey(normalizedText, targetLang), JSON.stringify({
+      source: normalizedText,
+      translated,
+      savedAt: Date.now(),
+    } satisfies CachedTranslationEntry));
+    trimStoredTranslations();
   } catch {
     // Ignore storage failures and keep the in-memory cache hot.
   }
