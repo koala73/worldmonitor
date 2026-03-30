@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "World Monitor",
   "mainBinaryName": "worldmonitor",
-  "version": "2.7.4",
+  "version": "2.8.0",
   "identifier": "com.bradleybond.worldmonitor",
   "build": {
     "beforeDevCommand": "npm run build:sidecar-sebuf && npm run dev",

@@ -247,9 +247,9 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   {
     id: 'aisRelay',
     name: 'AIS vessel tracking',
-    description: 'Live vessel ingestion via AISStream WebSocket.',
-    requiredSecrets: ['WS_RELAY_URL', 'AISSTREAM_API_KEY'],
-    desktopRequiredSecrets: [],
+    description: 'Live vessel positions from aisstream.io. Get a free key at aisstream.io.',
+    requiredSecrets: ['AISSTREAM_API_KEY'],
+    desktopRequiredSecrets: ['AISSTREAM_API_KEY'],
     fallback: 'AIS layer is disabled.',
   },
   {

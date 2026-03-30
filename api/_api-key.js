@@ -41,7 +41,7 @@ function isTrustedBrowserRequest(req, origin) {
 
 function isReadRequest(req) {
   const method = (req.method || 'GET').toUpperCase();
-  return method === 'GET' || method === 'HEAD';
+  return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
 }
 
 export function validateApiKey(req) {

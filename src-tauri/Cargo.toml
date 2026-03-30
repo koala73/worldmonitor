@@ -1,6 +1,6 @@
 [package]
 name = "worldmonitor"
-version = "2.7.4"
+version = "2.8.0"
 description = "World Monitor cross-platform desktop application (based on World Monitor by Elie Habib)"
 authors = ["Bradley Bond", "Elie Habib"]
 edition = "2021"

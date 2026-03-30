@@ -41,8 +41,8 @@ for (const file of FILES) {
     writeFileSync(dest, buf);
     console.log(`[vault-tex] saved ${dest} (${(buf.length / 1024).toFixed(0)} KB)`);
     downloaded++;
-  } catch (error) {
-    console.warn(`[vault-tex] WARN: could not download ${file}: ${error.message}`);
+  } catch (err) {
+    console.warn(`[vault-tex] WARN: could not download ${file}: ${err.message}`);
     console.warn('[vault-tex] Build will continue — procedural textures will be used as fallback.');
   }
 }

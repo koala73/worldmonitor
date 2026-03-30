@@ -988,6 +988,12 @@ canvas,
   contain: content;
 }
 
+/* Default info panels start at two rows; the map lives outside .panels-grid. */
+.panels-grid > .panel:not(.span-1):not(.span-2):not(.span-3):not(.span-4):not(.panel-wide) {
+  grid-row: span 2;
+  min-height: 400px;
+}
+
 /* .panel.resized: Custom height set - use grid-row span for height */
 
 /* Row span classes for resizable panels */
@@ -1582,6 +1588,142 @@ body.panel-resize-active iframe {
   grid-row: span 2;
   min-height: 350px;
   max-height: none;
+}
+
+.wisdom-panel .panel-content {
+  padding: 0;
+  overflow: hidden;
+}
+
+.wisdom-panel--stoic .panel-header {
+  border-bottom-color: rgba(109, 148, 171, 0.32);
+}
+
+.wisdom-panel--biblical .panel-header {
+  border-bottom-color: rgba(176, 138, 66, 0.34);
+}
+
+.wisdom-panel-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  gap: 14px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.09), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.18));
+}
+
+.wisdom-panel-card--stoic {
+  background-color: rgba(109, 148, 171, 0.12);
+}
+
+.wisdom-panel-card--biblical {
+  background-color: rgba(176, 138, 66, 0.14);
+}
+
+.wisdom-panel-topline,
+.wisdom-panel-meta,
+.wisdom-panel-controls,
+.wisdom-panel-tags {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wisdom-panel-eyebrow,
+.wisdom-panel-rotation,
+.wisdom-panel-position,
+.wisdom-panel-source,
+.wisdom-panel-translation,
+.wisdom-panel-tag {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wisdom-panel-eyebrow,
+.wisdom-panel-translation {
+  color: var(--accent);
+}
+
+.wisdom-panel-rotation,
+.wisdom-panel-position,
+.wisdom-panel-source,
+.wisdom-panel-tag {
+  color: var(--text-dim);
+}
+
+.wisdom-panel-quote-mark {
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 56px;
+  line-height: 0.8;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+[data-theme="light"] .wisdom-panel-quote-mark {
+  color: rgba(0, 0, 0, 0.2);
+}
+
+.wisdom-panel-quote {
+  margin: 0;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 22px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.wisdom-panel-attribution {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wisdom-panel-author {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.wisdom-panel-tags {
+  justify-content: flex-start;
+}
+
+.wisdom-panel-translation,
+.wisdom-panel-tag {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--overlay-subtle);
+}
+
+.wisdom-panel-controls {
+  margin-top: auto;
+  justify-content: flex-start;
+}
+
+.wisdom-panel-btn {
+  border: 1px solid var(--border);
+  background: var(--darken-heavy);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.wisdom-panel-btn:hover {
+  transform: translateY(-1px);
+  background: var(--overlay-medium);
+  border-color: var(--border-strong);
+}
+
+.wisdom-panel-btn:active {
+  transform: translateY(0);
 }
 
 /* Live News Panel */
