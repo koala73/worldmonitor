@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt.ts';
+import { buildActionEvents, VISUAL_INTENT_RE } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions.ts';
 import type { AnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context.ts';
 
 // ---------------------------------------------------------------------------
@@ -199,5 +200,80 @@ describe('domain config alignment', () => {
         `"${domain}" domain should include liveHeadlines`,
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildActionEvents — visual intent detection
+// ---------------------------------------------------------------------------
+
+describe('buildActionEvents — visual intent detection', () => {
+  it('returns suggest-widget action for chart price query', () => {
+    const events = buildActionEvents('chart prices of oil vs gold');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+    assert.equal(events[0]?.label, 'Create chart widget');
+    assert.equal(events[0]?.prefill, 'chart prices of oil vs gold');
+  });
+
+  it('returns suggest-widget action for show me a chart', () => {
+    const events = buildActionEvents('show me a chart of S&P 500 performance');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
+  it('returns suggest-widget action for price history query', () => {
+    const events = buildActionEvents('What is the price history of crude oil?');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
+  it('returns suggest-widget action for price comparison query', () => {
+    const events = buildActionEvents('compare prices of gold and silver');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
+  it('returns suggest-widget action for dashboard keyword', () => {
+    const events = buildActionEvents('build me a dashboard');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
+  it('returns empty for non-visual geopolitical query', () => {
+    assert.deepEqual(buildActionEvents("What is happening in Ukraine?"), []);
+  });
+
+  it('returns empty for non-visual market summary query', () => {
+    assert.deepEqual(buildActionEvents('Key market moves, macro signals, and commodity moves today'), []);
+  });
+
+  it('returns empty for Situation quick action', () => {
+    assert.deepEqual(buildActionEvents("Summarize today's geopolitical situation"), []);
+  });
+
+  it('returns empty for Conflicts quick action', () => {
+    assert.deepEqual(buildActionEvents('Top active conflicts and military developments'), []);
+  });
+
+  it('returns empty for Forecasts quick action', () => {
+    assert.deepEqual(buildActionEvents('Active forecasts and prediction market outlook'), []);
+  });
+
+  it('returns empty for Risk quick action', () => {
+    assert.deepEqual(buildActionEvents('Highest risk countries and instability hotspots'), []);
+  });
+
+  it('does NOT match bare "chart" in "UN Charter"', () => {
+    assert.deepEqual(buildActionEvents('What does the UN Charter say about sovereignty?'), []);
+  });
+
+  it('does NOT match bare "chart" without a visual compound phrase', () => {
+    assert.deepEqual(buildActionEvents('chart a course through the crisis'), []);
+  });
+
+  it('VISUAL_INTENT_RE is case-insensitive', () => {
+    assert.ok(VISUAL_INTENT_RE.test('Chart Performance Over Time'));
+    assert.ok(VISUAL_INTENT_RE.test('SHOW ME A GRAPH of inflation trends'));
   });
 });

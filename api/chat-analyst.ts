@@ -20,6 +20,7 @@ import { isCallerPremium } from '../server/_shared/premium-check';
 import { checkRateLimit } from '../server/_shared/rate-limit';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
+import { buildActionEvents } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions';
 import { callLlmReasoningStream } from '../server/_shared/llm';
 import { sanitizeForPrompt } from '../server/_shared/llm-sanitize.js';
 
@@ -46,17 +47,6 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
     status,
     headers: { 'Content-Type': 'application/json', ...cors },
   });
-}
-
-// Detects user intent to view a chart, graph, or visual comparison.
-// Uses specific compound keywords to reduce false-positives on single nouns like "chart" in "UN Charter".
-const VISUAL_INTENT_RE = /\b(chart\s+(prices?|data|rates?|trends?|performance|comparison|history)|graph\s+(prices?|data|trends?)|plot\s+(prices?|data|trends?)|visuali[sz]e|create\s+a\s+(chart|graph|dashboard|visualization)|show\s+(me\s+)?(a\s+)?(chart|graph|plot|dashboard|trend)|price\s+(history|over\s+time|comparison|trend|chart)|compare\s+(prices?|rates?|data|performance)|dashboard|candlestick)\b/i;
-
-function buildActionEvents(query: string): Array<Record<string, unknown>> {
-  if (!VISUAL_INTENT_RE.test(query)) return [];
-  return [{
-    action: { type: 'suggest-widget', label: 'Create chart widget', prefill: query },
-  }];
 }
 
 function prependSseEvents(events: Array<Record<string, unknown>>, stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
@@ -161,7 +151,7 @@ export default async function handler(req: Request): Promise<Response> {
   const stream = prependSseEvents(
     [
       { meta: { sources: context.activeSources, degraded: context.degraded } },
-      ...buildActionEvents(query),
+      ...buildActionEvents(query).map((a) => ({ action: a })),
     ],
     llmStream,
   );
