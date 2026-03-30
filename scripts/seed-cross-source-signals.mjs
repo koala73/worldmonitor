@@ -31,6 +31,7 @@ const SOURCE_KEYS = [
   'gdelt:intel:tone:maritime',
   'weather:alerts:v1',
   'risk:scores:sebuf:stale:v1',
+  'regulatory:actions:v1',
 ];
 
 // ── Theater classification helpers ────────────────────────────────────────────
@@ -109,6 +110,7 @@ const TYPE_CATEGORY = {
   CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME: 'natural',
   CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 'information',
   CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE: 'intelligence',
+  CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION: 'policy',
 };
 
 // Base severity weights for each signal type
@@ -139,6 +141,7 @@ const BASE_WEIGHT = {
   CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION: 1.5, // predictive — lower confidence
   CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME: 1.5,        // environmental — regional
   CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 1.5, // sentiment — lagging
+  CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION: 2.0,      // policy action — direct market impact
 };
 
 function scoreTier(score) {
@@ -713,6 +716,30 @@ function extractRiskScoreSpike(d) {
   });
 }
 
+function extractRegulatoryAction(d) {
+  const payload = d['regulatory:actions:v1'];
+  if (!payload) return [];
+  const cutoff = Date.now() - 48 * 3600 * 1000;
+  const recent = (payload.actions || [])
+    .filter((action) => new Date(action.publishedAt).getTime() > cutoff && action.tier !== 'low');
+  if (recent.length === 0) return [];
+  return recent.slice(0, 3).map((action) => {
+    const tierMult = action.tier === 'high' ? 1.5 : 1.0;
+    const score = BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION * tierMult;
+    return {
+      id: `regulatory:${action.id}`,
+      type: 'CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION',
+      theater: 'Global Markets',
+      summary: `${action.agency}: ${action.title}`,
+      severity: scoreTier(score),
+      severityScore: score,
+      detectedAt: new Date(action.publishedAt).getTime(),
+      contributingTypes: [],
+      signalCount: 0,
+    };
+  });
+}
+
 // ── Composite escalation detector ─────────────────────────────────────────────
 // Fires when >=3 signals from DIFFERENT categories share the same theater.
 function detectCompositeEscalation(signals) {
@@ -790,6 +817,7 @@ async function aggregateCrossSourceSignals() {
     extractWeatherExtreme,
     extractMediaToneDeterioration,
     extractRiskScoreSpike,
+    extractRegulatoryAction,
   ];
 
   for (const extractor of extractors) {
