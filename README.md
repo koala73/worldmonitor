@@ -28,7 +28,7 @@ Current code-backed snapshot:
 | Generated OpenAPI service specs | `21` | `docs/api/*.openapi.json` |
 | Locales | `18` | `src/services/i18n.ts` |
 | Desktop secret keys | `25` | `src-tauri/src/main.rs` |
-| Default panel inventory | `62 full / 35 tech / 31 finance / 10 happy` | `src/config/panels.ts` |
+| Default panel inventory | `70 full / 35 tech / 31 finance / 10 happy` | `src/config/panels.ts` |
 
 ## Variants
 

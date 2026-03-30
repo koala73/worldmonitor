@@ -27,6 +27,19 @@ describe('panel order regressions', () => {
     );
   });
 
+  it('promotes storm-specific panels when disaster mode is active', () => {
+    assert.match(
+      panelsSrc,
+      /'tropical-cyclones': \{ name: 'Tropical Cyclones', enabled: true, priority: 2 \}/,
+      'full variant should expose the tropical cyclones panel',
+    );
+    assert.match(
+      readFileSync(resolve(root, 'src/app/panel-layout.ts'), 'utf8'),
+      /private static readonly DISASTER_PRIORITY = \[[\s\S]*?'saved-places'[\s\S]*?'tropical-cyclones'[\s\S]*?'nws-alerts'[\s\S]*?'weather'/,
+      'disaster mode should lift saved places and storm panels ahead of generic disaster feeds',
+    );
+  });
+
   it('migrates saved panel order so existing users also get the critical workflow up top', () => {
     assert.match(
       appSrc,

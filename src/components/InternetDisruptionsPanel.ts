@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
 import { getApiBaseUrl } from '@/services/runtime';
+import { readJsonResponse } from '@/utils/http-json';
 
 interface CommsHealthResponse {
   overall: string;
@@ -22,6 +23,7 @@ interface CommsHealthResponse {
     normal: string[];
   };
   updatedAt: string;
+  error?: string;
 }
 
 function dotColor(severity: string): string {
@@ -44,6 +46,7 @@ function row(label: string, severity: string, detail: string): string {
 }
 
 export class InternetDisruptionsPanel extends Panel {
+  private static readonly UNAVAILABLE_MESSAGE = 'Internet disruption data unavailable right now';
   private data: CommsHealthResponse | null = null;
   private error: string | null = null;
   private loading = true;
@@ -64,11 +67,11 @@ export class InternetDisruptionsPanel extends Panel {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/comms-health`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.data = await res.json() as CommsHealthResponse;
+      this.data = await readJsonResponse<CommsHealthResponse>(res, InternetDisruptionsPanel.UNAVAILABLE_MESSAGE);
       this.error = null;
     } catch (error) {
       if (this.isAbortError(error)) return;
-      this.error = error instanceof Error ? error.message : 'Failed to fetch';
+      this.error = error instanceof Error ? error.message : InternetDisruptionsPanel.UNAVAILABLE_MESSAGE;
     }
     this.loading = false;
     this.renderPanel();
@@ -81,6 +84,10 @@ export class InternetDisruptionsPanel extends Panel {
     }
     if (this.error || !this.data) {
       this.showError(this.error ?? 'No data');
+      return;
+    }
+    if (this.data.error) {
+      this.showError(InternetDisruptionsPanel.UNAVAILABLE_MESSAGE);
       return;
     }
 

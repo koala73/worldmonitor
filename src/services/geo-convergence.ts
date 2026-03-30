@@ -2,6 +2,7 @@ import type { SocialUnrestEvent, MilitaryFlight, MilitaryVessel } from '@/types'
 import type { Earthquake } from '@/services/earthquakes';
 import { generateSignalId } from '@/utils/analysis-constants';
 import type { CorrelationSignalCore } from './analysis-core';
+import { buildSignalEvidencePack } from './evidence-pack';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
 
 export type GeoEventType = 'protest' | 'military_flight' | 'military_vessel' | 'earthquake';
@@ -187,7 +188,7 @@ export function geoConvergenceToSignal(alert: GeoConvergenceAlert): CorrelationS
   const typeDescriptions = alert.types.map(t => TYPE_LABELS[t]).join(', ');
   const locationName = getLocationName(alert.lat, alert.lon);
 
-  return {
+  const signal: CorrelationSignalCore = {
     id: generateSignalId(),
     type: 'geo_convergence',
     title: `Geographic Convergence (${alert.types.length} types)`,
@@ -198,6 +199,23 @@ export function geoConvergenceToSignal(alert: GeoConvergenceAlert): CorrelationS
       newsVelocity: alert.totalEvents,
       relatedTopics: alert.types,
     },
+  };
+
+  return {
+    ...signal,
+    evidence: buildSignalEvidencePack({
+      claim: signal.title,
+      confidence: signal.confidence,
+      timestamp: signal.timestamp,
+      supportingSources: [{
+        name: 'Geo Convergence Engine',
+        tier: 1,
+        kind: 'system',
+        type: 'system',
+      }],
+      actionThreshold: signal.confidence >= 0.85 ? 'act' : 'verify',
+      confidenceReason: `${alert.types.length} independent signal types converged in ${locationName}.`,
+    }),
   };
 }
 

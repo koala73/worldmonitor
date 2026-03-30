@@ -39,6 +39,9 @@ import {
   OrefSirensPanel,
   TelegramIntelPanel,
   WatchlistPanel,
+  SavedPlacesPanel,
+  LocalLogisticsPanel,
+  CommsPlanPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { EarthquakesPanel } from '@/components/EarthquakesPanel';
@@ -94,6 +97,7 @@ import { isLowPowerMode, setLowPowerMode } from '@/services/low-power';
 import { tryInvokeTauri } from '@/services/tauri-bridge';
 import { initModeTransitionCards } from '@/services/mode-transition-card';
 import { initPanelCorrelation } from '@/services/panel-correlation';
+import { getPrimarySavedPlace, getSavedPlace } from '@/services/saved-places';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import type { TechHubActivity } from '@/services/tech-activity';
 
@@ -134,9 +138,10 @@ export class PanelLayoutManager implements AppModule {
 
   /** Panels floated to top in Disaster Mode. */
   private static readonly DISASTER_PRIORITY = [
-    'earthquakes', 'satellite-fires', 'gdacs-alerts',
-    'volcano-alerts', 'nws-alerts', 'alert-center', 'displacement',
-    'oref-sirens', 'weather', 'air-quality', 'comms-health', 'economic-stress',
+    'alert-center', 'saved-places', 'tropical-cyclones', 'nws-alerts',
+    'weather', 'earthquakes', 'gdacs-alerts', 'satellite-fires',
+    'volcano-alerts', 'displacement', 'oref-sirens', 'air-quality',
+    'comms-health', 'economic-stress',
   ];
 
   constructor(ctx: AppContext, callbacks: PanelLayoutCallbacks) {
@@ -732,9 +737,19 @@ export class PanelLayoutManager implements AppModule {
     }
 
     if (SITE_VARIANT === 'full') {
+      let localLogisticsPanel: LocalLogisticsPanel | null = null;
+      let commsPlanPanel: CommsPlanPanel | null = null;
       const focusGeoHub = (hub: GeoHubActivity) => {
         this.ctx.map?.setCenter(hub.lat, hub.lon, 4);
         this.ctx.map?.flashLocation(hub.lat, hub.lon, 3000);
+      };
+      const focusSavedPlace = (placeId: string) => {
+        const place = getSavedPlace(placeId);
+        if (!place) return;
+        localLogisticsPanel?.setPlaceId(placeId);
+        commsPlanPanel?.setPlaceId(placeId);
+        this.ctx.map?.setCenter(place.lat, place.lon, 6);
+        this.ctx.map?.flashLocation(place.lat, place.lon, 3000);
       };
 
       const watchlistPanel = new WatchlistPanel({
@@ -742,6 +757,24 @@ export class PanelLayoutManager implements AppModule {
         openCountryBrief: (code, country) => this.callbacks.openCountryBriefByCode(code, country),
       });
       this.ctx.panels.watchlist = watchlistPanel;
+
+      const savedPlacesPanel = new SavedPlacesPanel({
+        focusPlace: focusSavedPlace,
+      });
+      this.ctx.panels['saved-places'] = savedPlacesPanel;
+
+      localLogisticsPanel = new LocalLogisticsPanel({
+        focusNode: (lat, lon) => {
+          this.ctx.map?.setCenter(lat, lon, 9);
+          this.ctx.map?.flashLocation(lat, lon, 3000);
+        },
+      });
+      localLogisticsPanel.setPlaceId(getPrimarySavedPlace()?.id ?? null);
+      this.ctx.panels['local-logistics'] = localLogisticsPanel;
+
+      commsPlanPanel = new CommsPlanPanel();
+      commsPlanPanel.setPlaceId(getPrimarySavedPlace()?.id ?? null);
+      this.ctx.panels['comms-plan'] = commsPlanPanel;
 
       const gdeltIntelPanel = new GdeltIntelPanel();
       this.ctx.panels['gdelt-intel'] = gdeltIntelPanel;

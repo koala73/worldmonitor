@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
 import { getApiBaseUrl } from '@/services/runtime';
+import { readJsonResponse } from '@/utils/http-json';
 
 interface DebtCountry {
   code: string;
@@ -23,6 +24,7 @@ function debtColor(pct: number): string {
 }
 
 export class NationalDebtPanel extends Panel {
+  private static readonly UNAVAILABLE_MESSAGE = 'National debt data unavailable right now';
   private data: NationalDebtResponse | null = null;
   private sortAsc = false;
 
@@ -41,11 +43,11 @@ export class NationalDebtPanel extends Panel {
     try {
       const res = await fetch(`${getApiBaseUrl()}/api/national-debt`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json() as NationalDebtResponse;
+      const json = await readJsonResponse<NationalDebtResponse>(res, NationalDebtPanel.UNAVAILABLE_MESSAGE);
       this.data = json;
     } catch (error) {
       if (this.isAbortError(error)) return;
-      this.showError(error instanceof Error ? error.message : 'Failed to fetch');
+      this.showError(error instanceof Error ? error.message : NationalDebtPanel.UNAVAILABLE_MESSAGE);
       return;
     }
     this.renderPanel();
@@ -55,7 +57,7 @@ export class NationalDebtPanel extends Panel {
     const d = this.data;
     if (!d) { this.showError('No data'); return; }
     if (d.error && (!d.countries || d.countries.length === 0)) {
-      this.showError(d.error);
+      this.showError(NationalDebtPanel.UNAVAILABLE_MESSAGE);
       return;
     }
 

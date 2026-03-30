@@ -11,6 +11,13 @@ export interface Feed {
 }
 
 export type { ThreatClassification, ThreatLevel, EventCategory } from '@/services/threat-classifier';
+export type {
+  EvidencePack,
+  EvidenceSource,
+  EvidenceVerdict,
+  EvidenceFreshness,
+  ActionThreshold,
+} from '@/services/evidence-pack';
 
 export interface NewsItem {
   source: string;
@@ -60,6 +67,7 @@ export interface ClusteredEvent {
   lat?: number;
   lon?: number;
   lang?: string;
+  evidence?: import('@/services/evidence-pack').EvidencePack;
 }
 
 export type AssetType = 'pipeline' | 'cable' | 'datacenter' | 'base' | 'nuclear';

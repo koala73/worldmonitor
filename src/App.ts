@@ -48,6 +48,12 @@ const CRITICAL_PRIORITY_PANELS: Record<string, string[]> = {
   finance: ['insights', 'markets', 'macro-signals', 'economic', 'commodities', 'live-news', 'live-webcams'],
 };
 
+function clonePanelSettings(settings: Record<string, PanelConfig>): Record<string, PanelConfig> {
+  return Object.fromEntries(
+    Object.entries(settings).map(([key, config]) => [key, { ...config }]),
+  );
+}
+
 export type { CountryBriefSignals } from '@/app/app-context';
 
 export class App {
@@ -94,9 +100,11 @@ export class App {
         const unhappyLayers: (keyof MapLayers)[] = ['conflicts', 'bases', 'hotspots', 'nuclear', 'irradiators', 'sanctions', 'military', 'protests', 'pipelines', 'waterways', 'ais', 'flights', 'spaceports', 'minerals', 'natural', 'fires', 'outages', 'cyberThreats', 'weather', 'economic', 'cables', 'datacenters', 'ucdpEvents', 'displacement', 'climate', 'iranAttacks'];
         unhappyLayers.forEach(layer => { mapLayers[layer] = false; });
       }
-      panelSettings = loadFromStorage<Record<string, PanelConfig>>(
-        STORAGE_KEYS.panels,
-        DEFAULT_PANELS
+      panelSettings = clonePanelSettings(
+        loadFromStorage<Record<string, PanelConfig>>(
+          STORAGE_KEYS.panels,
+          DEFAULT_PANELS,
+        ),
       );
       // Merge in any new panels that didn't exist when settings were saved
       for (const [key, config] of Object.entries(DEFAULT_PANELS)) {
@@ -147,6 +155,21 @@ export class App {
         }
         localStorage.setItem(CRITICAL_PRIORITY_MIGRATION_KEY, 'done');
       }
+
+      const FULL_PANEL_VISIBILITY_MIGRATION_KEY = 'worldmonitor-full-panels-visible-v2.7.6';
+      if (currentVariant === 'full' && !localStorage.getItem(FULL_PANEL_VISIBILITY_MIGRATION_KEY)) {
+        for (const [key, config] of Object.entries(DEFAULT_PANELS)) {
+          if (panelSettings[key]) {
+            panelSettings[key].name = config.name;
+            panelSettings[key].priority = config.priority;
+            panelSettings[key].enabled = true;
+          } else {
+            panelSettings[key] = { ...config, enabled: true };
+          }
+        }
+        saveToStorage(STORAGE_KEYS.panels, panelSettings);
+        localStorage.setItem(FULL_PANEL_VISIBILITY_MIGRATION_KEY, 'done');
+      }
     } else {
       // Variant changed - use defaults for new variant, clear old settings
       console.log('[App] Variant changed - resetting to defaults');
@@ -156,7 +179,7 @@ export class App {
       localStorage.removeItem(PANEL_ORDER_KEY);
       localStorage.removeItem(PANEL_SPANS_KEY);
       mapLayers = { ...defaultLayers };
-      panelSettings = { ...DEFAULT_PANELS };
+      panelSettings = clonePanelSettings(DEFAULT_PANELS);
     }
 
     // One-time migration: clear stale panel ordering and sizing state
@@ -541,6 +564,7 @@ export class App {
         { name: 'economicStress', fn: () => this.dataLoader.loadEconomicStress(), intervalMs: 15 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
         { name: 'tsunamiAlerts', fn: () => this.dataLoader.loadTsunamiAlerts(), intervalMs: 5 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
         { name: 'tropicalCyclones', fn: () => this.dataLoader.loadTropicalCyclones(), intervalMs: 30 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
+        { name: 'savedPlaceWeather', fn: () => this.dataLoader.loadSavedPlaceWeather(), intervalMs: 30 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
         { name: 'foodInsecurity', fn: () => this.dataLoader.loadFoodInsecurity(), intervalMs: 4 * 60 * 60 * 1000, condition: () => SITE_VARIANT === 'full' },
       ]);
     }

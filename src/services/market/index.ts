@@ -140,6 +140,27 @@ function symbolSetKey(symbols: string[]): string {
   return [...symbols].sort().join(',');
 }
 
+const STALE_CACHE_PREFIX = 'worldmonitor-market-stale-';
+
+function persistStaleCache(key: string, data: MarketData[]): void {
+  try {
+    localStorage.setItem(STALE_CACHE_PREFIX + key, JSON.stringify({ ts: Date.now(), data }));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+function loadStaleCache(key: string): MarketData[] {
+  try {
+    const raw = localStorage.getItem(STALE_CACHE_PREFIX + key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { ts: number; data: MarketData[] };
+    // Don't serve stale data older than 24 hours
+    if (Date.now() - parsed.ts > 24 * 60 * 60 * 1000) return [];
+    return parsed.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchMultipleStocks(
   symbols: { symbol: string; name: string; display: string }[],
   options: { onBatch?: (results: MarketData[]) => void } = {},
@@ -151,6 +172,7 @@ export async function fetchMultipleStocks(
   if (sidecarResults && sidecarResults.length > 0) {
     options.onBatch?.(sidecarResults);
     lastSuccessfulByKey.set(setKey, sidecarResults);
+    persistStaleCache(setKey, sidecarResults);
     return { data: sidecarResults };
   }
 
@@ -165,9 +187,13 @@ export async function fetchMultipleStocks(
   if (results.length > 0) {
     options.onBatch?.(results);
     lastSuccessfulByKey.set(setKey, results);
+    persistStaleCache(setKey, results);
   }
 
-  const data = results.length > 0 ? results : (lastSuccessfulByKey.get(setKey) || []);
+  // 3. Last resort: stale localStorage cache (survives sidecar blips + no cloud key)
+  const data = results.length > 0
+    ? results
+    : (lastSuccessfulByKey.get(setKey) || loadStaleCache(setKey));
   return {
     data,
     skipped: resp.finnhubSkipped || undefined,

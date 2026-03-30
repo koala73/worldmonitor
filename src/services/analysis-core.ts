@@ -35,6 +35,12 @@ import {
 } from './entity-extraction';
 import { getEntityIndex } from './entity-index';
 import { aggregateThreats } from './threat-classifier';
+import {
+  buildClusterEvidencePack,
+  buildSignalEvidencePack,
+  type EvidencePack,
+  type EvidenceSource,
+} from './evidence-pack';
 
 const TOPIC_BASELINE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const TOPIC_BASELINE_SPIKE_MULTIPLIER = 3;
@@ -86,6 +92,7 @@ export interface ClusteredEventCore {
   lat?: number;
   lon?: number;
   lang?: string;
+  evidence?: EvidencePack;
 }
 
 export interface PredictionMarketCore {
@@ -137,7 +144,10 @@ export interface CorrelationSignalCore {
     baseline?: number;
     multiplier?: number;
     sourceCount?: number;
+    placeIds?: string[];
+    placeSummary?: string;
   };
+  evidence?: EvidencePack;
 }
 
 export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other';
@@ -274,7 +284,7 @@ export function clusterNewsCore(
       clusterLon = best.lon;
     }
 
-    return {
+    const clusteredEvent: ClusteredEventCore = {
       id: generateClusterId(cluster),
       primaryTitle: primary.title,
       primarySource: primary.source,
@@ -289,6 +299,11 @@ export function clusterNewsCore(
       threat,
       ...(clusterLat != undefined && { lat: clusterLat, lon: clusterLon }),
       lang: primary.lang,
+    };
+
+    return {
+      ...clusteredEvent,
+      evidence: buildClusterEvidencePack(clusteredEvent),
     };
   }).sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
 }
@@ -323,8 +338,67 @@ function averageVelocity(history: TopicVelocityPoint[]): number {
   return total / history.length;
 }
 
+function toNewsEvidenceSources(
+  sources: { name: string; tier: number; url: string }[],
+  getSourceType?: (source: string) => SourceType,
+): EvidenceSource[] {
+  return sources.map((source) => ({
+    name: source.name,
+    tier: source.tier,
+    url: source.url,
+    kind: 'news',
+    type: getSourceType?.(source.name) ?? 'other',
+  }));
+}
+
+function toMarketEvidenceSource(name: string): EvidenceSource {
+  return {
+    name,
+    tier: 1,
+    kind: 'market',
+    type: 'market',
+  };
+}
+
+function toPredictionEvidenceSource(name: string): EvidenceSource {
+  return {
+    name,
+    tier: 1,
+    kind: 'prediction',
+    type: 'prediction',
+  };
+}
+
+function createSignalWithEvidence(
+  signal: CorrelationSignalCore,
+  options: {
+    supportingSources?: EvidenceSource[];
+    conflictingSources?: EvidenceSource[];
+    actionThreshold?: 'monitor' | 'verify' | 'act';
+    confidenceReason: string;
+    firstSeen?: Date;
+    lastUpdated?: Date;
+  },
+): CorrelationSignalCore {
+  return {
+    ...signal,
+    evidence: buildSignalEvidencePack({
+      claim: signal.title,
+      confidence: signal.confidence,
+      timestamp: signal.timestamp,
+      firstSeen: options.firstSeen,
+      lastUpdated: options.lastUpdated,
+      supportingSources: options.supportingSources,
+      conflictingSources: options.conflictingSources,
+      actionThreshold: options.actionThreshold,
+      confidenceReason: options.confidenceReason,
+    }),
+  };
+}
+
 export function detectPipelineFlowDrops(
   events: ClusteredEventCore[],
+  getSourceType: (source: string) => SourceType,
   isRecentDuplicate: (key: string) => boolean,
   markSignalSeen: (key: string) => void
 ): CorrelationSignalCore[] {
@@ -345,7 +419,7 @@ export function detectPipelineFlowDrops(
       const dedupeKey = generateDedupeKey('flow_drop', event.id, event.sourceCount);
       if (!isRecentDuplicate(dedupeKey)) {
         markSignalSeen(dedupeKey);
-        signals.push({
+        const signal = createSignalWithEvidence({
           id: generateSignalId(),
           type: 'flow_drop',
           title: 'Pipeline Flow Drop',
@@ -356,7 +430,14 @@ export function detectPipelineFlowDrops(
             newsVelocity: event.sourceCount,
             relatedTopics: ['pipeline', 'flow'],
           },
+        }, {
+          supportingSources: toNewsEvidenceSources(event.topSources, getSourceType),
+          actionThreshold: 'verify',
+          confidenceReason: `${event.topSources.length} sources point to pipeline flow disruption.`,
+          firstSeen: event.firstSeen,
+          lastUpdated: event.lastUpdated,
         });
+        signals.push(signal);
       }
     }
   }
@@ -394,7 +475,7 @@ export function detectConvergence(
 
       if (!isRecentDuplicate(dedupeKey) && types.length >= 3) {
         markSignalSeen(dedupeKey);
-        signals.push({
+        const signal = createSignalWithEvidence({
           id: generateSignalId(),
           type: 'convergence',
           title: 'Source Convergence',
@@ -405,7 +486,14 @@ export function detectConvergence(
             newsVelocity: recentItems.length,
             relatedTopics: types,
           },
+        }, {
+          supportingSources: toNewsEvidenceSources(event.topSources, getSourceType),
+          actionThreshold: 'act',
+          confidenceReason: `${types.join(', ')} sources align on the same event.`,
+          firstSeen: event.firstSeen,
+          lastUpdated: event.lastUpdated,
         });
+        signals.push(signal);
       }
     }
   }
@@ -438,7 +526,7 @@ export function detectTriangulation(
 
       if (!isRecentDuplicate(dedupeKey)) {
         markSignalSeen(dedupeKey);
-        signals.push({
+        const signal = createSignalWithEvidence({
           id: generateSignalId(),
           type: 'triangulation',
           title: 'Intel Triangulation',
@@ -449,7 +537,14 @@ export function detectTriangulation(
             newsVelocity: event.sourceCount,
             relatedTopics: [...typePresent],
           },
+        }, {
+          supportingSources: toNewsEvidenceSources(event.topSources, getSourceType),
+          actionThreshold: 'act',
+          confidenceReason: 'Wire, government, and intelligence sources align on the same event.',
+          firstSeen: event.firstSeen,
+          lastUpdated: event.lastUpdated,
         });
+        signals.push(signal);
       }
     }
   }
@@ -474,11 +569,12 @@ export function analyzeCorrelationsCore(
   const now = Date.now();
 
   const newsTopics = extractTopics(events);
-  const pipelineFlowSignals = detectPipelineFlowDrops(events, isRecentDuplicate, markSignalSeen);
+  const pipelineFlowSignals = detectPipelineFlowDrops(events, getSourceType, isRecentDuplicate, markSignalSeen);
   const pipelineFlowMentions = pipelineFlowSignals.length;
 
   const entityIndex = getEntityIndex();
   const newsEntityContexts = extractEntitiesFromClusters(events);
+  const eventById = new Map(events.map((event) => [event.id, event]));
 
   const previousHistory = previousSnapshot?.topicVelocityHistory ?? new Map<string, TopicVelocityPoint[]>();
   const currentHistory = new Map<string, TopicVelocityPoint[]>();
@@ -508,6 +604,18 @@ export function analyzeCorrelationsCore(
     return { signals: [], snapshot: currentSnapshot };
   }
 
+  const getTopicEvidenceSources = (topic: string): EvidenceSource[] => {
+    const topicLower = topic.toLowerCase();
+    const matchingEvents = events.filter((event) => {
+      if (event.primaryTitle.toLowerCase().includes(topicLower)) return true;
+      return event.allItems.some((item) => item.title.toLowerCase().includes(topicLower));
+    });
+
+    return matchingEvents
+      .flatMap((event) => toNewsEvidenceSources(event.topSources, getSourceType))
+      .slice(0, 5);
+  };
+
   // Detect prediction shifts
   for (const pred of predictions) {
     const key = pred.title.slice(0, 50);
@@ -521,7 +629,7 @@ export function analyzeCorrelationsCore(
         const dedupeKey = generateDedupeKey('prediction_leads_news', key, shift);
         if (newsActivity < NEWS_VELOCITY_THRESHOLD && !isRecentDuplicate(dedupeKey)) {
           markSignalSeen(dedupeKey);
-          signals.push({
+          const signal = createSignalWithEvidence({
             id: generateSignalId(),
             type: 'prediction_leads_news',
             title: 'Prediction Market Shift',
@@ -533,7 +641,12 @@ export function analyzeCorrelationsCore(
               newsVelocity: newsActivity,
               relatedTopics: related,
             },
+          }, {
+            supportingSources: [toPredictionEvidenceSource(pred.title)],
+            actionThreshold: 'verify',
+            confidenceReason: `Prediction market moved ${shift.toFixed(1)} points before news velocity caught up.`,
           });
+          signals.push(signal);
         }
       }
     }
@@ -558,7 +671,7 @@ export function analyzeCorrelationsCore(
       const baselineText = baseline > 0
         ? `${baseline.toFixed(1)} baseline (${multiplier.toFixed(1)}x)`
         : 'cold-start baseline';
-      signals.push({
+      const signal = createSignalWithEvidence({
         id: generateSignalId(),
         type: 'velocity_spike',
         title: 'News Velocity Spike',
@@ -574,7 +687,14 @@ export function analyzeCorrelationsCore(
             ? `Velocity ${velocity.toFixed(1)} is ${multiplier.toFixed(1)}x above baseline ${baseline.toFixed(1)}`
             : `Velocity ${velocity.toFixed(1)} exceeded cold-start threshold`,
         },
+      }, {
+        supportingSources: getTopicEvidenceSources(topic),
+        actionThreshold: 'verify',
+        confidenceReason: baseline > 0
+          ? `Coverage is ${multiplier.toFixed(1)}x above baseline for ${topic}.`
+          : `Coverage exceeded the cold-start spike threshold for ${topic}.`,
       });
+      signals.push(signal);
     }
   }
 
@@ -592,7 +712,10 @@ export function analyzeCorrelationsCore(
       if (!isRecentDuplicate(dedupeKey)) {
         markSignalSeen(dedupeKey);
         const direction = market.change! > 0 ? '+' : '';
-        signals.push({
+        const relatedClusters = relatedNews
+          .map((item) => eventById.get(item.clusterId))
+          .filter((event): event is ClusteredEventCore => event !== undefined);
+        const signal = createSignalWithEvidence({
           id: generateSignalId(),
           type: 'explained_market_move',
           title: 'Market Move Explained',
@@ -606,7 +729,15 @@ export function analyzeCorrelationsCore(
             correlatedNews: relatedNews.map(n => n.clusterId),
             explanation: `${relatedNews.length} related news item${relatedNews.length > 1 ? 's' : ''} found`,
           },
+        }, {
+          supportingSources: [
+            toMarketEvidenceSource(market.name),
+            ...relatedClusters.flatMap((cluster) => toNewsEvidenceSources(cluster.topSources, getSourceType)),
+          ].slice(0, 5),
+          actionThreshold: 'verify',
+          confidenceReason: `${market.name} moved with ${relatedNews.length} related news cluster${relatedNews.length > 1 ? 's' : ''}.`,
         });
+        signals.push(signal);
       }
     } else {
       const oldRelatedNews = [...newsTopics.entries()]
@@ -619,7 +750,7 @@ export function analyzeCorrelationsCore(
         const searchedTerms = entity
           ? [market.symbol, market.name, ...(entity.keywords?.slice(0, 2) ?? [])].join(', ')
           : market.symbol;
-        signals.push({
+        const signal = createSignalWithEvidence({
           id: generateSignalId(),
           type: 'silent_divergence',
           title: 'Silent Divergence',
@@ -631,7 +762,12 @@ export function analyzeCorrelationsCore(
             newsVelocity: oldRelatedNews,
             explanation: `Searched: ${searchedTerms}`,
           },
+        }, {
+          supportingSources: [toMarketEvidenceSource(market.name)],
+          actionThreshold: 'monitor',
+          confidenceReason: `${market.name} moved sharply without confirming news coverage.`,
         });
+        signals.push(signal);
       }
     }
   }
@@ -649,7 +785,7 @@ export function analyzeCorrelationsCore(
       const dedupeKey = generateDedupeKey('flow_price_divergence', market.symbol, change);
       if (relatedNews < 2 && pipelineFlowMentions === 0 && !isRecentDuplicate(dedupeKey)) {
         markSignalSeen(dedupeKey);
-        signals.push({
+        const signal = createSignalWithEvidence({
           id: generateSignalId(),
           type: 'flow_price_divergence',
           title: 'Flow/Price Divergence',
@@ -661,7 +797,12 @@ export function analyzeCorrelationsCore(
             newsVelocity: relatedNews,
             relatedTopics: ['pipeline', market.display],
           },
+        }, {
+          supportingSources: [toMarketEvidenceSource(market.name)],
+          actionThreshold: 'verify',
+          confidenceReason: `${market.name} price diverged without matching pipeline disruption coverage.`,
         });
+        signals.push(signal);
       }
     }
   }

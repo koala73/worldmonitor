@@ -62,6 +62,14 @@ function writeEntry<T>(serviceId: string, data: T): void {
   }
 }
 
+export function readOfflineCacheEntry<T>(serviceId: string): OfflineCacheEntry<T> | null {
+  return readEntry<T>(serviceId);
+}
+
+export function writeOfflineCacheEntry<T>(serviceId: string, data: T): void {
+  writeEntry(serviceId, data);
+}
+
 function clearEntry(serviceId: string): void {
   try { localStorage.removeItem(storageKey(serviceId)); } catch { /* noop */ }
 }

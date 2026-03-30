@@ -1,5 +1,7 @@
 import type { NewsItem, ClusteredEvent, MarketData } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
+import type { CommsFieldCard } from '@/services/comms-export';
+import { buildCommsFieldCardCsv, buildCommsFieldCardJson } from '@/services/comms-export';
 import { t } from '@/services/i18n';
 
 type ExportFormat = 'json' | 'csv';
@@ -86,7 +88,7 @@ export function exportCountryBriefJSON(data: CountryBriefExport): void {
 export function exportCountryBriefCSV(data: CountryBriefExport): void {
   const lines: string[] = [ `Country Brief: ${data.country} (${data.code})`, `Generated: ${data.generatedAt}`, ''];
   if (data.score != undefined) {
-    lines.push(`Score,${data.score}`, `Level,${data.level || ''}`, `Trend,${data.trend || ''}`);
+    lines.push(`Score,${data.score}`, `Level,${data.level ?? ''}`, `Trend,${data.trend ?? ''}`);
   }
   if (data.components) {
     lines.push('', 'Component,Value', `Unrest,${data.components.unrest}`, `Conflict,${data.components.conflict}`, `Security,${data.components.security}`, `Information,${data.components.information}`);
@@ -99,14 +101,43 @@ export function exportCountryBriefCSV(data: CountryBriefExport): void {
   }
   if (data.headlines && data.headlines.length > 0) {
     lines.push('', 'Title,Source,Link,Published');
-    data.headlines.forEach(h => lines.push(csvRow([h.title, h.source, h.link, h.pubDate || ''])));
+    data.headlines.forEach(h => lines.push(csvRow([h.title, h.source, h.link, h.pubDate ?? ''])));
   }
   if (data.brief) {
-    lines.push('', 'Intelligence Brief');
-    lines.push(`"${data.brief.replace(/"/g, '""')}"`);
+    lines.push('', 'Intelligence Brief', `"${data.brief.split('"').join('""')}"`);
   }
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   downloadFile(lines.join('\n'), `country-brief-${data.code}-${timestamp}.csv`, 'text/csv');
+}
+
+function slugifyFilenameSegment(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .join('-');
+  return normalized === '' ? 'field-card' : normalized;
+}
+
+export function exportCommsPlanJSON(data: CommsFieldCard): void {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const slug = slugifyFilenameSegment(data.placeName);
+  downloadFile(
+    buildCommsFieldCardJson(data),
+    `comms-field-card-${slug}-${timestamp}.json`,
+    'application/json',
+  );
+}
+
+export function exportCommsPlanCSV(data: CommsFieldCard): void {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const slug = slugifyFilenameSegment(data.placeName);
+  downloadFile(
+    buildCommsFieldCardCsv(data),
+    `comms-field-card-${slug}-${timestamp}.csv`,
+    'text/csv',
+  );
 }
 
 function csvRow(values: string[]): string {
