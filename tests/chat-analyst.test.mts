@@ -240,6 +240,18 @@ describe('buildActionEvents — visual intent detection', () => {
     assert.equal(events[0]?.type, 'suggest-widget');
   });
 
+  it('returns suggest-widget action for give me a chart', () => {
+    const events = buildActionEvents('give me a chart of the gold over past 30 days');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
+  it('returns suggest-widget action for get me a chart', () => {
+    const events = buildActionEvents('get me a chart of oil prices');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'suggest-widget');
+  });
+
   it('returns suggest-widget action for price history query', () => {
     const events = buildActionEvents('What is the price history of crude oil?');
     assert.equal(events.length, 1);
