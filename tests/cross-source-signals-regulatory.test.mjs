@@ -53,18 +53,25 @@ describe('extractRegulatoryAction', () => {
       'regulatory:actions:v1': {
         actions: [
           {
-            id: 'sec-a',
-            agency: 'SEC',
-            title: 'SEC Charges Issuer',
-            publishedAt: new Date(now - 1 * 3600 * 1000).toISOString(),
-            tier: 'high',
-          },
-          {
             id: 'fdic-a',
             agency: 'FDIC',
             title: 'FDIC Guidance Update',
             publishedAt: new Date(now - 2 * 3600 * 1000).toISOString(),
             tier: 'medium',
+          },
+          {
+            id: 'sec-c',
+            agency: 'SEC',
+            title: 'SEC Settlement',
+            publishedAt: new Date(now - 5 * 3600 * 1000).toISOString(),
+            tier: 'high',
+          },
+          {
+            id: 'sec-a',
+            agency: 'SEC',
+            title: 'SEC Charges Issuer',
+            publishedAt: new Date(now - 1 * 3600 * 1000).toISOString(),
+            tier: 'high',
           },
           {
             id: 'finra-low',
@@ -85,13 +92,6 @@ describe('extractRegulatoryAction', () => {
             agency: 'Federal Reserve',
             title: 'Old Enforcement Notice',
             publishedAt: new Date(now - 72 * 3600 * 1000).toISOString(),
-            tier: 'high',
-          },
-          {
-            id: 'sec-c',
-            agency: 'SEC',
-            title: 'SEC Settlement',
-            publishedAt: new Date(now - 5 * 3600 * 1000).toISOString(),
             tier: 'high',
           },
         ],

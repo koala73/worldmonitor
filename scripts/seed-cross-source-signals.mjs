@@ -721,7 +721,8 @@ function extractRegulatoryAction(d) {
   if (!payload) return [];
   const cutoff = Date.now() - 48 * 3600 * 1000;
   const recent = (payload.actions || [])
-    .filter((action) => new Date(action.publishedAt).getTime() > cutoff && action.tier !== 'low');
+    .filter((action) => new Date(action.publishedAt).getTime() > cutoff && action.tier !== 'low')
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
   if (recent.length === 0) return [];
   return recent.slice(0, 3).map((action) => {
     const tierMult = action.tier === 'high' ? 1.5 : 1.0;
