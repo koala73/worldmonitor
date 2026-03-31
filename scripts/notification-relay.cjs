@@ -286,7 +286,8 @@ async function subscribe() {
         continue;
       }
       // Upstash subscribe returns an SSE stream, not a single JSON blob.
-      // Read line by line and process each `data:` line.
+      // Each line format: "data: message,<channel>,<payload>"
+      //                or "data: subscribe,<channel>,<count>"
       const reader = res.body.getReader();
       let buf = '';
       while (true) {
@@ -298,12 +299,14 @@ async function subscribe() {
           const line = buf.slice(0, nl).trimEnd();
           buf = buf.slice(nl + 1);
           if (!line.startsWith('data:')) continue;
-          let parsed;
-          try { parsed = JSON.parse(line.slice(5).trim()); } catch { continue; }
-          // SSE envelope: {type:"subscribe"|"message", channel, message}
-          if (parsed.type !== 'message' || !parsed.message) continue;
+          const raw = line.slice(5).trim(); // e.g. "message,wm:events:notify,<json>"
+          if (!raw.startsWith('message,')) continue;
+          // Split on second comma; message payload may contain commas
+          const secondComma = raw.indexOf(',', 8); // 'message,'.length === 8
+          if (secondComma === -1) continue;
+          const message = raw.slice(secondComma + 1);
           try {
-            const event = JSON.parse(parsed.message);
+            const event = JSON.parse(message);
             await processEvent(event);
           } catch (err) {
             console.warn('[relay] Failed to parse event:', err.message);
