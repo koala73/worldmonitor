@@ -1545,3 +1545,132 @@ test('service-status reports bound fallback port after EADDRINUSE recovery', asy
     });
   }
 });
+
+test('/api/faa-cameras — returns cached response on second call', async () => {
+  const mockCameras = [
+    { id: '1', name: 'Anchorage Cam', lat: 61.2, lon: -149.9, state: 'AK', category: 'weather', imageUrl: 'https://example.com/cam1.jpg', isOnline: true, lastUpdated: '2024-01-01T00:00:00Z' },
+  ];
+
+  let httpsCallCount = 0;
+  const originalHttpsRequest = https.request;
+  https.request = (_options, onResponse) => {
+    httpsCallCount++;
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => { if (error) req.emit('error', error); };
+    req.end = () => {
+      queueMicrotask(() => {
+        const res = new EventEmitter();
+        res.statusCode = 200;
+        res.statusMessage = '';
+        res.headers = { 'content-type': 'application/json' };
+        onResponse(res);
+        res.emit('data', Buffer.from(JSON.stringify(mockCameras)));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const res1 = await fetch(`http://127.0.0.1:${port}/api/faa-cameras`);
+    assert.equal(res1.status, 200);
+    const body1 = await res1.json();
+    assert.equal(body1.length, 1);
+    assert.equal(body1[0].name, 'Anchorage Cam');
+
+    const res2 = await fetch(`http://127.0.0.1:${port}/api/faa-cameras`);
+    assert.equal(res2.status, 200);
+    const body2 = await res2.json();
+    assert.equal(body2.length, 1);
+    assert.equal(body2[0].name, 'Anchorage Cam');
+
+    assert.equal(httpsCallCount, 1, 'FAA endpoint should only be hit once; second call should use cache');
+  } finally {
+    https.request = originalHttpsRequest;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('/api/faa-cam-analyze — returns 400 when imageUrl is missing', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/faa-cam-analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cameraName: 'test' }),
+    });
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(typeof body.error, 'string');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('/api/faa-cam-analyze — rejects private IP imageUrl (SSRF)', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/faa-cam-analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrl: 'http://192.168.1.1/image.jpg', cameraName: 'test' }),
+    });
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(typeof body.error, 'string');
+    assert.ok(body.error.includes('192.168.1.1') || body.error.toLowerCase().includes('private') || body.error.toLowerCase().includes('invalid'), `expected error to mention blocked URL, got: ${body.error}`);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('/api/faa-cam-digest — returns 400 when cameras array has fewer than 2 items', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/faa-cam-digest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cameras: [{ name: 'test', location: 'AK', alertLabel: null }] }),
+    });
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(typeof body.error, 'string');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});

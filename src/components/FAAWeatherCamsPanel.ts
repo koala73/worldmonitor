@@ -156,7 +156,8 @@ export class FAAWeatherCamsPanel extends Panel {
 
     const img = document.createElement('img');
     img.className = 'faa-cam-image';
-    img.src = cam.imageUrl;
+    const epoch = new Date(cam.lastUpdated).getTime();
+    img.src = `${cam.imageUrl}${cam.imageUrl.includes('?') ? '&' : '?'}t=${epoch}`;
     img.alt = cam.name;
     img.loading = 'lazy';
 
@@ -187,17 +188,25 @@ export class FAAWeatherCamsPanel extends Panel {
         signal: AbortSignal.timeout(30000),
       });
       const data = await res.json() as { conditions?: string; error?: string };
-      const idx = this.cameras.findIndex(c => c.id === cam.id);
-      if (idx !== -1) {
-        this.cameras[idx]!.aiConditions = data.conditions ?? data.error ?? 'No response';
-        if (this.selectedCam?.id === cam.id) this.selectedCam = this.cameras[idx] ?? null;
+      if (data.conditions) {
+        const idx = this.cameras.findIndex(c => c.id === cam.id);
+        if (idx !== -1) {
+          this.cameras[idx]!.aiConditions = data.conditions;
+          if (this.selectedCam?.id === cam.id) this.selectedCam = this.cameras[idx] ?? null;
+        }
+        this.render();
+      } else {
+        btn.textContent = data.error ?? 'Analysis failed — tap to retry';
+        btn.disabled = false;
+        setTimeout(() => {
+          if (!btn.disabled) btn.textContent = 'Analyze conditions';
+        }, 3000);
       }
     } catch {
       btn.textContent = 'Analysis unavailable';
       btn.disabled = false;
       return;
     }
-    this.render();
   }
 
   private _relativeTime(iso: string): string {
