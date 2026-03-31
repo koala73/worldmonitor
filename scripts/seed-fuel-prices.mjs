@@ -280,6 +280,9 @@ async function fetchEU_CSV() {
           const m = (v.getUTCMonth() + 1).toString().padStart(2, '0');
           return `${d}/${m}/${v.getUTCFullYear()}`;
         }
+        if (typeof v === 'object' && Array.isArray(v.richText)) {
+          return v.richText.map(rt => rt.text ?? '').join('');
+        }
         return String(v);
       }));
     });
