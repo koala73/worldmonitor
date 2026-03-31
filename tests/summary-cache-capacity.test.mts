@@ -14,15 +14,13 @@ describe('summary circuit breaker configuration', () => {
     assert.ok(Number(m![1]) >= 128, `maxCacheEntries is ${m![1]}, expected >= 128`);
   });
 
-  it('persistCache is enabled', () => {
-    assert.match(src, /persistCache:\s*true/, 'persistCache should be true');
+  it('persistCache is enabled on summaryResultBreaker', () => {
+    assert.match(src, /summaryResultBreaker[\s\S]*?persistCache:\s*true/, 'persistCache should be true on summaryResultBreaker');
   });
 
   it('cacheTtlMs is 2 hours on summaryResultBreaker', () => {
-    // Match the block containing maxCacheEntries (summaryResultBreaker) and extract its cacheTtlMs
     const block = src.match(/summaryResultBreaker[\s\S]*?cacheTtlMs:\s*([\d\s*]+)/);
     assert.ok(block, 'cacheTtlMs not found in summaryResultBreaker block');
-    const val = eval(block![1].trim());
-    assert.equal(val, 2 * 60 * 60 * 1000, `cacheTtlMs should be 7200000 (2h), got ${val}`);
+    assert.match(block![1].trim(), /^2\s*\*\s*60\s*\*\s*60\s*\*\s*1000$/, `cacheTtlMs should be 2 * 60 * 60 * 1000, got "${block![1].trim()}"`);
   });
 });

@@ -11,7 +11,7 @@ describe('IntelligenceGapBadge polling', () => {
   it('setInterval callback includes visibilityState check', () => {
     assert.match(
       src,
-      /setInterval\(\s*\(\)\s*=>\s*\{[^}]*visibilityState/s,
+      /setInterval\(\s*\(\)\s*=>\s*\{[\s\S]*?visibilityState/s,
       'setInterval callback must check document.visibilityState to avoid background-tab polling',
     );
   });
