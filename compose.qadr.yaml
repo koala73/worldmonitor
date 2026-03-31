@@ -1,0 +1,128 @@
+services:
+  worldmonitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.qadr-prebuilt
+    image: gantor-worldmonitor:20260330
+    container_name: qadr-worldmonitor
+    ports:
+      - "127.0.0.1:${WM_PORT:-38081}:8080"
+    environment:
+      UPSTASH_REDIS_REST_URL: "http://qadr-worldmonitor-redis-rest:80"
+      UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:-wm-qadr-token}"
+      LOCAL_API_PORT: "46123"
+      LOCAL_API_MODE: "docker"
+      LOCAL_API_CLOUD_FALLBACK: "false"
+      WS_RELAY_URL: "http://qadr-worldmonitor-ais-relay:3004"
+      LLM_API_URL: "${LLM_API_URL:-http://qadr-ai-gateway-litellm:4000/v1/chat/completions}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_MODEL: "${LLM_MODEL:-freegpt-local}"
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
+      FINNHUB_API_KEY: "${FINNHUB_API_KEY:-}"
+      EIA_API_KEY: "${EIA_API_KEY:-}"
+      FRED_API_KEY: "${FRED_API_KEY:-}"
+      ACLED_EMAIL: "${ACLED_EMAIL:-}"
+      ACLED_PASSWORD: "${ACLED_PASSWORD:-}"
+      ACLED_ACCESS_TOKEN: "${ACLED_ACCESS_TOKEN:-}"
+      UCDP_ACCESS_TOKEN: "${UCDP_ACCESS_TOKEN:-}"
+      NASA_FIRMS_API_KEY: "${NASA_FIRMS_API_KEY:-}"
+      CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
+      AVIATIONSTACK_API: "${AVIATIONSTACK_API:-}"
+    depends_on:
+      redis-rest:
+        condition: service_started
+      ais-relay:
+        condition: service_started
+    restart: unless-stopped
+    cpus: 3
+    mem_limit: 4096m
+    networks:
+      - default
+      - fgpt_ingress
+      - fgpt_ai
+
+  ais-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile.relay
+    image: gantor-worldmonitor-ais-relay:20260330
+    container_name: qadr-worldmonitor-ais-relay
+    environment:
+      AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
+      PORT: "3004"
+    restart: unless-stopped
+    cpus: 1
+    mem_limit: 512m
+
+  redis:
+    image: docker.io/redis:7-alpine
+    container_name: qadr-worldmonitor-redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    mem_limit: 512m
+
+  redis-rest:
+    build:
+      context: docker
+      dockerfile: Dockerfile.redis-rest
+    image: gantor-worldmonitor-redis-rest:20260330
+    container_name: qadr-worldmonitor-redis-rest
+    environment:
+      SRH_TOKEN: "${REDIS_TOKEN:-wm-qadr-token}"
+      SRH_CONNECTION_STRING: "redis://redis:6379"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    mem_limit: 256m
+
+  seeders:
+    image: node:22-alpine
+    container_name: qadr-worldmonitor-seeders
+    working_dir: /app
+    command: >
+      sh -lc "npm ci --ignore-scripts --prefer-offline &&
+      while true; do
+      ./scripts/run-seeders.sh || true;
+      sleep ${SEED_INTERVAL_SECONDS:-1800};
+      done"
+    environment:
+      UPSTASH_REDIS_REST_URL: "http://qadr-worldmonitor-redis-rest:80"
+      UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:-wm-qadr-token}"
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      FINNHUB_API_KEY: "${FINNHUB_API_KEY:-}"
+      EIA_API_KEY: "${EIA_API_KEY:-}"
+      FRED_API_KEY: "${FRED_API_KEY:-}"
+      ACLED_EMAIL: "${ACLED_EMAIL:-}"
+      ACLED_PASSWORD: "${ACLED_PASSWORD:-}"
+      ACLED_ACCESS_TOKEN: "${ACLED_ACCESS_TOKEN:-}"
+      UCDP_ACCESS_TOKEN: "${UCDP_ACCESS_TOKEN:-}"
+      NASA_FIRMS_API_KEY: "${NASA_FIRMS_API_KEY:-}"
+      AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
+      CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
+      AVIATIONSTACK_API: "${AVIATIONSTACK_API:-}"
+      LLM_API_URL: "${LLM_API_URL:-http://qadr-ai-gateway-litellm:4000/v1/chat/completions}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_MODEL: "${LLM_MODEL:-freegpt-local}"
+    volumes:
+      - .:/app
+    depends_on:
+      redis-rest:
+        condition: service_started
+      worldmonitor:
+        condition: service_healthy
+    restart: unless-stopped
+    cpus: 1.5
+    mem_limit: 1536m
+
+volumes:
+  redis-data:
+
+networks:
+  fgpt_ingress:
+    external: true
+  fgpt_ai:
+    external: true

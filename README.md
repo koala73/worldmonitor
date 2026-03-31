@@ -2,6 +2,15 @@
 
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
+## Gantor fork
+
+This fork powers the QADR deployment at [monitor.gantor.ir](https://monitor.gantor.ir/) and adds:
+
+- Persian (`fa`) locale with RTL support
+- Gantor branding and domain metadata
+- QADR-specific Docker Compose deployment
+- Same-origin runtime API behavior for self-hosted web mode
+
 [![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/network/members)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/re63kWKxaz)
@@ -45,7 +54,7 @@
 - **Local AI** — run everything with Ollama, no API keys required
 - **5 site variants** from a single codebase (world, tech, finance, commodity, happy)
 - **Native desktop app** (Tauri 2) for macOS, Windows, and Linux
-- **21 languages** with native-language feeds and RTL support
+- **22 languages** with native-language feeds and RTL support, including Persian
 
 For the full feature list, architecture, data sources, and algorithms, see the **[documentation](https://docs.worldmonitor.app)**.
 

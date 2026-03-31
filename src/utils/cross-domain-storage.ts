@@ -1,8 +1,13 @@
-const COOKIE_DOMAIN = '.worldmonitor.app';
 const MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 
+function getCookieDomain(): string {
+  if (location.hostname.endsWith('worldmonitor.app')) return '.worldmonitor.app';
+  if (location.hostname.endsWith('gantor.ir')) return '.gantor.ir';
+  return '';
+}
+
 function usesCookies(): boolean {
-  return location.hostname.endsWith('worldmonitor.app');
+  return location.hostname.endsWith('worldmonitor.app') || location.hostname.endsWith('gantor.ir');
 }
 
 export function getDismissed(key: string): boolean {
@@ -14,7 +19,9 @@ export function getDismissed(key: string): boolean {
 
 export function setDismissed(key: string): void {
   if (usesCookies()) {
-    document.cookie = `${key}=1; domain=${COOKIE_DOMAIN}; path=/; max-age=${MAX_AGE_SECONDS}; SameSite=Lax; Secure`;
+    const domain = getCookieDomain();
+    const domainPart = domain ? `; domain=${domain}` : '';
+    document.cookie = `${key}=1${domainPart}; path=/; max-age=${MAX_AGE_SECONDS}; SameSite=Lax; Secure`;
   }
   localStorage.setItem(key, '1');
 }

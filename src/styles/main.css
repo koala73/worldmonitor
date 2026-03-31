@@ -70,6 +70,10 @@
   --font-body: 'Tajawal', 'Geeza Pro', 'SF Arabic', 'Tahoma', var(--font-body-base);
 }
 
+:lang(fa) {
+  --font-body: 'Vazirmatn', 'Tajawal', 'Vazir', 'Tahoma', var(--font-body-base);
+}
+
 :lang(zh-CN),
 :lang(zh) {
   --font-body: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', var(--font-body-base);
@@ -395,6 +399,38 @@ canvas,
 .variant-switcher:hover .variant-option .variant-label {
   max-width: 50px;
   opacity: 1;
+}
+
+.gantor-services {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+.gantor-services a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.gantor-services a:hover {
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.gantor-sep {
+  color: var(--border);
+  font-size: 10px;
+}
+
+@media (max-width: 768px) {
+  .gantor-services {
+    display: none;
+  }
 }
 
 .logo {
