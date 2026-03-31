@@ -661,6 +661,47 @@ body.is-desktop-macos[data-app-mode="ghost"] .mac-mode-section {
   letter-spacing: 0.02em;
 }
 
+.mac-sidebar-version--ok {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--mac-tertiary-label);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.mac-sidebar-update-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--mac-accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  font-family: var(--mac-font);
+  transition: opacity 0.12s ease;
+}
+
+.mac-sidebar-update-btn:hover {
+  opacity: 0.85;
+}
+
+.mac-sidebar-update-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mac-sidebar-version--installing {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--mac-tertiary-label);
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
 /* ── Sidebar collapse ───────────────────────────────────────── */
 body.is-desktop-macos .mac-sidebar {
   transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
