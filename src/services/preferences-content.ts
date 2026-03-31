@@ -639,7 +639,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               sub = escapeHtml(channel.email ?? 'connected');
             } else {
               // Slack: show #channel · team from OAuth metadata
-              const ch = channel.slackChannelName ? `#${escapeHtml(channel.slackChannelName)}` : 'connected';
+              const rawCh = channel.slackChannelName ?? '';
+              const ch = rawCh ? `#${escapeHtml(rawCh.startsWith('#') ? rawCh.slice(1) : rawCh)}` : 'connected';
               const team = channel.slackTeamName ? ` · ${escapeHtml(channel.slackTeamName)}` : '';
               sub = ch + team;
               if (channel.slackConfigurationUrl) {

@@ -1,3 +1,4 @@
+import '@/styles/settings-window.css';
 import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { PANEL_CATEGORY_MAP, ALL_PANELS, VARIANT_DEFAULTS, getEffectivePanelConfig, isPanelEntitled, FREE_MAX_PANELS } from '@/config/panels';
 import { isProUser } from '@/services/widget-store';
