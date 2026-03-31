@@ -1335,7 +1335,8 @@ export class PanelLayoutManager implements AppModule {
     const { view, zoom, lat, lon, timeRange, layers } = this.ctx.initialUrlState;
 
     if (view) {
-      this.ctx.map.setView(view);
+      // Pass URL zoom so the preset's default zoom doesn't overwrite it.
+      this.ctx.map.setView(view, zoom);
     }
 
     if (timeRange) {
@@ -1349,9 +1350,10 @@ export class PanelLayoutManager implements AppModule {
     }
 
     if (lat !== undefined && lon !== undefined) {
-      const effectiveZoom = zoom ?? this.ctx.map.getState().zoom;
-      if (effectiveZoom > 2) this.ctx.map.setCenter(lat, lon, zoom);
+      // Always honour URL lat/lon regardless of zoom level.
+      this.ctx.map.setCenter(lat, lon, zoom);
     } else if (!view && zoom !== undefined) {
+      // zoom-only without a view preset: apply directly.
       this.ctx.map.setZoom(zoom);
     }
 
