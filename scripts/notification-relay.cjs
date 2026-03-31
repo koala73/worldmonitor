@@ -177,7 +177,35 @@ function formatMessage(event) {
   return parts.join('\n');
 }
 
+async function processWelcome(event) {
+  const { userId, channelType } = event;
+  if (!userId || !channelType) return;
+  let channels = [];
+  try {
+    const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}` },
+      body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (chRes.ok) channels = (await chRes.json()) ?? [];
+  } catch {}
+
+  const ch = channels.find(c => c.channelType === channelType && c.verified);
+  if (!ch) return;
+
+  const text = `✅ WorldMonitor connected! You'll receive breaking news alerts here.`;
+  if (channelType === 'telegram' && ch.chatId) {
+    await sendTelegram(userId, ch.chatId, text);
+  } else if (channelType === 'slack' && ch.webhookEnvelope) {
+    await sendSlack(userId, ch.webhookEnvelope, text);
+  } else if (channelType === 'email' && ch.email) {
+    await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
+  }
+}
+
 async function processEvent(event) {
+  if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   console.log(`[relay] Processing event: ${event.eventType} (${event.severity ?? 'high'})`);
 
   let enabledRules;

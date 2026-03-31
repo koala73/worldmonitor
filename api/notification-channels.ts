@@ -22,6 +22,8 @@ const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
 // AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).
 // Format stored: v1:<base64(iv[12] || tag[16] || ciphertext)>
@@ -41,6 +43,19 @@ async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
   payload.set(ciphertext, 28);
   const binary = Array.from(payload, (b) => String.fromCharCode(b)).join('');
   return `v1:${btoa(binary)}`;
+}
+
+async function publishWelcome(userId: string, channelType: string): Promise<void> {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  const msg = JSON.stringify({ eventType: 'channel_welcome', userId, channelType });
+  try {
+    await fetch(`${UPSTASH_URL}/publish/wm:events:notify/${encodeURIComponent(msg)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
@@ -152,6 +167,8 @@ export default async function handler(req: Request): Promise<Response> {
           console.error('[notification-channels] POST set-channel relay error:', resp.status);
           return json({ error: 'Operation failed' }, 500, corsHeaders);
         }
+        // Fire-and-forget welcome notification
+        void publishWelcome(session.userId, channelType);
         return json({ ok: true }, 200, corsHeaders);
       }
 

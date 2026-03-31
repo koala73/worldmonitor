@@ -618,30 +618,71 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
         signal.addEventListener('abort', clearNotifPoll);
 
+        function channelIcon(type: ChannelType): string {
+          if (type === 'telegram') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>`;
+          if (type === 'email') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>`;
+          return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>`;
+        }
+
+        const CHANNEL_LABELS: Record<ChannelType, string> = { telegram: 'Telegram', email: 'Email', slack: 'Slack' };
+
         function renderChannelRow(channel: NotificationChannel | null, type: ChannelType): string {
+          const icon = channelIcon(type);
+          const name = CHANNEL_LABELS[type];
+
           if (channel?.verified) {
-            const label = type === 'telegram' ? `@${channel.chatId ?? 'Telegram'}`
-              : type === 'email' ? (channel.email ?? 'Email')
-              : 'Slack webhook';
-            return `<div class="us-notif-channel-row" data-channel-type="${type}">
-              <span class="us-notif-channel-label">${escapeHtml(label)}</span>
-              <button type="button" class="settings-btn settings-btn-secondary us-notif-disconnect" data-channel="${type}">Disconnect</button>
+            const sub = type === 'telegram' ? `@${escapeHtml(channel.chatId ?? 'connected')}`
+              : type === 'email' ? escapeHtml(channel.email ?? 'connected')
+              : 'Webhook connected';
+            return `<div class="us-notif-ch-row us-notif-ch-on" data-channel-type="${type}">
+              <div class="us-notif-ch-icon">${icon}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-sub">${sub}</div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <span class="us-notif-ch-badge">Connected</span>
+                <button type="button" class="us-notif-ch-btn us-notif-disconnect" data-channel="${type}">Remove</button>
+              </div>
             </div>`;
           }
+
           if (type === 'telegram') {
-            return `<div class="us-notif-channel-row" data-channel-type="telegram">
-              <button type="button" class="settings-btn us-notif-telegram-connect" id="usConnectTelegram">Connect Telegram</button>
+            return `<div class="us-notif-ch-row" data-channel-type="telegram">
+              <div class="us-notif-ch-icon">${icon}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-sub">Not connected</div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-telegram-connect" id="usConnectTelegram">Connect</button>
+              </div>
             </div>`;
           }
+
           if (type === 'email') {
-            return `<div class="us-notif-channel-row" data-channel-type="email">
-              <button type="button" class="settings-btn us-notif-email-connect" id="usConnectEmail">Link Email</button>
+            return `<div class="us-notif-ch-row" data-channel-type="email">
+              <div class="us-notif-ch-icon">${icon}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-sub">Use your account email</div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-email-connect" id="usConnectEmail">Link</button>
+              </div>
             </div>`;
           }
+
           if (type === 'slack') {
-            return `<div class="us-notif-channel-row" data-channel-type="slack">
-              <input type="url" class="unified-settings-select" id="usSlackWebhookUrl" placeholder="https://hooks.slack.com/services/..." />
-              <button type="button" class="settings-btn us-notif-slack-connect" id="usConnectSlack">Connect Slack</button>
+            return `<div class="us-notif-ch-row" data-channel-type="slack">
+              <div class="us-notif-ch-icon">${icon}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-slack-wrap">
+                  <input type="url" class="us-notif-slack-input" id="usSlackWebhookUrl" placeholder="https://hooks.slack.com/services/..." />
+                  <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-slack-connect" id="usConnectSlack">Connect</button>
+                </div>
+              </div>
             </div>`;
           }
           return '';
@@ -658,7 +699,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             html += renderChannelRow(channel, type);
           }
 
-          html += `<div class="ai-flow-section-label">Alert Rules</div>
+          html += `<div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
                 <div class="ai-flow-toggle-label">Enable notifications</div>
@@ -707,7 +748,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const enabled = enabledEl.checked;
           const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
           const existing = Array.from(container.querySelectorAll<HTMLElement>('[data-channel-type]'))
-            .filter(el => el.querySelector('.us-notif-disconnect'))
+            .filter(el => el.querySelector('.us-notif-ch-on'))
             .map(el => el.dataset.channelType as ChannelType);
           const channels = [...new Set([...existing, newChannel])];
           void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels });
@@ -733,7 +774,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               const connectedChannelTypes = Array.from(
                 container.querySelectorAll<HTMLElement>('[data-channel-type]'),
               )
-                .filter(el => el.querySelector('.us-notif-disconnect'))
+                .filter(el => el.querySelector('.us-notif-ch-on'))
                 .map(el => el.dataset.channelType as ChannelType);
               void saveAlertRules({
                 variant: SITE_VARIANT,
@@ -750,7 +791,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const target = e.target as HTMLElement;
 
           if (target.closest('#usConnectTelegram')) {
-            const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
+            const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
             if (!rowEl) return;
             createPairingToken().then(({ token, expiresAt }) => {
               if (signal.aborted) return;
@@ -758,8 +799,15 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               const deepLink = `https://t.me/${botUsername}?start=${token}`;
               const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
               rowEl.innerHTML = `
-                <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="settings-btn us-notif-tg-link">Open Telegram to pair</a>
-                <span class="us-notif-tg-countdown" id="usTgCountdown">${secsLeft}s</span>
+                <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
+                <div class="us-notif-ch-body">
+                  <div class="us-notif-ch-name">Telegram</div>
+                  <div class="us-notif-ch-sub">Waiting for pairing...</div>
+                </div>
+                <div class="us-notif-ch-actions">
+                  <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
+                  <span class="us-notif-tg-countdown" id="usTgCountdown">${secsLeft}s</span>
+                </div>
               `;
               let remaining = secsLeft;
               clearNotifPoll();
@@ -788,7 +836,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             const user = getCurrentClerkUser();
             const email = user?.email;
             if (!email) {
-              const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
+              const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
               if (rowEl) {
                 rowEl.querySelector('.us-notif-error')?.remove();
                 rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">No email found on your account</span>');
@@ -806,7 +854,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             const url = input?.value?.trim() ?? '';
             const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
             if (!SLACK_RE.test(url)) {
-              const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
+              const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
               if (rowEl) {
                 const existing = rowEl.querySelector('.us-notif-error');
                 if (existing) existing.remove();

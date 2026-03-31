@@ -178,6 +178,19 @@ http.route({
       chatId,
     });
 
+    // Send welcome message to the newly paired chat
+    const botToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
+    if (botToken) {
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "✅ WorldMonitor connected! You'll receive breaking news alerts here.",
+        }),
+      }).catch(() => {});
+    }
+
     return new Response("OK", { status: 200 });
   }),
 });
