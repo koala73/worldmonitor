@@ -1,4 +1,4 @@
-import type { AppContext, AppModule } from '@/app/app-context';
+import type { AppContext, AppModule, UpdateState } from '@/app/app-context';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { trackUpdateShown, trackUpdateClicked, trackUpdateDismissed } from '@/services/analytics';
 import { escapeHtml } from '@/utils/sanitize';
@@ -54,7 +54,22 @@ export class DesktopUpdater implements AppModule {
     logger('[updater]', outcome, context);
   }
 
+  private setUpdateState(state: UpdateState): void {
+    this.ctx.updateState = state;
+    document.dispatchEvent(new CustomEvent('wm:update-state'));
+  }
+
+  private resolveDownloadUrl(data: { assets?: { name: string; browser_download_url: string }[] }): string {
+    const buildArch = (typeof __BUILD_ARCH__ === 'undefined' ? 'aarch64' : __BUILD_ARCH__) as string;
+    const assets = Array.isArray(data.assets) ? data.assets : [];
+    const dmg =
+      assets.find(a => typeof a.name === 'string' && a.name.endsWith('.dmg') && a.name.includes(buildArch)) ??
+      assets.find(a => typeof a.name === 'string' && a.name.endsWith('.dmg'));
+    return dmg?.browser_download_url ?? 'https://github.com/bradleybond512/worldmonitor-macos/releases/latest';
+  }
+
   private async checkForUpdate(manual = false): Promise<void> {
+    this.setUpdateState({ phase: 'checking' });
     try {
       const res = await fetch(
         'https://api.github.com/repos/bradleybond512/worldmonitor-macos/releases/latest',
@@ -62,6 +77,7 @@ export class DesktopUpdater implements AppModule {
       );
       if (!res.ok) {
         this.logUpdaterOutcome('fetch_failed', { status: res.status });
+        this.setUpdateState({ phase: 'up-to-date' });
         if (manual) this.showInfoToast('Could not reach update server. Check your connection.');
         return;
       }
@@ -71,41 +87,35 @@ export class DesktopUpdater implements AppModule {
       const remote = tagName.replace(/^v/, '');
       if (!remote) {
         this.logUpdaterOutcome('fetch_failed', { reason: 'missing_remote_version' });
+        this.setUpdateState({ phase: 'up-to-date' });
         return;
       }
 
       const current = __APP_VERSION__;
       if (!this.isNewerVersion(remote, current)) {
         this.logUpdaterOutcome('no_update', { current, remote });
+        this.setUpdateState({ phase: 'up-to-date' });
         if (manual) this.showInfoToast(`You're up to date — v${current} is the latest version.`);
         return;
       }
 
+      const downloadUrl = this.resolveDownloadUrl(data);
       const dismissKey = `wm-update-dismissed-${remote}`;
       if (localStorage.getItem(dismissKey) && !manual) {
         this.logUpdaterOutcome('update_available', { current, remote, dismissed: true });
+        this.setUpdateState({ phase: 'available', version: remote, downloadUrl });
         return;
       }
 
-      // Find the macOS DMG asset that matches the current build architecture
-      // __BUILD_ARCH__ is injected by Vite at build time ('aarch64' or 'x64')
-      const buildArch = (typeof __BUILD_ARCH__ === 'undefined' ? 'aarch64' : __BUILD_ARCH__) as string;
-      const assets: { name: string; browser_download_url: string }[] =
-        Array.isArray(data.assets) ? data.assets : [];
-      // Prefer arch-specific DMG; fall back to any DMG if exact match not found
-      const dmg =
-        assets.find(a => typeof a.name === 'string' && a.name.endsWith('.dmg') && a.name.includes(buildArch)) ??
-        assets.find(a => typeof a.name === 'string' && a.name.endsWith('.dmg'));
-      const downloadUrl = dmg?.browser_download_url
-        ?? 'https://github.com/bradleybond512/worldmonitor-macos/releases/latest';
-
       this.logUpdaterOutcome('update_available', { current, remote, dismissed: false });
+      this.setUpdateState({ phase: 'available', version: remote, downloadUrl });
       trackUpdateShown(current, remote);
       await this.showUpdateToast(remote, downloadUrl);
     } catch (error) {
       this.logUpdaterOutcome('fetch_failed', {
         error: error instanceof Error ? error.message : String(error),
       });
+      this.setUpdateState({ phase: 'up-to-date' });
     }
   }
 
