@@ -1255,11 +1255,6 @@ tr.diag-err td { color: var(--settings-red); }
   background: color-mix(in srgb, var(--settings-accent) 85%, white);
 }
 
-.us-notif-tg-countdown {
-  font-size: 10px;
-  color: var(--settings-text-secondary);
-}
-
 .us-notif-tg-inline-link {
   color: var(--settings-accent);
   text-decoration: none;
@@ -1340,6 +1335,17 @@ tr.diag-err td { color: var(--settings-red); }
 .us-notif-tg-copy-btn:hover {
   background: var(--settings-accent);
   color: #fff;
+}
+
+.us-notif-tg-expired {
+  color: var(--settings-text-secondary);
+  font-style: italic;
+}
+
+.us-notif-tg-countdown {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  white-space: nowrap;
 }
 
 .us-notif-signin {
