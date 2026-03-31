@@ -293,6 +293,33 @@ describe('api/slack/oauth/callback.ts safety', () => {
   });
 });
 
+describe('vercel.json CSP: Slack OAuth callback has unsafe-inline override', () => {
+  const vercelJson = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf-8'));
+
+  it('vercel.json has a CSP override for /api/slack/oauth/callback allowing unsafe-inline scripts', () => {
+    const rule = vercelJson.headers?.find((r) => r.source === '/api/slack/oauth/callback');
+    assert.ok(rule, 'vercel.json: missing header rule for /api/slack/oauth/callback — the callback page serves inline JS (postMessage + window.close) which is blocked by the global CSP');
+    const csp = rule.headers?.find((h) => h.key === 'Content-Security-Policy');
+    assert.ok(csp, 'vercel.json: /api/slack/oauth/callback rule must include a Content-Security-Policy header');
+    assert.ok(
+      csp.value.includes("'unsafe-inline'"),
+      "vercel.json: /api/slack/oauth/callback CSP must include 'unsafe-inline' in script-src — the callback page uses an inline <script> to call postMessage and window.close()",
+    );
+  });
+
+  it('/api/slack/oauth/callback CSP override appears after the global CSP rule (must override it)', () => {
+    const headers = vercelJson.headers ?? [];
+    const globalIdx = headers.findIndex((r) => r.source === '/((?!docs).*)');
+    const callbackIdx = headers.findIndex((r) => r.source === '/api/slack/oauth/callback');
+    assert.ok(globalIdx !== -1, 'vercel.json: global CSP rule not found');
+    assert.ok(callbackIdx !== -1, 'vercel.json: callback CSP override not found');
+    assert.ok(
+      callbackIdx > globalIdx,
+      'vercel.json: /api/slack/oauth/callback CSP override must appear AFTER the global rule — Vercel applies rules in order and the last match wins',
+    );
+  });
+});
+
 describe('Edge Function module isolation', () => {
   for (const { name, path } of allEdgeFunctions) {
     it(`${name} does not import from ../server/ (Edge Functions cannot resolve cross-directory TS)`, () => {

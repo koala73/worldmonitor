@@ -908,7 +908,12 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
         // Listen for OAuth popup completion
         const onMessage = (e: MessageEvent): void => {
-          if (e.origin !== window.location.origin) return;
+          // Accept from same origin OR any worldmonitor.app domain (callback is always on primary domain)
+          const trusted = e.origin === window.location.origin ||
+            e.origin === 'https://worldmonitor.app' ||
+            e.origin === 'https://www.worldmonitor.app' ||
+            e.origin.endsWith('.worldmonitor.app');
+          if (!trusted) return;
           if (e.data?.type === 'wm:slack_connected') {
             if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
           } else if (e.data?.type === 'wm:slack_error') {
