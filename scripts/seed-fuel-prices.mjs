@@ -20,7 +20,7 @@ const USD_L_MAX = 3.50;
 // EU country name to ISO2 mapping
 const EU_COUNTRY_MAP = {
   'Austria': 'AT', 'Belgium': 'BE', 'Bulgaria': 'BG', 'Croatia': 'HR',
-  'Cyprus': 'CY', 'Czech Republic': 'CZ', 'Denmark': 'DK', 'Estonia': 'EE',
+  'Cyprus': 'CY', 'Czech Republic': 'CZ', 'Czechia': 'CZ', 'Denmark': 'DK', 'Estonia': 'EE',
   'Finland': 'FI', 'France': 'FR', 'Germany': 'DE', 'Greece': 'GR',
   'Hungary': 'HU', 'Ireland': 'IE', 'Italy': 'IT', 'Latvia': 'LV',
   'Lithuania': 'LT', 'Luxembourg': 'LU', 'Malta': 'MT', 'Netherlands': 'NL',
@@ -273,7 +273,15 @@ async function fetchEU_CSV() {
     // Convert to array-of-arrays (like xlsx's header:1 mode)
     const rows = [];
     sheet.eachRow({ includeEmpty: true }, (row) => {
-      rows.push(row.values.slice(1).map(v => (v != null ? String(v) : '')));
+      rows.push(row.values.slice(1).map(v => {
+        if (v == null) return '';
+        if (v instanceof Date) {
+          const d = v.getUTCDate().toString().padStart(2, '0');
+          const m = (v.getUTCMonth() + 1).toString().padStart(2, '0');
+          return `${d}/${m}/${v.getUTCFullYear()}`;
+        }
+        return String(v);
+      }));
     });
 
     // EU Oil Bulletin XLSX format (confirmed from live file):
