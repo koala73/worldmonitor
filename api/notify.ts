@@ -78,7 +78,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const res = await fetch(
     `${upstashUrl}/lpush/wm:events:queue/${encodeURIComponent(msg)}`,
-    { method: 'POST', headers: { Authorization: `Bearer ${upstashToken}` } },
+    { method: 'POST', headers: { Authorization: `Bearer ${upstashToken}`, 'User-Agent': 'worldmonitor-edge/1.0' } },
   );
 
   if (!res.ok) {
