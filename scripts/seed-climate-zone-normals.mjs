@@ -11,44 +11,12 @@
  */
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { ALL_ZONES, MIN_ZONES } from './_climate-zones.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'climate:zone-normals:v1';
 const CACHE_TTL = 30 * 24 * 60 * 60; // 30 days in seconds
-
-// Geopolitical zones (original 15 — must be kept in sync with seed-climate-anomalies.mjs)
-const ZONES = [
-  { name: 'Ukraine', lat: 48.4, lon: 31.2 },
-  { name: 'Middle East', lat: 33.0, lon: 44.0 },
-  { name: 'Sahel', lat: 14.0, lon: 0.0 },
-  { name: 'Horn of Africa', lat: 8.0, lon: 42.0 },
-  { name: 'South Asia', lat: 25.0, lon: 78.0 },
-  { name: 'California', lat: 36.8, lon: -119.4 },
-  { name: 'Amazon', lat: -3.4, lon: -60.0 },
-  { name: 'Australia', lat: -25.0, lon: 134.0 },
-  { name: 'Mediterranean', lat: 38.0, lon: 20.0 },
-  { name: 'Taiwan Strait', lat: 24.0, lon: 120.0 },
-  { name: 'Myanmar', lat: 19.8, lon: 96.7 },
-  { name: 'Central Africa', lat: 4.0, lon: 22.0 },
-  { name: 'Southern Africa', lat: -25.0, lon: 28.0 },
-  { name: 'Central Asia', lat: 42.0, lon: 65.0 },
-  { name: 'Caribbean', lat: 19.0, lon: -72.0 },
-];
-
-// Climate-specific zones (7 new zones)
-const CLIMATE_ZONES = [
-  { name: 'Arctic', lat: 70.0, lon: 0.0 },                    // sea ice proxy
-  { name: 'Greenland', lat: 72.0, lon: -42.0 },               // ice sheet melt
-  { name: 'WestAntarctic', lat: -78.0, lon: -100.0 },        // Antarctic Ice Sheet
-  { name: 'TibetanPlateau', lat: 31.0, lon: 91.0 },          // third pole
-  { name: 'CongoBasin', lat: -1.0, lon: 24.0 },              // largest tropical forest after Amazon
-  { name: 'CoralTriangle', lat: -5.0, lon: 128.0 },          // reef bleaching proxy
-  { name: 'NorthAtlantic', lat: 55.0, lon: -30.0 },          // AMOC slowdown signal
-];
-
-// All 22 zones — must match ALL_ZONES in seed-climate-anomalies.mjs
-const ALL_ZONES = [...ZONES, ...CLIMATE_ZONES];
 
 // Month names for logging
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -172,7 +140,10 @@ async function fetchAllZoneNormals() {
 }
 
 function validate(data) {
-  return Array.isArray(data?.zones) && data.zones.length > 0;
+  // Mirror the anomalies seeder's MIN_ZONES threshold (ceil(22 * 2/3) = 15).
+  // A partial seeder run that writes fewer zones would cause the anomalies
+  // seeder to throw on every run until this cache expires (up to 30 days).
+  return Array.isArray(data?.zones) && data.zones.length >= MIN_ZONES;
 }
 
 runSeed('climate', 'zone-normals', CANONICAL_KEY, fetchAllZoneNormals, {
