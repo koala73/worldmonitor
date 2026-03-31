@@ -27,6 +27,9 @@ export default defineSchema({
         webhookEnvelope: v.string(),
         verified: v.boolean(),
         linkedAt: v.number(),
+        slackChannelName: v.optional(v.string()),
+        slackTeamName: v.optional(v.string()),
+        slackConfigurationUrl: v.optional(v.string()),
       }),
       v.object({
         userId: v.string(),

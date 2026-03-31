@@ -13,7 +13,7 @@ import {
   getChannelsData,
   createPairingToken,
   setEmailChannel,
-  setSlackChannel,
+  startSlackOAuth,
   deleteChannel,
   saveAlertRules,
   type NotificationChannel,
@@ -618,30 +618,88 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
         signal.addEventListener('abort', clearNotifPoll);
 
+        function channelIcon(type: ChannelType): string {
+          if (type === 'telegram') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>`;
+          if (type === 'email') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>`;
+          return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>`;
+        }
+
+        const CHANNEL_LABELS: Record<ChannelType, string> = { telegram: 'Telegram', email: 'Email', slack: 'Slack' };
+
         function renderChannelRow(channel: NotificationChannel | null, type: ChannelType): string {
+          const icon = channelIcon(type);
+          const name = CHANNEL_LABELS[type];
+
           if (channel?.verified) {
-            const label = type === 'telegram' ? `@${channel.chatId ?? 'Telegram'}`
-              : type === 'email' ? (channel.email ?? 'Email')
-              : 'Slack webhook';
-            return `<div class="us-notif-channel-row" data-channel-type="${type}">
-              <span class="us-notif-channel-label">${escapeHtml(label)}</span>
-              <button type="button" class="settings-btn settings-btn-secondary us-notif-disconnect" data-channel="${type}">Disconnect</button>
+            let sub: string;
+            let manageLink = '';
+            if (type === 'telegram') {
+              sub = `@${escapeHtml(channel.chatId ?? 'connected')}`;
+            } else if (type === 'email') {
+              sub = escapeHtml(channel.email ?? 'connected');
+            } else {
+              // Slack: show #channel · team from OAuth metadata
+              const rawCh = channel.slackChannelName ?? '';
+              const ch = rawCh ? `#${escapeHtml(rawCh.startsWith('#') ? rawCh.slice(1) : rawCh)}` : 'connected';
+              const team = channel.slackTeamName ? ` · ${escapeHtml(channel.slackTeamName)}` : '';
+              sub = ch + team;
+              if (channel.slackConfigurationUrl) {
+                manageLink = `<a href="${escapeHtml(channel.slackConfigurationUrl)}" target="_blank" rel="noopener noreferrer" class="us-notif-manage-link">Manage</a>`;
+              }
+            }
+            return `<div class="us-notif-ch-row us-notif-ch-on" data-channel-type="${type}">
+              <div class="us-notif-ch-icon">${icon}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-sub">${sub}</div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <span class="us-notif-ch-badge">Connected</span>
+                ${manageLink}
+                <button type="button" class="us-notif-ch-btn us-notif-disconnect" data-channel="${type}">Remove</button>
+              </div>
             </div>`;
           }
+
           if (type === 'telegram') {
-            return `<div class="us-notif-channel-row" data-channel-type="telegram">
-              <button type="button" class="settings-btn us-notif-telegram-connect" id="usConnectTelegram">Connect Telegram</button>
+            return `<div class="us-notif-ch-row" data-channel-type="telegram">
+              <div class="us-notif-ch-icon">${icon}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-sub">Not connected</div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-telegram-connect" id="usConnectTelegram">Connect</button>
+              </div>
             </div>`;
           }
+
           if (type === 'email') {
-            return `<div class="us-notif-channel-row" data-channel-type="email">
-              <button type="button" class="settings-btn us-notif-email-connect" id="usConnectEmail">Link Email</button>
+            return `<div class="us-notif-ch-row" data-channel-type="email">
+              <div class="us-notif-ch-icon">${icon}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-sub">Use your account email</div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-email-connect" id="usConnectEmail">Link</button>
+              </div>
             </div>`;
           }
+
           if (type === 'slack') {
-            return `<div class="us-notif-channel-row" data-channel-type="slack">
-              <input type="url" class="unified-settings-select" id="usSlackWebhookUrl" placeholder="https://hooks.slack.com/services/..." />
-              <button type="button" class="settings-btn us-notif-slack-connect" id="usConnectSlack">Connect Slack</button>
+            return `<div class="us-notif-ch-row" data-channel-type="slack">
+              <div class="us-notif-ch-icon">${icon}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-sub">Not connected</div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <button type="button" class="us-notif-slack-oauth" id="usConnectSlack">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="margin-right:5px;vertical-align:-1px"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>
+                  Add to Slack
+                </button>
+              </div>
             </div>`;
           }
           return '';
@@ -658,7 +716,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             html += renderChannelRow(channel, type);
           }
 
-          html += `<div class="ai-flow-section-label">Alert Rules</div>
+          html += `<div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
                 <div class="ai-flow-toggle-label">Enable notifications</div>
@@ -707,12 +765,13 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const enabled = enabledEl.checked;
           const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
           const existing = Array.from(container.querySelectorAll<HTMLElement>('[data-channel-type]'))
-            .filter(el => el.querySelector('.us-notif-disconnect'))
+            .filter(el => el.classList.contains('us-notif-ch-on'))
             .map(el => el.dataset.channelType as ChannelType);
           const channels = [...new Set([...existing, newChannel])];
           void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels });
         }
 
+        let slackOAuthPopup: Window | null = null;
         let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
         signal.addEventListener('abort', () => {
           if (alertRuleDebounceTimer !== null) {
@@ -733,7 +792,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               const connectedChannelTypes = Array.from(
                 container.querySelectorAll<HTMLElement>('[data-channel-type]'),
               )
-                .filter(el => el.querySelector('.us-notif-disconnect'))
+                .filter(el => el.classList.contains('us-notif-ch-on'))
                 .map(el => el.dataset.channelType as ChannelType);
               void saveAlertRules({
                 variant: SITE_VARIANT,
@@ -750,7 +809,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const target = e.target as HTMLElement;
 
           if (target.closest('#usConnectTelegram')) {
-            const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
+            const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
             if (!rowEl) return;
             createPairingToken().then(({ token, expiresAt }) => {
               if (signal.aborted) return;
@@ -758,8 +817,15 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               const deepLink = `https://t.me/${botUsername}?start=${token}`;
               const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
               rowEl.innerHTML = `
-                <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="settings-btn us-notif-tg-link">Open Telegram to pair</a>
-                <span class="us-notif-tg-countdown" id="usTgCountdown">${secsLeft}s</span>
+                <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
+                <div class="us-notif-ch-body">
+                  <div class="us-notif-ch-name">Telegram</div>
+                  <div class="us-notif-ch-sub">Waiting for pairing...</div>
+                </div>
+                <div class="us-notif-ch-actions">
+                  <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
+                  <span class="us-notif-tg-countdown" id="usTgCountdown">${secsLeft}s</span>
+                </div>
               `;
               let remaining = secsLeft;
               clearNotifPoll();
@@ -788,7 +854,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             const user = getCurrentClerkUser();
             const email = user?.email;
             if (!email) {
-              const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
+              const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
               if (rowEl) {
                 rowEl.querySelector('.us-notif-error')?.remove();
                 rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">No email found on your account</span>');
@@ -802,21 +868,32 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           }
 
           if (target.closest('#usConnectSlack')) {
-            const input = container.querySelector<HTMLInputElement>('#usSlackWebhookUrl');
-            const url = input?.value?.trim() ?? '';
-            const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
-            if (!SLACK_RE.test(url)) {
-              const rowEl = target.closest('.us-notif-channel-row') as HTMLElement | null;
-              if (rowEl) {
-                const existing = rowEl.querySelector('.us-notif-error');
-                if (existing) existing.remove();
-                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Invalid Slack webhook URL format</span>');
-              }
+            const btn = target.closest<HTMLButtonElement>('#usConnectSlack');
+            // Prevent double-open: reuse existing popup if still open
+            if (slackOAuthPopup && !slackOAuthPopup.closed) {
+              slackOAuthPopup.focus();
               return;
             }
-            setSlackChannel(url).then(() => {
-              if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
-            }).catch(() => {});
+            if (btn) btn.textContent = 'Connecting…';
+            startSlackOAuth().then((oauthUrl) => {
+              if (signal.aborted) return;
+              const popup = window.open(oauthUrl, 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
+              if (!popup) {
+                // Popup was blocked — redirect-to-Slack fallback doesn't work because
+                // the callback page expects window.opener and has no way to return to
+                // settings after approval. Show a clear instruction instead.
+                if (btn) btn.textContent = 'Add to Slack';
+                const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
+                if (rowEl) {
+                  rowEl.querySelector('.us-notif-error')?.remove();
+                  rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Popup blocked — please allow popups for this site, then try again.</span>');
+                }
+              } else {
+                slackOAuthPopup = popup;
+              }
+            }).catch(() => {
+              if (btn && !signal.aborted) btn.textContent = 'Add to Slack';
+            });
             return;
           }
 
@@ -829,6 +906,32 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             return;
           }
         }, { signal });
+
+        // Listen for OAuth popup completion
+        const onMessage = (e: MessageEvent): void => {
+          // Bind trust to both: (1) a WM-owned origin (callback is always on worldmonitor.app,
+          // but settings may be open on a different *.worldmonitor.app subdomain) and
+          // (2) the exact popup window we opened — prevents any sibling subdomain from
+          // forging wm:slack_connected and triggering saveRuleWithNewChannel.
+          const trustedOrigin = e.origin === window.location.origin ||
+            e.origin === 'https://worldmonitor.app' ||
+            e.origin === 'https://www.worldmonitor.app' ||
+            e.origin.endsWith('.worldmonitor.app');
+          const trustedSource = slackOAuthPopup !== null && e.source === slackOAuthPopup;
+          if (!trustedOrigin || !trustedSource) return;
+          if (e.data?.type === 'wm:slack_connected') {
+            if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
+          } else if (e.data?.type === 'wm:slack_error') {
+            const rowEl = container.querySelector<HTMLElement>('[data-channel-type="slack"]');
+            if (rowEl) {
+              rowEl.querySelector('.us-notif-error')?.remove();
+              rowEl.insertAdjacentHTML('beforeend', `<span class="us-notif-error">Slack connection failed: ${escapeHtml(String(e.data.error ?? 'unknown'))}</span>`);
+              const btn = rowEl.querySelector<HTMLButtonElement>('#usConnectSlack');
+              if (btn) btn.textContent = 'Add to Slack';
+            }
+          }
+        };
+        window.addEventListener('message', onMessage, { signal });
       }
 
       return () => ac.abort();

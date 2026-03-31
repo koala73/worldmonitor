@@ -30,7 +30,7 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 async function upstashRest(...args) {
   const res = await fetch(`${UPSTASH_URL}/${args.map(encodeURIComponent).join('/')}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
   });
   if (!res.ok) {
     console.warn(`[relay] Upstash error ${res.status} for command ${args[0]}`);
@@ -62,6 +62,7 @@ async function deactivateChannel(userId, channelType) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${RELAY_SECRET}`,
+        'User-Agent': 'worldmonitor-relay/1.0',
       },
       body: JSON.stringify({ userId, channelType }),
       signal: AbortSignal.timeout(10000),
@@ -83,7 +84,7 @@ function isPrivateIP(ip) {
 async function sendTelegram(userId, chatId, text) {
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
     body: JSON.stringify({ chat_id: chatId, text }),
     signal: AbortSignal.timeout(10000),
   });
@@ -134,7 +135,7 @@ async function sendSlack(userId, webhookEnvelope, text) {
   }
   const res = await fetch(webhookUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
     body: JSON.stringify({ text, unfurl_links: false }),
     signal: AbortSignal.timeout(10000),
   });
@@ -177,7 +178,36 @@ function formatMessage(event) {
   return parts.join('\n');
 }
 
+async function processWelcome(event) {
+  const { userId, channelType } = event;
+  if (!userId || !channelType) return;
+  // Telegram welcome is sent directly by Convex; no relay send needed.
+  if (channelType === 'telegram') return;
+  let channels = [];
+  try {
+    const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+      body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (chRes.ok) channels = (await chRes.json()) ?? [];
+  } catch {}
+
+  const ch = channels.find(c => c.channelType === channelType && c.verified);
+  if (!ch) return;
+
+  // Telegram welcome is sent directly by convex/http.ts after claimPairingToken succeeds.
+  const text = `✅ WorldMonitor connected! You'll receive breaking news alerts here.`;
+  if (channelType === 'slack' && ch.webhookEnvelope) {
+    await sendSlack(userId, ch.webhookEnvelope, text);
+  } else if (channelType === 'email' && ch.email) {
+    await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
+  }
+}
+
 async function processEvent(event) {
+  if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   console.log(`[relay] Processing event: ${event.eventType} (${event.severity ?? 'high'})`);
 
   let enabledRules;
@@ -210,6 +240,7 @@ async function processEvent(event) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${RELAY_SECRET}`,
+          'User-Agent': 'worldmonitor-relay/1.0',
         },
         body: JSON.stringify({ userId: rule.userId }),
         signal: AbortSignal.timeout(10000),
@@ -240,11 +271,14 @@ async function processEvent(event) {
 async function subscribe() {
   console.log('[relay] Starting notification relay...');
   while (true) {
+    // Fresh decoder per connection — avoids stale multibyte state from a mid-chunk disconnect
+    const decoder = new TextDecoder();
+    let reader;
     try {
       const res = await fetch(
         `${UPSTASH_URL}/subscribe/wm:events:notify`,
         {
-          headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+          headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
           signal: AbortSignal.timeout(35_000),
         }
       );
@@ -253,22 +287,44 @@ async function subscribe() {
         await new Promise(r => setTimeout(r, 5000));
         continue;
       }
-      const json = await res.json().catch(() => null);
-      const message = json?.message;
-      if (message) {
-        try {
-          const event = JSON.parse(message);
-          await processEvent(event);
-        } catch (err) {
-          console.warn('[relay] Failed to parse event:', err.message);
+      // Upstash subscribe returns an SSE stream, not a single JSON blob.
+      // Each line format: "data: message,<channel>,<payload>"
+      //                or "data: subscribe,<channel>,<count>"
+      reader = res.body.getReader();
+      let buf = '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let nl;
+          while ((nl = buf.indexOf('\n')) !== -1) {
+            const line = buf.slice(0, nl).trimEnd();
+            buf = buf.slice(nl + 1);
+            if (!line.startsWith('data:')) continue;
+            const raw = line.slice(5).trim(); // e.g. "message,wm:events:notify,<json>"
+            if (!raw.startsWith('message,')) continue;
+            // Split on second comma; message payload may contain commas
+            const secondComma = raw.indexOf(',', 8); // 'message,'.length === 8
+            if (secondComma === -1) continue;
+            const message = raw.slice(secondComma + 1);
+            try {
+              const event = JSON.parse(message);
+              await processEvent(event);
+            } catch (err) {
+              console.warn('[relay] Failed to parse event:', err.message);
+            }
+          }
         }
+      } finally {
+        reader.cancel().catch(() => {});
       }
     } catch (err) {
-      if (err?.name !== 'TimeoutError') {
+      if (err?.name !== 'TimeoutError' && err?.name !== 'AbortError') {
         console.warn('[relay] Subscribe error:', err.message);
         await new Promise(r => setTimeout(r, 5000));
       }
-      // TimeoutError = normal long-poll timeout, reconnect immediately
+      // TimeoutError/AbortError = normal 35s long-poll cycle, reconnect immediately
     }
   }
 }

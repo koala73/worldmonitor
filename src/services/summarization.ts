@@ -43,7 +43,7 @@ const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({
   name: 'SummaryResult',
   cacheTtlMs: 2 * 60 * 60 * 1000,
   persistCache: true,
-  maxCacheEntries: 32,
+  maxCacheEntries: 128,
 });
 
 const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: '', model: '', fallback: true, tokens: 0, error: '', errorType: '', status: 'SUMMARIZE_STATUS_UNSPECIFIED', statusDetail: '' };

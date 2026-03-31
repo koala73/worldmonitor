@@ -22,6 +22,8 @@ const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
 // AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).
 // Format stored: v1:<base64(iv[12] || tag[16] || ciphertext)>
@@ -41,6 +43,23 @@ async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
   payload.set(ciphertext, 28);
   const binary = Array.from(payload, (b) => String.fromCharCode(b)).join('');
   return `v1:${btoa(binary)}`;
+}
+
+async function publishWelcome(userId: string, channelType: string): Promise<void> {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  const msg = JSON.stringify({ eventType: 'channel_welcome', userId, channelType });
+  try {
+    await fetch(`${UPSTASH_URL}/publish/wm:events:notify/${encodeURIComponent(msg)}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+        'User-Agent': 'worldmonitor-edge/1.0',
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
@@ -73,7 +92,7 @@ interface PostBody {
   channels?: string[];
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
 
   if (req.method === 'OPTIONS') {
@@ -110,7 +129,7 @@ export default async function handler(req: Request): Promise<Response> {
       return json(data, 200, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
-      await captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
+      void captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
       return json({ error: 'Failed to fetch' }, 500, corsHeaders);
     }
   }
@@ -152,6 +171,9 @@ export default async function handler(req: Request): Promise<Response> {
           console.error('[notification-channels] POST set-channel relay error:', resp.status);
           return json({ error: 'Operation failed' }, 500, corsHeaders);
         }
+        const setResult = await resp.json() as { ok: boolean; isNew?: boolean };
+        // Only send welcome on first connect, not re-links; use waitUntil so the edge isolate doesn't terminate early
+        if (setResult.isNew) ctx.waitUntil(publishWelcome(session.userId, channelType));
         return json({ ok: true }, 200, corsHeaders);
       }
 
@@ -187,7 +209,7 @@ export default async function handler(req: Request): Promise<Response> {
       return json({ error: 'Unknown action' }, 400, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
-      await captureEdgeException(err, { handler: 'notification-channels', method: 'POST' });
+      void captureEdgeException(err, { handler: 'notification-channels', method: 'POST' });
       return json({ error: 'Operation failed' }, 500, corsHeaders);
     }
   }
