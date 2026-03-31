@@ -770,6 +770,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels });
         }
 
+        let slackOAuthPopup: Window | null = null;
         let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
         signal.addEventListener('abort', () => {
           if (alertRuleDebounceTimer !== null) {
@@ -867,6 +868,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
           if (target.closest('#usConnectSlack')) {
             const btn = target.closest<HTMLButtonElement>('#usConnectSlack');
+            // Prevent double-open: reuse existing popup if still open
+            if (slackOAuthPopup && !slackOAuthPopup.closed) {
+              slackOAuthPopup.focus();
+              return;
+            }
             if (btn) btn.textContent = 'Connecting…';
             startSlackOAuth().then((oauthUrl) => {
               if (signal.aborted) return;
@@ -874,6 +880,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               if (!popup) {
                 // Popup blocked — fall back to full-page redirect
                 window.location.href = oauthUrl;
+              } else {
+                slackOAuthPopup = popup;
               }
             }).catch(() => {
               if (btn && !signal.aborted) btn.textContent = 'Add to Slack';
@@ -893,6 +901,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
         // Listen for OAuth popup completion
         const onMessage = (e: MessageEvent): void => {
+          if (e.origin !== window.location.origin) return;
           if (e.data?.type === 'wm:slack_connected') {
             if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
           } else if (e.data?.type === 'wm:slack_error') {

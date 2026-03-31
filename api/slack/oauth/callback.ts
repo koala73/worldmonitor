@@ -51,7 +51,12 @@ async function upstashDel(key: string): Promise<void> {
   await fetch(`${UPSTASH_URL}/del/${encodeURIComponent(key)}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+    signal: AbortSignal.timeout(5000),
   }).catch(() => {});
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 async function publishWelcome(userId: string, channelType: string): Promise<void> {
@@ -86,7 +91,7 @@ function errorAndClose(error: string): Response {
   const msg = JSON.stringify({ type: 'wm:slack_error', error });
   return htmlResponse(
     `window.opener&&window.opener.postMessage(${msg},'${APP_ORIGIN}');window.close();`,
-    `Slack connection failed: ${error}. You can close this window.`,
+    `Slack connection failed: ${escapeHtml(error)}. You can close this window.`,
   );
 }
 
