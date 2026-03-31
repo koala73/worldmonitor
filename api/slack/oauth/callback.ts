@@ -64,7 +64,7 @@ function escapeHtml(s: string): string {
 
 async function publishWelcome(userId: string, channelType: string): Promise<void> {
   const msg = JSON.stringify({ eventType: 'channel_welcome', userId, channelType });
-  await fetch(`${UPSTASH_URL}/publish/wm:events:notify/${encodeURIComponent(msg)}`, {
+  await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
   }).catch(() => {});

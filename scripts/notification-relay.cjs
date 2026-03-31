@@ -266,65 +266,31 @@ async function processEvent(event) {
   }
 }
 
-// ── Subscribe loop ────────────────────────────────────────────────────────────
+// ── Poll loop (RPOP queue) ────────────────────────────────────────────────────
+//
+// Publishers push to wm:events:queue via LPUSH (FIFO: LPUSH head, RPOP tail).
+// The relay polls RPOP every 1s when idle; processes immediately when messages exist.
+// Advantage over pub/sub: messages survive relay restarts and are not lost.
 
 async function subscribe() {
   console.log('[relay] Starting notification relay...');
   while (true) {
-    // Fresh decoder per connection — avoids stale multibyte state from a mid-chunk disconnect
-    const decoder = new TextDecoder();
-    let reader;
     try {
-      const res = await fetch(
-        `${UPSTASH_URL}/subscribe/wm:events:notify`,
-        {
-          headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-          signal: AbortSignal.timeout(35_000),
+      const result = await upstashRest('RPOP', 'wm:events:queue');
+      if (result) {
+        try {
+          const event = JSON.parse(result);
+          await processEvent(event);
+        } catch (err) {
+          console.warn('[relay] Failed to parse event:', err.message, '| raw:', String(result).slice(0, 120));
         }
-      );
-      if (!res.ok) {
-        console.warn(`[relay] Subscribe response: ${res.status}`);
-        await new Promise(r => setTimeout(r, 5000));
-        continue;
-      }
-      // Upstash subscribe returns an SSE stream, not a single JSON blob.
-      // Each line format: "data: message,<channel>,<payload>"
-      //                or "data: subscribe,<channel>,<count>"
-      reader = res.body.getReader();
-      let buf = '';
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let nl;
-          while ((nl = buf.indexOf('\n')) !== -1) {
-            const line = buf.slice(0, nl).trimEnd();
-            buf = buf.slice(nl + 1);
-            if (!line.startsWith('data:')) continue;
-            const raw = line.slice(5).trim(); // e.g. "message,wm:events:notify,<json>"
-            if (!raw.startsWith('message,')) continue;
-            // Split on second comma; message payload may contain commas
-            const secondComma = raw.indexOf(',', 8); // 'message,'.length === 8
-            if (secondComma === -1) continue;
-            const message = raw.slice(secondComma + 1);
-            try {
-              const event = JSON.parse(message);
-              await processEvent(event);
-            } catch (err) {
-              console.warn('[relay] Failed to parse event:', err.message);
-            }
-          }
-        }
-      } finally {
-        reader.cancel().catch(() => {});
+      } else {
+        // Queue empty — wait 1s before polling again
+        await new Promise(r => setTimeout(r, 1000));
       }
     } catch (err) {
-      if (err?.name !== 'TimeoutError' && err?.name !== 'AbortError') {
-        console.warn('[relay] Subscribe error:', err.message);
-        await new Promise(r => setTimeout(r, 5000));
-      }
-      // TimeoutError/AbortError = normal 35s long-poll cycle, reconnect immediately
+      console.warn('[relay] Poll error:', err.message);
+      await new Promise(r => setTimeout(r, 5000));
     }
   }
 }
