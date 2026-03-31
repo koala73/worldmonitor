@@ -812,14 +812,24 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           if (target.closest('.us-notif-tg-copy-btn')) {
             const btn = target.closest('.us-notif-tg-copy-btn') as HTMLButtonElement;
             const cmd = btn.dataset.cmd ?? '';
-            const doCopy = () => {
+            const markCopied = () => {
               btn.textContent = 'Copied!';
               setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
             };
-            navigator.clipboard.writeText(cmd).then(doCopy).catch(() => {
-              // Fallback for contexts where clipboard API is unavailable
-              try { document.execCommand('copy'); doCopy(); } catch { /* ignore */ }
-            });
+            const execFallback = () => {
+              const ta = document.createElement('textarea');
+              ta.value = cmd;
+              ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+              document.body.appendChild(ta);
+              ta.select();
+              try { document.execCommand('copy'); markCopied(); } catch { /* ignore */ }
+              document.body.removeChild(ta);
+            };
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(cmd).then(markCopied).catch(execFallback);
+            } else {
+              execFallback();
+            }
             return;
           }
 
