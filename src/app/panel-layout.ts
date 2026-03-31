@@ -96,7 +96,7 @@ import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
 import { initMode, setMode, alertFamily, getMode, toggleGhostMode, type AppMode } from '@/services/mode-manager';
 import { isLowPowerMode, setLowPowerMode } from '@/services/low-power';
-import { tryInvokeTauri } from '@/services/tauri-bridge';
+import { tryInvokeTauri, invokeTauri } from '@/services/tauri-bridge';
 import { initModeTransitionCards } from '@/services/mode-transition-card';
 import { initPanelCorrelation } from '@/services/panel-correlation';
 import { getPrimarySavedPlace, getSavedPlace } from '@/services/saved-places';
@@ -156,6 +156,9 @@ export class PanelLayoutManager implements AppModule {
 
   init(): void {
     this.renderLayout();
+    document.addEventListener('wm:update-state', () => {
+      this.renderSidebarUpdateBtn();
+    });
   }
 
   destroy(): void {
@@ -183,6 +186,33 @@ export class PanelLayoutManager implements AppModule {
       document.title = `World Monitor v${__APP_VERSION__}`;
     }
     this.createPanels();
+    if (this.ctx.isDesktopApp) {
+      this.renderSidebarUpdateBtn();
+    }
+  }
+
+  renderSidebarUpdateBtn(): void {
+    const container = document.getElementById('sidebarUpdateBtn');
+    if (!container) return;
+    // Safe: buildSidebarUpdateBtnHtml() uses escapeHtml() on all API-sourced strings.
+    // Only other content is hardcoded markup (class names, "Installing…", "✓", button structure).
+    container.innerHTML = this.buildSidebarUpdateBtnHtml(); // safe-html: escapeHtml applied to all dynamic strings
+
+    const installBtn = container.querySelector<HTMLButtonElement>('#sidebarUpdateInstall');
+    if (!installBtn) return;
+
+    const state = this.ctx.updateState;
+    if (state?.phase !== 'available' || !state.downloadUrl) return;
+
+    const { version, downloadUrl } = state;
+    installBtn.addEventListener('click', () => {
+      this.ctx.updateState = { phase: 'installing' };
+      this.renderSidebarUpdateBtn();
+      invokeTauri<void>('install_update', { downloadUrl }).catch(() => {
+        this.ctx.updateState = { phase: 'available', version, downloadUrl };
+        this.renderSidebarUpdateBtn();
+      });
+    });
   }
 
   private buildVariantSwitcherItems(): string {
@@ -251,6 +281,25 @@ export class PanelLayoutManager implements AppModule {
     return getCurrentTheme() === 'dark'
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
       : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
+  }
+
+  private buildSidebarUpdateBtnHtml(): string {
+    const versionLabel = escapeHtml(`v${__APP_VERSION__}${BETA_MODE ? ' β' : ''}`);
+    const state = this.ctx.updateState;
+    if (!state || state.phase === 'checking') {
+      return `<span class="mac-sidebar-version">${versionLabel}</span>`;
+    }
+    if (state.phase === 'up-to-date') {
+      return `<span class="mac-sidebar-version mac-sidebar-version--ok">${versionLabel} ✓</span>`;
+    }
+    if (state.phase === 'available' && state.version) {
+      const remoteLabel = escapeHtml(`v${state.version}`);
+      return `<button class="mac-sidebar-update-btn" id="sidebarUpdateInstall">${versionLabel} → ${remoteLabel}</button>`;
+    }
+    if (state.phase === 'installing') {
+      return `<span class="mac-sidebar-version mac-sidebar-version--installing">Installing…</span>`;
+    }
+    return `<span class="mac-sidebar-version">${versionLabel}</span>`;
   }
 
   private buildSidebarNav(): string {
@@ -333,7 +382,7 @@ export class PanelLayoutManager implements AppModule {
             </button>
             <button class="mac-sidebar-footer-btn" id="lowPowerBtn" title="Low Power Mode — disable animations and spatial audio">⚡</button>
             <span id="unifiedSettingsMount"></span>
-            <span class="mac-sidebar-version">v${__APP_VERSION__}${BETA_MODE ? ' β' : ''}</span>
+            <span id="sidebarUpdateBtn">${this.buildSidebarUpdateBtnHtml()}</span>
           </div>
         </aside>
 
