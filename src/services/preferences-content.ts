@@ -878,8 +878,15 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               if (signal.aborted) return;
               const popup = window.open(oauthUrl, 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
               if (!popup) {
-                // Popup blocked — fall back to full-page redirect
-                window.location.href = oauthUrl;
+                // Popup was blocked — redirect-to-Slack fallback doesn't work because
+                // the callback page expects window.opener and has no way to return to
+                // settings after approval. Show a clear instruction instead.
+                if (btn) btn.textContent = 'Add to Slack';
+                const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
+                if (rowEl) {
+                  rowEl.querySelector('.us-notif-error')?.remove();
+                  rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Popup blocked — please allow popups for this site, then try again.</span>');
+                }
               } else {
                 slackOAuthPopup = popup;
               }

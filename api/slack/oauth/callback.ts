@@ -19,7 +19,10 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 const CONVEX_SITE_URL = process.env.CONVEX_SITE_URL ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const NOTIFICATION_ENCRYPTION_KEY = process.env.NOTIFICATION_ENCRYPTION_KEY ?? '';
-const APP_ORIGIN = process.env.NEXT_PUBLIC_APP_URL ?? 'https://worldmonitor.app';
+// Use '*' targetOrigin so the message is delivered regardless of which WM subdomain or
+// preview URL the opener is running on. There are no secrets in the payload (channelName,
+// teamName are not sensitive), and the frontend listener already validates e.origin.
+const APP_ORIGIN = '*';
 
 // AES-256-GCM: matches crypto.cjs decrypt format
 // v1:<base64(iv[12] | tag[16] | ciphertext)>
