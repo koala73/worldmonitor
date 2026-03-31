@@ -16,7 +16,7 @@
  * 6-day minimum WoW gap check passes on the next cron run.
  */
 
-import xlsx from 'xlsx';
+import ExcelJS from 'exceljs';
 import { loadEnvFile, CHROME_UA, writeExtraKey, getSharedFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -176,10 +176,15 @@ async function fetchEU_CSV() {
     const resp = await globalThis.fetch(EU_XLSX_URL, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(60000) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const buf = Buffer.from(await resp.arrayBuffer());
-    const workbook = xlsx.read(buf, { type: 'buffer' });
-    const sheetName = workbook.SheetNames.find(n => /with.tax/i.test(n)) ?? workbook.SheetNames.find(n => /price/i.test(n)) ?? workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buf);
+    const sheetNames = workbook.worksheets.map(ws => ws.name);
+    const sheetName = sheetNames.find(n => /with.tax/i.test(n)) ?? sheetNames.find(n => /price/i.test(n)) ?? sheetNames[0];
+    const sheet = workbook.getWorksheet(sheetName);
+    const rows = [];
+    sheet.eachRow({ includeEmpty: true }, (row) => {
+      rows.push(row.values.slice(1).map(v => (v != null ? String(v) : '')));
+    });
 
     let headerRowIdx = -1;
     for (let i = 0; i < Math.min(rows.length, 10); i++) {
