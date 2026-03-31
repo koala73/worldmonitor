@@ -10,6 +10,7 @@ const FEED_TIMEOUT_MS = 15_000;
 const TTL_SECONDS = 7200;
 const XML_ACCEPT = 'application/atom+xml, application/rss+xml, application/xml, text/xml, */*';
 const SEC_USER_AGENT = 'WorldMonitor/2.0 (monitor@worldmonitor.app)';
+const DEFAULT_FETCH = (...args) => globalThis.fetch(...args);
 const HIGH_KEYWORDS = [
   'enforcement', 'charges', 'charged', 'fraud', 'failure', 'failed bank',
   'emergency', 'halt', 'suspension', 'suspended', 'cease', 'desist',
@@ -27,6 +28,8 @@ const REGULATORY_FEEDS = [
   { agency: 'CFTC', url: 'https://www.cftc.gov/RSS/RSSENF/rssenf.xml' },
   { agency: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
   { agency: 'FDIC', url: 'https://public.govdelivery.com/topics/USFDIC_26/feed.rss' },
+  // FINRA still publishes this RSS endpoint over plain HTTP; HTTPS requests fail
+  // from both Node fetch and curl in validation, so keep the official feed URL.
   { agency: 'FINRA', url: 'http://feeds.finra.org/FINRANotices' },
 ];
 
@@ -121,11 +124,16 @@ function yyyymmdd(isoDate) {
   return String(isoDate || '').slice(0, 10).replace(/-/g, '');
 }
 
+function hhmmss(isoDate) {
+  return String(isoDate || '').slice(11, 19).replace(/:/g, '');
+}
+
 function buildActionId(agency, title, publishedAt) {
   const agencySlug = slugifyTitle(agency) || 'agency';
   const titleSlug = slugifyTitle(title) || 'untitled';
   const datePart = yyyymmdd(publishedAt) || 'undated';
-  return `${agencySlug}-${titleSlug}-${datePart}`;
+  const timePart = hhmmss(publishedAt) || '000000';
+  return `${agencySlug}-${titleSlug}-${datePart}-${timePart}`;
 }
 
 function parseRssItems(xml, feedUrl) {
@@ -189,7 +197,7 @@ function dedupeAndSortActions(actions) {
   return deduped;
 }
 
-async function fetchFeed(feed, fetchImpl = globalThis.fetch) {
+async function fetchFeed(feed, fetchImpl = DEFAULT_FETCH) {
   const headers = {
     Accept: XML_ACCEPT,
     'User-Agent': feed.userAgent || CHROME_UA,
@@ -209,7 +217,7 @@ async function fetchFeed(feed, fetchImpl = globalThis.fetch) {
   return normalizeFeedItems(parsed, feed.agency);
 }
 
-async function fetchAllFeeds(fetchImpl = globalThis.fetch, feeds = REGULATORY_FEEDS) {
+async function fetchAllFeeds(fetchImpl = DEFAULT_FETCH, feeds = REGULATORY_FEEDS) {
   const results = await Promise.allSettled(feeds.map((feed) => fetchFeed(feed, fetchImpl)));
   const actions = [];
   let successCount = 0;
@@ -232,25 +240,31 @@ async function fetchAllFeeds(fetchImpl = globalThis.fetch, feeds = REGULATORY_FE
   return dedupeAndSortActions(actions);
 }
 
+<<<<<<< HEAD
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function findMatchedKeywords(title, keywords) {
+function compileKeywordPattern(keyword) {
+  const pattern = `\\b${escapeRegex(keyword.toLowerCase()).replace(/\s+/g, '\\s+')}\\b`;
+  return { keyword, regex: new RegExp(pattern, 'i') };
+}
+
+const HIGH_KEYWORD_PATTERNS = HIGH_KEYWORDS.map(compileKeywordPattern);
+const MEDIUM_KEYWORD_PATTERNS = MEDIUM_KEYWORDS.map(compileKeywordPattern);
+
+function findMatchedKeywords(title, keywordPatterns) {
   const lowerTitle = stripHtml(title).toLowerCase();
-  return keywords.filter((keyword) => {
-    const pattern = `\\b${escapeRegex(keyword.toLowerCase()).replace(/\s+/g, '\\s+')}\\b`;
-    return new RegExp(pattern, 'i').test(lowerTitle);
-  });
+  return keywordPatterns.filter(({ regex }) => regex.test(lowerTitle)).map(({ keyword }) => keyword);
 }
 
 function classifyAction(action) {
-  const highMatches = findMatchedKeywords(action.title, HIGH_KEYWORDS);
+  const highMatches = findMatchedKeywords(action.title, HIGH_KEYWORD_PATTERNS);
   if (highMatches.length > 0) {
     return { ...action, tier: 'high', matchedKeywords: [...new Set(highMatches)] };
   }
 
-  const mediumMatches = findMatchedKeywords(action.title, MEDIUM_KEYWORDS);
+  const mediumMatches = findMatchedKeywords(action.title, MEDIUM_KEYWORD_PATTERNS);
   if (mediumMatches.length > 0) {
     return { ...action, tier: 'medium', matchedKeywords: [...new Set(mediumMatches)] };
   }
@@ -272,12 +286,12 @@ function buildSeedPayload(actions, fetchedAt = Date.now()) {
   };
 }
 
-async function fetchRegulatoryActionPayload(fetchImpl = globalThis.fetch) {
+async function fetchRegulatoryActionPayload(fetchImpl = DEFAULT_FETCH) {
   const actions = await fetchAllFeeds(fetchImpl);
   return buildSeedPayload(actions, Date.now());
 }
 
-async function main(fetchImpl = globalThis.fetch, runSeedImpl = runSeed) {
+async function main(fetchImpl = DEFAULT_FETCH, runSeedImpl = runSeed) {
   return runSeedImpl('regulatory', 'actions', CANONICAL_KEY, () => fetchRegulatoryActionPayload(fetchImpl), {
     ttlSeconds: TTL_SECONDS,
     validateFn: (data) => Array.isArray(data?.actions),
