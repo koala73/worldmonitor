@@ -1272,6 +1272,7 @@ tr.diag-err td { color: var(--settings-red); }
 .us-notif-tg-cmd-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 4px;
 }
@@ -1288,7 +1289,7 @@ tr.diag-err td { color: var(--settings-red); }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 240px;
+  max-width: 180px;
 }
 
 .us-notif-tg-copy-btn {

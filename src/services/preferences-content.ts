@@ -831,10 +831,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                 <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
                 <div class="us-notif-ch-body">
                   <div class="us-notif-ch-name">Telegram</div>
-                  <div class="us-notif-ch-sub">Send this to <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-inline-link">@${escapeHtml(String(botUsername))}</a>:</div>
+                  <div class="us-notif-ch-sub">Copy and send to the bot:</div>
                   <div class="us-notif-tg-cmd-row">
                     <code class="us-notif-tg-cmd">${escapeHtml(startCmd)}</code>
                     <button type="button" class="us-notif-tg-copy-btn" data-cmd="${escapeHtml(startCmd)}">Copy</button>
+                    <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
                   </div>
                 </div>
                 <div class="us-notif-ch-actions">
