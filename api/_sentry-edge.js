@@ -47,7 +47,12 @@ export async function captureEdgeException(err, context = {}) {
       }),
     });
     if (!res.ok) {
-      console.warn(`[sentry-edge] non-2xx response ${res.status} — check VITE_SENTRY_DSN and auth key`);
+      const hint = res.status === 401 || res.status === 403
+        ? ' — check VITE_SENTRY_DSN and auth key'
+        : res.status === 429
+          ? ' — rate limited by Sentry'
+          : ' — Sentry outage or transient error';
+      console.warn(`[sentry-edge] non-2xx response ${res.status}${hint}`);
     }
   } catch (fetchErr) {
     console.warn('[sentry-edge] failed to deliver event:', fetchErr instanceof Error ? fetchErr.message : fetchErr);
