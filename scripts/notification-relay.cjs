@@ -270,6 +270,7 @@ async function processEvent(event) {
 
 async function subscribe() {
   console.log('[relay] Starting notification relay...');
+  const decoder = new TextDecoder();
   while (true) {
     try {
       const res = await fetch(
@@ -284,22 +285,37 @@ async function subscribe() {
         await new Promise(r => setTimeout(r, 5000));
         continue;
       }
-      const json = await res.json().catch(() => null);
-      const message = json?.message;
-      if (message) {
-        try {
-          const event = JSON.parse(message);
-          await processEvent(event);
-        } catch (err) {
-          console.warn('[relay] Failed to parse event:', err.message);
+      // Upstash subscribe returns an SSE stream, not a single JSON blob.
+      // Read line by line and process each `data:` line.
+      const reader = res.body.getReader();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf('\n')) !== -1) {
+          const line = buf.slice(0, nl).trimEnd();
+          buf = buf.slice(nl + 1);
+          if (!line.startsWith('data:')) continue;
+          let parsed;
+          try { parsed = JSON.parse(line.slice(5).trim()); } catch { continue; }
+          // SSE envelope: {type:"subscribe"|"message", channel, message}
+          if (parsed.type !== 'message' || !parsed.message) continue;
+          try {
+            const event = JSON.parse(parsed.message);
+            await processEvent(event);
+          } catch (err) {
+            console.warn('[relay] Failed to parse event:', err.message);
+          }
         }
       }
     } catch (err) {
-      if (err?.name !== 'TimeoutError') {
+      if (err?.name !== 'TimeoutError' && err?.name !== 'AbortError') {
         console.warn('[relay] Subscribe error:', err.message);
         await new Promise(r => setTimeout(r, 5000));
       }
-      // TimeoutError = normal long-poll timeout, reconnect immediately
+      // TimeoutError/AbortError = normal 35s long-poll cycle, reconnect immediately
     }
   }
 }
