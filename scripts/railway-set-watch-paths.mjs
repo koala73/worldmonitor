@@ -120,7 +120,7 @@ async function main() {
 
     // Build expected watch patterns (relative to git repo root)
     const patterns = buildExpectedPatterns(svc.name);
-    const patternsOk = JSON.stringify(currentPatterns.sort()) === JSON.stringify([...patterns].sort());
+    const patternsOk = JSON.stringify([...currentPatterns].sort()) === JSON.stringify([...patterns].sort());
 
     if (patternsOk && startCmdOk && cronScheduleOk) {
       console.log(`  ${svc.name}: already correct`);
