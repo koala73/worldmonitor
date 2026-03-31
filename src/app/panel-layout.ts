@@ -118,6 +118,7 @@ export class PanelLayoutManager implements AppModule {
   private panelDragCleanupHandlers: (() => void)[] = [];
   private criticalBannerEl: HTMLElement | null = null;
   private readonly applyTimeRangeFilterDebounced: () => void;
+  private readonly _onUpdateState = () => { this.renderSidebarUpdateBtn(); };
 
   /** Saved panel order from before a mode switch so Peace Mode can restore it. */
   private _preModeOrder: string[] = [];
@@ -156,12 +157,11 @@ export class PanelLayoutManager implements AppModule {
 
   init(): void {
     this.renderLayout();
-    document.addEventListener('wm:update-state', () => {
-      this.renderSidebarUpdateBtn();
-    });
+    document.addEventListener('wm:update-state', this._onUpdateState);
   }
 
   destroy(): void {
+    document.removeEventListener('wm:update-state', this._onUpdateState);
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
     if (this.criticalBannerEl) {
