@@ -1162,6 +1162,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const ollamaUrl = process.env.OLLAMA_API_URL || process.env.LLM_API_URL;
     const groqKey = process.env.GROQ_API_KEY;
     const openrouterKey = process.env.OPENROUTER_API_KEY;
+    const novitaKey = process.env.NOVITA_API_KEY;
 
     if (ollamaUrl) {
       try {
@@ -1181,7 +1182,6 @@ async function dispatch(requestUrl, req, routes, context) {
         probeOrigin('https://openrouter.ai').then((available) => ({ name: 'openrouter', url: 'https://openrouter.ai', available })),
       );
     }
-    const novitaKey = process.env.NOVITA_API_KEY;
     if (novitaKey) {
       providerChecks.push(
         probeOrigin('https://api.novita.ai').then((available) => ({ name: 'novita', url: 'https://api.novita.ai', available })),
