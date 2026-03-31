@@ -51,7 +51,11 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
   try {
     await fetch(`${UPSTASH_URL}/publish/wm:events:notify/${encodeURIComponent(msg)}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+        'User-Agent': 'worldmonitor-edge/1.0',
+      },
+      signal: AbortSignal.timeout(5000),
     });
   } catch {
     // best-effort
@@ -88,7 +92,7 @@ interface PostBody {
   channels?: string[];
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
 
   if (req.method === 'OPTIONS') {
@@ -168,8 +172,8 @@ export default async function handler(req: Request): Promise<Response> {
           return json({ error: 'Operation failed' }, 500, corsHeaders);
         }
         const setResult = await resp.json() as { ok: boolean; isNew?: boolean };
-        // Only send welcome on first connect, not re-links
-        if (setResult.isNew) void publishWelcome(session.userId, channelType);
+        // Only send welcome on first connect, not re-links; use waitUntil so the edge isolate doesn't terminate early
+        if (setResult.isNew) ctx.waitUntil(publishWelcome(session.userId, channelType));
         return json({ ok: true }, 200, corsHeaders);
       }
 

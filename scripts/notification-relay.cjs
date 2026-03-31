@@ -194,10 +194,9 @@ async function processWelcome(event) {
   const ch = channels.find(c => c.channelType === channelType && c.verified);
   if (!ch) return;
 
+  // Telegram welcome is sent directly by convex/http.ts after claimPairingToken succeeds.
   const text = `✅ WorldMonitor connected! You'll receive breaking news alerts here.`;
-  if (channelType === 'telegram' && ch.chatId) {
-    await sendTelegram(userId, ch.chatId, text);
-  } else if (channelType === 'slack' && ch.webhookEnvelope) {
+  if (channelType === 'slack' && ch.webhookEnvelope) {
     await sendSlack(userId, ch.webhookEnvelope, text);
   } else if (channelType === 'email' && ch.email) {
     await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);

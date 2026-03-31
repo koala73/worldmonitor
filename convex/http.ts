@@ -183,7 +183,7 @@ http.route({
     if (claimed.ok && botToken) {
       fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "User-Agent": "worldmonitor-convex/1.0" },
         body: JSON.stringify({
           chat_id: chatId,
           text: "✅ WorldMonitor connected! You'll receive breaking news alerts here.",
