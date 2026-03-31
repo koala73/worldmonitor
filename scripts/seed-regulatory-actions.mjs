@@ -240,7 +240,6 @@ async function fetchAllFeeds(fetchImpl = DEFAULT_FETCH, feeds = REGULATORY_FEEDS
   return dedupeAndSortActions(actions);
 }
 
-<<<<<<< HEAD
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
