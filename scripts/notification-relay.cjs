@@ -270,8 +270,10 @@ async function processEvent(event) {
 
 async function subscribe() {
   console.log('[relay] Starting notification relay...');
-  const decoder = new TextDecoder();
   while (true) {
+    // Fresh decoder per connection — avoids stale multibyte state from a mid-chunk disconnect
+    const decoder = new TextDecoder();
+    let reader;
     try {
       const res = await fetch(
         `${UPSTASH_URL}/subscribe/wm:events:notify`,
@@ -288,30 +290,34 @@ async function subscribe() {
       // Upstash subscribe returns an SSE stream, not a single JSON blob.
       // Each line format: "data: message,<channel>,<payload>"
       //                or "data: subscribe,<channel>,<count>"
-      const reader = res.body.getReader();
+      reader = res.body.getReader();
       let buf = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let nl;
-        while ((nl = buf.indexOf('\n')) !== -1) {
-          const line = buf.slice(0, nl).trimEnd();
-          buf = buf.slice(nl + 1);
-          if (!line.startsWith('data:')) continue;
-          const raw = line.slice(5).trim(); // e.g. "message,wm:events:notify,<json>"
-          if (!raw.startsWith('message,')) continue;
-          // Split on second comma; message payload may contain commas
-          const secondComma = raw.indexOf(',', 8); // 'message,'.length === 8
-          if (secondComma === -1) continue;
-          const message = raw.slice(secondComma + 1);
-          try {
-            const event = JSON.parse(message);
-            await processEvent(event);
-          } catch (err) {
-            console.warn('[relay] Failed to parse event:', err.message);
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let nl;
+          while ((nl = buf.indexOf('\n')) !== -1) {
+            const line = buf.slice(0, nl).trimEnd();
+            buf = buf.slice(nl + 1);
+            if (!line.startsWith('data:')) continue;
+            const raw = line.slice(5).trim(); // e.g. "message,wm:events:notify,<json>"
+            if (!raw.startsWith('message,')) continue;
+            // Split on second comma; message payload may contain commas
+            const secondComma = raw.indexOf(',', 8); // 'message,'.length === 8
+            if (secondComma === -1) continue;
+            const message = raw.slice(secondComma + 1);
+            try {
+              const event = JSON.parse(message);
+              await processEvent(event);
+            } catch (err) {
+              console.warn('[relay] Failed to parse event:', err.message);
+            }
           }
         }
+      } finally {
+        reader.cancel().catch(() => {});
       }
     } catch (err) {
       if (err?.name !== 'TimeoutError' && err?.name !== 'AbortError') {
