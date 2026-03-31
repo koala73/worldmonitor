@@ -6,12 +6,15 @@ import { CHROME_UA } from './_seed-utils.mjs';
 const FEED_TIMEOUT_MS = 15_000;
 const XML_ACCEPT = 'application/atom+xml, application/rss+xml, application/xml, text/xml, */*';
 const SEC_USER_AGENT = 'WorldMonitor/2.0 (monitor@worldmonitor.app)';
+const DEFAULT_FETCH = (...args) => globalThis.fetch(...args);
 
 const REGULATORY_FEEDS = [
   { agency: 'SEC', url: 'https://www.sec.gov/news/pressreleases.rss', userAgent: SEC_USER_AGENT },
   { agency: 'CFTC', url: 'https://www.cftc.gov/RSS/RSSENF/rssenf.xml' },
   { agency: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
   { agency: 'FDIC', url: 'https://public.govdelivery.com/topics/USFDIC_26/feed.rss' },
+  // FINRA still publishes this RSS endpoint over plain HTTP; HTTPS requests fail
+  // from both Node fetch and curl in validation, so keep the official feed URL.
   { agency: 'FINRA', url: 'http://feeds.finra.org/FINRANotices' },
 ];
 
@@ -106,11 +109,16 @@ function yyyymmdd(isoDate) {
   return String(isoDate || '').slice(0, 10).replace(/-/g, '');
 }
 
+function hhmmss(isoDate) {
+  return String(isoDate || '').slice(11, 19).replace(/:/g, '');
+}
+
 function buildActionId(agency, title, publishedAt) {
   const agencySlug = slugifyTitle(agency) || 'agency';
   const titleSlug = slugifyTitle(title) || 'untitled';
   const datePart = yyyymmdd(publishedAt) || 'undated';
-  return `${agencySlug}-${titleSlug}-${datePart}`;
+  const timePart = hhmmss(publishedAt) || '000000';
+  return `${agencySlug}-${titleSlug}-${datePart}-${timePart}`;
 }
 
 function parseRssItems(xml, feedUrl) {
@@ -174,7 +182,7 @@ function dedupeAndSortActions(actions) {
   return deduped;
 }
 
-async function fetchFeed(feed, fetchImpl = globalThis.fetch) {
+async function fetchFeed(feed, fetchImpl = DEFAULT_FETCH) {
   const headers = {
     Accept: XML_ACCEPT,
     'User-Agent': feed.userAgent || CHROME_UA,
@@ -194,7 +202,7 @@ async function fetchFeed(feed, fetchImpl = globalThis.fetch) {
   return normalizeFeedItems(parsed, feed.agency);
 }
 
-async function fetchAllFeeds(fetchImpl = globalThis.fetch, feeds = REGULATORY_FEEDS) {
+async function fetchAllFeeds(fetchImpl = DEFAULT_FETCH, feeds = REGULATORY_FEEDS) {
   const results = await Promise.allSettled(feeds.map((feed) => fetchFeed(feed, fetchImpl)));
   const actions = [];
   let successCount = 0;
@@ -217,7 +225,7 @@ async function fetchAllFeeds(fetchImpl = globalThis.fetch, feeds = REGULATORY_FE
   return dedupeAndSortActions(actions);
 }
 
-async function main(fetchImpl = globalThis.fetch) {
+async function main(fetchImpl = DEFAULT_FETCH) {
   const actions = await fetchAllFeeds(fetchImpl);
   process.stdout.write(`${JSON.stringify(actions, null, 2)}\n`);
   return actions;

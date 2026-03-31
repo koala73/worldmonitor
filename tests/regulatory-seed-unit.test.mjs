@@ -115,7 +115,7 @@ describe('normalizeFeedItems', () => {
     ], 'SEC'));
 
     assert.equal(normalized.length, 1);
-    assert.equal(normalized[0].id, 'sec-sec-charges-xyz-corp-20260329');
+    assert.equal(normalized[0].id, 'sec-sec-charges-xyz-corp-20260329-140000');
   });
 });
 
