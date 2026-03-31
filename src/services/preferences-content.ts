@@ -13,7 +13,7 @@ import {
   getChannelsData,
   createPairingToken,
   setEmailChannel,
-  setSlackChannel,
+  startSlackOAuth,
   deleteChannel,
   saveAlertRules,
   type NotificationChannel,
@@ -631,9 +631,21 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const name = CHANNEL_LABELS[type];
 
           if (channel?.verified) {
-            const sub = type === 'telegram' ? `@${escapeHtml(channel.chatId ?? 'connected')}`
-              : type === 'email' ? escapeHtml(channel.email ?? 'connected')
-              : 'Webhook connected';
+            let sub: string;
+            let manageLink = '';
+            if (type === 'telegram') {
+              sub = `@${escapeHtml(channel.chatId ?? 'connected')}`;
+            } else if (type === 'email') {
+              sub = escapeHtml(channel.email ?? 'connected');
+            } else {
+              // Slack: show #channel · team from OAuth metadata
+              const ch = channel.slackChannelName ? `#${escapeHtml(channel.slackChannelName)}` : 'connected';
+              const team = channel.slackTeamName ? ` · ${escapeHtml(channel.slackTeamName)}` : '';
+              sub = ch + team;
+              if (channel.slackConfigurationUrl) {
+                manageLink = `<a href="${escapeHtml(channel.slackConfigurationUrl)}" target="_blank" rel="noopener noreferrer" class="us-notif-manage-link">Manage</a>`;
+              }
+            }
             return `<div class="us-notif-ch-row us-notif-ch-on" data-channel-type="${type}">
               <div class="us-notif-ch-icon">${icon}</div>
               <div class="us-notif-ch-body">
@@ -642,6 +654,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               </div>
               <div class="us-notif-ch-actions">
                 <span class="us-notif-ch-badge">Connected</span>
+                ${manageLink}
                 <button type="button" class="us-notif-ch-btn us-notif-disconnect" data-channel="${type}">Remove</button>
               </div>
             </div>`;
@@ -678,10 +691,13 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               <div class="us-notif-ch-icon">${icon}</div>
               <div class="us-notif-ch-body">
                 <div class="us-notif-ch-name">${name}</div>
-                <div class="us-notif-slack-wrap">
-                  <input type="url" class="us-notif-slack-input" id="usSlackWebhookUrl" placeholder="https://hooks.slack.com/services/..." />
-                  <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-slack-connect" id="usConnectSlack">Connect</button>
-                </div>
+                <div class="us-notif-ch-sub">Not connected</div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <button type="button" class="us-notif-slack-oauth" id="usConnectSlack">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="margin-right:5px;vertical-align:-1px"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>
+                  Add to Slack
+                </button>
               </div>
             </div>`;
           }
@@ -850,21 +866,18 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           }
 
           if (target.closest('#usConnectSlack')) {
-            const input = container.querySelector<HTMLInputElement>('#usSlackWebhookUrl');
-            const url = input?.value?.trim() ?? '';
-            const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
-            if (!SLACK_RE.test(url)) {
-              const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
-              if (rowEl) {
-                const existing = rowEl.querySelector('.us-notif-error');
-                if (existing) existing.remove();
-                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Invalid Slack webhook URL format</span>');
+            const btn = target.closest<HTMLButtonElement>('#usConnectSlack');
+            if (btn) btn.textContent = 'Connecting…';
+            startSlackOAuth().then((oauthUrl) => {
+              if (signal.aborted) return;
+              const popup = window.open(oauthUrl, 'slack-oauth', 'width=600,height=700,menubar=no,toolbar=no');
+              if (!popup) {
+                // Popup blocked — fall back to full-page redirect
+                window.location.href = oauthUrl;
               }
-              return;
-            }
-            setSlackChannel(url).then(() => {
-              if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
-            }).catch(() => {});
+            }).catch(() => {
+              if (btn && !signal.aborted) btn.textContent = 'Add to Slack';
+            });
             return;
           }
 
@@ -877,6 +890,22 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             return;
           }
         }, { signal });
+
+        // Listen for OAuth popup completion
+        const onMessage = (e: MessageEvent): void => {
+          if (e.data?.type === 'wm:slack_connected') {
+            if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
+          } else if (e.data?.type === 'wm:slack_error') {
+            const rowEl = container.querySelector<HTMLElement>('[data-channel-type="slack"]');
+            if (rowEl) {
+              rowEl.querySelector('.us-notif-error')?.remove();
+              rowEl.insertAdjacentHTML('beforeend', `<span class="us-notif-error">Slack connection failed: ${escapeHtml(String(e.data.error ?? 'unknown'))}</span>`);
+              const btn = rowEl.querySelector<HTMLButtonElement>('#usConnectSlack');
+              if (btn) btn.textContent = 'Add to Slack';
+            }
+          }
+        };
+        window.addEventListener('message', onMessage, { signal });
       }
 
       return () => ac.abort();

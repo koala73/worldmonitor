@@ -311,6 +311,9 @@ http.route({
       eventTypes?: string[];
       sensitivity?: string;
       channels?: string[];
+      slackChannelName?: string;
+      slackTeamName?: string;
+      slackConfigurationUrl?: string;
     };
     try {
       body = await request.json() as typeof body;
@@ -358,6 +361,20 @@ http.route({
           email: body.email,
         });
         return new Response(JSON.stringify({ ok: true, isNew: setResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (action === "set-slack-oauth") {
+        if (!body.webhookEnvelope) {
+          return new Response(JSON.stringify({ error: "webhookEnvelope required" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        const oauthResult = await ctx.runMutation(internal.notificationChannels.setSlackOAuthChannelForUser, {
+          userId,
+          webhookEnvelope: body.webhookEnvelope,
+          slackChannelName: body.slackChannelName,
+          slackTeamName: body.slackTeamName,
+          slackConfigurationUrl: body.slackConfigurationUrl,
+        });
+        return new Response(JSON.stringify({ ok: true, isNew: oauthResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "delete-channel") {
