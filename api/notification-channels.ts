@@ -46,10 +46,14 @@ async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
 }
 
 async function publishWelcome(userId: string, channelType: string): Promise<void> {
-  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+    console.error('[notification-channels] publishWelcome: UPSTASH env vars missing — welcome not queued');
+    return;
+  }
+  console.log(`[notification-channels] publishWelcome: queuing ${channelType} for ${userId}`);
   const msg = JSON.stringify({ eventType: 'channel_welcome', userId, channelType });
   try {
-    await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
+    const res = await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_TOKEN}`,
@@ -57,8 +61,10 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
       },
       signal: AbortSignal.timeout(5000),
     });
-  } catch {
-    // best-effort
+    const data = await res.json().catch(() => null) as { result?: unknown } | null;
+    console.log(`[notification-channels] publishWelcome LPUSH: status=${res.status} result=${JSON.stringify(data?.result)}`);
+  } catch (err) {
+    console.error('[notification-channels] publishWelcome LPUSH failed:', (err as Error).message);
   }
 }
 
@@ -172,6 +178,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           return json({ error: 'Operation failed' }, 500, corsHeaders);
         }
         const setResult = await resp.json() as { ok: boolean; isNew?: boolean };
+        console.log(`[notification-channels] set-channel ${channelType}: isNew=${setResult.isNew}`);
         // Only send welcome on first connect, not re-links; use waitUntil so the edge isolate doesn't terminate early
         if (setResult.isNew) ctx.waitUntil(publishWelcome(session.userId, channelType));
         return json({ ok: true }, 200, corsHeaders);

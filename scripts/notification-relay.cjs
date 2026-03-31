@@ -274,10 +274,15 @@ async function processEvent(event) {
 
 async function subscribe() {
   console.log('[relay] Starting notification relay...');
+  console.log('[relay] UPSTASH_URL set:', !!UPSTASH_URL, '| CONVEX_URL set:', !!CONVEX_URL, '| RELAY_SECRET set:', !!RELAY_SECRET);
+  console.log('[relay] TELEGRAM_BOT_TOKEN set:', !!TELEGRAM_BOT_TOKEN, '| RESEND_API_KEY set:', !!RESEND_API_KEY);
+  let idleCount = 0;
   while (true) {
     try {
       const result = await upstashRest('RPOP', 'wm:events:queue');
       if (result) {
+        idleCount = 0;
+        console.log('[relay] RPOP dequeued message:', String(result).slice(0, 200));
         try {
           const event = JSON.parse(result);
           await processEvent(event);
@@ -285,7 +290,11 @@ async function subscribe() {
           console.warn('[relay] Failed to parse event:', err.message, '| raw:', String(result).slice(0, 120));
         }
       } else {
-        // Queue empty — wait 1s before polling again
+        idleCount++;
+        // Log a heartbeat every 60s so we know the relay is alive and connected
+        if (idleCount % 60 === 0) {
+          console.log(`[relay] Heartbeat: idle ${idleCount}s, queue empty, Upstash OK`);
+        }
         await new Promise(r => setTimeout(r, 1000));
       }
     } catch (err) {
