@@ -28,6 +28,7 @@ export const setChannelForUser = internalMutation({
         q.eq("userId", userId).eq("channelType", channelType),
       )
       .unique();
+    const isNew = !existing;
     const now = Date.now();
     if (channelType === "telegram") {
       if (!chatId) throw new ConvexError("chatId required for telegram channel");
@@ -42,6 +43,7 @@ export const setChannelForUser = internalMutation({
       const doc = { userId, channelType: "email" as const, email, verified: true, linkedAt: now };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { await ctx.db.insert("notificationChannels", doc); }
     }
+    return { isNew };
   },
 });
 

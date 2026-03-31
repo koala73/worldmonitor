@@ -167,8 +167,9 @@ export default async function handler(req: Request): Promise<Response> {
           console.error('[notification-channels] POST set-channel relay error:', resp.status);
           return json({ error: 'Operation failed' }, 500, corsHeaders);
         }
-        // Fire-and-forget welcome notification
-        void publishWelcome(session.userId, channelType);
+        const setResult = await resp.json() as { ok: boolean; isNew?: boolean };
+        // Only send welcome on first connect, not re-links
+        if (setResult.isNew) void publishWelcome(session.userId, channelType);
         return json({ ok: true }, 200, corsHeaders);
       }
 

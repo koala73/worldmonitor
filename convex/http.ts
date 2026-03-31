@@ -173,21 +173,22 @@ http.route({
     const match = text.match(/^\/start\s+([A-Za-z0-9_-]{40,50})$/);
     if (!match) return new Response("OK", { status: 200 });
 
-    await ctx.runMutation(anyApi.notificationChannels.claimPairingToken, {
+    const claimed = await ctx.runMutation(anyApi.notificationChannels.claimPairingToken, {
       token: match[1],
       chatId,
     });
 
-    // Send welcome message to the newly paired chat
+    // Send welcome only on successful first/re-pair; fire-and-forget to stay off critical path
     const botToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
-    if (botToken) {
-      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    if (claimed.ok && botToken) {
+      fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
           text: "✅ WorldMonitor connected! You'll receive breaking news alerts here.",
         }),
+        signal: AbortSignal.timeout(8000),
       }).catch(() => {});
     }
 
@@ -349,14 +350,14 @@ http.route({
         if (!body.channelType) {
           return new Response(JSON.stringify({ error: "channelType required" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation(internal.notificationChannels.setChannelForUser, {
+        const setResult = await ctx.runMutation(internal.notificationChannels.setChannelForUser, {
           userId,
           channelType: body.channelType as "telegram" | "slack" | "email",
           chatId: body.chatId,
           webhookEnvelope: body.webhookEnvelope,
           email: body.email,
         });
-        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ ok: true, isNew: setResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "delete-channel") {

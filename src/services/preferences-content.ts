@@ -748,7 +748,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const enabled = enabledEl.checked;
           const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
           const existing = Array.from(container.querySelectorAll<HTMLElement>('[data-channel-type]'))
-            .filter(el => el.querySelector('.us-notif-ch-on'))
+            .filter(el => el.classList.contains('us-notif-ch-on'))
             .map(el => el.dataset.channelType as ChannelType);
           const channels = [...new Set([...existing, newChannel])];
           void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels });
@@ -774,7 +774,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               const connectedChannelTypes = Array.from(
                 container.querySelectorAll<HTMLElement>('[data-channel-type]'),
               )
-                .filter(el => el.querySelector('.us-notif-ch-on'))
+                .filter(el => el.classList.contains('us-notif-ch-on'))
                 .map(el => el.dataset.channelType as ChannelType);
               void saveAlertRules({
                 variant: SITE_VARIANT,
