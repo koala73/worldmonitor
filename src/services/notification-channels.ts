@@ -9,6 +9,9 @@ export interface NotificationChannel {
   linkedAt: number;
   chatId?: string;
   email?: string;
+  slackChannelName?: string;
+  slackTeamName?: string;
+  slackConfigurationUrl?: string;
 }
 
 export interface AlertRule {
@@ -68,6 +71,13 @@ export async function setSlackChannel(webhookEnvelope: string): Promise<void> {
     body: JSON.stringify({ action: 'set-channel', channelType: 'slack', webhookEnvelope }),
   });
   if (!res.ok) throw new Error(`set slack channel: ${res.status}`);
+}
+
+export async function startSlackOAuth(): Promise<string> {
+  const res = await authFetch('/api/slack/oauth/start', { method: 'POST' });
+  if (!res.ok) throw new Error(`slack oauth start: ${res.status}`);
+  const data = await res.json() as { oauthUrl: string };
+  return data.oauthUrl;
 }
 
 export async function deleteChannel(channelType: ChannelType): Promise<void> {
