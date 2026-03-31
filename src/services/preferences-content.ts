@@ -7,6 +7,7 @@ import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
 import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-settings';
 import { escapeHtml } from '@/utils/sanitize';
+import { renderSVG } from 'uqr';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
 import {
@@ -824,18 +825,24 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             createPairingToken().then(({ token, expiresAt }) => {
               if (signal.aborted) return;
               const botUsername = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'WorldMonitorBot';
-              const deepLink = `https://t.me/${botUsername}?start=${token}`;
+              const deepLink = `https://t.me/${String(botUsername)}?start=${token}`;
               const startCmd = `/start ${token}`;
               const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+              const qrSvg = renderSVG(deepLink, { ecc: 'M', border: 1 });
               rowEl.innerHTML = `
                 <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
                 <div class="us-notif-ch-body">
                   <div class="us-notif-ch-name">Telegram</div>
-                  <div class="us-notif-ch-sub">Copy and send to the bot:</div>
-                  <div class="us-notif-tg-cmd-row">
-                    <code class="us-notif-tg-cmd">${escapeHtml(startCmd)}</code>
-                    <button type="button" class="us-notif-tg-copy-btn" data-cmd="${escapeHtml(startCmd)}">Copy</button>
-                    <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
+                  <div class="us-notif-ch-sub">Scan with mobile or copy command to bot:</div>
+                  <div class="us-notif-tg-pair-layout">
+                    <div class="us-notif-tg-qr">${qrSvg}</div>
+                    <div class="us-notif-tg-cmd-col">
+                      <div class="us-notif-tg-cmd-row">
+                        <code class="us-notif-tg-cmd">${escapeHtml(startCmd)}</code>
+                        <button type="button" class="us-notif-tg-copy-btn" data-cmd="${escapeHtml(startCmd)}">Copy</button>
+                      </div>
+                      <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
+                    </div>
                   </div>
                 </div>
                 <div class="us-notif-ch-actions">
