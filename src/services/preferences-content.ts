@@ -808,6 +808,16 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         container.addEventListener('click', (e) => {
           const target = e.target as HTMLElement;
 
+          if (target.closest('.us-notif-tg-copy-btn')) {
+            const btn = target.closest('.us-notif-tg-copy-btn') as HTMLButtonElement;
+            const cmd = btn.dataset.cmd ?? '';
+            navigator.clipboard.writeText(cmd).then(() => {
+              btn.textContent = 'Copied!';
+              setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+            }).catch(() => {});
+            return;
+          }
+
           if (target.closest('#usConnectTelegram')) {
             const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
             if (!rowEl) return;
@@ -815,15 +825,19 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               if (signal.aborted) return;
               const botUsername = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'WorldMonitorBot';
               const deepLink = `https://t.me/${botUsername}?start=${token}`;
+              const startCmd = `/start ${token}`;
               const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
               rowEl.innerHTML = `
                 <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
                 <div class="us-notif-ch-body">
                   <div class="us-notif-ch-name">Telegram</div>
-                  <div class="us-notif-ch-sub">Waiting for pairing...</div>
+                  <div class="us-notif-ch-sub">Send this to <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-inline-link">@${escapeHtml(String(botUsername))}</a>:</div>
+                  <div class="us-notif-tg-cmd-row">
+                    <code class="us-notif-tg-cmd">${escapeHtml(startCmd)}</code>
+                    <button type="button" class="us-notif-tg-copy-btn" data-cmd="${escapeHtml(startCmd)}">Copy</button>
+                  </div>
                 </div>
                 <div class="us-notif-ch-actions">
-                  <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
                   <span class="us-notif-tg-countdown" id="usTgCountdown">${secsLeft}s</span>
                 </div>
               `;

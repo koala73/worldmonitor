@@ -1260,6 +1260,56 @@ tr.diag-err td { color: var(--settings-red); }
   color: var(--settings-text-secondary);
 }
 
+.us-notif-tg-inline-link {
+  color: var(--settings-accent);
+  text-decoration: none;
+}
+
+.us-notif-tg-inline-link:hover {
+  text-decoration: underline;
+}
+
+.us-notif-tg-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.us-notif-tg-cmd {
+  font-family: monospace;
+  font-size: 11px;
+  background: var(--settings-bg-secondary, rgba(0,0,0,0.15));
+  border: 1px solid var(--settings-border, rgba(255,255,255,0.1));
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--settings-text-primary);
+  user-select: all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+.us-notif-tg-copy-btn {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--settings-accent);
+  border-radius: 4px;
+  color: var(--settings-accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.us-notif-tg-copy-btn:hover {
+  background: var(--settings-accent);
+  color: #fff;
+}
+
 .us-notif-signin {
   font-size: 12px;
   color: var(--settings-text-secondary);
