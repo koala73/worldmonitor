@@ -30,7 +30,7 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 async function upstashRest(...args) {
   const res = await fetch(`${UPSTASH_URL}/${args.map(encodeURIComponent).join('/')}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
   });
   if (!res.ok) {
     console.warn(`[relay] Upstash error ${res.status} for command ${args[0]}`);
@@ -62,6 +62,7 @@ async function deactivateChannel(userId, channelType) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${RELAY_SECRET}`,
+        'User-Agent': 'worldmonitor-relay/1.0',
       },
       body: JSON.stringify({ userId, channelType }),
       signal: AbortSignal.timeout(10000),
@@ -83,7 +84,7 @@ function isPrivateIP(ip) {
 async function sendTelegram(userId, chatId, text) {
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
     body: JSON.stringify({ chat_id: chatId, text }),
     signal: AbortSignal.timeout(10000),
   });
@@ -134,7 +135,7 @@ async function sendSlack(userId, webhookEnvelope, text) {
   }
   const res = await fetch(webhookUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
     body: JSON.stringify({ text, unfurl_links: false }),
     signal: AbortSignal.timeout(10000),
   });
@@ -180,11 +181,13 @@ function formatMessage(event) {
 async function processWelcome(event) {
   const { userId, channelType } = event;
   if (!userId || !channelType) return;
+  // Telegram welcome is sent directly by Convex; no relay send needed.
+  if (channelType === 'telegram') return;
   let channels = [];
   try {
     const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
       body: JSON.stringify({ userId }),
       signal: AbortSignal.timeout(10000),
     });
@@ -237,6 +240,7 @@ async function processEvent(event) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${RELAY_SECRET}`,
+          'User-Agent': 'worldmonitor-relay/1.0',
         },
         body: JSON.stringify({ userId: rule.userId }),
         signal: AbortSignal.timeout(10000),
@@ -271,7 +275,7 @@ async function subscribe() {
       const res = await fetch(
         `${UPSTASH_URL}/subscribe/wm:events:notify`,
         {
-          headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+          headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
           signal: AbortSignal.timeout(35_000),
         }
       );
