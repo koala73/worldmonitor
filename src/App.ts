@@ -282,6 +282,7 @@ export class App {
       initialUrlState,
       PANEL_ORDER_KEY,
       PANEL_SPANS_KEY,
+      updateState: null,
     };
 
     // Instantiate modules (callbacks wired after all modules exist)

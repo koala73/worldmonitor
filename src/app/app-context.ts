@@ -27,6 +27,12 @@ import type { RenewableEnergyPanel } from '@/components/RenewableEnergyPanel';
 import type { TvModeController } from '@/services/tv-mode';
 import type { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
 
+export type UpdateState = {
+  phase: 'checking' | 'up-to-date' | 'available' | 'installing';
+  version?: string;
+  downloadUrl?: string;
+} | null;
+
 export interface CountryBriefSignals {
   criticalNews: number;
   protests: number;
@@ -129,4 +135,5 @@ export interface AppContext {
   initialUrlState: ParsedMapUrlState | null;
   readonly PANEL_ORDER_KEY: string;
   readonly PANEL_SPANS_KEY: string;
+  updateState: UpdateState;
 }
