@@ -8,12 +8,15 @@
  * @module
  */
 
-import type * as contactMessages from "../contactMessages.js";
-import type * as registerInterest from "../registerInterest.js";
-import type * as userPreferences from "../userPreferences.js";
-import type * as notificationChannels from "../notificationChannels.js";
 import type * as alertRules from "../alertRules.js";
+import type * as constants from "../constants.js";
+import type * as contactMessages from "../contactMessages.js";
+import type * as crons from "../crons.js";
+import type * as http from "../http.js";
+import type * as notificationChannels from "../notificationChannels.js";
+import type * as registerInterest from "../registerInterest.js";
 import type * as telegramPairingTokens from "../telegramPairingTokens.js";
+import type * as userPreferences from "../userPreferences.js";
 
 import type {
   ApiFromModules,
@@ -22,12 +25,15 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  contactMessages: typeof contactMessages;
-  registerInterest: typeof registerInterest;
-  userPreferences: typeof userPreferences;
-  notificationChannels: typeof notificationChannels;
   alertRules: typeof alertRules;
+  constants: typeof constants;
+  contactMessages: typeof contactMessages;
+  crons: typeof crons;
+  http: typeof http;
+  notificationChannels: typeof notificationChannels;
+  registerInterest: typeof registerInterest;
   telegramPairingTokens: typeof telegramPairingTokens;
+  userPreferences: typeof userPreferences;
 }>;
 
 /**

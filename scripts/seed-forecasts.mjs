@@ -4601,6 +4601,19 @@ function summarizeImpactPathScore(path = null) {
     if (path.simulationSignal !== undefined) {
       summary.simulationSignal = path.simulationSignal;
     }
+    if (path.simulationAdjustmentDetail !== undefined) {
+      const d = path.simulationAdjustmentDetail;
+      summary.simDetail = {
+        bucketChannelMatch:  Boolean(d.bucketChannelMatch),
+        actorOverlapCount:   Number(d.actorOverlapCount),
+        candidateActorCount: Number(d.candidateActorCount),
+        actorSource:         d.actorSource,
+        resolvedChannel:     d.resolvedChannel || '',
+        channelSource:       d.channelSource,
+        invalidatorHit:      Boolean(d.invalidatorHit),
+        stabilizerHit:       Boolean(d.stabilizerHit),
+      };
+    }
   }
   return summary;
 }
@@ -11568,6 +11581,7 @@ function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, s
       demoted: wasAccepted && mergedAcceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
       simPathConfidence: details.simPathConfidence,
     };
+    path.simulationAdjustmentDetail = details;
 
     if (wasAccepted && mergedAcceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD) {
       path.demotedBySimulation = true;
