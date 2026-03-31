@@ -700,7 +700,20 @@ export class EventHandlerManager implements AppModule {
       }
       this.debouncedWebcamReload();
     });
-    this.debouncedUrlSync();
+
+    // Don't sync immediately when URL position params are being applied.
+    // applyInitialUrlState() will have already called map.setCenter() which
+    // starts an async flyTo — reading getCenter() now returns the default
+    // position and would overwrite the intended URL params.
+    // onStateChanged fires on moveend (after flyTo completes) and handles
+    // the first correct URL write at that point.
+    const urlHasPosition =
+      this.ctx.initialUrlState?.lat !== undefined ||
+      this.ctx.initialUrlState?.lon !== undefined ||
+      this.ctx.initialUrlState?.zoom !== undefined;
+    if (!urlHasPosition) {
+      this.debouncedUrlSync();
+    }
   }
 
   syncUrlState(): void {
