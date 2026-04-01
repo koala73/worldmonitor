@@ -103,6 +103,39 @@ describe('buildDailyMarketBrief', () => {
     assert.match(brief.items[0]?.note || '', /Headline driver/i);
   });
 
+  it('passes the requested language to summarization and localizes deterministic sections', async () => {
+    let receivedLang = '';
+
+    const brief = await buildDailyMarketBrief({
+      markets,
+      newsByCategory: {
+        markets: [makeNewsItem('Apple extends gains after stronger iPhone cycle outlook')],
+      },
+      lang: 'es',
+      timezone: 'UTC',
+      now: new Date('2026-03-08T10:30:00.000Z'),
+      targets: [{ symbol: 'AAPL', name: 'Apple', display: 'AAPL' }],
+      summarize: async (_headlines, _progress, _context, lang) => {
+        receivedLang = lang || '';
+        return {
+          summary: 'Resumen de mercado con Apple liderando la sesión.',
+          provider: 'openrouter',
+          model: 'test-model',
+          cached: false,
+        };
+      },
+      translate: async (text, lang) => `[${lang}] ${text}`,
+    });
+
+    assert.equal(receivedLang, 'es');
+    assert.equal(brief.lang, 'es');
+    assert.equal(brief.summary, 'Resumen de mercado con Apple liderando la sesión.');
+    assert.match(brief.actionPlan, /^\[es\]/);
+    assert.match(brief.riskWatch, /^\[es\]/);
+    assert.match(brief.items[0]?.note || '', /^\[es\]/);
+    assert.ok(brief.title.startsWith('[es] Daily Market Brief • '));
+  });
+
   it('falls back to deterministic copy when summarization is unavailable', async () => {
     const brief = await buildDailyMarketBrief({
       markets,
@@ -119,5 +152,29 @@ describe('buildDailyMarketBrief', () => {
     assert.equal(brief.provider, 'rules');
     assert.equal(brief.fallback, true);
     assert.match(brief.summary, /watchlist|breadth|headline flow/i);
+  });
+
+  it('localizes rules-based copy when the brief is built in a non-English language', async () => {
+    const brief = await buildDailyMarketBrief({
+      markets,
+      newsByCategory: {
+        markets: [makeNewsItem('NVIDIA holds gains as chip demand remains firm')],
+      },
+      lang: 'pt',
+      timezone: 'UTC',
+      now: new Date('2026-03-08T10:30:00.000Z'),
+      targets: [{ symbol: 'NVDA', name: 'NVIDIA', display: 'NVDA' }],
+      summarize: async () => null,
+      translate: async (text, lang) => `[${lang}] ${text}`,
+    });
+
+    assert.equal(brief.lang, 'pt');
+    assert.equal(brief.provider, 'rules');
+    assert.equal(brief.fallback, true);
+    assert.match(brief.summary, /^\[pt\]/);
+    assert.match(brief.actionPlan, /^\[pt\]/);
+    assert.match(brief.riskWatch, /^\[pt\]/);
+    assert.match(brief.items[0]?.note || '', /^\[pt\]/);
+    assert.ok(brief.title.startsWith('[pt] Daily Market Brief • '));
   });
 });

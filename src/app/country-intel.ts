@@ -34,6 +34,7 @@ import { MILITARY_BASES } from '@/config';
 import { mlWorker } from '@/services/ml-worker';
 import { isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
+import { translateContentText } from '@/services/content-translation';
 import { trackCountrySelected, trackCountryBriefOpened } from '@/services/analytics';
 import { toApiUrl } from '@/services/runtime';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
@@ -350,51 +351,64 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage?.updateBrief({ brief: briefText, country, code });
       } else {
         let fallbackBrief = '';
+        const currentLang = getCurrentLanguage();
+        const translateEnglishLine = async (line: string): Promise<string> => {
+          const translated = await translateContentText(line, currentLang, { sourceLang: 'en' });
+          return translated || line;
+        };
         const sumModelId = BETA_MODE ? 'summarization-beta' : 'summarization';
         if (briefHeadlines.length >= 2 && mlWorker.isAvailable && mlWorker.isModelLoaded(sumModelId)) {
           try {
-            const lang = getCurrentLanguage();
-            const prompt = lang === 'fr'
+            const promptLang = currentLang === 'fr' ? 'fr' : 'en';
+            const prompt = promptLang === 'fr'
               ? `Résumez la situation actuelle en ${country} à partir de ces titres : ${briefHeadlines.slice(0, 8).join('. ')}`
               : `Summarize the current situation in ${country} based on these headlines: ${briefHeadlines.slice(0, 8).join('. ')}`;
 
             const [summary] = await mlWorker.summarize([prompt], BETA_MODE ? 'summarization-beta' : undefined);
-            if (summary && summary.length > 20) fallbackBrief = summary;
+            if (summary && summary.length > 20) {
+              fallbackBrief = currentLang !== promptLang
+                ? await translateEnglishLine(summary)
+                : summary;
+            }
           } catch { /* T5 failed */ }
         }
 
         if (fallbackBrief) {
           this.ctx.countryBriefPage?.updateBrief({ brief: fallbackBrief, country, code, fallback: true });
         } else {
-          const lines: string[] = [];
-          if (score) lines.push(t('countryBrief.fallback.instabilityIndex', { score: String(score.score), level: t(`countryBrief.levels.${score.level}`), trend: t(`countryBrief.trends.${score.trend}`) }));
-          if (signals.protests > 0) lines.push(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) }));
-          if (signals.militaryFlights > 0) lines.push(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) }));
-          if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
-          if (signals.activeStrikes > 0) lines.push(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) }));
-          if (signals.travelAdvisoryMaxLevel === 'do-not-travel') lines.push(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
-          else if (signals.travelAdvisoryMaxLevel === 'reconsider') lines.push(`⚠️ Travel advisory: Reconsider Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`);
-          if (signals.outages > 0) lines.push(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) }));
-          if (signals.criticalNews > 0) lines.push(`🚨 Critical headlines in scope: ${signals.criticalNews}`);
-          if (signals.cyberThreats > 0) lines.push(`🛡️ Cyber threat indicators: ${signals.cyberThreats}`);
-          if (signals.aisDisruptions > 0) lines.push(`🚢 Maritime AIS disruptions: ${signals.aisDisruptions}`);
-          if (signals.satelliteFires > 0) lines.push(`🔥 Satellite fire detections: ${signals.satelliteFires}`);
-          if (signals.radiationAnomalies > 0) lines.push(`☢️ Radiation anomalies: ${signals.radiationAnomalies}`);
-          if (signals.temporalAnomalies > 0) lines.push(`⏱️ Temporal anomaly alerts: ${signals.temporalAnomalies}`);
-          if (signals.thermalEscalations > 0) lines.push(`🌡️ Thermal escalation clusters: ${signals.thermalEscalations}`);
-          if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
-          if (signals.orefHistory24h > 0) lines.push(`🚨 Sirens in past 24h: ${signals.orefHistory24h}`);
-          if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
+          const linePromises: Promise<string>[] = [];
+          if (score) linePromises.push(Promise.resolve(t('countryBrief.fallback.instabilityIndex', { score: String(score.score), level: t(`countryBrief.levels.${score.level}`), trend: t(`countryBrief.trends.${score.trend}`) })));
+          if (signals.protests > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.protestsDetected', { count: String(signals.protests) })));
+          if (signals.militaryFlights > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.aircraftTracked', { count: String(signals.militaryFlights) })));
+          if (signals.militaryVessels > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) })));
+          if (signals.activeStrikes > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.activeStrikes', { count: String(signals.activeStrikes) })));
+          if (signals.travelAdvisoryMaxLevel === 'do-not-travel') {
+            linePromises.push(translateEnglishLine(`⚠️ Travel advisory: Do Not Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`));
+          } else if (signals.travelAdvisoryMaxLevel === 'reconsider') {
+            linePromises.push(translateEnglishLine(`⚠️ Travel advisory: Reconsider Travel (${signals.travelAdvisories} source${signals.travelAdvisories > 1 ? 's' : ''})`));
+          }
+          if (signals.outages > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) })));
+          if (signals.criticalNews > 0) linePromises.push(translateEnglishLine(`🚨 Critical headlines in scope: ${signals.criticalNews}`));
+          if (signals.cyberThreats > 0) linePromises.push(translateEnglishLine(`🛡️ Cyber threat indicators: ${signals.cyberThreats}`));
+          if (signals.aisDisruptions > 0) linePromises.push(translateEnglishLine(`🚢 Maritime AIS disruptions: ${signals.aisDisruptions}`));
+          if (signals.satelliteFires > 0) linePromises.push(translateEnglishLine(`🔥 Satellite fire detections: ${signals.satelliteFires}`));
+          if (signals.radiationAnomalies > 0) linePromises.push(translateEnglishLine(`☢️ Radiation anomalies: ${signals.radiationAnomalies}`));
+          if (signals.temporalAnomalies > 0) linePromises.push(translateEnglishLine(`⏱️ Temporal anomaly alerts: ${signals.temporalAnomalies}`));
+          if (signals.thermalEscalations > 0) linePromises.push(translateEnglishLine(`🌡️ Thermal escalation clusters: ${signals.thermalEscalations}`));
+          if (signals.earthquakes > 0) linePromises.push(Promise.resolve(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) })));
+          if (signals.orefHistory24h > 0) linePromises.push(translateEnglishLine(`🚨 Sirens in past 24h: ${signals.orefHistory24h}`));
+          if (context.stockIndex) linePromises.push(Promise.resolve(t('countryBrief.fallback.stockIndex', { value: context.stockIndex })));
+          const lines = (await Promise.all(linePromises)).filter((line) => line.length > 0);
           if (lines.length > 0) {
             this.ctx.countryBriefPage?.updateBrief({ brief: lines.join('\n'), country, code, fallback: true });
           } else {
-            this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'No AI service available. Configure GROQ_API_KEY in Settings for full briefs.' });
+            this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: t('countryBrief.briefUnavailable') });
           }
         }
       }
     } catch (err) {
       console.error('[CountryBrief] fetch error:', err);
-      this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'Failed to generate brief' });
+      this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: t('countryBrief.assessmentUnavailable') });
     }
   }
 
