@@ -887,6 +887,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                 getChannelsData().then((data) => {
                   const tg = data.channels.find(c => c.channelType === 'telegram');
                   if (tg?.verified) {
+                    clearNotifPoll();
                     saveRuleWithNewChannel('telegram');
                     reloadNotifSection();
                   }

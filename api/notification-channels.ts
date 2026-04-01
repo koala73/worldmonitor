@@ -68,10 +68,14 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
   }
 }
 
-function json(body: unknown, status: number, cors: Record<string, string>): Response {
+function json(body: unknown, status: number, cors: Record<string, string>, noCache = false): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json', ...cors },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(noCache ? { 'Cache-Control': 'no-store' } : {}),
+      ...cors,
+    },
   });
 }
 
@@ -132,7 +136,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         return json({ error: 'Failed to fetch' }, 500, corsHeaders);
       }
       const data = await resp.json();
-      return json(data, 200, corsHeaders);
+      return json(data, 200, corsHeaders, true);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
       void captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
