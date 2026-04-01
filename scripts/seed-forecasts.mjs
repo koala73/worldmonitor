@@ -16922,15 +16922,16 @@ async function listQueuedSimulationTasks(limit = 10) {
 /**
  * Sanitize and allowlist-filter LLM-returned keyActorRoles strings.
  * Filters against theater.actorRoles (exact match after normalizeActorName).
- * When allowedRoles is empty, all sanitized values pass through (soft pass — old packages have no actorRoles).
+ * When allowedRoles is empty (old package, no actorRoles field), returns [] — no vocab = no valid roles.
+ * This prevents hallucinated keyActorRoles from old packages triggering the +0.04 overlap bonus.
  * @param {string[] | undefined} rawRoles
  * @param {string[]} allowedRoles
  * @returns {string[]}
  */
 function sanitizeKeyActorRoles(rawRoles, allowedRoles) {
+  if (!allowedRoles.length) return [];
   const sanitized = (Array.isArray(rawRoles) ? rawRoles : [])
     .map((s) => sanitizeForPrompt(String(s)).slice(0, 80));
-  if (!allowedRoles.length) return sanitized.slice(0, 8);
   const allowedNorm = new Set(allowedRoles.map(normalizeActorName));
   return sanitized.filter((s) => allowedNorm.has(normalizeActorName(s))).slice(0, 8);
 }
