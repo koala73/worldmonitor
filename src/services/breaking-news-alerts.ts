@@ -1,7 +1,7 @@
 import type { NewsItem } from '@/types';
 import type { OrefAlert } from '@/services/oref-alerts';
 import { getSourceTier } from '@/config/feeds';
-import { isDesktopRuntime } from '@/services/runtime';
+import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
 
@@ -157,22 +157,31 @@ function dispatchAlert(alert: BreakingAlert): void {
   saveDedupeMap();
   document.dispatchEvent(new CustomEvent('wm:breaking-news', { detail: alert }));
 
-  if (!isDesktopRuntime()) {
-    void (async () => {
-      const token = await getClerkToken();
-      if (!token) return;
+  void (async () => {
+    const token = await getClerkToken();
+    if (!token) return;
+    const body = JSON.stringify({
+      eventType: alert.origin,
+      payload: { title: alert.headline, source: alert.source, link: alert.link },
+      severity: alert.threatLevel,
+      variant: SITE_VARIANT,
+    });
+    if (isDesktopRuntime()) {
+      // On desktop the fetch patch intercepts /api/* and routes to the local sidecar.
+      // Use XHR to send directly to the cloud relay endpoint, bypassing the interceptor.
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${getRemoteApiBaseUrl()}/api/notify`);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.send(body);
+    } else {
       fetch('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          eventType: alert.origin,
-          payload: { title: alert.headline, source: alert.source, link: alert.link },
-          severity: alert.threatLevel,
-          variant: SITE_VARIANT,
-        }),
-      }).catch(() => {});
-    })();
-  }
+        body,
+      }).catch((err) => { console.warn('[breaking-news-alerts] notify failed:', err); });
+    }
+  })();
 }
 
 export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
