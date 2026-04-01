@@ -152,7 +152,7 @@ See our [Security Policy](./SECURITY.md) for responsible disclosure guidelines.
 
 <p align="center">
   <a href="https://worldmonitor.app">worldmonitor.app</a> &nbsp;·&nbsp;
-  <a href="https://www.worldmonitor.app/docs/documentation">www.worldmonitor.app/docs/documentation</a> &nbsp;·&nbsp;
+  <a href="https://www.worldmonitor.app/docs/documentation">docs.worldmonitor.app</a> &nbsp;·&nbsp;
   <a href="https://finance.worldmonitor.app">finance.worldmonitor.app</a> &nbsp;·&nbsp;
   <a href="https://commodity.worldmonitor.app">commodity.worldmonitor.app</a>
 </p>
