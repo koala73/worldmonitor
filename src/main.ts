@@ -260,7 +260,6 @@ Sentry.init({
     /^Can't find variable: _G$/, // browser extension/userscript injecting _G global
     /onAppPageCallback is not defined/, // Android Chrome WebView injection (Huawei/Samsung browsers)
     /\.at is not a function/, // Instagram/older Android in-app browsers missing Array.at()
-    /^options is not defined$/, // browser extension overriding Navigator getter (WORLDMONITOR-JN)
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -315,6 +314,9 @@ Sentry.init({
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
     // Suppress Sentry beacon XHR transport errors (readyState on aborted XHR — not our code)
     if (frames.some(f => /beacon\.min\.js/.test(f.filename ?? ''))) return null;
+    // Suppress "options is not defined" from browser extension overriding Navigator getter (WORLDMONITOR-JN).
+    // Only suppress when stack has no first-party frames (filename=<anonymous> is the extension getter).
+    if (/^options is not defined$/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]')) return null;
     // Suppress TransactionInactiveError only when no first-party frames are present
     // (Safari kills open IDB transactions in background tabs — not actionable noise)
     // First-party paths in storage.ts / persistent-cache.ts / vector-db.ts must still surface.
