@@ -125,6 +125,39 @@ interface ExpandedPath {
 }
 
 // ---------------------------------------------------------------------------
+// Simulation package (buildSimulationPackageFromDeepSnapshot output)
+// ---------------------------------------------------------------------------
+
+/**
+ * One theater entry in SimulationPackage.selectedTheaters.
+ * Distinct from TheaterResult (LLM output shape stored in SimulationOutcome).
+ *
+ * NOTE: When adding fields here, also add them to the uiTheaters projection
+ * in writeSimulationOutcome() or they will be invisible in the Redis snapshot.
+ */
+interface SimulationPackageTheater {
+  theaterId: string;
+  candidateStateId: string;
+  theaterLabel?: string;
+  theaterRegion?: string;
+  stateKind?: string;
+  dominantRegion?: string;
+  macroRegions?: string[];
+  routeFacilityKey?: string;
+  commodityKey?: string;
+  topBucketId: string;
+  topChannel: string;
+  rankingScore?: number;
+  criticalSignalTypes: string[];
+  /**
+   * Role-category strings from candidate stateSummary.actors. Theater-scoped (no cross-theater aggregation).
+   * Injected into Round 2 prompt as CANDIDATE ACTOR ROLES. Used as allowlist in sanitizeKeyActorRoles guardrail.
+   * keyActors (entity-space) and actorRoles (role-category) are intentionally disjoint vocabularies.
+   */
+  actorRoles: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Theater simulation structures
 // ---------------------------------------------------------------------------
 

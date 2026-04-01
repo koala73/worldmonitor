@@ -11488,9 +11488,10 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
     details.simPathConfidence = simConf;
     // Role overlap: candidate stateSummary.actors vs sim keyActorRoles (role-category vocabulary).
     // Drives +0.04 bonus when actorSource=stateSummary. keyActorRoles absent → overlap=0 (graceful).
-    const simRoles = new Set((Array.isArray(bucketChannelMatch.keyActorRoles) ? bucketChannelMatch.keyActorRoles : []).map(normalizeActorName).filter(Boolean));
-    const roleOverlap = actorSrc === 'stateSummary' ? candidateActors.filter((a) => simRoles.has(a)) : [];
-    details.roleOverlapCount = roleOverlap.length;
+    if (actorSrc === 'stateSummary') {
+      const simRoles = new Set((Array.isArray(bucketChannelMatch.keyActorRoles) ? bucketChannelMatch.keyActorRoles : []).map(normalizeActorName).filter(Boolean));
+      details.roleOverlapCount = candidateActors.filter((a) => simRoles.has(a)).length;
+    }
 
     // Entity overlap: candidate actors vs sim keyActors.
     // Drives +0.04 bonus when actorSource=affectedAssets (backwards compat). Telemetry when actorSource=stateSummary.
@@ -11498,7 +11499,12 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
     details.keyActorsOverlapCount = candidateActors.filter((a) => simEntities.has(a)).length;
 
     // Bonus decision: role overlap for stateSummary path; entity overlap for affectedAssets fallback.
-    const bonusOverlap = actorSrc === 'stateSummary' ? roleOverlap.length : details.keyActorsOverlapCount;
+    // Explicit third branch for actorSource='none' (no actors) so future values don't fall through silently.
+    const bonusOverlap = actorSrc === 'stateSummary'
+      ? details.roleOverlapCount
+      : actorSrc === 'affectedAssets'
+        ? details.keyActorsOverlapCount
+        : 0;
     details.actorOverlapCount = bonusOverlap; // backwards-compat alias
     if (bonusOverlap >= 2) {
       adjustment += +parseFloat((0.04 * simConf).toFixed(3));
@@ -14104,7 +14110,7 @@ function validateCaseNarratives(items, predictions) {
 }
 
 function sanitizeForPrompt(text) {
-  return (text || '').replace(/[\n\r]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
+  return (text || '').replace(/[\n\r\u2028\u2029]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
 }
 
 // Sanitizes LLM-returned text before writing to Redis as a prompt section.
@@ -16242,6 +16248,11 @@ Return ONLY a JSON object with no markdown fences:
 }`;
 }
 
+/**
+ * @param {string} text - raw LLM response text (JSON or JSON-with-prefix)
+ * @param {1 | 2} round - simulation round number
+ * @returns {{ paths: object[] | null, stabilizers?: string[], invalidators?: string[], globalObservations?: string, confidenceNotes?: string, dominantReactions?: string[], note?: string }}
+ */
 function tryParseSimulationRoundPayload(text, round) {
   try {
     const parsed = JSON.parse(text);
@@ -16254,7 +16265,7 @@ function tryParseSimulationRoundPayload(text, round) {
         paths: paths.map((p) => ({
           ...p,
           keyActorRoles: Array.isArray(p.keyActorRoles)
-            ? p.keyActorRoles.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 10)
+            ? p.keyActorRoles.map((s) => sanitizeForPrompt(String(s || '')).trim()).filter(Boolean).slice(0, 10)
             : [],
         })),
         stabilizers: Array.isArray(parsed.stabilizers) ? parsed.stabilizers.map(String).slice(0, 6) : [],
@@ -16833,6 +16844,7 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
         summary: p.summary,
         confidence: p.confidence,
         keyActors: (p.keyActors || []).slice(0, 4),
+        keyActorRoles: (p.keyActorRoles || []).slice(0, 8),
       })),
     dominantReactions: (tr.dominantReactions || []).slice(0, 3),
     stabilizers: (tr.stabilizers || []).slice(0, 3),
@@ -16907,6 +16919,22 @@ async function listQueuedSimulationTasks(limit = 10) {
   return Array.isArray(response?.result) ? response.result : [];
 }
 
+/**
+ * Sanitize and allowlist-filter LLM-returned keyActorRoles strings.
+ * Filters against theater.actorRoles (exact match after normalizeActorName).
+ * When allowedRoles is empty, all sanitized values pass through (soft pass — old packages have no actorRoles).
+ * @param {string[] | undefined} rawRoles
+ * @param {string[]} allowedRoles
+ * @returns {string[]}
+ */
+function sanitizeKeyActorRoles(rawRoles, allowedRoles) {
+  const sanitized = (Array.isArray(rawRoles) ? rawRoles : [])
+    .map((s) => sanitizeForPrompt(String(s)).slice(0, 80));
+  if (!allowedRoles.length) return sanitized.slice(0, 8);
+  const allowedNorm = new Set(allowedRoles.map(normalizeActorName));
+  return sanitized.filter((s) => allowedNorm.has(normalizeActorName(s))).slice(0, 8);
+}
+
 async function processNextSimulationTask(options = {}) {
   const workerId = options.workerId || `sim-worker-${process.pid}-${Date.now()}`;
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedSimulationTasks(10);
@@ -16970,6 +16998,7 @@ async function processNextSimulationTask(options = {}) {
 
         const r2Paths = result.round2?.paths || [];
         const r1Paths = result.round1?.paths || [];
+        const allowedRoles = Array.isArray(theater.actorRoles) ? theater.actorRoles : [];
         const mergedPaths = (r2Paths.length ? r2Paths : r1Paths).map((p) => {
           const r1Path = r1Paths.find((r) => r.pathId === p.pathId);
           return {
@@ -16977,14 +17006,7 @@ async function processNextSimulationTask(options = {}) {
             label: sanitizeForPrompt(p.label || p.pathId).slice(0, 80),
             summary: sanitizeForPrompt(p.summary || '').slice(0, 200),
             keyActors: Array.isArray(p.keyActors) ? p.keyActors.map((s) => sanitizeForPrompt(String(s)).slice(0, 80)).slice(0, 6) : [],
-            keyActorRoles: (() => {
-              const rawRoles = Array.isArray(p.keyActorRoles) ? p.keyActorRoles : [];
-              const allowed = Array.isArray(theater.actorRoles) ? theater.actorRoles : [];
-              const sanitized = rawRoles.map((s) => sanitizeForPrompt(String(s)).slice(0, 80));
-              if (allowed.length === 0) return sanitized.slice(0, 8);
-              const allowedNorm = new Set(allowed.map(normalizeActorName));
-              return sanitized.filter((s) => allowedNorm.has(normalizeActorName(s))).slice(0, 8);
-            })(),
+            keyActorRoles: sanitizeKeyActorRoles(p.keyActorRoles, allowedRoles),
             roundByRoundEvolution: Array.isArray(p.roundByRoundEvolution)
               ? p.roundByRoundEvolution.map((r) => ({ round: r.round, summary: sanitizeForPrompt(r.summary || '').slice(0, 160) }))
               : [{ round: 1, summary: sanitizeForPrompt((r1Path?.summary || p.summary || '')).slice(0, 160) }],
