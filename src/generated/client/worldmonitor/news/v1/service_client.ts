@@ -52,6 +52,9 @@ export interface NewsItem {
   threat?: ThreatClassification;
   location?: GeoCoordinates;
   locationName: string;
+  importanceScore: number;
+  corroborationCount: number;
+  storyPhase: StoryPhase;
 }
 
 export interface ThreatClassification {
@@ -65,6 +68,8 @@ export interface GeoCoordinates {
   latitude: number;
   longitude: number;
 }
+
+export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";
 
 export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
 

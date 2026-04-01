@@ -293,6 +293,25 @@ components:
                 locationName:
                     type: string
                     description: Human-readable location name.
+                importanceScore:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Composite importance score (0-100): severity × 40% + source tier × 20% + corroboration × 30% + recency × 10%.
+                         Absent (0) when not yet scored.
+                corroborationCount:
+                    type: integer
+                    format: int32
+                    description: Number of distinct sources that reported the same story in this digest cycle.
+                storyPhase:
+                    type: string
+                    enum:
+                        - STORY_PHASE_UNSPECIFIED
+                        - STORY_PHASE_BREAKING
+                        - STORY_PHASE_DEVELOPING
+                        - STORY_PHASE_SUSTAINED
+                        - STORY_PHASE_FADING
+                    description: StoryPhase represents the lifecycle stage of a tracked news story.
             required:
                 - source
                 - title

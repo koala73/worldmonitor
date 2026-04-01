@@ -5,6 +5,7 @@ import type {
   CategoryBucket,
   NewsItem as ProtoNewsItem,
   ThreatLevel as ProtoThreatLevel,
+  StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import { cachedFetchJson, getCachedJsonBatch, upstashPipeline } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
@@ -52,6 +53,7 @@ interface ParsedItem {
   classSource: 'keyword' | 'llm';
   importanceScore: number;
   corroborationCount: number;
+  storyPhase: ProtoStoryPhase;
 }
 
 function normalizeTitle(title: string): string {
@@ -202,6 +204,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
       classSource: 'keyword',
       importanceScore: 0,
       corroborationCount: 1,
+      storyPhase: 'STORY_PHASE_UNSPECIFIED',
     });
   }
 
@@ -287,6 +290,7 @@ function toProtoItem(item: ParsedItem): ProtoNewsItem {
     locationName: '',
     importanceScore: item.importanceScore,
     corroborationCount: item.corroborationCount,
+    storyPhase: item.storyPhase,
   };
 }
 
