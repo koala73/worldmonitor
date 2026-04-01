@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { computeMonthlyNormals, buildZoneNormalsFromBatch } from '../scripts/seed-climate-zone-normals.mjs';
 import { hasRequiredClimateZones } from '../scripts/_climate-zones.mjs';
+import { fetchOpenMeteoArchiveBatch, parseRetryAfterMs } from '../scripts/_open-meteo-archive.mjs';
 import {
   buildClimateAnomaly,
   buildClimateAnomaliesFromBatch,
@@ -292,5 +293,97 @@ describe('co2 monitoring seed', () => {
     assert.equal(payload.monitoring.trend12m.at(-1).anomaly, 2);
     assert.equal(payload.monitoring.methanePpb, 1934.49);
     assert.equal(payload.monitoring.nitrousOxidePpb, 337.62);
+  });
+});
+
+describe('open-meteo archive helper', () => {
+  it('caps oversized Retry-After values', () => {
+    assert.equal(parseRetryAfterMs('86400'), 60_000);
+  });
+
+  it('retries transient fetch errors', async () => {
+    const originalFetch = globalThis.fetch;
+    let attempts = 0;
+
+    try {
+      globalThis.fetch = async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new TypeError('fetch failed');
+        }
+
+        return new Response(JSON.stringify({
+          daily: {
+            time: ['2026-03-01'],
+            temperature_2m_mean: [12],
+            precipitation_sum: [1],
+          },
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      };
+
+      const result = await fetchOpenMeteoArchiveBatch(
+        [{ name: 'Retry Zone', lat: 1, lon: 2 }],
+        {
+          startDate: '2026-03-01',
+          endDate: '2026-03-01',
+          daily: ['temperature_2m_mean', 'precipitation_sum'],
+          maxRetries: 1,
+          retryBaseMs: 0,
+          label: 'network retry test',
+        },
+      );
+
+      assert.equal(attempts, 2);
+      assert.equal(result.length, 1);
+      assert.equal(result[0].daily.time[0], '2026-03-01');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('retries transient 503 responses', async () => {
+    const originalFetch = globalThis.fetch;
+    let attempts = 0;
+
+    try {
+      globalThis.fetch = async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return new Response('busy', { status: 503 });
+        }
+
+        return new Response(JSON.stringify({
+          daily: {
+            time: ['2026-03-01'],
+            temperature_2m_mean: [12],
+            precipitation_sum: [1],
+          },
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      };
+
+      const result = await fetchOpenMeteoArchiveBatch(
+        [{ name: 'Retry Zone', lat: 1, lon: 2 }],
+        {
+          startDate: '2026-03-01',
+          endDate: '2026-03-01',
+          daily: ['temperature_2m_mean', 'precipitation_sum'],
+          maxRetries: 1,
+          retryBaseMs: 0,
+          label: 'retry test',
+        },
+      );
+
+      assert.equal(attempts, 2);
+      assert.equal(result.length, 1);
+      assert.equal(result[0].daily.time[0], '2026-03-01');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

@@ -266,3 +266,4 @@ components:
                 anomaly:
                     type: number
                     format: double
+                    description: Year-over-year delta vs same calendar month, in ppm.

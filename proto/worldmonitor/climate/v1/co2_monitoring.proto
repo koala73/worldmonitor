@@ -18,5 +18,6 @@ message Co2Monitoring {
 message Co2DataPoint {
   string month = 1;
   double ppm = 2;
+  // Year-over-year delta vs same calendar month, in ppm.
   double anomaly = 3;
 }

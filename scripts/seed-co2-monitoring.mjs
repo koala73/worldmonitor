@@ -5,7 +5,7 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 export const CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
-const CACHE_TTL = 86400;
+const CACHE_TTL = 259200; // 72h = 3x daily interval (gold standard)
 const PRE_INDUSTRIAL_BASELINE = 280.0;
 const STATION = 'Mauna Loa, Hawaii';
 

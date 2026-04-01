@@ -1,5 +1,8 @@
 import { CHROME_UA, sleep } from './_seed-utils.mjs';
 
+const MAX_RETRY_AFTER_MS = 60_000;
+const RETRYABLE_STATUSES = new Set([429, 503]);
+
 export function chunkItems(items, size) {
   const chunks = [];
   for (let i = 0; i < items.length; i += size) {
@@ -12,17 +15,17 @@ export function normalizeArchiveBatchResponse(payload) {
   return Array.isArray(payload) ? payload : [payload];
 }
 
-function parseRetryAfterMs(value) {
+export function parseRetryAfterMs(value) {
   if (!value) return null;
 
   const seconds = Number(value);
   if (Number.isFinite(seconds) && seconds > 0) {
-    return seconds * 1000;
+    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
   }
 
   const retryAt = Date.parse(value);
   if (Number.isFinite(retryAt)) {
-    return Math.max(retryAt - Date.now(), 1000);
+    return Math.min(Math.max(retryAt - Date.now(), 1000), MAX_RETRY_AFTER_MS);
   }
 
   return null;
@@ -51,10 +54,21 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
   const url = `https://archive-api.open-meteo.com/v1/archive?${params.toString()}`;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    let resp;
+    try {
+      resp = await fetch(url, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      if (attempt < maxRetries) {
+        const retryMs = retryBaseMs * 2 ** attempt;
+        console.log(`  [OPEN_METEO] ${err?.message ?? err} for ${label}; retrying batch in ${Math.round(retryMs / 1000)}s`);
+        await sleep(retryMs);
+        continue;
+      }
+      throw err;
+    }
 
     if (resp.ok) {
       const data = normalizeArchiveBatchResponse(await resp.json());
@@ -64,9 +78,9 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
       return data;
     }
 
-    if (resp.status === 429 && attempt < maxRetries) {
+    if (RETRYABLE_STATUSES.has(resp.status) && attempt < maxRetries) {
       const retryMs = parseRetryAfterMs(resp.headers.get('retry-after')) ?? (retryBaseMs * 2 ** attempt);
-      console.log(`  [OPEN_METEO] 429 for ${label}; retrying batch in ${Math.round(retryMs / 1000)}s`);
+      console.log(`  [OPEN_METEO] ${resp.status} for ${label}; retrying batch in ${Math.round(retryMs / 1000)}s`);
       await sleep(retryMs);
       continue;
     }

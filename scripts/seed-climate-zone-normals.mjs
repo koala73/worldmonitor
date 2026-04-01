@@ -8,7 +8,7 @@ loadEnvFile(import.meta.url);
 
 export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
 // Keep the previous baseline available across monthly cron gaps; health.js enforces freshness separately.
-const NORMALS_TTL = 90 * 24 * 60 * 60; // 90 days
+const NORMALS_TTL = 95 * 24 * 60 * 60; // 95 days = >3x a 31-day monthly interval
 const NORMALS_START = '1991-01-01';
 const NORMALS_END = '2020-12-31';
 const NORMALS_BATCH_SIZE = 2;
@@ -26,7 +26,7 @@ function average(values) {
 export function computeMonthlyNormals(daily) {
   const dailyBucketByYearMonth = new Map();
   for (let month = 1; month <= 12; month++) {
-    dailyBucketByYearMonth.set(month, []);
+    dailyBucketByYearMonth.set(month, new Map());
   }
 
   const times = daily?.time ?? [];
@@ -43,14 +43,13 @@ export function computeMonthlyNormals(daily) {
     if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) continue;
     const key = `${year}-${String(month).padStart(2, '0')}`;
     const bucket = dailyBucketByYearMonth.get(month);
-    const existing = bucket.find((entry) => entry.key === key);
+    const existing = bucket.get(key);
     if (existing) {
       existing.temps.push(Number(temp));
       existing.precips.push(Number(precip));
       continue;
     }
-    bucket.push({
-      key,
+    bucket.set(key, {
       temps: [Number(temp)],
       precips: [Number(precip)],
     });
@@ -58,22 +57,22 @@ export function computeMonthlyNormals(daily) {
 
   return Array.from(dailyBucketByYearMonth.entries())
     .map(([month, bucket]) => {
-      const monthlyMeans = bucket
+      const monthlyMeans = Array.from(bucket.values())
         .map((entry) => ({
           tempMean: average(entry.temps),
           precipMean: average(entry.precips),
         }))
         .filter((entry) => Number.isFinite(entry.tempMean) && Number.isFinite(entry.precipMean));
 
+      if (monthlyMeans.length === 0) return null;
+
       return {
         month,
-        sampleCount: monthlyMeans.length,
         tempMean: round(average(monthlyMeans.map((entry) => entry.tempMean))),
         precipMean: round(average(monthlyMeans.map((entry) => entry.precipMean))),
       };
     })
-    .filter((entry) => entry.sampleCount > 0 && Number.isFinite(entry.tempMean) && Number.isFinite(entry.precipMean))
-    .map(({ sampleCount: _sampleCount, ...entry }) => entry);
+    .filter((entry) => entry != null && Number.isFinite(entry.tempMean) && Number.isFinite(entry.precipMean));
 }
 
 export function buildZoneNormalsFromBatch(zones, batchPayloads) {

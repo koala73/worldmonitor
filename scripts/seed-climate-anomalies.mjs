@@ -7,7 +7,7 @@ import { CLIMATE_ZONE_NORMALS_KEY } from './seed-climate-zone-normals.mjs';
 
 loadEnvFile(import.meta.url);
 
-const CANONICAL_KEY = 'climate:anomalies:v1';
+const CANONICAL_KEY = 'climate:anomalies:v2';
 const CACHE_TTL = 10800; // 3h
 const ANOMALY_BATCH_SIZE = 8;
 const ANOMALY_BATCH_DELAY_MS = 750;
@@ -118,9 +118,14 @@ function toIsoDate(date) {
 }
 
 export async function fetchClimateAnomalies() {
+  // ## First Deploy
+  // The anomaly cron depends on the monthly normals cache. Seed
+  // `node scripts/seed-climate-zone-normals.mjs` once before enabling the
+  // anomaly cron in a fresh environment, otherwise every 2h anomaly run will
+  // fail until the monthly normals cron executes on the 1st of the month.
   const normalsPayload = await verifySeedKey(CLIMATE_ZONE_NORMALS_KEY).catch(() => null);
   if (!normalsPayload?.normals?.length) {
-    throw new Error(`Missing ${CLIMATE_ZONE_NORMALS_KEY} baseline; run seed-climate-zone-normals.mjs first`);
+    throw new Error(`Missing ${CLIMATE_ZONE_NORMALS_KEY} baseline; run node scripts/seed-climate-zone-normals.mjs before enabling the anomaly cron`);
   }
   const normalsIndex = indexZoneNormals(normalsPayload);
 

@@ -45,6 +45,7 @@ export interface ClimateFetchResult {
 export interface Co2DataPoint {
   month: string;
   ppm: number;
+  // Year-over-year delta vs the same calendar month, in ppm.
   anomaly: number;
 }
 
@@ -57,7 +58,7 @@ export interface Co2Monitoring {
   trend12m: Co2DataPoint[];
   methanePpb: number;
   nitrousOxidePpb: number;
-  measuredAt: Date;
+  measuredAt?: Date;
   station: string;
 }
 
@@ -129,6 +130,7 @@ function toDisplayAnomaly(proto: ProtoClimateAnomaly): ClimateAnomaly {
 }
 
 function toDisplayCo2Monitoring(proto: ProtoCo2Monitoring): Co2Monitoring {
+  const measuredAt = Number(proto.measuredAt);
   return {
     currentPpm: proto.currentPpm,
     yearAgoPpm: proto.yearAgoPpm,
@@ -138,7 +140,7 @@ function toDisplayCo2Monitoring(proto: ProtoCo2Monitoring): Co2Monitoring {
     trend12m: (proto.trend12m ?? []).map(toDisplayCo2Point),
     methanePpb: proto.methanePpb,
     nitrousOxidePpb: proto.nitrousOxidePpb,
-    measuredAt: new Date(Number(proto.measuredAt ?? 0)),
+    measuredAt: Number.isFinite(measuredAt) && measuredAt > 0 ? new Date(measuredAt) : undefined,
     station: proto.station,
   };
 }
