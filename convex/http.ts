@@ -352,7 +352,10 @@ http.route({
       }
 
       if (action === "create-pairing-token") {
-        const result = await ctx.runMutation(internal.notificationChannels.createPairingTokenForUser, { userId });
+        const result = await ctx.runMutation(internal.notificationChannels.createPairingTokenForUser, {
+          userId,
+          variant: body.variant,
+        });
         return new Response(JSON.stringify(result), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 

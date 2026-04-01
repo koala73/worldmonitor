@@ -107,9 +107,9 @@ export const deleteChannelForUser = internalMutation({
 });
 
 export const createPairingTokenForUser = internalMutation({
-  args: { userId: v.string() },
+  args: { userId: v.string(), variant: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const { userId } = args;
+    const { userId, variant } = args;
     const existing = await ctx.db
       .query("telegramPairingTokens")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -124,7 +124,7 @@ export const createPairingTokenForUser = internalMutation({
       .replace(/\//g, "_")
       .replace(/=+$/, "");
     const expiresAt = Date.now() + 15 * 60 * 1000;
-    await ctx.db.insert("telegramPairingTokens", { userId, token, expiresAt, used: false });
+    await ctx.db.insert("telegramPairingTokens", { userId, token, expiresAt, used: false, variant });
     return { token, expiresAt };
   },
 });
@@ -259,8 +259,8 @@ export const deactivateChannel = mutation({
 });
 
 export const createPairingToken = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { variant: v.optional(v.string()) },
+  handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
@@ -289,6 +289,7 @@ export const createPairingToken = mutation({
       token,
       expiresAt,
       used: false,
+      variant: args.variant,
     });
 
     return { token, expiresAt };
@@ -332,15 +333,24 @@ export const claimPairingToken = mutation({
       await ctx.db.insert("notificationChannels", doc);
     }
 
-    // On first-time pairing only, add 'telegram' to all alert rules so alerts
+    // On first-time pairing only, add 'telegram' to the alert rule so alerts
     // are delivered immediately without requiring a manual rule edit.
     // Skip on re-pair (existing channel) to preserve any intentional per-rule
     // customization the user may have made (e.g. removed Telegram from a variant).
+    // If the token carries a variant, scope the update to that variant's rule only.
+    // Fall back to all rules when variant is absent (backward compat for old tokens).
     if (!existing) {
-      const rules = await ctx.db
-        .query("alertRules")
-        .withIndex("by_user", (q) => q.eq("userId", record.userId))
-        .collect();
+      const rules = await (record.variant
+        ? ctx.db
+            .query("alertRules")
+            .withIndex("by_user_variant", (q) =>
+              q.eq("userId", record.userId).eq("variant", record.variant as string),
+            )
+            .collect()
+        : ctx.db
+            .query("alertRules")
+            .withIndex("by_user", (q) => q.eq("userId", record.userId))
+            .collect());
       for (const rule of rules) {
         if (!rule.channels.includes("telegram")) {
           await ctx.db.patch(rule._id, { channels: [...rule.channels, "telegram"] });

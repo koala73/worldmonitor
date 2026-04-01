@@ -1,4 +1,5 @@
 import { getClerkToken } from '@/services/clerk';
+import { SITE_VARIANT } from '@/config/variant';
 
 export type ChannelType = 'telegram' | 'slack' | 'email';
 export type Sensitivity = 'all' | 'high' | 'critical';
@@ -49,7 +50,7 @@ export async function createPairingToken(): Promise<{ token: string; expiresAt: 
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'create-pairing-token' }),
+    body: JSON.stringify({ action: 'create-pairing-token', variant: SITE_VARIANT }),
   });
   if (!res.ok) throw new Error(`create pairing token: ${res.status}`);
   return res.json();

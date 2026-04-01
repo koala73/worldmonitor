@@ -61,6 +61,7 @@ export default defineSchema({
     token: v.string(),
     expiresAt: v.number(),
     used: v.boolean(),
+    variant: v.optional(v.string()),
   })
     .index("by_token", ["token"])
     .index("by_user", ["userId"]),
