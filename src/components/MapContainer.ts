@@ -351,7 +351,7 @@ export class MapContainer {
 
   public setView(view: MapView, zoom?: number): void {
     if (this.useGlobe) { this.globeMap?.setView(view, zoom); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setView(view as DeckMapView, zoom); } else { this.svgMap?.setView(view); }
+    if (this.useDeckGL) { this.deckGLMap?.setView(view as DeckMapView, zoom); } else { this.svgMap?.setView(view, zoom); }
   }
 
   public setZoom(zoom: number): void {

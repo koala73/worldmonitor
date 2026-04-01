@@ -701,17 +701,17 @@ export class EventHandlerManager implements AppModule {
       this.debouncedWebcamReload();
     });
 
-    // Don't sync immediately when URL position params are being applied.
-    // applyInitialUrlState() will have already called map.setCenter() which
-    // starts an async flyTo — reading getCenter() now returns the default
-    // position and would overwrite the intended URL params.
-    // onStateChanged fires on moveend (after flyTo completes) and handles
-    // the first correct URL write at that point.
-    const urlHasPosition =
-      this.ctx.initialUrlState?.lat !== undefined ||
-      this.ctx.initialUrlState?.lon !== undefined ||
-      this.ctx.initialUrlState?.zoom !== undefined;
-    if (!urlHasPosition) {
+    // Skip the immediate sync when applyInitialUrlState() will trigger an
+    // async flyTo. The flyTo fires onStateChanged on moveend, which handles
+    // the first correct URL write. Only suppress when the async path will
+    // actually run — partial params (?lat without ?lon) are invalid and must
+    // be canonicalized immediately rather than left stale.
+    const { view, lat, lon, zoom } = this.ctx.initialUrlState ?? {};
+    const urlHasAsyncFlyTo =
+      view !== undefined ||                         // setView → flyTo
+      (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
+      zoom !== undefined;                           // setZoom → animated zoom
+    if (!urlHasAsyncFlyTo) {
       this.debouncedUrlSync();
     }
   }
