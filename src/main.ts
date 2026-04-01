@@ -382,6 +382,8 @@ function shouldSuppressCspViolation(
   if (blockedURI === 'inline' && directive === 'script-src-elem') return true;
   // Null blocked URI from in-app browsers.
   if (blockedURI === 'null') return true;
+  // localhost/loopback — Smart TV browsers (Tizen, webOS) and dev tools inject local service calls.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(blockedURI)) return true;
   return false;
 }
 // Detect once whether BOTH the meta tag and HTTP header CSP allow https: in connect-src.

@@ -140,6 +140,20 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     });
   });
 
+  describe('localhost/loopback', () => {
+    it('suppresses http://localhost:9009 (Smart TV tuner service)', () => {
+      assert.ok(suppress('enforce', 'connect-src', 'http://localhost:9009/service/tvinfo', '', false));
+    });
+
+    it('suppresses http://127.0.0.1:8080', () => {
+      assert.ok(suppress('enforce', 'connect-src', 'http://127.0.0.1:8080/api', '', false));
+    });
+
+    it('suppresses https://localhost:3000', () => {
+      assert.ok(suppress('enforce', 'connect-src', 'https://localhost:3000/dev', '', false));
+    });
+  });
+
   describe('real violations pass through', () => {
     it('reports third-party script-src violation', () => {
       assert.ok(!suppress('enforce', 'script-src', 'https://evil.com/crypto-miner.js', '', true));
