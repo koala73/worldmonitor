@@ -150,6 +150,7 @@ function isGlobalCooldown(candidateLevel: 'critical' | 'high'): boolean {
 }
 
 function dispatchAlert(alert: BreakingAlert): void {
+  console.log('[breaking-news-alerts] dispatching:', alert.origin, alert.threatLevel, alert.headline.slice(0, 60));
   pruneDedupeMap();
   dedupeMap.set(alert.id, Date.now());
   lastGlobalAlertMs = Date.now();
@@ -159,7 +160,7 @@ function dispatchAlert(alert: BreakingAlert): void {
 
   void (async () => {
     const token = await getClerkToken();
-    if (!token) return;
+    if (!token) { console.warn('[breaking-news-alerts] no Clerk token, skipping notify'); return; }
     const body = JSON.stringify({
       eventType: alert.origin,
       payload: { title: alert.headline, source: alert.source, link: alert.link },
@@ -179,7 +180,10 @@ function dispatchAlert(alert: BreakingAlert): void {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body,
-      }).catch((err) => { console.warn('[breaking-news-alerts] notify failed:', err); });
+      }).then((res) => {
+        if (!res.ok) console.warn('[breaking-news-alerts] notify returned', res.status, alert.origin);
+        else console.log('[breaking-news-alerts] notify queued:', alert.origin, alert.threatLevel);
+      }).catch((err) => { console.warn('[breaking-news-alerts] notify network error:', err); });
     }
   })();
 }
