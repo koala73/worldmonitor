@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 
 import { pathToFileURL } from 'node:url';
 import { CHROME_UA } from './_seed-utils.mjs';
@@ -14,7 +15,8 @@ const REGULATORY_FEEDS = [
   { agency: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
   { agency: 'FDIC', url: 'https://public.govdelivery.com/topics/USFDIC_26/feed.rss' },
   // FINRA still publishes this RSS endpoint over plain HTTP; HTTPS requests fail
-  // from both Node fetch and curl in validation, so keep the official feed URL.
+  // from both Node fetch and curl in validation, so keep the official feed URL
+  // and periodically recheck whether HTTPS starts working.
   { agency: 'FINRA', url: 'http://feeds.finra.org/FINRANotices' },
 ];
 
@@ -128,9 +130,10 @@ function parseRssItems(xml, feedUrl) {
   while ((match = itemRegex.exec(xml)) !== null) {
     const block = match[1];
     const title = getTagValue(block, 'title');
+    const description = getTagValue(block, 'description');
     const link = canonicalizeLink(getTagValue(block, 'link'), feedUrl);
     const publishedAt = toIsoDate(getTagValue(block, 'pubDate') || getTagValue(block, 'updated'));
-    items.push({ title, link, publishedAt });
+    items.push({ title, description, link, publishedAt });
   }
   return items;
 }
@@ -142,11 +145,12 @@ function parseAtomEntries(xml, feedUrl) {
   while ((match = entryRegex.exec(xml)) !== null) {
     const block = match[1];
     const title = getTagValue(block, 'title');
+    const description = getTagValue(block, 'summary') || getTagValue(block, 'content');
     const link = canonicalizeLink(extractAtomLink(block), feedUrl);
     const publishedAt = toIsoDate(
       getTagValue(block, 'updated') || getTagValue(block, 'published') || getTagValue(block, 'pubDate')
     );
-    entries.push({ title, link, publishedAt });
+    entries.push({ title, description, link, publishedAt });
   }
   return entries;
 }
@@ -163,6 +167,7 @@ function normalizeFeedItems(items, agency) {
       id: buildActionId(agency, item.title, item.publishedAt),
       agency,
       title: item.title,
+      description: item.description || '',
       link: item.link,
       publishedAt: item.publishedAt,
     }));
