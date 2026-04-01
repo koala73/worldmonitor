@@ -7,6 +7,7 @@ import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
 import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-settings';
 import { escapeHtml } from '@/utils/sanitize';
+import { renderSVG } from 'uqr';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
 import {
@@ -808,23 +809,57 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         container.addEventListener('click', (e) => {
           const target = e.target as HTMLElement;
 
-          if (target.closest('#usConnectTelegram')) {
-            const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
-            if (!rowEl) return;
+          if (target.closest('.us-notif-tg-copy-btn')) {
+            const btn = target.closest('.us-notif-tg-copy-btn') as HTMLButtonElement;
+            const cmd = btn.dataset.cmd ?? '';
+            const markCopied = () => {
+              btn.textContent = 'Copied!';
+              setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+            };
+            const execFallback = () => {
+              const ta = document.createElement('textarea');
+              ta.value = cmd;
+              ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+              document.body.appendChild(ta);
+              ta.select();
+              try { document.execCommand('copy'); markCopied(); } catch { /* ignore */ }
+              document.body.removeChild(ta);
+            };
+            if (navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(cmd).then(markCopied).catch(execFallback);
+            } else {
+              execFallback();
+            }
+            return;
+          }
+
+          const startTelegramPairing = (rowEl: HTMLElement) => {
+            rowEl.innerHTML = `<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub">Generating code…</div></div>`;
             createPairingToken().then(({ token, expiresAt }) => {
               if (signal.aborted) return;
               const botUsername = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'WorldMonitorBot';
-              const deepLink = `https://t.me/${botUsername}?start=${token}`;
+              const deepLink = `https://t.me/${String(botUsername)}?start=${token}`;
+              const startCmd = `/start ${token}`;
               const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+              const qrSvg = renderSVG(deepLink, { ecc: 'M', border: 1 });
               rowEl.innerHTML = `
                 <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
                 <div class="us-notif-ch-body">
-                  <div class="us-notif-ch-name">Telegram</div>
-                  <div class="us-notif-ch-sub">Waiting for pairing...</div>
+                  <div class="us-notif-ch-name">Connect Telegram</div>
+                  <div class="us-notif-ch-sub">Open the bot. If Telegram doesn't send the code automatically, paste this command.</div>
+                  <div class="us-notif-tg-pair-layout">
+                    <div class="us-notif-tg-cmd-col">
+                      <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
+                      <div class="us-notif-tg-cmd-row">
+                        <code class="us-notif-tg-cmd">${escapeHtml(startCmd)}</code>
+                        <button type="button" class="us-notif-tg-copy-btn" data-cmd="${escapeHtml(startCmd)}">Copy</button>
+                      </div>
+                    </div>
+                    <div class="us-notif-tg-qr" title="Scan with mobile Telegram">${qrSvg}</div>
+                  </div>
                 </div>
                 <div class="us-notif-ch-actions">
-                  <a href="${escapeHtml(deepLink)}" target="_blank" rel="noopener noreferrer" class="us-notif-tg-link">Open Telegram</a>
-                  <span class="us-notif-tg-countdown" id="usTgCountdown">${secsLeft}s</span>
+                  <span class="us-notif-tg-countdown" id="usTgCountdown">Waiting… ${secsLeft}s</span>
                 </div>
               `;
               let remaining = secsLeft;
@@ -833,20 +868,40 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                 if (signal.aborted) { clearNotifPoll(); return; }
                 remaining -= 3;
                 const countdownEl = container.querySelector<HTMLElement>('#usTgCountdown');
-                if (countdownEl) countdownEl.textContent = `${Math.max(0, remaining)}s`;
+                if (countdownEl) countdownEl.textContent = `Waiting… ${Math.max(0, remaining)}s`;
                 const expired = remaining <= 0;
-                if (expired) clearNotifPoll();
+                if (expired) {
+                  clearNotifPoll();
+                  rowEl.innerHTML = `
+                    <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
+                    <div class="us-notif-ch-body">
+                      <div class="us-notif-ch-name">Telegram</div>
+                      <div class="us-notif-ch-sub us-notif-tg-expired">Code expired</div>
+                    </div>
+                    <div class="us-notif-ch-actions">
+                      <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-tg-regen">Generate new code</button>
+                    </div>
+                  `;
+                  return;
+                }
                 getChannelsData().then((data) => {
                   const tg = data.channels.find(c => c.channelType === 'telegram');
-                  if (tg?.verified || expired) {
-                    if (tg?.verified) saveRuleWithNewChannel('telegram');
+                  if (tg?.verified) {
+                    clearNotifPoll();
+                    saveRuleWithNewChannel('telegram');
                     reloadNotifSection();
                   }
-                }).catch(() => {
-                  if (expired) reloadNotifSection();
-                });
+                }).catch(() => {});
               }, 3000);
-            }).catch(() => {});
+            }).catch(() => {
+              rowEl.innerHTML = `<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub us-notif-tg-expired">Failed to generate code</div></div><div class="us-notif-ch-actions"><button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-tg-regen">Try again</button></div>`;
+            });
+          };
+
+          if (target.closest('#usConnectTelegram') || target.closest('.us-notif-tg-regen')) {
+            const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
+            if (!rowEl) return;
+            startTelegramPairing(rowEl);
             return;
           }
 

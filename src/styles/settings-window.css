@@ -1255,9 +1255,97 @@ tr.diag-err td { color: var(--settings-red); }
   background: color-mix(in srgb, var(--settings-accent) 85%, white);
 }
 
+.us-notif-tg-inline-link {
+  color: var(--settings-accent);
+  text-decoration: none;
+}
+
+.us-notif-tg-inline-link:hover {
+  text-decoration: underline;
+}
+
+.us-notif-tg-pair-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.us-notif-tg-qr {
+  flex-shrink: 0;
+  width: 88px;
+  height: 88px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+  padding: 3px;
+  box-sizing: border-box;
+}
+
+.us-notif-tg-qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.us-notif-tg-cmd-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.us-notif-tg-cmd-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.us-notif-tg-cmd {
+  font-family: monospace;
+  font-size: 11px;
+  background: var(--settings-bg-secondary, rgba(0,0,0,0.15));
+  border: 1px solid var(--settings-border, rgba(255,255,255,0.1));
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--settings-text-primary);
+  user-select: all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.us-notif-tg-copy-btn {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--settings-accent);
+  border-radius: 4px;
+  color: var(--settings-accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.us-notif-tg-copy-btn:hover {
+  background: var(--settings-accent);
+  color: #fff;
+}
+
+.us-notif-tg-expired {
+  color: var(--settings-text-secondary);
+  font-style: italic;
+}
+
 .us-notif-tg-countdown {
   font-size: 10px;
   color: var(--settings-text-secondary);
+  white-space: nowrap;
 }
 
 .us-notif-signin {

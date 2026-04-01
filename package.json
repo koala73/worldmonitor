@@ -110,9 +110,9 @@
     "fast-xml-parser": "^5.3.7",
     "globe.gl": "^2.45.0",
     "hls.js": "^1.6.15",
-    "jose": "^6.0.11",
     "i18next": "^25.8.10",
     "i18next-browser-languagedetector": "^8.2.1",
+    "jose": "^6.0.11",
     "maplibre-gl": "^5.16.0",
     "marked": "^17.0.3",
     "onnxruntime-web": "^1.23.2",
@@ -123,6 +123,7 @@
     "supercluster": "^8.0.1",
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
+    "uqr": "^0.1.2",
     "ws": "^8.19.0",
     "youtubei.js": "^16.0.1"
   },

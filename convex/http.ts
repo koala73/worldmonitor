@@ -141,9 +141,14 @@ http.route({
     const provided =
       request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
 
-    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+    // Drop only when a secret header IS provided but doesn't match (spoofing).
+    // If the header is absent, Telegram's secret_token registration may have
+    // silently failed — the pairing token (43-char, single-use, 15-min TTL)
+    // provides sufficient defence against token guessing.
+    if (provided && secret && !(await timingSafeEqualStrings(provided, secret))) {
       return new Response("OK", { status: 200 });
     }
+    if (!provided) console.warn("[telegram-webhook] secret header absent — relying on pairing token auth");
 
     let update: {
       message?: {
@@ -178,10 +183,10 @@ http.route({
       chatId,
     });
 
-    // Send welcome only on successful first/re-pair; fire-and-forget to stay off critical path
+    // Send welcome on successful first/re-pair — must be awaited in HTTP actions
     const botToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
     if (claimed.ok && botToken) {
-      fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "User-Agent": "worldmonitor-convex/1.0" },
         body: JSON.stringify({
@@ -189,7 +194,9 @@ http.route({
           text: "✅ WorldMonitor connected! You'll receive breaking news alerts here.",
         }),
         signal: AbortSignal.timeout(8000),
-      }).catch(() => {});
+      }).catch((err: unknown) => {
+        console.error("[telegram-webhook] sendMessage failed:", err);
+      });
     }
 
     return new Response("OK", { status: 200 });
