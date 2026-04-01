@@ -60,7 +60,8 @@ export const getSubscriptionForUser = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
     // When authenticated, enforce that the caller can only read their own data.
-    // Falls back to args.userId for cold-start race conditions.
+    // Falls back to args.userId when unauthenticated — known trust gap.
+    // TODO(auth): require auth identity, remove userId arg.
     const authedUserId = await resolveUserId(ctx);
     if (authedUserId && authedUserId !== args.userId) {
       // Authenticated user trying to read someone else's data — reject

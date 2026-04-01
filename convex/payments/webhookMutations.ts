@@ -55,6 +55,9 @@ export const processWebhookEvent = internalMutation({
 
     // Minimum shape guard — throw so Convex rolls back and returns 500,
     // causing Dodo to retry instead of silently dropping the event.
+    // Note: permanent schema mismatches will exhaust Dodo's retry budget
+    // without a durable "failed" record. Acceptable for now — Dodo caps
+    // retries, and losing events silently is worse than bounded retries.
     if (!data || typeof data !== 'object') {
       throw new Error(
         `[webhook] rawPayload.data is missing or not an object (eventType=${args.eventType}, webhookId=${args.webhookId})`,

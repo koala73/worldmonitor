@@ -101,7 +101,8 @@ export function destroySubscriptionWatch(): void {
   initialized = false;
   subscriptionLoaded = false;
   currentSubscription = null;
-  listeners.clear();
+  // Keep listeners intact — PanelLayout registers them once and expects them
+  // to survive auth transitions. Only the Convex transport is torn down.
 }
 
 /**
