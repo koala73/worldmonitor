@@ -483,6 +483,10 @@ export class DeckGLMap {
   private handleThemeChange: () => void;
   private handleMapThemeChange: () => void;
   private moveTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  /** Target center set eagerly by setView() so getCenter() returns the correct
+   *  destination before moveend fires, preventing stale intermediate coords
+   *  from being written to the URL during flyTo. Cleared on moveend. */
+  private pendingCenter: { lat: number; lon: number } | null = null;
   private lastAircraftFetchCenter: [number, number] | null = null;
   private lastAircraftFetchZoom = -1;
   private aircraftFetchSeq = 0;
@@ -833,6 +837,7 @@ export class DeckGLMap {
     });
 
     this.maplibreMap.on('moveend', () => {
+      this.pendingCenter = null;
       this.lastSCZoom = -1;
       this.rafUpdateLayers();
       this.debouncedFetchBases();
@@ -4619,15 +4624,21 @@ export class DeckGLMap {
     }
   }
 
-  public setView(view: DeckMapView): void {
+  public setView(view: DeckMapView, zoom?: number): void {
     const preset = VIEW_PRESETS[view];
     if (!preset) return;
     this.state.view = view;
+    // Eagerly write target zoom+center so getState()/getCenter() return the
+    // correct destination before moveend fires. Without this a 250ms URL sync
+    // reads the old cached zoom or an intermediate animated center and
+    // overwrites URL params (e.g. ?view=mena&zoom=4 → wrong coords).
+    this.state.zoom = zoom ?? preset.zoom;
+    this.pendingCenter = { lat: preset.latitude, lon: preset.longitude };
 
     if (this.maplibreMap) {
       this.maplibreMap.flyTo({
         center: [preset.longitude, preset.latitude],
-        zoom: preset.zoom,
+        zoom: this.state.zoom,
         duration: 1000,
       });
     }
@@ -4667,6 +4678,7 @@ export class DeckGLMap {
   }
 
   public getCenter(): { lat: number; lon: number } | null {
+    if (this.pendingCenter) return this.pendingCenter;
     if (this.maplibreMap) {
       const center = this.maplibreMap.getCenter();
       return { lat: center.lat, lon: center.lng };

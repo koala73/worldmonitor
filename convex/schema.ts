@@ -27,6 +27,9 @@ export default defineSchema({
         webhookEnvelope: v.string(),
         verified: v.boolean(),
         linkedAt: v.number(),
+        slackChannelName: v.optional(v.string()),
+        slackTeamName: v.optional(v.string()),
+        slackConfigurationUrl: v.optional(v.string()),
       }),
       v.object({
         userId: v.string(),
@@ -34,6 +37,15 @@ export default defineSchema({
         email: v.string(),
         verified: v.boolean(),
         linkedAt: v.number(),
+      }),
+      v.object({
+        userId: v.string(),
+        channelType: v.literal("discord"),
+        webhookEnvelope: v.string(),
+        verified: v.boolean(),
+        linkedAt: v.number(),
+        discordGuildId: v.optional(v.string()),
+        discordChannelId: v.optional(v.string()),
       }),
     ),
   )
@@ -58,6 +70,7 @@ export default defineSchema({
     token: v.string(),
     expiresAt: v.number(),
     used: v.boolean(),
+    variant: v.optional(v.string()),
   })
     .index("by_token", ["token"])
     .index("by_user", ["userId"]),
