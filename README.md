@@ -86,7 +86,7 @@ See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started
 | **Deployment** | Vercel Edge Functions (60+), Railway relay, Tauri, PWA |
 | **Caching** | Redis (Upstash), 3-tier cache, CDN, service worker |
 
-Full stack details in the **[architecture docs](https://www.worldmonitor.app/docs/getting-started#map-rendering-architecture)**.
+Full stack details in the **[architecture docs](https://www.worldmonitor.app/docs/architecture)**.
 
 ---
 
