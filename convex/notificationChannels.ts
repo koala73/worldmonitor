@@ -42,6 +42,8 @@ export const setChannelForUser = internalMutation({
       if (!email) throw new ConvexError("email required for email channel");
       const doc = { userId, channelType: "email" as const, email, verified: true, linkedAt: now };
       if (existing) { await ctx.db.replace(existing._id, doc); } else { await ctx.db.insert("notificationChannels", doc); }
+    } else {
+      throw new ConvexError("discord channel must be set via set-discord-oauth");
     }
     return { isNew };
   },
@@ -219,6 +221,8 @@ export const setChannel = mutation({
       } else {
         await ctx.db.insert("notificationChannels", doc);
       }
+    } else {
+      throw new ConvexError("discord channel must be set via set-discord-oauth");
     }
   },
 });
