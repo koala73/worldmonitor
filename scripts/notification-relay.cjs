@@ -121,6 +121,7 @@ async function sendTelegram(userId, chatId, text) {
 // ── Delivery: Slack ───────────────────────────────────────────────────────────
 
 const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
+const DISCORD_RE = /^https:\/\/discord\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+\/?$/;
 
 async function sendSlack(userId, webhookEnvelope, text) {
   let webhookUrl;
@@ -157,6 +158,53 @@ async function sendSlack(userId, webhookEnvelope, text) {
     await deactivateChannel(userId, 'slack');
   } else if (!res.ok) {
     console.warn(`[relay] Slack send failed: ${res.status}`);
+  }
+}
+
+// ── Delivery: Discord ─────────────────────────────────────────────────────────
+
+async function sendDiscord(userId, webhookEnvelope, text) {
+  let webhookUrl;
+  try {
+    webhookUrl = decrypt(webhookEnvelope);
+  } catch (err) {
+    console.warn(`[relay] Discord decrypt failed for ${userId}:`, err.message);
+    return;
+  }
+  if (!DISCORD_RE.test(webhookUrl)) {
+    console.warn(`[relay] Discord URL invalid for ${userId}`);
+    return;
+  }
+  // SSRF prevention: resolve hostname and check for private IPs
+  try {
+    const hostname = new URL(webhookUrl).hostname;
+    const addresses = await dns.resolve4(hostname);
+    if (addresses.some(isPrivateIP)) {
+      console.warn(`[relay] Discord URL resolves to private IP for ${userId}`);
+      return;
+    }
+  } catch {
+    console.warn(`[relay] Discord DNS resolution failed for ${userId}`);
+    return;
+  }
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+    body: JSON.stringify({ content: text }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (res.status === 404 || res.status === 410) {
+    console.warn(`[relay] Discord webhook gone for ${userId} — deactivating`);
+    await deactivateChannel(userId, 'discord');
+  } else if (res.status === 429) {
+    const body = await res.json().catch(() => ({}));
+    const wait = ((body.retry_after ?? 1) + 0.5) * 1000;
+    await new Promise(r => setTimeout(r, wait));
+    return sendDiscord(userId, webhookEnvelope, text); // single retry
+  } else if (!res.ok) {
+    console.warn(`[relay] Discord send failed: ${res.status}`);
+  } else {
+    console.log(`[relay] Discord delivered to ${userId}`);
   }
 }
 
@@ -214,6 +262,8 @@ async function processWelcome(event) {
   const text = `✅ WorldMonitor connected! You'll receive breaking news alerts here.`;
   if (channelType === 'slack' && ch.webhookEnvelope) {
     await sendSlack(userId, ch.webhookEnvelope, text);
+  } else if (channelType === 'discord' && ch.webhookEnvelope) {
+    await sendDiscord(userId, ch.webhookEnvelope, text);
   } else if (channelType === 'email' && ch.email) {
     await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
   }
@@ -273,6 +323,8 @@ async function processEvent(event) {
           await sendTelegram(rule.userId, ch.chatId, text);
         } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
           await sendSlack(rule.userId, ch.webhookEnvelope, text);
+        } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
+          await sendDiscord(rule.userId, ch.webhookEnvelope, text);
         } else if (ch.channelType === 'email' && ch.email) {
           await sendEmail(ch.email, subject, text);
         }
