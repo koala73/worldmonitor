@@ -278,9 +278,36 @@ async function processWelcome(event) {
   }
 }
 
+const IMPORTANCE_SCORE_LIVE = process.env.IMPORTANCE_SCORE_LIVE === '1';
+const IMPORTANCE_SCORE_MIN = Number(process.env.IMPORTANCE_SCORE_MIN ?? 40);
+const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v1';
+const SHADOW_LOG_TTL = 7 * 24 * 3600; // 7 days
+
+async function shadowLogScore(event) {
+  const score = event.payload?.importanceScore ?? 0;
+  if (!UPSTASH_URL || !UPSTASH_TOKEN || score === 0) return;
+  const member = `${Date.now()}:${event.eventType}:${String(event.payload?.title ?? '').slice(0, 60)}`;
+  try {
+    await upstashRest('ZADD', SHADOW_SCORE_LOG_KEY, String(score), member);
+    await upstashRest('EXPIRE', SHADOW_SCORE_LOG_KEY, String(SHADOW_LOG_TTL));
+  } catch {}
+}
+
 async function processEvent(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   console.log(`[relay] Processing event: ${event.eventType} (${event.severity ?? 'high'})`);
+
+  // Shadow log importanceScore for comparison (always runs when score is present)
+  shadowLogScore(event).catch(() => {});
+
+  // Score gate — only active when IMPORTANCE_SCORE_LIVE=1 (set after 48h data accumulation)
+  if (IMPORTANCE_SCORE_LIVE) {
+    const score = event.payload?.importanceScore ?? 0;
+    if (score < IMPORTANCE_SCORE_MIN) {
+      console.log(`[relay] Score gate: dropped ${event.eventType} score=${score} < ${IMPORTANCE_SCORE_MIN}`);
+      return;
+    }
+  }
 
   let enabledRules;
   try {

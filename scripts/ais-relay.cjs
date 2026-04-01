@@ -3253,17 +3253,29 @@ async function seedClassifyForVariant(variant, seenTitles) {
     return { total: 0, classified: 0, skipped: 0 };
   }
 
-  const allTitles = new Set();
+  // Map of title → item metadata; recency gate: skip articles older than 6h
+  const RECENCY_GATE_MS = 6 * 60 * 60 * 1000;
+  const now6h = Date.now() - RECENCY_GATE_MS;
+  const allTitles = new Map();
   if (digest?.categories) {
     for (const bucket of Object.values(digest.categories)) {
       for (const item of bucket?.items ?? []) {
-        if (item?.title) allTitles.add(item.title);
+        if (!item?.title) continue;
+        if (item.publishedAt && item.publishedAt < now6h) continue; // stale item
+        if (!allTitles.has(item.title)) {
+          allTitles.set(item.title, {
+            source: item.source ?? variant,
+            publishedAt: item.publishedAt ?? Date.now(),
+            importanceScore: item.importanceScore ?? 0,
+            link: item.link ?? '',
+          });
+        }
       }
     }
   }
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
 
-  const titleArr = [...allTitles];
+  const titleArr = [...allTitles.keys()];
   const cacheKeys = titleArr.map((t) => classifyCacheKey(t));
 
   const cached = await upstashMGet(cacheKeys);
@@ -3330,9 +3342,16 @@ async function seedClassifyForVariant(variant, seenTitles) {
       // Notifications are outside seenTitles guard — each variant publishes
       // independently, protected by the variant-scoped Redis scan-dedup key.
       if (level === 'critical' || level === 'high') {
+        const meta = allTitles.get(chunk[idx]) ?? { source: variant, publishedAt: Date.now(), importanceScore: 0, link: '' };
         publishNotificationEvent({
           eventType: 'rss_alert',
-          payload: { title: chunk[idx], source: variant },
+          payload: {
+            title: chunk[idx],
+            source: meta.source,
+            link: meta.link,
+            publishedAt: meta.publishedAt,
+            importanceScore: meta.importanceScore,
+          },
           severity: level,
           variant,
         }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
