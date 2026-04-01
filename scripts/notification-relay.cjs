@@ -163,7 +163,9 @@ async function sendSlack(userId, webhookEnvelope, text) {
 
 // ── Delivery: Discord ─────────────────────────────────────────────────────────
 
-async function sendDiscord(userId, webhookEnvelope, text) {
+const DISCORD_MAX_CONTENT = 2000;
+
+async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
   let webhookUrl;
   try {
     webhookUrl = decrypt(webhookEnvelope);
@@ -187,20 +189,27 @@ async function sendDiscord(userId, webhookEnvelope, text) {
     console.warn(`[relay] Discord DNS resolution failed for ${userId}`);
     return;
   }
+  const content = text.length > DISCORD_MAX_CONTENT
+    ? text.slice(0, DISCORD_MAX_CONTENT - 1) + '…'
+    : text;
   const res = await fetch(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
-    body: JSON.stringify({ content: text }),
+    body: JSON.stringify({ content }),
     signal: AbortSignal.timeout(10000),
   });
   if (res.status === 404 || res.status === 410) {
     console.warn(`[relay] Discord webhook gone for ${userId} — deactivating`);
     await deactivateChannel(userId, 'discord');
   } else if (res.status === 429) {
+    if (retryCount >= 1) {
+      console.warn(`[relay] Discord 429 retry limit reached for ${userId}`);
+      return;
+    }
     const body = await res.json().catch(() => ({}));
     const wait = ((body.retry_after ?? 1) + 0.5) * 1000;
     await new Promise(r => setTimeout(r, wait));
-    return sendDiscord(userId, webhookEnvelope, text); // single retry
+    return sendDiscord(userId, webhookEnvelope, text, retryCount + 1);
   } else if (!res.ok) {
     console.warn(`[relay] Discord send failed: ${res.status}`);
   } else {
