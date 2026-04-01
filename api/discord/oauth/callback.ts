@@ -136,7 +136,11 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
 
-  if (!tokenRes?.ok) return errorAndClose('token_exchange_failed');
+  if (!tokenRes?.ok) {
+    const errBody = await tokenRes?.text().catch(() => '(unreadable)');
+    console.error(`[discord-oauth] token_exchange_failed status=${tokenRes?.status} body=${errBody} redirect_uri=${DISCORD_REDIRECT_URI} client_id=${DISCORD_CLIENT_ID}`);
+    return errorAndClose('token_exchange_failed');
+  }
 
   const tokenData = await tokenRes.json() as {
     webhook?: {
