@@ -15,6 +15,7 @@ import {
   createPairingToken,
   setEmailChannel,
   startSlackOAuth,
+  startDiscordOAuth,
   deleteChannel,
   saveAlertRules,
   type NotificationChannel,
@@ -622,10 +623,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         function channelIcon(type: ChannelType): string {
           if (type === 'telegram') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>`;
           if (type === 'email') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>`;
+          if (type === 'discord') return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>`;
           return `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>`;
         }
 
-        const CHANNEL_LABELS: Record<ChannelType, string> = { telegram: 'Telegram', email: 'Email', slack: 'Slack' };
+        const CHANNEL_LABELS: Record<ChannelType, string> = { telegram: 'Telegram', email: 'Email', slack: 'Slack', discord: 'Discord' };
 
         function renderChannelRow(channel: NotificationChannel | null, type: ChannelType): string {
           const icon = channelIcon(type);
@@ -638,6 +640,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               sub = `@${escapeHtml(channel.chatId ?? 'connected')}`;
             } else if (type === 'email') {
               sub = escapeHtml(channel.email ?? 'connected');
+            } else if (type === 'discord') {
+              sub = 'Connected';
             } else {
               // Slack: show #channel · team from OAuth metadata
               const rawCh = channel.slackChannelName ?? '';
@@ -703,11 +707,28 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               </div>
             </div>`;
           }
+
+          if (type === 'discord') {
+            return `<div class="us-notif-ch-row" data-channel-type="discord">
+              <div class="us-notif-ch-icon">${icon}</div>
+              <div class="us-notif-ch-body">
+                <div class="us-notif-ch-name">${name}</div>
+                <div class="us-notif-ch-sub">Not connected</div>
+              </div>
+              <div class="us-notif-ch-actions">
+                <button type="button" class="us-notif-discord-oauth" id="usConnectDiscord">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="margin-right:5px;vertical-align:-1px"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+                  Connect Discord
+                </button>
+              </div>
+            </div>`;
+          }
+
           return '';
         }
 
         function renderNotifContent(data: Awaited<ReturnType<typeof getChannelsData>>): string {
-          const channelTypes: ChannelType[] = ['telegram', 'email', 'slack'];
+          const channelTypes: ChannelType[] = ['telegram', 'email', 'slack', 'discord'];
           const alertRule = data.alertRules?.[0] ?? null;
           const sensitivity = alertRule?.sensitivity ?? 'all';
 
@@ -773,6 +794,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         }
 
         let slackOAuthPopup: Window | null = null;
+        let discordOAuthPopup: Window | null = null;
         let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
         signal.addEventListener('abort', () => {
           if (alertRuleDebounceTimer !== null) {
@@ -952,6 +974,32 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             return;
           }
 
+          if (target.closest('#usConnectDiscord')) {
+            const btn = target.closest<HTMLButtonElement>('#usConnectDiscord');
+            if (discordOAuthPopup && !discordOAuthPopup.closed) {
+              discordOAuthPopup.focus();
+              return;
+            }
+            if (btn) btn.textContent = 'Connecting…';
+            startDiscordOAuth().then((oauthUrl) => {
+              if (signal.aborted) return;
+              const popup = window.open(oauthUrl, 'discord-oauth', 'width=600,height=700,menubar=no,toolbar=no');
+              if (!popup) {
+                if (btn) btn.textContent = 'Connect Discord';
+                const rowEl = btn?.closest<HTMLElement>('[data-channel-type="discord"]');
+                if (rowEl) {
+                  rowEl.querySelector('.us-notif-error')?.remove();
+                  rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Popup blocked — please allow popups for this site, then try again.</span>');
+                }
+              } else {
+                discordOAuthPopup = popup;
+              }
+            }).catch(() => {
+              if (btn && !signal.aborted) btn.textContent = 'Connect Discord';
+            });
+            return;
+          }
+
           const disconnectBtn = target.closest<HTMLElement>('.us-notif-disconnect[data-channel]');
           if (disconnectBtn?.dataset.channel) {
             const channelType = disconnectBtn.dataset.channel as ChannelType;
@@ -972,8 +1020,9 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             e.origin === 'https://worldmonitor.app' ||
             e.origin === 'https://www.worldmonitor.app' ||
             e.origin.endsWith('.worldmonitor.app');
-          const trustedSource = slackOAuthPopup !== null && e.source === slackOAuthPopup;
-          if (!trustedOrigin || !trustedSource) return;
+          const fromSlack = slackOAuthPopup !== null && e.source === slackOAuthPopup;
+          const fromDiscord = discordOAuthPopup !== null && e.source === discordOAuthPopup;
+          if (!trustedOrigin || (!fromSlack && !fromDiscord)) return;
           if (e.data?.type === 'wm:slack_connected') {
             if (!signal.aborted) { saveRuleWithNewChannel('slack'); reloadNotifSection(); }
           } else if (e.data?.type === 'wm:slack_error') {
@@ -983,6 +1032,16 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               rowEl.insertAdjacentHTML('beforeend', `<span class="us-notif-error">Slack connection failed: ${escapeHtml(String(e.data.error ?? 'unknown'))}</span>`);
               const btn = rowEl.querySelector<HTMLButtonElement>('#usConnectSlack');
               if (btn) btn.textContent = 'Add to Slack';
+            }
+          } else if (e.data?.type === 'wm:discord_connected') {
+            if (!signal.aborted) { saveRuleWithNewChannel('discord'); reloadNotifSection(); }
+          } else if (e.data?.type === 'wm:discord_error') {
+            const rowEl = container.querySelector<HTMLElement>('[data-channel-type="discord"]');
+            if (rowEl) {
+              rowEl.querySelector('.us-notif-error')?.remove();
+              rowEl.insertAdjacentHTML('beforeend', `<span class="us-notif-error">Discord connection failed: ${escapeHtml(String(e.data.error ?? 'unknown'))}</span>`);
+              const btn = rowEl.querySelector<HTMLButtonElement>('#usConnectDiscord');
+              if (btn) btn.textContent = 'Connect Discord';
             }
           }
         };
