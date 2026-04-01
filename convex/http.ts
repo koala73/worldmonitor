@@ -321,6 +321,8 @@ http.route({
       slackChannelName?: string;
       slackTeamName?: string;
       slackConfigurationUrl?: string;
+      discordGuildId?: string;
+      discordChannelId?: string;
     };
     try {
       body = await request.json() as typeof body;
@@ -387,13 +389,26 @@ http.route({
         return new Response(JSON.stringify({ ok: true, isNew: oauthResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
+      if (action === "set-discord-oauth") {
+        if (!body.webhookEnvelope) {
+          return new Response(JSON.stringify({ error: "webhookEnvelope required" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        const discordResult = await ctx.runMutation(internal.notificationChannels.setDiscordOAuthChannelForUser, {
+          userId,
+          webhookEnvelope: body.webhookEnvelope,
+          discordGuildId: body.discordGuildId,
+          discordChannelId: body.discordChannelId,
+        });
+        return new Response(JSON.stringify({ ok: true, isNew: discordResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
       if (action === "delete-channel") {
         if (!body.channelType) {
           return new Response(JSON.stringify({ error: "channelType required" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
         await ctx.runMutation(internal.notificationChannels.deleteChannelForUser, {
           userId,
-          channelType: body.channelType as "telegram" | "slack" | "email",
+          channelType: body.channelType as "telegram" | "slack" | "email" | "discord",
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }

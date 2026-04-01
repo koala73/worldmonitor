@@ -82,6 +82,39 @@ export const setSlackOAuthChannelForUser = internalMutation({
   },
 });
 
+export const setDiscordOAuthChannelForUser = internalMutation({
+  args: {
+    userId: v.string(),
+    webhookEnvelope: v.string(),
+    discordGuildId: v.optional(v.string()),
+    discordChannelId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("notificationChannels")
+      .withIndex("by_user_channel", (q) =>
+        q.eq("userId", args.userId).eq("channelType", "discord"),
+      )
+      .unique();
+    const isNew = !existing;
+    const doc = {
+      userId: args.userId,
+      channelType: "discord" as const,
+      webhookEnvelope: args.webhookEnvelope,
+      verified: true,
+      linkedAt: Date.now(),
+      discordGuildId: args.discordGuildId,
+      discordChannelId: args.discordChannelId,
+    };
+    if (existing) {
+      await ctx.db.replace(existing._id, doc);
+    } else {
+      await ctx.db.insert("notificationChannels", doc);
+    }
+    return { isNew };
+  },
+});
+
 export const deleteChannelForUser = internalMutation({
   args: { userId: v.string(), channelType: channelTypeValidator },
   handler: async (ctx, args) => {
