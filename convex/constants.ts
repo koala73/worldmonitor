@@ -4,6 +4,7 @@ export const channelTypeValidator = v.union(
   v.literal("telegram"),
   v.literal("slack"),
   v.literal("email"),
+  v.literal("discord"),
 );
 
 export const sensitivityValidator = v.union(
