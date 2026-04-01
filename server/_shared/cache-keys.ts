@@ -1,4 +1,24 @@
 /**
+ * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
+ * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
+ *
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore
+ *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
+ *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
+ *   digest:accumulator:v1:${variant} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
+ *
+ * TTL for all: 172800s (48h), refreshed each digest cycle.
+ * Shadow scoring key (written by notification-relay.cjs):
+ *   shadow:score-log:v1            ZSet   score=epoch_ms, member=JSON{importanceScore,severity,title,wouldNotify}
+ */
+export const STORY_TRACK_KEY = (titleHash: string) => `story:track:v1:${titleHash}`;
+export const STORY_SOURCES_KEY = (titleHash: string) => `story:sources:v1:${titleHash}`;
+export const STORY_PEAK_KEY = (titleHash: string) => `story:peak:v1:${titleHash}`;
+export const DIGEST_ACCUMULATOR_KEY = (variant: string) => `digest:accumulator:v1:${variant}`;
+export const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v1';
+export const STORY_TTL = 172800; // 48h
+
+/**
  * Shared Redis pointer keys for simulation artifacts.
  * Defined here so TypeScript handlers and seed scripts agree on the exact string.
  * The MJS seed script keeps its own copy (cannot import TS source directly).

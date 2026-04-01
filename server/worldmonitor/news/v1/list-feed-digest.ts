@@ -6,12 +6,20 @@ import type {
   NewsItem as ProtoNewsItem,
   ThreatLevel as ProtoThreatLevel,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJsonBatch } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJsonBatch, upstashPipeline } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
-import { classifyByKeyword, type ThreatLevel } from './_classifier';
+import { classifyByKeyword, SEVERITY_SCORES, type ThreatLevel } from './_classifier';
+import { getSourceTier } from '../../../_shared/source-tiers';
+import {
+  STORY_TRACK_KEY,
+  STORY_SOURCES_KEY,
+  STORY_PEAK_KEY,
+  DIGEST_ACCUMULATOR_KEY,
+  STORY_TTL,
+} from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
@@ -42,6 +50,31 @@ interface ParsedItem {
   category: string;
   confidence: number;
   classSource: 'keyword' | 'llm';
+  importanceScore: number;
+  corroborationCount: number;
+}
+
+function normalizeTitle(title: string): string {
+  return title.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+function computeImportanceScore(
+  level: ThreatLevel,
+  source: string,
+  corroborationCount: number,
+  publishedAt: number,
+): number {
+  const tier = getSourceTier(source);
+  const tierScore = tier === 1 ? 100 : tier === 2 ? 75 : tier === 3 ? 50 : 25;
+  const corroborationScore = Math.min(corroborationCount, 5) * 20;
+  const ageMs = Date.now() - publishedAt;
+  const recencyScore = Math.max(0, 1 - ageMs / (24 * 60 * 60 * 1000)) * 100;
+  return Math.round(
+    SEVERITY_SCORES[level] * 0.4 +
+    tierScore * 0.2 +
+    corroborationScore * 0.3 +
+    recencyScore * 0.1,
+  );
 }
 
 function createTimeoutLinkedController(parentSignal: AbortSignal): {
@@ -167,6 +200,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
       category: threat.category,
       confidence: threat.confidence,
       classSource: 'keyword',
+      importanceScore: 0,
+      corroborationCount: 1,
     });
   }
 
@@ -250,6 +285,8 @@ function toProtoItem(item: ParsedItem): ProtoNewsItem {
       source: item.classSource,
     },
     locationName: '',
+    importanceScore: item.importanceScore,
+    corroborationCount: item.corroborationCount,
   };
 }
 
@@ -292,6 +329,59 @@ export async function listFeedDigest(
     markNoCacheResponse(ctx.request);
     return fallbackDigestCache.get(fallbackKey)?.data ?? empty();
   }
+}
+
+const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
+
+async function writeStoryTracking(items: ParsedItem[], variant: string): Promise<void> {
+  if (items.length === 0) return;
+  const now = Date.now();
+
+  // Pre-compute title hashes for all items in parallel.
+  const hashes = await Promise.all(
+    items.map(item => sha256Hex(normalizeTitle(item.title))),
+  );
+
+  const accKey = DIGEST_ACCUMULATOR_KEY(variant);
+
+  for (let batchStart = 0; batchStart < items.length; batchStart += STORY_BATCH_SIZE) {
+    const batch = items.slice(batchStart, batchStart + STORY_BATCH_SIZE);
+    const commands: string[][] = [];
+
+    for (let i = 0; i < batch.length; i++) {
+      const item = batch[i]!;
+      const hash = hashes[batchStart + i]!;
+      const trackKey = STORY_TRACK_KEY(hash);
+      const sourcesKey = STORY_SOURCES_KEY(hash);
+      const peakKey = STORY_PEAK_KEY(hash);
+      const score = String(item.importanceScore);
+      const nowStr = String(now);
+      const ttl = String(STORY_TTL);
+
+      commands.push(
+        ['HINCRBY', trackKey, 'mentionCount', '1'],
+        ['HSET', trackKey,
+          'lastSeen', nowStr,
+          'currentScore', score,
+          'title', item.title,
+          'link', item.link,
+          'severity', item.level,
+        ],
+        ['HSETNX', trackKey, 'firstSeen', nowStr],
+        ['ZADD', peakKey, 'GT', score, 'peak'],
+        ['SADD', sourcesKey, item.source],
+        ['EXPIRE', trackKey, ttl],
+        ['EXPIRE', sourcesKey, ttl],
+        ['EXPIRE', peakKey, ttl],
+        ['ZADD', accKey, nowStr, hash],
+      );
+    }
+
+    await upstashPipeline(commands);
+  }
+
+  // Refresh accumulator TTL once per build (it's a single key shared across stories).
+  await upstashPipeline([['EXPIRE', accKey, String(STORY_TTL)]]);
 }
 
 async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
@@ -353,9 +443,38 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       }
     }
 
+    // Build corroboration map across the FULL corpus (before any per-category truncation)
+    // so cross-category mentions are captured. Key = normalized title.
+    const corroborationMap = new Map<string, Set<string>>();
+    for (const items of results.values()) {
+      for (const item of items) {
+        const norm = normalizeTitle(item.title);
+        const sources = corroborationMap.get(norm) ?? new Set();
+        sources.add(item.source);
+        corroborationMap.set(norm, sources);
+      }
+    }
+
+    // Assign corroboration count and compute importance score for every item.
+    for (const items of results.values()) {
+      for (const item of items) {
+        const norm = normalizeTitle(item.title);
+        item.corroborationCount = corroborationMap.get(norm)?.size ?? 1;
+        item.importanceScore = computeImportanceScore(
+          item.level,
+          item.source,
+          item.corroborationCount,
+          item.publishedAt,
+        );
+      }
+    }
+
+    // Sort by importanceScore desc, then pubDate desc; then truncate per category.
     const slicedByCategory = new Map<string, ParsedItem[]>();
     for (const [category, items] of results) {
-      items.sort((a, b) => b.publishedAt - a.publishedAt);
+      items.sort((a, b) =>
+        b.importanceScore - a.importanceScore || b.publishedAt - a.publishedAt,
+      );
       slicedByCategory.set(category, items.slice(0, MAX_ITEMS_PER_CATEGORY));
     }
 
@@ -367,6 +486,12 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
         items: sliced.map(toProtoItem),
       };
     }
+
+    // Write story tracking to Redis (non-blocking — digest response is already built).
+    // Failures are logged but don't affect the response.
+    writeStoryTracking(allSliced, variant).catch((err: unknown) =>
+      console.warn('[digest] story tracking write failed:', err),
+    );
 
     return {
       categories,

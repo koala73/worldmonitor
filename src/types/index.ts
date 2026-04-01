@@ -90,6 +90,8 @@ export interface ThreatClassification {
   source: 'keyword' | 'ml' | 'llm';
 }
 
+export type StoryPhase = 'breaking' | 'developing' | 'sustained' | 'fading';
+
 export interface NewsItem {
   source: string;
   title: string;
@@ -105,6 +107,9 @@ export interface NewsItem {
   lang?: string;
   happyCategory?: HappyContentCategory;
   imageUrl?: string;
+  importanceScore?: number;
+  corroborationCount?: number;
+  storyPhase?: StoryPhase;
 }
 
 export type VelocityLevel = 'normal' | 'elevated' | 'spike';
