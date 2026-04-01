@@ -828,6 +828,8 @@ export class App {
             });
         }
       } else if (userId === null && _prevUserId !== null) {
+        destroyEntitlementSubscription();
+        destroySubscriptionWatch();
         cloudPrefsSignOut();
       }
       _prevUserId = userId;

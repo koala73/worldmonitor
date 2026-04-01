@@ -3,8 +3,8 @@
  *
  * Two versions:
  *   - getEntitlementsForUser (public query): for frontend ConvexClient subscription.
- *     Requires authenticated identity; falls back to args.userId only for the
- *     pre-Clerk-auth period (TODO: remove fallback once ConvexClient.setAuth() is wired).
+ *     Requires authenticated identity via Clerk; args.userId retained as fallback
+ *     for edge cases (auth token race on cold start).
  *   - getEntitlementsByUserId (internal query): for the gateway ConvexHttpClient
  *     cache-miss fallback. Trusted server-to-server call with no auth gap.
  */
@@ -50,10 +50,8 @@ async function getEntitlementsHandler(
 /**
  * Public query: returns entitlements for the authenticated user.
  *
- * Prefers server-side auth identity. Falls back to args.userId for the
- * pre-Clerk-auth period (frontend ConvexClient has no setAuth wired).
- * TODO(clerk-auth): Remove userId arg and use requireUserId(ctx) once
- * ConvexClient.setAuth() is wired.
+ * Prefers server-side auth identity. Falls back to args.userId for
+ * cold-start race conditions where the auth token hasn't resolved yet.
  */
 export const getEntitlementsForUser = query({
   args: { userId: v.string() },

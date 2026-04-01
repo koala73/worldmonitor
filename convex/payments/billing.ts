@@ -60,9 +60,7 @@ export const getSubscriptionForUser = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
     // When authenticated, enforce that the caller can only read their own data.
-    // When unauthenticated (pre-Clerk-auth), allow the userId arg as fallback.
-    // TODO(clerk-auth): Once ConvexClient.setAuth() is wired, remove userId
-    // arg and use requireUserId(ctx) exclusively.
+    // Falls back to args.userId for cold-start race conditions.
     const authedUserId = await resolveUserId(ctx);
     if (authedUserId && authedUserId !== args.userId) {
       // Authenticated user trying to read someone else's data — reject

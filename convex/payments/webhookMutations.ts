@@ -53,13 +53,12 @@ export const processWebhookEvent = internalMutation({
     //    The HTTP handler catches thrown errors and returns 500 to trigger retries.
     const data = args.rawPayload.data;
 
-    // Minimum shape guard — prevents runtime crashes on Dodo API schema changes
+    // Minimum shape guard — throw so Convex rolls back and returns 500,
+    // causing Dodo to retry instead of silently dropping the event.
     if (!data || typeof data !== 'object') {
-      console.error("[webhook] rawPayload.data is missing or not an object", {
-        eventType: args.eventType,
-        webhookId: args.webhookId,
-      });
-      return;
+      throw new Error(
+        `[webhook] rawPayload.data is missing or not an object (eventType=${args.eventType}, webhookId=${args.webhookId})`,
+      );
     }
 
     const subscriptionEvents = [
@@ -68,12 +67,9 @@ export const processWebhookEvent = internalMutation({
     ] as const;
 
     if (subscriptionEvents.includes(args.eventType as typeof subscriptionEvents[number]) && !(data as Record<string, unknown>).subscription_id) {
-      console.error("[webhook] Missing subscription_id for subscription event", {
-        eventType: args.eventType,
-        webhookId: args.webhookId,
-        dataKeys: Object.keys(data as object),
-      });
-      return;
+      throw new Error(
+        `[webhook] Missing subscription_id for subscription event (eventType=${args.eventType}, webhookId=${args.webhookId}, dataKeys=${Object.keys(data as object).join(",")})`,
+      );
     }
 
     switch (args.eventType) {
