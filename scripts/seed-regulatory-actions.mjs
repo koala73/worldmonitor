@@ -8,7 +8,7 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'regulatory:actions:v1';
 const FEED_TIMEOUT_MS = 15_000;
-const TTL_SECONDS = 7200;
+const TTL_SECONDS = 21600;
 const XML_ACCEPT = 'application/atom+xml, application/rss+xml, application/xml, text/xml, */*';
 const SEC_USER_AGENT = 'WorldMonitor/2.0 (monitor@worldmonitor.app)';
 const DEFAULT_FETCH = (...args) => globalThis.fetch(...args);
@@ -16,12 +16,18 @@ const HIGH_KEYWORDS = [
   'enforcement', 'charges', 'charged', 'fraud', 'failure', 'failed bank',
   'emergency', 'halt', 'suspension', 'suspended', 'cease', 'desist',
   'penalty', 'fine', 'fined', 'settlement', 'indictment', 'manipulation',
-  'ban', 'revocation', 'insolvency',
+  'ban', 'revocation', 'insolvency', 'injunction', 'cease and desist',
+  'cease-and-desist', 'consent order', 'debarment', 'suspension order',
 ];
 const MEDIUM_KEYWORDS = [
   'proposed rule', 'final rule', 'rulemaking', 'guidance', 'warning',
-  'notice', 'advisory', 'review', 'examination', 'investigation',
+  'advisory', 'review', 'examination', 'investigation',
   'stress test', 'capital requirement', 'disclosure requirement',
+  'resolves action', 'settled charges', 'administrative proceeding', 'remedial action',
+];
+const LOW_PRIORITY_TITLE_PATTERNS = [
+  /^(Regulatory|Information|Technical) Notice\b/i,
+  /\bmonthly (highlights|bulletin)\b/i,
 ];
 
 const REGULATORY_FEEDS = [
@@ -257,23 +263,37 @@ function compileKeywordPattern(keyword) {
 const HIGH_KEYWORD_PATTERNS = HIGH_KEYWORDS.map(compileKeywordPattern);
 const MEDIUM_KEYWORD_PATTERNS = MEDIUM_KEYWORDS.map(compileKeywordPattern);
 
-function findMatchedKeywords(title, keywordPatterns) {
-  const lowerTitle = stripHtml(title).toLowerCase();
-  return keywordPatterns.filter(({ regex }) => regex.test(lowerTitle)).map(({ keyword }) => keyword);
+function findMatchedKeywords(text, keywordPatterns) {
+  const normalizedText = stripHtml(text).toLowerCase();
+  return keywordPatterns.filter(({ regex }) => regex.test(normalizedText)).map(({ keyword }) => keyword);
+}
+
+function buildClassificationText(action) {
+  return [action.title, action.description].filter(Boolean).join(' ');
+}
+
+function isLowPriorityRoutineTitle(title) {
+  const normalizedTitle = stripHtml(title);
+  return LOW_PRIORITY_TITLE_PATTERNS.some((pattern) => pattern.test(normalizedTitle));
 }
 
 function classifyAction(action) {
-  const highMatches = findMatchedKeywords(action.title, HIGH_KEYWORD_PATTERNS);
+  const classificationText = buildClassificationText(action);
+  const highMatches = findMatchedKeywords(classificationText, HIGH_KEYWORD_PATTERNS);
   if (highMatches.length > 0) {
     return { ...action, tier: 'high', matchedKeywords: [...new Set(highMatches)] };
   }
 
-  const mediumMatches = findMatchedKeywords(action.title, MEDIUM_KEYWORD_PATTERNS);
+  if (isLowPriorityRoutineTitle(action.title)) {
+    return { ...action, tier: 'low', matchedKeywords: [] };
+  }
+
+  const mediumMatches = findMatchedKeywords(classificationText, MEDIUM_KEYWORD_PATTERNS);
   if (mediumMatches.length > 0) {
     return { ...action, tier: 'medium', matchedKeywords: [...new Set(mediumMatches)] };
   }
 
-  return { ...action, tier: 'low', matchedKeywords: [] };
+  return { ...action, tier: 'unknown', matchedKeywords: [] };
 }
 
 function buildSeedPayload(actions, fetchedAt = Date.now()) {
@@ -334,6 +354,7 @@ export {
   fetchRegulatoryActionPayload,
   findMatchedKeywords,
   getTagValue,
+  isLowPriorityRoutineTitle,
   main,
   normalizeFeedItems,
   parseAtomEntries,
