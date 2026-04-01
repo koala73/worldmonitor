@@ -4619,7 +4619,7 @@ export class DeckGLMap {
     }
   }
 
-  public setView(view: DeckMapView): void {
+  public setView(view: DeckMapView, zoom?: number): void {
     const preset = VIEW_PRESETS[view];
     if (!preset) return;
     this.state.view = view;
@@ -4627,7 +4627,7 @@ export class DeckGLMap {
     if (this.maplibreMap) {
       this.maplibreMap.flyTo({
         center: [preset.longitude, preset.latitude],
-        zoom: preset.zoom,
+        zoom: zoom ?? preset.zoom,
         duration: 1000,
       });
     }
