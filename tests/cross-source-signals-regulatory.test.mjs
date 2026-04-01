@@ -47,7 +47,7 @@ describe('extractRegulatoryAction', () => {
     assert.deepEqual(normalize(extractRegulatoryAction({})), []);
   });
 
-  it('emits high and medium signals, ignores low, and limits output to 3', () => {
+  it('emits only high and medium signals, prioritizes high before fresher medium, and limits output to 3', () => {
     const now = Date.now();
     const payload = {
       'regulatory:actions:v1': {
@@ -56,7 +56,7 @@ describe('extractRegulatoryAction', () => {
             id: 'fdic-a',
             agency: 'FDIC',
             title: 'FDIC Guidance Update',
-            publishedAt: new Date(now - 2 * 3600 * 1000).toISOString(),
+            publishedAt: new Date(now - 1 * 3600 * 1000).toISOString(),
             tier: 'medium',
           },
           {
@@ -70,7 +70,7 @@ describe('extractRegulatoryAction', () => {
             id: 'sec-a',
             agency: 'SEC',
             title: 'SEC Charges Issuer',
-            publishedAt: new Date(now - 1 * 3600 * 1000).toISOString(),
+            publishedAt: new Date(now - 2 * 3600 * 1000).toISOString(),
             tier: 'high',
           },
           {
@@ -88,6 +88,20 @@ describe('extractRegulatoryAction', () => {
             tier: 'medium',
           },
           {
+            id: 'fed-unknown',
+            agency: 'Federal Reserve',
+            title: 'Federal Reserve outreach update',
+            publishedAt: new Date(now - 30 * 60 * 1000).toISOString(),
+            tier: 'unknown',
+          },
+          {
+            id: 'fdic-invalid',
+            agency: 'FDIC',
+            title: 'FDIC malformed timestamp',
+            publishedAt: 'not-a-date',
+            tier: 'high',
+          },
+          {
             id: 'fed-old',
             agency: 'Federal Reserve',
             title: 'Old Enforcement Notice',
@@ -102,15 +116,18 @@ describe('extractRegulatoryAction', () => {
     assert.equal(signals.length, 3);
     assert.deepEqual(signals.map((signal) => signal.id), [
       'regulatory:sec-a',
+      'regulatory:sec-c',
       'regulatory:fdic-a',
-      'regulatory:cftc-b',
     ]);
     assert.equal(signals[0].severityScore, 3.0);
     assert.equal(signals[0].severity, 'CROSS_SOURCE_SIGNAL_SEVERITY_HIGH');
-    assert.equal(signals[1].severityScore, 2.0);
-    assert.equal(signals[1].severity, 'CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM');
+    assert.equal(signals[1].severityScore, 3.0);
+    assert.equal(signals[1].severity, 'CROSS_SOURCE_SIGNAL_SEVERITY_HIGH');
+    assert.equal(signals[2].severityScore, 2.0);
+    assert.equal(signals[2].severity, 'CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM');
     assert.equal(signals[0].theater, 'Global Markets');
     assert.equal(signals[0].summary, 'SEC: SEC Charges Issuer');
+    assert.ok(signals.every((signal) => Number.isFinite(signal.detectedAt)));
   });
 });
 

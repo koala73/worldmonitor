@@ -720,21 +720,33 @@ function extractRegulatoryAction(d) {
   const payload = d['regulatory:actions:v1'];
   if (!payload) return [];
   const cutoff = Date.now() - 48 * 3600 * 1000;
+  const tierPriority = { high: 0, medium: 1 };
   const recent = (payload.actions || [])
-    .filter((action) => new Date(action.publishedAt).getTime() > cutoff && action.tier !== 'low')
-    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    .map((action) => ({
+      action,
+      publishedAtTs: safeNum(Date.parse(action.publishedAt)),
+    }))
+    .filter(({ action, publishedAtTs }) => (action.tier === 'high' || action.tier === 'medium') && publishedAtTs > cutoff)
+    .sort((a, b) => {
+      const tierOrder = tierPriority[a.action.tier] - tierPriority[b.action.tier];
+      if (tierOrder !== 0) return tierOrder;
+      return b.publishedAtTs - a.publishedAtTs;
+    })
+    .slice(0, 3);
   if (recent.length === 0) return [];
-  return recent.slice(0, 3).map((action) => {
+  return recent.map(({ action, publishedAtTs }) => {
     const tierMult = action.tier === 'high' ? 1.5 : 1.0;
     const score = BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION * tierMult;
     return {
       id: `regulatory:${action.id}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION',
+      // Temporary mapping for the current US-only regulator set; make this
+      // agency-aware when non-US regulatory feeds are added.
       theater: 'Global Markets',
       summary: `${action.agency}: ${action.title}`,
       severity: scoreTier(score),
       severityScore: score,
-      detectedAt: new Date(action.publishedAt).getTime(),
+      detectedAt: publishedAtTs || Date.now(),
       contributingTypes: [],
       signalCount: 0,
     };
