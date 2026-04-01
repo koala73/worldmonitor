@@ -15,4 +15,20 @@ describe('regulatory cache contracts', () => {
       /export const REGULATORY_ACTIONS_KEY = 'regulatory:actions:v1';/
     );
   });
+
+  it('registers regulatoryActions in health standalone keys', () => {
+    const healthSrc = readFileSync(join(root, 'api', 'health.js'), 'utf8');
+    assert.match(
+      healthSrc,
+      /regulatoryActions:\s+'regulatory:actions:v1'/
+    );
+  });
+
+  it('registers regulatoryActions seed freshness metadata in health', () => {
+    const healthSrc = readFileSync(join(root, 'api', 'health.js'), 'utf8');
+    assert.match(
+      healthSrc,
+      /regulatoryActions:\s+\{\s+key:\s+'seed-meta:regulatory:actions',\s+maxStaleMin:\s+240\s+\}/
+    );
+  });
 });
