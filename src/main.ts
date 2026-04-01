@@ -355,8 +355,9 @@ window.addEventListener('securitypolicyviolation', (e) => {
   if (/manifest\.webmanifest$/.test(blocked)) return;
   // Skip third-party injectors: Google Translate, Facebook Pixel
   if (/gstatic\.com\/_\/translate/.test(blocked) || /facebook\.net/.test(blocked)) return;
-  // Skip Sentry reporting itself (connect-src bootstrap paradox — SDK blocked before it can report)
-  if (/sentry\.io\/api\//.test(blocked)) return;
+  // Skip Sentry reporting itself (connect-src bootstrap paradox — SDK blocked before it can report).
+  // Browsers may append :443 to the blocked URI (e.g., sentry.io:443/api/...), so match with optional port.
+  if (/sentry\.io(?::\d+)?\/api\//.test(blocked)) return;
   // Skip YouTube live stream manifests (media-src — expected from YouTube embeds)
   if (/googlevideo\.com|youtube\.com\/generate_204/.test(blocked)) return;
   // Skip corporate/school content filter injections (securly, GoGuardian, etc.)
