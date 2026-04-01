@@ -148,7 +148,7 @@ http.route({
     if (provided && secret && !(await timingSafeEqualStrings(provided, secret))) {
       return new Response("OK", { status: 200 });
     }
-    console.log("[telegram-webhook] secret header:", provided ? "present" : "absent");
+    if (!provided) console.warn("[telegram-webhook] secret header absent — relying on pairing token auth");
 
     let update: {
       message?: {
@@ -194,7 +194,9 @@ http.route({
           text: "✅ WorldMonitor connected! You'll receive breaking news alerts here.",
         }),
         signal: AbortSignal.timeout(8000),
-      }).catch(() => {});
+      }).catch((err: unknown) => {
+        console.error("[telegram-webhook] sendMessage failed:", err);
+      });
     }
 
     return new Response("OK", { status: 200 });
