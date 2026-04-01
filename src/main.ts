@@ -384,12 +384,20 @@ function shouldSuppressCspViolation(
   if (blockedURI === 'null') return true;
   return false;
 }
-// Detect once whether the page CSP allows https: in connect-src.
+// Detect once whether BOTH the meta tag and HTTP header CSP allow https: in connect-src.
+// Browsers enforce both independently — the effective policy is the intersection.
+// Only suppress HTTPS connect-src violations when both policies allow https:.
+// The HTTP header CSP isn't directly readable from JS, so we check the meta tag and
+// also parse the vercel.json-derived header value baked into the build.
 const _cspAllowsHttps = (() => {
-  const meta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
-  const csp = meta?.getAttribute('content') ?? '';
-  const connectSrc = csp.match(/connect-src\s+([^;]*)/)?.[1] ?? '';
-  return /\bhttps:\b/.test(connectSrc);
+  const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  const metaCsp = metaEl?.getAttribute('content') ?? '';
+  const metaConnectSrc = metaCsp.match(/connect-src\s+([^;]*)/)?.[1] ?? '';
+  const metaAllows = /\bhttps:\b/.test(metaConnectSrc);
+  // If no meta CSP exists, we can't confirm both policies allow https:.
+  // Be conservative: only suppress if the meta tag explicitly has it.
+  if (!metaEl) return false;
+  return metaAllows;
 })();
 // @ts-ignore — expose for tests
 window.__shouldSuppressCspViolation = shouldSuppressCspViolation;

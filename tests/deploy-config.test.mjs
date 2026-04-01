@@ -142,6 +142,26 @@ describe('security header guardrails', () => {
     assert.ok(connectSrc.includes('wss:'), 'CSP connect-src should keep wss: for secure WebSocket');
   });
 
+  it('CSP connect-src https: scheme is consistent between header and meta tag', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const metaMatch = indexHtml.match(/http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
+    assert.ok(metaMatch, 'index.html must have a CSP meta tag');
+
+    const headerConnectSrc = headerCsp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
+    const metaConnectSrc = metaMatch[1].match(/connect-src\s+([^;]+)/)?.[1] ?? '';
+
+    const headerHasHttps = /\bhttps:\b/.test(headerConnectSrc);
+    const metaHasHttps = /\bhttps:\b/.test(metaConnectSrc);
+
+    // The CSP violation listener suppresses HTTPS connect-src violations when the meta tag
+    // contains https: in connect-src. If the header is tightened without the meta tag,
+    // real violations would be silently suppressed. Both must stay in sync.
+    assert.equal(headerHasHttps, metaHasHttps,
+      `connect-src https: scheme mismatch: header=${headerHasHttps}, meta=${metaHasHttps}. ` +
+      'If removing https: from connect-src, update the CSP violation listener in main.ts too.');
+  });
+
   it('CSP connect-src does not contain localhost in production', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
