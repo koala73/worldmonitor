@@ -173,6 +173,32 @@ describe('security header guardrails', () => {
     );
   });
 
+  it('CSP script-src hashes are in sync between vercel.json header and index.html meta tag', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const metaMatch = indexHtml.match(/http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
+    assert.ok(metaMatch, 'index.html must have a CSP meta tag');
+    const metaCsp = metaMatch[1];
+
+    const extractHashes = (csp) => {
+      const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+      return new Set(scriptSrc.match(/'sha256-[A-Za-z0-9+/=]+'/g) ?? []);
+    };
+
+    const headerHashes = extractHashes(headerCsp);
+    const metaHashes = extractHashes(metaCsp);
+
+    const onlyHeader = [...headerHashes].filter(h => !metaHashes.has(h));
+    const onlyMeta = [...metaHashes].filter(h => !headerHashes.has(h));
+
+    assert.deepEqual(onlyHeader, [],
+      `script-src hashes in vercel.json but missing from index.html: ${onlyHeader.join(', ')}. ` +
+      'Dual CSP enforces both; mismatched hashes block scripts.');
+    assert.deepEqual(onlyMeta, [],
+      `script-src hashes in index.html but missing from vercel.json: ${onlyMeta.join(', ')}. ` +
+      'Dual CSP enforces both; mismatched hashes block scripts.');
+  });
+
   it('security.txt exists in public/.well-known/', () => {
     const secTxt = readFileSync(resolve(__dirname, '../public/.well-known/security.txt'), 'utf-8');
     assert.match(secTxt, /^Contact:/m, 'security.txt must have a Contact field');

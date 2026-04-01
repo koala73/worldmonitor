@@ -340,8 +340,13 @@ window.addEventListener('unhandledrejection', (e) => {
 // Report CSP violations in the parent page to Sentry.
 // Sandbox iframe violations are isolated and not captured here.
 window.addEventListener('securitypolicyviolation', (e) => {
+  // Only report enforced violations — skip report-only disposition.
+  // Dual CSPs (header + meta tag) can fire report-only violations for requests the other policy allows.
+  if (e.disposition === 'report') return;
   const src = e.sourceFile ?? '';
   const blocked = e.blockedURI ?? '';
+  // Skip first-party origins — dual CSP quirk fires violations for requests that actually succeed (HTTP 200).
+  if (/worldmonitor\.app(?::\d+)?(?:\/|$)/.test(blocked)) return;
   // Skip violations originating from browser extensions or injected scripts.
   // Browsers may report blockedURI as scheme-only ("chrome-extension") or with origin ("chrome-extension://...").
   if (/^(?:chrome|moz|safari(?:-web)?)-extension/.test(src) || /^(?:chrome|moz|safari(?:-web)?)-extension/.test(blocked)) return;
@@ -355,9 +360,9 @@ window.addEventListener('securitypolicyviolation', (e) => {
   if (/manifest\.webmanifest$/.test(blocked)) return;
   // Skip third-party injectors: Google Translate, Facebook Pixel
   if (/gstatic\.com\/_\/translate/.test(blocked) || /facebook\.net/.test(blocked)) return;
-  // Skip Sentry reporting itself (connect-src bootstrap paradox — SDK blocked before it can report).
-  // Browsers may append :443 to the blocked URI (e.g., sentry.io:443/api/...), so match with optional port.
-  if (/sentry\.io(?::\d+)?\/api\//.test(blocked)) return;
+  // Skip Sentry ingest (connect-src bootstrap paradox — SDK reports trigger new violations).
+  // Host-based match handles origin-only and full-path forms, with optional :443 port.
+  if (/sentry\.io(?::\d+)?(?:\/|$)/.test(blocked)) return;
   // Skip YouTube live stream manifests (media-src — expected from YouTube embeds)
   if (/googlevideo\.com|youtube\.com\/generate_204/.test(blocked)) return;
   // Skip corporate/school content filter injections (securly, GoGuardian, etc.)
