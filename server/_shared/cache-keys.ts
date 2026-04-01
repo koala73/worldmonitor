@@ -5,6 +5,7 @@
  */
 export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
+export const REGULATORY_ACTIONS_KEY = 'regulatory:actions:v1';
 
 /**
  * Static cache keys for the bootstrap endpoint.
