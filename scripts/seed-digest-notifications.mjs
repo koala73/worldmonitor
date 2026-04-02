@@ -236,6 +236,118 @@ function formatDigest(stories, nowMs) {
   return lines.join('\n');
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatDigestHtml(stories, nowMs) {
+  if (!stories || stories.length === 0) return null;
+  const dateStr = new Intl.DateTimeFormat('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+  }).format(new Date(nowMs));
+
+  const buckets = { critical: [], high: [], medium: [] };
+  for (const s of stories) {
+    const b = buckets[s.severity] ?? buckets.high;
+    b.push(s);
+  }
+
+  const totalCount = stories.length;
+  const criticalCount = buckets.critical.length;
+  const highCount = buckets.high.length;
+
+  const SEVERITY_BORDER = { critical: '#ef4444', high: '#f97316', medium: '#eab308' };
+  const PHASE_COLOR = { breaking: '#ef4444', developing: '#f97316', sustained: '#60a5fa', fading: '#555' };
+
+  function storyCard(s) {
+    const borderColor = SEVERITY_BORDER[s.severity] ?? '#4ade80';
+    const phaseColor = PHASE_COLOR[s.phase] ?? '#888';
+    const phaseCap = s.phase ? s.phase.charAt(0).toUpperCase() + s.phase.slice(1) : '';
+    const srcText = s.sources.length > 0
+      ? s.sources.slice(0, 3).join(', ') + (s.sources.length > 3 ? ` +${s.sources.length - 3}` : '')
+      : '';
+    const titleEl = s.link
+      ? `<a href="${escapeHtml(s.link)}" style="color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(s.title)}</a>`
+      : `<span style="color: #e0e0e0; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(s.title)}</span>`;
+    const meta = [
+      phaseCap ? `<span style="font-size: 10px; color: ${phaseColor}; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">${phaseCap}</span>` : '',
+      srcText ? `<span style="font-size: 11px; color: #555;">${escapeHtml(srcText)}</span>` : '',
+    ].filter(Boolean).join('<span style="color: #333; margin: 0 6px;">&bull;</span>');
+    return `<div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid ${borderColor}; padding: 12px 16px; margin-bottom: 8px;">${titleEl}${meta ? `<div style="margin-top: 6px;">${meta}</div>` : ''}</div>`;
+  }
+
+  function sectionHtml(severity, items) {
+    if (items.length === 0) return '';
+    const SEVERITY_LABEL = { critical: '&#128308; Critical', high: '&#128992; High', medium: '&#128993; Medium' };
+    const label = SEVERITY_LABEL[severity] ?? severity.toUpperCase();
+    const cards = items.slice(0, 10).map(storyCard).join('');
+    const overflow = items.length > 10
+      ? `<p style="font-size: 12px; color: #555; margin: 4px 0 16px; padding-left: 4px;">... and ${items.length - 10} more</p>`
+      : '';
+    return `<div style="margin-bottom: 24px;"><div style="font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">${label} (${items.length})</div>${cards}${overflow}</div>`;
+  }
+
+  const sectionsHtml = ['critical', 'high', 'medium']
+    .map((sev) => sectionHtml(sev, buckets[sev]))
+    .join('');
+
+  return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
+  <div style="background: #4ade80; height: 4px;"></div>
+  <div style="padding: 40px 32px 0;">
+    <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 32px;">
+      <tr>
+        <td style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid #222; text-align: center; vertical-align: middle; background: #111;">
+          <span style="font-size: 20px; color: #4ade80;">&#9678;</span>
+        </td>
+        <td style="padding-left: 12px;">
+          <div style="font-size: 16px; font-weight: 800; color: #fff; letter-spacing: -0.5px;">WORLD MONITOR</div>
+          <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 2px;">Daily Intelligence Digest</div>
+        </td>
+      </tr>
+    </table>
+    <div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid #4ade80; padding: 20px 24px; margin-bottom: 28px;">
+      <p style="font-size: 18px; font-weight: 600; color: #fff; margin: 0 0 8px;">Your Digest &mdash; ${dateStr}</p>
+      <p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">${totalCount} event${totalCount !== 1 ? 's' : ''} tracked across monitored regions.</p>
+    </div>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 28px; background: #111; border: 1px solid #1a1a1a;">
+      <tr>
+        <td style="text-align: center; padding: 16px 8px; width: 33%;">
+          <div style="font-size: 22px; font-weight: 800; color: #4ade80;">${totalCount}</div>
+          <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px;">Total</div>
+        </td>
+        <td style="text-align: center; padding: 16px 8px; width: 33%; border-left: 1px solid #1a1a1a; border-right: 1px solid #1a1a1a;">
+          <div style="font-size: 22px; font-weight: 800; color: #ef4444;">${criticalCount}</div>
+          <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px;">Critical</div>
+        </td>
+        <td style="text-align: center; padding: 16px 8px; width: 33%;">
+          <div style="font-size: 22px; font-weight: 800; color: #f97316;">${highCount}</div>
+          <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px;">High</div>
+        </td>
+      </tr>
+    </table>
+    ${sectionsHtml}
+    <div style="text-align: center; margin-bottom: 36px;">
+      <a href="https://worldmonitor.app" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">View Full Dashboard</a>
+    </div>
+  </div>
+  <div style="border-top: 1px solid #1a1a1a; padding: 24px 32px; text-align: center;">
+    <div style="margin-bottom: 16px;">
+      <a href="https://x.com/eliehabib" style="color: #666; text-decoration: none; font-size: 12px; margin: 0 12px;">X / Twitter</a>
+      <a href="https://github.com/koala73/worldmonitor" style="color: #666; text-decoration: none; font-size: 12px; margin: 0 12px;">GitHub</a>
+      <a href="https://worldmonitor.app" style="color: #666; text-decoration: none; font-size: 12px; margin: 0 12px;">worldmonitor.app</a>
+    </div>
+    <p style="font-size: 11px; color: #444; margin: 0; line-height: 1.6;">
+      World Monitor &mdash; Real-time intelligence for a connected world.<br />
+      <a href="https://worldmonitor.app" style="color: #4ade80; text-decoration: none;">worldmonitor.app</a>
+    </p>
+  </div>
+</div>`;
+}
+
 // ── Channel deactivation ──────────────────────────────────────────────────────
 
 async function deactivateChannel(userId, channelType) {
@@ -352,10 +464,12 @@ async function sendDiscord(userId, webhookEnvelope, text) {
   return true;
 }
 
-async function sendEmail(email, subject, text) {
+async function sendEmail(email, subject, text, html) {
   if (!resend) { console.warn('[digest] Email: RESEND_API_KEY not set — skipping'); return false; }
   try {
-    await resend.emails.send({ from: RESEND_FROM, to: email, subject, text });
+    const payload = { from: RESEND_FROM, to: email, subject, text };
+    if (html) payload.html = html;
+    await resend.emails.send(payload);
     console.log(`[digest] Email delivered to ${email}`);
     return true;
   } catch (err) {
@@ -421,6 +535,7 @@ async function main() {
 
     const text = formatDigest(stories, nowMs);
     if (!text) continue;
+    const html = formatDigestHtml(stories, nowMs);
 
     const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs));
     const subject = `WorldMonitor Digest — ${shortDate}`;
@@ -455,7 +570,7 @@ async function main() {
       } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
         ok = await sendDiscord(rule.userId, ch.webhookEnvelope, text);
       } else if (ch.channelType === 'email' && ch.email) {
-        ok = await sendEmail(ch.email, subject, text);
+        ok = await sendEmail(ch.email, subject, text, html);
       }
       if (ok) anyDelivered = true;
     }
