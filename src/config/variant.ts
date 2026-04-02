@@ -1,6 +1,6 @@
 const buildVariant = (() => {
   try {
-    return import.meta.env?.VITE_VARIANT || 'full';
+    return import.meta.env?.VITE_VARIANT || 'reits';
   } catch {
     return 'full';
   }
@@ -29,5 +29,5 @@ export const SITE_VARIANT: string = (() => {
     return buildVariant;
   }
 
-  return 'full';
+  return 'reits';
 })();

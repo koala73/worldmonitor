@@ -535,7 +535,8 @@
           "militaryStrategic": "Military & Strategic",
           "transport": "Transport",
           "labels": "Labels",
-          "overlays": "Overlays & Labels"
+          "overlays": "Overlays & Labels",
+          "reitProperties": "REIT Property Intelligence"
         },
         "descriptions": {
           "techStartupHubs": "Major startup ecosystems (SF, NYC, London, etc.)",
@@ -591,7 +592,12 @@
           "tradeRoutes": "Major global shipping lanes connecting ports through strategic chokepoints",
           "dayNight": "Real-time solar terminator showing day and night zones",
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
-          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)"
+          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)",
+          "reitProperties": "REIT property locations color-coded by sector with disaster exposure scores",
+          "naturalEventsReit": "Earthquakes, storms, floods near REIT properties (seismic risk overlay)",
+          "firesReit": "Active wildfires and fire perimeters near REIT properties",
+          "weatherAlertsReit": "Severe weather events affecting REIT property locations",
+          "economicCentersReit": "Economic centers and market infrastructure near REIT properties"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"

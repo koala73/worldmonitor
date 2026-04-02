@@ -583,6 +583,19 @@ export class MapComponent {
       </div>
     `;
 
+    const reitsHelpContent = `
+      ${helpHeader}
+      <div class="layer-help-content">
+        ${helpSection('reitProperties', [
+      helpItem(label('reitProperties'), 'reitProperties'),
+      helpItem(label('naturalEvents'), 'naturalEventsReit'),
+      helpItem(label('fires'), 'firesReit'),
+      helpItem(label('weatherAlerts'), 'weatherAlertsReit'),
+      helpItem(label('economicCenters'), 'economicCentersReit'),
+    ])}
+      </div>
+    `;
+
     const fullHelpContent = `
       ${helpHeader}
       <div class="layer-help-content">
@@ -635,7 +648,9 @@ export class MapComponent {
       ? techHelpContent
       : SITE_VARIANT === 'finance'
         ? financeHelpContent
-        : fullHelpContent;
+        : SITE_VARIANT === 'reits'
+          ? reitsHelpContent
+          : fullHelpContent;
 
     popup.querySelector('.layer-help-close')?.addEventListener('click', () => popup.remove());
 

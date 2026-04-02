@@ -1805,7 +1805,7 @@ export class GlobeMap {
   }
 
   private createLayerToggles(): void {
-    const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'globe');
+    const layerDefs = getLayersForVariant((SITE_VARIANT || 'reits') as MapVariant, 'globe');
     const _wmKey = getSecretState('WORLDMONITOR_API_KEY').present;
     const layers = layerDefs.map(def => ({
       key: def.key,
