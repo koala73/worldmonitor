@@ -375,8 +375,12 @@ export class LiveWebcamsPanel extends Panel {
       // Fall back to appending the fresh iframe to the container.
       this.clearIframeTimeout(oldIframe);
       this.iframeTrackers.delete(oldIframe);
+      oldIframe.src = 'about:blank';
       tracker.container.querySelector('.webcam-embed-fallback')?.remove();
       tracker.container.appendChild(freshIframe);
+      const idx = this.iframes.indexOf(oldIframe);
+      if (idx >= 0) this.iframes[idx] = freshIframe;
+      else this.iframes.push(freshIframe);
       this.trackIframe(freshIframe, tracker.feed, tracker.container);
       return;
     }
