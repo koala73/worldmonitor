@@ -582,13 +582,23 @@ export interface Earthquake {
   url: string;
 }
 
+export type MonitorMatchMode = 'any' | 'all';
+export type MonitorSourceKind = 'news' | 'breaking' | 'advisories' | 'cross-source';
+
 export interface Monitor {
   id: string;
   keywords: string[];
+  includeKeywords?: string[];
+  excludeKeywords?: string[];
   color: string;
   name?: string;
+  matchMode?: MonitorMatchMode;
+  sources?: MonitorSourceKind[];
   lat?: number;
   lon?: number;
+  radiusKm?: number;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface PanelConfig {

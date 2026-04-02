@@ -24,6 +24,7 @@ import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from
 import type { ParsedMapUrlState } from '@/utils';
 import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner } from '@/components';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
+import { normalizeMonitors } from '@/services/monitors';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
 import type { ETFFlowsPanel } from '@/components/ETFFlowsPanel';
@@ -372,7 +373,7 @@ export class App {
 
     const isMobile = isMobileDevice();
     const isDesktopApp = isDesktopRuntime();
-    const monitors = loadFromStorage<Monitor[]>(STORAGE_KEYS.monitors, []);
+    const monitors = normalizeMonitors(loadFromStorage<Monitor[]>(STORAGE_KEYS.monitors, []));
 
     // Use mobile-specific defaults on first load (no saved layers)
     const defaultLayers = isMobile ? MOBILE_DEFAULT_MAP_LAYERS : DEFAULT_MAP_LAYERS;

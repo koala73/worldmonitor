@@ -110,7 +110,10 @@ function usesCookies(): boolean {
 
 function getCookieValue(name: string): string {
   try {
-    const match = document.cookie.split('; ').find((c) => c.startsWith(`${name}=`));
+    const match = document.cookie
+      .split(';')
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith(`${name}=`));
     return match ? match.slice(name.length + 1) : '';
   } catch {
     return '';
@@ -124,8 +127,14 @@ function setDomainCookie(name: string, value: string): void {
 
 function getKey(name: string): string {
   const cookieVal = getCookieValue(name);
-  if (cookieVal) return decodeURIComponent(cookieVal);
-  try { return localStorage.getItem(name) ?? ''; } catch { return ''; }
+  if (cookieVal) {
+    try {
+      return decodeURIComponent(cookieVal).trim();
+    } catch {
+      return cookieVal.trim();
+    }
+  }
+  try { return (localStorage.getItem(name) ?? '').trim(); } catch { return ''; }
 }
 
 export function setWidgetKey(key: string): void {

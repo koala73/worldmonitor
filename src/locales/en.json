@@ -827,13 +827,30 @@
       "noData": "No progress data available"
     },
     "monitor": {
+      "namePlaceholder": "Monitor name (optional)",
       "placeholder": "Keywords (comma separated)",
+      "excludePlaceholder": "Exclude keywords (Pro)",
       "add": "+ Add Monitor",
       "addKeywords": "Add keywords to monitor news",
       "noMatches": "No matches in {{count}} articles",
+      "noFeedMatches": "No monitor matches in current feeds",
       "showingMatches": "Showing {{count}} of {{total}} matches",
       "match": "match",
-      "matches": "matches"
+      "matches": "matches",
+      "ruleMode": "Rule mode",
+      "modeAny": "Any term",
+      "modeAll": "All terms",
+      "sources": "Sources",
+      "freeLimit": "Free: up to {{count}} monitors. Pro unlocks advisories, cross-source signals, and exclude rules.",
+      "matchedTerms": "Matched: {{terms}}",
+      "resultsTitle": "Matches",
+      "lockedAdvanced": "Advanced monitor rules require Pro.",
+      "limitReached": "Free plan supports up to {{count}} monitors.",
+      "lockedRule": "Advanced rule locked until Pro is enabled.",
+      "remove": "Remove monitor",
+      "edit": "Edit monitor",
+      "save": "Save monitor",
+      "editing": "Editing monitor rule"
     },
     "regulation": {
       "dashboard": "AI Regulation Dashboard",

@@ -7,7 +7,10 @@ function usesCookies(): boolean {
 
 export function getDismissed(key: string): boolean {
   if (usesCookies()) {
-    return document.cookie.split('; ').some((c) => c === `${key}=1`);
+    return document.cookie
+      .split(';')
+      .map((entry) => entry.trim())
+      .some((entry) => entry === `${key}=1`);
   }
   return localStorage.getItem(key) === '1' || localStorage.getItem(key) === 'true';
 }
