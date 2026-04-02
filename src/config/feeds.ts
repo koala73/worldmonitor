@@ -1342,7 +1342,7 @@ export function getTotalFeedCount(): number {
   return all.size;
 }
 
-if (import.meta.env.DEV) {
+if (import.meta.env.DEV && SITE_VARIANT !== 'reits') {
   const allFeedNames = new Set<string>();
   for (const feeds of Object.values(FULL_FEEDS)) for (const f of feeds) allFeedNames.add(f.name);
   for (const f of INTEL_SOURCES) allFeedNames.add(f.name);
