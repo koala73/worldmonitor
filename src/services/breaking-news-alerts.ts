@@ -25,6 +25,9 @@ export interface AlertSettings {
 const SETTINGS_KEY = 'wm-breaking-alerts-v1';
 const DEDUPE_KEY = 'wm-breaking-alerts-dedupe';
 const RECENCY_GATE_MS = 15 * 60 * 1000;
+// When Railway relay fully handles notifications server-side, set VITE_RELAY_GATES_READY=true
+// to stop the browser from double-dispatching via /api/notify.
+const RELAY_GATES_READY = import.meta.env.VITE_RELAY_GATES_READY === 'true';
 const PER_EVENT_COOLDOWN_MS = 30 * 60 * 1000;
 const GLOBAL_COOLDOWN_MS = 60 * 1000;
 // Suppress RSS-based alerts during initial feed fetch after app load.
@@ -158,34 +161,36 @@ function dispatchAlert(alert: BreakingAlert): void {
   saveDedupeMap();
   document.dispatchEvent(new CustomEvent('wm:breaking-news', { detail: alert }));
 
-  void (async () => {
-    const token = await getClerkToken();
-    if (!token) { console.warn('[breaking-news-alerts] no Clerk token, skipping notify'); return; }
-    const body = JSON.stringify({
-      eventType: alert.origin,
-      payload: { title: alert.headline, source: alert.source, link: alert.link },
-      severity: alert.threatLevel,
-      variant: SITE_VARIANT,
-    });
-    if (isDesktopRuntime()) {
-      // On desktop the fetch patch intercepts /api/* and routes to the local sidecar.
-      // Use XHR to send directly to the cloud relay endpoint, bypassing the interceptor.
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${getRemoteApiBaseUrl()}/api/notify`);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      xhr.send(body);
-    } else {
-      fetch('/api/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body,
-      }).then((res) => {
-        if (!res.ok) console.warn('[breaking-news-alerts] notify returned', res.status, alert.origin);
-        else console.log('[breaking-news-alerts] notify queued:', alert.origin, alert.threatLevel);
-      }).catch((err) => { console.warn('[breaking-news-alerts] notify network error:', err); });
-    }
-  })();
+  if (!RELAY_GATES_READY) {
+    void (async () => {
+      const token = await getClerkToken();
+      if (!token) { console.warn('[breaking-news-alerts] no Clerk token, skipping notify'); return; }
+      const body = JSON.stringify({
+        eventType: alert.origin,
+        payload: { title: alert.headline, source: alert.source, link: alert.link },
+        severity: alert.threatLevel,
+        variant: SITE_VARIANT,
+      });
+      if (isDesktopRuntime()) {
+        // On desktop the fetch patch intercepts /api/* and routes to the local sidecar.
+        // Use XHR to send directly to the cloud relay endpoint, bypassing the interceptor.
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${getRemoteApiBaseUrl()}/api/notify`);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.send(body);
+      } else {
+        fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body,
+        }).then((res) => {
+          if (!res.ok) console.warn('[breaking-news-alerts] notify returned', res.status, alert.origin);
+          else console.log('[breaking-news-alerts] notify queued:', alert.origin, alert.threatLevel);
+        }).catch((err) => { console.warn('[breaking-news-alerts] notify network error:', err); });
+      }
+    })();
+  }
 }
 
 export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
