@@ -284,12 +284,16 @@ const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v1';
 const SHADOW_LOG_TTL = 7 * 24 * 3600; // 7 days
 
 async function shadowLogScore(event) {
-  const score = event.payload?.importanceScore ?? 0;
-  if (!UPSTASH_URL || !UPSTASH_TOKEN || score === 0) return;
-  const member = `${Date.now()}:${event.eventType}:${String(event.payload?.title ?? '').slice(0, 60)}`;
+  const importanceScore = event.payload?.importanceScore ?? 0;
+  if (!UPSTASH_URL || !UPSTASH_TOKEN || importanceScore === 0) return;
+  const now = Date.now();
+  // Use timestamp as the sorted-set score so entries are time-sortable for analysis.
+  // Member encodes importanceScore + context for review.
+  const member = `${now}:score=${importanceScore}:${event.eventType}:${String(event.payload?.title ?? '').slice(0, 60)}`;
+  const cutoff = String(now - SHADOW_LOG_TTL * 1000); // prune entries older than 7 days
   try {
-    await upstashRest('ZADD', SHADOW_SCORE_LOG_KEY, String(score), member);
-    await upstashRest('EXPIRE', SHADOW_SCORE_LOG_KEY, String(SHADOW_LOG_TTL));
+    await upstashRest('ZADD', SHADOW_SCORE_LOG_KEY, String(now), member);
+    await upstashRest('ZREMRANGEBYSCORE', SHADOW_SCORE_LOG_KEY, '-inf', cutoff);
   } catch {}
 }
 
@@ -300,8 +304,9 @@ async function processEvent(event) {
   // Shadow log importanceScore for comparison (always runs when score is present)
   shadowLogScore(event).catch(() => {});
 
-  // Score gate — only active when IMPORTANCE_SCORE_LIVE=1 (set after 48h data accumulation)
-  if (IMPORTANCE_SCORE_LIVE) {
+  // Score gate — only for rss_alert; other event types (oref_siren, conflict_escalation,
+  // notam_closure, etc.) never attach importanceScore so they must never be gated here.
+  if (IMPORTANCE_SCORE_LIVE && event.eventType === 'rss_alert') {
     const score = event.payload?.importanceScore ?? 0;
     if (score < IMPORTANCE_SCORE_MIN) {
       console.log(`[relay] Score gate: dropped ${event.eventType} score=${score} < ${IMPORTANCE_SCORE_MIN}`);
