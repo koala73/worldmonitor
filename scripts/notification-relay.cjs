@@ -79,6 +79,117 @@ function isPrivateIP(ip) {
   return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|::1|fc|fd)/.test(ip);
 }
 
+// ── Quiet hours ───────────────────────────────────────────────────────────────
+
+function toLocalHour(nowMs, timezone) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      hour12: false,
+    }).formatToParts(new Date(nowMs));
+    const h = parts.find(p => p.type === 'hour');
+    return h ? parseInt(h.value, 10) : -1;
+  } catch {
+    return -1;
+  }
+}
+
+function isInQuietHours(rule) {
+  if (!rule.quietHoursEnabled) return false;
+  const start = rule.quietHoursStart ?? 22;
+  const end = rule.quietHoursEnd ?? 7;
+  const tz = rule.quietHoursTimezone ?? 'UTC';
+  const localHour = toLocalHour(Date.now(), tz);
+  if (localHour === -1) return false;
+  // spans midnight when start >= end (e.g. 23:00-07:00)
+  return start < end
+    ? localHour >= start && localHour < end
+    : localHour >= start || localHour < end;
+}
+
+// Returns 'deliver' | 'suppress' | 'hold'
+function resolveQuietAction(rule, severity) {
+  if (!isInQuietHours(rule)) return 'deliver';
+  const override = rule.quietHoursOverride ?? 'critical_only';
+  if (override === 'silence_all') return 'suppress';
+  if (override === 'batch_on_wake') {
+    return severity === 'critical' ? 'deliver' : 'hold';
+  }
+  // critical_only (default): critical passes through, everything else suppressed
+  return severity === 'critical' ? 'deliver' : 'suppress';
+}
+
+const QUIET_HELD_TTL = 86400; // 24h — held events expire if never drained
+
+async function holdEvent(userId, variant, eventJson) {
+  const key = `digest:quiet-held:${userId}:${variant}`;
+  await upstashRest('RPUSH', key, eventJson);
+  await upstashRest('EXPIRE', key, String(QUIET_HELD_TTL));
+}
+
+// Called periodically from the poll loop; sends held batches to users
+// whose quiet hours have ended.
+async function drainBatchOnWake(allRules) {
+  const batchRules = allRules.filter(r =>
+    r.quietHoursEnabled && r.quietHoursOverride === 'batch_on_wake' && !isInQuietHours(r),
+  );
+  if (batchRules.length === 0) return;
+
+  for (const rule of batchRules) {
+    const key = `digest:quiet-held:${rule.userId}:${rule.variant ?? 'full'}`;
+    const len = await upstashRest('LLEN', key);
+    if (!len || len === 0) continue;
+
+    const items = await upstashRest('LRANGE', key, '0', '-1');
+    if (!Array.isArray(items) || items.length === 0) continue;
+
+    const events = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
+    if (events.length === 0) { await upstashRest('DEL', key); continue; }
+
+    const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, ''];
+    for (const ev of events) {
+      const title = ev.payload?.title ?? ev.eventType;
+      const sev = ev.severity ?? 'high';
+      lines.push(`[${sev.toUpperCase()}] ${title}`);
+    }
+    lines.push('', 'View full dashboard → worldmonitor.app');
+    const text = lines.join('\n');
+    const subject = `WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''}`;
+
+    let channels = [];
+    try {
+      const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+        body: JSON.stringify({ userId: rule.userId }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (chRes.ok) channels = await chRes.json();
+    } catch (err) {
+      console.warn(`[relay] drainBatchOnWake: channel fetch failed for ${rule.userId}:`, err.message);
+      continue;
+    }
+
+    const verifiedChannels = channels.filter(c => c.verified && (rule.channels ?? []).includes(c.channelType));
+    let sent = false;
+    for (const ch of verifiedChannels) {
+      try {
+        if (ch.channelType === 'telegram' && ch.chatId) { await sendTelegram(rule.userId, ch.chatId, text); sent = true; }
+        else if (ch.channelType === 'slack' && ch.webhookEnvelope) { await sendSlack(rule.userId, ch.webhookEnvelope, text); sent = true; }
+        else if (ch.channelType === 'discord' && ch.webhookEnvelope) { await sendDiscord(rule.userId, ch.webhookEnvelope, text); sent = true; }
+        else if (ch.channelType === 'email' && ch.email) { await sendEmail(ch.email, subject, text); sent = true; }
+      } catch (err) {
+        console.warn(`[relay] drainBatchOnWake: delivery error for ${rule.userId}/${ch.channelType}:`, err.message);
+      }
+    }
+    if (sent) {
+      await upstashRest('DEL', key);
+      console.log(`[relay] drainBatchOnWake: sent ${events.length} held events to ${rule.userId}`);
+    }
+  }
+}
+
 // ── Delivery: Telegram ────────────────────────────────────────────────────────
 
 async function sendTelegram(userId, chatId, text) {
@@ -298,10 +409,27 @@ async function processEvent(event) {
 
   if (matching.length === 0) return;
 
+  // Drain batch_on_wake held events for users whose quiet hours just ended
+  await drainBatchOnWake(enabledRules);
+
   const text = formatMessage(event);
   const subject = `WorldMonitor Alert: ${event.payload?.title ?? event.eventType}`;
+  const eventSeverity = event.severity ?? 'high';
 
   for (const rule of matching) {
+    const quietAction = resolveQuietAction(rule, eventSeverity);
+
+    if (quietAction === 'suppress') {
+      console.log(`[relay] Quiet hours suppress for ${rule.userId} (severity=${eventSeverity}, override=${rule.quietHoursOverride ?? 'critical_only'})`);
+      continue;
+    }
+
+    if (quietAction === 'hold') {
+      console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
+      await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
+      continue;
+    }
+
     const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '');
     if (!isNew) { console.log(`[relay] Dedup hit for ${rule.userId}`); continue; }
 

@@ -3,6 +3,7 @@ import { SITE_VARIANT } from '@/config/variant';
 
 export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord';
 export type Sensitivity = 'all' | 'high' | 'critical';
+export type QuietHoursOverride = 'critical_only' | 'silence_all' | 'batch_on_wake';
 
 export interface NotificationChannel {
   channelType: ChannelType;
@@ -21,6 +22,11 @@ export interface AlertRule {
   eventTypes: string[];
   sensitivity: Sensitivity;
   channels: ChannelType[];
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: number;
+  quietHoursEnd?: number;
+  quietHoursTimezone?: string;
+  quietHoursOverride?: QuietHoursOverride;
 }
 
 export interface ChannelsData {
@@ -104,4 +110,20 @@ export async function saveAlertRules(rules: AlertRule): Promise<void> {
     body: JSON.stringify({ action: 'set-alert-rules', ...rules }),
   });
   if (!res.ok) throw new Error(`save alert rules: ${res.status}`);
+}
+
+export async function setQuietHours(settings: {
+  variant: string;
+  quietHoursEnabled: boolean;
+  quietHoursStart?: number;
+  quietHoursEnd?: number;
+  quietHoursTimezone?: string;
+  quietHoursOverride?: QuietHoursOverride;
+}): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-quiet-hours', ...settings }),
+  });
+  if (!res.ok) throw new Error(`set quiet hours: ${res.status}`);
 }

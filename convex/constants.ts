@@ -13,6 +13,12 @@ export const sensitivityValidator = v.union(
   v.literal("critical"),
 );
 
+export const quietHoursOverrideValidator = v.union(
+  v.literal("critical_only"),
+  v.literal("silence_all"),
+  v.literal("batch_on_wake"),
+);
+
 export const CURRENT_PREFS_SCHEMA_VERSION = 1;
 
 export const MAX_PREFS_BLOB_SIZE = 65536;

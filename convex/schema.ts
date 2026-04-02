@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { channelTypeValidator, sensitivityValidator } from "./constants";
+import { channelTypeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
 
 export default defineSchema({
   userPreferences: defineTable({
@@ -60,6 +60,11 @@ export default defineSchema({
     sensitivity: sensitivityValidator,
     channels: v.array(channelTypeValidator),
     updatedAt: v.number(),
+    quietHoursEnabled: v.optional(v.boolean()),
+    quietHoursStart: v.optional(v.number()),
+    quietHoursEnd: v.optional(v.number()),
+    quietHoursTimezone: v.optional(v.string()),
+    quietHoursOverride: v.optional(quietHoursOverrideValidator),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])

@@ -323,6 +323,11 @@ http.route({
       slackConfigurationUrl?: string;
       discordGuildId?: string;
       discordChannelId?: string;
+      quietHoursEnabled?: boolean;
+      quietHoursStart?: number;
+      quietHoursEnd?: number;
+      quietHoursTimezone?: string;
+      quietHoursOverride?: string;
     };
     try {
       body = await request.json() as typeof body;
@@ -431,6 +436,26 @@ http.route({
           eventTypes: body.eventTypes as string[],
           sensitivity: (body.sensitivity ?? "all") as "all" | "high" | "critical",
           channels: body.channels as Array<"telegram" | "slack" | "email">,
+        });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      if (action === "set-quiet-hours") {
+        const VALID_OVERRIDE = new Set(["critical_only", "silence_all", "batch_on_wake"]);
+        if (typeof body.variant !== "string" || !body.variant || typeof body.quietHoursEnabled !== "boolean") {
+          return new Response(JSON.stringify({ error: "variant and quietHoursEnabled required" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.quietHoursOverride !== undefined && !VALID_OVERRIDE.has(body.quietHoursOverride)) {
+          return new Response(JSON.stringify({ error: "invalid quietHoursOverride" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        await ctx.runMutation(internal.alertRules.setQuietHoursForUser, {
+          userId,
+          variant: body.variant,
+          quietHoursEnabled: body.quietHoursEnabled,
+          quietHoursStart: body.quietHoursStart,
+          quietHoursEnd: body.quietHoursEnd,
+          quietHoursTimezone: body.quietHoursTimezone,
+          quietHoursOverride: body.quietHoursOverride as "critical_only" | "silence_all" | "batch_on_wake" | undefined,
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }

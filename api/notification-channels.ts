@@ -100,6 +100,11 @@ interface PostBody {
   eventTypes?: string[];
   sensitivity?: string;
   channels?: string[];
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: number;
+  quietHoursEnd?: number;
+  quietHoursTimezone?: string;
+  quietHoursOverride?: string;
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -214,6 +219,32 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         });
         if (!resp.ok) {
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
+        return json({ ok: true }, 200, corsHeaders);
+      }
+
+      if (action === 'set-quiet-hours') {
+        const VALID_OVERRIDE = new Set(['critical_only', 'silence_all', 'batch_on_wake']);
+        const { variant, quietHoursEnabled, quietHoursStart, quietHoursEnd, quietHoursTimezone, quietHoursOverride } = body;
+        if (!variant || quietHoursEnabled === undefined) {
+          return json({ error: 'variant and quietHoursEnabled required' }, 400, corsHeaders);
+        }
+        if (quietHoursOverride !== undefined && !VALID_OVERRIDE.has(quietHoursOverride)) {
+          return json({ error: 'invalid quietHoursOverride' }, 400, corsHeaders);
+        }
+        const resp = await convexRelay({
+          action: 'set-quiet-hours',
+          userId: session.userId,
+          variant,
+          quietHoursEnabled,
+          quietHoursStart,
+          quietHoursEnd,
+          quietHoursTimezone,
+          quietHoursOverride,
+        });
+        if (!resp.ok) {
+          console.error('[notification-channels] POST set-quiet-hours relay error:', resp.status);
           return json({ error: 'Operation failed' }, 500, corsHeaders);
         }
         return json({ ok: true }, 200, corsHeaders);
