@@ -129,7 +129,7 @@ const SEED_META = {
   earthquakes:      { key: 'seed-meta:seismology:earthquakes',  maxStaleMin: 30 },
   wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   outages:          { key: 'seed-meta:infra:outages',           maxStaleMin: 30 },
-  climateAnomalies: { key: 'seed-meta:climate:anomalies',       maxStaleMin: 120 }, // runs as independent Railway cron (0 */2 * * *)
+  climateAnomalies: { key: 'seed-meta:climate:anomalies',       maxStaleMin: 240 }, // runs as independent Railway cron (0 */2 * * *); 240 = 2x interval
   climateZoneNormals: { key: 'seed-meta:climate:zone-normals',  maxStaleMin: 89280 }, // monthly cron on the 1st; 62d = 2x 31-day cadence
   co2Monitoring:    { key: 'seed-meta:climate:co2-monitoring',  maxStaleMin: 4320 }, // daily cron at 06:00 UTC; 72h tolerates two missed runs
   climateNews:      { key: 'seed-meta:climate:news-intelligence', maxStaleMin: 90 }, // relay loop every 30min; 90 = 3× interval
