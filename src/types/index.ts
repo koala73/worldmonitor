@@ -654,6 +654,8 @@ export interface MapLayers {
   weatherRadar: boolean;
   // REIT property locations (finance variant)
   reitProperties: boolean;
+  // Health layers
+  diseaseOutbreaks: boolean;
 }
 
 export interface AIDataCenter {
@@ -1480,4 +1482,6 @@ export interface CountryBriefSignals {
   gpsJammingHexes: number;
   isTier1: boolean;
   thermalEscalations: number;
+  sanctionsDesignations: number;
+  sanctionsNewDesignations: number;
 }

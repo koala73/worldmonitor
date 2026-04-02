@@ -10,7 +10,7 @@
     "lint:boundaries": "node scripts/lint-boundaries.mjs",
     "lint:unicode": "node scripts/check-unicode-safety.mjs",
     "lint:unicode:staged": "node scripts/check-unicode-safety.mjs --staged",
-    "lint:md": "markdownlint-cli2 '**/*.md' '!**/node_modules/**' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**'",
+    "lint:md": "markdownlint-cli2 '**/*.md' '!**/node_modules/**' '!.agent/**' '!.agents/**' '!.claude/**' '!.factory/**' '!.windsurf/**' '!skills/**' '!docs/internal/**' '!docs/Docs_To_Review/**' '!todos/**' '!docs/plans/**'",
     "version:sync": "node scripts/sync-desktop-version.mjs",
     "version:check": "node scripts/sync-desktop-version.mjs --check",
     "dev": "vite",
@@ -90,6 +90,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.79.0",
     "@aws-sdk/client-s3": "^3.1009.0",
+    "@clerk/clerk-js": "^5.56.0",
     "@deck.gl/aggregation-layers": "^9.2.6",
     "@deck.gl/core": "^9.2.6",
     "@deck.gl/geo-layers": "^9.2.6",
@@ -111,6 +112,7 @@
     "hls.js": "^1.6.15",
     "i18next": "^25.8.10",
     "i18next-browser-languagedetector": "^8.2.1",
+    "jose": "^6.0.11",
     "maplibre-gl": "^5.16.0",
     "marked": "^17.0.3",
     "onnxruntime-web": "^1.23.2",
@@ -121,11 +123,14 @@
     "supercluster": "^8.0.1",
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
+    "uqr": "^0.1.2",
     "ws": "^8.19.0",
     "youtubei.js": "^16.0.1"
   },
   "overrides": {
     "fast-xml-parser": "^5.3.7",
-    "serialize-javascript": "^7.0.4"
+    "serialize-javascript": "^7.0.4",
+    "node-forge": "^1.4.0",
+    "srvx": "^0.11.13"
   }
 }

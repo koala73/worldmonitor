@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ShippingStressCarrier represents market stress data for a carrier or shipping index.
+message ShippingStressCarrier {
+  // Ticker or identifier (e.g., "BDRY", "ZIM").
+  string symbol = 1;
+  // Human-readable name.
+  string name = 2;
+  // Current price.
+  double price = 3;
+  // Percentage change from previous close.
+  double change_pct = 4;
+  // Carrier type: "etf" | "carrier" | "index".
+  string carrier_type = 5;
+  // 30-day price sparkline.
+  repeated double sparkline = 6;
+}
+
+message GetShippingStressRequest {}
+
+message GetShippingStressResponse {
+  repeated ShippingStressCarrier carriers = 1;
+  // Composite stress score 0–100 (higher = more disruption).
+  double stress_score = 2;
+  // "low" | "moderate" | "elevated" | "critical".
+  string stress_level = 3;
+  int64 fetched_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Set to true when upstream data source is unavailable and cached data is stale.
+  bool upstream_unavailable = 5;
+}

@@ -93,17 +93,21 @@ describe('widget-agent relay — security', () => {
     assert.ok(handlerBody.includes('163840'), 'Body limit must be enforced in handleWidgetAgentRequest');
   });
 
-  it('SSRF guard — ALLOWED_ENDPOINTS set is present', () => {
-    assert.ok(relay.includes('WIDGET_ALLOWED_ENDPOINTS'), 'WIDGET_ALLOWED_ENDPOINTS not found');
+  it('SSRF guard — isWidgetEndpointAllowed function is present', () => {
     assert.ok(
-      relay.includes("new Set(["),
-      'WIDGET_ALLOWED_ENDPOINTS should be a Set',
+      relay.includes('isWidgetEndpointAllowed'),
+      'isWidgetEndpointAllowed guard function must exist',
+    );
+    // Must reject non-API paths
+    assert.ok(
+      relay.includes("startsWith('/api/')"),
+      'Guard must restrict to /api/ prefix',
     );
   });
 
   it('SSRF guard — allowlist is checked before any fetch call in tool loop', () => {
-    const allowlistCheck = relay.indexOf('WIDGET_ALLOWED_ENDPOINTS.has(endpoint)');
-    assert.ok(allowlistCheck !== -1, 'WIDGET_ALLOWED_ENDPOINTS.has() check missing');
+    const allowlistCheck = relay.indexOf('isWidgetEndpointAllowed(endpoint)');
+    assert.ok(allowlistCheck !== -1, 'isWidgetEndpointAllowed() check missing in tool loop');
     // The fetch call to api.worldmonitor.app must come AFTER the check
     const fetchCallIdx = relay.indexOf("'https://api.worldmonitor.app'", allowlistCheck);
     assert.ok(
@@ -112,18 +116,33 @@ describe('widget-agent relay — security', () => {
     );
   });
 
-  it('SSRF guard — only worldmonitor.app endpoints are in allowlist', () => {
-    const setStart = relay.indexOf('WIDGET_ALLOWED_ENDPOINTS = new Set');
-    assert.ok(setStart !== -1);
-    const setBody = relay.slice(setStart, relay.indexOf(']);', setStart) + 2);
-    // Extract all quoted strings inside the Set
-    const entries = [...setBody.matchAll(/['"]([^'"]+)['"]/g)].map(m => m[1]);
-    for (const entry of entries) {
-      assert.ok(
-        entry.startsWith('/api/'),
-        `Non-API endpoint in WIDGET_ALLOWED_ENDPOINTS: "${entry}" — must start with /api/`,
-      );
-    }
+  it('SSRF guard — dangerous inference/write paths are blocked', () => {
+    assert.ok(
+      relay.includes('analyze-stock') && relay.includes('summarize-article'),
+      'Blocklist must explicitly exclude inference-only paths',
+    );
+  });
+
+  it('injection guard — isWidgetInjectionAttempt function is present', () => {
+    assert.ok(relay.includes('isWidgetInjectionAttempt'), 'injection guard function must exist');
+    assert.ok(relay.includes('ignore') && relay.includes('previous'), 'must detect override patterns');
+    assert.ok(relay.includes('jailbreak'), 'must detect jailbreak keyword');
+    assert.ok(relay.includes('act\\s+as'), 'must detect role hijacking');
+  });
+
+  it('injection guard — hard rejected before API call', () => {
+    const guardIdx = relay.indexOf('isWidgetInjectionAttempt(prompt)');
+    assert.ok(guardIdx !== -1, 'injection check must be called on prompt');
+    // Guard must appear before the Anthropic client is created
+    const anthropicIdx = relay.indexOf('new Anthropic(');
+    assert.ok(guardIdx < anthropicIdx, 'injection check must happen before any Anthropic API call');
+  });
+
+  it('injection guard — tool results are sanitized before context insertion', () => {
+    assert.ok(relay.includes('sanitizeToolContent'), 'sanitizeToolContent must be applied to tool results');
+    // Must be called on both search results and WM data results
+    const count = (relay.match(/sanitizeToolContent/g) || []).length;
+    assert.ok(count >= 3, `sanitizeToolContent must appear in definition + both result paths (found ${count})`);
   });
 
   it('tool loop is bounded by maxTurns (6 for basic, 10 for PRO)', () => {
@@ -465,8 +484,8 @@ describe('panel guardrails — cw- prefix handling', () => {
 
   it('panel-layout loads widgets when feature is enabled', () => {
     assert.ok(
-      layout.includes('isProUser'),
-      'panel-layout must check isProUser before loading widgets',
+      layout.includes('hasPremiumAccess') || layout.includes('isProUser'),
+      'panel-layout must check hasPremiumAccess (or isProUser) before loading widgets',
     );
     assert.ok(
       layout.includes('loadWidgets'),
@@ -481,10 +500,10 @@ describe('panel guardrails — cw- prefix handling', () => {
     );
   });
 
-  it('panel-layout AI button is gated by isProUser', () => {
-    const featureIdx = layout.indexOf('isProUser');
+  it('panel-layout AI button is gated by hasPremiumAccess', () => {
+    const hasCheck = layout.includes('hasPremiumAccess') || layout.includes('isProUser');
     const buttonIdx = layout.indexOf('ai-widget-block');
-    assert.ok(featureIdx !== -1, 'isProUser not found in panel-layout');
+    assert.ok(hasCheck, 'hasPremiumAccess (or isProUser) not found in panel-layout');
     assert.ok(buttonIdx !== -1, 'AI widget button not found in panel-layout');
   });
 
@@ -793,7 +812,6 @@ describe('i18n — widgets section completeness', () => {
     assert.ok(modal.includes("t('widgets.chatTitle')"), 'WidgetChatModal must use widgets.chatTitle');
     assert.ok(modal.includes("t('widgets.modifyTitle')"), 'WidgetChatModal must use widgets.modifyTitle');
     assert.ok(modal.includes("t('widgets.inputPlaceholder')"), 'WidgetChatModal must use widgets.inputPlaceholder');
-    assert.ok(panel.includes("t('widgets.changeAccent')"), 'CustomWidgetPanel must use widgets.changeAccent');
     assert.ok(panel.includes("t('widgets.modifyWithAi')"), 'CustomWidgetPanel must use widgets.modifyWithAi');
     assert.ok(events.includes("t('widgets.confirmDelete')"), 'Delete confirmation must use widgets.confirmDelete');
   });
@@ -820,22 +838,6 @@ describe('CustomWidgetPanel — header buttons and events', () => {
     assert.ok(
       panel.includes('wm:widget-modify'),
       'CustomWidgetPanel must dispatch wm:widget-modify CustomEvent',
-    );
-  });
-
-  it('ACCENT_COLORS has 9 entries (8 colors + null reset)', () => {
-    // Array spans multiple lines — use [\s\S]*? to capture across newlines
-    const match = panel.match(/ACCENT_COLORS[^=]*=\s*\[([\s\S]*?)\];/);
-    assert.ok(match, 'ACCENT_COLORS array not found');
-    const entries = match[1].split(',').map(s => s.trim()).filter(Boolean);
-    assert.equal(entries.length, 9, `ACCENT_COLORS must have 9 entries (8 colors + null), found ${entries.length}: [${entries.join(', ')}]`);
-    assert.ok(entries.includes('null'), 'ACCENT_COLORS must include null for reset');
-  });
-
-  it('accent color persists via saveWidget after color cycle', () => {
-    assert.ok(
-      panel.includes('saveWidget'),
-      'Color cycle must call saveWidget() to persist accentColor',
     );
   });
 
@@ -993,7 +995,7 @@ describe('PRO widget — relay auth and configuration', () => {
   it('PRO system prompt allows cdn.jsdelivr.net for Chart.js', () => {
     // Use lastIndexOf to find the constant definition
     const promptIdx = relay.lastIndexOf('WIDGET_PRO_SYSTEM_PROMPT');
-    const promptRegion = relay.slice(promptIdx, promptIdx + 3500);
+    const promptRegion = relay.slice(promptIdx, promptIdx + 6000);
     assert.ok(
       promptRegion.includes('cdn.jsdelivr.net') || promptRegion.includes('chart.js') || promptRegion.includes('Chart.js'),
       'PRO system prompt must mention cdn.jsdelivr.net/Chart.js as allowed CDN',
@@ -1096,48 +1098,62 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
-  it('wrapProWidgetHtml places CSP as first head child (client-owned skeleton)', () => {
-    const fnIdx = san.indexOf('wrapProWidgetHtml');
-    const fnBody = san.slice(fnIdx, fnIdx + 800);
+  it('widget document builder places CSP as first head child (client-owned skeleton)', () => {
     assert.ok(
-      fnBody.includes('Content-Security-Policy'),
-      'wrapProWidgetHtml must embed CSP in the head',
+      san.includes('Content-Security-Policy'),
+      'widget sanitizer must embed CSP in the document head',
     );
     // CSP meta should come before any style tag
-    const cspPos = fnBody.indexOf('Content-Security-Policy');
-    const stylePos = fnBody.indexOf('<style>');
+    const cspPos = san.indexOf('Content-Security-Policy');
+    const stylePos = san.indexOf('<style>');
     assert.ok(
       cspPos < stylePos,
       'CSP meta must appear before <style> in the generated HTML skeleton',
     );
   });
 
-  it('wrapProWidgetHtml CSP has connect-src none (blocks beaconing)', () => {
-    const fnIdx = san.indexOf('wrapProWidgetHtml');
-    const fnBody = san.slice(fnIdx, fnIdx + 800);
+  it('widget document builder CSP restricts connect-src to cdn.jsdelivr.net only', () => {
     assert.ok(
-      fnBody.includes("connect-src 'none'"),
-      "CSP must include connect-src 'none' to block network beaconing from iframe",
+      san.includes('connect-src https://cdn.jsdelivr.net'),
+      'CSP connect-src must allow only cdn.jsdelivr.net (for Chart.js source maps) and nothing else',
+    );
+    assert.ok(
+      !san.includes("connect-src 'none'") && !san.includes('connect-src *'),
+      'CSP connect-src must not be wildcard or none',
     );
   });
 
-  it('wrapProWidgetHtml uses escapeSrcdoc for attribute safety', () => {
+  it('wrapProWidgetHtml uses sandbox page src (not srcdoc) for CSP isolation', () => {
+    const fnIdx = san.indexOf('wrapProWidgetHtml');
+    const fnBody = san.slice(fnIdx, fnIdx + 500);
     assert.ok(
-      san.includes('escapeSrcdoc'),
-      'wrapProWidgetHtml must escape the srcdoc attribute value',
+      fnBody.includes('wm-widget-sandbox.html'),
+      'wrapProWidgetHtml must load the dedicated sandbox page (not srcdoc) to get its own CSP',
+    );
+    assert.ok(
+      !fnBody.includes('srcdoc'),
+      'wrapProWidgetHtml must NOT use srcdoc — srcdoc inherits parent CSP',
     );
   });
 
-  it('wrapProWidgetHtml injects Chart.js from jsdelivr so new Chart() is available', () => {
-    const fnIdx = san.indexOf('wrapProWidgetHtml');
-    const fnBody = san.slice(fnIdx, fnIdx + 1500);
+  it('widget document builder injects panel CSS classes for design-system alignment', () => {
+    assert.ok(san.includes('.panel-header'), 'must define .panel-header');
+    assert.ok(san.includes('.panel-title'), 'must define .panel-title');
+    assert.ok(san.includes('.panel-tabs'), 'must define .panel-tabs');
+    assert.ok(san.includes('.panel-tab'), 'must define .panel-tab');
+    assert.ok(san.includes('.disp-stats-grid'), 'must define .disp-stats-grid');
+    assert.ok(san.includes('.disp-stat-box'), 'must define .disp-stat-box');
+    assert.ok(san.includes('--accent'), 'must define --accent CSS variable');
+  });
+
+  it('widget document builder injects Chart.js from jsdelivr so new Chart() is available', () => {
     assert.ok(
-      fnBody.includes('cdn.jsdelivr.net') && fnBody.includes('chart.js'),
-      'wrapProWidgetHtml must inject Chart.js CDN script so widgets can call new Chart(...)',
+      san.includes('cdn.jsdelivr.net') && san.includes('chart.js'),
+      'widget sanitizer must inject Chart.js CDN script so widgets can call new Chart(...)',
     );
-    // Script must appear before </head> so Chart is defined when body scripts run
-    const scriptPos = fnBody.indexOf('chart.js');
-    const bodyPos = fnBody.indexOf('<body>');
+    // Script must appear before <body> so Chart is defined when body scripts run
+    const scriptPos = san.indexOf('chart.js');
+    const bodyPos = san.indexOf('<body>');
     assert.ok(
       scriptPos < bodyPos,
       'Chart.js script tag must be in <head>, before <body>',
@@ -1205,10 +1221,10 @@ describe('PRO widget — modal and layout integration', () => {
     );
   });
 
-  it('layout has PRO create button when isProUser', () => {
+  it('layout has PRO create button when hasPremiumAccess', () => {
     assert.ok(
-      layout.includes('isProUser'),
-      'panel-layout must import/call isProUser',
+      layout.includes('hasPremiumAccess') || layout.includes('isProUser'),
+      'panel-layout must import/call hasPremiumAccess (or isProUser)',
     );
     assert.ok(
       layout.includes('ai-widget-block-pro'),

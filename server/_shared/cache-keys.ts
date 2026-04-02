@@ -1,4 +1,12 @@
 /**
+ * Shared Redis pointer keys for simulation artifacts.
+ * Defined here so TypeScript handlers and seed scripts agree on the exact string.
+ * The MJS seed script keeps its own copy (cannot import TS source directly).
+ */
+export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
+export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
+
+/**
  * Static cache keys for the bootstrap endpoint.
  * Only keys with NO request-varying suffixes are included.
  */
@@ -63,6 +71,16 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   nationalDebt:     'economic:national-debt:v1',
   marketImplications: 'intelligence:market-implications:v1',
   fearGreedIndex:   'market:fear-greed:v1',
+  crudeInventories: 'economic:crude-inventories:v1',
+  natGasStorage:    'economic:nat-gas-storage:v1',
+  ecbFxRates:       'economic:ecb-fx-rates:v1',
+  euGasStorage:     'economic:eu-gas-storage:v1',
+  eurostatCountryData: 'economic:eurostat-country-data:v1',
+  euFsi:            'economic:fsi-eu:v1',
+  shippingStress:   'supply_chain:shipping_stress:v1',
+  socialVelocity:   'intelligence:social:reddit:v1',
+  diseaseOutbreaks: 'health:disease-outbreaks:v1',
+  economicStress:   'economic:stress-index:v1',
 };
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
@@ -95,4 +113,14 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   nationalDebt: 'slow',
   marketImplications: 'slow',
   fearGreedIndex: 'slow',
+  crudeInventories: 'slow',
+  natGasStorage: 'slow',
+  ecbFxRates: 'slow',
+  euGasStorage: 'slow',
+  eurostatCountryData: 'slow',
+  euFsi: 'slow',
+  shippingStress: 'fast',
+  socialVelocity: 'fast',
+  diseaseOutbreaks: 'slow',
+  economicStress: 'slow',
 };

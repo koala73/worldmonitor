@@ -1,3 +1,5 @@
+import { trackGateHit } from '@/services/analytics';
+
 let bannerEl: HTMLElement | null = null;
 
 /* TODO: re-enable dismiss after pro launch promotion period
@@ -28,6 +30,8 @@ function dismiss(): void {
 export function showProBanner(container: HTMLElement): void {
   if (bannerEl) return;
   if (window.self !== window.top) return;
+
+  trackGateHit('pro-banner');
 
   const banner = document.createElement('div');
   banner.className = 'pro-banner';

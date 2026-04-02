@@ -16,7 +16,7 @@ const getCacheHeaderValue = (sourcePath) => {
 
 describe('deploy/cache configuration guardrails', () => {
   it('disables caching for HTML entry routes on Vercel', () => {
-    const spaNoCache = getCacheHeaderValue('/((?!api|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known).*)');
+    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known|wm-widget-sandbox\\.html).*)');
     assert.equal(spaNoCache, 'no-cache, no-store, must-revalidate');
   });
 
@@ -153,6 +153,24 @@ describe('security header guardrails', () => {
     const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
     assert.ok(scriptSrc.includes("'wasm-unsafe-eval'"), 'CSP script-src must include wasm-unsafe-eval for WASM support');
     assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
+  });
+
+  it('CSP script-src includes Clerk origin for auth UI', () => {
+    const csp = getHeaderValue('Content-Security-Policy');
+    const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(
+      scriptSrc.includes('clerk.accounts.dev') || scriptSrc.includes('clerk.worldmonitor.app'),
+      'CSP script-src must include Clerk origin for auth UI to load'
+    );
+  });
+
+  it('CSP frame-src includes Clerk origin for auth modals', () => {
+    const csp = getHeaderValue('Content-Security-Policy');
+    const frameSrc = csp.match(/frame-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(
+      frameSrc.includes('clerk.accounts.dev') || frameSrc.includes('clerk.worldmonitor.app'),
+      'CSP frame-src must include Clerk origin for sign-in modal'
+    );
   });
 
   it('security.txt exists in public/.well-known/', () => {

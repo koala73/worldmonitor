@@ -23,6 +23,7 @@ export function buildSummaryCacheKey(
   geoContext?: string,
   variant?: string,
   lang?: string,
+  systemAppend?: string,
 ): string {
   const canon = canonicalizeSummaryInputs(headlines, geoContext);
   const sorted = canon.headlines.slice(0, MAX_HEADLINES_FOR_KEY).sort().join('|');
@@ -30,11 +31,12 @@ export function buildSummaryCacheKey(
   const hash = hashString(`${mode}:${sorted}`);
   const normalizedVariant = typeof variant === 'string' && variant ? variant.toLowerCase() : 'full';
   const normalizedLang = typeof lang === 'string' && lang ? lang.toLowerCase() : 'en';
+  const fwHash = systemAppend ? ':fw' + hashString(systemAppend).slice(0, 8) : '';
 
   if (mode === 'translate') {
     const targetLang = normalizedVariant || normalizedLang;
-    return `summary:${CACHE_VERSION}:${mode}:${targetLang}:${hash}${geoHash}`;
+    return `summary:${CACHE_VERSION}:${mode}:${targetLang}:${hash}${geoHash}${fwHash}`;
   }
 
-  return `summary:${CACHE_VERSION}:${mode}:${normalizedVariant}:${normalizedLang}:${hash}${geoHash}`;
+  return `summary:${CACHE_VERSION}:${mode}:${normalizedVariant}:${normalizedLang}:${hash}${geoHash}${fwHash}`;
 }

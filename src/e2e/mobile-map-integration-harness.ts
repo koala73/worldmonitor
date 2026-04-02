@@ -139,6 +139,7 @@ const layers = {
   webcams: false,
   weatherRadar: false,
   reitProperties: false,
+  diseaseOutbreaks: false,
 };
 
 await initI18n();

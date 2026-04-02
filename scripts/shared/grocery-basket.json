@@ -32,8 +32,8 @@
     },
     {
       "id": "oil",
-      "name": "Cooking Oil",
-      "query": "sunflower cooking oil 1L",
+      "name": "Canola Oil",
+      "query": "canola oil 1L",
       "unit": "1L"
     },
     {
@@ -114,8 +114,9 @@
       "currency": "JPY",
       "flag": "🇯🇵",
       "sites": [
-        "kakaku.com",
-        "price.com"
+        "seiyu.co.jp",
+        "life.co.jp",
+        "aeon-net.com"
       ]
     },
     {

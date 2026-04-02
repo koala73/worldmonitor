@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Ensure dependencies are installed (worktrees start with no node_modules)
 if [ ! -d node_modules ]; then
   echo "node_modules missing, running npm install..."
@@ -65,14 +66,13 @@ echo "Running architectural boundary check..."
 npm run lint:boundaries || exit 1
 
 echo "Running edge function bundle check..."
-for f in api/*.js; do
-  case "$(basename "$f")" in _*) continue;; esac
+while IFS= read -r f; do
   npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null 2>/dev/null || {
     echo "ERROR: esbuild failed to bundle $f — this will break Vercel deployment"
     npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null
     exit 1
   }
-done
+done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
 
 echo "Running unit tests..."
 npm run test:data || exit 1

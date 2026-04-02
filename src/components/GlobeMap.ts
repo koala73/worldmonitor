@@ -2551,12 +2551,21 @@ export class GlobeMap {
     oceania:  { lat: -25, lng: 140,  altitude: 1.5 },
   };
 
-  public setView(view: MapView): void {
+  public setView(view: MapView, zoom?: number): void {
     this.currentView = view;
     if (!this.globe) return;
     this.wakeGlobe();
-    const pov = GlobeMap.VIEW_POVS[view] ?? GlobeMap.VIEW_POVS.global;
-    this.globe.pointOfView(pov, 1200);
+    const preset = GlobeMap.VIEW_POVS[view] ?? GlobeMap.VIEW_POVS.global;
+    let altitude = preset.altitude;
+    if (zoom !== undefined) {
+      if      (zoom >= 7) altitude = 0.08;
+      else if (zoom >= 6) altitude = 0.15;
+      else if (zoom >= 5) altitude = 0.3;
+      else if (zoom >= 4) altitude = 0.5;
+      else if (zoom >= 3) altitude = 0.8;
+      else                altitude = 1.5;
+    }
+    this.globe.pointOfView({ lat: preset.lat, lng: preset.lng, altitude }, 1200);
   }
 
   public setCenter(lat: number, lon: number, zoom?: number): void {

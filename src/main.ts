@@ -12,10 +12,14 @@ const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 Sentry.init({
   dsn: sentryDsn || undefined,
   release: `worldmonitor@${__APP_VERSION__}`,
-  environment: location.hostname === 'worldmonitor.app' ? 'production'
+  environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
     : location.hostname.includes('vercel.app') ? 'preview'
     : 'development',
   enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
+  allowUrls: [
+    /https?:\/\/(www\.|tech\.|finance\.|commodity\.|happy\.)?worldmonitor\.app/,
+    /https?:\/\/.*\.vercel\.app/,
+  ],
   sendDefaultPii: true,
   tracesSampleRate: 0.1,
   ignoreErrors: [
@@ -249,9 +253,13 @@ Sentry.init({
     /start offset of Int16Array should be a multiple of 2/,
     /Cannot read properties of undefined \(reading 'then'\)/,
     /^(?:Error: )?uncaught exception: undefined$/,
-    /Can't find variable: ss_bootstrap_config/,
+    /ss_bootstrap_config/, // Surfly proxy — "Can't find variable: ss_bootstrap_config" (Safari) or "ss_bootstrap_config is not defined" (Chrome)
     /undefined is not an object \(evaluating '[a-z]\.includes'\)/,
     /^"use strict" is not a function$/,
+    /Can only call Window\.setTimeout on instances of Window/, // iOS Safari cross-frame setTimeout from 3rd-party injected script
+    /^Can't find variable: _G$/, // browser extension/userscript injecting _G global
+    /onAppPageCallback is not defined/, // Android Chrome WebView injection (Huawei/Samsung browsers)
+    /\.at is not a function/, // Instagram/older Android in-app browsers missing Array.at()
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -290,7 +298,10 @@ Sentry.init({
     // Suppress TypeErrors from anonymous/injected scripts (no real source files or only inline page URL)
     if ((excType === 'TypeError' || /^TypeError:/.test(msg)) && frames.length > 0 && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
     // Suppress parentNode.insertBefore from injected/inline scripts (iOS WKWebView, Apple Mail)
-    if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+    // Also covers [native code] frames (no filename) produced by WKWebView's forEach wrapper
+    if (/parentNode\.insertBefore/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]' || /^blob:/.test(f.filename) || /^https?:\/\/[^/]+\/?$/.test(f.filename))) return null;
+    // Suppress NotFoundError: insertBefore with no usable stack (Chrome 146+ extension DOM interference — stack shows minified bundle but no line/function)
+    if (excType === 'NotFoundError' && /insertBefore/.test(msg) && frames.every(f => !f.lineno && !f.function)) return null;
     // Suppress Sentry breadcrumb DOM-measuring crashes (element.offsetWidth on detached DOM)
     if (/evaluating '(?:element|e)\.offset(?:Width|Height)'/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     // Suppress errors originating entirely from blob: URLs (browser extensions)
@@ -324,6 +335,50 @@ Sentry.init({
 // not actionable. The YT IFrame API doesn't expose the play() promise so it leaks as unhandled.
 window.addEventListener('unhandledrejection', (e) => {
   if (e.reason?.name === 'NotAllowedError') e.preventDefault();
+});
+
+// Report CSP violations in the parent page to Sentry.
+// Sandbox iframe violations are isolated and not captured here.
+window.addEventListener('securitypolicyviolation', (e) => {
+  const src = e.sourceFile ?? '';
+  const blocked = e.blockedURI ?? '';
+  // Skip violations originating from browser extensions or injected scripts.
+  // Browsers may report blockedURI as scheme-only ("chrome-extension") or with origin ("chrome-extension://...").
+  if (/^(?:chrome|moz|safari(?:-web)?)-extension/.test(src) || /^(?:chrome|moz|safari(?:-web)?)-extension/.test(blocked)) return;
+  // Browsers may report blob: as "blob" (scheme-only) or "blob:https://..." — both are noise.
+  if (blocked === 'blob' || /^blob:/.test(src) || /^blob:/.test(blocked)) return;
+  // Skip eval/inline/data: blocked URIs — browsers may report "data" (scheme-only) or full data: URI.
+  if (blocked === 'eval' || blocked === 'inline' || blocked === 'data' || /^data:/.test(blocked)) return;
+  // Skip Android WebView video poster injection.
+  if (blocked === 'android-webview-video-poster') return;
+  // Skip own manifest.webmanifest — stale CSP cache hit, not a real violation (default-src 'self' covers it).
+  if (/manifest\.webmanifest$/.test(blocked)) return;
+  // Skip third-party injectors: Google Translate, Facebook Pixel
+  if (/gstatic\.com\/_\/translate/.test(blocked) || /facebook\.net/.test(blocked)) return;
+  // Skip Sentry reporting itself (connect-src bootstrap paradox — SDK blocked before it can report)
+  if (/sentry\.io\/api\//.test(blocked)) return;
+  // Skip YouTube live stream manifests (media-src — expected from YouTube embeds)
+  if (/googlevideo\.com|youtube\.com\/generate_204/.test(blocked)) return;
+  // Skip corporate/school content filter injections (securly, GoGuardian, etc.)
+  if (/securly\.com|goguardian\.com|contentkeeper\.com/.test(blocked)) return;
+  // Skip Vercel Analytics (script-src — known first-party, not a real violation to action)
+  if (/_vercel\/insights\/script\.js/.test(blocked)) return;
+  // Skip inline script blocks — browser extension or in-app browser injection, not actionable
+  if (blocked === 'inline' && e.effectiveDirective === 'script-src-elem') return;
+  // Skip null blocked URI — in-app browsers (Baidu, WeChat, Instagram) inject null-src iframes
+  if (blocked === 'null') return;
+  Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
+    level: 'warning',
+    tags: { kind: 'csp_violation' },
+    extra: {
+      violatedDirective: e.violatedDirective,
+      effectiveDirective: e.effectiveDirective,
+      blockedURI: blocked,
+      sourceFile: src,
+      lineNumber: e.lineNumber,
+      disposition: e.disposition,
+    },
+  });
 });
 
 import { debugGetCells, getCellCount } from '@/services/geo-convergence';

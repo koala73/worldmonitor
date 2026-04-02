@@ -14,6 +14,7 @@ const SOCIAL_IMAGE_UA =
 const VARIANT_HOST_MAP: Record<string, string> = {
   'tech.worldmonitor.app': 'tech',
   'finance.worldmonitor.app': 'finance',
+  'commodity.worldmonitor.app': 'commodity',
   'happy.worldmonitor.app': 'happy',
 };
 
@@ -30,6 +31,12 @@ const VARIANT_OG: Record<string, { title: string; description: string; image: st
     description: 'Real-time finance and trading dashboard tracking global markets, stock exchanges, central banks, commodities, forex, crypto, and economic indicators worldwide.',
     image: 'https://finance.worldmonitor.app/favico/finance/og-image.png',
     url: 'https://finance.worldmonitor.app/',
+  },
+  commodity: {
+    title: 'Commodity Monitor - Real-Time Commodity Markets & Supply Chain Dashboard',
+    description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global commodity trade flows.',
+    image: 'https://commodity.worldmonitor.app/favico/commodity/og-image.png',
+    url: 'https://commodity.worldmonitor.app/',
   },
   happy: {
     title: 'Happy Monitor - Good News & Global Progress',

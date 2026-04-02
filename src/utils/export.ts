@@ -121,7 +121,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     if (intel.earthquakes && intel.earthquakes.length > 0) {
       lines.push('=== EARTHQUAKES ===');
       lines.push('Place,Magnitude,DepthKm,OccurredAt,URL');
-      intel.earthquakes.forEach(e => {
+      intel.earthquakes.forEach((e: { place: string; magnitude: number; depthKm: number; occurredAt: number; sourceUrl: string }) => {
         lines.push(csvRow([e.place, String(e.magnitude), String(e.depthKm), new Date(e.occurredAt * 1000).toISOString(), e.sourceUrl]));
       });
       lines.push('');
@@ -139,7 +139,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     if (intel.flightDelays && intel.flightDelays.length > 0) {
       lines.push('=== FLIGHT DELAYS ===');
       lines.push('Airport,IATA,City,Country,DelayType,Severity,AvgDelayMin,Source');
-      intel.flightDelays.forEach(d => {
+      intel.flightDelays.forEach((d: { name: string; iata: string; city: string; country: string; delayType: string; severity: string; avgDelayMinutes: number; source: string }) => {
         lines.push(csvRow([d.name, d.iata, d.city, d.country, d.delayType, d.severity, String(d.avgDelayMinutes), d.source]));
       });
       lines.push('');
@@ -166,7 +166,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     if (intel.iranEvents && intel.iranEvents.length > 0) {
       lines.push('=== IRAN EVENTS ===');
       lines.push('Title,Category,Location,Severity,Timestamp');
-      intel.iranEvents.forEach(e => {
+      (intel.iranEvents as Array<{ title: string; category: string; locationName: string; severity: string; timestamp: string }>).forEach((e) => {
         lines.push(csvRow([e.title, e.category, e.locationName, e.severity, e.timestamp]));
       });
       lines.push('');
@@ -182,7 +182,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     if (intel.advisories && intel.advisories.length > 0) {
       lines.push('=== SECURITY ADVISORIES ===');
       lines.push('Title,Source,Level,Country,PubDate,Link');
-      intel.advisories.forEach(a => {
+      intel.advisories.forEach((a: { title: string; source: string; level?: string; country?: string; pubDate: Date; link: string }) => {
         lines.push(csvRow([a.title, a.source, a.level ?? '', a.country ?? '', a.pubDate.toISOString(), a.link]));
       });
       lines.push('');
@@ -191,7 +191,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     if (intel.radiation?.observations && intel.radiation.observations.length > 0) {
       lines.push('=== RADIATION MONITORING ===');
       lines.push('Location,Country,Value,Unit,ObservedAt');
-      intel.radiation.observations.forEach(s => {
+      intel.radiation.observations.forEach((s: { location: string; country: string; value: number; unit: string; observedAt: Date }) => {
         lines.push(csvRow([s.location, s.country, String(s.value), s.unit, s.observedAt.toISOString()]));
       });
       lines.push('');
@@ -200,7 +200,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
     if (intel.imageryScenes && intel.imageryScenes.length > 0) {
       lines.push('=== SATELLITE IMAGERY ===');
       lines.push('ID,Satellite,DateTime,ResolutionM,Mode');
-      intel.imageryScenes.forEach(s => {
+      intel.imageryScenes.forEach((s: { id: string; satellite: string; datetime: string; resolutionM: number; mode: string }) => {
         lines.push(csvRow([s.id, s.satellite, s.datetime, String(s.resolutionM), s.mode]));
       });
       lines.push('');

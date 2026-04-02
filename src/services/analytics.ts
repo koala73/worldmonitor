@@ -5,6 +5,8 @@
  * even if the Umami script has not loaded yet (e.g. ad blockers, SSR).
  */
 
+import { subscribeAuthState } from './auth-state';
+
 // ---------------------------------------------------------------------------
 // Type-safe event catalog — every event name lives here.
 // Typo in an event string = compile error.
@@ -69,58 +71,50 @@ export async function initAnalytics(): Promise<void> {
 // by user/plan. Safe to call before Umami script loads.
 // ---------------------------------------------------------------------------
 
-/**
- * Attach user context to all subsequent Umami events for this session.
- * Call this once after a successful sign-in or on app boot when the user
- * is already authenticated.
- *
- * PR #1812: call from subscribeAuthState() when user is non-null.
- * Pass user.id and the plan string from the session/subscription object.
- */
 export function identifyUser(userId: string, plan: string): void {
   window.umami?.identify({ userId, plan });
 }
 
-/**
- * Clear user identity (call on sign-out so subsequent events are anonymous).
- *
- * PR #1812: call from subscribeAuthState() when user becomes null.
- */
 export function clearIdentity(): void {
   window.umami?.identify({});
 }
 
+let _unsubscribeAuthAnalytics: (() => void) | null = null;
+
 /**
- * Stub — wire this in PR #1812.
- *
- * Instructions for PR #1812:
- *   1. Import { identifyUser, clearIdentity, track } from '@/services/analytics'
- *   2. Replace this body with:
- *
- *      subscribeAuthState((user) => {
- *        if (user) {
- *          identifyUser(user.id, user.plan ?? 'free');
- *        } else {
- *          clearIdentity();
- *        }
- *      });
- *
- *   3. Call initAuthAnalytics() from main.ts after initAnalytics().
- *
- *   4. At the sign-in callsite (success callback):
- *        track('sign-in', { method: 'email' });   // or 'google', 'github'
- *
- *   5. At the sign-up callsite (success callback):
- *        track('sign-up', { method: 'email' });
- *
- *   6. At the sign-out callsite:
- *        track('sign-out');
- *
- *   7. Wherever a feature is gated behind auth/pro and the user is blocked:
- *        track('gate-hit', { feature: 'pro-widget' });  // or 'mcp', 'pro-brief', etc.
+ * Call once after initAuthState() to keep Umami identity in sync with
+ * the authenticated user. Re-entrant safe: subsequent calls are no-ops.
  */
 export function initAuthAnalytics(): void {
-  // No-op until PR #1812.
+  if (_unsubscribeAuthAnalytics) return;
+
+  _unsubscribeAuthAnalytics = subscribeAuthState((state) => {
+    if (state.user) {
+      identifyUser(state.user.id, state.user.role);
+    } else {
+      clearIdentity();
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Auth events
+// ---------------------------------------------------------------------------
+
+export function trackSignIn(method: string): void {
+  track('sign-in', { method });
+}
+
+export function trackSignUp(method: string): void {
+  track('sign-up', { method });
+}
+
+export function trackSignOut(): void {
+  track('sign-out');
+}
+
+export function trackGateHit(feature: string): void {
+  track('gate-hit', { feature });
 }
 
 // ---------------------------------------------------------------------------

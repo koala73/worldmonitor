@@ -1,4 +1,5 @@
 import { SITE_VARIANT } from '@/config/variant';
+import { getClerkToken } from '@/services/clerk';
 
 const ENV = (() => {
   try {
@@ -732,6 +733,8 @@ export function installRuntimeFetchPatch(): void {
   (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
 }
 
+import { PREMIUM_RPC_PATHS as WEB_PREMIUM_API_PATHS } from '@/shared/premium-paths';
+
 const ALLOWED_REDIRECT_HOSTS = /^https:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*worldmonitor\.app(:\d+)?$/;
 
 function isAllowedRedirectTarget(url: string): boolean {
@@ -745,57 +748,163 @@ function isAllowedRedirectTarget(url: string): boolean {
 
 export function installWebApiRedirect(): void {
   if (isDesktopRuntime() || typeof window === 'undefined') return;
-  const apiBase = getConfiguredWebApiBaseUrl();
-  if (!apiBase) return;
-  if (!isAllowedRedirectTarget(apiBase)) {
-    console.warn('[runtime] web API base blocked — not in hostname allowlist:', apiBase);
-    return;
-  }
   if ((window as unknown as Record<string, unknown>).__wmWebRedirectPatched) return;
 
+  const apiBase = getConfiguredWebApiBaseUrl();
+  const hasRedirect = !!apiBase && isAllowedRedirectTarget(apiBase);
+  if (apiBase && !hasRedirect) {
+    console.warn('[runtime] web API base blocked — not in hostname allowlist:', apiBase);
+  }
+
   const nativeFetch = window.fetch.bind(window);
-  const API_BASE = apiBase;
   const shouldRedirectPath = (pathWithQuery: string): boolean => pathWithQuery.startsWith('/api/');
-  const shouldFallbackToOrigin = (status: number): boolean => (
-    status === 404 || status === 405 || status === 501 || status === 502 || status === 503
-  );
-  const fetchWithRedirectFallback = async (
-    redirectedInput: RequestInfo | URL,
-    originalInput: RequestInfo | URL,
-    originalInit?: RequestInit,
-  ): Promise<Response> => {
+
+  /**
+   * For premium API paths, inject auth when the user has premium access but no
+   * existing auth header is present. Priority order:
+   *   1. Existing auth headers — left unchanged (API key users keep their flow)
+   *   2. WORLDMONITOR_API_KEY from runtime config → X-WorldMonitor-Key
+   *   3. Tester key (wm-pro-key / wm-widget-key) → X-WorldMonitor-Key
+   *   4. Clerk Pro session → Authorization: Bearer <token>
+   * Runs on every web deployment (with or without API base redirect).
+   * Returns the original init unchanged for non-premium paths (zero overhead).
+   */
+  const enrichInitForPremium = async (pathWithQuery: string, init?: RequestInit): Promise<RequestInit | undefined> => {
+    const path = pathWithQuery.split('?')[0] ?? pathWithQuery;
+    if (!WEB_PREMIUM_API_PATHS.has(path)) return init;
+    const headers = new Headers(init?.headers);
+    // Don't overwrite existing auth headers
+    if (headers.has('Authorization') || headers.has('X-WorldMonitor-Key')) return init;
+    // WORLDMONITOR_API_KEY from env or runtime config
     try {
-      const redirectedResponse = await nativeFetch(redirectedInput, originalInit);
-      if (!shouldFallbackToOrigin(redirectedResponse.status)) return redirectedResponse;
-      return nativeFetch(originalInput, originalInit);
-    } catch (error) {
-      try {
-        return await nativeFetch(originalInput, originalInit);
-      } catch {
-        throw error;
+      const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
+      const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
+      if (wmKey) {
+        headers.set('X-WorldMonitor-Key', wmKey);
+        return { ...init, headers };
       }
+    } catch { /* runtime-config unavailable — fall through */ }
+    // Tester key (wm-pro-key / wm-widget-key): forward as API key header.
+    // Must run BEFORE Clerk to prevent a free Clerk session from intercepting
+    // the request and returning 403 before the tester key is ever tried.
+    const { getBrowserTesterKey } = await import('@/services/widget-store');
+    const testerKey = getBrowserTesterKey();
+    if (testerKey) {
+      headers.set('X-WorldMonitor-Key', testerKey);
+      return { ...init, headers };
     }
+    // Clerk Pro: inject Bearer token (fallback for users without a tester key)
+    const token = await getClerkToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+      return { ...init, headers };
+    }
+    return init;
   };
 
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (typeof input === 'string' && shouldRedirectPath(input)) {
-      return fetchWithRedirectFallback(`${API_BASE}${input}`, input, init);
-    }
-    if (input instanceof URL && input.origin === window.location.origin && shouldRedirectPath(`${input.pathname}${input.search}`)) {
-      return fetchWithRedirectFallback(new URL(`${API_BASE}${input.pathname}${input.search}`), input, init);
-    }
-    if (input instanceof Request) {
-      const u = new URL(input.url);
-      if (u.origin === window.location.origin && shouldRedirectPath(`${u.pathname}${u.search}`)) {
-        return fetchWithRedirectFallback(
-          new Request(`${API_BASE}${u.pathname}${u.search}`, input),
-          input.clone(),
-          init,
-        );
+  if (hasRedirect) {
+    const API_BASE = apiBase;
+    const shouldFallbackToOrigin = (status: number): boolean => (
+      status === 404 || status === 405 || status === 501 || status === 502 || status === 503
+    );
+    const fetchWithRedirectFallback = async (
+      redirectedInput: RequestInfo | URL,
+      originalInput: RequestInfo | URL,
+      originalInit?: RequestInit,
+    ): Promise<Response> => {
+      try {
+        const redirectedResponse = await nativeFetch(redirectedInput, originalInit);
+        if (!shouldFallbackToOrigin(redirectedResponse.status)) return redirectedResponse;
+        return nativeFetch(originalInput, originalInit);
+      } catch (error) {
+        try {
+          return await nativeFetch(originalInput, originalInit);
+        } catch {
+          throw error;
+        }
       }
-    }
-    return nativeFetch(input, init);
-  };
+    };
+
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (typeof input === 'string') {
+        if (shouldRedirectPath(input)) {
+          // Relative /api/... path — redirect to API base and inject auth.
+          const enriched = await enrichInitForPremium(input, init);
+          return fetchWithRedirectFallback(`${API_BASE}${input}`, input, enriched);
+        }
+        // Absolute URL already targeting the API base (generated clients call fetch
+        // with full URLs like https://api.worldmonitor.app/api/...) — just inject auth.
+        if (input.startsWith(`${API_BASE}/api/`)) {
+          const pathAndSearch = input.slice(API_BASE.length);
+          const enriched = await enrichInitForPremium(pathAndSearch, init);
+          return nativeFetch(input, enriched ?? init);
+        }
+      }
+      if (input instanceof URL) {
+        const pathAndSearch = `${input.pathname}${input.search}`;
+        if (input.origin === window.location.origin && shouldRedirectPath(pathAndSearch)) {
+          const enriched = await enrichInitForPremium(pathAndSearch, init);
+          return fetchWithRedirectFallback(new URL(`${API_BASE}${pathAndSearch}`), input, enriched);
+        }
+        // URL object already targeting the API base.
+        if (input.origin === API_BASE && pathAndSearch.startsWith('/api/')) {
+          const enriched = await enrichInitForPremium(pathAndSearch, init);
+          return nativeFetch(input, enriched ?? init);
+        }
+      }
+      if (input instanceof Request) {
+        const u = new URL(input.url);
+        const pathAndSearch = `${u.pathname}${u.search}`;
+        if (u.origin === window.location.origin && shouldRedirectPath(pathAndSearch)) {
+          const enriched = await enrichInitForPremium(pathAndSearch, init);
+          return fetchWithRedirectFallback(
+            new Request(`${API_BASE}${pathAndSearch}`, input),
+            input.clone(),
+            enriched,
+          );
+        }
+        // Request object already targeting the API base.
+        if (u.origin === API_BASE && pathAndSearch.startsWith('/api/')) {
+          const enriched = await enrichInitForPremium(pathAndSearch, init);
+          if (enriched) return nativeFetch(new Request(input, enriched));
+        }
+      }
+      return nativeFetch(input, init);
+    };
+  } else {
+    // No API base redirect — only inject auth headers for premium paths.
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      if (typeof input === 'string') {
+        if (shouldRedirectPath(input)) {
+          const enriched = await enrichInitForPremium(input, init);
+          return nativeFetch(input, enriched ?? init);
+        }
+        if (input.startsWith(`${DEFAULT_WEB_API_URL}/api/`)) {
+          const pathAndSearch = input.slice(DEFAULT_WEB_API_URL.length);
+          const enriched = await enrichInitForPremium(pathAndSearch, init);
+          return nativeFetch(input, enriched ?? init);
+        }
+      }
+      if (input instanceof URL) {
+        const pathAndSearch = `${input.pathname}${input.search}`;
+        if ((input.origin === window.location.origin || input.origin === DEFAULT_WEB_API_URL)
+            && (shouldRedirectPath(pathAndSearch) || pathAndSearch.startsWith('/api/'))) {
+          const enriched = await enrichInitForPremium(pathAndSearch, init);
+          return nativeFetch(input, enriched ?? init);
+        }
+      }
+      if (input instanceof Request) {
+        const u = new URL(input.url);
+        const pathAndSearch = `${u.pathname}${u.search}`;
+        if ((u.origin === window.location.origin || u.origin === DEFAULT_WEB_API_URL)
+            && (shouldRedirectPath(pathAndSearch) || pathAndSearch.startsWith('/api/'))) {
+          const enriched = await enrichInitForPremium(pathAndSearch, init);
+          if (enriched) return nativeFetch(new Request(input, enriched));
+        }
+      }
+      return nativeFetch(input, init);
+    };
+  }
 
   (window as unknown as Record<string, unknown>).__wmWebRedirectPatched = true;
 }

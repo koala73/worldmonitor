@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+
+message ListEarningsCalendarRequest {
+  string from_date = 1 [(sebuf.http.query) = {name: "fromDate"}];
+  string to_date = 2 [(sebuf.http.query) = {name: "toDate"}];
+}
+
+message EarningsEntry {
+  string symbol = 1;
+  string company = 2;
+  string date = 3;
+  string hour = 4;
+  double eps_estimate = 5;
+  double revenue_estimate = 6;
+  double eps_actual = 7;
+  double revenue_actual = 8;
+  bool has_actuals = 9;
+  string surprise_direction = 10;
+}
+
+message ListEarningsCalendarResponse {
+  repeated EarningsEntry earnings = 1;
+  string from_date = 2;
+  string to_date = 3;
+  int32 total = 4;
+  bool unavailable = 5;
+}

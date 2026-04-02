@@ -129,6 +129,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   commodityPorts: false,
   webcams: false,
   weatherRadar: false,
+  diseaseOutbreaks: false,
   // REIT Properties — the primary layer for this variant
   reitProperties: true,
 };

@@ -20,6 +20,7 @@ CLAUDE.md
 .factory/
 .windsurf/
 skills/
+!api/skills/
 ideas/
 docs/internal/
 docs/ideation/
@@ -65,3 +66,7 @@ verbose-mode.json
 skills-lock.json
 tmp/
 .gstack/
+
+# Local planning documents (not for public repo)
+docs/plans/
+docs/brainstorms/

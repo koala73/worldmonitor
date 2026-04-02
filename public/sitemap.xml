@@ -25,6 +25,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://commodity.worldmonitor.app/</loc>
+    <lastmod>2026-03-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://happy.worldmonitor.app/</loc>
     <lastmod>2026-03-19</lastmod>
     <changefreq>daily</changefreq>

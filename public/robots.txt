@@ -1,29 +1,10 @@
 # World Monitor - protect API routes from crawlers
 User-agent: *
 Allow: /
+Allow: /api/story
+Allow: /api/og-story
 Disallow: /api/
 Disallow: /tests/
 
 Sitemap: https://www.worldmonitor.app/sitemap.xml
 Sitemap: https://www.worldmonitor.app/blog/sitemap-index.xml
-
-# Allow social media bots for OG previews
-User-agent: Twitterbot
-Allow: /api/story
-Allow: /api/og-story
-
-User-agent: facebookexternalhit
-Allow: /api/story
-Allow: /api/og-story
-
-User-agent: LinkedInBot
-Allow: /api/story
-Allow: /api/og-story
-
-User-agent: Slackbot
-Allow: /api/story
-Allow: /api/og-story
-
-User-agent: Discordbot
-Allow: /api/story
-Allow: /api/og-story

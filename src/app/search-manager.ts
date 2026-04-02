@@ -4,13 +4,11 @@ import type { NewsItem, MapLayers } from '@/types';
 import type { MapView } from '@/components';
 import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
-import { CIIPanel } from '@/components';
 import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
 import { getAllowedLayerKeys } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
-import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
-import { CURATED_COUNTRIES } from '@/config/countries';
+import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '@/config/countries';
 import { getCountryBbox } from '@/services/country-geometry';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
@@ -24,11 +22,7 @@ import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } fro
 import { trackSearchResultSelected, trackCountrySelected } from '@/services/analytics';
 import { t } from '@/services/i18n';
 import { saveToStorage, setTheme } from '@/utils';
-import { CountryIntelManager } from '@/app/country-intel';
-import type { PositionSample } from '@/services/aviation';
-import { fetchAircraftPositions } from '@/services/aviation';
-import type { MilitaryFlight } from '@/types';
-import { isProUser } from '@/services/widget-store';
+// widget-store and auth-state imports removed — flight search not available in REITs-only mode
 
 export interface SearchManagerCallbacks {
   openCountryBriefByCode: (code: string, country: string) => void;
@@ -213,38 +207,7 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
 
-    if (isProUser()) {
-      this.ctx.searchModal.setOnFlightSearch((callsign) => {
-        fetchAircraftPositions({ callsign }).then((positions) => {
-          if (!this.ctx.searchModal) return;
-          // Deduplicate by callsign: keep the most recently observed entry per callsign.
-          const seen = new Map<string, PositionSample>();
-          for (const p of positions) {
-            const key = (p.callsign || p.icao24).trim().toUpperCase();
-            const existing = seen.get(key);
-            if (!existing || p.observedAt > existing.observedAt) {
-              seen.set(key, p);
-            }
-          }
-          const items = [...seen.values()].map(p => {
-            const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
-            const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
-            return {
-              id: p.icao24,
-              title: (p.callsign || p.icao24).trim().toUpperCase(),
-              subtitle: p.onGround
-                ? t('modals.search.flightOnGround')
-                : fl !== null && kts !== null
-                  ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
-                  : fl !== null ? `FL${fl}` : t('modals.search.flightOnGround'),
-              data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
-            };
-          });
-          this.ctx.searchModal.registerSource('flight', items);
-          this.ctx.searchModal.refreshSearch();
-        }).catch(() => {/* silent — show no results */});
-      });
-    }
+    // Flight search removed in REITs-only mode
 
     this.boundKeydownHandler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -571,40 +534,8 @@ export class SearchManager implements AppModule {
     }, 3100));
   }
 
-  updateFlightSource(adsb: PositionSample[], military: MilitaryFlight[]): void {
-    if (!this.ctx.searchModal || !isProUser()) return;
-    const items = [
-      ...adsb.map(p => {
-        const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
-        const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
-        return {
-          id: p.icao24,
-          title: (p.callsign || p.icao24).trim().toUpperCase(),
-          subtitle: p.onGround
-            ? t('modals.search.flightOnGround')
-            : fl !== null && kts !== null
-              ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
-              : fl !== null
-                ? `FL${fl}`
-                : t('modals.search.flightOnGround'),
-          data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
-        };
-      }),
-      ...military.map(f => {
-        const fl = Number.isFinite(f.altitude) ? Math.round(f.altitude / 100) : null;
-        return {
-          id: f.hexCode,
-          title: (f.callsign || f.hexCode).trim().toUpperCase(),
-          subtitle: f.onGround
-            ? t('modals.search.flightMilitaryOnGround', { type: f.aircraftType })
-            : fl !== null
-              ? t('modals.search.flightMilitary', { type: f.aircraftType, fl: String(fl) })
-              : t('modals.search.flightMilitaryOnGround', { type: f.aircraftType }),
-          data: { kind: 'military' as const, lat: f.lat, lon: f.lon, layer: 'military' as const },
-        };
-      }),
-    ];
-    this.ctx.searchModal.registerSource('flight', items);
+  updateFlightSource(_adsb: unknown, _military: unknown): void {
+    // Flight search removed in REITs-only mode
   }
 
   updateSearchIndex(): void {
@@ -625,7 +556,7 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.registerSource('news', newsItems);
 
     if (this.ctx.latestPredictions.length > 0) {
-      this.ctx.searchModal.registerSource('prediction', this.ctx.latestPredictions.map(p => ({
+      this.ctx.searchModal.registerSource('prediction', (this.ctx.latestPredictions as Array<{ title: string; yesPrice: number }>).map(p => ({
         id: p.title,
         title: p.title,
         subtitle: `${Math.round(p.yesPrice)}% probability`,
@@ -644,17 +575,7 @@ export class SearchManager implements AppModule {
   }
 
   private buildCountrySearchItems(): { id: string; title: string; subtitle: string; data: { code: string; name: string } }[] {
-    const panelScores = (this.ctx.panels.cii as CIIPanel | undefined)?.getScores() ?? [];
-    const scores = panelScores.length > 0 ? panelScores : calculateCII();
-    const ciiByCode = new Map(scores.map((score) => [score.code, score]));
-    return Object.entries(TIER1_COUNTRIES).map(([code, name]) => {
-      const score = ciiByCode.get(code);
-      return {
-        id: code,
-        title: `${CountryIntelManager.toFlagEmoji(code)} ${name}`,
-        subtitle: score ? `CII: ${score.score}/100 • ${score.level}` : 'Country Brief',
-        data: { code, name },
-      };
-    });
+    // Country search removed in REITs-only mode
+    return [];
   }
 }

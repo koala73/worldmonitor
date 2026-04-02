@@ -690,3 +690,97 @@ describe('CircuitBreaker — same name, different ceiling (registry behavior)', 
   });
 });
 
+// ============================================================
+// shouldCache eviction — cached invalid data is evicted and refetched
+// ============================================================
+
+describe('CircuitBreaker — shouldCache eviction of invalid cached data', () => {
+  const CIRCUIT_BREAKER_URL = pathToFileURL(
+    resolve(root, 'src/utils/circuit-breaker.ts'),
+  ).href;
+
+  it('evicts cached data that fails shouldCache and fetches fresh', async () => {
+    const mod = await import(`${CIRCUIT_BREAKER_URL}?t=${Date.now()}-evict-fresh`);
+    const { createCircuitBreaker, clearAllCircuitBreakers } = mod;
+    clearAllCircuitBreakers();
+
+    try {
+      const breaker = createCircuitBreaker<number[]>({
+        name: 'ShouldCache Evict Test',
+        cacheTtlMs: 60 * 1000,
+      });
+
+      // Populate cache with empty array (simulates a prior failed fetch)
+      breaker.recordSuccess([]);
+      assert.deepEqual(breaker.getCached(), [], 'empty array is cached');
+
+      let fetchCount = 0;
+      const result = await breaker.execute(
+        async () => { fetchCount++; return [1, 2, 3]; },
+        [] as number[],
+        { shouldCache: (r) => r.length > 0 },
+      );
+
+      assert.equal(fetchCount, 1, 'must bypass empty cache and fetch fresh');
+      assert.deepEqual(result, [1, 2, 3], 'fresh data is returned');
+      assert.deepEqual(breaker.getCached(), [1, 2, 3], 'fresh data is now cached');
+    } finally {
+      clearAllCircuitBreakers();
+    }
+  });
+
+  it('serves valid cached data without fetching when shouldCache passes', async () => {
+    const mod = await import(`${CIRCUIT_BREAKER_URL}?t=${Date.now()}-evict-skip`);
+    const { createCircuitBreaker, clearAllCircuitBreakers } = mod;
+    clearAllCircuitBreakers();
+
+    try {
+      const breaker = createCircuitBreaker<number[]>({
+        name: 'ShouldCache Skip Test',
+        cacheTtlMs: 60 * 1000,
+      });
+
+      breaker.recordSuccess([1, 2, 3]);
+
+      let fetchCount = 0;
+      const result = await breaker.execute(
+        async () => { fetchCount++; return [4, 5, 6]; },
+        [] as number[],
+        { shouldCache: (r) => r.length > 0 },
+      );
+
+      assert.equal(fetchCount, 0, 'valid cache must not trigger a live fetch');
+      assert.deepEqual(result, [1, 2, 3], 'cached data is returned');
+    } finally {
+      clearAllCircuitBreakers();
+    }
+  });
+
+  it('without shouldCache, empty array is served from cache without fetching', async () => {
+    const mod = await import(`${CIRCUIT_BREAKER_URL}?t=${Date.now()}-evict-no-pred`);
+    const { createCircuitBreaker, clearAllCircuitBreakers } = mod;
+    clearAllCircuitBreakers();
+
+    try {
+      const breaker = createCircuitBreaker<number[]>({
+        name: 'No ShouldCache Test',
+        cacheTtlMs: 60 * 1000,
+      });
+
+      breaker.recordSuccess([]);
+
+      let fetchCount = 0;
+      const result = await breaker.execute(
+        async () => { fetchCount++; return [1, 2, 3]; },
+        [] as number[],
+        // No shouldCache — default is () => true, so empty array is valid
+      );
+
+      assert.equal(fetchCount, 0, 'without shouldCache, cached empty array is served');
+      assert.deepEqual(result, [], 'empty cached data is returned as-is');
+    } finally {
+      clearAllCircuitBreakers();
+    }
+  });
+});
+

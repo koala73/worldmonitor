@@ -358,8 +358,8 @@ describe('Client-side circuit breaker TTLs', () => {
     assert.match(src, /name:\s*'Shipping Rates'.*cacheTtlMs:\s*60\s*\*\s*60\s*\*\s*1000/);
   });
 
-  it('chokepoint breaker uses 5 min TTL', () => {
-    assert.match(src, /name:\s*'Chokepoint Status'.*cacheTtlMs:\s*5\s*\*\s*60\s*\*\s*1000/);
+  it('chokepoint breaker uses 90 min TTL (aligned with 60 min supplyChain refresh)', () => {
+    assert.match(src, /name:\s*'Chokepoint Status'.*cacheTtlMs:\s*90\s*\*\s*60\s*\*\s*1000/);
   });
 
   it('minerals breaker uses 24 hour TTL', () => {

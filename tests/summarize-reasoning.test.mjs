@@ -43,7 +43,8 @@ describe('Fix 1: message.reasoning fallback', () => {
 // ========================================================================
 
 describe('Fix 2: thinking tag stripping formats', () => {
-  const src = readSrc('server/worldmonitor/news/v1/summarize-article.ts');
+  // stripThinkingTags was consolidated into server/_shared/llm.ts (todo 056 dedup)
+  const src = readSrc('server/_shared/llm.ts');
 
   it('strips <think> tags', () => {
     assert.match(src, /<think>/i, 'Should handle <think> tags');

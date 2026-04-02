@@ -20,6 +20,10 @@ All notable changes to World Monitor are documented here. Subscribe via [RSS](/c
 - R2 trace storage for forecast debugging with Cloudflare API upload (#1655)
 - `@ts-nocheck` injection in Makefile generate target for CI proto-freshness parity (#1637)
 
+### Security
+
+- **CDN cache bypass closed**: `CDN-Cache-Control` header now only emitted for trusted origins (worldmonitor.app, Vercel previews, Tauri). No-origin server-side requests always invoke the edge function so `validateApiKey` runs, preventing a cached 200 from being served to external scrapers.
+
 ### Fixed
 
 - Trade Policy panel WTO gate changed from panel-wide to per-tab, so Revenue tab works on desktop without WTO API key (#1663)

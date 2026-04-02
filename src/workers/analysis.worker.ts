@@ -96,7 +96,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         ...cluster,
         firstSeen: new Date(cluster.firstSeen),
         lastUpdated: new Date(cluster.lastUpdated),
-        allItems: cluster.allItems.map(item => ({
+        allItems: cluster.allItems.map((item: { pubDate: string | Date;[key: string]: unknown }) => ({
           ...item,
           pubDate: new Date(item.pubDate),
         })),

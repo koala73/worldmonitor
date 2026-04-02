@@ -1,3 +1,4 @@
+import '@/styles/settings-window.css';
 import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { PANEL_CATEGORY_MAP, ALL_PANELS, VARIANT_DEFAULTS, getEffectivePanelConfig, isPanelEntitled, FREE_MAX_PANELS } from '@/config/panels';
 import { isProUser } from '@/services/widget-store';
@@ -7,6 +8,7 @@ import type { MapProvider } from '@/config/basemap';
 import { escapeHtml } from '@/utils/sanitize';
 import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
+import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
 
 function showToast(msg: string): void {
@@ -181,6 +183,8 @@ export class UnifiedSettings {
   public close(): void {
     if (this.hasPendingPanelChanges() && !confirm(t('header.unsavedChanges'))) return;
     this.overlay.classList.remove('active');
+    this.prefsCleanup?.();
+    this.prefsCleanup = null;
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
@@ -217,6 +221,7 @@ export class UnifiedSettings {
     const prefs = renderPreferences({
       isDesktopApp: this.config.isDesktopApp,
       onMapProviderChange: this.config.onMapProviderChange,
+      isSignedIn: !this.config.isDesktopApp && (getAuthState().user !== null),
     });
 
     this.overlay.innerHTML = `

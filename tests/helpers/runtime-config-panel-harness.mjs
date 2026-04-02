@@ -484,6 +484,10 @@ async function loadRuntimeConfigPanel() {
       export const PLAINTEXT_KEYS = new Set();
       export const MASKED_SENTINEL = '***';
     `],
+    ['panel-gating-stub', `
+      export const PanelGateReason = { NONE: 'none', ANONYMOUS: 'anonymous', UNVERIFIED: 'unverified', FREE_TIER: 'free_tier' };
+      export function getPanelGateReason() { return PanelGateReason.NONE; }
+    `],
   ]);
 
   const aliasMap = new Map([
@@ -500,6 +504,7 @@ async function loadRuntimeConfigPanel() {
     ['@/utils/sanitize', 'sanitize-stub'],
     ['@/services/ollama-models', 'ollama-models-stub'],
     ['@/services/settings-constants', 'settings-constants-stub'],
+    ['@/services/panel-gating', 'panel-gating-stub'],
   ]);
 
   const plugin = {

@@ -281,7 +281,6 @@
     "gulfIndices": "海湾指数",
     "gulfCurrencies": "海湾货币",
     "gulfOil": "海湾石油",
-
     "bigmac": "Real Big Mac Index",
     "fearGreed": "Fear & Greed"
   },
@@ -1550,7 +1549,9 @@
       "filterPolitics": "政治",
       "filterMiddleeast": "中东",
       "live": "直播",
-      "viewSource": "查看来源"
+      "viewSource": "查看来源",
+      "filterGeopolitics": "地缘政治",
+      "filterCyber": "网络"
     },
     "investments": {
       "infoTooltip": "沙特阿拉伯和阿联酋在全球关键基础设施领域的对外直接投资数据库。点击某行可在地图上飞到该投资所在位置。",
@@ -1737,6 +1738,15 @@
     },
     "bigmac": {
       "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+    },
+    "reits": {
+      "infoTooltip": "<strong>REIT监控</strong> 房地产投资信托基金市场行情，包含板块分析、AI简报及灾害风险评分。"
+    },
+    "reitCorrelation": {
+      "infoTooltip": "<strong>REIT宏观</strong> 宏观指标与REIT板块相关性、市场状态分类、板块轮动信号及债券收益率利差。"
+    },
+    "reitSocial": {
+      "infoTooltip": "<strong>REIT社交</strong> 来自Google评论和Yelp的社交健康评分、评论增速趋势及租户风险信号。"
     },
     "defiTokens": {
       "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."

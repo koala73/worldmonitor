@@ -680,7 +680,7 @@ export class MapPopup {
             <span class="trend-label">${escapeHtml(displayTrend.toUpperCase())}</span>
           </div>
           ${dynamicScore?.history && dynamicScore.history.length >= 3 ? (() => {
-            const vals = dynamicScore.history.slice(-20).map(h => h.score);
+            const vals = dynamicScore.history.slice(-20).map((h: { score: number }) => h.score);
             const lastVal = vals[vals.length - 1] ?? 3;
             const color = lastVal >= 4 ? '#f44336' : lastVal >= 3 ? '#ff9800' : '#4caf50';
             return sparkline(vals, color, 80, 24, 'opacity:0.9');
@@ -943,6 +943,12 @@ export class MapPopup {
             <span style="opacity:0.5;font-size:10px">${t('popups.flight.estimated') || 'Est'}</span><span></span><span style="opacity:0.5;font-size:10px;text-align:right">${t('popups.flight.estimated') || 'Est'}</span>
             <span>${depEst}${fmtDelayMin(live.depDelayedMin)}</span><span style="opacity:0.3;text-align:center">\u2194</span><span style="text-align:right">${arrEst}${fmtDelayMin(live.arrDelayedMin)}</span>` : ''}
           </div>`);
+
+        // Book this route CTA
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const bookUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(live.depIata)}+to+${encodeURIComponent(live.arrIata)}+on+${encodeURIComponent(todayStr)}`);
+        parts.push(`<a href="${bookUrl}" target="_blank" rel="noopener" style="display:block;margin-top:8px;padding:7px 12px;background:rgba(68,255,136,.06);border:1px solid rgba(68,255,136,.18);border-radius:6px;color:var(--green,#44ff88);text-decoration:none;font-size:12px;text-align:center">Book this route &rarr;</a>`);
       }
 
       // Enrichment stats row
@@ -1753,7 +1759,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           <div class="popup-section">
             <span class="section-label">${t('popups.cable.health.evidence')}</span>
             <ul class="evidence-list">
-              ${healthRecord.evidence.map((e) => `<li class="evidence-item"><strong>${escapeHtml(e.source)}</strong>: ${escapeHtml(e.summary)}</li>`).join('')}
+              ${healthRecord.evidence.map((e: { source: string; summary: string }) => `<li class="evidence-item"><strong>${escapeHtml(e.source)}</strong>: ${escapeHtml(e.summary)}</li>`).join('')}
             </ul>
           </div>
         ` : ''}
@@ -1897,7 +1903,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
             </div>
           </div>
         ` : ''}
-        <p class="popup-description">${escapeHtml(outage.description.slice(0, 250))}${outage.description.length > 250 ? '...' : ''}</p>
+        ${outage.description ? `<p class="popup-description">${escapeHtml(outage.description.slice(0, 250))}${outage.description.length > 250 ? '...' : ''}</p>` : ''}
         <a href="${sanitizeUrl(outage.link)}" target="_blank" class="popup-link">${t('popups.outage.readReport')} →</a>
       </div>
     `;

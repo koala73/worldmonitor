@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+// EurostatMetric holds a single economic metric value for a country.
+message EurostatMetric {
+  // Numeric value (e.g. 2.3 for 2.3%).
+  double value = 1;
+  // Period string (e.g. "2024-01" for monthly, "2024-Q1" for quarterly).
+  string date = 2;
+  // Unit of measurement (e.g. "%").
+  string unit = 3;
+  // Prior period value for delta calculation (e.g. previous month/quarter).
+  double prior_value = 4;
+  // True when prior_value is present (proto3 can't distinguish 0 from absent).
+  bool has_prior = 5;
+}
+
+// EurostatCountryEntry holds all available metrics for one EU country.
+message EurostatCountryEntry {
+  // HICP annual rate of change (all items).
+  EurostatMetric cpi = 1;
+  // Monthly unemployment rate (seasonally adjusted, % of active population).
+  EurostatMetric unemployment = 2;
+  // Quarterly GDP growth (chain-linked volumes, % change vs previous quarter).
+  EurostatMetric gdp_growth = 3;
+}
+
+// GetEurostatCountryDataRequest requests Eurostat per-country economic data.
+message GetEurostatCountryDataRequest {}
+
+// GetEurostatCountryDataResponse contains per-country CPI, unemployment, and GDP growth.
+message GetEurostatCountryDataResponse {
+  // Map of ISO2 country code to economic metrics (e.g. "DE", "FR", "IT").
+  map<string, EurostatCountryEntry> countries = 1;
+  // UTC ms timestamp when seed data was written.
+  int64 seeded_at = 2;
+  // True when upstream data is unavailable (fallback result).
+  bool unavailable = 3;
+}

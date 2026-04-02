@@ -202,7 +202,7 @@ export class BreakingNewsBanner {
     const levelText = alert.threatLevel === 'critical'
       ? t('components.breakingNews.critical')
       : t('components.breakingNews.high');
-    const timeAgo = this.formatTimeAgo(alert.timestamp);
+    const timeAgo = this.formatTimeAgo(new Date(alert.timestamp));
 
     const iconSpan = document.createElement('span');
     iconSpan.className = 'breaking-alert-icon';

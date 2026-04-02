@@ -59,7 +59,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   gpsJamming:               def('gpsJamming',               '&#128225;', 'gpsJamming',               'GPS Jamming', ['flat', 'globe'], _desktop ? 'locked' : undefined),
   ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'CII Instability', ['flat'], _desktop ? 'enhanced' : undefined),
   dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['flat']),
-  sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', []),
+  sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', ['flat']),
   startupHubs:              def('startupHubs',              '&#128640;', 'startupHubs',              'Startup Hubs'),
   techHQs:                  def('techHQs',                  '&#127970;', 'techHQs',                  'Tech HQs'),
   accelerators:             def('accelerators',             '&#9889;',   'accelerators',             'Accelerators'),
@@ -81,6 +81,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   commodityPorts:           def('commodityPorts',           '&#9973;',   'commodityPorts',           'Commodity Ports'),
   webcams:                  def('webcams',                  '&#128247;', 'webcams',                  'Live Webcams'),
   weatherRadar:             def('weatherRadar',             '&#127783;', 'weatherRadar',             'Weather Radar', ['flat']),
+  diseaseOutbreaks:         def('diseaseOutbreaks',         '&#129440;', 'diseaseOutbreaks',         'Disease Outbreaks'),
 };
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
@@ -92,7 +93,8 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'ucdpEvents', 'displacement', 'climate', 'weather',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
-    'satellites', 'ciiChoropleth', 'dayNight', 'webcams', 'weatherRadar',
+    'satellites', 'ciiChoropleth', 'sanctions', 'dayNight', 'webcams', 'weatherRadar',
+    'diseaseOutbreaks',
   ],
   tech: [
     'startupHubs', 'techHQs', 'accelerators', 'cloudRegions',
@@ -103,7 +105,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs',
     'gulfInvestments', 'reitProperties', 'tradeRoutes', 'cables', 'pipelines',
     'outages', 'weather', 'economic', 'waterways',
-    'natural', 'cyberThreats', 'dayNight', 'weatherRadar',
+    'natural', 'cyberThreats', 'sanctions', 'dayNight', 'weatherRadar',
   ],
   happy: [
     'positiveEvents', 'kindness', 'happiness',
@@ -113,18 +115,12 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'miningSites', 'processingPlants', 'commodityPorts', 'commodityHubs',
     'minerals', 'pipelines', 'waterways', 'tradeRoutes',
     'ais', 'economic', 'fires', 'climate',
-    'natural', 'weather', 'outages', 'dayNight', 'weatherRadar',
+    'natural', 'weather', 'outages', 'sanctions', 'dayNight', 'weatherRadar',
   ],
   reits: [
     'reitProperties',
     'natural', 'fires', 'weather', 'economic',
   ],
-};
-
-const SVG_ONLY_LAYERS: Partial<Record<MapVariant, Array<keyof MapLayers>>> = {
-  full: ['sanctions'],
-  finance: ['sanctions'],
-  commodity: ['sanctions'],
 };
 
 const I18N_PREFIX = 'components.deckgl.layers.';
@@ -137,9 +133,7 @@ export function getLayersForVariant(variant: MapVariant, renderer: MapRenderer):
 }
 
 export function getAllowedLayerKeys(variant: MapVariant): Set<keyof MapLayers> {
-  const keys = new Set(VARIANT_LAYER_ORDER[variant] ?? VARIANT_LAYER_ORDER.full);
-  for (const k of SVG_ONLY_LAYERS[variant] ?? []) keys.add(k);
-  return keys;
+  return new Set(VARIANT_LAYER_ORDER[variant] ?? VARIANT_LAYER_ORDER.full);
 }
 
 export function sanitizeLayersForVariant(layers: MapLayers, variant: MapVariant): MapLayers {

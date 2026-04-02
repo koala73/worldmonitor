@@ -294,8 +294,8 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
     }
 
     y += 36;
-    const totalSources = data.news.reduce((s, n) => s + (n.sourceCount || 1), 0);
-    const alertCount = data.news.filter(n => n.threatLevel === 'critical' || n.threatLevel === 'high').length;
+    const totalSources = data.news.reduce((s: number, n: { sourceCount?: number }) => s + (n.sourceCount || 1), 0);
+    const alertCount = data.news.filter((n: { threatLevel?: string }) => n.threatLevel === 'critical' || n.threatLevel === 'high').length;
     ctx.fillStyle = '#555';
     ctx.font = '400 22px Inter, system-ui, sans-serif';
     let statsText = `${totalSources} sources across ${data.news.length} stories`;
@@ -417,7 +417,7 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
       y += 6;
       ctx.fillStyle = '#888';
       ctx.font = '400 24px Inter, system-ui, sans-serif';
-      ctx.fillText(data.threats.categories.map(c => c.charAt(0).toUpperCase() + c.slice(1)).join('  ·  '), PAD, y);
+      ctx.fillText(data.threats.categories.map((c: string) => c.charAt(0).toUpperCase() + c.slice(1)).join('  ·  '), PAD, y);
     }
   }
 
