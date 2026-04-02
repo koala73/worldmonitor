@@ -430,28 +430,6 @@ function shouldNotify(rule, event) {
   return true;
 }
 
-/** Fire-and-forget shadow log: 7-day window ZADD into shadow:score-log:v1. */
-async function shadowLogScore(event) {
-  if (event.payload?.importanceScore == null) return;
-  const threshold = 65; // representative mid-tier threshold for shadow evaluation
-  const entry = JSON.stringify({
-    importanceScore: event.payload.importanceScore,
-    severity: event.severity,
-    title: event.payload.title,
-    source: event.payload.source,
-    wouldNotify: event.payload.importanceScore >= threshold,
-    ts: Date.now(),
-  });
-  try {
-    await upstashRest('ZADD', 'shadow:score-log:v1', String(Date.now()), entry);
-    // Prune entries older than 7 days
-    await upstashRest('ZREMRANGEBYSCORE', 'shadow:score-log:v1', '-inf',
-      String(Date.now() - 7 * 24 * 60 * 60 * 1000));
-  } catch {
-    // Non-critical — shadow log failures should never affect dispatch
-  }
-}
-
 function formatMessage(event) {
   const parts = [`[${(event.severity ?? 'high').toUpperCase()}] ${event.payload?.title ?? event.eventType}`];
   if (event.payload?.source) parts.push(`Source: ${event.payload.source}`);
