@@ -4,6 +4,7 @@ import { SITE_VARIANT } from '@/config/variant';
 export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord';
 export type Sensitivity = 'all' | 'high' | 'critical';
 export type QuietHoursOverride = 'critical_only' | 'silence_all' | 'batch_on_wake';
+export type DigestMode = 'realtime' | 'daily' | 'twice_daily' | 'weekly';
 
 export interface NotificationChannel {
   channelType: ChannelType;
@@ -27,6 +28,9 @@ export interface AlertRule {
   quietHoursEnd?: number;
   quietHoursTimezone?: string;
   quietHoursOverride?: QuietHoursOverride;
+  digestMode?: DigestMode;
+  digestHour?: number;
+  digestTimezone?: string;
 }
 
 export interface ChannelsData {
@@ -126,4 +130,18 @@ export async function setQuietHours(settings: {
     body: JSON.stringify({ action: 'set-quiet-hours', ...settings }),
   });
   if (!res.ok) throw new Error(`set quiet hours: ${res.status}`);
+}
+
+export async function setDigestSettings(settings: {
+  variant: string;
+  digestMode: DigestMode;
+  digestHour?: number;
+  digestTimezone?: string;
+}): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-digest-settings', ...settings }),
+  });
+  if (!res.ok) throw new Error(`set digest settings: ${res.status}`);
 }

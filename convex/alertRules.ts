@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { channelTypeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
+import { channelTypeValidator, digestModeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
 
 export const getAlertRules = query({
   args: {},
@@ -53,6 +53,49 @@ export const setAlertRules = mutation({
         sensitivity: args.sensitivity,
         channels: args.channels,
         updatedAt: now,
+      });
+    }
+  },
+});
+
+export const setDigestSettings = mutation({
+  args: {
+    variant: v.string(),
+    digestMode: digestModeValidator,
+    digestHour: v.optional(v.number()),
+    digestTimezone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("UNAUTHENTICATED");
+    const userId = identity.subject;
+
+    const existing = await ctx.db
+      .query("alertRules")
+      .withIndex("by_user_variant", (q) =>
+        q.eq("userId", userId).eq("variant", args.variant),
+      )
+      .unique();
+
+    const now = Date.now();
+    const patch = {
+      digestMode: args.digestMode,
+      digestHour: args.digestHour,
+      digestTimezone: args.digestTimezone,
+      updatedAt: now,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+    } else {
+      await ctx.db.insert("alertRules", {
+        userId,
+        variant: args.variant,
+        enabled: true,
+        eventTypes: [],
+        sensitivity: "all",
+        channels: [],
+        ...patch,
       });
     }
   },
@@ -170,6 +213,34 @@ export const setQuietHours = mutation({
   },
 });
 
+export const setDigestSettingsForUser = internalMutation({
+  args: {
+    userId: v.string(),
+    variant: v.string(),
+    digestMode: digestModeValidator,
+    digestHour: v.optional(v.number()),
+    digestTimezone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { userId, variant, ...digest } = args;
+    const existing = await ctx.db
+      .query("alertRules")
+      .withIndex("by_user_variant", (q) =>
+        q.eq("userId", userId).eq("variant", variant),
+      )
+      .unique();
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, { ...digest, updatedAt: now });
+    } else {
+      await ctx.db.insert("alertRules", {
+        userId, variant, enabled: true, eventTypes: [], sensitivity: "all", channels: [],
+        ...digest, updatedAt: now,
+      });
+    }
+  },
+});
+
 export const setQuietHoursForUser = internalMutation({
   args: { userId: v.string(), ...QUIET_HOURS_ARGS },
   handler: async (ctx, args) => {
@@ -202,6 +273,20 @@ export const setQuietHoursForUser = internalMutation({
         ...patch,
       });
     }
+  },
+});
+
+/** Returns all enabled rules that have a non-realtime digestMode set. */
+export const getDigestRules = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const enabled = await ctx.db
+      .query("alertRules")
+      .withIndex("by_enabled", (q) => q.eq("enabled", true))
+      .collect();
+    return enabled.filter(
+      (r) => r.digestMode !== undefined && r.digestMode !== "realtime",
+    );
   },
 });
 

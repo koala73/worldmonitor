@@ -119,6 +119,9 @@ interface PostBody {
   quietHoursEnd?: number;
   quietHoursTimezone?: string;
   quietHoursOverride?: string;
+  digestMode?: string;
+  digestHour?: number;
+  digestTimezone?: string;
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -265,6 +268,27 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         // flush any held events so they're delivered rather than expiring silently.
         const abandonsBatch = !quietHoursEnabled || quietHoursOverride !== 'batch_on_wake';
         if (abandonsBatch) ctx.waitUntil(publishFlushHeld(session.userId, variant));
+        return json({ ok: true }, 200, corsHeaders);
+      }
+
+      if (action === 'set-digest-settings') {
+        const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
+        const { variant, digestMode, digestHour, digestTimezone } = body;
+        if (!variant || !digestMode || !VALID_DIGEST_MODE.has(digestMode)) {
+          return json({ error: 'variant and valid digestMode required' }, 400, corsHeaders);
+        }
+        const resp = await convexRelay({
+          action: 'set-digest-settings',
+          userId: session.userId,
+          variant,
+          digestMode,
+          digestHour,
+          digestTimezone,
+        });
+        if (!resp.ok) {
+          console.error('[notification-channels] POST set-digest-settings relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
         return json({ ok: true }, 200, corsHeaders);
       }
 

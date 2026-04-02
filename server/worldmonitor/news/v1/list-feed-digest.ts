@@ -22,6 +22,7 @@ import {
   DIGEST_ACCUMULATOR_KEY,
   STORY_TTL,
   STORY_TRACK_KEY_PREFIX,
+  DIGEST_ACCUMULATOR_TTL,
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
@@ -462,8 +463,8 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, hashes: 
     await runRedisPipeline(commands);
   }
 
-  // Refresh accumulator TTL once per build (it's a single key shared across stories).
-  await runRedisPipeline([['EXPIRE', accKey, STORY_TTL]]);
+  // Refresh accumulator TTL once per build — 48h, shorter than STORY_TTL since digest cron only needs ~24h lookback.
+  await runRedisPipeline([['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]]);
 }
 
 async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {

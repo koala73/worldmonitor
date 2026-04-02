@@ -27,8 +27,10 @@ export const STORY_TRACK_KEY = (titleHash: string) => `story:track:v1:${titleHas
 export const STORY_SOURCES_KEY = (titleHash: string) => `story:sources:v1:${titleHash}`;
 export const STORY_PEAK_KEY = (titleHash: string) => `story:peak:v1:${titleHash}`;
 export const DIGEST_ACCUMULATOR_KEY = (variant: string) => `digest:accumulator:v1:${variant}`;
+export const DIGEST_LAST_SENT_KEY = (userId: string, variant: string) => `digest:last-sent:v1:${userId}:${variant}`;
 export const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v1';
-export const STORY_TTL = 604800; // 7 days — enough for sustained multi-day stories without resetting phase history
+export const STORY_TTL = 604800;           // 7 days — enough for sustained multi-day stories
+export const DIGEST_ACCUMULATOR_TTL = 172800; // 48h — lookback window for digest content
 
 /**
  * Shared Redis pointer keys for simulation artifacts.

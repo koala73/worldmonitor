@@ -328,6 +328,9 @@ http.route({
       quietHoursEnd?: number;
       quietHoursTimezone?: string;
       quietHoursOverride?: string;
+      digestMode?: string;
+      digestHour?: number;
+      digestTimezone?: string;
     };
     try {
       body = await request.json() as typeof body;
@@ -460,11 +463,50 @@ http.route({
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
+      if (action === "set-digest-settings") {
+        const VALID_DIGEST_MODE = new Set(["realtime", "daily", "twice_daily", "weekly"]);
+        if (
+          typeof body.variant !== "string" || !body.variant ||
+          !VALID_DIGEST_MODE.has(body.digestMode as string)
+        ) {
+          return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        await ctx.runMutation(internal.alertRules.setDigestSettingsForUser, {
+          userId,
+          variant: body.variant,
+          digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
+          digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
+          digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
+        });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
       return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: { "Content-Type": "application/json" } });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { "Content-Type": "application/json" } });
     }
+  }),
+});
+
+// Service-to-service: Railway digest cron fetches due rules (no user JWT required).
+http.route({
+  path: "/relay/digest-rules",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const rules = await ctx.runQuery(internal.alertRules.getDigestRules);
+    return new Response(JSON.stringify(rules), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }),
 });
 

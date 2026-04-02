@@ -516,6 +516,7 @@ async function processEvent(event) {
   if (event.eventType === 'rss_alert') shadowLogScore(event).catch(() => {});
 
   const matching = enabledRules.filter(r =>
+    (!r.digestMode || r.digestMode === 'realtime') &&   // skip digest-mode rules — handled by seed-digest-notifications cron
     (r.eventTypes.length === 0 || r.eventTypes.includes(event.eventType)) &&
     shouldNotify(r, event) &&
     (!event.variant || !r.variant || r.variant === event.variant)
