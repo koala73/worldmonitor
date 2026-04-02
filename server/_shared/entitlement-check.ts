@@ -49,7 +49,16 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
-const CONVEX_SERVER_SHARED_SECRET = process.env.CONVEX_SERVER_SHARED_SECRET ?? '';
+let _didWarnMissingConvexSharedSecret = false;
+
+function getConvexSharedSecret(): string {
+  const secret = process.env.CONVEX_SERVER_SHARED_SECRET ?? '';
+  if (!secret && !_didWarnMissingConvexSharedSecret) {
+    _didWarnMissingConvexSharedSecret = true;
+    console.warn('[entitlement-check] CONVEX_SERVER_SHARED_SECRET not set; Convex fallback disabled');
+  }
+  return secret;
+}
 
 // ---------------------------------------------------------------------------
 // Request coalescing (P1-6: Cache stampede mitigation)
@@ -116,14 +125,15 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
 
     // Convex fallback on cache miss or expired cache
     const convexUrl = process.env.CONVEX_URL;
-    if (!convexUrl || !CONVEX_SERVER_SHARED_SECRET) return null;
+    const convexSharedSecret = getConvexSharedSecret();
+    if (!convexUrl || !convexSharedSecret) return null;
 
     const response = await fetch(`${convexUrl}${CONVEX_INTERNAL_ENTITLEMENTS_PATH}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'worldmonitor-gateway/1.0',
-        'x-convex-shared-secret': CONVEX_SERVER_SHARED_SECRET,
+        'x-convex-shared-secret': convexSharedSecret,
       },
       body: JSON.stringify({ userId }),
     });

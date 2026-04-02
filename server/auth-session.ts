@@ -45,7 +45,6 @@ function getAllowedAudiences(): string[] {
   const configured = [
     process.env.CLERK_JWT_AUDIENCE,
     process.env.CLERK_PUBLISHABLE_KEY,
-    process.env.VITE_CLERK_PUBLISHABLE_KEY,
   ]
     .flatMap((value) => (value ?? '').split(','))
     .map((value) => value.trim())
