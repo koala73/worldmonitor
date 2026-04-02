@@ -81,6 +81,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   euFsi:             'economic:fsi-eu:v1',
   shippingStress:    'supply_chain:shipping_stress:v1',
   socialVelocity:    'intelligence:social:reddit:v1',
+  pizzint:           'intelligence:pizzint:seed:v1',
   diseaseOutbreaks:  'health:disease-outbreaks:v1',
   economicStress:    'economic:stress-index:v1',
 };
@@ -112,6 +113,7 @@ const SLOW_KEYS = new Set([
   'euFsi',
   'diseaseOutbreaks',
   'economicStress',
+  'pizzint',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',

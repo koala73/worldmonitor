@@ -40,7 +40,7 @@ const FORECAST_REFRESH_REQUEST_KEY = 'forecast:refresh-request:v1';
 const FORECAST_REFRESH_REQUEST_TTL = 60 * 60;
 
 // ── Proxy Config ─────────────────────────────────────────
-const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.OREF_PROXY_AUTH || '';
+const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.PROXY_URL || '';
 const PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
 
 // ── Query Regions ──────────────────────────────────────────

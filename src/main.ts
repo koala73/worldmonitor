@@ -227,6 +227,7 @@ Sentry.init({
     /WKErrorDomain/,
     /Content-Length header of network response exceeds response Body/,
     /^Uncaught \[object ErrorEvent\]$/,
+    /^\[object Event\]$/,
     /trsMethod\w+ is not defined/,
     /checkLogin is not a function/,
     /VConsole is not defined/,

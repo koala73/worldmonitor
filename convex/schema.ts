@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { channelTypeValidator, sensitivityValidator } from "./constants";
+import { channelTypeValidator, digestModeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -78,6 +78,15 @@ export default defineSchema({
     sensitivity: sensitivityValidator,
     channels: v.array(channelTypeValidator),
     updatedAt: v.number(),
+    quietHoursEnabled: v.optional(v.boolean()),
+    quietHoursStart: v.optional(v.number()),
+    quietHoursEnd: v.optional(v.number()),
+    quietHoursTimezone: v.optional(v.string()),
+    quietHoursOverride: v.optional(quietHoursOverrideValidator),
+    // Digest mode fields (absent = realtime, same as digestMode: "realtime")
+    digestMode: v.optional(digestModeValidator),
+    digestHour: v.optional(v.number()),       // 0-23 local hour for daily/twice_daily
+    digestTimezone: v.optional(v.string()),   // IANA timezone, e.g. "America/New_York"
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])

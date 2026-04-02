@@ -3312,6 +3312,33 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   line-height: normal;
 }
 
+.phase-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 8px;
+  font-weight: bold;
+  margin-inline-start: 4px;
+  vertical-align: middle;
+  line-height: normal;
+}
+
+.phase-badge.breaking {
+  background: var(--orange, #f97316);
+  color: var(--bg);
+  animation: pulse-alert 1.5s infinite;
+}
+
+.phase-badge.developing {
+  background: var(--yellow, #eab308);
+  color: var(--bg);
+}
+
+.phase-badge.sustained {
+  background: var(--slate, #64748b);
+  color: var(--bg);
+}
+
 @keyframes pulse-alert {
 
   0%,

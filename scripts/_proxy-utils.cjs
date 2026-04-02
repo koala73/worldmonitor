@@ -60,11 +60,11 @@ function resolveProxyConfig() {
 }
 
 /**
- * Resolve proxy from PROXY_URL with fallback to OREF_PROXY_AUTH.
- * Use this for general seeders (fear-greed, disease-outbreaks, etc.).
+ * Resolve proxy from PROXY_URL only.
+ * OREF_PROXY_AUTH is IL-exit and expensive — reserved exclusively for OREF alerts.
  */
 function resolveProxyConfigWithFallback() {
-  return parseProxyConfig(process.env.PROXY_URL || process.env.OREF_PROXY_AUTH || '');
+  return parseProxyConfig(process.env.PROXY_URL || '');
 }
 
 /**
