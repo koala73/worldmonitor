@@ -22,8 +22,6 @@ import {
   DIGEST_ACCUMULATOR_KEY,
   STORY_TTL,
   STORY_TRACK_KEY_PREFIX,
-  STORY_SOURCES_KEY_PREFIX,
-  STORY_TRACKING_TTL_S,
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
@@ -308,8 +306,6 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
 
 // ── Story persistence tracking ────────────────────────────────────────────────
 
-const STORY_TRACKING_BATCH_SIZE = 80; // ~8 ops/story × 80 = ~640 commands/pipeline call
-
 function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
@@ -573,30 +569,43 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // titleHash was already set on each item during the corroboration pass above.
     const titleHashes = allSliced.map(i => i.titleHash!);
 
-    // Write tracking FIRST so the subsequent read sees this cycle's mentionCount/firstSeen.
-    // Without this ordering, first-time stories never get STORY_PHASE_BREAKING.
+    const now = Date.now();
+
+    // Read existing story tracking BEFORE writing so we know the previous cycle's
+    // mentionCount. We merge read state + this cycle's increment in memory to
+    // produce accurate, current StoryMeta without a second Redis round-trip.
+    const uniqueHashes = [...new Set(titleHashes)];
+    const storyTracks = await readStoryTracks(uniqueHashes).catch(() => new Map<string, StoryTrack>());
+
+    // Write story tracking. Errors never fail the digest build.
     await writeStoryTracking(allSliced, variant, titleHashes).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
 
-    // Read story tracking data to attach StoryMeta to proto items.
-    const uniqueHashes = [...new Set(titleHashes)];
-    const storyTracks = await readStoryTracks(uniqueHashes).catch(() => new Map<string, StoryTrack>());
-    const now = Date.now();
-
     for (const [category, sliced] of slicedByCategory) {
       categories[category] = {
         items: sliced.map((item) => {
-          const track = storyTracks.get(item.titleHash!);
-          let storyMeta: ProtoStoryMeta | undefined;
-          if (track) {
-            storyMeta = {
-              firstSeen: track.firstSeen,
-              mentionCount: track.mentionCount,
-              sourceCount: track.sourceCount,
-              phase: derivePhase(track),
-            };
-          }
+          const hash = item.titleHash!;
+          const sourceCount = corroborationMap.get(hash)?.size ?? 1;
+          const stale = storyTracks.get(hash);
+          // Merge stale state + this cycle's HINCRBY to get the current mentionCount.
+          // New stories (stale = undefined) start at mentionCount=1 this cycle.
+          const mentionCount = stale ? stale.mentionCount + 1 : 1;
+          const firstSeen = stale?.firstSeen ?? now;
+          const merged: StoryTrack = {
+            firstSeen,
+            lastSeen: now,
+            mentionCount,
+            sourceCount,
+            currentScore: stale?.currentScore ?? 0,
+            peakScore: stale?.peakScore ?? 0,
+          };
+          const storyMeta: ProtoStoryMeta = {
+            firstSeen,
+            mentionCount,
+            sourceCount,
+            phase: derivePhase(merged),
+          };
           return toProtoItem(item, storyMeta);
         }),
       };
