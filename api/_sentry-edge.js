@@ -28,8 +28,9 @@ export async function captureEdgeException(err, context = {}) {
   const errMsg = err instanceof Error ? err.message : String(err);
   const errType = err instanceof Error ? err.constructor.name : 'Error';
   try {
-    await fetch(_storeUrl, {
+    const res = await fetch(_storeUrl, {
       method: 'POST',
+      signal: AbortSignal.timeout(2000),
       headers: {
         'Content-Type': 'application/json',
         'X-Sentry-Auth': `Sentry sentry_version=7, sentry_key=${_key}`,
@@ -45,5 +46,15 @@ export async function captureEdgeException(err, context = {}) {
         tags: { runtime: 'edge' },
       }),
     });
-  } catch {}
+    if (!res.ok) {
+      const hint = res.status === 401 || res.status === 403
+        ? ' — check VITE_SENTRY_DSN and auth key'
+        : res.status === 429
+          ? ' — rate limited by Sentry'
+          : ' — Sentry outage or transient error';
+      console.warn(`[sentry-edge] non-2xx response ${res.status}${hint}`);
+    }
+  } catch (fetchErr) {
+    console.warn('[sentry-edge] failed to deliver event:', fetchErr instanceof Error ? fetchErr.message : fetchErr);
+  }
 }

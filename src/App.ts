@@ -45,8 +45,7 @@ import type { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
 import type { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
 import type { CotPositioningPanel } from '@/components/CotPositioningPanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
-import { getSecretState } from '@/services/runtime-config';
-import { getAuthState } from '@/services/auth-state';
+import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
 import { trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
 import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country-geometry';
@@ -66,6 +65,10 @@ import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinat
 import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
 import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignOut as cloudPrefsSignOut } from '@/utils/cloud-prefs-sync';
+import { getConvexClient, getConvexApi } from '@/services/convex-client';
+import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState } from '@/services/entitlements';
+import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { capturePendingCheckoutIntentFromUrl, resumePendingCheckout } from '@/services/checkout';
 import {
   CorrelationEngine,
   militaryAdapter,
@@ -339,7 +342,7 @@ export class App {
       primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
     }
 
-    const _wmAccess = getSecretState('WORLDMONITOR_API_KEY').present || getAuthState().user?.role === 'pro';
+    const _wmAccess = hasPremiumAccess();
     if (_wmAccess) {
       if (shouldPrime('stock-analysis')) {
         primeTask('stockAnalysis', () => this.dataLoader.loadStockAnalysis());
@@ -793,8 +796,43 @@ export class App {
       const userId = session.user?.id ?? null;
       if (userId !== null && userId !== _prevUserId) {
         void cloudPrefsSignIn(userId, SITE_VARIANT);
+
+        // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
+        destroyEntitlementSubscription();
+        destroySubscriptionWatch();
+        void initEntitlementSubscription(userId);
+        void initSubscriptionWatch(userId);
+
+        // Claim any anonymous purchase made before sign-in (anon → real user migration)
+        const anonId = localStorage.getItem('wm-anon-id');
+        if (anonId) {
+          void Promise.all([getConvexClient(), getConvexApi()])
+            .then(async ([client, api]) => {
+              if (!client || !api) return;
+              const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
+              const claimed = result.claimed;
+              const totalClaimed = claimed.subscriptions + claimed.entitlements +
+                                   claimed.customers + claimed.payments;
+              if (totalClaimed > 0) {
+                console.log('[billing] Claimed anon subscription on sign-in:', claimed);
+              }
+              // Always remove after non-throwing completion — mutation is idempotent.
+              // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
+              localStorage.removeItem('wm-anon-id');
+            })
+            .catch((err: unknown) => {
+              console.warn('[billing] claimSubscription failed:', err);
+              // Non-fatal — anon ID preserved for retry
+            });
+        }
+        void resumePendingCheckout({
+          openAuth: () => this.state.authModal?.open(),
+        });
       } else if (userId === null && _prevUserId !== null) {
+        destroyEntitlementSubscription();
+        destroySubscriptionWatch();
         cloudPrefsSignOut();
+        resetEntitlementState();
       }
       _prevUserId = userId;
     });
@@ -865,7 +903,8 @@ export class App {
     correlationEngine.registerAdapter(disasterAdapter);
     this.state.correlationEngine = correlationEngine;
     this.eventHandlers.setupUnifiedSettings();
-    if (isProUser()) this.eventHandlers.setupAuthWidget();
+    this.eventHandlers.setupAuthWidget();
+    capturePendingCheckoutIntentFromUrl();
 
     // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
     this.searchManager.init();
@@ -1115,25 +1154,25 @@ export class App {
         'stock-analysis',
         () => this.dataLoader.loadStockAnalysis(),
         REFRESH_INTERVALS.stockAnalysis,
-        () => (getSecretState('WORLDMONITOR_API_KEY').present || getAuthState().user?.role === 'pro') && this.isPanelNearViewport('stock-analysis'),
+        () => hasPremiumAccess() && this.isPanelNearViewport('stock-analysis'),
       );
       this.refreshScheduler.scheduleRefresh(
         'daily-market-brief',
         () => this.dataLoader.loadDailyMarketBrief(),
         REFRESH_INTERVALS.dailyMarketBrief,
-        () => (getSecretState('WORLDMONITOR_API_KEY').present || getAuthState().user?.role === 'pro') && this.isPanelNearViewport('daily-market-brief'),
+        () => hasPremiumAccess() && this.isPanelNearViewport('daily-market-brief'),
       );
       this.refreshScheduler.scheduleRefresh(
         'stock-backtest',
         () => this.dataLoader.loadStockBacktest(),
         REFRESH_INTERVALS.stockBacktest,
-        () => (getSecretState('WORLDMONITOR_API_KEY').present || getAuthState().user?.role === 'pro') && this.isPanelNearViewport('stock-backtest'),
+        () => hasPremiumAccess() && this.isPanelNearViewport('stock-backtest'),
       );
       this.refreshScheduler.scheduleRefresh(
         'market-implications',
         () => this.dataLoader.loadMarketImplications(),
         REFRESH_INTERVALS.marketImplications,
-        () => (getSecretState('WORLDMONITOR_API_KEY').present || isProUser()) && this.isPanelNearViewport('market-implications'),
+        () => hasPremiumAccess() && this.isPanelNearViewport('market-implications'),
       );
     }
 

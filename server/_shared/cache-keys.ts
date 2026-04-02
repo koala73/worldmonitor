@@ -1,3 +1,37 @@
+// ── Story persistence tracking keys (E3) ─────────────────────────────────────
+// Hash: firstSeen, lastSeen, mentionCount, sourceCount, currentScore, peakScore, title, link, severity
+export const STORY_TRACK_KEY_PREFIX = 'story:track:v1:';
+// Set: unique feed names that have mentioned this story
+export const STORY_SOURCES_KEY_PREFIX = 'story:sources:v1:';
+// Sorted set: single member "peak" with score = highest importanceScore seen
+export const STORY_PEAK_KEY_PREFIX = 'story:peak:v1:';
+// Sorted set: accumulator for digest mode notifications (score = pubDate epoch ms)
+export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
+// TTL for all story tracking keys (48 hours)
+export const STORY_TRACKING_TTL_S = 172800;
+
+/**
+ * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
+ * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
+ *
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore
+ *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
+ *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
+ *   digest:accumulator:v1:${variant} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
+ *
+ * TTL for all: 172800s (48h), refreshed each digest cycle.
+ * Shadow scoring key (written by notification-relay.cjs):
+ *   shadow:score-log:v1            ZSet   score=epoch_ms, member=JSON{importanceScore,severity,title,wouldNotify}
+ */
+export const STORY_TRACK_KEY = (titleHash: string) => `story:track:v1:${titleHash}`;
+export const STORY_SOURCES_KEY = (titleHash: string) => `story:sources:v1:${titleHash}`;
+export const STORY_PEAK_KEY = (titleHash: string) => `story:peak:v1:${titleHash}`;
+export const DIGEST_ACCUMULATOR_KEY = (variant: string) => `digest:accumulator:v1:${variant}`;
+export const DIGEST_LAST_SENT_KEY = (userId: string, variant: string) => `digest:last-sent:v1:${userId}:${variant}`;
+export const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v1';
+export const STORY_TTL = 604800;           // 7 days — enough for sustained multi-day stories
+export const DIGEST_ACCUMULATOR_TTL = 172800; // 48h — lookback window for digest content
+
 /**
  * Shared Redis pointer keys for simulation artifacts.
  * Defined here so TypeScript handlers and seed scripts agree on the exact string.
@@ -5,6 +39,10 @@
  */
 export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
+export const CLIMATE_ANOMALIES_KEY = 'climate:anomalies:v2';
+export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
+export const CLIMATE_CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
+export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
 
 /**
  * Static cache keys for the bootstrap endpoint.
@@ -27,7 +65,9 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   chokepointTransits: 'supply_chain:chokepoint_transits:v1',
   minerals:         'supply_chain:minerals:v2',
   giving:           'giving:summary:v1',
-  climateAnomalies: 'climate:anomalies:v1',
+  climateAnomalies: 'climate:anomalies:v2',
+  co2Monitoring:    'climate:co2-monitoring:v1',
+  climateNews:      'climate:news-intelligence:v1',
   radiationWatch:  'radiation:observations:v1',
   thermalEscalation: 'thermal:escalation:v1',
   crossSourceSignals: 'intelligence:cross-source-signals:v1',
@@ -79,6 +119,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   euFsi:            'economic:fsi-eu:v1',
   shippingStress:   'supply_chain:shipping_stress:v1',
   socialVelocity:   'intelligence:social:reddit:v1',
+  pizzint:          'intelligence:pizzint:seed:v1',
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
   economicStress:   'economic:stress-index:v1',
 };
@@ -88,7 +129,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   minerals: 'slow', giving: 'slow', sectors: 'slow',
   progressData: 'slow', renewableEnergy: 'slow',
   etfFlows: 'slow', shippingRates: 'fast', wildfires: 'slow',
-  climateAnomalies: 'slow', sanctionsPressure: 'slow', radiationWatch: 'slow', thermalEscalation: 'slow', crossSourceSignals: 'slow', cyberThreats: 'slow', techReadiness: 'slow',
+  climateAnomalies: 'slow', co2Monitoring: 'slow', climateNews: 'slow', sanctionsPressure: 'slow', radiationWatch: 'slow', thermalEscalation: 'slow', crossSourceSignals: 'slow', cyberThreats: 'slow', techReadiness: 'slow',
   theaterPosture: 'fast', naturalEvents: 'slow',
   cryptoQuotes: 'slow', gulfQuotes: 'slow', stablecoinMarkets: 'slow',
   unrestEvents: 'slow', ucdpEvents: 'slow', techEvents: 'slow',
@@ -121,6 +162,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   euFsi: 'slow',
   shippingStress: 'fast',
   socialVelocity: 'fast',
+  pizzint: 'slow',
   diseaseOutbreaks: 'slow',
   economicStress: 'slow',
 };

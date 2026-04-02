@@ -88,6 +88,12 @@ import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { loadWidgets, saveWidget } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
+import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, onEntitlementChange } from '@/services/entitlements';
+import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { getUserId } from '@/services/user-identity';
+import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
+import { handleCheckoutReturn } from '@/services/checkout-return';
+import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess } from '@/services/checkout';
 import { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
@@ -127,6 +133,8 @@ export class PanelLayoutManager implements AppModule {
   private unsubscribeAuth: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
+  private unsubscribeEntitlementChange: (() => void) | null = null;
+  private unsubscribePaymentFailureBanner: (() => void) | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -134,6 +142,38 @@ export class PanelLayoutManager implements AppModule {
     this.applyTimeRangeFilterDebounced = debounce(() => {
       this.applyTimeRangeFilterToNewsPanels();
     }, 120);
+
+    // Dodo Payments: entitlement subscription + billing watch for ALL users.
+    // Free users need the subscription active so they receive real-time
+    // entitlement updates after purchasing (P1: newly upgraded users must
+    // see their premium access without a manual page reload).
+    if (handleCheckoutReturn()) {
+      showCheckoutSuccess();
+    }
+
+    const userId = getUserId();
+    if (userId) {
+      initEntitlementSubscription(userId).catch(() => {});
+      initSubscriptionWatch(userId).catch(() => {});
+      this.unsubscribePaymentFailureBanner = initPaymentFailureBanner();
+    }
+
+    initCheckoutOverlay(() => showCheckoutSuccess());
+
+    // Listen for entitlement changes — reload panels to pick up new gating state.
+    // Skip the initial snapshot to avoid a reload loop for users who already have
+    // premium via legacy signals (API key / wm-pro-key).
+    let skipInitialSnapshot = true;
+    this.unsubscribeEntitlementChange = onEntitlementChange(() => {
+      if (skipInitialSnapshot) {
+        skipInitialSnapshot = false;
+        return;
+      }
+      if (isEntitled()) {
+        console.log('[entitlements] Subscription activated — reloading to unlock panels');
+        window.location.reload();
+      }
+    });
   }
 
   init(): void {
@@ -189,6 +229,21 @@ export class PanelLayoutManager implements AppModule {
     this.aviationCommandBar?.destroy();
     this.aviationCommandBar = null;
     this.ctx.panels['airline-intel']?.destroy();
+
+    // Clean up billing subscription watch + entitlement subscription
+    destroySubscriptionWatch();
+    destroyEntitlementSubscription();
+
+    // Clean up entitlement change listener
+    this.unsubscribeEntitlementChange?.();
+    this.unsubscribeEntitlementChange = null;
+
+    // Clean up payment failure banner subscription
+    this.unsubscribePaymentFailureBanner?.();
+    this.unsubscribePaymentFailureBanner = null;
+
+    // Reset checkout overlay so next layout init can register its callback
+    destroyCheckoutOverlay();
 
     window.removeEventListener('resize', this.ensureCorrectZones);
   }
@@ -1335,7 +1390,8 @@ export class PanelLayoutManager implements AppModule {
     const { view, zoom, lat, lon, timeRange, layers } = this.ctx.initialUrlState;
 
     if (view) {
-      this.ctx.map.setView(view);
+      // Pass URL zoom so the preset's default zoom doesn't overwrite it.
+      this.ctx.map.setView(view, zoom);
     }
 
     if (timeRange) {
@@ -1349,9 +1405,10 @@ export class PanelLayoutManager implements AppModule {
     }
 
     if (lat !== undefined && lon !== undefined) {
-      const effectiveZoom = zoom ?? this.ctx.map.getState().zoom;
-      if (effectiveZoom > 2) this.ctx.map.setCenter(lat, lon, zoom);
+      // Always honour URL lat/lon regardless of zoom level.
+      this.ctx.map.setCenter(lat, lon, zoom);
     } else if (!view && zoom !== undefined) {
+      // zoom-only without a view preset: apply directly.
       this.ctx.map.setZoom(zoom);
     }
 

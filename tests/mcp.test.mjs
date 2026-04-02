@@ -28,6 +28,7 @@ function initBody(id = 1) {
 }
 
 let handler;
+let evaluateFreshness;
 
 describe('api/mcp.ts — PRO MCP Server', () => {
   beforeEach(async () => {
@@ -38,6 +39,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
     const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
     handler = mod.default;
+    evaluateFreshness = mod.evaluateFreshness;
   });
 
   afterEach(() => {
@@ -157,6 +159,46 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(data.stale, true, 'stale must be true when cache is empty');
     assert.equal(data.cached_at, null, 'cached_at must be null when no seed-meta');
     assert.ok('data' in data, 'data field must be present');
+  });
+
+  it('evaluateFreshness marks bundled data stale when any required source meta is missing', () => {
+    const now = Date.UTC(2026, 3, 1, 12, 0, 0);
+    const freshness = evaluateFreshness(
+      [
+        { key: 'seed-meta:climate:anomalies', maxStaleMin: 120 },
+        { key: 'seed-meta:climate:co2-monitoring', maxStaleMin: 2880 },
+        { key: 'seed-meta:weather:alerts', maxStaleMin: 45 },
+      ],
+      [
+        { fetchedAt: now - 30 * 60_000 },
+        { fetchedAt: now - 60 * 60_000 },
+        null,
+      ],
+      now,
+    );
+
+    assert.equal(freshness.stale, true);
+    assert.equal(freshness.cached_at, null);
+  });
+
+  it('evaluateFreshness stays fresh only when every required source meta is within its threshold', () => {
+    const now = Date.UTC(2026, 3, 1, 12, 0, 0);
+    const freshness = evaluateFreshness(
+      [
+        { key: 'seed-meta:climate:anomalies', maxStaleMin: 120 },
+        { key: 'seed-meta:climate:co2-monitoring', maxStaleMin: 2880 },
+        { key: 'seed-meta:weather:alerts', maxStaleMin: 45 },
+      ],
+      [
+        { fetchedAt: now - 30 * 60_000 },
+        { fetchedAt: now - 24 * 60 * 60_000 },
+        { fetchedAt: now - 15 * 60_000 },
+      ],
+      now,
+    );
+
+    assert.equal(freshness.stale, false);
+    assert.equal(freshness.cached_at, new Date(now - 24 * 60 * 60_000).toISOString());
   });
 
   // --- Rate limiting ---

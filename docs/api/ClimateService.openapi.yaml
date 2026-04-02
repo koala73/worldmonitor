@@ -49,6 +49,58 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/climate/v1/get-co2-monitoring:
+        get:
+            tags:
+                - ClimateService
+            summary: GetCo2Monitoring
+            description: GetCo2Monitoring retrieves seeded NOAA greenhouse gas monitoring data.
+            operationId: GetCo2Monitoring
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCo2MonitoringResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/climate/v1/list-climate-news:
+        get:
+            tags:
+                - ClimateService
+            summary: ListClimateNews
+            description: ListClimateNews retrieves latest climate/environment intelligence headlines from seeded RSS feeds.
+            operationId: ListClimateNews
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListClimateNewsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -129,7 +181,7 @@ components:
                 precipDelta:
                     type: number
                     format: double
-                    description: Precipitation deviation from normal as a percentage.
+                    description: Precipitation deviation from normal in millimeters.
                 severity:
                     type: string
                     enum:
@@ -189,3 +241,91 @@ components:
                     format: int32
                     description: Total count of items matching the query, if known. Zero if the total is unknown.
             description: PaginationResponse contains pagination metadata returned alongside list results.
+        GetCo2MonitoringRequest:
+            type: object
+        GetCo2MonitoringResponse:
+            type: object
+            properties:
+                monitoring:
+                    $ref: '#/components/schemas/Co2Monitoring'
+        Co2Monitoring:
+            type: object
+            properties:
+                currentPpm:
+                    type: number
+                    format: double
+                yearAgoPpm:
+                    type: number
+                    format: double
+                annualGrowthRate:
+                    type: number
+                    format: double
+                preIndustrialBaseline:
+                    type: number
+                    format: double
+                monthlyAverage:
+                    type: number
+                    format: double
+                trend12m:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Co2DataPoint'
+                methanePpb:
+                    type: number
+                    format: double
+                nitrousOxidePpb:
+                    type: number
+                    format: double
+                measuredAt:
+                    type: string
+                    format: int64
+                station:
+                    type: string
+        Co2DataPoint:
+            type: object
+            properties:
+                month:
+                    type: string
+                ppm:
+                    type: number
+                    format: double
+                anomaly:
+                    type: number
+                    format: double
+                    description: Year-over-year delta vs same calendar month, in ppm.
+        ListClimateNewsRequest:
+            type: object
+        ListClimateNewsResponse:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ClimateNewsItem'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        ClimateNewsItem:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique identifier (URL hash + publish timestamp).
+                title:
+                    type: string
+                    description: Article headline.
+                url:
+                    type: string
+                    description: Canonical article URL.
+                sourceName:
+                    type: string
+                    description: Source publication name.
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Publication time as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                summary:
+                    type: string
+                    description: Short summary/description (max 300 chars in seed pipeline).
+            description: ClimateNewsItem represents a single climate/environment news article.

@@ -8,7 +8,8 @@
  *  - Missing plan claim → defaults to 'free'
  *  - Expired token → { valid: false }
  *  - Invalid signature → { valid: false }
- *  - Any audience → accepted (audience check removed; issuer check prevents cross-app reuse)
+ *  - Allowed audiences → accepted ('convex' template plus configured publishable/audience envs)
+ *  - Unexpected audience → rejected
  *  - JWKS resolver is reused across calls (module-scoped, not per-request)
  */
 
@@ -102,6 +103,7 @@ describe('validateBearerToken (with JWKS)', () => {
     // Set the issuer domain to the local JWKS server and re-import the module
     // (fresh import since the module caches JWKS at first use)
     process.env.CLERK_JWT_ISSUER_DOMAIN = `http://127.0.0.1:${jwksPort}`;
+    process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_123';
 
     // Dynamic import with cache-busting query param to get a fresh module instance
     const mod = await import(`../server/auth-session.ts?t=${Date.now()}`);
@@ -111,6 +113,7 @@ describe('validateBearerToken (with JWKS)', () => {
   after(async () => {
     jwksServer?.close();
     delete process.env.CLERK_JWT_ISSUER_DOMAIN;
+    delete process.env.CLERK_PUBLISHABLE_KEY;
   });
 
   /** Helper to sign a JWT with the test private key */
@@ -183,10 +186,22 @@ describe('validateBearerToken (with JWKS)', () => {
     assert.equal(result.valid, false);
   });
 
-  it('accepts a token with any audience (audience check removed, issuer is sufficient)', async () => {
-    // We deliberately removed the audience:'convex' restriction so that both
-    // the 'convex' template tokens and standard Clerk session tokens are accepted.
-    // The issuer check prevents cross-app token reuse.
+  it('accepts a token with the configured publishable-key audience', async () => {
+    const token = await new SignJWT({ sub: 'user_publishable', plan: 'pro' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(`http://127.0.0.1:${jwksPort}`)
+      .setAudience('pk_test_123')
+      .setSubject('user_publishable')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey);
+
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.role, 'pro');
+  });
+
+  it('rejects a token with an unexpected audience', async () => {
     const token = await new SignJWT({ sub: 'user_anyaud', plan: 'pro' })
       .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
       .setIssuer(`http://127.0.0.1:${jwksPort}`)
@@ -197,8 +212,7 @@ describe('validateBearerToken (with JWKS)', () => {
       .sign(privateKey);
 
     const result = await validateBearerToken(token);
-    assert.equal(result.valid, true);
-    assert.equal(result.role, 'pro');
+    assert.equal(result.valid, false);
   });
 
   it('rejects a token with wrong issuer', async () => {

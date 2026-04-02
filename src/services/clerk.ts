@@ -115,6 +115,12 @@ export async function signOut(): Promise<void> {
   await clerkInstance?.signOut();
 }
 
+/** Clear the cached Clerk token (call when Convex signals a 401 via forceRefreshToken). */
+export function clearClerkTokenCache(): void {
+  _cachedToken = null;
+  _cachedTokenAt = 0;
+}
+
 /**
  * Get a bearer token for premium API requests.
  * Uses the 'convex' JWT template which includes the `plan` claim.

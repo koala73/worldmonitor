@@ -844,11 +844,15 @@ export class Panel {
       lockedChildren.push(featureList);
     }
 
-    const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, t('premium.joinWaitlist'));
+    const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
     if (isDesktopRuntime()) {
       ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' }).catch(() => window.open('https://worldmonitor.app/pro', '_blank')));
     } else {
-      ctaBtn.addEventListener('click', () => window.open('https://worldmonitor.app/pro', '_blank'));
+      ctaBtn.addEventListener('click', () => {
+        import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
+          window.open('https://worldmonitor.app/pro', '_blank');
+        });
+      });
     }
     lockedChildren.push(ctaBtn);
 

@@ -125,6 +125,39 @@ interface ExpandedPath {
 }
 
 // ---------------------------------------------------------------------------
+// Simulation package (buildSimulationPackageFromDeepSnapshot output)
+// ---------------------------------------------------------------------------
+
+/**
+ * One theater entry in SimulationPackage.selectedTheaters.
+ * Distinct from TheaterResult (LLM output shape stored in SimulationOutcome).
+ *
+ * NOTE: When adding fields here, also add them to the uiTheaters projection
+ * in writeSimulationOutcome() or they will be invisible in the Redis snapshot.
+ */
+interface SimulationPackageTheater {
+  theaterId: string;
+  candidateStateId: string;
+  theaterLabel?: string;
+  theaterRegion?: string;
+  stateKind?: string;
+  dominantRegion?: string;
+  macroRegions?: string[];
+  routeFacilityKey?: string;
+  commodityKey?: string;
+  topBucketId: string;
+  topChannel: string;
+  rankingScore?: number;
+  criticalSignalTypes: string[];
+  /**
+   * Role-category strings from candidate stateSummary.actors. Theater-scoped (no cross-theater aggregation).
+   * Injected into Round 2 prompt as CANDIDATE ACTOR ROLES. Used as allowlist in sanitizeKeyActorRoles guardrail.
+   * keyActors (entity-space) and actorRoles (role-category) are intentionally disjoint vocabularies.
+   */
+  actorRoles: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Theater simulation structures
 // ---------------------------------------------------------------------------
 
@@ -133,7 +166,10 @@ interface SimulationTopPath {
   label: string;
   summary: string;
   confidence: number;
+  /** Entity-space actor names (geo-political). Used for narrative/audit. NOT used for overlap bonus scoring. */
   keyActors: string[];
+  /** Role-category actor strings from the candidate's stateSummary.actors vocabulary. Used for the +0.04 overlap bonus when actorSource=stateSummary. */
+  keyActorRoles?: string[];
   roundByRoundEvolution?: Array<{ round: number; summary: string }>;
   timingMarkers?: Array<{ event: string; timing: string }>;
 }
@@ -179,8 +215,12 @@ interface SimulationOutcome {
 
 interface SimulationAdjustmentDetail {
   bucketChannelMatch: boolean;
-  /** Number of overlapping actors between path and simulation top paths (>=2 triggers +0.04 bonus). */
+  /** Backwards-compat alias: equals roleOverlapCount when actorSource=stateSummary, else keyActorsOverlapCount. >=2 triggered the +0.04 bonus. */
   actorOverlapCount: number;
+  /** Role-category overlap count (candidate stateSummary.actors vs sim keyActorRoles). Drives +0.04 bonus when actorSource=stateSummary. */
+  roleOverlapCount: number;
+  /** Entity-space overlap count (candidate actors vs sim keyActors). Drives +0.04 bonus when actorSource=affectedAssets. Telemetry only when actorSource=stateSummary. */
+  keyActorsOverlapCount: number;
   invalidatorHit: boolean;
   stabilizerHit: boolean;
   /** Number of candidate-theater actors used for overlap matching. Source is stateSummary.actors if raw list present, else affectedAssets. Never a union. */
@@ -208,14 +248,19 @@ interface SimulationAdjustmentRecord {
 
 /** Flat projection of SimulationAdjustmentDetail written into path-scorecards.json entries. simPathConfidence is omitted (already in simulationSignal). */
 interface ScorecardSimDetail {
-  bucketChannelMatch:  boolean;
-  actorOverlapCount:   number;
-  candidateActorCount: number;
-  actorSource:         'stateSummary' | 'affectedAssets' | 'none';
-  resolvedChannel:     string;
-  channelSource:       'direct' | 'market' | 'none';
-  invalidatorHit:      boolean;
-  stabilizerHit:       boolean;
+  bucketChannelMatch:     boolean;
+  /** Backwards-compat alias for roleOverlapCount or keyActorsOverlapCount (whichever drove the bonus). */
+  actorOverlapCount:      number;
+  /** Role-category overlap (stateSummary path). Drives +0.04 when actorSource=stateSummary. */
+  roleOverlapCount:       number;
+  /** Entity-space overlap via keyActors (affectedAssets path). Drives +0.04 when actorSource=affectedAssets. */
+  keyActorsOverlapCount:  number;
+  candidateActorCount:    number;
+  actorSource:            'stateSummary' | 'affectedAssets' | 'none';
+  resolvedChannel:        string;
+  channelSource:          'direct' | 'market' | 'none';
+  invalidatorHit:         boolean;
+  stabilizerHit:          boolean;
 }
 
 interface SimulationEvidence {
