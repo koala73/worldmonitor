@@ -493,7 +493,7 @@ http.route({
         if (body.quietHoursOverride !== undefined && !VALID_OVERRIDE.has(body.quietHoursOverride)) {
           return new Response(JSON.stringify({ error: "invalid quietHoursOverride" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation(internal.alertRules.setQuietHoursForUser, {
+        await ctx.runMutation((internal as any).alertRules.setQuietHoursForUser, {
           userId,
           variant: body.variant,
           quietHoursEnabled: body.quietHoursEnabled,
@@ -513,7 +513,7 @@ http.route({
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation(internal.alertRules.setDigestSettingsForUser, {
+        await ctx.runMutation((internal as any).alertRules.setDigestSettingsForUser, {
           userId,
           variant: body.variant,
           digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
@@ -544,7 +544,7 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
-    const rules = await ctx.runQuery(internal.alertRules.getDigestRules);
+    const rules = await ctx.runQuery((internal as any).alertRules.getDigestRules);
     return new Response(JSON.stringify(rules), {
       status: 200,
       headers: { "Content-Type": "application/json" },
