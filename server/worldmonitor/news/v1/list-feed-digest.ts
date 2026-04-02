@@ -7,12 +7,12 @@ import type {
   ThreatLevel as ProtoThreatLevel,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJsonBatch, upstashPipeline } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
-import { classifyByKeyword, SEVERITY_SCORES, type ThreatLevel } from './_classifier';
+import { classifyByKeyword, type ThreatLevel } from './_classifier';
 import { getSourceTier } from '../../../_shared/source-tiers';
 import {
   STORY_TRACK_KEY,
@@ -41,6 +41,44 @@ const LEVEL_TO_PROTO: Record<ThreatLevel, ProtoThreatLevel> = {
   info: 'THREAT_LEVEL_UNSPECIFIED',
 };
 
+/** Numeric severity values for importanceScore computation (0–100). */
+const SEVERITY_SCORES: Record<ThreatLevel, number> = {
+  critical: 100,
+  high: 75,
+  medium: 50,
+  low: 25,
+  info: 0,
+};
+
+/**
+ * Importance score component weights (must sum to 1.0).
+ * Severity dominates because threat level is the primary signal.
+ * Corroboration (independent sources) strongly validates an event.
+ * Source tier boosts confidence. Recency is a minor tiebreaker.
+ */
+const SCORE_WEIGHTS = {
+  severity: 0.4,
+  sourceTier: 0.2,
+  corroboration: 0.3,
+  recency: 0.1,
+} as const;
+
+/** Derive story lifecycle phase from Redis-stored tracking data. */
+function computePhase(
+  mentionCount: number,
+  firstSeenMs: number,
+  lastSeenMs: number,
+  now: number,
+): ProtoStoryPhase {
+  const ageH = (now - firstSeenMs) / 3_600_000;
+  const silenceH = (now - lastSeenMs) / 3_600_000;
+  if (silenceH > 24) return 'STORY_PHASE_FADING';
+  if (mentionCount >= 3 && ageH >= 12) return 'STORY_PHASE_SUSTAINED';
+  if (mentionCount >= 2) return 'STORY_PHASE_DEVELOPING';
+  if (ageH < 2) return 'STORY_PHASE_BREAKING';
+  return 'STORY_PHASE_UNSPECIFIED';
+}
+
 interface ParsedItem {
   source: string;
   title: string;
@@ -57,6 +95,8 @@ interface ParsedItem {
 }
 
 function normalizeTitle(title: string): string {
+  // 120-char window provides high headline discrimination in practice;
+  // see todo #102 if hash collision accuracy becomes a concern.
   return title.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
@@ -72,10 +112,10 @@ function computeImportanceScore(
   const ageMs = Date.now() - publishedAt;
   const recencyScore = Math.max(0, 1 - ageMs / (24 * 60 * 60 * 1000)) * 100;
   return Math.round(
-    SEVERITY_SCORES[level] * 0.4 +
-    tierScore * 0.2 +
-    corroborationScore * 0.3 +
-    recencyScore * 0.1,
+    SEVERITY_SCORES[level] * SCORE_WEIGHTS.severity +
+    tierScore * SCORE_WEIGHTS.sourceTier +
+    corroborationScore * SCORE_WEIGHTS.corroboration +
+    recencyScore * SCORE_WEIGHTS.recency,
   );
 }
 
@@ -182,6 +222,8 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
     } else {
       link = extractTag(block, 'link');
     }
+    // Strip non-HTTP links (javascript:, data:, etc.) before any downstream use.
+    if (!/^https?:\/\//i.test(link)) link = '';
 
     const pubDateStr = isAtom
       ? (extractTag(block, 'published') || extractTag(block, 'updated'))
@@ -337,20 +379,14 @@ export async function listFeedDigest(
 
 const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
 
-async function writeStoryTracking(items: ParsedItem[], variant: string): Promise<void> {
+async function writeStoryTracking(items: ParsedItem[], variant: string, hashes: string[]): Promise<void> {
   if (items.length === 0) return;
   const now = Date.now();
-
-  // Pre-compute title hashes for all items in parallel.
-  const hashes = await Promise.all(
-    items.map(item => sha256Hex(normalizeTitle(item.title))),
-  );
-
   const accKey = DIGEST_ACCUMULATOR_KEY(variant);
 
   for (let batchStart = 0; batchStart < items.length; batchStart += STORY_BATCH_SIZE) {
     const batch = items.slice(batchStart, batchStart + STORY_BATCH_SIZE);
-    const commands: string[][] = [];
+    const commands: Array<Array<string | number>> = [];
 
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i]!;
@@ -358,9 +394,9 @@ async function writeStoryTracking(items: ParsedItem[], variant: string): Promise
       const trackKey = STORY_TRACK_KEY(hash);
       const sourcesKey = STORY_SOURCES_KEY(hash);
       const peakKey = STORY_PEAK_KEY(hash);
-      const score = String(item.importanceScore);
+      const score = item.importanceScore;
       const nowStr = String(now);
-      const ttl = String(STORY_TTL);
+      const ttl = STORY_TTL;
 
       commands.push(
         ['HINCRBY', trackKey, 'mentionCount', '1'],
@@ -381,11 +417,11 @@ async function writeStoryTracking(items: ParsedItem[], variant: string): Promise
       );
     }
 
-    await upstashPipeline(commands);
+    await runRedisPipeline(commands);
   }
 
   // Refresh accumulator TTL once per build (it's a single key shared across stories).
-  await upstashPipeline([['EXPIRE', accKey, String(STORY_TTL)]]);
+  await runRedisPipeline([['EXPIRE', accKey, STORY_TTL]]);
 }
 
 async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
@@ -485,15 +521,39 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     const allSliced = [...slicedByCategory.values()].flat();
     await enrichWithAiCache(allSliced);
 
+    // Pre-compute title hashes once — reused for both phase read and tracking write.
+    const titleHashes = await Promise.all(
+      allSliced.map(item => sha256Hex(normalizeTitle(item.title))),
+    );
+
+    // Batch-read story tracking hashes (HGETALL) to assign lifecycle phases.
+    // Single pipeline round-trip for all items; missing keys return {} and stay UNSPECIFIED.
+    const trackResults = await runRedisPipeline(
+      titleHashes.map(h => ['HGETALL', STORY_TRACK_KEY(h)]),
+    );
+    const phaseNow = Date.now();
+    for (let i = 0; i < allSliced.length; i++) {
+      const raw = trackResults[i]?.result as Record<string, string> | null | undefined;
+      if (raw && typeof raw === 'object' && raw.firstSeen) {
+        allSliced[i]!.storyPhase = computePhase(
+          Number(raw.mentionCount ?? '1'),
+          Number(raw.firstSeen),
+          Number(raw.lastSeen ?? raw.firstSeen),
+          phaseNow,
+        );
+      }
+    }
+
     for (const [category, sliced] of slicedByCategory) {
       categories[category] = {
         items: sliced.map(toProtoItem),
       };
     }
 
-    // Write story tracking to Redis (non-blocking — digest response is already built).
-    // Failures are logged but don't affect the response.
-    writeStoryTracking(allSliced, variant).catch((err: unknown) =>
+    // Write story tracking to Redis. Awaited inside the cachedFetchJson fetcher so
+    // the write completes before the isolate moves on (digest is cached 15 min,
+    // so this path runs at most once per cache window — extra latency is negligible).
+    await writeStoryTracking(allSliced, variant, titleHashes).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
 

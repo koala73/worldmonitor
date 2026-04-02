@@ -94,42 +94,6 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
 const NEG_SENTINEL = '__WM_NEG__';
 
 /**
- * Execute an arbitrary batch of Redis commands via the Upstash pipeline API.
- * The second element of each command array (the key) is automatically prefixed
- * with the environment prefix so story:track etc. are isolated per deployment.
- *
- * Returns the raw Upstash response array, or [] on misconfiguration/error.
- * Callers are responsible for interpreting result positions.
- */
-export async function upstashPipeline(
-  commands: string[][],
-): Promise<Array<{ result: unknown; error?: string }>> {
-  if (commands.length === 0) return [];
-  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return [];
-
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return [];
-
-  const prefixed = commands.map(([cmd, key, ...rest]) =>
-    key !== undefined ? [cmd!, prefixKey(key), ...rest] : [cmd!],
-  );
-
-  try {
-    const resp = await fetch(`${url}/pipeline`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(prefixed),
-      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
-    });
-    if (!resp.ok) return [];
-    return (await resp.json()) as Array<{ result: unknown; error?: string }>;
-  } catch {
-    return [];
-  }
-}
-
-/**
  * Batch GET using Upstash pipeline API — single HTTP round-trip for N keys.
  * Returns a Map of key → parsed JSON value (missing/failed/sentinel keys omitted).
  */

@@ -16,7 +16,7 @@ export const STORY_SOURCES_KEY = (titleHash: string) => `story:sources:v1:${titl
 export const STORY_PEAK_KEY = (titleHash: string) => `story:peak:v1:${titleHash}`;
 export const DIGEST_ACCUMULATOR_KEY = (variant: string) => `digest:accumulator:v1:${variant}`;
 export const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v1';
-export const STORY_TTL = 172800; // 48h
+export const STORY_TTL = 604800; // 7 days — enough for sustained multi-day stories without resetting phase history
 
 /**
  * Shared Redis pointer keys for simulation artifacts.
