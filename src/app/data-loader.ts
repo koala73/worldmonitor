@@ -17,6 +17,7 @@ import {
   fetchReitCorrelation,
   fetchReitProperties,
   fetchReitSocial,
+  fetchReitDisclosure,
 } from '@/services';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { dataFreshness } from '@/services/data-freshness';
@@ -673,6 +674,13 @@ export class DataLoaderManager implements AppModule {
         detailPanel.setData(quotesData.quotes, socialData.sentiments, propsData.exposureSummaries);
         detailPanel.showReit('180607.SZ');
       }
+
+      // Fetch C-REIT disclosure data (NAV, dividends from akshare) — non-blocking
+      fetchReitDisclosure().then(discData => {
+        if (discData.disclosures.length > 0 && detailPanel) {
+          detailPanel.setDisclosureData(discData.disclosures);
+        }
+      }).catch(() => { /* disclosure is supplementary — silent fail */ });
 
       // Status updates
       const hasQuotes = quotesData.quotes.length > 0;

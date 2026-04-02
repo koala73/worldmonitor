@@ -6,6 +6,7 @@
  *   - GetReitCorrelation      (FRED macro correlation + sector rotation + yield spread)
  *   - ListReitProperties      (curated property locations + disaster exposure scores)
  *   - GetReitSocialSentiment  (Google Places/Yelp social health scores)
+ *   - GetReitDisclosure       (akshare C-REIT NAV + dividends + trading data)
  */
 
 import type { ReitsServiceHandler } from '../../../../src/generated/server/worldmonitor/reits/v1/service_server';
@@ -13,10 +14,12 @@ import { listReitQuotes } from './list-reit-quotes';
 import { getReitCorrelation } from './get-reit-correlation';
 import { listReitProperties } from './list-reit-properties';
 import { getReitSocialSentiment } from './get-reit-social-sentiment';
+import { getReitDisclosure } from './get-reit-disclosure';
 
 export const reitsHandler: ReitsServiceHandler = {
   listReitQuotes,
   getReitCorrelation,
   listReitProperties,
   getReitSocialSentiment,
+  getReitDisclosure,
 };

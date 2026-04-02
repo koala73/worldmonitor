@@ -163,11 +163,22 @@ export interface RouteDescriptor {
   handler: (req: Request) => Promise<Response>;
 }
 
+export interface GetReitDisclosureRequest {
+  reitSymbol: string;
+}
+
+export interface GetReitDisclosureResponse {
+  disclosures: any[];
+  source: string;
+  lastUpdated: string;
+}
+
 export interface ReitsServiceHandler {
   listReitQuotes(ctx: ServerContext, req: ListReitQuotesRequest): Promise<ListReitQuotesResponse>;
   getReitCorrelation(ctx: ServerContext, req: GetReitCorrelationRequest): Promise<GetReitCorrelationResponse>;
   listReitProperties(ctx: ServerContext, req: ListReitPropertiesRequest): Promise<ListReitPropertiesResponse>;
   getReitSocialSentiment(ctx: ServerContext, req: GetReitSocialSentimentRequest): Promise<GetReitSocialSentimentResponse>;
+  getReitDisclosure(ctx: ServerContext, req: GetReitDisclosureRequest): Promise<GetReitDisclosureResponse>;
 }
 
 export function createReitsServiceRoutes(
@@ -335,6 +346,53 @@ export function createReitsServiceRoutes(
 
           const result = await handler.getReitSocialSentiment(ctx, body);
           return new Response(JSON.stringify(result as GetReitSocialSentimentResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/reits/v1/get-reit-disclosure",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetReitDisclosureRequest = {
+            reitSymbol: params.get("reit_symbol") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getReitDisclosure", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getReitDisclosure(ctx, body);
+          return new Response(JSON.stringify(result as GetReitDisclosureResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

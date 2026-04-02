@@ -119,6 +119,16 @@ export interface ReitSocial {
 
 export type ReitRegime = "REIT_REGIME_UNSPECIFIED" | "REIT_REGIME_FAVORABLE" | "REIT_REGIME_CAUTIOUS" | "REIT_REGIME_STRESS" | "REIT_REGIME_NEUTRAL";
 
+export interface GetReitDisclosureRequest {
+  reitSymbol: string;
+}
+
+export interface GetReitDisclosureResponse {
+  disclosures: any[];
+  source: string;
+  lastUpdated: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -266,6 +276,32 @@ export class ReitsServiceClient {
     }
 
     return await resp.json() as GetReitSocialSentimentResponse;
+  }
+
+  async getReitDisclosure(
+    request: GetReitDisclosureRequest,
+    options?: ReitsServiceCallOptions,
+  ): Promise<GetReitDisclosureResponse> {
+    const params = new URLSearchParams();
+    if (request.reitSymbol) params.set("reit_symbol", request.reitSymbol);
+
+    const url = `${this.baseUrl}/api/reits/v1/get-reit-disclosure?${params.toString()}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetReitDisclosureResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

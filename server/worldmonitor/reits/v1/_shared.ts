@@ -10,4 +10,5 @@ export const REDIS_KEYS = {
   correlation: 'reits:correlation:v1',
   properties: 'reits:properties:v1',
   social: 'reits:social:v1',
+  disclosure: 'reits:disclosure:v1',
 } as const;

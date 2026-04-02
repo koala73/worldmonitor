@@ -60,6 +60,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/reits/v1/get-reit-correlation': 'slow',
   '/api/reits/v1/list-reit-properties': 'static',
   '/api/reits/v1/get-reit-social-sentiment': 'slow',
+  '/api/reits/v1/get-reit-disclosure': 'slow',
 
   '/api/market/v1/list-market-quotes': 'medium',
   '/api/market/v1/list-crypto-quotes': 'medium',

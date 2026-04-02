@@ -301,6 +301,92 @@ export async function fetchReitSocial(): Promise<GetReitSocialSentimentResponse>
   return emptySocialFallback;
 }
 
+// ---- Disclosure (C-REIT NAV + dividends from akshare) ----
+
+export interface ReitDividend {
+  year: string;
+  recordDate: string;
+  exDate: string;
+  amount: number;
+  description: string;
+  payDate: string;
+}
+
+export interface ReitDisclosure {
+  code: string;
+  symbol: string;
+  name: string;
+  nav?: number;
+  navDate?: string;
+  cumulativeNav?: number;
+  premiumDiscount?: number;
+  totalDistributed?: number;
+  distributionYield?: number;
+  dividends?: ReitDividend[];
+  price?: number;
+  change?: number;
+  volume?: number;
+  turnover?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  prevClose?: number;
+  error?: string;
+}
+
+export interface GetReitDisclosureResponse {
+  disclosures: ReitDisclosure[];
+  source: string;
+  lastUpdated: string;
+}
+
+const disclosureBreaker = createCircuitBreaker<GetReitDisclosureResponse>({
+  name: 'REIT Disclosure',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
+const emptyDisclosureFallback: GetReitDisclosureResponse = {
+  disclosures: [],
+  source: '',
+  lastUpdated: '',
+};
+
+function getMockDisclosure(): GetReitDisclosureResponse {
+  return {
+    disclosures: [
+      { code: '180607', symbol: '180607.SZ', name: '华夏中海商业REIT', nav: 5.281, navDate: '2025-10-20', cumulativeNav: 5.281, premiumDiscount: 8.88, totalDistributed: 0.0433, distributionYield: 0.75, dividends: [{ year: '2026年', recordDate: '2026-03-03', exDate: '2026-03-03', amount: 0.0433, description: '每份派现金0.0433元', payDate: '2026-03-05' }], price: 5.75, change: -0.73, volume: 2317, turnover: 1338682 },
+      { code: '180801', symbol: '180801.SZ', name: '华夏华润商业REIT', nav: 9.319, navDate: '2024-12-31', cumulativeNav: 9.319, premiumDiscount: 29.09, totalDistributed: 4.1582, distributionYield: 3.45, dividends: [{ year: '2022年', recordDate: '2022-04-07', exDate: '2022-04-07', amount: 1.1604, description: '每份派现金1.1604元', payDate: '2022-04-11' }], price: 12.03, change: -0.33, volume: 1500, turnover: 800000 },
+      { code: '508016', symbol: '508016.SS', name: '嘉实物美消费REIT', nav: 3.789, navDate: '2025-07-14', cumulativeNav: 3.789, premiumDiscount: 12.17, dividends: [], price: 4.25, change: 0.71, volume: 800, turnover: 340000 },
+      { code: '180601', symbol: '180601.SZ', name: '华夏首创奥莱REIT', nav: 3.5, navDate: '2025-06-30', premiumDiscount: 185.71, totalDistributed: 0.5684, distributionYield: 1.73, dividends: [{ year: '2024年', recordDate: '2024-08-05', exDate: '2024-08-05', amount: 0.0867, description: '每份派现金0.0867元', payDate: '2024-08-07' }], price: 10.00, change: 0.30, volume: 900, turnover: 450000 },
+      { code: '508027', symbol: '508027.SS', name: '华夏华润有巢REIT', nav: 3.3848, navDate: '2025-06-30', cumulativeNav: 3.3848, premiumDiscount: -17.87, totalDistributed: 0.2804, distributionYield: 6.40, dividends: [{ year: '2023年', recordDate: '2023-04-17', exDate: '2023-04-17', amount: 0.1775, description: '每份派现金0.1775元', payDate: '2023-04-19' }], price: 2.78, change: -0.18, volume: 500, turnover: 139000 },
+      { code: '508058', symbol: '508058.SS', name: '中金城投宽庭REIT', nav: 2.4891, navDate: '2025-06-30', cumulativeNav: 2.4891, premiumDiscount: 67.53, totalDistributed: 0.3113, distributionYield: 2.25, dividends: [{ year: '2023年', recordDate: '2023-09-04', exDate: '2023-09-04', amount: 0.052, description: '每份派现金0.0520元', payDate: '2023-09-06' }], price: 4.17, change: 0.24, volume: 600, turnover: 250000 },
+      { code: '180401', symbol: '180401.SZ', name: '鹏华厦门安居REIT', nav: 5.0233, navDate: '2025-12-31', cumulativeNav: 5.0233, premiumDiscount: 8.50, totalDistributed: 2.254, distributionYield: 19.59, dividends: [{ year: '2023年', recordDate: '2023-12-11', exDate: '2023-12-11', amount: 0.34, description: '每份派现金0.3400元', payDate: '2023-12-13' }], price: 5.45, change: 0.37, volume: 400, turnover: 218000 },
+      { code: '508068', symbol: '508068.SS', name: '华夏北京保障房REIT', nav: 2.51, navDate: '2022-08-22', cumulativeNav: 2.51, premiumDiscount: 59.36, totalDistributed: 0.2246, distributionYield: 2.33, dividends: [{ year: '2023年', recordDate: '2023-10-13', exDate: '2023-10-13', amount: 0.055, description: '每份派现金0.0550元', payDate: '2023-10-17' }], price: 4.00, change: -0.50, volume: 300, turnover: 120000 },
+      { code: '180501', symbol: '180501.SZ', name: '红土深圳安居REIT', nav: 2.3433, navDate: '2025-12-31', cumulativeNav: 2.3433, premiumDiscount: 44.26, totalDistributed: 0.2378, distributionYield: 2.72, dividends: [{ year: '2023年', recordDate: '2023-09-21', exDate: '2023-09-21', amount: 0.0539, description: '每份派现金0.0539元', payDate: '2023-09-25' }], price: 3.38, change: -0.59, volume: 350, turnover: 118300 },
+    ],
+    source: 'akshare/eastmoney (mock)',
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
+/**
+ * Fetch C-REIT disclosure data: NAV, dividends, premium/discount, trading.
+ * Only available for Chinese REITs (9 C-REITs from akshare/EastMoney).
+ */
+export async function fetchReitDisclosure(reitSymbol?: string): Promise<GetReitDisclosureResponse> {
+  try {
+    const result = await disclosureBreaker.execute(
+      () => client.getReitDisclosure({ reitSymbol: reitSymbol || '' }),
+      emptyDisclosureFallback,
+    );
+    if (result.disclosures.length > 0) return result;
+  } catch { /* fall through */ }
+
+  if (IS_LOCALHOST) return getMockDisclosure();
+  return emptyDisclosureFallback;
+}
+
 /** Check if the REIT Quotes circuit breaker is on cooldown. */
 export function getReitQuotesCooldownInfo() {
   return getCircuitBreakerCooldownInfo('REIT Quotes');

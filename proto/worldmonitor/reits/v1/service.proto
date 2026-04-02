@@ -7,6 +7,7 @@ import "worldmonitor/reits/v1/list_reit_quotes.proto";
 import "worldmonitor/reits/v1/get_reit_correlation.proto";
 import "worldmonitor/reits/v1/list_reit_properties.proto";
 import "worldmonitor/reits/v1/get_reit_social_sentiment.proto";
+import "worldmonitor/reits/v1/get_reit_disclosure.proto";
 
 // ReitsService provides APIs for REIT market intelligence, macro correlation,
 // property geolocation, and social sentiment analysis.
@@ -34,5 +35,11 @@ service ReitsService {
   // and tenant risk signals from Google Places and Yelp data.
   rpc GetReitSocialSentiment(GetReitSocialSentimentRequest) returns (GetReitSocialSentimentResponse) {
     option (sebuf.http.config) = {path: "/get-reit-social-sentiment", method: HTTP_METHOD_GET};
+  }
+
+  // GetReitDisclosure retrieves C-REIT disclosure data: NAV, dividends,
+  // premium/discount, and real-time trading metrics from akshare/EastMoney.
+  rpc GetReitDisclosure(GetReitDisclosureRequest) returns (GetReitDisclosureResponse) {
+    option (sebuf.http.config) = {path: "/get-reit-disclosure", method: HTTP_METHOD_GET};
   }
 }

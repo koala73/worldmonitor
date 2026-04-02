@@ -27,7 +27,7 @@ import type {} from '@/services/i18n';
 import { formatChange, getChangeClass } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
-import type { ReitQuote, ReitSocial, ReitExposureSummary } from '@/services/reits';
+import type { ReitQuote, ReitSocial, ReitExposureSummary, ReitDisclosure } from '@/services/reits';
 import REIT_PROPERTIES from '../../data/reit-properties.json';
 
 type ReitProp = { reitSymbol: string; propertyName: string; lat: number; lng: number; sector: string; propertyType: string; sqft: number; city: string; state: string; metro: string };
@@ -43,6 +43,7 @@ export class REITDetailPanel extends Panel {
   private allQuotes: ReitQuote[] = [];
   private socialData: ReitSocial[] = [];
   private exposureData: ReitExposureSummary[] = [];
+  private disclosureData: ReitDisclosure[] = [];
   private onMapFocus: ((lat: number, lng: number) => void) | null = null;
 
   constructor() {
@@ -56,6 +57,12 @@ export class REITDetailPanel extends Panel {
   /** Set the map focus handler */
   public setMapFocusHandler(handler: (lat: number, lng: number) => void): void {
     this.onMapFocus = handler;
+  }
+
+  /** Update disclosure data for C-REITs */
+  public setDisclosureData(disclosures: ReitDisclosure[]): void {
+    this.disclosureData = disclosures;
+    if (this.currentSymbol) this.showReit(this.currentSymbol);
   }
 
   /** Update available data (called by data loader) */
@@ -78,11 +85,13 @@ export class REITDetailPanel extends Panel {
 
     const social = this.socialData.find(s => s.reitSymbol === symbol);
     const exposure = this.exposureData.find(e => e.reitSymbol === symbol);
+    const disclosure = this.disclosureData.find(d => d.symbol === symbol);
     const properties = (REIT_PROPERTIES as ReitProp[]).filter(p => p.reitSymbol === symbol);
     const peers = this.allQuotes.filter(q => q.sector === quote.sector && q.symbol !== symbol).slice(0, 5);
 
     const html = [
       this.renderHeader(quote),
+      disclosure ? this.renderDisclosure(disclosure) : '',
       this.renderMetrics(quote, social, exposure),
       this.renderProperties(properties),
       this.renderPeers(quote, peers),
@@ -115,6 +124,57 @@ export class REITDetailPanel extends Panel {
           <span style="font-size:10px;color:#d2a8ff;font-weight:600">Yield ${q.dividendYield.toFixed(2)}%</span>
           <span style="margin-left:auto">${miniSparkline(q.sparkline, q.change)}</span>
         </div>
+      </div>
+    `;
+  }
+
+  private renderDisclosure(d: ReitDisclosure): string {
+    const premColor = d.premiumDiscount != null
+      ? (d.premiumDiscount > 0 ? '#f85149' : d.premiumDiscount < -10 ? '#3fb950' : '#d29922')
+      : '#8b949e';
+    const premLabel = d.premiumDiscount != null
+      ? (d.premiumDiscount > 0 ? '溢价' : '折价')
+      : '';
+    const recentDivs = (d.dividends || []).slice(0, 3);
+
+    return `
+      <div style="padding:12px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:600;color:var(--text-dim);margin-bottom:8px">C-REIT 披露数据 <span style="color:var(--text-dim);font-weight:400">(东方财富)</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px">
+          <div><span style="color:var(--text-dim)">单位净值</span></div>
+          <div style="text-align:right;font-weight:600;color:var(--text)">${d.nav != null ? `¥${d.nav.toFixed(4)}` : '—'}${d.navDate ? ` <span style="color:var(--text-dim);font-weight:400;font-size:9px">(${d.navDate})</span>` : ''}</div>
+          <div><span style="color:var(--text-dim)">累计净值</span></div>
+          <div style="text-align:right;color:var(--text)">${d.cumulativeNav != null ? `¥${d.cumulativeNav.toFixed(4)}` : '—'}</div>
+          <div><span style="color:var(--text-dim)">${premLabel || '溢折价'}</span></div>
+          <div style="text-align:right;color:${premColor};font-weight:600">${d.premiumDiscount != null ? `${d.premiumDiscount > 0 ? '+' : ''}${d.premiumDiscount.toFixed(2)}%` : '—'}</div>
+          <div><span style="color:var(--text-dim)">累计分红</span></div>
+          <div style="text-align:right;color:#d2a8ff">${d.totalDistributed != null ? `¥${d.totalDistributed.toFixed(4)}` : '—'}</div>
+          ${d.distributionYield != null ? `
+            <div><span style="color:var(--text-dim)">分派率</span></div>
+            <div style="text-align:right;color:#3fb950;font-weight:600">${d.distributionYield.toFixed(2)}%</div>
+          ` : ''}
+          ${d.volume != null ? `
+            <div><span style="color:var(--text-dim)">成交量</span></div>
+            <div style="text-align:right;color:var(--text)">${d.volume.toLocaleString()}手</div>
+          ` : ''}
+          ${d.turnover != null ? `
+            <div><span style="color:var(--text-dim)">成交额</span></div>
+            <div style="text-align:right;color:var(--text)">¥${(d.turnover / 10000).toFixed(1)}万</div>
+          ` : ''}
+        </div>
+        ${recentDivs.length > 0 ? `
+          <div style="margin-top:8px">
+            <div style="font-size:10px;font-weight:600;color:var(--text-dim);margin-bottom:4px">分红记录</div>
+            <div style="font-size:10px;display:flex;flex-direction:column;gap:3px">
+              ${recentDivs.map(div => `
+                <div style="display:flex;justify-content:space-between;padding:3px 6px;background:var(--bg);border-radius:3px;border:1px solid var(--border)">
+                  <span style="color:var(--text-dim)">${escapeHtml(div.exDate)}</span>
+                  <span style="color:#d2a8ff;font-weight:600">¥${div.amount.toFixed(4)}/份</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   }

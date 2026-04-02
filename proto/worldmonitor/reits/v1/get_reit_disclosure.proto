@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package worldmonitor.reits.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ReitDividend represents a single distribution event for a C-REIT.
+message ReitDividend {
+  string year = 1;
+  string record_date = 2;
+  string ex_date = 3;
+  double amount = 4;
+  string description = 5;
+  string pay_date = 6;
+}
+
+// ReitDisclosure contains NAV, dividend, and trading data for a single C-REIT.
+message ReitDisclosure {
+  string code = 1;
+  string symbol = 2;
+  string name = 3;
+  // Latest NAV (单位净值)
+  double nav = 4;
+  string nav_date = 5;
+  // Cumulative NAV (累计净值)
+  double cumulative_nav = 6;
+  // Premium(+) or discount(-) to NAV in percent
+  double premium_discount = 7;
+  // Total amount distributed per unit since inception
+  double total_distributed = 8;
+  // Annualized distribution yield based on recent dividends / current price
+  double distribution_yield = 9;
+  // Dividend history (most recent first)
+  repeated ReitDividend dividends = 10;
+  // Real-time trading data
+  double price = 11;
+  double change = 12;
+  int64 volume = 13;
+  double turnover = 14;
+  double open = 15;
+  double high = 16;
+  double low = 17;
+  double prev_close = 18;
+  // Error message if data fetch failed for this REIT
+  string error = 19;
+}
+
+// GetReitDisclosureRequest specifies optional filters.
+message GetReitDisclosureRequest {
+  // Filter by REIT symbol (e.g. "180607.SZ"). Empty returns all C-REITs.
+  string reit_symbol = 1 [(sebuf.http.query) = { name: "reit_symbol" }];
+}
+
+// GetReitDisclosureResponse contains C-REIT disclosure data from akshare/EastMoney.
+message GetReitDisclosureResponse {
+  repeated ReitDisclosure disclosures = 1;
+  string source = 2;
+  string last_updated = 3;
+}
