@@ -220,7 +220,7 @@ function injectStyles(): void {
     .fc-sim-chip--skeptical { background: rgba(224,82,82,0.10); color: #e05252; border: 1px solid rgba(224,82,82,0.28); }
     .fc-sim-chip--skeptical::before { background: #e05252; }
     .fc-label-inner { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-    .fc-forecast-title { min-width: 0; }
+    .fc-forecast-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   `;
   document.head.appendChild(style);
 }
@@ -537,10 +537,10 @@ export class ForecastPanel extends Panel {
   private renderSimChip(f: Forecast): string {
     const adj = f.simulationAdjustment ?? 0;
     const demoted = f.demotedBySimulation ?? false;
-    if (adj === 0) return '';
     if (demoted) {
       return `<span class="fc-sim-chip fc-sim-chip--skeptical">AI skeptical</span>`;
     }
+    if (adj === 0) return '';
     if (adj > 0) {
       return `<span class="fc-sim-chip fc-sim-chip--backed">AI backed</span>`;
     }
