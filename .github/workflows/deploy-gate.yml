@@ -1,0 +1,66 @@
+name: Deploy Gate
+
+# Runs whenever Test or Typecheck completes on a PR/push.
+# Checks whether BOTH workflows have passed for the same commit SHA.
+# Posts a commit status on the PR's head SHA so branch protection can see it.
+
+on:
+  workflow_run:
+    workflows: ["Test", "Typecheck"]
+    types: [completed]
+
+permissions:
+  statuses: write
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check unit + typecheck both passed for this SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # Poll check-runs for this SHA and find the latest result for each required job
+          runs=$(gh api "repos/$REPO/commits/$SHA/check-runs" \
+            --jq '.check_runs | map(select(.name == "unit" or .name == "typecheck"))')
+
+          unit=$(echo "$runs" | python3 -c "
+          import sys, json
+          runs = json.load(sys.stdin)
+          matches = [r for r in runs if r['name'] == 'unit']
+          if not matches: print('pending')
+          else: print(sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]['conclusion'] or 'pending')
+          ")
+
+          typecheck=$(echo "$runs" | python3 -c "
+          import sys, json
+          runs = json.load(sys.stdin)
+          matches = [r for r in runs if r['name'] == 'typecheck']
+          if not matches: print('pending')
+          else: print(sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]['conclusion'] or 'pending')
+          ")
+
+          echo "unit=$unit  typecheck=$typecheck"
+
+          if [ "$unit" = "pending" ] || [ "$typecheck" = "pending" ]; then
+            gh api "repos/$REPO/statuses/$SHA" --method POST \
+              --field state="pending" \
+              --field context="gate" \
+              --field description="Waiting for unit + typecheck to complete"
+            exit 0
+          fi
+
+          if [ "$unit" != "success" ] || [ "$typecheck" != "success" ]; then
+            gh api "repos/$REPO/statuses/$SHA" --method POST \
+              --field state="failure" \
+              --field context="gate" \
+              --field description="Required checks did not pass (unit=$unit typecheck=$typecheck)"
+            exit 0
+          fi
+
+          gh api "repos/$REPO/statuses/$SHA" --method POST \
+            --field state="success" \
+            --field context="gate" \
+            --field description="unit + typecheck both passed"

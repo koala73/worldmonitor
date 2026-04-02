@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package worldmonitor.radiation.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/radiation/v1/radiation_observation.proto";
+
+// ListRadiationObservationsRequest specifies optional result limits.
+message ListRadiationObservationsRequest {
+  // Maximum items to return (1-25). Zero uses the service default.
+  int32 max_items = 1 [(sebuf.http.query) = { name: "max_items" }];
+}
+
+// ListRadiationObservationsResponse contains normalized readings plus coverage metadata.
+message ListRadiationObservationsResponse {
+  // Normalized observations from EPA RadNet and Safecast.
+  repeated RadiationObservation observations = 1;
+
+  // Time the service synthesized the response, as Unix epoch milliseconds.
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+
+  // Number of EPA RadNet observations included.
+  int32 epa_count = 3;
+
+  // Number of Safecast observations included.
+  int32 safecast_count = 4;
+
+  // Total observations classified above normal.
+  int32 anomaly_count = 5;
+
+  // Observations classified as elevated.
+  int32 elevated_count = 6;
+
+  // Observations classified as spike-level anomalies.
+  int32 spike_count = 7;
+
+  // Observations corroborated by more than one source.
+  int32 corroborated_count = 8;
+
+  // Observations that remain low-confidence after synthesis.
+  int32 low_confidence_count = 9;
+
+  // Observations where contributing sources materially disagree.
+  int32 conflicting_count = 10;
+
+  // Observations whose normalized value was derived from CPM.
+  int32 converted_from_cpm_count = 11;
+}

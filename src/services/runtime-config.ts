@@ -4,7 +4,7 @@ import { invokeTauri } from './tauri-bridge';
 export type RuntimeSecretKey =
   | 'GROQ_API_KEY'
   | 'OPENROUTER_API_KEY'
-  | 'TAVILY_API_KEYS'
+  | 'EXA_API_KEYS'
   | 'BRAVE_API_KEYS'
   | 'SERPAPI_API_KEYS'
   | 'FRED_API_KEY'
@@ -33,7 +33,7 @@ export type RuntimeSecretKey =
 export type RuntimeFeatureId =
   | 'aiGroq'
   | 'aiOpenRouter'
-  | 'stockNewsSearchTavily'
+  | 'stockNewsSearchExa'
   | 'stockNewsSearchBrave'
   | 'stockNewsSearchSerpApi'
   | 'economicFred'
@@ -90,7 +90,7 @@ function getSidecarSecretValidateUrl(): string {
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiGroq: true,
   aiOpenRouter: true,
-  stockNewsSearchTavily: true,
+  stockNewsSearchExa: true,
   stockNewsSearchBrave: true,
   stockNewsSearchSerpApi: true,
   economicFred: true,
@@ -138,10 +138,10 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     fallback: 'Falls back to local browser model only.',
   },
   {
-    id: 'stockNewsSearchTavily',
-    name: 'Tavily stock-news search',
+    id: 'stockNewsSearchExa',
+    name: 'Exa stock-news search',
     description: 'Primary targeted stock-news search provider for premium analysis enrichment.',
-    requiredSecrets: ['TAVILY_API_KEYS'],
+    requiredSecrets: ['EXA_API_KEYS'],
     fallback: 'Falls back to Brave, then SerpAPI, then Google News RSS.',
   },
   {

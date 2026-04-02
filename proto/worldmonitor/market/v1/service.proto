@@ -15,6 +15,13 @@ import "worldmonitor/market/v1/analyze_stock.proto";
 import "worldmonitor/market/v1/backtest_stock.proto";
 import "worldmonitor/market/v1/get_stock_analysis_history.proto";
 import "worldmonitor/market/v1/list_stored_stock_backtests.proto";
+import "worldmonitor/market/v1/list_crypto_sectors.proto";
+import "worldmonitor/market/v1/list_defi_tokens.proto";
+import "worldmonitor/market/v1/list_ai_tokens.proto";
+import "worldmonitor/market/v1/list_other_tokens.proto";
+import "worldmonitor/market/v1/get_fear_greed_index.proto";
+import "worldmonitor/market/v1/list_earnings_calendar.proto";
+import "worldmonitor/market/v1/get_cot_positioning.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -78,5 +85,40 @@ service MarketService {
   // ListStoredStockBacktests retrieves stored premium backtest snapshots from the backend store.
   rpc ListStoredStockBacktests(ListStoredStockBacktestsRequest) returns (ListStoredStockBacktestsResponse) {
     option (sebuf.http.config) = {path: "/list-stored-stock-backtests", method: HTTP_METHOD_GET};
+  }
+
+  // ListCryptoSectors retrieves crypto sector performance averages.
+  rpc ListCryptoSectors(ListCryptoSectorsRequest) returns (ListCryptoSectorsResponse) {
+    option (sebuf.http.config) = {path: "/list-crypto-sectors", method: HTTP_METHOD_GET};
+  }
+
+  // ListDefiTokens retrieves DeFi token prices and changes.
+  rpc ListDefiTokens(ListDefiTokensRequest) returns (ListDefiTokensResponse) {
+    option (sebuf.http.config) = {path: "/list-defi-tokens", method: HTTP_METHOD_GET};
+  }
+
+  // ListAiTokens retrieves AI-focused crypto token prices and changes.
+  rpc ListAiTokens(ListAiTokensRequest) returns (ListAiTokensResponse) {
+    option (sebuf.http.config) = {path: "/list-ai-tokens", method: HTTP_METHOD_GET};
+  }
+
+  // ListOtherTokens retrieves other/trending crypto token prices and changes.
+  rpc ListOtherTokens(ListOtherTokensRequest) returns (ListOtherTokensResponse) {
+    option (sebuf.http.config) = {path: "/list-other-tokens", method: HTTP_METHOD_GET};
+  }
+
+  // GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
+  rpc GetFearGreedIndex(GetFearGreedIndexRequest) returns (GetFearGreedIndexResponse) {
+    option (sebuf.http.config) = {path: "/get-fear-greed-index", method: HTTP_METHOD_GET};
+  }
+
+  // ListEarningsCalendar retrieves upcoming and recent earnings releases.
+  rpc ListEarningsCalendar(ListEarningsCalendarRequest) returns (ListEarningsCalendarResponse) {
+    option (sebuf.http.config) = {path: "/list-earnings-calendar", method: HTTP_METHOD_GET};
+  }
+
+  // GetCotPositioning retrieves CFTC COT institutional positioning data.
+  rpc GetCotPositioning(GetCotPositioningRequest) returns (GetCotPositioningResponse) {
+    option (sebuf.http.config) = {path: "/get-cot-positioning", method: HTTP_METHOD_GET};
   }
 }

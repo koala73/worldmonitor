@@ -68,7 +68,7 @@ async function fetchAviationStackFlights(airports) {
 async function fetchNotamClosures() {
   try {
     const { url, token } = getRedisCredentialsFromEnv();
-    const resp = await fetch(`${url}/get/aviation:notam:closures:v2`, {
+    const resp = await fetch(`${url}/get/${encodeURIComponent('aviation:notam:closures:v2')}`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
     });
@@ -157,7 +157,7 @@ async function fetchAirportOpsSummary() {
       totalFlights, closureStatus: isClosed, notamFlags,
       severity: `FLIGHT_DELAY_SEVERITY_${sevStr.toUpperCase()}`,
       topDelayReasons,
-      source: avResult.healthy ? 'aviationstack' : 'simulated',
+      source: avResult.healthy ? 'aviationstack' : 'degraded',
       updatedAt: now,
     });
   }

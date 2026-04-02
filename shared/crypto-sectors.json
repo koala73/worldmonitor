@@ -1,0 +1,12 @@
+{
+  "sectors": [
+    { "id": "layer-1", "name": "Layer 1", "tokens": ["bitcoin","ethereum","solana","avalanche-2","cardano"] },
+    { "id": "defi", "name": "DeFi", "tokens": ["aave","uniswap","jupiter-exchange-solana","pendle","maker"] },
+    { "id": "layer-2", "name": "Layer 2", "tokens": ["matic-network","arbitrum","optimism","starknet","mantle"] },
+    { "id": "ai", "name": "AI", "tokens": ["bittensor","render-token","fetch-ai","ocean-protocol","akash-network"] },
+    { "id": "memes", "name": "Memes", "tokens": ["dogecoin","shiba-inu","pepe","bonk","floki"] },
+    { "id": "gaming", "name": "Gaming", "tokens": ["immutable-x","gala","the-sandbox","axie-infinity","illuvium"] },
+    { "id": "privacy", "name": "Privacy", "tokens": ["monero","zcash","secret","oasis-network","iron-fish"] },
+    { "id": "infra", "name": "Infra", "tokens": ["chainlink","the-graph","filecoin","arweave","helium"] }
+  ]
+}

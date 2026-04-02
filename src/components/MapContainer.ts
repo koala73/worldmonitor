@@ -38,11 +38,14 @@ import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
+import type { RadiationObservation } from '@/services/radiation';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
 import type { IranEvent } from '@/services/conflict';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
+import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
+import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -95,7 +98,7 @@ export class MapContainer {
   private cachedOnCountryClicked: ((country: CountryClickPayload) => void) | null = null;
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
-  private cachedOnMapContextMenu: ((payload: { lat: number; lon: number; screenX: number; screenY: number }) => void) | null = null;
+  private cachedOnMapContextMenu: ((payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void) | null = null;
 
   // ─── Data cache (survives map mode switches) ───────────────────────────────
   private cachedEarthquakes: Earthquake[] | null = null;
@@ -119,8 +122,10 @@ export class MapContainer {
   private cachedUcdpEvents: UcdpGeoEvent[] | null = null;
   private cachedDisplacementFlows: DisplacementFlow[] | null = null;
   private cachedClimateAnomalies: ClimateAnomaly[] | null = null;
+  private cachedRadiationObservations: RadiationObservation[] | null = null;
   private cachedGpsJamming: GpsJamHex[] | null = null;
   private cachedSatellites: SatellitePosition[] | null = null;
+  private cachedDiseaseOutbreaks: DiseaseOutbreakItem[] | null = null;
   private cachedCyberThreats: CyberThreat[] | null = null;
   private cachedIranEvents: IranEvent[] | null = null;
   private cachedNewsLocations: NewsLocationMarker[] | null = null;
@@ -283,8 +288,10 @@ export class MapContainer {
     if (this.cachedUcdpEvents) this.setUcdpEvents(this.cachedUcdpEvents);
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
+    if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
     if (this.cachedGpsJamming) this.setGpsJamming(this.cachedGpsJamming);
     if (this.cachedSatellites) this.setSatellites(this.cachedSatellites);
+    if (this.cachedDiseaseOutbreaks) this.setDiseaseOutbreaks(this.cachedDiseaseOutbreaks);
     if (this.cachedCyberThreats) this.setCyberThreats(this.cachedCyberThreats);
     if (this.cachedIranEvents) this.setIranEvents(this.cachedIranEvents);
     if (this.cachedNewsLocations) this.setNewsLocations(this.cachedNewsLocations);
@@ -342,9 +349,9 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setIsResizing(isResizing); } else { this.svgMap?.setIsResizing(isResizing); }
   }
 
-  public setView(view: MapView): void {
-    if (this.useGlobe) { this.globeMap?.setView(view); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setView(view as DeckMapView); } else { this.svgMap?.setView(view); }
+  public setView(view: MapView, zoom?: number): void {
+    if (this.useGlobe) { this.globeMap?.setView(view, zoom); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setView(view as DeckMapView, zoom); } else { this.svgMap?.setView(view, zoom); }
   }
 
   public setZoom(zoom: number): void {
@@ -424,6 +431,16 @@ export class MapContainer {
     this.cachedOutages = outages;
     if (this.useGlobe) { this.globeMap?.setOutages(outages); return; }
     if (this.useDeckGL) { this.deckGLMap?.setOutages(outages); } else { this.svgMap?.setOutages(outages); }
+  }
+
+  public setTrafficAnomalies(anomalies: ProtoTrafficAnomaly[]): void {
+    if (this.useGlobe) { this.globeMap?.setTrafficAnomalies(anomalies); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setTrafficAnomalies(anomalies); }
+  }
+
+  public setDdosLocations(hits: DdosLocationHit[]): void {
+    if (this.useGlobe) { this.globeMap?.setDdosLocations(hits); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setDdosLocations(hits); }
   }
 
   public setAisData(disruptions: AisDisruptionEvent[], density: AisDensityZone[]): void {
@@ -551,6 +568,16 @@ export class MapContainer {
     }
   }
 
+  public setRadiationObservations(observations: RadiationObservation[]): void {
+    this.cachedRadiationObservations = observations;
+    if (this.useGlobe) { this.globeMap?.setRadiationObservations(observations); return; }
+    if (this.useDeckGL) {
+      this.deckGLMap?.setRadiationObservations(observations);
+    } else {
+      this.svgMap?.setRadiationObservations(observations);
+    }
+  }
+
   public setGpsJamming(hexes: GpsJamHex[]): void {
     this.cachedGpsJamming = hexes;
     if (this.useGlobe) { this.globeMap?.setGpsJamming(hexes); return; }
@@ -562,6 +589,12 @@ export class MapContainer {
   public setSatellites(positions: SatellitePosition[]): void {
     this.cachedSatellites = positions;
     if (this.useGlobe) { this.globeMap?.setSatellites(positions); return; }
+  }
+
+  public setDiseaseOutbreaks(outbreaks: DiseaseOutbreakItem[]): void {
+    this.cachedDiseaseOutbreaks = outbreaks;
+    if (this.useGlobe) return; // TODO: add globe support for disease outbreaks layer
+    if (this.useDeckGL) this.deckGLMap?.setDiseaseOutbreaks(outbreaks);
   }
 
   public setCyberThreats(threats: CyberThreat[]): void {
@@ -871,7 +904,7 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setOnCountryClick(callback); } else { this.svgMap?.setOnCountryClick(callback); }
   }
 
-  public onMapContextMenu(callback: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void): void {
+  public onMapContextMenu(callback: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void): void {
     this.cachedOnMapContextMenu = callback;
     if (this.useGlobe) { this.globeMap?.setOnMapContextMenu(callback); return; }
     if (this.useDeckGL) { this.deckGLMap?.setOnMapContextMenu(callback); }
@@ -950,8 +983,10 @@ export class MapContainer {
     this.cachedUcdpEvents = null;
     this.cachedDisplacementFlows = null;
     this.cachedClimateAnomalies = null;
+    this.cachedRadiationObservations = null;
     this.cachedGpsJamming = null;
     this.cachedSatellites = null;
+    this.cachedDiseaseOutbreaks = null;
     this.cachedCyberThreats = null;
     this.cachedIranEvents = null;
     this.cachedNewsLocations = null;

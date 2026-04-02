@@ -34,7 +34,49 @@ import {
   findNewsForMarketSymbol,
 } from './entity-extraction';
 import { getEntityIndex } from './entity-index';
-import { aggregateThreats } from './threat-classifier';
+import type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
+
+const THREAT_PRIORITY: Record<ThreatLevel, number> = {
+  critical: 5, high: 4, medium: 3, low: 2, info: 1,
+};
+
+function aggregateThreats(
+  items: Array<{ threat?: ThreatClassification; tier?: number }>
+): ThreatClassification {
+  const withThreat = items.filter(i => i.threat);
+  if (withThreat.length === 0) {
+    return { level: 'info', category: 'general', confidence: 0.3, source: 'keyword' };
+  }
+  let maxLevel: ThreatLevel = 'info';
+  let maxPriority = 0;
+  for (const item of withThreat) {
+    const p = THREAT_PRIORITY[item.threat!.level];
+    if (p > maxPriority) { maxPriority = p; maxLevel = item.threat!.level; }
+  }
+  const catCounts = new Map<EventCategory, number>();
+  for (const item of withThreat) {
+    const cat = item.threat!.category;
+    catCounts.set(cat, (catCounts.get(cat) ?? 0) + 1);
+  }
+  let topCat: EventCategory = 'general';
+  let topCount = 0;
+  for (const [cat, count] of catCounts) {
+    if (count > topCount) { topCount = count; topCat = cat; }
+  }
+  let weightedSum = 0;
+  let weightTotal = 0;
+  for (const item of withThreat) {
+    const weight = item.tier ? (6 - Math.min(item.tier, 5)) : 1;
+    weightedSum += item.threat!.confidence * weight;
+    weightTotal += weight;
+  }
+  return {
+    level: maxLevel,
+    category: topCat,
+    confidence: weightTotal > 0 ? weightedSum / weightTotal : 0.5,
+    source: 'keyword',
+  };
+}
 
 const TOPIC_BASELINE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const TOPIC_BASELINE_SPIKE_MULTIPLIER = 3;
@@ -66,7 +108,7 @@ export interface NewsItemCore {
   isAlert: boolean;
   monitorColor?: string;
   tier?: number;
-  threat?: import('./threat-classifier').ThreatClassification;
+  threat?: ThreatClassification;
   lat?: number;
   lon?: number;
   locationName?: string;
@@ -88,7 +130,7 @@ export interface ClusteredEventCore {
   isAlert: boolean;
   monitorColor?: string;
   velocity?: { sourcesPerHour?: number };
-  threat?: import('./threat-classifier').ThreatClassification;
+  threat?: ThreatClassification;
   lat?: number;
   lon?: number;
   lang?: string;

@@ -39,10 +39,12 @@ describe('panel-config guardrails', () => {
 
     const allowedContexts = [
       /this\.ctx\.panels\[key\]\s*=/,             // createPanel helper
-      /this\.ctx\.panels\['deduction'\]/,          // desktop-only, intentionally ungated
+      /this\.ctx\.panels\['deduction'\]/,          // async-mounted PRO panel — gated via WEB_PREMIUM_PANELS
       /this\.ctx\.panels\['runtime-config'\]/,     // desktop-only, intentionally ungated
+      /this\.ctx\.panels\['live-news'\]/,          // mountLiveNewsIfReady — has its own channel guard
       /panel as unknown as/,                       // lazyPanel generic cast
       /this\.ctx\.panels\[panelKey\]\s*=/,         // FEEDS loop (guarded by DEFAULT_PANELS check)
+      /this\.ctx\.panels\[spec\.id\]\s*=/,         // custom widgets (cw- prefix, always enabled)
     ];
 
     for (let i = 0; i < lines.length; i++) {
@@ -68,6 +70,19 @@ describe('panel-config guardrails', () => {
       `Found unguarded panel assignments that bypass createPanel/shouldCreatePanel guards:\n` +
       violations.map(v => `  L${v.line}: ${v.text}`).join('\n') +
       `\n\nUse this.createPanel(), this.createNewsPanel(), or wrap with shouldCreatePanel().`
+    );
+  });
+
+  it('reapplies panel settings after mounting the async deduction panel', () => {
+    const deductionMount = panelLayoutSrc.match(
+      /import\('@\/components\/DeductionPanel'\)\.then\(\(\{ DeductionPanel \}\) => \{([\s\S]*?)\n\s*\}\);/
+    );
+
+    assert.ok(deductionMount, 'expected async DeductionPanel mount block in panel-layout.ts');
+    assert.match(
+      deductionMount[1],
+      /this\.applyPanelSettings\(\);/,
+      'async DeductionPanel mount must replay saved panel settings after insertion',
     );
   });
 

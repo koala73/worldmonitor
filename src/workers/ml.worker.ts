@@ -125,6 +125,10 @@ function getModelConfig(modelId: string): ModelConfig | undefined {
   return MODEL_CONFIGS.find(m => m.id === modelId);
 }
 
+function isSupportedModelId(modelId: string): boolean {
+  return !!getModelConfig(modelId);
+}
+
 async function loadModel(modelId: string): Promise<void> {
   if (loadedPipelines.has(modelId)) return;
 
@@ -190,6 +194,9 @@ async function embedTexts(texts: string[]): Promise<number[][]> {
 }
 
 async function summarizeTexts(texts: string[], modelId = 'summarization'): Promise<string[]> {
+  if (!isSupportedModelId(modelId)) {
+    throw new Error(`Unknown model: ${modelId}`);
+  }
   await loadModel(modelId);
   const pipe = loadedPipelines.get(modelId)!;
 
@@ -337,6 +344,9 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
       }
 
       case 'load-model': {
+        if (!isSupportedModelId(message.modelId)) {
+          throw new Error(`Unknown model: ${message.modelId}`);
+        }
         await loadModel(message.modelId);
         self.postMessage({
           type: 'model-loaded',

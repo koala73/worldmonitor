@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package worldmonitor.consumer_prices.v1;
+
+// CategorySnapshot holds price index data for a single product category.
+message CategorySnapshot {
+  // slug is the machine-readable category identifier (e.g. "eggs", "rice").
+  string slug = 1;
+  // name is the human-readable category label.
+  string name = 2;
+  // wow_pct is the week-over-week percentage change.
+  double wow_pct = 3;
+  // mom_pct is the month-over-month percentage change.
+  double mom_pct = 4;
+  // current_index is the current price index value (base = 100).
+  double current_index = 5;
+  // sparkline is an ordered sequence of index values for the selected range.
+  repeated double sparkline = 6;
+  // coverage_pct is the percentage of basket items observed for this category.
+  double coverage_pct = 7;
+  // item_count is the number of observed products in this category.
+  int32 item_count = 8;
+}
+
+// PriceMover describes a product with a notable upward or downward price move.
+message PriceMover {
+  // product_id is the retailer product identifier.
+  string product_id = 1;
+  // title is the normalized product title.
+  string title = 2;
+  // category is the product category slug.
+  string category = 3;
+  // retailer_slug identifies the retailer where this move was observed.
+  string retailer_slug = 4;
+  // change_pct is the signed percentage change over the selected window.
+  double change_pct = 5;
+  // current_price is the latest observed price.
+  double current_price = 6;
+  // currency_code is the ISO 4217 currency code.
+  string currency_code = 7;
+}
+
+// RetailerSpread holds the basket cost breakdown for one retailer.
+message RetailerSpread {
+  // slug is the retailer identifier.
+  string slug = 1;
+  // name is the retailer display name.
+  string name = 2;
+  // basket_total is the sum of matched basket item prices at this retailer.
+  double basket_total = 3;
+  // delta_vs_cheapest is the absolute price difference vs the cheapest retailer.
+  double delta_vs_cheapest = 4;
+  // delta_vs_cheapest_pct is the percentage difference vs the cheapest retailer.
+  double delta_vs_cheapest_pct = 5;
+  // item_count is the number of matched basket items observed.
+  int32 item_count = 6;
+  // freshness_min is minutes since the last successful scrape for this retailer.
+  int32 freshness_min = 7;
+  // currency_code is the ISO 4217 currency code.
+  string currency_code = 8;
+}
+
+// BasketPoint is a single data point in a basket index time series.
+message BasketPoint {
+  // date is the ISO 8601 date string (YYYY-MM-DD).
+  string date = 1;
+  // index is the basket index value (base = 100).
+  double index = 2;
+}
+
+// RetailerFreshnessInfo describes the operational health of one retailer feed.
+message RetailerFreshnessInfo {
+  // slug is the retailer identifier.
+  string slug = 1;
+  // name is the retailer display name.
+  string name = 2;
+  // last_run_at is the Unix millisecond timestamp of the last successful scrape.
+  int64 last_run_at = 3;
+  // status is one of "ok", "stale", "failed", "unknown".
+  string status = 4;
+  // parse_success_rate is the fraction of pages parsed successfully (0–1).
+  double parse_success_rate = 5;
+  // freshness_min is minutes since last successful observation.
+  int32 freshness_min = 6;
+}

@@ -26,8 +26,7 @@ message SearchFlightPricesRequest {
   string departure_date = 3 [
     (sebuf.http.query) = { name: "departure_date" },
     (buf.validate.field).required = true,
-    (buf.validate.field).string.min_len = 10,
-    (buf.validate.field).string.max_len = 10
+    (buf.validate.field).string.len = 10
   ];
   // Return date (ISO 8601), empty for one-way.
   string return_date = 4 [(sebuf.http.query) = { name: "return_date" }];

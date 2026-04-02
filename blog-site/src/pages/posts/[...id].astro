@@ -20,9 +20,14 @@ const { Content } = await render(post);
   metaTitle={post.data.metaTitle}
   keywords={post.data.keywords}
   pubDate={post.data.pubDate}
+  modifiedDate={post.data.modifiedDate}
+  author={post.data.author}
+  authorUrl={post.data.authorUrl}
+  authorBio={post.data.authorBio}
   audience={post.data.audience}
   heroImage={post.data.heroImage}
   slug={post.id}
+  rawBody={post.body}
 >
   <Content />
 </BlogPost>

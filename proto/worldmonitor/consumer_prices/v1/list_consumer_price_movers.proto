@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package worldmonitor.consumer_prices.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/consumer_prices/v1/consumer_prices_data.proto";
+
+// ListConsumerPriceMoversRequest parameters for the movers RPC.
+message ListConsumerPriceMoversRequest {
+  // market_code is the ISO 3166-1 alpha-2 market identifier.
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  // range is one of "7d", "30d", "90d".
+  string range = 2 [(sebuf.http.query) = { name: "range" }];
+  // limit caps the number of risers and fallers returned (default 10).
+  int32 limit = 3 [(sebuf.http.query) = { name: "limit" }];
+  // category_slug filters to a single category when set.
+  string category_slug = 4 [(sebuf.http.query) = { name: "category_slug" }];
+}
+
+// ListConsumerPriceMoversResponse holds the top price movers.
+message ListConsumerPriceMoversResponse {
+  // market_code echoes the requested market.
+  string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
+  // as_of is the Unix millisecond timestamp of the snapshot.
+  int64 as_of = 2;
+  // range echoes the requested range.
+  string range = 3 [(sebuf.http.query) = { name: "range" }];
+  // risers holds the products with the largest upward price moves.
+  repeated PriceMover risers = 4;
+  // fallers holds the products with the largest downward price moves.
+  repeated PriceMover fallers = 5;
+  // upstream_unavailable is true when the companion service could not be reached.
+  bool upstream_unavailable = 6;
+}

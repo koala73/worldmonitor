@@ -1,0 +1,25 @@
+retailer:
+  slug: migros_ch
+  name: Migros Switzerland
+  marketCode: ch
+  currencyCode: CHF
+  adapter: search
+  baseUrl: https://www.migros.ch
+  # disabled 2026-03: Exa returns competitor domain URLs (domain bleed) for all CH queries; 0/12 every run.
+  enabled: false
+
+  searchConfig:
+    numResults: 5
+    # urlPathContains removed 2026-03: Exa does not index Migros pages under /de/produkt/ --
+    # all 5 search results failed the domain/path check every run. Remove if Exa indexing improves.
+    queryTemplate: "{canonicalName} Lebensmittel {market} {currency} Preis"
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

@@ -33,6 +33,49 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface GetCo2MonitoringRequest {
+}
+
+export interface GetCo2MonitoringResponse {
+  monitoring?: Co2Monitoring;
+}
+
+export interface Co2Monitoring {
+  currentPpm: number;
+  yearAgoPpm: number;
+  annualGrowthRate: number;
+  preIndustrialBaseline: number;
+  monthlyAverage: number;
+  trend12m: Co2DataPoint[];
+  methanePpb: number;
+  nitrousOxidePpb: number;
+  measuredAt: string;
+  station: string;
+}
+
+export interface Co2DataPoint {
+  month: string;
+  ppm: number;
+  anomaly: number;
+}
+
+export interface ListClimateNewsRequest {
+}
+
+export interface ListClimateNewsResponse {
+  items: ClimateNewsItem[];
+  fetchedAt: number;
+}
+
+export interface ClimateNewsItem {
+  id: string;
+  title: string;
+  url: string;
+  sourceName: string;
+  publishedAt: number;
+  summary: string;
+}
+
 export type AnomalySeverity = "ANOMALY_SEVERITY_UNSPECIFIED" | "ANOMALY_SEVERITY_NORMAL" | "ANOMALY_SEVERITY_MODERATE" | "ANOMALY_SEVERITY_EXTREME";
 
 export type AnomalyType = "ANOMALY_TYPE_UNSPECIFIED" | "ANOMALY_TYPE_WARM" | "ANOMALY_TYPE_COLD" | "ANOMALY_TYPE_WET" | "ANOMALY_TYPE_DRY" | "ANOMALY_TYPE_MIXED";
@@ -110,6 +153,52 @@ export class ClimateServiceClient {
     }
 
     return await resp.json() as ListClimateAnomaliesResponse;
+  }
+
+  async getCo2Monitoring(req: GetCo2MonitoringRequest, options?: ClimateServiceCallOptions): Promise<GetCo2MonitoringResponse> {
+    let path = "/api/climate/v1/get-co2-monitoring";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCo2MonitoringResponse;
+  }
+
+  async listClimateNews(req: ListClimateNewsRequest, options?: ClimateServiceCallOptions): Promise<ListClimateNewsResponse> {
+    let path = "/api/climate/v1/list-climate-news";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListClimateNewsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

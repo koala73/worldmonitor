@@ -57,6 +57,14 @@ function isAllowedDomain(hostname) {
   return ALLOWED_DOMAINS.includes(hostname) || ALLOWED_DOMAINS.includes(bare) || ALLOWED_DOMAINS.includes(withWww);
 }
 
+function isGoogleNewsFeedUrl(feedUrl) {
+  try {
+    return new URL(feedUrl).hostname === 'news.google.com';
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
@@ -99,7 +107,7 @@ export default async function handler(req) {
     const isRelayOnly = RELAY_ONLY_DOMAINS.has(hostname);
 
     // Google News is slow - use longer timeout
-    const isGoogleNews = feedUrl.includes('news.google.com');
+    const isGoogleNews = isGoogleNewsFeedUrl(feedUrl);
     const timeout = isGoogleNews ? 20000 : 12000;
 
     const fetchDirect = async () => {

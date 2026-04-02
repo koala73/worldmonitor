@@ -13,6 +13,10 @@ function emptyAux() {
     gpsHexes: [] as any[],
     iranEvents: [] as any[],
     orefData: null as { activeAlertCount: number; historyCount24h: number } | null,
+    advisories: null as { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null,
+    displacedByIso3: {} as Record<string, number>,
+    newsTopStories: [] as Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>,
+    threatSummaryByCountry: null as Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null,
   };
 }
 
@@ -25,12 +29,19 @@ function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
 }
 
 describe('CII scoring', () => {
-  it('returns scores for all 24 tier-1 countries including MX, BR, AE', () => {
+  it('returns scores for all 31 tier-1 countries including MX, BR, AE, LB, IQ, AF', () => {
     const scores = computeCIIScores([], emptyAux());
-    assert.equal(scores.length, 24);
+    assert.equal(scores.length, 31);
     assert.ok(scoreFor(scores, 'MX'), 'MX missing');
     assert.ok(scoreFor(scores, 'BR'), 'BR missing');
     assert.ok(scoreFor(scores, 'AE'), 'AE missing');
+    assert.ok(scoreFor(scores, 'LB'), 'LB missing');
+    assert.ok(scoreFor(scores, 'IQ'), 'IQ missing');
+    assert.ok(scoreFor(scores, 'AF'), 'AF missing');
+    assert.ok(scoreFor(scores, 'KR'), 'KR missing');
+    assert.ok(scoreFor(scores, 'EG'), 'EG missing');
+    assert.ok(scoreFor(scores, 'JP'), 'JP missing');
+    assert.ok(scoreFor(scores, 'QA'), 'QA missing');
   });
 
   it('UCDP war floor: composite >= 70', () => {
@@ -167,5 +178,93 @@ describe('CII scoring', () => {
     const scores = computeCIIScores([], emptyAux());
     const us = scoreFor(scores, 'US')!;
     assert.ok(us.combinedScore >= 2 && us.combinedScore <= 10, `US baseline score ${us.combinedScore} should be ~2-10`);
+  });
+
+  it('newsTopStories critical threat boosts newsActivity for attributed country', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = [
+      { countryCode: 'RU', threatLevel: 'critical', primaryTitle: 'Russia launches strikes' },
+    ];
+    const withNews = scoreFor(computeCIIScores([], aux), 'RU')!;
+    const withoutNews = scoreFor(computeCIIScores([], emptyAux()), 'RU')!;
+    assert.ok(withNews.components!.newsActivity > 0, 'newsActivity should be > 0 with critical story');
+    assert.ok(withNews.combinedScore > withoutNews.combinedScore,
+      `RU with critical news (${withNews.combinedScore}) should exceed baseline (${withoutNews.combinedScore})`);
+  });
+
+  it('threatSummaryByCountry boosts newsActivity for target country', () => {
+    const aux = emptyAux();
+    aux.threatSummaryByCountry = { RU: { critical: 3, high: 2, medium: 1, low: 1, info: 0 } };
+    const withThreat = scoreFor(computeCIIScores([], aux), 'RU')!;
+    const withoutThreat = scoreFor(computeCIIScores([], emptyAux()), 'RU')!;
+    assert.ok(withThreat.components!.newsActivity > 0, 'newsActivity should be > 0 with threat summary');
+    assert.ok(withThreat.combinedScore > withoutThreat.combinedScore,
+      `RU with threat summary (${withThreat.combinedScore}) should exceed baseline (${withoutThreat.combinedScore})`);
+  });
+
+  it('newsTopStories newsActivity capped at 20', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = Array.from({ length: 20 }, () => ({
+      countryCode: 'SY', threatLevel: 'critical', primaryTitle: 'Syria conflict escalates',
+    }));
+    const scores = computeCIIScores([], aux);
+    const sy = scoreFor(scores, 'SY')!;
+    assert.ok(sy.components!.newsActivity <= 20, `newsActivity ${sy.components!.newsActivity} should be capped at 20`);
+  });
+
+  it('threatSummaryByCountry newsActivity capped at 20', () => {
+    const aux = emptyAux();
+    aux.threatSummaryByCountry = { SY: { critical: 100, high: 100, medium: 100, low: 100, info: 100 } };
+    const scores = computeCIIScores([], aux);
+    const sy = scoreFor(scores, 'SY')!;
+    assert.ok(sy.components!.newsActivity <= 20, `newsActivity ${sy.components!.newsActivity} should be capped at 20`);
+  });
+
+  it('newsTopStories moderate threat contributes (not silently dropped)', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = [
+      { countryCode: 'DE', threatLevel: 'moderate', primaryTitle: 'Germany election results' },
+    ];
+    const withNews = scoreFor(computeCIIScores([], aux), 'DE')!;
+    const withoutNews = scoreFor(computeCIIScores([], emptyAux()), 'DE')!;
+    assert.ok(withNews.components!.newsActivity > 0, 'moderate threat should produce non-zero newsActivity');
+    assert.ok(withNews.combinedScore >= withoutNews.combinedScore,
+      `DE with moderate news (${withNews.combinedScore}) should be >= baseline (${withoutNews.combinedScore})`);
+  });
+
+  it('newsTopStories null countryCode falls back to title keyword match', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = [
+      { countryCode: null, threatLevel: 'high', primaryTitle: 'Iran launches ballistic missile test' },
+    ];
+    const withNews = scoreFor(computeCIIScores([], aux), 'IR')!;
+    const withoutNews = scoreFor(computeCIIScores([], emptyAux()), 'IR')!;
+    assert.ok(withNews.components!.newsActivity > 0, 'null countryCode with Iran keyword should attribute to IR');
+    assert.ok(withNews.components!.newsActivity > withoutNews.components!.newsActivity,
+      `IR newsActivity with keyword-matched news (${withNews.components!.newsActivity}) should exceed baseline (${withoutNews.components!.newsActivity})`);
+  });
+
+  it('newsTopStories info threat is not counted', () => {
+    const aux = emptyAux();
+    aux.newsTopStories = [
+      { countryCode: 'JP', threatLevel: 'info', primaryTitle: 'Japan trade summit scheduled' },
+    ];
+    const withInfo = scoreFor(computeCIIScores([], aux), 'JP')!;
+    const withoutNews = scoreFor(computeCIIScores([], emptyAux()), 'JP')!;
+    assert.equal(withInfo.components!.newsActivity, withoutNews.components!.newsActivity,
+      'info threat level should not affect newsActivity');
+  });
+
+  it('threatSummaryByCountry unknown country code is safely ignored', () => {
+    const aux = emptyAux();
+    aux.threatSummaryByCountry = { XX: { critical: 10, high: 5, medium: 2, low: 1, info: 0 } };
+    assert.doesNotThrow(() => computeCIIScores([], aux), 'unknown country code should not throw');
+  });
+
+  it('null threatSummaryByCountry produces zero newsActivity', () => {
+    const scores = computeCIIScores([], emptyAux());
+    for (const s of scores) {
+      assert.equal(s.components!.newsActivity, 0, `${s.region} should have zero newsActivity with null threatSummary`);
+    }
   });
 });

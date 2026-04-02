@@ -42,6 +42,20 @@ message TariffDataPoint {
   string indicator_code = 7;
 }
 
+// Current effective tariff estimate for countries with coverage beyond WTO MFN baselines.
+message EffectiveTariffRate {
+  // Source name for the effective-rate estimate.
+  string source_name = 1;
+  // Canonical source URL for the estimate/methodology.
+  string source_url = 2;
+  // Human-readable observation period (for example "December 2025").
+  string observation_period = 3;
+  // ISO 8601 date when the source page was last updated, if known.
+  string updated_at = 4;
+  // Effective tariff rate (percentage).
+  double tariff_rate = 5;
+}
+
 // Bilateral trade flow record for a reporting-partner pair.
 message TradeFlowRecord {
   // WTO member code of reporting country.

@@ -7,7 +7,7 @@ const stablecoinConfig = loadSharedConfig('stablecoins.json');
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'market:stablecoins:v1';
-const CACHE_TTL = 3600; // 1 hour
+const CACHE_TTL = 5400; // 90min — 1h buffer over 10min cron cadence (was 60min = 50min buffer)
 
 const STABLECOIN_IDS = stablecoinConfig.ids.join(',');
 

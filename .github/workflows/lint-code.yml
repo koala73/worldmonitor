@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   biome:
     runs-on: ubuntu-latest
@@ -15,5 +18,10 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
+      - run: npm run lint:unicode
       - run: npm run lint
       - run: npm run lint:boundaries
+      - name: Markdown lint
+        run: npm run lint:md
+      - name: Version sync check
+        run: npm run version:check

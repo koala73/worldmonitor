@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package worldmonitor.sanctions.v1;
+
+// ProgramSanctionsPressure summarizes designation volume and recent additions by OFAC program.
+message ProgramSanctionsPressure {
+  string program = 1;
+  int32 entry_count = 2;
+  int32 new_entry_count = 3;
+}

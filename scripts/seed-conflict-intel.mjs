@@ -70,7 +70,10 @@ async function fetchAcledToken() {
 
 async function fetchAcledEvents() {
   const token = await fetchAcledToken();
-  if (!token) throw new Error('Missing ACLED credentials (ACLED_EMAIL+ACLED_PASSWORD or ACLED_ACCESS_TOKEN)');
+  if (!token) {
+    console.log('  ACLED: no credentials configured, skipping');
+    return null;
+  }
 
   const now = Date.now();
   const startDate = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

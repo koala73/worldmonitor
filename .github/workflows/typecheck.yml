@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   typecheck:
     # No secrets needed — run for all PRs including forks

@@ -9,6 +9,8 @@ import {
   type PriceQuote as ProtoPriceQuote,
   type AviationNewsItem as ProtoAviationNews,
   type CabinClass,
+  type GoogleFlightResult as ProtoGoogleFlightResult,
+  type DatePriceEntry as ProtoDatePriceEntry,
 } from '@/generated/client/worldmonitor/aviation/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -135,6 +137,41 @@ export interface AviationNewsItem {
   publishedAt: Date;
   snippet: string;
   matchedEntities: string[];
+}
+
+export interface GoogleFlightLeg {
+  airlineCode: string;
+  flightNumber: string;
+  departureAirport: string;
+  arrivalAirport: string;
+  departureDatetime: string;  // local ISO datetime, no UTC offset
+  arrivalDatetime: string;
+  durationMinutes: number;
+}
+
+export interface GoogleFlightItinerary {
+  legs: GoogleFlightLeg[];
+  price: number;
+  durationMinutes: number;
+  stops: number;
+}
+
+export interface GoogleFlightsResult {
+  flights: GoogleFlightItinerary[];
+  degraded: boolean;
+  error: string;
+}
+
+export interface DatePrice {
+  date: string;       // YYYY-MM-DD
+  returnDate: string; // YYYY-MM-DD or ''
+  price: number;
+}
+
+export interface GoogleDatesResult {
+  dates: DatePrice[];
+  degraded: boolean;
+  error: string;
 }
 
 // ---- Enum maps ----
@@ -269,6 +306,27 @@ function toDisplayNewsItem(p: ProtoAviationNews): AviationNewsItem {
   };
 }
 
+function toDisplayGoogleFlight(p: ProtoGoogleFlightResult): GoogleFlightItinerary {
+  return {
+    legs: (p.legs ?? []).map(l => ({
+      airlineCode: l.airlineCode ?? '',
+      flightNumber: l.flightNumber ?? '',
+      departureAirport: l.departureAirport ?? '',
+      arrivalAirport: l.arrivalAirport ?? '',
+      departureDatetime: l.departureDatetime ?? '',
+      arrivalDatetime: l.arrivalDatetime ?? '',
+      durationMinutes: l.durationMinutes ?? 0,
+    })),
+    price: p.price ?? 0,
+    durationMinutes: p.durationMinutes ?? 0,
+    stops: p.stops ?? 0,
+  };
+}
+
+function toDisplayDatePrice(p: ProtoDatePriceEntry): DatePrice {
+  return { date: p.date ?? '', returnDate: p.returnDate ?? '', price: p.price ?? 0 };
+}
+
 // ---- Client + circuit breakers ----
 
 const client = new AviationServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
@@ -277,10 +335,14 @@ const breakerDelays = createCircuitBreaker<AirportDelayAlert[]>({ name: 'Flight 
 const breakerOps = createCircuitBreaker<AirportOpsSummary[]>({ name: 'Airport Ops', cacheTtlMs: 6 * 60 * 1000, persistCache: true });
 const breakerFlights = createCircuitBreaker<FlightInstance[]>({ name: 'Airport Flights', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
 const breakerCarrier = createCircuitBreaker<CarrierOps[]>({ name: 'Carrier Ops', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
-const breakerStatus = createCircuitBreaker<FlightInstance[]>({ name: 'Flight Status', cacheTtlMs: 2 * 60 * 1000, persistCache: false });
+const breakerStatus = createCircuitBreaker<FlightInstance[]>({ name: 'Flight Status', cacheTtlMs: 6 * 60 * 1000, persistCache: false });
 const breakerTrack = createCircuitBreaker<PositionSample[]>({ name: 'Track Aircraft', cacheTtlMs: 15 * 1000, persistCache: false });
 const breakerPrices = createCircuitBreaker<{ quotes: PriceQuote[]; isDemoMode: boolean }>({ name: 'Flight Prices', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const breakerNews = createCircuitBreaker<AviationNewsItem[]>({ name: 'Aviation News', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
+// No client-side cache for Google Flights search (gateway is no-store, prices change rapidly)
+const breakerGoogleFlights = createCircuitBreaker<GoogleFlightsResult>({ name: 'Google Flights', cacheTtlMs: 0, persistCache: false });
+// 5-min client cache (server has 10-min Redis + medium gateway cache)
+const breakerGoogleDates = createCircuitBreaker<GoogleDatesResult>({ name: 'Google Dates', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
 
 // ---- Public API ----
 
@@ -291,14 +353,14 @@ export async function fetchFlightDelays(): Promise<AirportDelayAlert[]> {
   return breakerDelays.execute(async () => {
     const r = await client.listAirportDelays({ region: 'AIRPORT_REGION_UNSPECIFIED', minSeverity: 'FLIGHT_DELAY_SEVERITY_UNSPECIFIED', pageSize: 0, cursor: '' });
     return r.alerts.map(toDisplayAlert);
-  }, []);
+  }, [], { shouldCache: (r) => r.length > 0 });
 }
 
 export async function fetchAirportOpsSummary(airports: string[]): Promise<AirportOpsSummary[]> {
   return breakerOps.execute(async () => {
     const r = await client.getAirportOpsSummary({ airports });
     return r.summaries.map(toDisplayOps);
-  }, []);
+  }, [], { cacheKey: airports.join(',') });
 }
 
 export async function fetchAirportFlights(airport: string, direction: 'departure' | 'arrival' | 'both' = 'both', limit = 30): Promise<FlightInstance[]> {
@@ -306,31 +368,32 @@ export async function fetchAirportFlights(airport: string, direction: 'departure
   return breakerFlights.execute(async () => {
     const r = await client.listAirportFlights({ airport, direction: dirMap[direction], limit });
     return r.flights.map(toDisplayFlight);
-  }, []);
+  }, [], { cacheKey: `${airport}:${direction}:${limit}` });
 }
 
 export async function fetchCarrierOps(airports: string[]): Promise<CarrierOps[]> {
   return breakerCarrier.execute(async () => {
     const r = await client.getCarrierOps({ airports, minFlights: 3 });
     return r.carriers.map(toDisplayCarrierOps);
-  }, []);
+  }, [], { cacheKey: airports.join(',') });
 }
 
 export async function fetchFlightStatus(flightNumber: string, date?: string, origin?: string): Promise<FlightInstance[]> {
   return breakerStatus.execute(async () => {
     const r = await client.getFlightStatus({ flightNumber, date: date ?? '', origin: origin ?? '' });
     return r.flights.map(toDisplayFlight);
-  }, []);
+  }, [], { cacheKey: `${flightNumber}:${date ?? ''}:${origin ?? ''}` });
 }
 
 export async function fetchAircraftPositions(opts: { icao24?: string; callsign?: string; swLat?: number; swLon?: number; neLat?: number; neLon?: number }): Promise<PositionSample[]> {
   return breakerTrack.execute(async () => {
     const r = await client.trackAircraft({ icao24: opts.icao24 ?? '', callsign: opts.callsign ?? '', swLat: opts.swLat ?? 0, swLon: opts.swLon ?? 0, neLat: opts.neLat ?? 0, neLon: opts.neLon ?? 0 });
     return r.positions.map(toDisplayPosition);
-  }, []);
+  }, [], { cacheKey: `${opts.icao24 ?? ''}:${opts.callsign ?? ''}:${opts.swLat ?? 0}:${opts.swLon ?? 0}:${opts.neLat ?? 0}:${opts.neLon ?? 0}` });
 }
 
 export async function fetchFlightPrices(opts: { origin: string; destination: string; departureDate: string; returnDate?: string; adults?: number; cabin?: CabinClass; nonstopOnly?: boolean; maxResults?: number; currency?: string; market?: string }): Promise<{ quotes: PriceQuote[]; isDemoMode: boolean; isIndicative: boolean; provider: string }> {
+  const cacheKey = `${opts.origin}:${opts.destination}:${opts.departureDate}:${opts.returnDate ?? ''}:${opts.adults ?? 1}:${opts.cabin ?? 'CABIN_CLASS_ECONOMY'}:${opts.nonstopOnly ?? false}:${opts.maxResults ?? 10}:${opts.currency ?? 'usd'}:${opts.market ?? ''}`;
   return breakerPrices.execute(async () => {
     const r = await client.searchFlightPrices({
       origin: opts.origin, destination: opts.destination,
@@ -345,12 +408,50 @@ export async function fetchFlightPrices(opts: { origin: string; destination: str
       isIndicative: r.isIndicative ?? true,
       provider: r.provider,
     };
-  }, { quotes: [], isDemoMode: true, isIndicative: true, provider: 'demo' });
+  }, { quotes: [], isDemoMode: true, isIndicative: true, provider: 'demo' }, { cacheKey });
 }
 
 export async function fetchAviationNews(entities: string[], windowHours = 24, maxItems = 20): Promise<AviationNewsItem[]> {
+  const cacheKey = `${entities.join(',')}:${windowHours}:${maxItems}`;
   return breakerNews.execute(async () => {
     const r = await client.listAviationNews({ entities, windowHours, maxItems });
     return r.items.map(toDisplayNewsItem);
-  }, []);
+  }, [], { cacheKey });
+}
+
+export async function fetchGoogleFlights(opts: {
+  origin: string; destination: string; departureDate: string;
+  returnDate?: string; cabinClass?: string; maxStops?: string;
+  sortBy?: string; passengers?: number;
+}): Promise<GoogleFlightsResult> {
+  const cacheKey = `${opts.origin}:${opts.destination}:${opts.departureDate}:${opts.returnDate ?? ''}:${opts.cabinClass ?? 'ECONOMY'}:${opts.maxStops ?? ''}:${opts.sortBy ?? ''}:${opts.passengers ?? 1}`;
+  return breakerGoogleFlights.execute(async () => {
+    const r = await client.searchGoogleFlights({
+      origin: opts.origin, destination: opts.destination,
+      departureDate: opts.departureDate, returnDate: opts.returnDate ?? '',
+      cabinClass: opts.cabinClass ?? 'ECONOMY', maxStops: opts.maxStops ?? '',
+      departureWindow: '', airlines: [], sortBy: opts.sortBy ?? '',
+      passengers: opts.passengers ?? 1,
+    });
+    return { flights: r.flights.map(toDisplayGoogleFlight), degraded: r.degraded ?? false, error: r.error ?? '' };
+  }, { flights: [], degraded: true, error: 'Request failed' }, { cacheKey });
+}
+
+export async function fetchGoogleDates(opts: {
+  origin: string; destination: string; startDate: string; endDate: string;
+  tripDuration?: number; isRoundTrip?: boolean; cabinClass?: string;
+  maxStops?: string; passengers?: number;
+}): Promise<GoogleDatesResult> {
+  const cacheKey = `${opts.origin}:${opts.destination}:${opts.startDate}:${opts.endDate}:${opts.tripDuration ?? 0}:${opts.isRoundTrip ?? false}:${opts.cabinClass ?? 'ECONOMY'}:${opts.maxStops ?? ''}:${opts.passengers ?? 1}`;
+  return breakerGoogleDates.execute(async () => {
+    const r = await client.searchGoogleDates({
+      origin: opts.origin, destination: opts.destination,
+      startDate: opts.startDate, endDate: opts.endDate,
+      tripDuration: opts.tripDuration ?? 0, isRoundTrip: opts.isRoundTrip ?? false,
+      cabinClass: opts.cabinClass ?? 'ECONOMY', maxStops: opts.maxStops ?? '',
+      departureWindow: '', airlines: [], sortByPrice: true,
+      passengers: opts.passengers ?? 1,
+    });
+    return { dates: r.dates.map(toDisplayDatePrice), degraded: r.degraded ?? false, error: r.error ?? '' };
+  }, { dates: [], degraded: true, error: 'Request failed' }, { cacheKey });
 }

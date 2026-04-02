@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import type { StockBacktestResult } from '@/services/stock-backtest';
 import { escapeHtml } from '@/utils/sanitize';
 
@@ -15,7 +16,7 @@ function fmtPct(value: number): string {
 
 export class StockBacktestPanel extends Panel {
   constructor() {
-    super({ id: 'stock-backtest', title: 'Premium Backtesting' });
+    super({ id: 'stock-backtest', title: 'Premium Backtesting', infoTooltip: t('components.stockBacktest.infoTooltip'), premium: 'locked' });
   }
 
   public renderBacktests(items: StockBacktestResult[], source: 'live' | 'cached' = 'live'): void {
@@ -38,7 +39,7 @@ export class StockBacktestPanel extends Panel {
               <div>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                   <strong style="font-size:16px;letter-spacing:-0.02em">${escapeHtml(item.name || item.symbol)}</strong>
-                  <span style="font-size:11px;color:var(--text-dim);font-family:monospace;text-transform:uppercase">${escapeHtml(item.display || item.symbol)}</span>
+                  <span style="font-size:11px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase">${escapeHtml(item.display || item.symbol)}</span>
                 </div>
                 <div style="margin-top:6px;font-size:12px;color:var(--text-dim);line-height:1.5">${escapeHtml(item.summary)}</div>
               </div>

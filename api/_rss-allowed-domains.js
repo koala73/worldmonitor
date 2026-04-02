@@ -220,7 +220,6 @@ export default [
   "www.coindesk.com",
   "cointelegraph.com",
   "travel.state.gov",
-  "www.safetravel.govt.nz",
   "th.usembassy.gov",
   "ae.usembassy.gov",
   "de.usembassy.gov",
@@ -277,6 +276,8 @@ export default [
   "www.aviationpros.com",
   "www.aviationweek.com",
   "www.kitco.com",
+  "goldsilverworlds.com",
+  "www.fxempire.com",
   "www.mining.com",
   "www.commoditytrademantra.com",
   "oilprice.com",
@@ -288,5 +289,12 @@ export default [
   "www.mining-technology.com",
   "www.australianmining.com.au",
   "news.goldseek.com",
-  "news.silverseek.com"
+  "news.silverseek.com",
+  "decrypt.co",
+  "blockworks.co",
+  "thedefiant.io",
+  "bitcoinmagazine.com",
+  "www.dlnews.com",
+  "cryptoslate.com",
+  "unchainedcrypto.com"
 ];

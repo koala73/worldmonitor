@@ -256,7 +256,7 @@ const hapiBatchBreaker = createCircuitBreaker<GetHumanitarianSummaryBatchRespons
 export async function fetchConflictEvents(): Promise<ConflictData> {
   const resp = await acledBreaker.execute(async () => {
     return client.listAcledEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
-  }, emptyAcledFallback);
+  }, emptyAcledFallback, { shouldCache: (r) => r.events.length > 0 });
 
   const events = resp.events.map(toConflictEvent);
 
@@ -283,10 +283,7 @@ export async function fetchUcdpClassifications(hydrated?: ListUcdpEventsResponse
 
   const resp = await ucdpBreaker.execute(async () => {
     return client.listUcdpEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
-  }, emptyUcdpFallback);
-
-  // Don't let the breaker cache empty responses — clear so next call retries
-  if (resp.events.length === 0) ucdpBreaker.clearCache();
+  }, emptyUcdpFallback, { shouldCache: (r) => r.events.length > 0 });
 
   return deriveUcdpClassifications(resp.events);
 }
@@ -303,25 +300,31 @@ export async function fetchHapiSummary(): Promise<Map<string, HapiConflictSummar
     } catch (err: unknown) {
       // 404 deploy-skew fallback: batch endpoint not yet deployed, use per-item calls
       if (err instanceof ApiError && err.statusCode === 404) {
-        const results = await Promise.allSettled(
-          HAPI_COUNTRY_CODES.map(async (iso2) => {
-            const r = await getHapiBreaker(iso2).execute(async () => {
-              return client.getHumanitarianSummary({ countryCode: iso2 });
-            }, emptyHapiFallback);
-            return { iso2, r };
-          }),
-        );
-        const fallbackResults: Record<string, ProtoHumanSummary> = {};
-        for (const result of results) {
-          if (result.status === 'fulfilled' && result.value.r.summary) {
-            fallbackResults[result.value.iso2] = result.value.r.summary;
+        const HAPI_CONCURRENT = 5;
+        const allFallback: Array<{ iso2: string; r: GetHumanitarianSummaryResponse }> = [];
+        for (let i = 0; i < HAPI_COUNTRY_CODES.length; i += HAPI_CONCURRENT) {
+          const batch = HAPI_COUNTRY_CODES.slice(i, i + HAPI_CONCURRENT);
+          const results = await Promise.allSettled(
+            batch.map(async (iso2) => {
+              const r = await getHapiBreaker(iso2).execute(async () => {
+                return client.getHumanitarianSummary({ countryCode: iso2 });
+              }, emptyHapiFallback);
+              return { iso2, r };
+            }),
+          );
+          for (const result of results) {
+            if (result.status === 'fulfilled') allFallback.push(result.value);
           }
+        }
+        const fallbackResults: Record<string, ProtoHumanSummary> = {};
+        for (const { iso2, r } of allFallback) {
+          if (r.summary) fallbackResults[iso2] = r.summary;
         }
         return { results: fallbackResults, fetched: Object.keys(fallbackResults).length, requested: HAPI_COUNTRY_CODES.length };
       }
       throw err;
     }
-  }, emptyHapiBatchFallback);
+  }, emptyHapiBatchFallback, { shouldCache: (r) => r.fetched > 0 });
 
   for (const [cc, summary] of Object.entries(resp.results)) {
     byCode.set(cc, toHapiSummary(summary));
@@ -345,10 +348,7 @@ export async function fetchUcdpEvents(hydrated?: ListUcdpEventsResponse): Promis
 
   const resp = await ucdpBreaker.execute(async () => {
     return client.listUcdpEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
-  }, emptyUcdpFallback);
-
-  // Don't let the breaker cache empty responses — clear so next call retries
-  if (resp.events.length === 0) ucdpBreaker.clearCache();
+  }, emptyUcdpFallback, { shouldCache: (r) => r.events.length > 0 });
 
   const events = resp.events.map(toUcdpGeoEvent);
 

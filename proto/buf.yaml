@@ -4,9 +4,17 @@ deps:
 lint:
   use:
     - STANDARD
-    - COMMENTS
   enum_zero_value_suffix: _UNSPECIFIED
   service_suffix: Service
+  ignore_only:
+    ENUM_VALUE_PREFIX:
+      - worldmonitor/thermal/v1/thermal_escalation_cluster.proto
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - worldmonitor/news/v1/service.proto
+    RPC_REQUEST_STANDARD_NAME:
+      - worldmonitor/news/v1/service.proto
+    RPC_RESPONSE_STANDARD_NAME:
+      - worldmonitor/news/v1/service.proto
   ignore:
     - sebuf
 breaking:

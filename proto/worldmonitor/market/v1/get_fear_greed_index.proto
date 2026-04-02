@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetFearGreedIndexRequest {}
+
+message FearGreedCategory {
+  double score = 1;
+  double weight = 2;
+  double contribution = 3;
+  bool degraded = 4;
+  string inputs_json = 5;
+}
+
+message FearGreedSectorPerformance {
+  string symbol = 1;
+  string name = 2;
+  double change1d = 3;
+}
+
+message GetFearGreedIndexResponse {
+  double composite_score = 1;
+  string composite_label = 2;
+  double previous_score = 3;
+  string seeded_at = 4;
+  FearGreedCategory sentiment = 5;
+  FearGreedCategory volatility = 6;
+  FearGreedCategory positioning = 7;
+  FearGreedCategory trend = 8;
+  FearGreedCategory breadth = 9;
+  FearGreedCategory momentum = 10;
+  FearGreedCategory liquidity = 11;
+  FearGreedCategory credit = 12;
+  FearGreedCategory macro = 13;
+  FearGreedCategory cross_asset = 14;
+  double vix = 15;
+  double hy_spread = 16;
+  double yield_10y = 17;
+  double put_call_ratio = 18;
+  double pct_above_200d = 19;
+  double cnn_fear_greed = 20;
+  string cnn_label = 21;
+  double aaii_bull = 22;
+  double aaii_bear = 23;
+  string fed_rate = 24;
+  bool unavailable = 25;
+  double fsi_value = 26;
+  string fsi_label = 27;
+  double hyg_price = 28;
+  double tlt_price = 29;
+  repeated FearGreedSectorPerformance sector_performance = 30;
+}

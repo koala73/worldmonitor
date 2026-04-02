@@ -185,6 +185,21 @@ export interface PositionSample {
   observedAt: number;
 }
 
+export interface GetYoutubeLiveStreamInfoRequest {
+  channel: string;
+  videoId: string;
+}
+
+export interface GetYoutubeLiveStreamInfoResponse {
+  videoId: string;
+  isLive: boolean;
+  channelExists: boolean;
+  channelName: string;
+  hlsUrl: string;
+  title: string;
+  error: string;
+}
+
 export interface SearchFlightPricesRequest {
   origin: string;
   destination: string;
@@ -247,6 +262,69 @@ export interface AviationNewsItem {
   snippet: string;
   matchedEntities: string[];
   imageUrl: string;
+}
+
+export interface SearchGoogleFlightsRequest {
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate: string;
+  cabinClass: string;
+  maxStops: string;
+  departureWindow: string;
+  airlines: string[];
+  sortBy: string;
+  passengers: number;
+}
+
+export interface SearchGoogleFlightsResponse {
+  flights: GoogleFlightResult[];
+  degraded: boolean;
+  error: string;
+}
+
+export interface GoogleFlightResult {
+  legs: GoogleFlightLeg[];
+  price: number;
+  durationMinutes: number;
+  stops: number;
+}
+
+export interface GoogleFlightLeg {
+  airlineCode: string;
+  flightNumber: string;
+  departureAirport: string;
+  arrivalAirport: string;
+  departureDatetime: string;
+  arrivalDatetime: string;
+  durationMinutes: number;
+}
+
+export interface SearchGoogleDatesRequest {
+  origin: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  tripDuration: number;
+  isRoundTrip: boolean;
+  cabinClass: string;
+  maxStops: string;
+  departureWindow: string;
+  airlines: string[];
+  sortByPrice: boolean;
+  passengers: number;
+}
+
+export interface SearchGoogleDatesResponse {
+  dates: DatePriceEntry[];
+  degraded: boolean;
+  error: string;
+}
+
+export interface DatePriceEntry {
+  date: string;
+  returnDate: string;
+  price: number;
 }
 
 export type AirportRegion = "AIRPORT_REGION_UNSPECIFIED" | "AIRPORT_REGION_AMERICAS" | "AIRPORT_REGION_EUROPE" | "AIRPORT_REGION_APAC" | "AIRPORT_REGION_MENA" | "AIRPORT_REGION_AFRICA";
@@ -316,8 +394,11 @@ export interface AviationServiceHandler {
   getCarrierOps(ctx: ServerContext, req: GetCarrierOpsRequest): Promise<GetCarrierOpsResponse>;
   getFlightStatus(ctx: ServerContext, req: GetFlightStatusRequest): Promise<GetFlightStatusResponse>;
   trackAircraft(ctx: ServerContext, req: TrackAircraftRequest): Promise<TrackAircraftResponse>;
+  getYoutubeLiveStreamInfo(ctx: ServerContext, req: GetYoutubeLiveStreamInfoRequest): Promise<GetYoutubeLiveStreamInfoResponse>;
   searchFlightPrices(ctx: ServerContext, req: SearchFlightPricesRequest): Promise<SearchFlightPricesResponse>;
   listAviationNews(ctx: ServerContext, req: ListAviationNewsRequest): Promise<ListAviationNewsResponse>;
+  searchGoogleFlights(ctx: ServerContext, req: SearchGoogleFlightsRequest): Promise<SearchGoogleFlightsResponse>;
+  searchGoogleDates(ctx: ServerContext, req: SearchGoogleDatesRequest): Promise<SearchGoogleDatesResponse>;
 }
 
 export function createAviationServiceRoutes(
@@ -622,6 +703,54 @@ export function createAviationServiceRoutes(
     },
     {
       method: "GET",
+      path: "/api/aviation/v1/get-youtube-live-stream-info",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetYoutubeLiveStreamInfoRequest = {
+            channel: params.get("channel") ?? "",
+            videoId: params.get("video_id") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getYoutubeLiveStreamInfo", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getYoutubeLiveStreamInfo(ctx, body);
+          return new Response(JSON.stringify(result as GetYoutubeLiveStreamInfoResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
       path: "/api/aviation/v1/search-flight-prices",
       handler: async (req: Request): Promise<Response> => {
         try {
@@ -704,6 +833,120 @@ export function createAviationServiceRoutes(
 
           const result = await handler.listAviationNews(ctx, body);
           return new Response(JSON.stringify(result as ListAviationNewsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/aviation/v1/search-google-flights",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchGoogleFlightsRequest = {
+            origin: params.get("origin") ?? "",
+            destination: params.get("destination") ?? "",
+            departureDate: params.get("departure_date") ?? "",
+            returnDate: params.get("return_date") ?? "",
+            cabinClass: params.get("cabin_class") ?? "",
+            maxStops: params.get("max_stops") ?? "",
+            departureWindow: params.get("departure_window") ?? "",
+            airlines: params.get("airlines") ?? "",
+            sortBy: params.get("sort_by") ?? "",
+            passengers: Number(params.get("passengers") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchGoogleFlights", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchGoogleFlights(ctx, body);
+          return new Response(JSON.stringify(result as SearchGoogleFlightsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/aviation/v1/search-google-dates",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchGoogleDatesRequest = {
+            origin: params.get("origin") ?? "",
+            destination: params.get("destination") ?? "",
+            startDate: params.get("start_date") ?? "",
+            endDate: params.get("end_date") ?? "",
+            tripDuration: Number(params.get("trip_duration") ?? "0"),
+            isRoundTrip: params.get("is_round_trip") === "true",
+            cabinClass: params.get("cabin_class") ?? "",
+            maxStops: params.get("max_stops") ?? "",
+            departureWindow: params.get("departure_window") ?? "",
+            airlines: params.get("airlines") ?? "",
+            sortByPrice: params.get("sort_by_price") === "true",
+            passengers: Number(params.get("passengers") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchGoogleDates", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchGoogleDates(ctx, body);
+          return new Response(JSON.stringify(result as SearchGoogleDatesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

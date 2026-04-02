@@ -8,7 +8,7 @@ loadEnvFile(import.meta.url);
 const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v1/gkg_geojson';
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const CANONICAL_KEY = 'unrest:events:v1';
-const CACHE_TTL = 3600;
+const CACHE_TTL = 16200; // 4.5h — 6x the 45 min cron interval (was 1.3x)
 
 // ---------- ACLED Event Type Mapping (from _shared.ts) ----------
 
@@ -167,7 +167,7 @@ async function fetchGdeltEvents() {
 
   const resp = await fetch(`${GDELT_GKG_URL}?${params}`, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!resp.ok) throw new Error(`GDELT API error: ${resp.status}`);

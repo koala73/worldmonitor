@@ -1,0 +1,121 @@
+openapi: 3.1.0
+info:
+    title: HealthService API
+    version: 1.0.0
+paths:
+    /api/health/v1/list-disease-outbreaks:
+        get:
+            tags:
+                - HealthService
+            summary: ListDiseaseOutbreaks
+            description: ListDiseaseOutbreaks returns recent WHO/ProMED disease outbreak alerts.
+            operationId: ListDiseaseOutbreaks
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDiseaseOutbreaksResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListDiseaseOutbreaksRequest:
+            type: object
+        ListDiseaseOutbreaksResponse:
+            type: object
+            properties:
+                outbreaks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DiseaseOutbreakItem'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        DiseaseOutbreakItem:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique identifier (URL-derived).
+                disease:
+                    type: string
+                    description: Disease or outbreak name.
+                location:
+                    type: string
+                    description: Affected country or region.
+                countryCode:
+                    type: string
+                    description: ISO2 country code when known.
+                alertLevel:
+                    type: string
+                    description: 'Alert level: "watch" | "warning" | "alert".'
+                summary:
+                    type: string
+                    description: Short description from the source.
+                sourceUrl:
+                    type: string
+                    description: Source URL.
+                publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix epoch milliseconds when published.. Warning: Values > 2^53 may lose precision in JavaScript'
+                sourceName:
+                    type: string
+                    description: Source name (e.g., "WHO", "ProMED", "HealthMap").
+                lat:
+                    type: number
+                    format: double
+                    description: Precise latitude from source (overrides country centroid on map when non-zero).
+                lng:
+                    type: number
+                    format: double
+                    description: Precise longitude from source (overrides country centroid on map when non-zero).
+                cases:
+                    type: integer
+                    format: int32
+                    description: Case count if reported by source (0 = unknown).
+            description: DiseaseOutbreakItem represents a single disease outbreak event.

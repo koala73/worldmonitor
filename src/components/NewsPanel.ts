@@ -8,6 +8,7 @@ import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTA
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
+import { track } from '@/services/analytics';
 
 type SortMode = 'relevance' | 'newest';
 
@@ -52,8 +53,15 @@ export class NewsPanel extends Panel {
   private lastHeadlineSignature = '';
   private isSummarizing = false;
 
-  constructor(id: string, title: string) {
-    super({ id, title, showCount: true, trackActivity: true });
+  // Optional risk score getter: computes 0-100 score per cluster for badge display
+  private riskScoreGetter: ((cluster: ClusteredEvent) => number | null) | null = null;
+
+  public setRiskScoreGetter(fn: (cluster: ClusteredEvent) => number | null): void {
+    this.riskScoreGetter = fn;
+  }
+
+  constructor(id: string, title: string, infoTooltip?: string) {
+    super({ id, title, showCount: true, trackActivity: true, infoTooltip });
     this.sortMode = this.loadSortMode();
     this.createDeviationIndicator();
     this.createSortToggle();
@@ -144,6 +152,7 @@ export class NewsPanel extends Panel {
     this.updateSortButtonLabel();
     this.sortBtn.addEventListener('click', () => {
       this.sortMode = this.sortMode === 'relevance' ? 'newest' : 'relevance';
+      track('news-sort-toggle', { mode: this.sortMode });
       this.saveSortMode();
       this.updateSortButtonLabel();
       // Re-render with cached data
@@ -197,7 +206,10 @@ export class NewsPanel extends Panel {
     this.summaryBtn.className = 'panel-summarize-btn';
     this.summaryBtn.innerHTML = '✨';
     this.summaryBtn.title = t('components.newsPanel.summarize');
-    this.summaryBtn.addEventListener('click', () => this.handleSummarize());
+    this.summaryBtn.addEventListener('click', () => {
+      track('news-summarize', { panelId: this.panelId });
+      this.handleSummarize();
+    });
 
     // Insert before count element (use inherited this.header directly)
     const countEl = this.header.querySelector('.panel-count');
@@ -425,7 +437,13 @@ export class NewsPanel extends Panel {
     if (this.sortMode === 'newest') {
       sorted = [...items].sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
     } else {
-      sorted = items;
+      // Relevance: sort by importanceScore desc when available, fall back to pubDate
+      sorted = [...items].sort((a, b) => {
+        const sa = a.importanceScore ?? 0;
+        const sb = b.importanceScore ?? 0;
+        if (sb !== sa) return sb - sa;
+        return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+      });
     }
 
     this.setCount(sorted.length);
@@ -443,6 +461,9 @@ export class NewsPanel extends Panel {
         <div class="item-source">
           ${escapeHtml(item.source)}
           ${item.lang && item.lang !== getCurrentLanguage() ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
+          ${item.storyMeta?.phase === 'breaking' ? '<span class="phase-badge breaking">BREAKING</span>' : ''}
+          ${item.storyMeta?.phase === 'developing' ? `<span class="phase-badge developing">DEVELOPING${item.storyMeta.mentionCount > 1 ? ` ×${item.storyMeta.mentionCount}` : ''}</span>` : ''}
+          ${item.storyMeta?.phase === 'sustained' ? '<span class="phase-badge sustained">ONGOING</span>' : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
         <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
@@ -635,6 +656,19 @@ export class NewsPanel extends Panel {
       ? `<span class="category-tag" style="color:${catColor};border-color:${catColor}40;background:${catColor}20">${catLabel}</span>`
       : '';
 
+    // Numeric risk score badge (0-100): from external getter or fallback to threat-level derivation
+    const riskScore = this.riskScoreGetter
+      ? this.riskScoreGetter(cluster)
+      : (() => {
+          if (!cluster.threat) return null;
+          const levelScore: Record<string, number> = { critical: 95, high: 75, medium: 50, low: 25, info: 10 };
+          const base = levelScore[cluster.threat.level] ?? 10;
+          return Math.round(base * (cluster.threat.confidence ?? 1));
+        })();
+    const riskBadge = riskScore !== null && riskScore >= 50
+      ? `<span class="risk-score-badge" style="color:${catColor || getCSSColor('--text-dim')};border-color:${catColor ? catColor + '40' : 'var(--border)'};background:${catColor ? catColor + '15' : 'transparent'}" title="Event risk score">${riskScore}</span>`
+      : '';
+
     // Build class list for item
     const itemClasses = [
       'item',
@@ -657,6 +691,7 @@ export class NewsPanel extends Panel {
           ${sentimentBadge}
           ${cluster.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
           ${categoryBadge}
+          ${riskBadge}
         </div>
         <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>
         <div class="cluster-meta">
@@ -727,6 +762,58 @@ export class NewsPanel extends Panel {
       nuclear: 'modals.countryBrief.infra.nuclear',
     };
     return t(keyMap[type]);
+  }
+
+  /**
+   * Returns true if this panel contains a news item with the given link
+   * (either as a cluster primary or secondary article).
+   */
+  public hasNewsItem(link: string): boolean {
+    if (this.lastRawClusters) {
+      return this.lastRawClusters.some(
+        c => c.primaryLink === link || c.allItems.some(i => i.link === link)
+      );
+    }
+    if (this.lastRawItems) {
+      return this.lastRawItems.some(i => i.link === link);
+    }
+    return false;
+  }
+
+  /**
+   * Scroll the panel to the item with the given link and flash-highlight it.
+   * For virtual-scrolled panels, renders the containing chunk first.
+   */
+  public scrollToNewsItem(link: string): void {
+    // In clustered mode, scroll via windowedList so off-screen chunks are rendered first
+    if (this.lastRawClusters && this.windowedList) {
+      const found = this.windowedList.scrollToItem(
+        (p: { cluster: ClusteredEvent }) =>
+          p.cluster.primaryLink === link || p.cluster.allItems.some((i: { link: string }) => i.link === link)
+      );
+      if (found) {
+        setTimeout(() => {
+          const el = this.content.querySelector(`[data-news-id="${CSS.escape(link)}"]`)
+            ?? this.content.querySelector(`a[href="${CSS.escape(link)}"]`);
+          if (el) this.flashHighlight(el);
+        }, 350);
+        return;
+      }
+    }
+    // Flat mode or small lists rendered directly in DOM
+    const el = this.content.querySelector(`[data-news-id="${CSS.escape(link)}"]`)
+      ?? this.content.querySelector(`a[href="${CSS.escape(link)}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.flashHighlight(el);
+    }
+  }
+
+  private flashHighlight(el: Element): void {
+    el.classList.remove('search-highlight');
+    void (el as HTMLElement).offsetWidth;
+    el.classList.add('search-highlight');
+    setTimeout(() => el.classList.remove('search-highlight'), 3100);
   }
 
   /**

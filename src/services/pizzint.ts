@@ -28,7 +28,7 @@ const gdeltBreaker = createCircuitBreaker<GdeltTensionPair[]>({
   name: 'GDELT Tensions',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
-  cacheTtlMs: 10 * 60 * 1000,
+  cacheTtlMs: 15 * 60 * 1000,
   persistCache: true,
 });
 

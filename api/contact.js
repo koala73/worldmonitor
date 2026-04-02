@@ -4,6 +4,7 @@ import { ConvexHttpClient } from 'convex/browser';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { getClientIp, verifyTurnstile } from './_turnstile.js';
 import { jsonResponse } from './_json-response.js';
+import { createIpRateLimiter } from './_ip-rate-limit.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[+(]?\d[\d\s()./-]{4,23}\d$/;
@@ -23,28 +24,18 @@ const FREE_EMAIL_DOMAINS = new Set([
   't-online.de', 'libero.it', 'virgilio.it',
 ]);
 
-const rateLimitMap = new Map();
 const RATE_LIMIT = 3;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 
-function isRateLimited(ip) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
-    rateLimitMap.set(ip, { windowStart: now, count: 1 });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > RATE_LIMIT;
-}
+const rateLimiter = createIpRateLimiter({ limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS });
 
-async function sendNotificationEmail(name, email, organization, phone, message) {
+async function sendNotificationEmail(name, email, organization, phone, message, ip, country) {
   const resendKey = process.env.RESEND_API_KEY;
   if (!resendKey) {
     console.error('[contact] RESEND_API_KEY not set — lead stored in Convex but notification NOT sent');
     return false;
   }
-  const notifyEmail = process.env.CONTACT_NOTIFY_EMAIL || 'sales@worldmonitor.app';
+  const notifyEmail = process.env.CONTACT_NOTIFY_EMAIL || 'elie@worldmonitor.app';
   const emailDomain = (email.split('@')[1] || '').toLowerCase();
   try {
     const res = await fetch('https://api.resend.com/emails', {
@@ -67,6 +58,8 @@ async function sendNotificationEmail(name, email, organization, phone, message) 
               <tr><td style="padding: 8px; font-weight: bold; color: #666;">Company</td><td style="padding: 8px;">${escapeHtml(organization)}</td></tr>
               <tr><td style="padding: 8px; font-weight: bold; color: #666;">Phone</td><td style="padding: 8px;"><a href="tel:${escapeHtml(phone)}">${escapeHtml(phone)}</a></td></tr>
               <tr><td style="padding: 8px; font-weight: bold; color: #666;">Message</td><td style="padding: 8px;">${escapeHtml(message || 'N/A')}</td></tr>
+              <tr><td style="padding: 8px; font-weight: bold; color: #666;">IP</td><td style="padding: 8px; font-family: monospace;">${escapeHtml(ip || 'unknown')}</td></tr>
+              ${country ? `<tr><td style="padding: 8px; font-weight: bold; color: #666;">Country</td><td style="padding: 8px;">${escapeHtml(country)}</td></tr>` : ''}
             </table>
             <p style="color: #999; font-size: 12px; margin-top: 24px;">Sent from worldmonitor.app enterprise contact form</p>
           </div>`,
@@ -112,8 +105,9 @@ export default async function handler(req) {
   }
 
   const ip = getClientIp(req);
+  const country = req.headers.get('cf-ipcountry') || req.headers.get('x-vercel-ip-country') || null;
 
-  if (isRateLimited(ip)) {
+  if (rateLimiter.isRateLimited(ip)) {
     return jsonResponse({ error: 'Too many requests' }, 429, cors);
   }
 
@@ -181,7 +175,7 @@ export default async function handler(req) {
       source: safeSource,
     });
 
-    const emailSent = await sendNotificationEmail(safeName, email.trim(), safeOrg, safePhone, safeMsg);
+    const emailSent = await sendNotificationEmail(safeName, email.trim(), safeOrg, safePhone, safeMsg, ip, country);
 
     return jsonResponse({ status: 'sent', emailSent }, 200, cors);
   } catch (err) {

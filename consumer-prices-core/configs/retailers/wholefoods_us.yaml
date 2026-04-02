@@ -1,0 +1,27 @@
+retailer:
+  slug: wholefoods_us
+  name: Whole Foods Market USA
+  marketCode: us
+  currencyCode: USD
+  adapter: search
+  baseUrl: https://www.wholefoodsmarket.com
+  # disabled 2026-03: WFM product pages require Amazon login. Without a session cookie,
+  # Firecrawl sees the auth modal (img-login-tomato.png / img-login-cheese.png) and
+  # extracts "tomato" or "cheese" as the product name for every product. No fix possible
+  # without Amazon auth. US basket covered by kroger_us + walmart_us.
+  enabled: false
+
+  searchConfig:
+    numResults: 5
+    urlPathContains: /product/
+    queryTemplate: "{canonicalName} grocery organic {market} price"
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

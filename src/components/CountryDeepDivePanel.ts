@@ -6,7 +6,8 @@ import { t } from '@/services/i18n';
 import { getNearbyInfrastructure } from '@/services/related-assets';
 import type { PredictionMarket } from '@/services/prediction';
 import type { AssetType, NewsItem, RelatedAsset } from '@/types';
-import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
+import { sanitizeUrl } from '@/utils/sanitize';
+import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { getCSSColor } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
@@ -62,7 +63,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private infrastructureByType = new Map<AssetType, RelatedAsset[]>();
   private maximizeButton: HTMLButtonElement | null = null;
   private currentHeadlineCount = 0;
-
   private signalsBody: HTMLElement | null = null;
   private signalBreakdownBody: HTMLElement | null = null;
   private signalRecentBody: HTMLElement | null = null;
@@ -646,7 +646,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>';
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
-      const url = `${window.location.origin}/?c=${this.currentCode}`;
+      const url = `${window.location.origin}/?c=${encodeURIComponent(this.currentCode)}`;
       navigator.clipboard.writeText(url).then(() => {
         const orig = shareBtn.innerHTML;
         shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -743,6 +743,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.addSignalChip(chips, signals.outages, t('countryBrief.chips.outages'), '🌐', 'outage');
     this.addSignalChip(chips, signals.aisDisruptions, t('countryBrief.chips.aisDisruptions'), '🚢', 'outage');
     this.addSignalChip(chips, signals.satelliteFires, t('countryBrief.chips.satelliteFires'), '🔥', 'climate');
+    this.addSignalChip(chips, signals.radiationAnomalies, 'Radiation anomalies', '☢️', 'outage');
     this.addSignalChip(chips, signals.temporalAnomalies, t('countryBrief.chips.temporalAnomalies'), '⏱️', 'outage');
     this.addSignalChip(chips, signals.cyberThreats, t('countryBrief.chips.cyberThreats'), '🛡️', 'conflict');
     this.addSignalChip(chips, signals.earthquakes, t('countryBrief.chips.earthquakes'), '🌍', 'quake');
@@ -774,7 +775,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const seeded: CountryDeepDiveSignalDetails = {
       critical: signals.criticalNews + Math.max(0, signals.activeStrikes),
       high: signals.militaryFlights + signals.militaryVessels + signals.protests,
-      medium: signals.outages + signals.cyberThreats + signals.aisDisruptions,
+      medium: signals.outages + signals.cyberThreats + signals.aisDisruptions + signals.radiationAnomalies,
       low: signals.earthquakes + signals.temporalAnomalies + signals.satelliteFires,
       recentHigh: [],
     };
@@ -971,24 +972,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private formatBrief(text: string, headlineCount = 0): string {
-    let html = escapeHtml(text)
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/\n/g, '<br>')
-      .replace(/^/, '<p>')
-      .replace(/$/, '</p>');
-
-    if (headlineCount > 0) {
-      html = html.replace(/\[(\d{1,2})\]/g, (_match, numStr) => {
-        const n = parseInt(numStr, 10);
-        if (n >= 1 && n <= headlineCount) {
-          return `<a href="#cdp-news-${n}" class="cb-citation">[${n}]</a>`;
-        }
-        return `[${numStr}]`;
-      });
-    }
-
-    return html;
+    return formatIntelBrief(text, headlineCount > 0 ? { count: headlineCount, hrefPrefix: '#cdp-news-' } : undefined);
   }
 
   private summarizeBrief(brief: string): string {

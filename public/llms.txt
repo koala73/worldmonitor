@@ -4,7 +4,7 @@
 
 World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 435+ news feeds, 45+ interactive map layers, and multiple AI models into a single dashboard. Used by 2M+ people across 190+ countries, as featured in WIRED. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
-A single codebase produces three specialized variants — geopolitical, technology, and finance — each with distinct feeds, panels, map layers, and branding. The tri-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
+A single codebase produces five specialized variants — geopolitical (World Monitor), technology (Tech Monitor), finance (Finance Monitor), commodities (Commodity Monitor), and positive news (Happy Monitor) — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
 
 The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. All intelligence analysis (clustering, instability scoring, surge detection) runs client-side in the browser — no backend compute dependency for core intelligence. A browser-side ML pipeline (Transformers.js) provides NER and sentiment analysis without server dependency.
 
@@ -13,6 +13,8 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [World Monitor](https://worldmonitor.app): Geopolitics, military, conflicts, infrastructure
 - [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity
 - [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI
+- [Commodity Monitor](https://commodity.worldmonitor.app): Mining, metals, energy, supply chains, commodity markets
+- [Happy Monitor](https://happy.worldmonitor.app): Positive news, breakthroughs, conservation, renewable energy
 - [World Monitor Pro](https://worldmonitor.app/pro): AI-powered equity research, geopolitical analysis, macro intelligence
 - [Blog](https://www.worldmonitor.app/blog/): Analysis, OSINT guides, geopolitics, and market intelligence articles
 
@@ -56,6 +58,26 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - **Data**: Upstash Redis caching, three-tier cache (in-memory, Redis, upstream)
 - **AI**: Groq (Llama 3.1), OpenRouter, browser-side T5 fallback
 - **Monitoring**: Sentry error tracking, data freshness tracker across 22 sources
+
+## Blog Posts
+
+- [What Is World Monitor?](https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/): Overview of the platform, features, and use cases
+- [Five Dashboards, One Platform](https://www.worldmonitor.app/blog/posts/five-dashboards-one-platform-worldmonitor-variants/): Guide to all five dashboard variants
+- [Track Global Conflicts in Real Time](https://www.worldmonitor.app/blog/posts/track-global-conflicts-in-real-time/): Conflict monitoring using ACLED, UCDP, and Telegram OSINT
+- [OSINT for Everyone](https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/): How open-source intelligence is democratized
+- [Natural Disaster Monitoring](https://www.worldmonitor.app/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/): USGS earthquakes, NASA FIRMS fires, volcanic activity
+- [Real-Time Market Intelligence](https://www.worldmonitor.app/blog/posts/real-time-market-intelligence-for-traders-and-analysts/): Financial markets, Fear & Greed, ETF flows
+- [Cyber Threat Intelligence](https://www.worldmonitor.app/blog/posts/cyber-threat-intelligence-for-security-teams/): Feodo Tracker, URLhaus, botnet C2 monitoring
+- [Global Supply Chain Monitoring](https://www.worldmonitor.app/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/): Ports, chokepoints, commodity disruptions
+- [Satellite Imagery and Orbital Surveillance](https://www.worldmonitor.app/blog/posts/satellite-imagery-orbital-surveillance/): SAR, EO, and OSINT satellite data
+- [Live Webcams from Geopolitical Hotspots](https://www.worldmonitor.app/blog/posts/live-webcams-from-geopolitical-hotspots/): Real-time visual feeds from conflict zones
+- [Prediction Markets and AI Forecasting](https://www.worldmonitor.app/blog/posts/prediction-markets-ai-forecasting-geopolitics/): Polymarket integration and geopolitical forecasting
+- [World Monitor in 21 Languages](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/): Multilingual global intelligence platform
+- [Command Palette Search](https://www.worldmonitor.app/blog/posts/command-palette-search-everything-instantly/): Cmd+K fuzzy search across all data layers
+- [AI-Powered Intelligence Without the Cloud](https://www.worldmonitor.app/blog/posts/ai-powered-intelligence-without-the-cloud/): Local LLMs, Ollama, offline-first AI analysis
+- [Build on World Monitor](https://www.worldmonitor.app/blog/posts/build-on-worldmonitor-developer-api-open-source/): Developer API, proto definitions, open-source contribution
+- [World Monitor vs Traditional Intelligence Tools](https://www.worldmonitor.app/blog/posts/worldmonitor-vs-traditional-intelligence-tools/): Comparison with Bloomberg, Palantir, Dataminr, Recorded Future
+- [Tracking Global Trade Routes](https://www.worldmonitor.app/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/): Maritime chokepoints, freight costs, trade flow analysis
 
 ## Optional
 

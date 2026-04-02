@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package worldmonitor.intelligence.v1;
 
-import "sebuf/http/annotations.proto";
 
 message SecurityAdvisoryItem {
   string title = 1;

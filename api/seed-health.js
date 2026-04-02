@@ -1,6 +1,8 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { redisPipeline } from './_upstash-json.js';
 
 export const config = { runtime: 'edge' };
 
@@ -9,7 +11,10 @@ const SEED_DOMAINS = {
   'seismology:earthquakes':   { key: 'seed-meta:seismology:earthquakes',   intervalMin: 15 },
   'wildfire:fires':           { key: 'seed-meta:wildfire:fires',           intervalMin: 60 },
   'infra:outages':            { key: 'seed-meta:infra:outages',            intervalMin: 15 },
-  'climate:anomalies':        { key: 'seed-meta:climate:anomalies',        intervalMin: 60 },
+  'climate:anomalies':        { key: 'seed-meta:climate:anomalies',        intervalMin: 120 },
+  'climate:zone-normals':     { key: 'seed-meta:climate:zone-normals',     intervalMin: 44640 },
+  'climate:co2-monitoring':   { key: 'seed-meta:climate:co2-monitoring',   intervalMin: 1440 }, // daily cron; health.js maxStaleMin:4320 (3x) is intentionally higher — it's an alarm threshold, not the cron cadence
+  'climate:news-intelligence': { key: 'seed-meta:climate:news-intelligence', intervalMin: 30 },
   // Phase 2 — Parameterized endpoints
   'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },
   'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 240 },
@@ -46,28 +51,23 @@ const SEED_DOMAINS = {
   'economic:worldbank-techreadiness': { key: 'seed-meta:economic:worldbank-techreadiness:v1', intervalMin: 5040 },
   'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },
   'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
-  'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 210 },
-  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 60 },
+  'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 240 },
+  'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 210 }, // 420min maxStaleMin / 2 — aligned with health.js (6h cron + 1h grace)
   'correlation:cards':        { key: 'seed-meta:correlation:cards',        intervalMin: 5 },
-  'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 45 },
+  'intelligence:advisories':  { key: 'seed-meta:intelligence:advisories',  intervalMin: 60 },
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
+  'thermal:escalation':       { key: 'seed-meta:thermal:escalation',       intervalMin: 180 },
+  'radiation:observations':   { key: 'seed-meta:radiation:observations',   intervalMin: 15 },
+  'sanctions:pressure':       { key: 'seed-meta:sanctions:pressure',       intervalMin: 360 },
+  'economic:grocery-basket':  { key: 'seed-meta:economic:grocery-basket',  intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
+  'economic:bigmac':          { key: 'seed-meta:economic:bigmac',          intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
 };
 
 async function getMetaBatch(keys) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) throw new Error('Redis not configured');
-
   const pipeline = keys.map((k) => ['GET', k]);
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(pipeline),
-    signal: AbortSignal.timeout(3000),
-  });
-  if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+  const data = await redisPipeline(pipeline, 3000);
+  if (!data) throw new Error('Redis not configured');
 
-  const data = await resp.json();
   const result = new Map();
   for (let i = 0; i < keys.length; i++) {
     const raw = data[i]?.result;

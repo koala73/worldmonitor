@@ -312,6 +312,85 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/military/v1/get-wingbits-live-flight:
+        get:
+            tags:
+                - MilitaryService
+            summary: GetWingbitsLiveFlight
+            description: GetWingbitsLiveFlight retrieves real-time position data from the Wingbits ECS network for a single aircraft.
+            operationId: GetWingbitsLiveFlight
+            parameters:
+                - name: icao24
+                  in: query
+                  description: ICAO 24-bit hex address (lowercase, 6 characters).
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetWingbitsLiveFlightResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/military/v1/list-defense-patents:
+        get:
+            tags:
+                - MilitaryService
+            summary: ListDefensePatents
+            description: ListDefensePatents retrieves recent defense/dual-use patent filings from USPTO PatentsView.
+            operationId: ListDefensePatents
+            parameters:
+                - name: cpc_code
+                  in: query
+                  description: CPC category filter (e.g. "H04B", "F42B"). Empty returns all categories.
+                  required: false
+                  schema:
+                    type: string
+                - name: assignee
+                  in: query
+                  description: Assignee keyword filter (case-insensitive substring match). Empty returns all.
+                  required: false
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: Maximum results to return (default 20, max 100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDefensePatentsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1038,3 +1117,183 @@ components:
                 expansionZoom:
                     type: integer
                     format: int32
+        GetWingbitsLiveFlightRequest:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    minLength: 1
+                    description: ICAO 24-bit hex address (lowercase, 6 characters).
+            required:
+                - icao24
+            description: GetWingbitsLiveFlightRequest fetches live Wingbits ECS data for a single aircraft.
+        GetWingbitsLiveFlightResponse:
+            type: object
+            properties:
+                flight:
+                    $ref: '#/components/schemas/WingbitsLiveFlight'
+            description: GetWingbitsLiveFlightResponse contains the live flight data, if available.
+        WingbitsLiveFlight:
+            type: object
+            properties:
+                icao24:
+                    type: string
+                    description: ICAO 24-bit hex address.
+                callsign:
+                    type: string
+                    description: Live callsign.
+                lat:
+                    type: number
+                    format: double
+                    description: Latitude in decimal degrees.
+                lon:
+                    type: number
+                    format: double
+                    description: Longitude in decimal degrees.
+                altitude:
+                    type: number
+                    format: double
+                    description: Altitude in feet.
+                speed:
+                    type: number
+                    format: double
+                    description: Ground speed in knots.
+                heading:
+                    type: number
+                    format: double
+                    description: Track/heading in degrees.
+                verticalRate:
+                    type: number
+                    format: double
+                    description: Vertical rate in feet per minute (positive = climb, negative = descent).
+                registration:
+                    type: string
+                    description: Aircraft registration number.
+                model:
+                    type: string
+                    description: Aircraft model (e.g. "PC-12/45").
+                operator:
+                    type: string
+                    description: Operator name.
+                onGround:
+                    type: boolean
+                    description: True if the aircraft is on the ground.
+                lastSeen:
+                    type: string
+                    format: int64
+                    description: Unix timestamp of the last position update.
+                depIata:
+                    type: string
+                    description: |-
+                        Schedule — from ecs-api.wingbits.com/v1/flights/schedule/{callsign}
+                         Departure airport IATA code (e.g. "FJR").
+                arrIata:
+                    type: string
+                    description: Arrival airport IATA code (e.g. "BOM").
+                depTimeUtc:
+                    type: string
+                    description: Scheduled departure time UTC (ISO 8601).
+                arrTimeUtc:
+                    type: string
+                    description: Scheduled arrival time UTC (ISO 8601).
+                depEstimatedUtc:
+                    type: string
+                    description: Estimated departure time UTC (ISO 8601).
+                arrEstimatedUtc:
+                    type: string
+                    description: Estimated arrival time UTC (ISO 8601).
+                depDelayedMin:
+                    type: integer
+                    format: int32
+                    description: Departure delay in minutes (negative = early).
+                arrDelayedMin:
+                    type: integer
+                    format: int32
+                    description: Arrival delay in minutes (negative = early).
+                flightStatus:
+                    type: string
+                    description: Flight status string (e.g. "en-route", "landed", "scheduled").
+                flightDurationMin:
+                    type: integer
+                    format: int32
+                    description: Scheduled flight duration in minutes.
+                arrTerminal:
+                    type: string
+                    description: Arrival terminal (e.g. "2").
+                photoUrl:
+                    type: string
+                    description: |-
+                        Photo — from api.planespotters.net/pub/photos/hex/{icao24}
+                         Aircraft photo URL (large thumbnail ~497x280).
+                photoLink:
+                    type: string
+                    description: Permalink to the photo page on planespotters.net.
+                photoCredit:
+                    type: string
+                    description: Photographer credit name.
+                callsignIata:
+                    type: string
+                    description: |-
+                        Airline — resolved server-side from the ICAO callsign prefix.
+                         IATA-equivalent callsign (e.g. "EK528" for ICAO "UAE528"). Empty if no mapping.
+                airlineName:
+                    type: string
+                    description: Airline name (e.g. "Emirates"). Empty if no mapping.
+            description: WingbitsLiveFlight contains real-time flight position data from the Wingbits ECS network.
+        ListDefensePatentsRequest:
+            type: object
+            properties:
+                cpcCode:
+                    type: string
+                    description: CPC category filter (e.g. "H04B", "F42B"). Empty returns all categories.
+                assignee:
+                    type: string
+                    description: Assignee keyword filter (case-insensitive substring match). Empty returns all.
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum results to return (default 20, max 100).
+            description: ListDefensePatentsRequest filters defense/dual-use patent filings.
+        ListDefensePatentsResponse:
+            type: object
+            properties:
+                patents:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DefensePatentFiling'
+                total:
+                    type: integer
+                    format: int32
+                    description: Total number of filings in the seeded dataset.
+                fetchedAt:
+                    type: string
+                    description: ISO 8601 timestamp when data was seeded.
+            description: ListDefensePatentsResponse contains recent defense/dual-use patent filings.
+        DefensePatentFiling:
+            type: object
+            properties:
+                patentId:
+                    type: string
+                    description: USPTO patent ID.
+                title:
+                    type: string
+                    description: Patent title.
+                date:
+                    type: string
+                    description: Filing date (YYYY-MM-DD).
+                assignee:
+                    type: string
+                    description: Primary assignee organization name.
+                cpcCode:
+                    type: string
+                    description: CPC classification code (e.g. "H04B", "F42B").
+                cpcDesc:
+                    type: string
+                    description: CPC class description.
+                abstract:
+                    type: string
+                    description: Patent abstract (truncated to 500 chars).
+                url:
+                    type: string
+                    description: USPTO patent URL.
+            description: DefensePatentFiling is a single patent filing from a defense/dual-use organization.

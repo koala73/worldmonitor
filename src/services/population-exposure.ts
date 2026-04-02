@@ -12,7 +12,7 @@ const exposureBreaker = createCircuitBreaker<ExposureResponse | null>({
   name: 'PopExposure',
   cacheTtlMs: 6 * 60 * 60 * 1000,
   persistCache: true,
-  maxCacheEntries: 64,
+  maxCacheEntries: 256,
 });
 
 export async function fetchCountryPopulations(): Promise<CountryPopulation[]> {
@@ -31,7 +31,7 @@ interface ExposureResponse {
 }
 
 export async function fetchExposure(lat: number, lon: number, radiusKm: number): Promise<ExposureResponse | null> {
-  const cacheKey = `${lat.toFixed(4)},${lon.toFixed(4)},${radiusKm}`;
+  const cacheKey = `${lat.toFixed(1)},${lon.toFixed(1)},${radiusKm}`;
   return exposureBreaker.execute(
     async () => {
       const result = await client.getPopulationExposure({ mode: 'exposure', lat, lon, radius: radiusKm });

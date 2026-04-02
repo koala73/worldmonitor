@@ -27,7 +27,34 @@
     { "symbol": "JNJ", "name": "J&J", "display": "JNJ" },
     { "symbol": "HD", "name": "Home Depot", "display": "HD" },
     { "symbol": "NFLX", "name": "Netflix", "display": "NFLX" },
-    { "symbol": "BAC", "name": "BofA", "display": "BAC" }
+    { "symbol": "BAC", "name": "BofA", "display": "BAC" },
+    { "symbol": "^NSEI", "name": "Nifty 50", "display": "NIFTY" },
+    { "symbol": "^BSESN", "name": "BSE Sensex", "display": "SENSEX" },
+    { "symbol": "RELIANCE.NS", "name": "Reliance Industries", "display": "RELIANCE" },
+    { "symbol": "TCS.NS", "name": "TCS", "display": "TCS" },
+    { "symbol": "HDFCBANK.NS", "name": "HDFC Bank", "display": "HDFCBANK" },
+    { "symbol": "ICICIBANK.NS", "name": "ICICI Bank", "display": "ICICIBANK" },
+    { "symbol": "BHARTIARTL.NS", "name": "Bharti Airtel", "display": "AIRTEL" },
+    { "symbol": "INFY.NS", "name": "Infosys", "display": "INFY" },
+    { "symbol": "SBIN.NS", "name": "State Bank of India", "display": "SBIN" },
+    { "symbol": "LICI.NS", "name": "LIC", "display": "LICI" },
+    { "symbol": "ITC.NS", "name": "ITC", "display": "ITC" },
+    { "symbol": "HINDUNILVR.NS", "name": "Hindustan Unilever", "display": "HUL" },
+    { "symbol": "LT.NS", "name": "L&T", "display": "LT" },
+    { "symbol": "BAJFINANCE.NS", "name": "Bajaj Finance", "display": "BAJFIN" },
+    { "symbol": "ADANIENT.NS", "name": "Adani Enterprises", "display": "ADANI" },
+    { "symbol": "SUNPHARMA.NS", "name": "Sun Pharma", "display": "SUN" },
+    { "symbol": "TITAN.NS", "name": "Titan Company", "display": "TITAN" },
+    { "symbol": "M&M.NS", "name": "Mahindra & Mahindra", "display": "M&M" },
+    { "symbol": "TATASTEEL.NS", "name": "Tata Steel", "display": "STEEL" },
+    { "symbol": "KOTAKBANK.NS", "name": "Kotak Mahindra", "display": "KOTAK" }
   ],
-  "yahooOnly": ["^GSPC", "^DJI", "^IXIC"]
+  "yahooOnly": [
+    "^GSPC", "^DJI", "^IXIC",
+    "^NSEI", "^BSESN",
+    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS",
+    "INFY.NS", "SBIN.NS", "LICI.NS", "ITC.NS", "HINDUNILVR.NS",
+    "LT.NS", "BAJFINANCE.NS", "ADANIENT.NS", "SUNPHARMA.NS", "TITAN.NS",
+    "M&M.NS", "TATASTEEL.NS", "KOTAKBANK.NS"
+  ]
 }

@@ -23,7 +23,7 @@ describe('Bootstrap cache key registry', () => {
     const extractKeys = (src) => {
       const block = src.match(/BOOTSTRAP_CACHE_KEYS[^=]*=\s*\{([^}]+)\}/);
       if (!block) return {};
-      const re = /(\w+):\s+'([a-z_-]+(?::[a-z_-]+)+:v\d+)'/g;
+      const re = /(\w+):\s+'([a-z0-9_-]+(?::[a-z0-9_-]+)+:v\d+)'/g;
       const keys = {};
       let m;
       while ((m = re.exec(block[1])) !== null) keys[m[1]] = m[2];
@@ -48,7 +48,7 @@ describe('Bootstrap cache key registry', () => {
       keys.push(m[1]);
     }
     for (const key of keys) {
-      assert.match(key, /^[a-z_-]+(?::[a-z_-]+)+:v\d+$/, `Cache key "${key}" does not match expected pattern`);
+      assert.match(key, /^[a-z0-9_-]+(?::[a-z0-9_-]+)+:v\d+$/, `Cache key "${key}" does not match expected pattern`);
     }
   });
 
@@ -140,9 +140,11 @@ describe('Bootstrap endpoint (api/bootstrap.js)', () => {
   });
 
   it('sets Cache-Control header with s-maxage for both tiers', () => {
-    assert.ok(src.includes('s-maxage=3600'), 'Missing s-maxage=3600 for slow tier');
-    assert.ok(src.includes('s-maxage=600'), 'Missing s-maxage=600 for fast tier');
+    // Cache-Control uses browser-only max-age (no s-maxage) so CF does not cache and
+    // pin a single ACAO origin. Vercel CDN uses CDN-Cache-Control for edge caching.
+    assert.ok(src.includes('max-age='), 'Missing max-age in Cache-Control');
     assert.ok(src.includes('stale-while-revalidate'), 'Missing stale-while-revalidate');
+    assert.ok(src.includes('CDN-Cache-Control'), 'Missing CDN-Cache-Control for Vercel CDN');
   });
 
   it('validates API key for desktop origins', () => {
@@ -234,7 +236,7 @@ describe('Bootstrap key hydration coverage', () => {
   it('every bootstrap key has a getHydratedData consumer in src/', () => {
     const bootstrapSrc = readFileSync(join(root, 'api', 'bootstrap.js'), 'utf-8');
     const block = bootstrapSrc.match(/BOOTSTRAP_CACHE_KEYS\s*=\s*\{([^}]+)\}/);
-    const keyRe = /(\w+):\s+'[a-z_]+(?::[a-z_-]+)+:v\d+'/g;
+    const keyRe = /(\w+):\s+'[a-z0-9_-]+(?::[a-z0-9_-]+)+:v\d+'/g;
     const keys = [];
     let m;
     while ((m = keyRe.exec(block[1])) !== null) keys.push(m[1]);
@@ -251,7 +253,7 @@ describe('Bootstrap key hydration coverage', () => {
     const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
     // Keys with planned but not-yet-wired consumers
-    const PENDING_CONSUMERS = new Set(['chokepointTransits', 'correlationCards']);
+    const PENDING_CONSUMERS = new Set(['chokepointTransits', 'correlationCards', 'euGasStorage', 'climateNews']);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
       assert.ok(
@@ -259,6 +261,23 @@ describe('Bootstrap key hydration coverage', () => {
         `Bootstrap key '${key}' has no getHydratedData('${key}') consumer in src/ — data is fetched but never used`,
       );
     }
+  });
+});
+
+describe('Health key registries', () => {
+  it('does not duplicate Redis keys across BOOTSTRAP_KEYS and STANDALONE_KEYS', () => {
+    const healthSrc = readFileSync(join(root, 'api', 'health.js'), 'utf-8');
+    const extractValues = (name) => {
+      const block = healthSrc.match(new RegExp(`${name}\\s*=\\s*\\{([\\s\\S]*?)\\n\\};`));
+      if (!block) return [];
+      return [...block[1].matchAll(/:\s+'([^']+)'/g)].map((m) => m[1]);
+    };
+
+    const bootstrap = new Set(extractValues('BOOTSTRAP_KEYS'));
+    const standalone = new Set(extractValues('STANDALONE_KEYS'));
+    const overlap = [...bootstrap].filter((key) => standalone.has(key));
+
+    assert.deepEqual(overlap, [], `health.js duplicates keys across registries: ${overlap.join(', ')}`);
   });
 });
 

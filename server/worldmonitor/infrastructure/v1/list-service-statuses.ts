@@ -7,7 +7,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta, setCachedJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 
 // ========================================================================
@@ -312,13 +312,18 @@ export async function listServiceStatuses(
   req: ListServiceStatusesRequest,
 ): Promise<ListServiceStatusesResponse> {
   try {
-    const results = await cachedFetchJson<ServiceStatus[]>(INFRA_CACHE_KEY, INFRA_CACHE_TTL, async () => {
+    const { data: results, source } = await cachedFetchJsonWithMeta<ServiceStatus[]>(INFRA_CACHE_KEY, INFRA_CACHE_TTL, async () => {
       const fresh = await Promise.all(SERVICES.map(checkServiceStatus));
       return fresh.length > 0 ? fresh : null;
     });
 
     const effective = results || fallbackStatusesCache?.data || [];
-    if (results) fallbackStatusesCache = { data: results, ts: Date.now() };
+    if (results) {
+      fallbackStatusesCache = { data: results, ts: Date.now() };
+      if (source === 'fresh') {
+        setCachedJson('seed-meta:infra:service-statuses', { fetchedAt: Date.now(), recordCount: results.length }, 604800).catch(() => {});
+      }
+    }
 
     return { statuses: filterAndSortStatuses(effective, req) };
   } catch {

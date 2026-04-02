@@ -43,7 +43,7 @@ const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({
   name: 'SummaryResult',
   cacheTtlMs: 2 * 60 * 60 * 1000,
   persistCache: true,
-  maxCacheEntries: 32,
+  maxCacheEntries: 128,
 });
 
 const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: '', model: '', fallback: true, tokens: 0, error: '', errorType: '', status: 'SUMMARIZE_STATUS_UNSPECIFIED', statusDetail: '' };
@@ -83,6 +83,7 @@ async function tryApiProvider(
         geoContext: geoContext || '',
         variant: SITE_VARIANT,
         lang: lang || 'en',
+        systemAppend: '',
       });
     }, emptySummaryFallback);
 
@@ -310,6 +311,7 @@ export async function translateText(
           geoContext: '',
           variant: targetLang,
           lang: '',
+          systemAppend: '',
         });
       }, emptySummaryFallback);
 

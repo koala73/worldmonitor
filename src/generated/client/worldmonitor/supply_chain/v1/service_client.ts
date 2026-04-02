@@ -106,6 +106,26 @@ export interface MineralProducer {
   sharePct: number;
 }
 
+export interface GetShippingStressRequest {
+}
+
+export interface GetShippingStressResponse {
+  carriers: ShippingStressCarrier[];
+  stressScore: number;
+  stressLevel: string;
+  fetchedAt: number;
+  upstreamUnavailable: boolean;
+}
+
+export interface ShippingStressCarrier {
+  symbol: string;
+  name: string;
+  price: number;
+  changePct: number;
+  carrierType: string;
+  sparkline: number[];
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -221,6 +241,29 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetCriticalMineralsResponse;
+  }
+
+  async getShippingStress(req: GetShippingStressRequest, options?: SupplyChainServiceCallOptions): Promise<GetShippingStressResponse> {
+    let path = "/api/supply-chain/v1/get-shipping-stress";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetShippingStressResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

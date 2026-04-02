@@ -121,25 +121,8 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
   return defaultValue;
 }
 
-let _storageQuotaExceeded = false;
-
-export function isStorageQuotaExceeded(): boolean {
-  return _storageQuotaExceeded;
-}
-
-export function isQuotaError(e: unknown): boolean {
-  return e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22);
-}
-
-export function markStorageQuotaExceeded(): void {
-  if (!_storageQuotaExceeded) {
-    _storageQuotaExceeded = true;
-    console.warn('[Storage] Quota exceeded — disabling further writes');
-  }
-}
-
 export function saveToStorage<T>(key: string, value: T): void {
-  if (_storageQuotaExceeded) return;
+  if (isStorageQuotaExceeded()) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
@@ -180,6 +163,17 @@ export function toUniqueSortedLowercase(items: string[]): string[] {
   return toUniqueSorted(items.map((item) => item.toLowerCase()));
 }
 
+export function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = a[i] as T;
+    a[i] = a[j] as T;
+    a[j] = tmp;
+  }
+  return a;
+}
+
 export { proxyUrl, fetchWithProxy, rssProxyUrl } from './proxy';
 export { exportToJSON, exportToCSV, ExportPanel } from './export';
 export { buildMapUrl, parseMapUrlState } from './urlState';
@@ -193,3 +187,5 @@ export type { Theme, ThemePreference } from './theme-manager';
 export { toFlagEmoji } from './country-flag';
 
 import { getCurrentLanguage } from '../services/i18n';
+import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';
+export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded };

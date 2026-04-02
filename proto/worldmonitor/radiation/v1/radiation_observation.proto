@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package worldmonitor.radiation.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/geo.proto";
+
+// RadiationObservation represents a normalized ambient dose-rate reading.
+message RadiationObservation {
+  // Unique source-specific observation identifier.
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 160
+  ];
+
+  // Upstream source for the observation.
+  RadiationSource source = 2;
+
+  // Human-readable location label.
+  string location_name = 3;
+
+  // Country or territory label.
+  string country = 4;
+
+  // Geographic location of the reading.
+  worldmonitor.core.v1.GeoCoordinates location = 5;
+
+  // Dose equivalent rate normalized to nSv/h.
+  double value = 6;
+
+  // Display unit, currently always nSv/h after normalization.
+  string unit = 7;
+
+  // Time the observation was recorded, as Unix epoch milliseconds.
+  int64 observed_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+
+  // Freshness bucket derived from observation age.
+  RadiationFreshness freshness = 9;
+
+  // Rolling baseline for this station in nSv/h.
+  double baseline_value = 10;
+
+  // Current reading minus rolling baseline in nSv/h.
+  double delta = 11;
+
+  // Standard deviation distance from the rolling baseline.
+  double z_score = 12;
+
+  // Interpreted anomaly severity for the current reading.
+  RadiationSeverity severity = 13;
+
+  // Sources contributing to this synthesized observation.
+  repeated RadiationSource contributing_sources = 14;
+
+  // Confidence in the current synthesized observation.
+  RadiationConfidence confidence = 15;
+
+  // Whether a second source corroborated the observed pattern.
+  bool corroborated = 16;
+
+  // Whether contributing sources materially disagree.
+  bool conflicting_sources = 17;
+
+  // True when the value was converted from CPM using a generic fallback.
+  bool converted_from_cpm = 18;
+
+  // Number of distinct contributing sources.
+  int32 source_count = 19;
+}
+
+// RadiationSource identifies the upstream measurement network.
+enum RadiationSource {
+  RADIATION_SOURCE_UNSPECIFIED = 0;
+  RADIATION_SOURCE_EPA_RADNET = 1;
+  RADIATION_SOURCE_SAFECAST = 2;
+}
+
+// RadiationFreshness groups observations by recency.
+enum RadiationFreshness {
+  RADIATION_FRESHNESS_UNSPECIFIED = 0;
+  RADIATION_FRESHNESS_LIVE = 1;
+  RADIATION_FRESHNESS_RECENT = 2;
+  RADIATION_FRESHNESS_HISTORICAL = 3;
+}
+
+// RadiationSeverity classifies whether a reading is behaving normally.
+enum RadiationSeverity {
+  RADIATION_SEVERITY_UNSPECIFIED = 0;
+  RADIATION_SEVERITY_NORMAL = 1;
+  RADIATION_SEVERITY_ELEVATED = 2;
+  RADIATION_SEVERITY_SPIKE = 3;
+}
+
+// RadiationConfidence represents how strongly the reading is supported.
+enum RadiationConfidence {
+  RADIATION_CONFIDENCE_UNSPECIFIED = 0;
+  RADIATION_CONFIDENCE_LOW = 1;
+  RADIATION_CONFIDENCE_MEDIUM = 2;
+  RADIATION_CONFIDENCE_HIGH = 3;
+}

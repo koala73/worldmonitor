@@ -1,0 +1,23 @@
+retailer:
+  slug: noon_grocery_ae
+  name: Noon Grocery UAE
+  marketCode: ae
+  currencyCode: AED
+  adapter: search
+  baseUrl: https://www.noon.com
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    urlPathContains: /p/
+    queryTemplate: "{canonicalName} grocery fresh food {currency} {market}"
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

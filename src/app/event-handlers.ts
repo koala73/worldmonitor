@@ -1,7 +1,15 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
-import type { PanelConfig, MapLayers } from '@/types';
+import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
+import { openWidgetChatModal } from '@/components/WidgetChatModal';
+import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widget-store';
+import { FREE_MAX_PANELS, FREE_MAX_SOURCES } from '@/config/panels';
+import type { McpDataPanel } from '@/components/McpDataPanel';
+import { openMcpConnectModal } from '@/components/McpConnectModal';
+import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
+import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
 import type { MapView } from '@/components';
+import type { PositionSample } from '@/services/aviation';
 import type { ClusteredEvent } from '@/types';
 import type { DashboardSnapshot } from '@/services/storage';
 import {
@@ -27,7 +35,6 @@ import {
   LAYER_TO_SOURCE,
   FEEDS,
   INTEL_SOURCES,
-  DEFAULT_PANELS,
 } from '@/config';
 import { VARIANT_META } from '@/config/variant-meta';
 import { isDesktopRuntime } from '@/services/runtime';
@@ -37,6 +44,7 @@ import {
   disconnectAisStream,
 } from '@/services';
 import {
+  track,
   trackPanelView,
   trackVariantSwitch,
   trackThemeChanged,
@@ -44,18 +52,24 @@ import {
   trackMapLayerToggle,
   trackPanelToggled,
   trackDownloadClicked,
+  trackGateHit,
 } from '@/services/analytics';
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
 import { invokeTauri } from '@/services/tauri-bridge';
+import { getCachedGpsInterference } from '@/services/gps-interference';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
 import { UnifiedSettings } from '@/components/UnifiedSettings';
+import { AuthLauncher } from '@/components/AuthLauncher';
+import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 
 export interface EventHandlerCallbacks {
   updateSearchIndex: () => void;
+  updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
   flushStaleRefreshes: () => void;
   setHiddenSince: (ts: number) => void;
@@ -65,6 +79,7 @@ export interface EventHandlerCallbacks {
   ensureCorrectZones: () => void;
   refreshOpenCountryBrief?: () => void;
   stopLayerActivity?: (layer: keyof MapLayers) => void;
+  mountLiveNewsIfReady?: () => void;
 }
 
 export class EventHandlerManager implements AppModule {
@@ -85,10 +100,14 @@ export class EventHandlerManager implements AppModule {
   private boundMapResizeMoveHandler: ((e: MouseEvent) => void) | null = null;
   private boundMapEndResizeHandler: (() => void) | null = null;
   private boundMapResizeVisChangeHandler: (() => void) | null = null;
+  private boundMapWidthResizeMoveHandler: ((e: MouseEvent) => void) | null = null;
+  private boundMapWidthEndResizeHandler: (() => void) | null = null;
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
+  private boundWidgetModifyHandler: ((e: Event) => void) | null = null;
   private boundUndoHandler: ((e: KeyboardEvent) => void) | null = null;
+  private proGateUnsubscribers: Array<() => void> = [];
   private closedPanelStack: string[] = []; // max-items: 20
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -123,6 +142,10 @@ export class EventHandlerManager implements AppModule {
     if (!panelId) return;
     const config = this.ctx.panelSettings[panelId];
     if (!config) return;
+    if (!isProUser()) {
+      const enabledCount = Object.entries(this.ctx.panelSettings).filter(([k, p]) => p.enabled && !k.startsWith('cw-')).length;
+      if (enabledCount >= FREE_MAX_PANELS) return;
+    }
     config.enabled = true;
     trackPanelToggled(panelId, true);
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
@@ -131,8 +154,8 @@ export class EventHandlerManager implements AppModule {
 
     // Ensure restored panel fetches fresh data (otherwise it may show no content)
     const panel = this.ctx.panels[panelId];
-    if (panel && 'fetchData' in panel) {
-      (panel as any).fetchData();
+    if (panel && 'fetchData' in panel && typeof (panel as { fetchData: unknown }).fetchData === 'function') {
+      (panel as { fetchData: () => void }).fetchData();
     }
   }
 
@@ -161,7 +184,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   private toggleTvMode(): void {
-    const panelKeys = Object.keys(DEFAULT_PANELS).filter(
+    const panelKeys = Object.keys(this.ctx.panelSettings).filter(
       key => this.ctx.panelSettings[key]?.enabled !== false
     );
     if (!this.ctx.tvMode) {
@@ -248,6 +271,15 @@ export class EventHandlerManager implements AppModule {
       window.removeEventListener('blur', this.boundMapEndResizeHandler);
       this.boundMapEndResizeHandler = null;
     }
+    if (this.boundMapWidthResizeMoveHandler) {
+      document.removeEventListener('mousemove', this.boundMapWidthResizeMoveHandler);
+      this.boundMapWidthResizeMoveHandler = null;
+    }
+    if (this.boundMapWidthEndResizeHandler) {
+      document.removeEventListener('mouseup', this.boundMapWidthEndResizeHandler);
+      window.removeEventListener('blur', this.boundMapWidthEndResizeHandler);
+      this.boundMapWidthEndResizeHandler = null;
+    }
     if (this.boundMapResizeVisChangeHandler) {
       document.removeEventListener('visibilitychange', this.boundMapResizeVisChangeHandler);
       this.boundMapResizeVisChangeHandler = null;
@@ -264,14 +296,24 @@ export class EventHandlerManager implements AppModule {
       this.ctx.container.removeEventListener('wm:panel-close', this.boundPanelCloseHandler);
       this.boundPanelCloseHandler = null;
     }
+    if (this.boundWidgetModifyHandler) {
+      this.ctx.container.removeEventListener('wm:widget-modify', this.boundWidgetModifyHandler);
+      this.boundWidgetModifyHandler = null;
+    }
     if (this.boundUndoHandler) {
       document.removeEventListener('keydown', this.boundUndoHandler);
       this.boundUndoHandler = null;
     }
+    for (const unsub of this.proGateUnsubscribers) unsub();
+    this.proGateUnsubscribers = [];
     this.ctx.tvMode?.destroy();
     this.ctx.tvMode = null;
     this.ctx.unifiedSettings?.destroy();
     this.ctx.unifiedSettings = null;
+    this.ctx.authHeaderWidget?.destroy();
+    this.ctx.authHeaderWidget = null;
+    this.ctx.authModal?.destroy();
+    this.ctx.authModal = null;
   }
 
   private setupEventListeners(): void {
@@ -279,9 +321,18 @@ export class EventHandlerManager implements AppModule {
       this.callbacks.updateSearchIndex();
       this.ctx.searchModal?.open();
     };
-    document.getElementById('searchBtn')?.addEventListener('click', openSearch);
-    document.getElementById('mobileSearchBtn')?.addEventListener('click', openSearch);
-    document.getElementById('searchMobileFab')?.addEventListener('click', openSearch);
+    document.getElementById('searchBtn')?.addEventListener('click', () => {
+      track('search-open', { source: 'desktop' });
+      openSearch();
+    });
+    document.getElementById('mobileSearchBtn')?.addEventListener('click', () => {
+      track('search-open', { source: 'mobile' });
+      openSearch();
+    });
+    document.getElementById('searchMobileFab')?.addEventListener('click', () => {
+      track('search-open', { source: 'fab' });
+      openSearch();
+    });
 
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();
@@ -297,6 +348,7 @@ export class EventHandlerManager implements AppModule {
     });
 
     this.initDownloadDropdown();
+    this.initFooterDownload();
 
     this.boundStorageHandler = (e: StorageEvent) => {
       if (e.key === STORAGE_KEYS.panels && e.newValue) {
@@ -308,8 +360,12 @@ export class EventHandlerManager implements AppModule {
       }
       if (e.key === STORAGE_KEYS.liveChannels && e.newValue) {
         const panel = this.ctx.panels['live-news'];
-        if (panel && typeof (panel as unknown as { refreshChannelsFromStorage?: () => void }).refreshChannelsFromStorage === 'function') {
-          (panel as unknown as { refreshChannelsFromStorage: () => void }).refreshChannelsFromStorage();
+        if (panel) {
+          if (typeof (panel as unknown as { refreshChannelsFromStorage?: () => void }).refreshChannelsFromStorage === 'function') {
+            (panel as unknown as { refreshChannelsFromStorage: () => void }).refreshChannelsFromStorage();
+          }
+        } else {
+          this.callbacks.mountLiveNewsIfReady?.();
         }
       }
     };
@@ -318,6 +374,31 @@ export class EventHandlerManager implements AppModule {
     // Handle panel close (X) button clicks
     this.boundPanelCloseHandler = ((e: CustomEvent<{ panelId: string }>) => {
       const { panelId } = e.detail;
+
+      if (panelId.startsWith('cw-')) {
+        if (!window.confirm(t('widgets.confirmDelete'))) return;
+        deleteWidget(panelId);
+        const panel = this.ctx.panels[panelId];
+        panel?.destroy();
+        delete this.ctx.panels[panelId];
+        delete this.ctx.panelSettings[panelId];
+        saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+        panel?.getElement()?.remove();
+        return;
+      }
+
+      if (panelId.startsWith('mcp-')) {
+        if (!window.confirm(t('mcp.confirmDelete'))) return;
+        deleteMcpPanel(panelId);
+        const panel = this.ctx.panels[panelId];
+        panel?.destroy();
+        delete this.ctx.panels[panelId];
+        delete this.ctx.panelSettings[panelId];
+        saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+        panel?.getElement()?.remove();
+        return;
+      }
+
       const config = this.ctx.panelSettings[panelId];
       if (!config) return;
       config.enabled = false;
@@ -331,11 +412,37 @@ export class EventHandlerManager implements AppModule {
     }) as EventListener;
     this.ctx.container.addEventListener('wm:panel-close', this.boundPanelCloseHandler);
 
+    this.boundWidgetModifyHandler = ((e: CustomEvent<{ widgetId: string }>) => {
+      const spec = getWidget(e.detail.widgetId);
+      if (!spec) return;
+      openWidgetChatModal({
+        mode: 'modify',
+        existingSpec: spec,
+        onComplete: (updated) => {
+          saveWidget(updated);
+          (this.ctx.panels[updated.id] as CustomWidgetPanel | undefined)?.updateSpec(updated);
+        },
+      });
+    }) as EventListener;
+    this.ctx.container.addEventListener('wm:widget-modify', this.boundWidgetModifyHandler);
+
+    this.ctx.container.addEventListener('wm:mcp-configure', ((e: CustomEvent<{ panelId: string }>) => {
+      const spec = getMcpPanel(e.detail.panelId);
+      if (!spec) return;
+      openMcpConnectModal({
+        existingSpec: spec,
+        onComplete: (updated) => {
+          saveMcpPanel(updated);
+          (this.ctx.panels[updated.id] as McpDataPanel | undefined)?.updateSpec(updated);
+        },
+      });
+    }) as EventListener);
+
     // undo via Ctrl/Cmd+Z
     this.boundUndoHandler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        const tag = (e.target as HTMLElement).tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
+        const tag = (e.target as HTMLElement)?.tagName ?? '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
         e.preventDefault();
         this.performUndo();
       }
@@ -379,6 +486,7 @@ export class EventHandlerManager implements AppModule {
     window.addEventListener('resize', this.boundResizeHandler);
 
     this.setupMapResize();
+    this.setupMapWidthResize();
     this.setupMapPin();
 
     this.boundVisibilityHandler = () => {
@@ -592,7 +700,27 @@ export class EventHandlerManager implements AppModule {
       }
       this.debouncedWebcamReload();
     });
-    this.debouncedUrlSync();
+
+    // Skip the immediate sync only when applyInitialUrlState() will start an
+    // async flyTo that makes getCenter() return stale intermediate coordinates.
+    // Two cases qualify:
+    //   (a) lat+lon pair  → setCenter() flyTo; both must be present since
+    //       applyInitialUrlState only calls setCenter when both exist.
+    //   (b) bare zoom     → setZoom() animated zoom (no view preset).
+    //
+    // view is intentionally excluded: all renderers set this.state.view
+    // synchronously at the top of setView(), so the debounced read is always
+    // correct regardless of renderer. GlobeMap.onStateChanged is a no-op and
+    // SVG Map fires emitStateChange before the listener is installed — neither
+    // can rely on a later onStateChanged to drive the URL write, so they must
+    // use the immediate debounce path.
+    const { view, lat, lon, zoom } = this.ctx.initialUrlState ?? {};
+    const urlHasAsyncFlyTo =
+      (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
+      (!view && zoom !== undefined);                // zoom-only → setZoom animated
+    if (!urlHasAsyncFlyTo) {
+      this.debouncedUrlSync();
+    }
   }
 
   syncUrlState(): void {
@@ -713,6 +841,28 @@ export class EventHandlerManager implements AppModule {
     document.addEventListener('keydown', this.boundDropdownKeydownHandler);
   }
 
+  private initFooterDownload(): void {
+    const mount = document.getElementById('footerDownloadMount');
+    if (!mount) return;
+    const platform = detectPlatform();
+    const primary = buttonsForPlatform(platform);
+    const btn = primary[0];
+    if (!btn) return;
+    const a = document.createElement('a');
+    a.href = btn.href;
+    a.textContent = t('header.downloadApp');
+    a.className = 'site-footer-download-link';
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const plat = new URL(btn.href, location.origin).searchParams.get('platform') || 'unknown';
+      trackDownloadClicked(plat);
+      window.open(btn.href, '_blank');
+    });
+    mount.replaceWith(a);
+  }
+
   private setCopyLinkFeedback(button: HTMLElement | null, message: string): void {
     if (!button) return;
     const originalText = button.textContent ?? '';
@@ -770,7 +920,14 @@ export class EventHandlerManager implements AppModule {
     }
 
     const target = options.href || VARIANT_META[variant]?.url;
-    if (target) window.location.href = target;
+    if (!target) return;
+    try {
+      const parsed = new URL(target, window.location.href);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+      window.location.href = parsed.toString();
+    } catch {
+      return;
+    }
   }
 
   toggleFullscreen(): void {
@@ -817,7 +974,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupPizzIntIndicator(): void {
-    if (SITE_VARIANT === 'tech' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'happy') return;
+    if (SITE_VARIANT !== 'full') return;
 
     this.ctx.pizzintIndicator = new PizzIntIndicator();
     const headerLeft = this.ctx.container.querySelector('.header-left');
@@ -836,17 +993,43 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupExportPanel(): void {
-    this.ctx.exportPanel = new ExportPanel(() => ({
-      news: this.ctx.latestClusters.length > 0 ? this.ctx.latestClusters : this.ctx.allNews,
-      markets: this.ctx.latestMarkets,
-      predictions: this.ctx.latestPredictions,
-      timestamp: Date.now(),
-    }));
+    // Always create — show/hide reactively via auth state subscription below.
+    this.ctx.exportPanel = new ExportPanel(() => {
+      const allCards = this.ctx.correlationEngine?.getAllCards() ?? [];
+      const disabledCount = this.ctx.disabledSources.size;
+      return {
+        meta: {
+          exportedAt: new Date().toISOString(),
+          note: disabledCount > 0
+            ? `Export reflects currently enabled sources only. ${disabledCount} source(s) are disabled and not included.`
+            : 'Export reflects all active sources.',
+        },
+        timestamp: Date.now(),
+        news: this.ctx.allNews,
+        newsClusters: this.ctx.latestClusters.length > 0 ? this.ctx.latestClusters : undefined,
+        newsByCategory: this.ctx.newsByCategory,
+        markets: this.ctx.latestMarkets,
+        predictions: this.ctx.latestPredictions,
+        intelligence: this.ctx.intelligenceCache,
+        cyberThreats: this.ctx.cyberThreatsCache ?? undefined,
+        gpsJamming: getCachedGpsInterference() ?? undefined,
+        convergenceCards: allCards.map(({ assessment: _a, ...card }) => card),
+        monitors: this.ctx.monitors.length > 0 ? this.ctx.monitors : undefined,
+      };
+    });
 
+    const el = this.ctx.exportPanel.getElement();
     const headerRight = this.ctx.container.querySelector('.header-right');
     if (headerRight) {
-      headerRight.insertBefore(this.ctx.exportPanel.getElement(), headerRight.firstChild);
+      headerRight.insertBefore(el, headerRight.firstChild);
     }
+
+    const applyProGate = (isPro: boolean, initial = false) => {
+      el.style.display = isPro ? '' : 'none';
+      if (initial && !isPro) trackGateHit('export');
+    };
+    applyProGate(getAuthState().user?.role === 'pro', true);
+    this.proGateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
   }
 
   setupUnifiedSettings(): void {
@@ -867,10 +1050,20 @@ export class EventHandlerManager implements AppModule {
         });
         saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
         this.applyPanelSettings();
+        this.callbacks.updateSearchIndex();
       },
       getDisabledSources: () => this.ctx.disabledSources,
       toggleSource: (name: string) => {
-        if (this.ctx.disabledSources.has(name)) {
+        const reenabling = this.ctx.disabledSources.has(name);
+        if (reenabling && !isProUser()) {
+          const allSources = this.getAllSourceNames();
+          const currentlyEnabled = allSources.filter(n => !this.ctx.disabledSources.has(n)).length;
+          if (currentlyEnabled + 1 > FREE_MAX_SOURCES) {
+            this.showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
+            return;
+          }
+        }
+        if (reenabling) {
           this.ctx.disabledSources.delete(name);
         } else {
           this.ctx.disabledSources.add(name);
@@ -878,6 +1071,15 @@ export class EventHandlerManager implements AppModule {
         saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
       },
       setSourcesEnabled: (names: string[], enabled: boolean) => {
+        if (enabled && !isProUser()) {
+          const allSources = this.getAllSourceNames();
+          const currentlyEnabled = allSources.filter(n => !this.ctx.disabledSources.has(n)).length;
+          const wouldEnable = names.filter(n => this.ctx.disabledSources.has(n) && allSources.includes(n)).length;
+          if (currentlyEnabled + wouldEnable > FREE_MAX_SOURCES) {
+            this.showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
+            return;
+          }
+        }
         for (const name of names) {
           if (enabled) this.ctx.disabledSources.delete(name);
           else this.ctx.disabledSources.add(name);
@@ -912,7 +1114,23 @@ export class EventHandlerManager implements AppModule {
     }
   }
 
+  setupAuthWidget(): void {
+    const modal = new AuthLauncher();
+    this.ctx.authModal = modal;
+
+    const widget = new AuthHeaderWidget(
+      () => modal.open(),
+      () => this.ctx.unifiedSettings?.open(),
+    );
+    this.ctx.authHeaderWidget = widget;
+    const mount = document.getElementById('authWidgetMount');
+    if (mount) {
+      mount.appendChild(widget.getElement());
+    }
+  }
+
   setupPlaybackControl(): void {
+    // Always create — show/hide reactively via auth state subscription below.
     this.ctx.playbackControl = new PlaybackControl();
     this.ctx.playbackControl.onSnapshot((snapshot) => {
       if (snapshot) {
@@ -924,10 +1142,18 @@ export class EventHandlerManager implements AppModule {
       }
     });
 
+    const el = this.ctx.playbackControl.getElement();
     const headerRight = this.ctx.container.querySelector('.header-right');
     if (headerRight) {
-      headerRight.insertBefore(this.ctx.playbackControl.getElement(), headerRight.firstChild);
+      headerRight.insertBefore(el, headerRight.firstChild);
     }
+
+    const applyProGate = (isPro: boolean, initial = false) => {
+      el.style.display = isPro ? '' : 'none';
+      if (initial && !isPro) trackGateHit('playback');
+    };
+    applyProGate(getAuthState().user?.role === 'pro', true);
+    this.proGateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
   }
 
   setupSnapshotSaving(): void {
@@ -1015,11 +1241,13 @@ export class EventHandlerManager implements AppModule {
       }
     });
 
-    // Forward live aircraft positions from map to AirlineIntelPanel + cache
+    // Forward live aircraft positions from map to AirlineIntelPanel + cache + search index
     this.ctx.map?.setOnAircraftPositionsUpdate((positions) => {
       this.ctx.intelligenceCache.aircraftPositions = positions;
       const airlineIntel = this.ctx.panels['airline-intel'] as AirlineIntelPanel | undefined;
       airlineIntel?.updateLivePositions(positions);
+      const military = this.ctx.intelligenceCache.military?.flights ?? [];
+      this.callbacks.updateFlightSource?.(positions, military);
     });
   }
 
@@ -1181,6 +1409,55 @@ export class EventHandlerManager implements AppModule {
       if (document.hidden) endResize();
     };
     document.addEventListener('visibilitychange', this.boundMapResizeVisChangeHandler);
+  }
+
+  setupMapWidthResize(): void {
+    const mainContent = document.querySelector<HTMLElement>('.main-content');
+    const widthHandle = document.getElementById('mapWidthResizeHandle');
+    if (!mainContent || !widthHandle) return;
+
+    const saved = localStorage.getItem('map-col-width');
+    if (saved) mainContent.style.setProperty('--map-col-width', saved);
+
+    let isResizing = false;
+    let startX = 0;
+    let startTotalWidth = 0;
+    let startColPx = 0;
+
+    this.boundMapWidthEndResizeHandler = () => {
+      if (!isResizing) return;
+      isResizing = false;
+      this.ctx.map?.setIsResizing(false);
+      this.ctx.map?.resize();
+      document.body.classList.remove('map-width-resizing');
+      widthHandle.classList.remove('resizing');
+      const current = mainContent.style.getPropertyValue('--map-col-width');
+      if (current) localStorage.setItem('map-col-width', current);
+    };
+
+    widthHandle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      startTotalWidth = mainContent.offsetWidth;
+      const raw = mainContent.style.getPropertyValue('--map-col-width') || '60%';
+      startColPx = startTotalWidth * (parseFloat(raw) / 100);
+      this.ctx.map?.setIsResizing(true);
+      document.body.classList.add('map-width-resizing');
+      widthHandle.classList.add('resizing');
+      e.preventDefault();
+    });
+
+    this.boundMapWidthResizeMoveHandler = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const delta = e.clientX - startX;
+      const newPct = Math.max(25, Math.min(75, ((startColPx + delta) / startTotalWidth) * 100));
+      mainContent.style.setProperty('--map-col-width', `${newPct.toFixed(1)}%`);
+      this.ctx.map?.resize();
+    };
+
+    document.addEventListener('mousemove', this.boundMapWidthResizeMoveHandler);
+    document.addEventListener('mouseup', this.boundMapWidthEndResizeHandler);
+    window.addEventListener('blur', this.boundMapWidthEndResizeHandler);
   }
 
   setupMapPin(): void {

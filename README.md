@@ -4,6 +4,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/network/members)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/re63kWKxaz)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Last commit](https://img.shields.io/github/last-commit/koala73/worldmonitor)](https://github.com/koala73/worldmonitor/commits/main)
@@ -86,6 +87,18 @@ See the **[self-hosting guide](https://docs.worldmonitor.app/getting-started)** 
 | **Caching** | Redis (Upstash), 3-tier cache, CDN, service worker |
 
 Full stack details in the **[architecture docs](https://docs.worldmonitor.app/architecture)**.
+
+---
+
+## Flight Data
+
+Flight data provided gracefully by [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor), the most advanced ADS-B flight data solution.
+
+---
+
+## Data Sources
+
+WorldMonitor aggregates 30+ external data sources across geopolitics, finance, energy, climate, aviation, and cyber. See the full [data sources catalog](https://docs.worldmonitor.app/data-sources) for providers, feed tiers, and collection methods.
 
 ---
 

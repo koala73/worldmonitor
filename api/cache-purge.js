@@ -1,5 +1,7 @@
 import { getCorsHeaders } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { getRedisCredentials } from './_upstash-json.js';
 
 export const config = { runtime: 'edge' };
 
@@ -26,19 +28,13 @@ function isDurableData(key) {
   return DURABLE_DATA_PREFIXES.some(p => key.startsWith(p));
 }
 
-function getRedisCredentials() {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) throw new Error('Redis not configured');
-  return { url, token };
-}
-
 async function redisPipeline(commands) {
-  const { url, token } = getRedisCredentials();
-  const resp = await fetch(`${url}/pipeline`, {
+  const creds = getRedisCredentials();
+  if (!creds) throw new Error('Redis not configured');
+  const resp = await fetch(`${creds.url}/pipeline`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${creds.token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(commands),
@@ -49,16 +45,17 @@ async function redisPipeline(commands) {
 }
 
 async function redisScan(pattern, maxIterations) {
-  const { url, token } = getRedisCredentials();
+  const creds = getRedisCredentials();
+  if (!creds) throw new Error('Redis not configured');
   const keys = [];
   let cursor = '0';
   let truncated = false;
 
   for (let i = 0; i < maxIterations; i++) {
     const resp = await fetch(
-      `${url}/scan/${encodeURIComponent(cursor)}/MATCH/${encodeURIComponent(pattern)}/COUNT/100`,
+      `${creds.url}/scan/${encodeURIComponent(cursor)}/MATCH/${encodeURIComponent(pattern)}/COUNT/100`,
       {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${creds.token}` },
         signal: AbortSignal.timeout(5_000),
       }
     );

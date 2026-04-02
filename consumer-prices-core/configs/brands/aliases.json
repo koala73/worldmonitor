@@ -1,0 +1,28 @@
+{
+  "aliases": {
+    "Almarai": ["almarai", "al marai", "الأمراء"],
+    "Barakat": ["barakat", "بركات"],
+    "Nada": ["nada", "ندى"],
+    "Lactalis": ["lactel", "lactalis"],
+    "President": ["président", "president"],
+    "Lurpak": ["lurpak", "لورباك"],
+    "Baladna": ["baladna"],
+    "KDD": ["kdd", "Kuwait Dairy Company"],
+    "Saudia": ["saudia dairy", "saudia"],
+    "Al Ain": ["al ain", "العين", "al-ain"],
+    "Masafi": ["masafi", "مسافي"],
+    "Evian": ["evian"],
+    "Volvic": ["volvic"],
+    "Nestle": ["nestle", "nestlé", "نستلة"],
+    "Kelloggs": ["kellogg's", "kelloggs", "kellog"],
+    "Uncle Ben's": ["uncle ben's", "uncle bens"],
+    "Tilda": ["tilda"],
+    "Daawat": ["daawat", "dawat"],
+    "India Gate": ["india gate"],
+    "Carrefour": ["carrefour", "كارفور"],
+    "Lulu": ["lulu", "lulu hypermarket"],
+    "Nadec": ["nadec"],
+    "Nabil": ["nabil"],
+    "Americana": ["americana"]
+  }
+}

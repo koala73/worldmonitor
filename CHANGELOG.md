@@ -16,6 +16,10 @@ All notable changes to World Monitor are documented here.
 - PortWatch, CorridorRisk, and transit seed loops on Railway relay (#1560)
 - R2 trace storage for forecast debugging with Cloudflare API upload (#1655)
 
+### Security
+
+- CDN-Cache-Control header now only set for trusted origins (worldmonitor.app, Vercel previews, Tauri); no-origin server-side requests always reach the edge function so `validateApiKey` can run, closing a potential cache-bypass path for external scrapers
+
 ### Fixed
 
 - Trade Policy panel WTO gate changed from panel-wide to per-tab, so Revenue tab works on desktop without WTO API key (#1663)

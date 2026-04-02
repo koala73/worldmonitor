@@ -1,6 +1,8 @@
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { redisPipeline } from './_upstash-json.js';
 
 export const config = { runtime: 'edge' };
 
@@ -8,6 +10,8 @@ const BOOTSTRAP_CACHE_KEYS = {
   earthquakes:      'seismology:earthquakes:v1',
   outages:          'infra:outages:v1',
   serviceStatuses:  'infra:service-statuses:v1',
+  ddosAttacks:      'cf:radar:ddos:v1',
+  trafficAnomalies: 'cf:radar:traffic-anomalies:v1',
   marketQuotes:     'market:stocks-bootstrap:v1',
   commodityQuotes:  'market:commodities-bootstrap:v1',
   sectors:          'market:sectors:v1',
@@ -21,7 +25,12 @@ const BOOTSTRAP_CACHE_KEYS = {
   chokepointTransits: 'supply_chain:chokepoint_transits:v1',
   minerals:         'supply_chain:minerals:v2',
   giving:           'giving:summary:v1',
-  climateAnomalies: 'climate:anomalies:v1',
+  climateAnomalies: 'climate:anomalies:v2',
+  co2Monitoring: 'climate:co2-monitoring:v1',
+  climateNews:      'climate:news-intelligence:v1',
+  radiationWatch: 'radiation:observations:v1',
+  thermalEscalation: 'thermal:escalation:v1',
+  crossSourceSignals: 'intelligence:cross-source-signals:v1',
   wildfires:        'wildfire:fires:v1',
   cyberThreats:     'cyber:threats-bootstrap:v2',
   techReadiness:    'economic:worldbank-techreadiness:v1',
@@ -34,8 +43,12 @@ const BOOTSTRAP_CACHE_KEYS = {
   flightDelays: 'aviation:delays-bootstrap:v1',
   insights: 'news:insights:v1',
   predictions: 'prediction:markets-bootstrap:v1',
-  cryptoQuotes: 'market:crypto:v1',
-  gulfQuotes: 'market:gulf-quotes:v1',
+  cryptoQuotes:     'market:crypto:v1',
+  cryptoSectors:    'market:crypto-sectors:v1',
+  defiTokens:       'market:defi-tokens:v1',
+  aiTokens:         'market:ai-tokens:v1',
+  otherTokens:      'market:other-tokens:v1',
+  gulfQuotes:       'market:gulf-quotes:v1',
   stablecoinMarkets: 'market:stablecoins:v1',
   unrestEvents: 'unrest:events:v1',
   iranEvents: 'conflict:iran-events:v1',
@@ -49,28 +62,70 @@ const BOOTSTRAP_CACHE_KEYS = {
   forecasts:         'forecast:predictions:v2',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
   customsRevenue:    'trade:customs-revenue:v1',
+  sanctionsPressure: 'sanctions:pressure:v1',
+  consumerPricesOverview:   'consumer-prices:overview:ae',
+  consumerPricesCategories: 'consumer-prices:categories:ae:30d',
+  consumerPricesMovers:     'consumer-prices:movers:ae:30d',
+  consumerPricesSpread:     'consumer-prices:retailer-spread:ae:essentials-ae',
+  groceryBasket: 'economic:grocery-basket:v1',
+  bigmac:        'economic:bigmac:v1',
+  fuelPrices:    'economic:fuel-prices:v1',
+  nationalDebt:      'economic:national-debt:v1',
+  euGasStorage:      'economic:eu-gas-storage:v1',
+  eurostatCountryData: 'economic:eurostat-country-data:v1',
+  marketImplications: 'intelligence:market-implications:v1',
+  fearGreedIndex:    'market:fear-greed:v1',
+  crudeInventories:  'economic:crude-inventories:v1',
+  natGasStorage:     'economic:nat-gas-storage:v1',
+  ecbFxRates:        'economic:ecb-fx-rates:v1',
+  euFsi:             'economic:fsi-eu:v1',
+  shippingStress:    'supply_chain:shipping_stress:v1',
+  socialVelocity:    'intelligence:social:reddit:v1',
+  diseaseOutbreaks:  'health:disease-outbreaks:v1',
+  economicStress:    'economic:stress-index:v1',
 };
 
 const SLOW_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
-  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies',
+  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'co2Monitoring', 'climateNews',
+  'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
   'naturalEvents',
-  'cryptoQuotes', 'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
+  'cryptoQuotes', 'cryptoSectors', 'defiTokens', 'aiTokens', 'otherTokens',
+  'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
   'techEvents',
   'securityAdvisories',
   'customsRevenue',
+  'sanctionsPressure',
+  'consumerPricesOverview', 'consumerPricesCategories', 'consumerPricesMovers', 'consumerPricesSpread',
+  'groceryBasket',
+  'bigmac',
+  'fuelPrices',
+  'nationalDebt',
+  'euGasStorage',
+  'eurostatCountryData',
+  'marketImplications',
+  'fearGreedIndex',
+  'crudeInventories',
+  'natGasStorage',
+  'ecbFxRates',
+  'euFsi',
+  'diseaseOutbreaks',
+  'economicStress',
 ]);
 const FAST_KEYS = new Set([
-  'earthquakes', 'outages', 'serviceStatuses', 'macroSignals', 'chokepoints', 'chokepointTransits',
+  'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',
   'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays','insights', 'predictions',
   'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel',
-  'correlationCards', 'forecasts', 'shippingRates',
+  'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity',
 ]);
 
+// No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would
+// pin ACAO: worldmonitor.app on cached responses, breaking CORS for preview deployments.
+// Vercel CDN caching is handled by TIER_CDN_CACHE via CDN-Cache-Control below.
 const TIER_CACHE = {
-  slow: 'public, s-maxage=3600, stale-while-revalidate=600, stale-if-error=3600',
-  fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
+  slow: 'max-age=300, stale-while-revalidate=600, stale-if-error=3600',
+  fast: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
 };
 const TIER_CDN_CACHE = {
   slow: 'public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=7200',
@@ -83,23 +138,13 @@ async function getCachedJsonBatch(keys) {
   const result = new Map();
   if (keys.length === 0) return result;
 
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return result;
-
   // Always read unprefixed keys — bootstrap is a read-only consumer of
   // production cache data. Preview/branch deploys don't run handlers that
   // populate prefixed keys, so prefixing would always miss.
   const pipeline = keys.map((k) => ['GET', k]);
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(pipeline),
-    signal: AbortSignal.timeout(3000),
-  });
-  if (!resp.ok) return result;
+  const data = await redisPipeline(pipeline, 3000);
+  if (!data) return result;
 
-  const data = await resp.json();
   for (let i = 0; i < keys.length; i++) {
     const raw = data[i]?.result;
     if (raw) {
@@ -151,14 +196,27 @@ export default async function handler(req) {
   const missing = [];
   for (let i = 0; i < names.length; i++) {
     const val = cached.get(keys[i]);
-    if (val !== undefined) data[names[i]] = val;
-    else missing.push(names[i]);
+    if (val !== undefined) {
+      // Strip seed-internal metadata not intended for API clients
+      if (names[i] === 'forecasts' && val != null && 'enrichmentMeta' in val) {
+        const { enrichmentMeta: _stripped, ...rest } = val;
+        data[names[i]] = rest;
+      } else {
+        data[names[i]] = val;
+      }
+    } else {
+      missing.push(names[i]);
+    }
   }
 
   const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
 
+  // Bootstrap data is fully public (world events, market prices, seismic data).
+  // Use ACAO: * so CF caches one entry valid for all origins, including Vercel
+  // preview deployments. Per-origin ACAO with Vary: Origin causes CF to pin the
+  // first origin's ACAO on the cached response, breaking CORS for other origins.
   return jsonResponse({ data, missing }, 200, {
-    ...cors,
+    ...getPublicCorsHeaders(),
     'Cache-Control': cacheControl,
     'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
   });

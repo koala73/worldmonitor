@@ -233,6 +233,69 @@ export interface MilitaryBaseCluster {
   expansionZoom: number;
 }
 
+export interface GetWingbitsLiveFlightRequest {
+  icao24: string;
+}
+
+export interface GetWingbitsLiveFlightResponse {
+  flight?: WingbitsLiveFlight;
+}
+
+export interface WingbitsLiveFlight {
+  icao24: string;
+  callsign: string;
+  lat: number;
+  lon: number;
+  altitude: number;
+  speed: number;
+  heading: number;
+  verticalRate: number;
+  registration: string;
+  model: string;
+  operator: string;
+  onGround: boolean;
+  lastSeen: string;
+  depIata: string;
+  arrIata: string;
+  depTimeUtc: string;
+  arrTimeUtc: string;
+  depEstimatedUtc: string;
+  arrEstimatedUtc: string;
+  depDelayedMin: number;
+  arrDelayedMin: number;
+  flightStatus: string;
+  flightDurationMin: number;
+  arrTerminal: string;
+  photoUrl: string;
+  photoLink: string;
+  photoCredit: string;
+  callsignIata: string;
+  airlineName: string;
+}
+
+export interface ListDefensePatentsRequest {
+  cpcCode: string;
+  assignee: string;
+  limit: number;
+}
+
+export interface ListDefensePatentsResponse {
+  patents: DefensePatentFiling[];
+  total: number;
+  fetchedAt: string;
+}
+
+export interface DefensePatentFiling {
+  patentId: string;
+  title: string;
+  date: string;
+  assignee: string;
+  cpcCode: string;
+  cpcDesc: string;
+  abstract: string;
+  url: string;
+}
+
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
 
 export type MilitaryAircraftType = "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED" | "MILITARY_AIRCRAFT_TYPE_FIGHTER" | "MILITARY_AIRCRAFT_TYPE_BOMBER" | "MILITARY_AIRCRAFT_TYPE_TRANSPORT" | "MILITARY_AIRCRAFT_TYPE_TANKER" | "MILITARY_AIRCRAFT_TYPE_AWACS" | "MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE" | "MILITARY_AIRCRAFT_TYPE_HELICOPTER" | "MILITARY_AIRCRAFT_TYPE_DRONE" | "MILITARY_AIRCRAFT_TYPE_PATROL" | "MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS" | "MILITARY_AIRCRAFT_TYPE_VIP" | "MILITARY_AIRCRAFT_TYPE_UNKNOWN";
@@ -473,6 +536,58 @@ export class MilitaryServiceClient {
     }
 
     return await resp.json() as ListMilitaryBasesResponse;
+  }
+
+  async getWingbitsLiveFlight(req: GetWingbitsLiveFlightRequest, options?: MilitaryServiceCallOptions): Promise<GetWingbitsLiveFlightResponse> {
+    let path = "/api/military/v1/get-wingbits-live-flight";
+    const params = new URLSearchParams();
+    if (req.icao24 != null && req.icao24 !== "") params.set("icao24", String(req.icao24));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetWingbitsLiveFlightResponse;
+  }
+
+  async listDefensePatents(req: ListDefensePatentsRequest, options?: MilitaryServiceCallOptions): Promise<ListDefensePatentsResponse> {
+    let path = "/api/military/v1/list-defense-patents";
+    const params = new URLSearchParams();
+    if (req.cpcCode != null && req.cpcCode !== "") params.set("cpc_code", String(req.cpcCode));
+    if (req.assignee != null && req.assignee !== "") params.set("assignee", String(req.assignee));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListDefensePatentsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

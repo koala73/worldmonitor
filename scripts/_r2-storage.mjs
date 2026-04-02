@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
-let _S3Client, _PutObjectCommand;
+let _S3Client, _PutObjectCommand, _GetObjectCommand;
 async function loadS3SDK() {
   if (!_S3Client) {
     const sdk = await import('@aws-sdk/client-s3');
     _S3Client = sdk.S3Client;
     _PutObjectCommand = sdk.PutObjectCommand;
+    _GetObjectCommand = sdk.GetObjectCommand;
   }
-  return { S3Client: _S3Client, PutObjectCommand: _PutObjectCommand };
+  return { S3Client: _S3Client, PutObjectCommand: _PutObjectCommand, GetObjectCommand: _GetObjectCommand };
 }
 
 function getEnvValue(env, keys) {
@@ -23,6 +24,59 @@ function parseBoolean(value, fallback) {
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
   return fallback;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function summarizeError(err) {
+  return err?.message || String(err);
+}
+
+function isRetryableApiStatus(status) {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function isRetryableR2Error(err) {
+  const status = err?.status;
+  if (typeof status === 'number') return isRetryableApiStatus(status);
+
+  const message = summarizeError(err).toLowerCase();
+  if (
+    message.includes('timed out') ||
+    message.includes('timeout') ||
+    message.includes('econnreset') ||
+    message.includes('socket hang up') ||
+    message.includes('temporarily unavailable') ||
+    message.includes('internalerror') ||
+    message.includes('service unavailable') ||
+    message.includes('throttl')
+  ) {
+    return true;
+  }
+
+  const httpStatus = err?.$metadata?.httpStatusCode;
+  if (typeof httpStatus === 'number') return isRetryableApiStatus(httpStatus);
+  return false;
+}
+
+async function withR2Retry(operation, context = {}) {
+  const maxAttempts = 3;
+  const delays = [0, 500, 1500];
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (err) {
+      const retryable = isRetryableR2Error(err);
+      const lastAttempt = attempt === maxAttempts;
+      if (!retryable || lastAttempt) throw err;
+
+      console.warn(`  [R2] Retry ${attempt}/${maxAttempts - 1} for ${context.op || 'operation'} key=${context.key || ''}: ${summarizeError(err)}`);
+      await sleep(delays[attempt] || 1500);
+    }
+  }
 }
 
 function resolveR2StorageConfig(env = process.env, options = {}) {
@@ -98,38 +152,97 @@ async function putR2JsonObject(config, key, payload, metadata = {}) {
   const body = `${JSON.stringify(payload, null, 2)}\n`;
 
   if (config.mode === 'api') {
-    const encodedKey = key.split('/').map(part => encodeURIComponent(part)).join('/');
-    const resp = await fetch(`${config.apiBaseUrl}/accounts/${config.accountId}/r2/buckets/${config.bucket}/objects/${encodedKey}`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${config.apiToken}`,
-        'Content-Type': 'application/json; charset=utf-8',
-      },
-      body,
-      signal: AbortSignal.timeout(30_000),
+    return withR2Retry(async () => {
+      const encodedKey = key.split('/').map(part => encodeURIComponent(part)).join('/');
+      const resp = await fetch(`${config.apiBaseUrl}/accounts/${config.accountId}/r2/buckets/${config.bucket}/objects/${encodedKey}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${config.apiToken}`,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body,
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        const error = new Error(`Cloudflare R2 API upload failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+        error.status = resp.status;
+        throw error;
+      }
+      return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8') };
+    }, {
+      op: 'put',
+      key,
     });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(`Cloudflare R2 API upload failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
-    }
-    return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8') };
   }
 
-  const { PutObjectCommand } = await loadS3SDK();
-  const client = await getR2StorageClient(config);
-  await client.send(new PutObjectCommand({
-    Bucket: config.bucket,
-    Key: key,
-    Body: body,
-    ContentType: 'application/json; charset=utf-8',
-    CacheControl: 'no-store',
-    Metadata: metadata,
-  }));
-  return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8') };
+  return withR2Retry(async () => {
+    const { PutObjectCommand } = await loadS3SDK();
+    const client = await getR2StorageClient(config);
+    await client.send(new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      Body: body,
+      ContentType: 'application/json; charset=utf-8',
+      CacheControl: 'no-store',
+      Metadata: metadata,
+    }));
+    return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8') };
+  }, {
+    op: 'put',
+    key,
+  });
+}
+
+async function getR2JsonObject(config, key) {
+  if (config.mode === 'api') {
+    return withR2Retry(async () => {
+      const encodedKey = key.split('/').map(part => encodeURIComponent(part)).join('/');
+      const resp = await fetch(`${config.apiBaseUrl}/accounts/${config.accountId}/r2/buckets/${config.bucket}/objects/${encodedKey}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${config.apiToken}`,
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (resp.status === 404) return null;
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        const error = new Error(`Cloudflare R2 API download failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+        error.status = resp.status;
+        throw error;
+      }
+      return resp.json();
+    }, {
+      op: 'get',
+      key,
+    });
+  }
+
+  return withR2Retry(async () => {
+    const { GetObjectCommand } = await loadS3SDK();
+    const client = await getR2StorageClient(config);
+    try {
+      const response = await client.send(new GetObjectCommand({
+        Bucket: config.bucket,
+        Key: key,
+      }));
+      const body = await response.Body?.transformToString?.();
+      if (!body) return null;
+      return JSON.parse(body);
+    } catch (err) {
+      if (err?.$metadata?.httpStatusCode === 404 || err?.name === 'NoSuchKey') return null;
+      throw err;
+    }
+  }, {
+    op: 'get',
+    key,
+  });
 }
 
 export {
   resolveR2StorageConfig,
   getR2StorageClient,
+  getR2JsonObject,
   putR2JsonObject,
 };

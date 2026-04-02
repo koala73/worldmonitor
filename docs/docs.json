@@ -113,6 +113,7 @@
             "group": "Developer Guide",
             "pages": [
               "contributing",
+              "authentication",
               "adding-endpoints",
               "api-key-deployment",
               "release-packaging",
@@ -264,6 +265,7 @@
   "footer": {
     "socials": {
       "github": "https://github.com/koala73/worldmonitor",
+      "discord": "https://discord.gg/re63kWKxaz",
       "x": "https://x.com/worldmonitorai"
     },
     "links": [
@@ -292,8 +294,8 @@
             "href": "https://github.com/koala73/worldmonitor"
           },
           {
-            "label": "Discussions",
-            "href": "https://github.com/koala73/worldmonitor/discussions"
+            "label": "Discord",
+            "href": "https://discord.gg/re63kWKxaz"
           },
           {
             "label": "X",

@@ -32,9 +32,9 @@ const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
 
 export const xmlParser = new XMLParser({
   ignoreAttributes: true,
-  isArray: (_name: string, jpath: string) => {
+  isArray: (_name: string, jpath: unknown) => {
     // Force arrays for list items regardless of count to prevent single-item-as-object bug
-    return /\.(Ground_Delay|Ground_Stop|Delay|Airport)$/.test(jpath);
+    return typeof jpath === 'string' && /\.(Ground_Delay|Ground_Stop|Delay|Airport)$/.test(jpath);
   },
 });
 
@@ -369,25 +369,8 @@ export interface NotamClosureResult {
   notamsByIcao: Map<string, string>;
 }
 
-export function getRelayBaseUrl(): string | null {
-  const relayUrl = process.env.WS_RELAY_URL;
-  if (!relayUrl) return null;
-  return relayUrl
-    .replace('wss://', 'https://')
-    .replace('ws://', 'http://')
-    .replace(/\/$/, '');
-}
-
-export function getRelayHeaders(_extra: Record<string, string> = {}): Record<string, string> {
-  const headers: Record<string, string> = { 'User-Agent': CHROME_UA };
-  const relaySecret = process.env.RELAY_SHARED_SECRET;
-  if (relaySecret) {
-    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-    headers[relayHeader] = relaySecret;
-    headers.Authorization = `Bearer ${relaySecret}`;
-  }
-  return headers;
-}
+import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+export { getRelayBaseUrl, getRelayHeaders };
 
 export async function fetchNotamClosures(
   airports: MonitoredAirport[]

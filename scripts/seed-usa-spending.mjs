@@ -6,7 +6,7 @@ loadEnvFile(import.meta.url);
 
 const API_BASE = 'https://api.usaspending.gov/api/v2';
 const CANONICAL_KEY = 'economic:spending:v1';
-const CACHE_TTL = 3600; // 1 hour
+const CACHE_TTL = 7200; // 2h — 1h buffer over 1h cron cadence (was 1h = 0 buffer)
 
 const AWARD_TYPE_MAP = {
   'A': 'contract', 'B': 'contract', 'C': 'contract', 'D': 'contract',

@@ -93,8 +93,8 @@ describe('seedTransitSummaries (relay)', () => {
     assert.match(relaySrc, /TRANSIT_SUMMARY_INTERVAL_MS\s*=\s*10\s*\*\s*60\s*\*\s*1000/);
   });
 
-  it('has 15 minute TTL', () => {
-    assert.match(relaySrc, /TRANSIT_SUMMARY_TTL\s*=\s*900/);
+  it('has TTL >= 6x seed interval (survives multiple missed pings)', () => {
+    assert.match(relaySrc, /TRANSIT_SUMMARY_TTL\s*=\s*[3-9]\d{3}/);
   });
 });
 

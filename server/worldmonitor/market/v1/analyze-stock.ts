@@ -643,6 +643,7 @@ async function buildAiOverlay(
     temperature: 0.2,
     maxTokens: 500,
     timeoutMs: 20_000,
+    providerOrder: ['openrouter', 'generic'],
     validate: (content) => {
       try {
         const parsed = JSON.parse(content) as Record<string, unknown>;

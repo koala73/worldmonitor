@@ -10,7 +10,14 @@ import { fetchWithTimeout } from './_fetch-with-timeout';
  * Rejects on non-2xx status.
  */
 export async function fetchJSON(url: string, timeout = 8000): Promise<any> {
-  if (url.includes('yahoo.com')) await yahooGate();
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'yahoo.com' || parsed.hostname.endsWith('.yahoo.com')) {
+      await yahooGate();
+    }
+  } catch {
+    // Let fetchWithTimeout surface invalid URLs.
+  }
   const res = await fetchWithTimeout(url, { headers: { 'User-Agent': CHROME_UA } }, timeout);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();

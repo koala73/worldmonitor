@@ -280,7 +280,8 @@
     "gulfEconomies": "Economiile Golfului",
     "gulfIndices": "Indicii Golfului",
     "gulfCurrencies": "Monede din Golf",
-    "gulfOil": "Petrolul din Golf"
+    "gulfOil": "Petrolul din Golf",
+    "bigmac": "Real Big Mac Index"
   },
   "commands": {
     "prefixes": {
@@ -749,6 +750,8 @@
       "vsPreviousWeek": "față de săptămâna anterioară",
       "in": "în",
       "centralBanks": "Băncile Centrale",
+      "laborMarket": "Labor Market",
+      "metroUnemployment": "Metro Unemployment",
       "noBisData": "Datele BIS sunt temporar indisponibile - se va reîncerca",
       "policyRate": "Rata de politică monetară",
       "exchangeRate": "Cursul de schimb",
@@ -836,7 +839,8 @@
       "token": "Token",
       "mcap": "MCap",
       "vol24h": "Vol 24h",
-      "chg24h": "24h Modificare"
+      "chg24h": "24h Modificare",
+      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
       "dataFeeds": "Fluxuri de date",
@@ -958,8 +962,8 @@
       "nuclear": "Nuclear"
     },
     "community": {
-      "joinDiscussion": "Alăturați-vă discuției",
-      "openDiscussion": "Deschideți discuția",
+      "joinDiscussion": "Help Shape What's Next",
+      "openDiscussion": "Join Discord",
       "dontShowAgain": "Nu mai afișa",
       "sectionLabel": "Comunitate"
     },
@@ -1529,7 +1533,7 @@
       "noEventsIn7Days": "Niciun eveniment în 7 zile"
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>GDELT Intelligence</strong> Monitorizare în timp real a știrilor globale:<ul><li>Categorii de subiecte selectate (conflicte, cibernetice etc.)</li><li>Articole din peste 100 de limbi traduse</li><li>Actualizări la fiecare 15 minute</li></ul>Sursa: Proiectul GDELT (gdeltproject.org)"
+      "infoTooltip": "<strong>News Intelligence</strong> Monitorizare în timp real a știrilor globale:<ul><li>Categorii de subiecte selectate (conflicte, cibernetice etc.)</li><li>Articole din peste 100 de limbi traduse</li><li>Actualizări la fiecare 15 minute</li><li>14-day media tone &amp; volume trend per topic</li></ul>Sursa: Proiectul GDELT (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "Semnale în timp real de la canalele monitorizate Telegram OSINT",
@@ -1544,7 +1548,9 @@
       "filterPolitics": "Politică",
       "filterMiddleeast": "Orientul Mijlociu",
       "live": "ÎN DIRECT",
-      "viewSource": "Vezi sursa"
+      "viewSource": "Vezi sursa",
+      "filterGeopolitics": "Geopolitică",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Baza de date despre investițiile străine directe din Arabia Saudită și Emiratele Arabe Unite în infrastructura critică globală. Faceți clic pe un rând pentru a zbura către investiția de pe hartă.",
@@ -1713,6 +1719,45 @@
     "map": {
       "showMap": "Arată harta",
       "hideMap": "Ascunde harta"
+    },
+    "internetDisruptions": {
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+    },
+    "commodities": {
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+    },
+    "crypto": {
+      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+    },
+    "gulfEconomies": {
+      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+    },
+    "groceryBasket": {
+      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+    },
+    "bigmac": {
+      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+    },
+    "defiTokens": {
+      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+    },
+    "aiTokens": {
+      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+    },
+    "altTokens": {
+      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+    },
+    "stockAnalysis": {
+      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+    },
+    "stockBacktest": {
+      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+    },
+    "dailyMarketBrief": {
+      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+    },
+    "centralBankWatch": {
+      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
     }
   },
   "popups": {

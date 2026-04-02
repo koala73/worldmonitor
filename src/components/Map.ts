@@ -12,6 +12,7 @@ import type { TechHubActivity } from '@/services/tech-activity';
 import type { GeoHubActivity } from '@/services/geo-activity';
 import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
+import type { RadiationObservation } from '@/services/radiation';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import {
@@ -26,7 +27,6 @@ import {
   PIPELINE_COLORS,
   SANCTIONED_COUNTRIES,
   STRATEGIC_WATERWAYS,
-  APT_GROUPS,
   ECONOMIC_CENTERS,
   AI_DATA_CENTERS,
   PORTS,
@@ -124,6 +124,7 @@ export class MapComponent {
   private hotspots: HotspotWithBreaking[];
   private earthquakes: Earthquake[] = [];
   private weatherAlerts: WeatherAlert[] = [];
+  private radiationObservations: RadiationObservation[] = [];
   private outages: InternetOutage[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
@@ -143,6 +144,8 @@ export class MapComponent {
   private techActivities: TechHubActivity[] = [];
   private geoActivities: GeoHubActivity[] = [];
   private iranEvents: IranEvent[] = [];
+  private aptGroups: import('@/types').APTGroup[] = [];
+  private aptGroupsLoaded = false;
   private webcamData: Array<WebcamEntry | WebcamCluster> = [];
   private news: NewsItem[] = [];
   private onTechHubClick?: (hub: TechHubActivity) => void;
@@ -221,6 +224,11 @@ export class MapComponent {
       this.render();
     };
     window.addEventListener('theme-changed', this.handleThemeChange);
+
+    // Kick off lazy APT load if cyberThreats is already on at init (e.g. from URL/localStorage)
+    if (this.state.layers.cyberThreats && SITE_VARIANT !== 'tech' && SITE_VARIANT !== 'happy') {
+      this.loadAptGroups();
+    }
   }
 
   private setupResizeObserver(): void {
@@ -1398,8 +1406,8 @@ export class MapComponent {
       this.renderPorts(projection);
     }
 
-    // APT groups (geopolitical variant only)
-    if (SITE_VARIANT !== 'tech') {
+    // APT groups — rendered only when cyberThreats layer is active, loaded lazily
+    if (this.state.layers.cyberThreats && SITE_VARIANT !== 'tech' && this.aptGroups.length > 0) {
       this.renderAPTMarkers(projection);
     }
 
@@ -1688,6 +1696,39 @@ export class MapComponent {
           this.popup.show({
             type: 'weather',
             data: alert,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        });
+
+        this.overlays.appendChild(div);
+      });
+    }
+
+    if (this.state.layers.radiationWatch) {
+      this.radiationObservations.forEach((observation) => {
+        const pos = projection([observation.lon, observation.lat]);
+        if (!pos) return;
+
+        const div = document.createElement('div');
+        const color = observation.severity === 'spike' ? '#ff3030' : '#ffaa00';
+        div.className = `radiation-watch-marker radiation-watch-marker-${observation.severity}`;
+        div.style.left = `${pos[0]}px`;
+        div.style.top = `${pos[1]}px`;
+        div.style.width = '14px';
+        div.style.height = '14px';
+        div.style.borderRadius = '50%';
+        div.style.background = color;
+        div.style.border = '2px solid rgba(255,255,255,0.75)';
+        div.style.boxShadow = `0 0 10px ${color}88`;
+        div.title = `${observation.location}: ${observation.value.toFixed(1)} ${observation.unit}`;
+
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({
+            type: 'radiation',
+            data: observation,
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
           });
@@ -2839,7 +2880,7 @@ export class MapComponent {
       'padding:8px 12px',
       'border-radius:3px',
       'font-size:11px',
-      'font-family:monospace',
+      'font-family:var(--font-mono)',
       'color:#d4d4d4',
       'max-width:240px',
       'z-index:1000',
@@ -3128,8 +3169,15 @@ export class MapComponent {
     });
   }
 
+  private async loadAptGroups(): Promise<void> {
+    const { APT_GROUPS } = await import('@/config/apt-groups');
+    this.aptGroups = APT_GROUPS;
+    this.aptGroupsLoaded = true;
+    this.render();
+  }
+
   private renderAPTMarkers(projection: d3.GeoProjection): void {
-    APT_GROUPS.forEach((apt) => {
+    this.aptGroups.forEach((apt) => {
       const pos = projection([apt.lon, apt.lat]);
       if (!pos) return;
 
@@ -3283,7 +3331,7 @@ export class MapComponent {
     return getHotspotEscalation(hotspotId);
   }
 
-  public setView(view: MapView): void {
+  public setView(view: MapView, zoom?: number): void {
     this.state.view = view;
 
     // Region-specific zoom and pan settings
@@ -3300,7 +3348,7 @@ export class MapComponent {
     };
 
     const settings = viewSettings[view];
-    this.state.zoom = settings.zoom;
+    this.state.zoom = zoom ?? settings.zoom;
     this.state.pan = settings.pan;
     this.applyTransform();
     this.render();
@@ -3827,7 +3875,9 @@ export class MapComponent {
   }
 
   public setLayers(layers: MapLayers): void {
+    const prevCyber = this.state.layers.cyberThreats;
     this.state.layers = { ...layers };
+    if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
     this.syncLayerButtons();
     this.render();
   }
@@ -3844,6 +3894,11 @@ export class MapComponent {
 
   public setWeatherAlerts(alerts: WeatherAlert[]): void {
     this.weatherAlerts = alerts;
+    this.render();
+  }
+
+  public setRadiationObservations(observations: RadiationObservation[]): void {
+    this.radiationObservations = observations;
     this.render();
   }
 

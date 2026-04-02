@@ -188,7 +188,6 @@ async function fetchCreditToGdp() {
 }
 
 // --- Main seed ---
-let seedData = null;
 
 async function fetchAll() {
   const [policy, exchange, credit] = await Promise.all([
@@ -196,25 +195,37 @@ async function fetchAll() {
     fetchExchangeRates(),
     fetchCreditToGdp(),
   ]);
-  seedData = { policy, exchange, credit };
   const total = (policy?.rates?.length || 0) + (exchange?.rates?.length || 0) + (credit?.entries?.length || 0);
   if (total === 0) throw new Error('All BIS fetches returned empty');
-  return seedData;
+  return { policy, exchange, credit };
 }
 
+// validateFn receives the post-transform data ({ rates: [...] }), not the raw fetchAll shape.
 function validate(data) {
-  return data?.policy || data?.exchange || data?.credit;
+  return Array.isArray(data?.rates) && data.rates.length > 0;
 }
 
-runSeed('economic', 'bis', KEYS.policy, fetchAll, {
-  validateFn: validate,
-  ttlSeconds: TTL,
-  sourceVersion: 'bis-sdmx-csv',
-}).then(async (result) => {
-  if (result?.skipped || !seedData) return;
-  if (seedData.exchange) await writeExtraKey(KEYS.exchange, seedData.exchange, TTL);
-  if (seedData.credit) await writeExtraKey(KEYS.credit, seedData.credit, TTL);
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+// publishTransform: store only policy data (correct shape) at canonical key.
+// runSeed() calls process.exit(0) — .then() is unreachable; use afterPublish instead.
+function publishTransform(data) {
+  return data.policy ?? { rates: [] };
+}
+
+async function afterPublish(data) {
+  if (data.exchange) await writeExtraKey(KEYS.exchange, data.exchange, TTL);
+  if (data.credit) await writeExtraKey(KEYS.credit, data.credit, TTL);
+}
+
+if (process.argv[1]?.endsWith('seed-bis-data.mjs')) {
+  runSeed('economic', 'bis', KEYS.policy, fetchAll, {
+    validateFn: validate,
+    ttlSeconds: TTL,
+    sourceVersion: 'bis-sdmx-csv',
+    publishTransform,
+    afterPublish,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

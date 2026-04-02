@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package worldmonitor.infrastructure.v1;
 
-import "sebuf/http/annotations.proto";
 
 message ListTemporalAnomaliesRequest {
 }

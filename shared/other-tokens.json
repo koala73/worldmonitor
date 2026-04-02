@@ -1,0 +1,21 @@
+{
+  "ids": ["aptos","sui","sei-network","injective-protocol","celestia","pyth-network","jito-governance-token","movement","wormhole","ondo-finance"],
+  "meta": {
+    "aptos": { "name": "Aptos", "symbol": "APT" },
+    "sui": { "name": "Sui", "symbol": "SUI" },
+    "sei-network": { "name": "Sei", "symbol": "SEI" },
+    "injective-protocol": { "name": "Injective", "symbol": "INJ" },
+    "celestia": { "name": "Celestia", "symbol": "TIA" },
+    "pyth-network": { "name": "Pyth Network", "symbol": "PYTH" },
+    "jito-governance-token": { "name": "Jito", "symbol": "JTO" },
+    "movement": { "name": "Movement", "symbol": "MOVE" },
+    "wormhole": { "name": "Wormhole", "symbol": "W" },
+    "ondo-finance": { "name": "Ondo Finance", "symbol": "ONDO" }
+  },
+  "coinpaprika": {
+    "aptos": "apt-aptos",
+    "sui": "sui-sui",
+    "injective-protocol": "inj-injective-protocol",
+    "celestia": "tia-celestia"
+  }
+}

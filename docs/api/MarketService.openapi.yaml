@@ -419,6 +419,199 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/market/v1/list-crypto-sectors:
+        get:
+            tags:
+                - MarketService
+            summary: ListCryptoSectors
+            description: ListCryptoSectors retrieves crypto sector performance averages.
+            operationId: ListCryptoSectors
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCryptoSectorsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-defi-tokens:
+        get:
+            tags:
+                - MarketService
+            summary: ListDefiTokens
+            description: ListDefiTokens retrieves DeFi token prices and changes.
+            operationId: ListDefiTokens
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDefiTokensResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-ai-tokens:
+        get:
+            tags:
+                - MarketService
+            summary: ListAiTokens
+            description: ListAiTokens retrieves AI-focused crypto token prices and changes.
+            operationId: ListAiTokens
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAiTokensResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-other-tokens:
+        get:
+            tags:
+                - MarketService
+            summary: ListOtherTokens
+            description: ListOtherTokens retrieves other/trending crypto token prices and changes.
+            operationId: ListOtherTokens
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListOtherTokensResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-fear-greed-index:
+        get:
+            tags:
+                - MarketService
+            summary: GetFearGreedIndex
+            description: GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
+            operationId: GetFearGreedIndex
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFearGreedIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/list-earnings-calendar:
+        get:
+            tags:
+                - MarketService
+            summary: ListEarningsCalendar
+            description: ListEarningsCalendar retrieves upcoming and recent earnings releases.
+            operationId: ListEarningsCalendar
+            parameters:
+                - name: fromDate
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: toDate
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListEarningsCalendarResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-cot-positioning:
+        get:
+            tags:
+                - MarketService
+            summary: GetCotPositioning
+            description: GetCotPositioning retrieves CFTC COT institutional positioning data.
+            operationId: GetCotPositioning
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCotPositioningResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -549,6 +742,10 @@ components:
                         type: number
                         format: double
                         description: Sparkline data points (recent price history).
+                change7d:
+                    type: number
+                    format: double
+                    description: 7-day percentage change.
             required:
                 - symbol
             description: CryptoQuote represents a cryptocurrency quote from CoinGecko.
@@ -1188,3 +1385,260 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/BacktestStockResponse'
+        ListCryptoSectorsRequest:
+            type: object
+            description: ListCryptoSectorsRequest retrieves crypto sector performance.
+        ListCryptoSectorsResponse:
+            type: object
+            properties:
+                sectors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CryptoSector'
+            description: ListCryptoSectorsResponse contains crypto sector performance data.
+        CryptoSector:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Sector identifier.
+                name:
+                    type: string
+                    description: Sector display name.
+                change:
+                    type: number
+                    format: double
+                    description: Average 24h percentage change across sector tokens.
+            description: CryptoSector represents performance data for a crypto market sector.
+        ListDefiTokensRequest:
+            type: object
+            description: ListDefiTokensRequest retrieves DeFi token prices.
+        ListDefiTokensResponse:
+            type: object
+            properties:
+                tokens:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CryptoQuote'
+            description: ListDefiTokensResponse contains DeFi token price data.
+        ListAiTokensRequest:
+            type: object
+            description: ListAiTokensRequest retrieves AI crypto token prices.
+        ListAiTokensResponse:
+            type: object
+            properties:
+                tokens:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CryptoQuote'
+            description: ListAiTokensResponse contains AI token price data.
+        ListOtherTokensRequest:
+            type: object
+            description: ListOtherTokensRequest retrieves other/trending crypto token prices.
+        ListOtherTokensResponse:
+            type: object
+            properties:
+                tokens:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CryptoQuote'
+            description: ListOtherTokensResponse contains other token price data.
+        GetFearGreedIndexRequest:
+            type: object
+        GetFearGreedIndexResponse:
+            type: object
+            properties:
+                compositeScore:
+                    type: number
+                    format: double
+                compositeLabel:
+                    type: string
+                previousScore:
+                    type: number
+                    format: double
+                seededAt:
+                    type: string
+                sentiment:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                volatility:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                positioning:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                trend:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                breadth:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                momentum:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                liquidity:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                credit:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                macro:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                crossAsset:
+                    $ref: '#/components/schemas/FearGreedCategory'
+                vix:
+                    type: number
+                    format: double
+                hySpread:
+                    type: number
+                    format: double
+                yield10y:
+                    type: number
+                    format: double
+                putCallRatio:
+                    type: number
+                    format: double
+                pctAbove200d:
+                    type: number
+                    format: double
+                cnnFearGreed:
+                    type: number
+                    format: double
+                cnnLabel:
+                    type: string
+                aaiiBull:
+                    type: number
+                    format: double
+                aaiiBear:
+                    type: number
+                    format: double
+                fedRate:
+                    type: string
+                unavailable:
+                    type: boolean
+                fsiValue:
+                    type: number
+                    format: double
+                fsiLabel:
+                    type: string
+                hygPrice:
+                    type: number
+                    format: double
+                tltPrice:
+                    type: number
+                    format: double
+                sectorPerformance:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FearGreedSectorPerformance'
+        FearGreedCategory:
+            type: object
+            properties:
+                score:
+                    type: number
+                    format: double
+                weight:
+                    type: number
+                    format: double
+                contribution:
+                    type: number
+                    format: double
+                degraded:
+                    type: boolean
+                inputsJson:
+                    type: string
+        FearGreedSectorPerformance:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                name:
+                    type: string
+                change1d:
+                    type: number
+                    format: double
+        ListEarningsCalendarRequest:
+            type: object
+            properties:
+                fromDate:
+                    type: string
+                toDate:
+                    type: string
+        ListEarningsCalendarResponse:
+            type: object
+            properties:
+                earnings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EarningsEntry'
+                fromDate:
+                    type: string
+                toDate:
+                    type: string
+                total:
+                    type: integer
+                    format: int32
+                unavailable:
+                    type: boolean
+        EarningsEntry:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                company:
+                    type: string
+                date:
+                    type: string
+                hour:
+                    type: string
+                epsEstimate:
+                    type: number
+                    format: double
+                revenueEstimate:
+                    type: number
+                    format: double
+                epsActual:
+                    type: number
+                    format: double
+                revenueActual:
+                    type: number
+                    format: double
+                hasActuals:
+                    type: boolean
+                surpriseDirection:
+                    type: string
+        GetCotPositioningRequest:
+            type: object
+        GetCotPositioningResponse:
+            type: object
+            properties:
+                instruments:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CotInstrument'
+                reportDate:
+                    type: string
+                unavailable:
+                    type: boolean
+        CotInstrument:
+            type: object
+            properties:
+                name:
+                    type: string
+                code:
+                    type: string
+                reportDate:
+                    type: string
+                assetManagerLong:
+                    type: string
+                    format: int64
+                assetManagerShort:
+                    type: string
+                    format: int64
+                leveragedFundsLong:
+                    type: string
+                    format: int64
+                leveragedFundsShort:
+                    type: string
+                    format: int64
+                dealerLong:
+                    type: string
+                    format: int64
+                dealerShort:
+                    type: string
+                    format: int64
+                netPct:
+                    type: number
+                    format: double

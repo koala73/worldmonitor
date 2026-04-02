@@ -25,6 +25,13 @@ import { analyzeStock } from './analyze-stock';
 import { getStockAnalysisHistory } from './get-stock-analysis-history';
 import { backtestStock } from './backtest-stock';
 import { listStoredStockBacktests } from './list-stored-stock-backtests';
+import { listCryptoSectors } from './list-crypto-sectors';
+import { listDefiTokens } from './list-defi-tokens';
+import { listAiTokens } from './list-ai-tokens';
+import { listOtherTokens } from './list-other-tokens';
+import { getFearGreedIndex } from './get-fear-greed-index';
+import { listEarningsCalendar } from './list-earnings-calendar';
+import { getCotPositioning } from './get-cot-positioning';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
@@ -39,4 +46,11 @@ export const marketHandler: MarketServiceHandler = {
   getStockAnalysisHistory,
   backtestStock,
   listStoredStockBacktests,
+  listCryptoSectors,
+  listDefiTokens,
+  listAiTokens,
+  listOtherTokens,
+  getFearGreedIndex,
+  listEarningsCalendar,
+  getCotPositioning,
 };

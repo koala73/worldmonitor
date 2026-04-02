@@ -2,6 +2,8 @@ import type { PanelConfig, MapLayers, DataSourceId } from '@/types';
 import { SITE_VARIANT } from './variant';
 // boundary-ignore: isDesktopRuntime is a pure env probe with no service dependencies
 import { isDesktopRuntime } from '@/services/runtime';
+// boundary-ignore: getSecretState is a pure env/keychain probe with no service dependencies
+import { getSecretState } from '@/services/runtime-config';
 
 const _desktop = isDesktopRuntime();
 
@@ -39,9 +41,14 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   gov: { name: 'Government', enabled: true, priority: 1 },
   thinktanks: { name: 'Think Tanks', enabled: true, priority: 1 },
   polymarket: { name: 'Predictions', enabled: true, priority: 1 },
-  commodities: { name: 'Commodities', enabled: true, priority: 1 },
+  commodities: { name: 'Metals & Materials', enabled: true, priority: 1 },
+  'energy-complex': { name: 'Energy Complex', enabled: true, priority: 1 },
   markets: { name: 'Markets', enabled: true, priority: 1 },
-  economic: { name: 'Economic Indicators', enabled: true, priority: 1 },
+  'stock-analysis': { name: 'Stock Analysis', enabled: true, priority: 1, premium: 'locked' as const },
+  'stock-backtest': { name: 'Backtesting', enabled: true, priority: 1, premium: 'locked' as const },
+  'daily-market-brief': { name: 'Daily Market Brief', enabled: true, priority: 1, premium: 'locked' as const },
+  'chat-analyst': { name: 'WM Analyst', enabled: true, priority: 1, premium: 'locked' as const },
+  economic: { name: 'Macro Stress', enabled: true, priority: 1 },
   'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
   finance: { name: 'Financial', enabled: true, priority: 1 },
@@ -52,21 +59,45 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
   'satellite-fires': { name: 'Fires', enabled: true, priority: 2 },
-  'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
+  'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
+  'fear-greed': { name: 'Fear & Greed', enabled: true, priority: 2 },
+  'macro-tiles': { name: 'Macro Indicators', enabled: false, priority: 2 },
+  'fsi': { name: 'Financial Stress', enabled: false, priority: 2 },
+  'yield-curve': { name: 'Yield Curve', enabled: false, priority: 2 },
+  'earnings-calendar': { name: 'Earnings Calendar', enabled: false, priority: 2 },
+  'economic-calendar': { name: 'Economic Calendar', enabled: false, priority: 2 },
+  'cot-positioning': { name: 'COT Positioning', enabled: false, priority: 2 },
+  'hormuz-tracker': { name: 'Hormuz Trade Tracker', enabled: true, priority: 2 },
   'gulf-economies': { name: 'Gulf Economies', enabled: false, priority: 2 },
+  'consumer-prices': { name: 'Consumer Prices', enabled: false, priority: 2 },
+  'grocery-basket': { name: 'Grocery Index', enabled: false, priority: 2 },
+  'bigmac': { name: 'Big Mac Index', enabled: false, priority: 2 },
+  'fuel-prices': { name: 'Fuel Prices', enabled: false, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
   'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
+  'disease-outbreaks': { name: 'Disease Outbreaks', enabled: true, priority: 2 },
+  'social-velocity': { name: 'Social Velocity', enabled: true, priority: 2 },
   giving: { name: 'Global Giving', enabled: false, priority: 2 },
   displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
   climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
   'population-exposure': { name: 'Population Exposure', enabled: true, priority: 2 },
   'security-advisories': { name: 'Security Advisories', enabled: true, priority: 2 },
+  'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 2 },
+  'defense-patents': { name: 'R&D Signal', enabled: true, priority: 2 },
+  'radiation-watch': { name: 'Radiation Watch', enabled: true, priority: 2 },
+  'thermal-escalation': { name: 'Thermal Escalation', enabled: true, priority: 2 },
   'oref-sirens': { name: 'Israel Sirens', enabled: true, priority: 2, ...(_desktop && { premium: 'locked' as const }) },
   'telegram-intel': { name: 'Telegram Intel', enabled: true, priority: 2, ...(_desktop && { premium: 'locked' as const }) },
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
+  'national-debt': { name: 'Global Debt Clock', enabled: true, priority: 2 },
+  'cross-source-signals': { name: 'Cross-Source Signals', enabled: true, priority: 2 },
+  'market-implications': { name: 'AI Market Implications', enabled: true, priority: 1, premium: 'locked' as const },
+  'deduction': { name: 'Deduct Situation', enabled: true, priority: 1, premium: 'locked' as const },
+  'geo-hubs': { name: 'Geopolitical Hubs', enabled: false, priority: 2 },
+  'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
@@ -83,6 +114,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   ais: false,
   nuclear: true,
   irradiators: false,
+  radiationWatch: false,
   sanctions: true,
   weather: true,
   economic: true,
@@ -127,6 +159,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
@@ -143,6 +176,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   ais: false,
   nuclear: false,
   irradiators: false,
+  radiationWatch: false,
   sanctions: true,
   weather: true,
   economic: false,
@@ -187,6 +221,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -208,7 +243,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   accelerators: { name: 'Accelerators & Demo Days', enabled: true, priority: 1 },
   security: { name: 'Cybersecurity', enabled: true, priority: 1 },
   policy: { name: 'AI Policy & Regulation', enabled: true, priority: 1 },
-  regulation: { name: 'AI Regulation Dashboard', enabled: true, priority: 1 },
+  regulation: { name: 'AI Regulation News', enabled: true, priority: 1 },
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 1 },
   markets: { name: 'Tech Stocks', enabled: true, priority: 2 },
   finance: { name: 'Financial News', enabled: true, priority: 2 },
@@ -222,15 +257,18 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   funding: { name: 'Funding & VC', enabled: true, priority: 1 },
   producthunt: { name: 'Product Hunt', enabled: true, priority: 1 },
   events: { name: 'Tech Events', enabled: true, priority: 1 },
+  'internet-disruptions': { name: 'Internet Disruptions', enabled: true, priority: 2 },
   'service-status': { name: 'Service Status', enabled: true, priority: 2 },
-  economic: { name: 'Economic Indicators', enabled: true, priority: 2 },
+  economic: { name: 'Macro Stress', enabled: true, priority: 2 },
   'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 1 },
-  'macro-signals': { name: 'Market Radar', enabled: true, priority: 2 },
+  'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+  'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
+  'ai-regulation': { name: 'AI Regulation Dashboard', enabled: false, priority: 2 },
 };
 
 const TECH_MAP_LAYERS: MapLayers = {
@@ -291,6 +329,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -351,6 +390,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -370,18 +410,31 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'markets-news': { name: 'Markets News', enabled: true, priority: 2 },
   forex: { name: 'Forex & Currencies', enabled: true, priority: 1 },
   bonds: { name: 'Fixed Income', enabled: true, priority: 1 },
-  commodities: { name: 'Commodities & Futures', enabled: true, priority: 1 },
+  commodities: { name: 'Metals & Materials', enabled: true, priority: 1 },
+  'energy-complex': { name: 'Energy Complex', enabled: true, priority: 1 },
   'commodities-news': { name: 'Commodities News', enabled: true, priority: 2 },
   crypto: { name: 'Crypto & Digital Assets', enabled: true, priority: 1 },
   'crypto-news': { name: 'Crypto News', enabled: true, priority: 2 },
+  'crypto-heatmap': { name: 'Crypto Sectors', enabled: true, priority: 1 },
+  'defi-tokens': { name: 'DeFi Tokens', enabled: true, priority: 2 },
+  'ai-tokens': { name: 'AI Tokens', enabled: true, priority: 2 },
+  'other-tokens': { name: 'Alt Tokens', enabled: true, priority: 2 },
   centralbanks: { name: 'Central Bank Watch', enabled: true, priority: 1 },
-  economic: { name: 'Economic Data', enabled: true, priority: 1 },
+  economic: { name: 'Macro Stress', enabled: true, priority: 1 },
   'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1 },
+  'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1 },
   'economic-news': { name: 'Economic News', enabled: true, priority: 2 },
   ipo: { name: 'IPOs, Earnings & M&A', enabled: true, priority: 1 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
-  'macro-signals': { name: 'Market Radar', enabled: true, priority: 1 },
+  'macro-signals': { name: 'Market Regime', enabled: true, priority: 1 },
+  'macro-tiles': { name: 'Macro Indicators', enabled: true, priority: 1 },
+  'fear-greed': { name: 'Fear & Greed', enabled: true, priority: 1 },
+  'fsi': { name: 'Financial Stress', enabled: true, priority: 1 },
+  'yield-curve': { name: 'Yield Curve', enabled: true, priority: 1 },
+  'earnings-calendar': { name: 'Earnings Calendar', enabled: true, priority: 1 },
+  'economic-calendar': { name: 'Economic Calendar', enabled: true, priority: 1 },
+  'cot-positioning': { name: 'COT Positioning', enabled: true, priority: 2 },
   derivatives: { name: 'Derivatives & Options', enabled: true, priority: 2 },
   fintech: { name: 'Fintech & Trading Tech', enabled: true, priority: 2 },
   regulation: { name: 'Financial Regulation', enabled: true, priority: 2 },
@@ -392,6 +445,7 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'gcc-investments': { name: 'GCC Investments', enabled: true, priority: 2 },
   gccNews: { name: 'GCC Business News', enabled: true, priority: 2 },
   'gulf-economies': { name: 'Gulf Economies', enabled: true, priority: 1 },
+  'consumer-prices': { name: 'Consumer Prices', enabled: true, priority: 1 },
   polymarket: { name: 'Predictions', enabled: true, priority: 2 },
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
@@ -456,6 +510,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
@@ -516,6 +571,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -592,6 +648,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -652,6 +709,7 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -671,13 +729,16 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   'supply-chain': { name: 'Supply Chain & Logistics', enabled: true, priority: 1 },
   'commodity-regulation': { name: 'Regulation & Policy', enabled: true, priority: 1 },
   markets: { name: 'Commodity Markets', enabled: true, priority: 1 },
-  commodities: { name: 'Live Commodity Prices', enabled: true, priority: 1 },
+  commodities: { name: 'Live Metals & Materials', enabled: true, priority: 1 },
+  'energy-complex': { name: 'Energy Complex', enabled: true, priority: 1 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
-  'macro-signals': { name: 'Market Radar', enabled: true, priority: 1 },
+  'macro-signals': { name: 'Market Regime', enabled: true, priority: 1 },
   'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1 },
-  economic: { name: 'Economic Indicators', enabled: true, priority: 1 },
+  'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 1 },
+  economic: { name: 'Macro Stress', enabled: true, priority: 1 },
   'gulf-economies': { name: 'Gulf & OPEC Economies', enabled: true, priority: 1 },
   'gcc-investments': { name: 'GCC Resource Investments', enabled: true, priority: 2 },
+  'consumer-prices': { name: 'Consumer Prices', enabled: true, priority: 2 },
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   polymarket: { name: 'Commodity Predictions', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
@@ -742,6 +803,7 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
   processingPlants: true,
   commodityPorts: true,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
 
 const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -802,20 +864,94 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityPorts: true,
   webcams: false,
+  weatherRadar: false, diseaseOutbreaks: false,
 };
+
+// ============================================
+// UNIFIED PANEL REGISTRY
+// ============================================
+
+/** All panels from all variants — union with FULL taking precedence for duplicate keys. */
+export const ALL_PANELS: Record<string, PanelConfig> = {
+  ...HAPPY_PANELS,
+  ...COMMODITY_PANELS,
+  ...TECH_PANELS,
+  ...FINANCE_PANELS,
+  ...FULL_PANELS,
+};
+
+/** Per-variant canonical panel order (keys = which panels are enabled by default). */
+export const VARIANT_DEFAULTS: Record<string, string[]> = {
+  full:      Object.keys(FULL_PANELS),
+  tech:      Object.keys(TECH_PANELS),
+  finance:   Object.keys(FINANCE_PANELS),
+  commodity: Object.keys(COMMODITY_PANELS),
+  happy:     Object.keys(HAPPY_PANELS),
+};
+
+/**
+ * Variant-specific label overrides for panels shared across variants.
+ * Applied at render time, not just at seed time.
+ */
+export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<string, Partial<PanelConfig>>>>> = {
+  finance: {
+    map:         { name: 'Global Markets Map' },
+    'live-news': { name: 'Market Headlines' },
+    insights:    { name: 'AI Market Insights' },
+  },
+  tech: {
+    map:         { name: 'Global Tech Map' },
+    'live-news': { name: 'Tech Headlines' },
+    insights:    { name: 'AI Insights' },
+  },
+  commodity: {
+    map:         { name: 'Commodity Map' },
+    'live-news': { name: 'Commodity Headlines' },
+    insights:    { name: 'AI Commodity Insights' },
+  },
+  happy: {
+    map:         { name: 'World Map' },
+  },
+};
+
+/**
+ * Returns the effective panel config for a given key and variant,
+ * applying variant-specific display overrides (name, premium, etc.).
+ */
+export function getEffectivePanelConfig(key: string, variant: string): PanelConfig {
+  const base = ALL_PANELS[key];
+  if (!base) return { name: key, enabled: false, priority: 2 };
+  const override = VARIANT_PANEL_OVERRIDES[variant]?.[key] ?? {};
+  return { ...base, ...override };
+}
+
+export const FREE_MAX_PANELS = 40;
+export const FREE_MAX_SOURCES = 80;
+
+/**
+ * Returns true if the current user is entitled to enable/view this panel.
+ * Mirrors the entitlement checks in panel-layout.ts (single source of truth).
+ */
+export function isPanelEntitled(key: string, config: PanelConfig, isPro = false): boolean {
+  if (!config.premium) return true;
+  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'deduction', 'chat-analyst'];
+  if (apiKeyPanels.includes(key)) {
+    return getSecretState('WORLDMONITOR_API_KEY').present || isPro;
+  }
+  if (config.premium === 'locked') {
+    return isDesktopRuntime();
+  }
+  return true;
+}
 
 // ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================
-export const DEFAULT_PANELS = SITE_VARIANT === 'happy' 
-  ? HAPPY_PANELS 
-  : SITE_VARIANT === 'tech' 
-    ? TECH_PANELS 
-    : SITE_VARIANT === 'finance' 
-      ? FINANCE_PANELS 
-      : SITE_VARIANT === 'commodity'
-        ? COMMODITY_PANELS
-        : FULL_PANELS;
+export const DEFAULT_PANELS: Record<string, PanelConfig> = Object.fromEntries(
+  (VARIANT_DEFAULTS[SITE_VARIANT] ?? VARIANT_DEFAULTS['full'] ?? []).map(key =>
+    [key, getEffectivePanelConfig(key, SITE_VARIANT)]
+  )
+);
 
 export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
   ? HAPPY_MAP_LAYERS 
@@ -849,15 +985,15 @@ export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> =
   ucdpEvents: ['ucdp_events'],
   displacement: ['unhcr'],
   climate: ['climate'],
+  sanctions: ['sanctions_pressure'],
+  radiationWatch: ['radiation'],
 };
 
 // ============================================
-// PANEL CATEGORY MAP (variant-aware)
+// PANEL CATEGORY MAP
 // ============================================
 // Maps category keys to panel keys. Only categories with at least one
-// matching panel in the active variant's DEFAULT_PANELS are shown.
-// The `variants` field restricts a category to specific site variants;
-// omit it to show the category for all variants.
+// matching panel in the user's active panel settings are shown.
 export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: string[]; variants?: string[] }> = {
   // All variants — essential panels
   core: {
@@ -869,107 +1005,89 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   intelligence: {
     labelKey: 'header.panelCatIntelligence',
     panelKeys: ['cii', 'strategic-risk', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel', 'forecast'],
-    variants: ['full'],
   },
   correlation: {
     labelKey: 'header.panelCatCorrelation',
     panelKeys: ['military-correlation', 'escalation-correlation', 'economic-correlation', 'disaster-correlation'],
-    variants: ['full'],
   },
   regionalNews: {
     labelKey: 'header.panelCatRegionalNews',
     panelKeys: ['politics', 'us', 'europe', 'middleeast', 'africa', 'latam', 'asia'],
-    variants: ['full'],
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'markets', 'economic', 'trade-policy', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
-    variants: ['full'],
+    panelKeys: ['commodities', 'energy-complex', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
   },
   topical: {
     labelKey: 'header.panelCatTopical',
     panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'layoffs'],
-    variants: ['full'],
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
-    panelKeys: ['monitors', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'population-exposure', 'security-advisories', 'oref-sirens', 'world-clock', 'tech-readiness'],
-    variants: ['full'],
+    panelKeys: ['monitors', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'oref-sirens', 'world-clock', 'tech-readiness'],
   },
 
   // Tech variant
   techAi: {
     labelKey: 'header.panelCatTechAi',
     panelKeys: ['ai', 'tech', 'hardware', 'cloud', 'dev', 'github', 'producthunt', 'events', 'service-status', 'tech-readiness'],
-    variants: ['tech'],
   },
   startupsVc: {
     labelKey: 'header.panelCatStartupsVc',
     panelKeys: ['startups', 'vcblogs', 'regionalStartups', 'unicorns', 'accelerators', 'funding', 'ipo'],
-    variants: ['tech'],
   },
   securityPolicy: {
     labelKey: 'header.panelCatSecurityPolicy',
     panelKeys: ['security', 'policy', 'regulation'],
-    variants: ['tech'],
   },
   techMarkets: {
     labelKey: 'header.panelCatMarkets',
-    panelKeys: ['markets', 'finance', 'crypto', 'economic', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'layoffs', 'monitors', 'world-clock'],
-    variants: ['tech'],
+    panelKeys: ['markets', 'finance', 'crypto', 'economic', 'sanctions-pressure', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'layoffs', 'monitors', 'world-clock'],
   },
 
   // Finance variant
   finMarkets: {
     labelKey: 'header.panelCatMarkets',
     panelKeys: ['markets', 'stock-analysis', 'stock-backtest', 'daily-market-brief', 'markets-news', 'heatmap', 'macro-signals', 'analysis', 'polymarket'],
-    variants: ['finance'],
   },
   fixedIncomeFx: {
     labelKey: 'header.panelCatFixedIncomeFx',
     panelKeys: ['forex', 'bonds'],
-    variants: ['finance'],
   },
   finCommodities: {
     labelKey: 'header.panelCatCommodities',
-    panelKeys: ['commodities', 'commodities-news'],
-    variants: ['finance'],
+    panelKeys: ['commodities', 'energy-complex', 'commodities-news'],
   },
   cryptoDigital: {
     labelKey: 'header.panelCatCryptoDigital',
-    panelKeys: ['crypto', 'crypto-news', 'etf-flows', 'stablecoins', 'fintech'],
-    variants: ['finance'],
+    panelKeys: ['crypto', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens', 'crypto-news', 'etf-flows', 'stablecoins', 'fintech'],
   },
   centralBanksEcon: {
     labelKey: 'header.panelCatCentralBanks',
-    panelKeys: ['centralbanks', 'economic', 'trade-policy', 'supply-chain', 'economic-news'],
-    variants: ['finance'],
+    panelKeys: ['centralbanks', 'economic', 'energy-complex', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'economic-news'],
   },
   dealsInstitutional: {
     labelKey: 'header.panelCatDeals',
     panelKeys: ['ipo', 'derivatives', 'institutional', 'regulation'],
-    variants: ['finance'],
   },
   gulfMena: {
     labelKey: 'header.panelCatGulfMena',
-    panelKeys: ['gulf-economies', 'gcc-investments', 'gccNews', 'monitors', 'world-clock'],
+    panelKeys: ['gulf-economies', 'gcc-investments', 'gccNews', 'consumer-prices', 'monitors', 'world-clock'],
     variants: ['finance'],
   },
 
   // Commodity variant
   commodityPrices: {
     labelKey: 'header.panelCatCommodityPrices',
-    panelKeys: ['commodities', 'gold-silver', 'energy', 'base-metals', 'critical-minerals', 'markets', 'heatmap', 'macro-signals'],
-    variants: ['commodity'],
+    panelKeys: ['commodities', 'energy-complex', 'gold-silver', 'energy', 'base-metals', 'critical-minerals', 'markets', 'heatmap', 'macro-signals'],
   },
   miningIndustry: {
     labelKey: 'header.panelCatMining',
     panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'commodity-regulation'],
-    variants: ['commodity'],
   },
   commodityEcon: {
     labelKey: 'header.panelCatCommodityEcon',
-    panelKeys: ['trade-policy', 'economic', 'gulf-economies', 'gcc-investments', 'finance', 'polymarket', 'airline-intel', 'world-clock', 'monitors'],
+    panelKeys: ['trade-policy', 'sanctions-pressure', 'economic', 'gulf-economies', 'gcc-investments', 'consumer-prices', 'finance', 'polymarket', 'airline-intel', 'world-clock', 'monitors'],
     variants: ['commodity'],
   },
 
@@ -977,12 +1095,10 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   happyNews: {
     labelKey: 'header.panelCatHappyNews',
     panelKeys: ['positive-feed', 'progress', 'counters', 'spotlight', 'breakthroughs', 'digest'],
-    variants: ['happy'],
   },
   happyPlanet: {
     labelKey: 'header.panelCatHappyPlanet',
     panelKeys: ['species', 'renewable', 'giving'],
-    variants: ['happy'],
   },
 };
 

@@ -5,13 +5,16 @@ import type {
   GetTradeFlowsResponse,
   GetTradeBarriersResponse,
   GetCustomsRevenueResponse,
+  ListComtradeFlowsResponse,
+  TariffDataPoint,
+  EffectiveTariffRate,
 } from '@/services/trade';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 
-type TabId = 'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue';
+type TabId = 'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue' | 'comtrade';
 
 export class TradePolicyPanel extends Panel {
   private restrictionsData: GetTradeRestrictionsResponse | null = null;
@@ -19,6 +22,7 @@ export class TradePolicyPanel extends Panel {
   private flowsData: GetTradeFlowsResponse | null = null;
   private barriersData: GetTradeBarriersResponse | null = null;
   private revenueData: GetCustomsRevenueResponse | null = null;
+  private comtradeData: ListComtradeFlowsResponse | null = null;
   private activeTab: TabId = 'restrictions';
 
   constructor() {
@@ -54,6 +58,11 @@ export class TradePolicyPanel extends Panel {
     this.render();
   }
 
+  public updateComtradeFlows(data: ListComtradeFlowsResponse): void {
+    this.comtradeData = data;
+    this.render();
+  }
+
   public updateRevenue(data: GetCustomsRevenueResponse): void {
     this.revenueData = data;
     if (isDesktopRuntime() && !isFeatureAvailable('wtoTrade') && this.activeTab !== 'revenue') {
@@ -68,20 +77,21 @@ export class TradePolicyPanel extends Panel {
     const hasFlows = wtoAvailable && this.flowsData && this.flowsData.flows?.length > 0;
     const hasBarriers = wtoAvailable && this.barriersData && this.barriersData.barriers?.length > 0;
     const hasRevenue = this.revenueData && this.revenueData.months?.length > 0;
+    const hasComtrade = this.comtradeData && this.comtradeData.flows?.length > 0;
 
-    if (!wtoAvailable && !hasRevenue) {
+    if (!wtoAvailable && !hasRevenue && !hasComtrade) {
       this.setContent(`<div class="economic-empty">${t('components.tradePolicy.apiKeyMissing')}</div>`);
       return;
     }
 
-    if (!wtoAvailable && this.activeTab !== 'revenue') {
+    if (!wtoAvailable && this.activeTab !== 'revenue' && this.activeTab !== 'comtrade') {
       this.activeTab = 'revenue';
     }
 
     const tabsHtml = `
       <div class="panel-tabs">
         ${wtoAvailable ? `<button class="panel-tab ${this.activeTab === 'restrictions' ? 'active' : ''}" data-tab="restrictions">
-          ${t('components.tradePolicy.restrictions')}
+          ${t('components.tradePolicy.overview')}
         </button>` : ''}
         ${hasTariffs ? `<button class="panel-tab ${this.activeTab === 'tariffs' ? 'active' : ''}" data-tab="tariffs">
           ${t('components.tradePolicy.tariffs')}
@@ -95,6 +105,9 @@ export class TradePolicyPanel extends Panel {
         ${hasRevenue ? `<button class="panel-tab ${this.activeTab === 'revenue' ? 'active' : ''}" data-tab="revenue">
           ${t('components.tradePolicy.revenue')}
         </button>` : ''}
+        ${hasComtrade ? `<button class="panel-tab ${this.activeTab === 'comtrade' ? 'active' : ''}" data-tab="comtrade">
+          ${t('components.tradePolicy.strategicFlows')}
+        </button>` : ''}
       </div>
     `;
 
@@ -106,14 +119,17 @@ export class TradePolicyPanel extends Panel {
       ? (this.flowsData?.flows?.length ?? 0) > 0
       : this.activeTab === 'barriers'
       ? (this.barriersData?.barriers?.length ?? 0) > 0
+      : this.activeTab === 'comtrade'
+      ? (this.comtradeData?.flows?.length ?? 0) > 0
       : (this.revenueData?.months?.length ?? 0) > 0;
     const activeData = this.activeTab === 'restrictions' ? this.restrictionsData
       : this.activeTab === 'tariffs' ? this.tariffsData
       : this.activeTab === 'flows' ? this.flowsData
       : this.activeTab === 'barriers' ? this.barriersData
+      : this.activeTab === 'comtrade' ? this.comtradeData
       : this.revenueData;
     const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
-      ? `<div class="economic-warning">${this.activeTab === 'revenue' ? t('components.tradePolicy.treasuryUnavailable') : t('components.tradePolicy.upstreamUnavailable')}</div>`
+      ? `<div class="economic-warning">${this.activeTab === 'revenue' ? t('components.tradePolicy.treasuryUnavailable') : this.activeTab === 'comtrade' ? t('components.tradePolicy.comtradeUnavailable') : t('components.tradePolicy.upstreamUnavailable')}</div>`
       : '';
 
     let contentHtml = '';
@@ -123,16 +139,21 @@ export class TradePolicyPanel extends Panel {
       case 'flows': contentHtml = this.renderFlows(); break;
       case 'barriers': contentHtml = this.renderBarriers(); break;
       case 'revenue': contentHtml = this.renderRevenue(); break;
+      case 'comtrade': contentHtml = this.renderComtradeFlows(); break;
     }
 
-    const source = this.activeTab === 'revenue' ? t('components.tradePolicy.sourceTreasury') : t('components.tradePolicy.sourceWto');
+    const source = this.activeTab === 'comtrade' ? t('components.tradePolicy.sourceComtrade')
+      : this.activeTab === 'revenue' ? t('components.tradePolicy.sourceTreasury')
+      : (this.activeTab === 'tariffs' || this.activeTab === 'restrictions') && this.tariffsData?.effectiveTariffRate?.sourceName
+      ? `${t('components.tradePolicy.sourceWto')} / ${this.tariffsData.effectiveTariffRate.sourceName}`
+      : t('components.tradePolicy.sourceWto');
 
     this.setContent(`
       ${tabsHtml}
       ${unavailableBanner}
       <div class="economic-content">${contentHtml}</div>
       <div class="economic-footer">
-        <span class="economic-source">${source}</span>
+        <span class="economic-source">${escapeHtml(source)}</span>
       </div>
     `);
 
@@ -140,10 +161,11 @@ export class TradePolicyPanel extends Panel {
 
   private renderRestrictions(): string {
     if (!this.restrictionsData || !this.restrictionsData.restrictions?.length) {
-      return `<div class="economic-empty">${t('components.tradePolicy.noRestrictions')}</div>`;
+      return `<div class="economic-empty">${t('components.tradePolicy.noOverviewData')}</div>`;
     }
 
-    return `<div class="trade-restrictions-list">
+    return `${this.renderRestrictionsContext()}
+    <div class="trade-restrictions-list">
       ${this.restrictionsData.restrictions.map(r => {
         const statusClass = r.status === 'high' ? 'status-active' : r.status === 'moderate' ? 'status-notified' : 'status-terminated';
         const statusLabel = r.status === 'high' ? t('components.tradePolicy.highTariff') : r.status === 'moderate' ? t('components.tradePolicy.moderateTariff') : t('components.tradePolicy.lowTariff');
@@ -157,6 +179,7 @@ export class TradePolicyPanel extends Panel {
           <div class="trade-restriction-body">
             <div class="trade-sector">${escapeHtml(r.productSector)}</div>
             ${r.description ? `<div class="trade-description">${escapeHtml(r.description)}</div>` : ''}
+            ${this.renderRestrictionEffectiveContext(r.reportingCountry)}
             ${r.affectedCountry ? `<div class="trade-affected">Affects: ${escapeHtml(r.affectedCountry)}</div>` : ''}
           </div>
           <div class="trade-restriction-footer">
@@ -168,12 +191,34 @@ export class TradePolicyPanel extends Panel {
     </div>`;
   }
 
+  private renderRestrictionsContext(): string {
+    const gapSummary = this.getEffectiveTariffGapSummary();
+    if (!gapSummary) {
+      return `<div class="trade-policy-note">${t('components.tradePolicy.overviewNoteNoEffective')}</div>`;
+    }
+
+    const gapSign = gapSummary.gap > 0 ? '+' : '';
+    const sourceLink = this.renderSourceUrl(gapSummary.effectiveRate.sourceUrl);
+    return `<div class="trade-policy-note">
+      ${t('components.tradePolicy.usBaselineLabel')}: <strong>${gapSummary.baseline.tariffRate.toFixed(1)}%</strong>.
+      ${t('components.tradePolicy.effectiveTariffRateLabel')}: <strong>${gapSummary.effectiveRate.tariffRate.toFixed(1)}%</strong>.
+      ${t('components.tradePolicy.gapLabel')}: <strong>${gapSign}${gapSummary.gap.toFixed(1)}pp</strong>.
+      ${t('components.tradePolicy.overviewNoteTail')}
+      ${sourceLink}
+    </div>`;
+  }
+
   private renderTariffs(): string {
     if (!this.tariffsData || !this.tariffsData.datapoints?.length) {
       return `<div class="economic-empty">${t('components.tradePolicy.noTariffData')}</div>`;
     }
 
-    const rows = [...this.tariffsData.datapoints].sort((a, b) => b.year - a.year).map(d =>
+    const sortedDatapoints = [...this.tariffsData.datapoints].sort((a, b) => b.year - a.year);
+    const latestBaseline = sortedDatapoints[0] ?? null;
+    const effectiveRate = this.tariffsData.effectiveTariffRate ?? null;
+    const summaryHtml = this.renderTariffSummary(latestBaseline, effectiveRate);
+
+    const rows = sortedDatapoints.map(d =>
       `<tr>
         <td>${d.year}</td>
         <td>${d.tariffRate.toFixed(1)}%</td>
@@ -181,17 +226,97 @@ export class TradePolicyPanel extends Panel {
       </tr>`
     ).join('');
 
-    return `<div class="trade-tariffs-table">
+    return `${summaryHtml}
+    <div class="trade-tariffs-table">
       <table>
         <thead>
           <tr>
             <th>Year</th>
-            <th>${t('components.tradePolicy.appliedRate')}</th>
+            <th>${t('components.tradePolicy.mfnAppliedRate')}</th>
             <th>Sector</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
+    </div>`;
+  }
+
+  private renderTariffSummary(latestBaseline: TariffDataPoint | null, effectiveRate: EffectiveTariffRate | null): string {
+    if (!latestBaseline) return '';
+
+    const baselineMeta = t('components.tradePolicy.wtoBaselineMeta', { year: String(latestBaseline.year) });
+    const baselineCard = `
+      <div class="trade-tariff-card">
+        <div class="trade-tariff-label">${t('components.tradePolicy.baselineMfnTariff')}</div>
+        <div class="trade-tariff-value">${latestBaseline.tariffRate.toFixed(1)}%</div>
+        <div class="trade-tariff-meta">${escapeHtml(baselineMeta)}</div>
+      </div>
+    `;
+
+    if (!effectiveRate) {
+      return `<div class="trade-tariff-summary">
+        ${baselineCard}
+        <div class="trade-tariff-card trade-tariff-card-muted">
+          <div class="trade-tariff-label">${t('components.tradePolicy.effectiveTariffRateLabel')}</div>
+          <div class="trade-tariff-value">—</div>
+          <div class="trade-tariff-meta">${t('components.tradePolicy.noEffectiveCoverageForCountry')}</div>
+        </div>
+      </div>`;
+    }
+
+    const gap = effectiveRate.tariffRate - latestBaseline.tariffRate;
+    const gapSign = gap > 0 ? '+' : '';
+    const gapClass = gap >= 0 ? 'trade-tariff-gap-positive' : 'trade-tariff-gap-negative';
+    const effectiveMetaParts = [
+      effectiveRate.sourceName,
+      effectiveRate.observationPeriod,
+      effectiveRate.updatedAt ? `Updated ${effectiveRate.updatedAt}` : '',
+    ].filter(Boolean);
+    const sourceLink = this.renderSourceUrl(effectiveRate.sourceUrl);
+
+    return `<div class="trade-tariff-summary">
+      ${baselineCard}
+      <div class="trade-tariff-card">
+        <div class="trade-tariff-label">${t('components.tradePolicy.effectiveTariffRateLabel')}</div>
+        <div class="trade-tariff-value">${effectiveRate.tariffRate.toFixed(1)}%</div>
+        <div class="trade-tariff-meta">
+          ${escapeHtml(effectiveMetaParts.join(' | '))}
+          ${sourceLink ? `<span class="trade-tariff-source">${sourceLink}</span>` : ''}
+        </div>
+      </div>
+      <div class="trade-tariff-card">
+        <div class="trade-tariff-label">${t('components.tradePolicy.gapLabel')}</div>
+        <div class="trade-tariff-value ${gapClass}">${gapSign}${gap.toFixed(1)}pp</div>
+        <div class="trade-tariff-meta">${t('components.tradePolicy.effectiveMinusBaseline')}</div>
+      </div>
+    </div>`;
+  }
+
+  private getLatestBaselineTariffPoint(): TariffDataPoint | null {
+    if (!this.tariffsData?.datapoints?.length) return null;
+    return [...this.tariffsData.datapoints].sort((a, b) => b.year - a.year)[0] ?? null;
+  }
+
+  private getEffectiveTariffGapSummary(): { baseline: TariffDataPoint; effectiveRate: EffectiveTariffRate; gap: number } | null {
+    const baseline = this.getLatestBaselineTariffPoint();
+    const effectiveRate = this.tariffsData?.effectiveTariffRate ?? null;
+    if (!baseline || !effectiveRate) return null;
+    return {
+      baseline,
+      effectiveRate,
+      gap: effectiveRate.tariffRate - baseline.tariffRate,
+    };
+  }
+
+  private renderRestrictionEffectiveContext(reportingCountry: string): string {
+    if (reportingCountry !== 'United States') return '';
+    const gapSummary = this.getEffectiveTariffGapSummary();
+    if (!gapSummary) return '';
+    const gapSign = gapSummary.gap > 0 ? '+' : '';
+    return `<div class="trade-policy-inline-note">
+      ${t('components.tradePolicy.effectiveTariffRateLabel')}: ${gapSummary.effectiveRate.tariffRate.toFixed(1)}%
+      <span class="trade-policy-inline-sep">|</span>
+      ${t('components.tradePolicy.gapVsMfnLabel')}: ${gapSign}${gapSummary.gap.toFixed(1)}pp
     </div>`;
   }
 
@@ -320,6 +445,69 @@ export class TradePolicyPanel extends Panel {
             <th>${t('components.tradePolicy.colFytd')}</th>
           </tr>
         </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  private renderComtradeFlows(): string {
+    const flows = this.comtradeData?.flows;
+    if (!flows?.length) {
+      return `<div class="economic-empty">${t('components.tradePolicy.noComtradeData')}</div>`;
+    }
+
+    // Prefer world-total rows: UN Comtrade API returns partnerCode as integer 0 for world aggregates,
+    // stored as string "0"; "000" is the seed fallback default. If no world-total rows exist
+    // (bilateral-only preview data), fall back to all flows so the table is never empty.
+    // Two-step dedup: (1) within same (reporter, cmd, year) keep max tradeValueUsd
+    //   — world-total path: disambiguates exports vs imports; fallback path: keeps highest-value bilateral entry;
+    // (2) then keep latest year per (reporter, cmd).
+    const worldTotals = flows.filter(f => f.partnerCode === '0' || f.partnerCode === '000');
+    const toDedup = worldTotals.length > 0 ? worldTotals : flows;
+    const byYearDominant = new Map<string, typeof flows[0]>();
+    for (const f of toDedup) {
+      const key = `${f.reporterCode}:${f.cmdCode}:${f.year}`;
+      const existing = byYearDominant.get(key);
+      if (!existing || f.tradeValueUsd > existing.tradeValueUsd) byYearDominant.set(key, f);
+    }
+    const latest = new Map<string, typeof flows[0]>();
+    for (const f of byYearDominant.values()) {
+      const key = `${f.reporterCode}:${f.cmdCode}`;
+      const existing = latest.get(key);
+      if (!existing || f.year > existing.year) latest.set(key, f);
+    }
+
+    const sorted = [...latest.values()].sort((a, b) => {
+      if (a.isAnomaly !== b.isAnomaly) return a.isAnomaly ? -1 : 1;
+      return Math.abs(b.yoyChange) - Math.abs(a.yoyChange);
+    });
+
+    const rows = sorted.map(f => {
+      const yoySign = f.yoyChange >= 0 ? '▲' : '▼';
+      const yoyClass = f.yoyChange >= 0 ? 'change-positive' : 'change-negative';
+      const yoyPct = `${yoySign} ${Math.abs(f.yoyChange * 100).toFixed(0)}%`;
+      const valueStr = f.tradeValueUsd >= 1e9
+        ? `$${(f.tradeValueUsd / 1e9).toFixed(1)}B`
+        : `$${(f.tradeValueUsd / 1e6).toFixed(0)}M`;
+      const anomalyBadge = f.isAnomaly
+        ? `<span style="margin-left:6px;font-size:9px;font-weight:600;letter-spacing:0.05em;padding:1px 5px;border-radius:3px;background:rgba(255,68,68,0.15);color:var(--red);vertical-align:middle;text-transform:uppercase">${t('components.tradePolicy.anomalyBadge')}</span>`
+        : '';
+      return `<tr class="${f.isAnomaly ? 'trade-anomaly-row' : ''}">
+        <td>${escapeHtml(f.reporterName)}${anomalyBadge}</td>
+        <td>${escapeHtml(f.cmdDesc)}</td>
+        <td>${valueStr} <span class="trade-flow-year">${f.year}</span></td>
+        <td class="${yoyClass}">${yoyPct}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="trade-tariffs-table">
+      <table>
+        <thead><tr>
+          <th>${t('components.tradePolicy.colReporter')}</th>
+          <th>${t('components.tradePolicy.colCommodity')}</th>
+          <th>${t('components.tradePolicy.colTradeValue')}</th>
+          <th>${t('components.tradePolicy.yoyChange')}</th>
+        </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;

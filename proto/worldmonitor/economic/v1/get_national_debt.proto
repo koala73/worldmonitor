@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+// GetNationalDebtRequest requests national debt data for all countries.
+message GetNationalDebtRequest {}
+
+// NationalDebtEntry holds debt data for a single country.
+message NationalDebtEntry {
+  // ISO3 country code (e.g. "USA").
+  string iso3 = 1;
+  // Total debt in USD at baseline_ts.
+  double debt_usd = 2;
+  // GDP in USD (nominal, latest year).
+  double gdp_usd = 3;
+  // Debt as % of GDP.
+  double debt_to_gdp = 4;
+  // Year-over-year debt growth percent (2023->2024).
+  double annual_growth = 5;
+  // Deficit-derived accrual in USD per second.
+  double per_second_rate = 6;
+  // Deficit-derived accrual in USD per day.
+  double per_day_rate = 7;
+  // UTC ms timestamp anchoring the debt_usd figure (2024-01-01T00:00:00Z).
+  int64 baseline_ts = 8;
+  // Human-readable source string.
+  string source = 9;
+}
+
+// GetNationalDebtResponse wraps the full list of national debt entries.
+message GetNationalDebtResponse {
+  repeated NationalDebtEntry entries = 1;
+  // ISO 8601 timestamp when seed data was written.
+  string seeded_at = 2;
+  // True when upstream data is unavailable (fallback result).
+  bool unavailable = 3;
+}

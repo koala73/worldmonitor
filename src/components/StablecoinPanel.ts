@@ -32,7 +32,7 @@ export class StablecoinPanel extends Panel {
   private loading = true;
   private error: string | null = null;
   constructor() {
-    super({ id: 'stablecoins', title: t('panels.stablecoins'), showCount: false });
+    super({ id: 'stablecoins', title: t('panels.stablecoins'), showCount: false, infoTooltip: t('components.stablecoins.infoTooltip') });
   }
 
   public async fetchData(): Promise<void> {
@@ -42,22 +42,33 @@ export class StablecoinPanel extends Panel {
       this.error = null;
       this.loading = false;
       this.renderPanel();
+      void this.refreshFromRpc();
       return;
     }
+    await this.refreshFromRpc();
+  }
 
+  private async refreshFromRpc(): Promise<void> {
     try {
       const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
-      this.data = await client.listStablecoinMarkets({ coins: [] });
+      const fresh = await client.listStablecoinMarkets({ coins: [] });
       if (!this.element?.isConnected) return;
-      this.error = null;
+      if (fresh.stablecoins?.length || !this.data) {
+        this.data = fresh;
+        this.error = null;
+        this.loading = false;
+        this.renderPanel();
+      }
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      console.warn('[Stablecoin] Fetch error:', err);
-      this.error = t('common.noDataShort');
+      if (!this.data) {
+        console.warn('[Stablecoin] Fetch error:', err);
+        this.error = t('common.noDataShort');
+        this.loading = false;
+        this.renderPanel();
+      }
     }
-    this.loading = false;
-    this.renderPanel();
   }
 
   private renderPanel(): void {

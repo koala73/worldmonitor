@@ -32,6 +32,9 @@ export interface Forecast {
   perspectives?: Perspectives;
   projections?: Projections;
   caseFile?: ForecastCase;
+  simulationAdjustment: number;
+  simPathConfidence: number;
+  demotedBySimulation: boolean;
 }
 
 export interface ForecastSignal {
@@ -121,6 +124,37 @@ export interface ForecastBranchRound {
   probabilityShift: number;
 }
 
+export interface GetSimulationPackageRequest {
+  runId: string;
+}
+
+export interface GetSimulationPackageResponse {
+  found: boolean;
+  runId: string;
+  pkgKey: string;
+  schemaVersion: string;
+  theaterCount: number;
+  generatedAt: number;
+  note: string;
+  error: string;
+}
+
+export interface GetSimulationOutcomeRequest {
+  runId: string;
+}
+
+export interface GetSimulationOutcomeResponse {
+  found: boolean;
+  runId: string;
+  outcomeKey: string;
+  schemaVersion: string;
+  theaterCount: number;
+  generatedAt: number;
+  note: string;
+  error: string;
+  theaterSummariesJson: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -193,6 +227,56 @@ export class ForecastServiceClient {
     }
 
     return await resp.json() as GetForecastsResponse;
+  }
+
+  async getSimulationPackage(req: GetSimulationPackageRequest, options?: ForecastServiceCallOptions): Promise<GetSimulationPackageResponse> {
+    let path = "/api/forecast/v1/get-simulation-package";
+    const params = new URLSearchParams();
+    if (req.runId != null && req.runId !== "") params.set("runId", String(req.runId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetSimulationPackageResponse;
+  }
+
+  async getSimulationOutcome(req: GetSimulationOutcomeRequest, options?: ForecastServiceCallOptions): Promise<GetSimulationOutcomeResponse> {
+    let path = "/api/forecast/v1/get-simulation-outcome";
+    const params = new URLSearchParams();
+    if (req.runId != null && req.runId !== "") params.set("runId", String(req.runId));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetSimulationOutcomeResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

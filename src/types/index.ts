@@ -26,10 +26,13 @@ export type DataSourceId =
   | 'worldpop'
   | 'giving'
   | 'bis'
+  | 'bls'
   | 'wto_trade'
   | 'supply_chain'
   | 'security_advisories'
   | 'gpsjam'
+  | 'sanctions_pressure'
+  | 'radiation'
   | 'treasury_revenue';
 
 // AppContext lives in src/app/app-context.ts because it references
@@ -87,6 +90,16 @@ export interface ThreatClassification {
   source: 'keyword' | 'ml' | 'llm';
 }
 
+export type StoryPhase = 'breaking' | 'developing' | 'sustained' | 'fading';
+
+export interface StoryMeta {
+  firstSeen: number;        // epoch ms
+  mentionCount: number;
+  sourceCount: number;
+  phase: StoryPhase;
+}
+
+
 export interface NewsItem {
   source: string;
   title: string;
@@ -102,6 +115,9 @@ export interface NewsItem {
   lang?: string;
   happyCategory?: HappyContentCategory;
   imageUrl?: string;
+  importanceScore?: number;
+  corroborationCount?: number;
+  storyMeta?: StoryMeta;
 }
 
 export type VelocityLevel = 'normal' | 'elevated' | 'spike';
@@ -182,6 +198,14 @@ export interface CryptoData {
   price: number;
   change: number;
   sparkline?: number[];
+}
+
+export interface TokenData {
+  name: string;
+  symbol: string;
+  price: number;
+  change24h: number;
+  change7d: number;
 }
 
 export type EscalationTrend = 'escalating' | 'stable' | 'de-escalating';
@@ -274,6 +298,12 @@ export interface APTGroup {
   sponsor: string;
   lat: number;
   lon: number;
+  mitreId?: string;
+  mitreUrl?: string;
+  description?: string;
+  tactics?: string[];
+  targetSectors?: string[];
+  active?: boolean;
 }
 
 export type CyberThreatType = 'c2_server' | 'malware_host' | 'phishing' | 'malicious_url';
@@ -577,6 +607,7 @@ export interface MapLayers {
   ais: boolean;
   nuclear: boolean;
   irradiators: boolean;
+  radiationWatch?: boolean;
   sanctions: boolean;
   weather: boolean;
   economic: boolean;
@@ -632,6 +663,9 @@ export interface MapLayers {
   processingPlants: boolean;
   commodityPorts: boolean;
   webcams: boolean;
+  weatherRadar: boolean;
+  // Health layers
+  diseaseOutbreaks: boolean;
 }
 
 export interface AIDataCenter {
@@ -1442,6 +1476,7 @@ export interface CountryBriefSignals {
   outages: number;
   aisDisruptions: number;
   satelliteFires: number;
+  radiationAnomalies: number;
   temporalAnomalies: number;
   cyberThreats: number;
   earthquakes: number;
@@ -1456,4 +1491,7 @@ export interface CountryBriefSignals {
   travelAdvisoryMaxLevel: string | null;
   gpsJammingHexes: number;
   isTier1: boolean;
+  thermalEscalations: number;
+  sanctionsDesignations: number;
+  sanctionsNewDesignations: number;
 }

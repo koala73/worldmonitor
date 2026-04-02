@@ -15,6 +15,7 @@ function stripTS(src) {
   out = out.replace(/\bas\s+\{[^}]+\}/g, '');
   out = out.replace(/:\s*ReturnType<typeof\s+\w+>\s*\|\s*null/g, '');
   out = out.replace(/:\s*AbortController\s*\|\s*null/g, '');
+  out = out.replace(/:\s*\(\(\)\s*=>\s*void\)\s*\|\s*null/g, '');
   out = out.replace(/:\s*SmartPollReason/g, '');
   out = out.replace(/:\s*SmartPollContext/g, '');
   out = out.replace(/:\s*SmartPollOptions/g, '');
@@ -536,7 +537,7 @@ describe('startSmartPollLoop', () => {
 
     it('abort errors do not trigger backoff', async () => {
       let calls = 0;
-      startSmartPollLoop((_ctx) => {
+      startSmartPollLoop((ctx) => {
         calls++;
         const err = new Error('aborted');
         err.name = 'AbortError';
@@ -555,7 +556,7 @@ describe('startSmartPollLoop', () => {
   describe('in-flight guard', () => {
     it('concurrent calls are deferred, not dropped', async () => {
       let calls = 0;
-      const resolvers = [];
+      let resolvers = [];
       const handle = startSmartPollLoop(() => {
         calls++;
         return new Promise(r => resolvers.push(r));
@@ -582,5 +583,150 @@ describe('startSmartPollLoop', () => {
       resolvers[1]?.();
       handle.stop();
     });
+  });
+
+  describe('visibilityHub integration', () => {
+    it('subscribes to a provided hub on start and unsubscribes on stop()', () => {
+      let subscribeCalls = 0;
+      let unsubscribeCalls = 0;
+      const fakeHub = {
+        subscribe(cb) {
+          subscribeCalls++;
+          return () => { unsubscribeCalls++; };
+        },
+      };
+
+      const handle = startSmartPollLoop(() => {}, {
+        intervalMs: 1_000,
+        jitterFraction: 0,
+        visibilityHub: fakeHub,
+      });
+
+      assert.equal(subscribeCalls, 1, 'subscribe() called once on start');
+      assert.equal(unsubscribeCalls, 0, 'unsubscribe not called before stop');
+
+      handle.stop();
+
+      assert.equal(unsubscribeCalls, 1, 'unsubscribe() called once on stop');
+      assert.equal(subscribeCalls, 1, 'subscribe() not called again after stop');
+    });
+
+    it('uses hub callbacks for visibility changes instead of direct DOM listener', () => {
+      let hubCallback = null;
+      const fakeHub = {
+        subscribe(cb) {
+          hubCallback = cb;
+          return () => {};
+        },
+      };
+
+      let ticks = 0;
+      const handle = startSmartPollLoop(() => { ticks++; return true; }, {
+        intervalMs: 60_000,
+        jitterFraction: 0,
+        pauseWhenHidden: true,
+        visibilityHub: fakeHub,
+      });
+
+      assert.ok(hubCallback, 'hub subscriber callback was registered');
+      assert.equal(doc._listenerCount('visibilitychange'), 0, 'no direct DOM listener added when hub provided');
+
+      handle.stop();
+    });
+  });
+});
+
+// Build a plain-JS VisibilityHub that mirrors the contract of the real class,
+// used to test hub behavior without needing to strip TypeScript class syntax.
+function buildVisibilityHub(doc) {
+  const hasVisibilityApiBody = extractBody(runtimeSrc, 'hasVisibilityApi');
+  const factory = new Function('document', `
+    function hasVisibilityApi() { ${hasVisibilityApiBody} }
+    let _listeners = new Set();
+    let _handler = null;
+    function ensureListening() {
+      if (_handler || !hasVisibilityApi()) return;
+      _handler = () => { for (const cb of _listeners) cb(); };
+      document.addEventListener('visibilitychange', _handler);
+    }
+    function stopListening() {
+      if (!_handler) return;
+      document.removeEventListener('visibilitychange', _handler);
+      _handler = null;
+    }
+    return {
+      subscribe(cb) {
+        _listeners.add(cb);
+        ensureListening();
+        return () => { _listeners.delete(cb); if (_listeners.size === 0) stopListening(); };
+      },
+      destroy() { stopListening(); _listeners.clear(); },
+    };
+  `);
+  return factory(doc);
+}
+
+describe('VisibilityHub', () => {
+  let doc;
+
+  beforeEach(() => {
+    doc = createDocMock();
+  });
+
+  it('subscribe fans out to the callback on visibilitychange', () => {
+    const hub = buildVisibilityHub(doc);
+    let fired = 0;
+    hub.subscribe(() => { fired++; });
+    doc._fire('visibilitychange');
+    assert.equal(fired, 1);
+    hub.destroy();
+  });
+
+  it('unsubscribe callback prevents further notifications', () => {
+    const hub = buildVisibilityHub(doc);
+    let fired = 0;
+    const unsub = hub.subscribe(() => { fired++; });
+    unsub();
+    doc._fire('visibilitychange');
+    assert.equal(fired, 0, 'unsubscribed callback must not fire');
+    hub.destroy();
+  });
+
+  it('removes the DOM listener when the last subscriber unsubscribes', () => {
+    const hub = buildVisibilityHub(doc);
+    const unsub = hub.subscribe(() => {});
+    assert.equal(doc._listenerCount('visibilitychange'), 1, 'listener added on first subscribe');
+    unsub();
+    assert.equal(doc._listenerCount('visibilitychange'), 0, 'listener removed when subscriber count reaches 0');
+    hub.destroy();
+  });
+
+  it('fans out to all subscribers on visibilitychange', () => {
+    const hub = buildVisibilityHub(doc);
+    const fired = [];
+    hub.subscribe(() => fired.push('a'));
+    hub.subscribe(() => fired.push('b'));
+    doc._fire('visibilitychange');
+    assert.deepEqual(fired.sort(), ['a', 'b']);
+    hub.destroy();
+  });
+
+  it('destroy clears all subscribers and removes the DOM listener', () => {
+    const hub = buildVisibilityHub(doc);
+    let fired = 0;
+    hub.subscribe(() => { fired++; });
+    hub.destroy();
+    doc._fire('visibilitychange');
+    assert.equal(fired, 0, 'no callbacks after destroy');
+    assert.equal(doc._listenerCount('visibilitychange'), 0, 'DOM listener removed after destroy');
+  });
+
+  it('multiple subscribers share one DOM listener', () => {
+    const hub = buildVisibilityHub(doc);
+    hub.subscribe(() => {});
+    hub.subscribe(() => {});
+    hub.subscribe(() => {});
+    assert.equal(doc._listenerCount('visibilitychange'), 1, 'N subscribers → exactly 1 DOM listener');
+    hub.destroy();
   });
 });

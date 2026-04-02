@@ -101,7 +101,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetTemporalBaseline
-            description: GetTemporalBaseline checks current activity count against stored baseline for anomaly detection.
+            description: GetTemporalBaseline retrieves historical baseline data for a specific signal.
             operationId: GetTemporalBaseline
             parameters:
                 - name: type
@@ -130,6 +130,109 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetTemporalBaselineResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/get-ip-geo:
+        get:
+            tags:
+                - InfrastructureService
+            summary: GetIpGeo
+            description: GetIpGeo retrieves geographic information based on the caller's IP address.
+            operationId: GetIpGeo
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetIpGeoResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/reverse-geocode:
+        get:
+            tags:
+                - InfrastructureService
+            summary: ReverseGeocode
+            description: ReverseGeocode resolves geographic coordinates to a postal address/country.
+            operationId: ReverseGeocode
+            parameters:
+                - name: lat
+                  in: query
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+                - name: lon
+                  in: query
+                  required: false
+                  schema:
+                    type: number
+                    format: double
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ReverseGeocodeResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/get-bootstrap-data:
+        get:
+            tags:
+                - InfrastructureService
+            summary: GetBootstrapData
+            description: GetBootstrapData fetches multiple data points from the system cache in a single call.
+            operationId: GetBootstrapData
+            parameters:
+                - name: tier
+                  in: query
+                  description: Predefined tiers or specific keys.
+                  required: false
+                  schema:
+                    type: string
+                - name: keys
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBootstrapDataResponse'
                 "400":
                     description: Validation error
                     content:
@@ -214,6 +317,65 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListTemporalAnomaliesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/list-internet-ddos-attacks:
+        get:
+            tags:
+                - InfrastructureService
+            summary: ListInternetDdosAttacks
+            description: ListInternetDdosAttacks retrieves L3/L4 DDoS attack summaries from Cloudflare Radar.
+            operationId: ListInternetDdosAttacks
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListInternetDdosAttacksResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/list-internet-traffic-anomalies:
+        get:
+            tags:
+                - InfrastructureService
+            summary: ListInternetTrafficAnomalies
+            description: ListInternetTrafficAnomalies retrieves traffic anomaly events from Cloudflare Radar.
+            operationId: ListInternetTrafficAnomalies
+            parameters:
+                - name: country
+                  in: query
+                  description: Optional ISO 3166-1 alpha-2 country code filter.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListInternetTrafficAnomaliesResponse'
                 "400":
                     description: Validation error
                     content:
@@ -500,6 +662,79 @@ components:
                     format: int32
                     description: Number of samples incorporated so far.
             description: BaselineStats contains the running statistics for a baseline key.
+        GetIpGeoRequest:
+            type: object
+            description: GetIpGeoRequest defined for future parameters (e.g., specific IP).
+        GetIpGeoResponse:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                region:
+                    type: string
+                    description: Region or city (if available).
+                city:
+                    type: string
+            description: GetIpGeoResponse contains geographic information derived from the request IP.
+        ReverseGeocodeRequest:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+            description: ReverseGeocodeRequest parameters for coordinate-to-address lookups.
+        ReverseGeocodeResponse:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: Human-readable country name.
+                code:
+                    type: string
+                    description: ISO country code.
+                displayName:
+                    type: string
+                    description: Full display name/address.
+                error:
+                    type: string
+                    description: Optional error message.
+            description: ReverseGeocodeResponse containing the resolved location details.
+        GetBootstrapDataRequest:
+            type: object
+            properties:
+                tier:
+                    type: string
+                    description: Predefined tiers or specific keys.
+                keys:
+                    type: array
+                    items:
+                        type: string
+            description: GetBootstrapDataRequest parameters for multi-key fetching.
+        GetBootstrapDataResponse:
+            type: object
+            properties:
+                data:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: Map of keys to JSON-encoded data strings.
+                missing:
+                    type: array
+                    items:
+                        type: string
+                        description: List of keys that were not found in cache.
+            description: GetBootstrapDataResponse containing pooled data objects.
+        DataEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string
         RecordBaselineSnapshotRequest:
             type: object
             properties:
@@ -639,3 +874,121 @@ components:
                     format: double
                 message:
                     type: string
+        ListInternetDdosAttacksRequest:
+            type: object
+            description: ListInternetDdosAttacksRequest specifies filters for retrieving DDoS attack summaries.
+        ListInternetDdosAttacksResponse:
+            type: object
+            properties:
+                protocol:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DdosAttackSummaryEntry'
+                vector:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DdosAttackSummaryEntry'
+                dateRangeStart:
+                    type: string
+                    description: ISO 8601 start of the data window.
+                dateRangeEnd:
+                    type: string
+                    description: ISO 8601 end of the data window.
+                topTargetLocations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DdosLocationHit'
+            description: ListInternetDdosAttacksResponse contains DDoS attack protocol and vector breakdowns.
+        DdosAttackSummaryEntry:
+            type: object
+            properties:
+                label:
+                    type: string
+                    description: Protocol or vector name (e.g. "TCP", "UDP", "networkFlood").
+                percentage:
+                    type: number
+                    format: float
+                    description: Percentage share of total DDoS traffic (0–100).
+            description: DdosAttackSummaryEntry represents a single protocol or vector and its share of DDoS traffic.
+        DdosLocationHit:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                countryName:
+                    type: string
+                    description: Country display name.
+                percentage:
+                    type: number
+                    format: float
+                    description: Percentage share of total DDoS traffic targeting this location (0-100).
+                latitude:
+                    type: number
+                    format: float
+                    description: Latitude of the target location.
+                longitude:
+                    type: number
+                    format: float
+                    description: Longitude of the target location.
+            description: DdosLocationHit represents a top DDoS target location with geo coordinates.
+        ListInternetTrafficAnomaliesRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: Optional ISO 3166-1 alpha-2 country code filter.
+            description: ListInternetTrafficAnomaliesRequest specifies filters for traffic anomalies.
+        ListInternetTrafficAnomaliesResponse:
+            type: object
+            properties:
+                anomalies:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TrafficAnomaly'
+                totalCount:
+                    type: integer
+                    format: int32
+                    description: Total anomaly count before filtering.
+            description: ListInternetTrafficAnomaliesResponse contains detected traffic anomalies.
+        TrafficAnomaly:
+            type: object
+            properties:
+                uuid:
+                    type: string
+                    description: Unique identifier for the anomaly.
+                type:
+                    type: string
+                    description: Anomaly type (e.g. "ANOMALY_DNS", "ANOMALY_BGP").
+                status:
+                    type: string
+                    description: Current status ("ONGOING" or "HISTORICAL").
+                startDate:
+                    type: integer
+                    format: int64
+                    description: 'Start of the anomaly, Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                endDate:
+                    type: integer
+                    format: int64
+                    description: 'End of the anomaly, Unix epoch milliseconds. Zero if ongoing.. Warning: Values > 2^53 may lose precision in JavaScript'
+                asn:
+                    type: string
+                    description: Autonomous System Number affected.
+                asnName:
+                    type: string
+                    description: ASN display name.
+                locationCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                locationName:
+                    type: string
+                    description: Country display name.
+                latitude:
+                    type: number
+                    format: float
+                    description: Latitude of the affected location.
+                longitude:
+                    type: number
+                    format: float
+                    description: Longitude of the affected location.
+            description: TrafficAnomaly represents an anomalous traffic pattern detected by Cloudflare Radar.

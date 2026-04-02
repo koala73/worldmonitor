@@ -42,6 +42,13 @@ export {
   DEFAULT_MAP_LAYERS,
   MOBILE_DEFAULT_MAP_LAYERS,
   LAYER_TO_SOURCE,
+  ALL_PANELS,
+  VARIANT_DEFAULTS,
+  VARIANT_PANEL_OVERRIDES,
+  getEffectivePanelConfig,
+  isPanelEntitled,
+  FREE_MAX_PANELS,
+  FREE_MAX_SOURCES,
 } from './panels';
 
 // ============================================
@@ -62,14 +69,15 @@ export {
 
   MILITARY_BASES,
   NUCLEAR_FACILITIES,
-  APT_GROUPS,
   STRATEGIC_WATERWAYS,
   ECONOMIC_CENTERS,
   SANCTIONED_COUNTRIES,
+  SANCTIONED_COUNTRIES_ALPHA2,
   SPACEPORTS,
   CRITICAL_MINERALS,
 } from './geo';
 
+export { APT_GROUPS } from './apt-groups';
 export { GAMMA_IRRADIATORS } from './irradiators';
 export { PIPELINES, PIPELINE_COLORS } from './pipelines';
 export { PORTS } from './ports';

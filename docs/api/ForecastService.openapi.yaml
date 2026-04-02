@@ -39,6 +39,73 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/forecast/v1/get-simulation-package:
+        get:
+            tags:
+                - ForecastService
+            summary: GetSimulationPackage
+            operationId: GetSimulationPackage
+            parameters:
+                - name: runId
+                  in: query
+                  description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetSimulationPackageResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/forecast/v1/get-simulation-outcome:
+        get:
+            tags:
+                - ForecastService
+            summary: GetSimulationOutcome
+            operationId: GetSimulationOutcome
+            parameters:
+                - name: runId
+                  in: query
+                  description: |-
+                    IMPORTANT: Currently a no-op. Always returns the latest available outcome regardless of runId.
+                     Per-run lookup is reserved for Phase 3. Check the response 'note' field when runId is supplied
+                     and you need to detect a mismatch between requested and returned run.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetSimulationOutcomeResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -142,6 +209,20 @@ components:
                     $ref: '#/components/schemas/Projections'
                 caseFile:
                     $ref: '#/components/schemas/ForecastCase'
+                simulationAdjustment:
+                    type: number
+                    format: double
+                    description: |-
+                        Simulation-scoring fields — populated when the deep forecast simulation pipeline
+                         has run for this forecast's state and produced a non-zero adjustment.
+                         simulation_adjustment: raw score delta (+0.08–+0.12 positive, -0.12/-0.15 negative).
+                         sim_path_confidence: clamped [0,1] confidence of the matched sim top-path; 0 = not set.
+                         demoted_by_simulation: true when a negative adjustment crossed the 0.50 acceptance threshold.
+                simPathConfidence:
+                    type: number
+                    format: double
+                demotedBySimulation:
+                    type: boolean
         ForecastSignal:
             type: object
             properties:
@@ -327,3 +408,80 @@ components:
                 probabilityShift:
                     type: number
                     format: double
+        GetSimulationPackageRequest:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+        GetSimulationPackageResponse:
+            type: object
+            properties:
+                found:
+                    type: boolean
+                runId:
+                    type: string
+                pkgKey:
+                    type: string
+                schemaVersion:
+                    type: string
+                theaterCount:
+                    type: integer
+                    format: int32
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
+                note:
+                    type: string
+                    description: |-
+                        Populated when req.runId was supplied but does not match the returned package's runId.
+                         Indicates that per-run filtering is not yet active and the latest package was returned instead.
+                error:
+                    type: string
+                    description: |-
+                        Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
+                         Value: "redis_unavailable" on Redis errors.
+        GetSimulationOutcomeRequest:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: |-
+                        IMPORTANT: Currently a no-op. Always returns the latest available outcome regardless of runId.
+                         Per-run lookup is reserved for Phase 3. Check the response 'note' field when runId is supplied
+                         and you need to detect a mismatch between requested and returned run.
+        GetSimulationOutcomeResponse:
+            type: object
+            properties:
+                found:
+                    type: boolean
+                runId:
+                    type: string
+                outcomeKey:
+                    type: string
+                schemaVersion:
+                    type: string
+                theaterCount:
+                    type: integer
+                    format: int32
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
+                note:
+                    type: string
+                    description: |-
+                        Populated when req.runId was supplied but does not match the returned outcome's runId.
+                         Indicates that per-run filtering is not yet active and the latest outcome was returned instead.
+                error:
+                    type: string
+                    description: |-
+                        Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
+                         Value: "redis_unavailable" on Redis errors.
+                theaterSummariesJson:
+                    type: string
+                    description: |-
+                        JSON-encoded array of theater summaries for the UI (populated when found=true).
+                         Shape: Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label, summary, confidence, keyActors}], dominantReactions, stabilizers, invalidators }>
+                         Parse with JSON.parse() on the client. Empty string when found=false.

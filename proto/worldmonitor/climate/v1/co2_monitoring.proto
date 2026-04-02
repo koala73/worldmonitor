@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+message Co2Monitoring {
+  double current_ppm = 1;
+  double year_ago_ppm = 2;
+  double annual_growth_rate = 3;
+  double pre_industrial_baseline = 4;
+  double monthly_average = 5;
+  repeated Co2DataPoint trend_12m = 6;
+  double methane_ppb = 7;
+  double nitrous_oxide_ppb = 8;
+  int64 measured_at = 9;
+  string station = 10;
+}
+
+message Co2DataPoint {
+  string month = 1;
+  double ppm = 2;
+  // Year-over-year delta vs same calendar month, in ppm.
+  double anomaly = 3;
+}

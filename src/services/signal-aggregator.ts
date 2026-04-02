@@ -11,6 +11,8 @@ import type {
   SocialUnrestEvent,
   AisDisruptionEvent,
 } from '@/types';
+import type { CountrySanctionsPressure } from './sanctions-pressure';
+import type { RadiationObservation } from './radiation';
 import { getCountryAtCoordinates, getCountryNameByCode, nameToCountryCode, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
 
 export type SignalType =
@@ -20,7 +22,9 @@ export type SignalType =
   | 'protest'
   | 'ais_disruption'
   | 'satellite_fire'        // NASA FIRMS thermal anomalies
-  | 'temporal_anomaly'      // Baseline deviation alerts
+  | 'radiation_anomaly'     // Radiation readings meaningfully above local baseline
+  | 'temporal_anomaly'
+  | 'sanctions_pressure'      // Baseline deviation alerts
   | 'active_strike'         // Iran attack / military conflict events
 
 export interface GeoSignal {
@@ -104,6 +108,8 @@ class SignalAggregator {
   private readonly WINDOW_MS = 24 * 60 * 60 * 1000;
   // Tracks which source event type each temporal anomaly signal came from
   private temporalSourceMap = new WeakMap<GeoSignal, string>();
+  // Tracks signals added by ingestTheaterPostures so they can be cleared on re-ingestion
+  private theaterPostureSignals: GeoSignal[] = [];
 
   private clearSignalType(type: SignalType): void {
     this.signals = this.signals.filter(s => s.type !== type);
@@ -131,7 +137,7 @@ class SignalAggregator {
     this.clearSignalType('military_flight');
     const countryCounts = new Map<string, number>();
     for (const f of flights) {
-      const code = this.coordsToCountry(f.lat, f.lon);
+      const code = this.coordsToCountryWithFallback(f.lat, f.lon);
       const count = countryCounts.get(code) || 0;
       countryCounts.set(code, count + 1);
     }
@@ -156,7 +162,7 @@ class SignalAggregator {
     const regionCounts = new Map<string, { count: number; lat: number; lon: number }>();
 
     for (const v of vessels) {
-      const code = this.coordsToCountry(v.lat, v.lon);
+      const code = this.coordsToCountryWithFallback(v.lat, v.lon);
       const existing = regionCounts.get(code);
       if (existing) {
         existing.count++;
@@ -263,6 +269,27 @@ class SignalAggregator {
     this.pruneOld();
   }
 
+  ingestRadiationObservations(observations: RadiationObservation[]): void {
+    this.clearSignalType('radiation_anomaly');
+
+    for (const observation of observations) {
+      if (observation.severity === 'normal') continue;
+      const code = normalizeCountryCode(observation.country) || this.coordsToCountry(observation.lat, observation.lon);
+
+      this.signals.push({
+        type: 'radiation_anomaly',
+        country: code,
+        countryName: getCountryName(code),
+        lat: observation.lat,
+        lon: observation.lon,
+        severity: observation.severity === 'spike' ? 'high' : 'medium',
+        title: `${observation.severity === 'spike' ? 'Radiation spike' : 'Elevated radiation'} at ${observation.location} (${observation.delta >= 0 ? '+' : ''}${observation.delta.toFixed(1)} ${observation.unit} vs baseline)`,
+        timestamp: observation.observedAt,
+      });
+    }
+    this.pruneOld();
+  }
+
 
 
 
@@ -304,6 +331,36 @@ class SignalAggregator {
     }
     this.pruneOld();
   }
+
+  ingestSanctionsPressure(countries: CountrySanctionsPressure[]): void {
+    this.clearSignalType('sanctions_pressure');
+
+    for (const country of countries) {
+      const code = normalizeCountryCode(country.countryCode || country.countryName);
+      const severity: 'low' | 'medium' | 'high' =
+        country.newEntryCount >= 5 || country.entryCount >= 50
+          ? 'high'
+          : country.newEntryCount >= 1 || country.entryCount >= 20
+            ? 'medium'
+            : 'low';
+      if (country.newEntryCount === 0 && country.entryCount < 20) continue;
+
+      this.signals.push({
+        type: 'sanctions_pressure',
+        country: code,
+        countryName: country.countryName || getCountryName(code),
+        lat: 0,
+        lon: 0,
+        severity,
+        title: country.newEntryCount > 0
+          ? `${country.newEntryCount} new OFAC designation${country.newEntryCount === 1 ? '' : 's'} tied to ${country.countryName}`
+          : `${country.entryCount} OFAC-linked designations tied to ${country.countryName}`,
+        timestamp: new Date(),
+      });
+    }
+    this.pruneOld();
+  }
+
 
   ingestConflictEvents(events: Array<{
     id: string;
@@ -370,14 +427,37 @@ class SignalAggregator {
       'Gaza': 'PS', 'Yemen': 'YE',
     };
 
+    // Remove previously-added theater posture signals before re-ingesting (idempotency)
+    const prev = new Set(this.theaterPostureSignals);
+    this.signals = this.signals.filter(s => !prev.has(s));
+    this.theaterPostureSignals = [];
+
+    // Remove real signals only for the specific type that will be replaced by theater summary.
+    // Tracked per-type so that e.g. an aircraft-only posture doesn't erase real vessel signals.
+    const activeFlightCodes = new Set<string>();
+    const activeVesselCodes = new Set<string>();
+    for (const p of postures) {
+      if (!p.targetNation || p.postureLevel === 'normal') continue;
+      const code = TARGET_CODES[p.targetNation];
+      if (!code) continue;
+      if (p.totalAircraft > 0) activeFlightCodes.add(code);
+      if (p.totalVessels > 0) activeVesselCodes.add(code);
+    }
+    if (activeFlightCodes.size > 0 || activeVesselCodes.size > 0) {
+      this.signals = this.signals.filter(s => {
+        if (s.type === 'military_flight' && activeFlightCodes.has(s.country)) return false;
+        if (s.type === 'military_vessel' && activeVesselCodes.has(s.country)) return false;
+        return true;
+      });
+    }
+
     for (const p of postures) {
       if (!p.targetNation || p.postureLevel === 'normal') continue;
       const code = TARGET_CODES[p.targetNation];
       if (!code) continue;
 
-      const hasFlight = this.signals.some(s => s.country === code && s.type === 'military_flight');
-      if (!hasFlight && p.totalAircraft > 0) {
-        this.signals.push({
+      if (p.totalAircraft > 0) {
+        const sig: GeoSignal = {
           type: 'military_flight',
           country: code,
           countryName: getCountryName(code),
@@ -386,12 +466,13 @@ class SignalAggregator {
           severity: p.postureLevel === 'critical' ? 'high' : 'medium',
           title: `${p.totalAircraft} military aircraft in ${p.theaterName}`,
           timestamp: new Date(),
-        });
+        };
+        this.signals.push(sig);
+        this.theaterPostureSignals.push(sig);
       }
 
-      const hasVessel = this.signals.some(s => s.country === code && s.type === 'military_vessel');
-      if (!hasVessel && p.totalVessels > 0) {
-        this.signals.push({
+      if (p.totalVessels > 0) {
+        const sig: GeoSignal = {
           type: 'military_vessel',
           country: code,
           countryName: getCountryName(code),
@@ -400,7 +481,9 @@ class SignalAggregator {
           severity: p.totalVessels >= 5 ? 'high' : 'medium',
           title: `${p.totalVessels} naval vessels in ${p.theaterName}`,
           timestamp: new Date(),
-        });
+        };
+        this.signals.push(sig);
+        this.theaterPostureSignals.push(sig);
       }
     }
   }
@@ -479,7 +562,9 @@ class SignalAggregator {
           protest: 'civil unrest',
           ais_disruption: 'shipping anomalies',
           satellite_fire: 'thermal anomalies',
+          radiation_anomaly: 'radiation anomalies',
           temporal_anomaly: 'baseline anomalies',
+          sanctions_pressure: 'sanctions pressure',
           active_strike: 'active strikes',
         };
 
@@ -535,7 +620,9 @@ class SignalAggregator {
       protest: 0,
       ais_disruption: 0,
       satellite_fire: 0,
+      radiation_anomaly: 0,
       temporal_anomaly: 0,
+      sanctions_pressure: 0,
       active_strike: 0,
     };
 
@@ -563,4 +650,3 @@ class SignalAggregator {
 }
 
 export const signalAggregator = new SignalAggregator();
-

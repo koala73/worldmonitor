@@ -5,6 +5,7 @@ import {
   IntelligenceServiceClient,
   type GdeltArticle as ProtoGdeltArticle,
   type SearchGdeltDocumentsResponse,
+  type GdeltTimelinePoint,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -31,6 +32,12 @@ export interface TopicIntelligence {
   topic: IntelTopic;
   articles: GdeltArticle[];
   fetchedAt: Date;
+}
+
+export interface TopicTimeline {
+  tone: GdeltTimelinePoint[];
+  vol: GdeltTimelinePoint[];
+  fetchedAt: string;
 }
 
 export const INTEL_TOPICS: IntelTopic[] = [
@@ -65,7 +72,7 @@ export const INTEL_TOPICS: IntelTopic[] = [
   {
     id: 'intelligence',
     name: 'Intelligence',
-    query: '(espionage OR spy OR intelligence agency OR covert OR surveillance) sourcelang:eng',
+    query: '(espionage OR spy OR "intelligence agency" OR covert OR surveillance) sourcelang:eng',
     icon: '🕵️',
     description: 'Espionage, intelligence operations, surveillance',
   },
@@ -133,7 +140,24 @@ const positiveGdeltBreaker = createCircuitBreaker<SearchGdeltDocumentsResponse>(
 const emptyGdeltFallback: SearchGdeltDocumentsResponse = { articles: [], query: '', error: '' };
 
 const CACHE_TTL = 5 * 60 * 1000;
+const STALE_MAX = 60 * 60 * 1000; // 1h ceiling — never serve cache older than this
 const articleCache = new Map<string, { articles: GdeltArticle[]; timestamp: number }>();
+const timelineCache = new Map<string, { data: TopicTimeline; timestamp: number }>();
+
+export async function fetchTopicTimeline(topicId: string): Promise<TopicTimeline | null> {
+  const cached = timelineCache.get(topicId);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) return cached.data;
+
+  try {
+    const resp = await client.getGdeltTopicTimeline({ topic: topicId });
+    if (resp.error || (resp.tone.length === 0 && resp.vol.length === 0)) return null;
+    const data: TopicTimeline = { tone: resp.tone, vol: resp.vol, fetchedAt: resp.fetchedAt };
+    timelineCache.set(topicId, { data, timestamp: Date.now() });
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 /** Map proto GdeltArticle (all required strings) to service GdeltArticle (optional fields) */
 function toGdeltArticle(a: ProtoGdeltArticle): GdeltArticle {
@@ -171,8 +195,17 @@ export async function fetchGdeltArticles(
   }, emptyGdeltFallback);
 
   if (resp.error) {
+    if (resp.error === 'seed-unavailable') {
+      // Seed expired on the server — return stale client cache only if within the
+      // staleness ceiling so we do not serve arbitrarily old headlines as current data.
+      if (cached && Date.now() - cached.timestamp < STALE_MAX) {
+        return cached.articles;
+      }
+      return [];
+    }
     console.warn(`[GDELT-Intel] RPC error: ${resp.error}`);
-    return cached?.articles || [];
+    if (cached && Date.now() - cached.timestamp < STALE_MAX) return cached.articles;
+    return [];
   }
 
   const articles: GdeltArticle[] = (resp.articles || []).map(toGdeltArticle);

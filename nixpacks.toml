@@ -1,0 +1,20 @@
+# Railway relay build config (root_dir="" — builds from repo root).
+# Promotes scripts/nixpacks.toml settings here since nixpacks only reads
+# config from the build root. Adds scripts/ dep install so that packages
+# in scripts/package.json (e.g. @anthropic-ai/sdk, fast-xml-parser) are
+# available at runtime when node scripts/ais-relay.cjs is started.
+
+[phases.setup]
+aptPkgs = ["curl"]
+
+[variables]
+NODE_OPTIONS = "--dns-result-order=ipv4first"
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm install", "npm install --prefix scripts"]
+
+[start]
+cmd = "node scripts/ais-relay.cjs"

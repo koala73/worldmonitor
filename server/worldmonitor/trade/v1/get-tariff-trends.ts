@@ -1,6 +1,6 @@
 /**
- * RPC: getTariffTrends -- reads seeded WTO tariff trend data from Railway seed cache.
- * All external WTO API calls happen in seed-supply-chain-trade.mjs on Railway.
+ * RPC: getTariffTrends -- reads seeded WTO MFN tariff trends from Railway seed cache.
+ * The seed payload may also include an optional US effective tariff snapshot.
  */
 import type {
   ServerContext,
