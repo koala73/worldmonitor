@@ -3,6 +3,7 @@
  *
  * Validates Clerk-issued bearer tokens using local JWT verification
  * with jose + cached JWKS. No Convex round-trip needed.
+ * Requires CLERK_PUBLISHABLE_KEY (server-side) and CLERK_JWT_ISSUER_DOMAIN.
  *
  * This module must NOT import anything from `src/` -- it runs in the
  * Vercel edge runtime, not the browser.
