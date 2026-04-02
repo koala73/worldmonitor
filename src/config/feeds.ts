@@ -1186,18 +1186,53 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
-// Variant-aware exports
-export const FEEDS = SITE_VARIANT === 'tech'
-  ? TECH_FEEDS
-  : SITE_VARIANT === 'finance'
-    ? FINANCE_FEEDS
-    : SITE_VARIANT === 'happy'
-      ? HAPPY_FEEDS
-      : SITE_VARIANT === 'commodity'
-        ? COMMODITY_FEEDS
-        : FULL_FEEDS;
+// REITs variant feeds (inline to avoid circular import with variants/reits.ts)
+const REITS_FEEDS: Record<string, Feed[]> = {
+  'reit-us': [
+    { name: 'REIT.com', url: rss('https://news.google.com/rss/search?q=site:reit.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Nareit', url: rss('https://news.google.com/rss/search?q=site:nareit.com+REIT+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'REIT News', url: rss('https://news.google.com/rss/search?q=REIT+"real+estate+investment+trust"+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'GlobeSt', url: rss('https://news.google.com/rss/search?q=site:globest.com+REIT+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Commercial Observer', url: rss('https://news.google.com/rss/search?q=site:commercialobserver.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Bisnow', url: rss('https://news.google.com/rss/search?q=site:bisnow.com+REIT+OR+"commercial+real+estate"+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  'reit-china': [
+    { name: '赢商网', url: rss('https://news.google.com/rss/search?q=site:winshang.com+when:3d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans') },
+    { name: '观点地产', url: rss('https://news.google.com/rss/search?q=site:guandian.cn+REITs+OR+%E5%95%86%E4%B8%9A%E5%9C%B0%E4%BA%A7+when:3d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans') },
+    { name: '公募REITs', url: rss('https://news.google.com/rss/search?q=%E5%85%AC%E5%8B%9FREITs+when:3d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans') },
+    { name: '商业地产', url: rss('https://news.google.com/rss/search?q=%E5%95%86%E4%B8%9A%E5%9C%B0%E4%BA%A7+OR+%E8%B4%AD%E7%89%A9%E4%B8%AD%E5%BF%83+OR+%E5%86%99%E5%AD%97%E6%A5%BC+when:1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans') },
+    { name: '保障房', url: rss('https://news.google.com/rss/search?q=%E4%BF%9D%E9%9A%9C%E6%80%A7%E7%A7%9F%E8%B5%81%E4%BD%8F%E6%88%BF+OR+%E9%95%BF%E7%A7%9F%E5%85%AC%E5%AF%93+when:3d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans') },
+    { name: 'China REITs (EN)', url: rss('https://news.google.com/rss/search?q="China+REIT"+OR+"C-REIT"+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  'property-markets': [
+    { name: 'Property Markets', url: rss('https://news.google.com/rss/search?q="commercial+real+estate"+OR+"property+market"+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'CBRE Research', url: rss('https://news.google.com/rss/search?q=site:cbre.com+research+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'JLL', url: rss('https://news.google.com/rss/search?q=site:jll.com+"real+estate"+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Mortgage Rates', url: rss('https://news.google.com/rss/search?q="mortgage+rates"+OR+"interest+rates"+"real+estate"+when:1d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+};
 
-export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {
+// Variant-aware exports
+export const FEEDS = SITE_VARIANT === 'reits'
+  ? REITS_FEEDS
+  : SITE_VARIANT === 'tech'
+    ? TECH_FEEDS
+    : SITE_VARIANT === 'finance'
+      ? FINANCE_FEEDS
+      : SITE_VARIANT === 'happy'
+        ? HAPPY_FEEDS
+        : SITE_VARIANT === 'commodity'
+          ? COMMODITY_FEEDS
+          : FULL_FEEDS;
+
+export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = SITE_VARIANT === 'reits'
+  ? {
+    // REITs variant regions — match the 3 feed categories
+    reitUs: { labelKey: 'header.sourceRegionREITUS', feedKeys: ['reit-us'] },
+    reitChina: { labelKey: 'header.sourceRegionREITChina', feedKeys: ['reit-china'] },
+    propertyMarkets: { labelKey: 'header.sourceRegionPropertyMarkets', feedKeys: ['property-markets'] },
+  }
+  : {
   // Full (geopolitical) variant regions
   worldwide: { labelKey: 'header.sourceRegionWorldwide', feedKeys: ['politics', 'crisis'] },
   us: { labelKey: 'header.sourceRegionUS', feedKeys: ['us', 'gov'] },
@@ -1230,7 +1265,7 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
   gulfMena: { labelKey: 'header.sourceRegionGulfMena', feedKeys: ['gccNews'] },
 };
 
-export const INTEL_SOURCES: Feed[] = [
+const FULL_INTEL_SOURCES: Feed[] = [
   // Defense & Security (Tier 1)
   { name: 'Defense One', url: rss('https://www.defenseone.com/rss/all/'), type: 'defense' },
   { name: 'The War Zone', url: rss('https://www.twz.com/feed'), type: 'defense' },
@@ -1279,6 +1314,9 @@ export const INTEL_SOURCES: Feed[] = [
   { name: 'FAO GIEWS', url: rss('https://news.google.com/rss/search?q=site:fao.org+GIEWS+food+security+when:30d&hl=en-US&gl=US&ceid=US:en'), type: 'economic' },
   { name: 'EU ISS', url: rss('https://news.google.com/rss/search?q=site:iss.europa.eu+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
 ];
+
+// REITs variant has no intel sources
+export const INTEL_SOURCES: Feed[] = SITE_VARIANT === 'reits' ? [] : FULL_INTEL_SOURCES;
 
 // Default-enabled sources per panel (Tier 1+2 priority, ≥8 per panel)
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {

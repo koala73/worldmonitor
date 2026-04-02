@@ -168,7 +168,9 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   }
   html += `</select>`;
 
-  html += toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
+  if (SITE_VARIANT !== 'reits') {
+    html += toggleRowHtml('us-map-flash', t('components.insights.mapFlashLabel'), t('components.insights.mapFlashDesc'), settings.mapNewsFlash);
+  }
 
   // 3D Globe Visual Preset
   const currentPreset = getGlobeVisualPreset();
@@ -199,7 +201,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
   html += `</div></details>`;
 
-  // ── Intelligence group ──
+  // ── Intelligence group (hidden for REITs variant) ──
+  if (SITE_VARIANT !== 'reits') {
   html += `<details class="wm-pref-group">`;
   html += `<summary>${t('preferences.intelligence')}</summary>`;
   html += `<div class="wm-pref-group-content">`;
@@ -220,8 +223,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += toggleRowHtml('us-headline-memory', t('components.insights.headlineMemoryLabel'), t('components.insights.headlineMemoryDesc'), settings.headlineMemory);
 
   html += `</div></details>`;
+  }
 
-  // ── Analysis Frameworks group ──
+  // ── Analysis Frameworks group (hidden for REITs variant) ──
+  if (SITE_VARIANT !== 'reits') {
   html += `<details class="wm-pref-group">`;
   html += `<summary>${t('components.insights.analysisFrameworksLabel')}</summary>`;
   html += `<div class="wm-pref-group-content">`;
@@ -291,8 +296,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   </div>`;
 
   html += `</div></details>`;
+  }
 
-  // ── Media group ──
+  // ── Media group (hidden for REITs variant) ──
+  if (SITE_VARIANT !== 'reits') {
   html += `<details class="wm-pref-group">`;
   html += `<summary>${t('preferences.media')}</summary>`;
   html += `<div class="wm-pref-group-content">`;
@@ -319,6 +326,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   );
 
   html += `</div></details>`;
+  }
 
   // ── Panels group ──
   html += `<details class="wm-pref-group">`;
@@ -359,8 +367,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     }
   }
 
-  // AI status footer (web-only)
-  if (!host.isDesktopApp) {
+  // AI status footer (web-only, not for REITs)
+  if (!host.isDesktopApp && SITE_VARIANT !== 'reits') {
     html += `<div class="ai-flow-popup-footer"><span class="ai-flow-status-dot" id="usStatusDot"></span><span class="ai-flow-status-text" id="usStatusText"></span></div>`;
   }
 
