@@ -84,7 +84,9 @@
     "panelCatMining": "Mining & Supply Chain",
     "panelCatCommodityEcon": "Economy & Trade",
     "panelCatHappyNews": "Good News",
-    "panelCatHappyPlanet": "Planet & Giving"
+    "panelCatHappyPlanet": "Planet & Giving",
+    "panelCatREITNews": "REIT News",
+    "panelCatREITAnalysis": "REIT Analysis"
   },
   "panels": {
     "map": "Global Situation",
