@@ -128,6 +128,64 @@ async function holdEvent(userId, variant, eventJson) {
   await upstashRest('EXPIRE', key, String(QUIET_HELD_TTL));
 }
 
+// Delivers (or discards) the held queue for a single user+variant.
+// Used by both drainBatchOnWake (wake-up) and processFlushQuietHeld (settings change).
+// allowedChannelTypes: which channels to attempt delivery on; null = use rule's channels.
+async function drainHeldForUser(userId, variant, allowedChannelTypes) {
+  const key = `digest:quiet-held:${userId}:${variant}`;
+  const len = await upstashRest('LLEN', key);
+  if (!len || len === 0) return;
+
+  const items = await upstashRest('LRANGE', key, '0', '-1');
+  if (!Array.isArray(items) || items.length === 0) return;
+
+  const events = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
+  if (events.length === 0) { await upstashRest('DEL', key); return; }
+
+  const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, ''];
+  for (const ev of events) {
+    lines.push(`[${(ev.severity ?? 'high').toUpperCase()}] ${ev.payload?.title ?? ev.eventType}`);
+  }
+  lines.push('', 'View full dashboard → worldmonitor.app');
+  const text = lines.join('\n');
+  const subject = `WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''}`;
+
+  let channels = [];
+  try {
+    const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+      body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (chRes.ok) channels = await chRes.json();
+  } catch (err) {
+    console.warn(`[relay] drainHeldForUser: channel fetch failed for ${userId}:`, err.message);
+    return;
+  }
+
+  const verifiedChannels = channels.filter(c =>
+    c.verified && (allowedChannelTypes == null || allowedChannelTypes.includes(c.channelType)),
+  );
+  let anyDelivered = false;
+  for (const ch of verifiedChannels) {
+    try {
+      let ok = false;
+      if (ch.channelType === 'telegram' && ch.chatId) ok = await sendTelegram(userId, ch.chatId, text);
+      else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(userId, ch.webhookEnvelope, text);
+      else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(userId, ch.webhookEnvelope, text);
+      else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text);
+      if (ok) anyDelivered = true;
+    } catch (err) {
+      console.warn(`[relay] drainHeldForUser: delivery error for ${userId}/${ch.channelType}:`, err.message);
+    }
+  }
+  if (anyDelivered) {
+    await upstashRest('DEL', key);
+    console.log(`[relay] drainHeldForUser: delivered ${events.length} held events to ${userId} (${variant})`);
+  }
+}
+
 // Called on a 5-minute timer in the poll loop; sends held batches to users
 // whose quiet hours have ended. Self-contained — fetches its own rules.
 async function drainBatchOnWake() {
@@ -142,62 +200,18 @@ async function drainBatchOnWake() {
   const batchRules = allRules.filter(r =>
     r.quietHoursEnabled && r.quietHoursOverride === 'batch_on_wake' && !isInQuietHours(r),
   );
-  if (batchRules.length === 0) return;
-
   for (const rule of batchRules) {
-    const key = `digest:quiet-held:${rule.userId}:${rule.variant ?? 'full'}`;
-    const len = await upstashRest('LLEN', key);
-    if (!len || len === 0) continue;
-
-    const items = await upstashRest('LRANGE', key, '0', '-1');
-    if (!Array.isArray(items) || items.length === 0) continue;
-
-    const events = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
-    if (events.length === 0) { await upstashRest('DEL', key); continue; }
-
-    const lines = [`WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''} from quiet hours`, ''];
-    for (const ev of events) {
-      const title = ev.payload?.title ?? ev.eventType;
-      const sev = ev.severity ?? 'high';
-      lines.push(`[${sev.toUpperCase()}] ${title}`);
-    }
-    lines.push('', 'View full dashboard → worldmonitor.app');
-    const text = lines.join('\n');
-    const subject = `WorldMonitor — ${events.length} held alert${events.length !== 1 ? 's' : ''}`;
-
-    let channels = [];
-    try {
-      const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
-        body: JSON.stringify({ userId: rule.userId }),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (chRes.ok) channels = await chRes.json();
-    } catch (err) {
-      console.warn(`[relay] drainBatchOnWake: channel fetch failed for ${rule.userId}:`, err.message);
-      continue;
-    }
-
-    const verifiedChannels = channels.filter(c => c.verified && (rule.channels ?? []).includes(c.channelType));
-    let anyDelivered = false;
-    for (const ch of verifiedChannels) {
-      try {
-        let ok = false;
-        if (ch.channelType === 'telegram' && ch.chatId) ok = await sendTelegram(rule.userId, ch.chatId, text);
-        else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(rule.userId, ch.webhookEnvelope, text);
-        else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(rule.userId, ch.webhookEnvelope, text);
-        else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text);
-        if (ok) anyDelivered = true;
-      } catch (err) {
-        console.warn(`[relay] drainBatchOnWake: delivery error for ${rule.userId}/${ch.channelType}:`, err.message);
-      }
-    }
-    if (anyDelivered) {
-      await upstashRest('DEL', key);
-      console.log(`[relay] drainBatchOnWake: sent ${events.length} held events to ${rule.userId}`);
-    }
+    await drainHeldForUser(rule.userId, rule.variant ?? 'full', rule.channels ?? null);
   }
+}
+
+// Triggered when a user changes quiet hours settings away from batch_on_wake,
+// so held events are delivered rather than expiring silently.
+async function processFlushQuietHeld(event) {
+  const { userId, variant = 'full' } = event;
+  if (!userId) return;
+  console.log(`[relay] flush_quiet_held for ${userId} (${variant})`);
+  await drainHeldForUser(userId, variant, null); // null = all verified channels
 }
 
 // ── Delivery: Telegram ────────────────────────────────────────────────────────
@@ -404,6 +418,7 @@ async function processWelcome(event) {
 
 async function processEvent(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
+  if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
   console.log(`[relay] Processing event: ${event.eventType} (${event.severity ?? 'high'})`);
 
   let enabledRules;

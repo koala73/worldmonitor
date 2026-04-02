@@ -68,6 +68,20 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
   }
 }
 
+async function publishFlushHeld(userId: string, variant: string): Promise<void> {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  const msg = JSON.stringify({ eventType: 'flush_quiet_held', userId, variant });
+  try {
+    await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-edge/1.0' },
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (err) {
+    console.warn('[notification-channels] publishFlushHeld LPUSH failed:', (err as Error).message);
+  }
+}
+
 function json(body: unknown, status: number, cors: Record<string, string>, noCache = false): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -247,6 +261,10 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           console.error('[notification-channels] POST set-quiet-hours relay error:', resp.status);
           return json({ error: 'Operation failed' }, 500, corsHeaders);
         }
+        // If quiet hours were disabled or override changed away from batch_on_wake,
+        // flush any held events so they're delivered rather than expiring silently.
+        const abandonsBatch = !quietHoursEnabled || quietHoursOverride !== 'batch_on_wake';
+        if (abandonsBatch) ctx.waitUntil(publishFlushHeld(session.userId, variant));
         return json({ ok: true }, 200, corsHeaders);
       }
 
