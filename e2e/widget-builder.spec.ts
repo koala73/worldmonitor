@@ -628,4 +628,33 @@ test.describe('AI widget builder — PRO tier', () => {
     await expect(modal).not.toBeVisible();
     await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible();
   });
+
+  test('health 403 in PRO mode shows widget key guidance instead of PRO key guidance', async ({ page }) => {
+    await page.route('**/widget-agent/health', async (route) => {
+      expect(route.request().headers()['x-widget-key']).toBe(widgetKey);
+      expect(route.request().headers()['x-pro-key']).toBe(proWidgetKey);
+      await route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: false,
+          agentEnabled: true,
+          widgetKeyConfigured: true,
+          anthropicConfigured: true,
+          proKeyConfigured: true,
+          error: 'Forbidden',
+        }),
+      });
+    });
+
+    await page.goto('/');
+    await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible({ timeout: 30000 });
+    await page.locator('#panelsGrid .ai-widget-block-pro').click();
+
+    const modal = page.locator('.widget-chat-modal');
+    await expect(modal).toBeVisible();
+    await expect(modal.locator('.widget-chat-readiness')).toContainText('Widget key rejected', { timeout: 15000 });
+    await expect(modal.locator('.widget-chat-readiness')).not.toContainText('PRO key rejected');
+    await expect(modal.locator('.widget-chat-send')).toBeDisabled();
+  });
 });

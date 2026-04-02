@@ -23,6 +23,7 @@ type WidgetAgentHealth = {
   widgetKeyConfigured?: boolean;
   anthropicConfigured?: boolean;
   proKeyConfigured?: boolean;
+  errorCode?: 'invalid_widget_key' | 'invalid_pro_key';
   error?: string;
 };
 
@@ -161,11 +162,10 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
     try {
       const headers = await buildWidgetAuthHeaders(isPro);
       const res = await fetch(widgetAgentHealthUrl(), { headers });
-      let payload: WidgetAgentHealth | null = null;
-      try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
+      const payload = await parseWidgetAgentJson(res);
 
       if (!res.ok) {
-        const message = resolvePreflightMessage(res.status, payload, isPro);
+        const message = resolvePreflightMessage(res.status, payload);
         preflightReady = false;
         setReadinessState(readinessEl, 'error', message);
         setFooterStatus(footerStatusEl, message, 'error');
@@ -253,7 +253,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
       });
 
       if (!res.ok || !res.body) {
-        throw new Error(t('widgets.serverError', { status: res.status }));
+        const payload = await parseWidgetAgentJson(res);
+        throw new Error(resolveRequestErrorMessage(res.status, payload));
       }
 
       let resultHtml = '';
@@ -386,11 +387,35 @@ function renderExampleChips(container: HTMLElement, inputEl: HTMLTextAreaElement
   }
 }
 
-function resolvePreflightMessage(status: number, payload: WidgetAgentHealth | null, isPro: boolean): string {
-  if (status === 403) return isPro ? t('widgets.preflightInvalidProKey') : t('widgets.preflightInvalidKey');
+async function parseWidgetAgentJson(res: Response): Promise<WidgetAgentHealth | null> {
+  try {
+    return await res.json() as WidgetAgentHealth;
+  } catch {
+    return null;
+  }
+}
+
+function resolveWidgetAgentFailureMessage(status: number, payload: WidgetAgentHealth | null): string | null {
+  if (status === 403) {
+    return payload?.errorCode === 'invalid_pro_key'
+      ? t('widgets.preflightInvalidProKey')
+      : t('widgets.preflightInvalidKey');
+  }
   if (status === 503 && payload?.proKeyConfigured === false) return t('widgets.preflightProUnavailable');
   if (payload?.anthropicConfigured === false) return t('widgets.preflightAiUnavailable');
+  return null;
+}
+
+function resolvePreflightMessage(status: number, payload: WidgetAgentHealth | null): string {
+  const message = resolveWidgetAgentFailureMessage(status, payload);
+  if (message) return message;
   return t('widgets.preflightUnavailable');
+}
+
+function resolveRequestErrorMessage(status: number, payload: WidgetAgentHealth | null): string {
+  const message = resolveWidgetAgentFailureMessage(status, payload);
+  if (message) return message;
+  return t('widgets.serverError', { status });
 }
 
 function setReadinessState(container: HTMLElement, tone: 'checking' | 'ready' | 'error', text: string): void {
