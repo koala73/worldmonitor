@@ -38,6 +38,15 @@ export default defineSchema({
         verified: v.boolean(),
         linkedAt: v.number(),
       }),
+      v.object({
+        userId: v.string(),
+        channelType: v.literal("discord"),
+        webhookEnvelope: v.string(),
+        verified: v.boolean(),
+        linkedAt: v.number(),
+        discordGuildId: v.optional(v.string()),
+        discordChannelId: v.optional(v.string()),
+      }),
     ),
   )
     .index("by_user", ["userId"])
@@ -61,6 +70,7 @@ export default defineSchema({
     token: v.string(),
     expiresAt: v.number(),
     used: v.boolean(),
+    variant: v.optional(v.string()),
   })
     .index("by_token", ["token"])
     .index("by_user", ["userId"]),

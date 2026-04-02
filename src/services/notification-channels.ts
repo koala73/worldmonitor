@@ -1,6 +1,7 @@
 import { getClerkToken } from '@/services/clerk';
+import { SITE_VARIANT } from '@/config/variant';
 
-export type ChannelType = 'telegram' | 'slack' | 'email';
+export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord';
 export type Sensitivity = 'all' | 'high' | 'critical';
 
 export interface NotificationChannel {
@@ -49,7 +50,7 @@ export async function createPairingToken(): Promise<{ token: string; expiresAt: 
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'create-pairing-token' }),
+    body: JSON.stringify({ action: 'create-pairing-token', variant: SITE_VARIANT }),
   });
   if (!res.ok) throw new Error(`create pairing token: ${res.status}`);
   return res.json();
@@ -76,6 +77,13 @@ export async function setSlackChannel(webhookEnvelope: string): Promise<void> {
 export async function startSlackOAuth(): Promise<string> {
   const res = await authFetch('/api/slack/oauth/start', { method: 'POST' });
   if (!res.ok) throw new Error(`slack oauth start: ${res.status}`);
+  const data = await res.json() as { oauthUrl: string };
+  return data.oauthUrl;
+}
+
+export async function startDiscordOAuth(): Promise<string> {
+  const res = await authFetch('/api/discord/oauth/start', { method: 'POST' });
+  if (!res.ok) throw new Error(`discord oauth start: ${res.status}`);
   const data = await res.json() as { oauthUrl: string };
   return data.oauthUrl;
 }

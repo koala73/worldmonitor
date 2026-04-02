@@ -9,7 +9,8 @@ const BOOTSTRAP_KEYS = {
   outages:           'infra:outages:v1',
   sectors:           'market:sectors:v1',
   etfFlows:          'market:etf-flows:v1',
-  climateAnomalies:  'climate:anomalies:v1',
+  climateAnomalies:  'climate:anomalies:v2',
+  co2Monitoring:     'climate:co2-monitoring:v1',
   wildfires:         'wildfire:fires:v1',
   marketQuotes:      'market:stocks-bootstrap:v1',
   commodityQuotes:   'market:commodities-bootstrap:v1',
@@ -61,10 +62,6 @@ const BOOTSTRAP_KEYS = {
   ecbEuribor6m:      'economic:fred:v1:EURIBOR6M:0',
   ecbEuribor1y:      'economic:fred:v1:EURIBOR1Y:0',
   fearGreedIndex:    'market:fear-greed:v1',
-  reitQuotes:        'reits:quotes:v1',
-  reitCorrelation:   'reits:correlation:v1',
-  reitProperties:    'reits:properties:v1',
-  reitSocial:        'reits:social:v1',
   euYieldCurve:      'economic:yield-curve-eu:v1',
   earningsCalendar:  'market:earnings-calendar:v1',
   econCalendar:      'economic:econ-calendar:v1',
@@ -88,6 +85,7 @@ const STANDALONE_KEYS = {
   bisPolicy:             'economic:bis:policy:v1',
   bisExchange:           'economic:bis:eer:v1',
   bisCredit:             'economic:bis:credit:v1',
+  climateZoneNormals:    'climate:zone-normals:v1',
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
   minerals:              'supply_chain:minerals:v2',
@@ -124,6 +122,7 @@ const STANDALONE_KEYS = {
   simulationPackageLatest:  'forecast:simulation-package:latest',
   simulationOutcomeLatest:  'forecast:simulation-outcome:latest',
   newsThreatSummary:        'news:threat:summary:v1',
+  climateNews:              'climate:news-intelligence:v1',
 };
 
 const SEED_META = {
@@ -131,6 +130,9 @@ const SEED_META = {
   wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   outages:          { key: 'seed-meta:infra:outages',           maxStaleMin: 30 },
   climateAnomalies: { key: 'seed-meta:climate:anomalies',       maxStaleMin: 120 }, // runs as independent Railway cron (0 */2 * * *)
+  climateZoneNormals: { key: 'seed-meta:climate:zone-normals',  maxStaleMin: 89280 }, // monthly cron on the 1st; 62d = 2x 31-day cadence
+  co2Monitoring:    { key: 'seed-meta:climate:co2-monitoring',  maxStaleMin: 4320 }, // daily cron at 06:00 UTC; 72h tolerates two missed runs
+  climateNews:      { key: 'seed-meta:climate:news-intelligence', maxStaleMin: 90 }, // relay loop every 30min; 90 = 3× interval
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
   cryptoQuotes:     { key: 'seed-meta:market:crypto',           maxStaleMin: 30 },
@@ -210,10 +212,6 @@ const SEED_META = {
   gscpi:             { key: 'seed-meta:economic:gscpi',               maxStaleMin: 2880 }, // 24h interval; 2880min = 48h = 2x interval
   fearGreedIndex:    { key: 'seed-meta:market:fear-greed',            maxStaleMin: 720 }, // 6h cron; 720min = 12h = 2x interval
   hormuzTracker:     { key: 'seed-meta:supply_chain:hormuz_tracker',  maxStaleMin: 2880 }, // daily cron; 2880min = 48h = 2x interval
-  reitQuotes:        { key: 'seed-meta:reits:quotes',                 maxStaleMin: 60 },  // 30min cron; 60min = 2x interval
-  reitCorrelation:   { key: 'seed-meta:reits:correlation',            maxStaleMin: 120 }, // 1h cron; 120min = 2x interval
-  reitProperties:    { key: 'seed-meta:reits:properties',             maxStaleMin: 2880 }, // daily cron; 2880min = 48h = 2x interval
-  reitSocial:        { key: 'seed-meta:reits:social',                 maxStaleMin: 720 }, // 6h cron; 720min = 12h = 2x interval
   earningsCalendar:  { key: 'seed-meta:market:earnings-calendar',     maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
   econCalendar:      { key: 'seed-meta:economic:econ-calendar',       maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
   cotPositioning:    { key: 'seed-meta:market:cot',                   maxStaleMin: 14400 }, // weekly CFTC release; 14400min = 10d = 1.4x interval (weekend + delay buffer)

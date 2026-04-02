@@ -5,6 +5,10 @@
  */
 export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
+export const CLIMATE_ANOMALIES_KEY = 'climate:anomalies:v2';
+export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
+export const CLIMATE_CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
+export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
 
 /**
  * Static cache keys for the bootstrap endpoint.
@@ -27,7 +31,9 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   chokepointTransits: 'supply_chain:chokepoint_transits:v1',
   minerals:         'supply_chain:minerals:v2',
   giving:           'giving:summary:v1',
-  climateAnomalies: 'climate:anomalies:v1',
+  climateAnomalies: 'climate:anomalies:v2',
+  co2Monitoring:    'climate:co2-monitoring:v1',
+  climateNews:      'climate:news-intelligence:v1',
   radiationWatch:  'radiation:observations:v1',
   thermalEscalation: 'thermal:escalation:v1',
   crossSourceSignals: 'intelligence:cross-source-signals:v1',
@@ -88,7 +94,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   minerals: 'slow', giving: 'slow', sectors: 'slow',
   progressData: 'slow', renewableEnergy: 'slow',
   etfFlows: 'slow', shippingRates: 'fast', wildfires: 'slow',
-  climateAnomalies: 'slow', sanctionsPressure: 'slow', radiationWatch: 'slow', thermalEscalation: 'slow', crossSourceSignals: 'slow', cyberThreats: 'slow', techReadiness: 'slow',
+  climateAnomalies: 'slow', co2Monitoring: 'slow', climateNews: 'slow', sanctionsPressure: 'slow', radiationWatch: 'slow', thermalEscalation: 'slow', crossSourceSignals: 'slow', cyberThreats: 'slow', techReadiness: 'slow',
   theaterPosture: 'fast', naturalEvents: 'slow',
   cryptoQuotes: 'slow', gulfQuotes: 'slow', stablecoinMarkets: 'slow',
   unrestEvents: 'slow', ucdpEvents: 'slow', techEvents: 'slow',

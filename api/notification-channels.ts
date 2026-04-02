@@ -156,7 +156,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
     try {
       if (action === 'create-pairing-token') {
-        const resp = await convexRelay({ action: 'create-pairing-token', userId: session.userId });
+        const relayBody: Record<string, unknown> = { action: 'create-pairing-token', userId: session.userId };
+        if (body.variant) relayBody.variant = body.variant;
+        const resp = await convexRelay(relayBody);
         if (!resp.ok) {
           console.error('[notification-channels] POST create-pairing-token relay error:', resp.status);
           return json({ error: 'Operation failed' }, 500, corsHeaders);

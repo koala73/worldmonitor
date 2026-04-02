@@ -12,6 +12,9 @@ const SEED_DOMAINS = {
   'wildfire:fires':           { key: 'seed-meta:wildfire:fires',           intervalMin: 60 },
   'infra:outages':            { key: 'seed-meta:infra:outages',            intervalMin: 15 },
   'climate:anomalies':        { key: 'seed-meta:climate:anomalies',        intervalMin: 60 },
+  'climate:zone-normals':     { key: 'seed-meta:climate:zone-normals',     intervalMin: 44640 },
+  'climate:co2-monitoring':   { key: 'seed-meta:climate:co2-monitoring',   intervalMin: 2160 },
+  'climate:news-intelligence': { key: 'seed-meta:climate:news-intelligence', intervalMin: 30 },
   // Phase 2 — Parameterized endpoints
   'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },
   'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 240 },

@@ -65,7 +65,6 @@ api-cache.json
 verbose-mode.json
 skills-lock.json
 tmp/
-.gstack/
 
 # Local planning documents (not for public repo)
 docs/plans/

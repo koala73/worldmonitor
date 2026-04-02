@@ -142,6 +142,26 @@ describe('security header guardrails', () => {
     assert.ok(connectSrc.includes('wss:'), 'CSP connect-src should keep wss: for secure WebSocket');
   });
 
+  it('CSP connect-src https: scheme is consistent between header and meta tag', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const metaMatch = indexHtml.match(/http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
+    assert.ok(metaMatch, 'index.html must have a CSP meta tag');
+
+    const headerConnectSrc = headerCsp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
+    const metaConnectSrc = metaMatch[1].match(/connect-src\s+([^;]+)/)?.[1] ?? '';
+
+    const headerHasHttps = /\bhttps:\b/.test(headerConnectSrc);
+    const metaHasHttps = /\bhttps:\b/.test(metaConnectSrc);
+
+    // The CSP violation listener suppresses HTTPS connect-src violations when the meta tag
+    // contains https: in connect-src. If the header is tightened without the meta tag,
+    // real violations would be silently suppressed. Both must stay in sync.
+    assert.equal(headerHasHttps, metaHasHttps,
+      `connect-src https: scheme mismatch: header=${headerHasHttps}, meta=${metaHasHttps}. ` +
+      'If removing https: from connect-src, update the CSP violation listener in main.ts too.');
+  });
+
   it('CSP connect-src does not contain localhost in production', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
@@ -171,6 +191,32 @@ describe('security header guardrails', () => {
       frameSrc.includes('clerk.accounts.dev') || frameSrc.includes('clerk.worldmonitor.app'),
       'CSP frame-src must include Clerk origin for sign-in modal'
     );
+  });
+
+  it('CSP script-src hashes are in sync between vercel.json header and index.html meta tag', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const metaMatch = indexHtml.match(/http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
+    assert.ok(metaMatch, 'index.html must have a CSP meta tag');
+    const metaCsp = metaMatch[1];
+
+    const extractHashes = (csp) => {
+      const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+      return new Set(scriptSrc.match(/'sha256-[A-Za-z0-9+/=]+'/g) ?? []);
+    };
+
+    const headerHashes = extractHashes(headerCsp);
+    const metaHashes = extractHashes(metaCsp);
+
+    const onlyHeader = [...headerHashes].filter(h => !metaHashes.has(h));
+    const onlyMeta = [...metaHashes].filter(h => !headerHashes.has(h));
+
+    assert.deepEqual(onlyHeader, [],
+      `script-src hashes in vercel.json but missing from index.html: ${onlyHeader.join(', ')}. ` +
+      'Dual CSP enforces both; mismatched hashes block scripts.');
+    assert.deepEqual(onlyMeta, [],
+      `script-src hashes in index.html but missing from vercel.json: ${onlyMeta.join(', ')}. ` +
+      'Dual CSP enforces both; mismatched hashes block scripts.');
   });
 
   it('security.txt exists in public/.well-known/', () => {

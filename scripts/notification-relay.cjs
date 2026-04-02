@@ -82,6 +82,10 @@ function isPrivateIP(ip) {
 // ── Delivery: Telegram ────────────────────────────────────────────────────────
 
 async function sendTelegram(userId, chatId, text) {
+  if (!TELEGRAM_BOT_TOKEN) {
+    console.warn('[relay] Telegram: TELEGRAM_BOT_TOKEN not set — skipping');
+    return;
+  }
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
@@ -90,8 +94,9 @@ async function sendTelegram(userId, chatId, text) {
   });
   if (res.status === 403 || res.status === 400) {
     const body = await res.json().catch(() => ({}));
+    console.warn(`[relay] Telegram ${res.status} for ${userId}: ${body.description ?? '(no description)'}`);
     if (res.status === 403 || body.description?.includes('chat not found')) {
-      console.warn(`[relay] Telegram 403/400 for ${userId} — deactivating channel`);
+      console.warn(`[relay] Telegram deactivating channel for ${userId}`);
       await deactivateChannel(userId, 'telegram');
     }
     return;
@@ -102,12 +107,21 @@ async function sendTelegram(userId, chatId, text) {
     await new Promise(r => setTimeout(r, wait));
     return sendTelegram(userId, chatId, text); // single retry
   }
-  if (!res.ok) console.warn(`[relay] Telegram send failed: ${res.status}`);
+  if (res.status === 401) {
+    console.error('[relay] Telegram 401 Unauthorized — TELEGRAM_BOT_TOKEN is invalid or belongs to a different bot; correct the Railway env var to restore Telegram delivery');
+    return;
+  }
+  if (!res.ok) {
+    console.warn(`[relay] Telegram send failed: ${res.status}`);
+    return;
+  }
+  console.log(`[relay] Telegram delivered to ${userId} (chatId: ${chatId})`);
 }
 
 // ── Delivery: Slack ───────────────────────────────────────────────────────────
 
 const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
+const DISCORD_RE = /^https:\/\/discord\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+\/?$/;
 
 async function sendSlack(userId, webhookEnvelope, text) {
   let webhookUrl;
@@ -144,6 +158,62 @@ async function sendSlack(userId, webhookEnvelope, text) {
     await deactivateChannel(userId, 'slack');
   } else if (!res.ok) {
     console.warn(`[relay] Slack send failed: ${res.status}`);
+  }
+}
+
+// ── Delivery: Discord ─────────────────────────────────────────────────────────
+
+const DISCORD_MAX_CONTENT = 2000;
+
+async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
+  let webhookUrl;
+  try {
+    webhookUrl = decrypt(webhookEnvelope);
+  } catch (err) {
+    console.warn(`[relay] Discord decrypt failed for ${userId}:`, err.message);
+    return;
+  }
+  if (!DISCORD_RE.test(webhookUrl)) {
+    console.warn(`[relay] Discord URL invalid for ${userId}`);
+    return;
+  }
+  // SSRF prevention: resolve hostname and check for private IPs
+  try {
+    const hostname = new URL(webhookUrl).hostname;
+    const addresses = await dns.resolve4(hostname);
+    if (addresses.some(isPrivateIP)) {
+      console.warn(`[relay] Discord URL resolves to private IP for ${userId}`);
+      return;
+    }
+  } catch {
+    console.warn(`[relay] Discord DNS resolution failed for ${userId}`);
+    return;
+  }
+  const content = text.length > DISCORD_MAX_CONTENT
+    ? text.slice(0, DISCORD_MAX_CONTENT - 1) + '…'
+    : text;
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+    body: JSON.stringify({ content }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (res.status === 404 || res.status === 410) {
+    console.warn(`[relay] Discord webhook gone for ${userId} — deactivating`);
+    await deactivateChannel(userId, 'discord');
+  } else if (res.status === 429) {
+    if (retryCount >= 1) {
+      console.warn(`[relay] Discord 429 retry limit reached for ${userId}`);
+      return;
+    }
+    const body = await res.json().catch(() => ({}));
+    const wait = ((body.retry_after ?? 1) + 0.5) * 1000;
+    await new Promise(r => setTimeout(r, wait));
+    return sendDiscord(userId, webhookEnvelope, text, retryCount + 1);
+  } else if (!res.ok) {
+    console.warn(`[relay] Discord send failed: ${res.status}`);
+  } else {
+    console.log(`[relay] Discord delivered to ${userId}`);
   }
 }
 
@@ -201,6 +271,8 @@ async function processWelcome(event) {
   const text = `✅ WorldMonitor connected! You'll receive breaking news alerts here.`;
   if (channelType === 'slack' && ch.webhookEnvelope) {
     await sendSlack(userId, ch.webhookEnvelope, text);
+  } else if (channelType === 'discord' && ch.webhookEnvelope) {
+    await sendDiscord(userId, ch.webhookEnvelope, text);
   } else if (channelType === 'email' && ch.email) {
     await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
   }
@@ -255,12 +327,18 @@ async function processEvent(event) {
     const verifiedChannels = channels.filter(c => c.verified && rule.channels.includes(c.channelType));
 
     for (const ch of verifiedChannels) {
-      if (ch.channelType === 'telegram' && ch.chatId) {
-        await sendTelegram(rule.userId, ch.chatId, text);
-      } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
-        await sendSlack(rule.userId, ch.webhookEnvelope, text);
-      } else if (ch.channelType === 'email' && ch.email) {
-        await sendEmail(ch.email, subject, text);
+      try {
+        if (ch.channelType === 'telegram' && ch.chatId) {
+          await sendTelegram(rule.userId, ch.chatId, text);
+        } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
+          await sendSlack(rule.userId, ch.webhookEnvelope, text);
+        } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
+          await sendDiscord(rule.userId, ch.webhookEnvelope, text);
+        } else if (ch.channelType === 'email' && ch.email) {
+          await sendEmail(ch.email, subject, text);
+        }
+      } catch (err) {
+        console.warn(`[relay] Delivery error for ${rule.userId}/${ch.channelType}:`, err instanceof Error ? err.message : String(err));
       }
     }
   }
