@@ -382,6 +382,29 @@ export class App {
       localStorage.setItem(PANEL_PRUNE_KEY, 'done');
     }
 
+    // One-time migration: REITs-only strip — reset panels to REIT defaults
+    const REITS_STRIP_MIGRATION_KEY = 'worldmonitor-reits-strip-v1';
+    if (!localStorage.getItem(REITS_STRIP_MIGRATION_KEY)) {
+      const reitsKeys = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
+      // Remove non-REIT panels, ensure all REIT panels are enabled
+      for (const key of Object.keys(panelSettings)) {
+        if (!reitsKeys.has(key) && !key.startsWith('cw-') && !key.startsWith('mcp-') && key !== 'runtime-config') {
+          delete panelSettings[key];
+        }
+      }
+      for (const key of reitsKeys) {
+        panelSettings[key] = { ...getEffectivePanelConfig(key, SITE_VARIANT), enabled: true };
+      }
+      saveToStorage(STORAGE_KEYS.panels, panelSettings);
+      // Also clear stale panel order/sizing
+      localStorage.removeItem(PANEL_ORDER_KEY);
+      localStorage.removeItem(PANEL_ORDER_KEY + '-bottom');
+      localStorage.removeItem(PANEL_ORDER_KEY + '-bottom-set');
+      localStorage.removeItem(PANEL_SPANS_KEY);
+      console.log('[App] Applied REITs strip migration: reset to REIT-only panels');
+      localStorage.setItem(REITS_STRIP_MIGRATION_KEY, 'done');
+    }
+
     // One-time migration: clear stale panel ordering and sizing state
     const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
     if (!localStorage.getItem(LAYOUT_RESET_MIGRATION_KEY)) {
