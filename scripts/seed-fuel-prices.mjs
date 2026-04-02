@@ -485,72 +485,50 @@ async function fetchNewZealand() {
   }
 }
 
-async function fetchUK_ModeA() {
-  // CMA voluntary scheme: each retailer hosts their own JSON feed. No auth required.
-  // Prices in pence/litre (integer). Divide by 100 -> GBP/litre.
-  // E10 = standard unleaded (gasoline), B7 = standard diesel.
-  // Aggregate across all working retailers for a national average.
-  const RETAILER_URLS = [
-    'https://storelocator.asda.com/fuel_prices_data.json',
-    'https://www.bp.com/en_gb/united-kingdom/home/fuelprices/fuel_prices_data.json',
-    'https://jetlocal.co.uk/fuel_prices_data.json',
-    'https://fuel.motorfuelgroup.com/fuel_prices_data.json',
-    'https://api.sainsburys.co.uk/v1/exports/latest/fuel_prices_data.json',
-    'https://www.morrisons.com/fuel-prices/fuel.json',
-  ];
+async function fetchUK_DESNZ() {
+  // Gov.uk DESNZ weekly road fuel prices CSV. Published weekly, covers 2018-present.
+  // ULSP = unleaded petrol (gasoline), ULSD = diesel. Prices in pence/litre.
+  // URL changes weekly; discover via Content API.
+  try {
+    console.log('  [GB] Discovering DESNZ CSV URL...');
+    const apiResp = await globalThis.fetch('https://www.gov.uk/api/content/government/statistics/weekly-road-fuel-prices', {
+      headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000),
+    });
+    if (!apiResp.ok) throw new Error(`Content API HTTP ${apiResp.status}`);
+    const apiData = await apiResp.json();
+    const csvAttach = apiData?.details?.attachments?.find(a => a.content_type?.includes('csv') && a.title?.includes('2018'));
+    if (!csvAttach?.url) throw new Error('CSV attachment not found in Content API');
 
-  const allE10 = [];
-  const allB7 = [];
-  let observedAt = new Date().toISOString().slice(0, 10);
+    const csvResp = await globalThis.fetch(csvAttach.url, {
+      headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20000),
+    });
+    if (!csvResp.ok) throw new Error(`CSV HTTP ${csvResp.status}`);
+    const lines = (await csvResp.text()).split('\n').filter(l => l.trim());
+    // Header: Date,ULSP Pump price pence/litre,ULSD Pump price pence/litre,...
+    const dataLines = lines.slice(1).filter(l => l.split(',').length >= 3);
+    if (!dataLines.length) throw new Error('No data rows in CSV');
 
-  const results = await Promise.allSettled(
-    RETAILER_URLS.map(url =>
-      globalThis.fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000) })
-        .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status} ${url}`)))
-    )
-  );
+    const lastLine = dataLines.at(-1).split(',');
+    const dateStr = lastLine[0]?.trim();
+    const ulsp = parseFloat(lastLine[1]);
+    const ulsd = parseFloat(lastLine[2]);
+    const gasPrice = ulsp > 0 ? +(ulsp / 100).toFixed(4) : null;
+    const dslPrice = ulsd > 0 ? +(ulsd / 100).toFixed(4) : null;
 
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
-    if (r.status === 'rejected') {
-      console.warn(`  [UK] ${RETAILER_URLS[i]}: ${r.reason?.message ?? r.reason}`);
-      continue;
-    }
-    const body = r.value;
-    // CMA format: { last_updated, stations: [{ prices: { E10, B7, ... } }] }
-    const stations = body?.stations ?? body?.data ?? [];
-    if (!Array.isArray(stations)) continue;
-    if (body.last_updated) {
-      // CMA feeds use "DD/MM/YYYY HH:mm:ss" — convert to ISO YYYY-MM-DD for comparison
-      const raw = String(body.last_updated);
-      const ddmmyyyy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-      const iso = ddmmyyyy ? `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}` : raw.slice(0, 10);
-      if (iso > observedAt) observedAt = iso;
-    }
-    for (const s of stations) {
-      const prices = s?.prices ?? s?.fuel_prices ?? {};
-      const e10 = prices?.E10 ?? prices?.['E10_STANDARD'];
-      const b7 = prices?.B7 ?? prices?.['B7_STANDARD'];
-      if (e10 > 0) allE10.push(e10);
-      if (b7 > 0) allB7.push(b7);
-    }
-  }
+    // Parse DD/MM/YYYY -> YYYY-MM-DD
+    const dm = dateStr?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    const observedAt = dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : dateStr;
 
-  if (!allE10.length && !allB7.length) {
-    console.warn('  [UK] No stations with E10/B7 data from any retailer');
+    console.log(`  [GB] ULSP=${gasPrice} GBP/L, ULSD=${dslPrice} GBP/L (${observedAt})`);
+    return [{
+      code: 'GB', name: 'United Kingdom', currency: 'GBP', flag: '🇬🇧',
+      gasoline: gasPrice != null ? { localPrice: gasPrice, grade: 'E10', source: 'gov.uk/desnz', observedAt } : null,
+      diesel: dslPrice != null ? { localPrice: dslPrice, grade: 'B7', source: 'gov.uk/desnz', observedAt } : null,
+    }];
+  } catch (err) {
+    console.warn(`  [GB] fetchUK_DESNZ error: ${err.message}`);
     return [];
   }
-
-  // Prices are in pence/litre -> divide by 100 for GBP/litre
-  const avgE10 = allE10.length ? +(allE10.reduce((a, b) => a + b, 0) / allE10.length / 100).toFixed(4) : null;
-  const avgB7 = allB7.length ? +(allB7.reduce((a, b) => a + b, 0) / allB7.length / 100).toFixed(4) : null;
-
-  console.log(`  [GB] E10=${avgE10} GBP/L (${allE10.length} stations), B7=${avgB7} GBP/L (${allB7.length} stations)`);
-  return [{
-    code: 'GB', name: 'United Kingdom', currency: 'GBP', flag: '🇬🇧',
-    gasoline: avgE10 != null ? { localPrice: avgE10, grade: 'E10', source: 'gov.uk/fuel-finder', observedAt } : null,
-    diesel: avgB7 != null ? { localPrice: avgB7, grade: 'B7', source: 'gov.uk/fuel-finder', observedAt } : null,
-  }];
 }
 
 const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
@@ -570,10 +548,10 @@ const fetchResults = await Promise.allSettled([
   fetchEU_CSV(),
   fetchBrazil(),
   fetchNewZealand(),
-  fetchUK_ModeA(),
+  fetchUK_DESNZ(),
 ]);
 
-const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-ModeA'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ'];
 let successfulSources = 0;
 
 const countryMap = new Map();
