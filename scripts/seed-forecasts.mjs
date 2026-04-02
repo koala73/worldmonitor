@@ -4589,7 +4589,7 @@ function summarizeImpactPathScore(path = null) {
     candidateStateId: path.candidateStateId || '',
     stateKind: path.candidate?.stateKind || '',
     routeFacilityKey: path.candidate?.routeFacilityKey || '',
-    topBucketId: path.candidate?.marketContext?.topBucketId || '',
+    topBucketId: path.candidate?.marketContext?.topBucketId || path.candidate?.topBucketId || '',
     directVariableKey: path.direct?.variableKey || '',
     secondVariableKey: path.second?.variableKey || '',
     thirdVariableKey: path.third?.variableKey || '',
