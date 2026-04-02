@@ -66,7 +66,7 @@ import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
 import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignOut as cloudPrefsSignOut } from '@/utils/cloud-prefs-sync';
 import { getConvexClient, getConvexApi } from '@/services/convex-client';
-import { initEntitlementSubscription, destroyEntitlementSubscription } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
   CorrelationEngine,
@@ -828,6 +828,9 @@ export class App {
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
         cloudPrefsSignOut();
+        destroyEntitlementSubscription();
+        resetEntitlementState();
+        destroySubscriptionWatch();
       }
       _prevUserId = userId;
     });

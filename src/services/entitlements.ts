@@ -69,7 +69,9 @@ export async function initEntitlementSubscription(userId: string): Promise<void>
 /**
  * Tears down the entitlement subscription and clears all listeners.
  * Resets initialized flag so a new subscription can be started.
- * Does NOT null currentState — to reset state on logout, set it directly.
+ * Does NOT null currentState — preserves the last known state across
+ * destroy/reinit cycles (e.g. WebSocket reconnects) so paying users don't
+ * see locked panels during backoff. Call resetEntitlementState() on sign-out.
  */
 export function destroyEntitlementSubscription(): void {
   if (unsubscribeFn) {
@@ -79,6 +81,15 @@ export function destroyEntitlementSubscription(): void {
   // Keep listeners intact — PanelLayout registers them once and expects them
   // to survive auth transitions. Only the Convex transport is torn down.
   initialized = false;
+}
+
+/**
+ * Explicitly nulls currentState. Call on sign-out to prevent the previous
+ * user's entitlements from leaking into a subsequent session.
+ * Distinct from destroyEntitlementSubscription() which preserves state for reconnects.
+ */
+export function resetEntitlementState(): void {
+  currentState = null;
 }
 
 /**

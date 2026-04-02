@@ -435,48 +435,21 @@ describe("webhook processWebhookEvent", () => {
     expect(subs).toHaveLength(1);
   });
 
-  test("dispute.opened maps to dispute_opened status", async () => {
+  test.each([
+    ["dispute.opened", "dispute_opened"],
+    ["dispute.won", "dispute_won"],
+    ["dispute.lost", "dispute_lost"],
+    ["dispute.closed", "dispute_closed"],
+  ] as const)("%s maps to %s status", async (eventType, expectedStatus) => {
     const t = convexTest(schema, modules);
 
     const payload = makePaymentPayload("payment.succeeded");
-    await processEvent(t, "wh_dispute_opened", "dispute.opened", payload, BASE_TIMESTAMP);
+    const webhookId = `wh_${eventType.replace(".", "_")}`;
+    await processEvent(t, webhookId, eventType, payload, BASE_TIMESTAMP);
 
     const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
     expect(events).toHaveLength(1);
-    expect(events[0].status).toBe("dispute_opened");
-  });
-
-  test("dispute.won maps to dispute_won status", async () => {
-    const t = convexTest(schema, modules);
-
-    const payload = makePaymentPayload("payment.succeeded");
-    await processEvent(t, "wh_dispute_won", "dispute.won", payload, BASE_TIMESTAMP);
-
-    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
-    expect(events).toHaveLength(1);
-    expect(events[0].status).toBe("dispute_won");
-  });
-
-  test("dispute.lost maps to dispute_lost status", async () => {
-    const t = convexTest(schema, modules);
-
-    const payload = makePaymentPayload("payment.succeeded");
-    await processEvent(t, "wh_dispute_lost", "dispute.lost", payload, BASE_TIMESTAMP);
-
-    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
-    expect(events).toHaveLength(1);
-    expect(events[0].status).toBe("dispute_lost");
-  });
-
-  test("dispute.closed maps to dispute_closed status", async () => {
-    const t = convexTest(schema, modules);
-
-    const payload = makePaymentPayload("payment.succeeded");
-    await processEvent(t, "wh_dispute_closed", "dispute.closed", payload, BASE_TIMESTAMP);
-
-    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
-    expect(events).toHaveLength(1);
-    expect(events[0].status).toBe("dispute_closed");
+    expect(events[0].status).toBe(expectedStatus);
   });
 
   test("out-of-order events are rejected", async () => {

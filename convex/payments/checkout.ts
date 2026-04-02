@@ -17,7 +17,7 @@
  * userId arg and use requireUserId(ctx) exclusively.
  */
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { action } from "../_generated/server";
 import { checkout } from "../lib/dodo";
 import { resolveUserId } from "../lib/auth";
@@ -46,6 +46,20 @@ export const createCheckout = action({
     const userId = authedUserId ?? args.userId;
     if (!userId) {
       throw new Error("User identity required to create a checkout session");
+    }
+
+    // Validate returnUrl to prevent open-redirect attacks.
+    // Only allow URLs starting with trusted worldmonitor.app origins.
+    if (args.returnUrl) {
+      const siteUrl = process.env.SITE_URL ?? 'https://worldmonitor.app';
+      const allowedOrigins = [
+        'https://worldmonitor.app',
+        'https://app.worldmonitor.app',
+        siteUrl,
+      ].filter(Boolean);
+      if (!allowedOrigins.some((o) => args.returnUrl!.startsWith(o))) {
+        throw new ConvexError('Invalid returnUrl: must start with a worldmonitor.app origin');
+      }
     }
 
     // Build metadata: HMAC-signed userId for webhook identity bridge + affiliate tracking (PROMO-02).

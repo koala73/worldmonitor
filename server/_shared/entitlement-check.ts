@@ -160,15 +160,17 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
 }
 
 /**
- * Core entitlement check logic. Accepts a getEntitlementsFn parameter for
- * testability (dependency injection). Production callers use checkEntitlement()
- * which binds to the real getEntitlements.
+ * Checks whether the current request is allowed based on tier entitlements.
+ *
+ * Returns:
+ *   - null if the request is allowed (unrestricted endpoint or sufficient tier)
+ *   - a 403 Response if the user is unauthenticated, entitlements cannot be verified,
+ *     or the user's tier is below the required tier (fail-closed)
  */
-async function _checkEntitlementCore(
+export async function checkEntitlement(
   request: Request,
   pathname: string,
   corsHeaders: Record<string, string>,
-  getEntitlementsFn: (userId: string) => Promise<CachedEntitlements | null>,
 ): Promise<Response | null> {
   const requiredTier = getRequiredTier(pathname);
   if (requiredTier === null) {
@@ -186,7 +188,7 @@ async function _checkEntitlementCore(
     );
   }
 
-  const ent = await getEntitlementsFn(userId);
+  const ent = await getEntitlements(userId);
   if (!ent) {
     // Fail-closed: unable to verify entitlements -> block the request
     return new Response(
@@ -214,26 +216,3 @@ async function _checkEntitlementCore(
     },
   );
 }
-
-/**
- * Checks whether the current request is allowed based on tier entitlements.
- *
- * Returns:
- *   - null if the request is allowed (unrestricted endpoint or sufficient tier)
- *   - a 403 Response if the user is unauthenticated, entitlements cannot be verified,
- *     or the user's tier is below the required tier (fail-closed)
- */
-export async function checkEntitlement(
-  request: Request,
-  pathname: string,
-  corsHeaders: Record<string, string>,
-): Promise<Response | null> {
-  return _checkEntitlementCore(request, pathname, corsHeaders, getEntitlements);
-}
-
-/**
- * Testable version of checkEntitlement that accepts a custom getEntitlements
- * function. Used in unit tests to inject mock entitlement data without needing
- * to mock Redis or Convex.
- */
-export const _testCheckEntitlement = _checkEntitlementCore;

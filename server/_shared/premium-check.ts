@@ -1,6 +1,7 @@
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../api/_api-key.js';
 import { validateBearerToken } from '../auth-session';
+import { getEntitlements } from './entitlement-check';
 
 /**
  * Returns true when the caller has a valid API key OR a PRO bearer token.
@@ -25,7 +26,14 @@ export async function isCallerPremium(request: Request): Promise<boolean> {
   const authHeader = request.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const session = await validateBearerToken(authHeader.slice(7));
-    return session.valid && session.role === 'pro';
+    if (!session.valid) return false;
+    if (session.role === 'pro') return true;
+    // Clerk role isn't 'pro' — check Dodo entitlement tier as second signal.
+    // A Dodo subscriber (tier >= 1) is premium regardless of Clerk role.
+    if (session.userId) {
+      const ent = await getEntitlements(session.userId);
+      if (ent && ent.features.tier >= 1) return true;
+    }
   }
   return false;
 }

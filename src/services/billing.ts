@@ -112,35 +112,36 @@ export function getSubscription(): SubscriptionInfo | null {
   return currentSubscription;
 }
 
+const DODO_PORTAL_FALLBACK_URL = 'https://customer.dodopayments.com';
+
 /**
  * Open the Dodo Customer Portal in a new tab.
  *
  * Calls the Convex getCustomerPortalUrl action to get a personalized portal
  * session URL. Falls back to the generic Dodo customer portal on error.
+ * Returns the URL that was opened (useful for agent/programmatic callers).
  */
-export async function openBillingPortal(): Promise<void> {
+export async function openBillingPortal(): Promise<string | null> {
   try {
     const client = await getConvexClient();
     if (!client) {
-      window.open('https://customer.dodopayments.com', '_blank');
-      return;
+      window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
+      return DODO_PORTAL_FALLBACK_URL;
     }
 
     const api = await getConvexApi();
     if (!api) {
-      window.open('https://customer.dodopayments.com', '_blank');
-      return;
+      window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
+      return DODO_PORTAL_FALLBACK_URL;
     }
 
     const result = await client.action(api.payments.billing.getCustomerPortalUrl, {});
-
-    if (result && result.portal_url) {
-      window.open(result.portal_url, '_blank');
-    } else {
-      window.open('https://customer.dodopayments.com', '_blank');
-    }
+    const url = (result?.portal_url as string | undefined) ?? DODO_PORTAL_FALLBACK_URL;
+    window.open(url, '_blank');
+    return url;
   } catch (err) {
     console.warn('[billing] Failed to get customer portal URL, falling back:', err);
-    window.open('https://customer.dodopayments.com', '_blank');
+    window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
+    return DODO_PORTAL_FALLBACK_URL;
   }
 }

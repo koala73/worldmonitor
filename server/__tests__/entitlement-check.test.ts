@@ -3,12 +3,10 @@
 /**
  * Unit tests for gateway entitlement check logic.
  *
- * Mocking strategy: Uses the dependency injection pattern via _testCheckEntitlement
- * which accepts a getEntitlementsFn parameter. This avoids needing to mock Redis
- * or ConvexHttpClient -- we inject a fake getEntitlements directly.
- *
- * For pure function tests (getRequiredTier, checkEntitlement with ungated),
- * we use the real functions without mocking.
+ * Mocking strategy: Controls the Redis mock return value to steer what
+ * getEntitlements returns — no dependency injection needed. Since CONVEX_URL
+ * is not set in tests, the Convex fallback is skipped and getCachedJson is
+ * the sole source of entitlement data.
  *
  * Per-file @vitest-environment node override avoids edge-runtime's missing
  * process.env (the module reads process.env.CONVEX_URL on import).
@@ -24,9 +22,10 @@ vi.mock("../_shared/redis", () => ({
   setCachedJson: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { getCachedJson } from "../_shared/redis";
 import {
   getRequiredTier,
-  _testCheckEntitlement,
+  checkEntitlement,
 } from "../_shared/entitlement-check";
 
 // ---------------------------------------------------------------------------
@@ -40,6 +39,21 @@ function makeRequest(
   headers: Record<string, string> = {},
 ): Request {
   return new Request(`https://worldmonitor.app${pathname}`, { headers });
+}
+
+function makeEntitlements(tier: number, planKey = "free") {
+  return {
+    planKey,
+    features: {
+      tier,
+      apiAccess: tier >= 2,
+      apiRateLimit: tier >= 2 ? 60 : 0,
+      maxDashboards: tier >= 1 ? 10 : 3,
+      prioritySupport: tier >= 2,
+      exportFormats: tier >= 2 ? ["csv", "pdf", "json"] : ["csv"],
+    },
+    validUntil: FUTURE,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -57,27 +71,13 @@ describe("gateway entitlement check", () => {
 
   test("checkEntitlement returns null for ungated endpoint", async () => {
     const req = makeRequest("/api/seismology/v1/list-earthquakes");
-    // Use _testCheckEntitlement with a dummy fn -- it won't be called for ungated
-    const result = await _testCheckEntitlement(
-      req,
-      "/api/seismology/v1/list-earthquakes",
-      {},
-      async () => null,
-    );
+    const result = await checkEntitlement(req, "/api/seismology/v1/list-earthquakes", {});
     expect(result).toBeNull();
   });
 
   test("checkEntitlement returns 403 when no userId in request (fail-closed)", async () => {
-    // Gated endpoint but no x-user-id header -> 403 (authentication required)
     const req = makeRequest("/api/market/v1/analyze-stock");
-    const result = await _testCheckEntitlement(
-      req,
-      "/api/market/v1/analyze-stock",
-      {},
-      async () => {
-        throw new Error("should not be called");
-      },
-    );
+    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
     expect(result).not.toBeNull();
     expect(result!.status).toBe(403);
 
@@ -87,16 +87,9 @@ describe("gateway entitlement check", () => {
   });
 
   test("checkEntitlement returns 403 when getEntitlements returns null (fail-closed)", async () => {
-    // Gated endpoint with userId but entitlement lookup fails -> 403
-    const req = makeRequest("/api/market/v1/analyze-stock", {
-      "x-user-id": "test-user",
-    });
-    const result = await _testCheckEntitlement(
-      req,
-      "/api/market/v1/analyze-stock",
-      {},
-      async () => null,
-    );
+    // getCachedJson returns null by default (no Redis data, no Convex URL) -> null entitlements
+    const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
+    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
     expect(result).not.toBeNull();
     expect(result!.status).toBe(403);
 
@@ -106,28 +99,10 @@ describe("gateway entitlement check", () => {
   });
 
   test("checkEntitlement returns 403 for insufficient tier", async () => {
-    const mockGetEntitlements = vi.fn().mockResolvedValue({
-      planKey: "free",
-      features: {
-        tier: 0,
-        apiAccess: false,
-        apiRateLimit: 0,
-        maxDashboards: 3,
-        prioritySupport: false,
-        exportFormats: ["csv"],
-      },
-      validUntil: FUTURE,
-    });
+    vi.mocked(getCachedJson).mockResolvedValueOnce(makeEntitlements(0));
 
-    const req = makeRequest("/api/market/v1/analyze-stock", {
-      "x-user-id": "test-user",
-    });
-    const result = await _testCheckEntitlement(
-      req,
-      "/api/market/v1/analyze-stock",
-      {},
-      mockGetEntitlements,
-    );
+    const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
+    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
 
     expect(result).not.toBeNull();
     expect(result!.status).toBe(403);
@@ -139,28 +114,10 @@ describe("gateway entitlement check", () => {
   });
 
   test("checkEntitlement returns null for sufficient tier", async () => {
-    const mockGetEntitlements = vi.fn().mockResolvedValue({
-      planKey: "api_starter",
-      features: {
-        tier: 2,
-        apiAccess: true,
-        apiRateLimit: 60,
-        maxDashboards: 25,
-        prioritySupport: false,
-        exportFormats: ["csv", "pdf", "json"],
-      },
-      validUntil: FUTURE,
-    });
+    vi.mocked(getCachedJson).mockResolvedValueOnce(makeEntitlements(2, "api_starter"));
 
-    const req = makeRequest("/api/market/v1/analyze-stock", {
-      "x-user-id": "test-user",
-    });
-    const result = await _testCheckEntitlement(
-      req,
-      "/api/market/v1/analyze-stock",
-      {},
-      mockGetEntitlements,
-    );
+    const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
+    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
     expect(result).toBeNull();
   });
 });

@@ -202,44 +202,44 @@ export const claimSubscription = mutation({
       return { claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 } };
     }
 
+    // Parallel reads for all anonId data — bounded to prevent runaway memory
+    const [subs, anonEntitlement, customers, payments] = await Promise.all([
+      ctx.db.query("subscriptions").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(50),
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).first(),
+      ctx.db.query("customers").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(10),
+      ctx.db.query("paymentEvents").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(1000),
+    ]);
+
     // Reassign subscriptions
-    const subs = await ctx.db
-      .query("subscriptions")
-      .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
-      .collect();
     for (const sub of subs) {
       await ctx.db.patch(sub._id, { userId: realUserId });
     }
 
     // Reassign entitlements — compare by tier first, then validUntil
     // Use .first() instead of .unique() to avoid throwing on duplicate rows
-    const entitlement = await ctx.db
-      .query("entitlements")
-      .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
-      .first();
     let winningPlanKey: string | null = null;
     let winningFeatures: ReturnType<typeof getFeaturesForPlan> | null = null;
     let winningValidUntil: number | null = null;
-    if (entitlement) {
+    if (anonEntitlement) {
       const existingEntitlement = await ctx.db
         .query("entitlements")
         .withIndex("by_userId", (q) => q.eq("userId", realUserId))
         .first();
       if (existingEntitlement) {
         // Compare by tier first, break ties with validUntil
-        const anonTier = entitlement.features?.tier ?? 0;
+        const anonTier = anonEntitlement.features?.tier ?? 0;
         const existingTier = existingEntitlement.features?.tier ?? 0;
         const anonWins =
           anonTier > existingTier ||
-          (anonTier === existingTier && entitlement.validUntil > existingEntitlement.validUntil);
+          (anonTier === existingTier && anonEntitlement.validUntil > existingEntitlement.validUntil);
         if (anonWins) {
-          winningPlanKey = entitlement.planKey;
-          winningFeatures = entitlement.features;
-          winningValidUntil = entitlement.validUntil;
+          winningPlanKey = anonEntitlement.planKey;
+          winningFeatures = anonEntitlement.features;
+          winningValidUntil = anonEntitlement.validUntil;
           await ctx.db.patch(existingEntitlement._id, {
-            planKey: entitlement.planKey,
-            features: entitlement.features,
-            validUntil: entitlement.validUntil,
+            planKey: anonEntitlement.planKey,
+            features: anonEntitlement.features,
+            validUntil: anonEntitlement.validUntil,
             updatedAt: Date.now(),
           });
         } else {
@@ -247,29 +247,22 @@ export const claimSubscription = mutation({
           winningFeatures = existingEntitlement.features;
           winningValidUntil = existingEntitlement.validUntil;
         }
-        await ctx.db.delete(entitlement._id);
+        await ctx.db.delete(anonEntitlement._id);
       } else {
-        winningPlanKey = entitlement.planKey;
-        winningFeatures = entitlement.features;
-        winningValidUntil = entitlement.validUntil;
-        await ctx.db.patch(entitlement._id, { userId: realUserId });
+        winningPlanKey = anonEntitlement.planKey;
+        winningFeatures = anonEntitlement.features;
+        winningValidUntil = anonEntitlement.validUntil;
+        await ctx.db.patch(anonEntitlement._id, { userId: realUserId });
       }
     }
 
     // Reassign customer records
-    const customers = await ctx.db
-      .query("customers")
-      .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
-      .collect();
     for (const customer of customers) {
       await ctx.db.patch(customer._id, { userId: realUserId });
     }
 
     // Reassign payment events — bounded to prevent runaway memory on pathological sessions
-    const payments = await ctx.db
-      .query("paymentEvents")
-      .withIndex("by_userId", (q) => q.eq("userId", args.anonId))
-      .take(1000);
+    // (already fetched above in the parallel Promise.all)
     for (const payment of payments) {
       await ctx.db.patch(payment._id, { userId: realUserId });
     }
@@ -302,7 +295,7 @@ export const claimSubscription = mutation({
     return {
       claimed: {
         subscriptions: subs.length,
-        entitlements: entitlement ? 1 : 0,
+        entitlements: anonEntitlement ? 1 : 0,
         customers: customers.length,
         payments: payments.length,
       },

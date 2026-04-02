@@ -527,42 +527,14 @@ export async function handleSubscriptionExpired(
 }
 
 /**
- * Handles `payment.succeeded` and `payment.failed` events.
+ * Handles `payment.succeeded`, `payment.failed`, `refund.succeeded`, and `refund.failed`.
  *
- * Records a payment event row. Does not alter subscription state --
+ * Records a payment event row for audit trail. Does not alter subscription state —
  * that is handled by the subscription event handlers.
- */
-export async function handlePaymentEvent(
-  ctx: MutationCtx,
-  data: DodoPaymentData,
-  eventType: string,
-  eventTimestamp: number,
-): Promise<void> {
-  const userId = await resolveUserId(
-    ctx,
-    data.customer?.customer_id ?? "",
-    data.metadata,
-  );
-
-  await ctx.db.insert("paymentEvents", {
-    userId,
-    dodoPaymentId: data.payment_id,
-    type: "charge",
-    amount: data.total_amount ?? data.amount ?? 0,
-    currency: data.currency ?? "USD",
-    status: eventType === "payment.succeeded" ? "succeeded" : "failed",
-    dodoSubscriptionId: data.subscription_id ?? undefined,
-    rawPayload: data,
-    occurredAt: eventTimestamp,
-  });
-}
-
-/**
- * Handles `refund.succeeded` and `refund.failed` events.
  *
- * Records a payment event row with type "refund" for audit trail.
+ * Record type is inferred from event prefix: "payment.*" → "charge", "refund.*" → "refund".
  */
-export async function handleRefundEvent(
+export async function handlePaymentOrRefundEvent(
   ctx: MutationCtx,
   data: DodoPaymentData,
   eventType: string,
@@ -574,13 +546,16 @@ export async function handleRefundEvent(
     data.metadata,
   );
 
+  const type = eventType.startsWith("refund.") ? "refund" : "charge";
+  const status = eventType.endsWith(".succeeded") ? "succeeded" : "failed";
+
   await ctx.db.insert("paymentEvents", {
     userId,
     dodoPaymentId: data.payment_id,
-    type: "refund",
+    type,
     amount: data.total_amount ?? data.amount ?? 0,
     currency: data.currency ?? "USD",
-    status: eventType === "refund.succeeded" ? "succeeded" : "failed",
+    status,
     dodoSubscriptionId: data.subscription_id ?? undefined,
     rawPayload: data,
     occurredAt: eventTimestamp,

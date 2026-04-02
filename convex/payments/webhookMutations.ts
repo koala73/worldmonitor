@@ -7,8 +7,7 @@ import {
   handleSubscriptionCancelled,
   handleSubscriptionPlanChanged,
   handleSubscriptionExpired,
-  handlePaymentEvent,
-  handleRefundEvent,
+  handlePaymentOrRefundEvent,
   handleDisputeEvent,
 } from "./subscriptionHelpers";
 
@@ -96,11 +95,9 @@ export const processWebhookEvent = internalMutation({
         break;
       case "payment.succeeded":
       case "payment.failed":
-        await handlePaymentEvent(ctx, data, args.eventType, args.timestamp);
-        break;
       case "refund.succeeded":
       case "refund.failed":
-        await handleRefundEvent(ctx, data, args.eventType, args.timestamp);
+        await handlePaymentOrRefundEvent(ctx, data, args.eventType, args.timestamp);
         break;
       case "dispute.opened":
       case "dispute.won":
