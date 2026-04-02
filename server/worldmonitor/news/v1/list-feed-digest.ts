@@ -495,7 +495,15 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       }
     }
 
-    // Assign corroboration count and compute importance score for every item.
+    // Enrich ALL items with the AI classification cache BEFORE scoring so that
+    // importanceScore uses the final (post-LLM) threat level, and the subsequent
+    // truncation discards items based on their true score.  Running enrichment
+    // after slicing was a bug: upgraded items could have been already cut, and
+    // downgraded items kept a score they no longer deserved.
+    const allItems = [...results.values()].flat();
+    await enrichWithAiCache(allItems);
+
+    // Assign corroboration count and compute importance score using final levels.
     for (const items of results.values()) {
       for (const item of items) {
         const norm = normalizeTitle(item.title);
@@ -519,15 +527,22 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     }
 
     const allSliced = [...slicedByCategory.values()].flat();
-    await enrichWithAiCache(allSliced);
 
-    // Pre-compute title hashes once — reused for both phase read and tracking write.
+    // Pre-compute title hashes once — reused for tracking write and phase read.
     const titleHashes = await Promise.all(
       allSliced.map(item => sha256Hex(normalizeTitle(item.title))),
     );
 
+    // Write tracking FIRST so phase read sees this cycle's mentionCount/firstSeen.
+    // Without this ordering, first-time stories never return STORY_PHASE_BREAKING
+    // and all stories lag by one digest cycle. Awaited here so the write completes
+    // before the isolate moves on (digest is cached 15 min, negligible extra latency).
+    await writeStoryTracking(allSliced, variant, titleHashes).catch((err: unknown) =>
+      console.warn('[digest] story tracking write failed:', err),
+    );
+
     // Batch-read story tracking hashes (HGETALL) to assign lifecycle phases.
-    // Single pipeline round-trip for all items; missing keys return {} and stay UNSPECIFIED.
+    // Reads post-write data so first-time stories correctly get STORY_PHASE_BREAKING.
     const trackResults = await runRedisPipeline(
       titleHashes.map(h => ['HGETALL', STORY_TRACK_KEY(h)]),
     );
@@ -549,13 +564,6 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
         items: sliced.map(toProtoItem),
       };
     }
-
-    // Write story tracking to Redis. Awaited inside the cachedFetchJson fetcher so
-    // the write completes before the isolate moves on (digest is cached 15 min,
-    // so this path runs at most once per cache window — extra latency is negligible).
-    await writeStoryTracking(allSliced, variant, titleHashes).catch((err: unknown) =>
-      console.warn('[digest] story tracking write failed:', err),
-    );
 
     return {
       categories,
