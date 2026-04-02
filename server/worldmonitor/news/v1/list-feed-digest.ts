@@ -81,12 +81,6 @@ interface ParsedItem {
   titleHash?: string;
 }
 
-function normalizeTitle(title: string): string {
-  // 120-char window provides high headline discrimination in practice;
-  // see todo #102 if hash collision accuracy becomes a concern.
-  return title.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
-}
-
 function computeImportanceScore(
   level: ThreatLevel,
   source: string,
@@ -104,7 +98,6 @@ function computeImportanceScore(
     corroborationScore * SCORE_WEIGHTS.corroboration +
     recencyScore * SCORE_WEIGHTS.recency,
   );
-}
 }
 
 function createTimeoutLinkedController(parentSignal: AbortSignal): {
@@ -234,7 +227,6 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParsedItem
       classSource: 'keyword',
       importanceScore: 0,
       corroborationCount: 1,
-      storyPhase: 'STORY_PHASE_UNSPECIFIED',
     });
   }
 
