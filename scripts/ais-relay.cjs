@@ -5464,9 +5464,11 @@ async function startSocialVelocitySeedLoop() {
 
 const CLIMATE_NEWS_SEED_INTERVAL_MS = 30 * 60 * 1000;
 const CLIMATE_NEWS_SEED_TIMEOUT_MS = 4 * 60 * 1000;
+const CLIMATE_NEWS_SEED_RETRY_MS = 20 * 60 * 1000;
 const CLIMATE_NEWS_SEED_SCRIPT = path.join(__dirname, 'seed-climate-news.mjs');
 
 let climateNewsSeedInFlight = false;
+let climateNewsRetryTimer = null;
 
 function relayLogScriptOutput(prefix, stream) {
   if (!stream) return;
@@ -5501,6 +5503,7 @@ async function seedClimateNews() {
     return;
   }
   climateNewsSeedInFlight = true;
+  if (climateNewsRetryTimer) { clearTimeout(climateNewsRetryTimer); climateNewsRetryTimer = null; }
   const t0 = Date.now();
   try {
     await runClimateNewsSeedScript();
@@ -5508,6 +5511,7 @@ async function seedClimateNews() {
   } catch (e) {
     const message = e?.killed ? 'timeout' : (e?.message || e);
     console.warn('[ClimateNewsSeed] Seed error:', message);
+    climateNewsRetryTimer = setTimeout(() => { seedClimateNews().catch(() => {}); }, CLIMATE_NEWS_SEED_RETRY_MS);
   } finally {
     climateNewsSeedInFlight = false;
   }

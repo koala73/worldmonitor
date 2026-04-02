@@ -5,7 +5,7 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'climate:news-intelligence:v1';
-const CACHE_TTL = 1800; // 30min
+const CACHE_TTL = 5400; // 90min = 3× 30-min relay interval (gold standard: TTL ≥ 3× interval)
 const MAX_ITEMS = 100;
 const RSS_MAX_BYTES = 500_000;
 
