@@ -705,13 +705,11 @@ const data = {
   countryCount: countries.length,
 };
 
-const shouldRotatePrev = !hasPrevData || !prevTooRecent;
-
 await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
   ttlSeconds: CACHE_TTL,
   validateFn: (d) => d?.countries?.length >= 1,
   recordCount: (d) => d?.countries?.length || 0,
-  extraKeys: shouldRotatePrev ? [{
+  extraKeys: wowAvailable ? [{
     key: `${CANONICAL_KEY}:prev`,
     transform: () => data,
     ttl: CACHE_TTL * 2,
