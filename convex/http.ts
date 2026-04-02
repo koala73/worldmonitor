@@ -54,6 +54,47 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
 const http = httpRouter();
 
 http.route({
+  path: "/api/internal-entitlements",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+    const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+    if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: { userId?: unknown };
+    try {
+      body = await request.json() as { userId?: unknown };
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (typeof body.userId !== "string" || body.userId.length === 0) {
+      return new Response(JSON.stringify({ error: "MISSING_USER_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const result = await ctx.runQuery(
+      internal.entitlements.getEntitlementsByUserId,
+      { userId: body.userId },
+    );
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+http.route({
   path: "/api/user-prefs",
   method: "OPTIONS",
   handler: httpAction(async (_ctx, request) => {

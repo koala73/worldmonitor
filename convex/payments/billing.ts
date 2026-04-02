@@ -57,17 +57,12 @@ function getDodoClient(): DodoPayments {
  * Used by the frontend billing UI to show current plan status.
  */
 export const getSubscriptionForUser = query({
-  args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    // When authenticated, enforce that the caller can only read their own data.
-    // Falls back to args.userId when unauthenticated — known trust gap.
-    // TODO(auth): require auth identity, remove userId arg.
-    const authedUserId = await resolveUserId(ctx);
-    if (authedUserId && authedUserId !== args.userId) {
-      // Authenticated user trying to read someone else's data — reject
+  args: {},
+  handler: async (ctx) => {
+    const userId = await resolveUserId(ctx);
+    if (!userId) {
       return null;
     }
-    const userId = authedUserId ?? args.userId;
 
     // Fetch all subscriptions for user and prefer active/on_hold over cancelled/expired.
     // Avoids the bug where a cancelled sub created after an active one hides the active one.

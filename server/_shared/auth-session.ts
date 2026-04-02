@@ -13,7 +13,7 @@
  */
 
 import { jwtVerify } from 'jose';
-import { getJWKS } from '../auth-session';
+import { getClerkJwtVerifyOptions, getJWKS } from '../auth-session';
 
 /**
  * Extracts and verifies a bearer token from the request.
@@ -34,8 +34,8 @@ export async function resolveSessionUserId(request: Request): Promise<string | n
 
     const issuerDomain = process.env.CLERK_JWT_ISSUER_DOMAIN!;
     const { payload } = await jwtVerify(token, jwks, {
+      ...getClerkJwtVerifyOptions(),
       issuer: issuerDomain,
-      algorithms: ['RS256'],
     });
 
     return (payload.sub as string) ?? null;

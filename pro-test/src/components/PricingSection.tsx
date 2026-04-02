@@ -86,19 +86,18 @@ const TIERS: Tier[] = [
   },
 ];
 
-const CHECKOUT_DOMAIN = import.meta.env.VITE_DODO_ENVIRONMENT === 'live_mode'
-  ? 'https://checkout.dodopayments.com'
-  : 'https://test.checkout.dodopayments.com';
+const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/';
 
 function buildCheckoutUrl(productId: string, refCode?: string): string {
-  let url = `${CHECKOUT_DOMAIN}/buy/${productId}?quantity=1`;
-  // No wm_user_id metadata in raw URLs — unsigned metadata would be rejected
-  // by the webhook's HMAC verification. Purchases from /pro are stored under
-  // a synthetic "dodo:{customerId}" and claimed later via claimSubscription().
+  // Route /pro buyers back into the authenticated dashboard checkout flow.
+  // The app captures the intent from the URL, prompts for sign-in if needed,
+  // and then creates the checkout server-side with authenticated identity.
+  const url = new URL(APP_CHECKOUT_BASE_URL);
+  url.searchParams.set('checkoutProduct', productId);
   if (refCode) {
-    url += `&referral_code=${encodeURIComponent(refCode)}`;
+    url.searchParams.set('checkoutReferral', refCode);
   }
-  return url;
+  return url.toString();
 }
 
 function formatPrice(tier: Tier, billing: 'monthly' | 'annual'): { amount: string; suffix: string } {

@@ -90,6 +90,30 @@ async function processEvent(
   rawPayload: Record<string, unknown>,
   timestamp: number,
 ) {
+  const payloadData = (rawPayload.data ?? {}) as {
+    customer?: { customer_id?: string; email?: string };
+    metadata?: { wm_user_id?: string };
+  };
+  const dodoCustomerId = payloadData.customer?.customer_id ?? "cust_test_001";
+  const userId = payloadData.metadata?.wm_user_id ?? "test-user-001";
+  const email = payloadData.customer?.email ?? "test@example.com";
+
+  await t.run(async (ctx) => {
+    const existingCustomer = await ctx.db
+      .query("customers")
+      .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", dodoCustomerId))
+      .first();
+    if (!existingCustomer) {
+      await ctx.db.insert("customers", {
+        userId,
+        dodoCustomerId,
+        email,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+    }
+  });
+
   await t.mutation(
     internal.payments.webhookMutations.processWebhookEvent,
     {
@@ -120,6 +144,7 @@ describe("webhook processWebhookEvent", () => {
     });
     expect(subs).toHaveLength(1);
     expect(subs[0].status).toBe("active");
+    expect(subs[0].userId).toBe("test-user-001");
     expect(subs[0].planKey).toBe("pro_monthly");
     expect(subs[0].dodoSubscriptionId).toBe("sub_test_001");
     expect(subs[0].currentPeriodStart).toBe(

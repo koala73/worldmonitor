@@ -149,12 +149,10 @@ async function resolvePlanKey(
  * Resolves a user identity from webhook data using multiple sources:
  *   1. HMAC-verified checkout metadata (wm_user_id + wm_user_id_sig)
  *   2. Customer table lookup by dodoCustomerId
- *   3. Synthetic "dodo:{customerId}" for unclaimed purchases (new buyers via /pro)
- *   4. Dev-only fallback to test-user-001
+ *   3. Dev-only fallback to test-user-001
  *
  * Only trusts metadata.wm_user_id when accompanied by a valid HMAC signature
- * (created server-side by createCheckout). Unsigned metadata is ignored to
- * prevent client-controlled identity injection.
+ * created server-side by the authenticated checkout action.
  */
 async function resolveUserId(
   ctx: MutationCtx,
@@ -189,17 +187,7 @@ async function resolveUserId(
     }
   }
 
-  // 3. Synthetic userId for unclaimed purchases (e.g. new buyers from /pro page).
-  // The subscription is stored under "dodo:{customerId}" and can be claimed later
-  // via claimSubscription() when the user signs in.
-  if (dodoCustomerId) {
-    console.info(
-      `[subscriptionHelpers] No verified identity for customer="${dodoCustomerId}" — creating unclaimed record with synthetic userId`,
-    );
-    return `dodo:${dodoCustomerId}`;
-  }
-
-  // 4. Dev-only fallback
+  // 3. Dev-only fallback
   if (isDev) {
     console.warn(
       `[subscriptionHelpers] No user identity found for customer="${dodoCustomerId}" — using dev fallback "${DEV_USER_ID}"`,
@@ -267,6 +255,7 @@ export async function handleSubscriptionActive(
   if (existing) {
     if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
     await ctx.db.patch(existing._id, {
+      userId,
       status: "active",
       dodoProductId: data.product_id,
       planKey,

@@ -3,9 +3,8 @@
  *
  * Two versions:
  *   - getEntitlementsForUser (public query): for frontend ConvexClient subscription.
- *     Requires authenticated identity via Clerk; falls back to args.userId when
- *     unauthenticated. TODO(auth): remove userId fallback and require auth identity
- *     — the fallback lets any caller read another user's tier by guessing their ID.
+ *     Derives the subject from Convex auth and returns free-tier defaults when
+ *     unauthenticated.
  *   - getEntitlementsByUserId (internal query): for the gateway ConvexHttpClient
  *     cache-miss fallback. Trusted server-to-server call with no auth gap.
  */
@@ -51,20 +50,16 @@ async function getEntitlementsHandler(
 /**
  * Public query: returns entitlements for the authenticated user.
  *
- * Prefers server-side auth identity. Falls back to args.userId when
- * unauthenticated — this is a known trust gap (caller can read any
- * user's tier). TODO(auth): require auth identity, remove userId arg.
+ * Derives the caller from server-side auth identity. Unauthenticated
+ * callers get free-tier defaults instead of arbitrary cross-user reads.
  */
 export const getEntitlementsForUser = query({
-  args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    // When authenticated, enforce that the caller can only read their own data.
-    // When unauthenticated (pre-Clerk-auth), allow the userId arg as fallback.
-    const authedUserId = await resolveUserId(ctx);
-    if (authedUserId && authedUserId !== args.userId) {
+  args: {},
+  handler: async (ctx) => {
+    const userId = await resolveUserId(ctx);
+    if (!userId) {
       return FREE_TIER_DEFAULTS;
     }
-    const userId = authedUserId ?? args.userId;
     return getEntitlementsHandler(ctx, userId);
   },
 });

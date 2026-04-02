@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { expect, test, describe } from "vitest";
 import schema from "../schema";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
 
 const modules = import.meta.glob("../**/*.ts");
@@ -40,10 +40,21 @@ async function seedEntitlement(
 // ---------------------------------------------------------------------------
 
 describe("entitlement query", () => {
+  test("public query returns free-tier defaults when unauthenticated", async () => {
+    const t = convexTest(schema, modules);
+
+    const result = await t.query(api.entitlements.getEntitlementsForUser, {});
+
+    expect(result.planKey).toBe("free");
+    expect(result.features.tier).toBe(0);
+    expect(result.features.apiAccess).toBe(false);
+    expect(result.validUntil).toBe(0);
+  });
+
   test("returns free-tier defaults for unknown userId", async () => {
     const t = convexTest(schema, modules);
 
-    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+    const result = await t.query(internal.entitlements.getEntitlementsByUserId, {
       userId: "user-nonexistent",
     });
 
@@ -62,7 +73,7 @@ describe("entitlement query", () => {
       validUntil: FUTURE,
     });
 
-    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+    const result = await t.query(internal.entitlements.getEntitlementsByUserId, {
       userId: "user-pro",
     });
 
@@ -80,7 +91,7 @@ describe("entitlement query", () => {
       validUntil: PAST,
     });
 
-    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+    const result = await t.query(internal.entitlements.getEntitlementsByUserId, {
       userId: "user-expired",
     });
 
@@ -99,7 +110,7 @@ describe("entitlement query", () => {
       validUntil: FUTURE,
     });
 
-    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+    const result = await t.query(internal.entitlements.getEntitlementsByUserId, {
       userId: "user-api",
     });
 
@@ -116,7 +127,7 @@ describe("entitlement query", () => {
       validUntil: FUTURE,
     });
 
-    const result = await t.query(api.entitlements.getEntitlementsForUser, {
+    const result = await t.query(internal.entitlements.getEntitlementsByUserId, {
       userId: "user-enterprise",
     });
 
@@ -152,9 +163,9 @@ describe("entitlement query", () => {
       });
     });
 
-    // getEntitlementsForUser must not throw (uses .first() not .unique())
+    // Internal query must not throw (uses .first() not .unique())
     await expect(
-      t.query(api.entitlements.getEntitlementsForUser, { userId: "user-dup" }),
+      t.query(internal.entitlements.getEntitlementsByUserId, { userId: "user-dup" }),
     ).resolves.toMatchObject({ planKey: "pro_monthly" });
   });
 });

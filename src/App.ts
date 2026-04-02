@@ -68,6 +68,7 @@ import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignO
 import { getConvexClient, getConvexApi } from '@/services/convex-client';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { capturePendingCheckoutIntentFromUrl, resumePendingCheckout } from '@/services/checkout';
 import {
   CorrelationEngine,
   militaryAdapter,
@@ -824,6 +825,9 @@ export class App {
               // Non-fatal — anon ID preserved for retry
             });
         }
+        void resumePendingCheckout({
+          openAuth: () => this.state.authModal?.open(),
+        });
       } else if (userId === null && _prevUserId !== null) {
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
@@ -902,6 +906,10 @@ export class App {
     this.state.correlationEngine = correlationEngine;
     this.eventHandlers.setupUnifiedSettings();
     this.eventHandlers.setupAuthWidget();
+    capturePendingCheckoutIntentFromUrl();
+    void resumePendingCheckout({
+      openAuth: () => this.state.authModal?.open(),
+    });
 
     // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
     this.searchManager.init();

@@ -40,7 +40,8 @@ async function seedCustomer(t: ReturnType<typeof convexTest>) {
 
 /**
  * Helper to simulate a subscription webhook event.
- * Includes wm_user_id in metadata (matching production checkout flow).
+ * The seeded customer mapping mirrors production renewals where Dodo
+ * customer ownership can be resolved even when metadata is absent.
  */
 async function simulateSubscriptionWebhook(
   t: ReturnType<typeof convexTest>,
@@ -72,9 +73,7 @@ async function simulateSubscriptionWebhook(
           next_billing_date:
             opts.nextBillingDate ??
             new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          metadata: {
-            wm_user_id: TEST_USER_ID,
-          },
+          metadata: {},
         },
       },
       timestamp: opts.timestamp ?? BASE_TIMESTAMP,
@@ -134,7 +133,7 @@ describe("E2E checkout-to-entitlement contract", () => {
 
     // Step 3: Query entitlements for the real user (not fallback)
     const entitlements = await t.query(
-      api.entitlements.getEntitlementsForUser,
+      internal.entitlements.getEntitlementsByUserId,
       { userId: TEST_USER_ID },
     );
 
@@ -165,7 +164,7 @@ describe("E2E checkout-to-entitlement contract", () => {
 
     // Step 3: Query entitlements
     const entitlements = await t.query(
-      api.entitlements.getEntitlementsForUser,
+      internal.entitlements.getEntitlementsByUserId,
       { userId: TEST_USER_ID },
     );
 
@@ -201,7 +200,7 @@ describe("E2E checkout-to-entitlement contract", () => {
 
     // Step 3: Query entitlements -- should return free tier (expired)
     const entitlements = await t.query(
-      api.entitlements.getEntitlementsForUser,
+      internal.entitlements.getEntitlementsByUserId,
       { userId: TEST_USER_ID },
     );
 

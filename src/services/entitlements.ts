@@ -29,11 +29,11 @@ let initialized = false;
 let unsubscribeFn: (() => void) | null = null;
 
 /**
- * Initialize the entitlement subscription for a given user.
+ * Initialize the entitlement subscription for the authenticated user.
  * Idempotent — calling multiple times is a no-op after the first.
  * Failures are logged but never thrown (dashboard must not break).
  */
-export async function initEntitlementSubscription(userId: string): Promise<void> {
+export async function initEntitlementSubscription(_userId?: string): Promise<void> {
   if (initialized) return;
 
   try {
@@ -51,7 +51,7 @@ export async function initEntitlementSubscription(userId: string): Promise<void>
 
     const watch = client.onUpdate(
       api.entitlements.getEntitlementsForUser,
-      { userId },
+      {},
       (result: EntitlementState | null) => {
         currentState = result;
         for (const cb of listeners) cb(result);

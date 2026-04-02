@@ -10,7 +10,6 @@
  */
 
 import { getConvexClient, getConvexApi } from './convex-client';
-import { getUserId } from './user-identity';
 
 export interface SubscriptionInfo {
   planKey: string;
@@ -27,18 +26,12 @@ let initialized = false;
 let unsubscribeConvex: (() => void) | null = null;
 
 /**
- * Initialize the subscription watch for a given user.
+ * Initialize the subscription watch for the authenticated user.
  * Idempotent -- calling multiple times is a no-op after the first.
  * Failures are logged but never thrown (dashboard must not break).
  */
-export async function initSubscriptionWatch(userId?: string): Promise<void> {
+export async function initSubscriptionWatch(_userId?: string): Promise<void> {
   if (initialized) return;
-
-  const resolvedUserId = userId ?? getUserId();
-  if (!resolvedUserId) {
-    console.warn('[billing] No user identity -- skipping subscription watch');
-    return;
-  }
 
   try {
     const client = await getConvexClient();
@@ -55,7 +48,7 @@ export async function initSubscriptionWatch(userId?: string): Promise<void> {
 
     unsubscribeConvex = client.onUpdate(
       api.payments.billing.getSubscriptionForUser,
-      { userId: resolvedUserId },
+      {},
       (result: SubscriptionInfo | null) => {
         currentSubscription = result;
         subscriptionLoaded = true;

@@ -249,6 +249,7 @@ export function createDomainGateway(
     // Tier gate check first — JWT resolution is expensive (JWKS + RS256) and only needed
     // for tier-gated endpoints. Non-tier-gated endpoints never use sessionUserId.
     const isTierGated = getRequiredTier(pathname) !== null;
+    const needsLegacyProBearerGate = PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
     // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
@@ -274,7 +275,7 @@ export function createDomainGateway(
       forceKey: isTierGated && !sessionUserId,
     });
     if (keyCheck.required && !keyCheck.valid) {
-      if (PREMIUM_RPC_PATHS.has(pathname)) {
+      if (needsLegacyProBearerGate) {
         const authHeader = request.headers.get('Authorization');
         if (authHeader?.startsWith('Bearer ')) {
           const { validateBearerToken } = await import('./auth-session');
@@ -308,7 +309,7 @@ export function createDomainGateway(
 
     // Bearer role check — authenticated users who bypassed the API key gate still
     // need a pro role for PREMIUM_RPC_PATHS (entitlement check below handles tier-gated).
-    if (sessionUserId && !keyCheck.valid && PREMIUM_RPC_PATHS.has(pathname)) {
+    if (sessionUserId && !keyCheck.valid && needsLegacyProBearerGate) {
       const authHeader = request.headers.get('Authorization');
       if (authHeader?.startsWith('Bearer ')) {
         const { validateBearerToken } = await import('./auth-session');

@@ -48,28 +48,8 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/market/v1/list-stored-stock-backtests': 2,
 };
 
-// ---------------------------------------------------------------------------
-// Module-level singletons (avoid per-request import + construction)
-// ---------------------------------------------------------------------------
-
-let _convexClientPromise: Promise<{ client: InstanceType<typeof import('convex/browser').ConvexHttpClient>; api: typeof import('../../convex/_generated/api').api } | null> | null = null;
-
-function getConvexSingleton() {
-  if (!_convexClientPromise) {
-    _convexClientPromise = (async () => {
-      const convexUrl = process.env.CONVEX_URL;
-      if (!convexUrl) return null;
-
-      const [{ ConvexHttpClient }, { api }] = await Promise.all([
-        import('convex/browser'),
-        import('../../convex/_generated/api'),
-      ]);
-
-      return { client: new ConvexHttpClient(convexUrl), api };
-    })();
-  }
-  return _convexClientPromise;
-}
+const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
+const CONVEX_SERVER_SHARED_SECRET = process.env.CONVEX_SERVER_SHARED_SECRET ?? '';
 
 // ---------------------------------------------------------------------------
 // Request coalescing (P1-6: Cache stampede mitigation)
@@ -135,15 +115,20 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
     }
 
     // Convex fallback on cache miss or expired cache
-    const singleton = await getConvexSingleton();
-    if (!singleton) return null;
+    const convexUrl = process.env.CONVEX_URL;
+    if (!convexUrl || !CONVEX_SERVER_SHARED_SECRET) return null;
 
-    // NOTE: Uses the public query because ConvexHttpClient cannot call internal
-    // functions. The gateway provides a verified userId (from Clerk JWT), so the
-    // public query's userId arg is server-trusted here. The internal query
-    // (getEntitlementsByUserId) is available for future use once we switch to
-    // a Convex HTTP action endpoint with shared-secret auth.
-    const result = await singleton.client.query(singleton.api.entitlements.getEntitlementsForUser, { userId });
+    const response = await fetch(`${convexUrl}${CONVEX_INTERNAL_ENTITLEMENTS_PATH}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-gateway/1.0',
+        'x-convex-shared-secret': CONVEX_SERVER_SHARED_SECRET,
+      },
+      body: JSON.stringify({ userId }),
+    });
+    if (!response.ok) return null;
+    const result = await response.json() as CachedEntitlements | null;
 
     if (result) {
       // Populate Redis cache for subsequent requests (15-min TTL, raw key)

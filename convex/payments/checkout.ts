@@ -5,22 +5,15 @@
  * server-side, keeping the API key on the backend. Supports discount
  * codes (PROMO-01) and affiliate referral tracking (PROMO-02).
  *
- * Auth strategy: Prefer server-side session identity (Clerk JWT via
- * ConvexClient.setAuth). Falls back to client-provided userId (the
- * browser's stable anon ID) when Clerk auth isn't wired into the
- * ConvexClient yet. This fallback is safe because:
- *   - The userId only populates checkout metadata for the webhook
- *     identity bridge — it does NOT grant entitlements directly.
- *   - Entitlements are written server-side by the webhook handler.
- *
- * Once Clerk JWT is wired into ConvexClient.setAuth(), remove the
- * userId arg and use requireUserId(ctx) exclusively.
+ * Checkout is authenticated-only. The webhook identity bridge must be
+ * derived from the authenticated Convex/Clerk identity so the server
+ * never signs caller-controlled user IDs.
  */
 
 import { v, ConvexError } from "convex/values";
 import { action } from "../_generated/server";
 import { checkout } from "../lib/dodo";
-import { resolveUserId } from "../lib/auth";
+import { requireUserId } from "../lib/auth";
 import { signUserId } from "../lib/identity-signing";
 
 /**
@@ -33,37 +26,37 @@ import { signUserId } from "../lib/identity-signing";
 export const createCheckout = action({
   args: {
     productId: v.string(),
-    userId: v.optional(v.string()),
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Prefer server-side auth; fall back to client-provided userId for the
-    // pre-Clerk-auth period. The userId is only used for checkout metadata
-    // (webhook identity bridge) — it does not grant entitlements.
-    const authedUserId = await resolveUserId(ctx);
-    const userId = authedUserId ?? args.userId;
-    if (!userId) {
-      throw new Error("User identity required to create a checkout session");
-    }
+    const userId = await requireUserId(ctx);
 
     // Validate returnUrl to prevent open-redirect attacks.
-    // Only allow URLs starting with trusted worldmonitor.app origins.
+    // Compare parsed origins exactly instead of using startsWith().
+    const siteUrl = process.env.SITE_URL ?? "https://worldmonitor.app";
+    let returnUrl = siteUrl;
     if (args.returnUrl) {
-      const siteUrl = process.env.SITE_URL ?? 'https://worldmonitor.app';
-      const allowedOrigins = [
-        'https://worldmonitor.app',
-        'https://app.worldmonitor.app',
-        siteUrl,
-      ].filter(Boolean);
-      if (!allowedOrigins.some((o) => args.returnUrl!.startsWith(o))) {
-        throw new ConvexError('Invalid returnUrl: must start with a worldmonitor.app origin');
+      let parsedReturnUrl: URL;
+      try {
+        parsedReturnUrl = new URL(args.returnUrl);
+      } catch {
+        throw new ConvexError("Invalid returnUrl: must be a valid absolute URL");
       }
+
+      const allowedOrigins = new Set([
+        "https://worldmonitor.app",
+        "https://app.worldmonitor.app",
+        new URL(siteUrl).origin,
+      ]);
+      if (!allowedOrigins.has(parsedReturnUrl.origin)) {
+        throw new ConvexError("Invalid returnUrl: must use a trusted worldmonitor.app origin");
+      }
+      returnUrl = parsedReturnUrl.toString();
     }
 
-    // Build metadata: HMAC-signed userId for webhook identity bridge + affiliate tracking (PROMO-02).
-    // The signature prevents client-controlled userId from being blindly trusted by the webhook.
+    // Build metadata: HMAC-signed authenticated userId for the webhook identity bridge.
     const metadata: Record<string, string> = {};
     metadata.wm_user_id = userId;
     metadata.wm_user_id_sig = await signUserId(userId);
@@ -74,9 +67,7 @@ export const createCheckout = action({
     const result = await checkout(ctx, {
       payload: {
         product_cart: [{ product_id: args.productId, quantity: 1 }],
-        return_url:
-          args.returnUrl ??
-          `${process.env.SITE_URL ?? "https://worldmonitor.app"}`,
+        return_url: returnUrl,
         ...(args.discountCode ? { discount_code: args.discountCode } : {}),
         ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
         feature_flags: {

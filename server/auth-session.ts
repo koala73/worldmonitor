@@ -41,6 +41,27 @@ export interface SessionResult {
   role?: 'free' | 'pro';
 }
 
+function getAllowedAudiences(): string[] {
+  const configured = [
+    process.env.CLERK_JWT_AUDIENCE,
+    process.env.CLERK_PUBLISHABLE_KEY,
+    process.env.VITE_CLERK_PUBLISHABLE_KEY,
+  ]
+    .flatMap((value) => (value ?? '').split(','))
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(['convex', ...configured]));
+}
+
+export function getClerkJwtVerifyOptions() {
+  return {
+    issuer: CLERK_JWT_ISSUER_DOMAIN,
+    audience: getAllowedAudiences(),
+    algorithms: ['RS256'],
+  };
+}
+
 // Short-lived in-memory cache for plan lookups (userId → { role, expiresAt }).
 // Avoids hammering the Clerk API on every premium request. TTL = 5 min.
 const _planCache = new Map<string, { role: 'free' | 'pro'; expiresAt: number }>();
@@ -76,15 +97,7 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
   if (!jwks) return { valid: false };
 
   try {
-    // Verify signature and issuer. We intentionally skip the audience check so
-    // that both 'convex' template tokens (aud='convex') and standard Clerk
-    // session tokens (aud=publishable key) are accepted. The issuer check is
-    // sufficient to prevent cross-app token reuse since each Clerk instance
-    // has its own JWKS endpoint.
-    const { payload } = await jwtVerify(token, jwks, {
-      issuer: CLERK_JWT_ISSUER_DOMAIN,
-      algorithms: ['RS256'],
-    });
+    const { payload } = await jwtVerify(token, jwks, getClerkJwtVerifyOptions());
 
     const userId = payload.sub;
     if (!userId) return { valid: false };
