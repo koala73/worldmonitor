@@ -437,7 +437,13 @@ export class NewsPanel extends Panel {
     if (this.sortMode === 'newest') {
       sorted = [...items].sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
     } else {
-      sorted = items;
+      // Relevance: sort by importanceScore desc when available, fall back to pubDate
+      sorted = [...items].sort((a, b) => {
+        const sa = a.importanceScore ?? 0;
+        const sb = b.importanceScore ?? 0;
+        if (sb !== sa) return sb - sa;
+        return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+      });
     }
 
     this.setCount(sorted.length);

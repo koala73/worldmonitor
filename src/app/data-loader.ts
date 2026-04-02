@@ -230,6 +230,8 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     } : undefined,
     ...(p.locationName && { locationName: p.locationName }),
     ...(p.location && { lat: p.location.latitude, lon: p.location.longitude }),
+    ...(p.importanceScore ? { importanceScore: p.importanceScore } : {}),
+    ...(p.corroborationCount ? { corroborationCount: p.corroborationCount } : {}),
   };
 }
 

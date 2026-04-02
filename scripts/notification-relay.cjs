@@ -405,6 +405,53 @@ function matchesSensitivity(ruleSensitivity, eventSeverity) {
   return eventSeverity === 'critical';
 }
 
+/**
+ * Score-gated dispatch decision.
+ *
+ * Always runs the legacy binary severity check first (backwards-compat for
+ * rules created before E1). When IMPORTANCE_SCORE_LIVE=1 is set AND the event
+ * carries an importanceScore, adds a secondary threshold gate.
+ *
+ * Shadow mode (default, flag OFF): computes score decision but always falls
+ * back to the legacy result so real notifications are unaffected. Logs to
+ * shadow:score-log:v1 for tuning.
+ */
+function shouldNotify(rule, event) {
+  const passesLegacy = matchesSensitivity(rule.sensitivity, event.severity ?? 'high');
+  if (!passesLegacy) return false;
+
+  if (process.env.IMPORTANCE_SCORE_LIVE === '1' && event.payload?.importanceScore != null) {
+    const threshold = rule.sensitivity === 'critical' ? 85
+                    : rule.sensitivity === 'high' ? 65
+                    : 40; // 'all'
+    return event.payload.importanceScore >= threshold;
+  }
+
+  return true;
+}
+
+/** Fire-and-forget shadow log: 7-day window ZADD into shadow:score-log:v1. */
+async function shadowLogScore(event) {
+  if (event.payload?.importanceScore == null) return;
+  const threshold = 65; // representative mid-tier threshold for shadow evaluation
+  const entry = JSON.stringify({
+    importanceScore: event.payload.importanceScore,
+    severity: event.severity,
+    title: event.payload.title,
+    source: event.payload.source,
+    wouldNotify: event.payload.importanceScore >= threshold,
+    ts: Date.now(),
+  });
+  try {
+    await upstashRest('ZADD', 'shadow:score-log:v1', String(Date.now()), entry);
+    // Prune entries older than 7 days
+    await upstashRest('ZREMRANGEBYSCORE', 'shadow:score-log:v1', '-inf',
+      String(Date.now() - 7 * 24 * 60 * 60 * 1000));
+  } catch {
+    // Non-critical — shadow log failures should never affect dispatch
+  }
+}
+
 function formatMessage(event) {
   const parts = [`[${(event.severity ?? 'high').toUpperCase()}] ${event.payload?.title ?? event.eventType}`];
   if (event.payload?.source) parts.push(`Source: ${event.payload.source}`);
@@ -487,9 +534,12 @@ async function processEvent(event) {
     return;
   }
 
+  // Shadow log the score on every rss_alert event (fire-and-forget, no await needed)
+  if (event.eventType === 'rss_alert') shadowLogScore(event).catch(() => {});
+
   const matching = enabledRules.filter(r =>
     (r.eventTypes.length === 0 || r.eventTypes.includes(event.eventType)) &&
-    matchesSensitivity(r.sensitivity, event.severity ?? 'high') &&
+    shouldNotify(r, event) &&
     (!event.variant || !r.variant || r.variant === event.variant)
   );
 
