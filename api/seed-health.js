@@ -11,8 +11,11 @@ const SEED_DOMAINS = {
   'seismology:earthquakes':   { key: 'seed-meta:seismology:earthquakes',   intervalMin: 15 },
   'wildfire:fires':           { key: 'seed-meta:wildfire:fires',           intervalMin: 60 },
   'infra:outages':            { key: 'seed-meta:infra:outages',            intervalMin: 15 },
-  'climate:anomalies':        { key: 'seed-meta:climate:anomalies',        intervalMin: 60 },
+  'climate:anomalies':        { key: 'seed-meta:climate:anomalies',        intervalMin: 120 },
   'climate:disasters':        { key: 'seed-meta:climate:disasters',        intervalMin: 360 },
+  'climate:zone-normals':     { key: 'seed-meta:climate:zone-normals',     intervalMin: 44640 },
+  'climate:co2-monitoring':   { key: 'seed-meta:climate:co2-monitoring',   intervalMin: 1440 }, // daily cron; health.js maxStaleMin:4320 (3x) is intentionally higher — it's an alarm threshold, not the cron cadence
+  'climate:news-intelligence': { key: 'seed-meta:climate:news-intelligence', intervalMin: 30 },
   // Phase 2 — Parameterized endpoints
   'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },
   'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 240 },

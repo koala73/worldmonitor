@@ -22264,6 +22264,27 @@ body.map-width-resizing {
   padding-left: 14px;
 }
 .chat-msg-body li { margin-bottom: 3px; line-height: 1.5; }
+.chat-msg-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 6px 0;
+  font-size: 11px;
+}
+.chat-msg-body th,
+.chat-msg-body td {
+  text-align: left;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 15%, transparent);
+}
+.chat-msg-body th {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.chat-msg-body tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
 .chat-section-header {
   font-size: 9px;
   font-weight: 700;

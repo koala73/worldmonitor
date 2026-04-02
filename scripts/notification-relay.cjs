@@ -30,7 +30,7 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 async function upstashRest(...args) {
   const res = await fetch(`${UPSTASH_URL}/${args.map(encodeURIComponent).join('/')}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
   });
   if (!res.ok) {
     console.warn(`[relay] Upstash error ${res.status} for command ${args[0]}`);
@@ -62,6 +62,7 @@ async function deactivateChannel(userId, channelType) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${RELAY_SECRET}`,
+        'User-Agent': 'worldmonitor-relay/1.0',
       },
       body: JSON.stringify({ userId, channelType }),
       signal: AbortSignal.timeout(10000),
@@ -81,16 +82,21 @@ function isPrivateIP(ip) {
 // ── Delivery: Telegram ────────────────────────────────────────────────────────
 
 async function sendTelegram(userId, chatId, text) {
+  if (!TELEGRAM_BOT_TOKEN) {
+    console.warn('[relay] Telegram: TELEGRAM_BOT_TOKEN not set — skipping');
+    return;
+  }
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
     body: JSON.stringify({ chat_id: chatId, text }),
     signal: AbortSignal.timeout(10000),
   });
   if (res.status === 403 || res.status === 400) {
     const body = await res.json().catch(() => ({}));
+    console.warn(`[relay] Telegram ${res.status} for ${userId}: ${body.description ?? '(no description)'}`);
     if (res.status === 403 || body.description?.includes('chat not found')) {
-      console.warn(`[relay] Telegram 403/400 for ${userId} — deactivating channel`);
+      console.warn(`[relay] Telegram deactivating channel for ${userId}`);
       await deactivateChannel(userId, 'telegram');
     }
     return;
@@ -101,12 +107,21 @@ async function sendTelegram(userId, chatId, text) {
     await new Promise(r => setTimeout(r, wait));
     return sendTelegram(userId, chatId, text); // single retry
   }
-  if (!res.ok) console.warn(`[relay] Telegram send failed: ${res.status}`);
+  if (res.status === 401) {
+    console.error('[relay] Telegram 401 Unauthorized — TELEGRAM_BOT_TOKEN is invalid or belongs to a different bot; correct the Railway env var to restore Telegram delivery');
+    return;
+  }
+  if (!res.ok) {
+    console.warn(`[relay] Telegram send failed: ${res.status}`);
+    return;
+  }
+  console.log(`[relay] Telegram delivered to ${userId} (chatId: ${chatId})`);
 }
 
 // ── Delivery: Slack ───────────────────────────────────────────────────────────
 
 const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Z0-9]+\/[A-Z0-9]+\/[a-zA-Z0-9]+$/;
+const DISCORD_RE = /^https:\/\/discord\.com\/api(?:\/v\d+)?\/webhooks\/\d+\/[\w-]+\/?$/;
 
 async function sendSlack(userId, webhookEnvelope, text) {
   let webhookUrl;
@@ -134,7 +149,7 @@ async function sendSlack(userId, webhookEnvelope, text) {
   }
   const res = await fetch(webhookUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
     body: JSON.stringify({ text, unfurl_links: false }),
     signal: AbortSignal.timeout(10000),
   });
@@ -143,6 +158,62 @@ async function sendSlack(userId, webhookEnvelope, text) {
     await deactivateChannel(userId, 'slack');
   } else if (!res.ok) {
     console.warn(`[relay] Slack send failed: ${res.status}`);
+  }
+}
+
+// ── Delivery: Discord ─────────────────────────────────────────────────────────
+
+const DISCORD_MAX_CONTENT = 2000;
+
+async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
+  let webhookUrl;
+  try {
+    webhookUrl = decrypt(webhookEnvelope);
+  } catch (err) {
+    console.warn(`[relay] Discord decrypt failed for ${userId}:`, err.message);
+    return;
+  }
+  if (!DISCORD_RE.test(webhookUrl)) {
+    console.warn(`[relay] Discord URL invalid for ${userId}`);
+    return;
+  }
+  // SSRF prevention: resolve hostname and check for private IPs
+  try {
+    const hostname = new URL(webhookUrl).hostname;
+    const addresses = await dns.resolve4(hostname);
+    if (addresses.some(isPrivateIP)) {
+      console.warn(`[relay] Discord URL resolves to private IP for ${userId}`);
+      return;
+    }
+  } catch {
+    console.warn(`[relay] Discord DNS resolution failed for ${userId}`);
+    return;
+  }
+  const content = text.length > DISCORD_MAX_CONTENT
+    ? text.slice(0, DISCORD_MAX_CONTENT - 1) + '…'
+    : text;
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+    body: JSON.stringify({ content }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (res.status === 404 || res.status === 410) {
+    console.warn(`[relay] Discord webhook gone for ${userId} — deactivating`);
+    await deactivateChannel(userId, 'discord');
+  } else if (res.status === 429) {
+    if (retryCount >= 1) {
+      console.warn(`[relay] Discord 429 retry limit reached for ${userId}`);
+      return;
+    }
+    const body = await res.json().catch(() => ({}));
+    const wait = ((body.retry_after ?? 1) + 0.5) * 1000;
+    await new Promise(r => setTimeout(r, wait));
+    return sendDiscord(userId, webhookEnvelope, text, retryCount + 1);
+  } else if (!res.ok) {
+    console.warn(`[relay] Discord send failed: ${res.status}`);
+  } else {
+    console.log(`[relay] Discord delivered to ${userId}`);
   }
 }
 
@@ -177,7 +248,38 @@ function formatMessage(event) {
   return parts.join('\n');
 }
 
+async function processWelcome(event) {
+  const { userId, channelType } = event;
+  if (!userId || !channelType) return;
+  // Telegram welcome is sent directly by Convex; no relay send needed.
+  if (channelType === 'telegram') return;
+  let channels = [];
+  try {
+    const chRes = await fetch(`${CONVEX_SITE_URL}/relay/channels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+      body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (chRes.ok) channels = (await chRes.json()) ?? [];
+  } catch {}
+
+  const ch = channels.find(c => c.channelType === channelType && c.verified);
+  if (!ch) return;
+
+  // Telegram welcome is sent directly by convex/http.ts after claimPairingToken succeeds.
+  const text = `✅ WorldMonitor connected! You'll receive breaking news alerts here.`;
+  if (channelType === 'slack' && ch.webhookEnvelope) {
+    await sendSlack(userId, ch.webhookEnvelope, text);
+  } else if (channelType === 'discord' && ch.webhookEnvelope) {
+    await sendDiscord(userId, ch.webhookEnvelope, text);
+  } else if (channelType === 'email' && ch.email) {
+    await sendEmail(ch.email, 'WorldMonitor Notifications Connected', text);
+  }
+}
+
 async function processEvent(event) {
+  if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   console.log(`[relay] Processing event: ${event.eventType} (${event.severity ?? 'high'})`);
 
   let enabledRules;
@@ -210,6 +312,7 @@ async function processEvent(event) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${RELAY_SECRET}`,
+          'User-Agent': 'worldmonitor-relay/1.0',
         },
         body: JSON.stringify({ userId: rule.userId }),
         signal: AbortSignal.timeout(10000),
@@ -224,51 +327,57 @@ async function processEvent(event) {
     const verifiedChannels = channels.filter(c => c.verified && rule.channels.includes(c.channelType));
 
     for (const ch of verifiedChannels) {
-      if (ch.channelType === 'telegram' && ch.chatId) {
-        await sendTelegram(rule.userId, ch.chatId, text);
-      } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
-        await sendSlack(rule.userId, ch.webhookEnvelope, text);
-      } else if (ch.channelType === 'email' && ch.email) {
-        await sendEmail(ch.email, subject, text);
+      try {
+        if (ch.channelType === 'telegram' && ch.chatId) {
+          await sendTelegram(rule.userId, ch.chatId, text);
+        } else if (ch.channelType === 'slack' && ch.webhookEnvelope) {
+          await sendSlack(rule.userId, ch.webhookEnvelope, text);
+        } else if (ch.channelType === 'discord' && ch.webhookEnvelope) {
+          await sendDiscord(rule.userId, ch.webhookEnvelope, text);
+        } else if (ch.channelType === 'email' && ch.email) {
+          await sendEmail(ch.email, subject, text);
+        }
+      } catch (err) {
+        console.warn(`[relay] Delivery error for ${rule.userId}/${ch.channelType}:`, err instanceof Error ? err.message : String(err));
       }
     }
   }
 }
 
-// ── Subscribe loop ────────────────────────────────────────────────────────────
+// ── Poll loop (RPOP queue) ────────────────────────────────────────────────────
+//
+// Publishers push to wm:events:queue via LPUSH (FIFO: LPUSH head, RPOP tail).
+// The relay polls RPOP every 1s when idle; processes immediately when messages exist.
+// Advantage over pub/sub: messages survive relay restarts and are not lost.
 
 async function subscribe() {
   console.log('[relay] Starting notification relay...');
+  console.log('[relay] UPSTASH_URL set:', !!UPSTASH_URL, '| CONVEX_URL set:', !!CONVEX_URL, '| RELAY_SECRET set:', !!RELAY_SECRET);
+  console.log('[relay] TELEGRAM_BOT_TOKEN set:', !!TELEGRAM_BOT_TOKEN, '| RESEND_API_KEY set:', !!RESEND_API_KEY);
+  let idleCount = 0;
   while (true) {
     try {
-      const res = await fetch(
-        `${UPSTASH_URL}/subscribe/wm:events:notify`,
-        {
-          headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
-          signal: AbortSignal.timeout(35_000),
-        }
-      );
-      if (!res.ok) {
-        console.warn(`[relay] Subscribe response: ${res.status}`);
-        await new Promise(r => setTimeout(r, 5000));
-        continue;
-      }
-      const json = await res.json().catch(() => null);
-      const message = json?.message;
-      if (message) {
+      const result = await upstashRest('RPOP', 'wm:events:queue');
+      if (result) {
+        idleCount = 0;
+        console.log('[relay] RPOP dequeued message:', String(result).slice(0, 200));
         try {
-          const event = JSON.parse(message);
+          const event = JSON.parse(result);
           await processEvent(event);
         } catch (err) {
-          console.warn('[relay] Failed to parse event:', err.message);
+          console.warn('[relay] Failed to parse event:', err.message, '| raw:', String(result).slice(0, 120));
         }
+      } else {
+        idleCount++;
+        // Log a heartbeat every 60s so we know the relay is alive and connected
+        if (idleCount % 60 === 0) {
+          console.log(`[relay] Heartbeat: idle ${idleCount}s, queue empty, Upstash OK`);
+        }
+        await new Promise(r => setTimeout(r, 1000));
       }
     } catch (err) {
-      if (err?.name !== 'TimeoutError') {
-        console.warn('[relay] Subscribe error:', err.message);
-        await new Promise(r => setTimeout(r, 5000));
-      }
-      // TimeoutError = normal long-poll timeout, reconnect immediately
+      console.warn('[relay] Poll error:', err.message);
+      await new Promise(r => setTimeout(r, 5000));
     }
   }
 }

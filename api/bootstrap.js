@@ -25,8 +25,10 @@ const BOOTSTRAP_CACHE_KEYS = {
   chokepointTransits: 'supply_chain:chokepoint_transits:v1',
   minerals:         'supply_chain:minerals:v2',
   giving:           'giving:summary:v1',
-  climateAnomalies: 'climate:anomalies:v1',
+  climateAnomalies: 'climate:anomalies:v2',
   climateDisasters: 'climate:disasters:v1',
+  co2Monitoring: 'climate:co2-monitoring:v1',
+  climateNews:      'climate:news-intelligence:v1',
   radiationWatch: 'radiation:observations:v1',
   thermalEscalation: 'thermal:escalation:v1',
   crossSourceSignals: 'intelligence:cross-source-signals:v1',
@@ -86,8 +88,7 @@ const BOOTSTRAP_CACHE_KEYS = {
 
 const SLOW_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
-  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies',
-  'climateDisasters',
+  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
   'naturalEvents',

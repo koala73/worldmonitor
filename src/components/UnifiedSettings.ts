@@ -1,3 +1,4 @@
+import '@/styles/settings-window.css';
 import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { PANEL_CATEGORY_MAP, ALL_PANELS, VARIANT_DEFAULTS, getEffectivePanelConfig, isPanelEntitled, FREE_MAX_PANELS } from '@/config/panels';
 import { isProUser } from '@/services/widget-store';
@@ -182,6 +183,8 @@ export class UnifiedSettings {
   public close(): void {
     if (this.hasPendingPanelChanges() && !confirm(t('header.unsavedChanges'))) return;
     this.overlay.classList.remove('active');
+    this.prefsCleanup?.();
+    this.prefsCleanup = null;
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);

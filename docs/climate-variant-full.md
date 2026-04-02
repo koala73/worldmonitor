@@ -5,7 +5,7 @@
 | Component | Status |
 |-----------|--------|
 | Proto RPCs | 1 — `ListClimateAnomalies` |
-| Redis keys | 1 — `climate:anomalies:v1` |
+| Redis keys | 1 — `climate:anomalies:v2` |
 | Seed scripts | 1 — `seed-climate-anomalies.mjs` |
 | MCP tool | `get_climate_data` — bundled with `weather:alerts:v1` |
 | Hostname variant | Not configured |
@@ -39,7 +39,7 @@
 - Coral Triangle (-5°S, 128°E) — reef bleaching proxy (sea temp)
 - North Atlantic (55°N, -30°W) — AMOC slowdown signal
 
-**No change to cache key `climate:anomalies:v1`** — fix in place.
+**Bump cache key to `climate:anomalies:v2`** to avoid stale `%`-based precipitation anomalies being misread as millimeters.
 
 ### Layer 2: CO2 & Greenhouse Gas Monitoring (NEW)
 
@@ -66,7 +66,7 @@
 
 **Redis key:** `climate:co2-monitoring:v1`
 **Seed script:** `seed-co2-monitoring.mjs`
-**Cache TTL:** 86400 (24h — NOAA updates daily with ~2 day lag)
+**Cache TTL:** 259200 (72h — 3x daily interval gold standard)
 **Proto RPC:** `GetCo2Monitoring`
 
 ```proto
@@ -85,7 +85,7 @@ message Co2Monitoring {
 message Co2DataPoint {
   string month = 1;   // "YYYY-MM"
   double ppm = 2;
-  double anomaly = 3; // vs same month previous year
+  double anomaly = 3; // year-over-year delta vs same calendar month, in ppm
 }
 ```
 
@@ -225,8 +225,8 @@ message IceTrendPoint {
 
 | Script | Interval | Key | TTL |
 |--------|----------|-----|-----|
-| `seed-climate-anomalies.mjs` | Every 3h (existing, fix baseline) | `climate:anomalies:v1` | 3h |
-| `seed-co2-monitoring.mjs` | Daily 06:00 UTC | `climate:co2-monitoring:v1` | 24h |
+| `seed-climate-anomalies.mjs` | Every 3h (existing, fix baseline) | `climate:anomalies:v2` | 3h |
+| `seed-co2-monitoring.mjs` | Daily 06:00 UTC | `climate:co2-monitoring:v1` | 72h |
 | `seed-climate-disasters.mjs` | Every 6h | `climate:disasters:v1` | 6h |
 | `seed-health-air-quality.mjs` | Every 1h (shared) | `climate:air-quality:v1` | 1h |
 | `seed-climate-ocean-ice.mjs` | Daily 08:00 UTC | `climate:ocean-ice:v1` | 24h |
@@ -299,15 +299,15 @@ Replace current entry in `api/mcp.ts`:
     required: [],
   },
   _cacheKeys: [
-    'climate:anomalies:v1',
+    'climate:anomalies:v2',
     'climate:co2-monitoring:v1',
     'climate:disasters:v1',
     'climate:air-quality:v1',
     'climate:ocean-ice:v1',
     'climate:news-intelligence:v1',
   ],
-  _seedMetaKey: 'seed-meta:climate:anomalies',
-  _maxStaleMin: 120,
+  _seedMetaKey: 'seed-meta:climate:co2-monitoring',
+  _maxStaleMin: 2880,
 }
 ```
 
