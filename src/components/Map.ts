@@ -410,7 +410,14 @@ export class MapComponent {
     const happyLayers: (keyof MapLayers)[] = [
       'positiveEvents', 'kindness', 'happiness', 'speciesRecovery', 'renewableInstallations',
     ];
-    const layers = SITE_VARIANT === 'tech' ? techLayers : SITE_VARIANT === 'finance' ? financeLayers : SITE_VARIANT === 'happy' ? happyLayers : fullLayers;
+    const reitsLayers: (keyof MapLayers)[] = [
+      'reitProperties', 'natural', 'fires', 'weather', 'economic',
+    ];
+    const layers = SITE_VARIANT === 'tech' ? techLayers
+      : SITE_VARIANT === 'finance' ? financeLayers
+      : SITE_VARIANT === 'happy' ? happyLayers
+      : SITE_VARIANT === 'reits' ? reitsLayers
+      : fullLayers;
     const layerLabelKeys: Partial<Record<keyof MapLayers, string>> = {
       hotspots: 'components.deckgl.layers.intelHotspots',
       conflicts: 'components.deckgl.layers.conflictZones',
@@ -438,6 +445,8 @@ export class MapComponent {
       centralBanks: 'components.deckgl.layers.centralBanks',
       commodityHubs: 'components.deckgl.layers.commodityHubs',
       gulfInvestments: 'components.deckgl.layers.gulfInvestments',
+      reitProperties: 'components.deckgl.layers.reitProperties',
+      fires: 'components.deckgl.layers.fires',
       iranAttacks: 'components.deckgl.layers.iranAttacks',
       gpsJamming: 'components.deckgl.layers.gpsJamming',
       ciiChoropleth: 'components.deckgl.layers.ciiChoropleth',
