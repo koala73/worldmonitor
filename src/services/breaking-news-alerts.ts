@@ -222,6 +222,11 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
     const key = makeAlertKey(item.title, item.source, item.link);
     if (isDuplicate(key)) continue;
 
+    // Sustained/fading stories are already well-covered; only break/develop phases
+    // warrant a banner interrupt. Unspecified (no storyMeta) passes through.
+    const phase = item.storyMeta?.phase;
+    if (phase === 'sustained' || phase === 'fading') continue;
+
     const isBetter = !best
       || (level === 'critical' && best.threatLevel !== 'critical')
       || (level === best.threatLevel && item.pubDate.getTime() > best.timestamp.getTime());
