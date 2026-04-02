@@ -1942,7 +1942,6 @@ async function seedCryptoSectors() {
     console.warn(`[CryptoSectors] CoinGecko failed: ${err.message} — trying CoinPaprika`);
     try {
       const paprika = await _fetchCoinPaprikaTickers();
-      const reverseMap = Object.fromEntries(SECTORS_LIST.flatMap((s) => s.tokens).map((id) => [id, id]));
       data = paprika.filter((t) => {
         const geckoId = Object.entries(CRYPTO_PAPRIKA_MAP).find(([, p]) => p === t.id)?.[0];
         return geckoId && allIds.includes(geckoId);
@@ -7953,7 +7952,10 @@ function handleYahooChartRequest(req, res) {
       JSON.stringify({ error: errMsg, symbol }));
   }
 
+  let _proxied = false;
   function _tryProxy() {
+    if (_proxied) return;
+    _proxied = true;
     if (!PROXY_URL) return _serveStaleOrError(502, 'Yahoo upstream failed, no proxy');
     const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
     ytFetchViaProxy(yahooUrl, proxy).then((proxyResp) => {
