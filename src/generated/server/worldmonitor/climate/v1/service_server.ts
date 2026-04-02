@@ -59,6 +59,23 @@ export interface Co2DataPoint {
   anomaly: number;
 }
 
+export interface ListClimateNewsRequest {
+}
+
+export interface ListClimateNewsResponse {
+  items: ClimateNewsItem[];
+  fetchedAt: number;
+}
+
+export interface ClimateNewsItem {
+  id: string;
+  title: string;
+  url: string;
+  sourceName: string;
+  publishedAt: number;
+  summary: string;
+}
+
 export type AnomalySeverity = "ANOMALY_SEVERITY_UNSPECIFIED" | "ANOMALY_SEVERITY_NORMAL" | "ANOMALY_SEVERITY_MODERATE" | "ANOMALY_SEVERITY_EXTREME";
 
 export type AnomalyType = "ANOMALY_TYPE_UNSPECIFIED" | "ANOMALY_TYPE_WARM" | "ANOMALY_TYPE_COLD" | "ANOMALY_TYPE_WET" | "ANOMALY_TYPE_DRY" | "ANOMALY_TYPE_MIXED";
@@ -110,6 +127,7 @@ export interface RouteDescriptor {
 export interface ClimateServiceHandler {
   listClimateAnomalies(ctx: ServerContext, req: ListClimateAnomaliesRequest): Promise<ListClimateAnomaliesResponse>;
   getCo2Monitoring(ctx: ServerContext, req: GetCo2MonitoringRequest): Promise<GetCo2MonitoringResponse>;
+  listClimateNews(ctx: ServerContext, req: ListClimateNewsRequest): Promise<ListClimateNewsResponse>;
 }
 
 export function createClimateServiceRoutes(
@@ -182,6 +200,43 @@ export function createClimateServiceRoutes(
 
           const result = await handler.getCo2Monitoring(ctx, body);
           return new Response(JSON.stringify(result as GetCo2MonitoringResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/climate/v1/list-climate-news",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListClimateNewsRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listClimateNews(ctx, body);
+          return new Response(JSON.stringify(result as ListClimateNewsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

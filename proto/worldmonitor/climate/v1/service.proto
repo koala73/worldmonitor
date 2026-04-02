@@ -5,6 +5,7 @@ package worldmonitor.climate.v1;
 import "sebuf/http/annotations.proto";
 import "worldmonitor/climate/v1/get_co2_monitoring.proto";
 import "worldmonitor/climate/v1/list_climate_anomalies.proto";
+import "worldmonitor/climate/v1/list_climate_news.proto";
 
 // ClimateService provides APIs for climate anomaly data sourced from Open-Meteo.
 service ClimateService {
@@ -18,5 +19,10 @@ service ClimateService {
   // GetCo2Monitoring retrieves seeded NOAA greenhouse gas monitoring data.
   rpc GetCo2Monitoring(GetCo2MonitoringRequest) returns (GetCo2MonitoringResponse) {
     option (sebuf.http.config) = {path: "/get-co2-monitoring", method: HTTP_METHOD_GET};
+  }
+
+  // ListClimateNews retrieves latest climate/environment intelligence headlines from seeded RSS feeds.
+  rpc ListClimateNews(ListClimateNewsRequest) returns (ListClimateNewsResponse) {
+    option (sebuf.http.config) = {path: "/list-climate-news", method: HTTP_METHOD_GET};
   }
 }
