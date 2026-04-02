@@ -1,8 +1,10 @@
 import type { NewsItem, ClusteredEvent, MarketData, CyberThreat, Monitor } from '@/types';
-import type { PredictionMarket } from '@/services/prediction';
 import type { IntelligenceCache } from '@/app/app-context';
 import type { GpsJamData } from '@/services/gps-interference';
-import type { ConvergenceCard } from '@/services/correlation-engine';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type PredictionMarket = Record<string, any>;
+type ConvergenceCard = Record<string, any>;
 import { t } from '@/services/i18n';
 
 type ExportFormat = 'json' | 'csv';

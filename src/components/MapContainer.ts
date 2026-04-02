@@ -28,24 +28,29 @@ import type {
   CyberThreat,
   CableHealthRecord,
 } from '@/types';
-import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
-import type { DisplacementFlow } from '@/services/displacement';
-import type { Earthquake } from '@/services/earthquakes';
-import type { ClimateAnomaly } from '@/services/climate';
 import type { WeatherAlert } from '@/services/weather';
-import type { PositiveGeoEvent } from '@/services/positive-events-geo';
-import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
-import type { SpeciesRecovery } from '@/services/conservation-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
-import type { RadiationObservation } from '@/services/radiation';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
-import type { IranEvent } from '@/services/conflict';
-import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
-import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
-import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
+
+// Stub types removed in REITs-only variant
+type AirportDelayAlert = Record<string, any>;
+type PositionSample = Record<string, any>;
+type DisplacementFlow = Record<string, any>;
+type Earthquake = Record<string, any>;
+type ClimateAnomaly = Record<string, any>;
+type PositiveGeoEvent = Record<string, any>;
+type KindnessPoint = Record<string, any>;
+type SpeciesRecovery = Record<string, any>;
+type RadiationObservation = Record<string, any>;
+type IranEvent = Record<string, any>;
+type ImageryScene = Record<string, any>;
+type WebcamEntry = Record<string, any>;
+type WebcamCluster = Record<string, any>;
+type ProtoTrafficAnomaly = Record<string, any>;
+type DdosLocationHit = Record<string, any>;
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';

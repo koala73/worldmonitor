@@ -6,7 +6,8 @@
 
 import type { NewsItem, ClusteredEvent } from '@/types';
 import { getSourceTier } from '@/config';
-import { clusterNewsCore } from './analysis-core';
+// analysis-core removed in REITs-only variant
+const clusterNewsCore = (..._args: unknown[]): unknown[] => [];
 import { mlWorker } from './ml-worker';
 import { ML_THRESHOLDS } from '@/config/ml-config';
 

@@ -5,14 +5,20 @@ import { getCSSColor } from '@/utils';
 import type { Topology, GeometryCollection } from 'topojson-specification';
 import type { Feature, Geometry } from 'geojson';
 import type { MapLayers, Hotspot, NewsItem, InternetOutage, RelatedAsset, AssetType, AisDisruptionEvent, AisDensityZone, CableAdvisory, RepairShip, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, CyberThreat, CableHealthRecord } from '@/types';
-import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
-import type { Earthquake } from '@/services/earthquakes';
-import { type IranEvent, getIranEventCssColor, getIranEventSize } from '@/services/conflict';
 import type { TechHubActivity } from '@/services/tech-activity';
-import type { GeoHubActivity } from '@/services/geo-activity';
-import { getNaturalEventIcon } from '@/services/eonet';
 import type { WeatherAlert } from '@/services/weather';
-import type { RadiationObservation } from '@/services/radiation';
+
+// Stub types/functions removed in REITs-only variant
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type AirportDelayAlert = Record<string, any>;
+type PositionSample = Record<string, any>;
+type Earthquake = Record<string, any>;
+type IranEvent = Record<string, any>;
+type GeoHubActivity = Record<string, any>;
+type RadiationObservation = Record<string, any>;
+const getIranEventCssColor = (_e: unknown): string => '#888';
+const getIranEventSize = (_e: unknown): number => 5;
+const getNaturalEventIcon = (_cat: string): string => '';
 import { getSeverityColor } from '@/services/weather';
 import { startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
 import {
@@ -44,19 +50,19 @@ import {
   CENTRAL_BANKS,
   COMMODITY_HUBS,
 } from '@/config';
-import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
-import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
+type WebcamEntry = Record<string, any>;
+type WebcamCluster = Record<string, any>;
+const pinWebcam = (_data: unknown): void => {};
+const isPinned = (_id: string): boolean => false;
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
-import {
-  updateHotspotEscalation,
-  getHotspotEscalation,
-  setMilitaryData,
-  setCIIGetter,
-  setGeoAlertGetter,
-} from '@/services/hotspot-escalation';
-import { getCountryScore } from '@/services/country-instability';
-import { getAlertsNearLocation } from '@/services/geo-convergence';
+const updateHotspotEscalation = (..._args: any[]): void => {};
+const getHotspotEscalation = (..._args: any[]): any => null;
+const setMilitaryData = (..._args: any[]): void => {};
+const setCIIGetter = (..._args: any[]): void => {};
+const setGeoAlertGetter = (..._args: any[]): void => {};
+const getCountryScore = (_code: string): any => null;
+const getAlertsNearLocation = (_lat: number, _lon: number): any[] => [];
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { CountryClickPayload } from './DeckGLMap';
 import { t } from '@/services/i18n';
@@ -2942,8 +2948,8 @@ export class MapComponent {
     this.placeWebcamTooltip(tooltip, clientX, clientY);
 
     if (cam.webcamId) {
-      import('@/services/webcams').then(({ fetchWebcamImage }) => {
-        fetchWebcamImage(cam.webcamId).then(img => {
+      Promise.resolve().then(() => {
+        ((_id: string) => Promise.resolve(null))(cam.webcamId).then((img: any) => {
           if (!tooltip.isConnected) return;
           previewDiv.replaceChildren();
           if (img.thumbnailUrl) {
@@ -3003,12 +3009,10 @@ export class MapComponent {
     this.placeWebcamTooltip(tooltip, clientX, clientY);
 
     const currentZoom = this.state.zoom ?? 3;
-    import('@/services/webcams').then(({ fetchWebcams, getClusterCellSize }) => {
-      const margin = Math.max(0.5, getClusterCellSize(currentZoom));
-      fetchWebcams(10, {
-        w: cam.lng - margin, s: cam.lat - margin,
-        e: cam.lng + margin, n: cam.lat + margin,
-      }).then(result => {
+    Promise.resolve().then(() => {
+      const getClusterCellSize = (_z: number): number => 1;
+      void getClusterCellSize(currentZoom); // webcam service removed in REITs-only variant
+      Promise.resolve({ webcams: [] as any[], clusters: [] }).then((result: any) => {
         if (!tooltip.isConnected) return;
         const webcams = result.webcams.slice(0, 20);
         header.textContent = `\u{1F4F7} ${webcams.length} webcams`;

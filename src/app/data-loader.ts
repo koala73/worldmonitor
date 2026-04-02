@@ -18,7 +18,6 @@ import {
   fetchReitProperties,
   fetchReitSocial,
 } from '@/services';
-import { checkBatchForBreakingAlerts } from '@/services/breaking-news-alerts';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { dataFreshness } from '@/services/data-freshness';
 import { debounce } from '@/utils';
@@ -26,7 +25,6 @@ import { isFeatureEnabled } from '@/services/runtime-config';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
-import { ingestHeadlines } from '@/services/trending-keywords';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 
 // ---------- Digest types (formerly from generated proto client) ----------
@@ -391,9 +389,6 @@ export class DataLoaderManager implements AppModule {
           .map(digestItemToNewsItem)
           .filter((i: NewsItem) => enabledNames.has(i.source));
 
-        ingestHeadlines(items.map((i: NewsItem) => ({ title: i.title, pubDate: i.pubDate, source: i.source, link: i.link })));
-
-        checkBatchForBreakingAlerts(items);
         this.flashMapForNews(items);
         this.renderNewsForCategory(category, items);
 
@@ -480,7 +475,6 @@ export class DataLoaderManager implements AppModule {
         onBatch: (partialItems: NewsItem[]) => {
           scheduleRender(partialItems);
           this.flashMapForNews(partialItems);
-          checkBatchForBreakingAlerts(partialItems);
         },
       });
 

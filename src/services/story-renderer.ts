@@ -1,4 +1,5 @@
-import type { StoryData } from './story-data';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type StoryData = Record<string, any>;
 import { getLocale, t } from './i18n';
 
 const W = 1080;

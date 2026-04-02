@@ -42,7 +42,7 @@ export interface AppContext {
   statusPanel: import('@/components').StatusPanel | null;
   searchModal: import('@/components').SearchModal | null;
   findingsBadge: null;
-  breakingBanner: import('@/components/BreakingNewsBanner').BreakingNewsBanner | null;
+  breakingBanner: null;
   playbackControl: null;
   exportPanel: import('@/utils').ExportPanel | null;
   unifiedSettings: import('@/components/UnifiedSettings').UnifiedSettings | null;

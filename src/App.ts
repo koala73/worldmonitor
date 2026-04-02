@@ -21,8 +21,6 @@ import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
 import type { ParsedMapUrlState } from '@/utils';
-import { BreakingNewsBanner } from '@/components';
-import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { BETA_MODE } from '@/config/beta';
 import { trackEvent, initAuthAnalytics } from '@/services/analytics';
@@ -641,11 +639,7 @@ export class App {
       this.state.map.setCenter(mobileGeoCoords.lat, mobileGeoCoords.lon, 6);
     }
 
-    // Phase 2: Shared UI components
-    if (!this.state.isMobile) {
-      initBreakingNewsAlerts();
-      this.state.breakingBanner = new BreakingNewsBanner();
-    }
+    // Phase 2: Shared UI components (breaking news removed in REITs-only variant)
 
     // Phase 3: UI setup methods
     this.eventHandlers.startHeaderClock();
@@ -772,8 +766,6 @@ export class App {
     // Clean up subscriptions, map, and breaking news
     this.unsubAiFlow?.();
     this.unsubFreeTier?.();
-    this.state.breakingBanner?.destroy();
-    destroyBreakingNewsAlerts();
     this.cachedModeBannerEl?.remove();
     this.cachedModeBannerEl = null;
     this.state.map?.destroy();

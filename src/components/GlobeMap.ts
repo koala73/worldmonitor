@@ -32,24 +32,31 @@ import { escapeHtml } from '@/utils/sanitize';
 import { showLayerWarning } from '@/utils/layer-warning';
 import type { FeatureCollection, Geometry } from 'geojson';
 import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, MilitaryVesselCluster, NaturalEvent, InternetOutage, CyberThreat, SocialUnrestEvent, UcdpGeoEvent, MilitaryBase, GammaIrradiator, Spaceport, EconomicCenter, StrategicWaterway, CriticalMineralProject, AIDataCenter, UnderseaCable, Pipeline, CableAdvisory, RepairShip, AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
-import type { Earthquake } from '@/services/earthquakes';
-import type { AirportDelayAlert } from '@/services/aviation';
 import { MapPopup } from './MapPopup';
 import type { MapContainerState, MapView, TimeRange } from './MapContainer';
 import type { CountryClickPayload } from './DeckGLMap';
 import type { WeatherAlert } from '@/services/weather';
-import { type IranEvent, getIranEventHexColor } from '@/services/conflict';
-import type { DisplacementFlow } from '@/services/displacement';
-import type { ClimateAnomaly } from '@/services/climate';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
-import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
-import { getCategoryStyle } from '@/services/webcams';
-import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
-import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
-import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
-import type { RadiationObservation } from '@/services/radiation';
+
+// Stub types/functions removed in REITs-only variant
+type Earthquake = Record<string, any>;
+type AirportDelayAlert = Record<string, any>;
+type IranEvent = Record<string, any>;
+type DisplacementFlow = Record<string, any>;
+type ClimateAnomaly = Record<string, any>;
+type ImageryScene = Record<string, any>;
+type WebcamEntry = Record<string, any>;
+type WebcamCluster = Record<string, any>;
+type ProtoTrafficAnomaly = Record<string, any>;
+type DdosLocationHit = Record<string, any>;
+type RadiationObservation = Record<string, any>;
+const getIranEventHexColor = (_e: any): string => '#888888';
+const getCategoryStyle = (_cat: string): { color: string; emoji?: string } => ({ color: '#888' });
+const pinWebcam = (_data: any): void => {};
+const isPinned = (_id: string): boolean => false;
+const fetchWebcamImage = (..._args: any[]): Promise<any> => Promise.resolve(null);
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
 const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
@@ -1595,8 +1602,8 @@ export class GlobeMap {
       attribution.textContent = 'Powered by Windy';
       wrapper.appendChild(attribution);
 
-      import('@/services/webcams').then(({ fetchWebcamImage }) => {
-        fetchWebcamImage(d.webcamId).then(img => {
+      Promise.resolve().then(() => {
+        fetchWebcamImage(d.webcamId).then((img: any) => {
           if (!el.isConnected) return;
           previewDiv.replaceChildren();
           if (img.thumbnailUrl) {
@@ -1683,7 +1690,9 @@ export class GlobeMap {
       const tooltipEl = el;
       const alt = this.globe?.pointOfView()?.altitude ?? 2.0;
       const approxZoom = alt >= 2.0 ? 2 : alt >= 1.0 ? 4 : alt >= 0.5 ? 6 : 8;
-      import('@/services/webcams').then(({ fetchWebcams, getClusterCellSize }) => {
+      Promise.resolve().then(() => {
+        const fetchWebcams = (..._args: any[]): Promise<any> => Promise.resolve({ webcams: [], clusters: [] });
+        const getClusterCellSize = (_z: number): number => 1;
         const margin = Math.max(0.5, getClusterCellSize(approxZoom));
         fetchWebcams(10, {
           w: d._lng - margin, s: d._lat - margin,
@@ -2846,8 +2855,8 @@ export class GlobeMap {
     const bbox = `${west.toFixed(4)},${south.toFixed(4)},${east.toFixed(4)},${north.toFixed(4)}`;
     const thisVersion = ++this.imageryFetchVersion;
     try {
-      const { fetchImageryScenes } = await import('@/services/imagery');
-      const scenes = await fetchImageryScenes({ bbox, limit: 20 });
+      const scenes: ImageryScene[] = [];
+      void bbox; // imagery service removed in REITs-only variant
       if (thisVersion !== this.imageryFetchVersion) return;
       this.setImageryScenes(scenes);
       this.lastImageryCenter = { lat: center.lat, lon: center.lon };

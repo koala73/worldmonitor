@@ -36,22 +36,29 @@ import type {
   CableHealthRecord,
   MilitaryBaseEnriched,
 } from '@/types';
-import { fetchMilitaryBases, type MilitaryBaseCluster as ServerBaseCluster } from '@/services/military-bases';
-import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
-import { fetchAircraftPositions } from '@/services/aviation';
-import { type IranEvent, getIranEventColor, getIranEventRadius } from '@/services/conflict';
+// Stub services removed in REITs-only variant
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type ServerBaseCluster = Record<string, any>;
+type AirportDelayAlert = Record<string, any>;
+type PositionSample = Record<string, any>;
+type IranEvent = Record<string, any>;
+const fetchMilitaryBases = (..._args: any[]): Promise<{ bases: any[]; clusters: ServerBaseCluster[] }> => Promise.resolve({ bases: [], clusters: [] });
+const fetchAircraftPositions = (_opts?: any): Promise<PositionSample[]> => Promise.resolve([]);
+const getIranEventColor = (_e: any): [number, number, number, number] => [128, 128, 128, 255];
+const getIranEventRadius = (_e: any): number => 5;
 import { getMilitaryBaseColor } from '@/config/military-base-colors';
 import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
 import type { GpsJamHex } from '@/services/gps-interference';
-import { fetchImageryScenes } from '@/services/imagery';
-import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
-import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
-import type { DisplacementFlow } from '@/services/displacement';
-import type { Earthquake } from '@/services/earthquakes';
-import type { ClimateAnomaly } from '@/services/climate';
-import type { RadiationObservation } from '@/services/radiation';
+type ImageryScene = Record<string, any>;
+type ProtoTrafficAnomaly = Record<string, any>;
+type DdosLocationHit = Record<string, any>;
+type DisplacementFlow = Record<string, any>;
+type Earthquake = Record<string, any>;
+type ClimateAnomaly = Record<string, any>;
+type RadiationObservation = Record<string, any>;
+const fetchImageryScenes = (..._args: any[]): Promise<ImageryScene[]> => Promise.resolve([]);
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import { H3HexagonLayer } from '@deck.gl/geo-layers';
@@ -100,28 +107,29 @@ import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type Trad
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
 import { getSecretState } from '@/services/runtime-config';
 import { MapPopup, type PopupType } from './MapPopup';
-import {
-  updateHotspotEscalation,
-  getHotspotEscalation,
-  setMilitaryData,
-  setCIIGetter,
-  setGeoAlertGetter,
-} from '@/services/hotspot-escalation';
-import { getCountryScore } from '@/services/country-instability';
-import { getAlertsNearLocation } from '@/services/geo-convergence';
-import type { PositiveGeoEvent } from '@/services/positive-events-geo';
-import type { KindnessPoint } from '@/services/kindness-data';
+// Stub escalation/instability/convergence services removed in REITs-only variant
+const updateHotspotEscalation = (..._args: any[]): void => {};
+const getHotspotEscalation = (..._args: any[]): any => null;
+const setMilitaryData = (..._args: any[]): void => {};
+const setCIIGetter = (..._args: any[]): void => {};
+const setGeoAlertGetter = (..._args: any[]): void => {};
+const getCountryScore = (_code: string): any => null;
+const getAlertsNearLocation = (_lat: number, _lon: number): any[] => [];
+type PositiveGeoEvent = Record<string, any>;
+type KindnessPoint = Record<string, any>;
 import type { HappinessData } from '@/services/happiness-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
-import type { SpeciesRecovery } from '@/services/conservation-data';
+type SpeciesRecovery = Record<string, any>;
 import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox, getCountryCentroid } from '@/services/country-geometry';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { FeatureCollection, Geometry } from 'geojson';
 
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
-import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
-import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
-import { fetchWebcamImage } from '@/services/webcams';
+type WebcamEntry = Record<string, any>;
+type WebcamCluster = Record<string, any>;
+const pinWebcam = (_data: any): void => {};
+const isPinned = (_id: string): boolean => false;
+const fetchWebcamImage = (..._args: any[]): Promise<any> => Promise.resolve(null);
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';

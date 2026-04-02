@@ -1,4 +1,5 @@
-import type { StoryData } from './story-data';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type StoryData = Record<string, any>;
 import { toFlagEmoji } from '@/utils/country-flag';
 import { getCanonicalApiOrigin } from '@/services/runtime';
 

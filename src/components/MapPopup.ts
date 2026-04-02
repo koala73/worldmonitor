@@ -1,21 +1,29 @@
 import type { ConflictZone, Hotspot, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat } from '@/types';
-import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
-import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
-import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config';
 import type { StartupHub, Accelerator, TechHQ, CloudRegion } from '@/config/tech-geo';
 import type { TechHubActivity } from '@/services/tech-activity';
-import type { GeoHubActivity } from '@/services/geo-activity';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { isMobileDevice, getCSSColor } from '@/utils';
 import { t } from '@/services/i18n';
-import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
-import { getWingbitsLiveFlight } from '@/services/wingbits';
 import { isFeatureAvailable } from '@/services/runtime-config';
-import { getNaturalEventIcon } from '@/services/eonet';
-import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
-import { getCableHealthRecord } from '@/services/cable-health';
+
+// Stub types/functions removed in REITs-only variant
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type AirportDelayAlert = Record<string, any>;
+type PositionSample = Record<string, any>;
+type Earthquake = Record<string, any>;
+type RadiationObservation = Record<string, any>;
+type GeoHubActivity = Record<string, any>;
+type GdeltArticle = Record<string, any>;
+const fetchHotspotContext = (..._args: any[]): Promise<GdeltArticle[]> => Promise.resolve([]);
+const formatArticleDate = (_date: string): string => '';
+const extractDomain = (_url: string): string => '';
+const getWingbitsLiveFlight = (_icao: string): any => null;
+const getNaturalEventIcon = (_cat: string): string => '';
+const getHotspotEscalation = (..._args: any[]): any => null;
+const getEscalationChange24h = (..._args: any[]): any => null;
+const getCableHealthRecord = (_id: string): any => null;
 import { nameToCountryCode } from '@/services/country-geometry';
 import { sparkline } from '@/utils/sparkline';
 

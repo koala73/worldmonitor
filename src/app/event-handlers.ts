@@ -1,6 +1,7 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
-import { openWidgetChatModal } from '@/components/WidgetChatModal';
+// openWidgetChatModal removed in REITs-only variant (no-op)
+const openWidgetChatModal = (_opts: { mode?: string; existingSpec?: unknown; onComplete?: (updated: { id: string }) => void }): void => {};
 import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widget-store';
 import { FREE_MAX_PANELS, FREE_MAX_SOURCES } from '@/config/panels';
 import type { McpDataPanel } from '@/components/McpDataPanel';
@@ -997,7 +998,7 @@ export class EventHandlerManager implements AppModule {
         newsClusters: this.ctx.latestClusters.length > 0 ? this.ctx.latestClusters : undefined,
         newsByCategory: this.ctx.newsByCategory,
         markets: this.ctx.latestMarkets,
-        predictions: this.ctx.latestPredictions as import('@/services/prediction').PredictionMarket[],
+        predictions: this.ctx.latestPredictions as Record<string, unknown>[],
         intelligence: this.ctx.intelligenceCache,
         cyberThreats: this.ctx.cyberThreatsCache ?? undefined,
         gpsJamming: getCachedGpsInterference() ?? undefined,

@@ -1,10 +1,16 @@
 import { Panel } from './Panel';
 import { WindowedList } from './VirtualList';
 import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAssetContext } from '@/types';
-import { THREAT_PRIORITY } from '@/services/threat-classifier';
+const THREAT_PRIORITY: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
-import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
+import { enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker } from '@/services';
+
+// Stubs removed in REITs-only variant — inline no-ops
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const analysisWorker = { clusterNews: (..._args: any[]): Promise<any[]> => Promise.resolve([]) };
+const generateSummary = (..._args: any[]): Promise<any> => Promise.resolve(null);
+const translateText = (..._args: any[]): Promise<any> => Promise.resolve(null);
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';

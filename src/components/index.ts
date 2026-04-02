@@ -18,6 +18,4 @@ export * from './LlmStatusIndicator';
 export * from './LiveNewsPanel';
 export * from './RuntimeConfigPanel';
 export * from './UnifiedSettings';
-export * from './BreakingNewsBanner';
 export * from './DiseaseOutbreaksPanel';
-export * from './SocialVelocityPanel';
