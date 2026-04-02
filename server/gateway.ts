@@ -56,6 +56,11 @@ const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
 const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/maritime/v1/get-vessel-snapshot': 'no-store',
 
+  '/api/reits/v1/list-reit-quotes': 'medium',
+  '/api/reits/v1/get-reit-correlation': 'slow',
+  '/api/reits/v1/list-reit-properties': 'static',
+  '/api/reits/v1/get-reit-social-sentiment': 'slow',
+
   '/api/market/v1/list-market-quotes': 'medium',
   '/api/market/v1/list-crypto-quotes': 'medium',
   '/api/market/v1/list-crypto-sectors': 'slow',

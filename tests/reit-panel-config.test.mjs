@@ -17,15 +17,15 @@ function readSrc(relPath) {
 }
 
 describe('REIT panel config guardrails', () => {
-  it('finance variant includes reits panel', () => {
-    const src = readSrc('src/config/variants/finance.ts');
-    assert.ok(src.includes("reits:"), 'Finance variant must include reits panel');
-    assert.ok(src.includes("'reit-correlation':"), 'Finance variant must include reit-correlation panel');
-    assert.ok(src.includes("'reit-social':"), 'Finance variant must include reit-social panel');
+  it('reits variant includes reits panel', () => {
+    const src = readSrc('src/config/variants/reits.ts');
+    assert.ok(src.includes("reits:"), 'REITs variant must include reits panel');
+    assert.ok(src.includes("'reit-correlation':"), 'REITs variant must include reit-correlation panel');
+    assert.ok(src.includes("'reit-social':"), 'REITs variant must include reit-social panel');
   });
 
   it('REIT panels are priority 1 or 2', () => {
-    const src = readSrc('src/config/variants/finance.ts');
+    const src = readSrc('src/config/variants/reits.ts');
     // reits should be priority 1
     const reitsLine = src.split('\n').find(l => l.includes("reits:") && l.includes('priority'));
     assert.ok(reitsLine?.includes('priority: 1'), 'reits panel should be priority 1');
@@ -36,9 +36,9 @@ describe('REIT panel config guardrails', () => {
     assert.ok(src.includes('reitProperties: boolean'), 'MapLayers must include reitProperties');
   });
 
-  it('reitProperties is in finance variant map layers', () => {
-    const src = readSrc('src/config/variants/finance.ts');
-    assert.ok(src.includes('reitProperties'), 'Finance variant map layers must include reitProperties');
+  it('reitProperties is in reits variant map layers', () => {
+    const src = readSrc('src/config/variants/reits.ts');
+    assert.ok(src.includes('reitProperties'), 'REITs variant map layers must include reitProperties');
   });
 
   it('reitProperties is in map layer registry', () => {
@@ -90,10 +90,10 @@ describe('REIT panel config guardrails', () => {
 
   it('REIT cache tiers are in gateway.ts', () => {
     const src = readSrc('server/gateway.ts');
-    assert.ok(src.includes('/api/reits/v1/list-reit-quotes'), 'gateway must have list-reit-quotes cache tier');
-    assert.ok(src.includes('/api/reits/v1/get-reit-correlation'), 'gateway must have get-reit-correlation cache tier');
-    assert.ok(src.includes('/api/reits/v1/list-reit-properties'), 'gateway must have list-reit-properties cache tier');
-    assert.ok(src.includes('/api/reits/v1/get-reit-social-sentiment'), 'gateway must have get-reit-social-sentiment cache tier');
+    assert.ok(src.includes("'/api/reits/v1/list-reit-quotes'"), 'gateway must have list-reit-quotes cache tier');
+    assert.ok(src.includes("'/api/reits/v1/get-reit-correlation'"), 'gateway must have get-reit-correlation cache tier');
+    assert.ok(src.includes("'/api/reits/v1/list-reit-properties'"), 'gateway must have list-reit-properties cache tier');
+    assert.ok(src.includes("'/api/reits/v1/get-reit-social-sentiment'"), 'gateway must have get-reit-social-sentiment cache tier');
   });
 
   it('reits DataSourceId exists in types', () => {
@@ -108,11 +108,8 @@ describe('REIT panel config guardrails', () => {
     assert.ok(en.panels.reitSocial, 'i18n must have panels.reitSocial');
   });
 
-  it('all variant configs include reitProperties in MapLayers', () => {
-    const variants = ['full', 'tech', 'finance', 'commodity', 'happy'];
-    for (const v of variants) {
-      const src = readSrc(`src/config/variants/${v}.ts`);
-      assert.ok(src.includes('reitProperties'), `${v} variant must include reitProperties in MapLayers`);
-    }
+  it('reits variant config includes reitProperties in MapLayers', () => {
+    const src = readSrc('src/config/variants/reits.ts');
+    assert.ok(src.includes('reitProperties: true'), 'REITs variant must enable reitProperties in MapLayers');
   });
 });

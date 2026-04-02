@@ -123,6 +123,10 @@ const STANDALONE_KEYS = {
   simulationOutcomeLatest:  'forecast:simulation-outcome:latest',
   newsThreatSummary:        'news:threat:summary:v1',
   climateNews:              'climate:news-intelligence:v1',
+  reitQuotes:               'reits:quotes:v1',
+  reitCorrelation:          'reits:correlation:v1',
+  reitProperties:           'reits:properties:v1',
+  reitSocial:               'reits:social:v1',
 };
 
 const SEED_META = {
@@ -228,6 +232,10 @@ const SEED_META = {
   socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval (was 20 = equals retry window, too tight)
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
+  reitQuotes:           { key: 'seed-meta:reits:quotes',               maxStaleMin: 60 },  // 30min TTL; 60min = 2x interval
+  reitCorrelation:      { key: 'seed-meta:reits:correlation',          maxStaleMin: 120 }, // 1h TTL; 120min = 2x interval
+  reitProperties:       { key: 'seed-meta:reits:properties',           maxStaleMin: 2880 }, // daily TTL; 2880min = 48h = 2x interval
+  reitSocial:           { key: 'seed-meta:reits:social',               maxStaleMin: 720 }, // 6h TTL; 720min = 12h = 2x interval
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
