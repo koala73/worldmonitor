@@ -68,10 +68,28 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
   }
 }
 
-function json(body: unknown, status: number, cors: Record<string, string>): Response {
+async function publishFlushHeld(userId: string, variant: string): Promise<void> {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  const msg = JSON.stringify({ eventType: 'flush_quiet_held', userId, variant });
+  try {
+    await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-edge/1.0' },
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (err) {
+    console.warn('[notification-channels] publishFlushHeld LPUSH failed:', (err as Error).message);
+  }
+}
+
+function json(body: unknown, status: number, cors: Record<string, string>, noCache = false): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json', ...cors },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(noCache ? { 'Cache-Control': 'no-store' } : {}),
+      ...cors,
+    },
   });
 }
 
@@ -96,6 +114,14 @@ interface PostBody {
   eventTypes?: string[];
   sensitivity?: string;
   channels?: string[];
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: number;
+  quietHoursEnd?: number;
+  quietHoursTimezone?: string;
+  quietHoursOverride?: string;
+  digestMode?: string;
+  digestHour?: number;
+  digestTimezone?: string;
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -132,7 +158,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         return json({ error: 'Failed to fetch' }, 500, corsHeaders);
       }
       const data = await resp.json();
-      return json(data, 200, corsHeaders);
+      return json(data, 200, corsHeaders, true);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
       void captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
@@ -152,7 +178,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
     try {
       if (action === 'create-pairing-token') {
-        const resp = await convexRelay({ action: 'create-pairing-token', userId: session.userId });
+        const relayBody: Record<string, unknown> = { action: 'create-pairing-token', userId: session.userId };
+        if (body.variant) relayBody.variant = body.variant;
+        const resp = await convexRelay(relayBody);
         if (!resp.ok) {
           console.error('[notification-channels] POST create-pairing-token relay error:', resp.status);
           return json({ error: 'Operation failed' }, 500, corsHeaders);
@@ -208,6 +236,57 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         });
         if (!resp.ok) {
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
+        return json({ ok: true }, 200, corsHeaders);
+      }
+
+      if (action === 'set-quiet-hours') {
+        const VALID_OVERRIDE = new Set(['critical_only', 'silence_all', 'batch_on_wake']);
+        const { variant, quietHoursEnabled, quietHoursStart, quietHoursEnd, quietHoursTimezone, quietHoursOverride } = body;
+        if (!variant || quietHoursEnabled === undefined) {
+          return json({ error: 'variant and quietHoursEnabled required' }, 400, corsHeaders);
+        }
+        if (quietHoursOverride !== undefined && !VALID_OVERRIDE.has(quietHoursOverride)) {
+          return json({ error: 'invalid quietHoursOverride' }, 400, corsHeaders);
+        }
+        const resp = await convexRelay({
+          action: 'set-quiet-hours',
+          userId: session.userId,
+          variant,
+          quietHoursEnabled,
+          quietHoursStart,
+          quietHoursEnd,
+          quietHoursTimezone,
+          quietHoursOverride,
+        });
+        if (!resp.ok) {
+          console.error('[notification-channels] POST set-quiet-hours relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
+        // If quiet hours were disabled or override changed away from batch_on_wake,
+        // flush any held events so they're delivered rather than expiring silently.
+        const abandonsBatch = !quietHoursEnabled || quietHoursOverride !== 'batch_on_wake';
+        if (abandonsBatch) ctx.waitUntil(publishFlushHeld(session.userId, variant));
+        return json({ ok: true }, 200, corsHeaders);
+      }
+
+      if (action === 'set-digest-settings') {
+        const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
+        const { variant, digestMode, digestHour, digestTimezone } = body;
+        if (!variant || !digestMode || !VALID_DIGEST_MODE.has(digestMode)) {
+          return json({ error: 'variant and valid digestMode required' }, 400, corsHeaders);
+        }
+        const resp = await convexRelay({
+          action: 'set-digest-settings',
+          userId: session.userId,
+          variant,
+          digestMode,
+          digestHour,
+          digestTimezone,
+        });
+        if (!resp.ok) {
+          console.error('[notification-channels] POST set-digest-settings relay error:', resp.status);
           return json({ error: 'Operation failed' }, 500, corsHeaders);
         }
         return json({ ok: true }, 200, corsHeaders);

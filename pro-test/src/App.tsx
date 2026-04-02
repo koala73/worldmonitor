@@ -12,6 +12,7 @@ import {
   Landmark, Fuel
 } from 'lucide-react';
 import { t } from './i18n';
+import { PricingSection } from './components/PricingSection';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
 import wiredLogo from './assets/wired-logo.svg';
 
@@ -177,7 +178,7 @@ const Navbar = () => (
         <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
         <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
       </div>
-      <a href="#waitlist" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+      <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
         {t('nav.reserveAccess')}
       </a>
     </div>
@@ -353,7 +354,7 @@ const TwoPathSplit = () => (
             </li>
           ))}
         </ul>
-        <a href="#waitlist" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
+        <a href="#pricing" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
           {t('twoPath.proCta')}
         </a>
       </div>
@@ -1190,6 +1191,7 @@ export default function App() {
         <ProShowcase />
         <ApiSection />
         <EnterpriseShowcase />
+        <PricingSection refCode={getRefCode()} />
         <PricingTable />
         <FAQ />
       </main>

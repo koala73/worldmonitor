@@ -209,6 +209,18 @@ function injectStyles(): void {
     .fc-prob-item:hover .fc-sim-bar { opacity: 0.9; }
     .fc-sim-label { font-size: 9px; display: none; margin-top: 2px; line-height: 1.2; }
     .fc-prob-item:hover .fc-sim-label { display: block; }
+
+    /* ── Simulation verdict chip ─────────────────────────────────────────── */
+    .fc-sim-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; flex-shrink: 0; line-height: 1.6; }
+    .fc-sim-chip::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
+    .fc-sim-chip--backed   { background: rgba(63,185,80,0.12);  color: #3fb950; border: 1px solid rgba(63,185,80,0.28); }
+    .fc-sim-chip--backed::before   { background: #3fb950; }
+    .fc-sim-chip--flagged  { background: rgba(210,153,34,0.12); color: #d29922; border: 1px solid rgba(210,153,34,0.28); }
+    .fc-sim-chip--flagged::before  { background: #d29922; }
+    .fc-sim-chip--skeptical { background: rgba(224,82,82,0.10); color: #e05252; border: 1px solid rgba(224,82,82,0.28); }
+    .fc-sim-chip--skeptical::before { background: #e05252; }
+    .fc-label-inner { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .fc-forecast-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   `;
   document.head.appendChild(style);
 }
@@ -450,6 +462,7 @@ export class ForecastPanel extends Panel {
       : '';
 
     const simBarHtml = this.renderSimBar(f);
+    const simChipHtml = this.renderSimChip(f);
     const demoted = f.demotedBySimulation ?? false;
 
     return `
@@ -457,7 +470,10 @@ export class ForecastPanel extends Panel {
         <div class="fc-prob-row"${demoted ? ' style="opacity:0.5"' : ''}>
           <div class="fc-prob-label"
                style="border-left:2px solid ${catColor}47;padding-left:6px">
-            ${escapeHtml(f.title)}
+            <div class="fc-label-inner">
+              <span class="fc-forecast-title">${escapeHtml(f.title)}</span>
+              ${simChipHtml}
+            </div>
             ${simBarHtml}
           </div>
           <div class="fc-bar-wrap">
@@ -514,6 +530,21 @@ export class ForecastPanel extends Panel {
       <div class="fc-sim-bar" style="width:${barWidthPct}%;background:${barColor}"></div>
       <span class="fc-sim-label" style="color:${barColor}">${escapeHtml(labelText)}</span>
     </div>`;
+  }
+
+  // ── Simulation verdict chip ──────────────────────────────────────────────
+
+  private renderSimChip(f: Forecast): string {
+    const adj = f.simulationAdjustment ?? 0;
+    const demoted = f.demotedBySimulation ?? false;
+    if (demoted) {
+      return `<span class="fc-sim-chip fc-sim-chip--skeptical">AI skeptical</span>`;
+    }
+    if (adj === 0) return '';
+    if (adj > 0) {
+      return `<span class="fc-sim-chip fc-sim-chip--backed">AI backed</span>`;
+    }
+    return `<span class="fc-sim-chip fc-sim-chip--flagged">AI flagged</span>`;
   }
 
   // ── Detail sections (shared by rows) ────────────────────────────────────

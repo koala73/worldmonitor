@@ -94,8 +94,14 @@ function htmlResponse(script: string, body: string): Response {
   );
 }
 
+function safeJsonInScript(data: unknown): string {
+  // Escape </ to prevent </script> from closing the enclosing script tag prematurely.
+  // \/ is a valid JSON escape for forward slash and is semantically identical.
+  return JSON.stringify(data).replace(/<\//g, '<\\/');
+}
+
 function postAndClose(data: Record<string, unknown>): Response {
-  const msg = JSON.stringify(data);
+  const msg = safeJsonInScript(data);
   return htmlResponse(
     `window.opener&&window.opener.postMessage(${msg},'${APP_ORIGIN}');window.close();`,
     'Connected to Slack. You can close this window.',
@@ -103,7 +109,7 @@ function postAndClose(data: Record<string, unknown>): Response {
 }
 
 function errorAndClose(error: string): Response {
-  const msg = JSON.stringify({ type: 'wm:slack_error', error });
+  const msg = safeJsonInScript({ type: 'wm:slack_error', error });
   return htmlResponse(
     `window.opener&&window.opener.postMessage(${msg},'${APP_ORIGIN}');window.close();`,
     `Slack connection failed: ${escapeHtml(error)}. You can close this window.`,

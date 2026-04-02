@@ -700,7 +700,27 @@ export class EventHandlerManager implements AppModule {
       }
       this.debouncedWebcamReload();
     });
-    this.debouncedUrlSync();
+
+    // Skip the immediate sync only when applyInitialUrlState() will start an
+    // async flyTo that makes getCenter() return stale intermediate coordinates.
+    // Two cases qualify:
+    //   (a) lat+lon pair  → setCenter() flyTo; both must be present since
+    //       applyInitialUrlState only calls setCenter when both exist.
+    //   (b) bare zoom     → setZoom() animated zoom (no view preset).
+    //
+    // view is intentionally excluded: all renderers set this.state.view
+    // synchronously at the top of setView(), so the debounced read is always
+    // correct regardless of renderer. GlobeMap.onStateChanged is a no-op and
+    // SVG Map fires emitStateChange before the listener is installed — neither
+    // can rely on a later onStateChanged to drive the URL write, so they must
+    // use the immediate debounce path.
+    const { view, lat, lon, zoom } = this.ctx.initialUrlState ?? {};
+    const urlHasAsyncFlyTo =
+      (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
+      (!view && zoom !== undefined);                // zoom-only → setZoom animated
+    if (!urlHasAsyncFlyTo) {
+      this.debouncedUrlSync();
+    }
   }
 
   syncUrlState(): void {

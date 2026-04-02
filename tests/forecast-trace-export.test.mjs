@@ -84,6 +84,7 @@ import {
   negatesDisruption,
   normalizeActorName,
   summarizeImpactPathScore,
+  tryParseSimulationRoundPayload,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -5847,6 +5848,24 @@ describe('simulation package export', () => {
     const result = await writeSimulationPackage(snapshot, { storageConfig: null });
     assert.equal(result, null);
   });
+
+  it('T-PKG1: buildSimulationPackageFromDeepSnapshot adds actorRoles from candidate stateSummary to each theater', () => {
+    const candidateA = makeCandidate({ candidateStateId: 'state-pkg-a', stateSummary: { actors: ['Commodity traders', 'Policy officials'] } });
+    const candidateB = makeCandidate({
+      candidateStateId: 'state-pkg-b',
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      stateSummary: { actors: ['Shipping operators'] },
+    });
+    const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([candidateA, candidateB]));
+    assert.ok(pkg, 'package must be built');
+    const theaterA = pkg.selectedTheaters.find((t) => t.candidateStateId === 'state-pkg-a');
+    assert.ok(theaterA, 'theater A must be found');
+    assert.deepStrictEqual(theaterA.actorRoles, ['Commodity traders', 'Policy officials']);
+    const theaterB = pkg.selectedTheaters.find((t) => t.candidateStateId === 'state-pkg-b');
+    assert.ok(theaterB, 'theater B must be found');
+    assert.deepStrictEqual(theaterB.actorRoles, ['Shipping operators']);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -6166,6 +6185,28 @@ describe('simulation runner — prompt builders', () => {
     const prompt = buildSimulationRound2SystemPrompt(minimalTheater, minimalPkg, round1);
     assert.ok(prompt.includes('houthi-forces'), 'should include valid actor IDs');
   });
+
+  it('T-P1: Round 2 prompt includes CANDIDATE ACTOR ROLES section when theater has actorRoles', () => {
+    const theaterWithRoles = {
+      ...minimalTheater,
+      actorRoles: ['Commodity traders', 'Shipping operators', 'Policy officials'],
+    };
+    const round1 = { paths: [{ pathId: 'escalation', summary: 'Oil supply shock', initialReactions: [] }] };
+    const prompt = buildSimulationRound2SystemPrompt(theaterWithRoles, minimalPkg, round1);
+    assert.ok(prompt.includes('copy these EXACT strings into keyActorRoles'), 'prompt should include role section header with copy instruction');
+    assert.ok(prompt.includes('"Commodity traders"'), 'prompt should include role label');
+    assert.ok(prompt.includes('"Shipping operators"'), 'prompt should include role label');
+    assert.ok(prompt.includes('keyActorRoles'), 'prompt should reference keyActorRoles field');
+    assert.ok(prompt.includes('return [] if none apply'), 'prompt should include fallback instruction');
+  });
+
+  it('T-P2: Round 2 prompt omits CANDIDATE ACTOR ROLES list section when theater has no actorRoles', () => {
+    const round1 = { paths: [] };
+    const prompt = buildSimulationRound2SystemPrompt(minimalTheater, minimalPkg, round1);
+    // The roles-list section header is "CANDIDATE ACTOR ROLES (copy these EXACT strings...)" — only injected when actorRoles is non-empty
+    // The INSTRUCTIONS block always mentions "CANDIDATE ACTOR ROLES" as a reference, which is OK
+    assert.ok(!prompt.includes('copy these EXACT strings into keyActorRoles'), 'role list section should NOT be injected when actorRoles absent');
+  });
 });
 
 describe('simulation runner — extractSimulationRoundPayload', () => {
@@ -6258,6 +6299,29 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
     const result = extractSimulationRoundPayload(withPrefix, 1);
     assert.ok(Array.isArray(result.paths), 'should parse via extractFirstJsonObject fallback');
   });
+
+  it('T-P3: tryParseSimulationRoundPayload extracts keyActorRoles from Round 2 paths', () => {
+    const raw = JSON.stringify({
+      paths: [{
+        pathId: 'escalation', label: 'Escalation', summary: 'Oil disruption',
+        keyActors: ['Iran'], keyActorRoles: ['Commodity traders', 'Shipping operators'],
+        roundByRoundEvolution: [], confidence: 0.6, timingMarkers: [],
+      }, {
+        pathId: 'containment', label: 'Containment', summary: 'Contained', keyActors: [], keyActorRoles: [],
+        roundByRoundEvolution: [], confidence: 0.3, timingMarkers: [],
+      }, {
+        pathId: 'market_cascade', label: 'Cascade', summary: 'Markets react', keyActors: [], keyActorRoles: [],
+        roundByRoundEvolution: [], confidence: 0.1, timingMarkers: [],
+      }],
+      stabilizers: [], invalidators: [], globalObservations: '', confidenceNotes: '',
+    });
+    const result = tryParseSimulationRoundPayload(raw, 2);
+    assert.ok(result.paths, 'should parse paths');
+    const esc = result.paths.find((p) => p.pathId === 'escalation');
+    assert.deepStrictEqual(esc.keyActorRoles, ['Commodity traders', 'Shipping operators']);
+    const containment = result.paths.find((p) => p.pathId === 'containment');
+    assert.deepStrictEqual(containment.keyActorRoles, []);
+  });
 });
 
 describe('simulation runner — outcome key builder', () => {
@@ -6329,7 +6393,7 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     const path = makePath('energy', 'energy_supply_shock', ['Iran', 'Houthi', 'Saudi Aramco']);
     const simResult = {
       theaterId: 'state-1',
-      topPaths: [{ label: 'Oil energy supply shock via Hormuz', summary: 'Crude supply disruption', keyActors: ['Iran', 'Houthi', 'US Navy'] }],
+      topPaths: [{ label: 'Oil energy supply shock via Hormuz', summary: 'Crude supply disruption', keyActors: ['Iran', 'Houthi', 'US Navy'], keyActorRoles: ['Iran', 'Houthi movement', 'US Navy'] }],
       invalidators: [],
       stabilizers: [],
     };
@@ -6501,7 +6565,7 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
       stateSummary: { actors: ['Iran', 'Saudi Arabia', 'Houthi movement'] },
     };
     const simResult = {
-      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia', 'US'] }],
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia', 'US'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
       invalidators: [], stabilizers: [],
     };
     const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
@@ -6511,14 +6575,16 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     assert.equal(details.actorSource, 'stateSummary');
   });
 
-  it('T-G: entity ID format keyActors resolve to names via normalization', () => {
+  it('T-G: entity ID format keyActors resolve to names via normalization (keyActorsOverlapCount telemetry)', () => {
     const path = makePath('energy', 'energy_supply_shock', []);
     const candidatePacket = {
       ...makeCandidatePacket(),
       stateSummary: { actors: ['Iran', 'Saudi Arabia'] },
     };
     const simResult = {
-      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption', keyActors: ['state-aa3f41bf4f:iran', 'state-aa3f41bf4f:saudi_arabia'] }],
+      // keyActors use entity ID format — normalized to 'iran'/'saudi arabia' for keyActorsOverlapCount telemetry
+      // keyActorRoles drives the role overlap bonus (stateSummary path)
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption', keyActors: ['state-aa3f41bf4f:iran', 'state-aa3f41bf4f:saudi_arabia'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
       invalidators: [], stabilizers: [],
     };
     const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
@@ -6560,7 +6626,7 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     const path1 = makePath('energy', 'energy_supply_shock', []);  // affectedAssets empty
     const path2 = makePath('energy', 'energy_supply_shock', ['TTF gas futures', 'European utility stocks']);  // different affectedAssets — irrelevant
     const simResult = {
-      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi_Arabia'] }],
+      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi_Arabia'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
       invalidators: [], stabilizers: [],
     };
     const { adjustment: adj1, details: d1 } = computeSimulationAdjustment(path1, simResult, candidatePacket);
@@ -6636,8 +6702,8 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     const path = makePath('energy', 'energy_supply_shock', []);
     const candidatePacket = makeCandidatePacket();  // stateSummary.actors: ['Iran', 'Houthi movement', 'US Navy']
     const simResult = {
-      // keyActors match 'iran' and 'us navy' from stateSummary → overlap=2 → actor bonus applies
-      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0.72, keyActors: ['Iran', 'US_Navy'] }],
+      // keyActorRoles match 'iran' and 'us navy' from stateSummary → roleOverlap=2 → actor bonus applies
+      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0.72, keyActors: ['Iran', 'US_Navy'], keyActorRoles: ['Iran', 'US Navy'] }],
       invalidators: [], stabilizers: [],
     };
     const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
@@ -6744,6 +6810,62 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     assert.equal(details.simPathConfidence, 0.85);
     // +0.08 * 0.85 = 0.068
     assert.equal(adjustment, 0.068);
+  });
+
+  it('T-RO1: roleOverlapCount fires +0.04 bonus when stateSummary.actors and keyActorRoles match (role-category vocabulary)', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = {
+      ...makeCandidatePacket(),
+      stateSummary: { actors: ['Commodity traders', 'Shipping operators', 'Policy officials'] },
+    };
+    const simResult = {
+      topPaths: [{
+        label: 'Oil supply shock', summary: 'energy supply disruption',
+        keyActors: ['Iran', 'Saudi_Arabia'],                              // entity-space — never matches role categories
+        keyActorRoles: ['Commodity traders', 'Shipping operators'],       // role-space — 2 matches
+      }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.strictEqual(adjustment, 0.12);
+    assert.strictEqual(details.roleOverlapCount, 2);
+    assert.strictEqual(details.actorOverlapCount, 2);   // backwards-compat alias
+    assert.strictEqual(details.keyActorsOverlapCount, 0); // entities don't match role categories
+    assert.strictEqual(details.actorSource, 'stateSummary');
+  });
+
+  it('T-RO2: absent keyActorRoles with stateSummary source gives roleOverlapCount=0 (old sim output gracefully degrades)', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = {
+      ...makeCandidatePacket(),
+      stateSummary: { actors: ['Commodity traders', 'Policy officials'] },
+    };
+    const simResult = {
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption', keyActors: ['Iran'] }],  // no keyActorRoles
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.strictEqual(adjustment, 0.08);   // bucket+channel only — no role bonus (keyActorRoles absent)
+    assert.strictEqual(details.roleOverlapCount, 0);
+    assert.strictEqual(details.actorOverlapCount, 0);
+  });
+
+  it('T-RO3: affectedAssets fallback path uses keyActors for overlap (backwards compat preserved)', () => {
+    const path = makePath('energy', 'energy_supply_shock', ['Red Sea tankers', 'Saudi Aramco']);
+    const candidatePacket = { ...makeCandidatePacket(), stateSummary: { actors: [] } };  // empty → affectedAssets fallback
+    const simResult = {
+      topPaths: [{
+        label: 'Oil supply shock', summary: 'energy supply disruption',
+        keyActors: ['Red Sea tankers', 'Saudi Aramco'],  // entity overlap with affectedAssets
+        keyActorRoles: ['Commodity traders'],             // 1 role match — ignored (actorSource=affectedAssets)
+      }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.strictEqual(adjustment, 0.12);                    // entity overlap fires bonus via affectedAssets path
+    assert.strictEqual(details.keyActorsOverlapCount, 2);
+    assert.strictEqual(details.actorSource, 'affectedAssets');
+    assert.strictEqual(details.roleOverlapCount, 0);          // role path not used (actorSource != stateSummary)
   });
 });
 
@@ -6899,7 +7021,7 @@ describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
       runId: 'sim-tj', isCurrentRun: true,
       theaterResults: [{
         theaterId: 'theater-1', candidateStateId: stateA,
-        topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia'] }],
+        topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
         invalidators: [], stabilizers: [],
       }],
     };
@@ -7178,7 +7300,7 @@ describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
       stateSummary: { actors: ['Iran', 'Saudi Arabia'] },
     };
     const simResult = {
-      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi_Arabia'] }],
+      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi_Arabia'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
       invalidators: [], stabilizers: [],
     };
     const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);

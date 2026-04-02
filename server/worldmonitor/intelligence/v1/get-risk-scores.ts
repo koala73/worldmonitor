@@ -9,6 +9,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson, setCachedJson, cachedFetchJsonWithMeta } from '../../../_shared/redis';
+import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 
@@ -247,7 +248,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw] = await Promise.all([
     getCachedJson('conflict:ucdp-events:v1', true).catch(() => null),
     getCachedJson('infra:outages:v1', true).catch(() => null),
-    getCachedJson('climate:anomalies:v1', true).catch(() => null),
+    getCachedJson(CLIMATE_ANOMALIES_KEY, true).catch(() => null),
     getCachedJson('cyber:threats-bootstrap:v2', true).catch(() => null),
     getCachedJson('wildfire:fires:v1', true).catch(() => null),
     getCachedJson('intelligence:gpsjam:v2', true).catch(() => null),

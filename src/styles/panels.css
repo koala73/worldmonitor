@@ -1059,8 +1059,15 @@
   margin-left: auto;
 }
 
+.sa-body {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .sa-title {
-  display: block;
+  flex: 1;
+  min-width: 0;
   color: var(--text-secondary);
   text-decoration: none;
   font-size: 11px;
@@ -1073,9 +1080,10 @@
 }
 
 .sa-time {
+  flex-shrink: 0;
   font-size: 9px;
   color: var(--text-muted);
-  margin-top: 3px;
+  white-space: nowrap;
 }
 
 .sa-footer {
