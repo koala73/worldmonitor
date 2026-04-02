@@ -30,6 +30,11 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
 const RESEND_FROM = process.env.RESEND_FROM_EMAIL ?? 'WorldMonitor <alerts@worldmonitor.app>';
 
+if (process.env.DIGEST_CRON_ENABLED === '0') {
+  console.log('[digest] DIGEST_CRON_ENABLED=0 — skipping run');
+  process.exit(0);
+}
+
 if (!UPSTASH_URL || !UPSTASH_TOKEN) {
   console.error('[digest] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set');
   process.exit(1);

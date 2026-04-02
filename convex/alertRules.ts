@@ -73,6 +73,13 @@ export const setDigestSettings = mutation({
     if (args.digestHour !== undefined && (args.digestHour < 0 || args.digestHour > 23 || !Number.isInteger(args.digestHour))) {
       throw new ConvexError("digestHour must be an integer 0–23");
     }
+    if (args.digestTimezone !== undefined) {
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: args.digestTimezone });
+      } catch {
+        throw new ConvexError("digestTimezone must be a valid IANA timezone (e.g. America/New_York)");
+      }
+    }
 
     const existing = await ctx.db
       .query("alertRules")

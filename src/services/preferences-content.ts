@@ -19,9 +19,11 @@ import {
   deleteChannel,
   saveAlertRules,
   setQuietHours,
+  setDigestSettings,
   type NotificationChannel,
   type ChannelType,
   type QuietHoursOverride,
+  type DigestMode,
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
@@ -749,6 +751,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const qhTz = alertRule?.quietHoursTimezone ?? 'UTC';
           const qhOverride = alertRule?.quietHoursOverride ?? 'critical_only';
 
+          const digestMode = alertRule?.digestMode ?? 'realtime';
+          const digestHour = alertRule?.digestHour ?? 8;
+          const digestTz = alertRule?.digestTimezone ?? 'UTC';
+
           const hourOptions = Array.from({ length: 24 }, (_, h) => {
             const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
             return `<option value="${h}"${h === qhStart ? ' selected' : ''}>${label}</option>`;
@@ -756,6 +762,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const hourOptionsEnd = Array.from({ length: 24 }, (_, h) => {
             const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
             return `<option value="${h}"${h === qhEnd ? ' selected' : ''}>${label}</option>`;
+          }).join('');
+          const hourOptionsDigest = Array.from({ length: 24 }, (_, h) => {
+            const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+            return `<option value="${h}"${h === digestHour ? ' selected' : ''}>${label}</option>`;
           }).join('');
 
           html += `<div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
@@ -809,6 +819,25 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                   ${QUIET_HOURS_BATCH_ENABLED ? `<option value="batch_on_wake"${qhOverride === 'batch_on_wake' ? ' selected' : ''}>Batch — deliver on wake</option>` : ''}
                 </select>
               </div>
+            </div>
+            <div class="ai-flow-section-label" style="margin-top:8px">Digest Mode</div>
+            <select class="unified-settings-select" id="usDigestMode">
+              <option value="realtime"${digestMode === 'realtime' ? ' selected' : ''}>Real-time (immediate)</option>
+              <option value="daily"${digestMode === 'daily' ? ' selected' : ''}>Daily digest</option>
+              <option value="twice_daily"${digestMode === 'twice_daily' ? ' selected' : ''}>Twice daily</option>
+              <option value="weekly"${digestMode === 'weekly' ? ' selected' : ''}>Weekly digest</option>
+            </select>
+            <div id="usDigestDetails" style="${digestMode === 'realtime' ? 'display:none' : ''}">
+              <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap;margin-top:4px">
+                <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
+                  <div class="ai-flow-toggle-label">Send at</div>
+                </div>
+                <select class="unified-settings-select" id="usDigestHour" style="width:auto">${hourOptionsDigest}</select>
+              </div>
+              <div style="margin-top:4px">
+                <div class="ai-flow-toggle-label" style="margin-bottom:4px">Timezone</div>
+                <input type="text" class="unified-settings-input" id="usDigestTimezone" value="${escapeHtml(digestTz)}" placeholder="e.g. America/New_York" style="width:100%">
+              </div>
             </div>`;
           return html;
         }
@@ -852,6 +881,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         let discordOAuthPopup: Window | null = null;
         let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
         let qhDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+        let digestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
         signal.addEventListener('abort', () => {
           if (alertRuleDebounceTimer !== null) {
             clearTimeout(alertRuleDebounceTimer);
@@ -860,6 +890,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           if (qhDebounceTimer !== null) {
             clearTimeout(qhDebounceTimer);
             qhDebounceTimer = null;
+          }
+          if (digestDebounceTimer !== null) {
+            clearTimeout(digestDebounceTimer);
+            digestDebounceTimer = null;
           }
         });
 
@@ -882,6 +916,21 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           }, 800);
         };
 
+        const saveDigestSettings = () => {
+          if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
+          digestDebounceTimer = setTimeout(() => {
+            const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
+            const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
+            const tzEl = container.querySelector<HTMLInputElement>('#usDigestTimezone');
+            void setDigestSettings({
+              variant: SITE_VARIANT,
+              digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
+              digestHour: hourEl ? Number(hourEl.value) : 8,
+              digestTimezone: tzEl?.value.trim() || 'UTC',
+            });
+          }, 800);
+        };
+
         container.addEventListener('change', (e) => {
           const target = e.target as HTMLInputElement;
           if (target.id === 'usQhEnabled') {
@@ -892,6 +941,16 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           }
           if (target.id === 'usQhStart' || target.id === 'usQhEnd' || target.id === 'usQhOverride') {
             saveQuietHours();
+            return;
+          }
+          if (target.id === 'usDigestMode') {
+            const details = container.querySelector<HTMLElement>('#usDigestDetails');
+            if (details) details.style.display = target.value === 'realtime' ? 'none' : '';
+            saveDigestSettings();
+            return;
+          }
+          if (target.id === 'usDigestHour') {
+            saveDigestSettings();
             return;
           }
           if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
@@ -920,6 +979,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         container.addEventListener('input', (e) => {
           const target = e.target as HTMLInputElement;
           if (target.id === 'usQhTimezone') saveQuietHours();
+          if (target.id === 'usDigestTimezone') saveDigestSettings();
         }, { signal });
 
         container.addEventListener('click', (e) => {
