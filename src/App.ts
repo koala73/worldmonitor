@@ -832,9 +832,7 @@ export class App {
         destroyEntitlementSubscription();
         destroySubscriptionWatch();
         cloudPrefsSignOut();
-        destroyEntitlementSubscription();
         resetEntitlementState();
-        destroySubscriptionWatch();
       }
       _prevUserId = userId;
     });
@@ -907,9 +905,6 @@ export class App {
     this.eventHandlers.setupUnifiedSettings();
     this.eventHandlers.setupAuthWidget();
     capturePendingCheckoutIntentFromUrl();
-    void resumePendingCheckout({
-      openAuth: () => this.state.authModal?.open(),
-    });
 
     // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
     this.searchManager.init();
