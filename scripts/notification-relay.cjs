@@ -211,17 +211,21 @@ async function processFlushQuietHeld(event) {
   const { userId, variant = 'full' } = event;
   if (!userId) return;
   console.log(`[relay] flush_quiet_held for ${userId} (${variant})`);
-  // Look up the rule to respect its channels list — never fan out to channels
-  // the user didn't configure for this alert rule.
+  // Use the same public query the relay already calls in processEvent.
+  // internalQuery functions are unreachable via ConvexHttpClient.
   let allowedChannels = null;
   try {
-    const rules = await convex.query('alertRules:getAlertRulesByUserId', { userId });
-    const rule = Array.isArray(rules) ? rules.find(r => (r.variant ?? 'full') === variant) : null;
+    const allRules = await convex.query('alertRules:getByEnabled', { enabled: true });
+    const rule = Array.isArray(allRules)
+      ? allRules.find(r => r.userId === userId && (r.variant ?? 'full') === variant)
+      : null;
     if (rule && Array.isArray(rule.channels) && rule.channels.length > 0) {
       allowedChannels = rule.channels;
     }
   } catch (err) {
-    console.warn(`[relay] flush_quiet_held: could not fetch rule for ${userId}, defaulting to all channels:`, err.message);
+    // If the lookup fails, deliver nothing rather than fan out to wrong channels.
+    console.warn(`[relay] flush_quiet_held: could not fetch rule for ${userId} — held alerts preserved until drain:`, err.message);
+    return;
   }
   await drainHeldForUser(userId, variant, allowedChannels);
 }
