@@ -9,7 +9,7 @@
 import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
-import { verifyUserId } from "../lib/identity-signing";
+import { verifyUserId } from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
 
 // ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ import { v, ConvexError } from "convex/values";
 import { action } from "../_generated/server";
 import { checkout } from "../lib/dodo";
 import { requireUserId } from "../lib/auth";
-import { signUserId } from "../lib/identity-signing";
+import { signUserId } from "../lib/identitySigning";
 
 /**
  * Create a Dodo Payments checkout session and return the checkout URL.
