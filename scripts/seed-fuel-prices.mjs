@@ -652,8 +652,7 @@ if (wowAvailable) {
     const prev = prevMap.get(country.code);
     if (!prev) continue;
 
-    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0
-        && country.gasoline.observedAt !== prev.gasoline?.observedAt) {
+    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0) {
       const raw = +((country.gasoline.usdPrice - prev.gasoline.usdPrice) / prev.gasoline.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} gasoline: ${raw}% — omitting`);
@@ -661,8 +660,7 @@ if (wowAvailable) {
         country.gasoline.wowPct = raw;
       }
     }
-    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0
-        && country.diesel.observedAt !== prev.diesel?.observedAt) {
+    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0) {
       const raw = +((country.diesel.usdPrice - prev.diesel.usdPrice) / prev.diesel.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} diesel: ${raw}% — omitting`);
@@ -707,13 +705,15 @@ const data = {
   countryCount: countries.length,
 };
 
+const shouldRotatePrev = !hasPrevData || !prevTooRecent;
+
 await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
   ttlSeconds: CACHE_TTL,
   validateFn: (d) => d?.countries?.length >= 1,
   recordCount: (d) => d?.countries?.length || 0,
-  extraKeys: [{
+  extraKeys: shouldRotatePrev ? [{
     key: `${CANONICAL_KEY}:prev`,
     transform: () => data,
     ttl: CACHE_TTL * 2,
-  }],
+  }] : [],
 });
