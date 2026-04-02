@@ -565,7 +565,6 @@ console.log('  [FX] Rates loaded:', Object.keys(fxRates).join(', '));
 
 const fetchResults = await Promise.allSettled([
   fetchMalaysia(),
-  fetchSpain(),
   fetchMexico(),
   fetchUS_EIA(),
   fetchEU_CSV(),
@@ -574,7 +573,7 @@ const fetchResults = await Promise.allSettled([
   fetchUK_ModeA(),
 ]);
 
-const sourceNames = ['Malaysia', 'Spain', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-ModeA'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-ModeA'];
 let successfulSources = 0;
 
 const countryMap = new Map();
