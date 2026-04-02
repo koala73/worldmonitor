@@ -92,6 +92,14 @@ export interface ThreatClassification {
 
 export type StoryPhase = 'breaking' | 'developing' | 'sustained' | 'fading';
 
+export interface StoryMeta {
+  firstSeen: number;        // epoch ms
+  mentionCount: number;
+  sourceCount: number;
+  phase: StoryPhase;
+}
+
+
 export interface NewsItem {
   source: string;
   title: string;
@@ -109,7 +117,7 @@ export interface NewsItem {
   imageUrl?: string;
   importanceScore?: number;
   corroborationCount?: number;
-  storyPhase?: StoryPhase;
+  storyMeta?: StoryMeta;
 }
 
 export type VelocityLevel = 'normal' | 'elevated' | 'spike';

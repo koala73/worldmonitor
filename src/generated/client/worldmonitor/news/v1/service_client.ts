@@ -54,7 +54,7 @@ export interface NewsItem {
   locationName: string;
   importanceScore: number;
   corroborationCount: number;
-  storyPhase: StoryPhase;
+  storyMeta?: StoryMeta;
 }
 
 export interface ThreatClassification {
@@ -67,6 +67,13 @@ export interface ThreatClassification {
 export interface GeoCoordinates {
   latitude: number;
   longitude: number;
+}
+
+export interface StoryMeta {
+  firstSeen: number;
+  mentionCount: number;
+  sourceCount: number;
+  phase: StoryPhase;
 }
 
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";

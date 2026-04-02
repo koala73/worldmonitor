@@ -5,6 +5,7 @@ import type {
   CategoryBucket,
   NewsItem as ProtoNewsItem,
   ThreatLevel as ProtoThreatLevel,
+  StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import { cachedFetchJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
@@ -20,6 +21,9 @@ import {
   STORY_PEAK_KEY,
   DIGEST_ACCUMULATOR_KEY,
   STORY_TTL,
+  STORY_TRACK_KEY_PREFIX,
+  STORY_SOURCES_KEY_PREFIX,
+  STORY_TRACKING_TTL_S,
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
@@ -63,21 +67,6 @@ const SCORE_WEIGHTS = {
   recency: 0.1,
 } as const;
 
-/** Derive story lifecycle phase from Redis-stored tracking data. */
-function computePhase(
-  mentionCount: number,
-  firstSeenMs: number,
-  lastSeenMs: number,
-  now: number,
-): ProtoStoryPhase {
-  const ageH = (now - firstSeenMs) / 3_600_000;
-  const silenceH = (now - lastSeenMs) / 3_600_000;
-  if (silenceH > 24) return 'STORY_PHASE_FADING';
-  if (mentionCount >= 3 && ageH >= 12) return 'STORY_PHASE_SUSTAINED';
-  if (mentionCount >= 2) return 'STORY_PHASE_DEVELOPING';
-  if (ageH < 2) return 'STORY_PHASE_BREAKING';
-  return 'STORY_PHASE_UNSPECIFIED';
-}
 
 interface ParsedItem {
   source: string;
@@ -91,7 +80,7 @@ interface ParsedItem {
   classSource: 'keyword' | 'llm';
   importanceScore: number;
   corroborationCount: number;
-  storyPhase: ProtoStoryPhase;
+  titleHash?: string;
 }
 
 function normalizeTitle(title: string): string {
@@ -117,6 +106,7 @@ function computeImportanceScore(
     corroborationScore * SCORE_WEIGHTS.corroboration +
     recencyScore * SCORE_WEIGHTS.recency,
   );
+}
 }
 
 function createTimeoutLinkedController(parentSignal: AbortSignal): {
@@ -316,13 +306,73 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   }
 }
 
-function toProtoItem(item: ParsedItem): ProtoNewsItem {
+// ── Story persistence tracking ────────────────────────────────────────────────
+
+const STORY_TRACKING_BATCH_SIZE = 80; // ~8 ops/story × 80 = ~640 commands/pipeline call
+
+function normalizeTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
+
+interface StoryTrack {
+  firstSeen: number;
+  lastSeen: number;
+  mentionCount: number;
+  sourceCount: number;
+  currentScore: number;
+  peakScore: number;
+}
+
+function derivePhase(track: StoryTrack): ProtoStoryPhase {
+  const ageMs = Date.now() - track.firstSeen;
+  if (track.mentionCount <= 1) return 'STORY_PHASE_BREAKING';
+  if (track.mentionCount <= 5 && ageMs < 2 * 60 * 60 * 1000) return 'STORY_PHASE_DEVELOPING';
+  if (track.currentScore > 0 && track.peakScore > 0 && track.currentScore < track.peakScore * 0.5) return 'STORY_PHASE_FADING';
+  return 'STORY_PHASE_SUSTAINED';
+}
+
+/**
+ * Batch-read existing story:track hashes from Redis for a list of title hashes.
+ * Returns a Map<titleHash, StoryTrack>. Missing entries are absent from the map.
+ */
+async function readStoryTracks(titleHashes: string[]): Promise<Map<string, StoryTrack>> {
+  if (titleHashes.length === 0) return new Map();
+  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', 'currentScore', 'peakScore'];
+  const commands = titleHashes.map(h => [
+    'HMGET', `${STORY_TRACK_KEY_PREFIX}${h}`, ...fields,
+  ]);
+  const results = await runRedisPipeline(commands, true);
+  const map = new Map<string, StoryTrack>();
+  for (let i = 0; i < titleHashes.length; i++) {
+    const vals = results[i]?.result as string[] | null;
+    if (!vals || !vals[0]) continue; // firstSeen missing → new story
+    map.set(titleHashes[i]!, {
+      firstSeen:    Number(vals[0]),
+      lastSeen:     Number(vals[1] ?? 0),
+      mentionCount: Number(vals[2] ?? 0),
+      sourceCount:  Number(vals[3] ?? 0),
+      currentScore: Number(vals[4] ?? 0),
+      peakScore:    Number(vals[5] ?? 0),
+    });
+  }
+  return map;
+}
+
+function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
   return {
     source: item.source,
     title: item.title,
     link: item.link,
     publishedAt: item.publishedAt,
     isAlert: item.isAlert,
+    importanceScore: item.importanceScore,
+    corroborationCount: item.corroborationCount ?? 0,
+    storyMeta,
     threat: {
       level: LEVEL_TO_PROTO[item.level],
       category: item.category,
@@ -330,9 +380,6 @@ function toProtoItem(item: ParsedItem): ProtoNewsItem {
       source: item.classSource,
     },
     locationName: '',
-    importanceScore: item.importanceScore,
-    corroborationCount: item.corroborationCount,
-    storyPhase: item.storyPhase,
   };
 }
 
@@ -483,38 +530,34 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       }
     }
 
-    // Build corroboration map across the FULL corpus (before any per-category truncation)
-    // so cross-category mentions are captured. Key = normalized title.
+    // Flatten ALL items before any truncation so cross-category corroboration is counted.
+    const allItems = [...results.values()].flat();
+
+    // Compute sha256 title hashes and build corroboration map in one pass.
+    // Hashes are stored on each item for reuse as Redis story-tracking keys.
     const corroborationMap = new Map<string, Set<string>>();
-    for (const items of results.values()) {
-      for (const item of items) {
-        const norm = normalizeTitle(item.title);
-        const sources = corroborationMap.get(norm) ?? new Set();
-        sources.add(item.source);
-        corroborationMap.set(norm, sources);
-      }
+    await Promise.all(allItems.map(async (item) => {
+      const hash = await sha256Hex(normalizeTitle(item.title));
+      item.titleHash = hash;
+      const sources = corroborationMap.get(hash) ?? new Set<string>();
+      sources.add(item.source);
+      corroborationMap.set(hash, sources);
+    }));
+
+    for (const item of allItems) {
+      item.corroborationCount = corroborationMap.get(item.titleHash!)?.size ?? 1;
     }
 
     // Enrich ALL items with the AI classification cache BEFORE scoring so that
-    // importanceScore uses the final (post-LLM) threat level, and the subsequent
-    // truncation discards items based on their true score.  Running enrichment
-    // after slicing was a bug: upgraded items could have been already cut, and
-    // downgraded items kept a score they no longer deserved.
-    const allItems = [...results.values()].flat();
+    // importanceScore uses the final (post-LLM) threat level, and truncation
+    // discards items based on their true score.
     await enrichWithAiCache(allItems);
 
-    // Assign corroboration count and compute importance score using final levels.
-    for (const items of results.values()) {
-      for (const item of items) {
-        const norm = normalizeTitle(item.title);
-        item.corroborationCount = corroborationMap.get(norm)?.size ?? 1;
-        item.importanceScore = computeImportanceScore(
-          item.level,
-          item.source,
-          item.corroborationCount,
-          item.publishedAt,
-        );
-      }
+    // Compute importance score using final (post-enrichment) threat levels.
+    for (const item of allItems) {
+      item.importanceScore = computeImportanceScore(
+        item.level, item.source, item.corroborationCount, item.publishedAt,
+      );
     }
 
     // Sort by importanceScore desc, then pubDate desc; then truncate per category.
@@ -527,41 +570,35 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     }
 
     const allSliced = [...slicedByCategory.values()].flat();
+    // titleHash was already set on each item during the corroboration pass above.
+    const titleHashes = allSliced.map(i => i.titleHash!);
 
-    // Pre-compute title hashes once — reused for tracking write and phase read.
-    const titleHashes = await Promise.all(
-      allSliced.map(item => sha256Hex(normalizeTitle(item.title))),
-    );
-
-    // Write tracking FIRST so phase read sees this cycle's mentionCount/firstSeen.
-    // Without this ordering, first-time stories never return STORY_PHASE_BREAKING
-    // and all stories lag by one digest cycle. Awaited here so the write completes
-    // before the isolate moves on (digest is cached 15 min, negligible extra latency).
+    // Write tracking FIRST so the subsequent read sees this cycle's mentionCount/firstSeen.
+    // Without this ordering, first-time stories never get STORY_PHASE_BREAKING.
     await writeStoryTracking(allSliced, variant, titleHashes).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
 
-    // Batch-read story tracking hashes (HGETALL) to assign lifecycle phases.
-    // Reads post-write data so first-time stories correctly get STORY_PHASE_BREAKING.
-    const trackResults = await runRedisPipeline(
-      titleHashes.map(h => ['HGETALL', STORY_TRACK_KEY(h)]),
-    );
-    const phaseNow = Date.now();
-    for (let i = 0; i < allSliced.length; i++) {
-      const raw = trackResults[i]?.result as Record<string, string> | null | undefined;
-      if (raw && typeof raw === 'object' && raw.firstSeen) {
-        allSliced[i]!.storyPhase = computePhase(
-          Number(raw.mentionCount ?? '1'),
-          Number(raw.firstSeen),
-          Number(raw.lastSeen ?? raw.firstSeen),
-          phaseNow,
-        );
-      }
-    }
+    // Read story tracking data to attach StoryMeta to proto items.
+    const uniqueHashes = [...new Set(titleHashes)];
+    const storyTracks = await readStoryTracks(uniqueHashes).catch(() => new Map<string, StoryTrack>());
+    const now = Date.now();
 
     for (const [category, sliced] of slicedByCategory) {
       categories[category] = {
-        items: sliced.map(toProtoItem),
+        items: sliced.map((item) => {
+          const track = storyTracks.get(item.titleHash!);
+          let storyMeta: ProtoStoryMeta | undefined;
+          if (track) {
+            storyMeta = {
+              firstSeen: track.firstSeen,
+              mentionCount: track.mentionCount,
+              sourceCount: track.sourceCount,
+              phase: derivePhase(track),
+            };
+          }
+          return toProtoItem(item, storyMeta);
+        }),
       };
     }
 

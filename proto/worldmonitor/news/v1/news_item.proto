@@ -31,12 +31,11 @@ message NewsItem {
   // Human-readable location name.
   string location_name = 8;
   // Composite importance score (0-100): severity × 40% + source tier × 20% + corroboration × 30% + recency × 10%.
-  // Absent (0) when not yet scored.
   int32 importance_score = 9;
   // Number of distinct sources that reported the same story in this digest cycle.
   int32 corroboration_count = 10;
-  // Story lifecycle phase derived at read time from story:track metadata.
-  StoryPhase story_phase = 11;
+  // Story lifecycle metadata derived from cross-cycle persistence data.
+  StoryMeta story_meta = 11;
 }
 
 // StoryMeta carries cross-cycle persistence data attached to each news item.
@@ -47,7 +46,7 @@ message StoryMeta {
   int32 mention_count = 2;
   // Number of unique sources that reported this story (cached from Redis Set).
   int32 source_count = 3;
-  // Story lifecycle phase.
+  // Story lifecycle phase derived from persistence data.
   StoryPhase phase = 4;
 }
 

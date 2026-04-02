@@ -1,3 +1,15 @@
+// ── Story persistence tracking keys (E3) ─────────────────────────────────────
+// Hash: firstSeen, lastSeen, mentionCount, sourceCount, currentScore, peakScore, title, link, severity
+export const STORY_TRACK_KEY_PREFIX = 'story:track:v1:';
+// Set: unique feed names that have mentioned this story
+export const STORY_SOURCES_KEY_PREFIX = 'story:sources:v1:';
+// Sorted set: single member "peak" with score = highest importanceScore seen
+export const STORY_PEAK_KEY_PREFIX = 'story:peak:v1:';
+// Sorted set: accumulator for digest mode notifications (score = pubDate epoch ms)
+export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
+// TTL for all story tracking keys (48 hours)
+export const STORY_TRACKING_TTL_S = 172800;
+
 /**
  * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
  * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.

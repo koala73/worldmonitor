@@ -199,6 +199,13 @@ const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
   THREAT_LEVEL_CRITICAL: 'critical',
 };
 
+const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
+  STORY_PHASE_BREAKING:   'breaking',
+  STORY_PHASE_DEVELOPING: 'developing',
+  STORY_PHASE_SUSTAINED:  'sustained',
+  STORY_PHASE_FADING:     'fading',
+};
+
 function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
   const level = PROTO_TO_CLIENT_LEVEL[p.threat?.level ?? 'THREAT_LEVEL_UNSPECIFIED'];
   return {
@@ -207,6 +214,14 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     link: p.link,
     pubDate: new Date(p.publishedAt),
     isAlert: p.isAlert,
+    importanceScore: p.importanceScore || undefined,
+    corroborationCount: p.corroborationCount || undefined,
+    storyMeta: p.storyMeta && p.storyMeta.phase !== 'STORY_PHASE_UNSPECIFIED' ? {
+      firstSeen:    p.storyMeta.firstSeen,
+      mentionCount: p.storyMeta.mentionCount,
+      sourceCount:  p.storyMeta.sourceCount,
+      phase: PROTO_TO_CLIENT_PHASE[p.storyMeta.phase] ?? 'breaking',
+    } : undefined,
     threat: p.threat ? {
       level,
       category: p.threat.category as import('@/services/threat-classifier').EventCategory,

@@ -296,22 +296,13 @@ components:
                 importanceScore:
                     type: integer
                     format: int32
-                    description: |-
-                        Composite importance score (0-100): severity × 40% + source tier × 20% + corroboration × 30% + recency × 10%.
-                         Absent (0) when not yet scored.
+                    description: 'Composite importance score (0-100): severity × 40% + source tier × 20% + corroboration × 30% + recency × 10%.'
                 corroborationCount:
                     type: integer
                     format: int32
                     description: Number of distinct sources that reported the same story in this digest cycle.
-                storyPhase:
-                    type: string
-                    enum:
-                        - STORY_PHASE_UNSPECIFIED
-                        - STORY_PHASE_BREAKING
-                        - STORY_PHASE_DEVELOPING
-                        - STORY_PHASE_SUSTAINED
-                        - STORY_PHASE_FADING
-                    description: StoryPhase represents the lifecycle stage of a tracked news story.
+                storyMeta:
+                    $ref: '#/components/schemas/StoryMeta'
             required:
                 - source
                 - title
@@ -357,3 +348,28 @@ components:
                     format: double
                     description: Longitude in decimal degrees (-180 to 180).
             description: GeoCoordinates represents a geographic location using WGS84 coordinates.
+        StoryMeta:
+            type: object
+            properties:
+                firstSeen:
+                    type: integer
+                    format: int64
+                    description: 'Epoch ms when the story first appeared in any digest cycle.. Warning: Values > 2^53 may lose precision in JavaScript'
+                mentionCount:
+                    type: integer
+                    format: int32
+                    description: Total number of digest cycles in which this story appeared.
+                sourceCount:
+                    type: integer
+                    format: int32
+                    description: Number of unique sources that reported this story (cached from Redis Set).
+                phase:
+                    type: string
+                    enum:
+                        - STORY_PHASE_UNSPECIFIED
+                        - STORY_PHASE_BREAKING
+                        - STORY_PHASE_DEVELOPING
+                        - STORY_PHASE_SUSTAINED
+                        - STORY_PHASE_FADING
+                    description: StoryPhase represents the lifecycle stage of a tracked news story.
+            description: StoryMeta carries cross-cycle persistence data attached to each news item.
