@@ -124,11 +124,11 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
     }
 
     // Convex fallback on cache miss or expired cache
-    const convexUrl = process.env.CONVEX_URL;
+    const convexSiteUrl = process.env.CONVEX_SITE_URL;
     const convexSharedSecret = getConvexSharedSecret();
-    if (!convexUrl || !convexSharedSecret) return null;
+    if (!convexSiteUrl || !convexSharedSecret) return null;
 
-    const response = await fetch(`${convexUrl}${CONVEX_INTERNAL_ENTITLEMENTS_PATH}`, {
+    const response = await fetch(`${convexSiteUrl}${CONVEX_INTERNAL_ENTITLEMENTS_PATH}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

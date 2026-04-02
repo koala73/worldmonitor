@@ -4,12 +4,12 @@
  * Unit tests for gateway entitlement check logic.
  *
  * Mocking strategy: Controls the Redis mock return value to steer what
- * getEntitlements returns — no dependency injection needed. Since CONVEX_URL
- * is not set in tests, the Convex fallback is skipped and getCachedJson is
+ * getEntitlements returns — no dependency injection needed. Since CONVEX_SITE_URL
+ * is not set in most tests, the Convex fallback is skipped and getCachedJson is
  * the sole source of entitlement data.
  *
  * Per-file @vitest-environment node override avoids edge-runtime's missing
- * process.env (the module reads process.env.CONVEX_URL on import).
+ * process.env for these helpers.
  */
 
 import { describe, test, expect, vi } from "vitest";
@@ -119,5 +119,49 @@ describe("gateway entitlement check", () => {
     const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
     const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
     expect(result).toBeNull();
+  });
+
+  test("getEntitlements uses CONVEX_SITE_URL for HTTP fallback", async () => {
+    vi.mocked(getCachedJson).mockResolvedValueOnce(null);
+
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(makeEntitlements(2, "api_starter")), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+    process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
+      const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+      expect(result).toBeNull();
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://example-deployment.convex.site/api/internal-entitlements",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "x-convex-shared-secret": "test-secret",
+          }),
+        }),
+      );
+    } finally {
+      if (originalSiteUrl === undefined) {
+        delete process.env.CONVEX_SITE_URL;
+      } else {
+        process.env.CONVEX_SITE_URL = originalSiteUrl;
+      }
+      if (originalSecret === undefined) {
+        delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      } else {
+        process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      }
+      vi.unstubAllGlobals();
+    }
   });
 });
