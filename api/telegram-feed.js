@@ -11,7 +11,7 @@ export const config = { runtime: 'edge' };
  *   id, source, channel, channelTitle, url, ts, text, topic, tags, earlySignal, mediaUrls
  */
 function normalizeTelegramMessage(msg) {
-const timestamp = msg.timestamp ?? msg.ts ?? msg.timestampMs ?? null;
+  const timestamp = msg.timestamp ?? msg.ts ?? msg.timestampMs ?? null;
   const ts = timestamp === null
     ? null
     : typeof timestamp === 'number'
