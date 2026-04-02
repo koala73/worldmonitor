@@ -227,6 +227,11 @@ async function processFlushQuietHeld(event) {
     console.warn(`[relay] flush_quiet_held: could not fetch rule for ${userId} — held alerts preserved until drain:`, err.message);
     return;
   }
+  // No matching rule or rule has no channels configured — preserve held events.
+  if (!allowedChannels) {
+    console.log(`[relay] flush_quiet_held: no active rule with channels for ${userId} (${variant}) — held alerts preserved`);
+    return;
+  }
   await drainHeldForUser(userId, variant, allowedChannels);
 }
 
