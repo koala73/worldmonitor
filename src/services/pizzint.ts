@@ -1,6 +1,7 @@
 import type { PizzIntStatus, PizzIntLocation, PizzIntDefconLevel, GdeltTensionPair } from '@/types';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
 import { t } from '@/services/i18n';
 import {
   IntelligenceServiceClient,
@@ -115,6 +116,9 @@ const defaultStatus: PizzIntStatus = {
 // ---- Public API ----
 
 export async function fetchPizzIntStatus(): Promise<PizzIntStatus> {
+  const hydrated = getHydratedData('pizzint') as GetPizzintStatusResponse | undefined;
+  if (hydrated?.pizzint) return toStatus(hydrated.pizzint);
+
   return pizzintBreaker.execute(async () => {
     const resp: GetPizzintStatusResponse = await client.getPizzintStatus({ includeGdelt: false });
     if (!resp.pizzint) throw new Error('No PizzINT data');

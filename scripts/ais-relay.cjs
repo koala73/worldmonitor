@@ -86,7 +86,7 @@ const RELAY_LOG_THROTTLE_MS = Math.max(1000, Number(process.env.RELAY_LOG_THROTT
 const ALLOW_VERCEL_PREVIEW_ORIGINS = process.env.ALLOW_VERCEL_PREVIEW_ORIGINS === 'true';
 
 // OpenSky proxy — routes through residential proxy to avoid Railway IP blocks
-const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.OREF_PROXY_AUTH || '';
+const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.PROXY_URL || '';
 const OPENSKY_PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
 
 const PROXY_URL = process.env.PROXY_URL || ''; // generic residential proxy (US exit) — http://user:pass@host:port or host:port:user:pass (Decodo)
@@ -1451,7 +1451,26 @@ const YAHOO_ONLY = new Set([
   ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=X')),
 ]);
 
-function fetchYahooChartDirect(symbol) {
+function _parseYahooChartJson(body) {
+  try {
+    const data = JSON.parse(body);
+    const result = data?.chart?.result?.[0];
+    const meta = result?.meta;
+    if (!meta) return null;
+    const price = meta.regularMarketPrice;
+    const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+    const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+    const closes = result.indicators?.quote?.[0]?.close;
+    const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
+    return { price, change, sparkline };
+  } catch { return null; }
+}
+
+let _yahooProxyFailCount = 0;
+const _YAHOO_PROXY_COOLDOWN_MS = 5 * 60 * 1000;
+let _yahooProxyCooldownUntil = 0;
+
+function _fetchYahooChartNoProxy(symbol) {
   return new Promise((resolve) => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
     const req = https.get(url, {
@@ -1465,23 +1484,33 @@ function fetchYahooChartDirect(symbol) {
       }
       let body = '';
       resp.on('data', (chunk) => { body += chunk; });
-      resp.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          const result = data?.chart?.result?.[0];
-          const meta = result?.meta;
-          if (!meta) return resolve(null);
-          const price = meta.regularMarketPrice;
-          const prevClose = meta.chartPreviousClose || meta.previousClose || price;
-          const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
-          const closes = result.indicators?.quote?.[0]?.close;
-          const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
-          resolve({ price, change, sparkline });
-        } catch { resolve(null); }
-      });
+      resp.on('end', () => resolve(_parseYahooChartJson(body)));
     });
     req.on('error', (err) => { logThrottled('warn', `market-yahoo-err:${symbol}`, `[Market] Yahoo ${symbol} error: ${err.message}`); resolve(null); });
     req.on('timeout', () => { req.destroy(); logThrottled('warn', `market-yahoo-timeout:${symbol}`, `[Market] Yahoo ${symbol} timeout`); resolve(null); });
+  });
+}
+
+function fetchYahooChartDirect(symbol) {
+  return _fetchYahooChartNoProxy(symbol).then((result) => {
+    if (result) return result;
+    if (!PROXY_URL) return null;
+    if (Date.now() < _yahooProxyCooldownUntil) return null;
+    const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
+    return ytFetchViaProxy(url, proxy).then((resp) => {
+      if (!resp?.ok) {
+        _yahooProxyFailCount++;
+        if (_yahooProxyFailCount >= 5) {
+          _yahooProxyCooldownUntil = Date.now() + _YAHOO_PROXY_COOLDOWN_MS;
+          _yahooProxyFailCount = 0;
+          logThrottled('warn', 'market-yahoo-proxy-cooldown', '[Market] Yahoo proxy cooldown 5min after 5 failures');
+        }
+        return null;
+      }
+      _yahooProxyFailCount = 0;
+      return _parseYahooChartJson(resp.body);
+    }).catch(() => null);
   });
 }
 
@@ -1768,9 +1797,32 @@ const CRYPTO_META = _cryptoCfg.meta;
 const CRYPTO_PAPRIKA_MAP = _cryptoCfg.coinpaprika;
 const CRYPTO_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
+// Shared CoinPaprika tickers fetcher — direct first, PROXY_URL fallback.
+// Cached for 5 min so the 3 crypto seeders (crypto, stablecoins, token-panels)
+// that run in the same cycle don't triple-fetch the same 2000-item response.
+let _paprikaCached = null;
+let _paprikaCachedAt = 0;
+const _PAPRIKA_CACHE_MS = 5 * 60 * 1000;
+const _PAPRIKA_URL = 'https://api.coinpaprika.com/v1/tickers?quotes=USD';
+
+async function _fetchCoinPaprikaTickers() {
+  if (_paprikaCached && Date.now() - _paprikaCachedAt < _PAPRIKA_CACHE_MS) return _paprikaCached;
+  // Try direct
+  let data = await cyberHttpGetJson(_PAPRIKA_URL, { Accept: 'application/json' }, 15000);
+  if (Array.isArray(data) && data.length > 0) { _paprikaCached = data; _paprikaCachedAt = Date.now(); return data; }
+  // Fallback via proxy
+  if (!PROXY_URL) throw new Error('CoinPaprika direct failed and no PROXY_URL configured');
+  const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+  const resp = await ytFetchViaProxy(_PAPRIKA_URL, proxy);
+  if (!resp?.ok) throw new Error(`CoinPaprika proxy HTTP ${resp?.status || 'unavailable'}`);
+  data = JSON.parse(resp.body);
+  if (!Array.isArray(data)) throw new Error('CoinPaprika proxy returned non-array');
+  _paprikaCached = data; _paprikaCachedAt = Date.now();
+  return data;
+}
+
 async function fetchCryptoCoinPaprika() {
-  const data = await cyberHttpGetJson('https://api.coinpaprika.com/v1/tickers?quotes=USD', { Accept: 'application/json' }, 15000);
-  if (!Array.isArray(data)) throw new Error('CoinPaprika returned non-array');
+  const data = await _fetchCoinPaprikaTickers();
   const paprikaIds = new Set(CRYPTO_IDS.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean));
   const reverseMap = Object.fromEntries(Object.entries(CRYPTO_PAPRIKA_MAP).map(([g, p]) => [p, g]));
   return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
@@ -1827,8 +1879,7 @@ const STABLECOIN_PAPRIKA_MAP = { tether: 'usdt-tether', 'usd-coin': 'usdc-usd-co
 const STABLECOIN_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
 async function fetchStablecoinCoinPaprika() {
-  const data = await cyberHttpGetJson('https://api.coinpaprika.com/v1/tickers?quotes=USD', { Accept: 'application/json' }, 15000);
-  if (!Array.isArray(data)) throw new Error('CoinPaprika returned non-array');
+  const data = await _fetchCoinPaprikaTickers();
   const ids = STABLECOIN_IDS.split(',');
   const paprikaIds = new Set(ids.map((id) => STABLECOIN_PAPRIKA_MAP[id]).filter(Boolean));
   const reverseMap = Object.fromEntries(Object.entries(STABLECOIN_PAPRIKA_MAP).map(([g, p]) => [p, g]));
@@ -1888,8 +1939,19 @@ async function seedCryptoSectors() {
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
   } catch (err) {
-    console.warn(`[CryptoSectors] CoinGecko failed: ${err.message} — skipping`);
-    return 0;
+    console.warn(`[CryptoSectors] CoinGecko failed: ${err.message} — trying CoinPaprika`);
+    try {
+      const paprika = await _fetchCoinPaprikaTickers();
+      const reverseMap = Object.fromEntries(SECTORS_LIST.flatMap((s) => s.tokens).map((id) => [id, id]));
+      data = paprika.filter((t) => {
+        const geckoId = Object.entries(CRYPTO_PAPRIKA_MAP).find(([, p]) => p === t.id)?.[0];
+        return geckoId && allIds.includes(geckoId);
+      }).map((t) => {
+        const geckoId = Object.entries(CRYPTO_PAPRIKA_MAP).find(([, p]) => p === t.id)?.[0] || t.id;
+        return { id: geckoId, price_change_percentage_24h: t.quotes?.USD?.percent_change_24h ?? 0 };
+      });
+      if (!data.length) throw new Error('No matching tokens in CoinPaprika');
+    } catch (e2) { console.warn(`[CryptoSectors] CoinPaprika also failed: ${e2.message} — skipping`); return 0; }
   }
   const byId = new Map(data.map((c) => [c.id, c.price_change_percentage_24h]));
   const sectors = SECTORS_LIST.map((sector) => {
@@ -1928,8 +1990,7 @@ function _mapTokens(ids, meta, byId) {
 }
 
 async function fetchTokenPanelsCoinPaprika(allIds) {
-  const data = await cyberHttpGetJson('https://api.coinpaprika.com/v1/tickers?quotes=USD', { Accept: 'application/json' }, 15000);
-  if (!Array.isArray(data)) throw new Error('CoinPaprika returned non-array');
+  const data = await _fetchCoinPaprikaTickers();
   const paprikaIds = new Set(allIds.map((id) => TOKEN_PANELS_PAPRIKA_MAP[id]).filter(Boolean));
   const reverseMap = Object.fromEntries(Object.entries(TOKEN_PANELS_PAPRIKA_MAP).map(([g, p]) => [p, g]));
   return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
@@ -7871,11 +7932,38 @@ function handleYahooChartRequest(req, res) {
   }
 
   const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`;
+
+  function _serveYahooResult(body, source) {
+    yahooChartCache.set(cacheKey, { json: body, ts: Date.now() });
+    sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=120, s-maxage=120, stale-while-revalidate=60',
+      'X-Yahoo-Source': source,
+    }, body);
+  }
+
+  function _serveStaleOrError(statusCode, errMsg) {
+    if (cached) {
+      return sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'X-Yahoo-Source': 'relay-stale',
+      }, cached.json);
+    }
+    sendCompressed(req, res, statusCode, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: errMsg, symbol }));
+  }
+
+  function _tryProxy() {
+    if (!PROXY_URL) return _serveStaleOrError(502, 'Yahoo upstream failed, no proxy');
+    const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+    ytFetchViaProxy(yahooUrl, proxy).then((proxyResp) => {
+      if (!proxyResp?.ok) return _serveStaleOrError(proxyResp?.status || 502, 'Yahoo proxy failed');
+      _serveYahooResult(proxyResp.body, 'relay-proxy');
+    }).catch(() => _serveStaleOrError(502, 'Yahoo proxy error'));
+  }
+
   const yahooReq = https.get(yahooUrl, {
-    headers: {
-      'User-Agent': CHROME_UA,
-      Accept: 'application/json',
-    },
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     timeout: 10000,
   }, (upstream) => {
     let body = '';
@@ -7884,40 +7972,18 @@ function handleYahooChartRequest(req, res) {
       if (upstream.statusCode !== 200) {
         logThrottled('warn', `yahoo-chart-upstream-${upstream.statusCode}:${symbol}`,
           `[Relay] Yahoo chart upstream ${upstream.statusCode} for ${symbol}`);
-        return sendCompressed(req, res, upstream.statusCode || 502, {
-          'Content-Type': 'application/json',
-          'X-Yahoo-Source': 'relay-upstream-error',
-        }, JSON.stringify({ error: `Yahoo upstream ${upstream.statusCode}`, symbol }));
+        return _tryProxy();
       }
-      yahooChartCache.set(cacheKey, { json: body, ts: Date.now() });
-      sendCompressed(req, res, 200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=120, s-maxage=120, stale-while-revalidate=60',
-        'X-Yahoo-Source': 'relay-upstream',
-      }, body);
+      _serveYahooResult(body, 'relay-upstream');
     });
   });
   yahooReq.on('error', (err) => {
     logThrottled('error', `yahoo-chart-error:${symbol}`, `[Relay] Yahoo chart error for ${symbol}: ${err.message}`);
-    if (cached) {
-      return sendCompressed(req, res, 200, {
-        'Content-Type': 'application/json',
-        'X-Yahoo-Source': 'relay-stale',
-      }, cached.json);
-    }
-    sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
-      JSON.stringify({ error: 'Yahoo upstream error', symbol }));
+    _tryProxy();
   });
   yahooReq.on('timeout', () => {
     yahooReq.destroy();
-    if (cached) {
-      return sendCompressed(req, res, 200, {
-        'Content-Type': 'application/json',
-        'X-Yahoo-Source': 'relay-stale',
-      }, cached.json);
-    }
-    sendCompressed(req, res, 504, { 'Content-Type': 'application/json' },
-      JSON.stringify({ error: 'Yahoo upstream timeout', symbol }));
+    _tryProxy();
   });
 }
 
