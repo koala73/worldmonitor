@@ -42,6 +42,7 @@ import { getNearbyInfrastructure } from '@/services/related-assets';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
+import { showToast } from '@/utils/toast';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -980,7 +981,7 @@ export class CountryIntelManager implements AppModule {
 
   openCountryStory(code: string, name: string): void {
     if (!dataFreshness.hasSufficientData() || this.ctx.latestClusters.length === 0) {
-      this.showToast('Data still loading — try again in a moment');
+      showToast('Data still loading — try again in a moment');
       return;
     }
     const posturePanel = this.ctx.panels['strategic-posture'] as StrategicPosturePanel | undefined;
@@ -995,16 +996,6 @@ export class CountryIntelManager implements AppModule {
     } : null;
     const data = collectStoryData(code, name, this.ctx.latestClusters, postures, this.ctx.latestPredictions, signals, convergence);
     openStoryModal(data);
-  }
-
-  showToast(msg: string): void {
-    document.querySelector('.toast-notification')?.remove();
-    const el = document.createElement('div');
-    el.className = 'toast-notification';
-    el.textContent = msg;
-    document.body.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('visible'));
-    setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 3000);
   }
 
   private getCountryStrikes(code: string, hasGeoShape: boolean): typeof this.ctx.intelligenceCache.iranEvents & object {
