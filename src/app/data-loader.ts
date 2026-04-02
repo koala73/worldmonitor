@@ -120,12 +120,7 @@ import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
-import { isEntitled } from '@/services/entitlements';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
-/** Premium feature access: Dodo entitlement OR legacy API key */
-function hasPremiumAccess(): boolean {
-  return isEntitled() || getSecretState('WORLDMONITOR_API_KEY').present;
-}
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
 import { ingestHeadlines } from '@/services/trending-keywords';

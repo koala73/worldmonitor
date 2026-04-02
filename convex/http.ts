@@ -238,7 +238,7 @@ http.route({
       });
     }
 
-    await ctx.runMutation(internal.notificationChannels.deactivateChannelForUser, {
+    await ctx.runMutation((internal as any).notificationChannels.deactivateChannelForUser, {
       userId: body.userId,
       channelType: body.channelType,
     });
@@ -281,7 +281,7 @@ http.route({
       });
     }
 
-    const channels = await ctx.runQuery(internal.notificationChannels.getChannelsByUserId, {
+    const channels = await ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, {
       userId: body.userId,
     });
 
@@ -345,8 +345,8 @@ http.route({
     try {
       if (action === "get") {
         const [channels, alertRules] = await Promise.all([
-          ctx.runQuery(internal.notificationChannels.getChannelsByUserId, { userId }),
-          ctx.runQuery(internal.alertRules.getAlertRulesByUserId, { userId }),
+          ctx.runQuery((internal as any).notificationChannels.getChannelsByUserId, { userId }),
+          ctx.runQuery((internal as any).alertRules.getAlertRulesByUserId, { userId }),
         ]);
         return new Response(JSON.stringify({ channels: channels ?? [], alertRules: alertRules ?? [] }), {
           status: 200,
@@ -355,7 +355,7 @@ http.route({
       }
 
       if (action === "create-pairing-token") {
-        const result = await ctx.runMutation(internal.notificationChannels.createPairingTokenForUser, {
+        const result = await ctx.runMutation((internal as any).notificationChannels.createPairingTokenForUser, {
           userId,
           variant: body.variant,
         });
@@ -366,7 +366,7 @@ http.route({
         if (!body.channelType) {
           return new Response(JSON.stringify({ error: "channelType required" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        const setResult = await ctx.runMutation(internal.notificationChannels.setChannelForUser, {
+        const setResult = await ctx.runMutation((internal as any).notificationChannels.setChannelForUser, {
           userId,
           channelType: body.channelType as "telegram" | "slack" | "email",
           chatId: body.chatId,
@@ -380,7 +380,7 @@ http.route({
         if (!body.webhookEnvelope) {
           return new Response(JSON.stringify({ error: "webhookEnvelope required" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        const oauthResult = await ctx.runMutation(internal.notificationChannels.setSlackOAuthChannelForUser, {
+        const oauthResult = await ctx.runMutation((internal as any).notificationChannels.setSlackOAuthChannelForUser, {
           userId,
           webhookEnvelope: body.webhookEnvelope,
           slackChannelName: body.slackChannelName,
@@ -394,7 +394,7 @@ http.route({
         if (!body.webhookEnvelope) {
           return new Response(JSON.stringify({ error: "webhookEnvelope required" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        const discordResult = await ctx.runMutation(internal.notificationChannels.setDiscordOAuthChannelForUser, {
+        const discordResult = await ctx.runMutation((internal as any).notificationChannels.setDiscordOAuthChannelForUser, {
           userId,
           webhookEnvelope: body.webhookEnvelope,
           discordGuildId: body.discordGuildId,
@@ -407,7 +407,7 @@ http.route({
         if (!body.channelType) {
           return new Response(JSON.stringify({ error: "channelType required" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation(internal.notificationChannels.deleteChannelForUser, {
+        await ctx.runMutation((internal as any).notificationChannels.deleteChannelForUser, {
           userId,
           channelType: body.channelType as "telegram" | "slack" | "email" | "discord",
         });
@@ -425,7 +425,7 @@ http.route({
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation(internal.alertRules.setAlertRulesForUser, {
+        await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
           userId,
           variant: body.variant,
           enabled: body.enabled,
