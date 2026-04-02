@@ -128,9 +128,17 @@ async function holdEvent(userId, variant, eventJson) {
   await upstashRest('EXPIRE', key, String(QUIET_HELD_TTL));
 }
 
-// Called periodically from the poll loop; sends held batches to users
-// whose quiet hours have ended.
-async function drainBatchOnWake(allRules) {
+// Called on a 5-minute timer in the poll loop; sends held batches to users
+// whose quiet hours have ended. Self-contained — fetches its own rules.
+async function drainBatchOnWake() {
+  let allRules;
+  try {
+    allRules = await convex.query('alertRules:getByEnabled', { enabled: true });
+  } catch (err) {
+    console.warn('[relay] drainBatchOnWake: failed to fetch rules:', err.message);
+    return;
+  }
+
   const batchRules = allRules.filter(r =>
     r.quietHoursEnabled && r.quietHoursOverride === 'batch_on_wake' && !isInQuietHours(r),
   );
@@ -172,18 +180,20 @@ async function drainBatchOnWake(allRules) {
     }
 
     const verifiedChannels = channels.filter(c => c.verified && (rule.channels ?? []).includes(c.channelType));
-    let sent = false;
+    let anyDelivered = false;
     for (const ch of verifiedChannels) {
       try {
-        if (ch.channelType === 'telegram' && ch.chatId) { await sendTelegram(rule.userId, ch.chatId, text); sent = true; }
-        else if (ch.channelType === 'slack' && ch.webhookEnvelope) { await sendSlack(rule.userId, ch.webhookEnvelope, text); sent = true; }
-        else if (ch.channelType === 'discord' && ch.webhookEnvelope) { await sendDiscord(rule.userId, ch.webhookEnvelope, text); sent = true; }
-        else if (ch.channelType === 'email' && ch.email) { await sendEmail(ch.email, subject, text); sent = true; }
+        let ok = false;
+        if (ch.channelType === 'telegram' && ch.chatId) ok = await sendTelegram(rule.userId, ch.chatId, text);
+        else if (ch.channelType === 'slack' && ch.webhookEnvelope) ok = await sendSlack(rule.userId, ch.webhookEnvelope, text);
+        else if (ch.channelType === 'discord' && ch.webhookEnvelope) ok = await sendDiscord(rule.userId, ch.webhookEnvelope, text);
+        else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text);
+        if (ok) anyDelivered = true;
       } catch (err) {
         console.warn(`[relay] drainBatchOnWake: delivery error for ${rule.userId}/${ch.channelType}:`, err.message);
       }
     }
-    if (sent) {
+    if (anyDelivered) {
       await upstashRest('DEL', key);
       console.log(`[relay] drainBatchOnWake: sent ${events.length} held events to ${rule.userId}`);
     }
@@ -195,7 +205,7 @@ async function drainBatchOnWake(allRules) {
 async function sendTelegram(userId, chatId, text) {
   if (!TELEGRAM_BOT_TOKEN) {
     console.warn('[relay] Telegram: TELEGRAM_BOT_TOKEN not set — skipping');
-    return;
+    return false;
   }
   const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: 'POST',
@@ -210,7 +220,7 @@ async function sendTelegram(userId, chatId, text) {
       console.warn(`[relay] Telegram deactivating channel for ${userId}`);
       await deactivateChannel(userId, 'telegram');
     }
-    return;
+    return false;
   }
   if (res.status === 429) {
     const body = await res.json().catch(() => ({}));
@@ -220,13 +230,14 @@ async function sendTelegram(userId, chatId, text) {
   }
   if (res.status === 401) {
     console.error('[relay] Telegram 401 Unauthorized — TELEGRAM_BOT_TOKEN is invalid or belongs to a different bot; correct the Railway env var to restore Telegram delivery');
-    return;
+    return false;
   }
   if (!res.ok) {
     console.warn(`[relay] Telegram send failed: ${res.status}`);
-    return;
+    return false;
   }
   console.log(`[relay] Telegram delivered to ${userId} (chatId: ${chatId})`);
+  return true;
 }
 
 // ── Delivery: Slack ───────────────────────────────────────────────────────────
@@ -240,11 +251,11 @@ async function sendSlack(userId, webhookEnvelope, text) {
     webhookUrl = decrypt(webhookEnvelope);
   } catch (err) {
     console.warn(`[relay] Slack decrypt failed for ${userId}:`, err.message);
-    return;
+    return false;
   }
   if (!SLACK_RE.test(webhookUrl)) {
     console.warn(`[relay] Slack URL invalid for ${userId}`);
-    return;
+    return false;
   }
   // SSRF prevention: resolve hostname and check for private IPs
   try {
@@ -252,11 +263,11 @@ async function sendSlack(userId, webhookEnvelope, text) {
     const addresses = await dns.resolve4(hostname);
     if (addresses.some(isPrivateIP)) {
       console.warn(`[relay] Slack URL resolves to private IP for ${userId}`);
-      return;
+      return false;
     }
   } catch {
     console.warn(`[relay] Slack DNS resolution failed for ${userId}`);
-    return;
+    return false;
   }
   const res = await fetch(webhookUrl, {
     method: 'POST',
@@ -267,9 +278,12 @@ async function sendSlack(userId, webhookEnvelope, text) {
   if (res.status === 404 || res.status === 410) {
     console.warn(`[relay] Slack webhook gone for ${userId} — deactivating`);
     await deactivateChannel(userId, 'slack');
+    return false;
   } else if (!res.ok) {
     console.warn(`[relay] Slack send failed: ${res.status}`);
+    return false;
   }
+  return true;
 }
 
 // ── Delivery: Discord ─────────────────────────────────────────────────────────
@@ -282,11 +296,11 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
     webhookUrl = decrypt(webhookEnvelope);
   } catch (err) {
     console.warn(`[relay] Discord decrypt failed for ${userId}:`, err.message);
-    return;
+    return false;
   }
   if (!DISCORD_RE.test(webhookUrl)) {
     console.warn(`[relay] Discord URL invalid for ${userId}`);
-    return;
+    return false;
   }
   // SSRF prevention: resolve hostname and check for private IPs
   try {
@@ -294,11 +308,11 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
     const addresses = await dns.resolve4(hostname);
     if (addresses.some(isPrivateIP)) {
       console.warn(`[relay] Discord URL resolves to private IP for ${userId}`);
-      return;
+      return false;
     }
   } catch {
     console.warn(`[relay] Discord DNS resolution failed for ${userId}`);
-    return;
+    return false;
   }
   const content = text.length > DISCORD_MAX_CONTENT
     ? text.slice(0, DISCORD_MAX_CONTENT - 1) + '…'
@@ -312,10 +326,11 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
   if (res.status === 404 || res.status === 410) {
     console.warn(`[relay] Discord webhook gone for ${userId} — deactivating`);
     await deactivateChannel(userId, 'discord');
+    return false;
   } else if (res.status === 429) {
     if (retryCount >= 1) {
       console.warn(`[relay] Discord 429 retry limit reached for ${userId}`);
-      return;
+      return false;
     }
     const body = await res.json().catch(() => ({}));
     const wait = ((body.retry_after ?? 1) + 0.5) * 1000;
@@ -323,24 +338,22 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
     return sendDiscord(userId, webhookEnvelope, text, retryCount + 1);
   } else if (!res.ok) {
     console.warn(`[relay] Discord send failed: ${res.status}`);
-  } else {
-    console.log(`[relay] Discord delivered to ${userId}`);
+    return false;
   }
+  console.log(`[relay] Discord delivered to ${userId}`);
+  return true;
 }
 
 // ── Delivery: Email ───────────────────────────────────────────────────────────
 
 async function sendEmail(email, subject, text) {
-  if (!resend) { console.warn('[relay] RESEND_API_KEY not set — skipping email'); return; }
+  if (!resend) { console.warn('[relay] RESEND_API_KEY not set — skipping email'); return false; }
   try {
-    await resend.emails.send({
-      from: RESEND_FROM,
-      to: email,
-      subject,
-      text,
-    });
+    await resend.emails.send({ from: RESEND_FROM, to: email, subject, text });
+    return true;
   } catch (err) {
     console.warn('[relay] Resend send failed:', err.message);
+    return false;
   }
 }
 
@@ -409,9 +422,6 @@ async function processEvent(event) {
 
   if (matching.length === 0) return;
 
-  // Drain batch_on_wake held events for users whose quiet hours just ended
-  await drainBatchOnWake(enabledRules);
-
   const text = formatMessage(event);
   const subject = `WorldMonitor Alert: ${event.payload?.title ?? event.eventType}`;
   const eventSeverity = event.severity ?? 'high';
@@ -425,6 +435,8 @@ async function processEvent(event) {
     }
 
     if (quietAction === 'hold') {
+      const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '');
+      if (!isNew) { console.log(`[relay] Dedup hit (held) for ${rule.userId}`); continue; }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
       await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
       continue;
@@ -483,8 +495,17 @@ async function subscribe() {
   console.log('[relay] UPSTASH_URL set:', !!UPSTASH_URL, '| CONVEX_URL set:', !!CONVEX_URL, '| RELAY_SECRET set:', !!RELAY_SECRET);
   console.log('[relay] TELEGRAM_BOT_TOKEN set:', !!TELEGRAM_BOT_TOKEN, '| RESEND_API_KEY set:', !!RESEND_API_KEY);
   let idleCount = 0;
+  let lastDrainMs = 0;
+  const DRAIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   while (true) {
     try {
+      // Periodically flush batch_on_wake held events regardless of queue activity
+      const nowMs = Date.now();
+      if (nowMs - lastDrainMs >= DRAIN_INTERVAL_MS) {
+        lastDrainMs = nowMs;
+        drainBatchOnWake().catch(err => console.warn('[relay] drainBatchOnWake error:', err.message));
+      }
+
       const result = await upstashRest('RPOP', 'wm:events:queue');
       if (result) {
         idleCount = 0;
