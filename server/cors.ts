@@ -28,6 +28,25 @@ export function isAllowedOrigin(origin: string): boolean {
   return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
 }
 
+/**
+ * Production web origins allowed to prime Vercel CDN cache entries.
+ *
+ * Intentionally narrower than isAllowedOrigin(): preview deployments, localhost,
+ * and Tauri remain allowed callers but do not create shared CDN cache entries.
+ */
+export function isProductionWebOrigin(origin: string): boolean {
+  if (!origin) return false;
+  try {
+    const url = new URL(origin);
+    return url.protocol === 'https:' && (
+      url.hostname === 'worldmonitor.app' ||
+      url.hostname.endsWith('.worldmonitor.app')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('origin') || '';
   const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://worldmonitor.app';
@@ -37,20 +56,6 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Widget-Key, X-Pro-Key',
     'Access-Control-Max-Age': '3600',
     'Vary': 'Origin',
-  };
-}
-
-/**
- * CORS headers for public cacheable responses (no per-user variation).
- * Uses ACAO: * so Vercel CDN stores ONE cache entry per URL instead of one per
- * unique Origin. Eliminates Vary: Origin cache fragmentation.
- */
-export function getPublicCorsHeaders(): Record<string, string> {
-  return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Widget-Key, X-Pro-Key',
-    'Access-Control-Max-Age': '3600',
   };
 }
 

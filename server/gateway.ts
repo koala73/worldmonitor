@@ -10,7 +10,7 @@
  */
 
 import { createRouter, type RouteDescriptor } from './router';
-import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
+import { getCorsHeaders, isDisallowedOrigin, isProductionWebOrigin } from './cors';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../api/_api-key.js';
 import { mapErrorToResponse } from './error-mapper';
@@ -107,6 +107,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/get-country-intel-brief': 'static',
   '/api/intelligence/v1/get-gdelt-topic-timeline': 'medium',
   '/api/climate/v1/list-climate-anomalies': 'static',
+  '/api/climate/v1/get-co2-monitoring': 'static',
+  '/api/climate/v1/list-climate-news': 'slow',
   '/api/sanctions/v1/list-sanctions-pressure': 'static',
   '/api/sanctions/v1/lookup-sanction-entity': 'no-store',
   '/api/radiation/v1/list-radiation-observations': 'slow',
@@ -363,25 +365,19 @@ export function createDomainGateway(
         const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
         const tier = (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';
         mergedHeaders.set('Cache-Control', TIER_HEADERS[tier]);
-        // Only allow Vercel CDN caching for trusted origins (worldmonitor.app, Vercel previews,
-        // Tauri). No-origin server-side requests (external scrapers) must always reach the edge
-        // function so the auth check in validateApiKey() can run. Without this guard, a cached
-        // 200 from a trusted-origin browser request could be served to a no-origin scraper,
-        // bypassing auth entirely.
+        // Only allow production web origins to create shared Vercel CDN entries.
+        // Preview deployments, localhost, and Tauri stay functional but bypass CDN caching so
+        // the cache key is not fragmented by lower-volume environments. No-origin server-side
+        // requests must always reach the edge function so auth still runs before any response.
         const reqOrigin = request.headers.get('origin') || '';
-        const cdnCache = isAllowedOrigin(reqOrigin) ? TIER_CDN_CACHE[tier] : null;
-        if (cdnCache) {
-          mergedHeaders.set('CDN-Cache-Control', cdnCache);
-          // For non-premium public GET routes: use ACAO: * to eliminate
-          // per-origin CDN cache fragmentation. Premium routes keep per-origin
-          // CORS to prevent cache-level auth bypass.
-          if (!PREMIUM_RPC_PATHS.has(pathname)) {
-            const pub = getPublicCorsHeaders();
-            for (const [k, v] of Object.entries(pub)) mergedHeaders.set(k, v);
-            mergedHeaders.delete('Vary');
-          }
-        }
+        const cdnCache = isProductionWebOrigin(reqOrigin) ? TIER_CDN_CACHE[tier] : null;
+        if (cdnCache) mergedHeaders.set('CDN-Cache-Control', cdnCache);
         mergedHeaders.set('X-Cache-Tier', tier);
+
+        // Keep per-origin ACAO (already set from corsHeaders above) and preserve Vary: Origin.
+        // ACAO: * with no Vary would collapse all origins into one cache entry, bypassing
+        // isDisallowedOrigin() for cache hits — Vercel CDN serves s-maxage responses without
+        // re-invoking the function, so a disallowed origin could read a cached ACAO: * response.
       }
       mergedHeaders.delete('X-No-Cache');
       if (!new URL(request.url).searchParams.has('_debug')) {
