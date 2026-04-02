@@ -12,7 +12,6 @@
  *   7. Updates digest:last-sent:v1:${userId}:${variant}
  */
 import { createRequire } from 'node:module';
-import { createHash } from 'node:crypto';
 import dns from 'node:dns/promises';
 
 const require = createRequire(import.meta.url);
@@ -54,6 +53,7 @@ async function upstashRest(...args) {
       Authorization: `Bearer ${UPSTASH_TOKEN}`,
       'User-Agent': 'worldmonitor-digest/1.0',
     },
+    signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) {
     console.warn(`[digest] Upstash error ${res.status} for command ${args[0]}`);

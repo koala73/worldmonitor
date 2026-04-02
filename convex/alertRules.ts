@@ -70,6 +70,10 @@ export const setDigestSettings = mutation({
     if (!identity) throw new ConvexError("UNAUTHENTICATED");
     const userId = identity.subject;
 
+    if (args.digestHour !== undefined && (args.digestHour < 0 || args.digestHour > 23 || !Number.isInteger(args.digestHour))) {
+      throw new ConvexError("digestHour must be an integer 0–23");
+    }
+
     const existing = await ctx.db
       .query("alertRules")
       .withIndex("by_user_variant", (q) =>
@@ -223,6 +227,9 @@ export const setDigestSettingsForUser = internalMutation({
   },
   handler: async (ctx, args) => {
     const { userId, variant, ...digest } = args;
+    if (digest.digestHour !== undefined && (digest.digestHour < 0 || digest.digestHour > 23 || !Number.isInteger(digest.digestHour))) {
+      throw new ConvexError("digestHour must be an integer 0–23");
+    }
     const existing = await ctx.db
       .query("alertRules")
       .withIndex("by_user_variant", (q) =>
