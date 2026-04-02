@@ -79,7 +79,7 @@ async function fetchMalaysia() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     if (!Array.isArray(data) || data.length === 0) return [];
-    const row = data[0];
+    const row = data.find(r => r.series_type === 'level') ?? data[0];
     const observedAt = row.date ?? '';
     const ron95 = typeof row.ron95 === 'number' ? row.ron95 : null;
     const diesel = typeof row.diesel === 'number' ? row.diesel : null;
