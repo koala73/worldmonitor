@@ -25,6 +25,9 @@ import {
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
+// When VITE_QUIET_HOURS_BATCH_ENABLED=0 the relay does not honour batch_on_wake.
+// Hide that option so users cannot select a mode that silently behaves as critical_only.
+const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
 import {
   loadFrameworkLibrary,
   saveImportedFramework,
@@ -803,7 +806,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
                 <select class="unified-settings-select" id="usQhOverride">
                   <option value="critical_only"${qhOverride === 'critical_only' ? ' selected' : ''}>Critical only (suppress others)</option>
                   <option value="silence_all"${qhOverride === 'silence_all' ? ' selected' : ''}>Silence all</option>
-                  <option value="batch_on_wake"${qhOverride === 'batch_on_wake' ? ' selected' : ''}>Batch — deliver on wake</option>
+                  ${QUIET_HOURS_BATCH_ENABLED ? `<option value="batch_on_wake"${qhOverride === 'batch_on_wake' ? ' selected' : ''}>Batch — deliver on wake</option>` : ''}
                 </select>
               </div>
             </div>`;
