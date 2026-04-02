@@ -307,9 +307,13 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
 // ── Story persistence tracking ────────────────────────────────────────────────
 
 function normalizeTitle(title: string): string {
+  // \p{L} = any Unicode letter; \p{N} = any Unicode number.
+  // The `u` flag is required for Unicode property escapes — without it \w
+  // matches only ASCII [A-Za-z0-9_], stripping all Arabic/CJK/Cyrillic chars
+  // and collapsing every non-Latin title to the same empty hash.
   return title
     .toLowerCase()
-    .replace(/[^\w\s]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120);
@@ -328,6 +332,9 @@ function derivePhase(track: StoryTrack): ProtoStoryPhase {
   const ageMs = Date.now() - track.firstSeen;
   if (track.mentionCount <= 1) return 'STORY_PHASE_BREAKING';
   if (track.mentionCount <= 5 && ageMs < 2 * 60 * 60 * 1000) return 'STORY_PHASE_DEVELOPING';
+  // FADING requires real scores from E1. Until E1 ships, currentScore and
+  // peakScore are both 0 (HSETNX placeholders), so this branch is intentionally
+  // inactive — stories fall through to SUSTAINED rather than incorrectly FADING.
   if (track.currentScore > 0 && track.peakScore > 0 && track.currentScore < track.peakScore * 0.5) return 'STORY_PHASE_FADING';
   return 'STORY_PHASE_SUSTAINED';
 }
