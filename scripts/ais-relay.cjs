@@ -3032,6 +3032,18 @@ const CLASSIFY_BATCH_SIZE = 50;
 const CLASSIFY_VARIANTS = ['full', 'tech', 'finance', 'happy', 'commodity'];
 const CLASSIFY_VARIANT_STAGGER_MS = 3 * 60 * 1000;
 
+// Relay gates — active only when RELAY_GATES_READY=1 (see Appendix E of docs/internal/news-alerts-enhancements-from-trendradar.md).
+// When the flag is set the relay becomes the sole authoritative source of rss_alert events and
+// the client /api/notify path is suppressed via VITE_RELAY_GATES_READY on the Vercel side.
+// Inline subset of source-tiers.ts — canonical copy in server/_shared/source-tiers.ts; keep in sync.
+const RELAY_GATES_READY = process.env.RELAY_GATES_READY === '1';
+const RELAY_TIER4_SOURCES = new Set([
+  'Hacker News', 'The Verge', 'The Verge AI', 'VentureBeat AI',
+  'Yahoo Finance', 'TechCrunch Layoffs', 'ArXiv AI', 'AI News',
+  'Layoffs News', 'GloNewswire (Taiwan)',
+]);
+const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recency gate
+
 const CLASSIFY_VALID_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
 const CLASSIFY_VALID_CATEGORIES = [
   'conflict', 'protest', 'disaster', 'diplomatic', 'economic',
@@ -3344,6 +3356,13 @@ async function seedClassifyForVariant(variant, seenTitles) {
       // independently, protected by the variant-scoped Redis scan-dedup key.
       if (level === 'critical' || level === 'high') {
         const meta = allTitles.get(chunk[idx]) ?? { source: variant, publishedAt: Date.now(), importanceScore: 0, link: '' };
+        // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
+        // recency checks that the client path previously handled.
+        if (RELAY_GATES_READY) {
+          if (RELAY_TIER4_SOURCES.has(meta.source ?? '')) continue;
+          const ageMs = Date.now() - (meta.publishedAt ?? 0);
+          if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) continue;
+        }
         publishNotificationEvent({
           eventType: 'rss_alert',
           payload: {

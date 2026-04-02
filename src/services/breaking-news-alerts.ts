@@ -13,6 +13,7 @@ export interface BreakingAlert {
   threatLevel: 'critical' | 'high';
   timestamp: Date;
   origin: 'rss_alert' | 'keyword_spike' | 'hotspot_escalation' | 'military_surge' | 'oref_siren';
+  importanceScore?: number;
 }
 
 export interface AlertSettings {
@@ -22,12 +23,15 @@ export interface AlertSettings {
   sensitivity: 'critical-only' | 'critical-and-high';
 }
 
+// When VITE_RELAY_GATES_READY=1 the Railway relay has taken over external notifications
+// (Telegram/Slack/Email). The client /api/notify call is suppressed to prevent duplicates.
+// See Appendix E of docs/internal/news-alerts-enhancements-from-trendradar.md.
+const RELAY_GATES_READY = import.meta.env.VITE_RELAY_GATES_READY === '1';
+const IMPORTANCE_SCORE_MIN = 30; // Items below this threshold are too low-signal for the banner
+
 const SETTINGS_KEY = 'wm-breaking-alerts-v1';
 const DEDUPE_KEY = 'wm-breaking-alerts-dedupe';
 const RECENCY_GATE_MS = 15 * 60 * 1000;
-// When Railway relay fully handles notifications server-side, set VITE_RELAY_GATES_READY=true
-// to stop the browser from double-dispatching via /api/notify.
-const RELAY_GATES_READY = import.meta.env.VITE_RELAY_GATES_READY === 'true';
 const PER_EVENT_COOLDOWN_MS = 30 * 60 * 1000;
 const GLOBAL_COOLDOWN_MS = 60 * 1000;
 // Suppress RSS-based alerts during initial feed fetch after app load.
@@ -227,6 +231,9 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
     const phase = item.storyMeta?.phase;
     if (phase === 'sustained' || phase === 'fading') continue;
 
+    // Items below the importance threshold are too low-signal for the banner.
+    if (item.importanceScore !== undefined && item.importanceScore < IMPORTANCE_SCORE_MIN) continue;
+
     const isBetter = !best
       || (level === 'critical' && best.threatLevel !== 'critical')
       || (level === best.threatLevel && item.pubDate.getTime() > best.timestamp.getTime());
@@ -240,6 +247,7 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
         threatLevel: level as 'critical' | 'high',
         timestamp: item.pubDate,
         origin: 'rss_alert',
+        importanceScore: item.importanceScore,
       };
     }
   }
