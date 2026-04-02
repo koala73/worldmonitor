@@ -89,10 +89,18 @@ export class REITDetailPanel extends Panel {
     const properties = (REIT_PROPERTIES as ReitProp[]).filter(p => p.reitSymbol === symbol);
     const peers = this.allQuotes.filter(q => q.sector === quote.sector && q.symbol !== symbol).slice(0, 5);
 
+    // Overlay akshare real-time data onto quote for C-REITs
+    const displayQuote = disclosure && quote.market === 'china' ? {
+      ...quote,
+      ...(disclosure.price != null ? { price: disclosure.price } : {}),
+      ...(disclosure.change != null ? { change: disclosure.change } : {}),
+      ...(disclosure.distributionYield != null ? { dividendYield: disclosure.distributionYield } : {}),
+    } : quote;
+
     const html = [
-      this.renderHeader(quote),
+      this.renderHeader(displayQuote),
       disclosure ? this.renderDisclosure(disclosure) : '',
-      this.renderMetrics(quote, social, exposure),
+      this.renderMetrics(displayQuote, social, exposure),
       this.renderProperties(properties),
       this.renderPeers(quote, peers),
     ].join('');
