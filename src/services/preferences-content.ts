@@ -832,7 +832,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               <option value="twice_daily"${digestMode === 'twice_daily' ? ' selected' : ''}>Twice daily</option>
               <option value="weekly"${digestMode === 'weekly' ? ' selected' : ''}>Weekly digest</option>` : ''}
             </select>
-            <div id="usDigestDetails" style="${!DIGEST_CRON_ENABLED || digestMode === 'realtime' ? 'display:none' : ''}"
+            <div id="usDigestDetails" style="${!DIGEST_CRON_ENABLED || digestMode === 'realtime' ? 'display:none' : ''}">
               <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap;margin-top:4px">
                 <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
                   <div class="ai-flow-toggle-label">Send at</div>
