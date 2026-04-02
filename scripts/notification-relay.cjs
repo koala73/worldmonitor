@@ -17,6 +17,9 @@ const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? '';
 const RESEND_FROM = process.env.RESEND_FROM_EMAIL ?? 'WorldMonitor <alerts@worldmonitor.app>';
+// When QUIET_HOURS_BATCH_ENABLED=0, treat batch_on_wake as critical_only.
+// Useful during relay rollout to disable queued batching before drainBatchOnWake is fully tested.
+const QUIET_HOURS_BATCH_ENABLED = process.env.QUIET_HOURS_BATCH_ENABLED !== '0';
 
 if (!UPSTASH_URL || !UPSTASH_TOKEN) { console.error('[relay] UPSTASH_REDIS_REST_URL/TOKEN not set'); process.exit(1); }
 if (!CONVEX_URL) { console.error('[relay] CONVEX_URL not set'); process.exit(1); }
@@ -113,7 +116,7 @@ function resolveQuietAction(rule, severity) {
   if (!isInQuietHours(rule)) return 'deliver';
   const override = rule.quietHoursOverride ?? 'critical_only';
   if (override === 'silence_all') return 'suppress';
-  if (override === 'batch_on_wake') {
+  if (override === 'batch_on_wake' && QUIET_HOURS_BATCH_ENABLED) {
     return severity === 'critical' ? 'deliver' : 'hold';
   }
   // critical_only (default): critical passes through, everything else suppressed
@@ -188,7 +191,9 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
 
 // Called on a 5-minute timer in the poll loop; sends held batches to users
 // whose quiet hours have ended. Self-contained — fetches its own rules.
+// No-op when QUIET_HOURS_BATCH_ENABLED=0 — held events will expire via TTL.
 async function drainBatchOnWake() {
+  if (!QUIET_HOURS_BATCH_ENABLED) return;
   let allRules;
   try {
     allRules = await convex.query('alertRules:getByEnabled', { enabled: true });

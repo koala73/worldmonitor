@@ -112,12 +112,20 @@ const QUIET_HOURS_ARGS = {
 function validateQuietHoursArgs(args: {
   quietHoursStart?: number;
   quietHoursEnd?: number;
+  quietHoursTimezone?: string;
 }) {
   if (args.quietHoursStart !== undefined && (args.quietHoursStart < 0 || args.quietHoursStart > 23 || !Number.isInteger(args.quietHoursStart))) {
     throw new ConvexError("quietHoursStart must be an integer 0–23");
   }
   if (args.quietHoursEnd !== undefined && (args.quietHoursEnd < 0 || args.quietHoursEnd > 23 || !Number.isInteger(args.quietHoursEnd))) {
     throw new ConvexError("quietHoursEnd must be an integer 0–23");
+  }
+  if (args.quietHoursTimezone !== undefined) {
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: args.quietHoursTimezone });
+    } catch {
+      throw new ConvexError("quietHoursTimezone must be a valid IANA timezone (e.g. America/New_York)");
+    }
   }
 }
 

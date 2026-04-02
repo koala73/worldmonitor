@@ -18,8 +18,10 @@ import {
   startDiscordOAuth,
   deleteChannel,
   saveAlertRules,
+  setQuietHours,
   type NotificationChannel,
   type ChannelType,
+  type QuietHoursOverride,
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
@@ -738,6 +740,21 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             html += renderChannelRow(channel, type);
           }
 
+          const qhEnabled = alertRule?.quietHoursEnabled ?? false;
+          const qhStart = alertRule?.quietHoursStart ?? 22;
+          const qhEnd = alertRule?.quietHoursEnd ?? 7;
+          const qhTz = alertRule?.quietHoursTimezone ?? 'UTC';
+          const qhOverride = alertRule?.quietHoursOverride ?? 'critical_only';
+
+          const hourOptions = Array.from({ length: 24 }, (_, h) => {
+            const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+            return `<option value="${h}"${h === qhStart ? ' selected' : ''}>${label}</option>`;
+          }).join('');
+          const hourOptionsEnd = Array.from({ length: 24 }, (_, h) => {
+            const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+            return `<option value="${h}"${h === qhEnd ? ' selected' : ''}>${label}</option>`;
+          }).join('');
+
           html += `<div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
@@ -754,7 +771,42 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               <option value="all"${sensitivity === 'all' ? ' selected' : ''}>All events</option>
               <option value="high"${sensitivity === 'high' ? ' selected' : ''}>High &amp; critical</option>
               <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
-            </select>`;
+            </select>
+            <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
+            <div class="ai-flow-toggle-row">
+              <div class="ai-flow-toggle-label-wrap">
+                <div class="ai-flow-toggle-label">Enable quiet hours</div>
+                <div class="ai-flow-toggle-desc">Suppress or batch non-critical alerts during set hours</div>
+              </div>
+              <label class="ai-flow-switch">
+                <input type="checkbox" id="usQhEnabled"${qhEnabled ? ' checked' : ''}>
+                <span class="ai-flow-slider"></span>
+              </label>
+            </div>
+            <div id="usQhDetails" style="${qhEnabled ? '' : 'display:none'}">
+              <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap">
+                <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
+                  <div class="ai-flow-toggle-label">From</div>
+                </div>
+                <select class="unified-settings-select" id="usQhStart" style="width:auto">${hourOptions}</select>
+                <div class="ai-flow-toggle-label-wrap" style="min-width:30px">
+                  <div class="ai-flow-toggle-label">To</div>
+                </div>
+                <select class="unified-settings-select" id="usQhEnd" style="width:auto">${hourOptionsEnd}</select>
+              </div>
+              <div style="margin-top:4px">
+                <div class="ai-flow-toggle-label" style="margin-bottom:4px">Timezone</div>
+                <input type="text" class="unified-settings-input" id="usQhTimezone" value="${escapeHtml(qhTz)}" placeholder="e.g. America/New_York" style="width:100%">
+              </div>
+              <div style="margin-top:4px">
+                <div class="ai-flow-toggle-label" style="margin-bottom:4px">During quiet hours</div>
+                <select class="unified-settings-select" id="usQhOverride">
+                  <option value="critical_only"${qhOverride === 'critical_only' ? ' selected' : ''}>Critical only (suppress others)</option>
+                  <option value="silence_all"${qhOverride === 'silence_all' ? ' selected' : ''}>Silence all</option>
+                  <option value="batch_on_wake"${qhOverride === 'batch_on_wake' ? ' selected' : ''}>Batch — deliver on wake</option>
+                </select>
+              </div>
+            </div>`;
           return html;
         }
 
@@ -796,15 +848,49 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         let slackOAuthPopup: Window | null = null;
         let discordOAuthPopup: Window | null = null;
         let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+        let qhDebounceTimer: ReturnType<typeof setTimeout> | null = null;
         signal.addEventListener('abort', () => {
           if (alertRuleDebounceTimer !== null) {
             clearTimeout(alertRuleDebounceTimer);
             alertRuleDebounceTimer = null;
           }
+          if (qhDebounceTimer !== null) {
+            clearTimeout(qhDebounceTimer);
+            qhDebounceTimer = null;
+          }
         });
+
+        const saveQuietHours = () => {
+          if (qhDebounceTimer) clearTimeout(qhDebounceTimer);
+          qhDebounceTimer = setTimeout(() => {
+            const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
+            const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
+            const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
+            const tzEl = container.querySelector<HTMLInputElement>('#usQhTimezone');
+            const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
+            void setQuietHours({
+              variant: SITE_VARIANT,
+              quietHoursEnabled: enabledEl?.checked ?? false,
+              quietHoursStart: startEl ? Number(startEl.value) : 22,
+              quietHoursEnd: endEl ? Number(endEl.value) : 7,
+              quietHoursTimezone: tzEl?.value.trim() || 'UTC',
+              quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
+            });
+          }, 800);
+        };
 
         container.addEventListener('change', (e) => {
           const target = e.target as HTMLInputElement;
+          if (target.id === 'usQhEnabled') {
+            const details = container.querySelector<HTMLElement>('#usQhDetails');
+            if (details) details.style.display = target.checked ? '' : 'none';
+            saveQuietHours();
+            return;
+          }
+          if (target.id === 'usQhStart' || target.id === 'usQhEnd' || target.id === 'usQhOverride') {
+            saveQuietHours();
+            return;
+          }
           if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
             if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
             alertRuleDebounceTimer = setTimeout(() => {
@@ -826,6 +912,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               });
             }, 1000);
           }
+        }, { signal });
+
+        container.addEventListener('input', (e) => {
+          const target = e.target as HTMLInputElement;
+          if (target.id === 'usQhTimezone') saveQuietHours();
         }, { signal });
 
         container.addEventListener('click', (e) => {
