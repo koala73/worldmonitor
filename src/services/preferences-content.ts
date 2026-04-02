@@ -30,6 +30,10 @@ import { SITE_VARIANT } from '@/config/variant';
 // When VITE_QUIET_HOURS_BATCH_ENABLED=0 the relay does not honour batch_on_wake.
 // Hide that option so users cannot select a mode that silently behaves as critical_only.
 const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
+// When VITE_DIGEST_CRON_ENABLED=0 the Railway cron has not been deployed yet.
+// Hide non-realtime digest options so users cannot enter a blackhole state
+// where the relay skips their rule and the cron never runs.
+const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
 import {
   loadFrameworkLibrary,
   saveImportedFramework,
@@ -821,13 +825,14 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               </div>
             </div>
             <div class="ai-flow-section-label" style="margin-top:8px">Digest Mode</div>
-            <select class="unified-settings-select" id="usDigestMode">
-              <option value="realtime"${digestMode === 'realtime' ? ' selected' : ''}>Real-time (immediate)</option>
-              <option value="daily"${digestMode === 'daily' ? ' selected' : ''}>Daily digest</option>
+            ${!DIGEST_CRON_ENABLED ? '<div class="ai-flow-toggle-desc" style="margin-bottom:4px">Digest delivery is not yet active — real-time only for now.</div>' : ''}
+            <select class="unified-settings-select" id="usDigestMode"${!DIGEST_CRON_ENABLED ? ' disabled' : ''}>
+              <option value="realtime"${!DIGEST_CRON_ENABLED || digestMode === 'realtime' ? ' selected' : ''}>Real-time (immediate)</option>
+              ${DIGEST_CRON_ENABLED ? `<option value="daily"${digestMode === 'daily' ? ' selected' : ''}>Daily digest</option>
               <option value="twice_daily"${digestMode === 'twice_daily' ? ' selected' : ''}>Twice daily</option>
-              <option value="weekly"${digestMode === 'weekly' ? ' selected' : ''}>Weekly digest</option>
+              <option value="weekly"${digestMode === 'weekly' ? ' selected' : ''}>Weekly digest</option>` : ''}
             </select>
-            <div id="usDigestDetails" style="${digestMode === 'realtime' ? 'display:none' : ''}">
+            <div id="usDigestDetails" style="${!DIGEST_CRON_ENABLED || digestMode === 'realtime' ? 'display:none' : ''}"
               <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap;margin-top:4px">
                 <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
                   <div class="ai-flow-toggle-label">Send at</div>

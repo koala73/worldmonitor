@@ -237,6 +237,13 @@ export const setDigestSettingsForUser = internalMutation({
     if (digest.digestHour !== undefined && (digest.digestHour < 0 || digest.digestHour > 23 || !Number.isInteger(digest.digestHour))) {
       throw new ConvexError("digestHour must be an integer 0–23");
     }
+    if (digest.digestTimezone !== undefined) {
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: digest.digestTimezone });
+      } catch {
+        throw new ConvexError("digestTimezone must be a valid IANA timezone (e.g. America/New_York)");
+      }
+    }
     const existing = await ctx.db
       .query("alertRules")
       .withIndex("by_user_variant", (q) =>
