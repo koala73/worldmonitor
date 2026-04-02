@@ -738,6 +738,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           return '';
         }
 
+        const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
         function renderNotifContent(data: Awaited<ReturnType<typeof getChannelsData>>): string {
           const channelTypes: ChannelType[] = ['telegram', 'email', 'slack', 'discord'];
           const alertRule = data.alertRules?.[0] ?? null;
@@ -752,12 +754,12 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const qhEnabled = alertRule?.quietHoursEnabled ?? false;
           const qhStart = alertRule?.quietHoursStart ?? 22;
           const qhEnd = alertRule?.quietHoursEnd ?? 7;
-          const qhTz = alertRule?.quietHoursTimezone ?? 'UTC';
+          const qhTz = alertRule?.quietHoursTimezone ?? detectedTz;
           const qhOverride = alertRule?.quietHoursOverride ?? 'critical_only';
 
           const digestMode = alertRule?.digestMode ?? 'realtime';
           const digestHour = alertRule?.digestHour ?? 8;
-          const digestTz = alertRule?.digestTimezone ?? 'UTC';
+          const digestTz = alertRule?.digestTimezone ?? detectedTz;
 
           const hourOptions = Array.from({ length: 24 }, (_, h) => {
             const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
@@ -771,6 +773,29 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
             return `<option value="${h}"${h === digestHour ? ' selected' : ''}>${label}</option>`;
           }).join('');
+
+          const TZ_LIST = [
+            'UTC',
+            'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+            'America/Anchorage', 'America/Honolulu', 'America/Phoenix',
+            'America/Toronto', 'America/Vancouver', 'America/Mexico_City',
+            'America/Sao_Paulo', 'America/Argentina/Buenos_Aires', 'America/Bogota',
+            'America/Lima', 'America/Santiago', 'America/Caracas',
+            'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid',
+            'Europe/Rome', 'Europe/Amsterdam', 'Europe/Stockholm', 'Europe/Oslo',
+            'Europe/Zurich', 'Europe/Warsaw', 'Europe/Athens', 'Europe/Bucharest',
+            'Europe/Helsinki', 'Europe/Istanbul', 'Europe/Moscow', 'Europe/Kyiv',
+            'Africa/Cairo', 'Africa/Nairobi', 'Africa/Lagos', 'Africa/Johannesburg',
+            'Asia/Dubai', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Dhaka',
+            'Asia/Bangkok', 'Asia/Singapore', 'Asia/Shanghai', 'Asia/Hong_Kong',
+            'Asia/Tokyo', 'Asia/Seoul', 'Asia/Manila',
+            'Australia/Sydney', 'Australia/Brisbane', 'Australia/Perth',
+            'Pacific/Auckland', 'Pacific/Fiji',
+          ];
+          const makeTzOptions = (current: string) => {
+            const list = TZ_LIST.includes(current) ? TZ_LIST : [current, ...TZ_LIST];
+            return list.map(tz => `<option value="${tz}"${tz === current ? ' selected' : ''}>${tz}</option>`).join('');
+          };
 
           html += `<div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
             <div class="ai-flow-toggle-row">
@@ -813,7 +838,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               </div>
               <div style="margin-top:4px">
                 <div class="ai-flow-toggle-label" style="margin-bottom:4px">Timezone</div>
-                <input type="text" class="unified-settings-input" id="usQhTimezone" value="${escapeHtml(qhTz)}" placeholder="e.g. America/New_York" style="width:100%">
+                <select class="unified-settings-select" id="usQhTimezone" style="width:100%">${makeTzOptions(qhTz)}</select>
               </div>
               <div style="margin-top:4px">
                 <div class="ai-flow-toggle-label" style="margin-bottom:4px">During quiet hours</div>
@@ -841,7 +866,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               </div>
               <div style="margin-top:4px">
                 <div class="ai-flow-toggle-label" style="margin-bottom:4px">Timezone</div>
-                <input type="text" class="unified-settings-input" id="usDigestTimezone" value="${escapeHtml(digestTz)}" placeholder="e.g. America/New_York" style="width:100%">
+                <select class="unified-settings-select" id="usDigestTimezone" style="width:100%">${makeTzOptions(digestTz)}</select>
               </div>
             </div>`;
           return html;
@@ -908,14 +933,14 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
             const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
             const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
-            const tzEl = container.querySelector<HTMLInputElement>('#usQhTimezone');
+            const tzEl = container.querySelector<HTMLSelectElement>('#usQhTimezone');
             const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
             void setQuietHours({
               variant: SITE_VARIANT,
               quietHoursEnabled: enabledEl?.checked ?? false,
               quietHoursStart: startEl ? Number(startEl.value) : 22,
               quietHoursEnd: endEl ? Number(endEl.value) : 7,
-              quietHoursTimezone: tzEl?.value.trim() || 'UTC',
+              quietHoursTimezone: tzEl?.value || detectedTz,
               quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
             });
           }, 800);
@@ -926,12 +951,12 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           digestDebounceTimer = setTimeout(() => {
             const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
             const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
-            const tzEl = container.querySelector<HTMLInputElement>('#usDigestTimezone');
+            const tzEl = container.querySelector<HTMLSelectElement>('#usDigestTimezone');
             void setDigestSettings({
               variant: SITE_VARIANT,
               digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
               digestHour: hourEl ? Number(hourEl.value) : 8,
-              digestTimezone: tzEl?.value.trim() || 'UTC',
+              digestTimezone: tzEl?.value || detectedTz,
             });
           }, 800);
         };
@@ -944,7 +969,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             saveQuietHours();
             return;
           }
-          if (target.id === 'usQhStart' || target.id === 'usQhEnd' || target.id === 'usQhOverride') {
+          if (target.id === 'usQhStart' || target.id === 'usQhEnd' || target.id === 'usQhOverride' || target.id === 'usQhTimezone') {
             saveQuietHours();
             return;
           }
@@ -954,7 +979,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             saveDigestSettings();
             return;
           }
-          if (target.id === 'usDigestHour') {
+          if (target.id === 'usDigestHour' || target.id === 'usDigestTimezone') {
             saveDigestSettings();
             return;
           }
@@ -979,12 +1004,6 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
               });
             }, 1000);
           }
-        }, { signal });
-
-        container.addEventListener('input', (e) => {
-          const target = e.target as HTMLInputElement;
-          if (target.id === 'usQhTimezone') saveQuietHours();
-          if (target.id === 'usDigestTimezone') saveDigestSettings();
         }, { signal });
 
         container.addEventListener('click', (e) => {
