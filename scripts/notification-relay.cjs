@@ -211,7 +211,19 @@ async function processFlushQuietHeld(event) {
   const { userId, variant = 'full' } = event;
   if (!userId) return;
   console.log(`[relay] flush_quiet_held for ${userId} (${variant})`);
-  await drainHeldForUser(userId, variant, null); // null = all verified channels
+  // Look up the rule to respect its channels list — never fan out to channels
+  // the user didn't configure for this alert rule.
+  let allowedChannels = null;
+  try {
+    const rules = await convex.query('alertRules:getAlertRulesByUserId', { userId });
+    const rule = Array.isArray(rules) ? rules.find(r => (r.variant ?? 'full') === variant) : null;
+    if (rule && Array.isArray(rule.channels) && rule.channels.length > 0) {
+      allowedChannels = rule.channels;
+    }
+  } catch (err) {
+    console.warn(`[relay] flush_quiet_held: could not fetch rule for ${userId}, defaulting to all channels:`, err.message);
+  }
+  await drainHeldForUser(userId, variant, allowedChannels);
 }
 
 // ── Delivery: Telegram ────────────────────────────────────────────────────────
