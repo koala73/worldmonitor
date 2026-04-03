@@ -16,7 +16,7 @@ loadEnvFile(import.meta.url);
 
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 export const CLIMATE_AIR_QUALITY_KEY = 'climate:air-quality:v1';
-export const CACHE_TTL = 3600;
+export const CACHE_TTL = 10800; // 3h — 3× the 1h cron cadence (gold standard: TTL ≥ 3× interval)
 export const AIR_QUALITY_WINDOW_MS = 2 * 60 * 60 * 1000;
 export const OPENAQ_META_KEY = 'seed-meta:health:air-quality';
 export const CLIMATE_META_KEY = 'seed-meta:climate:air-quality';
