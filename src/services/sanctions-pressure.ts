@@ -55,10 +55,18 @@ export interface SanctionsPressureResult {
 }
 
 const client = new SanctionsServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+
+// Two separate breakers so that failures on filtered requests (e.g. 7d)
+// don't put the canonical unfiltered view into cooldown, and vice-versa.
 const breaker = createCircuitBreaker<SanctionsPressureResult>({
   name: 'Sanctions Pressure',
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
+});
+const filteredBreaker = createCircuitBreaker<SanctionsPressureResult>({
+  name: 'Sanctions Pressure (filtered)',
+  cacheTtlMs: 10 * 60 * 1000,
+  persistCache: false,
 });
 
 let latestSanctionsPressureResult: SanctionsPressureResult | null = null;
@@ -160,23 +168,20 @@ export async function fetchSanctionsPressure(timeRange?: string): Promise<Sancti
     }
   }
 
-  // Use the timeRange as the cache key so each window has its own cache slot.
+  const activeBreaker = timeRange ? filteredBreaker : breaker;
   const cacheKey = timeRange || 'all';
 
-  return breaker.execute(async () => {
+  return activeBreaker.execute(async () => {
     const response = await client.listSanctionsPressure({
       maxItems: 30,
-      timeRange: timeRange ?? '',
+      timeRange,
     }, {
       signal: AbortSignal.timeout(25_000),
     });
     const result = toResult(response);
     latestSanctionsPressureResult = result;
     if (result.totalCount === 0) {
-      // Seed is missing or the feed is down. Evict any stale cache so the
-      // panel surfaces "unavailable" instead of serving old designations
-      // indefinitely via stale-while-revalidate.
-      breaker.clearCache(cacheKey);
+      activeBreaker.clearCache(cacheKey);
     }
     return result;
   }, emptyResult, {

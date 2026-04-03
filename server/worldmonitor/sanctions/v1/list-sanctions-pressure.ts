@@ -67,7 +67,7 @@ function applyTimeRangeFilter(
   // Mark entries whose effectiveAt falls within the window as "new"
   // and recompute the global / per-country / per-program counts.
   const retagged: SanctionsEntry[] = allEntries.map((e) => {
-    const ts = typeof e.effectiveAt === 'string' ? Number(e.effectiveAt) : (e.effectiveAt as unknown as number);
+    const ts = Number(e.effectiveAt);
     const withinWindow = Number.isFinite(ts) && ts > 0 && ts >= cutoff;
     return { ...e, isNew: withinWindow };
   });

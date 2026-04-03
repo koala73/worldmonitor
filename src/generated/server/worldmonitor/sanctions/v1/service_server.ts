@@ -4,7 +4,7 @@
 
 export interface ListSanctionsPressureRequest {
   maxItems: number;
-  timeRange: string;
+  timeRange?: string;
 }
 
 export interface ListSanctionsPressureResponse {
@@ -150,9 +150,13 @@ export function createSanctionsServiceRoutes(
           };
 
           const result = await handler.listSanctionsPressure(ctx, body);
+          const responseHeaders: Record<string, string> = { "Content-Type": "application/json" };
+          // Filtered requests use Date.now() for the cutoff, so the response
+          // must not be served from CDN cache (s-maxage would freeze the cutoff).
+          if (body.timeRange) responseHeaders["X-No-Cache"] = "1";
           return new Response(JSON.stringify(result as ListSanctionsPressureResponse), {
             status: 200,
-            headers: { "Content-Type": "application/json" },
+            headers: responseHeaders,
           });
         } catch (err: unknown) {
           if (err instanceof ValidationError) {
