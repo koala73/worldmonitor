@@ -1,13 +1,38 @@
 import type { PanelConfig, MapLayers, DataSourceId } from '@/types';
+import { detectDesktopRuntime } from '@/config/runtime';
 import { SITE_VARIANT } from './variant';
-// boundary-ignore: isDesktopRuntime is a pure env probe with no service dependencies
-import { isDesktopRuntime } from '@/services/runtime';
 // boundary-ignore: getSecretState is a pure env/keychain probe with no service dependencies
 import { getSecretState } from '@/services/runtime-config';
 // boundary-ignore: isEntitled is a pure state check with no side effects
 import { isEntitled } from '@/services/entitlements';
 
-const _desktop = isDesktopRuntime();
+const ENV = (() => {
+  try {
+    return import.meta.env ?? {};
+  } catch {
+    return {} as Record<string, string | undefined>;
+  }
+})();
+
+function isDesktopRuntimeForConfig(): boolean {
+  if (ENV.VITE_DESKTOP_RUNTIME === '1') {
+    return true;
+  }
+
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return detectDesktopRuntime({
+    hasTauriGlobals: '__TAURI_INTERNALS__' in window || '__TAURI__' in window,
+    userAgent: window.navigator?.userAgent ?? '',
+    locationProtocol: window.location?.protocol ?? '',
+    locationHost: window.location?.host ?? '',
+    locationOrigin: window.location?.origin ?? '',
+  });
+}
+
+const _desktop = isDesktopRuntimeForConfig();
 
 // ============================================
 // FULL VARIANT (Geopolitical)
@@ -66,6 +91,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'fsi': { name: 'Financial Stress', enabled: false, priority: 2 },
   'yield-curve': { name: 'Yield Curve', enabled: false, priority: 2 },
   'earnings-calendar': { name: 'Earnings Calendar', enabled: false, priority: 2 },
+  'upcoming-earnings': { name: 'Upcoming Earnings', enabled: true, priority: 2 },
+  'recent-earnings': { name: 'Recent Earnings', enabled: true, priority: 2 },
   'economic-calendar': { name: 'Economic Calendar', enabled: false, priority: 2 },
   'cot-positioning': { name: 'COT Positioning', enabled: false, priority: 2 },
   'hormuz-tracker': { name: 'Hormuz Trade Tracker', enabled: true, priority: 2 },
@@ -940,7 +967,7 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
     return getSecretState('WORLDMONITOR_API_KEY').present || isPro;
   }
   if (config.premium === 'locked') {
-    return isDesktopRuntime();
+    return isDesktopRuntimeForConfig();
   }
   return true;
 }

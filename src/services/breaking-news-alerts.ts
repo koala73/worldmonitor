@@ -4,6 +4,7 @@ import { getSourceTier } from '@/config/feeds';
 import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
+import { getSseClient } from '@/services/sse-client';
 
 export interface BreakingAlert {
   id: string;
@@ -283,6 +284,9 @@ export function dispatchOrefBreakingAlert(alerts: OrefAlert[]): void {
   });
 }
 
+let sseUnsubTelegram: (() => void) | null = null;
+let sseUnsubOref: (() => void) | null = null;
+
 export function initBreakingNewsAlerts(): void {
   initTimestamp = Date.now();
   loadDedupeMap();
@@ -292,12 +296,54 @@ export function initBreakingNewsAlerts(): void {
     }
   };
   window.addEventListener('storage', storageListener);
+
+  // Subscribe to real-time Telegram feeds
+  sseUnsubTelegram = getSseClient().subscribe('telegram', (payload: any) => {
+    if (!payload?.items || !Array.isArray(payload.items)) return;
+
+    const mappedItems: NewsItem[] = payload.items
+      .filter((it: any) => it.earlySignal === true || it.severity === 'critical' || it.severity === 'high')
+      .map((it: any): NewsItem => ({
+        source: it.source || 'telegram',
+        title: it.text || 'Early Signal',
+        link: it.link || '',
+        pubDate: new Date(it.ts || Date.now()),
+        isAlert: true,
+        threat: {
+          level: (it.severity === 'critical' || it.earlySignal) ? 'critical' : 'high',
+          category: 'general',
+          confidence: 0.8,
+          source: 'keyword',
+        },
+        ...(typeof it.locationName === 'string' ? { locationName: it.locationName } : {}),
+        ...(typeof it.lat === 'number' ? { lat: it.lat } : {}),
+        ...(typeof it.lon === 'number' ? { lon: it.lon } : {}),
+      }));
+
+    if (mappedItems.length > 0) {
+      checkBatchForBreakingAlerts(mappedItems);
+    }
+  });
+
+  // Subscribe to real-time OREF alarms
+  sseUnsubOref = getSseClient().subscribe('oref', (payload: any) => {
+    if (!payload?.alerts || !Array.isArray(payload.alerts)) return;
+    dispatchOrefBreakingAlert(payload.alerts);
+  });
 }
 
 export function destroyBreakingNewsAlerts(): void {
   if (storageListener) {
     window.removeEventListener('storage', storageListener);
     storageListener = null;
+  }
+  if (sseUnsubTelegram) {
+    sseUnsubTelegram();
+    sseUnsubTelegram = null;
+  }
+  if (sseUnsubOref) {
+    sseUnsubOref();
+    sseUnsubOref = null;
   }
   dedupeMap.clear();
   cachedSettings = null;
