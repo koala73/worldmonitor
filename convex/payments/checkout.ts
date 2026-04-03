@@ -32,6 +32,7 @@ export const createCheckout = action({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    const identity = await ctx.auth.getUserIdentity();
 
     // Validate returnUrl to prevent open-redirect attacks.
     // Compare parsed origins exactly instead of using startsWith().
@@ -66,14 +67,21 @@ export const createCheckout = action({
 
     let result;
     try {
+      // Prefill checkout with Clerk user identity (name + email)
+      const customerName = identity
+        ? [identity.givenName, identity.familyName].filter(Boolean).join(" ") || identity.name || undefined
+        : undefined;
+      const customerEmail = identity?.email;
+
       result = await checkout(ctx, {
         payload: {
           product_cart: [{ product_id: args.productId, quantity: 1 }],
           return_url: returnUrl,
+          ...(customerEmail ? { customer: { email: customerEmail, name: customerName } } : {}),
           ...(args.discountCode ? { discount_code: args.discountCode } : {}),
           ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
           feature_flags: {
-            allow_discount_code: true, // PROMO-01: Always show discount input
+            allow_discount_code: true,
           },
           customization: {
             theme: "dark",
