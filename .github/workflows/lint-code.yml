@@ -2,6 +2,14 @@ name: Lint Code
 
 on:
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'src-tauri/**'
+      - 'CHANGELOG.md'
+      - 'LICENSE'
+      - '.github/workflows/build-desktop.yml'
+      - '.github/workflows/docker-publish.yml'
   push:
     branches: [main]
 
