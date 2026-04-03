@@ -65,11 +65,10 @@ import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinat
 import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
 import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignOut as cloudPrefsSignOut } from '@/utils/cloud-prefs-sync';
-import { getConvexClient, getConvexApi } from '@/services/convex-client';
+import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { capturePendingCheckoutIntentFromUrl, resumePendingCheckout } from '@/services/checkout';
-import { getClerkToken } from '@/services/clerk';
 import {
   CorrelationEngine,
   militaryAdapter,
@@ -807,9 +806,9 @@ export class App {
         // Claim any anonymous purchase made before sign-in (anon → real user migration)
         const anonId = localStorage.getItem('wm-anon-id');
         if (anonId) {
-          void Promise.all([getConvexClient(), getConvexApi(), getClerkToken()])
-            .then(async ([client, api, token]) => {
-              if (!client || !api || !token) {
+          void Promise.all([getConvexClient(), getConvexApi(), waitForConvexAuth(10_000)])
+            .then(async ([client, api, authReady]) => {
+              if (!client || !api || !authReady) {
                 // Convex auth not ready yet — skip silently. wm-anon-id is preserved
                 // so the next page load (when _prevUserId resets) will retry.
                 return;

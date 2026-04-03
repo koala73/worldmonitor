@@ -56,7 +56,7 @@ export async function initSubscriptionWatch(_userId?: string): Promise<void> {
       },
       (err: Error) => {
         console.warn('[billing] Subscription query error:', err.message);
-        // Mark as loaded with null so listeners don't stay stuck in a loading state.
+        currentSubscription = null;
         subscriptionLoaded = true;
         for (const cb of listeners) cb(null);
       },
