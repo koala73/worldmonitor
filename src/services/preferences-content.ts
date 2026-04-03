@@ -797,78 +797,77 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             return list.map(tz => `<option value="${tz}"${tz === current ? ' selected' : ''}>${tz}</option>`).join('');
           };
 
-          html += `<div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
-            <div class="ai-flow-toggle-row">
-              <div class="ai-flow-toggle-label-wrap">
-                <div class="ai-flow-toggle-label">Enable notifications</div>
-                <div class="ai-flow-toggle-desc">Receive alerts for events matching your filters</div>
-              </div>
-              <label class="ai-flow-switch">
-                <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled ? ' checked' : ''}>
-                <span class="ai-flow-slider"></span>
-              </label>
-            </div>
-            <div class="ai-flow-section-label">Sensitivity</div>
-            <select class="unified-settings-select" id="usNotifSensitivity">
-              <option value="all"${sensitivity === 'all' ? ' selected' : ''}>All events</option>
-              <option value="high"${sensitivity === 'high' ? ' selected' : ''}>High &amp; critical</option>
-              <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
-            </select>
-            <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
-            <div class="ai-flow-toggle-row">
-              <div class="ai-flow-toggle-label-wrap">
-                <div class="ai-flow-toggle-label">Enable quiet hours</div>
-                <div class="ai-flow-toggle-desc">Suppress or batch non-critical alerts during set hours</div>
-              </div>
-              <label class="ai-flow-switch">
-                <input type="checkbox" id="usQhEnabled"${qhEnabled ? ' checked' : ''}>
-                <span class="ai-flow-slider"></span>
-              </label>
-            </div>
-            <div id="usQhDetails" style="${qhEnabled ? '' : 'display:none'}">
-              <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap">
-                <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
-                  <div class="ai-flow-toggle-label">From</div>
-                </div>
-                <select class="unified-settings-select" id="usQhStart" style="width:auto">${hourOptions}</select>
-                <div class="ai-flow-toggle-label-wrap" style="min-width:30px">
-                  <div class="ai-flow-toggle-label">To</div>
-                </div>
-                <select class="unified-settings-select" id="usQhEnd" style="width:auto">${hourOptionsEnd}</select>
-              </div>
-              <div style="margin-top:4px">
-                <div class="ai-flow-toggle-label" style="margin-bottom:4px">Timezone</div>
-                <select class="unified-settings-select" id="usQhTimezone" style="width:100%">${makeTzOptions(qhTz)}</select>
-              </div>
-              <div style="margin-top:4px">
-                <div class="ai-flow-toggle-label" style="margin-bottom:4px">During quiet hours</div>
-                <select class="unified-settings-select" id="usQhOverride">
-                  <option value="critical_only"${qhOverride === 'critical_only' ? ' selected' : ''}>Critical only (suppress others)</option>
-                  <option value="silence_all"${qhOverride === 'silence_all' ? ' selected' : ''}>Silence all</option>
-                  ${QUIET_HOURS_BATCH_ENABLED ? `<option value="batch_on_wake"${qhOverride === 'batch_on_wake' ? ' selected' : ''}>Batch — deliver on wake</option>` : ''}
-                </select>
-              </div>
-            </div>
-            <div class="ai-flow-section-label" style="margin-top:8px">Digest Mode</div>
-            ${!DIGEST_CRON_ENABLED ? '<div class="ai-flow-toggle-desc" style="margin-bottom:4px">Digest delivery is not yet active — real-time only for now.</div>' : ''}
+          const isRealtime = !DIGEST_CRON_ENABLED || digestMode === 'realtime';
+          const sharedTz = qhTz || digestTz || detectedTz;
+
+          html += `<div class="ai-flow-section-label" style="margin-top:8px">Delivery Mode</div>
+            ${!DIGEST_CRON_ENABLED ? '<div class="ai-flow-toggle-desc" style="margin-bottom:4px">Digest delivery is not yet active.</div>' : ''}
             <select class="unified-settings-select" id="usDigestMode"${!DIGEST_CRON_ENABLED ? ' disabled' : ''}>
-              <option value="realtime"${!DIGEST_CRON_ENABLED || digestMode === 'realtime' ? ' selected' : ''}>Real-time (immediate)</option>
+              <option value="realtime"${isRealtime ? ' selected' : ''}>Real-time (immediate)</option>
               ${DIGEST_CRON_ENABLED ? `<option value="daily"${digestMode === 'daily' ? ' selected' : ''}>Daily digest</option>
               <option value="twice_daily"${digestMode === 'twice_daily' ? ' selected' : ''}>Twice daily</option>
               <option value="weekly"${digestMode === 'weekly' ? ' selected' : ''}>Weekly digest</option>` : ''}
             </select>
-            <div id="usDigestDetails" style="${!DIGEST_CRON_ENABLED || digestMode === 'realtime' ? 'display:none' : ''}">
+            <div id="usRealtimeSection" style="${isRealtime ? '' : 'display:none'}">
+              <div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
+              <div class="ai-flow-toggle-row">
+                <div class="ai-flow-toggle-label-wrap">
+                  <div class="ai-flow-toggle-label">Enable notifications</div>
+                  <div class="ai-flow-toggle-desc">Receive alerts for events matching your filters</div>
+                </div>
+                <label class="ai-flow-switch">
+                  <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled ? ' checked' : ''}>
+                  <span class="ai-flow-slider"></span>
+                </label>
+              </div>
+              <div class="ai-flow-section-label">Sensitivity</div>
+              <select class="unified-settings-select" id="usNotifSensitivity">
+                <option value="all"${sensitivity === 'all' ? ' selected' : ''}>All events</option>
+                <option value="high"${sensitivity === 'high' ? ' selected' : ''}>High &amp; critical</option>
+                <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
+              </select>
+              <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
+              <div class="ai-flow-toggle-row">
+                <div class="ai-flow-toggle-label-wrap">
+                  <div class="ai-flow-toggle-label">Enable quiet hours</div>
+                  <div class="ai-flow-toggle-desc">Suppress or batch non-critical alerts during set hours</div>
+                </div>
+                <label class="ai-flow-switch">
+                  <input type="checkbox" id="usQhEnabled"${qhEnabled ? ' checked' : ''}>
+                  <span class="ai-flow-slider"></span>
+                </label>
+              </div>
+              <div id="usQhDetails" style="${qhEnabled ? '' : 'display:none'}">
+                <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap">
+                  <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
+                    <div class="ai-flow-toggle-label">From</div>
+                  </div>
+                  <select class="unified-settings-select" id="usQhStart" style="width:auto">${hourOptions}</select>
+                  <div class="ai-flow-toggle-label-wrap" style="min-width:30px">
+                    <div class="ai-flow-toggle-label">To</div>
+                  </div>
+                  <select class="unified-settings-select" id="usQhEnd" style="width:auto">${hourOptionsEnd}</select>
+                </div>
+                <div style="margin-top:4px">
+                  <div class="ai-flow-toggle-label" style="margin-bottom:4px">During quiet hours</div>
+                  <select class="unified-settings-select" id="usQhOverride">
+                    <option value="critical_only"${qhOverride === 'critical_only' ? ' selected' : ''}>Critical only (suppress others)</option>
+                    <option value="silence_all"${qhOverride === 'silence_all' ? ' selected' : ''}>Silence all</option>
+                    ${QUIET_HOURS_BATCH_ENABLED ? `<option value="batch_on_wake"${qhOverride === 'batch_on_wake' ? ' selected' : ''}>Batch — deliver on wake</option>` : ''}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div id="usDigestDetails" style="${isRealtime ? 'display:none' : ''}">
               <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap;margin-top:4px">
                 <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
                   <div class="ai-flow-toggle-label">Send at</div>
                 </div>
                 <select class="unified-settings-select" id="usDigestHour" style="width:auto">${hourOptionsDigest}</select>
               </div>
-              <div style="margin-top:4px">
-                <div class="ai-flow-toggle-label" style="margin-bottom:4px">Timezone</div>
-                <select class="unified-settings-select" id="usDigestTimezone" style="width:100%">${makeTzOptions(digestTz)}</select>
-              </div>
-            </div>`;
+            </div>
+            <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
+            <select class="unified-settings-select" id="usSharedTimezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
           return html;
         }
 
@@ -934,7 +933,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
             const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
             const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
-            const tzEl = container.querySelector<HTMLSelectElement>('#usQhTimezone');
+            const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
             const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
             void setQuietHours({
               variant: SITE_VARIANT,
@@ -952,7 +951,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           digestDebounceTimer = setTimeout(() => {
             const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
             const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
-            const tzEl = container.querySelector<HTMLSelectElement>('#usDigestTimezone');
+            const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
             void setDigestSettings({
               variant: SITE_VARIANT,
               digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
@@ -970,17 +969,25 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             saveQuietHours();
             return;
           }
-          if (target.id === 'usQhStart' || target.id === 'usQhEnd' || target.id === 'usQhOverride' || target.id === 'usQhTimezone') {
+          if (target.id === 'usQhStart' || target.id === 'usQhEnd' || target.id === 'usQhOverride') {
             saveQuietHours();
             return;
           }
           if (target.id === 'usDigestMode') {
-            const details = container.querySelector<HTMLElement>('#usDigestDetails');
-            if (details) details.style.display = target.value === 'realtime' ? 'none' : '';
+            const isRt = target.value === 'realtime';
+            const realtimeSection = container.querySelector<HTMLElement>('#usRealtimeSection');
+            const digestDetails = container.querySelector<HTMLElement>('#usDigestDetails');
+            if (realtimeSection) realtimeSection.style.display = isRt ? '' : 'none';
+            if (digestDetails) digestDetails.style.display = isRt ? 'none' : '';
             saveDigestSettings();
             return;
           }
-          if (target.id === 'usDigestHour' || target.id === 'usDigestTimezone') {
+          if (target.id === 'usDigestHour') {
+            saveDigestSettings();
+            return;
+          }
+          if (target.id === 'usSharedTimezone') {
+            saveQuietHours();
             saveDigestSettings();
             return;
           }
