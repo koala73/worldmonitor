@@ -159,16 +159,21 @@ export async function resumePendingCheckout(options?: {
   }
 
   console.log(`[checkout] resumePendingCheckout: starting checkout for ${intent.productId}`);
-  clearPendingCheckoutIntent();
-  await startCheckout(
-    intent.productId,
-    {
-      referralCode: intent.referralCode,
-      discountCode: intent.discountCode,
-    },
-    { fallbackToPricingPage: false },
-  );
-  return true;
+  try {
+    await startCheckout(
+      intent.productId,
+      {
+        referralCode: intent.referralCode,
+        discountCode: intent.discountCode,
+      },
+      { fallbackToPricingPage: false },
+    );
+    clearPendingCheckoutIntent();
+    return true;
+  } catch (err) {
+    console.warn('[checkout] resumePendingCheckout: startCheckout failed, intent preserved for retry', err);
+    return false;
+  }
 }
 
 /**
