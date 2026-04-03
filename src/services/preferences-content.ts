@@ -754,12 +754,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           const qhEnabled = alertRule?.quietHoursEnabled ?? false;
           const qhStart = alertRule?.quietHoursStart ?? 22;
           const qhEnd = alertRule?.quietHoursEnd ?? 7;
-          const qhTz = alertRule?.quietHoursTimezone ?? detectedTz;
           const qhOverride = alertRule?.quietHoursOverride ?? 'critical_only';
 
           const digestMode = alertRule?.digestMode ?? 'realtime';
           const digestHour = alertRule?.digestHour ?? 8;
-          const digestTz = alertRule?.digestTimezone ?? detectedTz;
 
           const hourOptions = Array.from({ length: 24 }, (_, h) => {
             const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
@@ -798,7 +796,9 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           };
 
           const isRealtime = !DIGEST_CRON_ENABLED || digestMode === 'realtime';
-          const sharedTz = qhTz || digestTz || detectedTz;
+          const sharedTz = isRealtime
+            ? (alertRule?.quietHoursTimezone ?? alertRule?.digestTimezone ?? detectedTz)
+            : (alertRule?.digestTimezone ?? alertRule?.quietHoursTimezone ?? detectedTz);
 
           html += `<div class="ai-flow-section-label" style="margin-top:8px">Delivery Mode</div>
             ${!DIGEST_CRON_ENABLED ? '<div class="ai-flow-toggle-desc" style="margin-bottom:4px">Digest delivery is not yet active.</div>' : ''}
@@ -980,6 +980,16 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             if (realtimeSection) realtimeSection.style.display = isRt ? '' : 'none';
             if (digestDetails) digestDetails.style.display = isRt ? 'none' : '';
             saveDigestSettings();
+            // Switching to digest mode: auto-enable the alert rule so the
+            // backend schedules digests. The enable toggle is hidden in
+            // digest mode, so the user has no other way to turn it on.
+            if (!isRt) {
+              const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
+              if (enabledEl && !enabledEl.checked) {
+                enabledEl.checked = true;
+                enabledEl.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }
             return;
           }
           if (target.id === 'usDigestHour') {
