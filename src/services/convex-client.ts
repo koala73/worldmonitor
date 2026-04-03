@@ -42,9 +42,15 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
       return getClerkToken();
     },
     (isAuthenticated: boolean) => {
-      if (isAuthenticated && authReadyResolve) {
-        authReadyResolve();
-        authReadyResolve = null;
+      if (isAuthenticated) {
+        if (authReadyResolve) {
+          authReadyResolve();
+          authReadyResolve = null;
+        }
+      } else {
+        // Sign-out or token expiry: reset the promise so the next
+        // waitForConvexAuth() blocks until re-authentication completes.
+        authReadyPromise = new Promise<void>((resolve) => { authReadyResolve = resolve; });
       }
     },
   );
