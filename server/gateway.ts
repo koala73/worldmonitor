@@ -110,6 +110,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/get-gdelt-topic-timeline': 'medium',
   '/api/climate/v1/list-climate-anomalies': 'static',
   '/api/climate/v1/get-co2-monitoring': 'static',
+  '/api/climate/v1/get-ocean-ice-data': 'static',
   '/api/climate/v1/list-air-quality-data': 'fast',
   '/api/climate/v1/list-climate-news': 'slow',
   '/api/sanctions/v1/list-sanctions-pressure': 'static',
