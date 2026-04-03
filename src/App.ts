@@ -69,6 +69,7 @@ import { getConvexClient, getConvexApi } from '@/services/convex-client';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { capturePendingCheckoutIntentFromUrl, resumePendingCheckout } from '@/services/checkout';
+import { getClerkToken } from '@/services/clerk';
 import {
   CorrelationEngine,
   militaryAdapter,
@@ -806,9 +807,13 @@ export class App {
         // Claim any anonymous purchase made before sign-in (anon → real user migration)
         const anonId = localStorage.getItem('wm-anon-id');
         if (anonId) {
-          void Promise.all([getConvexClient(), getConvexApi()])
-            .then(async ([client, api]) => {
-              if (!client || !api) return;
+          void Promise.all([getConvexClient(), getConvexApi(), getClerkToken()])
+            .then(async ([client, api, token]) => {
+              if (!client || !api || !token) {
+                // Convex auth not ready yet — skip silently. wm-anon-id is preserved
+                // so the next page load (when _prevUserId resets) will retry.
+                return;
+              }
               const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
               const claimed = result.claimed;
               const totalClaimed = claimed.subscriptions + claimed.entitlements +

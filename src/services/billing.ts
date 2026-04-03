@@ -54,6 +54,9 @@ export async function initSubscriptionWatch(_userId?: string): Promise<void> {
         subscriptionLoaded = true;
         for (const cb of listeners) cb(result);
       },
+      (err: Error) => {
+        console.warn('[billing] Subscription query error:', err.message);
+      },
     );
 
     initialized = true;
