@@ -114,6 +114,7 @@ const SLOW_KEYS = new Set([
   'euFsi',
   'diseaseOutbreaks',
   'economicStress',
+  'climateAirQuality', 'healthAirQuality',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',

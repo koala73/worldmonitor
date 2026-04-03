@@ -99,7 +99,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   progressData: 'slow', renewableEnergy: 'slow',
   etfFlows: 'slow', shippingRates: 'fast', wildfires: 'slow',
   climateAnomalies: 'slow', co2Monitoring: 'slow', climateNews: 'slow', sanctionsPressure: 'slow', radiationWatch: 'slow', thermalEscalation: 'slow', crossSourceSignals: 'slow', cyberThreats: 'slow', techReadiness: 'slow',
-  climateAirQuality: 'fast',
+  climateAirQuality: 'slow',
   theaterPosture: 'fast', naturalEvents: 'slow',
   cryptoQuotes: 'slow', gulfQuotes: 'slow', stablecoinMarkets: 'slow',
   unrestEvents: 'slow', ucdpEvents: 'slow', techEvents: 'slow',
@@ -133,6 +133,6 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   shippingStress: 'fast',
   socialVelocity: 'fast',
   diseaseOutbreaks: 'slow',
-  healthAirQuality: 'fast',
+  healthAirQuality: 'slow',
   economicStress: 'slow',
 };
