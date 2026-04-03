@@ -26,6 +26,7 @@ const OPENAQ_LOCATIONS_URL = 'https://api.openaq.org/v3/locations';
 const OPENAQ_PM25_LATEST_URL = 'https://api.openaq.org/v3/parameters/2/latest';
 const OPENAQ_PAGE_LIMIT = 1000;
 const OPENAQ_MAX_PAGES = 20;
+const AIR_QUALITY_LOCK_TTL_MS = 600_000;
 
 // The product only exposes four buckets, so EPA's sensitive/unhealthy/very-unhealthy
 // bands are collapsed into a single "unhealthy" level.
@@ -47,6 +48,15 @@ const WAQI_WORLD_TILES = [
   '0,-60,55,60',
   '0,60,55,180',
 ];
+
+class SeedConfigurationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'SeedConfigurationError';
+    this.code = 'SEED_CONFIGURATION_ERROR';
+    this.retryable = false;
+  }
+}
 
 function toFiniteNumber(value) {
   const numeric = typeof value === 'number' ? value : Number(value);
@@ -215,6 +225,34 @@ export function buildWaqiStations(entries = [], nowMs = Date.now()) {
   return stations;
 }
 
+function isNormalizedAirQualityStation(station) {
+  return Boolean(
+    trimString(station?.city)
+    && toFiniteNumber(station?.lat) != null
+    && toFiniteNumber(station?.lng) != null
+    && toFiniteNumber(station?.aqi) != null
+    && toEpochMs(station?.measuredAt) != null,
+  );
+}
+
+function normalizeSupplementalStations({ waqiStations = [], waqiEntries = [], nowMs = Date.now() }) {
+  const normalizedStations = Array.isArray(waqiStations)
+    ? waqiStations.filter(isNormalizedAirQualityStation)
+    : [];
+
+  if (!Array.isArray(waqiEntries) || waqiEntries.length === 0) {
+    return normalizedStations;
+  }
+
+  // `buildAirQualityPayload()` now accepts pre-normalized `waqiStations`.
+  // Keep `waqiEntries` as a backward-compatible alias for raw WAQI API payloads.
+  const legacyStations = waqiEntries.some(isNormalizedAirQualityStation)
+    ? waqiEntries.filter(isNormalizedAirQualityStation)
+    : buildWaqiStations(waqiEntries, nowMs);
+
+  return [...normalizedStations, ...legacyStations];
+}
+
 function stationIdentity(station) {
   return [
     trimString(station.city).toLowerCase(),
@@ -225,8 +263,13 @@ function stationIdentity(station) {
 }
 
 export function mergeAirQualityStations(primaryStations = [], secondaryStations = []) {
-  const merged = new Map(primaryStations.map((station) => [stationIdentity(station), station]));
+  const merged = new Map();
+  for (const station of primaryStations) {
+    if (!isNormalizedAirQualityStation(station)) continue;
+    merged.set(stationIdentity(station), station);
+  }
   for (const station of secondaryStations) {
+    if (!isNormalizedAirQualityStation(station)) continue;
     const key = stationIdentity(station);
     if (!merged.has(key)) merged.set(key, station);
   }
@@ -251,13 +294,17 @@ function toOutputStation(station) {
 export function buildOpenAqHeaders(apiKey = process.env.OPENAQ_API_KEY) {
   const trimmedKey = trimString(apiKey);
   if (!trimmedKey) {
-    throw new Error('Missing OPENAQ_API_KEY — OpenAQ v3 requests now require X-API-Key');
+    throw new SeedConfigurationError('Missing OPENAQ_API_KEY — OpenAQ v3 requests now require X-API-Key');
   }
   return {
     Accept: 'application/json',
     'User-Agent': CHROME_UA,
     'X-API-Key': trimmedKey,
   };
+}
+
+function isConfigurationError(error) {
+  return error instanceof SeedConfigurationError || error?.code === 'SEED_CONFIGURATION_ERROR';
 }
 
 async function fetchJson(url, label, headers = {}) {
@@ -370,9 +417,16 @@ async function fetchWaqiStations(nowMs) {
   return buildWaqiStations(entries, nowMs);
 }
 
-export function buildAirQualityPayload({ locations = [], latestMeasurements = [], waqiEntries = [], nowMs = Date.now() }) {
+export function buildAirQualityPayload({
+  locations = [],
+  latestMeasurements = [],
+  waqiStations = [],
+  waqiEntries = [],
+  nowMs = Date.now(),
+} = {}) {
   const openAqStations = buildOpenAqStations(locations, latestMeasurements, nowMs);
-  const mergedStations = mergeAirQualityStations(openAqStations, waqiEntries);
+  const supplementalStations = normalizeSupplementalStations({ waqiStations, waqiEntries, nowMs });
+  const mergedStations = mergeAirQualityStations(openAqStations, supplementalStations);
   return {
     stations: mergedStations.map(toOutputStation),
     fetchedAt: nowMs,
@@ -392,7 +446,7 @@ export async function fetchAirQualityPayload(nowMs = Date.now()) {
   const payload = buildAirQualityPayload({
     locations,
     latestMeasurements,
-    waqiEntries: waqiStations,
+    waqiStations,
     nowMs,
   });
 
@@ -455,6 +509,23 @@ async function verifyMirroredKeys() {
   return Boolean(healthPayload && climatePayload);
 }
 
+async function fetchAirQualityPayloadWithRetry(maxRetries = 2, delayMs = 1_000) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetchAirQualityPayload();
+    } catch (error) {
+      lastError = error;
+      if (isConfigurationError(error) || attempt >= maxRetries) break;
+      const wait = delayMs * 2 ** attempt;
+      const cause = error?.cause ? ` (cause: ${error.cause.message || error.cause.code || error.cause})` : '';
+      console.warn(`  Retry ${attempt + 1}/${maxRetries} in ${wait}ms: ${error?.message ?? error}${cause}`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+  throw lastError;
+}
+
 async function main() {
   const domain = 'health';
   const resource = 'air-quality';
@@ -465,7 +536,9 @@ async function main() {
   console.log(`  Run ID:  ${runId}`);
   console.log(`  Keys:    ${HEALTH_AIR_QUALITY_KEY}, ${CLIMATE_AIR_QUALITY_KEY}`);
 
-  const lockResult = await acquireLockSafely(`${domain}:${resource}`, runId, 120_000, {
+  // Each OpenAQ branch can walk up to 20 pages sequentially with per-request timeouts.
+  // Keep the lock well above the realistic worst-case runtime to avoid overlapping cron runs.
+  const lockResult = await acquireLockSafely(`${domain}:${resource}`, runId, AIR_QUALITY_LOCK_TTL_MS, {
     label: `${domain}:${resource}`,
   });
   if (lockResult.skipped) process.exit(0);
@@ -476,7 +549,7 @@ async function main() {
 
   let payload;
   try {
-    payload = await withRetry(() => fetchAirQualityPayload(), 2, 1_000);
+    payload = await fetchAirQualityPayloadWithRetry();
   } catch (error) {
     await releaseLock(`${domain}:${resource}`, runId);
     const durationMs = Date.now() - startMs;
@@ -488,6 +561,10 @@ async function main() {
       OPENAQ_META_KEY,
       CLIMATE_META_KEY,
     ], CACHE_TTL).catch(() => {});
+    if (isConfigurationError(error)) {
+      console.log(`\n=== Fatal configuration error (${Math.round(durationMs)}ms) ===`);
+      process.exit(1);
+    }
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
     process.exit(0);
   }

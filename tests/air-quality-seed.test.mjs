@@ -152,7 +152,7 @@ describe('air quality payload assembly', () => {
           parameter: { name: 'pm25' },
         },
       ],
-      waqiEntries: [],
+      waqiStations: [],
       nowMs,
     });
 
@@ -160,6 +160,36 @@ describe('air quality payload assembly', () => {
     assert.equal(payload.stations.length, 1);
     assert.equal(payload.stations[0].city, 'Lahore');
     assert.equal(payload.stations[0].country_code, 'PK');
+    assert.equal(payload.stations[0].risk_level, 'unhealthy');
+    assert.equal(typeof payload.stations[0].measured_at, 'number');
+    assert.equal('riskLevel' in payload.stations[0], false);
+  });
+
+  it('normalizes legacy raw waqiEntries before merging them into the payload', () => {
+    const nowMs = Date.UTC(2026, 3, 3, 12, 0, 0);
+    const payload = buildAirQualityPayload({
+      locations: [],
+      latestMeasurements: [],
+      waqiEntries: [
+        {
+          lat: 25.2,
+          lon: 55.27,
+          aqi: '180',
+          dominentpol: 'pm25',
+          iaqi: { pm25: { v: 74.1 } },
+          station: {
+            name: 'Dubai, AE',
+            time: new Date(nowMs - (20 * 60 * 1000)).toISOString(),
+          },
+        },
+      ],
+      nowMs,
+    });
+
+    assert.equal(payload.fetchedAt, nowMs);
+    assert.equal(payload.stations.length, 1);
+    assert.equal(payload.stations[0].city, 'Dubai');
+    assert.equal(payload.stations[0].country_code, 'AE');
     assert.equal(payload.stations[0].risk_level, 'unhealthy');
     assert.equal(typeof payload.stations[0].measured_at, 'number');
     assert.equal('riskLevel' in payload.stations[0], false);
