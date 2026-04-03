@@ -103,7 +103,7 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
     try {
       ({ payload } = await jwtVerify(token, jwks, getClerkJwtVerifyOptions()));
     } catch (audErr) {
-      if ((audErr as Error).message?.includes('"aud"')) {
+      if ((audErr as Error).message?.includes('missing required "aud"')) {
         ({ payload } = await jwtVerify(token, jwks, {
           issuer: CLERK_JWT_ISSUER_DOMAIN,
           algorithms: ['RS256'],
