@@ -142,7 +142,11 @@ export async function getClerkToken(): Promise<string | null> {
 
   _tokenInflight = (async () => {
     const session = clerkInstance?.session;
-    if (!session) return null;
+    if (!session) {
+      console.warn(`[clerk] getClerkToken: no session (clerkInstance=${!!clerkInstance}, user=${!!clerkInstance?.user})`);
+      _tokenInflight = null;
+      return null;
+    }
     try {
       // Try the 'convex' template first (includes plan claim for faster server-side checks).
       // Fall back to the standard session token if the template isn't configured in Clerk.

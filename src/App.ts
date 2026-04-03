@@ -65,11 +65,10 @@ import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinat
 import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
 import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignOut as cloudPrefsSignOut } from '@/utils/cloud-prefs-sync';
-import { getConvexClient, getConvexApi } from '@/services/convex-client';
+import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { capturePendingCheckoutIntentFromUrl, resumePendingCheckout } from '@/services/checkout';
-import { getClerkToken } from '@/services/clerk';
 import {
   CorrelationEngine,
   militaryAdapter,
@@ -807,16 +806,15 @@ export class App {
         // Claim any anonymous purchase made before sign-in (anon → real user migration)
         const anonId = localStorage.getItem('wm-anon-id');
         if (anonId) {
-          const attemptClaim = async (retriesLeft: number): Promise<void> => {
-            const [client, api, token] = await Promise.all([getConvexClient(), getConvexApi(), getClerkToken()]);
-            if (!client || !api || !token) {
-              if (retriesLeft > 0) {
-                // Clerk token not ready yet — retry after a short delay.
-                // wm-anon-id is preserved so page reload also retries.
-                setTimeout(() => { attemptClaim(retriesLeft - 1).catch(() => {}); }, 2000);
-                return;
-              }
-              console.warn('[billing] claimSubscription skipped — auth not ready after retries');
+          void (async () => {
+            const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+            if (!client || !api) return;
+            // Wait for ConvexClient WebSocket auth handshake to complete.
+            // Without this, mutations arrive at Convex before the server
+            // has the JWT → "Authentication required" errors.
+            const ready = await waitForConvexAuth(10_000);
+            if (!ready) {
+              console.warn('[billing] claimSubscription skipped — Convex auth not ready');
               return;
             }
             const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
@@ -829,8 +827,7 @@ export class App {
             // Always remove after non-throwing completion — mutation is idempotent.
             // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
             localStorage.removeItem('wm-anon-id');
-          };
-          void attemptClaim(3).catch((err: unknown) => {
+          })().catch((err: unknown) => {
             console.warn('[billing] claimSubscription failed:', err);
             // Non-fatal — anon ID preserved for retry on next page load
           });

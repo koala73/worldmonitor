@@ -215,6 +215,20 @@ describe('validateBearerToken (with JWKS)', () => {
     assert.equal(result.valid, false);
   });
 
+  it('accepts a standard Clerk token with no aud claim (fallback path)', async () => {
+    const token = await new SignJWT({ sub: 'user_noaud', plan: 'pro' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(`http://127.0.0.1:${jwksPort}`)
+      .setSubject('user_noaud')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey);
+
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true, 'standard Clerk tokens without aud should be accepted');
+    assert.equal(result.userId, 'user_noaud');
+  });
+
   it('rejects a token with wrong issuer', async () => {
     const token = await new SignJWT({ sub: 'user_wrongiss', plan: 'pro' })
       .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })

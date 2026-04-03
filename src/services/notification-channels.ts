@@ -39,8 +39,13 @@ export interface ChannelsData {
 }
 
 async function authFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = await getClerkToken();
-  if (!token) throw new Error('Not authenticated');
+  let token = await getClerkToken();
+  if (!token) {
+    console.warn('[authFetch] getClerkToken returned null, retrying in 2s...');
+    await new Promise((r) => setTimeout(r, 2000));
+    token = await getClerkToken();
+  }
+  if (!token) throw new Error('Not authenticated (Clerk token null after retry)');
   return fetch(path, {
     ...init,
     headers: {
