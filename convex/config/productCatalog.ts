@@ -27,7 +27,7 @@ export interface CatalogEntry {
   dodoProductId?: string;
   planKey: string;
   displayName: string;
-  priceCents: number | null;
+  priceCents: number | null; // fallback only — live prices fetched from Dodo API
   billingPeriod: "monthly" | "annual" | "none";
   tierGroup: string;
   features: PlanFeatures;
@@ -115,7 +115,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0Nbtt71uObulf7fGXhQup",
     planKey: "pro_monthly",
     displayName: "Pro Monthly",
-    priceCents: 1900,
+    priceCents: 3999,
     billingPeriod: "monthly",
     tierGroup: "pro",
     features: PRO_FEATURES,
@@ -138,7 +138,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0NbttMIfjLWC10jHQWYgJ",
     planKey: "pro_annual",
     displayName: "Pro Annual",
-    priceCents: 19000,
+    priceCents: 39999,
     billingPeriod: "annual",
     tierGroup: "pro",
     features: PRO_FEATURES,
@@ -153,7 +153,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0NbttVmG1SERrxhygbbUq",
     planKey: "api_starter",
     displayName: "API Starter Monthly",
-    priceCents: 4900,
+    priceCents: 5999,
     billingPeriod: "monthly",
     tierGroup: "api_starter",
     features: API_STARTER_FEATURES,

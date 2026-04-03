@@ -16,8 +16,8 @@
   },
   {
     "name": "Pro",
-    "monthlyPrice": 19,
-    "annualPrice": 190,
+    "monthlyPrice": 39.99,
+    "annualPrice": 399.99,
     "description": "Full intelligence dashboard",
     "features": [
       "Everything in Free",
@@ -34,7 +34,7 @@
   },
   {
     "name": "API",
-    "monthlyPrice": 49,
+    "monthlyPrice": 59.99,
     "annualPrice": 490,
     "description": "Programmatic access to intelligence data",
     "features": [

@@ -137,6 +137,7 @@ describe('Product ID guard', () => {
       `grep -rn 'pdt_' --include='*.ts' --include='*.tsx' --include='*.mjs' --include='*.js' . ` +
       `| grep -v node_modules ` +
       `| grep -v 'convex/config/productCatalog' ` +
+      `| grep -v 'api/product-catalog' ` +
       `| grep -v 'src/config/products.generated' ` +
       `| grep -v 'pro-test/src/generated/' ` +
       `| grep -v 'public/pro/' ` +

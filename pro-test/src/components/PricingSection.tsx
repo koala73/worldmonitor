@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Check, ArrowRight, Zap } from 'lucide-react';
 
-import tiersData from '../generated/tiers.json';
+// Static fallback from build-time generation (used while fetching live prices)
+import fallbackTiers from '../generated/tiers.json';
 
 interface Tier {
   name: string;
@@ -19,9 +20,26 @@ interface Tier {
   annualProductId?: string;
 }
 
-// Prices and product IDs generated from convex/config/productCatalog.ts
-// To update: edit catalog → npx tsx scripts/generate-product-config.mjs → rebuild
-const TIERS: Tier[] = tiersData as Tier[];
+const CATALOG_API = 'https://api.worldmonitor.app/api/product-catalog';
+
+function usePricingData(): Tier[] {
+  const [tiers, setTiers] = useState<Tier[]>(fallbackTiers as Tier[]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(CATALOG_API, { signal: AbortSignal.timeout(5000) })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!cancelled && data?.tiers?.length) {
+          setTiers(data.tiers as Tier[]);
+        }
+      })
+      .catch(() => { /* keep fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  return tiers;
+}
 
 const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/';
 
@@ -88,6 +106,7 @@ function getCtaProps(tier: Tier, billing: 'monthly' | 'annual', refCode?: string
 
 export function PricingSection({ refCode }: { refCode?: string }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
+  const TIERS = usePricingData();
 
   return (
     <section id="pricing" className="py-24 px-6 border-t border-wm-border bg-[#060606]">
