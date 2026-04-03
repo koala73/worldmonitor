@@ -34,7 +34,6 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   minerals:         'supply_chain:minerals:v2',
   giving:           'giving:summary:v1',
   climateAnomalies: 'climate:anomalies:v2',
-  climateAirQuality: 'climate:air-quality:v1',
   co2Monitoring:    'climate:co2-monitoring:v1',
   climateNews:      'climate:news-intelligence:v1',
   radiationWatch:  'radiation:observations:v1',
@@ -89,7 +88,6 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   shippingStress:   'supply_chain:shipping_stress:v1',
   socialVelocity:   'intelligence:social:reddit:v1',
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
-  healthAirQuality: 'health:air-quality:v1',
   economicStress:   'economic:stress-index:v1',
 };
 
@@ -99,7 +97,6 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   progressData: 'slow', renewableEnergy: 'slow',
   etfFlows: 'slow', shippingRates: 'fast', wildfires: 'slow',
   climateAnomalies: 'slow', co2Monitoring: 'slow', climateNews: 'slow', sanctionsPressure: 'slow', radiationWatch: 'slow', thermalEscalation: 'slow', crossSourceSignals: 'slow', cyberThreats: 'slow', techReadiness: 'slow',
-  climateAirQuality: 'slow',
   theaterPosture: 'fast', naturalEvents: 'slow',
   cryptoQuotes: 'slow', gulfQuotes: 'slow', stablecoinMarkets: 'slow',
   unrestEvents: 'slow', ucdpEvents: 'slow', techEvents: 'slow',
@@ -133,6 +130,5 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   shippingStress: 'fast',
   socialVelocity: 'fast',
   diseaseOutbreaks: 'slow',
-  healthAirQuality: 'slow',
   economicStress: 'slow',
 };

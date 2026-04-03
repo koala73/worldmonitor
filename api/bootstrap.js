@@ -26,7 +26,6 @@ const BOOTSTRAP_CACHE_KEYS = {
   minerals:         'supply_chain:minerals:v2',
   giving:           'giving:summary:v1',
   climateAnomalies: 'climate:anomalies:v2',
-  climateAirQuality: 'climate:air-quality:v1',
   co2Monitoring: 'climate:co2-monitoring:v1',
   climateNews:      'climate:news-intelligence:v1',
   radiationWatch: 'radiation:observations:v1',
@@ -83,7 +82,6 @@ const BOOTSTRAP_CACHE_KEYS = {
   shippingStress:    'supply_chain:shipping_stress:v1',
   socialVelocity:    'intelligence:social:reddit:v1',
   diseaseOutbreaks:  'health:disease-outbreaks:v1',
-  healthAirQuality:  'health:air-quality:v1',
   economicStress:    'economic:stress-index:v1',
 };
 
@@ -114,7 +112,6 @@ const SLOW_KEYS = new Set([
   'euFsi',
   'diseaseOutbreaks',
   'economicStress',
-  'climateAirQuality', 'healthAirQuality',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',
@@ -158,62 +155,6 @@ async function getCachedJsonBatch(keys) {
     }
   }
   return result;
-}
-
-function asString(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function asNumber(value) {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
-function normalizeAirQualityStation(station) {
-  if (!station || typeof station !== 'object') return null;
-  const city = asString(station.city);
-  const lat = asNumber(station.lat);
-  const lng = asNumber(station.lng);
-  const pm25 = asNumber(station.pm25);
-  const aqi = asNumber(station.aqi);
-  const measuredAt = asNumber(station.measured_at ?? station.measuredAt);
-  if (!city || lat == null || lng == null || pm25 == null || aqi == null || measuredAt == null) return null;
-
-  return {
-    city,
-    countryCode: asString(station.country_code ?? station.countryCode),
-    lat,
-    lng,
-    pm25,
-    aqi: Math.max(0, Math.min(500, Math.round(aqi))),
-    riskLevel: asString(station.risk_level ?? station.riskLevel),
-    pollutant: asString(station.pollutant) || 'pm25',
-    measuredAt: Math.round(measuredAt),
-    source: asString(station.source),
-  };
-}
-
-function normalizeAirQualityPayload(payload, collectionField = 'stations') {
-  if (!payload || typeof payload !== 'object') {
-    return collectionField === 'alerts' ? { alerts: [], fetchedAt: 0 } : { stations: [], fetchedAt: 0 };
-  }
-
-  const rows = Array.isArray(payload.stations)
-    ? payload.stations
-    : Array.isArray(payload.alerts)
-      ? payload.alerts
-      : [];
-
-  const stations = rows
-    .map((row) => normalizeAirQualityStation(row))
-    .filter(Boolean);
-
-  const fetchedAtRaw = payload.fetched_at ?? payload.fetchedAt;
-  const fetchedAt = asNumber(fetchedAtRaw);
-  if (collectionField === 'alerts') {
-    return { alerts: stations, fetchedAt: fetchedAt == null ? 0 : Math.round(fetchedAt) };
-  }
-  return { stations, fetchedAt: fetchedAt == null ? 0 : Math.round(fetchedAt) };
 }
 
 export default async function handler(req) {
@@ -260,10 +201,6 @@ export default async function handler(req) {
       if (names[i] === 'forecasts' && val != null && 'enrichmentMeta' in val) {
         const { enrichmentMeta: _stripped, ...rest } = val;
         data[names[i]] = rest;
-      } else if (names[i] === 'climateAirQuality') {
-        data[names[i]] = normalizeAirQualityPayload(val, 'stations');
-      } else if (names[i] === 'healthAirQuality') {
-        data[names[i]] = normalizeAirQualityPayload(val, 'alerts');
       } else {
         data[names[i]] = val;
       }

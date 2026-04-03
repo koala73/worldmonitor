@@ -1,4 +1,3 @@
-import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import {
   HealthServiceClient,
@@ -12,9 +11,6 @@ const client = new HealthServiceClient(getRpcBaseUrl(), { fetch: (...args) => gl
 const emptyAirQualityAlerts: ListAirQualityAlertsResponse = { alerts: [], fetchedAt: 0 };
 
 export async function fetchHealthAirQuality(): Promise<ListAirQualityAlertsResponse> {
-  const hydrated = getHydratedData('healthAirQuality') as ListAirQualityAlertsResponse | undefined;
-  if (hydrated?.alerts?.length) return hydrated;
-
   try {
     return await client.listAirQualityAlerts({});
   } catch {

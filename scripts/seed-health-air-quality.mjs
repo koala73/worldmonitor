@@ -334,31 +334,13 @@ function buildUrl(baseUrl, params) {
 
 async function fetchOpenAqLocationsPage(page) {
   const headers = buildOpenAqHeaders();
-  const attempts = [
-    buildUrl(OPENAQ_LOCATIONS_URL, {
-      limit: OPENAQ_PAGE_LIMIT,
-      page,
-      parameters: 'pm25',
-      order_by: 'lastUpdated',
-      sort: 'desc',
-    }),
-    buildUrl(OPENAQ_LOCATIONS_URL, {
-      limit: OPENAQ_PAGE_LIMIT,
-      page,
-      parameters_id: 2,
-      sort_order: 'desc',
-    }),
-  ];
-
-  let lastError;
-  for (const url of attempts) {
-    try {
-      return await withRetry(() => fetchJson(url, `OpenAQ locations page ${page}`, headers), 2, 1_000);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError;
+  const url = buildUrl(OPENAQ_LOCATIONS_URL, {
+    limit: OPENAQ_PAGE_LIMIT,
+    page,
+    parameters_id: 2,
+    sort_order: 'desc',
+  });
+  return await withRetry(() => fetchJson(url, `OpenAQ locations page ${page}`, headers), 2, 1_000);
 }
 
 async function fetchOpenAqLatestPage(page) {
