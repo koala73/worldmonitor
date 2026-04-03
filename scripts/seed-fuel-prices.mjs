@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import xlsx from 'xlsx';
+import ExcelJS from 'exceljs';
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -20,7 +20,7 @@ const USD_L_MAX = 3.50;
 // EU country name to ISO2 mapping
 const EU_COUNTRY_MAP = {
   'Austria': 'AT', 'Belgium': 'BE', 'Bulgaria': 'BG', 'Croatia': 'HR',
-  'Cyprus': 'CY', 'Czech Republic': 'CZ', 'Denmark': 'DK', 'Estonia': 'EE',
+  'Cyprus': 'CY', 'Czech Republic': 'CZ', 'Czechia': 'CZ', 'Denmark': 'DK', 'Estonia': 'EE',
   'Finland': 'FI', 'France': 'FR', 'Germany': 'DE', 'Greece': 'GR',
   'Hungary': 'HU', 'Ireland': 'IE', 'Italy': 'IT', 'Latvia': 'LV',
   'Lithuania': 'LT', 'Luxembourg': 'LU', 'Malta': 'MT', 'Netherlands': 'NL',
@@ -79,7 +79,7 @@ async function fetchMalaysia() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     if (!Array.isArray(data) || data.length === 0) return [];
-    const row = data[0];
+    const row = data.find(r => r.series_type === 'level') ?? data[0];
     const observedAt = row.date ?? '';
     const ron95 = typeof row.ron95 === 'number' ? row.ron95 : null;
     const diesel = typeof row.diesel === 'number' ? row.diesel : null;
@@ -259,17 +259,33 @@ async function fetchEU_CSV() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     const buf = Buffer.from(await resp.arrayBuffer());
-    const workbook = xlsx.read(buf, { type: 'buffer' });
-    console.log(`  [EU] XLSX sheets: ${workbook.SheetNames.join(', ')}`);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buf);
+    const sheetNames = workbook.worksheets.map(ws => ws.name);
+    console.log(`  [EU] XLSX sheets: ${sheetNames.join(', ')}`);
 
     // Find the "with taxes" sheet, or fall back to first sheet
-    const sheetName = workbook.SheetNames.find(n => /with.tax/i.test(n))
-      ?? workbook.SheetNames.find(n => /price/i.test(n))
-      ?? workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
+    const sheetName = sheetNames.find(n => /with.tax/i.test(n))
+      ?? sheetNames.find(n => /price/i.test(n))
+      ?? sheetNames[0];
+    const sheet = workbook.getWorksheet(sheetName);
 
-    // raw: false → all cells as formatted strings; defval: '' for empty cells
-    const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+    // Convert to array-of-arrays (like xlsx's header:1 mode)
+    const rows = [];
+    sheet.eachRow({ includeEmpty: true }, (row) => {
+      rows.push(row.values.slice(1).map(v => {
+        if (v == null) return '';
+        if (v instanceof Date) {
+          const d = v.getUTCDate().toString().padStart(2, '0');
+          const m = (v.getUTCMonth() + 1).toString().padStart(2, '0');
+          return `${d}/${m}/${v.getUTCFullYear()}`;
+        }
+        if (typeof v === 'object' && Array.isArray(v.richText)) {
+          return v.richText.map(rt => rt.text ?? '').join('');
+        }
+        return String(v);
+      }));
+    });
 
     // EU Oil Bulletin XLSX format (confirmed from live file):
     // Row 0: "in EUR" | "Euro-super 95 (I)" | "Gas oil automobile..." | ...  ← column headers
@@ -469,72 +485,50 @@ async function fetchNewZealand() {
   }
 }
 
-async function fetchUK_ModeA() {
-  // CMA voluntary scheme: each retailer hosts their own JSON feed. No auth required.
-  // Prices in pence/litre (integer). Divide by 100 -> GBP/litre.
-  // E10 = standard unleaded (gasoline), B7 = standard diesel.
-  // Aggregate across all working retailers for a national average.
-  const RETAILER_URLS = [
-    'https://storelocator.asda.com/fuel_prices_data.json',
-    'https://www.bp.com/en_gb/united-kingdom/home/fuelprices/fuel_prices_data.json',
-    'https://jetlocal.co.uk/fuel_prices_data.json',
-    'https://fuel.motorfuelgroup.com/fuel_prices_data.json',
-    'https://api.sainsburys.co.uk/v1/exports/latest/fuel_prices_data.json',
-    'https://www.morrisons.com/fuel-prices/fuel.json',
-  ];
+async function fetchUK_DESNZ() {
+  // Gov.uk DESNZ weekly road fuel prices CSV. Published weekly, covers 2018-present.
+  // ULSP = unleaded petrol (gasoline), ULSD = diesel. Prices in pence/litre.
+  // URL changes weekly; discover via Content API.
+  try {
+    console.log('  [GB] Discovering DESNZ CSV URL...');
+    const apiResp = await globalThis.fetch('https://www.gov.uk/api/content/government/statistics/weekly-road-fuel-prices', {
+      headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000),
+    });
+    if (!apiResp.ok) throw new Error(`Content API HTTP ${apiResp.status}`);
+    const apiData = await apiResp.json();
+    const csvAttach = apiData?.details?.attachments?.find(a => a.content_type?.includes('csv') && a.title?.includes('2018'));
+    if (!csvAttach?.url) throw new Error('CSV attachment not found in Content API');
 
-  const allE10 = [];
-  const allB7 = [];
-  let observedAt = new Date().toISOString().slice(0, 10);
+    const csvResp = await globalThis.fetch(csvAttach.url, {
+      headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20000),
+    });
+    if (!csvResp.ok) throw new Error(`CSV HTTP ${csvResp.status}`);
+    const lines = (await csvResp.text()).split('\n').filter(l => l.trim());
+    // Header: Date,ULSP Pump price pence/litre,ULSD Pump price pence/litre,...
+    const dataLines = lines.slice(1).filter(l => l.split(',').length >= 3);
+    if (!dataLines.length) throw new Error('No data rows in CSV');
 
-  const results = await Promise.allSettled(
-    RETAILER_URLS.map(url =>
-      globalThis.fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000) })
-        .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status} ${url}`)))
-    )
-  );
+    const lastLine = dataLines.at(-1).split(',');
+    const dateStr = lastLine[0]?.trim();
+    const ulsp = parseFloat(lastLine[1]);
+    const ulsd = parseFloat(lastLine[2]);
+    const gasPrice = ulsp > 0 ? +(ulsp / 100).toFixed(4) : null;
+    const dslPrice = ulsd > 0 ? +(ulsd / 100).toFixed(4) : null;
 
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
-    if (r.status === 'rejected') {
-      console.warn(`  [UK] ${RETAILER_URLS[i]}: ${r.reason?.message ?? r.reason}`);
-      continue;
-    }
-    const body = r.value;
-    // CMA format: { last_updated, stations: [{ prices: { E10, B7, ... } }] }
-    const stations = body?.stations ?? body?.data ?? [];
-    if (!Array.isArray(stations)) continue;
-    if (body.last_updated) {
-      // CMA feeds use "DD/MM/YYYY HH:mm:ss" — convert to ISO YYYY-MM-DD for comparison
-      const raw = String(body.last_updated);
-      const ddmmyyyy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-      const iso = ddmmyyyy ? `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}` : raw.slice(0, 10);
-      if (iso > observedAt) observedAt = iso;
-    }
-    for (const s of stations) {
-      const prices = s?.prices ?? s?.fuel_prices ?? {};
-      const e10 = prices?.E10 ?? prices?.['E10_STANDARD'];
-      const b7 = prices?.B7 ?? prices?.['B7_STANDARD'];
-      if (e10 > 0) allE10.push(e10);
-      if (b7 > 0) allB7.push(b7);
-    }
-  }
+    // Parse DD/MM/YYYY -> YYYY-MM-DD
+    const dm = dateStr?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    const observedAt = dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : dateStr;
 
-  if (!allE10.length && !allB7.length) {
-    console.warn('  [UK] No stations with E10/B7 data from any retailer');
+    console.log(`  [GB] ULSP=${gasPrice} GBP/L, ULSD=${dslPrice} GBP/L (${observedAt})`);
+    return [{
+      code: 'GB', name: 'United Kingdom', currency: 'GBP', flag: '🇬🇧',
+      gasoline: gasPrice != null ? { localPrice: gasPrice, grade: 'E10', source: 'gov.uk/desnz', observedAt } : null,
+      diesel: dslPrice != null ? { localPrice: dslPrice, grade: 'B7', source: 'gov.uk/desnz', observedAt } : null,
+    }];
+  } catch (err) {
+    console.warn(`  [GB] fetchUK_DESNZ error: ${err.message}`);
     return [];
   }
-
-  // Prices are in pence/litre -> divide by 100 for GBP/litre
-  const avgE10 = allE10.length ? +(allE10.reduce((a, b) => a + b, 0) / allE10.length / 100).toFixed(4) : null;
-  const avgB7 = allB7.length ? +(allB7.reduce((a, b) => a + b, 0) / allB7.length / 100).toFixed(4) : null;
-
-  console.log(`  [GB] E10=${avgE10} GBP/L (${allE10.length} stations), B7=${avgB7} GBP/L (${allB7.length} stations)`);
-  return [{
-    code: 'GB', name: 'United Kingdom', currency: 'GBP', flag: '🇬🇧',
-    gasoline: avgE10 != null ? { localPrice: avgE10, grade: 'E10', source: 'gov.uk/fuel-finder', observedAt } : null,
-    diesel: avgB7 != null ? { localPrice: avgB7, grade: 'B7', source: 'gov.uk/fuel-finder', observedAt } : null,
-  }];
 }
 
 const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
@@ -549,16 +543,15 @@ console.log('  [FX] Rates loaded:', Object.keys(fxRates).join(', '));
 
 const fetchResults = await Promise.allSettled([
   fetchMalaysia(),
-  fetchSpain(),
   fetchMexico(),
   fetchUS_EIA(),
   fetchEU_CSV(),
   fetchBrazil(),
   fetchNewZealand(),
-  fetchUK_ModeA(),
+  fetchUK_DESNZ(),
 ]);
 
-const sourceNames = ['Malaysia', 'Spain', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-ModeA'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ'];
 let successfulSources = 0;
 
 const countryMap = new Map();
@@ -636,8 +629,7 @@ if (wowAvailable) {
     const prev = prevMap.get(country.code);
     if (!prev) continue;
 
-    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0
-        && country.gasoline.observedAt !== prev.gasoline?.observedAt) {
+    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0) {
       const raw = +((country.gasoline.usdPrice - prev.gasoline.usdPrice) / prev.gasoline.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} gasoline: ${raw}% — omitting`);
@@ -645,8 +637,7 @@ if (wowAvailable) {
         country.gasoline.wowPct = raw;
       }
     }
-    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0
-        && country.diesel.observedAt !== prev.diesel?.observedAt) {
+    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0) {
       const raw = +((country.diesel.usdPrice - prev.diesel.usdPrice) / prev.diesel.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} diesel: ${raw}% — omitting`);
@@ -695,9 +686,9 @@ await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
   ttlSeconds: CACHE_TTL,
   validateFn: (d) => d?.countries?.length >= 1,
   recordCount: (d) => d?.countries?.length || 0,
-  extraKeys: [{
+  extraKeys: wowAvailable ? [{
     key: `${CANONICAL_KEY}:prev`,
     transform: () => data,
     ttl: CACHE_TTL * 2,
-  }],
+  }] : [],
 });

@@ -6,12 +6,13 @@
  *
  * Returns text/event-stream SSE:
  *   data: {"meta":{"sources":["Brief","Risk",...],"degraded":false}}  — always first event
+ *   data: {"action":{"type":"suggest-widget","label":"...","prefill":"..."}}  — optional, visual queries only
  *   data: {"delta":"..."}    — one per content token
  *   data: {"done":true}      — terminal event
  *   data: {"error":"..."}    — on auth/llm failure
  */
 
-export const config = { runtime: 'edge' };
+export const config = { runtime: 'edge', regions: ['iad1', 'lhr1', 'fra1', 'sfo1'] };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
@@ -19,6 +20,7 @@ import { isCallerPremium } from '../server/_shared/premium-check';
 import { checkRateLimit } from '../server/_shared/rate-limit';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
+import { buildActionEvents } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions';
 import { callLlmReasoningStream } from '../server/_shared/llm';
 import { sanitizeForPrompt } from '../server/_shared/llm-sanitize.js';
 
@@ -47,13 +49,13 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-function prependSseEvent(event: Record<string, unknown>, stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+function prependSseEvents(events: Array<Record<string, unknown>>, stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
-  const prefix = enc.encode(`data: ${JSON.stringify(event)}\n\n`);
+  const prefixes = events.map((e) => enc.encode(`data: ${JSON.stringify(e)}\n\n`));
   let innerReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(prefix);
+      for (const p of prefixes) controller.enqueue(p);
       innerReader = stream.getReader();
       while (true) {
         const { done, value } = await innerReader.read();
@@ -61,9 +63,7 @@ function prependSseEvent(event: Record<string, unknown>, stream: ReadableStream<
         controller.enqueue(value);
       }
     },
-    cancel() {
-      innerReader?.cancel();
-    },
+    cancel() { innerReader?.cancel(); },
   });
 }
 
@@ -146,9 +146,13 @@ export default async function handler(req: Request): Promise<Response> {
   });
 
   // Always prepend a meta event so the client knows which sources are live
-  // and whether context is degraded — before the first token arrives
-  const stream = prependSseEvent(
-    { meta: { sources: context.activeSources, degraded: context.degraded } },
+  // and whether context is degraded — before the first token arrives.
+  // Optionally follows with an action event for visual/chart queries.
+  const stream = prependSseEvents(
+    [
+      { meta: { sources: context.activeSources, degraded: context.degraded } },
+      ...buildActionEvents(query).map((a) => ({ action: a })),
+    ],
     llmStream,
   );
 

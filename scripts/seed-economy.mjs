@@ -61,7 +61,7 @@ function stressLabel(score) {
 async function fetchGscpiFromRedis() {
   try {
     const { url, token } = getRedisCredentials();
-    const resp = await fetch(`${url}/get/economic:fred:v1:GSCPI:0`, {
+    const resp = await fetch(`${url}/get/${encodeURIComponent(`${FRED_KEY_PREFIX}:GSCPI:0`)}`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
     });

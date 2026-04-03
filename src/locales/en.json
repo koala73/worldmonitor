@@ -1713,7 +1713,7 @@
         "moderate": "MODERATE",
         "normal": "NORMAL"
       },
-      "infoTooltip": "<strong>Climate Anomaly Monitor</strong> Temperature and precipitation deviations from 30-day baseline. Data from Open-Meteo (ERA5 reanalysis).<ul><li><strong>Extreme</strong>: >5°C or >80mm/day deviation</li><li><strong>Moderate</strong>: >3°C or >40mm/day deviation</li></ul>Monitors 15 conflict/disaster-prone zones."
+      "infoTooltip": "<strong>Climate Anomaly Monitor</strong> 7-day temperature and precipitation anomalies versus 1991-2020 monthly normals. Data from Open-Meteo (ERA5 reanalysis).<ul><li><strong>Extreme</strong>: >5°C or >12mm/day anomaly</li><li><strong>Moderate</strong>: >3°C or >6mm/day anomaly</li></ul>Tracks climate-sensitive zones for sustained departures from WMO baselines."
     },
     "newsPanel": {
       "close": "Close",

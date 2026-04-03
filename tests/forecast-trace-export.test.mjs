@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 
 import {
   makePrediction,
@@ -69,11 +69,22 @@ import {
   computeSimulationAdjustment,
   applySimulationMerge,
   applyPostSimulationRescore,
+  writeSimulationDecorations,
+  applySimulationDecorationsToForecasts,
+  patchPublishedForecastsWithSimDecorations,
+  redisAtomicPatchSimDecorations,
+  redisAtomicWriteSimDecorations,
+  SIMULATION_DECORATIONS_KEY,
+  SIMULATION_DECORATIONS_MAX_AGE_MS,
+  CANONICAL_KEY,
+  __setRedisStoreForTests,
   matchesBucket,
   matchesChannel,
   contradictsPremise,
   negatesDisruption,
   normalizeActorName,
+  summarizeImpactPathScore,
+  tryParseSimulationRoundPayload,
 } from '../scripts/seed-forecasts.mjs';
 
 import {
@@ -5837,6 +5848,24 @@ describe('simulation package export', () => {
     const result = await writeSimulationPackage(snapshot, { storageConfig: null });
     assert.equal(result, null);
   });
+
+  it('T-PKG1: buildSimulationPackageFromDeepSnapshot adds actorRoles from candidate stateSummary to each theater', () => {
+    const candidateA = makeCandidate({ candidateStateId: 'state-pkg-a', stateSummary: { actors: ['Commodity traders', 'Policy officials'] } });
+    const candidateB = makeCandidate({
+      candidateStateId: 'state-pkg-b',
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      stateSummary: { actors: ['Shipping operators'] },
+    });
+    const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([candidateA, candidateB]));
+    assert.ok(pkg, 'package must be built');
+    const theaterA = pkg.selectedTheaters.find((t) => t.candidateStateId === 'state-pkg-a');
+    assert.ok(theaterA, 'theater A must be found');
+    assert.deepStrictEqual(theaterA.actorRoles, ['Commodity traders', 'Policy officials']);
+    const theaterB = pkg.selectedTheaters.find((t) => t.candidateStateId === 'state-pkg-b');
+    assert.ok(theaterB, 'theater B must be found');
+    assert.deepStrictEqual(theaterB.actorRoles, ['Shipping operators']);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -6156,6 +6185,28 @@ describe('simulation runner — prompt builders', () => {
     const prompt = buildSimulationRound2SystemPrompt(minimalTheater, minimalPkg, round1);
     assert.ok(prompt.includes('houthi-forces'), 'should include valid actor IDs');
   });
+
+  it('T-P1: Round 2 prompt includes CANDIDATE ACTOR ROLES section when theater has actorRoles', () => {
+    const theaterWithRoles = {
+      ...minimalTheater,
+      actorRoles: ['Commodity traders', 'Shipping operators', 'Policy officials'],
+    };
+    const round1 = { paths: [{ pathId: 'escalation', summary: 'Oil supply shock', initialReactions: [] }] };
+    const prompt = buildSimulationRound2SystemPrompt(theaterWithRoles, minimalPkg, round1);
+    assert.ok(prompt.includes('copy these EXACT strings into keyActorRoles'), 'prompt should include role section header with copy instruction');
+    assert.ok(prompt.includes('"Commodity traders"'), 'prompt should include role label');
+    assert.ok(prompt.includes('"Shipping operators"'), 'prompt should include role label');
+    assert.ok(prompt.includes('keyActorRoles'), 'prompt should reference keyActorRoles field');
+    assert.ok(prompt.includes('return [] if none apply'), 'prompt should include fallback instruction');
+  });
+
+  it('T-P2: Round 2 prompt omits CANDIDATE ACTOR ROLES list section when theater has no actorRoles', () => {
+    const round1 = { paths: [] };
+    const prompt = buildSimulationRound2SystemPrompt(minimalTheater, minimalPkg, round1);
+    // The roles-list section header is "CANDIDATE ACTOR ROLES (copy these EXACT strings...)" — only injected when actorRoles is non-empty
+    // The INSTRUCTIONS block always mentions "CANDIDATE ACTOR ROLES" as a reference, which is OK
+    assert.ok(!prompt.includes('copy these EXACT strings into keyActorRoles'), 'role list section should NOT be injected when actorRoles absent');
+  });
 });
 
 describe('simulation runner — extractSimulationRoundPayload', () => {
@@ -6248,6 +6299,29 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
     const result = extractSimulationRoundPayload(withPrefix, 1);
     assert.ok(Array.isArray(result.paths), 'should parse via extractFirstJsonObject fallback');
   });
+
+  it('T-P3: tryParseSimulationRoundPayload extracts keyActorRoles from Round 2 paths', () => {
+    const raw = JSON.stringify({
+      paths: [{
+        pathId: 'escalation', label: 'Escalation', summary: 'Oil disruption',
+        keyActors: ['Iran'], keyActorRoles: ['Commodity traders', 'Shipping operators'],
+        roundByRoundEvolution: [], confidence: 0.6, timingMarkers: [],
+      }, {
+        pathId: 'containment', label: 'Containment', summary: 'Contained', keyActors: [], keyActorRoles: [],
+        roundByRoundEvolution: [], confidence: 0.3, timingMarkers: [],
+      }, {
+        pathId: 'market_cascade', label: 'Cascade', summary: 'Markets react', keyActors: [], keyActorRoles: [],
+        roundByRoundEvolution: [], confidence: 0.1, timingMarkers: [],
+      }],
+      stabilizers: [], invalidators: [], globalObservations: '', confidenceNotes: '',
+    });
+    const result = tryParseSimulationRoundPayload(raw, 2);
+    assert.ok(result.paths, 'should parse paths');
+    const esc = result.paths.find((p) => p.pathId === 'escalation');
+    assert.deepStrictEqual(esc.keyActorRoles, ['Commodity traders', 'Shipping operators']);
+    const containment = result.paths.find((p) => p.pathId === 'containment');
+    assert.deepStrictEqual(containment.keyActorRoles, []);
+  });
 });
 
 describe('simulation runner — outcome key builder', () => {
@@ -6319,7 +6393,7 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     const path = makePath('energy', 'energy_supply_shock', ['Iran', 'Houthi', 'Saudi Aramco']);
     const simResult = {
       theaterId: 'state-1',
-      topPaths: [{ label: 'Oil energy supply shock via Hormuz', summary: 'Crude supply disruption', keyActors: ['Iran', 'Houthi', 'US Navy'] }],
+      topPaths: [{ label: 'Oil energy supply shock via Hormuz', summary: 'Crude supply disruption', keyActors: ['Iran', 'Houthi', 'US Navy'], keyActorRoles: ['Iran', 'Houthi movement', 'US Navy'] }],
       invalidators: [],
       stabilizers: [],
     };
@@ -6491,7 +6565,7 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
       stateSummary: { actors: ['Iran', 'Saudi Arabia', 'Houthi movement'] },
     };
     const simResult = {
-      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia', 'US'] }],
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia', 'US'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
       invalidators: [], stabilizers: [],
     };
     const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
@@ -6501,14 +6575,16 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     assert.equal(details.actorSource, 'stateSummary');
   });
 
-  it('T-G: entity ID format keyActors resolve to names via normalization', () => {
+  it('T-G: entity ID format keyActors resolve to names via normalization (keyActorsOverlapCount telemetry)', () => {
     const path = makePath('energy', 'energy_supply_shock', []);
     const candidatePacket = {
       ...makeCandidatePacket(),
       stateSummary: { actors: ['Iran', 'Saudi Arabia'] },
     };
     const simResult = {
-      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption', keyActors: ['state-aa3f41bf4f:iran', 'state-aa3f41bf4f:saudi_arabia'] }],
+      // keyActors use entity ID format — normalized to 'iran'/'saudi arabia' for keyActorsOverlapCount telemetry
+      // keyActorRoles drives the role overlap bonus (stateSummary path)
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption', keyActors: ['state-aa3f41bf4f:iran', 'state-aa3f41bf4f:saudi_arabia'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
       invalidators: [], stabilizers: [],
     };
     const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
@@ -6550,7 +6626,7 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     const path1 = makePath('energy', 'energy_supply_shock', []);  // affectedAssets empty
     const path2 = makePath('energy', 'energy_supply_shock', ['TTF gas futures', 'European utility stocks']);  // different affectedAssets — irrelevant
     const simResult = {
-      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi_Arabia'] }],
+      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi_Arabia'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
       invalidators: [], stabilizers: [],
     };
     const { adjustment: adj1, details: d1 } = computeSimulationAdjustment(path1, simResult, candidatePacket);
@@ -6607,6 +6683,189 @@ describe('phase 3 simulation re-ingestion — computeSimulationAdjustment', () =
     assert.equal(adjustment, 0.08);  // bucket/channel only — keyActors is non-array, treated as []
     assert.equal(details.actorOverlapCount, 0);
     assert.equal(details.bucketChannelMatch, true);
+  });
+
+  it('T-N1: confidence=1.0 (explicit) produces same +0.08 as no-confidence fallback', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();
+    const simResult = {
+      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 1.0, keyActors: [] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.08);
+    assert.equal(details.simPathConfidence, 1.0);
+    assert.equal(details.bucketChannelMatch, true);
+  });
+
+  it('T-N2: confidence=0.72 scales +0.08 and +0.04 proportionally', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();  // stateSummary.actors: ['Iran', 'Houthi movement', 'US Navy']
+    const simResult = {
+      // keyActorRoles match 'iran' and 'us navy' from stateSummary → roleOverlap=2 → actor bonus applies
+      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0.72, keyActors: ['Iran', 'US_Navy'], keyActorRoles: ['Iran', 'US Navy'] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    // +0.08 * 0.72 = 0.058, +0.04 * 0.72 = 0.029; total = 0.087
+    assert.equal(adjustment, 0.087);
+    assert.equal(details.simPathConfidence, 0.72);
+    assert.ok(details.actorOverlapCount >= 2);
+  });
+
+  it('T-N3: confidence=0.35 scales +0.08 only (no actor overlap)', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();
+    const simResult = {
+      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0.35, keyActors: [] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    // +0.08 * 0.35 = 0.028, no actor overlap
+    assert.equal(adjustment, 0.028);
+    assert.equal(details.simPathConfidence, 0.35);
+    assert.equal(details.actorOverlapCount, 0);
+  });
+
+  it('T-N4: missing confidence (undefined) falls back to 1.0 → full +0.08', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();
+    const simResult = {
+      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', keyActors: [] }],  // no confidence field
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0.08);
+    assert.equal(details.simPathConfidence, 1.0);
+  });
+
+  it('T-N5: explicit confidence=0 → simConf=0, no positive adjustment (simulation rated path unsupported)', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();
+    const simResult = {
+      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0, keyActors: [] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, 0);
+    assert.equal(details.simPathConfidence, 0);
+    assert.equal(details.bucketChannelMatch, true);  // match found but zero-weighted
+  });
+
+  it('T-N5b: zero confidence + invalidator → negative adjustment fires flat, positive bonus stays 0', () => {
+    // The invalidator check is independent of simConf. A zero-confidence bucket-channel match
+    // contributes 0 positive bonus but the invalidator's -0.12 still fires.
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();  // routeFacilityKey='Strait of Hormuz'
+    const simResult = {
+      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0, keyActors: [] }],
+      invalidators: ['Strait of Hormuz fully operational'],
+      stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, -0.12);
+    assert.equal(details.simPathConfidence, 0);  // zero conf from explicit 0
+    assert.equal(details.bucketChannelMatch, true);
+    assert.equal(details.invalidatorHit, true);
+  });
+
+  it('T-N6: invalidator hit produces flat -0.12 regardless of sim path confidence', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();  // routeFacilityKey='Strait of Hormuz'
+    const simResult = {
+      topPaths: [],  // no bucket/channel match
+      // fromSimulation=true → no negation check needed; 'strait of hormuz' matches routeFacilityKey
+      invalidators: ['strait of hormuz transit suspended'],
+      stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, -0.12);
+    assert.equal(details.invalidatorHit, true);
+    assert.equal(details.simPathConfidence, 1.0);  // default — no bucketChannelMatch
+  });
+
+  it('T-N7: stabilizer hit produces flat -0.15 regardless of sim path confidence', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();  // routeFacilityKey='Strait of Hormuz'
+    const simResult = {
+      topPaths: [],
+      invalidators: [],
+      // negation 'restored' + 'strait of hormuz' → negatesDisruption=true
+      stabilizers: ['strait of hormuz shipping lanes restored'],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(adjustment, -0.15);
+    assert.equal(details.stabilizerHit, true);
+    assert.equal(details.simPathConfidence, 1.0);
+  });
+
+  it('T-N8: simPathConfidence in details equals the clamped confidence used for weighting', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = makeCandidatePacket();
+    const simResult = {
+      topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0.85, keyActors: [] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.equal(details.simPathConfidence, 0.85);
+    // +0.08 * 0.85 = 0.068
+    assert.equal(adjustment, 0.068);
+  });
+
+  it('T-RO1: roleOverlapCount fires +0.04 bonus when stateSummary.actors and keyActorRoles match (role-category vocabulary)', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = {
+      ...makeCandidatePacket(),
+      stateSummary: { actors: ['Commodity traders', 'Shipping operators', 'Policy officials'] },
+    };
+    const simResult = {
+      topPaths: [{
+        label: 'Oil supply shock', summary: 'energy supply disruption',
+        keyActors: ['Iran', 'Saudi_Arabia'],                              // entity-space — never matches role categories
+        keyActorRoles: ['Commodity traders', 'Shipping operators'],       // role-space — 2 matches
+      }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.strictEqual(adjustment, 0.12);
+    assert.strictEqual(details.roleOverlapCount, 2);
+    assert.strictEqual(details.actorOverlapCount, 2);   // backwards-compat alias
+    assert.strictEqual(details.keyActorsOverlapCount, 0); // entities don't match role categories
+    assert.strictEqual(details.actorSource, 'stateSummary');
+  });
+
+  it('T-RO2: absent keyActorRoles with stateSummary source gives roleOverlapCount=0 (old sim output gracefully degrades)', () => {
+    const path = makePath('energy', 'energy_supply_shock', []);
+    const candidatePacket = {
+      ...makeCandidatePacket(),
+      stateSummary: { actors: ['Commodity traders', 'Policy officials'] },
+    };
+    const simResult = {
+      topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption', keyActors: ['Iran'] }],  // no keyActorRoles
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.strictEqual(adjustment, 0.08);   // bucket+channel only — no role bonus (keyActorRoles absent)
+    assert.strictEqual(details.roleOverlapCount, 0);
+    assert.strictEqual(details.actorOverlapCount, 0);
+  });
+
+  it('T-RO3: affectedAssets fallback path uses keyActors for overlap (backwards compat preserved)', () => {
+    const path = makePath('energy', 'energy_supply_shock', ['Red Sea tankers', 'Saudi Aramco']);
+    const candidatePacket = { ...makeCandidatePacket(), stateSummary: { actors: [] } };  // empty → affectedAssets fallback
+    const simResult = {
+      topPaths: [{
+        label: 'Oil supply shock', summary: 'energy supply disruption',
+        keyActors: ['Red Sea tankers', 'Saudi Aramco'],  // entity overlap with affectedAssets
+        keyActorRoles: ['Commodity traders'],             // 1 role match — ignored (actorSource=affectedAssets)
+      }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    assert.strictEqual(adjustment, 0.12);                    // entity overlap fires bonus via affectedAssets path
+    assert.strictEqual(details.keyActorsOverlapCount, 2);
+    assert.strictEqual(details.actorSource, 'affectedAssets');
+    assert.strictEqual(details.roleOverlapCount, 0);          // role path not used (actorSource != stateSummary)
   });
 });
 
@@ -6762,7 +7021,7 @@ describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
       runId: 'sim-tj', isCurrentRun: true,
       theaterResults: [{
         theaterId: 'theater-1', candidateStateId: stateA,
-        topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia'] }],
+        topPaths: [{ label: 'Oil supply shock', summary: 'energy supply disruption from Red Sea', keyActors: ['Iran', 'Saudi_Arabia'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
         invalidators: [], stabilizers: [],
       }],
     };
@@ -6777,6 +7036,282 @@ describe('phase 3 simulation re-ingestion — applySimulationMerge', () => {
     assert.ok(promoted, 'path should be promoted to selected');
     assert.ok(promoted.mergedAcceptanceScore >= 0.50, `score should be >= 0.50, got ${promoted.mergedAcceptanceScore}`);
     assert.ok(promoted.simulationAdjustment >= 0.12, 'should have +0.12 (bucket+channel + actor overlap)');
+  });
+
+  it('T-O1: positive adjustment → simulationSignal.backed=true, adjustmentDelta>0', () => {
+    const stateId = 'state-o1';
+    const path = makeExpandedPath(stateId, 0.44);  // rejected; 0.44 + 0.08 = 0.52 → promoted
+    const candidatePacket = {
+      candidateStateId: stateId,
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const evaluation = makeEval('completed_no_material_change', [], [path]);
+    const simOutcome = {
+      runId: 'sim-o1', isCurrentRun: true,
+      theaterResults: [{
+        theaterId: stateId, candidateStateId: stateId,
+        topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', keyActors: [] }],
+        invalidators: [], stabilizers: [],
+      }],
+    };
+    const snapshot = { generatedAt: Date.now(), impactExpansionCandidates: [candidatePacket], fullRunPredictions: [], predictions: [], inputs: {}, deepForecast: {} };
+    applySimulationMerge(evaluation, simOutcome, [candidatePacket], snapshot, null);
+    assert.ok(path.simulationSignal, 'simulationSignal written');
+    assert.equal(path.simulationSignal.backed, true);
+    assert.ok(path.simulationSignal.adjustmentDelta > 0);
+    assert.equal(path.simulationSignal.demoted, false);
+  });
+
+  it('T-O2: negative adjustment that does not cross threshold → simulationSignal.backed=false, demoted=false', () => {
+    const stateId = 'state-o2';
+    const path = makeExpandedPath(stateId, 0.70);  // accepted; 0.70 - 0.12 = 0.58 ≥ 0.50 → NOT demoted
+    const candidatePacket = {
+      candidateStateId: stateId,
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const evaluation = makeEval('completed', [path]);
+    const simOutcome = {
+      runId: 'sim-o2', isCurrentRun: true,
+      theaterResults: [{
+        theaterId: stateId, candidateStateId: stateId,
+        topPaths: [],
+        invalidators: ['red sea shipping lanes suspended'],
+        stabilizers: [],
+      }],
+    };
+    const snapshot = { generatedAt: Date.now(), impactExpansionCandidates: [candidatePacket], fullRunPredictions: [], predictions: [], inputs: {}, deepForecast: {} };
+    applySimulationMerge(evaluation, simOutcome, [candidatePacket], snapshot, null);
+    assert.ok(path.simulationSignal, 'simulationSignal written');
+    assert.equal(path.simulationSignal.backed, false);
+    assert.ok(path.simulationSignal.adjustmentDelta < 0);
+    assert.equal(path.simulationSignal.demoted, false);  // 0.70 - 0.12 = 0.58 ≥ 0.50
+  });
+
+  it('T-O3: zero adjustment (no matching theater) → simulationSignal is undefined', () => {
+    const stateId = 'state-o3';
+    const path = makeExpandedPath(stateId, 0.60);
+    const candidatePacket = {
+      candidateStateId: stateId,
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const evaluation = makeEval('completed', [path]);
+    const simOutcome = {
+      runId: 'sim-o3', isCurrentRun: true,
+      theaterResults: [{ theaterId: 'other-state', candidateStateId: 'other-state', topPaths: [], invalidators: [], stabilizers: [] }],
+    };
+    const snapshot = { generatedAt: Date.now(), impactExpansionCandidates: [candidatePacket], fullRunPredictions: [], predictions: [], inputs: {}, deepForecast: {} };
+    applySimulationMerge(evaluation, simOutcome, [candidatePacket], snapshot, null);
+    assert.equal(path.simulationSignal, undefined, 'no simulationSignal when adjustment=0');
+  });
+
+  it('T-O4: path crosses 0.50 downward → simulationSignal.demoted=true', () => {
+    const stateId = 'state-o4';
+    const path = makeExpandedPath(stateId, 0.52);  // accepted; 0.52 - 0.15 = 0.37 < 0.50 → demoted
+    const candidatePacket = {
+      candidateStateId: stateId,
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const evaluation = makeEval('completed', [path]);
+    const simOutcome = {
+      runId: 'sim-o4', isCurrentRun: true,
+      theaterResults: [{
+        theaterId: stateId, candidateStateId: stateId,
+        topPaths: [],
+        invalidators: [],
+        stabilizers: ['red sea shipping lanes restored'],
+      }],
+    };
+    const snapshot = { generatedAt: Date.now(), impactExpansionCandidates: [candidatePacket], fullRunPredictions: [], predictions: [], inputs: {}, deepForecast: {} };
+    applySimulationMerge(evaluation, simOutcome, [candidatePacket], snapshot, null);
+    assert.ok(path.simulationSignal, 'simulationSignal written');
+    assert.equal(path.simulationSignal.demoted, true);
+    assert.ok(path.simulationSignal.adjustmentDelta < 0);
+  });
+
+  it('T-O5: summarizeImpactPathScore includes simulationSignal when present (path-scorecards / impact-expansion-debug coverage)', () => {
+    const signal = { backed: true, adjustmentDelta: 0.08, channelSource: 'market', demoted: false, simPathConfidence: 0.9 };
+    const path = {
+      pathId: 'p-o5',
+      type: 'expanded',
+      candidateStateId: 'state-o5',
+      acceptanceScore: 0.7,
+      simulationAdjustment: 0.08,
+      mergedAcceptanceScore: 0.78,
+      simulationSignal: signal,
+    };
+    const summary = summarizeImpactPathScore(path);
+    assert.ok(summary, 'summarizeImpactPathScore should return non-null');
+    assert.deepStrictEqual(summary.simulationSignal, signal, 'simulationSignal must be forwarded into scorecard summary');
+  });
+
+  it('T-O7: applySimulationMerge clears stale sim fields on zero-adjustment paths from prior cycles', () => {
+    // Simulate the applyPostSimulationRescore scenario: a reloaded path already carries
+    // simulationAdjustment/simulationSignal from a previous run. The fresh simulation
+    // returns this theater but with zero-weight confidence=0, so adjustment=0.
+    // The stale fields must be cleared, not left intact.
+    const stateId = 'state-stale-test';
+    const candidatePacket = {
+      candidateStateId: stateId,
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const stalePath = {
+      pathId: 'p-stale',
+      type: 'expanded',
+      candidateStateId: stateId,
+      acceptanceScore: 0.70,
+      direct: { variableKey: 'route_disruption', targetBucket: 'energy', channel: 'energy_supply_shock', affectedAssets: [] },
+      // Stale fields from a previous simulation cycle:
+      simulationAdjustment: 0.08,
+      mergedAcceptanceScore: 0.78,
+      simulationSignal: { backed: true, adjustmentDelta: 0.08, channelSource: 'market', demoted: false, simPathConfidence: 0.9 },
+      demotedBySimulation: false,
+      promotedBySimulation: false,
+    };
+    const evaluation = makeEval('completed', [stalePath], []);
+    const simOutcome = {
+      runId: 'sim-stale', isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1', candidateStateId: stateId,
+        topPaths: [{ label: 'Oil supply disruption', summary: 'energy supply disruption', confidence: 0, keyActors: [] }],
+        invalidators: [], stabilizers: [],
+      }],
+    };
+    const snapshot = { generatedAt: Date.now(), impactExpansionCandidates: [candidatePacket], fullRunPredictions: [], predictions: [], inputs: {}, deepForecast: {} };
+    applySimulationMerge(evaluation, simOutcome, [candidatePacket], snapshot, null);
+    // confidence=0 → simConf=0 → adjustment=0 → path was skipped, stale fields must be cleared
+    assert.equal(stalePath.simulationAdjustment, undefined, 'stale simulationAdjustment must be cleared');
+    assert.equal(stalePath.simulationSignal, undefined, 'stale simulationSignal must be cleared');
+    assert.equal(stalePath.mergedAcceptanceScore, undefined, 'stale mergedAcceptanceScore must be cleared');
+    assert.equal(stalePath.demotedBySimulation, undefined, 'stale demotedBySimulation must be cleared');
+    assert.equal(stalePath.promotedBySimulation, undefined, 'stale promotedBySimulation must be cleared');
+  });
+
+  it('T-O8: applySimulationMerge clears stale sim fields when theater has no matching result in fresh simulation', () => {
+    // A path carried stale fields from a prior run that included its theater.
+    // The fresh simulation has no result for this theater (different theaters selected).
+    const stateId = 'state-no-theater';
+    const candidatePacket = {
+      candidateStateId: stateId,
+      routeFacilityKey: 'Red Sea',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const stalePath = {
+      pathId: 'p-no-theater',
+      type: 'expanded',
+      candidateStateId: stateId,
+      acceptanceScore: 0.65,
+      direct: { variableKey: 'route_disruption', targetBucket: 'energy', channel: 'energy_supply_shock', affectedAssets: [] },
+      simulationAdjustment: -0.12,
+      mergedAcceptanceScore: 0.53,
+      simulationSignal: { backed: false, adjustmentDelta: -0.12, channelSource: 'none', demoted: false, simPathConfidence: 1.0 },
+    };
+    const evaluation = makeEval('completed', [stalePath], []);
+    // simOutcome contains a DIFFERENT theater — not stateId
+    const simOutcome = {
+      runId: 'sim-other', isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1', candidateStateId: 'state-different',
+        topPaths: [{ label: 'Other path', summary: 'different theater', confidence: 0.8, keyActors: [] }],
+        invalidators: [], stabilizers: [],
+      }],
+    };
+    const snapshot = { generatedAt: Date.now(), impactExpansionCandidates: [candidatePacket], fullRunPredictions: [], predictions: [], inputs: {}, deepForecast: {} };
+    applySimulationMerge(evaluation, simOutcome, [candidatePacket], snapshot, null);
+    assert.equal(stalePath.simulationAdjustment, undefined, 'stale simulationAdjustment must be cleared when no theater matches');
+    assert.equal(stalePath.simulationSignal, undefined, 'stale simulationSignal must be cleared when no theater matches');
+    assert.equal(stalePath.mergedAcceptanceScore, undefined, 'stale mergedAcceptanceScore must be cleared when no theater matches');
+  });
+
+  it('T-O6: summarizeImpactPathScore omits simulationSignal when absent (no spurious undefined field)', () => {
+    const path = { pathId: 'p-o6', type: 'expanded', candidateStateId: 'state-o6', acceptanceScore: 0.6 };
+    const summary = summarizeImpactPathScore(path);
+    assert.ok(summary);
+    assert.equal(Object.prototype.hasOwnProperty.call(summary, 'simulationSignal'), false);
+  });
+
+  it('T-SC-1: simDetail written when simulationAdjustment and simulationAdjustmentDetail are set', () => {
+    const path = {
+      pathId: 'p-sc1', type: 'expanded', candidateStateId: 'state-sc1',
+      acceptanceScore: 0.45, mergedAcceptanceScore: 0.53,
+      simulationAdjustment: 0.08,
+      simulationAdjustmentDetail: {
+        bucketChannelMatch: true, actorOverlapCount: 0, candidateActorCount: 2,
+        actorSource: 'stateSummary', resolvedChannel: 'energy_supply_shock',
+        channelSource: 'direct', invalidatorHit: false, stabilizerHit: false,
+        simPathConfidence: 0.7,
+      },
+    };
+    const result = summarizeImpactPathScore(path);
+    assert.ok(result.simDetail, 'simDetail must be present');
+    assert.strictEqual(result.simDetail.bucketChannelMatch, true);
+    assert.strictEqual(result.simDetail.actorOverlapCount, 0);
+    assert.strictEqual(result.simDetail.candidateActorCount, 2);
+    assert.strictEqual(result.simDetail.actorSource, 'stateSummary');
+    assert.strictEqual(result.simDetail.resolvedChannel, 'energy_supply_shock');
+    assert.strictEqual(result.simDetail.channelSource, 'direct');
+    assert.strictEqual(result.simDetail.invalidatorHit, false);
+    assert.strictEqual(result.simDetail.stabilizerHit, false);
+    assert.strictEqual(result.simDetail.simPathConfidence, undefined, 'simPathConfidence must not be duplicated in simDetail');
+  });
+
+  it('T-SC-2: simDetail absent when simulationAdjustment not set', () => {
+    const path = { pathId: 'p-sc2', type: 'expanded', candidateStateId: 'state-sc2', acceptanceScore: 0.45 };
+    const result = summarizeImpactPathScore(path);
+    assert.strictEqual(result.simDetail, undefined);
+  });
+
+  it('T-SC-3: simDetail absent when simulationAdjustment set but simulationAdjustmentDetail absent (backward compat)', () => {
+    const path = {
+      pathId: 'p-sc3', type: 'expanded', candidateStateId: 'state-sc3',
+      acceptanceScore: 0.45, simulationAdjustment: 0.08,
+    };
+    const result = summarizeImpactPathScore(path);
+    assert.strictEqual(result.simDetail, undefined);
+    assert.strictEqual(result.simulationAdjustment, 0.08);
+  });
+
+  it('T-SC-4: computeSimulationAdjustment details flow through to summarizeImpactPathScore simDetail', () => {
+    const path = {
+      type: 'expanded', pathId: 'path-sc4', candidateStateId: 'state-sc4',
+      direct: { variableKey: 'route_disruption', targetBucket: 'energy', channel: 'energy_supply_shock', affectedAssets: [] },
+      second: null, third: null, pathScore: 0.60, acceptanceScore: 0.55,
+    };
+    const candidatePacket = {
+      candidateStateId: 'state-sc4', candidateIndex: 0,
+      routeFacilityKey: 'Strait of Hormuz', commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: ['Iran', 'Saudi Arabia'] },
+    };
+    const simResult = {
+      topPaths: [{ label: 'Supply shock', summary: 'energy supply disruption', keyActors: ['Iran', 'Saudi_Arabia'], keyActorRoles: ['Iran', 'Saudi Arabia'] }],
+      invalidators: [], stabilizers: [],
+    };
+    const { adjustment, details } = computeSimulationAdjustment(path, simResult, candidatePacket);
+    path.simulationAdjustment = adjustment;
+    path.simulationAdjustmentDetail = details;
+    const scorecard = summarizeImpactPathScore(path);
+    assert.ok(scorecard.simDetail, 'simDetail must be present after flow-through');
+    assert.strictEqual(scorecard.simDetail.bucketChannelMatch, true);
+    assert.ok(scorecard.simDetail.actorOverlapCount >= 2, `actorOverlapCount should be >=2, got ${scorecard.simDetail.actorOverlapCount}`);
+    assert.strictEqual(scorecard.simDetail.actorSource, 'stateSummary');
+    assert.strictEqual(scorecard.simDetail.channelSource, 'direct');
   });
 });
 
@@ -7253,5 +7788,588 @@ describe('phase 3 simulation re-ingestion — applyPostSimulationRescore', () =>
     assert.equal(details.resolvedChannel, 'energy_supply_shock');
     assert.equal(details.bucketChannelMatch, true);
     assert.equal(adjustment, 0.08);
+  });
+
+});
+
+describe('writeSimulationDecorations and applySimulationDecorationsToForecasts', () => {
+  // Helpers
+  const makeAdj = (candidateStateId, simulationAdjustment, simPathConfidence = 1.0, wasAccepted = true, nowAccepted = true) => ({
+    candidateStateId,
+    simulationAdjustment,
+    details: { simPathConfidence },
+    wasAccepted,
+    nowAccepted,
+  });
+  const makeStateUnit = (id, forecastIds) => ({ id, label: `State ${id}`, forecastIds });
+  const makeMergeResult = (adjustments) => ({ simulationEvidence: { adjustments } });
+  const makeSnapshot = (stateUnits, runId = 'run-test-001') => ({
+    runId,
+    generatedAt: Date.now(),
+    fullRunStateUnits: stateUnits,
+  });
+
+  afterEach(() => {
+    // Always clear the test Redis store after each test
+    __setRedisStoreForTests(null);
+  });
+
+  it('WD-1: writeSimulationDecorations writes empty decoration when adjustments is empty (clears stale data)', async () => {
+    // Empty adjustments = valid simulation result (nothing crossed thresholds).
+    // Must write empty byForecastId to overwrite any prior run's decorations.
+    const store = {};
+    __setRedisStoreForTests(store);
+    await writeSimulationDecorations(makeMergeResult([]), makeSnapshot([], 'run-empty'));
+    const written = store[SIMULATION_DECORATIONS_KEY];
+    assert.ok(written, 'empty decoration written to Redis to clear stale data');
+    assert.equal(written.runId, 'run-empty');
+    assert.deepEqual(written.byForecastId, {}, 'empty map — nothing to apply');
+  });
+
+  it('WD-2: writeSimulationDecorations skips when mergeResult has no simulationEvidence (genuinely bogus data)', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    await writeSimulationDecorations({}, makeSnapshot([]));
+    assert.deepEqual(Object.keys(store), [], 'bogus mergeResult — do not clear old decorations');
+  });
+
+  it('WD-2b: writeSimulationDecorations skips when simulationEvidence.adjustments is not an array', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    await writeSimulationDecorations({ simulationEvidence: { adjustments: null } }, makeSnapshot([]));
+    assert.deepEqual(Object.keys(store), [], 'null adjustments field — do not clear old decorations');
+  });
+
+  it('WD-3: writeSimulationDecorations writes empty decoration when adjustments present but no stateUnit has matching forecastIds', async () => {
+    // Adjustments exist but candidateStateId → forecastIds lookup yields nothing.
+    // Still must write an empty map to clear stale decorations from prior runs.
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [
+      makeStateUnit('state-x', []),         // no forecastIds
+      { id: 'state-y', label: 'no array' }, // missing forecastIds field
+    ];
+    const adj = makeAdj('state-x', 0.08);
+    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits, 'run-nomatch'));
+    const written = store[SIMULATION_DECORATIONS_KEY];
+    assert.ok(written, 'empty decoration written — clears stale data even when decorationCount=0');
+    assert.deepEqual(written.byForecastId, {});
+    assert.equal(written.runId, 'run-nomatch');
+  });
+
+  it('WD-4: writeSimulationDecorations writes correct decoration for a single candidate → single forecast', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [makeStateUnit('state-a', ['fc-001'])];
+    const adj = makeAdj('state-a', 0.08, 0.82);
+    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits, 'run-wd4'));
+    const written = store[SIMULATION_DECORATIONS_KEY];
+    assert.ok(written, 'decoration written to Redis key');
+    assert.equal(written.runId, 'run-wd4');
+    assert.ok(typeof written.generatedAt === 'number');
+    assert.deepEqual(Object.keys(written.byForecastId), ['fc-001']);
+    assert.equal(written.byForecastId['fc-001'].simulationAdjustment, 0.08);
+    assert.equal(written.byForecastId['fc-001'].simPathConfidence, 0.82);
+    assert.equal(written.byForecastId['fc-001'].demotedBySimulation, false);
+  });
+
+  it('WD-5: writeSimulationDecorations picks strongest adjustment when multiple paths share candidateStateId', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [makeStateUnit('state-b', ['fc-002'])];
+    // Three adjustments for the same candidate — +0.08, +0.12, -0.04
+    const adjs = [
+      makeAdj('state-b', 0.08, 0.60),
+      makeAdj('state-b', 0.12, 0.88), // strongest — should win
+      makeAdj('state-b', -0.04, 0.50),
+    ];
+    await writeSimulationDecorations(makeMergeResult(adjs), makeSnapshot(stateUnits));
+    const dec = store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-002'];
+    assert.equal(dec.simulationAdjustment, 0.12, 'highest absolute value wins');
+    assert.equal(dec.simPathConfidence, 0.88);
+  });
+
+  it('WD-6: writeSimulationDecorations resolves conflict when two candidates map to the same forecastId — highest absolute value wins', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [
+      makeStateUnit('state-c1', ['fc-shared']),
+      makeStateUnit('state-c2', ['fc-shared']), // same forecast
+    ];
+    const adjs = [
+      makeAdj('state-c1', 0.08, 0.70),
+      makeAdj('state-c2', -0.15, 0.90), // higher absolute value
+    ];
+    await writeSimulationDecorations(makeMergeResult(adjs), makeSnapshot(stateUnits));
+    const dec = store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-shared'];
+    assert.equal(dec.simulationAdjustment, -0.15, 'highest |adj| wins across candidates');
+  });
+
+  it('WD-7: writeSimulationDecorations sets demotedBySimulation=true when wasAccepted && !nowAccepted', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    const stateUnits = [makeStateUnit('state-d', ['fc-003'])];
+    // wasAccepted=true, nowAccepted=false → demoted
+    const adj = makeAdj('state-d', -0.15, 0.95, true, false);
+    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits));
+    const dec = store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-003'];
+    assert.equal(dec.demotedBySimulation, true);
+    assert.equal(dec.simulationAdjustment, -0.15);
+  });
+
+  it('WD-8: writeSimulationDecorations is non-fatal when Redis credentials are missing', async () => {
+    // No test store, no env vars → getRedisCredentials() throws inside catch block
+    __setRedisStoreForTests(null);
+    const stateUnits = [makeStateUnit('state-e', ['fc-004'])];
+    const adj = makeAdj('state-e', 0.08);
+    // Must not throw
+    await assert.doesNotReject(
+      () => writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits))
+    );
+  });
+
+  it('WD-9: applySimulationDecorationsToForecasts mutates matching predictions in-place', async () => {
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: {
+        runId: 'run-apply-001',
+        generatedAt: Date.now(),
+        byForecastId: {
+          'fc-aa': { simulationAdjustment: 0.12, simPathConfidence: 0.85, demotedBySimulation: false },
+          'fc-bb': { simulationAdjustment: -0.15, simPathConfidence: 0.95, demotedBySimulation: true },
+        },
+      },
+    };
+    __setRedisStoreForTests(store);
+    const predictions = [
+      { id: 'fc-aa', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false },
+      { id: 'fc-bb', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false },
+      { id: 'fc-cc', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }, // no decoration
+    ];
+    await applySimulationDecorationsToForecasts(predictions);
+    assert.equal(predictions[0].simulationAdjustment, 0.12);
+    assert.equal(predictions[0].simPathConfidence, 0.85);
+    assert.equal(predictions[0].demotedBySimulation, false);
+    assert.equal(predictions[1].simulationAdjustment, -0.15);
+    assert.equal(predictions[1].simPathConfidence, 0.95);
+    assert.equal(predictions[1].demotedBySimulation, true);
+    // fc-cc has no decoration — stays at 0
+    assert.equal(predictions[2].simulationAdjustment, 0);
+    assert.equal(predictions[2].demotedBySimulation, false);
+  });
+
+  it('WD-10: applySimulationDecorationsToForecasts is non-fatal when Redis credentials are missing', async () => {
+    __setRedisStoreForTests(null);
+    const predictions = [{ id: 'fc-xx', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }];
+    await assert.doesNotReject(() => applySimulationDecorationsToForecasts(predictions));
+    // predictions unchanged
+    assert.equal(predictions[0].simulationAdjustment, 0);
+  });
+
+  it('WD-11: applySimulationDecorationsToForecasts is non-fatal when decoration value has wrong shape', async () => {
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: { runId: 'run-bad', generatedAt: Date.now(), byForecastId: 'not-an-object' },
+    };
+    __setRedisStoreForTests(store);
+    const predictions = [{ id: 'fc-yy', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }];
+    await assert.doesNotReject(() => applySimulationDecorationsToForecasts(predictions));
+    assert.equal(predictions[0].simulationAdjustment, 0, 'prediction unchanged when byForecastId is not an object');
+  });
+
+  it('WD-13: applySimulationDecorationsToForecasts skips decorations older than SIMULATION_DECORATIONS_MAX_AGE_MS', async () => {
+    const staleAge = SIMULATION_DECORATIONS_MAX_AGE_MS + 1000; // 1s past the threshold
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: {
+        runId: 'run-old',
+        generatedAt: Date.now() - staleAge,
+        byForecastId: {
+          'fc-stale': { simulationAdjustment: 0.12, simPathConfidence: 0.85, demotedBySimulation: false },
+        },
+      },
+    };
+    __setRedisStoreForTests(store);
+    const predictions = [{ id: 'fc-stale', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }];
+    await applySimulationDecorationsToForecasts(predictions);
+    assert.equal(predictions[0].simulationAdjustment, 0, 'stale decorations not applied');
+  });
+
+  it('WD-14: empty-adjustments write clears stale decorations — subsequent apply sees no flags', async () => {
+    // Scenario: run N wrote decorations; run N+1 produced zero adjustments.
+    // writeSimulationDecorations with empty adjustments must overwrite so apply sees empty map.
+    const store = {};
+    __setRedisStoreForTests(store);
+
+    // Seed a stale decoration as if from run N
+    store[SIMULATION_DECORATIONS_KEY] = {
+      runId: 'run-n',
+      generatedAt: Date.now(),
+      byForecastId: { 'fc-was-flagged': { simulationAdjustment: 0.12, simPathConfidence: 0.9, demotedBySimulation: false } },
+    };
+
+    // Run N+1: no adjustments → writeSimulationDecorations overwrites with empty map
+    await writeSimulationDecorations(makeMergeResult([]), makeSnapshot([], 'run-n+1'));
+    assert.deepEqual(store[SIMULATION_DECORATIONS_KEY].byForecastId, {}, 'empty map written, stale entry gone');
+
+    // Fast-path seed applies: nothing should be applied
+    const predictions = [{ id: 'fc-was-flagged', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }];
+    await applySimulationDecorationsToForecasts(predictions);
+    assert.equal(predictions[0].simulationAdjustment, 0, 'stale flag cleared — sub-bar correctly shows nothing');
+  });
+
+  it('WD-12: round-trip — writeSimulationDecorations then applySimulationDecorationsToForecasts flows full pipeline', async () => {
+    const store = {};
+    __setRedisStoreForTests(store);
+    // Simulation produced +0.12 for state-f → fc-005
+    const stateUnits = [makeStateUnit('state-f', ['fc-005', 'fc-006'])];
+    const adj = makeAdj('state-f', 0.12, 0.78);
+    await writeSimulationDecorations(makeMergeResult([adj]), makeSnapshot(stateUnits, 'run-rt'));
+
+    // Next fast-path seed run applies decorations to predictions
+    const predictions = [
+      { id: 'fc-005', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false },
+      { id: 'fc-006', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false },
+      { id: 'fc-007', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false }, // unrelated
+    ];
+    await applySimulationDecorationsToForecasts(predictions);
+
+    // Both fc-005 and fc-006 should be decorated (both belong to state-f)
+    assert.equal(predictions[0].simulationAdjustment, 0.12, 'fc-005 decorated');
+    assert.equal(predictions[0].simPathConfidence, 0.78);
+    assert.equal(predictions[1].simulationAdjustment, 0.12, 'fc-006 decorated (same candidate)');
+    assert.equal(predictions[2].simulationAdjustment, 0, 'fc-007 unaffected');
+  });
+
+  it('WD-16: writeSimulationDecorations patches forecast:predictions:v2 in-place so same-run consumers see sim fields', async () => {
+    // Verifies the canonical key (not just the side key) is updated on the same run.
+    // This is the claim in the PR: "plumb simulation decorations to Forecast Redis key".
+    const store = {
+      // Pre-populate canonical key as it would exist after runSeed() published it
+      [CANONICAL_KEY]: {
+        generatedAt: Date.now() - 5000,
+        predictions: [
+          { id: 'fc-canon-01', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Test 01' },
+          { id: 'fc-canon-02', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Test 02' },
+          { id: 'fc-canon-03', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Test 03' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    // Deep path / rescore produces adjustments for fc-canon-01 and fc-canon-02
+    const stateUnits = [
+      makeStateUnit('state-canon-a', ['fc-canon-01', 'fc-canon-02']),
+    ];
+    const adjs = [makeAdj('state-canon-a', 0.12, 0.88)];
+    await writeSimulationDecorations(makeMergeResult(adjs), makeSnapshot(stateUnits, 'run-canon'));
+
+    // Side key written
+    assert.ok(store[SIMULATION_DECORATIONS_KEY], 'side key written');
+
+    // Canonical key patched for matched forecasts
+    const canon = store[CANONICAL_KEY].predictions;
+    assert.equal(canon[0].simulationAdjustment, 0.12, 'fc-canon-01 sim field updated in canonical key');
+    assert.equal(canon[0].simPathConfidence, 0.88);
+    assert.equal(canon[1].simulationAdjustment, 0.12, 'fc-canon-02 sim field updated in canonical key');
+    // fc-canon-03 not in decoration — reset to 0 (was already 0, but confirm no contamination)
+    assert.equal(canon[2].simulationAdjustment, 0, 'fc-canon-03 unaffected');
+    // generatedAt is preserved from the original publish
+    assert.ok(store[CANONICAL_KEY].generatedAt < Date.now() - 4000, 'original generatedAt preserved');
+  });
+
+  it('WD-17: writeSimulationDecorations with empty byForecastId resets stale sim fields in canonical key', async () => {
+    // Scenario: run N wrote sim fields into canonical key. Run N+1 has no adjustments.
+    // After writeSimulationDecorations with empty adjustments, canonical key must have
+    // all sim fields reset to 0 — the sub-bar shows nothing.
+    const store = {
+      [CANONICAL_KEY]: {
+        generatedAt: Date.now() - 3000,
+        predictions: [
+          { id: 'fc-stale-01', simulationAdjustment: 0.12, simPathConfidence: 0.85, demotedBySimulation: false, title: 'Stale 01' },
+          { id: 'fc-stale-02', simulationAdjustment: -0.15, simPathConfidence: 0.95, demotedBySimulation: true, title: 'Stale 02' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    // Run N+1: simulation ran but produced no adjustments
+    await writeSimulationDecorations(makeMergeResult([]), makeSnapshot([], 'run-n+1-empty'));
+
+    assert.deepEqual(store[SIMULATION_DECORATIONS_KEY].byForecastId, {}, 'side key empty');
+
+    const canon = store[CANONICAL_KEY].predictions;
+    assert.equal(canon[0].simulationAdjustment, 0, 'fc-stale-01 reset to 0 in canonical key');
+    assert.equal(canon[0].simPathConfidence, 0, 'fc-stale-01 confidence reset');
+    assert.equal(canon[0].demotedBySimulation, false, 'fc-stale-01 demotion cleared');
+    assert.equal(canon[1].simulationAdjustment, 0, 'fc-stale-02 reset to 0 in canonical key');
+    assert.equal(canon[1].demotedBySimulation, false, 'fc-stale-02 demotion cleared');
+  });
+
+  it('WD-18: patchPublishedForecastsWithSimDecorations skips when canonical key is from a newer run', async () => {
+    // Scenario: run A (older) finishes its deep task late and tries to patch the canonical key
+    // that was already overwritten by run B (newer fast-path seed). The guard must prevent
+    // run A from stamping stale simulation adjustments onto run B's payload.
+    const newerRunGeneratedAt = Date.now();
+    const olderRunGeneratedAt = newerRunGeneratedAt - 120_000; // 2 min earlier
+    const store = {
+      [CANONICAL_KEY]: {
+        generatedAt: newerRunGeneratedAt,  // run B's publish
+        predictions: [
+          { id: 'fc-newer-01', simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false, title: 'Newer 01' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    // Run A's deep task produces adjustments but snapshot is from the older run
+    const stateUnits = [makeStateUnit('state-old', ['fc-newer-01'])];
+    const adjs = [makeAdj('state-old', 0.12, 0.99)];
+    const olderSnapshot = { runId: 'run-older', generatedAt: olderRunGeneratedAt, fullRunStateUnits: stateUnits };
+    await writeSimulationDecorations(makeMergeResult(adjs), olderSnapshot);
+
+    // Side key written (decorations recorded)
+    assert.ok(store[SIMULATION_DECORATIONS_KEY], 'side key still written for the run record');
+
+    // Canonical key must NOT have been touched — still has run B's values
+    const canon = store[CANONICAL_KEY].predictions;
+    assert.equal(canon[0].simulationAdjustment, 0.08, 'run B sim adjustment preserved — run A must not overwrite');
+    assert.equal(canon[0].simPathConfidence, 0.9, 'run B sim confidence preserved');
+    assert.equal(store[CANONICAL_KEY].generatedAt, newerRunGeneratedAt, 'canonical generatedAt unchanged');
+  });
+
+  it('WD-19: patchPublishedForecastsWithSimDecorations patches when canonical key matches run (same generatedAt)', async () => {
+    // Scenario: deep forecast and canonical key share the same generatedAt — same run.
+    // The guard must NOT fire and the patch must proceed normally.
+    const sharedGeneratedAt = Date.now() - 1000;
+    const store = {
+      [CANONICAL_KEY]: {
+        generatedAt: sharedGeneratedAt,
+        predictions: [
+          { id: 'fc-same-01', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false, title: 'Same 01' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    const stateUnits = [makeStateUnit('state-same', ['fc-same-01'])];
+    const adjs = [makeAdj('state-same', 0.12, 0.88)];
+    const sameRunSnapshot = { runId: 'run-same', generatedAt: sharedGeneratedAt, fullRunStateUnits: stateUnits };
+    await writeSimulationDecorations(makeMergeResult(adjs), sameRunSnapshot);
+
+    const canon = store[CANONICAL_KEY].predictions;
+    assert.equal(canon[0].simulationAdjustment, 0.12, 'same-run patch applied');
+    assert.equal(canon[0].simPathConfidence, 0.88, 'same-run confidence applied');
+  });
+
+  it('WD-20: redisAtomicPatchSimDecorations — interleaving race: newer fast-path payload wins even when it arrives after the check', async () => {
+    // Scenario: the TOCTOU race that a plain read-modify-write cannot prevent.
+    // 1. Older worker starts: reads canonical key (generatedAt = sharedTs, same run → guard passes)
+    // 2. Newer fast-path seed publishes: canonical key updated to generatedAt = newerTs
+    // 3. Older worker tries to write back → must NOT overwrite newerTs payload
+    //
+    // In production, this is prevented atomically by the Lua EVAL. In tests, we verify
+    // redisAtomicPatchSimDecorations honours the guard on the value it actually reads inside
+    // the atomic call (not a stale snapshot from an earlier read).
+    //
+    // We simulate the race by: setting the store to newerTs BEFORE calling the atomic function.
+    // The test-path implementation reads the store at call time, so it sees newerTs → skips.
+    // This proves the atomic helper's guard fires on the live value, not a captured snapshot.
+    const olderRunTs = Date.now() - 5_000;
+    const newerTs    = olderRunTs + 3_000;  // 3s newer — a real concurrent fast-path seed
+
+    const store = {
+      [CANONICAL_KEY]: {
+        // Fast-path seed has already published with newerTs by the time our atomic call runs
+        generatedAt: newerTs,
+        predictions: [
+          { id: 'fc-race-01', simulationAdjustment: 0.05, simPathConfidence: 0.75, demotedBySimulation: false, title: 'Race 01' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    const byForecastId = { 'fc-race-01': { simulationAdjustment: 0.12, simPathConfidence: 0.99, demotedBySimulation: false } };
+    const { url, token } = { url: 'http://test', token: 'test' };  // values irrelevant — test-store path
+
+    // olderRunTs < newerTs: atomic helper must skip
+    const status = await redisAtomicPatchSimDecorations(url, token, CANONICAL_KEY, byForecastId, olderRunTs, 21600);
+
+    assert.ok(status.startsWith('SKIPPED:'), `expected SKIPPED, got ${status}`);
+    // Canonical key is unchanged — the faster publish's values survive
+    assert.equal(store[CANONICAL_KEY].predictions[0].simulationAdjustment, 0.05, 'newer payload untouched by older run');
+    assert.equal(store[CANONICAL_KEY].predictions[0].simPathConfidence, 0.75, 'newer confidence untouched');
+    assert.equal(store[CANONICAL_KEY].generatedAt, newerTs, 'canonical generatedAt preserved');
+  });
+
+  it('WD-21: writeSimulationDecorations skips side key and canonical patch when existing side key is from a newer run', async () => {
+    // Scenario: run B (newer) has already written forecast:sim-decorations:v1.
+    // run A (older) finishes late and calls writeSimulationDecorations — must not overwrite.
+    // Without the fix: run A writes generatedAt: Date.now() (fresh) → side key poisoned.
+    // With the fix: atomic write-if-newer detects existingTs > runATs → skips both side key and canonical patch.
+    const runBTs = Date.now() - 1_000;   // run B wrote 1 second ago
+    const runATs = runBTs - 60_000;      // run A originated 61 seconds ago (older)
+
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: {
+        runId: 'run-B', generatedAt: runBTs,
+        byForecastId: { 'fc-b-01': { simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false } },
+      },
+      [CANONICAL_KEY]: {
+        generatedAt: runBTs,
+        predictions: [
+          { id: 'fc-b-01', simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false, title: 'B 01' },
+        ],
+      },
+    };
+    __setRedisStoreForTests(store);
+
+    // Run A tries to write its stale decorations
+    const stateUnits = [makeStateUnit('state-a', ['fc-b-01'])];
+    const adjs = [makeAdj('state-a', 0.12, 0.99)];
+    const snapshotA = { runId: 'run-A', generatedAt: runATs, fullRunStateUnits: stateUnits };
+    await writeSimulationDecorations(makeMergeResult(adjs), snapshotA);
+
+    // Side key must still have run B's data
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].runId, 'run-B', 'side key runId preserved');
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].generatedAt, runBTs, 'side key generatedAt preserved (not poisoned with Date.now())');
+    assert.deepStrictEqual(
+      store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-b-01'],
+      { simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false },
+      'side key byForecastId not overwritten by run A',
+    );
+
+    // Canonical key must also be untouched (both guards fired)
+    assert.equal(store[CANONICAL_KEY].predictions[0].simulationAdjustment, 0.08, 'canonical untouched');
+    assert.equal(store[CANONICAL_KEY].generatedAt, runBTs, 'canonical generatedAt unchanged');
+  });
+
+  it('WD-22: writeSimulationDecorations stores snapshot.generatedAt (not Date.now()) so age check uses run origin time', async () => {
+    // Verifies that byForecastId is stored with the originating run's generatedAt, not
+    // the wall-clock write time. applySimulationDecorationsToForecasts uses this timestamp
+    // for its SIMULATION_DECORATIONS_MAX_AGE_MS freshness check — if we stored Date.now()
+    // a run from 2 days ago would always look fresh.
+    const runOriginTs = Date.now() - 120_000;  // run started 2 minutes ago
+    const store = {};
+    __setRedisStoreForTests(store);
+
+    const stateUnits = [makeStateUnit('state-ts-check', ['fc-ts-01'])];
+    const adjs = [makeAdj('state-ts-check', 0.08, 0.8)];
+    const snap = { runId: 'run-ts', generatedAt: runOriginTs, fullRunStateUnits: stateUnits };
+    await writeSimulationDecorations(makeMergeResult(adjs), snap);
+
+    assert.ok(store[SIMULATION_DECORATIONS_KEY], 'side key written');
+    const storedTs = store[SIMULATION_DECORATIONS_KEY].generatedAt;
+    // Must equal the snapshot's generatedAt, not wall-clock time (which would be ~runOriginTs + epsilon)
+    assert.strictEqual(storedTs, runOriginTs, 'stored generatedAt equals snapshot.generatedAt, not Date.now()');
+  });
+
+  it('WD-23: redisAtomicWriteSimDecorations skips when existing has newer generatedAt', async () => {
+    const newerTs = Date.now();
+    const olderTs = newerTs - 5_000;
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: { runId: 'run-newer', generatedAt: newerTs, byForecastId: {} },
+    };
+    __setRedisStoreForTests(store);
+
+    const status = await redisAtomicWriteSimDecorations('http://test', 'test', SIMULATION_DECORATIONS_KEY, {
+      runId: 'run-older', generatedAt: olderTs, byForecastId: { 'fc-x': { simulationAdjustment: 0.12, simPathConfidence: 1, demotedBySimulation: false } },
+    }, 259200);
+
+    assert.ok(status.startsWith('SKIPPED:'), `expected SKIPPED, got ${status}`);
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].runId, 'run-newer', 'newer run preserved');
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].generatedAt, newerTs, 'newer generatedAt preserved');
+  });
+
+  it('WD-24: redisAtomicWriteSimDecorations writes when existing has older generatedAt', async () => {
+    const olderTs = Date.now() - 10_000;
+    const newerTs = olderTs + 8_000;
+    const store = {
+      [SIMULATION_DECORATIONS_KEY]: { runId: 'run-older', generatedAt: olderTs, byForecastId: {} },
+    };
+    __setRedisStoreForTests(store);
+
+    const status = await redisAtomicWriteSimDecorations('http://test', 'test', SIMULATION_DECORATIONS_KEY, {
+      runId: 'run-newer', generatedAt: newerTs, byForecastId: { 'fc-y': { simulationAdjustment: 0.08, simPathConfidence: 0.9, demotedBySimulation: false } },
+    }, 259200);
+
+    assert.strictEqual(status, 'WRITTEN');
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].runId, 'run-newer');
+    assert.equal(store[SIMULATION_DECORATIONS_KEY].generatedAt, newerTs);
+    assert.ok(store[SIMULATION_DECORATIONS_KEY].byForecastId['fc-y'], 'new byForecastId written');
+  });
+
+  it('WD-15: inline deep path — applySimulationMerge result + snapshot.fullRunStateUnits writes decorations (covers processDeepForecastTask call site)', async () => {
+    // Reproduces the inline sequence in processDeepForecastTask:
+    //   mergeResult = applySimulationMerge(evaluation, simulationOutcome, candidates, snapshot, priorWorldState)
+    //   writeSimulationDecorations(mergeResult, snapshot)   ← the call that was missing pre-fix
+    // snapshot.fullRunStateUnits is the R2-loaded artifact that maps candidateStateId → forecastIds.
+    const store = {};
+    __setRedisStoreForTests(store);
+
+    const candidateStateId = 'state-deep-inline';
+    const candidatePacket = {
+      candidateStateId,
+      candidateIndex: 0,
+      routeFacilityKey: 'Strait of Hormuz',
+      commodityKey: 'crude_oil',
+      marketContext: { topBucketId: 'energy', topChannel: 'energy_supply_shock' },
+      stateSummary: { actors: [] },
+    };
+    const snapshot = {
+      runId: 'run-deep-inline-01',
+      generatedAt: Date.now(),
+      // fullRunStateUnits links candidateStateId → forecastIds — this is what
+      // processDeepForecastTask reads from R2 and passes to both applySimulationMerge
+      // and writeSimulationDecorations.
+      fullRunStateUnits: [{ id: candidateStateId, label: 'Hormuz disruption', forecastIds: ['fc-inline-001', 'fc-inline-002'] }],
+      impactExpansionCandidates: [candidatePacket],
+    };
+    // Path already selected with high acceptanceScore (0.70) — simulation gives +0.08 but path
+    // stays selected (0.78 > 0.50). anyPathChanged stays false → buildDeepWorldStateFromSnapshot
+    // is NOT called, avoiding the need for a full R2-loaded snapshot in this unit test.
+    const path = {
+      pathId: 'path-deep-inline',
+      candidateStateId,
+      type: 'expanded',
+      acceptanceScore: 0.70,
+      pathScore: 0.75,
+      candidate: candidatePacket,
+      direct: { variableKey: 'route_disruption', targetBucket: '', channel: 'energy_supply_shock', affectedAssets: [] },
+      second: null,
+      third: null,
+    };
+    const evaluation = {
+      status: 'completed',
+      selectedPaths: [path],
+      rejectedPaths: [],
+      impactExpansionBundle: null,
+      deepWorldState: { deepForecast: {} },
+      validation: { mapped: [], hypotheses: [] },
+    };
+    const simulationOutcome = {
+      runId: 'sim-deep-inline',
+      isCurrentRun: true,
+      theaterResults: [{
+        theaterId: 'theater-1',
+        candidateStateId,
+        topPaths: [{ label: 'Hormuz energy shock', summary: 'oil supply disruption from energy supply shock', keyActors: [] }],
+        invalidators: [],
+        stabilizers: [],
+      }],
+    };
+
+    // This is the exact sequence in processDeepForecastTask (post-fix)
+    const mergeResult = applySimulationMerge(
+      evaluation, simulationOutcome, snapshot.impactExpansionCandidates, snapshot, null,
+    );
+    await writeSimulationDecorations(mergeResult, snapshot);
+
+    const written = store[SIMULATION_DECORATIONS_KEY];
+    assert.ok(written, 'decorations written from inline deep path (was missing pre-fix)');
+    assert.equal(written.runId, 'run-deep-inline-01');
+    // Both forecasts linked to the candidate must be decorated
+    assert.ok('fc-inline-001' in written.byForecastId, 'fc-inline-001 decorated via fullRunStateUnits');
+    assert.ok('fc-inline-002' in written.byForecastId, 'fc-inline-002 decorated via fullRunStateUnits');
+    // bucket+channel match → +0.08 adjustment
+    assert.equal(written.byForecastId['fc-inline-001'].simulationAdjustment, 0.08);
+    assert.equal(written.byForecastId['fc-inline-002'].simulationAdjustment, 0.08);
   });
 });

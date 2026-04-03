@@ -1097,6 +1097,320 @@ tr.diag-err td { color: var(--settings-red); }
   font-size: 14px;
 }
 
+/* ── Notification channel cards ── */
+
+.us-notif-ch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--settings-surface);
+  border: 1px solid var(--settings-border);
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.us-notif-ch-row.us-notif-ch-on {
+  background: rgba(52, 211, 153, 0.06);
+  border-color: rgba(52, 211, 153, 0.2);
+}
+
+.us-notif-ch-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--settings-text-secondary);
+}
+
+.us-notif-ch-on .us-notif-ch-icon {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--settings-green);
+}
+
+.us-notif-ch-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.us-notif-ch-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--settings-text);
+  line-height: 1.2;
+}
+
+.us-notif-ch-sub {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.us-notif-ch-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.us-notif-ch-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--settings-green);
+  background: rgba(52, 211, 153, 0.12);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.us-notif-ch-btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid var(--settings-border-strong);
+  background: transparent;
+  color: var(--settings-text-secondary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.us-notif-ch-btn:hover {
+  background: var(--overlay-subtle);
+  color: var(--settings-text);
+}
+
+.us-notif-ch-btn-primary {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--settings-border-strong);
+  color: var(--settings-text);
+}
+
+.us-notif-ch-btn-primary:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.us-notif-slack-wrap {
+  width: 100%;
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.us-notif-slack-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 10px;
+  padding: 5px 8px;
+  background: var(--settings-surface-inset);
+  border: 1px solid var(--settings-border);
+  border-radius: 5px;
+  color: var(--settings-text);
+}
+
+.us-notif-slack-input::placeholder {
+  color: var(--settings-text-secondary);
+  opacity: 0.7;
+}
+
+.us-notif-slack-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+.us-notif-error {
+  font-size: 10px;
+  color: var(--settings-red);
+  margin-top: 4px;
+  display: block;
+  width: 100%;
+}
+
+.us-notif-tg-link {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  background: var(--settings-accent);
+  border: 1px solid var(--settings-accent);
+  border-radius: 5px;
+  color: #fff;
+  text-decoration: none;
+  display: inline-block;
+  transition: background 0.15s;
+}
+
+.us-notif-tg-link:hover {
+  background: color-mix(in srgb, var(--settings-accent) 85%, white);
+}
+
+.us-notif-tg-inline-link {
+  color: var(--settings-accent);
+  text-decoration: none;
+}
+
+.us-notif-tg-inline-link:hover {
+  text-decoration: underline;
+}
+
+.us-notif-tg-pair-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.us-notif-tg-qr {
+  flex-shrink: 0;
+  width: 88px;
+  height: 88px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+  padding: 3px;
+  box-sizing: border-box;
+}
+
+.us-notif-tg-qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.us-notif-tg-cmd-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.us-notif-tg-cmd-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.us-notif-tg-cmd {
+  font-family: monospace;
+  font-size: 11px;
+  background: var(--settings-bg-secondary, rgba(0,0,0,0.15));
+  border: 1px solid var(--settings-border, rgba(255,255,255,0.1));
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--settings-text-primary);
+  user-select: all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.us-notif-tg-copy-btn {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--settings-accent);
+  border-radius: 4px;
+  color: var(--settings-accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.us-notif-tg-copy-btn:hover {
+  background: var(--settings-accent);
+  color: #fff;
+}
+
+.us-notif-tg-expired {
+  color: var(--settings-text-secondary);
+  font-style: italic;
+}
+
+.us-notif-tg-countdown {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  white-space: nowrap;
+}
+
+.us-notif-signin {
+  font-size: 12px;
+  color: var(--settings-text-secondary);
+  padding: 8px 0;
+}
+
+/* Slack OAuth button */
+.us-notif-slack-oauth {
+  display: inline-flex;
+  align-items: center;
+  background: #4a154b;
+  border: 1px solid #4a154b;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.us-notif-slack-oauth:hover {
+  background: #611f69;
+  border-color: #611f69;
+}
+
+/* Discord OAuth button */
+.us-notif-discord-oauth {
+  display: inline-flex;
+  align-items: center;
+  background: #5865f2;
+  border: 1px solid #5865f2;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.us-notif-discord-oauth:hover {
+  background: #4752c4;
+  border-color: #4752c4;
+}
+
+/* Manage in Slack link */
+.us-notif-manage-link {
+  font-size: 10px;
+  color: var(--settings-text-secondary);
+  text-decoration: none;
+  border: 1px solid var(--settings-border);
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+.us-notif-manage-link:hover {
+  color: var(--settings-text);
+  border-color: var(--settings-border-strong);
+}
+
 /* ── Responsive ── */
 @media (max-width: 860px) {
   .settings-sidebar {

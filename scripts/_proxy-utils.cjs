@@ -60,11 +60,11 @@ function resolveProxyConfig() {
 }
 
 /**
- * Resolve proxy from PROXY_URL with fallback to OREF_PROXY_AUTH.
- * Use this for general seeders (fear-greed, disease-outbreaks, etc.).
+ * Resolve proxy from PROXY_URL only.
+ * OREF_PROXY_AUTH is IL-exit and expensive — reserved exclusively for OREF alerts.
  */
 function resolveProxyConfigWithFallback() {
-  return parseProxyConfig(process.env.PROXY_URL || process.env.OREF_PROXY_AUTH || '');
+  return parseProxyConfig(process.env.PROXY_URL || '');
 }
 
 /**
@@ -82,12 +82,15 @@ function resolveProxyString() {
 /**
  * Returns proxy as "user:pass@host:port" string for use with HTTP CONNECT tunneling.
  * Does NOT replace gate.decodo.com → us.decodo.com; CONNECT endpoint is gate.decodo.com.
+ * When PROXY_URL uses https:// (TLS proxy), returns "https://user:pass@host:port" so
+ * httpsProxyFetchJson uses tls.connect to the proxy instead of plain net.connect.
  * Returns empty string if no proxy configured.
  */
 function resolveProxyStringConnect() {
   const cfg = resolveProxyConfigWithFallback();
   if (!cfg) return '';
-  return cfg.auth ? `${cfg.auth}@${cfg.host}:${cfg.port}` : `${cfg.host}:${cfg.port}`;
+  const base = cfg.auth ? `${cfg.auth}@${cfg.host}:${cfg.port}` : `${cfg.host}:${cfg.port}`;
+  return cfg.tls ? `https://${base}` : base;
 }
 
 module.exports = { parseProxyConfig, resolveProxyConfig, resolveProxyConfigWithFallback, resolveProxyString, resolveProxyStringConnect };

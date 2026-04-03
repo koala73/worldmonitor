@@ -43,6 +43,10 @@ const SIMULATION_RUNNER_VERSION = 'v1';
 const SIMULATION_TASK_KEY_PREFIX = 'forecast:simulation-task:v1';
 const SIMULATION_TASK_QUEUE_KEY = 'forecast:simulation-task-queue:v1';
 const SIMULATION_LOCK_KEY_PREFIX = 'forecast:simulation-lock:v1';
+const SIMULATION_DECORATIONS_KEY = 'forecast:sim-decorations:v1';
+const SIMULATION_DECORATIONS_META_KEY = `seed-meta:${SIMULATION_DECORATIONS_KEY}`;
+const SIMULATION_DECORATIONS_TTL_SECONDS = 86400 * 3; // 3 days — outlasts typical run cadence
+const SIMULATION_DECORATIONS_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48h — skip apply if no simulation ran recently
 const VALID_RUN_ID_RE = /^\d{13,}-[a-z0-9-]{1,64}$/i;
 const SIMULATION_ROUND1_MAX_TOKENS = 2200;
 const SIMULATION_ROUND2_MAX_TOKENS = 2500;
@@ -571,6 +575,7 @@ const IMPACT_VARIABLE_CHANNELS = Object.fromEntries(
 );
 
 function getRedisCredentials() {
+  if (_testRedisStore) return { url: 'http://test', token: 'test' };
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
@@ -598,7 +603,12 @@ async function redisCommand(url, token, command) {
   return resp.json();
 }
 
+/** In-memory Redis store injected by tests. When set, redisGet/redisSet skip network calls. */
+let _testRedisStore = null;
+function __setRedisStoreForTests(store) { _testRedisStore = store; }
+
 async function redisGet(url, token, key) {
+  if (_testRedisStore) return _testRedisStore[key] ?? null;
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(10_000),
@@ -4577,6 +4587,9 @@ function summarizeImpactPathScore(path = null) {
     pathId: path.pathId || '',
     type: path.type || '',
     candidateStateId: path.candidateStateId || '',
+    stateKind: path.candidate?.stateKind || '',
+    routeFacilityKey: path.candidate?.routeFacilityKey || '',
+    topBucketId: path.candidate?.marketContext?.topBucketId || path.candidate?.topBucketId || '',
     directVariableKey: path.direct?.variableKey || '',
     secondVariableKey: path.second?.variableKey || '',
     thirdVariableKey: path.third?.variableKey || '',
@@ -4588,6 +4601,24 @@ function summarizeImpactPathScore(path = null) {
   if (path.simulationAdjustment !== undefined) {
     summary.simulationAdjustment = Number(path.simulationAdjustment);
     summary.mergedAcceptanceScore = Number(path.mergedAcceptanceScore || path.acceptanceScore || 0);
+    if (path.simulationSignal !== undefined) {
+      summary.simulationSignal = path.simulationSignal;
+    }
+    if (path.simulationAdjustmentDetail !== undefined) {
+      const d = path.simulationAdjustmentDetail;
+      summary.simDetail = {
+        bucketChannelMatch:    Boolean(d.bucketChannelMatch),
+        actorOverlapCount:     Number(d.actorOverlapCount),
+        roleOverlapCount:      Number(d.roleOverlapCount ?? d.actorOverlapCount),
+        keyActorsOverlapCount: Number(d.keyActorsOverlapCount ?? 0),
+        candidateActorCount:   Number(d.candidateActorCount),
+        actorSource:           d.actorSource,
+        resolvedChannel:       d.resolvedChannel || '',
+        channelSource:         d.channelSource,
+        invalidatorHit:        Boolean(d.invalidatorHit),
+        stabilizerHit:         Boolean(d.stabilizerHit),
+      };
+    }
   }
   return summary;
 }
@@ -4920,6 +4951,9 @@ function buildPublishedForecastPayload(pred) {
       d30: Number(pred.projections.d30 || 0),
     } : null,
     caseFile: slimForecastCaseForPublish(pred.caseFile),
+    simulationAdjustment: Number(pred.simulationAdjustment || 0),
+    simPathConfidence: Number(pred.simPathConfidence || 0),
+    demotedBySimulation: !!pred.demotedBySimulation,
   };
 }
 
@@ -11398,7 +11432,7 @@ function negatesDisruption(stabilizer, candidatePacket) {
  */
 function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePacket) {
   let adjustment = 0;
-  const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none', candidateActorCount: 0, actorSource: 'none' };
+  const details = { bucketChannelMatch: false, actorOverlapCount: 0, roleOverlapCount: 0, keyActorsOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none', candidateActorCount: 0, actorSource: 'none', simPathConfidence: 1.0 };
 
   const { topPaths = [], invalidators = [], stabilizers = [] } = simTheaterResult || {};
   const pathBucket = expandedPath?.direct?.targetBucket
@@ -11445,13 +11479,38 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
     (sp) => matchesBucket(sp, pathBucket) && matchesChannel(sp, pathChannel)
   );
   if (bucketChannelMatch) {
-    adjustment += 0.08;
+    // Scale bonuses by sim path confidence.
+    // Absent or non-finite → 1.0 (conservative fallback for legacy LLM output without this field).
+    // Explicit 0 → simConf=0, no positive adjustment (if no negatives fire, adj=0 and early exit).
+    const rawConf = bucketChannelMatch.confidence;
+    const simConf = (typeof rawConf !== 'number' || !Number.isFinite(rawConf))
+      ? 1.0
+      : Math.min(1, Math.max(0, rawConf));
+    adjustment += +parseFloat((0.08 * simConf).toFixed(3));
     details.bucketChannelMatch = true;
-    const simActors = new Set((Array.isArray(bucketChannelMatch.keyActors) ? bucketChannelMatch.keyActors : []).map(normalizeActorName));
-    const overlap = candidateActors.filter((a) => simActors.has(a));
-    details.actorOverlapCount = overlap.length;
-    if (overlap.length >= 2) {
-      adjustment += 0.04;
+    details.simPathConfidence = simConf;
+    // Role overlap: candidate stateSummary.actors vs sim keyActorRoles (role-category vocabulary).
+    // Drives +0.04 bonus when actorSource=stateSummary. keyActorRoles absent → overlap=0 (graceful).
+    if (actorSrc === 'stateSummary') {
+      const simRoles = new Set((Array.isArray(bucketChannelMatch.keyActorRoles) ? bucketChannelMatch.keyActorRoles : []).map(normalizeActorName).filter(Boolean));
+      details.roleOverlapCount = candidateActors.filter((a) => simRoles.has(a)).length;
+    }
+
+    // Entity overlap: candidate actors vs sim keyActors.
+    // Drives +0.04 bonus when actorSource=affectedAssets (backwards compat). Telemetry when actorSource=stateSummary.
+    const simEntities = new Set((Array.isArray(bucketChannelMatch.keyActors) ? bucketChannelMatch.keyActors : []).map(normalizeActorName).filter(Boolean));
+    details.keyActorsOverlapCount = candidateActors.filter((a) => simEntities.has(a)).length;
+
+    // Bonus decision: role overlap for stateSummary path; entity overlap for affectedAssets fallback.
+    // Explicit third branch for actorSource='none' (no actors) so future values don't fall through silently.
+    const bonusOverlap = actorSrc === 'stateSummary'
+      ? details.roleOverlapCount
+      : actorSrc === 'affectedAssets'
+        ? details.keyActorsOverlapCount
+        : 0;
+    details.actorOverlapCount = bonusOverlap; // backwards-compat alias
+    if (bonusOverlap >= 2) {
+      adjustment += +parseFloat((0.04 * simConf).toFixed(3));
     }
   }
 
@@ -11500,6 +11559,15 @@ function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, s
 
   for (const path of allPaths) {
     if (path.type !== 'expanded') continue;
+    // Clear stale simulation metadata from prior cycles before re-evaluating.
+    // Must happen before any `continue` so paths with no matching theater or zero
+    // adjustment don't retain fields written by a different simulation run.
+    delete path.simulationAdjustment;
+    delete path.mergedAcceptanceScore;
+    delete path.simulationSignal;
+    delete path.demotedBySimulation;
+    delete path.promotedBySimulation;
+
     const simResult = simByTheater.get(path.candidateStateId);
     if (!simResult) continue;
 
@@ -11525,6 +11593,14 @@ function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, s
 
     path.simulationAdjustment = adjustment;
     path.mergedAcceptanceScore = mergedAcceptanceScore;
+    path.simulationSignal = {
+      backed: adjustment > 0,
+      adjustmentDelta: adjustment,
+      channelSource: details.channelSource,
+      demoted: wasAccepted && mergedAcceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
+      simPathConfidence: details.simPathConfidence,
+    };
+    path.simulationAdjustmentDetail = details;
 
     if (wasAccepted && mergedAcceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD) {
       path.demotedBySimulation = true;
@@ -12757,6 +12833,11 @@ function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null
     topChannel: c.marketContext?.topChannel || '',
     rankingScore: c.rankingScore,
     criticalSignalTypes: c.criticalSignalTypes || [],
+    actorRoles: [...new Set(
+      (Array.isArray(c?.stateSummary?.actors) ? c.stateSummary.actors : [])
+        .map((s) => String(s || '').trim())
+        .filter(Boolean),
+    )].slice(0, 12),
   }));
 
   const simulationRequirement = Object.fromEntries(
@@ -14032,7 +14113,7 @@ function validateCaseNarratives(items, predictions) {
 }
 
 function sanitizeForPrompt(text) {
-  return (text || '').replace(/[\n\r]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
+  return (text || '').replace(/[\n\r\u2028\u2029]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
 }
 
 // Sanitizes LLM-returned text before writing to Redis as a prompt section.
@@ -14236,6 +14317,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
 }
 
 async function redisSet(url, token, key, data, ttlSeconds) {
+  if (_testRedisStore) { _testRedisStore[key] = JSON.parse(JSON.stringify(data)); return; }
   try {
     await fetch(url, {
       method: 'POST',
@@ -14963,6 +15045,11 @@ async function fetchForecasts() {
 
   rankForecastsForAnalysis(predictions);
 
+  // Apply simulation decorations from the prior simulation run (non-fatal if absent).
+  // Must run before enrichScenariosWithLLM so that simulationAdjustment is present when
+  // buildPublishedForecastPayload serializes the prediction.
+  await applySimulationDecorationsToForecasts(predictions);
+
   const enrichmentMeta = await enrichScenariosWithLLM(predictions);
   populateFallbackNarratives(predictions);
 
@@ -15158,6 +15245,11 @@ async function processDeepForecastTask(task = {}) {
         priorWorldState,
       );
       simulationEvidence = mergeResult.simulationEvidence;
+      // Awaited so patchPublishedForecastsWithSimDecorations completes before artifact writing
+      // continues. Fast path (~200ms Redis ops) so no meaningful delay to artifact export.
+      await writeSimulationDecorations(mergeResult, snapshot).catch((err) =>
+        console.warn(`  [SimulationDecorations] write failed (deep path): ${err.message}`)
+      );
     }
   } catch (err) {
     console.warn('[SimulationMerge] Error during merge:', err.message);
@@ -16105,6 +16197,11 @@ function buildSimulationRound2SystemPrompt(theater, pkg, round1) {
   const evalTargets = (r2EvalTargets?.requiredPaths || [])
     .map((p) => `- ${sanitizeForPrompt(p.pathType)}: ${sanitizeForPrompt(p.question)}`).join('\n') || '- General market and security dynamics';
 
+  const actorRoles = Array.isArray(theater.actorRoles) ? theater.actorRoles : [];
+  const rolesSection = actorRoles.length > 0
+    ? `\nCANDIDATE ACTOR ROLES (copy these EXACT strings into keyActorRoles; return [] if none apply):\n${actorRoles.map((r) => `- "${sanitizeForPrompt(r)}"`).join('\n')}`
+    : '';
+
   return `You are a geopolitical simulation engine. This is ROUND 2 of a 2-round theater simulation.
 
 THEATER: ${sanitizeForPrompt(theater.theaterLabel || theater.theaterId)} | Region: ${sanitizeForPrompt(theater.theaterRegion || theater.dominantRegion || '')}
@@ -16115,12 +16212,13 @@ ${pathSummaries}
 VALID ACTOR IDs: ${entityIds || '(see round 1)'}
 
 EVALUATION TARGETS:
-${evalTargets}
+${evalTargets}${rolesSection}
 
 INSTRUCTIONS:
 For each of the 3 paths from Round 1 (escalation, containment, market_cascade), generate the EVOLVED outcome after 72 hours.
 
-- keyActors: 2-4 actor IDs that drive this path
+- keyActors: 2-4 actor IDs that drive this path (entity names)
+- keyActorRoles: 0-4 strings copied verbatim from CANDIDATE ACTOR ROLES above (return [] if list is absent or none apply)
 - roundByRoundEvolution: 2 entries (round 1 summary, round 2 evolution)
 - timingMarkers: 2-4 key events with timing (T+Nh format)
 - stabilizers: 2-4 factors that could prevent the worst outcome
@@ -16135,6 +16233,7 @@ Return ONLY a JSON object with no markdown fences:
       "label": "<short label>",
       "summary": "<≤200 char evolved summary>",
       "keyActors": ["<entityId>"],
+      "keyActorRoles": ["<exact string from CANDIDATE ACTOR ROLES, or empty array>"],
       "roundByRoundEvolution": [
         { "round": 1, "summary": "<≤160 char>" },
         { "round": 2, "summary": "<≤160 char>" }
@@ -16142,8 +16241,8 @@ Return ONLY a JSON object with no markdown fences:
       "confidence": 0.35,
       "timingMarkers": [{ "event": "<≤80 char>", "timing": "T+Nh" }]
     },
-    { "pathId": "containment", "label": "...", "summary": "...", "keyActors": [], "roundByRoundEvolution": [], "confidence": 0.50, "timingMarkers": [] },
-    { "pathId": "market_cascade", "label": "...", "summary": "...", "keyActors": [], "roundByRoundEvolution": [], "confidence": 0.15, "timingMarkers": [] }
+    { "pathId": "containment", "label": "...", "summary": "...", "keyActors": [], "keyActorRoles": [], "roundByRoundEvolution": [], "confidence": 0.50, "timingMarkers": [] },
+    { "pathId": "market_cascade", "label": "...", "summary": "...", "keyActors": [], "keyActorRoles": [], "roundByRoundEvolution": [], "confidence": 0.15, "timingMarkers": [] }
   ],
   "stabilizers": ["<≤100 char>"],
   "invalidators": ["<≤100 char>"],
@@ -16152,6 +16251,11 @@ Return ONLY a JSON object with no markdown fences:
 }`;
 }
 
+/**
+ * @param {string} text - raw LLM response text (JSON or JSON-with-prefix)
+ * @param {1 | 2} round - simulation round number
+ * @returns {{ paths: object[] | null, stabilizers?: string[], invalidators?: string[], globalObservations?: string, confidenceNotes?: string, dominantReactions?: string[], note?: string }}
+ */
 function tryParseSimulationRoundPayload(text, round) {
   try {
     const parsed = JSON.parse(text);
@@ -16161,7 +16265,12 @@ function tryParseSimulationRoundPayload(text, round) {
     if (paths.length === 0) return { paths: null };
     if (round === 2) {
       return {
-        paths,
+        paths: paths.map((p) => ({
+          ...p,
+          keyActorRoles: Array.isArray(p.keyActorRoles)
+            ? p.keyActorRoles.map((s) => sanitizeForPrompt(String(s || '')).trim()).filter(Boolean).slice(0, 10)
+            : [],
+        })),
         stabilizers: Array.isArray(parsed.stabilizers) ? parsed.stabilizers.map(String).slice(0, 6) : [],
         invalidators: Array.isArray(parsed.invalidators) ? parsed.invalidators.map(String).slice(0, 6) : [],
         globalObservations: String(parsed.globalObservations || '').slice(0, 300),
@@ -16251,6 +16360,335 @@ async function fetchSimulationOutcomeForMerge(storageConfig, currentRunId) {
 }
 
 /**
+ * Write per-forecast simulation decorations to Redis after a simulation rescore.
+ *
+ * Maps each candidateStateId in simulationEvidence.adjustments → stateUnit.forecastIds (via
+ * snapshot.fullRunStateUnits), picks the strongest-signal adjustment per candidate, and writes
+ * forecast:sim-decorations:v1 as a flat { byForecastId: { [id]: decoration } } map.
+ *
+ * These decorations are consumed by applySimulationDecorationsToForecasts() in the NEXT fast-path
+ * seed run, so the ForecastPanel sub-bar reflects simulation evidence from the most recent run.
+ *
+ * @param {object} mergeResult — result of applySimulationMerge (has simulationEvidence.adjustments)
+ * @param {object} snapshot — deep forecast snapshot (has fullRunStateUnits with forecastIds)
+ */
+async function writeSimulationDecorations(mergeResult, snapshot) {
+  // Guard: skip only on genuinely bogus/absent simulationEvidence — NOT on empty adjustments.
+  // An empty adjustments array is a valid result (simulation ran but nothing crossed thresholds).
+  // We MUST write in that case to overwrite any stale decorations from prior runs.
+  if (!mergeResult?.simulationEvidence) return;
+  const adjustments = mergeResult.simulationEvidence.adjustments;
+  if (!Array.isArray(adjustments)) return;
+
+  const stateUnits = Array.isArray(snapshot?.fullRunStateUnits) ? snapshot.fullRunStateUnits : [];
+  // Build candidateStateId → forecastIds lookup
+  const candidateToForecastIds = new Map();
+  for (const unit of stateUnits) {
+    if (unit?.id && Array.isArray(unit.forecastIds) && unit.forecastIds.length > 0) {
+      candidateToForecastIds.set(unit.id, unit.forecastIds);
+    }
+  }
+
+  // Group adjustments by candidateStateId
+  /** @type {Map<string, Array<{simulationAdjustment: number, simPathConfidence: number, demotedBySimulation: boolean}>>} */
+  const byCandidateId = new Map();
+  for (const adj of adjustments) {
+    const { candidateStateId, simulationAdjustment, details, wasAccepted, nowAccepted } = adj;
+    if (!candidateStateId) continue;
+    if (!byCandidateId.has(candidateStateId)) byCandidateId.set(candidateStateId, []);
+    byCandidateId.get(candidateStateId).push({
+      simulationAdjustment: Number(simulationAdjustment || 0),
+      simPathConfidence: Number(details?.simPathConfidence ?? 1.0),
+      demotedBySimulation: !!(wasAccepted && !nowAccepted),
+    });
+  }
+
+  // For each candidate, pick the adjustment with the highest absolute value (strongest signal).
+  // When multiple candidates map to the same forecast ID, keep the highest absolute value.
+  /** @type {Record<string, {simulationAdjustment: number, simPathConfidence: number, demotedBySimulation: boolean}>} */
+  const byForecastId = {};
+  for (const [candidateStateId, adjs] of byCandidateId) {
+    const best = adjs.reduce((prev, curr) =>
+      Math.abs(curr.simulationAdjustment) > Math.abs(prev.simulationAdjustment) ? curr : prev
+    );
+    const forecastIds = candidateToForecastIds.get(candidateStateId) || [];
+    for (const fid of forecastIds) {
+      const existing = byForecastId[fid];
+      if (!existing || Math.abs(best.simulationAdjustment) > Math.abs(existing.simulationAdjustment)) {
+        byForecastId[fid] = { ...best };
+      }
+    }
+  }
+
+  // Always write — even when byForecastId is empty — so later runs clear stale decorations
+  // from prior runs. Without this, old simulation flags persist for the full 3-day TTL.
+  // Run-order guard: if a newer run has already written, skip to avoid poisoning the side key
+  // with stale data that would be applied by the next fast-path seed.
+  const decorationCount = Object.keys(byForecastId).length;
+  // Store the originating run's generatedAt (not Date.now()) so the age check in
+  // applySimulationDecorationsToForecasts measures run age, not write timestamp.
+  const runGeneratedAt = snapshot?.generatedAt || Date.now();
+  try {
+    const { url, token } = getRedisCredentials();
+    const sideKeyStatus = await redisAtomicWriteSimDecorations(url, token, SIMULATION_DECORATIONS_KEY, {
+      runId: snapshot?.runId || '',
+      generatedAt: runGeneratedAt,
+      byForecastId,
+    }, SIMULATION_DECORATIONS_TTL_SECONDS);
+    if (sideKeyStatus.startsWith('SKIPPED:')) {
+      console.log(`  [SimulationDecorations] Skipping side key write — existing is from a newer run (existing=${sideKeyStatus.slice(8)}, this_run=${runGeneratedAt})`);
+      return;
+    }
+    await redisSet(url, token, SIMULATION_DECORATIONS_META_KEY, {
+      fetchedAt: Date.now(),
+      recordCount: decorationCount,
+    }, SIMULATION_DECORATIONS_TTL_SECONDS);
+    console.log(`  [SimulationDecorations] Written ${decorationCount} decorations from ${byCandidateId.size} candidates (runId=${snapshot?.runId || 'unknown'})`);
+    // Immediately patch forecast:predictions:v2 so the panel sees this run's simulation data
+    // without waiting for the next fast-path seed. Pass runGeneratedAt so the patch can reject
+    // a newer run's payload (prevents cross-run stamping when workers finish out of order).
+    await patchPublishedForecastsWithSimDecorations(byForecastId, runGeneratedAt);
+  } catch (err) {
+    console.warn(`  [SimulationDecorations] Write failed: ${err.message}`);
+  }
+}
+
+// Lua script for atomic write-if-newer of the simulation decoration side key.
+// Prevents a late older worker from overwriting a newer run's decorations.
+//
+// KEYS[1]  = SIMULATION_DECORATIONS_KEY (forecast:sim-decorations:v1)
+// ARGV[1]  = runGeneratedAt of this run (decimal string; '0' = unconditional write)
+// ARGV[2]  = new payload JSON string
+// ARGV[3]  = TTL in seconds
+//
+// Returns: 'WRITTEN' | 'SKIPPED:<existingGeneratedAt>'
+const _SIM_SIDE_WRITE_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if raw then
+  local ok, existing = pcall(cjson.decode, raw)
+  local existingTs = ok and tonumber(existing.generatedAt) or 0
+  local runTs = tonumber(ARGV[1]) or 0
+  if runTs > 0 and existingTs > runTs then
+    return 'SKIPPED:' .. tostring(existingTs)
+  end
+end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+return 'WRITTEN'
+`.trim();
+
+/**
+ * Atomically write the simulation decoration side key only if this run is newer
+ * than any existing value. Prevents a late older worker from poisoning the side key
+ * with stale byForecastId data.
+ *
+ * Production path: single Redis EVAL (atomic read-compare-write).
+ * Test path (_testRedisStore set): equivalent JavaScript logic.
+ *
+ * Returns: 'WRITTEN' | 'SKIPPED:<existingGeneratedAt>'
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} key  SIMULATION_DECORATIONS_KEY
+ * @param {{ runId: string, generatedAt: number, byForecastId: object }} payload
+ * @param {number} ttlSeconds
+ * @returns {Promise<string>}
+ */
+async function redisAtomicWriteSimDecorations(url, token, key, payload, ttlSeconds) {
+  // ── Test path ────────────────────────────────────────────────────────────────
+  if (_testRedisStore) {
+    const existing = _testRedisStore[key] ?? null;
+    const existingTs = typeof existing?.generatedAt === 'number' ? existing.generatedAt : 0;
+    const runTs = typeof payload.generatedAt === 'number' ? payload.generatedAt : 0;
+    if (runTs > 0 && existingTs > runTs) return `SKIPPED:${existingTs}`;
+    _testRedisStore[key] = JSON.parse(JSON.stringify(payload));
+    return 'WRITTEN';
+  }
+  // ── Production path: Lua EVAL ────────────────────────────────────────────────
+  const result = await redisCommand(url, token, [
+    'EVAL', _SIM_SIDE_WRITE_LUA, '1',
+    key,
+    String(typeof payload.generatedAt === 'number' ? payload.generatedAt : 0),
+    JSON.stringify(payload),
+    String(ttlSeconds),
+  ]);
+  return result?.result ?? 'WRITTEN';
+}
+
+// Lua script for atomic compare-and-swap patch of the canonical forecast key.
+// Executed via EVAL so the read-guard-modify-write is a single Redis operation with no TOCTOU gap.
+//
+// KEYS[1]  = canonical key (forecast:predictions:v2)
+// ARGV[1]  = runGeneratedAt as a decimal string ('0' means no guard)
+// ARGV[2]  = byForecastId JSON string
+// ARGV[3]  = TTL in seconds
+//
+// Returns: 'MISSING' | 'SKIPPED:<publishedAt>' | 'UNCHANGED' | 'PATCHED:<count>'
+const _SIM_PATCH_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return 'MISSING' end
+local ok, payload = pcall(cjson.decode, raw)
+if not ok then return 'MISSING' end
+if type(payload.predictions) ~= 'table' then return 'MISSING' end
+local runTs = tonumber(ARGV[1]) or 0
+local pubTs = tonumber(payload.generatedAt) or 0
+if runTs > 0 and pubTs > runTs then
+  return 'SKIPPED:' .. tostring(pubTs)
+end
+local ok2, decs = pcall(cjson.decode, ARGV[2])
+if not ok2 then return 'MISSING' end
+local patched = 0
+for _, pred in ipairs(payload.predictions) do
+  local id = pred.id
+  local dec = decs[id]
+  local newAdj  = dec and tonumber(dec.simulationAdjustment) or 0
+  local newConf = dec and tonumber(dec.simPathConfidence)    or 0
+  local newDem  = dec and dec.demotedBySimulation            or false
+  if pred.simulationAdjustment ~= newAdj or pred.simPathConfidence ~= newConf or pred.demotedBySimulation ~= newDem then
+    pred.simulationAdjustment  = newAdj
+    pred.simPathConfidence     = newConf
+    pred.demotedBySimulation   = newDem
+    patched = patched + 1
+  end
+end
+if patched == 0 then return 'UNCHANGED' end
+local ttl = tonumber(ARGV[3]) or 21600
+redis.call('SET', KEYS[1], cjson.encode(payload), 'EX', ttl)
+return 'PATCHED:' .. tostring(patched)
+`.trim();
+
+/**
+ * Atomically patch forecast:predictions:v2 with simulation decoration fields.
+ *
+ * Production path: single Redis EVAL (Lua) — the read, generatedAt guard, field mutations,
+ * and write happen in one atomic operation with no TOCTOU gap. A newer fast-path seed that
+ * publishes between GET and SET in a plain read-modify-write would be silently overwritten;
+ * this Lua script prevents that.
+ *
+ * Test path (_testRedisStore set): equivalent JavaScript logic — safe because the test store
+ * is single-threaded and there is no real concurrent writer.
+ *
+ * Returns a status string: 'MISSING' | 'SKIPPED:<publishedAt>' | 'UNCHANGED' | 'PATCHED:<count>'
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} canonicalKey
+ * @param {Record<string, {simulationAdjustment: number, simPathConfidence: number, demotedBySimulation: boolean}>} byForecastId
+ * @param {number} [runGeneratedAt]
+ * @param {number} ttlSeconds
+ * @returns {Promise<string>}
+ */
+async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForecastId, runGeneratedAt, ttlSeconds) {
+  // ── Test path: JavaScript equivalent (no real concurrency in tests) ──────────
+  if (_testRedisStore) {
+    const published = _testRedisStore[canonicalKey] ?? null;
+    if (!Array.isArray(published?.predictions)) return 'MISSING';
+    const runTs = typeof runGeneratedAt === 'number' ? runGeneratedAt : 0;
+    const pubTs = typeof published.generatedAt === 'number' ? published.generatedAt : 0;
+    if (runTs > 0 && pubTs > runTs) return `SKIPPED:${pubTs}`;
+    let patched = 0;
+    for (const pred of published.predictions) {
+      const dec = byForecastId[pred.id];
+      const newAdj  = dec ? Number(dec.simulationAdjustment || 0) : 0;
+      const newConf = dec ? Number(dec.simPathConfidence ?? 0) : 0;
+      const newDem  = dec ? !!dec.demotedBySimulation : false;
+      if (pred.simulationAdjustment !== newAdj || pred.simPathConfidence !== newConf || pred.demotedBySimulation !== newDem) {
+        pred.simulationAdjustment  = newAdj;
+        pred.simPathConfidence     = newConf;
+        pred.demotedBySimulation   = newDem;
+        patched++;
+      }
+    }
+    if (patched === 0) return 'UNCHANGED';
+    _testRedisStore[canonicalKey] = JSON.parse(JSON.stringify(published));
+    return `PATCHED:${patched}`;
+  }
+  // ── Production path: Lua EVAL (atomic) ───────────────────────────────────────
+  const result = await redisCommand(url, token, [
+    'EVAL', _SIM_PATCH_LUA, '1',
+    canonicalKey,
+    String(typeof runGeneratedAt === 'number' ? runGeneratedAt : 0),
+    JSON.stringify(byForecastId),
+    String(ttlSeconds),
+  ]);
+  return result?.result ?? 'MISSING';
+}
+
+/**
+ * Patch forecast:predictions:v2 in-place with simulation decoration fields.
+ * Called immediately after writeSimulationDecorations to update the canonical key
+ * for same-run consumers — without this, ForecastPanel only sees the prior run's
+ * simulation data until the next fast-path seed re-applies decorations.
+ *
+ * Forecasts present in byForecastId get updated sim fields.
+ * Forecasts NOT in byForecastId have their sim fields reset to 0 / false, so that
+ * any stale values from a prior run are cleared at the same time.
+ *
+ * The patch is atomic via Lua EVAL: the read, generatedAt guard, mutations, and write
+ * happen in a single Redis operation so a concurrent fast-path seed cannot be overwritten.
+ *
+ * Non-fatal: any failure is logged as a warning and the function returns.
+ *
+ * @param {Record<string, {simulationAdjustment: number, simPathConfidence: number, demotedBySimulation: boolean}>} byForecastId
+ * @param {number} [runGeneratedAt] — generatedAt from the snapshot that produced byForecastId
+ */
+async function patchPublishedForecastsWithSimDecorations(byForecastId, runGeneratedAt) {
+  try {
+    const { url, token } = getRedisCredentials();
+    const status = await redisAtomicPatchSimDecorations(url, token, CANONICAL_KEY, byForecastId, runGeneratedAt, TTL_SECONDS);
+    if (status.startsWith('PATCHED:')) {
+      console.log(`  [SimulationDecorations] Patched ${status.slice(8)} forecasts in ${CANONICAL_KEY} (atomic)`);
+    } else if (status.startsWith('SKIPPED:')) {
+      console.log(`  [SimulationDecorations] Skipping patch — canonical key is from a newer run (published=${status.slice(8)}, sim_run=${runGeneratedAt})`);
+    } else if (status === 'MISSING') {
+      console.warn('  [SimulationDecorations] Cannot patch canonical key — predictions missing or not an array');
+    }
+    // UNCHANGED: no-op, no log needed
+  } catch (err) {
+    console.warn(`  [SimulationDecorations] Canonical key patch failed (non-fatal): ${err.message}`);
+  }
+}
+
+/**
+ * Apply simulation decorations from forecast:sim-decorations:v1 to the given predictions array.
+ * Mutates pred.simulationAdjustment, pred.simPathConfidence, pred.demotedBySimulation in-place.
+ * Decorations come from the prior simulation run — stale by at most one fast-path seed cycle.
+ * Failures are non-fatal: the pipeline continues without decorations.
+ *
+ * @param {object[]} predictions
+ */
+async function applySimulationDecorationsToForecasts(predictions) {
+  try {
+    const { url, token } = getRedisCredentials();
+    const decorations = await redisGet(url, token, SIMULATION_DECORATIONS_KEY);
+    if (!decorations?.byForecastId || typeof decorations.byForecastId !== 'object') return;
+
+    // Defense-in-depth: skip decorations that are too old. writeSimulationDecorations overwrites
+    // on every simulation run (including empty results), so this guard only fires when no
+    // simulation has run for SIMULATION_DECORATIONS_MAX_AGE_MS (e.g., 48h) — e.g., during outage.
+    const ageMs = typeof decorations.generatedAt === 'number' ? Date.now() - decorations.generatedAt : Infinity;
+    if (ageMs > SIMULATION_DECORATIONS_MAX_AGE_MS) {
+      console.warn(`  [SimulationDecorations] Skipping stale decorations (age=${Math.round(ageMs / 3600000)}h, run=${decorations.runId || 'unknown'})`);
+      return;
+    }
+
+    let applied = 0;
+    for (const pred of predictions) {
+      const dec = decorations.byForecastId[pred.id];
+      if (!dec) continue;
+      pred.simulationAdjustment = Number(dec.simulationAdjustment || 0);
+      pred.simPathConfidence = Number(dec.simPathConfidence ?? 1.0);
+      pred.demotedBySimulation = !!dec.demotedBySimulation;
+      applied++;
+    }
+    if (applied > 0) {
+      console.log(`  [SimulationDecorations] Applied to ${applied}/${predictions.length} forecasts (run ${decorations.runId || 'unknown'})`);
+    }
+  } catch (err) {
+    console.warn(`  [SimulationDecorations] Apply failed (non-fatal): ${err.message}`);
+  }
+}
+
+/**
  * Re-apply simulation merge against the just-completed simulation for a run whose deep forecast
  * had already finished with stale (or no) simulation data. Reads forecast-eval.json + snapshot
  * from R2, re-runs applySimulationMerge with the fresh outcome, and re-writes trace artifacts if
@@ -16325,6 +16763,15 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
     );
 
     const ev = mergeResult.simulationEvidence;
+
+    // Always write decorations when adjustments exist — even if no path crossed the
+    // promotion/demotion threshold, any non-zero adjustment is worth showing in ForecastPanel.
+    // Awaited (not fire-and-forget) because applyPostSimulationRescore may return immediately
+    // on the no_path_changes branch before the process exits, abandoning a fire-and-forget promise.
+    await writeSimulationDecorations(mergeResult, snapshot).catch((err) =>
+      console.warn(`  [SimulationDecorations] write failed: ${err.message}`)
+    );
+
     if (!ev?.pathsPromoted && !ev?.pathsDemoted) {
       return { skipped: false, reason: 'no_path_changes', adjustmentsApplied: ev?.adjustments?.length || 0 };
     }
@@ -16400,6 +16847,7 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
         summary: p.summary,
         confidence: p.confidence,
         keyActors: (p.keyActors || []).slice(0, 4),
+        keyActorRoles: (p.keyActorRoles || []).slice(0, 8),
       })),
     dominantReactions: (tr.dominantReactions || []).slice(0, 3),
     stabilizers: (tr.stabilizers || []).slice(0, 3),
@@ -16474,6 +16922,23 @@ async function listQueuedSimulationTasks(limit = 10) {
   return Array.isArray(response?.result) ? response.result : [];
 }
 
+/**
+ * Sanitize and allowlist-filter LLM-returned keyActorRoles strings.
+ * Filters against theater.actorRoles (exact match after normalizeActorName).
+ * When allowedRoles is empty (old package, no actorRoles field), returns [] — no vocab = no valid roles.
+ * This prevents hallucinated keyActorRoles from old packages triggering the +0.04 overlap bonus.
+ * @param {string[] | undefined} rawRoles
+ * @param {string[]} allowedRoles
+ * @returns {string[]}
+ */
+function sanitizeKeyActorRoles(rawRoles, allowedRoles) {
+  if (!allowedRoles.length) return [];
+  const sanitized = (Array.isArray(rawRoles) ? rawRoles : [])
+    .map((s) => sanitizeForPrompt(String(s)).slice(0, 80));
+  const allowedNorm = new Set(allowedRoles.map(normalizeActorName));
+  return sanitized.filter((s) => allowedNorm.has(normalizeActorName(s))).slice(0, 8);
+}
+
 async function processNextSimulationTask(options = {}) {
   const workerId = options.workerId || `sim-worker-${process.pid}-${Date.now()}`;
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedSimulationTasks(10);
@@ -16537,6 +17002,7 @@ async function processNextSimulationTask(options = {}) {
 
         const r2Paths = result.round2?.paths || [];
         const r1Paths = result.round1?.paths || [];
+        const allowedRoles = Array.isArray(theater.actorRoles) ? theater.actorRoles : [];
         const mergedPaths = (r2Paths.length ? r2Paths : r1Paths).map((p) => {
           const r1Path = r1Paths.find((r) => r.pathId === p.pathId);
           return {
@@ -16544,6 +17010,7 @@ async function processNextSimulationTask(options = {}) {
             label: sanitizeForPrompt(p.label || p.pathId).slice(0, 80),
             summary: sanitizeForPrompt(p.summary || '').slice(0, 200),
             keyActors: Array.isArray(p.keyActors) ? p.keyActors.map((s) => sanitizeForPrompt(String(s)).slice(0, 80)).slice(0, 6) : [],
+            keyActorRoles: sanitizeKeyActorRoles(p.keyActorRoles, allowedRoles),
             roundByRoundEvolution: Array.isArray(p.roundByRoundEvolution)
               ? p.roundByRoundEvolution.map((r) => ({ round: r.round, summary: sanitizeForPrompt(r.summary || '').slice(0, 160) }))
               : [{ round: 1, summary: sanitizeForPrompt((r1Path?.summary || p.summary || '')).slice(0, 160) }],
@@ -16584,10 +17051,13 @@ async function processNextSimulationTask(options = {}) {
       const writeResult = await writeSimulationOutcome(pkgData, outcome, { storageConfig });
       await completeSimulationTask(runId);
       console.log(`  [Simulation] Completed ${runId}: ${theaterResults.length} theaters → ${writeResult?.outcomeKey}`);
-      // Fire-and-forget: re-score the deep forecast that may have run with stale simulation data.
-      applyPostSimulationRescore(runId, outcome, storageConfig)
-        .then((r) => { if (r && !r.skipped) console.log(`  [SimulationRescore] ${runId}: ${JSON.stringify(r)}`); })
-        .catch((err) => console.warn(`  [SimulationRescore] Error for ${runId}: ${err.message}`));
+      // Awaited (not fire-and-forget): re-score must complete before process.exit() so that
+      // writeSimulationDecorations + patchPublishedForecastsWithSimDecorations update the
+      // canonical key in the same run. A fire-and-forget here is abandoned when runSimulationWorker
+      // returns and the process exits, leaving forecast:predictions:v2 stale until the next seed.
+      const rescoreResult = await applyPostSimulationRescore(runId, outcome, storageConfig)
+        .catch((err) => { console.warn(`  [SimulationRescore] Error for ${runId}: ${err.message}`); return null; });
+      if (rescoreResult && !rescoreResult.skipped) console.log(`  [SimulationRescore] ${runId}: ${JSON.stringify(rescoreResult)}`);
       return { status: 'completed', runId, theaterCount: theaterResults.length, outcomeKey: writeResult?.outcomeKey };
     } catch (err) {
       console.warn(`  [Simulation] Task failed for ${runId}: ${err.message}`);
@@ -16772,6 +17242,7 @@ export {
   writeSimulationOutcome,
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,
+  tryParseSimulationRoundPayload,
   extractSimulationRoundPayload,
   runTheaterSimulation,
   enqueueSimulationTask,
@@ -16779,6 +17250,13 @@ export {
   runSimulationWorker,
   fetchSimulationOutcomeForMerge,
   applyPostSimulationRescore,
+  writeSimulationDecorations,
+  applySimulationDecorationsToForecasts,
+  patchPublishedForecastsWithSimDecorations,
+  redisAtomicPatchSimDecorations,
+  redisAtomicWriteSimDecorations,
+  SIMULATION_DECORATIONS_KEY,
+  SIMULATION_DECORATIONS_MAX_AGE_MS,
   computeSimulationAdjustment,
   applySimulationMerge,
   matchesBucket,
@@ -16786,6 +17264,7 @@ export {
   contradictsPremise,
   negatesDisruption,
   normalizeActorName,
+  summarizeImpactPathScore,
   SIMULATION_MERGE_ACCEPT_THRESHOLD,
   scoreImpactExpansionQuality,
   buildImpactExpansionDebugPayload,
@@ -16796,4 +17275,5 @@ export {
   readImpactPromptLearnedSection,
   clearImpactPromptLearnedSection,
   __setForecastLlmCallOverrideForTests,
+  __setRedisStoreForTests,
 };

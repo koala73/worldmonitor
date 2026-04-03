@@ -293,7 +293,8 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
 
           if (!resp.ok || !resp.body) {
             clearTimeout(timeoutId);
-            console.warn(`[llm-stream:${providerName}] HTTP ${resp.status}`);
+            const errBody = resp.body ? await resp.text().catch(() => '') : '';
+            console.warn(`[llm-stream:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody.slice(0, 300)}`);
             continue;
           }
 

@@ -3331,7 +3331,7 @@ export class MapComponent {
     return getHotspotEscalation(hotspotId);
   }
 
-  public setView(view: MapView): void {
+  public setView(view: MapView, zoom?: number): void {
     this.state.view = view;
 
     // Region-specific zoom and pan settings
@@ -3348,7 +3348,7 @@ export class MapComponent {
     };
 
     const settings = viewSettings[view];
-    this.state.zoom = settings.zoom;
+    this.state.zoom = zoom ?? settings.zoom;
     this.state.pan = settings.pan;
     this.applyTransform();
     this.render();

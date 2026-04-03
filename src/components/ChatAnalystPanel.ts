@@ -1,5 +1,7 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
 import { premiumFetch } from '@/services/premium-fetch';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
@@ -38,12 +40,26 @@ interface MetaEvent {
   degraded: boolean;
 }
 
-function basicMarkdownToHtml(raw: string): string {
-  const escaped = escapeHtml(raw);
-  return escaped
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
-    .replace(/\n/g, '<br>');
+interface ActionEvent {
+  type: string;
+  label: string;
+  prefill?: string;
+}
+
+// Narrow allowlist: text formatting + tables only. No img/a/iframe so
+// prompt-injected or hallucinated URLs cannot trigger third-party requests.
+const ANALYST_PURIFY_CONFIG = {
+  ALLOWED_TAGS: ['p', 'strong', 'em', 'b', 'i', 'br', 'hr',
+    'ul', 'ol', 'li', 'code', 'pre',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'div', 'span'],
+  ALLOWED_ATTR: ['class'],
+  ALLOW_DATA_ATTR: false,
+};
+
+function renderMarkdown(raw: string): string {
+  const sanitized = DOMPurify.sanitize(marked.parse(raw) as string, ANALYST_PURIFY_CONFIG);
+  return postProcessAnalystHtml(sanitized as string);
 }
 
 export class ChatAnalystPanel extends Panel {
@@ -186,7 +202,7 @@ export class ChatAnalystPanel extends Panel {
     const label = role === 'user' ? 'YOU' : 'ANALYST';
     const body = h('div', { className: 'chat-msg-body' });
     if (role === 'assistant') {
-      body.innerHTML = basicMarkdownToHtml(content);
+      body.innerHTML = renderMarkdown(content);
     } else {
       body.textContent = content;
     }
@@ -230,6 +246,22 @@ export class ChatAnalystPanel extends Panel {
     // Insert chips row before the body element inside the bubble
     const body = bubble.querySelector('.chat-msg-body');
     if (body) bubble.insertBefore(chipsRow, body);
+  }
+
+  private renderActionChip(bubble: HTMLElement, action: ActionEvent): void {
+    if (action.type !== 'suggest-widget') return;
+    const chip = document.createElement('button');
+    chip.className = 'chat-action-chip';
+    chip.textContent = `${action.label} →`;
+    chip.addEventListener('click', () => {
+      this.element.dispatchEvent(new CustomEvent('wm:open-widget-creator', {
+        bubbles: true,
+        detail: { initialMessage: action.prefill ?? '' },
+      }));
+    });
+    const body = bubble.querySelector('.chat-msg-body');
+    if (body) bubble.insertBefore(chip, body);
+    else bubble.appendChild(chip);
   }
 
   private scrollToBottom(): void {
@@ -357,6 +389,7 @@ export class ChatAnalystPanel extends Panel {
             done?: boolean;
             error?: string;
             meta?: MetaEvent;
+            action?: ActionEvent;
           };
           if (payload.error) {
             this.finalizeStreamingBubble(bodyEl, '⚠ Analyst unavailable. Try again shortly.', false);
@@ -364,6 +397,9 @@ export class ChatAnalystPanel extends Panel {
           }
           if (payload.meta) {
             this.renderSourceChips(bubble, payload.meta);
+          }
+          if (payload.action) {
+            this.renderActionChip(bubble, payload.action);
           }
           if (payload.delta) {
             accumulated += payload.delta;
@@ -379,7 +415,7 @@ export class ChatAnalystPanel extends Panel {
   }
 
   private finalizeStreamingBubble(bodyEl: HTMLElement, text: string, success: boolean): void {
-    bodyEl.innerHTML = basicMarkdownToHtml(text);
+    bodyEl.innerHTML = renderMarkdown(text);
     if (!success) bodyEl.classList.add('chat-msg-error');
     this.scrollToBottom();
   }

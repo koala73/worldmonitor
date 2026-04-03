@@ -3,6 +3,7 @@
  *
  * Validates Clerk-issued bearer tokens using local JWT verification
  * with jose + cached JWKS. No Convex round-trip needed.
+ * Requires CLERK_PUBLISHABLE_KEY (server-side) and CLERK_JWT_ISSUER_DOMAIN.
  *
  * This module must NOT import anything from `src/` -- it runs in the
  * Vercel edge runtime, not the browser.
@@ -19,11 +20,18 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 
 // Module-scope JWKS resolver -- cached across warm invocations.
 // jose handles key rotation and caching internally.
+// Exported so server/_shared/auth-session.ts can reuse the same singleton
+// (avoids duplicate JWKS HTTP fetches on cold start).
+// Reads CLERK_JWT_ISSUER_DOMAIN lazily (not from module-scope const) so that
+// tests that set the env var after import still get a valid JWKS.
 let _jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-function getJWKS() {
-  if (!_jwks && CLERK_JWT_ISSUER_DOMAIN) {
-    const jwksUrl = new URL('/.well-known/jwks.json', CLERK_JWT_ISSUER_DOMAIN);
-    _jwks = createRemoteJWKSet(jwksUrl);
+export function getJWKS() {
+  if (!_jwks) {
+    const issuerDomain = process.env.CLERK_JWT_ISSUER_DOMAIN;
+    if (issuerDomain) {
+      const jwksUrl = new URL('/.well-known/jwks.json', issuerDomain);
+      _jwks = createRemoteJWKSet(jwksUrl);
+    }
   }
   return _jwks;
 }
@@ -32,6 +40,26 @@ export interface SessionResult {
   valid: boolean;
   userId?: string;
   role?: 'free' | 'pro';
+}
+
+function getAllowedAudiences(): string[] {
+  const configured = [
+    process.env.CLERK_JWT_AUDIENCE,
+    process.env.CLERK_PUBLISHABLE_KEY,
+  ]
+    .flatMap((value) => (value ?? '').split(','))
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(['convex', ...configured]));
+}
+
+export function getClerkJwtVerifyOptions() {
+  return {
+    issuer: CLERK_JWT_ISSUER_DOMAIN,
+    audience: getAllowedAudiences(),
+    algorithms: ['RS256'],
+  };
 }
 
 // Short-lived in-memory cache for plan lookups (userId → { role, expiresAt }).
@@ -69,17 +97,23 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
   if (!jwks) return { valid: false };
 
   try {
-    // Verify signature and issuer. We intentionally skip the audience check so
-    // that both 'convex' template tokens (aud='convex') and standard Clerk
-    // session tokens (aud=publishable key) are accepted. The issuer check is
-    // sufficient to prevent cross-app token reuse since each Clerk instance
-    // has its own JWKS endpoint.
-    const { payload } = await jwtVerify(token, jwks, {
-      issuer: CLERK_JWT_ISSUER_DOMAIN,
-      algorithms: ['RS256'],
-    });
+    // Try with audience first (Clerk 'convex' template tokens include aud).
+    // Fall back without audience for standard Clerk session tokens (no aud claim).
+    let payload: Record<string, unknown>;
+    try {
+      ({ payload } = await jwtVerify(token, jwks, getClerkJwtVerifyOptions()));
+    } catch (audErr) {
+      if ((audErr as Error).message?.includes('missing required "aud"')) {
+        ({ payload } = await jwtVerify(token, jwks, {
+          issuer: CLERK_JWT_ISSUER_DOMAIN,
+          algorithms: ['RS256'],
+        }));
+      } else {
+        throw audErr;
+      }
+    }
 
-    const userId = payload.sub;
+    const userId = payload.sub as string | undefined;
     if (!userId) return { valid: false };
 
     // `plan` claim is present only in 'convex' template tokens. For standard

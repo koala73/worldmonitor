@@ -1,87 +1,87 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, sleep, verifySeedKey } from './_seed-utils.mjs';
+import { CLIMATE_ZONES, MIN_CLIMATE_ZONE_COUNT, hasRequiredClimateZones } from './_climate-zones.mjs';
+import { chunkItems, fetchOpenMeteoArchiveBatch } from './_open-meteo-archive.mjs';
+import { CLIMATE_ZONE_NORMALS_KEY } from './seed-climate-zone-normals.mjs';
 
 loadEnvFile(import.meta.url);
 
-const CANONICAL_KEY = 'climate:anomalies:v1';
+const CANONICAL_KEY = 'climate:anomalies:v2';
 const CACHE_TTL = 10800; // 3h
-
-const ZONES = [
-  { name: 'Ukraine', lat: 48.4, lon: 31.2 },
-  { name: 'Middle East', lat: 33.0, lon: 44.0 },
-  { name: 'Sahel', lat: 14.0, lon: 0.0 },
-  { name: 'Horn of Africa', lat: 8.0, lon: 42.0 },
-  { name: 'South Asia', lat: 25.0, lon: 78.0 },
-  { name: 'California', lat: 36.8, lon: -119.4 },
-  { name: 'Amazon', lat: -3.4, lon: -60.0 },
-  { name: 'Australia', lat: -25.0, lon: 134.0 },
-  { name: 'Mediterranean', lat: 38.0, lon: 20.0 },
-  { name: 'Taiwan Strait', lat: 24.0, lon: 120.0 },
-  { name: 'Myanmar', lat: 19.8, lon: 96.7 },
-  { name: 'Central Africa', lat: 4.0, lon: 22.0 },
-  { name: 'Southern Africa', lat: -25.0, lon: 28.0 },
-  { name: 'Central Asia', lat: 42.0, lon: 65.0 },
-  { name: 'Caribbean', lat: 19.0, lon: -72.0 },
-];
+const ANOMALY_BATCH_SIZE = 8;
+const ANOMALY_BATCH_DELAY_MS = 750;
+// Daily precipitation deltas are in mm/day (Open-Meteo daily precipitation_sum).
+// Thresholds were calibrated against ERA5-style daily precipitation distributions.
+const PRECIP_MODERATE_THRESHOLD = 6;
+const PRECIP_EXTREME_THRESHOLD = 12;
+const PRECIP_MIXED_THRESHOLD = 3;
+const TEMP_TO_PRECIP_RATIO = 3;
 
 function avg(arr) {
-  return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
+  return arr.length ? arr.reduce((sum, value) => sum + value, 0) / arr.length : 0;
+}
+
+function round(value, decimals = 1) {
+  const scale = 10 ** decimals;
+  return Math.round(value * scale) / scale;
 }
 
 function classifySeverity(tempDelta, precipDelta) {
   const absTemp = Math.abs(tempDelta);
   const absPrecip = Math.abs(precipDelta);
-  if (absTemp >= 5 || absPrecip >= 80) return 'ANOMALY_SEVERITY_EXTREME';
-  if (absTemp >= 3 || absPrecip >= 40) return 'ANOMALY_SEVERITY_MODERATE';
+  if (absTemp >= 5 || absPrecip >= PRECIP_EXTREME_THRESHOLD) return 'ANOMALY_SEVERITY_EXTREME';
+  if (absTemp >= 3 || absPrecip >= PRECIP_MODERATE_THRESHOLD) return 'ANOMALY_SEVERITY_MODERATE';
   return 'ANOMALY_SEVERITY_NORMAL';
 }
 
 function classifyType(tempDelta, precipDelta) {
   const absTemp = Math.abs(tempDelta);
   const absPrecip = Math.abs(precipDelta);
-  if (absTemp >= absPrecip / 20) {
-    if (tempDelta > 0 && precipDelta < -20) return 'ANOMALY_TYPE_MIXED';
+  if (absTemp >= absPrecip / TEMP_TO_PRECIP_RATIO) {
+    if (tempDelta > 0 && precipDelta < -PRECIP_MIXED_THRESHOLD) return 'ANOMALY_TYPE_MIXED';
     if (tempDelta > 3) return 'ANOMALY_TYPE_WARM';
     if (tempDelta < -3) return 'ANOMALY_TYPE_COLD';
   }
-  if (precipDelta > 40) return 'ANOMALY_TYPE_WET';
-  if (precipDelta < -40) return 'ANOMALY_TYPE_DRY';
+  if (precipDelta > PRECIP_MODERATE_THRESHOLD) return 'ANOMALY_TYPE_WET';
+  if (precipDelta < -PRECIP_MODERATE_THRESHOLD) return 'ANOMALY_TYPE_DRY';
   if (tempDelta > 0) return 'ANOMALY_TYPE_WARM';
   return 'ANOMALY_TYPE_COLD';
 }
 
-async function fetchZone(zone, startDate, endDate) {
-  const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${zone.lat}&longitude=${zone.lon}&start_date=${startDate}&end_date=${endDate}&daily=temperature_2m_mean,precipitation_sum&timezone=UTC`;
-
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!resp.ok) throw new Error(`Open-Meteo ${resp.status} for ${zone.name}`);
-
-  const data = await resp.json();
-
-  const rawTemps = data.daily?.temperature_2m_mean ?? [];
-  const rawPrecips = data.daily?.precipitation_sum ?? [];
-  const temps = [];
-  const precips = [];
-  for (let i = 0; i < rawTemps.length; i++) {
-    if (rawTemps[i] != null && rawPrecips[i] != null) {
-      temps.push(rawTemps[i]);
-      precips.push(rawPrecips[i]);
+export function indexZoneNormals(payload) {
+  const index = new Map();
+  for (const zone of payload?.normals ?? []) {
+    for (const month of zone?.months ?? []) {
+      index.set(`${zone.zone}:${month.month}`, month);
     }
   }
+  return index;
+}
 
-  if (temps.length < 14) return null;
+export function buildClimateAnomaly(zone, daily, monthlyNormal) {
+  const observations = [];
+  const times = daily?.time ?? [];
+  const temps = daily?.temperature_2m_mean ?? [];
+  const precips = daily?.precipitation_sum ?? [];
 
-  const recentTemps = temps.slice(-7);
-  const baselineTemps = temps.slice(0, -7);
-  const recentPrecips = precips.slice(-7);
-  const baselinePrecips = precips.slice(0, -7);
+  for (let i = 0; i < times.length; i++) {
+    const time = times[i];
+    const temp = temps[i];
+    const precip = precips[i];
+    if (typeof time !== 'string' || temp == null || precip == null) continue;
+    observations.push({
+      date: time,
+      temp: Number(temp),
+      precip: Number(precip),
+    });
+  }
 
-  const tempDelta = Math.round((avg(recentTemps) - avg(baselineTemps)) * 10) / 10;
-  const precipDelta = Math.round((avg(recentPrecips) - avg(baselinePrecips)) * 10) / 10;
+  if (observations.length < 7) return null;
+
+  const recent = observations.slice(-7);
+  const tempDelta = round(avg(recent.map((entry) => entry.temp)) - monthlyNormal.tempMean);
+  const precipDelta = round(avg(recent.map((entry) => entry.precip)) - monthlyNormal.precipMean);
 
   return {
     zone: zone.name,
@@ -90,44 +90,94 @@ async function fetchZone(zone, startDate, endDate) {
     precipDelta,
     severity: classifySeverity(tempDelta, precipDelta),
     type: classifyType(tempDelta, precipDelta),
-    period: `${startDate} to ${endDate}`,
+    period: `${recent[0].date} to ${recent.at(-1).date}`,
   };
 }
 
-async function fetchClimateAnomalies() {
-  const endDate = new Date().toISOString().slice(0, 10);
-  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+export function buildClimateAnomalyFromResponse(zone, payload, normalsIndex) {
+  const latestDate = payload?.daily?.time?.filter((value) => typeof value === 'string').at(-1);
+  if (!latestDate) return null;
+  const month = Number(latestDate.slice(5, 7));
+  const monthlyNormal = normalsIndex.get(`${zone.name}:${month}`);
+  if (!monthlyNormal) {
+    console.warn(`  [CLIMATE] Missing monthly normal for ${zone.name} month ${month}; skipping zone`);
+    return null;
+  }
+
+  return buildClimateAnomaly(zone, payload.daily, monthlyNormal);
+}
+
+export function buildClimateAnomaliesFromBatch(zones, batchPayloads, normalsIndex) {
+  return zones
+    .map((zone, index) => buildClimateAnomalyFromResponse(zone, batchPayloads[index], normalsIndex))
+    .filter((anomaly) => anomaly != null);
+}
+
+function toIsoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export async function fetchClimateAnomalies() {
+  // ## First Deploy
+  // The anomaly cron depends on the monthly normals cache. Seed
+  // `node scripts/seed-climate-zone-normals.mjs` once before enabling the
+  // anomaly cron in a fresh environment, otherwise every 2h anomaly run will
+  // fail until the monthly normals cron executes on the 1st of the month.
+  const normalsPayload = await verifySeedKey(CLIMATE_ZONE_NORMALS_KEY).catch(() => null);
+  if (!normalsPayload?.normals?.length) {
+    throw new Error(`Missing ${CLIMATE_ZONE_NORMALS_KEY} baseline; run node scripts/seed-climate-zone-normals.mjs before enabling the anomaly cron`);
+  }
+  const normalsIndex = indexZoneNormals(normalsPayload);
+
+  const endDate = toIsoDate(new Date());
+  const startDate = toIsoDate(new Date(Date.now() - 21 * 24 * 60 * 60 * 1000));
 
   const anomalies = [];
   let failures = 0;
-  for (const zone of ZONES) {
+  for (const batch of chunkItems(CLIMATE_ZONES, ANOMALY_BATCH_SIZE)) {
     try {
-      const result = await fetchZone(zone, startDate, endDate);
-      if (result != null) anomalies.push(result);
+      const payloads = await fetchOpenMeteoArchiveBatch(batch, {
+        startDate,
+        endDate,
+        daily: ['temperature_2m_mean', 'precipitation_sum'],
+        timeoutMs: 20_000,
+        maxRetries: 4,
+        retryBaseMs: 3_000,
+        label: `anomalies batch (${batch.map((zone) => zone.name).join(', ')})`,
+      });
+      anomalies.push(...buildClimateAnomaliesFromBatch(batch, payloads, normalsIndex));
     } catch (err) {
       console.log(`  [CLIMATE] ${err?.message ?? err}`);
-      failures++;
+      failures += batch.length;
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await sleep(ANOMALY_BATCH_DELAY_MS);
   }
 
-  const MIN_ZONES = Math.ceil(ZONES.length * 2 / 3);
-  if (anomalies.length < MIN_ZONES) {
-    throw new Error(`Only ${anomalies.length}/${ZONES.length} zones returned data (${failures} errors) — skipping write to preserve previous Redis data`);
+  if (anomalies.length < MIN_CLIMATE_ZONE_COUNT) {
+    throw new Error(`Only ${anomalies.length}/${CLIMATE_ZONES.length} zones returned data (${failures} errors) — skipping write to preserve previous Redis data`);
+  }
+  if (!hasRequiredClimateZones(anomalies, (zone) => zone.zone)) {
+    throw new Error('Missing one or more required climate-specific anomalies');
   }
 
   return { anomalies, pagination: undefined };
 }
 
 function validate(data) {
-  return Array.isArray(data?.anomalies) && data.anomalies.length >= Math.ceil(ZONES.length * 2 / 3);
+  return Array.isArray(data?.anomalies)
+    && data.anomalies.length >= MIN_CLIMATE_ZONE_COUNT
+    && hasRequiredClimateZones(data.anomalies, (zone) => zone.zone);
 }
 
-runSeed('climate', 'anomalies', CANONICAL_KEY, fetchClimateAnomalies, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'open-meteo-archive-30d',
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+if (isMain) {
+  runSeed('climate', 'anomalies', CANONICAL_KEY, fetchClimateAnomalies, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'open-meteo-archive-wmo-1991-2020-v1',
+  }).catch((err) => {
+    const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + cause);
+    process.exit(1);
+  });
+}

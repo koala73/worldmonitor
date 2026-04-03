@@ -199,6 +199,28 @@ function injectStyles(): void {
     .fc-signal { color: var(--text-secondary, #a0a0a0); font-size: 11px; padding: 3px 0 3px 12px; line-height: 1.45; position: relative; margin-top: 2px; }
     .fc-signal::before { content: ''; position: absolute; left: 0; top: 9px; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #555); }
     .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
+
+    /* ── Simulation confidence sub-bar (Option D) ────────────────────────── */
+    /* Thin colored underbar below the forecast title. Width encodes sim       */
+    /* path confidence. At rest: barely visible. On row hover: full opacity   */
+    /* + text label reveals below the bar. Zero extra columns needed.         */
+    .fc-sim-bar-wrap { margin-top: 4px; }
+    .fc-sim-bar { height: 2px; border-radius: 1px; opacity: 0.45; transition: opacity 0.15s; }
+    .fc-prob-item:hover .fc-sim-bar { opacity: 0.9; }
+    .fc-sim-label { font-size: 9px; display: none; margin-top: 2px; line-height: 1.2; }
+    .fc-prob-item:hover .fc-sim-label { display: block; }
+
+    /* ── Simulation verdict chip ─────────────────────────────────────────── */
+    .fc-sim-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; flex-shrink: 0; line-height: 1.6; }
+    .fc-sim-chip::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
+    .fc-sim-chip--backed   { background: rgba(63,185,80,0.12);  color: #3fb950; border: 1px solid rgba(63,185,80,0.28); }
+    .fc-sim-chip--backed::before   { background: #3fb950; }
+    .fc-sim-chip--flagged  { background: rgba(210,153,34,0.12); color: #d29922; border: 1px solid rgba(210,153,34,0.28); }
+    .fc-sim-chip--flagged::before  { background: #d29922; }
+    .fc-sim-chip--skeptical { background: rgba(224,82,82,0.10); color: #e05252; border: 1px solid rgba(224,82,82,0.28); }
+    .fc-sim-chip--skeptical::before { background: #e05252; }
+    .fc-label-inner { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .fc-forecast-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   `;
   document.head.appendChild(style);
 }
@@ -434,18 +456,26 @@ export class ForecastPanel extends Panel {
 
     const sigs = f.signals || [];
     const signalsHtml = sigs.length > 0
-      ? `<div class="fc-signals-title">Analysis Signals (${sigs.length})</div>${sigs.map(s =>
+      ? sigs.map(s =>
           `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014\-]+/, ''))}</div>`
-        ).join('')}`
+        ).join('')
       : '';
+
+    const simBarHtml = this.renderSimBar(f);
+    const simChipHtml = this.renderSimChip(f);
+    const demoted = f.demotedBySimulation ?? false;
 
     return `
       <div class="fc-prob-item">
-        <div class="fc-prob-row">
-          <span class="fc-prob-label"
-                style="border-left:2px solid ${catColor}47;padding-left:6px">
-            ${escapeHtml(f.title)}
-          </span>
+        <div class="fc-prob-row"${demoted ? ' style="opacity:0.5"' : ''}>
+          <div class="fc-prob-label"
+               style="border-left:2px solid ${catColor}47;padding-left:6px">
+            <div class="fc-label-inner">
+              <span class="fc-forecast-title">${escapeHtml(f.title)}</span>
+              ${simChipHtml}
+            </div>
+            ${simBarHtml}
+          </div>
           <div class="fc-bar-wrap">
             <div class="fc-prob-bar-track">
               <div class="fc-prob-bar-fill" style="background:${probColor};width:${pct}%"></div>
@@ -466,6 +496,55 @@ export class ForecastPanel extends Panel {
         ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}
       </div>
     `;
+  }
+
+  // ── Simulation confidence sub-bar ───────────────────────────────────────
+
+  private renderSimBar(f: Forecast): string {
+    const adj = f.simulationAdjustment ?? 0;
+    if (adj === 0) return '';
+
+    const conf = f.simPathConfidence ?? 1.0;
+    const demoted = f.demotedBySimulation ?? false;
+    const adjPct = Math.round(Math.abs(adj) * 100);
+
+    let barColor: string;
+    let labelText: string;
+
+    if (demoted) {
+      barColor = '#e05252';
+      labelText = `AI flag: dropped · −${adjPct}%`;
+    } else if (adj > 0) {
+      barColor = conf >= 0.70 ? '#3fb950' : '#d29922';
+      labelText = conf < 0.70 ? `AI signal (moderate) · +${adjPct}%` : `AI signal · +${adjPct}%`;
+    } else {
+      barColor = '#ea580c';
+      labelText = `AI caution · −${adjPct}%`;
+    }
+
+    // Width encodes sim-path confidence for positive adjustments (at least 20% so bar is visible).
+    // Negative adjustments use 100% width — structural signal, not confidence-dependent.
+    const barWidthPct = adj > 0 ? Math.round(Math.max(20, conf * 100)) : 100;
+
+    return `<div class="fc-sim-bar-wrap">
+      <div class="fc-sim-bar" style="width:${barWidthPct}%;background:${barColor}"></div>
+      <span class="fc-sim-label" style="color:${barColor}">${escapeHtml(labelText)}</span>
+    </div>`;
+  }
+
+  // ── Simulation verdict chip ──────────────────────────────────────────────
+
+  private renderSimChip(f: Forecast): string {
+    const adj = f.simulationAdjustment ?? 0;
+    const demoted = f.demotedBySimulation ?? false;
+    if (demoted) {
+      return `<span class="fc-sim-chip fc-sim-chip--skeptical">AI skeptical</span>`;
+    }
+    if (adj === 0) return '';
+    if (adj > 0) {
+      return `<span class="fc-sim-chip fc-sim-chip--backed">AI backed</span>`;
+    }
+    return `<span class="fc-sim-chip fc-sim-chip--flagged">AI flagged</span>`;
   }
 
   // ── Detail sections (shared by rows) ────────────────────────────────────

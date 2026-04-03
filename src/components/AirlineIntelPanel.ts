@@ -3,6 +3,7 @@ import {
     fetchAirportFlights,
     fetchCarrierOps,
     fetchAircraftPositions,
+    fetchFlightStatus,
     fetchAviationNews,
     fetchGoogleFlights,
     fetchGoogleDates,
@@ -54,8 +55,8 @@ const TABS = ['ops', 'flights', 'airlines', 'tracking', 'news', 'prices'] as con
 type Tab = typeof TABS[number];
 
 const TAB_LABELS: Record<Tab, string> = {
-    ops: '🛫 Ops', flights: '✈️ Flights', airlines: '🏢 Airlines',
-    tracking: '📡 Track', news: '📰 News', prices: '💸 Prices',
+    ops: 'Ops', flights: 'Flights', airlines: 'Airlines',
+    tracking: 'Track', news: 'News', prices: 'Prices',
 };
 
 // ---- Panel class ----
@@ -67,6 +68,8 @@ export class AirlineIntelPanel extends Panel {
     private flightsData: FlightInstance[] = [];
     private carriersData: CarrierOps[] = [];
     private trackingData: PositionSample[] = [];
+    private trackingFlightData: FlightInstance[] = [];
+    private trackingQuery = '';
     private newsData: AviationNewsItem[] = [];
     private googleFlightsData: GoogleFlightItinerary[] = [];
     private datesData: DatePrice[] = [];
@@ -150,6 +153,21 @@ export class AirlineIntelPanel extends Panel {
             if (target.id === 'datesSearchBtn' || target.closest('#datesSearchBtn')) {
                 this.handleDatesSearch();
             }
+            if (target.id === 'trackSearchBtn' || target.closest('#trackSearchBtn')) {
+                this.handleTrackSearch();
+            }
+            if (target.id === 'trackClearBtn' || target.closest('#trackClearBtn')) {
+                this.trackingQuery = '';
+                this.trackingFlightData = [];
+                this.trackingData = [];
+                void this.loadTab('tracking');
+            }
+        });
+
+        this.content.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).id === 'trackQueryInput') {
+                this.handleTrackSearch();
+            }
         });
 
         void this.refresh();
@@ -169,6 +187,7 @@ export class AirlineIntelPanel extends Panel {
 
     /** Called by the map when new aircraft positions arrive. */
     updateLivePositions(positions: PositionSample[]): void {
+        if (this.trackingQuery) return; // preserve filtered search results
         this.trackingData = positions;
         if (this.activeTab === 'tracking') this.renderTab();
     }
@@ -244,6 +263,14 @@ export class AirlineIntelPanel extends Panel {
         void this.loadTab('prices');
     }
 
+    private handleTrackSearch(): void {
+        const q = ((this.content.querySelector('#trackQueryInput') as HTMLInputElement)?.value || '').trim().toUpperCase();
+        this.trackingQuery = q;
+        this.trackingFlightData = [];
+        this.trackingData = [];
+        void this.loadTab('tracking');
+    }
+
     private switchTab(tab: Tab): void {
         this.activeTab = tab;
         this.tabBar.querySelectorAll('.panel-tab').forEach(b => {
@@ -285,7 +312,17 @@ export class AirlineIntelPanel extends Panel {
                     this.carriersData = await fetchCarrierOps(this.airports);
                     break;
                 case 'tracking':
-                    this.trackingData = await fetchAircraftPositions({});
+                    if (this.trackingQuery) {
+                        if (/^[A-Z]{2}\d{1,4}$/.test(this.trackingQuery)) {
+                            this.trackingFlightData = await fetchFlightStatus(this.trackingQuery);
+                        } else if (/^[0-9A-F]{6}$/i.test(this.trackingQuery)) {
+                            this.trackingData = await fetchAircraftPositions({ icao24: this.trackingQuery.toLowerCase() });
+                        } else {
+                            this.trackingData = await fetchAircraftPositions({ callsign: this.trackingQuery });
+                        }
+                    } else {
+                        this.trackingData = await fetchAircraftPositions({});
+                    }
                     break;
                 case 'news': {
                     const entities = [...this.airports, ...aviationWatchlist.get().airlines];
@@ -394,18 +431,64 @@ export class AirlineIntelPanel extends Panel {
 
     // ---- Tracking tab ----
     private renderTracking(): void {
-        if (!this.trackingData.length) {
-            this.content.innerHTML = `<div class="no-data">${t('components.airlineIntel.noTrackingData')}</div>`;
+        const clearBtn = this.trackingQuery
+            ? `<button id="trackClearBtn" class="icon-btn" style="padding:4px 8px;color:#9ca3af" title="Back to live feed">×</button>`
+            : '';
+        const searchBar = `
+      <div class="track-search" style="display:flex;gap:6px;padding:8px 0 6px">
+        <input id="trackQueryInput" class="price-input" placeholder="Flight (EK3) or callsign (UAE3)" value="${escapeHtml(this.trackingQuery)}" style="flex:1;min-width:0">
+        ${clearBtn}<button id="trackSearchBtn" class="icon-btn" style="padding:4px 10px">Track</button>
+      </div>`;
+
+        if (this.loading) {
+            this.content.innerHTML = `${searchBar}<div class="panel-loading">${t('common.loading')}</div>`;
             return;
         }
-        const rows = this.trackingData.slice(0, 20).map(p => `
-      <div class="track-row">
-        <div class="track-cs">${escapeHtml(p.callsign || p.icao24)}</div>
-        <div class="track-alt">${fmt(p.altitudeFt)} ft</div>
-        <div class="track-spd">${fmt(p.groundSpeedKts)} kts</div>
-        <div class="track-pos">${p.lat.toFixed(2)}, ${p.lon.toFixed(2)}</div>
-      </div>`).join('');
-        this.content.innerHTML = `<div class="tracking-list">${rows}</div>`;
+
+        // Flight status results (searched by IATA flight number)
+        if (this.trackingFlightData.length) {
+            const rows = this.trackingFlightData.map(f => {
+                const depStr = f.estimatedDeparture
+                    ? `Dep ${fmtTime(f.estimatedDeparture)}`
+                    : '';
+                const arrStr = f.estimatedArrival
+                    ? ` · Arr ${fmtTime(f.estimatedArrival)}`
+                    : '';
+                const color = STATUS_BADGE[f.status] ?? '#6b7280';
+                return `
+          <div class="track-flight-card" style="padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;gap:8px;align-items:baseline">
+              <strong>${escapeHtml(f.flightNumber)}</strong>
+              <span style="color:#9ca3af;font-size:11px">${escapeHtml(f.carrier.name || f.carrier.iata)}</span>
+              <span style="color:${color};font-size:11px;margin-left:auto">${f.status}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-dim)">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${depStr ? ` · ${depStr}` : ''}${arrStr}</div>
+            ${f.aircraftType ? `<div style="font-size:11px;color:#6b7280">${escapeHtml(f.aircraftType)}</div>` : ''}
+            ${(f.gate || f.terminal) ? `<div style="font-size:11px;color:#6b7280">${f.gate ? `Gate ${escapeHtml(f.gate)}` : ''}${f.terminal ? `${f.gate ? ' · ' : ''}T${escapeHtml(f.terminal)}` : ''}</div>` : ''}
+            ${f.delayMinutes > 0 ? `<div style="color:#f97316;font-size:12px">+${f.delayMinutes}m delay</div>` : ''}
+          </div>`;
+            }).join('');
+            this.content.innerHTML = `${searchBar}<div>${rows}</div>`;
+            return;
+        }
+
+        // Position results (searched by callsign/ICAO24 or default global fetch)
+        if (this.trackingData.length) {
+            const rows = this.trackingData.slice(0, 20).map(p => `
+        <div class="track-row">
+          <div class="track-cs">${escapeHtml(p.callsign || p.icao24)}</div>
+          <div class="track-alt">${fmt(p.altitudeFt)} ft</div>
+          <div class="track-spd">${fmt(p.groundSpeedKts)} kts</div>
+          <div class="track-pos">${p.lat.toFixed(2)}, ${p.lon.toFixed(2)}</div>
+        </div>`).join('');
+            this.content.innerHTML = `${searchBar}<div class="tracking-list">${rows}</div>`;
+            return;
+        }
+
+        const emptyMsg = this.trackingQuery
+            ? `<div class="no-data">No results for <strong>${escapeHtml(this.trackingQuery)}</strong>.</div>`
+            : `<div class="no-data">${t('components.airlineIntel.noTrackingData')}</div>`;
+        this.content.innerHTML = `${searchBar}${emptyMsg}`;
     }
 
     // ---- News tab ----
@@ -449,7 +532,7 @@ export class AirlineIntelPanel extends Panel {
             <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>Business</option>
             <option value="FIRST"${this.pricesCabin === 'FIRST' ? ' selected' : ''}>First</option>
           </select>
-          <button id="priceSearchBtn" class="icon-btn" style="padding:4px 10px">${t('common.search')}</button>
+          <button id="priceSearchBtn" class="icon-btn" style="padding:4px 10px">${t('header.search')}</button>
         </div>
         <div id="priceInlineErr" style="color:#ef4444;font-size:11px;min-height:14px"></div>`;
 
@@ -505,7 +588,7 @@ export class AirlineIntelPanel extends Panel {
             <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>Business</option>
             <option value="FIRST"${this.pricesCabin === 'FIRST' ? ' selected' : ''}>First</option>
           </select>
-          <button id="datesSearchBtn" class="icon-btn" style="padding:4px 10px">${t('common.search')}</button>
+          <button id="datesSearchBtn" class="icon-btn" style="padding:4px 10px">${t('header.search')}</button>
         </div>
         <div id="datesInlineErr" style="color:#ef4444;font-size:11px;min-height:14px"></div>`;
 
