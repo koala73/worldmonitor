@@ -25,6 +25,27 @@ export interface DiseaseOutbreakItem {
   cases: number;
 }
 
+export interface ListAirQualityAlertsRequest {
+}
+
+export interface ListAirQualityAlertsResponse {
+  alerts: AirQualityAlert[];
+  fetchedAt: number;
+}
+
+export interface AirQualityAlert {
+  city: string;
+  countryCode: string;
+  lat: number;
+  lng: number;
+  pm25: number;
+  aqi: number;
+  riskLevel: string;
+  pollutant: string;
+  measuredAt: number;
+  source: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -71,6 +92,7 @@ export interface RouteDescriptor {
 
 export interface HealthServiceHandler {
   listDiseaseOutbreaks(ctx: ServerContext, req: ListDiseaseOutbreaksRequest): Promise<ListDiseaseOutbreaksResponse>;
+  listAirQualityAlerts(ctx: ServerContext, req: ListAirQualityAlertsRequest): Promise<ListAirQualityAlertsResponse>;
 }
 
 export function createHealthServiceRoutes(
@@ -94,6 +116,43 @@ export function createHealthServiceRoutes(
 
           const result = await handler.listDiseaseOutbreaks(ctx, body);
           return new Response(JSON.stringify(result as ListDiseaseOutbreaksResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/health/v1/list-air-quality-alerts",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as ListAirQualityAlertsRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listAirQualityAlerts(ctx, body);
+          return new Response(JSON.stringify(result as ListAirQualityAlertsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

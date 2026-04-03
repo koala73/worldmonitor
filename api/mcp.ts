@@ -48,11 +48,17 @@ interface BaseToolDef {
   inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
 }
 
+interface FreshnessCheck {
+  key: string;
+  maxStaleMin: number;
+}
+
 // Cache-read tool: reads one or more Redis keys and returns them with staleness info.
 interface CacheToolDef extends BaseToolDef {
   _cacheKeys: string[];
   _seedMetaKey: string;
   _maxStaleMin: number;
+  _freshnessChecks?: FreshnessCheck[];
   _execute?: never;
 }
 
@@ -61,6 +67,7 @@ interface RpcToolDef extends BaseToolDef {
   _cacheKeys?: never;
   _seedMetaKey?: never;
   _maxStaleMin?: never;
+  _freshnessChecks?: never;
   _execute: (params: Record<string, unknown>, base: string, apiKey: string) => Promise<unknown>;
 }
 
@@ -180,11 +187,16 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_climate_data',
-    description: 'Climate anomalies (Open-Meteo temperature/precipitation deviations), weather alerts, and natural environmental events from NASA EONET.',
+    description: 'Climate anomalies, NOAA atmospheric greenhouse gas monitoring (CO2 ppm, methane ppb, N2O ppb, Mauna Loa 12-month trend), weather alerts, and natural environmental events from WorldMonitor climate feeds.',
     inputSchema: { type: 'object', properties: {}, required: [] },
-    _cacheKeys: ['climate:anomalies:v1', 'weather:alerts:v1'],
-    _seedMetaKey: 'seed-meta:climate:anomalies',
-    _maxStaleMin: 120,
+    _cacheKeys: ['climate:anomalies:v2', 'climate:co2-monitoring:v1', 'weather:alerts:v1'],
+    _seedMetaKey: 'seed-meta:climate:co2-monitoring',
+    _maxStaleMin: 2880,
+    _freshnessChecks: [
+      { key: 'seed-meta:climate:anomalies', maxStaleMin: 120 },
+      { key: 'seed-meta:climate:co2-monitoring', maxStaleMin: 2880 },
+      { key: 'seed-meta:weather:alerts', maxStaleMin: 45 },
+    ],
   },
   {
     name: 'get_infrastructure_status',
@@ -673,21 +685,46 @@ function rpcError(id: unknown, code: number, message: string): Response {
   return jsonResponse({ jsonrpc: '2.0', id: id ?? null, error: { code, message } }, 200);
 }
 
+export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], now = Date.now()): { cached_at: string | null; stale: boolean } {
+  let stale = false;
+  let oldestFetchedAt = Number.POSITIVE_INFINITY;
+  let hasAnyValidMeta = false;
+  let hasAllValidMeta = true;
+
+  for (const [i, check] of checks.entries()) {
+    const meta = metas[i];
+    const fetchedAt = meta && typeof meta === 'object' && 'fetchedAt' in meta
+      ? Number((meta as { fetchedAt: unknown }).fetchedAt)
+      : Number.NaN;
+
+    if (!Number.isFinite(fetchedAt) || fetchedAt <= 0) {
+      hasAllValidMeta = false;
+      stale = true;
+      continue;
+    }
+
+    hasAnyValidMeta = true;
+    oldestFetchedAt = Math.min(oldestFetchedAt, fetchedAt);
+    stale ||= (now - fetchedAt) / 60_000 > check.maxStaleMin;
+  }
+
+  return {
+    cached_at: hasAnyValidMeta && hasAllValidMeta ? new Date(oldestFetchedAt).toISOString() : null,
+    stale,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tool execution
 // ---------------------------------------------------------------------------
 async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | null; stale: boolean; data: Record<string, unknown> }> {
   const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
-  const metaRead = readJsonFromUpstash(tool._seedMetaKey);
-  const [results, meta] = await Promise.all([Promise.all(reads), metaRead]);
-
-  let cached_at: string | null = null;
-  let stale = true;
-  if (meta && typeof meta === 'object' && 'fetchedAt' in meta) {
-    const fetchedAt = (meta as { fetchedAt: number }).fetchedAt;
-    cached_at = new Date(fetchedAt).toISOString();
-    stale = (Date.now() - fetchedAt) / 60_000 > tool._maxStaleMin;
-  }
+  const freshnessChecks = tool._freshnessChecks?.length
+    ? tool._freshnessChecks
+    : [{ key: tool._seedMetaKey, maxStaleMin: tool._maxStaleMin }];
+  const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
+  const [results, metas] = await Promise.all([Promise.all(reads), Promise.all(metaReads)]);
+  const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas);
 
   const data: Record<string, unknown> = {};
   // Walk backward through ':'-delimited segments, skipping non-informative suffixes

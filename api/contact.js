@@ -35,7 +35,7 @@ async function sendNotificationEmail(name, email, organization, phone, message, 
     console.error('[contact] RESEND_API_KEY not set — lead stored in Convex but notification NOT sent');
     return false;
   }
-  const notifyEmail = process.env.CONTACT_NOTIFY_EMAIL || 'elie.habib@gmail.com';
+  const notifyEmail = process.env.CONTACT_NOTIFY_EMAIL || 'elie@worldmonitor.app';
   const emailDomain = (email.split('@')[1] || '').toLowerCase();
   try {
     const res = await fetch('https://api.resend.com/emails', {

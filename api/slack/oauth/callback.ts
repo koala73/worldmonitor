@@ -63,11 +63,23 @@ function escapeHtml(s: string): string {
 }
 
 async function publishWelcome(userId: string, channelType: string): Promise<void> {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+    console.error('[slack-oauth] publishWelcome: UPSTASH env vars missing — welcome not queued');
+    return;
+  }
+  console.log(`[slack-oauth] publishWelcome: queuing ${channelType} for ${userId}`);
   const msg = JSON.stringify({ eventType: 'channel_welcome', userId, channelType });
-  await fetch(`${UPSTASH_URL}/publish/wm:events:notify/${encodeURIComponent(msg)}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
-  }).catch(() => {});
+  try {
+    const res = await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-edge/1.0' },
+      signal: AbortSignal.timeout(5000),
+    });
+    const data = await res.json().catch(() => null) as { result?: unknown } | null;
+    console.log(`[slack-oauth] publishWelcome LPUSH: status=${res.status} result=${JSON.stringify(data?.result)}`);
+  } catch (err) {
+    console.error('[slack-oauth] publishWelcome LPUSH failed:', (err as Error).message);
+  }
 }
 
 function htmlResponse(script: string, body: string): Response {
@@ -82,8 +94,14 @@ function htmlResponse(script: string, body: string): Response {
   );
 }
 
+function safeJsonInScript(data: unknown): string {
+  // Escape </ to prevent </script> from closing the enclosing script tag prematurely.
+  // \/ is a valid JSON escape for forward slash and is semantically identical.
+  return JSON.stringify(data).replace(/<\//g, '<\\/');
+}
+
 function postAndClose(data: Record<string, unknown>): Response {
-  const msg = JSON.stringify(data);
+  const msg = safeJsonInScript(data);
   return htmlResponse(
     `window.opener&&window.opener.postMessage(${msg},'${APP_ORIGIN}');window.close();`,
     'Connected to Slack. You can close this window.',
@@ -91,14 +109,14 @@ function postAndClose(data: Record<string, unknown>): Response {
 }
 
 function errorAndClose(error: string): Response {
-  const msg = JSON.stringify({ type: 'wm:slack_error', error });
+  const msg = safeJsonInScript({ type: 'wm:slack_error', error });
   return htmlResponse(
     `window.opener&&window.opener.postMessage(${msg},'${APP_ORIGIN}');window.close();`,
     `Slack connection failed: ${escapeHtml(error)}. You can close this window.`,
   );
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
@@ -173,7 +191,8 @@ export default async function handler(req: Request): Promise<Response> {
   if (!convexRes?.ok) return errorAndClose('storage_failed');
 
   const stored = await convexRes.json() as { ok: boolean; isNew?: boolean };
-  if (stored.isNew) void publishWelcome(userId, 'slack');
+  console.log(`[slack-oauth] Convex set-slack-oauth: isNew=${stored.isNew}`);
+  if (stored.isNew) ctx.waitUntil(publishWelcome(userId, 'slack'));
 
   return postAndClose({
     type: 'wm:slack_connected',
