@@ -884,8 +884,9 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             contentEl.innerHTML = renderNotifContent(data);
             loadingEl.style.display = 'none';
             contentEl.style.display = 'block';
-          }).catch(() => {
+          }).catch((err) => {
             if (signal.aborted) return;
+            console.error('[notifications] Failed to load settings:', err);
             if (loadingEl) loadingEl.textContent = 'Failed to load notification settings.';
           });
         }
