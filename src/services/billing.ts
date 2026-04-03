@@ -9,6 +9,7 @@
  * Follows the same lazy reactive pattern as entitlements.ts.
  */
 
+import * as Sentry from '@sentry/browser';
 import { getConvexClient, getConvexApi } from './convex-client';
 
 export interface SubscriptionInfo {
@@ -56,6 +57,7 @@ export async function initSubscriptionWatch(_userId?: string): Promise<void> {
       },
       (err: Error) => {
         console.warn('[billing] Subscription query error:', err.message);
+        // Clear stale cached value so getSubscription() returns null (not old plan).
         currentSubscription = null;
         subscriptionLoaded = true;
         for (const cb of listeners) cb(null);
@@ -66,6 +68,7 @@ export async function initSubscriptionWatch(_userId?: string): Promise<void> {
   } catch (err) {
     console.error('[billing] Failed to initialize subscription watch:', err);
     // Do not rethrow -- billing service failure must not break the dashboard
+    Sentry.captureException(err, { tags: { component: 'dodo-billing', action: 'initSubscriptionWatch' } });
   }
 }
 
@@ -140,6 +143,7 @@ export async function openBillingPortal(): Promise<string | null> {
     return url;
   } catch (err) {
     console.warn('[billing] Failed to get customer portal URL, falling back:', err);
+    Sentry.captureException(err, { tags: { component: 'dodo-billing', action: 'openBillingPortal' } });
     window.open(DODO_PORTAL_FALLBACK_URL, '_blank');
     return DODO_PORTAL_FALLBACK_URL;
   }

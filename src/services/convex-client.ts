@@ -60,7 +60,7 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
 /**
  * Wait for ConvexClient auth to be established.
  * Resolves when the server confirms the client is authenticated.
- * Times out to prevent indefinite hangs for unauthenticated users.
+ * Times out after 10s to prevent indefinite hangs for unauthenticated users.
  */
 export async function waitForConvexAuth(timeoutMs = 10_000): Promise<boolean> {
   if (!authReadyPromise) return false;

@@ -117,6 +117,7 @@ Sentry.init({
     /shortcut icon/,
     /Attempting to change value of a readonly property/,
     /reading 'nodeType'/,
+    /The node to be removed is not a child of this node/,
     /feature named .\w+. was not found/,
     /a2z\.onStatusUpdate/,
     /Attempting to run\(\), but is already running/,

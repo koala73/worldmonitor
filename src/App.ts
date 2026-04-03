@@ -806,28 +806,31 @@ export class App {
         // Claim any anonymous purchase made before sign-in (anon → real user migration)
         const anonId = localStorage.getItem('wm-anon-id');
         if (anonId) {
-          void Promise.all([getConvexClient(), getConvexApi(), waitForConvexAuth(10_000)])
-            .then(async ([client, api, authReady]) => {
-              if (!client || !api || !authReady) {
-                // Convex auth not ready yet — skip silently. wm-anon-id is preserved
-                // so the next page load (when _prevUserId resets) will retry.
-                return;
-              }
-              const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
-              const claimed = result.claimed;
-              const totalClaimed = claimed.subscriptions + claimed.entitlements +
-                                   claimed.customers + claimed.payments;
-              if (totalClaimed > 0) {
-                console.log('[billing] Claimed anon subscription on sign-in:', claimed);
-              }
-              // Always remove after non-throwing completion — mutation is idempotent.
-              // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
-              localStorage.removeItem('wm-anon-id');
-            })
-            .catch((err: unknown) => {
-              console.warn('[billing] claimSubscription failed:', err);
-              // Non-fatal — anon ID preserved for retry
-            });
+          void (async () => {
+            const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+            if (!client || !api) return;
+            // Wait for ConvexClient WebSocket auth handshake to complete.
+            // Without this, mutations arrive at Convex before the server
+            // has the JWT → "Authentication required" errors.
+            const ready = await waitForConvexAuth(10_000);
+            if (!ready) {
+              console.warn('[billing] claimSubscription skipped — Convex auth not ready');
+              return;
+            }
+            const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
+            const claimed = result.claimed;
+            const totalClaimed = claimed.subscriptions + claimed.entitlements +
+                                 claimed.customers + claimed.payments;
+            if (totalClaimed > 0) {
+              console.log('[billing] Claimed anon subscription on sign-in:', claimed);
+            }
+            // Always remove after non-throwing completion — mutation is idempotent.
+            // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
+            localStorage.removeItem('wm-anon-id');
+          })().catch((err: unknown) => {
+            console.warn('[billing] claimSubscription failed:', err);
+            // Non-fatal — anon ID preserved for retry on next page load
+          });
         }
         void resumePendingCheckout({
           openAuth: () => this.state.authModal?.open(),
@@ -907,8 +910,16 @@ export class App {
     correlationEngine.registerAdapter(disasterAdapter);
     this.state.correlationEngine = correlationEngine;
     this.eventHandlers.setupUnifiedSettings();
-    this.eventHandlers.setupAuthWidget();
-    capturePendingCheckoutIntentFromUrl();
+    // TODO: isProUser() gate should be removed when we are ready to get new users signing up
+    if (isProUser()) this.eventHandlers.setupAuthWidget();
+    const pendingCheckout = capturePendingCheckoutIntentFromUrl();
+    if (pendingCheckout) {
+      // Checkout intent from /pro page redirect. Resume immediately if
+      // already authenticated, otherwise the auth callback handles it.
+      void resumePendingCheckout({
+        openAuth: () => this.state.authModal?.open(),
+      });
+    }
 
     // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
     this.searchManager.init();
