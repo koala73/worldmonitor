@@ -136,7 +136,7 @@ async function resolvePlanKey(
   const mapping = await ctx.db
     .query("productPlans")
     .withIndex("by_dodoProductId", (q) => q.eq("dodoProductId", dodoProductId))
-    .first();
+    .unique();
   if (mapping) return mapping.planKey;
 
   // Fallback: check legacy aliases for old/rotated product IDs
