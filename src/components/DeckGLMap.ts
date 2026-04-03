@@ -5903,7 +5903,7 @@ export class DeckGLMap {
 
   private updateCountryLayerPaint(theme: 'dark' | 'light'): void {
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
-    if (!this.maplibreMap.getLayer('country-hover-fill')) return;
+    if (!this.maplibreMap.style || !this.maplibreMap.getLayer('country-hover-fill')) return;
     const hoverFillOpacity   = theme === 'light' ? 0.08 : 0.05;
     const hoverBorderOpacity = theme === 'light' ? 0.35 : 0.22;
     const highlightOpacity   = theme === 'light' ? 0.18 : 0.12;

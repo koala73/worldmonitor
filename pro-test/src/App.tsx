@@ -1191,8 +1191,13 @@ export default function App() {
         <ProShowcase />
         <ApiSection />
         <EnterpriseShowcase />
-        <PricingSection refCode={getRefCode()} />
-        <PricingTable />
+        {/* TODO: isProUser gate should be removed when we are ready to get new users signing up */}
+        {(localStorage.getItem('wm-widget-key') || localStorage.getItem('wm-pro-key')) && (
+          <>
+            <PricingSection refCode={getRefCode()} />
+            <PricingTable />
+          </>
+        )}
         <FAQ />
       </main>
       <Footer />

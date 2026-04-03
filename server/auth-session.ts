@@ -3,6 +3,7 @@
  *
  * Validates Clerk-issued bearer tokens using local JWT verification
  * with jose + cached JWKS. No Convex round-trip needed.
+ * Requires CLERK_PUBLISHABLE_KEY (server-side) and CLERK_JWT_ISSUER_DOMAIN.
  *
  * This module must NOT import anything from `src/` -- it runs in the
  * Vercel edge runtime, not the browser.
@@ -96,9 +97,23 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
   if (!jwks) return { valid: false };
 
   try {
-    const { payload } = await jwtVerify(token, jwks, getClerkJwtVerifyOptions());
+    // Try with audience first (Clerk 'convex' template tokens include aud).
+    // Fall back without audience for standard Clerk session tokens (no aud claim).
+    let payload: Record<string, unknown>;
+    try {
+      ({ payload } = await jwtVerify(token, jwks, getClerkJwtVerifyOptions()));
+    } catch (audErr) {
+      if ((audErr as Error).message?.includes('missing required "aud"')) {
+        ({ payload } = await jwtVerify(token, jwks, {
+          issuer: CLERK_JWT_ISSUER_DOMAIN,
+          algorithms: ['RS256'],
+        }));
+      } else {
+        throw audErr;
+      }
+    }
 
-    const userId = payload.sub;
+    const userId = payload.sub as string | undefined;
     if (!userId) return { valid: false };
 
     // `plan` claim is present only in 'convex' template tokens. For standard

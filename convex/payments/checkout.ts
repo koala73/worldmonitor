@@ -64,20 +64,27 @@ export const createCheckout = action({
       metadata.affonso_referral = args.referralCode;
     }
 
-    const result = await checkout(ctx, {
-      payload: {
-        product_cart: [{ product_id: args.productId, quantity: 1 }],
-        return_url: returnUrl,
-        ...(args.discountCode ? { discount_code: args.discountCode } : {}),
-        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-        feature_flags: {
-          allow_discount_code: true, // PROMO-01: Always show discount input
+    let result;
+    try {
+      result = await checkout(ctx, {
+        payload: {
+          product_cart: [{ product_id: args.productId, quantity: 1 }],
+          return_url: returnUrl,
+          ...(args.discountCode ? { discount_code: args.discountCode } : {}),
+          ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+          feature_flags: {
+            allow_discount_code: true, // PROMO-01: Always show discount input
+          },
+          customization: {
+            theme: "dark",
+          },
         },
-        customization: {
-          theme: "dark",
-        },
-      },
-    });
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[checkout] createCheckout failed for user=${userId} product=${args.productId}: ${msg}`);
+      throw new ConvexError(`Checkout failed: ${msg}`);
+    }
 
     return result;
   },

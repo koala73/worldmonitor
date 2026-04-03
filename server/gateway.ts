@@ -110,6 +110,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/get-gdelt-topic-timeline': 'medium',
   '/api/climate/v1/list-climate-anomalies': 'static',
   '/api/climate/v1/get-co2-monitoring': 'static',
+  '/api/climate/v1/list-air-quality-data': 'fast',
   '/api/climate/v1/list-climate-news': 'slow',
   '/api/sanctions/v1/list-sanctions-pressure': 'static',
   '/api/sanctions/v1/lookup-sanction-entity': 'no-store',
@@ -205,6 +206,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-economic-stress': 'slow',
   '/api/supply-chain/v1/get-shipping-stress': 'medium',
   '/api/health/v1/list-disease-outbreaks': 'slow',
+  '/api/health/v1/list-air-quality-alerts': 'fast',
   '/api/intelligence/v1/get-social-velocity': 'fast',
 };
 

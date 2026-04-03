@@ -56,6 +56,9 @@ export async function initEntitlementSubscription(_userId?: string): Promise<voi
         currentState = result;
         for (const cb of listeners) cb(result);
       },
+      (err: Error) => {
+        console.warn('[entitlements] Subscription query error:', err.message);
+      },
     );
 
     unsubscribeFn = watch.unsubscribe;
