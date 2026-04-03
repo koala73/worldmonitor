@@ -26,7 +26,8 @@ const OPENAQ_LOCATIONS_URL = 'https://api.openaq.org/v3/locations';
 const OPENAQ_PM25_LATEST_URL = 'https://api.openaq.org/v3/parameters/2/latest';
 const OPENAQ_PAGE_LIMIT = 1000;
 const OPENAQ_MAX_PAGES = 20;
-const AIR_QUALITY_LOCK_TTL_MS = 600_000;
+// Worst case: 2 OpenAQ calls × 20 pages × (30s timeout × 3 attempts) ≈ 3600s
+const AIR_QUALITY_LOCK_TTL_MS = 3_600_000;
 
 // The product only exposes four buckets, so EPA's sensitive/unhealthy/very-unhealthy
 // bands are collapsed into a single "unhealthy" level.
