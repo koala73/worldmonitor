@@ -903,7 +903,8 @@ export class App {
     correlationEngine.registerAdapter(disasterAdapter);
     this.state.correlationEngine = correlationEngine;
     this.eventHandlers.setupUnifiedSettings();
-    this.eventHandlers.setupAuthWidget();
+    // TODO: isProUser() gate should be removed when we are ready to get new users signing up
+    if (isProUser()) this.eventHandlers.setupAuthWidget();
     capturePendingCheckoutIntentFromUrl();
 
     // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
