@@ -144,6 +144,7 @@ export async function getClerkToken(): Promise<string | null> {
     const session = clerkInstance?.session;
     if (!session) {
       console.warn(`[clerk] getClerkToken: no session (clerkInstance=${!!clerkInstance}, user=${!!clerkInstance?.user})`);
+      _tokenInflight = null;
       return null;
     }
     try {
