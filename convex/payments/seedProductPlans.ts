@@ -25,7 +25,13 @@ const PRODUCT_PLANS = [
   {
     dodoProductId: "pdt_0NbttVmG1SERrxhygbbUq",
     planKey: "api_starter",
-    displayName: "API Starter",
+    displayName: "API Starter Monthly",
+    isActive: true,
+  },
+  {
+    dodoProductId: "pdt_0Nbu2lawHYE3dv2THgSEV",
+    planKey: "api_starter_annual",
+    displayName: "API Starter Annual",
     isActive: true,
   },
   {

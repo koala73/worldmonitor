@@ -55,6 +55,15 @@ export const PLAN_FEATURES: Record<string, PlanFeatures> = {
     exportFormats: ["csv", "pdf", "json"],
   },
 
+  api_starter_annual: {
+    tier: 2,
+    maxDashboards: 25,
+    apiAccess: true,
+    apiRateLimit: 60,
+    prioritySupport: false,
+    exportFormats: ["csv", "pdf", "json"],
+  },
+
   api_business: {
     tier: 2,
     maxDashboards: 100,

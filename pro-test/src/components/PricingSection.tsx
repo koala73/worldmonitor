@@ -56,7 +56,7 @@ const TIERS: Tier[] = [
   {
     name: "API",
     monthlyPrice: 49,
-    annualPrice: null,
+    annualPrice: 490,
     description: "Programmatic access to intelligence data",
     features: [
       "REST API access",
@@ -66,22 +66,7 @@ const TIERS: Tier[] = [
       "Custom data exports",
     ],
     monthlyProductId: "pdt_0NbttVmG1SERrxhygbbUq",
-    highlighted: false,
-  },
-  {
-    name: "Enterprise",
-    price: null,
-    description: "Custom solutions for organizations",
-    features: [
-      "Everything in Pro + API",
-      "Unlimited API requests",
-      "Dedicated support",
-      "Custom integrations",
-      "SLA guarantee",
-      "On-premise option",
-    ],
-    cta: "Contact Sales",
-    href: "mailto:enterprise@worldmonitor.app",
+    annualProductId: "pdt_0Nbu2lawHYE3dv2THgSEV",
     highlighted: false,
   },
 ];
