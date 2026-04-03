@@ -274,7 +274,7 @@ export function createDomainGateway(
     // API key validation — tier-gated endpoints require EITHER an API key OR a valid bearer token.
     // Authenticated users (sessionUserId present) bypass the API key requirement.
     const keyCheck = validateApiKey(request, {
-      forceKey: isTierGated && !sessionUserId,
+      forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
     });
     if (keyCheck.required && !keyCheck.valid) {
       if (needsLegacyProBearerGate) {
