@@ -13,7 +13,7 @@
 import { v, ConvexError } from "convex/values";
 import { action } from "../_generated/server";
 import { checkout } from "../lib/dodo";
-import { requireUserId } from "../lib/auth";
+import { requireUserId, resolveUserIdentity } from "../lib/auth";
 import { signUserId } from "../lib/identitySigning";
 
 /**
@@ -32,7 +32,7 @@ export const createCheckout = action({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = await resolveUserIdentity(ctx);
 
     // Validate returnUrl to prevent open-redirect attacks.
     // Compare parsed origins exactly instead of using startsWith().
@@ -68,16 +68,21 @@ export const createCheckout = action({
     let result;
     try {
       // Prefill checkout with Clerk user identity (name + email)
-      const customerName = identity
-        ? [identity.givenName, identity.familyName].filter(Boolean).join(" ") || identity.name || undefined
-        : undefined;
       const customerEmail = identity?.email;
+      const customerName = identity
+        ? [identity.givenName, identity.familyName].filter(Boolean).join(" ") || identity.name
+        : undefined;
 
       result = await checkout(ctx, {
         payload: {
           product_cart: [{ product_id: args.productId, quantity: 1 }],
           return_url: returnUrl,
-          ...(customerEmail ? { customer: { email: customerEmail, name: customerName } } : {}),
+          ...(customerEmail ? {
+            customer: {
+              email: customerEmail,
+              ...(customerName ? { name: customerName } : {}),
+            },
+          } : {}),
           ...(args.discountCode ? { discount_code: args.discountCode } : {}),
           ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
           feature_flags: {
