@@ -240,7 +240,8 @@ export default async function handler(req) {
 
   const dodoPrices = await fetchPricesFromDodo();
   const tiers = buildTiers(dodoPrices);
-  const result = { tiers, fetchedAt: Date.now() };
+  const now = Date.now();
+  const result = { tiers, fetchedAt: now, cachedUntil: now + CACHE_TTL * 1000 };
 
   // Cache the result
   await setCache(result);
