@@ -11,6 +11,7 @@
  * UI code calls startCheckout(productId) -- everything else is internal.
  */
 
+import * as Sentry from '@sentry/browser';
 import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
 import { getConvexClient, getConvexApi } from './convex-client';
@@ -58,6 +59,7 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
           break;
         case 'checkout.error':
           console.error('[checkout] Overlay error:', event.data?.message);
+          Sentry.captureMessage(`Dodo checkout overlay error: ${event.data?.message || 'unknown'}`, { level: 'error', tags: { component: 'dodo-checkout' } });
           break;
       }
     },
@@ -239,6 +241,7 @@ export async function startCheckout(
     }
   } catch (err) {
     console.error('[checkout] Failed to create checkout session:', err);
+    Sentry.captureException(err, { tags: { component: 'dodo-checkout', action: 'createCheckout', productId } });
     if (fallbackToPricingPage) {
       window.open('https://worldmonitor.app/pro', '_blank');
     }
