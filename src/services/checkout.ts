@@ -14,7 +14,7 @@
 import * as Sentry from '@sentry/browser';
 import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
-import { getConvexClient, getConvexApi } from './convex-client';
+import { getConvexClient, getConvexApi, waitForConvexAuth } from './convex-client';
 import { getCurrentClerkUser } from './clerk';
 
 const CHECKOUT_PRODUCT_PARAM = 'checkoutProduct';
@@ -228,6 +228,8 @@ export async function startCheckout(
       }
       return;
     }
+
+    await waitForConvexAuth(10_000);
 
     const result = await client.action(api.payments.checkout.createCheckout, {
       productId,
