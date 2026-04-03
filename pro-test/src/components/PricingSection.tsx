@@ -2,90 +2,26 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { Check, ArrowRight, Zap } from 'lucide-react';
 
+import tiersData from '../generated/tiers.json';
+
 interface Tier {
   name: string;
   description: string;
   features: string[];
   highlighted?: boolean;
-  // Pricing variants
   price?: number | null;
   period?: string;
   monthlyPrice?: number;
   annualPrice?: number | null;
-  // CTA variants
   cta?: string;
   href?: string;
   monthlyProductId?: string;
   annualProductId?: string;
 }
 
-const TIERS: Tier[] = [
-  {
-    name: "Free",
-    price: 0,
-    period: "forever",
-    description: "Get started with the essentials",
-    features: [
-      "Core dashboard panels",
-      "Global news feed",
-      "Earthquake & weather alerts",
-      "Basic map view",
-    ],
-    cta: "Get Started",
-    href: "https://worldmonitor.app",
-    highlighted: false,
-  },
-  {
-    name: "Pro",
-    monthlyPrice: 19,
-    annualPrice: 190,
-    description: "Full intelligence dashboard",
-    features: [
-      "Everything in Free",
-      "AI stock analysis & backtesting",
-      "Daily market briefs",
-      "Military & geopolitical tracking",
-      "Custom widget builder",
-      "MCP data connectors",
-      "Priority data refresh",
-    ],
-    monthlyProductId: "pdt_0Nbtt71uObulf7fGXhQup",
-    annualProductId: "pdt_0NbttMIfjLWC10jHQWYgJ",
-    highlighted: true,
-  },
-  {
-    name: "API",
-    monthlyPrice: 49,
-    annualPrice: 490,
-    description: "Programmatic access to intelligence data",
-    features: [
-      "REST API access",
-      "Real-time data streams",
-      "1,000 requests/day",
-      "Webhook notifications",
-      "Custom data exports",
-    ],
-    monthlyProductId: "pdt_0NbttVmG1SERrxhygbbUq",
-    annualProductId: "pdt_0Nbu2lawHYE3dv2THgSEV",
-    highlighted: false,
-  },
-  {
-    name: "Enterprise",
-    price: null,
-    description: "Custom solutions for organizations",
-    features: [
-      "Everything in Pro + API",
-      "Unlimited API requests",
-      "Dedicated support",
-      "Custom integrations",
-      "SLA guarantee",
-      "On-premise option",
-    ],
-    cta: "Contact Sales",
-    href: "mailto:enterprise@worldmonitor.app",
-    highlighted: false,
-  },
-];
+// Prices and product IDs generated from convex/config/productCatalog.ts
+// To update: edit catalog → npx tsx scripts/generate-product-config.mjs → rebuild
+const TIERS: Tier[] = tiersData as Tier[];
 
 const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/';
 
