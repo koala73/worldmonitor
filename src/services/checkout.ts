@@ -122,6 +122,8 @@ export function capturePendingCheckoutIntentFromUrl(): PendingCheckoutIntent | n
   const productId = url.searchParams.get(CHECKOUT_PRODUCT_PARAM);
   if (!productId) return null;
 
+  console.log(`[checkout] Captured intent from URL: product=${productId}`);
+
   const intent: PendingCheckoutIntent = {
     productId,
     referralCode: url.searchParams.get(CHECKOUT_REFERRAL_PARAM) ?? undefined,
@@ -142,13 +144,21 @@ export async function resumePendingCheckout(options?: {
   openAuth?: () => void;
 }): Promise<boolean> {
   const intent = loadPendingCheckoutIntent();
-  if (!intent) return false;
+  if (!intent) {
+    console.log('[checkout] resumePendingCheckout: no pending intent');
+    return false;
+  }
 
-  if (!getCurrentClerkUser()?.id) {
+  const clerkUser = getCurrentClerkUser();
+  console.log(`[checkout] resumePendingCheckout: intent=${intent.productId}, clerkUser=${clerkUser?.id ?? 'null'}, hasOpenAuth=${!!options?.openAuth}`);
+
+  if (!clerkUser?.id) {
+    console.log('[checkout] resumePendingCheckout: no Clerk user, opening auth');
     options?.openAuth?.();
     return false;
   }
 
+  console.log(`[checkout] resumePendingCheckout: starting checkout for ${intent.productId}`);
   clearPendingCheckoutIntent();
   await startCheckout(
     intent.productId,
