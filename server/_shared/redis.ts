@@ -132,6 +132,41 @@ export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, un
   return result;
 }
 
+export type RedisPipelineCommand = Array<string | number>;
+
+function normalizePipelineCommand(command: RedisPipelineCommand, raw: boolean): RedisPipelineCommand {
+  if (raw || command.length < 2) return [...command];
+  const [verb, key, ...rest] = command;
+  if (typeof verb !== 'string' || typeof key !== 'string') return [...command];
+  return [verb, prefixKey(key), ...rest];
+}
+
+export async function runRedisPipeline(
+  commands: RedisPipelineCommand[],
+  raw = false,
+): Promise<Array<{ result?: unknown }>> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return [];
+  if (commands.length === 0) return [];
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return [];
+
+  try {
+    const response = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(commands.map((command) => normalizePipelineCommand(command, raw))),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+    });
+    if (!response.ok) return [];
+    return await response.json() as Array<{ result?: unknown }>;
+  } catch (err) {
+    console.warn('[redis] runRedisPipeline failed:', errMsg(err));
+    return [];
+  }
+}
+
 /**
  * In-flight request coalescing map.
  * When multiple concurrent requests hit the same cache key during a miss,
@@ -305,41 +340,5 @@ export async function deleteRedisKey(key: string, raw = false): Promise<void> {
     });
   } catch (err) {
     console.warn('[redis] deleteRedisKey failed:', errMsg(err));
-  }
-}
-
-export async function runRedisPipeline(
-  commands: Array<Array<string | number>>,
-  raw = false,
-): Promise<Array<{ result?: unknown }>> {
-  if (commands.length === 0) return [];
-
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return [];
-
-  const pipeline = commands.map((command) => {
-    const [verb, ...rest] = command;
-    if (raw || rest.length === 0 || typeof rest[0] !== 'string') {
-      return command.map((part) => String(part));
-    }
-    return [String(verb), prefixKey(rest[0]), ...rest.slice(1).map((part) => String(part))];
-  });
-
-  try {
-    const resp = await fetch(`${url}/pipeline`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(pipeline),
-      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
-    });
-    if (!resp.ok) {
-      console.warn(`[redis] runRedisPipeline HTTP ${resp.status}`);
-      return [];
-    }
-    return await resp.json() as Array<{ result?: unknown }>;
-  } catch (err) {
-    console.warn('[redis] runRedisPipeline failed:', errMsg(err));
-    return [];
   }
 }
