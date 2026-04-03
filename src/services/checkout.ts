@@ -13,7 +13,7 @@
 
 import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
-import { getConvexClient, getConvexApi } from './convex-client';
+import { getConvexClient, getConvexApi, waitForConvexAuth } from './convex-client';
 import { getCurrentClerkUser } from './clerk';
 
 const CHECKOUT_PRODUCT_PARAM = 'checkoutProduct';
@@ -221,6 +221,15 @@ export async function startCheckout(
 
     const api = await getConvexApi();
     if (!api) {
+      if (fallbackToPricingPage) {
+        window.open('https://worldmonitor.app/pro', '_blank');
+      }
+      return;
+    }
+
+    const authReady = await waitForConvexAuth(10_000);
+    if (!authReady) {
+      console.warn('[checkout] Convex auth not ready after 10s, falling back');
       if (fallbackToPricingPage) {
         window.open('https://worldmonitor.app/pro', '_blank');
       }
