@@ -23,6 +23,7 @@ export * from './GdeltIntelPanel';
 export * from './LiveNewsPanel';
 export * from './LiveWebcamsPanel';
 export * from './PinnedWebcamsPanel';
+export * from './LiveIpCamerasPanel';
 export * from './CIIPanel';
 export * from './CascadePanel';
 export * from './StrategicRiskPanel';

@@ -84,6 +84,7 @@ export const STORAGE_KEYS = {
   mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
   activeChannel: 'worldmonitor-active-channel',
   webcamPrefs: 'worldmonitor-webcam-prefs',
+  ipCamPrefs: 'worldmonitor-ipcam-prefs',
 } as const;
 
 // Type definitions for variant configs
