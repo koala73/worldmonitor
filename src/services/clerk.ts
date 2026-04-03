@@ -142,7 +142,7 @@ export async function getClerkToken(): Promise<string | null> {
 
   _tokenInflight = (async () => {
     if (!clerkInstance && PUBLISHABLE_KEY) {
-      await initClerk();
+      try { await initClerk(); } catch { /* Clerk load failed, proceed with null */ }
     }
     const session = clerkInstance?.session;
     if (!session) {
