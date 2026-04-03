@@ -68,6 +68,15 @@ const TIER_CONFIG = {
   },
 };
 
+// Fallback prices (cents) when Dodo API fails for individual products.
+// Must match Dodo dashboard. Updated by generate-product-config.mjs.
+const FALLBACK_PRICES = {
+  'pdt_0Nbtt71uObulf7fGXhQup': 3999,   // Pro Monthly
+  'pdt_0NbttMIfjLWC10jHQWYgJ': 39999,  // Pro Annual
+  'pdt_0NbttVmG1SERrxhygbbUq': 5999,   // API Starter Monthly
+  'pdt_0Nbu2lawHYE3dv2THgSEV': 49000,  // API Starter Annual
+};
+
 // Tier groups shown on the /pro page (ordered)
 const PUBLIC_TIER_GROUPS = ['free', 'pro', 'api_starter', 'enterprise'];
 
@@ -124,9 +133,9 @@ async function fetchPricesFromDodo() {
     ? 'https://api.dodopayments.com'
     : 'https://test.dodopayments.com';
 
-  const prices = {};
-  for (const productId of Object.keys(CATALOG)) {
-    try {
+  const productIds = Object.keys(CATALOG);
+  const results = await Promise.allSettled(
+    productIds.map(async (productId) => {
       const res = await fetch(`${baseUrl}/products/${productId}`, {
         headers: {
           Authorization: `Bearer ${DODO_API_KEY}`,
@@ -134,12 +143,15 @@ async function fetchPricesFromDodo() {
         },
         signal: AbortSignal.timeout(5000),
       });
-      if (!res.ok) {
-        console.warn(`[product-catalog] Dodo ${productId}: HTTP ${res.status}`);
-        continue;
-      }
-      const product = await res.json();
-      // price.price is in cents (lowest denomination)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return { productId, product: await res.json() };
+    }),
+  );
+
+  const prices = {};
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      const { productId, product } = result.value;
       const priceData = product.price;
       if (priceData) {
         prices[productId] = {
@@ -148,8 +160,8 @@ async function fetchPricesFromDodo() {
           name: product.name,
         };
       }
-    } catch (err) {
-      console.warn(`[product-catalog] Dodo ${productId} fetch error:`, err.message);
+    } else {
+      console.warn(`[product-catalog] Dodo fetch failed:`, result.reason?.message);
     }
   }
   return prices;
@@ -181,18 +193,16 @@ function buildTiers(dodoPrices) {
     if (monthlyEntry) {
       const [monthlyId] = monthlyEntry;
       const monthlyPrice = dodoPrices[monthlyId];
-      if (monthlyPrice) {
-        tier.monthlyPrice = monthlyPrice.priceCents / 100;
-      }
+      const priceCents = monthlyPrice?.priceCents ?? FALLBACK_PRICES[monthlyId];
+      if (priceCents != null) tier.monthlyPrice = priceCents / 100;
       tier.monthlyProductId = monthlyId;
     }
 
     if (annualEntry) {
       const [annualId] = annualEntry;
       const annualPrice = dodoPrices[annualId];
-      if (annualPrice) {
-        tier.annualPrice = annualPrice.priceCents / 100;
-      }
+      const priceCents = annualPrice?.priceCents ?? FALLBACK_PRICES[annualId];
+      if (priceCents != null) tier.annualPrice = priceCents / 100;
       tier.annualProductId = annualId;
     }
 
