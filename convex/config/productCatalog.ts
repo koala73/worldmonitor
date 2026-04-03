@@ -114,7 +114,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
   pro_monthly: {
     dodoProductId: "pdt_0Nbtt71uObulf7fGXhQup",
     planKey: "pro_monthly",
-    displayName: "Pro",
+    displayName: "Pro Monthly",
     priceCents: 1900,
     billingPeriod: "monthly",
     tierGroup: "pro",
@@ -152,7 +152,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
   api_starter: {
     dodoProductId: "pdt_0NbttVmG1SERrxhygbbUq",
     planKey: "api_starter",
-    displayName: "API Starter",
+    displayName: "API Starter Monthly",
     priceCents: 4900,
     billingPeriod: "monthly",
     tierGroup: "api_starter",
