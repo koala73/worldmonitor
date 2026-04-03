@@ -807,28 +807,33 @@ export class App {
         // Claim any anonymous purchase made before sign-in (anon → real user migration)
         const anonId = localStorage.getItem('wm-anon-id');
         if (anonId) {
-          void Promise.all([getConvexClient(), getConvexApi(), getClerkToken()])
-            .then(async ([client, api, token]) => {
-              if (!client || !api || !token) {
-                // Convex auth not ready yet — skip silently. wm-anon-id is preserved
-                // so the next page load (when _prevUserId resets) will retry.
+          const attemptClaim = async (retriesLeft: number): Promise<void> => {
+            const [client, api, token] = await Promise.all([getConvexClient(), getConvexApi(), getClerkToken()]);
+            if (!client || !api || !token) {
+              if (retriesLeft > 0) {
+                // Clerk token not ready yet — retry after a short delay.
+                // wm-anon-id is preserved so page reload also retries.
+                setTimeout(() => { attemptClaim(retriesLeft - 1).catch(() => {}); }, 2000);
                 return;
               }
-              const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
-              const claimed = result.claimed;
-              const totalClaimed = claimed.subscriptions + claimed.entitlements +
-                                   claimed.customers + claimed.payments;
-              if (totalClaimed > 0) {
-                console.log('[billing] Claimed anon subscription on sign-in:', claimed);
-              }
-              // Always remove after non-throwing completion — mutation is idempotent.
-              // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
-              localStorage.removeItem('wm-anon-id');
-            })
-            .catch((err: unknown) => {
-              console.warn('[billing] claimSubscription failed:', err);
-              // Non-fatal — anon ID preserved for retry
-            });
+              console.warn('[billing] claimSubscription skipped — auth not ready after retries');
+              return;
+            }
+            const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
+            const claimed = result.claimed;
+            const totalClaimed = claimed.subscriptions + claimed.entitlements +
+                                 claimed.customers + claimed.payments;
+            if (totalClaimed > 0) {
+              console.log('[billing] Claimed anon subscription on sign-in:', claimed);
+            }
+            // Always remove after non-throwing completion — mutation is idempotent.
+            // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
+            localStorage.removeItem('wm-anon-id');
+          };
+          void attemptClaim(3).catch((err: unknown) => {
+            console.warn('[billing] claimSubscription failed:', err);
+            // Non-fatal — anon ID preserved for retry on next page load
+          });
         }
         void resumePendingCheckout({
           openAuth: () => this.state.authModal?.open(),
