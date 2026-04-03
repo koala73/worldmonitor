@@ -29,10 +29,7 @@ const RELAY_ONLY_DOMAINS = new Set([
   'feeds.capi24.com',
   'islandtimes.org',
   'www.atlanticcouncil.org',
-  // FR #195: Irish tech news sites with aggressive anti-bot protection
-  'www.siliconrepublic.com',
-  'www.techcentral.ie',
-  'businessplus.ie',
+  // FR #195 → FR #198: Removed Irish tech news sites (now using Google News RSS instead)
 ]);
 
 // FR #195: Browser-like headers to avoid 403 errors from anti-bot protection

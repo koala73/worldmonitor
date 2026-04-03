@@ -31,11 +31,12 @@ const rss = rssProxyUrl;
 // Ireland-specific FEEDS configuration
 export const FEEDS: Record<string, Feed[]> = {
   // 爱尔兰科技新闻 (含 AI Companies: OpenAI, Anthropic, xAI, DeepMind)
+  // FR #198: 改用 Google News RSS 避免 502 错误
   ieTech: [
-    { name: 'Silicon Republic', url: rss('https://www.siliconrepublic.com/feed') },
-    { name: 'Tech Central', url: rss('https://www.techcentral.ie/feed/') },
-    { name: 'Business Plus', url: rss('https://businessplus.ie/feed/') },
-    { name: 'Irish Tech News', url: rss('https://irishtechnews.ie/feed/') },
+    { name: 'Silicon Republic (Google News)', url: rss('https://news.google.com/rss/search?q=site:siliconrepublic.com+(technology+OR+startup+OR+AI+OR+funding)+when:2d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'TheJournal.ie Tech (Google News)', url: rss('https://news.google.com/rss/search?q=site:thejournal.ie/tech+when:2d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Business Post Tech (Google News)', url: rss('https://news.google.com/rss/search?q=site:businesspost.ie+technology+when:2d&hl=en-IE&gl=IE&ceid=IE:en') },
+    { name: 'Irish Times Tech (Google News)', url: rss('https://news.google.com/rss/search?q=site:irishtimes.com+technology+when:2d&hl=en-IE&gl=IE&ceid=IE:en') },
     // AI Companies in Ireland (FR #178)
     { name: 'OpenAI Ireland', url: rss('https://news.google.com/rss/search?q=OpenAI+(Ireland+OR+Dublin)+when:14d&hl=en-IE&gl=IE&ceid=IE:en') },
     { name: 'Anthropic Ireland', url: rss('https://news.google.com/rss/search?q=Anthropic+(Ireland+OR+Dublin)+when:14d&hl=en-IE&gl=IE&ceid=IE:en') },
