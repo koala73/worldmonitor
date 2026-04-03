@@ -6,9 +6,11 @@
 export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
 export const CLIMATE_ANOMALIES_KEY = 'climate:anomalies:v2';
+export const CLIMATE_AIR_QUALITY_KEY = 'climate:air-quality:v1';
 export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
 export const CLIMATE_CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
+export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 
 /**
  * Static cache keys for the bootstrap endpoint.
@@ -32,6 +34,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   minerals:         'supply_chain:minerals:v2',
   giving:           'giving:summary:v1',
   climateAnomalies: 'climate:anomalies:v2',
+  climateAirQuality: 'climate:air-quality:v1',
   co2Monitoring:    'climate:co2-monitoring:v1',
   climateNews:      'climate:news-intelligence:v1',
   radiationWatch:  'radiation:observations:v1',
@@ -86,6 +89,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   shippingStress:   'supply_chain:shipping_stress:v1',
   socialVelocity:   'intelligence:social:reddit:v1',
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
+  healthAirQuality: 'health:air-quality:v1',
   economicStress:   'economic:stress-index:v1',
 };
 
@@ -95,6 +99,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   progressData: 'slow', renewableEnergy: 'slow',
   etfFlows: 'slow', shippingRates: 'fast', wildfires: 'slow',
   climateAnomalies: 'slow', co2Monitoring: 'slow', climateNews: 'slow', sanctionsPressure: 'slow', radiationWatch: 'slow', thermalEscalation: 'slow', crossSourceSignals: 'slow', cyberThreats: 'slow', techReadiness: 'slow',
+  climateAirQuality: 'fast',
   theaterPosture: 'fast', naturalEvents: 'slow',
   cryptoQuotes: 'slow', gulfQuotes: 'slow', stablecoinMarkets: 'slow',
   unrestEvents: 'slow', ucdpEvents: 'slow', techEvents: 'slow',
@@ -128,5 +133,6 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   shippingStress: 'fast',
   socialVelocity: 'fast',
   diseaseOutbreaks: 'slow',
+  healthAirQuality: 'fast',
   economicStress: 'slow',
 };

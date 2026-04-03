@@ -75,6 +75,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/climate/v1/list-air-quality-data:
+        get:
+            tags:
+                - ClimateService
+            summary: ListAirQualityData
+            description: ListAirQualityData retrieves recent PM2.5 station data from the shared air-quality seed.
+            operationId: ListAirQualityData
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAirQualityDataResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/climate/v1/list-climate-news:
         get:
             tags:
@@ -293,6 +319,48 @@ components:
                     type: number
                     format: double
                     description: Year-over-year delta vs same calendar month, in ppm.
+        ListAirQualityDataRequest:
+            type: object
+        ListAirQualityDataResponse:
+            type: object
+            properties:
+                stations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AirQualityStation'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        AirQualityStation:
+            type: object
+            properties:
+                city:
+                    type: string
+                countryCode:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lng:
+                    type: number
+                    format: double
+                pm25:
+                    type: number
+                    format: double
+                aqi:
+                    type: integer
+                    format: int32
+                riskLevel:
+                    type: string
+                pollutant:
+                    type: string
+                measuredAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                source:
+                    type: string
         ListClimateNewsRequest:
             type: object
         ListClimateNewsResponse:

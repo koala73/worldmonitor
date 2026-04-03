@@ -29,6 +29,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/health/v1/list-air-quality-alerts:
+        get:
+            tags:
+                - HealthService
+            summary: ListAirQualityAlerts
+            description: ListAirQualityAlerts returns recent PM2.5 stations with AQI-derived health risk.
+            operationId: ListAirQualityAlerts
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAirQualityAlertsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -119,3 +145,45 @@ components:
                     format: int32
                     description: Case count if reported by source (0 = unknown).
             description: DiseaseOutbreakItem represents a single disease outbreak event.
+        ListAirQualityAlertsRequest:
+            type: object
+        ListAirQualityAlertsResponse:
+            type: object
+            properties:
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AirQualityAlert'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        AirQualityAlert:
+            type: object
+            properties:
+                city:
+                    type: string
+                countryCode:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lng:
+                    type: number
+                    format: double
+                pm25:
+                    type: number
+                    format: double
+                aqi:
+                    type: integer
+                    format: int32
+                riskLevel:
+                    type: string
+                pollutant:
+                    type: string
+                measuredAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                source:
+                    type: string
