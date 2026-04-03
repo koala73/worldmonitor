@@ -24,7 +24,7 @@ function snapshotSession(): AuthSession {
     Sentry.setUser(null);
     return { user: null, isPending: false };
   }
-  Sentry.setUser({ id: cu.id, email: cu.email });
+  Sentry.setUser({ id: cu.id });
   return {
     user: {
       id: cu.id,

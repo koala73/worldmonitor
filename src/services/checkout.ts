@@ -241,7 +241,7 @@ export async function startCheckout(
     }
   } catch (err) {
     console.error('[checkout] Failed to create checkout session:', err);
-    Sentry.captureException(err, { tags: { component: 'dodo-checkout', action: 'createCheckout', productId } });
+    Sentry.captureException(err, { tags: { component: 'dodo-checkout', action: 'createCheckout' }, extra: { productId } });
     if (fallbackToPricingPage) {
       window.open('https://worldmonitor.app/pro', '_blank');
     }

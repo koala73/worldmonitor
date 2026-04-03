@@ -60,6 +60,7 @@ export async function initSubscriptionWatch(_userId?: string): Promise<void> {
     initialized = true;
   } catch (err) {
     console.error('[billing] Failed to initialize subscription watch:', err);
+    // Do not rethrow -- billing service failure must not break the dashboard
     Sentry.captureException(err, { tags: { component: 'dodo-billing', action: 'initSubscriptionWatch' } });
   }
 }
