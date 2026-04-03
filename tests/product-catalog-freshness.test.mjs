@@ -127,6 +127,30 @@ describe('Product catalog freshness', () => {
 
     assert.equal(currentProducts, freshProducts, 'products.generated.ts is stale — run: npx tsx scripts/generate-product-config.mjs');
     assert.equal(currentTiers, freshTiers, 'tiers.json is stale — run: npx tsx scripts/generate-product-config.mjs');
+
+    const currentFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
+    const freshFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
+    assert.equal(currentFallback, freshFallback, '_product-fallback-prices.js is stale');
+  });
+
+  it('fallback prices file has entries for all self-serve products', () => {
+    const fallbackSrc = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
+    const fallbackIds = [...fallbackSrc.matchAll(/'(pdt_[^']+)'/g)].map(m => m[1]);
+
+    // Every self-serve product with a price should have a fallback
+    const catalogSrc = readFileSync(join(ROOT, 'convex/config/productCatalog.ts'), 'utf8');
+    const blocks = catalogSrc.split(/\n\s*\w+:\s*\{/).slice(1);
+    for (const block of blocks) {
+      const isSelfServe = block.includes('selfServe: true');
+      const idMatch = block.match(/dodoProductId:\s*["']([^"']+)["']/);
+      const priceMatch = block.match(/priceCents:\s*(\d+)/);
+      if (isSelfServe && idMatch && priceMatch && Number(priceMatch[1]) > 0) {
+        assert.ok(
+          fallbackIds.includes(idMatch[1]),
+          `Self-serve product ${idMatch[1]} missing from _product-fallback-prices.js`,
+        );
+      }
+    }
   });
 });
 
@@ -138,6 +162,7 @@ describe('Product ID guard', () => {
       `| grep -v node_modules ` +
       `| grep -v 'convex/config/productCatalog' ` +
       `| grep -v 'api/product-catalog' ` +
+      `| grep -v 'api/_product-fallback-prices' ` +
       `| grep -v 'src/config/products.generated' ` +
       `| grep -v 'pro-test/src/generated/' ` +
       `| grep -v 'public/pro/' ` +

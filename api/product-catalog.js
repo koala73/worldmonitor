@@ -15,6 +15,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module
 import { getCorsHeaders } from './_cors.js';
+// @ts-expect-error — generated JS module
+import { FALLBACK_PRICES } from './_product-fallback-prices.js';
 
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
@@ -66,15 +68,6 @@ const TIER_CONFIG = {
     href: 'mailto:enterprise@worldmonitor.app',
     highlighted: false,
   },
-};
-
-// Fallback prices (cents) when Dodo API fails for individual products.
-// Must match Dodo dashboard. Updated by generate-product-config.mjs.
-const FALLBACK_PRICES = {
-  'pdt_0Nbtt71uObulf7fGXhQup': 3999,   // Pro Monthly
-  'pdt_0NbttMIfjLWC10jHQWYgJ': 39999,  // Pro Annual
-  'pdt_0NbttVmG1SERrxhygbbUq': 5999,   // API Starter Monthly
-  'pdt_0Nbu2lawHYE3dv2THgSEV': 49000,  // API Starter Annual
 };
 
 // Tier groups shown on the /pro page (ordered)

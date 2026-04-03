@@ -59,6 +59,29 @@ writeFileSync(productsPath, productsTs);
 console.log(`  ✓ ${productsPath}`);
 
 // ---------------------------------------------------------------------------
+// 1b. Generate api/_product-fallback-prices.js
+// ---------------------------------------------------------------------------
+
+const fallbackEntries = Object.entries(PRODUCT_CATALOG)
+  .filter(([, e]) => e.dodoProductId && e.priceCents != null && e.priceCents > 0)
+  .map(([, e]) => `  '${e.dodoProductId}': ${e.priceCents},  // ${e.displayName}`)
+  .join('\n');
+
+const fallbackJs = `// AUTO-GENERATED from convex/config/productCatalog.ts
+// Do not edit manually. Run: npx tsx scripts/generate-product-config.mjs
+// @ts-check
+
+/** Fallback prices (cents) when Dodo API is unreachable for individual products. */
+export const FALLBACK_PRICES = {
+${fallbackEntries}
+};
+`;
+
+const fallbackPath = join(ROOT, 'api/_product-fallback-prices.js');
+writeFileSync(fallbackPath, fallbackJs);
+console.log(`  ✓ ${fallbackPath}`);
+
+// ---------------------------------------------------------------------------
 // 2. Generate pro-test/src/generated/tiers.json
 // ---------------------------------------------------------------------------
 
