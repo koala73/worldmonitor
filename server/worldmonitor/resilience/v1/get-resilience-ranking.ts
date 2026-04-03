@@ -16,6 +16,9 @@ import {
   warmMissingResilienceScores,
 } from './_shared';
 
+const RESILIENCE_RANKING_META_KEY = 'seed-meta:resilience:ranking';
+const RESILIENCE_RANKING_META_TTL_SECONDS = 7 * 24 * 60 * 60;
+
 export const getResilienceRanking: ResilienceServiceHandler['getResilienceRanking'] = async (
   _ctx: ServerContext,
   _req: GetResilienceRankingRequest,
@@ -44,6 +47,10 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
 
   if (missing.length === 0) {
     await setCachedJson(RESILIENCE_RANKING_CACHE_KEY, response, RESILIENCE_RANKING_CACHE_TTL_SECONDS);
+    setCachedJson(RESILIENCE_RANKING_META_KEY, {
+      fetchedAt: Date.now(),
+      recordCount: response.items.length,
+    }, RESILIENCE_RANKING_META_TTL_SECONDS).catch(() => {});
   }
 
   return response;
