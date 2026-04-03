@@ -912,7 +912,14 @@ export class App {
     this.eventHandlers.setupUnifiedSettings();
     // TODO: isProUser() gate should be removed when we are ready to get new users signing up
     if (isProUser()) this.eventHandlers.setupAuthWidget();
-    capturePendingCheckoutIntentFromUrl();
+    const pendingCheckout = capturePendingCheckoutIntentFromUrl();
+    if (pendingCheckout) {
+      // Checkout intent from /pro page redirect. Resume immediately if
+      // already authenticated, otherwise the auth callback handles it.
+      void resumePendingCheckout({
+        openAuth: () => this.state.authModal?.open(),
+      });
+    }
 
     // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
     this.searchManager.init();
