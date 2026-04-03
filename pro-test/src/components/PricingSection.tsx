@@ -49,8 +49,8 @@ const TIERS: Tier[] = [
       "MCP data connectors",
       "Priority data refresh",
     ],
-    monthlyProductId: "pdt_0NaysSFAQ0y30nJOJMBpg",
-    annualProductId: "pdt_0NaysWqJBx3laiCzDbQfr",
+    monthlyProductId: "pdt_0Nbtt71uObulf7fGXhQup",
+    annualProductId: "pdt_0NbttMIfjLWC10jHQWYgJ",
     highlighted: true,
   },
   {
@@ -65,7 +65,7 @@ const TIERS: Tier[] = [
       "Webhook notifications",
       "Custom data exports",
     ],
-    monthlyProductId: "pdt_0NaysZwxCyk9Satf1jbqU",
+    monthlyProductId: "pdt_0NbttVmG1SERrxhygbbUq",
     highlighted: false,
   },
   {
