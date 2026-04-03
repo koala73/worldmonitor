@@ -208,6 +208,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/health/v1/list-disease-outbreaks': 'slow',
   '/api/health/v1/list-air-quality-alerts': 'fast',
   '/api/intelligence/v1/get-social-velocity': 'fast',
+  '/api/resilience/v1/get-resilience-score': 'slow',
+  '/api/resilience/v1/get-resilience-ranking': 'slow',
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
