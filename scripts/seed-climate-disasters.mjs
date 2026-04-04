@@ -314,8 +314,10 @@ async function fetchReliefWeb() {
       } catch (err) {
         lastError = err;
         const message = String(err?.message || err);
-        if (/approved appname/i.test(message)) {
-          throw new Error(`ReliefWeb rejected RELIEFWEB_APPNAME="${appname}" — configure an approved appname`);
+        if (/approved appname/i.test(message) || /HTTP 40[13]/.test(message)) {
+          const cfgErr = new Error(`ReliefWeb rejected RELIEFWEB_APPNAME="${appname}" — configure an approved appname`);
+          cfgErr.isConfigError = true;
+          throw cfgErr;
         }
       }
     }

@@ -125,7 +125,7 @@ describe('seed-climate-disasters helpers', () => {
     assert.equal(gdacsEvent.country, 'Japan');
   });
 
-  it('fails hard on config errors even when other sources succeed', () => {
+  it('fails hard on config errors even when other sources succeed (missing appname)', () => {
     const configErr = new Error('RELIEFWEB_APPNAME is required');
     configErr.isConfigError = true;
 
@@ -133,6 +133,16 @@ describe('seed-climate-disasters helpers', () => {
       { status: 'fulfilled', value: [{ id: 'nat-1', source: 'GDACS', type: 'flood', name: 'Floods', country: 'Japan', countryCode: 'JP', lat: 35.6, lng: 139.7, severity: 'high', startedAt: 1_700_000_000_000, status: 'alert', affectedPopulation: 0, sourceUrl: '' }] },
       { status: 'rejected', reason: configErr },
     ]), { message: /RELIEFWEB_APPNAME/ });
+  });
+
+  it('fails hard on config errors even when other sources succeed (rejected appname)', () => {
+    const rejectErr = new Error('HTTP 403 appname not in approved appname list');
+    rejectErr.isConfigError = true;
+
+    assert.throws(() => collectDisasterSourceResults([
+      { status: 'fulfilled', value: [{ id: 'nat-1', source: 'GDACS', type: 'flood', name: 'Floods', country: 'Japan', countryCode: 'JP', lat: 35.6, lng: 139.7, severity: 'high', startedAt: 1_700_000_000_000, status: 'alert', affectedPopulation: 0, sourceUrl: '' }] },
+      { status: 'rejected', reason: rejectErr },
+    ]), { message: /HTTP 403/ });
   });
 
   it('keeps successful source payloads when another source fails', () => {
