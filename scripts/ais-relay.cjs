@@ -5763,8 +5763,8 @@ function startPizzintSeedLoop() {
 // builds tier view model, writes to Redis for /api/product-catalog.
 // Direct fetch first, PROXY_URL fallback if Dodo blocks datacenter IPs.
 // ─────────────────────────────────────────────────────────────
-const DODO_PRICE_SEED_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
-const DODO_PRICE_SEED_TTL = 86400; // 24h (2× interval)
+const DODO_PRICE_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const DODO_PRICE_SEED_TTL = 43200; // 12h (2× interval)
 const DODO_PRICE_REDIS_KEY = 'product-catalog:v2';
 const DODO_LIVE_URL = 'https://live.dodopayments.com';
 const DODO_TEST_URL = 'https://test.dodopayments.com';
@@ -5835,11 +5835,35 @@ async function seedDodoPrices() {
         console.warn(`[DodoPrices] Direct fetch ${productId} failed: ${e?.message}`);
       }
 
-      // Fallback via proxy
+      // Fallback via proxy (ytFetchViaProxy doesn't forward custom headers,
+      // so we build the proxied request manually with Authorization)
       if (PROXY_URL) {
         try {
           const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-          const proxyResp = await ytFetchViaProxy(`${baseUrl}/products/${productId}`, proxy);
+          const target = new URL(`${baseUrl}/products/${productId}`);
+          const proxyResp = await new Promise((resolve, reject) => {
+            const connectOpts = { host: proxy.host, port: proxy.port, method: 'CONNECT', path: `${target.hostname}:443`, headers: {} };
+            if (proxy.auth) connectOpts.headers['Proxy-Authorization'] = 'Basic ' + Buffer.from(proxy.auth).toString('base64');
+            const connectReq = proxy.tls ? https.request(connectOpts) : http.request(connectOpts);
+            connectReq.on('connect', (_res, socket) => {
+              connectReq.setTimeout(0);
+              const req = https.request({
+                hostname: target.hostname, path: target.pathname, method: 'GET',
+                headers: { 'User-Agent': CHROME_UA, 'Authorization': `Bearer ${DODO_PRICE_API_KEY}`, 'Accept': 'application/json' },
+                socket, agent: false,
+              }, (res) => {
+                const chunks = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, body: Buffer.concat(chunks).toString() }));
+                res.on('error', reject);
+              });
+              req.on('error', reject);
+              req.end();
+            });
+            connectReq.on('error', reject);
+            connectReq.setTimeout(10000, () => { connectReq.destroy(); reject(new Error('Proxy timeout')); });
+            connectReq.end();
+          });
           if (proxyResp?.ok) {
             const product = JSON.parse(proxyResp.body);
             const priceCents = product.price?.price ?? product.price?.fixed_price;
@@ -5877,9 +5901,18 @@ async function seedDodoPrices() {
     const priceSource = fallbackCount === 0 ? 'dodo' : fetchedCount > 0 ? 'partial' : 'fallback';
     const now = Date.now();
     const payload = { tiers, fetchedAt: now, cachedUntil: now + DODO_PRICE_SEED_TTL * 1000, priceSource };
-    const ok1 = await upstashSet(DODO_PRICE_REDIS_KEY, payload, DODO_PRICE_SEED_TTL);
-    const ok2 = await upstashSet('seed-meta:product-catalog', { fetchedAt: now, recordCount: fetchedCount, priceSource }, 604800);
-    console.log(`[DodoPrices] Seeded ${fetchedCount}/${DODO_PRODUCT_IDS.length} from Dodo, ${fallbackCount} fallback (source=${priceSource}, redis=${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+
+    // Only write to Redis when ALL prices came from Dodo (no fallback contamination).
+    // Partial/fallback results are not persisted — edge endpoint serves them directly with short cache.
+    if (priceSource === 'dodo') {
+      const ok1 = await upstashSet(DODO_PRICE_REDIS_KEY, payload, DODO_PRICE_SEED_TTL);
+      const ok2 = await upstashSet('seed-meta:product-catalog', { fetchedAt: now, recordCount: fetchedCount, priceSource }, 604800);
+      console.log(`[DodoPrices] Seeded ${fetchedCount}/${DODO_PRODUCT_IDS.length} from Dodo (redis=${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    } else {
+      // Don't overwrite good cached data with degraded prices. Just extend TTL if it exists.
+      try { await upstashExpire(DODO_PRICE_REDIS_KEY, DODO_PRICE_SEED_TTL); } catch {}
+      console.warn(`[DodoPrices] NOT writing to Redis — source=${priceSource} (${fetchedCount} live, ${fallbackCount} fallback) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    }
   } catch (e) {
     console.warn('[DodoPrices] Seed error:', e?.message || e);
   } finally {
