@@ -9,22 +9,13 @@ import {
   getResilienceDomainWeight,
   scoreAllDimensions,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
-import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
+import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
 
 const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalVercelEnv = process.env.VERCEL_ENV;
-
-function installRedis(fixtures: Record<string, unknown>) {
-  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
-  process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
-  delete process.env.VERCEL_ENV;
-  const state = createRedisFetch(fixtures);
-  globalThis.fetch = state.fetchImpl;
-  return state;
-}
 
 afterEach(() => {
   globalThis.fetch = originalFetch;

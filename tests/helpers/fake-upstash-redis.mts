@@ -85,26 +85,31 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
         }
 
         if (verb === 'ZADD') {
+          let added = 0;
           for (let index = 0; index < args.length; index += 2) {
-            upsertSortedSet(redisKey, Number(args[index] || 0), String(args[index + 1] || ''));
+            const existed = (sortedSets.get(redisKey) ?? []).some((e) => e.member === String(args[index + 1] ?? ''));
+            upsertSortedSet(redisKey, Number(args[index] ?? 0), String(args[index + 1] ?? ''));
+            if (!existed) added += 1;
           }
-          return { result: 1 };
+          return { result: added };
         }
 
         if (verb === 'ZRANGE') {
-          const items = readByRank(redisKey, Number(args[0] || 0), Number(args[1] || 0));
+          const items = readByRank(redisKey, Number(args[0] ?? 0), Number(args[1] ?? 0));
           const withScores = args.map(String).includes('WITHSCORES');
           if (!withScores) return { result: items.map((item) => item.member) };
           return { result: items.flatMap((item) => [item.member, String(item.score)]) };
         }
 
         if (verb === 'ZREMRANGEBYRANK') {
-          removeByRank(redisKey, Number(args[0] || 0), Number(args[1] || 0));
-          return { result: 1 };
+          const before = (sortedSets.get(redisKey) ?? []).length;
+          removeByRank(redisKey, Number(args[0] ?? 0), Number(args[1] ?? 0));
+          const after = (sortedSets.get(redisKey) ?? []).length;
+          return { result: before - after };
         }
 
         if (verb === 'EXPIRE') {
-          expires.set(redisKey, Number(args[0] || 0));
+          expires.set(redisKey, Number(args[0] ?? 0));
           return { result: 1 };
         }
 
@@ -117,4 +122,13 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
   }) as typeof fetch;
 
   return { fetchImpl, redis, sortedSets, expires };
+}
+
+export function installRedis(fixtures: Record<string, unknown>): FakeRedisState {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+  delete process.env.VERCEL_ENV;
+  const state = createRedisFetch(fixtures);
+  globalThis.fetch = state.fetchImpl;
+  return state;
 }
