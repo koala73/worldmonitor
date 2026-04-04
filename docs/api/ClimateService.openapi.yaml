@@ -75,6 +75,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/climate/v1/get-ocean-ice-data:
+        get:
+            tags:
+                - ClimateService
+            summary: GetOceanIceData
+            description: GetOceanIceData retrieves seeded Arctic sea ice, sea level, and ocean heat indicators.
+            operationId: GetOceanIceData
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetOceanIceDataResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/climate/v1/list-air-quality-data:
         get:
             tags:
@@ -319,6 +345,55 @@ components:
                     type: number
                     format: double
                     description: Year-over-year delta vs same calendar month, in ppm.
+        GetOceanIceDataRequest:
+            type: object
+        GetOceanIceDataResponse:
+            type: object
+            properties:
+                data:
+                    $ref: '#/components/schemas/OceanIceData'
+        OceanIceData:
+            type: object
+            properties:
+                arcticExtentMkm2:
+                    type: number
+                    format: double
+                arcticExtentAnomalyMkm2:
+                    type: number
+                    format: double
+                arcticTrend:
+                    type: string
+                seaLevelMmAbove1993:
+                    type: number
+                    format: double
+                seaLevelAnnualRiseMm:
+                    type: number
+                    format: double
+                ohc0700mZj:
+                    type: number
+                    format: double
+                sstAnomalyC:
+                    type: number
+                    format: double
+                measuredAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                iceTrend12m:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/IceTrendPoint'
+        IceTrendPoint:
+            type: object
+            properties:
+                month:
+                    type: string
+                extentMkm2:
+                    type: number
+                    format: double
+                anomalyMkm2:
+                    type: number
+                    format: double
         ListAirQualityDataRequest:
             type: object
         ListAirQualityDataResponse:

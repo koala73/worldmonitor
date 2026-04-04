@@ -38,6 +38,7 @@ import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
+import type { ResilienceRankingItem } from '@/services/resilience';
 import type { RadiationObservation } from '@/services/radiation';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
@@ -133,6 +134,7 @@ export class MapContainer {
   private cachedKindnessData: KindnessPoint[] | null = null;
   private cachedHappinessScores: HappinessData | null = null;
   private cachedCIIScores: CIIScore[] | null = null;
+  private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
   private cachedHotspotActivity: NewsItem[] | null = null;
@@ -299,6 +301,7 @@ export class MapContainer {
     if (this.cachedKindnessData) this.setKindnessData(this.cachedKindnessData);
     if (this.cachedHappinessScores) this.setHappinessScores(this.cachedHappinessScores);
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
+    if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -313,6 +316,10 @@ export class MapContainer {
 
   public isGlobeMode(): boolean {
     return this.useGlobe;
+  }
+
+  public isDeckGLActive(): boolean {
+    return this.useDeckGL;
   }
 
   private destroyFlatMap(): void {
@@ -658,6 +665,13 @@ export class MapContainer {
     this.cachedCIIScores = scores;
     if (this.useGlobe) { this.globeMap?.setCIIScores(scores); return; }
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
+  }
+
+  public setResilienceRanking(items: ResilienceRankingItem[]): void {
+    this.cachedResilienceRanking = items;
+    if (this.useDeckGL) {
+      this.deckGLMap?.setResilienceRanking(items);
+    }
   }
 
   public setSpeciesRecoveryZones(species: SpeciesRecovery[]): void {

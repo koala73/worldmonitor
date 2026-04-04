@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+message ResilienceDimension {
+  string id = 1;
+  double score = 2;
+  double coverage = 3;
+}
+
+message ResilienceDomain {
+  string id = 1;
+  double score = 2;
+  double weight = 3;
+  repeated ResilienceDimension dimensions = 4;
+}
+
+message ResilienceRankingItem {
+  string country_code = 1;
+  double overall_score = 2;
+  string level = 3;
+  bool low_confidence = 4;
+}

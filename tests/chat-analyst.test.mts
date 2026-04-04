@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt.ts';
 import { buildActionEvents, VISUAL_INTENT_RE } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions.ts';
 import { postProcessAnalystHtml } from '../src/utils/analyst-markdown.ts';
+import { extractKeywords } from '../server/worldmonitor/intelligence/v1/chat-analyst-context.ts';
 import type { AnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context.ts';
 
 // ---------------------------------------------------------------------------
@@ -22,6 +23,7 @@ function emptyCtx(): AnalystContext {
     predictionMarkets: '',
     countryBrief: '',
     liveHeadlines: '',
+    relevantArticles: '',
     activeSources: [],
     degraded: false,
   };
@@ -39,6 +41,7 @@ function fullCtx(): AnalystContext {
     predictionMarkets: 'Prediction Markets:\n- "Taiwan invasion" Yes: 12%',
     countryBrief: 'Country Focus — UA:\nAnalysis of Ukraine situation.',
     liveHeadlines: 'Latest Headlines:\n- Missile strikes reported',
+    relevantArticles: '',
     activeSources: ['Brief', 'Risk', 'Signals', 'Forecasts', 'Markets', 'Macro', 'Prediction', 'Country', 'Live'],
     degraded: false,
   };
@@ -103,7 +106,7 @@ describe('buildAnalystSystemPrompt — domain filtering', () => {
 
   it('empty context produces no-live-data fallback', () => {
     const prompt = buildAnalystSystemPrompt(emptyCtx(), 'all');
-    assert.ok(prompt.includes('No live data available'), 'should include fallback text when no context');
+    assert.ok(prompt.includes('No live context available'), 'should include fallback text when no context');
   });
 
   it('unknown domain falls back to all-inclusive behavior', () => {
@@ -357,5 +360,106 @@ describe('postProcessAnalystHtml — section-header promotion', () => {
     assert.ok(out.includes('<div class="chat-section-header">SIGNAL</div>'));
     assert.ok(out.includes('<div class="chat-section-header">THESIS</div>'));
     assert.ok(out.includes('<p>text</p>'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractKeywords — keyword extraction edge cases
+// ---------------------------------------------------------------------------
+
+describe('extractKeywords', () => {
+  it('lowercases and filters stopwords', () => {
+    const kw = extractKeywords('What is happening in Ukraine');
+    assert.ok(kw.includes('ukraine'), 'should keep ukraine');
+    assert.ok(kw.includes('happening'), 'should keep happening');
+    assert.ok(!kw.includes('what'), 'should drop "what" (stopword)');
+    assert.ok(!kw.includes('is'), 'should drop "is" (stopword)');
+    assert.ok(!kw.includes('in'), 'should drop "in" (stopword)');
+  });
+
+  it('deduplicates repeated words', () => {
+    const kw = extractKeywords('energy energy crisis energy');
+    assert.equal(kw.filter((k) => k === 'energy').length, 1, 'energy should appear only once');
+  });
+
+  it('caps output at 8 keywords', () => {
+    const kw = extractKeywords('alpha bravo charlie delta echo foxtrot golf hotel india juliet');
+    assert.ok(kw.length <= 8, `should cap at 8, got ${kw.length}`);
+  });
+
+  it('preserves known 2-char acronyms typed in lowercase', () => {
+    const kw = extractKeywords('us sanctions on iran');
+    assert.ok(kw.includes('us'), '"us" should be preserved as a known acronym');
+    assert.ok(kw.includes('sanctions'), 'should keep "sanctions"');
+    assert.ok(kw.includes('iran'), 'should keep "iran"');
+  });
+
+  it('preserves known 2-char acronyms typed in uppercase', () => {
+    const kw = extractKeywords('US sanctions on Iran');
+    assert.ok(kw.includes('us'), '"US" should be preserved and lowercased');
+  });
+
+  it('preserves uk, eu, un, ai regardless of case', () => {
+    for (const acronym of ['uk', 'eu', 'un', 'ai']) {
+      const lower = extractKeywords(`${acronym} policy`);
+      assert.ok(lower.includes(acronym), `"${acronym}" (lowercase) should be preserved`);
+      const upper = extractKeywords(`${acronym.toUpperCase()} policy`);
+      assert.ok(upper.includes(acronym), `"${acronym.toUpperCase()}" (uppercase) should be preserved and lowercased`);
+    }
+  });
+
+  it('drops non-acronym 2-char tokens', () => {
+    const kw = extractKeywords('go to the market');
+    assert.ok(!kw.includes('go'), '"go" is 2 chars and not a known acronym');
+    assert.ok(!kw.includes('to'), '"to" is a stopword');
+    assert.ok(kw.includes('market'), 'should keep "market"');
+  });
+
+  it('returns empty array when all tokens are stopwords or too short', () => {
+    // "is", "this", "ok" — all either stopwords or 2-char non-acronyms
+    const kw = extractKeywords('is this ok');
+    assert.equal(kw.length, 0, 'should return empty when no meaningful keywords survive');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractKeywords — retrieval priority ordering
+// ---------------------------------------------------------------------------
+
+describe('extractKeywords — retrieval priority (current turn first)', () => {
+  it('current-turn pivot appears before prior-turn keywords when combined as query+prior', () => {
+    // Simulates the retrieval query built in api/chat-analyst.ts:
+    //   `${query} ${prevUserTurn}`
+    // "What about Germany?" is the current turn, the prior is a long energy question.
+    const currentQuery = 'What about Germany?';
+    const prevTurn = 'which countries are reducing electricity and fuel consumption';
+    const combined = `${currentQuery} ${prevTurn}`;
+    const kw = extractKeywords(combined);
+
+    // germany must appear before energy-topic words
+    const germanyIdx = kw.indexOf('germany');
+    assert.ok(germanyIdx !== -1, '"germany" must be in keywords');
+    assert.equal(germanyIdx, 0, '"germany" must be first — current-turn pivot takes priority');
+  });
+
+  it('prior-turn keywords backfill remaining slots after current-turn fills first', () => {
+    const currentQuery = 'Germany sanctions';
+    const prevTurn = 'which countries are reducing electricity and fuel consumption';
+    const kw = extractKeywords(`${currentQuery} ${prevTurn}`);
+
+    // Both current-turn and prior-turn keywords should be present (slots remain)
+    assert.ok(kw.includes('germany'), 'current-turn: germany');
+    assert.ok(kw.includes('sanctions'), 'current-turn: sanctions');
+    assert.ok(kw.includes('countries') || kw.includes('electricity') || kw.includes('consumption'),
+      'prior-turn keywords should backfill remaining slots');
+  });
+
+  it('prior-turn does not crowd out current-turn pivot when prior is long', () => {
+    // Prior turn has 8+ content words — without correct ordering it would fill the cap
+    const currentQuery = 'What about Germany?';
+    const longPrior = 'global shipping routes disrupted supply chains ports containers freight logistics maritime';
+    const kw = extractKeywords(`${currentQuery} ${longPrior}`);
+
+    assert.ok(kw.includes('germany'), '"germany" must survive even with a long prior turn');
   });
 });

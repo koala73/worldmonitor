@@ -59,6 +59,31 @@ export interface Co2DataPoint {
   anomaly: number;
 }
 
+export interface GetOceanIceDataRequest {
+}
+
+export interface GetOceanIceDataResponse {
+  data?: OceanIceData;
+}
+
+export interface OceanIceData {
+  arcticExtentMkm2: number;
+  arcticExtentAnomalyMkm2: number;
+  arcticTrend: string;
+  seaLevelMmAbove1993: number;
+  seaLevelAnnualRiseMm: number;
+  ohc0700mZj: number;
+  sstAnomalyC: number;
+  measuredAt: number;
+  iceTrend12m: IceTrendPoint[];
+}
+
+export interface IceTrendPoint {
+  month: string;
+  extentMkm2: number;
+  anomalyMkm2: number;
+}
+
 export interface ListAirQualityDataRequest {
 }
 
@@ -148,6 +173,7 @@ export interface RouteDescriptor {
 export interface ClimateServiceHandler {
   listClimateAnomalies(ctx: ServerContext, req: ListClimateAnomaliesRequest): Promise<ListClimateAnomaliesResponse>;
   getCo2Monitoring(ctx: ServerContext, req: GetCo2MonitoringRequest): Promise<GetCo2MonitoringResponse>;
+  getOceanIceData(ctx: ServerContext, req: GetOceanIceDataRequest): Promise<GetOceanIceDataResponse>;
   listAirQualityData(ctx: ServerContext, req: ListAirQualityDataRequest): Promise<ListAirQualityDataResponse>;
   listClimateNews(ctx: ServerContext, req: ListClimateNewsRequest): Promise<ListClimateNewsResponse>;
 }
@@ -222,6 +248,43 @@ export function createClimateServiceRoutes(
 
           const result = await handler.getCo2Monitoring(ctx, body);
           return new Response(JSON.stringify(result as GetCo2MonitoringResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/climate/v1/get-ocean-ice-data",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetOceanIceDataRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getOceanIceData(ctx, body);
+          return new Response(JSON.stringify(result as GetOceanIceDataResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -132,6 +132,7 @@ const layers = {
   iranAttacks: false,
 
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   miningSites: false,
   processingPlants: false,

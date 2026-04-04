@@ -527,6 +527,27 @@ export interface EconomicStressComponent {
   missing: boolean;
 }
 
+export interface GetFaoFoodPriceIndexRequest {
+}
+
+export interface GetFaoFoodPriceIndexResponse {
+  points: FaoFoodPricePoint[];
+  fetchedAt: string;
+  currentFfpi: number;
+  momPct: number;
+  yoyPct: number;
+}
+
+export interface FaoFoodPricePoint {
+  date: string;
+  ffpi: number;
+  meat: number;
+  dairy: number;
+  cereals: number;
+  oils: number;
+  sugar: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -595,6 +616,7 @@ export interface EconomicServiceHandler {
   getEuYieldCurve(ctx: ServerContext, req: GetEuYieldCurveRequest): Promise<GetEuYieldCurveResponse>;
   getEuFsi(ctx: ServerContext, req: GetEuFsiRequest): Promise<GetEuFsiResponse>;
   getEconomicStress(ctx: ServerContext, req: GetEconomicStressRequest): Promise<GetEconomicStressResponse>;
+  getFaoFoodPriceIndex(ctx: ServerContext, req: GetFaoFoodPriceIndexRequest): Promise<GetFaoFoodPriceIndexResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -1506,6 +1528,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getEconomicStress(ctx, body);
           return new Response(JSON.stringify(result as GetEconomicStressResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-fao-food-price-index",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetFaoFoodPriceIndexRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getFaoFoodPriceIndex(ctx, body);
+          return new Response(JSON.stringify(result as GetFaoFoodPriceIndexResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -34,8 +34,8 @@
   },
   {
     "name": "API",
-    "monthlyPrice": 59.99,
-    "annualPrice": 490,
+    "monthlyPrice": 99.99,
+    "annualPrice": 999,
     "description": "Programmatic access to intelligence data",
     "features": [
       "REST API access",

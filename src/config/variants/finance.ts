@@ -227,6 +227,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity variant layers (disabled in finance variant)
   miningSites: false,
@@ -288,6 +289,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity variant layers (disabled in finance variant)
   miningSites: false,

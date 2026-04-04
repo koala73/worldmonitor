@@ -558,4 +558,75 @@ http.route({
   handler: webhookHandler,
 });
 
+// Service-to-service: Vercel edge gateway creates Dodo checkout sessions.
+// Authenticated via RELAY_SHARED_SECRET; edge endpoint validates Clerk JWT
+// and forwards the verified userId.
+http.route({
+  path: "/relay/create-checkout",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(
+      /^Bearer\s+/,
+      "",
+    );
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: {
+      userId?: string;
+      email?: string;
+      name?: string;
+      productId?: string;
+      returnUrl?: string;
+      discountCode?: string;
+      referralCode?: string;
+    };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!body.userId || !body.productId) {
+      return new Response(
+        JSON.stringify({ error: "MISSING_FIELDS", required: ["userId", "productId"] }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    try {
+      const result = await ctx.runAction(
+        internal.payments.checkout.internalCreateCheckout,
+        {
+          userId: body.userId,
+          email: body.email,
+          name: body.name,
+          productId: body.productId,
+          returnUrl: body.returnUrl,
+          discountCode: body.discountCode,
+          referralCode: body.referralCode,
+        },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Checkout creation failed";
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
 export default http;

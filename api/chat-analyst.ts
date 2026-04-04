@@ -128,7 +128,14 @@ export default async function handler(req: Request): Promise<Response> {
     })
     .filter((m) => m.content.length > 0);
 
-  const context = await assembleAnalystContext(geoContext, domainFocus);
+  // Build retrieval query with current turn FIRST so its keywords fill the
+  // extraction cap before prior-turn terms. This ensures pivot words like
+  // "Germany" in "What about Germany?" are never crowded out by a long
+  // previous question. Prior turn backfills remaining slots for topic continuity.
+  const prevUserTurn = history.filter((m) => m.role === 'user').slice(-1)[0]?.content ?? '';
+  const retrievalQuery = prevUserTurn ? `${query} ${prevUserTurn}` : query;
+
+  const context = await assembleAnalystContext(geoContext, domainFocus, retrievalQuery);
   const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
 
   const messages = [

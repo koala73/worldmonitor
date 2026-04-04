@@ -12,6 +12,7 @@ const BOOTSTRAP_KEYS = {
   climateAnomalies:  'climate:anomalies:v2',
   climateAirQuality: 'climate:air-quality:v1',
   co2Monitoring:     'climate:co2-monitoring:v1',
+  oceanIce:          'climate:ocean-ice:v1',
   wildfires:         'wildfire:fires:v1',
   marketQuotes:      'market:stocks-bootstrap:v1',
   commodityQuotes:   'market:commodities-bootstrap:v1',
@@ -53,6 +54,7 @@ const BOOTSTRAP_KEYS = {
   groceryBasket:     'economic:grocery-basket:v1',
   bigmac:            'economic:bigmac:v1',
   fuelPrices:        'economic:fuel-prices:v1',
+  faoFoodPriceIndex: 'economic:fao-ffpi:v1',
   nationalDebt:      'economic:national-debt:v1',
   defiTokens:        'market:defi-tokens:v1',
   aiTokens:          'market:ai-tokens:v1',
@@ -126,6 +128,7 @@ const STANDALONE_KEYS = {
   newsThreatSummary:        'news:threat:summary:v1',
   climateNews:              'climate:news-intelligence:v1',
   pizzint:                  'intelligence:pizzint:seed:v1',
+  resilienceStaticIndex:    'resilience:static:index:v1',
 };
 
 const SEED_META = {
@@ -136,6 +139,7 @@ const SEED_META = {
   climateAirQuality:{ key: 'seed-meta:health:air-quality',      maxStaleMin: 180 }, // hourly cron; 180 = 3x interval — shares meta key with healthAirQuality (same seeder run)
   climateZoneNormals: { key: 'seed-meta:climate:zone-normals',  maxStaleMin: 89280 }, // monthly cron on the 1st; 62d = 2x 31-day cadence
   co2Monitoring:    { key: 'seed-meta:climate:co2-monitoring',  maxStaleMin: 4320 }, // daily cron at 06:00 UTC; 72h tolerates two missed runs
+  oceanIce:         { key: 'seed-meta:climate:ocean-ice',       maxStaleMin: 2880 }, // daily cron at 08:00 UTC; 48h = 2× interval, tolerates one missed run
   climateNews:      { key: 'seed-meta:climate:news-intelligence', maxStaleMin: 90 }, // relay loop every 30min; 90 = 3× interval
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
@@ -195,6 +199,7 @@ const SEED_META = {
   groceryBasket:       { key: 'seed-meta:economic:grocery-basket',            maxStaleMin: 10080 }, // weekly seed; 10080 = 7 days
   bigmac:              { key: 'seed-meta:economic:bigmac',                    maxStaleMin: 10080 }, // weekly seed; 10080 = 7 days
   fuelPrices:          { key: 'seed-meta:economic:fuel-prices',               maxStaleMin: 10080 }, // weekly seed; 10080 = 7 days
+  faoFoodPriceIndex:   { key: 'seed-meta:economic:fao-ffpi',                  maxStaleMin: 86400 }, // monthly seed; 86400 = 60 days (2x interval)
   thermalEscalation:   { key: 'seed-meta:thermal:escalation',                 maxStaleMin: 360 }, // cron every 2h; 360 = 3x interval (was 240 = 2x)
   nationalDebt:        { key: 'seed-meta:economic:national-debt',              maxStaleMin: 10080 }, // 7 days — monthly seed
   tariffTrendsUs:      { key: 'seed-meta:trade:tariffs:v1:840:all:10',        maxStaleMin: 900 },
@@ -234,6 +239,7 @@ const SEED_META = {
   pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
+  resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

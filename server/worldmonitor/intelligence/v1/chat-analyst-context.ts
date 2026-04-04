@@ -1,6 +1,11 @@
 import { getCachedJson } from '../../../_shared/redis';
 import { sanitizeForPrompt, sanitizeHeadline } from '../../../_shared/llm-sanitize.js';
 import { CHROME_UA } from '../../../_shared/constants';
+import { tokenizeForMatch, findMatchingKeywords } from '../../../../src/utils/keyword-match';
+
+// TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
+// When multi-language digests are available, fan out to news:digest:v1:full:<lang>
+// and merge results before scoring.
 
 const GDELT_TOPICS: Record<string, string> = {
   geo: 'geopolitical conflict crisis diplomacy',
@@ -21,6 +26,7 @@ export interface AnalystContext {
   predictionMarkets: string;
   countryBrief: string;
   liveHeadlines: string;
+  relevantArticles: string;
   activeSources: string[];
   degraded: boolean;
 }
@@ -204,8 +210,55 @@ function buildCountryBrief(data: unknown): string {
   return `Country Focus${country ? ` — ${country}` : ''}:\n${brief.slice(0, 500)}`;
 }
 
-async function buildLiveHeadlines(domainFocus: string): Promise<string> {
-  const topic = GDELT_TOPICS[domainFocus] ?? 'geopolitical conflict markets economy';
+// ── Keyword extraction (shared by GDELT + digest search) ─────────────────────
+
+const STOPWORDS = new Set([
+  'the','a','an','is','are','was','were','be','been','being',
+  'have','has','had','do','does','did','will','would','could',
+  'should','may','might','shall','can','who','what','where',
+  'when','why','how','which','that','this','these','those',
+  'and','or','but','not','no','nor','so','yet','both','either',
+  'in','on','at','by','for','with','about','against','between',
+  'into','through','of','to','from','up','down','me','i','we',
+  'you','he','she','it','they','them','their','our','your','its',
+  'tell','list','give','show','explain','describe','many','some',
+  'any','all','more','most','than','then','just','also','now',
+]);
+
+const MAX_KEYWORDS = 8;
+
+// 2-letter tokens that are high-signal in news retrieval regardless of how
+// the user typed them (lowercase queries like "us sanctions" or "ai exports"
+// are just as valid as "US sanctions" or "AI exports").
+const KNOWN_2CHAR_ACRONYMS = new Set(['us', 'uk', 'eu', 'un', 'ai']);
+
+export function extractKeywords(query: string): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of query.split(/\W+/)) {
+    if (!raw) continue;
+    const lower = raw.toLowerCase();
+    // Preserve 2-char tokens that are either known acronyms (case-insensitive)
+    // or typed in uppercase — both signal intentional abbreviation.
+    if (raw.length === 2 && (KNOWN_2CHAR_ACRONYMS.has(lower) || /^[A-Z]{2}$/.test(raw))) {
+      if (!seen.has(lower)) { seen.add(lower); result.push(lower); }
+      continue;
+    }
+    if (lower.length > 2 && !STOPWORDS.has(lower) && !seen.has(lower)) {
+      seen.add(lower);
+      result.push(lower);
+    }
+  }
+  return result.slice(0, MAX_KEYWORDS);
+}
+
+// ── GDELT live headlines ──────────────────────────────────────────────────────
+
+async function buildLiveHeadlines(domainFocus: string, keywords: string[]): Promise<string> {
+  const baseTopic = GDELT_TOPICS[domainFocus] ?? 'geopolitical conflict markets economy';
+  // Append up to 3 user keywords to surface topic-relevant live articles.
+  const extraTerms = keywords.slice(0, 3).join(' ');
+  const topic = extraTerms ? `${baseTopic} ${extraTerms}` : baseTopic;
   try {
     const url = new URL('https://api.gdeltproject.org/api/v2/doc/doc');
     url.searchParams.set('mode', 'ArtList');
@@ -239,7 +292,96 @@ async function buildLiveHeadlines(domainFocus: string): Promise<string> {
   }
 }
 
+// ── Digest keyword search ─────────────────────────────────────────────────────
+
+const DIGEST_KEY_EN = 'news:digest:v1:full:en';
+const MAX_RELEVANT_ARTICLES = 8;
+
+interface DigestItem {
+  title: string;
+  source?: string;
+  link?: string;
+  publishedAt?: number;
+  importanceScore?: number;
+}
+
+function flattenDigest(digest: unknown): DigestItem[] {
+  if (!digest || typeof digest !== 'object') return [];
+  const d = digest as Record<string, unknown>;
+
+  if (Array.isArray(d)) return d as DigestItem[];
+
+  if (d.categories && typeof d.categories === 'object') {
+    const items: DigestItem[] = [];
+    for (const bucket of Object.values(d.categories as Record<string, unknown>)) {
+      const b = bucket as Record<string, unknown>;
+      if (Array.isArray(b.items)) items.push(...(b.items as DigestItem[]));
+    }
+    return items;
+  }
+
+  if (Array.isArray(d.items)) return d.items as DigestItem[];
+  return [];
+}
+
+function scoreArticle(title: string, keywords: string[]): number {
+  const tokens = tokenizeForMatch(title);
+  const matched = findMatchingKeywords(tokens, keywords);
+  const hits = matched.length;
+  if (hits === 0) return 0;
+  // Boost when any two adjacent keywords co-occur consecutively in the title.
+  // Using raw substring on lowercased title for the pair check is intentional:
+  // false positives for two-word combinations are rare enough not to matter.
+  const lower = title.toLowerCase();
+  const hasAdjacentPair = keywords.length > 1 &&
+    keywords.slice(0, -1).some((kw, i) => lower.includes(`${kw} ${keywords[i + 1]!}`));
+  return (hasAdjacentPair ? 3 : 1) * hits;
+}
+
+async function searchDigestByKeywords(keywords: string[]): Promise<string> {
+  if (keywords.length === 0) return '';
+
+  let digest: unknown;
+  try {
+    digest = await getCachedJson(DIGEST_KEY_EN, true);
+  } catch {
+    return '';
+  }
+  if (!digest) return '';
+
+  const items = flattenDigest(digest);
+  if (items.length === 0) return '';
+
+  const scored = items
+    .map((item) => {
+      const title = safeStr(item.title);
+      if (!title) return null;
+      const kwScore = scoreArticle(title, keywords);
+      if (kwScore === 0) return null;
+      const importance = safeNum(item.importanceScore);
+      return { item, total: kwScore * Math.log1p(importance > 0 ? importance : 1) };
+    })
+    .filter((x): x is { item: DigestItem; total: number } => x !== null)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, MAX_RELEVANT_ARTICLES);
+
+  if (scored.length === 0) return '';
+
+  const lines = scored.map(({ item }) => {
+    const title = sanitizeHeadline(safeStr(item.title));
+    const source = safeStr(item.source).slice(0, 40);
+    const ts = item.publishedAt ? new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const meta = [source, ts].filter(Boolean).join(', ');
+    return `- ${title}${meta ? ` (${meta})` : ''}`;
+  });
+
+  return lines.join('\n');
+}
+
+// ── Source labels ─────────────────────────────────────────────────────────────
+
 const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' | 'activeSources'>, string]> = [
+  ['relevantArticles', 'Articles'],
   ['worldBrief', 'Brief'],
   ['riskScores', 'Risk'],
   ['marketImplications', 'Signals'],
@@ -254,6 +396,7 @@ const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' 
 export async function assembleAnalystContext(
   geoContext?: string,
   domainFocus?: string,
+  userQuery?: string,
 ): Promise<AnalystContext> {
   const keys = {
     insights: 'news:insights:v1',
@@ -271,6 +414,7 @@ export async function assembleAnalystContext(
     : null;
 
   const resolvedDomain = domainFocus ?? 'all';
+  const keywords = userQuery ? extractKeywords(userQuery) : [];
 
   const [
     insightsResult,
@@ -283,6 +427,7 @@ export async function assembleAnalystContext(
     predResult,
     countryResult,
     headlinesResult,
+    relevantArticlesResult,
   ] = await Promise.allSettled([
     getCachedJson(keys.insights, true),
     getCachedJson(keys.riskScores, true),
@@ -293,7 +438,8 @@ export async function assembleAnalystContext(
     getCachedJson(keys.macroSignals, true),
     getCachedJson(keys.predictions, true),
     countryKey ? getCachedJson(countryKey, true) : Promise.resolve(null),
-    buildLiveHeadlines(resolvedDomain),
+    buildLiveHeadlines(resolvedDomain, keywords),
+    keywords.length > 0 ? searchDigestByKeywords(keywords) : Promise.resolve(''),
   ]);
 
   const get = (r: PromiseSettledResult<unknown>) =>
@@ -317,6 +463,7 @@ export async function assembleAnalystContext(
     predictionMarkets: buildPredictionMarkets(get(predResult)),
     countryBrief: buildCountryBrief(get(countryResult)),
     liveHeadlines: getStr(headlinesResult),
+    relevantArticles: getStr(relevantArticlesResult),
     activeSources: [],
     degraded: failCount > 4,
   };

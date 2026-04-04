@@ -97,7 +97,8 @@ import {
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
-import { getSecretState } from '@/services/runtime-config';
+import { getAuthState } from '@/services/auth-state';
+import { hasPremiumAccess } from '@/services/panel-gating';
 import { MapPopup, type PopupType } from './MapPopup';
 import {
   updateHotspotEscalation,
@@ -116,6 +117,12 @@ import type { SpeciesRecovery } from '@/services/conservation-data';
 import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox, getCountryCentroid } from '@/services/country-geometry';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { FeatureCollection, Geometry } from 'geojson';
+import type { ResilienceRankingItem } from '@/services/resilience';
+import {
+  RESILIENCE_CHOROPLETH_COLORS,
+  buildResilienceChoroplethMap,
+  normalizeExclusiveChoropleths,
+} from './resilience-choropleth-utils';
 
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
@@ -399,6 +406,8 @@ export class DeckGLMap {
   // CII choropleth data
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
   private ciiScoresVersion = 0;
+  private resilienceScoresMap: ReturnType<typeof buildResilienceChoroplethMap> = new Map();
+  private resilienceScoresVersion = 0;
 
   // Country highlight state
   private countryGeoJsonLoaded = false;
@@ -496,7 +505,7 @@ export class DeckGLMap {
     this.state = {
       ...initialState,
       pan: { ...initialState.pan },
-      layers: { ...initialState.layers },
+      layers: normalizeExclusiveChoropleths(initialState.layers, null),
     };
     this.hotspots = [...INTEL_HOTSPOTS];
 
@@ -1694,6 +1703,10 @@ export class DeckGLMap {
     if (mapLayers.ciiChoropleth) {
       const ciiLayer = this.createCIIChoroplethLayer();
       if (ciiLayer) layers.push(ciiLayer);
+    }
+    if (mapLayers.resilienceScore) {
+      const resilienceLayer = this.createResilienceChoroplethLayer();
+      if (resilienceLayer) layers.push(resilienceLayer);
     }
     // Sanctions choropleth
     if (mapLayers.sanctions) {
@@ -3426,6 +3439,27 @@ export class DeckGLMap {
     });
   }
 
+  private createResilienceChoroplethLayer(): GeoJsonLayer | null {
+    if (!this.countriesGeoJsonData || this.resilienceScoresMap.size === 0) return null;
+    const scores = this.resilienceScoresMap;
+    return new GeoJsonLayer({
+      id: 'resilience-choropleth-layer',
+      data: this.countriesGeoJsonData,
+      filled: true,
+      stroked: true,
+      getFillColor: (feature: { properties?: Record<string, unknown> }) => {
+        const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        const entry = code ? scores.get(code) : undefined;
+        return entry ? RESILIENCE_CHOROPLETH_COLORS[entry.level] : [0, 0, 0, 0];
+      },
+      getLineColor: [80, 80, 80, 80] as [number, number, number, number],
+      getLineWidth: 1,
+      lineWidthMinPixels: 0.5,
+      pickable: true,
+      updateTriggers: { getFillColor: [this.resilienceScoresVersion] },
+    });
+  }
+
   private createSanctionsChoroplethLayer(): GeoJsonLayer | null {
     if (!this.countriesGeoJsonData) return null;
     return new GeoJsonLayer({
@@ -3727,6 +3761,19 @@ export class DeckGLMap {
         if (!ciiEntry) return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/><span style="opacity:.7">No CII data</span></div>` };
         const levelColor = DeckGLMap.CII_LEVEL_HEX[ciiEntry.level] ?? '#888';
         return { html: `<div class="deckgl-tooltip"><strong>${text(ciiName)}</strong><br/>CII: <span style="color:${levelColor};font-weight:600">${ciiEntry.score}/100</span><br/><span style="text-transform:capitalize;opacity:.7">${text(ciiEntry.level)}</span></div>` };
+      }
+      case 'resilience-choropleth-layer': {
+        const resilienceName = obj.properties?.name ?? 'Unknown';
+        const resilienceCode = obj.properties?.['ISO3166-1-Alpha-2'];
+        const resilienceEntry = resilienceCode ? this.resilienceScoresMap.get(resilienceCode as string) : undefined;
+        if (!resilienceEntry) {
+          return { html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/><span style="opacity:.7">No resilience data</span></div>` };
+        }
+        const [red, green, blue] = RESILIENCE_CHOROPLETH_COLORS[resilienceEntry.level];
+        const levelColor = `rgb(${red}, ${green}, ${blue})`;
+        return {
+          html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/>Resilience: <span style="color:${levelColor};font-weight:600">${resilienceEntry.overallScore.toFixed(1)}/100</span><br/><span style="text-transform:capitalize;opacity:.7">${text(resilienceEntry.serverLevel)}</span>${resilienceEntry.lowConfidence ? '<br/><span style="opacity:.7">Low confidence</span>' : ''}</div>`,
+        };
       }
       case 'species-recovery-layer': {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.commonName)}</strong><br/>${text(obj.recoveryZone?.name ?? obj.region)}<br/><span style="opacity:.7">Status: ${text(obj.recoveryStatus)}</span></div>` };
@@ -4210,7 +4257,7 @@ export class DeckGLMap {
     toggles.className = 'layer-toggles deckgl-layer-toggles';
 
     const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat');
-    const _wmKey = getSecretState('WORLDMONITOR_API_KEY').present;
+    const premiumUnlocked = hasPremiumAccess(getAuthState());
     const layerConfig = layerDefs.map(def => ({
       key: def.key,
       label: resolveLayerLabel(def, t),
@@ -4227,8 +4274,8 @@ export class DeckGLMap {
       <input type="text" class="layer-search" placeholder="${t('components.deckgl.layerSearch')}" autocomplete="off" spellcheck="false" />
       <div class="toggle-list" style="max-height: 32vh; overflow-y: auto; scrollbar-width: thin;">
         ${layerConfig.map(({ key, label, icon, premium }) => {
-          const isLocked = premium === 'locked' && !_wmKey;
-          const isEnhanced = premium === 'enhanced' && !_wmKey;
+          const isLocked = premium === 'locked' && !premiumUnlocked;
+          const isEnhanced = premium === 'enhanced' && !premiumUnlocked;
           return `
           <label class="layer-toggle${isLocked ? ' layer-toggle-locked' : ''}" data-layer="${key}">
             <input type="checkbox" ${this.state.layers[key as keyof MapLayers] ? 'checked' : ''}${isLocked ? ' disabled' : ''}>
@@ -4251,15 +4298,22 @@ export class DeckGLMap {
       input.addEventListener('change', () => {
         const layer = (input as HTMLInputElement).closest('.layer-toggle')?.getAttribute('data-layer') as keyof MapLayers;
         if (layer) {
-          this.state.layers[layer] = (input as HTMLInputElement).checked;
-          if (layer === 'flights') this.manageAircraftTimer((input as HTMLInputElement).checked);
+          const enabled = (input as HTMLInputElement).checked;
+          if (enabled && (layer === 'resilienceScore' || layer === 'ciiChoropleth')) {
+            const conflictingLayer = layer === 'resilienceScore' ? 'ciiChoropleth' : 'resilienceScore';
+            if (this.state.layers[conflictingLayer]) {
+              this.state.layers[conflictingLayer] = false;
+              const conflictingToggle = this.container.querySelector(`.layer-toggle[data-layer="${conflictingLayer}"] input`) as HTMLInputElement | null;
+              if (conflictingToggle) conflictingToggle.checked = false;
+              this.setLayerReady(conflictingLayer, false);
+              this.onLayerChange?.(conflictingLayer, false, 'programmatic');
+            }
+          }
+          this.state.layers[layer] = enabled;
+          if (layer === 'flights') this.manageAircraftTimer(enabled);
           this.render();
           this.updateLegend();
-          this.onLayerChange?.(layer, (input as HTMLInputElement).checked, 'user');
-          if (layer === 'ciiChoropleth') {
-            const ciiLeg = this.container.querySelector('#ciiChoroplethLegend') as HTMLElement | null;
-            if (ciiLeg) ciiLeg.style.display = (input as HTMLInputElement).checked ? 'block' : 'none';
-          }
+          this.onLayerChange?.(layer, enabled, 'user');
           this.enforceLayerLimit();
         }
       });
@@ -4467,6 +4521,13 @@ export class DeckGLMap {
     };
 
     const isLight = getCurrentTheme() === 'light';
+    const resilienceLegendItems: { shape: string; label: string; layerKey: keyof MapLayers }[] = [
+      { shape: shapes.square('rgb(239, 68, 68)'), label: 'Resilience: Very Low', layerKey: 'resilienceScore' },
+      { shape: shapes.square('rgb(249, 115, 22)'), label: 'Resilience: Low', layerKey: 'resilienceScore' },
+      { shape: shapes.square('rgb(234, 179, 8)'), label: 'Resilience: Moderate', layerKey: 'resilienceScore' },
+      { shape: shapes.square('rgb(132, 204, 22)'), label: 'Resilience: High', layerKey: 'resilienceScore' },
+      { shape: shapes.square('rgb(34, 197, 94)'), label: 'Resilience: Very High', layerKey: 'resilienceScore' },
+    ];
     const legendItems: { shape: string; label: string; layerKey: keyof MapLayers }[] = SITE_VARIANT === 'tech'
       ? [
         { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub'), layerKey: 'startupHubs' },
@@ -4477,6 +4538,7 @@ export class DeckGLMap {
         { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
         { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
         { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
+        ...resilienceLegendItems,
       ]
       : SITE_VARIANT === 'finance'
         ? [
@@ -4488,6 +4550,7 @@ export class DeckGLMap {
           { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
           { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
           { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
+          ...resilienceLegendItems,
         ]
         : SITE_VARIANT === 'happy'
           ? [
@@ -4502,6 +4565,7 @@ export class DeckGLMap {
             { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
             { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
             { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
+            ...resilienceLegendItems,
           ]
           : SITE_VARIANT === 'commodity'
             ? [
@@ -4514,6 +4578,7 @@ export class DeckGLMap {
               { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
+              ...resilienceLegendItems,
             ]
             : [
               { shape: shapes.circle('rgb(255, 68, 68)'), label: t('components.deckgl.legend.highAlert'), layerKey: 'hotspots' },
@@ -4527,6 +4592,7 @@ export class DeckGLMap {
               { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
+              ...resilienceLegendItems,
             ];
 
     legend.innerHTML = `
@@ -4560,6 +4626,10 @@ export class DeckGLMap {
       if (!layerKey || !(layerKey in this.state.layers)) return;
       item.style.display = this.state.layers[layerKey as keyof MapLayers] ? '' : 'none';
     });
+    const ciiLegend = this.container.querySelector<HTMLElement>('#ciiChoroplethLegend');
+    if (ciiLegend) {
+      ciiLegend.style.display = this.state.layers.ciiChoropleth ? 'block' : 'none';
+    }
   }
 
   // Public API methods (matching MapComponent interface)
@@ -4707,7 +4777,7 @@ export class DeckGLMap {
   public setLayers(layers: MapLayers): void {
     const prevRadar = this.state.layers.weatherRadar;
     const prevCyber = this.state.layers.cyberThreats;
-    this.state.layers = { ...layers };
+    this.state.layers = normalizeExclusiveChoropleths(layers, this.state.layers);
     this.manageAircraftTimer(this.state.layers.flights);
     if (this.state.layers.weatherRadar && !prevRadar) this.startWeatherRadar();
     else if (!this.state.layers.weatherRadar && prevRadar) this.stopWeatherRadar();
@@ -5201,6 +5271,12 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setResilienceRanking(items: ResilienceRankingItem[]): void {
+    this.resilienceScoresMap = buildResilienceChoroplethMap(items);
+    this.resilienceScoresVersion++;
+    this.render();
+  }
+
   public setSpeciesRecoveryZones(species: SpeciesRecovery[]): void {
     this.speciesRecoveryZones = species.filter(
       (s): s is SpeciesRecovery & { recoveryZone: { name: string; lat: number; lon: number } } =>
@@ -5416,6 +5492,19 @@ export class DeckGLMap {
   // Enable layer programmatically
   public enableLayer(layer: keyof MapLayers): void {
     if (!this.state.layers[layer]) {
+      if (layer === 'resilienceScore' && this.state.layers.ciiChoropleth) {
+        this.state.layers.ciiChoropleth = false;
+        const ciiToggle = this.container.querySelector(`.layer-toggle[data-layer="ciiChoropleth"] input`) as HTMLInputElement | null;
+        if (ciiToggle) ciiToggle.checked = false;
+        this.setLayerReady('ciiChoropleth', false);
+        this.onLayerChange?.('ciiChoropleth', false, 'programmatic');
+      } else if (layer === 'ciiChoropleth' && this.state.layers.resilienceScore) {
+        this.state.layers.resilienceScore = false;
+        const resilienceToggle = this.container.querySelector(`.layer-toggle[data-layer="resilienceScore"] input`) as HTMLInputElement | null;
+        if (resilienceToggle) resilienceToggle.checked = false;
+        this.setLayerReady('resilienceScore', false);
+        this.onLayerChange?.('resilienceScore', false, 'programmatic');
+      }
       this.state.layers[layer] = true;
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = true;
@@ -5428,6 +5517,20 @@ export class DeckGLMap {
 
   // Toggle layer on/off programmatically
   public toggleLayer(layer: keyof MapLayers): void {
+    const nextEnabled = !this.state.layers[layer];
+    if (nextEnabled && layer === 'resilienceScore' && this.state.layers.ciiChoropleth) {
+      this.state.layers.ciiChoropleth = false;
+      const ciiToggle = this.container.querySelector(`.layer-toggle[data-layer="ciiChoropleth"] input`) as HTMLInputElement | null;
+      if (ciiToggle) ciiToggle.checked = false;
+      this.setLayerReady('ciiChoropleth', false);
+      this.onLayerChange?.('ciiChoropleth', false, 'programmatic');
+    } else if (nextEnabled && layer === 'ciiChoropleth' && this.state.layers.resilienceScore) {
+      this.state.layers.resilienceScore = false;
+      const resilienceToggle = this.container.querySelector(`.layer-toggle[data-layer="resilienceScore"] input`) as HTMLInputElement | null;
+      if (resilienceToggle) resilienceToggle.checked = false;
+      this.setLayerReady('resilienceScore', false);
+      this.onLayerChange?.('resilienceScore', false, 'programmatic');
+    }
     this.state.layers[layer] = !this.state.layers[layer];
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];

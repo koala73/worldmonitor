@@ -702,6 +702,32 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-fao-food-price-index:
+        get:
+            tags:
+                - EconomicService
+            summary: GetFaoFoodPriceIndex
+            description: GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
+            operationId: GetFaoFoodPriceIndex
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFaoFoodPriceIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1919,3 +1945,46 @@ components:
                     format: double
                 missing:
                     type: boolean
+        GetFaoFoodPriceIndexRequest:
+            type: object
+        GetFaoFoodPriceIndexResponse:
+            type: object
+            properties:
+                points:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FaoFoodPricePoint'
+                fetchedAt:
+                    type: string
+                currentFfpi:
+                    type: number
+                    format: double
+                momPct:
+                    type: number
+                    format: double
+                yoyPct:
+                    type: number
+                    format: double
+        FaoFoodPricePoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                ffpi:
+                    type: number
+                    format: double
+                meat:
+                    type: number
+                    format: double
+                dairy:
+                    type: number
+                    format: double
+                cereals:
+                    type: number
+                    format: double
+                oils:
+                    type: number
+                    format: double
+                sugar:
+                    type: number
+                    format: double

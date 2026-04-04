@@ -488,6 +488,15 @@ async function loadRuntimeConfigPanel() {
       export const PanelGateReason = { NONE: 'none', ANONYMOUS: 'anonymous', UNVERIFIED: 'unverified', FREE_TIER: 'free_tier' };
       export function getPanelGateReason() { return PanelGateReason.NONE; }
     `],
+    ['dodo-checkout-stub', `
+      export const DodoPayments = {
+        Initialize() {},
+        Checkout: {
+          open() {},
+        },
+      };
+    `],
+    ['dodo-empty-stub', 'export {};'],
   ]);
 
   const aliasMap = new Map([
@@ -505,6 +514,10 @@ async function loadRuntimeConfigPanel() {
     ['@/services/ollama-models', 'ollama-models-stub'],
     ['@/services/settings-constants', 'settings-constants-stub'],
     ['@/services/panel-gating', 'panel-gating-stub'],
+    ['dodopayments-checkout', 'dodo-checkout-stub'],
+    ['dodopayments', 'dodo-empty-stub'],
+    ['@dodopayments/core', 'dodo-empty-stub'],
+    ['@dodopayments/convex', 'dodo-empty-stub'],
   ]);
 
   const plugin = {

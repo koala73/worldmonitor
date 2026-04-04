@@ -16,7 +16,7 @@
  * - searchGdeltDocuments: per-query GDELT search
  */
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, loadSharedConfig } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -26,18 +26,12 @@ const HAPI_CACHE_KEY_PREFIX = 'conflict:humanitarian:v1';
 const HAPI_TTL = 21600;
 const PIZZINT_TTL = 600;
 
-// Top conflict countries (ISO2) for humanitarian pre-seeding
 const CONFLICT_COUNTRIES = [
   'AF', 'SY', 'UA', 'SD', 'SS', 'SO', 'CD', 'MM', 'YE', 'ET',
   'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
 ];
 
-const ISO2_TO_ISO3 = {
-  AF: 'AFG', SY: 'SYR', UA: 'UKR', SD: 'SDN', SS: 'SSD', SO: 'SOM',
-  CD: 'COD', MM: 'MMR', YE: 'YEM', ET: 'ETH', IQ: 'IRQ', PS: 'PSE',
-  LY: 'LBY', ML: 'MLI', BF: 'BFA', NE: 'NER', NG: 'NGA', CM: 'CMR',
-  MZ: 'MOZ', HT: 'HTI',
-};
+const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
 
 // ─── ACLED Events ───
 

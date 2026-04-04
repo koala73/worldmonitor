@@ -58,6 +58,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   minerals:                 def('minerals',                 '&#128142;', 'criticalMinerals',         'Critical Minerals'),
   gpsJamming:               def('gpsJamming',               '&#128225;', 'gpsJamming',               'GPS Jamming', ['flat', 'globe'], _desktop ? 'locked' : undefined),
   ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'CII Instability', ['flat'], _desktop ? 'enhanced' : undefined),
+  resilienceScore:          def('resilienceScore',          '&#128200;', 'resilienceScore',          'Resilience', ['flat'], 'locked'),
   dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['flat']),
   sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', ['flat']),
   startupHubs:              def('startupHubs',              '&#128640;', 'startupHubs',              'Startup Hubs'),
@@ -92,29 +93,29 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'ucdpEvents', 'displacement', 'climate', 'weather',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
-    'satellites', 'ciiChoropleth', 'sanctions', 'dayNight', 'webcams', 'weatherRadar',
+    'satellites', 'ciiChoropleth', 'resilienceScore', 'sanctions', 'dayNight', 'webcams', 'weatherRadar',
     'diseaseOutbreaks',
   ],
   tech: [
     'startupHubs', 'techHQs', 'accelerators', 'cloudRegions',
     'datacenters', 'cables', 'outages', 'cyberThreats',
-    'techEvents', 'natural', 'fires', 'dayNight', 'weatherRadar',
+    'techEvents', 'resilienceScore', 'natural', 'fires', 'dayNight', 'weatherRadar',
   ],
   finance: [
     'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs',
     'gulfInvestments', 'tradeRoutes', 'cables', 'pipelines',
     'outages', 'weather', 'economic', 'waterways',
-    'natural', 'cyberThreats', 'sanctions', 'dayNight', 'weatherRadar',
+    'resilienceScore', 'natural', 'cyberThreats', 'sanctions', 'dayNight', 'weatherRadar',
   ],
   happy: [
-    'positiveEvents', 'kindness', 'happiness',
+    'positiveEvents', 'kindness', 'happiness', 'resilienceScore',
     'speciesRecovery', 'renewableInstallations',
   ],
   commodity: [
     'miningSites', 'processingPlants', 'commodityPorts', 'commodityHubs',
     'minerals', 'pipelines', 'waterways', 'tradeRoutes',
     'ais', 'economic', 'fires', 'climate',
-    'natural', 'weather', 'outages', 'sanctions', 'dayNight', 'weatherRadar',
+    'resilienceScore', 'natural', 'weather', 'outages', 'sanctions', 'dayNight', 'weatherRadar',
   ],
 };
 

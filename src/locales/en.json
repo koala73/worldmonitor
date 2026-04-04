@@ -362,6 +362,7 @@
     "bigmacDesc": "Big Mac prices across Middle East countries (Big Mac Index)",
     "bigmacWow": "WoW",
     "bigmacCountry": "Country",
+    "faoFoodPriceIndex": "FAO Food Price Index",
     "fuelPrices": "Fuel Prices",
     "fuelPricesDesc": "Retail gasoline and diesel prices across 30+ countries worldwide",
     "fuelPricesCountry": "Country",
@@ -1936,6 +1937,20 @@
     "fuelPrices": {
       "infoTooltip": "<strong>Fuel Prices</strong> Retail pump prices for gasoline and diesel across 30+ countries, normalized to USD/liter for comparison. Prices are sourced from official government open-data programs and updated weekly. Cheapest and most expensive countries are highlighted. WoW change shown when prior week data is available.",
       "countries": "countries"
+    },
+    "faoFoodPriceIndex": {
+      "infoTooltip": "<strong>FAO Food Price Index</strong> The UN Food and Agriculture Organization's FFPI tracks international export prices for a basket of food commodities (Cereals, Dairy, Meat, Oils, Sugar), base 2014-2016=100. Updated monthly on the first Friday of each month.",
+      "indexLabel": "FFPI (2014-16=100)",
+      "mom": "MoM",
+      "yoy": "YoY",
+      "asOf": "As of",
+      "baseNote": "Base: 2014-2016 = 100 | Source: UN FAO",
+      "ffpi": "Food",
+      "cereals": "Cereals",
+      "meat": "Meat",
+      "dairy": "Dairy",
+      "oils": "Oils",
+      "sugar": "Sugar"
     },
     "panel": {
       "showMethodologyInfo": "Show methodology info",

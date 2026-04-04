@@ -1,4 +1,5 @@
 import type { Monitor, PanelConfig, MapLayers } from '@/types';
+import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
 import {
   REFRESH_INTERVALS,
@@ -36,6 +37,7 @@ import type { GulfEconomiesPanel } from '@/components/GulfEconomiesPanel';
 import type { GroceryBasketPanel } from '@/components/GroceryBasketPanel';
 import type { BigMacPanel } from '@/components/BigMacPanel';
 import type { FuelPricesPanel } from '@/components/FuelPricesPanel';
+import type { FaoFoodPriceIndexPanel } from '@/components/FaoFoodPriceIndexPanel';
 import type { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
 import type { DefensePatentsPanel } from '@/components/DefensePatentsPanel';
 import type { MacroTilesPanel } from '@/components/MacroTilesPanel';
@@ -286,6 +288,10 @@ export class App {
       const panel = this.state.panels['fuel-prices'] as FuelPricesPanel | undefined;
       if (panel) primeTask('fuel-prices', () => panel.fetchData());
     }
+    if (shouldPrime('fao-food-price-index')) {
+      const panel = this.state.panels['fao-food-price-index'] as FaoFoodPriceIndexPanel | undefined;
+      if (panel) primeTask('fao-food-price-index', () => panel.fetchData());
+    }
     if (shouldPrime('consumer-prices')) {
       const panel = this.state.panels['consumer-prices'] as ConsumerPricesPanel | undefined;
       if (panel) primeTask('consumer-prices', () => panel.fetchData());
@@ -393,7 +399,9 @@ export class App {
       localStorage.setItem('worldmonitor-variant', currentVariant);
       // Reset map layers for the new variant (map layers are not user-personalized the same way)
       localStorage.removeItem(STORAGE_KEYS.mapLayers);
-      mapLayers = sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant);
+      mapLayers = normalizeExclusiveChoropleths(
+        sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant), null,
+      );
       // Load existing panel prefs (if any), disable panels not belonging to the new variant
       panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
       const newVariantKeys = new Set(VARIANT_DEFAULTS[currentVariant] ?? []);
@@ -408,9 +416,11 @@ export class App {
         }
       }
     } else {
-      mapLayers = sanitizeLayersForVariant(
-        loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, defaultLayers),
-        currentVariant as MapVariant,
+      mapLayers = normalizeExclusiveChoropleths(
+        sanitizeLayersForVariant(
+          loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, defaultLayers),
+          currentVariant as MapVariant,
+        ), null,
       );
       panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
@@ -581,7 +591,9 @@ export class App {
 
     const initialUrlState: ParsedMapUrlState | null = parseMapUrlState(window.location.search, mapLayers);
     if (initialUrlState.layers) {
-      mapLayers = sanitizeLayersForVariant(initialUrlState.layers, currentVariant as MapVariant);
+      mapLayers = normalizeExclusiveChoropleths(
+        sanitizeLayersForVariant(initialUrlState.layers, currentVariant as MapVariant), null,
+      );
       initialUrlState.layers = mapLayers;
     }
     if (!CYBER_LAYER_ENABLED) {
@@ -1299,6 +1311,13 @@ export class App {
       () => (this.state.panels['fuel-prices'] as FuelPricesPanel).fetchData(),
       REFRESH_INTERVALS.fuelPrices,
       () => this.isPanelNearViewport('fuel-prices')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'fao-food-price-index',
+      () => (this.state.panels['fao-food-price-index'] as FaoFoodPriceIndexPanel).fetchData(),
+      REFRESH_INTERVALS.faoFoodPriceIndex,
+      () => this.isPanelNearViewport('fao-food-price-index')
     );
 
     this.refreshScheduler.scheduleRefresh(

@@ -23,6 +23,7 @@ import { getEuGasStorage } from './get-eu-gas-storage';
 import { getEuYieldCurve } from './get-eu-yield-curve';
 import { getEuFsi } from './get-eu-fsi';
 import { getEconomicStress } from './get-economic-stress';
+import { getFaoFoodPriceIndex } from './get-fao-food-price-index';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
@@ -48,4 +49,5 @@ export const economicHandler: EconomicServiceHandler = {
   getEuYieldCurve,
   getEuFsi,
   getEconomicStress,
+  getFaoFoodPriceIndex,
 };

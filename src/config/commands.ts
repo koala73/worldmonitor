@@ -163,6 +163,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:grocery-basket', keywords: ['grocery', 'grocery basket', 'grocery index', 'food prices', 'supermarket'], label: 'Panel: Grocery Index', icon: '\u{1F96C}', category: 'panels' },
   { id: 'panel:bigmac', keywords: ['bigmac', 'big mac', 'big mac index', 'purchasing power parity', 'ppp'], label: 'Panel: Big Mac Index', icon: '\u{1F354}', category: 'panels' },
   { id: 'panel:fuel-prices', keywords: ['fuel prices', 'gas prices', 'gasoline', 'diesel', 'petrol', 'fuel cost', 'pump prices'], label: 'Panel: Fuel Prices', icon: '\u26FD', category: 'panels' },
+  { id: 'panel:fao-food-price-index', keywords: ['fao', 'food price index', 'ffpi', 'food prices', 'cereals', 'fao food', 'global food prices', 'food inflation'], label: 'Panel: FAO Food Price Index', icon: '\u{1F33E}', category: 'panels' },
   { id: 'panel:national-debt', keywords: ['national debt', 'debt clock', 'government debt', 'deficit'], label: 'Panel: National Debt Clock', icon: '\u{1F4B8}', category: 'panels' },
   { id: 'panel:fsi', keywords: ['fsi', 'financial stress', 'financial stress indicator', 'systemic risk'], label: 'Panel: Financial Stress Indicator', icon: '\u{1F4C9}', category: 'panels' },
   { id: 'panel:yield-curve', keywords: ['yield curve', 'rates', 'treasury', 'ecb rates', 'bond yield', 'inversion'], label: 'Panel: Yield Curve & Rates', icon: '\u{1F4C8}', category: 'panels' },

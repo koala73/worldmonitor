@@ -115,6 +115,8 @@ import { fetchThermalEscalations } from '@/services/thermal-escalation';
 import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
+import { getResilienceRanking } from '@/services/resilience';
+import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
@@ -558,6 +560,14 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && (shouldLoad('sanctions-pressure') || this.ctx.mapLayers.sanctions)) {
       tasks.push({ name: 'sanctions', task: runGuarded('sanctions', () => this.loadSanctionsPressure()) });
     }
+    if (this.ctx.mapLayers.resilienceScore) {
+      if (hasPremiumAccess()) {
+        tasks.push({ name: 'resilienceRanking', task: runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
+      } else {
+        this.ctx.map?.setResilienceRanking([]);
+        this.ctx.map?.setLayerReady('resilienceScore', false);
+      }
+    }
     if (SITE_VARIANT !== 'happy' && (shouldLoad('radiation-watch') || this.ctx.mapLayers.radiationWatch)) {
       tasks.push({ name: 'radiation', task: runGuarded('radiation', () => this.loadRadiationWatch()) });
     }
@@ -686,6 +696,9 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'diseaseOutbreaks':
           await this.loadDiseaseOutbreaks();
+          break;
+        case 'resilienceScore':
+          await this.loadResilienceRanking();
           break;
       }
     } finally {
@@ -3124,6 +3137,25 @@ export class DataLoaderManager implements AppModule {
       this.callPanel('sanctions-pressure', 'showError');
       dataFreshness.recordError('sanctions_pressure', String(error));
       this.ctx.statusPanel?.updateApi('OFAC', { status: 'error' });
+    }
+  }
+
+  async loadResilienceRanking(): Promise<void> {
+    if (!hasPremiumAccess() || !this.ctx.map?.isDeckGLActive?.()) {
+      this.ctx.map?.setResilienceRanking([]);
+      this.ctx.map?.setLayerReady('resilienceScore', false);
+      return;
+    }
+
+    try {
+      const result = await getResilienceRanking();
+      this.ctx.map?.setResilienceRanking(result.items);
+      const displayable = buildResilienceChoroplethMap(result.items);
+      this.ctx.map?.setLayerReady('resilienceScore', displayable.size > 0);
+    } catch (error) {
+      console.error('[App] Resilience ranking fetch failed:', error);
+      this.ctx.map?.setResilienceRanking([]);
+      this.ctx.map?.setLayerReady('resilienceScore', false);
     }
   }
 

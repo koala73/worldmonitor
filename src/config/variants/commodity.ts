@@ -114,6 +114,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   // Additional required properties
 
   ciiChoropleth: false,
+  resilienceScore: false,
   webcams: false,
   weatherRadar: false, diseaseOutbreaks: false,
 };
@@ -177,6 +178,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   // Additional required properties
 
   ciiChoropleth: false,
+  resilienceScore: false,
   webcams: false,
   weatherRadar: false, diseaseOutbreaks: false,
 };
