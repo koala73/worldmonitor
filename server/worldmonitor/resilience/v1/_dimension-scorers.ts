@@ -1,8 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import countryNames from '../../../../shared/country-names.json';
+import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
 
@@ -164,16 +161,7 @@ for (const [name, iso2] of Object.entries(countryNames as Record<string, string>
   COUNTRY_NAME_ALIASES.set(code, current);
 }
 
-const ISO2_TO_ISO3: Record<string, string> = {};
-{
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const geojson = JSON.parse(readFileSync(join(__dirname, '../../../../public/data/countries.geojson'), 'utf8'));
-  for (const feature of geojson?.features ?? []) {
-    const iso2 = String(feature?.properties?.['ISO3166-1-Alpha-2'] ?? '').toUpperCase();
-    const iso3 = String(feature?.properties?.['ISO3166-1-Alpha-3'] ?? '').toUpperCase();
-    if (/^[A-Z]{2}$/.test(iso2) && /^[A-Z]{3}$/.test(iso3)) ISO2_TO_ISO3[iso2] = iso3;
-  }
-}
+const ISO2_TO_ISO3: Record<string, string> = iso2ToIso3Json;
 
 const RESILIENCE_DOMAIN_WEIGHTS: Record<ResilienceDomainId, number> = {
   economic: 0.22,

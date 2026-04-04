@@ -29,14 +29,7 @@ function makeResolvers() {
       yemen: 'YE',
       'cape verde': 'CV',
     },
-    {
-      features: [
-        { properties: { name: 'Norway', 'ISO3166-1-Alpha-2': 'NO', 'ISO3166-1-Alpha-3': 'NOR' } },
-        { properties: { name: 'United States', 'ISO3166-1-Alpha-2': 'US', 'ISO3166-1-Alpha-3': 'USA' } },
-        { properties: { name: 'Yemen', 'ISO3166-1-Alpha-2': 'YE', 'ISO3166-1-Alpha-3': 'YEM' } },
-        { properties: { name: 'Cape Verde', 'ISO3166-1-Alpha-2': 'CV', 'ISO3166-1-Alpha-3': 'CPV' } },
-      ],
-    },
+    { NOR: 'NO', USA: 'US', YEM: 'YE', CPV: 'CV' },
   );
 }
 

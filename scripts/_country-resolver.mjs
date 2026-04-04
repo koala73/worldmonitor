@@ -1,53 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { loadSharedConfig } from './_seed-utils.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 const DEFAULT_COUNTRY_NAMES = loadSharedConfig('country-names.json');
-const DEFAULT_COUNTRIES_GEOJSON = JSON.parse(
-  readFileSync(join(__dirname, '..', 'public', 'data', 'countries.geojson'), 'utf8'),
-);
-
-export const COUNTRY_ALIAS_MAP = {
-  'bahamas the': 'BS',
-  'cape verde': 'CV',
-  'congo brazzaville': 'CG',
-  'congo kinshasa': 'CD',
-  'congo rep': 'CG',
-  'congo dem rep': 'CD',
-  'czech republic': 'CZ',
-  'egypt arab rep': 'EG',
-  'gambia the': 'GM',
-  'hong kong sar china': 'HK',
-  'iran islamic rep': 'IR',
-  'korea dem peoples rep': 'KP',
-  'korea rep': 'KR',
-  'lao pdr': 'LA',
-  'macao sar china': 'MO',
-  'micronesia fed sts': 'FM',
-  'morocco western sahara': 'MA',
-  'north macedonia': 'MK',
-  'occupied palestinian territory': 'PS',
-  'palestinian territories': 'PS',
-  'palestine state of': 'PS',
-  'russian federation': 'RU',
-  'slovak republic': 'SK',
-  'st kitts and nevis': 'KN',
-  'st lucia': 'LC',
-  'st vincent and the grenadines': 'VC',
-  'syrian arab republic': 'SY',
-  'the bahamas': 'BS',
-  'timor leste': 'TL',
-  'turkiye': 'TR',
-  'u s': 'US',
-  'united states of america': 'US',
-  'venezuela rb': 'VE',
-  'viet nam': 'VN',
-  'west bank and gaza': 'PS',
-  'yemen rep': 'YE',
-};
+const DEFAULT_ISO3_MAP = loadSharedConfig('iso3-to-iso2.json');
 
 export function normalizeCountryToken(value) {
   return String(value || '')
@@ -68,7 +22,7 @@ export function isIso3(value) {
   return /^[A-Z]{3}$/.test(String(value || '').trim());
 }
 
-export function createCountryResolvers(countryNames = DEFAULT_COUNTRY_NAMES, geojson = DEFAULT_COUNTRIES_GEOJSON) {
+export function createCountryResolvers(countryNames = DEFAULT_COUNTRY_NAMES, iso3Map = DEFAULT_ISO3_MAP) {
   const nameToIso2 = new Map();
   const iso3ToIso2 = new Map();
 
@@ -76,21 +30,8 @@ export function createCountryResolvers(countryNames = DEFAULT_COUNTRY_NAMES, geo
     if (isIso2(iso2)) nameToIso2.set(normalizeCountryToken(name), iso2.toUpperCase());
   }
 
-  for (const [alias, iso2] of Object.entries(COUNTRY_ALIAS_MAP)) {
-    if (isIso2(iso2)) nameToIso2.set(normalizeCountryToken(alias), iso2.toUpperCase());
-  }
-
-  for (const feature of geojson?.features || []) {
-    const properties = feature?.properties || {};
-    const iso2 = String(properties['ISO3166-1-Alpha-2'] || '').toUpperCase();
-    const iso3 = String(properties['ISO3166-1-Alpha-3'] || '').toUpperCase();
-    const name = properties.name;
-    if (isIso2(iso2)) {
-      if (typeof name === 'string' && name.trim()) {
-        nameToIso2.set(normalizeCountryToken(name), iso2);
-      }
-      if (isIso3(iso3)) iso3ToIso2.set(iso3, iso2);
-    }
+  for (const [iso3, iso2] of Object.entries(iso3Map)) {
+    if (isIso3(iso3) && isIso2(iso2)) iso3ToIso2.set(iso3, iso2.toUpperCase());
   }
 
   return { nameToIso2, iso3ToIso2 };
