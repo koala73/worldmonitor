@@ -88,14 +88,6 @@ function createRedisFetch(fixtures: Record<string, unknown>) {
           };
         }
 
-        if (verb === 'ZREMRANGEBYSCORE') {
-          const minScore = Number(args[0] || 0);
-          const maxScore = Number(args[1] || 0);
-          const items = sortedSets.get(redisKey) ?? [];
-          sortedSets.set(redisKey, items.filter((item) => item.score < minScore || item.score > maxScore));
-          return { result: 1 };
-        }
-
         if (verb === 'ZREMRANGEBYRANK') {
           removeByRank(redisKey, Number(args[0] || 0), Number(args[1] || 0));
           return { result: 1 };
@@ -130,8 +122,8 @@ describe('resilience handlers', () => {
 
     const { fetchImpl, redis, sortedSets } = createRedisFetch(RESILIENCE_FIXTURES);
     sortedSets.set('resilience:history:US', [
-      { member: '2026-04-01:20', score: 20260401 },
-      { member: '2026-04-02:30', score: 20260402 },
+      { member: '2026-04-01', score: 20 },
+      { member: '2026-04-02', score: 30 },
     ]);
     globalThis.fetch = fetchImpl;
 
@@ -155,7 +147,7 @@ describe('resilience handlers', () => {
 
     const history = sortedSets.get('resilience:history:US') ?? [];
     const today = new Date().toISOString().slice(0, 10);
-    assert.ok(history.some((entry) => entry.member.startsWith(today)), 'expected today history member to be written');
+    assert.ok(history.some((entry) => entry.member === today), 'expected today history member to be written');
 
     await getResilienceScore({ request: new Request('https://example.com') } as never, {
       countryCode: 'US',
@@ -163,7 +155,7 @@ describe('resilience handlers', () => {
     assert.equal((sortedSets.get('resilience:history:US') ?? []).length, history.length, 'cache hit must not append history');
   });
 
-  it('warms missing scores inline and caches the complete ranking', async () => {
+  it('returns cached ranking entries first, leaves placeholders for misses, and warms missing scores', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     delete process.env.VERCEL_ENV;
@@ -191,11 +183,21 @@ describe('resilience handlers', () => {
     }));
     globalThis.fetch = fetchImpl;
 
-    const result = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+    const first = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.equal(result.items.length, 3);
-    assert.ok(result.items.every((item) => item.overallScore >= 0), 'all scores should be real after inline warmup');
+    assert.deepEqual(
+      first.items.map((item) => [item.countryCode, item.overallScore]),
+      [['NO', 82], ['US', 61], ['YE', -1]],
+    );
+    assert.equal(redis.has('resilience:ranking'), false, 'incomplete ranking should not be cached');
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
     assert.ok(redis.has('resilience:score:YE'), 'missing country should be warmed into the score cache');
+
+    const second = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.equal(second.items.length, 3);
+    assert.ok(second.items.every((item) => item.overallScore >= 0), 'second call should read only cached scores');
     assert.ok(redis.has('resilience:ranking'), 'fully scored ranking should be cached');
   });
 });

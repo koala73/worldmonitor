@@ -26,12 +26,12 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   const countryCodes = await listScorableCountries();
   if (countryCodes.length === 0) return { items: [] };
 
-  let cachedScores = await getCachedResilienceScores(countryCodes);
+  const cachedScores = await getCachedResilienceScores(countryCodes);
   const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
-
   if (missing.length > 0) {
-    await warmMissingResilienceScores(missing);
-    cachedScores = await getCachedResilienceScores(countryCodes);
+    void warmMissingResilienceScores(missing).catch((err) => {
+      console.warn('[resilience] ranking warmup failed:', err);
+    });
   }
 
   const response: GetResilienceRankingResponse = {
@@ -40,8 +40,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     ),
   };
 
-  const stillMissing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
-  if (stillMissing.length === 0) {
+  if (missing.length === 0) {
     await setCachedJson(RESILIENCE_RANKING_CACHE_KEY, response, RESILIENCE_RANKING_CACHE_TTL_SECONDS);
   }
 
