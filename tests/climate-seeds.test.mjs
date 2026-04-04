@@ -426,28 +426,22 @@ YEAR WO WOse NH NHse SH SHse
     assert.equal(path, 'aravg.mon.ocean.90S.90N.v6.0.0.202512.asc');
   });
 
-  it('merges partial source sections, ignores sections without timestamps, and keeps the latest measured timestamp', () => {
+  it('merges all source sections and keeps the latest measured timestamp', () => {
+    // positional: [seaIce, seaLevel, ohc, sst]
     const payload = buildOceanIcePayload([
       {
-        data: {
-          arctic_extent_mkm2: 13.95,
-          arctic_extent_anomaly_mkm2: -0.75,
-          arctic_trend: 'below_average',
-        },
+        data: { arctic_extent_mkm2: 13.95, arctic_extent_anomaly_mkm2: -0.75, arctic_trend: 'below_average' },
         measuredAt: Date.UTC(2026, 2, 31),
       },
       {
-        data: {
-          ohc_0_700m_zj: 228.45,
-          sst_anomaly_c: 0.91,
-        },
+        data: { sea_level_mm_above_1993: 98.8, sea_level_annual_rise_mm: 4.4 },
+      },
+      {
+        data: { ohc_0_700m_zj: 228.45 },
         measuredAt: Date.UTC(2026, 2, 1),
       },
       {
-        data: {
-          sea_level_mm_above_1993: 98.8,
-          sea_level_annual_rise_mm: 4.4,
-        },
+        data: { sst_anomaly_c: 0.91 },
       },
     ]);
 
@@ -464,33 +458,73 @@ YEAR WO WOse NH NHse SH SHse
     assert.equal(countIndicators({ ice_trend_12m: [{ month: '2026-03', extent_mkm2: 13.95, anomaly_mkm2: -0.75 }] }), 1);
   });
 
-  it('preserves prior cache indicators when a source fails (partial upstream merge)', () => {
+  it('preserves prior cache for failed source groups only', () => {
     const prior = {
       arctic_extent_mkm2: 13.5,
+      arctic_extent_anomaly_mkm2: -0.5,
+      arctic_trend: 'below_average',
       sea_level_mm_above_1993: 98.8,
       sea_level_annual_rise_mm: 4.4,
       ohc_0_700m_zj: 220.0,
-      measured_at: Date.UTC(2026, 2, 30),
+      sst_anomaly_c: 0.85,
     };
+    // seaIce succeeded, seaLevel failed (null), ohc failed (null), sst succeeded
     const payload = buildOceanIcePayload(
-      [{ data: { arctic_extent_mkm2: 14.0 }, measuredAt: Date.UTC(2026, 2, 31) }],
+      [
+        { data: { arctic_extent_mkm2: 14.0 }, measuredAt: Date.UTC(2026, 2, 31) },
+        null,
+        null,
+        { data: { sst_anomaly_c: 0.91 } },
+      ],
       prior,
     );
 
     assert.equal(payload.arctic_extent_mkm2, 14.0);
-    assert.equal(payload.sea_level_mm_above_1993, 98.8);
-    assert.equal(payload.ohc_0_700m_zj, 220.0);
-    assert.equal(payload.measured_at, Date.UTC(2026, 2, 31));
+    assert.equal(payload.arctic_extent_anomaly_mkm2, undefined, 'sea-ice section omitted anomaly — must not bleed from prior');
+    assert.equal(payload.arctic_trend, undefined, 'sea-ice section omitted trend — must not bleed from prior');
+    assert.equal(payload.sea_level_mm_above_1993, 98.8, 'sea-level failed — falls back to prior');
+    assert.equal(payload.ohc_0_700m_zj, 220.0, 'ohc failed — falls back to prior');
+    assert.equal(payload.sst_anomaly_c, 0.91, 'sst succeeded — uses fresh value');
   });
 
-  it('does not use prior cache when all sources succeed (no stale bleed)', () => {
+  it('sea-ice climatology unavailable + unrelated failure does not reintroduce stale anomaly/trend', () => {
+    const prior = {
+      arctic_extent_mkm2: 13.5,
+      arctic_extent_anomaly_mkm2: -0.5,
+      arctic_trend: 'below_average',
+      ohc_0_700m_zj: 220.0,
+    };
+    // seaIce succeeded but omitted anomaly/trend (no climatology), seaLevel ok, ohc failed, sst ok
     const payload = buildOceanIcePayload(
-      [{ data: { arctic_extent_mkm2: 14.0 }, measuredAt: Date.UTC(2026, 2, 31) }],
+      [
+        { data: { arctic_extent_mkm2: 14.0 }, measuredAt: Date.UTC(2026, 2, 31) },
+        { data: { sea_level_mm_above_1993: 99.0 } },
+        null,
+        { data: { sst_anomaly_c: 0.91 } },
+      ],
+      prior,
+    );
+
+    assert.equal(payload.arctic_extent_mkm2, 14.0);
+    assert.equal(payload.arctic_extent_anomaly_mkm2, undefined, 'must not reintroduce stale anomaly');
+    assert.equal(payload.arctic_trend, undefined, 'must not reintroduce stale trend');
+    assert.equal(payload.ohc_0_700m_zj, 220.0, 'ohc failed — prior preserved');
+    assert.equal(payload.sst_anomaly_c, 0.91);
+  });
+
+  it('does not use prior cache when all sources succeed', () => {
+    const payload = buildOceanIcePayload(
+      [
+        { data: { arctic_extent_mkm2: 14.0 }, measuredAt: Date.UTC(2026, 2, 31) },
+        { data: { sea_level_mm_above_1993: 99.0 } },
+        { data: { ohc_0_700m_zj: 230.0 } },
+        { data: { sst_anomaly_c: 0.91 } },
+      ],
       undefined,
     );
 
     assert.equal(payload.arctic_extent_mkm2, 14.0);
-    assert.equal(payload.sea_level_mm_above_1993, undefined);
+    assert.equal(payload.sea_level_mm_above_1993, 99.0);
   });
 
   it('fallback sea level rate regex matches the current rate, not the historical one', () => {

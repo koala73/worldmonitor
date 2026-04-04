@@ -401,19 +401,28 @@ async function fetchSstSection() {
   };
 }
 
-export function buildOceanIcePayload(sections, priorCache) {
+const SOURCE_FIELD_GROUPS = [
+  ['arctic_extent_mkm2', 'arctic_extent_anomaly_mkm2', 'arctic_trend', 'ice_trend_12m'],
+  ['sea_level_mm_above_1993', 'sea_level_annual_rise_mm'],
+  ['ohc_0_700m_zj'],
+  ['sst_anomaly_c'],
+];
+
+export function buildOceanIcePayload(settled, priorCache) {
   const payload = {};
   const measuredAts = [];
 
-  if (priorCache && typeof priorCache === 'object') {
-    Object.assign(payload, priorCache);
-  }
-
-  for (const section of sections) {
-    if (!section?.data) continue;
-    Object.assign(payload, section.data);
-    if (Number.isFinite(section.measuredAt) && section.measuredAt > 0) {
-      measuredAts.push(section.measuredAt);
+  for (let i = 0; i < settled.length; i++) {
+    const result = settled[i];
+    if (result?.data) {
+      Object.assign(payload, result.data);
+      if (Number.isFinite(result.measuredAt) && result.measuredAt > 0) {
+        measuredAts.push(result.measuredAt);
+      }
+    } else if (priorCache && typeof priorCache === 'object' && i < SOURCE_FIELD_GROUPS.length) {
+      for (const field of SOURCE_FIELD_GROUPS[i]) {
+        if (priorCache[field] != null) payload[field] = priorCache[field];
+      }
     }
   }
 
@@ -441,7 +450,7 @@ async function readPriorCache() {
 }
 
 export async function fetchOceanIceData() {
-  const [settled, prior] = await Promise.all([
+  const [allSettled, prior] = await Promise.all([
     Promise.allSettled([
       fetchSeaIceSection(),
       fetchSeaLevelSection(),
@@ -451,22 +460,18 @@ export async function fetchOceanIceData() {
     readPriorCache(),
   ]);
 
-  const sections = [];
-  let hadFailures = false;
-  for (const result of settled) {
-    if (result.status === 'fulfilled') {
-      sections.push(result.value);
-    } else {
-      hadFailures = true;
-      console.warn(`[OceanIce] Source failed: ${result.reason?.message || result.reason}`);
-    }
-  }
+  const resolved = allSettled.map((result, i) => {
+    if (result.status === 'fulfilled') return result.value;
+    console.warn(`[OceanIce] Source ${i} failed: ${result.reason?.message || result.reason}`);
+    return null;
+  });
 
+  const hadFailures = resolved.some((r) => r == null);
   if (hadFailures && prior) {
-    console.log('[OceanIce] Merging with prior cache to preserve last-known-good indicators');
+    console.log('[OceanIce] Merging failed source groups with prior cache');
   }
 
-  return buildOceanIcePayload(sections, hadFailures ? prior : undefined);
+  return buildOceanIcePayload(resolved, hadFailures ? prior : undefined);
 }
 
 export function countIndicators(data) {
