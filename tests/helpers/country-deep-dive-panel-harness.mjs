@@ -93,7 +93,6 @@ async function loadCountryDeepDivePanel() {
         }
         destroy() {
           this.destroyCount += 1;
-          this.element.remove();
         }
       }
     `],

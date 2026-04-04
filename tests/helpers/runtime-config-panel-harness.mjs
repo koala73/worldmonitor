@@ -470,9 +470,6 @@ function querySelectorAll(root, selector) {
   }
 
   if (root instanceof MiniElement) {
-    if (root.matches(selector)) {
-      matches.push(root);
-    }
     root.childNodes.forEach(visit);
     return matches;
   }
