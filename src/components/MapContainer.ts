@@ -835,6 +835,7 @@ export class MapContainer {
 
   // Layer enable/disable and trigger methods
   public enableLayer(layer: keyof MapLayers): void {
+    if (layer === 'resilienceScore' && !this.useDeckGL) return;
     if (this.useGlobe) { this.globeMap?.enableLayer(layer); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.enableLayer(layer);
