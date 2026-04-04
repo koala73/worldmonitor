@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Check, ArrowRight, Zap } from 'lucide-react';
+import { startCheckout } from '../services/checkout';
 
 // Static fallback from build-time generation (used while fetching live prices)
 import fallbackTiers from '../generated/tiers.json';
@@ -41,20 +42,6 @@ function usePricingData(): Tier[] {
   return tiers;
 }
 
-const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/';
-
-function buildCheckoutUrl(productId: string, refCode?: string): string {
-  // Route /pro buyers back into the authenticated dashboard checkout flow.
-  // The app captures the intent from the URL, prompts for sign-in if needed,
-  // and then creates the checkout server-side with authenticated identity.
-  const url = new URL(APP_CHECKOUT_BASE_URL);
-  url.searchParams.set('checkoutProduct', productId);
-  if (refCode) {
-    url.searchParams.set('checkoutReferral', refCode);
-  }
-  return url.toString();
-}
-
 function formatPrice(tier: Tier, billing: 'monthly' | 'annual'): { amount: string; suffix: string } {
   // Free tier
   if (tier.price === 0) {
@@ -75,38 +62,31 @@ function formatPrice(tier: Tier, billing: 'monthly' | 'annual'): { amount: strin
   return { amount: `$${tier.monthlyPrice}`, suffix: "/mo" };
 }
 
-function getCtaProps(tier: Tier, billing: 'monthly' | 'annual', refCode?: string): { label: string; href: string; external: boolean } {
-  // Free tier
+type CtaProps =
+  | { type: 'link'; label: string; href: string; external: boolean }
+  | { type: 'checkout'; label: string; productId: string };
+
+function getCtaProps(tier: Tier, billing: 'monthly' | 'annual'): CtaProps {
   if (tier.cta && tier.href && tier.price === 0) {
-    return { label: tier.cta, href: tier.href, external: true };
+    return { type: 'link', label: tier.cta, href: tier.href, external: true };
   }
-  // Enterprise
   if (tier.cta && tier.href && tier.price === null) {
-    return { label: tier.cta, href: tier.href, external: true };
+    return { type: 'link', label: tier.cta, href: tier.href, external: true };
   }
-  // Pro tier
-  if (tier.monthlyProductId && tier.annualProductId) {
-    const productId = billing === 'annual' ? tier.annualProductId : tier.monthlyProductId;
-    return {
-      label: "Get Started",
-      href: buildCheckoutUrl(productId, refCode),
-      external: true,
-    };
-  }
-  // API tier
   if (tier.monthlyProductId) {
-    return {
-      label: "Get Started",
-      href: buildCheckoutUrl(tier.monthlyProductId, refCode),
-      external: true,
-    };
+    const productId = (billing === 'annual' && tier.annualProductId) ? tier.annualProductId : tier.monthlyProductId;
+    return { type: 'checkout', label: 'Get Started', productId };
   }
-  return { label: "Learn More", href: "#", external: false };
+  return { type: 'link', label: 'Learn More', href: '#', external: false };
 }
 
 export function PricingSection({ refCode }: { refCode?: string }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
   const TIERS = usePricingData();
+
+  const handleCheckout = useCallback((productId: string) => {
+    startCheckout(productId, { referralCode: refCode });
+  }, [refCode]);
 
   return (
     <section id="pricing" className="py-24 px-6 border-t border-wm-border bg-[#060606]">
@@ -175,7 +155,7 @@ export function PricingSection({ refCode }: { refCode?: string }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {TIERS.map((tier, i) => {
             const price = formatPrice(tier, billing);
-            const cta = getCtaProps(tier, billing, refCode);
+            const cta = getCtaProps(tier, billing);
 
             return (
               <motion.div
@@ -227,18 +207,31 @@ export function PricingSection({ refCode }: { refCode?: string }) {
                 </ul>
 
                 {/* CTA button */}
-                <a
-                  href={cta.href}
-                  target={cta.external ? "_blank" : undefined}
-                  rel={cta.external ? "noreferrer" : undefined}
-                  className={`block text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
-                    tier.highlighted
-                      ? 'bg-wm-green text-wm-bg hover:bg-green-400'
-                      : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
-                  }`}
-                >
-                  {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
-                </a>
+                {cta.type === 'link' ? (
+                  <a
+                    href={cta.href}
+                    target={cta.external ? "_blank" : undefined}
+                    rel={cta.external ? "noreferrer" : undefined}
+                    className={`block text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
+                      tier.highlighted
+                        ? 'bg-wm-green text-wm-bg hover:bg-green-400'
+                        : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
+                    }`}
+                  >
+                    {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => handleCheckout(cta.productId)}
+                    className={`block w-full text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors cursor-pointer ${
+                      tier.highlighted
+                        ? 'bg-wm-green text-wm-bg hover:bg-green-400'
+                        : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
+                    }`}
+                  >
+                    {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
+                  </button>
+                )}
               </motion.div>
             );
           })}
