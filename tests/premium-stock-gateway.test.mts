@@ -223,6 +223,46 @@ describe('premium gateway bearer token auth', () => {
     assert.equal(res.status, 200);
   });
 
+  it('rejects free bearer token on resilience premium endpoints → 403', async () => {
+    const token = await signToken({ sub: 'user_free', plan: 'free' });
+
+    const scoreRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(scoreRes.status, 403);
+
+    const rankingRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(rankingRes.status, 403);
+  });
+
+  it('rejects invalid bearer token on resilience premium endpoints → 401', async () => {
+    const token = await signToken({ sub: 'user_bad', plan: 'pro' }, { key: wrongPrivateKey });
+
+    const scoreRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(scoreRes.status, 401);
+
+    const rankingRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(rankingRes.status, 401);
+  });
+
   it('accepts valid Pro bearer token on resilience premium endpoints → 200', async () => {
     const token = await signToken({ sub: 'user_pro', plan: 'pro' });
 
