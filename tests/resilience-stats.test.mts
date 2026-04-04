@@ -49,9 +49,22 @@ test('detectTrend treats fewer than 3 values as stable', () => {
   assert.equal(detectTrend([10, 15]), 'stable');
 });
 
-test('detectChangepoints finds a structural break in a bimodal series', () => {
-  const changepoints = detectChangepoints([10, 11, 9, 10, 10, 50, 52, 48, 51, 49]);
-  assert.ok(changepoints.some((index) => index >= 5), `expected changepoint at the break, got ${changepoints}`);
+test('detectChangepoints locates the onset of a large step shift', () => {
+  const cp = detectChangepoints([10, 11, 9, 10, 10, 50, 52, 48, 51, 49]);
+  assert.equal(cp.length, 1, `expected exactly one changepoint, got ${JSON.stringify(cp)}`);
+  assert.ok(cp[0]! >= 5 && cp[0]! <= 6, `expected onset at 5-6, got ${cp[0]}`);
+});
+
+test('detectChangepoints locates the onset of a clean step shift', () => {
+  const cp = detectChangepoints([0, 0, 0, 0, 0, 10, 10, 10, 10, 10]);
+  assert.equal(cp.length, 1);
+  assert.ok(cp[0]! >= 5 && cp[0]! <= 6, `expected onset at 5-6, got ${cp[0]}`);
+});
+
+test('detectChangepoints detects moderate step shifts', () => {
+  const cp = detectChangepoints([1, 1, 1, 1, 5, 5, 5, 5, 5, 5]);
+  assert.equal(cp.length, 1, `expected exactly one changepoint, got ${JSON.stringify(cp)}`);
+  assert.ok(cp[0]! >= 3 && cp[0]! <= 5, `expected onset at 3-5, got ${cp[0]}`);
 });
 
 test('detectChangepoints returns [] for constant and short series', () => {
@@ -107,4 +120,14 @@ test('nrcForecast falls back to a flat 50/50 outlook for short history', () => {
   ]);
   assert.equal(forecast.probabilityUp, 0.5);
   assert.equal(forecast.probabilityDown, 0.5);
+});
+
+test('nrcForecast returns neutral empty result for non-positive horizon', () => {
+  for (const h of [0, -1, -100]) {
+    const forecast = nrcForecast([40, 50, 60], h);
+    assert.deepEqual(forecast.values, [], `horizon=${h} should give empty values`);
+    assert.deepEqual(forecast.confidenceIntervals, [], `horizon=${h} should give empty CIs`);
+    assert.equal(forecast.probabilityUp, 0.5, `horizon=${h} should be neutral`);
+    assert.equal(forecast.probabilityDown, 0.5, `horizon=${h} should be neutral`);
+  }
 });

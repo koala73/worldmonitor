@@ -131,17 +131,35 @@ export function detectChangepoints(values: number[], threshold = CHANGEPOINT_DEF
   const changepoints: number[] = [];
   let positiveCusum = 0;
   let negativeCusum = 0;
-  const CUSUM_SLACK = 0.5;
+  let positiveOnset = -1;
+  let negativeOnset = -1;
+  const CUSUM_SLACK = 0.25;
 
   for (let index = 1; index < values.length; index += 1) {
     const normalizedValue = ((values[index] ?? 0) - mean) / stdDev;
-    positiveCusum = Math.max(0, positiveCusum + normalizedValue - CUSUM_SLACK);
-    negativeCusum = Math.max(0, negativeCusum - normalizedValue - CUSUM_SLACK);
 
-    if (positiveCusum > threshold || negativeCusum > threshold) {
-      changepoints.push(index);
+    const prevPositive = positiveCusum;
+    positiveCusum = Math.max(0, positiveCusum + normalizedValue - CUSUM_SLACK);
+    if (prevPositive === 0 && positiveCusum > 0) positiveOnset = index;
+
+    const prevNegative = negativeCusum;
+    negativeCusum = Math.max(0, negativeCusum - normalizedValue - CUSUM_SLACK);
+    if (prevNegative === 0 && negativeCusum > 0) negativeOnset = index;
+
+    if (positiveCusum > threshold) {
+      const onset = positiveOnset >= 0 ? positiveOnset : index;
+      if (onset >= 2) changepoints.push(onset);
       positiveCusum = 0;
       negativeCusum = 0;
+      positiveOnset = -1;
+      negativeOnset = -1;
+    } else if (negativeCusum > threshold) {
+      const onset = negativeOnset >= 0 ? negativeOnset : index;
+      if (onset >= 2) changepoints.push(onset);
+      positiveCusum = 0;
+      negativeCusum = 0;
+      positiveOnset = -1;
+      negativeOnset = -1;
     }
   }
 
@@ -166,6 +184,10 @@ export function nrcForecast(
   horizonDays: number,
   alpha = 0.3,
 ): ResilienceForecastResult {
+  if (horizonDays < 1) {
+    return { values: [], confidenceIntervals: [], probabilityUp: 0.5, probabilityDown: 0.5 };
+  }
+
   if (history.length < 3) {
     const lastValue = clampScore(history[history.length - 1] ?? 50);
     return {
