@@ -232,7 +232,7 @@ const MAX_KEYWORDS = 8;
 // are just as valid as "US sanctions" or "AI exports").
 const KNOWN_2CHAR_ACRONYMS = new Set(['us', 'uk', 'eu', 'un', 'ai']);
 
-function extractKeywords(query: string): string[] {
+export function extractKeywords(query: string): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const raw of query.split(/\W+/)) {
