@@ -12,7 +12,7 @@ paths:
             parameters:
                 - name: countryCode
                   in: query
-                  required: false
+                  required: true
                   schema:
                     type: string
             responses:

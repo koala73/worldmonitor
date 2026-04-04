@@ -6,7 +6,7 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/resilience/v1/resilience.proto";
 
 message GetResilienceScoreRequest {
-  string country_code = 1 [(sebuf.http.query) = { name: "countryCode" }];
+  string country_code = 1 [(sebuf.http.query) = { name: "countryCode", required: true }];
 }
 
 message GetResilienceScoreResponse {
