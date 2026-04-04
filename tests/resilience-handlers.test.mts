@@ -122,8 +122,8 @@ describe('resilience handlers', () => {
 
     const { fetchImpl, redis, sortedSets } = createRedisFetch(RESILIENCE_FIXTURES);
     sortedSets.set('resilience:history:US', [
-      { member: '2026-04-01', score: 20 },
-      { member: '2026-04-02', score: 30 },
+      { member: '2026-04-01:20', score: 20260401 },
+      { member: '2026-04-02:30', score: 20260402 },
     ]);
     globalThis.fetch = fetchImpl;
 
@@ -155,7 +155,7 @@ describe('resilience handlers', () => {
     assert.equal((sortedSets.get('resilience:history:US') ?? []).length, history.length, 'cache hit must not append history');
   });
 
-  it('returns cached ranking entries first, leaves placeholders for misses, and warms missing scores', async () => {
+  it('warms missing scores inline and caches the complete ranking', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     delete process.env.VERCEL_ENV;
@@ -183,21 +183,11 @@ describe('resilience handlers', () => {
     }));
     globalThis.fetch = fetchImpl;
 
-    const first = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+    const result = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.deepEqual(
-      first.items.map((item) => [item.countryCode, item.overallScore]),
-      [['NO', 82], ['US', 61], ['YE', -1]],
-    );
-    assert.equal(redis.has('resilience:ranking'), false, 'incomplete ranking should not be cached');
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(result.items.length, 3);
+    assert.ok(result.items.every((item) => item.overallScore >= 0), 'all scores should be real after inline warmup');
     assert.ok(redis.has('resilience:score:YE'), 'missing country should be warmed into the score cache');
-
-    const second = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
-
-    assert.equal(second.items.length, 3);
-    assert.ok(second.items.every((item) => item.overallScore >= 0), 'second call should read only cached scores');
     assert.ok(redis.has('resilience:ranking'), 'fully scored ranking should be cached');
   });
 });

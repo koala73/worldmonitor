@@ -5,6 +5,10 @@ import type {
   ResilienceRankingItem,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
+// NOTE: runRedisPipeline returns [] in tauri-sidecar mode (LOCAL_API_MODE),
+// so history reads/writes and batch score lookups degrade gracefully to
+// empty results. This is acceptable because resilience is a cloud-premium
+// feature; desktop users always get trend: 'stable', change30d: 0.
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { cronbachAlpha, detectTrend } from '../../../_shared/resilience-stats';
 import {
@@ -117,8 +121,11 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   const history: ResilienceHistoryPoint[] = [];
 
   for (let index = 0; index < raw.length; index += 2) {
-    const date = String(raw[index] || '');
-    const score = Number(raw[index + 1] || NaN);
+    const member = String(raw[index] || '');
+    const separatorIndex = member.indexOf(':');
+    if (separatorIndex < 0) continue;
+    const date = member.slice(0, separatorIndex);
+    const score = Number(member.slice(separatorIndex + 1));
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(score)) continue;
     history.push({ date, score });
   }
@@ -129,7 +136,7 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
 function computeLowConfidence(dimensions: ResilienceDimension[], cronbach: number): boolean {
   const averageCoverage = mean(dimensions.map((dimension) => dimension.coverage)) ?? 0;
   if (averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD) return true;
-  return cronbach > 0 && cronbach < LOW_CONFIDENCE_ALPHA_THRESHOLD;
+  return cronbach < LOW_CONFIDENCE_ALPHA_THRESHOLD;
 }
 
 async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[]> {
@@ -139,10 +146,16 @@ async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[
   return parseHistoryPoints(result[0]?.result);
 }
 
+function dateToSortScore(isoDate: string): number {
+  return Number(isoDate.replace(/-/g, ''));
+}
+
 async function appendHistory(countryCode: string, overallScore: number): Promise<void> {
+  const key = historyKey(countryCode);
+  const today = todayIsoDate();
   await runRedisPipeline([
-    ['ZADD', historyKey(countryCode), round(overallScore), todayIsoDate()],
-    ['ZREMRANGEBYRANK', historyKey(countryCode), 0, -31],
+    ['ZADD', key, dateToSortScore(today), `${today}:${round(overallScore)}`],
+    ['ZREMRANGEBYRANK', key, 0, -31],
   ]);
 }
 
