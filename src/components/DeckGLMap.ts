@@ -327,6 +327,25 @@ function ensureClosedRing(ring: [number, number][]): [number, number][] {
   return [...ring, first];
 }
 
+/**
+ * Computes a zoom-adaptive supercluster radius in pixels.
+ *
+ * At low zoom levels the radius is expanded so that geographically distant
+ * points on-screen are grouped into fewer, larger clusters — reducing the
+ * number of draw calls and keeping the map readable.  At high zoom levels the
+ * radius contracts to let clusters expand into individual markers sooner.
+ *
+ * @param baseRadius - Nominal pixel radius calibrated for mid-zoom (~6).
+ * @param zoom       - Integer map zoom level returned by supercluster.
+ * @returns Adjusted pixel radius clamped to a reasonable range.
+ */
+export function getDynamicClusterRadius(baseRadius: number, zoom: number): number {
+  if (zoom <= 2) return Math.round(baseRadius * 1.5);
+  if (zoom <= 4) return Math.round(baseRadius * 1.25);
+  if (zoom >= 10) return Math.round(baseRadius * 0.75);
+  return baseRadius;
+}
+
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
@@ -970,6 +989,42 @@ export class DeckGLMap {
     return result;
   }
 
+  /**
+   * Filters a geographic dataset to items within the current viewport plus a
+   * 20 % expansion margin to prevent pop-in at the edges during panning.
+   *
+   * Only applied when the dataset exceeds `minItems` to keep the overhead of
+   * the Array.filter call smaller than the rendering savings.  Smaller arrays
+   * are returned unchanged since deck.gl culls invisible points at the GPU.
+   *
+   * @param items    - Source data array with geographic coordinates.
+   * @param getLon   - Accessor returning WGS-84 longitude for an item.
+   * @param getLat   - Accessor returning WGS-84 latitude for an item.
+   * @param minItems - Minimum dataset size before viewport filtering kicks in.
+   */
+  private filterToViewport<T>(
+    items: T[],
+    getLon: (item: T) => number,
+    getLat: (item: T) => number,
+    minItems = 200,
+  ): T[] {
+    if (items.length < minItems) return items;
+    const bounds = this.maplibreMap?.getBounds();
+    if (!bounds) return items;
+    const w = bounds.getWest(), e = bounds.getEast();
+    const s = bounds.getSouth(), n = bounds.getNorth();
+    // 20 % expansion prevents pop-in when markers straddle the viewport edge.
+    const dLon = (e - w) * 0.2;
+    const dLat = (n - s) * 0.2;
+    const minLon = w - dLon, maxLon = e + dLon;
+    const minLat = s - dLat, maxLat = n + dLat;
+    return items.filter(item => {
+      const lon = getLon(item);
+      const lat = getLat(item);
+      return lon >= minLon && lon <= maxLon && lat >= minLat && lat <= maxLat;
+    });
+  }
+
   private getFilteredProtests(): SocialUnrestEvent[] {
     return this.filterByTime(this.protests, (event) => event.time);
   }
@@ -1019,8 +1074,8 @@ export class DeckGLMap {
       },
     }));
     this.protestSC = new Supercluster({
-      radius: 60,
-      maxZoom: 14,
+      radius: 80,
+      maxZoom: 16,
       map: (props: Record<string, unknown>) => ({
         index: Number(props.index ?? 0),
         country: String(props.country ?? ''),
@@ -1059,8 +1114,8 @@ export class DeckGLMap {
       },
     }));
     this.techHQSC = new Supercluster({
-      radius: 50,
-      maxZoom: 14,
+      radius: 70,
+      maxZoom: 16,
       map: (props: Record<string, unknown>) => ({
         index: Number(props.index ?? 0),
         city: String(props.city ?? ''),
@@ -1093,8 +1148,8 @@ export class DeckGLMap {
       },
     }));
     this.techEventSC = new Supercluster({
-      radius: 50,
-      maxZoom: 14,
+      radius: 65,
+      maxZoom: 16,
       map: (props: Record<string, unknown>) => {
         const daysUntil = Number(props.daysUntil ?? Number.MAX_SAFE_INTEGER);
         return {
@@ -1134,8 +1189,8 @@ export class DeckGLMap {
       },
     }));
     this.datacenterSC = new Supercluster({
-      radius: 70,
-      maxZoom: 14,
+      radius: 90,
+      maxZoom: 16,
       map: (props: Record<string, unknown>) => ({
         index: Number(props.index ?? 0),
         country: String(props.country ?? ''),
@@ -1156,6 +1211,14 @@ export class DeckGLMap {
     this.lastSCZoom = -1;
   }
 
+  /**
+   * Recalculates cluster output for all active supercluster layers.
+   *
+   * Skips work when the integer zoom level and viewport bounding box haven't
+   * changed by more than ~1 km (2 decimal-place precision ≈ 1.1 km at the
+   * equator).  This prevents redundant getClusters() calls during smooth
+   * panning and small viewport adjustments, keeping the 16 ms frame budget.
+   */
   private updateClusterData(): void {
     const zoom = Math.floor(this.maplibreMap?.getZoom() ?? 2);
     const bounds = this.maplibreMap?.getBounds();
@@ -1163,7 +1226,9 @@ export class DeckGLMap {
     const bbox: [number, number, number, number] = [
       bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth(),
     ];
-    const boundsKey = `${bbox[0].toFixed(4)}:${bbox[1].toFixed(4)}:${bbox[2].toFixed(4)}:${bbox[3].toFixed(4)}`;
+    // 2-decimal precision (~1.1 km at equator) avoids redundant recalculations
+    // during sub-kilometre panning while still tracking meaningful viewport shifts.
+    const boundsKey = `${bbox[0].toFixed(2)}:${bbox[1].toFixed(2)}:${bbox[2].toFixed(2)}:${bbox[3].toFixed(2)}`;
     const layers = this.state.layers;
     const useProtests = layers.protests && this.protestSuperclusterSource.length > 0;
     const useTechHQ = SITE_VARIANT === 'tech' && layers.techHQs;
@@ -1371,7 +1436,15 @@ export class DeckGLMap {
     const filteredRadiationObservations = mapLayers.radiationWatch ? this.filterByTimeCached(this.radiationObservations, (obs) => obs.observedAt) : [];
     const filteredPositiveEvents = mapLayers.positiveEvents ? this.filterByTimeCached(this.positiveEvents, (e) => e.timestamp) : [];
     const filteredIranEvents = mapLayers.iranAttacks ? this.filterByTimeCached(this.iranEvents, (e) => e.timestamp) : [];
-    const filteredFirmsFireData = mapLayers.fires ? this.filterByTimeCached(this.firmsFireData, (d) => d.acq_date) : [];
+    // Apply viewport windowing to large fire datasets: FIRMS can contain thousands
+    // of records globally; restricting to the visible region (+ 20 % margin) reduces
+    // the JS-side array size before deck.gl processes it.
+    const filteredFirmsFireData = mapLayers.fires
+      ? this.filterToViewport(
+          this.filterByTimeCached(this.firmsFireData, (d) => d.acq_date),
+          d => d.lon, d => d.lat,
+        )
+      : [];
     const filteredTrafficAnomalies = mapLayers.outages ? this.filterByTimeCached(this.trafficAnomalies, (a) => a.startDate) : [];
     const filteredKindnessPoints = mapLayers.kindness ? this.filterByTimeCached(this.kindnessPoints, (p) => p.timestamp) : [];
     const filteredImageryScenes = mapLayers.satellites ? this.filterByTimeCached(this.imageryScenes, (s) => s.datetime) : [];
@@ -1383,8 +1456,12 @@ export class DeckGLMap {
     const filteredMilitaryVessels = mapLayers.military ? this.filterByTimeCached(this.militaryVessels, (vessel) => vessel.lastAisUpdate) : [];
     const filteredMilitaryFlightClusters = mapLayers.military ? this.filterMilitaryFlightClustersByTimeCached(this.militaryFlightClusters) : [];
     const filteredMilitaryVesselClusters = mapLayers.military ? this.filterMilitaryVesselClustersByTimeCached(this.militaryVesselClusters) : [];
-    // UCDP is a historical dataset (events aged months); time-range filter always zeroes it out
-    const filteredUcdpEvents = mapLayers.ucdpEvents ? this.ucdpEvents : [];
+    // UCDP is a historical dataset (events aged months); time-range filter always zeroes it out.
+    // Apply viewport windowing so that the large static dataset is trimmed to the visible region
+    // before deck.gl processes it.
+    const filteredUcdpEvents = mapLayers.ucdpEvents
+      ? this.filterToViewport(this.ucdpEvents, d => d.longitude, d => d.latitude)
+      : [];
 
     // Day/night overlay (rendered first as background)
     if (mapLayers.dayNight) {
