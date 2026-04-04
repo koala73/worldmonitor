@@ -194,8 +194,28 @@ async function redisGet(key) {
 
 async function preservePreviousSnapshot(errorMsg) {
   console.error('[owid-energy-mix] Preserving previous snapshot:', errorMsg);
+
+  // Recover ISO2 list from the existing exposure index so we can extend TTL
+  // on all per-country keys — not just the index and meta keys.
+  const existingIndex = await redisGet(OWID_EXPOSURE_INDEX_KEY).catch(() => null);
+  const perCountryKeys = [];
+  if (existingIndex && typeof existingIndex === 'object') {
+    const iso2Set = new Set();
+    for (const fuel of ['gas', 'coal', 'oil', 'imported', 'renewable']) {
+      const entries = existingIndex[fuel];
+      if (Array.isArray(entries)) {
+        for (const e of entries) {
+          if (e?.iso2) iso2Set.add(e.iso2);
+        }
+      }
+    }
+    for (const iso2 of iso2Set) {
+      perCountryKeys.push(`${OWID_ENERGY_MIX_KEY_PREFIX}${iso2}`);
+    }
+  }
+
   await extendExistingTtl(
-    [OWID_EXPOSURE_INDEX_KEY, OWID_META_KEY],
+    [...perCountryKeys, OWID_EXPOSURE_INDEX_KEY, OWID_META_KEY],
     OWID_TTL_SECONDS,
   );
   const metaPayload = {
