@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import countryNames from '../../../../shared/country-names.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
-import { ISO2_TO_ISO3 as CONFLICT_ISO2_TO_ISO3 } from '../../conflict/v1/_shared';
 
 export type ResilienceDimensionId =
   | 'macroFiscal'
@@ -161,10 +164,16 @@ for (const [name, iso2] of Object.entries(countryNames as Record<string, string>
   COUNTRY_NAME_ALIASES.set(code, current);
 }
 
-const ISO2_TO_ISO3: Record<string, string> = {
-  ...CONFLICT_ISO2_TO_ISO3,
-  NO: 'NOR',
-};
+const ISO2_TO_ISO3: Record<string, string> = {};
+{
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const geojson = JSON.parse(readFileSync(join(__dirname, '../../../../public/data/countries.geojson'), 'utf8'));
+  for (const feature of geojson?.features ?? []) {
+    const iso2 = String(feature?.properties?.['ISO3166-1-Alpha-2'] ?? '').toUpperCase();
+    const iso3 = String(feature?.properties?.['ISO3166-1-Alpha-3'] ?? '').toUpperCase();
+    if (/^[A-Z]{2}$/.test(iso2) && /^[A-Z]{3}$/.test(iso3)) ISO2_TO_ISO3[iso2] = iso3;
+  }
+}
 
 const RESILIENCE_DOMAIN_WEIGHTS: Record<ResilienceDomainId, number> = {
   economic: 0.22,
@@ -323,7 +332,11 @@ async function defaultSeedReader(key: string): Promise<unknown | null> {
 export function createMemoizedSeedReader(reader: ResilienceSeedReader = defaultSeedReader): ResilienceSeedReader {
   const cache = new Map<string, Promise<unknown | null>>();
   return async (key: string) => {
-    if (!cache.has(key)) cache.set(key, Promise.resolve(reader(key)));
+    if (!cache.has(key)) {
+      const p = Promise.resolve(reader(key));
+      cache.set(key, p);
+      p.catch(() => cache.delete(key));
+    }
     return cache.get(key)!;
   };
 }
@@ -354,7 +367,9 @@ function getLatestBisCreditEntry(raw: unknown, countryCode: string): BisCreditEn
   const entries: BisCreditEntry[] = Array.isArray((raw as { entries?: unknown[] } | null)?.entries)
     ? ((raw as { entries?: BisCreditEntry[] }).entries ?? [])
     : [];
-  const filtered = entries.filter((entry) => matchesCountryIdentifier(entry.countryCode, countryCode));
+  const filtered = entries
+    .filter((entry) => matchesCountryIdentifier(entry.countryCode, countryCode))
+    .sort((a, b) => dateToSortableNumber((a as { date?: unknown }).date) - dateToSortableNumber((b as { date?: unknown }).date));
   if (!filtered.length) return null;
   return filtered[filtered.length - 1]!;
 }
@@ -622,8 +637,8 @@ export async function scoreTradeSanctions(
 
   return weightedBlend([
     { score: sanctionsPressure == null ? null : normalizeLowerBetter(sanctionsPressure, 0, 500), weight: 0.55 },
-    { score: restrictionCount > 0 ? normalizeLowerBetter(restrictionCount, 0, 30) : null, weight: 0.25 },
-    { score: barrierCount > 0 ? normalizeLowerBetter(barrierCount, 0, 40) : null, weight: 0.2 },
+    { score: restrictionsRaw != null ? normalizeLowerBetter(restrictionCount, 0, 30) : null, weight: 0.25 },
+    { score: barriersRaw != null ? normalizeLowerBetter(barrierCount, 0, 40) : null, weight: 0.2 },
   ]);
 }
 
@@ -643,9 +658,9 @@ export async function scoreCyberDigital(
   const gpsPenalty = gps.high * 3 + gps.medium;
 
   return weightedBlend([
-    { score: cyber.weightedCount > 0 ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45 },
-    { score: outagePenalty > 0 ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35 },
-    { score: gpsPenalty > 0 ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2 },
+    { score: cyberRaw != null ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45 },
+    { score: outagesRaw != null ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35 },
+    { score: gpsRaw != null ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2 },
   ]);
 }
 
@@ -739,7 +754,7 @@ export async function scoreSocialCohesion(
         : normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7),
       weight: 0.25,
     },
-    { score: unrestMetric > 0 ? normalizeLowerBetter(unrestMetric, 0, 20) : null, weight: 0.2 },
+    { score: unrestRaw != null ? normalizeLowerBetter(unrestMetric, 0, 20) : null, weight: 0.2 },
   ]);
 }
 
@@ -757,7 +772,7 @@ export async function scoreBorderSecurity(
   const displacementMetric = safeNum(displacement?.hostTotal) ?? safeNum(displacement?.totalDisplaced);
 
   return weightedBlend([
-    { score: conflictMetric > 0 ? normalizeLowerBetter(conflictMetric, 0, 30) : null, weight: 0.65 },
+    { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 30) : null, weight: 0.65 },
     {
       score: displacementMetric == null
         ? null
