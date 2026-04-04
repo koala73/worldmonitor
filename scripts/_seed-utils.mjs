@@ -349,28 +349,25 @@ export function curlFetch(url, proxyAuth, headers = {}) {
 // Bare/undeclared-scheme proxies always use TLS (Decodo gate.decodo.com requires it).
 // Explicit http:// proxies use plain TCP to avoid breaking non-TLS setups.
 async function httpsProxyFetchJson(url, proxyAuth) {
-  const targetUrl = new URL(url);
+  const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json' });
+  return JSON.parse(buffer.toString('utf8'));
+}
 
-  // Detect whether the proxy URL specifies http:// explicitly (plain TCP) or not
-  // (bare format or https:// → TLS). User instruction: bare → always TLS.
+export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeoutMs = 20_000 } = {}) {
+  const targetUrl = new URL(url);
   const explicitHttp = proxyAuth.startsWith('http://') && !proxyAuth.startsWith('https://');
   const useTls = !explicitHttp;
-
-  // Strip scheme prefix, parse user:pass@host:port.
   let proxyAuthStr = proxyAuth;
   if (proxyAuth.startsWith('https://') || proxyAuth.startsWith('http://')) {
     const u = new URL(proxyAuth);
     proxyAuthStr = (u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}@` : '') + `${u.hostname}:${u.port}`;
   }
-
   const atIdx = proxyAuthStr.lastIndexOf('@');
   const credentials = atIdx >= 0 ? proxyAuthStr.slice(0, atIdx) : '';
   const hostPort = atIdx >= 0 ? proxyAuthStr.slice(atIdx + 1) : proxyAuthStr;
   const colonIdx = hostPort.lastIndexOf(':');
   const proxyHost = hostPort.slice(0, colonIdx);
   const proxyPort = parseInt(hostPort.slice(colonIdx + 1), 10);
-
-  // Step 1: Open socket to proxy (TLS for https:// or bare, plain TCP for http://).
   const proxySock = await new Promise((resolve, reject) => {
     if (useTls) {
       const s = tls.connect({ host: proxyHost, port: proxyPort, servername: proxyHost, ALPNProtocols: ['http/1.1'] }, () => resolve(s));
@@ -380,15 +377,8 @@ async function httpsProxyFetchJson(url, proxyAuth) {
       s.on('error', reject);
     }
   });
-
-  // Step 2: Send HTTP CONNECT manually (avoids Node.js http.request auto-setting
-  // Host to the proxy hostname, which Decodo rejects with SOCKS5 bytes).
   const authHeader = credentials ? `\r\nProxy-Authorization: Basic ${Buffer.from(credentials).toString('base64')}` : '';
   proxySock.write(`CONNECT ${targetUrl.hostname}:443 HTTP/1.1\r\nHost: ${targetUrl.hostname}:443${authHeader}\r\n\r\n`);
-
-  // Step 3: Buffer until the full CONNECT response headers arrive (\r\n\r\n).
-  // Using a single 'data' event is not safe — headers may arrive fragmented across
-  // multiple packets, leaving unread bytes that corrupt the subsequent TLS handshake.
   await new Promise((resolve, reject) => {
     let buf = '';
     const onData = (chunk) => {
@@ -406,30 +396,26 @@ async function httpsProxyFetchJson(url, proxyAuth) {
     proxySock.on('data', onData);
     proxySock.on('error', reject);
   });
-
-  // Step 4: TLS over the proxy tunnel (TLS-in-TLS) to reach the target server.
   const tlsSock = tls.connect({ socket: proxySock, servername: targetUrl.hostname, ALPNProtocols: ['http/1.1'] });
   await new Promise((resolve, reject) => {
     tlsSock.on('secureConnect', resolve);
     tlsSock.on('error', reject);
   });
   proxySock.resume();
-
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { tlsSock.destroy(); reject(new Error('FRED proxy fetch timeout')); }, 20000);
+    const timer = setTimeout(() => { tlsSock.destroy(); reject(new Error('proxy fetch timeout')); }, timeoutMs);
     const fail = (e) => { clearTimeout(timer); tlsSock.destroy(); reject(e); };
-
     https.request({
       host: targetUrl.hostname,
       path: targetUrl.pathname + targetUrl.search,
       method: 'GET',
-      headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip', 'User-Agent': CHROME_UA },
+      headers: { Accept: accept, 'Accept-Encoding': 'gzip', 'User-Agent': CHROME_UA },
       createConnection: () => tlsSock,
     }, (resp) => {
       clearTimeout(timer);
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
-        return reject(Object.assign(new Error(`HTTP ${resp.statusCode}`), { status: resp.statusCode }));
+        return fail(Object.assign(new Error(`HTTP ${resp.statusCode}`), { status: resp.statusCode }));
       }
       const chunks = [];
       resp.on('data', c => chunks.push(c));
@@ -437,7 +423,7 @@ async function httpsProxyFetchJson(url, proxyAuth) {
         const body = Buffer.concat(chunks);
         const isGzip = (resp.headers['content-encoding'] || '').includes('gzip');
         (isGzip ? gunzip(body) : Promise.resolve(body))
-          .then(data => { try { resolve(JSON.parse(data.toString('utf8'))); } catch (e) { fail(e); } })
+          .then(data => resolve({ buffer: data, contentType: resp.headers['content-type'] || '' }))
           .catch(fail);
       });
       resp.on('error', fail);
