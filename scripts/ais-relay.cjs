@@ -5839,7 +5839,7 @@ async function seedDodoPrices() {
       // so we build the proxied request manually with Authorization)
       if (PROXY_URL) {
         try {
-          const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+          const proxy = parseProxyUrl(PROXY_URL);
           const target = new URL(`${baseUrl}/products/${productId}`);
           const proxyResp = await new Promise((resolve, reject) => {
             const connectOpts = { host: proxy.host, port: proxy.port, method: 'CONNECT', path: `${target.hostname}:443`, headers: {} };
