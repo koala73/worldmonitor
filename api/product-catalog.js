@@ -24,7 +24,7 @@ const DODO_API_KEY = process.env.DODO_API_KEY ?? '';
 const DODO_ENV = process.env.DODO_PAYMENTS_ENVIRONMENT ?? 'test_mode';
 const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 
-const CACHE_KEY = 'product-catalog:v1';
+const CACHE_KEY = 'product-catalog:v2';
 const CACHE_TTL = 3600; // 1 hour
 
 // Product IDs and their catalog metadata (non-price fields).
