@@ -7,7 +7,7 @@
  * Source: https://www.fao.org/media/docs/worldfoodsituationlibraries/default-document-library/food_price_indices_data.csv
  * Released: first Friday of each month ~08:30 UTC
  *
- * Railway cron: 30 8 1-7 * 5   (first Friday of each month at 08:30 UTC)
+ * Railway cron: 45 8 * * *   (daily at 08:45 UTC — over-seeds safely; FAO releases ~first Friday of month)
  */
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
