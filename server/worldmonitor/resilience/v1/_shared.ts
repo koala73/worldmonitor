@@ -5,10 +5,6 @@ import type {
   ResilienceRankingItem,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
-// NOTE: runRedisPipeline returns [] in tauri-sidecar mode (LOCAL_API_MODE),
-// so history reads/writes and batch score lookups degrade gracefully to
-// empty results. This is acceptable because resilience is a cloud-premium
-// feature; desktop users always get trend: 'stable', change30d: 0.
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { cronbachAlpha, detectTrend } from '../../../_shared/resilience-stats';
 import {
@@ -136,7 +132,7 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
 function computeLowConfidence(dimensions: ResilienceDimension[], cronbach: number): boolean {
   const averageCoverage = mean(dimensions.map((dimension) => dimension.coverage)) ?? 0;
   if (averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD) return true;
-  return cronbach < LOW_CONFIDENCE_ALPHA_THRESHOLD;
+  return cronbach > 0 && cronbach < LOW_CONFIDENCE_ALPHA_THRESHOLD;
 }
 
 async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[]> {
@@ -146,18 +142,11 @@ async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[
   return parseHistoryPoints(result[0]?.result);
 }
 
-function dateToSortScore(isoDate: string): number {
-  return Number(isoDate.replace(/-/g, ''));
-}
-
 async function appendHistory(countryCode: string, overallScore: number): Promise<void> {
-  const key = historyKey(countryCode);
-  const today = todayIsoDate();
-  const todayScore = dateToSortScore(today);
+  const dateScore = Number(todayIsoDate().replace(/-/g, ''));
   await runRedisPipeline([
-    ['ZREMRANGEBYSCORE', key, todayScore, todayScore],
-    ['ZADD', key, todayScore, `${today}:${round(overallScore)}`],
-    ['ZREMRANGEBYRANK', key, 0, -31],
+    ['ZADD', historyKey(countryCode), dateScore, `${todayIsoDate()}:${round(overallScore)}`],
+    ['ZREMRANGEBYRANK', historyKey(countryCode), 0, -31],
   ]);
 }
 

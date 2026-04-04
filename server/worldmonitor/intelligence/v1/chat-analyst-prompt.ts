@@ -10,9 +10,9 @@ const DOMAIN_EMPHASIS: Record<string, string> = {
 /** Context fields included per domain. 'all' includes everything. */
 const DOMAIN_SECTIONS: Record<string, Set<string>> = {
   market:   new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines']),
-  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'liveHeadlines']),
+  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'energyExposure', 'liveHeadlines']),
   military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines']),
-  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'liveHeadlines']),
+  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'energyExposure', 'liveHeadlines']),
 };
 
 export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: string): string {
@@ -42,6 +42,8 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
     contextSections.push(`## ${ctx.marketData}`);
   if (ctx.macroSignals && include('macroSignals'))
     contextSections.push(`## ${ctx.macroSignals}`);
+  if (ctx.energyExposure && include('energyExposure'))
+    contextSections.push(`## Energy Exposure\n${ctx.energyExposure}`);
   if (ctx.predictionMarkets && include('predictionMarkets'))
     contextSections.push(`## ${ctx.predictionMarkets}`);
   if (ctx.countryBrief && include('countryBrief'))

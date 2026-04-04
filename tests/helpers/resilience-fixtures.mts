@@ -4,12 +4,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   'resilience:static:NO': {
     wgi: {
       indicators: {
-        'VA.EST': { value: 1.9, year: 2025 },
-        'PV.EST': { value: 1.7, year: 2025 },
-        'GE.EST': { value: 1.8, year: 2025 },
-        'RQ.EST': { value: 1.9, year: 2025 },
-        'RL.EST': { value: 1.8, year: 2025 },
-        'CC.EST': { value: 1.9, year: 2025 },
+        VA: { value: 1.9, year: 2025 },
+        PV: { value: 1.7, year: 2025 },
+        GE: { value: 1.8, year: 2025 },
+        RQ: { value: 1.9, year: 2025 },
+        RL: { value: 1.8, year: 2025 },
+        CC: { value: 1.9, year: 2025 },
       },
     },
     infrastructure: {
@@ -34,12 +34,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   'resilience:static:US': {
     wgi: {
       indicators: {
-        'VA.EST': { value: 0.9, year: 2025 },
-        'PV.EST': { value: 0.6, year: 2025 },
-        'GE.EST': { value: 1.1, year: 2025 },
-        'RQ.EST': { value: 1.2, year: 2025 },
-        'RL.EST': { value: 1.0, year: 2025 },
-        'CC.EST': { value: 1.1, year: 2025 },
+        VA: { value: 0.9, year: 2025 },
+        PV: { value: 0.6, year: 2025 },
+        GE: { value: 1.1, year: 2025 },
+        RQ: { value: 1.2, year: 2025 },
+        RL: { value: 1.0, year: 2025 },
+        CC: { value: 1.1, year: 2025 },
       },
     },
     infrastructure: {
@@ -64,12 +64,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   'resilience:static:YE': {
     wgi: {
       indicators: {
-        'VA.EST': { value: -1.9, year: 2025 },
-        'PV.EST': { value: -2.3, year: 2025 },
-        'GE.EST': { value: -1.8, year: 2025 },
-        'RQ.EST': { value: -1.7, year: 2025 },
-        'RL.EST': { value: -2.0, year: 2025 },
-        'CC.EST': { value: -2.1, year: 2025 },
+        VA: { value: -1.9, year: 2025 },
+        PV: { value: -2.3, year: 2025 },
+        GE: { value: -1.8, year: 2025 },
+        RQ: { value: -1.7, year: 2025 },
+        RL: { value: -2.0, year: 2025 },
+        CC: { value: -2.1, year: 2025 },
       },
     },
     infrastructure: {
@@ -90,6 +90,51 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     fao: { peopleInCrisis: 2_000_000, phase: 'IPC Phase 4', year: 2025 },
     aquastat: { indicator: 'Water stress', value: 85, year: 2024 },
     iea: { energyImportDependency: { value: 95, year: 2024, source: 'IEA' } },
+  },
+  'energy:mix:v1:NO': {
+    iso2: 'NO',
+    country: 'Norway',
+    year: 2023,
+    coalShare: 0,
+    gasShare: 5,
+    oilShare: 0,
+    nuclearShare: 0,
+    renewShare: 97,
+    windShare: 12,
+    solarShare: 1,
+    hydroShare: 84,
+    importShare: -500,
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  'energy:mix:v1:US': {
+    iso2: 'US',
+    country: 'United States',
+    year: 2023,
+    coalShare: 16,
+    gasShare: 42,
+    oilShare: 1,
+    nuclearShare: 18,
+    renewShare: 22,
+    windShare: 11,
+    solarShare: 5,
+    hydroShare: 6,
+    importShare: 5,
+    seededAt: '2026-04-04T00:00:00.000Z',
+  },
+  'energy:mix:v1:YE': {
+    iso2: 'YE',
+    country: 'Yemen',
+    year: 2023,
+    coalShare: 0,
+    gasShare: 0,
+    oilShare: 85,
+    nuclearShare: 0,
+    renewShare: 2,
+    windShare: 0,
+    solarShare: 2,
+    hydroShare: 0,
+    importShare: 95,
+    seededAt: '2026-04-04T00:00:00.000Z',
   },
   'economic:national-debt:v1': {
     entries: [
@@ -223,7 +268,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       { country: 'Yemen', deathsBest: 70, violenceType: 'VIOLENCE_TYPE_ONE_SIDED' },
     ],
   },
-  [`displacement:summary:v1:${new Date().getFullYear()}`]: {
+  'displacement:summary:v1': {
     summary: {
       countries: [
         { code: 'NO', totalDisplaced: 5_000, hostTotal: 2_000 },

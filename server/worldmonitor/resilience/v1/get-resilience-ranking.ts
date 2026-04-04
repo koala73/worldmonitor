@@ -28,10 +28,13 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
 
   let cachedScores = await getCachedResilienceScores(countryCodes);
   const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
-
   if (missing.length > 0) {
-    await warmMissingResilienceScores(missing);
-    cachedScores = await getCachedResilienceScores(countryCodes);
+    try {
+      await warmMissingResilienceScores(missing);
+      cachedScores = await getCachedResilienceScores(countryCodes);
+    } catch (err) {
+      console.warn('[resilience] ranking warmup failed:', err);
+    }
   }
 
   const response: GetResilienceRankingResponse = {

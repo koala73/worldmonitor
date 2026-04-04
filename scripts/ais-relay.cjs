@@ -9587,7 +9587,8 @@ Market & Crypto:
 Economic & Energy:
   macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
   euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
+  faoFoodPriceIndex
 
 Tech & Intelligence:
   techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
@@ -10167,7 +10168,8 @@ Market & Crypto:
 Economic & Energy:
   macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
   euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
+  faoFoodPriceIndex
 
 Tech & Intelligence:
   techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,

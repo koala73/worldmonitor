@@ -61,6 +61,7 @@ export * from './GulfEconomiesPanel';
 export * from './GroceryBasketPanel';
 export * from './BigMacPanel';
 export * from './FuelPricesPanel';
+export * from './FaoFoodPriceIndexPanel';
 export * from './WorldClockPanel';
 export { AirlineIntelPanel } from './AirlineIntelPanel';
 export { AviationCommandBar } from './AviationCommandBar';
