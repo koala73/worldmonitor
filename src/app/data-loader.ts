@@ -3148,13 +3148,8 @@ export class DataLoaderManager implements AppModule {
 
     try {
       const result = await getResilienceRanking();
-      const items = result.items.filter((item) => (
-        /^[A-Z]{2}$/.test(String(item.countryCode || '').trim().toUpperCase())
-        && Number.isFinite(item.overallScore)
-        && item.overallScore >= 0
-      ));
-      this.ctx.map?.setResilienceRanking(items);
-      this.ctx.map?.setLayerReady('resilienceScore', items.length > 0);
+      this.ctx.map?.setResilienceRanking(result.items);
+      this.ctx.map?.setLayerReady('resilienceScore', result.items.length > 0);
     } catch (error) {
       console.error('[App] Resilience ranking fetch failed:', error);
       this.ctx.map?.setResilienceRanking([]);

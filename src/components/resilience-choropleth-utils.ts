@@ -66,14 +66,12 @@ export function normalizeExclusiveChoropleths(
   const ciiJustEnabled = layers.ciiChoropleth && !(previousLayers?.ciiChoropleth ?? false);
 
   if (resilienceJustEnabled && !ciiJustEnabled) {
-    return {
-      ...layers,
-      ciiChoropleth: false,
-    };
+    return { ...layers, ciiChoropleth: false };
+  }
+  if (ciiJustEnabled && !resilienceJustEnabled) {
+    return { ...layers, resilienceScore: false };
   }
 
-  return {
-    ...layers,
-    resilienceScore: false,
-  };
+  // Both newly enabled (e.g. bookmark restore): CII is the established layer, keep it
+  return { ...layers, resilienceScore: false };
 }
