@@ -244,7 +244,7 @@ const FIXTURES: FixtureMap = {
       { country: 'Yemen', deathsBest: 70, violenceType: 'VIOLENCE_TYPE_ONE_SIDED' },
     ],
   },
-  'displacement:summary:v1': {
+  [`displacement:summary:v1:${new Date().getFullYear()}`]: {
     summary: {
       countries: [
         { code: 'NO', totalDisplaced: 5_000, hostTotal: 2_000 },

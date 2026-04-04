@@ -147,7 +147,7 @@ const RESILIENCE_OUTAGES_KEY = 'infra:outages:v1';
 const RESILIENCE_GPS_KEY = 'intelligence:gpsjam:v2';
 const RESILIENCE_UNREST_KEY = 'unrest:events:v1';
 const RESILIENCE_UCDP_KEY = 'conflict:ucdp-events:v1';
-const RESILIENCE_DISPLACEMENT_KEY = 'displacement:summary:v1';
+const RESILIENCE_DISPLACEMENT_PREFIX = 'displacement:summary:v1';
 const RESILIENCE_SOCIAL_VELOCITY_KEY = 'intelligence:social:reddit:v1';
 const RESILIENCE_NEWS_THREAT_SUMMARY_KEY = 'news:threat:summary:v1';
 const RESILIENCE_ENERGY_PRICES_KEY = 'economic:energy:v1:all';
@@ -292,11 +292,15 @@ function matchesCountryIdentifier(value: unknown, countryCode: string): boolean 
   return getCountryAliases(countryCode).has(normalized);
 }
 
+const AMBIGUOUS_ALIASES = new Set([
+  'guinea', 'congo', 'niger', 'samoa', 'sudan', 'korea', 'virgin', 'georgia', 'dominica',
+]);
+
 function matchesCountryText(value: unknown, countryCode: string): boolean {
   const normalized = normalizeCountryToken(value);
   if (!normalized) return false;
   for (const alias of COUNTRY_NAME_ALIASES.get(countryCode.toUpperCase()) ?? []) {
-    if (!alias.includes(' ') && alias.length < 6) continue;
+    if (AMBIGUOUS_ALIASES.has(alias)) continue;
     if (` ${normalized} `.includes(` ${alias} `)) return true;
   }
   return false;
@@ -718,7 +722,7 @@ export async function scoreSocialCohesion(
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, displacementRaw, unrestRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
-    reader(RESILIENCE_DISPLACEMENT_KEY),
+    reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
     reader(RESILIENCE_UNREST_KEY),
   ]);
   const gpiScore = safeNum(staticRecord?.gpi?.score);
@@ -745,7 +749,7 @@ export async function scoreBorderSecurity(
 ): Promise<ResilienceDimensionScore> {
   const [ucdpRaw, displacementRaw] = await Promise.all([
     reader(RESILIENCE_UCDP_KEY),
-    reader(RESILIENCE_DISPLACEMENT_KEY),
+    reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
   ]);
   const ucdp = summarizeUcdp(ucdpRaw, countryCode);
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
