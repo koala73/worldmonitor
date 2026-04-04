@@ -227,18 +227,23 @@ const STOPWORDS = new Set([
 
 const MAX_KEYWORDS = 8;
 
+// 2-letter tokens that are high-signal in news retrieval regardless of how
+// the user typed them (lowercase queries like "us sanctions" or "ai exports"
+// are just as valid as "US sanctions" or "AI exports").
+const KNOWN_2CHAR_ACRONYMS = new Set(['us', 'uk', 'eu', 'un', 'ai']);
+
 function extractKeywords(query: string): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const raw of query.split(/\W+/)) {
     if (!raw) continue;
-    // Preserve 2-char uppercase acronyms (US, UK, EU, UN, AI, etc.) before lowercasing
-    if (raw.length === 2 && /^[A-Z]{2}$/.test(raw)) {
-      const lower = raw.toLowerCase();
+    const lower = raw.toLowerCase();
+    // Preserve 2-char tokens that are either known acronyms (case-insensitive)
+    // or typed in uppercase — both signal intentional abbreviation.
+    if (raw.length === 2 && (KNOWN_2CHAR_ACRONYMS.has(lower) || /^[A-Z]{2}$/.test(raw))) {
       if (!seen.has(lower)) { seen.add(lower); result.push(lower); }
       continue;
     }
-    const lower = raw.toLowerCase();
     if (lower.length > 2 && !STOPWORDS.has(lower) && !seen.has(lower)) {
       seen.add(lower);
       result.push(lower);
