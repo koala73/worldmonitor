@@ -147,7 +147,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public showLoading(): void {
-    this.destroyResilienceWidget();
     this.currentCode = '__loading__';
     this.currentName = null;
     this.renderLoading();
@@ -155,10 +154,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public showGeoError(onRetry: () => void): void {
-    this.destroyResilienceWidget();
     this.currentCode = '__error__';
     this.currentName = null;
-    this.content.replaceChildren();
+    this.resetPanelContent();
 
     const wrapper = this.el('div', 'cdp-geo-error');
     wrapper.append(
@@ -184,7 +182,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
     this.abortController.abort();
     this.abortController = new AbortController();
-    this.destroyResilienceWidget();
     this.currentCode = code;
     this.currentName = country;
     this.economicIndicators = [];
@@ -611,9 +608,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private renderLoading(): void {
-    this.destroyResilienceWidget();
-    this.scoreCard = null;
-    this.content.replaceChildren();
+    this.resetPanelContent();
     const loading = this.el('div', 'cdp-loading');
     loading.append(
       this.el('div', 'cdp-loading-title', t('countryBrief.identifying')),
@@ -624,8 +619,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private renderSkeleton(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
-    this.destroyResilienceWidget();
-    this.content.replaceChildren();
+    this.resetPanelContent();
 
     const shell = this.el('div', 'cdp-shell');
     const header = this.el('header', 'cdp-header');
@@ -746,6 +740,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private destroyResilienceWidget(): void {
     this.resilienceWidget?.destroy();
     this.resilienceWidget = null;
+  }
+
+  private resetPanelContent(): void {
+    this.destroyResilienceWidget();
+    this.scoreCard = null;
+    this.content.replaceChildren();
   }
 
   private renderInitialSignals(signals: CountryBriefSignals): void {
