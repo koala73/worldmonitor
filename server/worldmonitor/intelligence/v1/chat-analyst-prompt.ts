@@ -29,7 +29,7 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
   const contextSections: string[] = [];
 
   if (ctx.relevantArticles && include('relevantArticles'))
-    contextSections.push(`## ${ctx.relevantArticles}`);
+    contextSections.push(`## Matched News Articles\n${ctx.relevantArticles}`);
   if (ctx.worldBrief && include('worldBrief'))
     contextSections.push(`## Current Situation\n${ctx.worldBrief}`);
   if (ctx.riskScores && include('riskScores'))

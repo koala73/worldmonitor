@@ -375,7 +375,7 @@ async function searchDigestByKeywords(keywords: string[]): Promise<string> {
     return `- ${title}${meta ? ` (${meta})` : ''}`;
   });
 
-  return `Matched News Articles:\n${lines.join('\n')}`;
+  return lines.join('\n');
 }
 
 // ── Source labels ─────────────────────────────────────────────────────────────
