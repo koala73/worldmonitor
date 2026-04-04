@@ -117,7 +117,8 @@ const COUNTRY_NAME_ENTRIES = Object.entries(COUNTRY_NAME_TO_ISO2)
 
 export function matchCountryNamesInText(text) {
   const matched = [];
-  let remaining = text.toLowerCase();
+  let remaining = text.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+    .replace(/['.(),/-]/g, ' ').replace(/\s+/g, ' ');
   for (const { code, regex } of COUNTRY_NAME_ENTRIES) {
     if (regex.test(remaining)) {
       matched.push(code);
