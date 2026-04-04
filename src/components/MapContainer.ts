@@ -149,8 +149,11 @@ export class MapContainer {
     this.isMobile = isMobileDevice();
     this.useGlobe = preferGlobe && this.hasWebGLSupport();
 
-    // Use deck.gl on desktop with WebGL support, SVG on mobile
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
+
+    if (!this.useDeckGL && this.initialState.layers?.resilienceScore) {
+      this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
+    }
 
     this.init();
   }
@@ -394,8 +397,9 @@ export class MapContainer {
   }
 
   public setLayers(layers: MapLayers): void {
-    if (this.useGlobe) { this.globeMap?.setLayers(layers); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setLayers(layers); } else { this.svgMap?.setLayers(layers); }
+    const sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
   }
 
   public getState(): MapContainerState {
