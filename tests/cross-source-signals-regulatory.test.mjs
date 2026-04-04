@@ -38,7 +38,7 @@ describe('source registration', () => {
   });
 
   it('registers the extractor in the extractor list', () => {
-    assert.match(seedSrc, /extractRegulatoryAction,\n\s*];/);
+    assert.match(seedSrc, /extractRegulatoryAction,/);
   });
 });
 

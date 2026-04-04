@@ -739,13 +739,13 @@ function extractRegulatoryAction(d) {
     const tierMult = action.tier === 'high' ? 1.5 : 1.0;
     const score = BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION * tierMult;
     return {
-      id: `regulatory:${action.id}`,
+      id: `regulatory:${action.id ?? 'unknown'}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION',
       theater: 'Global Markets',
-      summary: `${action.agency}: ${action.title}`,
+      summary: `${action.agency ?? 'Unknown agency'}: ${action.title ?? 'No title'}`,
       severity: scoreTier(score),
       severityScore: score,
-      detectedAt: publishedAtTs || Date.now(),
+      detectedAt: publishedAtTs,
       contributingTypes: [],
       signalCount: 0,
     };
