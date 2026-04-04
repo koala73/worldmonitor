@@ -135,7 +135,7 @@ describe('seed-climate-disasters helpers', () => {
     assert.equal(merged[0].source, 'ReliefWeb');
   });
 
-  it('emits the required snake_case Redis output shape', () => {
+  it('emits the required camelCase Redis output shape', () => {
     const row = toRedisDisaster({
       id: 'gdacs-TC-123',
       type: 'cyclone',
@@ -157,19 +157,19 @@ describe('seed-climate-disasters helpers', () => {
       'type',
       'name',
       'country',
-      'country_code',
+      'countryCode',
       'lat',
       'lng',
       'severity',
-      'started_at',
+      'startedAt',
       'status',
-      'affected_population',
+      'affectedPopulation',
       'source',
-      'source_url',
+      'sourceUrl',
     ]);
-    assert.equal(row.country_code, 'JP');
-    assert.equal(row.started_at, 1_700_000_000_000);
-    assert.equal(row.affected_population, 42);
-    assert.equal(row.source_url, 'https://www.gdacs.org/');
+    assert.equal(row.countryCode, 'JP');
+    assert.equal(row.startedAt, 1_700_000_000_000);
+    assert.equal(row.affectedPopulation, 42);
+    assert.equal(row.sourceUrl, 'https://www.gdacs.org/');
   });
 });

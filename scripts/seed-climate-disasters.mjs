@@ -10,7 +10,7 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'climate:disasters:v1';
 const NATURAL_EVENTS_KEY = 'natural:events:v1';
-const CACHE_TTL = 21600; // 6h — aligned to a 6h cron cadence
+const CACHE_TTL = 64800; // 18h — 3x the 6h cron interval (gold standard)
 
 const RELIEFWEB_ENDPOINTS = [
   'https://api.reliefweb.int/v1/disasters',
@@ -93,9 +93,11 @@ function mapReliefType(typeCode, typeName) {
 }
 
 function getNaturalSourceMeta(event) {
-  const sourceText = `${event?.sourceName || ''} ${event?.sourceUrl || ''}`.toLowerCase();
-  if (sourceText.includes('firms')) return { source: 'NASA FIRMS' };
-  if (sourceText.includes('gdacs') || String(event?.id || '').startsWith('gdacs-')) return { source: 'GDACS' };
+  const name = String(event?.sourceName || '').toLowerCase();
+  const url = String(event?.sourceUrl || '').toLowerCase();
+  const id = String(event?.id || '');
+  if (name === 'nasa firms' || name.startsWith('firms') || url.includes('firms.modaps.')) return { source: 'NASA FIRMS' };
+  if (name === 'gdacs' || name.startsWith('gdacs') || url.includes('gdacs.org') || id.startsWith('gdacs-')) return { source: 'GDACS' };
   return null;
 }
 
@@ -305,6 +307,7 @@ async function fetchReliefWeb() {
 
         const mapped = rows.map(mapReliefItem).filter(Boolean);
         if (mapped.length > 0) return mapped;
+        if (rows.length > 0) console.warn(`[climate-disasters] ${rows.length} ReliefWeb rows returned but all mapped to null`);
       } catch (err) {
         lastError = err;
         const message = String(err?.message || err);
@@ -395,15 +398,15 @@ function toRedisDisaster(entry) {
     type: String(entry.type || ''),
     name: String(entry.name || ''),
     country: String(entry.country || ''),
-    country_code: String(entry.countryCode || ''),
+    countryCode: String(entry.countryCode || ''),
     lat: Number(entry.lat || 0),
     lng: Number(entry.lng || 0),
     severity: String(entry.severity || ''),
-    started_at: Number(entry.startedAt || 0),
+    startedAt: Number(entry.startedAt || 0),
     status: String(entry.status || ''),
-    affected_population: Number(entry.affectedPopulation || 0),
+    affectedPopulation: Number(entry.affectedPopulation || 0),
     source: String(entry.source || ''),
-    source_url: String(entry.sourceUrl || ''),
+    sourceUrl: String(entry.sourceUrl || ''),
   };
 }
 
