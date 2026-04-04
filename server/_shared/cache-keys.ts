@@ -126,6 +126,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   pizzint:          'intelligence:pizzint:seed:v1',
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
   economicStress:   'economic:stress-index:v1',
+  faoFoodPriceIndex: 'economic:fao-ffpi:v1',
 };
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
@@ -169,4 +170,5 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   pizzint: 'slow',
   diseaseOutbreaks: 'slow',
   economicStress: 'slow',
+  faoFoodPriceIndex: 'slow',
 };
