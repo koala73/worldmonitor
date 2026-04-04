@@ -7,10 +7,17 @@ import {
   type AnomalySeverity as ProtoAnomalySeverity,
   type AnomalyType as ProtoAnomalyType,
   type GetCo2MonitoringResponse,
+  type GetOceanIceDataResponse,
   type ListClimateAnomaliesResponse,
 } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import {
+  normalizeHydratedOceanIce,
+  toDisplayOceanIceData,
+  type OceanIceIndicators,
+  type OceanIceSeedSnakeShape,
+} from './ocean-ice';
 
 // Re-export consumer-friendly type matching legacy shape exactly.
 // Consumers import this type from '@/services/climate' and see the same
@@ -62,12 +69,16 @@ export interface Co2Monitoring {
   station: string;
 }
 
+export type { OceanIceIndicators, OceanIceTrendPoint } from './ocean-ice';
+
 const client = new ClimateServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListClimateAnomaliesResponse>({ name: 'Climate Anomalies', cacheTtlMs: 20 * 60 * 1000, persistCache: true });
 const co2Breaker = createCircuitBreaker<GetCo2MonitoringResponse>({ name: 'CO2 Monitoring', cacheTtlMs: 6 * 60 * 60 * 1000, persistCache: true });
+const oceanIceBreaker = createCircuitBreaker<GetOceanIceDataResponse>({ name: 'Ocean Ice', cacheTtlMs: 26 * 60 * 60 * 1000, persistCache: true });
 
 const emptyClimateFallback: ListClimateAnomaliesResponse = { anomalies: [] };
 const emptyCo2Fallback: GetCo2MonitoringResponse = {};
+const emptyOceanIceFallback: GetOceanIceDataResponse = {};
 
 export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
   const hydrated = getHydratedData('climateAnomalies') as ListClimateAnomaliesResponse | undefined;
@@ -96,6 +107,20 @@ export async function fetchCo2Monitoring(): Promise<Co2Monitoring | null> {
   }, emptyCo2Fallback, { shouldCache: (result) => Boolean(result.monitoring?.currentPpm) });
 
   return response.monitoring ? toDisplayCo2Monitoring(response.monitoring) : null;
+}
+
+export async function fetchOceanIceData(): Promise<OceanIceIndicators | null> {
+  const hydrated = getHydratedData('oceanIce') as GetOceanIceDataResponse | OceanIceSeedSnakeShape | undefined;
+  const hydratedProto = normalizeHydratedOceanIce(hydrated);
+  if (hydratedProto) {
+    return toDisplayOceanIceData(hydratedProto);
+  }
+
+  const response = await oceanIceBreaker.execute(async () => {
+    return client.getOceanIceData({});
+  }, emptyOceanIceFallback, { shouldCache: (result) => Boolean(result.data) });
+
+  return response.data ? toDisplayOceanIceData(response.data) : null;
 }
 
 // Presentation helpers (used by ClimateAnomalyPanel)

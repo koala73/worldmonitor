@@ -12,6 +12,7 @@ import {
   Landmark, Fuel
 } from 'lucide-react';
 import { t } from './i18n';
+import { initOverlay } from './services/checkout';
 import { PricingSection } from './components/PricingSection';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
 import wiredLogo from './assets/wired-logo.svg';
@@ -1149,6 +1150,25 @@ const EnterprisePage = () => (
 /* ─── Page Layout ─── */
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
+
+  // Initialize Dodo checkout overlay with success handler
+  useEffect(() => {
+    initOverlay(() => {
+      // Show success banner
+      const banner = document.createElement('div');
+      Object.assign(banner.style, {
+        position: 'fixed', top: '0', left: '0', right: '0', zIndex: '99999',
+        padding: '14px 20px', background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+        color: '#fff', fontWeight: '600', fontSize: '14px', textAlign: 'center',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.3)', transition: 'opacity 0.4s ease, transform 0.4s ease',
+        transform: 'translateY(-100%)', opacity: '0',
+      });
+      banner.textContent = 'Payment received! Unlocking your premium features...';
+      document.body.appendChild(banner);
+      requestAnimationFrame(() => { banner.style.transform = 'translateY(0)'; banner.style.opacity = '1'; });
+      setTimeout(() => { window.location.href = 'https://worldmonitor.app'; }, 3000);
+    });
+  }, []);
 
   useEffect(() => {
     const onHash = () => {

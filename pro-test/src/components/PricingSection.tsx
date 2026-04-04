@@ -1,103 +1,45 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Check, ArrowRight, Zap } from 'lucide-react';
+import { startCheckout } from '../services/checkout';
+
+// Static fallback from build-time generation (used while fetching live prices)
+import fallbackTiers from '../generated/tiers.json';
 
 interface Tier {
   name: string;
   description: string;
   features: string[];
   highlighted?: boolean;
-  // Pricing variants
   price?: number | null;
   period?: string;
   monthlyPrice?: number;
   annualPrice?: number | null;
-  // CTA variants
   cta?: string;
   href?: string;
   monthlyProductId?: string;
   annualProductId?: string;
 }
 
-const TIERS: Tier[] = [
-  {
-    name: "Free",
-    price: 0,
-    period: "forever",
-    description: "Get started with the essentials",
-    features: [
-      "Core dashboard panels",
-      "Global news feed",
-      "Earthquake & weather alerts",
-      "Basic map view",
-    ],
-    cta: "Get Started",
-    href: "https://worldmonitor.app",
-    highlighted: false,
-  },
-  {
-    name: "Pro",
-    monthlyPrice: 19,
-    annualPrice: 190,
-    description: "Full intelligence dashboard",
-    features: [
-      "Everything in Free",
-      "AI stock analysis & backtesting",
-      "Daily market briefs",
-      "Military & geopolitical tracking",
-      "Custom widget builder",
-      "MCP data connectors",
-      "Priority data refresh",
-    ],
-    monthlyProductId: "pdt_0NaysSFAQ0y30nJOJMBpg",
-    annualProductId: "pdt_0NaysWqJBx3laiCzDbQfr",
-    highlighted: true,
-  },
-  {
-    name: "API",
-    monthlyPrice: 49,
-    annualPrice: null,
-    description: "Programmatic access to intelligence data",
-    features: [
-      "REST API access",
-      "Real-time data streams",
-      "10,000 requests/day",
-      "Webhook notifications",
-      "Custom data exports",
-    ],
-    monthlyProductId: "pdt_0NaysZwxCyk9Satf1jbqU",
-    highlighted: false,
-  },
-  {
-    name: "Enterprise",
-    price: null,
-    description: "Custom solutions for organizations",
-    features: [
-      "Everything in Pro + API",
-      "Unlimited API requests",
-      "Dedicated support",
-      "Custom integrations",
-      "SLA guarantee",
-      "On-premise option",
-    ],
-    cta: "Contact Sales",
-    href: "mailto:enterprise@worldmonitor.app",
-    highlighted: false,
-  },
-];
+const CATALOG_API = 'https://api.worldmonitor.app/api/product-catalog';
 
-const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/';
+function usePricingData(): Tier[] {
+  const [tiers, setTiers] = useState<Tier[]>(fallbackTiers as Tier[]);
 
-function buildCheckoutUrl(productId: string, refCode?: string): string {
-  // Route /pro buyers back into the authenticated dashboard checkout flow.
-  // The app captures the intent from the URL, prompts for sign-in if needed,
-  // and then creates the checkout server-side with authenticated identity.
-  const url = new URL(APP_CHECKOUT_BASE_URL);
-  url.searchParams.set('checkoutProduct', productId);
-  if (refCode) {
-    url.searchParams.set('checkoutReferral', refCode);
-  }
-  return url.toString();
+  useEffect(() => {
+    let cancelled = false;
+    fetch(CATALOG_API, { signal: AbortSignal.timeout(5000) })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!cancelled && data?.tiers?.length) {
+          setTiers(data.tiers as Tier[]);
+        }
+      })
+      .catch(() => { /* keep fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  return tiers;
 }
 
 function formatPrice(tier: Tier, billing: 'monthly' | 'annual'): { amount: string; suffix: string } {
@@ -120,37 +62,31 @@ function formatPrice(tier: Tier, billing: 'monthly' | 'annual'): { amount: strin
   return { amount: `$${tier.monthlyPrice}`, suffix: "/mo" };
 }
 
-function getCtaProps(tier: Tier, billing: 'monthly' | 'annual', refCode?: string): { label: string; href: string; external: boolean } {
-  // Free tier
+type CtaProps =
+  | { type: 'link'; label: string; href: string; external: boolean }
+  | { type: 'checkout'; label: string; productId: string };
+
+function getCtaProps(tier: Tier, billing: 'monthly' | 'annual'): CtaProps {
   if (tier.cta && tier.href && tier.price === 0) {
-    return { label: tier.cta, href: tier.href, external: true };
+    return { type: 'link', label: tier.cta, href: tier.href, external: true };
   }
-  // Enterprise
   if (tier.cta && tier.href && tier.price === null) {
-    return { label: tier.cta, href: tier.href, external: true };
+    return { type: 'link', label: tier.cta, href: tier.href, external: true };
   }
-  // Pro tier
-  if (tier.monthlyProductId && tier.annualProductId) {
-    const productId = billing === 'annual' ? tier.annualProductId : tier.monthlyProductId;
-    return {
-      label: "Get Started",
-      href: buildCheckoutUrl(productId, refCode),
-      external: true,
-    };
-  }
-  // API tier
   if (tier.monthlyProductId) {
-    return {
-      label: "Get Started",
-      href: buildCheckoutUrl(tier.monthlyProductId, refCode),
-      external: true,
-    };
+    const productId = (billing === 'annual' && tier.annualProductId) ? tier.annualProductId : tier.monthlyProductId;
+    return { type: 'checkout', label: 'Get Started', productId };
   }
-  return { label: "Learn More", href: "#", external: false };
+  return { type: 'link', label: 'Learn More', href: '#', external: false };
 }
 
 export function PricingSection({ refCode }: { refCode?: string }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
+  const TIERS = usePricingData();
+
+  const handleCheckout = useCallback((productId: string) => {
+    startCheckout(productId, { referralCode: refCode });
+  }, [refCode]);
 
   return (
     <section id="pricing" className="py-24 px-6 border-t border-wm-border bg-[#060606]">
@@ -219,7 +155,7 @@ export function PricingSection({ refCode }: { refCode?: string }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {TIERS.map((tier, i) => {
             const price = formatPrice(tier, billing);
-            const cta = getCtaProps(tier, billing, refCode);
+            const cta = getCtaProps(tier, billing);
 
             return (
               <motion.div
@@ -271,18 +207,31 @@ export function PricingSection({ refCode }: { refCode?: string }) {
                 </ul>
 
                 {/* CTA button */}
-                <a
-                  href={cta.href}
-                  target={cta.external ? "_blank" : undefined}
-                  rel={cta.external ? "noreferrer" : undefined}
-                  className={`block text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
-                    tier.highlighted
-                      ? 'bg-wm-green text-wm-bg hover:bg-green-400'
-                      : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
-                  }`}
-                >
-                  {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
-                </a>
+                {cta.type === 'link' ? (
+                  <a
+                    href={cta.href}
+                    target={cta.external ? "_blank" : undefined}
+                    rel={cta.external ? "noreferrer" : undefined}
+                    className={`block text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
+                      tier.highlighted
+                        ? 'bg-wm-green text-wm-bg hover:bg-green-400'
+                        : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
+                    }`}
+                  >
+                    {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => handleCheckout(cta.productId)}
+                    className={`block w-full text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors cursor-pointer ${
+                      tier.highlighted
+                        ? 'bg-wm-green text-wm-bg hover:bg-green-400'
+                        : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
+                    }`}
+                  >
+                    {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
+                  </button>
+                )}
               </motion.div>
             );
           })}

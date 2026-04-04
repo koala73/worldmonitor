@@ -110,6 +110,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/get-gdelt-topic-timeline': 'medium',
   '/api/climate/v1/list-climate-anomalies': 'static',
   '/api/climate/v1/get-co2-monitoring': 'static',
+  '/api/climate/v1/get-ocean-ice-data': 'static',
   '/api/climate/v1/list-air-quality-data': 'fast',
   '/api/climate/v1/list-climate-news': 'slow',
   '/api/sanctions/v1/list-sanctions-pressure': 'static',
@@ -208,6 +209,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/health/v1/list-disease-outbreaks': 'slow',
   '/api/health/v1/list-air-quality-alerts': 'fast',
   '/api/intelligence/v1/get-social-velocity': 'fast',
+  '/api/resilience/v1/get-resilience-score': 'slow',
+  '/api/resilience/v1/get-resilience-ranking': 'slow',
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
@@ -274,7 +277,7 @@ export function createDomainGateway(
     // API key validation — tier-gated endpoints require EITHER an API key OR a valid bearer token.
     // Authenticated users (sessionUserId present) bypass the API key requirement.
     const keyCheck = validateApiKey(request, {
-      forceKey: isTierGated && !sessionUserId,
+      forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
     });
     if (keyCheck.required && !keyCheck.valid) {
       if (needsLegacyProBearerGate) {

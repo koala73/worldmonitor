@@ -35,6 +35,18 @@ export async function resolveUserId(
 }
 
 /**
+ * Returns the full user identity (name, email, etc.) or null.
+ * Use when you need more than just the user ID (e.g., checkout prefill).
+ */
+export async function resolveUserIdentity(
+  ctx: QueryCtx | MutationCtx | ActionCtx,
+): Promise<{ subject: string; name?: string; givenName?: string; familyName?: string; email?: string } | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (identity?.subject) return identity;
+  return null;
+}
+
+/**
  * Returns the current user's ID or throws if unauthenticated.
  * Use for mutations/actions that always require auth.
  */

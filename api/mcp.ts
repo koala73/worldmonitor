@@ -187,14 +187,15 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_climate_data',
-    description: 'Climate anomalies, NOAA atmospheric greenhouse gas monitoring (CO2 ppm, methane ppb, N2O ppb, Mauna Loa 12-month trend), weather alerts, and natural environmental events from WorldMonitor climate feeds.',
+    description: 'Climate anomalies, NOAA atmospheric greenhouse gas monitoring (CO2 ppm, methane ppb, N2O ppb, Mauna Loa 12-month trend), Arctic sea ice and ocean heat indicators, weather alerts, and natural environmental events from WorldMonitor climate feeds.',
     inputSchema: { type: 'object', properties: {}, required: [] },
-    _cacheKeys: ['climate:anomalies:v2', 'climate:co2-monitoring:v1', 'weather:alerts:v1'],
+    _cacheKeys: ['climate:anomalies:v2', 'climate:co2-monitoring:v1', 'climate:ocean-ice:v1', 'weather:alerts:v1'],
     _seedMetaKey: 'seed-meta:climate:co2-monitoring',
     _maxStaleMin: 2880,
     _freshnessChecks: [
       { key: 'seed-meta:climate:anomalies', maxStaleMin: 120 },
       { key: 'seed-meta:climate:co2-monitoring', maxStaleMin: 2880 },
+      { key: 'seed-meta:climate:ocean-ice', maxStaleMin: 1440 },
       { key: 'seed-meta:weather:alerts', maxStaleMin: 45 },
     ],
   },
