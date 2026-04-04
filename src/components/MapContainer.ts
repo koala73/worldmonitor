@@ -318,6 +318,10 @@ export class MapContainer {
     return this.useGlobe;
   }
 
+  public isDeckGLActive(): boolean {
+    return this.useDeckGL;
+  }
+
   private destroyFlatMap(): void {
     this.deckGLMap?.destroy();
     this.deckGLMap = null;

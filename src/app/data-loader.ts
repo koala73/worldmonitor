@@ -3141,7 +3141,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadResilienceRanking(): Promise<void> {
-    if (!hasPremiumAccess()) {
+    if (!hasPremiumAccess() || !this.ctx.map?.isDeckGLActive?.()) {
       this.ctx.map?.setResilienceRanking([]);
       this.ctx.map?.setLayerReady('resilienceScore', false);
       return;
