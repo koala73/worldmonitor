@@ -5,7 +5,7 @@ import type {
   GetResilienceRankingResponse,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import {
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_CACHE_TTL_SECONDS,
@@ -46,15 +46,10 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   };
 
   if (missing.length === 0) {
-    await setCachedJson(RESILIENCE_RANKING_CACHE_KEY, response, RESILIENCE_RANKING_CACHE_TTL_SECONDS);
-    try {
-      await setCachedJson(RESILIENCE_RANKING_META_KEY, {
-        fetchedAt: Date.now(),
-        recordCount: response.items.length,
-      }, RESILIENCE_RANKING_META_TTL_SECONDS);
-    } catch (error) {
-      console.warn('[resilience] ranking meta write failed:', error);
-    }
+    await runRedisPipeline([
+      ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(response), 'EX', RESILIENCE_RANKING_CACHE_TTL_SECONDS],
+      ['SET', RESILIENCE_RANKING_META_KEY, JSON.stringify({ fetchedAt: Date.now(), count: response.items.length }), 'EX', RESILIENCE_RANKING_META_TTL_SECONDS],
+    ]);
   }
 
   return response;
