@@ -317,7 +317,7 @@ async function fetchRegulatoryActionPayload(fetchImpl = DEFAULT_FETCH) {
 async function main(fetchImpl = DEFAULT_FETCH, runSeedImpl = runSeed) {
   return runSeedImpl('regulatory', 'actions', CANONICAL_KEY, () => fetchRegulatoryActionPayload(fetchImpl), {
     ttlSeconds: TTL_SECONDS,
-    validateFn: (data) => Array.isArray(data?.actions),
+    validateFn: (data) => Array.isArray(data?.actions) && data.actions.length > 0,
     recordCount: (data) => data?.recordCount || 0,
     sourceVersion: 'regulatory-rss-v1',
   });

@@ -357,7 +357,8 @@ describe('main', () => {
     assert.equal(calls[0].resource, 'actions');
     assert.equal(calls[0].canonicalKey, 'regulatory:actions:v1');
     assert.equal(calls[0].opts.ttlSeconds, 21600);
-    assert.equal(calls[0].opts.validateFn({ actions: [] }), true);
+    assert.equal(calls[0].opts.validateFn({ actions: [] }), false);
+    assert.equal(calls[0].opts.validateFn({ actions: [{ id: 'a' }] }), true);
     assert.equal(calls[0].payload.recordCount, 6);
   });
 });

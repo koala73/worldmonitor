@@ -131,6 +131,7 @@ const STANDALONE_KEYS = {
   resilienceStaticIndex:    'resilience:static:index:v1',
   productCatalog:           'product-catalog:v2',
   energyExposure:           'energy:exposure:v1:index',
+  regulatoryActions:        'regulatory:actions:v1',
 };
 
 const SEED_META = {
@@ -244,6 +245,7 @@ const SEED_META = {
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
   resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
   energyExposure:       { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // monthly cron on 1st; 50400min = 35d = TTL matches cron cadence + 5d buffer
+  regulatoryActions:    { key: 'seed-meta:regulatory:actions',          maxStaleMin: 360 }, // 2h cron; 360min = 3x interval
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
