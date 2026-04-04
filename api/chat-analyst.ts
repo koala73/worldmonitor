@@ -128,7 +128,7 @@ export default async function handler(req: Request): Promise<Response> {
     })
     .filter((m) => m.content.length > 0);
 
-  const context = await assembleAnalystContext(geoContext, domainFocus);
+  const context = await assembleAnalystContext(geoContext, domainFocus, query);
   const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
 
   const messages = [

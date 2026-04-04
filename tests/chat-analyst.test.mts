@@ -103,7 +103,7 @@ describe('buildAnalystSystemPrompt — domain filtering', () => {
 
   it('empty context produces no-live-data fallback', () => {
     const prompt = buildAnalystSystemPrompt(emptyCtx(), 'all');
-    assert.ok(prompt.includes('No live data available'), 'should include fallback text when no context');
+    assert.ok(prompt.includes('No live context available'), 'should include fallback text when no context');
   });
 
   it('unknown domain falls back to all-inclusive behavior', () => {

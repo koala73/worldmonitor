@@ -9,10 +9,10 @@ const DOMAIN_EMPHASIS: Record<string, string> = {
 
 /** Context fields included per domain. 'all' includes everything. */
 const DOMAIN_SECTIONS: Record<string, Set<string>> = {
-  market:   new Set(['marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines']),
-  geo:      new Set(['worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'liveHeadlines']),
-  military: new Set(['worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines']),
-  economic: new Set(['marketData', 'macroSignals', 'marketImplications', 'riskScores', 'liveHeadlines']),
+  market:   new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines']),
+  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'liveHeadlines']),
+  military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines']),
+  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'liveHeadlines']),
 };
 
 export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: string): string {
@@ -28,6 +28,8 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
 
   const contextSections: string[] = [];
 
+  if (ctx.relevantArticles && include('relevantArticles'))
+    contextSections.push(`## ${ctx.relevantArticles}`);
   if (ctx.worldBrief && include('worldBrief'))
     contextSections.push(`## Current Situation\n${ctx.worldBrief}`);
   if (ctx.riskScores && include('riskScores'))
@@ -49,7 +51,7 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
 
   const liveContext = contextSections.length > 0
     ? contextSections.join('\n\n')
-    : '(No live data available — base your response on general knowledge and note this limitation.)';
+    : '(No live context available. Acknowledge this limitation explicitly. Do not present inference or training knowledge as current intelligence.)';
 
   return `You are a senior intelligence analyst providing live situational awareness as of ${ctx.timestamp}.
 Respond in structured prose. Lead with the key insight. Keep responses under 350 words unless more depth is explicitly requested.
@@ -58,6 +60,7 @@ Use SITUATION / ANALYSIS / WATCH format for geopolitical queries.
 For market queries use SIGNAL / THESIS / RISK.
 Never speculate beyond what the data supports. Acknowledge uncertainty explicitly.
 Do not cite data sources by name. Do not mention AI, models, or providers.
+${ctx.relevantArticles ? 'When "Matched News Articles" appear in context, treat them as the primary factual basis for your response. Cite them before forecast probabilities or risk scores.\n' : ''}\
 ${emphasis ? `\n${emphasis}\n` : ''}
 --- LIVE CONTEXT ---
 ${liveContext}
