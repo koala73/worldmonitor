@@ -263,5 +263,5 @@ export default async function handler(req) {
   // All sources failed. Return fallback with short cache.
   const tiers = buildTiers({});
   const now = Date.now();
-  return json({ tiers, fetchedAt: now, priceSource: 'fallback' }, 200, cors, 'public, max-age=60, s-maxage=60');
+  return json({ tiers, fetchedAt: now, cachedUntil: now + 60_000, priceSource: 'fallback' }, 200, cors, 'public, max-age=60, s-maxage=60');
 }

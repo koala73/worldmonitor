@@ -128,6 +128,7 @@ const STANDALONE_KEYS = {
   climateNews:              'climate:news-intelligence:v1',
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
+  productCatalog:           'product-catalog:v2',
 };
 
 const SEED_META = {
@@ -235,6 +236,7 @@ const SEED_META = {
   healthAirQuality:  { key: 'seed-meta:health:air-quality',            maxStaleMin: 180 }, // hourly cron; 180 = 3x interval for shared health/climate seed
   socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval (was 20 = equals retry window, too tight)
   pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval
+  productCatalog:    { key: 'seed-meta:product-catalog',               maxStaleMin: 1080 }, // relay loop every 6h; 1080 = 18h = 3x interval
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
   resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
