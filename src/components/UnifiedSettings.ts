@@ -10,6 +10,8 @@ import type { PanelConfig } from '@/types';
 import { renderPreferences } from '@/services/preferences-content';
 import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
+import { isEntitled } from '@/services/entitlements';
+import { getSubscription, openBillingPortal } from '@/services/billing';
 
 function showToast(msg: string): void {
   document.querySelector('.toast-notification')?.remove();
@@ -77,6 +79,16 @@ export class UnifiedSettings {
 
       if (target.closest('.unified-settings-close')) {
         this.close();
+        return;
+      }
+
+      if (target.closest('.upgrade-pro-cta')) {
+        this.handleUpgradeClick();
+        return;
+      }
+
+      if (target.closest('.manage-billing-btn')) {
+        openBillingPortal();
         return;
       }
 
@@ -237,6 +249,7 @@ export class UnifiedSettings {
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
+          ${this.renderUpgradeSection()}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'panels' ? ' active' : ''}" data-panel-id="panels" id="us-tab-panel-panels" role="tabpanel" aria-labelledby="us-tab-panels">
           <div class="unified-settings-region-wrapper">
@@ -300,6 +313,60 @@ export class UnifiedSettings {
 
     this.overlay.querySelectorAll('.unified-settings-tab-panel').forEach(el => {
       el.classList.toggle('active', (el as HTMLElement).dataset.panelId === tab);
+    });
+  }
+
+  private renderUpgradeSection(): string {
+    if (isEntitled()) {
+      const sub = getSubscription();
+      const planName = sub?.displayName ?? 'Pro';
+      const statusColor = sub?.status === 'active' ? '#22c55e' : sub?.status === 'on_hold' ? '#eab308' : '#ef4444';
+      const statusBorderColor = sub?.status === 'active' ? '#22c55e33' : sub?.status === 'on_hold' ? '#eab30833' : '#ef444433';
+      const statusBgColor = sub?.status === 'active' ? '#22c55e0a' : sub?.status === 'on_hold' ? '#eab3080a' : '#ef44440a';
+
+      let statusLine = '';
+      if (sub?.currentPeriodEnd) {
+        const dateStr = new Date(sub.currentPeriodEnd).toLocaleDateString();
+        if (sub.status === 'active') {
+          statusLine = `Renews: ${dateStr}`;
+        } else if (sub.status === 'on_hold') {
+          statusLine = 'On hold -- please update payment method';
+        } else if (sub.status === 'cancelled') {
+          statusLine = `Cancelled -- access until ${dateStr}`;
+        } else if (sub.status === 'expired') {
+          statusLine = 'Expired';
+        }
+      }
+
+      return `
+        <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid ${statusBorderColor};border-radius:6px;background:${statusBgColor};">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:${statusLine ? '8' : '0'}px;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;"></span>
+            <span style="color:${statusColor};font-weight:600;font-size:13px;">${escapeHtml(planName)}</span>
+          </div>
+          ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
+          <button class="manage-billing-btn">Manage Billing</button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="upgrade-pro-section">
+        <div class="upgrade-pro-title">Upgrade to Pro</div>
+        <div class="upgrade-pro-desc">Unlock all panels, AI analysis, and priority data refresh.</div>
+        <button class="upgrade-pro-cta">Upgrade to Pro</button>
+      </div>
+    `;
+  }
+
+  private handleUpgradeClick(): void {
+    this.close();
+    if (this.config.isDesktopApp) {
+      window.open('https://worldmonitor.app/pro', '_blank');
+      return;
+    }
+    import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
+      window.open('https://worldmonitor.app/pro', '_blank');
     });
   }
 

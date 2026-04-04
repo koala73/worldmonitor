@@ -3312,6 +3312,33 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   line-height: normal;
 }
 
+.phase-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 8px;
+  font-weight: bold;
+  margin-inline-start: 4px;
+  vertical-align: middle;
+  line-height: normal;
+}
+
+.phase-badge.breaking {
+  background: var(--orange, #f97316);
+  color: var(--bg);
+  animation: pulse-alert 1.5s infinite;
+}
+
+.phase-badge.developing {
+  background: var(--yellow, #eab308);
+  color: var(--bg);
+}
+
+.phase-badge.sustained {
+  background: var(--slate, #64748b);
+  color: var(--bg);
+}
+
 @keyframes pulse-alert {
 
   0%,
@@ -22069,6 +22096,22 @@ body.map-width-resizing {
   margin-top: 1px;
 }
 
+/* FAO Food Price Index panel */
+.fao-food-price-index-panel { padding: 4px 0; }
+.fao-headline { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 12px 8px; }
+.fao-headline-primary { display: flex; align-items: baseline; gap: 6px; }
+.fao-index-value { font-size: 1.6rem; font-weight: 700; color: #f5a623; line-height: 1; }
+.fao-index-label { font-size: 0.65rem; opacity: 0.55; }
+.fao-headline-changes { display: flex; gap: 8px; }
+.fao-change { font-size: 0.75rem; font-weight: 600; }
+.fao-up   { color: #f87171; }
+.fao-down { color: #4ade80; }
+.fao-as-of { font-size: 0.65rem; opacity: 0.4; margin-left: auto; }
+.fao-legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 12px 2px; }
+.fao-legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.65rem; opacity: 0.7; }
+.fao-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.fao-base-note { font-size: 0.6rem; opacity: 0.35; padding: 2px 12px 6px; text-align: right; }
+
 
 /* ── Risk Score Badge on News Cards ──────────────────────────── */
 .risk-score-badge {
@@ -22415,3 +22458,63 @@ body.map-width-resizing {
 .chat-action-chip:hover {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
+
+/* ── Payment / Upgrade UI ── */
+.upgrade-pro-section {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.upgrade-pro-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.upgrade-pro-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.upgrade-pro-cta {
+  width: 100%;
+  padding: 8px 16px;
+  background: var(--green);
+  color: var(--bg);
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.upgrade-pro-cta:hover { opacity: 0.85; }
+
+.upgrade-pro-status-line {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  padding-left: 16px;
+}
+
+.manage-billing-btn {
+  width: 100%;
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.manage-billing-btn:hover { color: var(--text); }

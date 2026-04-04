@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { afterEach, describe, it, before, after } from 'node:test';
+import { afterEach, describe, it, before, after, mock } from 'node:test';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway } from '../server/gateway.ts';
@@ -12,12 +12,22 @@ afterEach(() => {
   else process.env.WORLDMONITOR_VALID_KEYS = originalKeys;
 });
 
-describe('premium stock gateway enforcement', () => {
+describe('premium gateway API key enforcement', () => {
   it('requires credentials for premium endpoints regardless of origin', async () => {
     const handler = createDomainGateway([
       {
         method: 'GET',
         path: '/api/market/v1/analyze-stock',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-score',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-ranking',
         handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
       },
       {
@@ -29,13 +39,23 @@ describe('premium stock gateway enforcement', () => {
 
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
 
-    // Trusted browser origin without credentials — 401 (Origin is spoofable, not a security boundary)
+    // Trusted browser origin without credentials — 401 (no API key, no bearer token)
     const browserNoKey = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
     assert.equal(browserNoKey.status, 401);
 
-    // Trusted browser origin with a valid key — also allowed
+    const resilienceScoreNoKey = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: { Origin: 'https://worldmonitor.app' },
+    }));
+    assert.equal(resilienceScoreNoKey.status, 401);
+
+    const resilienceRankingNoKey = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+      headers: { Origin: 'https://worldmonitor.app' },
+    }));
+    assert.equal(resilienceRankingNoKey.status, 401);
+
+    // Trusted browser origin with valid API key — 200 (API-key holders bypass entitlement check)
     const browserWithKey = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: {
         Origin: 'https://worldmonitor.app',
@@ -44,13 +64,29 @@ describe('premium stock gateway enforcement', () => {
     }));
     assert.equal(browserWithKey.status, 200);
 
+    const resilienceScoreWithKey = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': 'real-key-123',
+      },
+    }));
+    assert.equal(resilienceScoreWithKey.status, 200);
+
+    const resilienceRankingWithKey = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': 'real-key-123',
+      },
+    }));
+    assert.equal(resilienceRankingWithKey.status, 200);
+
     // Unknown origin — blocked (403 from isDisallowedOrigin before key check)
     const unknownNoKey = await handler(new Request('https://external.example.com/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: { Origin: 'https://external.example.com' },
     }));
     assert.equal(unknownNoKey.status, 403);
 
-    // Public endpoint — always accessible from trusted origin
+    // Public endpoint — always accessible from trusted origin (no credentials needed)
     const publicAllowed = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
@@ -62,7 +98,7 @@ describe('premium stock gateway enforcement', () => {
 // Bearer token auth path for premium endpoints
 // ---------------------------------------------------------------------------
 
-describe('premium stock gateway bearer token auth', () => {
+describe('premium gateway bearer token auth', () => {
   let privateKey: CryptoKey;
   let wrongPrivateKey: CryptoKey;
   let jwksServer: Server;
@@ -109,6 +145,16 @@ describe('premium stock gateway bearer token auth', () => {
       },
       {
         method: 'GET',
+        path: '/api/resilience/v1/get-resilience-score',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-ranking',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+      {
+        method: 'GET',
         path: '/api/market/v1/list-market-quotes',
         handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
       },
@@ -131,7 +177,9 @@ describe('premium stock gateway bearer token auth', () => {
       .sign(opts?.key ?? privateKey);
   }
 
-  it('accepts valid Pro bearer token on premium endpoint → 200', async () => {
+  it('valid bearer token resolves userId but entitlement check still applies', async () => {
+    // A valid Pro bearer token resolves a userId via session, but without entitlement data
+    // in the test env (no Redis/Convex), the entitlement check fails closed → 403
     const token = await signToken({ sub: 'user_pro', plan: 'pro' });
     const res = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: {
@@ -139,10 +187,13 @@ describe('premium stock gateway bearer token auth', () => {
         Authorization: `Bearer ${token}`,
       },
     }));
-    assert.equal(res.status, 200);
+    // Fail-closed: entitlement data unavailable → 403
+    assert.equal(res.status, 403);
+    const body = await res.json() as { error: string };
+    assert.match(body.error, /[Uu]nable to verify|[Aa]uthentication required/);
   });
 
-  it('rejects Free bearer token on premium endpoint → 403', async () => {
+  it('free bearer token on premium endpoint → 403', async () => {
     const token = await signToken({ sub: 'user_free', plan: 'free' });
     const res = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: {
@@ -151,8 +202,6 @@ describe('premium stock gateway bearer token auth', () => {
       },
     }));
     assert.equal(res.status, 403);
-    const body = await res.json() as { error: string };
-    assert.match(body.error, /[Pp]ro/);
   });
 
   it('rejects invalid/expired bearer token on premium endpoint → 401', async () => {
@@ -163,6 +212,7 @@ describe('premium stock gateway bearer token auth', () => {
         Authorization: `Bearer ${token}`,
       },
     }));
+    // Invalid bearer → no session → forceKey true → 401 (missing API key)
     assert.equal(res.status, 401);
   });
 
@@ -171,5 +221,65 @@ describe('premium stock gateway bearer token auth', () => {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
     assert.equal(res.status, 200);
+  });
+
+  it('rejects free bearer token on resilience premium endpoints → 403', async () => {
+    const token = await signToken({ sub: 'user_free', plan: 'free' });
+
+    const scoreRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(scoreRes.status, 403);
+
+    const rankingRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(rankingRes.status, 403);
+  });
+
+  it('rejects invalid bearer token on resilience premium endpoints → 401', async () => {
+    const token = await signToken({ sub: 'user_bad', plan: 'pro' }, { key: wrongPrivateKey });
+
+    const scoreRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(scoreRes.status, 401);
+
+    const rankingRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(rankingRes.status, 401);
+  });
+
+  it('accepts valid Pro bearer token on resilience premium endpoints → 200', async () => {
+    const token = await signToken({ sub: 'user_pro', plan: 'pro' });
+
+    const scoreRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(scoreRes.status, 200);
+
+    const rankingRes = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+      },
+    }));
+    assert.equal(rankingRes.status, 200);
   });
 });

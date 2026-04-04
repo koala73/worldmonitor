@@ -86,7 +86,7 @@ const RELAY_LOG_THROTTLE_MS = Math.max(1000, Number(process.env.RELAY_LOG_THROTT
 const ALLOW_VERCEL_PREVIEW_ORIGINS = process.env.ALLOW_VERCEL_PREVIEW_ORIGINS === 'true';
 
 // OpenSky proxy — routes through residential proxy to avoid Railway IP blocks
-const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.OREF_PROXY_AUTH || '';
+const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.PROXY_URL || '';
 const OPENSKY_PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
 
 const PROXY_URL = process.env.PROXY_URL || ''; // generic residential proxy (US exit) — http://user:pass@host:port or host:port:user:pass (Decodo)
@@ -1451,7 +1451,26 @@ const YAHOO_ONLY = new Set([
   ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=X')),
 ]);
 
-function fetchYahooChartDirect(symbol) {
+function _parseYahooChartJson(body) {
+  try {
+    const data = JSON.parse(body);
+    const result = data?.chart?.result?.[0];
+    const meta = result?.meta;
+    if (!meta) return null;
+    const price = meta.regularMarketPrice;
+    const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+    const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+    const closes = result.indicators?.quote?.[0]?.close;
+    const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
+    return { price, change, sparkline };
+  } catch { return null; }
+}
+
+let _yahooProxyFailCount = 0;
+const _YAHOO_PROXY_COOLDOWN_MS = 5 * 60 * 1000;
+let _yahooProxyCooldownUntil = 0;
+
+function _fetchYahooChartNoProxy(symbol) {
   return new Promise((resolve) => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
     const req = https.get(url, {
@@ -1465,23 +1484,33 @@ function fetchYahooChartDirect(symbol) {
       }
       let body = '';
       resp.on('data', (chunk) => { body += chunk; });
-      resp.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          const result = data?.chart?.result?.[0];
-          const meta = result?.meta;
-          if (!meta) return resolve(null);
-          const price = meta.regularMarketPrice;
-          const prevClose = meta.chartPreviousClose || meta.previousClose || price;
-          const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
-          const closes = result.indicators?.quote?.[0]?.close;
-          const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
-          resolve({ price, change, sparkline });
-        } catch { resolve(null); }
-      });
+      resp.on('end', () => resolve(_parseYahooChartJson(body)));
     });
     req.on('error', (err) => { logThrottled('warn', `market-yahoo-err:${symbol}`, `[Market] Yahoo ${symbol} error: ${err.message}`); resolve(null); });
     req.on('timeout', () => { req.destroy(); logThrottled('warn', `market-yahoo-timeout:${symbol}`, `[Market] Yahoo ${symbol} timeout`); resolve(null); });
+  });
+}
+
+function fetchYahooChartDirect(symbol) {
+  return _fetchYahooChartNoProxy(symbol).then((result) => {
+    if (result) return result;
+    if (!PROXY_URL) return null;
+    if (Date.now() < _yahooProxyCooldownUntil) return null;
+    const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
+    return ytFetchViaProxy(url, proxy).then((resp) => {
+      if (!resp?.ok) {
+        _yahooProxyFailCount++;
+        if (_yahooProxyFailCount >= 5) {
+          _yahooProxyCooldownUntil = Date.now() + _YAHOO_PROXY_COOLDOWN_MS;
+          _yahooProxyFailCount = 0;
+          logThrottled('warn', 'market-yahoo-proxy-cooldown', '[Market] Yahoo proxy cooldown 5min after 5 failures');
+        }
+        return null;
+      }
+      _yahooProxyFailCount = 0;
+      return _parseYahooChartJson(resp.body);
+    }).catch(() => null);
   });
 }
 
@@ -1768,9 +1797,32 @@ const CRYPTO_META = _cryptoCfg.meta;
 const CRYPTO_PAPRIKA_MAP = _cryptoCfg.coinpaprika;
 const CRYPTO_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
+// Shared CoinPaprika tickers fetcher — direct first, PROXY_URL fallback.
+// Cached for 5 min so the 3 crypto seeders (crypto, stablecoins, token-panels)
+// that run in the same cycle don't triple-fetch the same 2000-item response.
+let _paprikaCached = null;
+let _paprikaCachedAt = 0;
+const _PAPRIKA_CACHE_MS = 5 * 60 * 1000;
+const _PAPRIKA_URL = 'https://api.coinpaprika.com/v1/tickers?quotes=USD';
+
+async function _fetchCoinPaprikaTickers() {
+  if (_paprikaCached && Date.now() - _paprikaCachedAt < _PAPRIKA_CACHE_MS) return _paprikaCached;
+  // Try direct
+  let data = await cyberHttpGetJson(_PAPRIKA_URL, { Accept: 'application/json' }, 15000);
+  if (Array.isArray(data) && data.length > 0) { _paprikaCached = data; _paprikaCachedAt = Date.now(); return data; }
+  // Fallback via proxy
+  if (!PROXY_URL) throw new Error('CoinPaprika direct failed and no PROXY_URL configured');
+  const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+  const resp = await ytFetchViaProxy(_PAPRIKA_URL, proxy);
+  if (!resp?.ok) throw new Error(`CoinPaprika proxy HTTP ${resp?.status || 'unavailable'}`);
+  data = JSON.parse(resp.body);
+  if (!Array.isArray(data)) throw new Error('CoinPaprika proxy returned non-array');
+  _paprikaCached = data; _paprikaCachedAt = Date.now();
+  return data;
+}
+
 async function fetchCryptoCoinPaprika() {
-  const data = await cyberHttpGetJson('https://api.coinpaprika.com/v1/tickers?quotes=USD', { Accept: 'application/json' }, 15000);
-  if (!Array.isArray(data)) throw new Error('CoinPaprika returned non-array');
+  const data = await _fetchCoinPaprikaTickers();
   const paprikaIds = new Set(CRYPTO_IDS.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean));
   const reverseMap = Object.fromEntries(Object.entries(CRYPTO_PAPRIKA_MAP).map(([g, p]) => [p, g]));
   return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
@@ -1827,8 +1879,7 @@ const STABLECOIN_PAPRIKA_MAP = { tether: 'usdt-tether', 'usd-coin': 'usdc-usd-co
 const STABLECOIN_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
 async function fetchStablecoinCoinPaprika() {
-  const data = await cyberHttpGetJson('https://api.coinpaprika.com/v1/tickers?quotes=USD', { Accept: 'application/json' }, 15000);
-  if (!Array.isArray(data)) throw new Error('CoinPaprika returned non-array');
+  const data = await _fetchCoinPaprikaTickers();
   const ids = STABLECOIN_IDS.split(',');
   const paprikaIds = new Set(ids.map((id) => STABLECOIN_PAPRIKA_MAP[id]).filter(Boolean));
   const reverseMap = Object.fromEntries(Object.entries(STABLECOIN_PAPRIKA_MAP).map(([g, p]) => [p, g]));
@@ -1888,8 +1939,18 @@ async function seedCryptoSectors() {
     data = await cyberHttpGetJson(url, headers, 15000);
     if (!Array.isArray(data) || data.length === 0) throw new Error('CoinGecko returned no data');
   } catch (err) {
-    console.warn(`[CryptoSectors] CoinGecko failed: ${err.message} — skipping`);
-    return 0;
+    console.warn(`[CryptoSectors] CoinGecko failed: ${err.message} — trying CoinPaprika`);
+    try {
+      const paprika = await _fetchCoinPaprikaTickers();
+      data = paprika.filter((t) => {
+        const geckoId = Object.entries(CRYPTO_PAPRIKA_MAP).find(([, p]) => p === t.id)?.[0];
+        return geckoId && allIds.includes(geckoId);
+      }).map((t) => {
+        const geckoId = Object.entries(CRYPTO_PAPRIKA_MAP).find(([, p]) => p === t.id)?.[0] || t.id;
+        return { id: geckoId, price_change_percentage_24h: t.quotes?.USD?.percent_change_24h ?? 0 };
+      });
+      if (!data.length) throw new Error('No matching tokens in CoinPaprika');
+    } catch (e2) { console.warn(`[CryptoSectors] CoinPaprika also failed: ${e2.message} — skipping`); return 0; }
   }
   const byId = new Map(data.map((c) => [c.id, c.price_change_percentage_24h]));
   const sectors = SECTORS_LIST.map((sector) => {
@@ -1928,8 +1989,7 @@ function _mapTokens(ids, meta, byId) {
 }
 
 async function fetchTokenPanelsCoinPaprika(allIds) {
-  const data = await cyberHttpGetJson('https://api.coinpaprika.com/v1/tickers?quotes=USD', { Accept: 'application/json' }, 15000);
-  if (!Array.isArray(data)) throw new Error('CoinPaprika returned non-array');
+  const data = await _fetchCoinPaprikaTickers();
   const paprikaIds = new Set(allIds.map((id) => TOKEN_PANELS_PAPRIKA_MAP[id]).filter(Boolean));
   const reverseMap = Object.fromEntries(Object.entries(TOKEN_PANELS_PAPRIKA_MAP).map(([g, p]) => [p, g]));
   return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
@@ -3032,6 +3092,18 @@ const CLASSIFY_BATCH_SIZE = 50;
 const CLASSIFY_VARIANTS = ['full', 'tech', 'finance', 'happy', 'commodity'];
 const CLASSIFY_VARIANT_STAGGER_MS = 3 * 60 * 1000;
 
+// Relay gates — active only when RELAY_GATES_READY=1 (see Appendix E of docs/internal/news-alerts-enhancements-from-trendradar.md).
+// When the flag is set the relay becomes the sole authoritative source of rss_alert events and
+// the client /api/notify path is suppressed via VITE_RELAY_GATES_READY on the Vercel side.
+// Inline subset of source-tiers.ts — canonical copy in server/_shared/source-tiers.ts; keep in sync.
+const RELAY_GATES_READY = process.env.RELAY_GATES_READY === '1';
+const RELAY_TIER4_SOURCES = new Set([
+  'Hacker News', 'The Verge', 'The Verge AI', 'VentureBeat AI',
+  'Yahoo Finance', 'TechCrunch Layoffs', 'ArXiv AI', 'AI News',
+  'Layoffs News', 'GloNewswire (Taiwan)',
+]);
+const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recency gate
+
 const CLASSIFY_VALID_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
 const CLASSIFY_VALID_CATEGORIES = [
   'conflict', 'protest', 'disaster', 'diplomatic', 'economic',
@@ -3254,17 +3326,29 @@ async function seedClassifyForVariant(variant, seenTitles) {
     return { total: 0, classified: 0, skipped: 0 };
   }
 
-  const allTitles = new Set();
+  // Map of title → item metadata; recency gate: skip articles older than 6h
+  const RECENCY_GATE_MS = 6 * 60 * 60 * 1000;
+  const now6h = Date.now() - RECENCY_GATE_MS;
+  const allTitles = new Map();
   if (digest?.categories) {
     for (const bucket of Object.values(digest.categories)) {
       for (const item of bucket?.items ?? []) {
-        if (item?.title) allTitles.add(item.title);
+        if (!item?.title) continue;
+        if (item.publishedAt && item.publishedAt < now6h) continue; // stale item
+        if (!allTitles.has(item.title)) {
+          allTitles.set(item.title, {
+            source: item.source ?? variant,
+            publishedAt: item.publishedAt ?? Date.now(),
+            importanceScore: item.importanceScore ?? 0,
+            link: item.link ?? '',
+          });
+        }
       }
     }
   }
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
 
-  const titleArr = [...allTitles];
+  const titleArr = [...allTitles.keys()];
   const cacheKeys = titleArr.map((t) => classifyCacheKey(t));
 
   const cached = await upstashMGet(cacheKeys);
@@ -3331,9 +3415,23 @@ async function seedClassifyForVariant(variant, seenTitles) {
       // Notifications are outside seenTitles guard — each variant publishes
       // independently, protected by the variant-scoped Redis scan-dedup key.
       if (level === 'critical' || level === 'high') {
+        const meta = allTitles.get(chunk[idx]) ?? { source: variant, publishedAt: Date.now(), importanceScore: 0, link: '' };
+        // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
+        // recency checks that the client path previously handled.
+        if (RELAY_GATES_READY) {
+          if (RELAY_TIER4_SOURCES.has(meta.source ?? '')) continue;
+          const ageMs = Date.now() - (meta.publishedAt ?? 0);
+          if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) continue;
+        }
         publishNotificationEvent({
           eventType: 'rss_alert',
-          payload: { title: chunk[idx], source: variant },
+          payload: {
+            title: chunk[idx],
+            source: meta.source,
+            link: meta.link,
+            publishedAt: meta.publishedAt,
+            importanceScore: meta.importanceScore,
+          },
           severity: level,
           variant,
         }).catch(e => console.warn('[Notify] Classify publish error:', e?.message));
@@ -5529,6 +5627,310 @@ function startClimateNewsSeedLoop() {
   }, CLIMATE_NEWS_SEED_INTERVAL_MS).unref?.();
 }
 
+// ─────────────────────────────────────────────────────────────
+// PizzINT Seed — Pentagon Pizza Index + GDELT tensions → Redis
+// Fetches from pizzint.watch on Railway (datacenter IPs blocked
+// from Vercel Edge). Vercel handler reads from seed key only.
+// ─────────────────────────────────────────────────────────────
+const PIZZINT_SEED_INTERVAL_MS = 10 * 60 * 1000; // 10 min
+const PIZZINT_SEED_TTL = 1800; // 30 min (3× interval)
+const PIZZINT_REDIS_KEY = 'intelligence:pizzint:seed:v1';
+const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
+const GDELT_BATCH_API = 'https://www.pizzint.watch/api/gdelt/batch';
+const DEFAULT_GDELT_PAIRS = 'usa_russia,russia_ukraine,usa_china,china_taiwan,usa_iran,usa_venezuela';
+let pizzintSeedInFlight = false;
+
+async function seedPizzint() {
+  if (pizzintSeedInFlight) return;
+  pizzintSeedInFlight = true;
+  const t0 = Date.now();
+  try {
+    const resp = await fetch(PIZZINT_API, {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      console.warn(`[PizzINT] Seed failed: HTTP ${resp.status}`);
+      return;
+    }
+    const raw = await resp.json();
+    if (!raw.success || !Array.isArray(raw.data)) {
+      console.warn('[PizzINT] No data in API response');
+      return;
+    }
+
+    const locations = raw.data.map((d) => ({
+      placeId: d.place_id || '',
+      name: d.name || '',
+      address: d.address || '',
+      currentPopularity: typeof d.current_popularity === 'number' ? d.current_popularity : 0,
+      percentageOfUsual: typeof d.percentage_of_usual === 'number' ? d.percentage_of_usual : 0,
+      isSpike: !!d.is_spike,
+      spikeMagnitude: typeof d.spike_magnitude === 'number' ? d.spike_magnitude : 0,
+      dataSource: d.data_source || '',
+      recordedAt: d.recorded_at || '',
+      dataFreshness: d.data_freshness === 'fresh' ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
+      isClosedNow: !!d.is_closed_now,
+      lat: d.lat ?? 0,
+      lng: d.lng ?? 0,
+    }));
+
+    const openLocations = locations.filter((l) => !l.isClosedNow);
+    const activeSpikes = locations.filter((l) => l.isSpike).length;
+    const avgPop = openLocations.length > 0
+      ? openLocations.reduce((s, l) => s + l.currentPopularity, 0) / openLocations.length
+      : 0;
+
+    let adjusted = avgPop;
+    if (activeSpikes > 0) adjusted += activeSpikes * 10;
+    adjusted = Math.min(100, adjusted);
+    let defconLevel = 5;
+    let defconLabel = 'Normal Activity';
+    if (adjusted >= 85) { defconLevel = 1; defconLabel = 'Maximum Activity'; }
+    else if (adjusted >= 70) { defconLevel = 2; defconLabel = 'High Activity'; }
+    else if (adjusted >= 50) { defconLevel = 3; defconLabel = 'Elevated Activity'; }
+    else if (adjusted >= 25) { defconLevel = 4; defconLabel = 'Above Normal'; }
+
+    const hasFresh = locations.some((l) => l.dataFreshness === 'DATA_FRESHNESS_FRESH');
+
+    const pizzint = {
+      defconLevel,
+      defconLabel,
+      aggregateActivity: Math.round(avgPop),
+      activeSpikes,
+      locationsMonitored: locations.length,
+      locationsOpen: openLocations.length,
+      updatedAt: Date.now(),
+      dataFreshness: hasFresh ? 'DATA_FRESHNESS_FRESH' : 'DATA_FRESHNESS_STALE',
+      locations,
+    };
+
+    // Fetch GDELT tensions (non-fatal if unavailable)
+    let tensionPairs = [];
+    try {
+      const gdeltUrl = `${GDELT_BATCH_API}?pairs=${encodeURIComponent(DEFAULT_GDELT_PAIRS)}&method=gpr`;
+      const gdeltResp = await fetch(gdeltUrl, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (gdeltResp.ok) {
+        const gdeltRaw = await gdeltResp.json();
+        tensionPairs = Object.entries(gdeltRaw).map(([pairKey, dataPoints]) => {
+          const countries = pairKey.split('_');
+          const latest = dataPoints[dataPoints.length - 1];
+          const prev = dataPoints.length > 1 ? dataPoints[dataPoints.length - 2] : latest;
+          const change = prev && prev.v > 0 ? ((latest.v - prev.v) / prev.v) * 100 : 0;
+          const trend = change > 5 ? 'TREND_DIRECTION_RISING' : change < -5 ? 'TREND_DIRECTION_FALLING' : 'TREND_DIRECTION_STABLE';
+          return {
+            id: pairKey,
+            countries,
+            label: countries.map((c) => c.toUpperCase()).join(' - '),
+            score: latest?.v ?? 0,
+            trend,
+            changePercent: Math.round(change * 10) / 10,
+            region: 'global',
+          };
+        });
+      }
+    } catch { /* GDELT unavailable — non-fatal */ }
+
+    const payload = { pizzint, tensionPairs };
+    const ok1 = await upstashSet(PIZZINT_REDIS_KEY, payload, PIZZINT_SEED_TTL);
+    const ok2 = await upstashSet('seed-meta:intelligence:pizzint', { fetchedAt: Date.now(), recordCount: locations.length }, 604800);
+    console.log(`[PizzINT] Seeded ${locations.length} locations (open:${openLocations.length} spikes:${activeSpikes} defcon:${defconLevel} gdelt:${tensionPairs.length} redis:${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.warn('[PizzINT] Seed error:', e?.message || e);
+  } finally {
+    pizzintSeedInFlight = false;
+  }
+}
+
+function startPizzintSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[PizzINT] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[PizzINT] Seed loop starting (interval ${PIZZINT_SEED_INTERVAL_MS / 1000 / 60}min)`);
+  seedPizzint().catch((e) => console.warn('[PizzINT] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedPizzint().catch((e) => console.warn('[PizzINT] Seed error:', e?.message || e));
+  }, PIZZINT_SEED_INTERVAL_MS).unref?.();
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// Dodo Product Prices Seed — fetches live prices from Dodo API,
+// builds tier view model, writes to Redis for /api/product-catalog.
+// Direct fetch first, PROXY_URL fallback if Dodo blocks datacenter IPs.
+// ─────────────────────────────────────────────────────────────
+const DODO_PRICE_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const DODO_PRICE_SEED_TTL = 43200; // 12h (2× interval)
+const DODO_PRICE_REDIS_KEY = 'product-catalog:v2';
+const DODO_LIVE_URL = 'https://live.dodopayments.com';
+const DODO_TEST_URL = 'https://test.dodopayments.com';
+const DODO_PRICE_API_KEY = process.env.DODO_API_KEY || '';
+const DODO_PRICE_ENV = process.env.DODO_PAYMENTS_ENVIRONMENT || 'test_mode';
+
+const DODO_PRODUCT_IDS = [
+  'pdt_0Nbtt71uObulf7fGXhQup', // Pro Monthly
+  'pdt_0NbttMIfjLWC10jHQWYgJ', // Pro Annual
+  'pdt_0NbttVmG1SERrxhygbbUq', // API Starter Monthly
+  'pdt_0Nbu2lawHYE3dv2THgSEV', // API Starter Annual
+];
+
+const DODO_TIER_CONFIG = {
+  free: { name: 'Free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app', highlighted: false },
+  pro: { name: 'Pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP data connectors', 'Priority data refresh'], highlighted: true },
+  api_starter: { name: 'API', description: 'Programmatic access to intelligence data', features: ['REST API access', 'Real-time data streams', '1,000 requests/day', 'Webhook notifications', 'Custom data exports'], highlighted: false },
+  enterprise: { name: 'Enterprise', description: 'Custom solutions for organizations', features: ['Everything in Pro + API', 'Unlimited API requests', 'Dedicated support', 'Custom integrations', 'SLA guarantee', 'On-premise option'], cta: 'Contact Sales', href: 'mailto:enterprise@worldmonitor.app', highlighted: false },
+};
+
+const DODO_PRODUCT_META = {
+  'pdt_0Nbtt71uObulf7fGXhQup': { tierGroup: 'pro', billingPeriod: 'monthly' },
+  'pdt_0NbttMIfjLWC10jHQWYgJ': { tierGroup: 'pro', billingPeriod: 'annual' },
+  'pdt_0NbttVmG1SERrxhygbbUq': { tierGroup: 'api_starter', billingPeriod: 'monthly' },
+  'pdt_0Nbu2lawHYE3dv2THgSEV': { tierGroup: 'api_starter', billingPeriod: 'annual' },
+};
+
+const DODO_FALLBACK_PRICES = {
+  'pdt_0Nbtt71uObulf7fGXhQup': 3999,
+  'pdt_0NbttMIfjLWC10jHQWYgJ': 39999,
+  'pdt_0NbttVmG1SERrxhygbbUq': 9999,
+  'pdt_0Nbu2lawHYE3dv2THgSEV': 99900,
+};
+
+let dodoPriceSeedInFlight = false;
+
+async function fetchDodoProductPrice(productId, baseUrl) {
+  const resp = await fetch(`${baseUrl}/products/${productId}`, {
+    headers: { Authorization: `Bearer ${DODO_PRICE_API_KEY}`, 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const product = await resp.json();
+  return product.price?.price ?? product.price?.fixed_price ?? null;
+}
+
+async function seedDodoPrices() {
+  if (dodoPriceSeedInFlight) return;
+  dodoPriceSeedInFlight = true;
+  const t0 = Date.now();
+  try {
+    if (!DODO_PRICE_API_KEY) {
+      console.warn('[DodoPrices] No DODO_API_KEY — skipping');
+      return;
+    }
+
+    const baseUrl = DODO_PRICE_ENV === 'live_mode' ? DODO_LIVE_URL : DODO_TEST_URL;
+    const prices = {};
+    let fetchedCount = 0;
+    let fallbackCount = 0;
+
+    for (const productId of DODO_PRODUCT_IDS) {
+      // Try direct first
+      try {
+        const priceCents = await fetchDodoProductPrice(productId, baseUrl);
+        if (priceCents != null) { prices[productId] = priceCents; fetchedCount++; continue; }
+      } catch (e) {
+        console.warn(`[DodoPrices] Direct fetch ${productId} failed: ${e?.message}`);
+      }
+
+      // Fallback via proxy (ytFetchViaProxy doesn't forward custom headers,
+      // so we build the proxied request manually with Authorization)
+      if (PROXY_URL) {
+        try {
+          const proxy = parseProxyUrl(PROXY_URL);
+          const target = new URL(`${baseUrl}/products/${productId}`);
+          const proxyResp = await new Promise((resolve, reject) => {
+            const connectOpts = { host: proxy.host, port: proxy.port, method: 'CONNECT', path: `${target.hostname}:443`, headers: {} };
+            if (proxy.auth) connectOpts.headers['Proxy-Authorization'] = 'Basic ' + Buffer.from(proxy.auth).toString('base64');
+            const connectReq = proxy.tls ? https.request(connectOpts) : http.request(connectOpts);
+            connectReq.on('connect', (_res, socket) => {
+              connectReq.setTimeout(0);
+              const req = https.request({
+                hostname: target.hostname, path: target.pathname, method: 'GET',
+                headers: { 'User-Agent': CHROME_UA, 'Authorization': `Bearer ${DODO_PRICE_API_KEY}`, 'Accept': 'application/json' },
+                socket, agent: false,
+              }, (res) => {
+                const chunks = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, body: Buffer.concat(chunks).toString() }));
+                res.on('error', reject);
+              });
+              req.on('error', reject);
+              req.end();
+            });
+            connectReq.on('error', reject);
+            connectReq.setTimeout(10000, () => { connectReq.destroy(); reject(new Error('Proxy timeout')); });
+            connectReq.end();
+          });
+          if (proxyResp?.ok) {
+            const product = JSON.parse(proxyResp.body);
+            const priceCents = product.price?.price ?? product.price?.fixed_price;
+            if (priceCents != null) { prices[productId] = priceCents; fetchedCount++; continue; }
+          }
+        } catch (e) {
+          console.warn(`[DodoPrices] Proxy fetch ${productId} failed: ${e?.message}`);
+        }
+      }
+
+      // Use fallback
+      if (DODO_FALLBACK_PRICES[productId] != null) {
+        prices[productId] = DODO_FALLBACK_PRICES[productId];
+        fallbackCount++;
+      }
+    }
+
+    // Build tier view model
+    const tiers = [];
+    const publicGroups = ['free', 'pro', 'api_starter', 'enterprise'];
+    for (const group of publicGroups) {
+      const config = DODO_TIER_CONFIG[group];
+      if (!config) continue;
+      if (group === 'free') { tiers.push({ ...config, price: 0, period: 'forever' }); continue; }
+      if (group === 'enterprise') { tiers.push({ ...config, price: null }); continue; }
+
+      const tier = { ...config };
+      const monthlyId = Object.entries(DODO_PRODUCT_META).find(([, v]) => v.tierGroup === group && v.billingPeriod === 'monthly')?.[0];
+      const annualId = Object.entries(DODO_PRODUCT_META).find(([, v]) => v.tierGroup === group && v.billingPeriod === 'annual')?.[0];
+      if (monthlyId && prices[monthlyId]) { tier.monthlyPrice = prices[monthlyId] / 100; tier.monthlyProductId = monthlyId; }
+      if (annualId && prices[annualId]) { tier.annualPrice = prices[annualId] / 100; tier.annualProductId = annualId; }
+      tiers.push(tier);
+    }
+
+    const priceSource = fallbackCount === 0 ? 'dodo' : fetchedCount > 0 ? 'partial' : 'fallback';
+    const now = Date.now();
+    const payload = { tiers, fetchedAt: now, cachedUntil: now + DODO_PRICE_SEED_TTL * 1000, priceSource };
+
+    // Only write to Redis when ALL prices came from Dodo (no fallback contamination).
+    // Partial/fallback results are not persisted — edge endpoint serves them directly with short cache.
+    if (priceSource === 'dodo') {
+      const ok1 = await upstashSet(DODO_PRICE_REDIS_KEY, payload, DODO_PRICE_SEED_TTL);
+      const ok2 = await upstashSet('seed-meta:product-catalog', { fetchedAt: now, recordCount: fetchedCount, priceSource }, 604800);
+      console.log(`[DodoPrices] Seeded ${fetchedCount}/${DODO_PRODUCT_IDS.length} from Dodo (redis=${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    } else {
+      // Don't overwrite good cached data with degraded prices. Just extend TTL if it exists.
+      try { await upstashExpire(DODO_PRICE_REDIS_KEY, DODO_PRICE_SEED_TTL); } catch {}
+      console.warn(`[DodoPrices] NOT writing to Redis — source=${priceSource} (${fetchedCount} live, ${fallbackCount} fallback) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    }
+  } catch (e) {
+    console.warn('[DodoPrices] Seed error:', e?.message || e);
+  } finally {
+    dodoPriceSeedInFlight = false;
+  }
+}
+
+function startDodoPriceSeedLoop() {
+  if (!UPSTASH_ENABLED) { console.log('[DodoPrices] Disabled (no Upstash Redis)'); return; }
+  if (!DODO_PRICE_API_KEY) { console.log('[DodoPrices] Disabled (no DODO_API_KEY)'); return; }
+  console.log(`[DodoPrices] Seed loop starting (interval ${DODO_PRICE_SEED_INTERVAL_MS / 1000 / 60}min)`);
+  seedDodoPrices().catch((e) => console.warn('[DodoPrices] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedDodoPrices().catch((e) => console.warn('[DodoPrices] Seed error:', e?.message || e));
+  }, DODO_PRICE_SEED_INTERVAL_MS).unref?.();
+}
+
+
 function gzipSyncBuffer(body) {
   try {
     return zlib.gzipSync(typeof body === 'string' ? Buffer.from(body) : body);
@@ -7702,11 +8104,41 @@ function handleYahooChartRequest(req, res) {
   }
 
   const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`;
+
+  function _serveYahooResult(body, source) {
+    yahooChartCache.set(cacheKey, { json: body, ts: Date.now() });
+    sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=120, s-maxage=120, stale-while-revalidate=60',
+      'X-Yahoo-Source': source,
+    }, body);
+  }
+
+  function _serveStaleOrError(statusCode, errMsg) {
+    if (cached) {
+      return sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'X-Yahoo-Source': 'relay-stale',
+      }, cached.json);
+    }
+    sendCompressed(req, res, statusCode, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: errMsg, symbol }));
+  }
+
+  let _proxied = false;
+  function _tryProxy() {
+    if (_proxied) return;
+    _proxied = true;
+    if (!PROXY_URL) return _serveStaleOrError(502, 'Yahoo upstream failed, no proxy');
+    const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+    ytFetchViaProxy(yahooUrl, proxy).then((proxyResp) => {
+      if (!proxyResp?.ok) return _serveStaleOrError(proxyResp?.status || 502, 'Yahoo proxy failed');
+      _serveYahooResult(proxyResp.body, 'relay-proxy');
+    }).catch(() => _serveStaleOrError(502, 'Yahoo proxy error'));
+  }
+
   const yahooReq = https.get(yahooUrl, {
-    headers: {
-      'User-Agent': CHROME_UA,
-      Accept: 'application/json',
-    },
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     timeout: 10000,
   }, (upstream) => {
     let body = '';
@@ -7715,40 +8147,18 @@ function handleYahooChartRequest(req, res) {
       if (upstream.statusCode !== 200) {
         logThrottled('warn', `yahoo-chart-upstream-${upstream.statusCode}:${symbol}`,
           `[Relay] Yahoo chart upstream ${upstream.statusCode} for ${symbol}`);
-        return sendCompressed(req, res, upstream.statusCode || 502, {
-          'Content-Type': 'application/json',
-          'X-Yahoo-Source': 'relay-upstream-error',
-        }, JSON.stringify({ error: `Yahoo upstream ${upstream.statusCode}`, symbol }));
+        return _tryProxy();
       }
-      yahooChartCache.set(cacheKey, { json: body, ts: Date.now() });
-      sendCompressed(req, res, 200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=120, s-maxage=120, stale-while-revalidate=60',
-        'X-Yahoo-Source': 'relay-upstream',
-      }, body);
+      _serveYahooResult(body, 'relay-upstream');
     });
   });
   yahooReq.on('error', (err) => {
     logThrottled('error', `yahoo-chart-error:${symbol}`, `[Relay] Yahoo chart error for ${symbol}: ${err.message}`);
-    if (cached) {
-      return sendCompressed(req, res, 200, {
-        'Content-Type': 'application/json',
-        'X-Yahoo-Source': 'relay-stale',
-      }, cached.json);
-    }
-    sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
-      JSON.stringify({ error: 'Yahoo upstream error', symbol }));
+    _tryProxy();
   });
   yahooReq.on('timeout', () => {
     yahooReq.destroy();
-    if (cached) {
-      return sendCompressed(req, res, 200, {
-        'Content-Type': 'application/json',
-        'X-Yahoo-Source': 'relay-stale',
-      }, cached.json);
-    }
-    sendCompressed(req, res, 504, { 'Content-Type': 'application/json' },
-      JSON.stringify({ error: 'Yahoo upstream timeout', symbol }));
+    _tryProxy();
   });
 }
 
@@ -9177,7 +9587,8 @@ Market & Crypto:
 Economic & Energy:
   macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
   euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
+  faoFoodPriceIndex
 
 Tech & Intelligence:
   techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
@@ -9757,7 +10168,8 @@ Market & Crypto:
 Economic & Energy:
   macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
   euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
+  faoFoodPriceIndex
 
 Tech & Intelligence:
   techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
@@ -10013,6 +10425,8 @@ server.listen(PORT, () => {
   startShippingStressSeedLoop();
   startSocialVelocitySeedLoop();
   startClimateNewsSeedLoop();
+  startPizzintSeedLoop();
+  startDodoPriceSeedLoop();
 });
 
 wss.on('connection', (ws, req) => {

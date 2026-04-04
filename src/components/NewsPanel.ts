@@ -437,7 +437,13 @@ export class NewsPanel extends Panel {
     if (this.sortMode === 'newest') {
       sorted = [...items].sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
     } else {
-      sorted = items;
+      // Relevance: sort by importanceScore desc when available, fall back to pubDate
+      sorted = [...items].sort((a, b) => {
+        const sa = a.importanceScore ?? 0;
+        const sb = b.importanceScore ?? 0;
+        if (sb !== sa) return sb - sa;
+        return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+      });
     }
 
     this.setCount(sorted.length);
@@ -455,6 +461,9 @@ export class NewsPanel extends Panel {
         <div class="item-source">
           ${escapeHtml(item.source)}
           ${item.lang && item.lang !== getCurrentLanguage() ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
+          ${item.storyMeta?.phase === 'breaking' ? '<span class="phase-badge breaking">BREAKING</span>' : ''}
+          ${item.storyMeta?.phase === 'developing' ? `<span class="phase-badge developing">DEVELOPING${item.storyMeta.mentionCount > 1 ? ` ×${item.storyMeta.mentionCount}` : ''}</span>` : ''}
+          ${item.storyMeta?.phase === 'sustained' ? '<span class="phase-badge sustained">ONGOING</span>' : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
         <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>

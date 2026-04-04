@@ -1,5 +1,13 @@
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
+export const SEVERITY_VALUES: Record<ThreatLevel, number> = {
+  critical: 100,
+  high: 75,
+  medium: 50,
+  low: 25,
+  info: 0,
+};
+
 export type EventCategory =
   | 'conflict' | 'protest' | 'disaster' | 'diplomatic' | 'economic'
   | 'terrorism' | 'cyber' | 'health' | 'environmental' | 'military'

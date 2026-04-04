@@ -28,6 +28,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   climateAnomalies: 'climate:anomalies:v2',
   climateDisasters: 'climate:disasters:v1',
   co2Monitoring: 'climate:co2-monitoring:v1',
+  oceanIce: 'climate:ocean-ice:v1',
   climateNews:      'climate:news-intelligence:v1',
   radiationWatch: 'radiation:observations:v1',
   thermalEscalation: 'thermal:escalation:v1',
@@ -71,6 +72,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   groceryBasket: 'economic:grocery-basket:v1',
   bigmac:        'economic:bigmac:v1',
   fuelPrices:    'economic:fuel-prices:v1',
+  faoFoodPriceIndex: 'economic:fao-ffpi:v1',
   nationalDebt:      'economic:national-debt:v1',
   euGasStorage:      'economic:eu-gas-storage:v1',
   eurostatCountryData: 'economic:eurostat-country-data:v1',
@@ -82,13 +84,14 @@ const BOOTSTRAP_CACHE_KEYS = {
   euFsi:             'economic:fsi-eu:v1',
   shippingStress:    'supply_chain:shipping_stress:v1',
   socialVelocity:    'intelligence:social:reddit:v1',
+  pizzint:           'intelligence:pizzint:seed:v1',
   diseaseOutbreaks:  'health:disease-outbreaks:v1',
   economicStress:    'economic:stress-index:v1',
 };
 
 const SLOW_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
-  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'climateNews',
+  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
   'naturalEvents',
@@ -102,6 +105,7 @@ const SLOW_KEYS = new Set([
   'groceryBasket',
   'bigmac',
   'fuelPrices',
+  'faoFoodPriceIndex',
   'nationalDebt',
   'euGasStorage',
   'eurostatCountryData',
@@ -113,6 +117,7 @@ const SLOW_KEYS = new Set([
   'euFsi',
   'diseaseOutbreaks',
   'economicStress',
+  'pizzint',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',

@@ -25,6 +25,27 @@ export interface DiseaseOutbreakItem {
   cases: number;
 }
 
+export interface ListAirQualityAlertsRequest {
+}
+
+export interface ListAirQualityAlertsResponse {
+  alerts: AirQualityAlert[];
+  fetchedAt: number;
+}
+
+export interface AirQualityAlert {
+  city: string;
+  countryCode: string;
+  lat: number;
+  lng: number;
+  pm25: number;
+  aqi: number;
+  riskLevel: string;
+  pollutant: string;
+  measuredAt: number;
+  source: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -94,6 +115,29 @@ export class HealthServiceClient {
     }
 
     return await resp.json() as ListDiseaseOutbreaksResponse;
+  }
+
+  async listAirQualityAlerts(req: ListAirQualityAlertsRequest, options?: HealthServiceCallOptions): Promise<ListAirQualityAlertsResponse> {
+    let path = "/api/health/v1/list-air-quality-alerts";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListAirQualityAlertsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

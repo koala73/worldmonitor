@@ -18,11 +18,22 @@ import {
   startDiscordOAuth,
   deleteChannel,
   saveAlertRules,
+  setQuietHours,
+  setDigestSettings,
   type NotificationChannel,
   type ChannelType,
+  type QuietHoursOverride,
+  type DigestMode,
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
+// When VITE_QUIET_HOURS_BATCH_ENABLED=0 the relay does not honour batch_on_wake.
+// Hide that option so users cannot select a mode that silently behaves as critical_only.
+const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
+// When VITE_DIGEST_CRON_ENABLED=0 the Railway cron has not been deployed yet.
+// Hide non-realtime digest options so users cannot enter a blackhole state
+// where the relay skips their rule and the cron never runs.
+const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
 import {
   loadFrameworkLibrary,
   saveImportedFramework,
@@ -727,6 +738,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           return '';
         }
 
+        const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
         function renderNotifContent(data: Awaited<ReturnType<typeof getChannelsData>>): string {
           const channelTypes: ChannelType[] = ['telegram', 'email', 'slack', 'discord'];
           const alertRule = data.alertRules?.[0] ?? null;
@@ -738,23 +751,123 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             html += renderChannelRow(channel, type);
           }
 
-          html += `<div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
-            <div class="ai-flow-toggle-row">
-              <div class="ai-flow-toggle-label-wrap">
-                <div class="ai-flow-toggle-label">Enable notifications</div>
-                <div class="ai-flow-toggle-desc">Receive alerts for events matching your filters</div>
+          const qhEnabled = alertRule?.quietHoursEnabled ?? false;
+          const qhStart = alertRule?.quietHoursStart ?? 22;
+          const qhEnd = alertRule?.quietHoursEnd ?? 7;
+          const qhOverride = alertRule?.quietHoursOverride ?? 'critical_only';
+
+          const digestMode = alertRule?.digestMode ?? 'realtime';
+          const digestHour = alertRule?.digestHour ?? 8;
+
+          const hourOptions = Array.from({ length: 24 }, (_, h) => {
+            const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+            return `<option value="${h}"${h === qhStart ? ' selected' : ''}>${label}</option>`;
+          }).join('');
+          const hourOptionsEnd = Array.from({ length: 24 }, (_, h) => {
+            const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+            return `<option value="${h}"${h === qhEnd ? ' selected' : ''}>${label}</option>`;
+          }).join('');
+          const hourOptionsDigest = Array.from({ length: 24 }, (_, h) => {
+            const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`;
+            return `<option value="${h}"${h === digestHour ? ' selected' : ''}>${label}</option>`;
+          }).join('');
+
+          const TZ_LIST = [
+            'UTC',
+            'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+            'America/Anchorage', 'America/Honolulu', 'America/Phoenix',
+            'America/Toronto', 'America/Vancouver', 'America/Mexico_City',
+            'America/Sao_Paulo', 'America/Argentina/Buenos_Aires', 'America/Bogota',
+            'America/Lima', 'America/Santiago', 'America/Caracas',
+            'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid',
+            'Europe/Rome', 'Europe/Amsterdam', 'Europe/Stockholm', 'Europe/Oslo',
+            'Europe/Zurich', 'Europe/Warsaw', 'Europe/Athens', 'Europe/Bucharest',
+            'Europe/Helsinki', 'Europe/Istanbul', 'Europe/Moscow', 'Europe/Kyiv',
+            'Africa/Cairo', 'Africa/Nairobi', 'Africa/Lagos', 'Africa/Johannesburg',
+            'Asia/Dubai', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Dhaka',
+            'Asia/Bangkok', 'Asia/Singapore', 'Asia/Shanghai', 'Asia/Hong_Kong',
+            'Asia/Tokyo', 'Asia/Seoul', 'Asia/Manila',
+            'Australia/Sydney', 'Australia/Brisbane', 'Australia/Perth',
+            'Pacific/Auckland', 'Pacific/Fiji',
+          ];
+          const makeTzOptions = (current: string) => {
+            const list = TZ_LIST.includes(current) ? TZ_LIST : [current, ...TZ_LIST];
+            return list.map(tz => `<option value="${tz}"${tz === current ? ' selected' : ''}>${tz}</option>`).join('');
+          };
+
+          const isRealtime = !DIGEST_CRON_ENABLED || digestMode === 'realtime';
+          const sharedTz = isRealtime
+            ? (alertRule?.quietHoursTimezone ?? alertRule?.digestTimezone ?? detectedTz)
+            : (alertRule?.digestTimezone ?? alertRule?.quietHoursTimezone ?? detectedTz);
+
+          html += `<div class="ai-flow-section-label" style="margin-top:8px">Delivery Mode</div>
+            ${!DIGEST_CRON_ENABLED ? '<div class="ai-flow-toggle-desc" style="margin-bottom:4px">Digest delivery is not yet active.</div>' : ''}
+            <select class="unified-settings-select" id="usDigestMode"${!DIGEST_CRON_ENABLED ? ' disabled' : ''}>
+              <option value="realtime"${isRealtime ? ' selected' : ''}>Real-time (immediate)</option>
+              ${DIGEST_CRON_ENABLED ? `<option value="daily"${digestMode === 'daily' ? ' selected' : ''}>Daily digest</option>
+              <option value="twice_daily"${digestMode === 'twice_daily' ? ' selected' : ''}>Twice daily</option>
+              <option value="weekly"${digestMode === 'weekly' ? ' selected' : ''}>Weekly digest</option>` : ''}
+            </select>
+            <div id="usRealtimeSection" style="${isRealtime ? '' : 'display:none'}">
+              <div class="ai-flow-section-label" style="margin-top:8px">Alert Rules</div>
+              <div class="ai-flow-toggle-row">
+                <div class="ai-flow-toggle-label-wrap">
+                  <div class="ai-flow-toggle-label">Enable notifications</div>
+                  <div class="ai-flow-toggle-desc">Receive alerts for events matching your filters</div>
+                </div>
+                <label class="ai-flow-switch">
+                  <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled ? ' checked' : ''}>
+                  <span class="ai-flow-slider"></span>
+                </label>
               </div>
-              <label class="ai-flow-switch">
-                <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled ? ' checked' : ''}>
-                <span class="ai-flow-slider"></span>
-              </label>
+              <div class="ai-flow-section-label">Sensitivity</div>
+              <select class="unified-settings-select" id="usNotifSensitivity">
+                <option value="all"${sensitivity === 'all' ? ' selected' : ''}>All events</option>
+                <option value="high"${sensitivity === 'high' ? ' selected' : ''}>High &amp; critical</option>
+                <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
+              </select>
+              <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
+              <div class="ai-flow-toggle-row">
+                <div class="ai-flow-toggle-label-wrap">
+                  <div class="ai-flow-toggle-label">Enable quiet hours</div>
+                  <div class="ai-flow-toggle-desc">Suppress or batch non-critical alerts during set hours</div>
+                </div>
+                <label class="ai-flow-switch">
+                  <input type="checkbox" id="usQhEnabled"${qhEnabled ? ' checked' : ''}>
+                  <span class="ai-flow-slider"></span>
+                </label>
+              </div>
+              <div id="usQhDetails" style="${qhEnabled ? '' : 'display:none'}">
+                <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap">
+                  <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
+                    <div class="ai-flow-toggle-label">From</div>
+                  </div>
+                  <select class="unified-settings-select" id="usQhStart" style="width:auto">${hourOptions}</select>
+                  <div class="ai-flow-toggle-label-wrap" style="min-width:30px">
+                    <div class="ai-flow-toggle-label">To</div>
+                  </div>
+                  <select class="unified-settings-select" id="usQhEnd" style="width:auto">${hourOptionsEnd}</select>
+                </div>
+                <div style="margin-top:4px">
+                  <div class="ai-flow-toggle-label" style="margin-bottom:4px">During quiet hours</div>
+                  <select class="unified-settings-select" id="usQhOverride">
+                    <option value="critical_only"${qhOverride === 'critical_only' ? ' selected' : ''}>Critical only (suppress others)</option>
+                    <option value="silence_all"${qhOverride === 'silence_all' ? ' selected' : ''}>Silence all</option>
+                    ${QUIET_HOURS_BATCH_ENABLED ? `<option value="batch_on_wake"${qhOverride === 'batch_on_wake' ? ' selected' : ''}>Batch — deliver on wake</option>` : ''}
+                  </select>
+                </div>
+              </div>
             </div>
-            <div class="ai-flow-section-label">Sensitivity</div>
-            <select class="unified-settings-select" id="usNotifSensitivity">
-              <option value="all"${sensitivity === 'all' ? ' selected' : ''}>All events</option>
-              <option value="high"${sensitivity === 'high' ? ' selected' : ''}>High &amp; critical</option>
-              <option value="critical"${sensitivity === 'critical' ? ' selected' : ''}>Critical only</option>
-            </select>`;
+            <div id="usDigestDetails" style="${isRealtime ? 'display:none' : ''}">
+              <div class="ai-flow-toggle-row" style="gap:8px;flex-wrap:wrap;margin-top:4px">
+                <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
+                  <div class="ai-flow-toggle-label">Send at</div>
+                </div>
+                <select class="unified-settings-select" id="usDigestHour" style="width:auto">${hourOptionsDigest}</select>
+              </div>
+            </div>
+            <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
+            <select class="unified-settings-select" id="usSharedTimezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
           return html;
         }
 
@@ -770,8 +883,9 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             contentEl.innerHTML = renderNotifContent(data);
             loadingEl.style.display = 'none';
             contentEl.style.display = 'block';
-          }).catch(() => {
+          }).catch((err) => {
             if (signal.aborted) return;
+            console.error('[notifications] Failed to load settings:', err);
             if (loadingEl) loadingEl.textContent = 'Failed to load notification settings.';
           });
         }
@@ -796,15 +910,97 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         let slackOAuthPopup: Window | null = null;
         let discordOAuthPopup: Window | null = null;
         let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+        let qhDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+        let digestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
         signal.addEventListener('abort', () => {
           if (alertRuleDebounceTimer !== null) {
             clearTimeout(alertRuleDebounceTimer);
             alertRuleDebounceTimer = null;
           }
+          if (qhDebounceTimer !== null) {
+            clearTimeout(qhDebounceTimer);
+            qhDebounceTimer = null;
+          }
+          if (digestDebounceTimer !== null) {
+            clearTimeout(digestDebounceTimer);
+            digestDebounceTimer = null;
+          }
         });
+
+        const saveQuietHours = () => {
+          if (qhDebounceTimer) clearTimeout(qhDebounceTimer);
+          qhDebounceTimer = setTimeout(() => {
+            const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
+            const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
+            const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
+            const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
+            const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
+            void setQuietHours({
+              variant: SITE_VARIANT,
+              quietHoursEnabled: enabledEl?.checked ?? false,
+              quietHoursStart: startEl ? Number(startEl.value) : 22,
+              quietHoursEnd: endEl ? Number(endEl.value) : 7,
+              quietHoursTimezone: tzEl?.value || detectedTz,
+              quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
+            });
+          }, 800);
+        };
+
+        const saveDigestSettings = () => {
+          if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
+          digestDebounceTimer = setTimeout(() => {
+            const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
+            const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
+            const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
+            void setDigestSettings({
+              variant: SITE_VARIANT,
+              digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
+              digestHour: hourEl ? Number(hourEl.value) : 8,
+              digestTimezone: tzEl?.value || detectedTz,
+            });
+          }, 800);
+        };
 
         container.addEventListener('change', (e) => {
           const target = e.target as HTMLInputElement;
+          if (target.id === 'usQhEnabled') {
+            const details = container.querySelector<HTMLElement>('#usQhDetails');
+            if (details) details.style.display = target.checked ? '' : 'none';
+            saveQuietHours();
+            return;
+          }
+          if (target.id === 'usQhStart' || target.id === 'usQhEnd' || target.id === 'usQhOverride') {
+            saveQuietHours();
+            return;
+          }
+          if (target.id === 'usDigestMode') {
+            const isRt = target.value === 'realtime';
+            const realtimeSection = container.querySelector<HTMLElement>('#usRealtimeSection');
+            const digestDetails = container.querySelector<HTMLElement>('#usDigestDetails');
+            if (realtimeSection) realtimeSection.style.display = isRt ? '' : 'none';
+            if (digestDetails) digestDetails.style.display = isRt ? 'none' : '';
+            saveDigestSettings();
+            // Switching to digest mode: auto-enable the alert rule so the
+            // backend schedules digests. The enable toggle is hidden in
+            // digest mode, so the user has no other way to turn it on.
+            if (!isRt) {
+              const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
+              if (enabledEl && !enabledEl.checked) {
+                enabledEl.checked = true;
+                enabledEl.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }
+            return;
+          }
+          if (target.id === 'usDigestHour') {
+            saveDigestSettings();
+            return;
+          }
+          if (target.id === 'usSharedTimezone') {
+            saveQuietHours();
+            saveDigestSettings();
+            return;
+          }
           if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
             if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
             alertRuleDebounceTimer = setTimeout(() => {

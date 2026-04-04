@@ -85,6 +85,52 @@ export interface Co2DataPoint {
   anomaly: number;
 }
 
+export interface GetOceanIceDataRequest {
+}
+
+export interface GetOceanIceDataResponse {
+  data?: OceanIceData;
+}
+
+export interface OceanIceData {
+  arcticExtentMkm2: number;
+  arcticExtentAnomalyMkm2: number;
+  arcticTrend: string;
+  seaLevelMmAbove1993: number;
+  seaLevelAnnualRiseMm: number;
+  ohc0700mZj: number;
+  sstAnomalyC: number;
+  measuredAt: number;
+  iceTrend12m: IceTrendPoint[];
+}
+
+export interface IceTrendPoint {
+  month: string;
+  extentMkm2: number;
+  anomalyMkm2: number;
+}
+
+export interface ListAirQualityDataRequest {
+}
+
+export interface ListAirQualityDataResponse {
+  stations: AirQualityStation[];
+  fetchedAt: number;
+}
+
+export interface AirQualityStation {
+  city: string;
+  countryCode: string;
+  lat: number;
+  lng: number;
+  pm25: number;
+  aqi: number;
+  riskLevel: string;
+  pollutant: string;
+  measuredAt: number;
+  source: string;
+}
+
 export interface ListClimateNewsRequest {
 }
 
@@ -228,6 +274,52 @@ export class ClimateServiceClient {
     }
 
     return await resp.json() as GetCo2MonitoringResponse;
+  }
+
+  async getOceanIceData(req: GetOceanIceDataRequest, options?: ClimateServiceCallOptions): Promise<GetOceanIceDataResponse> {
+    let path = "/api/climate/v1/get-ocean-ice-data";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetOceanIceDataResponse;
+  }
+
+  async listAirQualityData(req: ListAirQualityDataRequest, options?: ClimateServiceCallOptions): Promise<ListAirQualityDataResponse> {
+    let path = "/api/climate/v1/list-air-quality-data";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListAirQualityDataResponse;
   }
 
   async listClimateNews(req: ListClimateNewsRequest, options?: ClimateServiceCallOptions): Promise<ListClimateNewsResponse> {

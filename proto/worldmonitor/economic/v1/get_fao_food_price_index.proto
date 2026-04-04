@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message FaoFoodPricePoint {
+  string date = 1;     // YYYY-MM
+  double ffpi = 2;     // FAO Food Price Index (composite)
+  double meat = 3;
+  double dairy = 4;
+  double cereals = 5;
+  double oils = 6;
+  double sugar = 7;
+}
+
+message GetFaoFoodPriceIndexRequest {}
+
+message GetFaoFoodPriceIndexResponse {
+  repeated FaoFoodPricePoint points = 1;  // last 12 months, ascending
+  string fetched_at = 2;
+  double current_ffpi = 3;
+  double mom_pct = 4;   // month-over-month % change
+  double yoy_pct = 5;   // year-over-year % change
+}
