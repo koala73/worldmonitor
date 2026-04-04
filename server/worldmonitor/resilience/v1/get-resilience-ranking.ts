@@ -29,6 +29,8 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   const cachedScores = await getCachedResilienceScores(countryCodes);
   const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
   if (missing.length > 0) {
+    // TODO: use ctx.waitUntil() when sebuf gateway supports it; without it
+    // the warmup promise may be killed when the response is sent on Vercel Edge.
     void warmMissingResilienceScores(missing).catch((err) => {
       console.warn('[resilience] ranking warmup failed:', err);
     });
