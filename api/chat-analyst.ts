@@ -128,7 +128,13 @@ export default async function handler(req: Request): Promise<Response> {
     })
     .filter((m) => m.content.length > 0);
 
-  const context = await assembleAnalystContext(geoContext, domainFocus, query);
+  // For retrieval, combine the last previous user turn with the current query so
+  // follow-up messages ("What about Germany?") inherit topic context from the
+  // thread rather than searching only on the single-word pivot.
+  const prevUserTurn = history.filter((m) => m.role === 'user').slice(-1)[0]?.content ?? '';
+  const retrievalQuery = prevUserTurn ? `${prevUserTurn} ${query}` : query;
+
+  const context = await assembleAnalystContext(geoContext, domainFocus, retrievalQuery);
   const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
 
   const messages = [

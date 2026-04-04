@@ -1,6 +1,7 @@
 import { getCachedJson } from '../../../_shared/redis';
 import { sanitizeForPrompt, sanitizeHeadline } from '../../../_shared/llm-sanitize.js';
 import { CHROME_UA } from '../../../_shared/constants';
+import { tokenizeForMatch, findMatchingKeywords } from '../../../../src/utils/keyword-match';
 
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
 // When multi-language digests are available, fan out to news:digest:v1:full:<lang>
@@ -227,12 +228,23 @@ const STOPWORDS = new Set([
 const MAX_KEYWORDS = 8;
 
 function extractKeywords(query: string): string[] {
-  return [...new Set(
-    query
-      .toLowerCase()
-      .split(/\W+/)
-      .filter((w) => w.length > 2 && !STOPWORDS.has(w)),
-  )].slice(0, MAX_KEYWORDS);
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of query.split(/\W+/)) {
+    if (!raw) continue;
+    // Preserve 2-char uppercase acronyms (US, UK, EU, UN, AI, etc.) before lowercasing
+    if (raw.length === 2 && /^[A-Z]{2}$/.test(raw)) {
+      const lower = raw.toLowerCase();
+      if (!seen.has(lower)) { seen.add(lower); result.push(lower); }
+      continue;
+    }
+    const lower = raw.toLowerCase();
+    if (lower.length > 2 && !STOPWORDS.has(lower) && !seen.has(lower)) {
+      seen.add(lower);
+      result.push(lower);
+    }
+  }
+  return result.slice(0, MAX_KEYWORDS);
 }
 
 // ── GDELT live headlines ──────────────────────────────────────────────────────
@@ -308,11 +320,14 @@ function flattenDigest(digest: unknown): DigestItem[] {
 }
 
 function scoreArticle(title: string, keywords: string[]): number {
-  const lower = title.toLowerCase();
-  const hits = keywords.filter((kw) => lower.includes(kw)).length;
+  const tokens = tokenizeForMatch(title);
+  const matched = findMatchingKeywords(tokens, keywords);
+  const hits = matched.length;
   if (hits === 0) return 0;
-  // Boost when any two adjacent keywords co-occur in the title — fires reliably
-  // for real article titles without requiring all keywords consecutively.
+  // Boost when any two adjacent keywords co-occur consecutively in the title.
+  // Using raw substring on lowercased title for the pair check is intentional:
+  // false positives for two-word combinations are rare enough not to matter.
+  const lower = title.toLowerCase();
   const hasAdjacentPair = keywords.length > 1 &&
     keywords.slice(0, -1).some((kw, i) => lower.includes(`${kw} ${keywords[i + 1]!}`));
   return (hasAdjacentPair ? 3 : 1) * hits;
