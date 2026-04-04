@@ -190,6 +190,7 @@ describe('resilience handlers', () => {
       [['NO', 82], ['US', 61], ['YE', -1]],
     );
     assert.equal(redis.has('resilience:ranking'), false, 'incomplete ranking should not be cached');
+    assert.equal(redis.has('seed-meta:resilience:ranking'), false, 'incomplete ranking should not write freshness metadata');
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.ok(redis.has('resilience:score:YE'), 'missing country should be warmed into the score cache');
@@ -199,5 +200,8 @@ describe('resilience handlers', () => {
     assert.equal(second.items.length, 3);
     assert.ok(second.items.every((item) => item.overallScore >= 0), 'second call should read only cached scores');
     assert.ok(redis.has('resilience:ranking'), 'fully scored ranking should be cached');
+    const rankingMeta = JSON.parse(redis.get('seed-meta:resilience:ranking') || '{}');
+    assert.equal(typeof rankingMeta.fetchedAt, 'number', 'ranking freshness metadata should record fetchedAt');
+    assert.equal(rankingMeta.count, 3, 'ranking freshness metadata should record count matching health.js contract');
   });
 });
