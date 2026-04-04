@@ -247,8 +247,12 @@ export default async function handler(req) {
   }
 
   const dodoPrices = await fetchPricesFromDodo();
-  const dodoPriceCount = Object.keys(dodoPrices).length;
-  const expectedCount = Object.keys(CATALOG).length;
+  // Count only public priced products that buildTiers actually renders
+  const pricedPublicIds = Object.entries(CATALOG)
+    .filter(([, v]) => PUBLIC_TIER_GROUPS.includes(v.tierGroup) && v.tierGroup !== 'free' && v.tierGroup !== 'enterprise')
+    .map(([id]) => id);
+  const dodoPriceCount = pricedPublicIds.filter(id => dodoPrices[id]).length;
+  const expectedCount = pricedPublicIds.length;
   const priceSource = dodoPriceCount === expectedCount ? 'dodo' : dodoPriceCount > 0 ? 'partial' : 'fallback';
   if (priceSource !== 'dodo') {
     console.warn(`[product-catalog] priceSource=${priceSource}: got ${dodoPriceCount}/${expectedCount} prices from Dodo`);
