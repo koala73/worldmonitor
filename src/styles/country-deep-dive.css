@@ -43,6 +43,10 @@
   grid-template-columns: 1fr 1fr;
 }
 
+.country-deep-dive.maximized .cdp-summary-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
 .cdp-expanded-only {
   display: none;
 }
@@ -236,6 +240,12 @@
 }
 
 .cdp-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.cdp-summary-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
