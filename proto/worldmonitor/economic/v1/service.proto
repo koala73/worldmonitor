@@ -26,6 +26,7 @@ import "worldmonitor/economic/v1/get_eu_gas_storage.proto";
 import "worldmonitor/economic/v1/get_eu_yield_curve.proto";
 import "worldmonitor/economic/v1/get_eu_fsi.proto";
 import "worldmonitor/economic/v1/get_economic_stress.proto";
+import "worldmonitor/economic/v1/get_fao_food_price_index.proto";
 
 // EconomicService provides APIs for macroeconomic data from FRED, World Bank, and EIA.
 service EconomicService {
@@ -144,5 +145,10 @@ service EconomicService {
   // GetEconomicStress retrieves the composite Economic Stress Index (0-100) from 6 FRED series.
   rpc GetEconomicStress(GetEconomicStressRequest) returns (GetEconomicStressResponse) {
     option (sebuf.http.config) = {path: "/get-economic-stress", method: HTTP_METHOD_GET};
+  }
+
+  // GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
+  rpc GetFaoFoodPriceIndex(GetFaoFoodPriceIndexRequest) returns (GetFaoFoodPriceIndexResponse) {
+    option (sebuf.http.config) = {path: "/get-fao-food-price-index", method: HTTP_METHOD_GET};
   }
 }

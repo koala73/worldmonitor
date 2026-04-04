@@ -40,6 +40,8 @@ export interface SessionResult {
   valid: boolean;
   userId?: string;
   role?: 'free' | 'pro';
+  email?: string;
+  name?: string;
 }
 
 function getAllowedAudiences(): string[] {
@@ -126,7 +128,12 @@ export async function validateBearerToken(token: string): Promise<SessionResult>
           : 'free'
         : await lookupPlanFromClerk(userId);
 
-    return { valid: true, userId, role };
+    const email = typeof payload.email === 'string' ? payload.email : undefined;
+    const givenName = typeof payload.given_name === 'string' ? payload.given_name : undefined;
+    const familyName = typeof payload.family_name === 'string' ? payload.family_name : undefined;
+    const name = [givenName, familyName].filter(Boolean).join(' ') || undefined;
+
+    return { valid: true, userId, role, email, name };
   } catch {
     // Signature verification failed, expired, wrong issuer, etc.
     return { valid: false };

@@ -8,6 +8,7 @@ import type {
   SeverityLevel,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
+import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
 import { getCachedJson, setCachedJson, cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
 import { TIER1_COUNTRIES } from './_shared';
@@ -141,15 +142,7 @@ function safeNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// ISO3 → ISO2 mapping for displacement data (UNHCR uses ISO3)
-const ISO3_TO_ISO2: Record<string, string> = {
-  USA: 'US', RUS: 'RU', CHN: 'CN', UKR: 'UA', IRN: 'IR', ISR: 'IL',
-  TWN: 'TW', PRK: 'KP', SAU: 'SA', TUR: 'TR', POL: 'PL', DEU: 'DE',
-  FRA: 'FR', GBR: 'GB', IND: 'IN', PAK: 'PK', SYR: 'SY', YEM: 'YE',
-  MMR: 'MM', VEN: 'VE', CUB: 'CU', MEX: 'MX', BRA: 'BR', ARE: 'AE',
-  KOR: 'KR', IRQ: 'IQ', AFG: 'AF', LBN: 'LB', EGY: 'EG', JPN: 'JP',
-  QAT: 'QA',
-};
+const ISO3_TO_ISO2: Record<string, string> = iso3ToIso2Json;
 
 interface CountrySignals {
   protests: number;

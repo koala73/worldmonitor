@@ -24,7 +24,7 @@ const DODO_API_KEY = process.env.DODO_API_KEY ?? '';
 const DODO_ENV = process.env.DODO_PAYMENTS_ENVIRONMENT ?? 'test_mode';
 const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 
-const CACHE_KEY = 'product-catalog:v1';
+const CACHE_KEY = 'product-catalog:v2';
 const CACHE_TTL = 3600; // 1 hour
 
 // Product IDs and their catalog metadata (non-price fields).
@@ -123,7 +123,7 @@ async function purgeCache() {
 
 async function fetchPricesFromDodo() {
   const baseUrl = DODO_ENV === 'live_mode'
-    ? 'https://api.dodopayments.com'
+    ? 'https://live.dodopayments.com'
     : 'https://test.dodopayments.com';
 
   const productIds = Object.keys(CATALOG);
@@ -186,16 +186,24 @@ function buildTiers(dodoPrices) {
     if (monthlyEntry) {
       const [monthlyId] = monthlyEntry;
       const monthlyPrice = dodoPrices[monthlyId];
-      const priceCents = monthlyPrice?.priceCents ?? FALLBACK_PRICES[monthlyId];
-      if (priceCents != null) tier.monthlyPrice = priceCents / 100;
+      if (monthlyPrice) {
+        tier.monthlyPrice = monthlyPrice.priceCents / 100;
+      } else if (FALLBACK_PRICES[monthlyId] != null) {
+        tier.monthlyPrice = FALLBACK_PRICES[monthlyId] / 100;
+        console.warn(`[product-catalog] FALLBACK price for ${monthlyId} ($${tier.monthlyPrice}) — Dodo fetch failed`);
+      }
       tier.monthlyProductId = monthlyId;
     }
 
     if (annualEntry) {
       const [annualId] = annualEntry;
       const annualPrice = dodoPrices[annualId];
-      const priceCents = annualPrice?.priceCents ?? FALLBACK_PRICES[annualId];
-      if (priceCents != null) tier.annualPrice = priceCents / 100;
+      if (annualPrice) {
+        tier.annualPrice = annualPrice.priceCents / 100;
+      } else if (FALLBACK_PRICES[annualId] != null) {
+        tier.annualPrice = FALLBACK_PRICES[annualId] / 100;
+        console.warn(`[product-catalog] FALLBACK price for ${annualId} ($${tier.annualPrice}) — Dodo fetch failed`);
+      }
       tier.annualProductId = annualId;
     }
 
@@ -227,24 +235,33 @@ export default async function handler(req) {
     return json({ error: 'Method not allowed' }, 405, cors);
   }
 
-  // Try cache first
+  // Read from Redis (populated by Railway ais-relay seed loop)
   const cached = await getFromCache();
   if (cached) {
     return json(cached, 200, cors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300');
   }
 
-  // Fetch from Dodo
-  if (!DODO_API_KEY) {
-    return json({ error: 'DODO_API_KEY not configured' }, 503, cors);
+  // Redis empty (purged or seed hasn't run). Try Dodo directly as backup.
+  // May fail from Vercel IPs (401) — falls back to static prices.
+  if (DODO_API_KEY) {
+    const dodoPrices = await fetchPricesFromDodo();
+    const pricedPublicIds = Object.entries(CATALOG)
+      .filter(([, v]) => PUBLIC_TIER_GROUPS.includes(v.tierGroup) && v.tierGroup !== 'free' && v.tierGroup !== 'enterprise')
+      .map(([id]) => id);
+    const dodoPriceCount = pricedPublicIds.filter(id => dodoPrices[id]).length;
+    if (dodoPriceCount > 0) {
+      const priceSource = dodoPriceCount === pricedPublicIds.length ? 'dodo' : 'partial';
+      const tiers = buildTiers(dodoPrices);
+      const now = Date.now();
+      const result = { tiers, fetchedAt: now, cachedUntil: now + CACHE_TTL * 1000, priceSource };
+      // Don't write to Redis — let the Railway seed own that key with its longer TTL.
+      // Just return the result with short cache so the next Railway cycle repopulates properly.
+      return json(result, 200, cors, 'public, max-age=60, s-maxage=60');
+    }
   }
 
-  const dodoPrices = await fetchPricesFromDodo();
-  const tiers = buildTiers(dodoPrices);
+  // All sources failed. Return fallback with short cache.
+  const tiers = buildTiers({});
   const now = Date.now();
-  const result = { tiers, fetchedAt: now, cachedUntil: now + CACHE_TTL * 1000 };
-
-  // Cache the result
-  await setCache(result);
-
-  return json(result, 200, cors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300');
+  return json({ tiers, fetchedAt: now, cachedUntil: now + 60_000, priceSource: 'fallback' }, 200, cors, 'public, max-age=60, s-maxage=60');
 }

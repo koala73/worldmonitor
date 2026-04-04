@@ -47,6 +47,9 @@ export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 
+export const ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
+export const ENERGY_EXPOSURE_INDEX_KEY = 'energy:exposure:v1:index';
+
 /**
  * Static cache keys for the bootstrap endpoint.
  * Only keys with NO request-varying suffixes are included.
@@ -126,6 +129,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   pizzint:          'intelligence:pizzint:seed:v1',
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
   economicStress:   'economic:stress-index:v1',
+  faoFoodPriceIndex: 'economic:fao-ffpi:v1',
 };
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
@@ -169,4 +173,5 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   pizzint: 'slow',
   diseaseOutbreaks: 'slow',
   economicStress: 'slow',
+  faoFoodPriceIndex: 'slow',
 };

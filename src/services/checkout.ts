@@ -14,8 +14,7 @@
 import * as Sentry from '@sentry/browser';
 import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
-import { getConvexClient, getConvexApi, waitForConvexAuth } from './convex-client';
-import { getCurrentClerkUser } from './clerk';
+import { getCurrentClerkUser, getClerkToken } from './clerk';
 
 const CHECKOUT_PRODUCT_PARAM = 'checkoutProduct';
 const CHECKOUT_REFERRAL_PARAM = 'checkoutReferral';
@@ -159,21 +158,16 @@ export async function resumePendingCheckout(options?: {
   }
 
   console.log(`[checkout] resumePendingCheckout: starting checkout for ${intent.productId}`);
-  try {
-    await startCheckout(
-      intent.productId,
-      {
-        referralCode: intent.referralCode,
-        discountCode: intent.discountCode,
-      },
-      { fallbackToPricingPage: false },
-    );
-    clearPendingCheckoutIntent();
-    return true;
-  } catch (err) {
-    console.warn('[checkout] resumePendingCheckout: startCheckout failed, intent preserved for retry', err);
-    return false;
-  }
+  const success = await startCheckout(
+    intent.productId,
+    {
+      referralCode: intent.referralCode,
+      discountCode: intent.discountCode,
+    },
+    { fallbackToPricingPage: false },
+  );
+  if (success) clearPendingCheckoutIntent();
+  return success;
 }
 
 /**
@@ -214,68 +208,73 @@ export function openCheckout(checkoutUrl: string): void {
   });
 }
 
+let _checkoutInFlight = false;
+
 /**
  * High-level checkout entry point for UI code.
  *
- * Creates a checkout session via the Convex action and opens the overlay.
- * Falls back to /pro page when Convex is unavailable.
+ * Creates a checkout session via the /api/create-checkout edge endpoint
+ * (which relays to Convex). Returns true if the overlay opened successfully.
+ * Falls back to /pro page on any failure.
  */
 export async function startCheckout(
   productId: string,
   options?: { discountCode?: string; referralCode?: string },
   behavior?: { fallbackToPricingPage?: boolean },
-): Promise<void> {
+): Promise<boolean> {
+  if (_checkoutInFlight) return false;
   const fallbackToPricingPage = behavior?.fallbackToPricingPage ?? true;
 
+  const user = getCurrentClerkUser();
+  if (!user) {
+    if (fallbackToPricingPage) window.open('https://worldmonitor.app/pro', '_blank');
+    return false;
+  }
+
+  _checkoutInFlight = true;
   try {
-    const client = await getConvexClient();
-    if (!client) {
-      if (fallbackToPricingPage) {
-        window.open('https://worldmonitor.app/pro', '_blank');
-      }
-      return;
+    let token = await getClerkToken();
+    if (!token) {
+      await new Promise((r) => setTimeout(r, 2000));
+      token = await getClerkToken();
+    }
+    if (!token) {
+      if (fallbackToPricingPage) window.open('https://worldmonitor.app/pro', '_blank');
+      return false;
     }
 
-    const api = await getConvexApi();
-    if (!api) {
-      if (fallbackToPricingPage) {
-        window.open('https://worldmonitor.app/pro', '_blank');
-      }
-      return;
-    }
-
-    if (!getCurrentClerkUser()?.id) {
-      if (fallbackToPricingPage) {
-        window.open('https://worldmonitor.app/pro', '_blank');
-      }
-      return;
-    }
-
-    const authReady = await waitForConvexAuth(10_000);
-    if (!authReady) {
-      console.warn('[checkout] Convex auth not ready after 10s, falling back');
-      if (fallbackToPricingPage) {
-        window.open('https://worldmonitor.app/pro', '_blank');
-      }
-      return;
-    }
-
-    const result = await client.action(api.payments.checkout.createCheckout, {
-      productId,
-      returnUrl: window.location.origin,
-      discountCode: options?.discountCode,
-      referralCode: options?.referralCode,
+    const resp = await fetch('/api/create-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        productId,
+        returnUrl: window.location.origin,
+        discountCode: options?.discountCode,
+        referralCode: options?.referralCode,
+      }),
+      signal: AbortSignal.timeout(15_000),
     });
 
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      console.error('[checkout] Edge endpoint error:', resp.status, err);
+      if (fallbackToPricingPage) window.open('https://worldmonitor.app/pro', '_blank');
+      return false;
+    }
+
+    const result = await resp.json();
     if (result?.checkout_url) {
       openCheckout(result.checkout_url);
+      return true;
     }
+    return false;
   } catch (err) {
     console.error('[checkout] Failed to create checkout session:', err);
     Sentry.captureException(err, { tags: { component: 'dodo-checkout', action: 'createCheckout' }, extra: { productId } });
-    if (fallbackToPricingPage) {
-      window.open('https://worldmonitor.app/pro', '_blank');
-    }
+    if (fallbackToPricingPage) window.open('https://worldmonitor.app/pro', '_blank');
+    return false;
+  } finally {
+    _checkoutInFlight = false;
   }
 }
 

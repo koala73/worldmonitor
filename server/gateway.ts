@@ -139,6 +139,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/list-grocery-basket-prices': 'static',
   '/api/economic/v1/list-bigmac-prices': 'static',
   '/api/economic/v1/list-fuel-prices': 'static',
+  '/api/economic/v1/get-fao-food-price-index': 'static',
   '/api/economic/v1/get-crude-inventories': 'static',
   '/api/economic/v1/get-nat-gas-storage': 'static',
   '/api/economic/v1/get-eu-yield-curve': 'daily',
@@ -277,7 +278,7 @@ export function createDomainGateway(
     // API key validation — tier-gated endpoints require EITHER an API key OR a valid bearer token.
     // Authenticated users (sessionUserId present) bypass the API key requirement.
     const keyCheck = validateApiKey(request, {
-      forceKey: isTierGated && !sessionUserId,
+      forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
     });
     if (keyCheck.required && !keyCheck.valid) {
       if (needsLegacyProBearerGate) {

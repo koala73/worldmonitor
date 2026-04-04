@@ -82,22 +82,21 @@ export function minMaxNormalize(values: number[]): number[] {
   return values.map((value) => (value - min) / range);
 }
 
-export function cronbachAlpha(observations: number[][]): number {
-  if (observations.length < 2 || !observations[0] || observations[0].length < 2) return 0;
-  if (observations.some((row) => row.length !== observations[0]!.length)) return 0;
+export function cronbachAlpha(items: number[][]): number {
+  if (items.length < 2 || !items[0] || items[0].length < 2) return 0;
 
-  const observationCount = observations.length;
-  const itemCount = observations[0].length;
+  const observationCount = items.length;
+  const itemCount = items[0].length;
   const itemVariances: number[] = [];
 
   for (let column = 0; column < itemCount; column += 1) {
-    const sample = observations.map((row) => row[column] ?? 0);
+    const sample = items.map((row) => row[column] ?? 0);
     const mean = sample.reduce((sum, value) => sum + value, 0) / observationCount;
     const variance = sample.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (observationCount - 1);
     itemVariances.push(variance);
   }
 
-  const totalScores = observations.map((row) => row.reduce((sum, value) => sum + value, 0));
+  const totalScores = items.map((row) => row.reduce((sum, value) => sum + value, 0));
   const totalMean = totalScores.reduce((sum, value) => sum + value, 0) / observationCount;
   const totalVariance = totalScores.reduce((sum, value) => sum + (value - totalMean) ** 2, 0) / (observationCount - 1);
 
@@ -131,35 +130,17 @@ export function detectChangepoints(values: number[], threshold = CHANGEPOINT_DEF
   const changepoints: number[] = [];
   let positiveCusum = 0;
   let negativeCusum = 0;
-  let positiveOnset = -1;
-  let negativeOnset = -1;
-  const CUSUM_SLACK = 0.25;
+  const slack = stdDev * 0.5;
 
   for (let index = 1; index < values.length; index += 1) {
     const normalizedValue = ((values[index] ?? 0) - mean) / stdDev;
+    positiveCusum = Math.max(0, positiveCusum + normalizedValue - slack / stdDev);
+    negativeCusum = Math.max(0, negativeCusum - normalizedValue - slack / stdDev);
 
-    const prevPositive = positiveCusum;
-    positiveCusum = Math.max(0, positiveCusum + normalizedValue - CUSUM_SLACK);
-    if (prevPositive === 0 && positiveCusum > 0) positiveOnset = index;
-
-    const prevNegative = negativeCusum;
-    negativeCusum = Math.max(0, negativeCusum - normalizedValue - CUSUM_SLACK);
-    if (prevNegative === 0 && negativeCusum > 0) negativeOnset = index;
-
-    if (positiveCusum > threshold) {
-      const onset = positiveOnset >= 0 ? positiveOnset : index;
-      if (onset >= 2) changepoints.push(onset);
+    if (positiveCusum > threshold || negativeCusum > threshold) {
+      changepoints.push(index);
       positiveCusum = 0;
       negativeCusum = 0;
-      positiveOnset = -1;
-      negativeOnset = -1;
-    } else if (negativeCusum > threshold) {
-      const onset = negativeOnset >= 0 ? negativeOnset : index;
-      if (onset >= 2) changepoints.push(onset);
-      positiveCusum = 0;
-      negativeCusum = 0;
-      positiveOnset = -1;
-      negativeOnset = -1;
     }
   }
 
@@ -184,22 +165,15 @@ export function nrcForecast(
   horizonDays: number,
   alpha = 0.3,
 ): ResilienceForecastResult {
-  if (horizonDays < 1) {
-    return { values: [], confidenceIntervals: [], probabilityUp: 0.5, probabilityDown: 0.5 };
-  }
-
   if (history.length < 3) {
     const lastValue = clampScore(history[history.length - 1] ?? 50);
     return {
       values: Array.from({ length: horizonDays }, () => lastValue),
-      confidenceIntervals: Array.from({ length: horizonDays }, () => {
-        const halfWidth = Math.max(5, lastValue * 0.1);
-        return {
-          lower: round(clampScore(lastValue - halfWidth)),
-          upper: round(clampScore(lastValue + halfWidth)),
-          level: 95,
-        };
-      }),
+      confidenceIntervals: Array.from({ length: horizonDays }, () => ({
+        lower: round(clampScore(lastValue * 0.9)),
+        upper: round(clampScore(lastValue * 1.1)),
+        level: 95,
+      })),
       probabilityUp: 0.5,
       probabilityDown: 0.5,
     };
@@ -228,10 +202,9 @@ export function nrcForecast(
 
   const lastForecast = values[values.length - 1] ?? baseline;
   const lastActual = history[history.length - 1] ?? baseline;
-  const delta = lastForecast - lastActual;
-  const scale = Math.max(modelError, 1);
-  const z = delta / scale;
-  const probabilityUp = Math.min(0.95, Math.max(0.05, 0.5 + z * 0.15));
+  const probabilityUp = lastForecast > lastActual
+    ? Math.min(0.95, 0.5 + (lastForecast - lastActual) * 0.05)
+    : Math.max(0.05, 0.5 - (lastActual - lastForecast) * 0.05);
 
   return {
     values,
