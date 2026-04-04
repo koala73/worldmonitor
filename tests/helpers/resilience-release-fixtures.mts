@@ -174,12 +174,12 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
   return {
     wgi: {
       indicators: {
-        VA: { value: round(-2.2 + quality * 0.045, 2), year: 2025 },
-        PV: { value: round(-2.4 + quality * 0.045, 2), year: 2025 },
-        GE: { value: round(-2.1 + quality * 0.044, 2), year: 2025 },
-        RQ: { value: round(-2.0 + quality * 0.043, 2), year: 2025 },
-        RL: { value: round(-2.2 + quality * 0.044, 2), year: 2025 },
-        CC: { value: round(-2.3 + quality * 0.045, 2), year: 2025 },
+        'VA.EST': { value: round(-2.2 + quality * 0.045, 2), year: 2025 },
+        'PV.EST': { value: round(-2.4 + quality * 0.045, 2), year: 2025 },
+        'GE.EST': { value: round(-2.1 + quality * 0.044, 2), year: 2025 },
+        'RQ.EST': { value: round(-2.0 + quality * 0.043, 2), year: 2025 },
+        'RL.EST': { value: round(-2.2 + quality * 0.044, 2), year: 2025 },
+        'CC.EST': { value: round(-2.3 + quality * 0.045, 2), year: 2025 },
       },
     },
     infrastructure: {
