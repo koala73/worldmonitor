@@ -117,8 +117,11 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   const history: ResilienceHistoryPoint[] = [];
 
   for (let index = 0; index < raw.length; index += 2) {
-    const date = String(raw[index] || '');
-    const score = Number(raw[index + 1] || NaN);
+    const member = String(raw[index] || '');
+    const separatorIndex = member.indexOf(':');
+    if (separatorIndex < 0) continue;
+    const date = member.slice(0, separatorIndex);
+    const score = Number(member.slice(separatorIndex + 1));
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(score)) continue;
     history.push({ date, score });
   }
@@ -140,8 +143,9 @@ async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[
 }
 
 async function appendHistory(countryCode: string, overallScore: number): Promise<void> {
+  const dateScore = Number(todayIsoDate().replace(/-/g, ''));
   await runRedisPipeline([
-    ['ZADD', historyKey(countryCode), round(overallScore), todayIsoDate()],
+    ['ZADD', historyKey(countryCode), dateScore, `${todayIsoDate()}:${round(overallScore)}`],
     ['ZREMRANGEBYRANK', historyKey(countryCode), 0, -31],
   ]);
 }

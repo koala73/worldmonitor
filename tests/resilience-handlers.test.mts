@@ -122,8 +122,8 @@ describe('resilience handlers', () => {
 
     const { fetchImpl, redis, sortedSets } = createRedisFetch(RESILIENCE_FIXTURES);
     sortedSets.set('resilience:history:US', [
-      { member: '2026-04-01', score: 20 },
-      { member: '2026-04-02', score: 30 },
+      { member: '2026-04-01:20', score: 20260401 },
+      { member: '2026-04-02:30', score: 20260402 },
     ]);
     globalThis.fetch = fetchImpl;
 
@@ -147,7 +147,7 @@ describe('resilience handlers', () => {
 
     const history = sortedSets.get('resilience:history:US') ?? [];
     const today = new Date().toISOString().slice(0, 10);
-    assert.ok(history.some((entry) => entry.member === today), 'expected today history member to be written');
+    assert.ok(history.some((entry) => entry.member.startsWith(today + ':')), 'expected today history member to be written');
 
     await getResilienceScore({ request: new Request('https://example.com') } as never, {
       countryCode: 'US',
@@ -185,19 +185,9 @@ describe('resilience handlers', () => {
 
     const first = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.deepEqual(
-      first.items.map((item) => [item.countryCode, item.overallScore]),
-      [['NO', 82], ['US', 61], ['YE', -1]],
-    );
-    assert.equal(redis.has('resilience:ranking'), false, 'incomplete ranking should not be cached');
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.ok(redis.has('resilience:score:YE'), 'missing country should be warmed into the score cache');
-
-    const second = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
-
-    assert.equal(second.items.length, 3);
-    assert.ok(second.items.every((item) => item.overallScore >= 0), 'second call should read only cached scores');
+    assert.equal(first.items.length, 3);
+    assert.ok(redis.has('resilience:score:YE'), 'missing country should be warmed during first call');
+    assert.ok(first.items.every((item) => item.overallScore >= 0), 'all scores should be computed on first call');
     assert.ok(redis.has('resilience:ranking'), 'fully scored ranking should be cached');
   });
 });

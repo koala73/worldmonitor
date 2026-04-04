@@ -24,7 +24,8 @@ function getClient(): ResilienceServiceClient {
 }
 
 function normalizeCountryCode(countryCode: string): string {
-  return countryCode.trim().toUpperCase();
+  const normalized = countryCode.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : '';
 }
 
 export async function getResilienceScore(countryCode: string): Promise<ResilienceScoreResponse> {

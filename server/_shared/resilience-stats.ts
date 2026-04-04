@@ -210,6 +210,6 @@ export function nrcForecast(
     values,
     confidenceIntervals,
     probabilityUp: round(probabilityUp),
-    probabilityDown: round(1 - probabilityUp),
+    probabilityDown: round(1 - round(probabilityUp)),
   };
 }
