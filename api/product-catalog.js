@@ -254,8 +254,9 @@ export default async function handler(req) {
       const tiers = buildTiers(dodoPrices);
       const now = Date.now();
       const result = { tiers, fetchedAt: now, cachedUntil: now + CACHE_TTL * 1000, priceSource };
-      await setCache(result);
-      return json(result, 200, cors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300');
+      // Don't write to Redis — let the Railway seed own that key with its longer TTL.
+      // Just return the result with short cache so the next Railway cycle repopulates properly.
+      return json(result, 200, cors, 'public, max-age=60, s-maxage=60');
     }
   }
 
