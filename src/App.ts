@@ -1,4 +1,5 @@
 import type { Monitor, PanelConfig, MapLayers } from '@/types';
+import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
 import {
   REFRESH_INTERVALS,
@@ -393,7 +394,9 @@ export class App {
       localStorage.setItem('worldmonitor-variant', currentVariant);
       // Reset map layers for the new variant (map layers are not user-personalized the same way)
       localStorage.removeItem(STORAGE_KEYS.mapLayers);
-      mapLayers = sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant);
+      mapLayers = normalizeExclusiveChoropleths(
+        sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant), null,
+      );
       // Load existing panel prefs (if any), disable panels not belonging to the new variant
       panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
       const newVariantKeys = new Set(VARIANT_DEFAULTS[currentVariant] ?? []);
@@ -408,9 +411,11 @@ export class App {
         }
       }
     } else {
-      mapLayers = sanitizeLayersForVariant(
-        loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, defaultLayers),
-        currentVariant as MapVariant,
+      mapLayers = normalizeExclusiveChoropleths(
+        sanitizeLayersForVariant(
+          loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, defaultLayers),
+          currentVariant as MapVariant,
+        ), null,
       );
       panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
@@ -581,7 +586,9 @@ export class App {
 
     const initialUrlState: ParsedMapUrlState | null = parseMapUrlState(window.location.search, mapLayers);
     if (initialUrlState.layers) {
-      mapLayers = sanitizeLayersForVariant(initialUrlState.layers, currentVariant as MapVariant);
+      mapLayers = normalizeExclusiveChoropleths(
+        sanitizeLayersForVariant(initialUrlState.layers, currentVariant as MapVariant), null,
+      );
       initialUrlState.layers = mapLayers;
     }
     if (!CYBER_LAYER_ENABLED) {

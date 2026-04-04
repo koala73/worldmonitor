@@ -116,6 +116,7 @@ import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
 import { getResilienceRanking } from '@/services/resilience';
+import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
@@ -3149,7 +3150,8 @@ export class DataLoaderManager implements AppModule {
     try {
       const result = await getResilienceRanking();
       this.ctx.map?.setResilienceRanking(result.items);
-      this.ctx.map?.setLayerReady('resilienceScore', result.items.length > 0);
+      const displayable = buildResilienceChoroplethMap(result.items);
+      this.ctx.map?.setLayerReady('resilienceScore', displayable.size > 0);
     } catch (error) {
       console.error('[App] Resilience ranking fetch failed:', error);
       this.ctx.map?.setResilienceRanking([]);
