@@ -718,6 +718,11 @@ export class PanelLayoutManager implements AppModule {
       timeRange: '7d',
     }, preferGlobe);
 
+    if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
+      this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
+      saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+    }
+
     this.ctx.map.initEscalationGetters();
     this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
 
@@ -1405,7 +1410,10 @@ export class PanelLayoutManager implements AppModule {
     }
 
     if (layers) {
-      const normalized = normalizeExclusiveChoropleths(layers, this.ctx.mapLayers);
+      let normalized = normalizeExclusiveChoropleths(layers, this.ctx.mapLayers);
+      if (normalized.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
+        normalized = { ...normalized, resilienceScore: false };
+      }
       this.ctx.mapLayers = normalized;
       saveToStorage(STORAGE_KEYS.mapLayers, normalized);
       this.ctx.map.setLayers(normalized);
