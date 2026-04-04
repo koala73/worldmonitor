@@ -47,6 +47,13 @@ describe('extractRegulatoryAction', () => {
     assert.deepEqual(normalize(extractRegulatoryAction({})), []);
   });
 
+  it('returns an empty array when payload.actions is not an array', () => {
+    assert.deepEqual(normalize(extractRegulatoryAction({ 'regulatory:actions:v1': { actions: 'corrupted' } })), []);
+    assert.deepEqual(normalize(extractRegulatoryAction({ 'regulatory:actions:v1': { actions: null } })), []);
+    assert.deepEqual(normalize(extractRegulatoryAction({ 'regulatory:actions:v1': {} })), []);
+    assert.deepEqual(normalize(extractRegulatoryAction({ 'regulatory:actions:v1': { actions: 42 } })), []);
+  });
+
   it('emits only high and medium signals, prioritizes high before fresher medium, and limits output to 3', () => {
     const now = Date.now();
     const payload = {

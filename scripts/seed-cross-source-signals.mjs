@@ -721,7 +721,8 @@ function extractRegulatoryAction(d) {
   if (!payload) return [];
   const cutoff = Date.now() - 48 * 3600 * 1000;
   const tierPriority = { high: 0, medium: 1 };
-  const recent = (payload.actions || [])
+  const actions = Array.isArray(payload.actions) ? payload.actions : [];
+  const recent = actions
     .map((action) => ({
       action,
       publishedAtTs: safeNum(Date.parse(action.publishedAt)),
