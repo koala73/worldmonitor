@@ -123,7 +123,7 @@ async function purgeCache() {
 
 async function fetchPricesFromDodo() {
   const baseUrl = DODO_ENV === 'live_mode'
-    ? 'https://api.dodopayments.com'
+    ? 'https://live.dodopayments.com'
     : 'https://test.dodopayments.com';
 
   const productIds = Object.keys(CATALOG);
