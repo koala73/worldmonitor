@@ -29,6 +29,22 @@ const USES_SHARED_CONFIG = new Set([
   'seed-gulf-quotes', 'seed-market-quotes', 'seed-stablecoin-markets',
 ]);
 
+const SERVICE_OVERRIDES = {
+  'seed-resilience-static': {
+    watchPatterns: [
+      'scripts/seed-resilience-static.mjs',
+      'scripts/_seed-utils.mjs',
+      'scripts/_country-resolver.mjs',
+      'scripts/package.json',
+      'shared/**',
+      'scripts/shared/**',
+      'public/data/countries.geojson',
+    ],
+    startCommand: 'node seed-resilience-static.mjs',
+    cronSchedule: '0 */4 1-3 10 *',
+  },
+};
+
 function getToken() {
   if (process.env.RAILWAY_TOKEN) return process.env.RAILWAY_TOKEN;
   const cfgPath = join(homedir(), '.railway', 'config.json');
@@ -37,6 +53,31 @@ function getToken() {
     return cfg.token || cfg.user?.token;
   }
   throw new Error('No Railway token found. Set RAILWAY_TOKEN or run `railway login`.');
+}
+
+export function buildExpectedServiceConfig(serviceName) {
+  const override = SERVICE_OVERRIDES[serviceName];
+  if (override) return { ...override };
+
+  const config = {
+    watchPatterns: [`scripts/${serviceName}.mjs`, 'scripts/_seed-utils.mjs', 'scripts/package.json'],
+    startCommand: `node ${serviceName}.mjs`,
+  };
+
+  if (USES_SHARED_CONFIG.has(serviceName)) {
+    config.watchPatterns.push('scripts/shared/**', 'shared/**');
+  }
+
+  if (serviceName === 'seed-iran-events') {
+    config.watchPatterns.push('scripts/data/iran-events-latest.json');
+  }
+
+  return config;
+}
+
+export function sameMembers(left = [], right = []) {
+  if (left.length !== right.length) return false;
+  return JSON.stringify([...left].sort()) === JSON.stringify([...right].sort());
 }
 
 async function gql(token, query, variables = {}) {
@@ -74,7 +115,7 @@ async function main() {
       query ($id: String!, $envId: String!) {
         service(id: $id) {
           serviceInstances(first: 1, environmentId: $envId) {
-            edges { node { watchPatterns startCommand } }
+            edges { node { watchPatterns startCommand cronSchedule } }
           }
         }
       }
@@ -83,26 +124,14 @@ async function main() {
     const instance = service.serviceInstances.edges[0]?.node || {};
     const currentPatterns = instance.watchPatterns || [];
     const currentStartCmd = instance.startCommand || '';
+    const currentCron = instance.cronSchedule || '';
 
-    // rootDirectory="scripts" so startCommand must NOT include the scripts/ prefix
-    const expectedStartCmd = `node ${svc.name}.mjs`;
-    const startCmdOk = currentStartCmd === expectedStartCmd;
+    const expected = buildExpectedServiceConfig(svc.name);
+    const startCmdOk = currentStartCmd === expected.startCommand;
+    const patternsOk = sameMembers(currentPatterns, expected.watchPatterns);
+    const cronOk = expected.cronSchedule ? currentCron === expected.cronSchedule : true;
 
-    // Build expected watch patterns (relative to git repo root)
-    const scriptFile = `scripts/${svc.name}.mjs`;
-    const patterns = [scriptFile, 'scripts/_seed-utils.mjs', 'scripts/package.json'];
-
-    if (USES_SHARED_CONFIG.has(svc.name)) {
-      patterns.push('scripts/shared/**', 'shared/**');
-    }
-
-    if (svc.name === 'seed-iran-events') {
-      patterns.push('scripts/data/iran-events-latest.json');
-    }
-
-    const patternsOk = JSON.stringify(currentPatterns.sort()) === JSON.stringify([...patterns].sort());
-
-    if (patternsOk && startCmdOk) {
+    if (patternsOk && startCmdOk && cronOk) {
       console.log(`  ${svc.name}: already correct`);
       continue;
     }
@@ -110,11 +139,15 @@ async function main() {
     console.log(`  ${svc.name}:`);
     if (!startCmdOk) {
       console.log(`    startCommand current:  ${currentStartCmd || '(none)'}`);
-      console.log(`    startCommand expected: ${expectedStartCmd}`);
+      console.log(`    startCommand expected: ${expected.startCommand}`);
     }
     if (!patternsOk) {
       console.log(`    watchPatterns current:  ${currentPatterns.length ? currentPatterns.join(', ') : '(none)'}`);
-      console.log(`    watchPatterns setting:  ${patterns.join(', ')}`);
+      console.log(`    watchPatterns setting:  ${expected.watchPatterns.join(', ')}`);
+    }
+    if (!cronOk) {
+      console.log(`    cronSchedule current:  ${currentCron || '(none)'}`);
+      console.log(`    cronSchedule expected: ${expected.cronSchedule}`);
     }
 
     if (DRY_RUN) {
@@ -124,8 +157,9 @@ async function main() {
 
     // Build update input with only changed fields
     const input = {};
-    if (!patternsOk) input.watchPatterns = patterns;
-    if (!startCmdOk) input.startCommand = expectedStartCmd;
+    if (!patternsOk) input.watchPatterns = expected.watchPatterns;
+    if (!startCmdOk) input.startCommand = expected.startCommand;
+    if (!cronOk && expected.cronSchedule) input.cronSchedule = expected.cronSchedule;
 
     await gql(token, `
       mutation ($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
@@ -143,4 +177,6 @@ async function main() {
   console.log(`\nDone.${DRY_RUN ? ' (dry run, no changes made)' : ''}`);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+if (process.argv[1]?.endsWith('railway-set-watch-paths.mjs')) {
+  main().catch(e => { console.error(e); process.exit(1); });
+}
