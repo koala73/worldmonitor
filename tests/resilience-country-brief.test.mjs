@@ -85,8 +85,9 @@ test('country deep-dive panel destroys each resilience widget exactly once acros
     panel.hide();
 
     assert.ok(thirdWidget, 'expected third widget instance');
-    assert.equal(thirdWidget.destroyCount, 1);
-    assert.equal(harness.document.querySelectorAll('.resilience-widget-stub').length, 0);
+    assert.equal(thirdWidget.destroyCount, 1, 'hide() must destroy widget subscriptions');
+    // hide() keeps DOM intact (panel is visually hidden); DOM is cleared on next show()
+    assert.equal(harness.document.querySelectorAll('.resilience-widget-stub').length, 1, 'hide() does not clear DOM');
   } finally {
     harness.cleanup();
   }
