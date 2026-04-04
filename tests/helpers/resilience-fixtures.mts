@@ -264,9 +264,9 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   },
   'conflict:ucdp-events:v1': {
     events: [
-      { country: 'United States', deathsBest: 8, violenceType: 'VIOLENCE_TYPE_NON_STATE' },
-      { country: 'Yemen', deathsBest: 120, violenceType: 'VIOLENCE_TYPE_STATE_BASED' },
-      { country: 'Yemen', deathsBest: 70, violenceType: 'VIOLENCE_TYPE_ONE_SIDED' },
+      { country: 'United States', deathsBest: 8, violenceType: 'UCDP_VIOLENCE_TYPE_NON_STATE' },
+      { country: 'Yemen', deathsBest: 120, violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED' },
+      { country: 'Yemen', deathsBest: 70, violenceType: 'UCDP_VIOLENCE_TYPE_ONE_SIDED' },
     ],
   },
   [`displacement:summary:v1:${new Date().getFullYear()}`]: {

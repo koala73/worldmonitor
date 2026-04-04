@@ -488,7 +488,7 @@ function summarizeUcdp(raw: unknown, countryCode: string): { eventCount: number;
     summary.eventCount += 1;
     summary.deaths += safeNum(item.deathsBest) ?? 0;
     const violenceType = String(item.violenceType || '');
-    summary.typeWeight += violenceType === 'VIOLENCE_TYPE_STATE_BASED' ? 2 : violenceType === 'VIOLENCE_TYPE_ONE_SIDED' ? 1.5 : 1;
+    summary.typeWeight += violenceType === 'UCDP_VIOLENCE_TYPE_STATE_BASED' ? 2 : violenceType === 'UCDP_VIOLENCE_TYPE_ONE_SIDED' ? 1.5 : 1;
     return summary;
   }, { eventCount: 0, deaths: 0, typeWeight: 0 });
 }

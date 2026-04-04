@@ -360,7 +360,7 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
       ucdpEvents.push({
         country: descriptor.name,
         deathsBest: Math.round(clamp(stressed * 2.3, 5, 220)),
-        violenceType: index % 2 === 0 ? 'VIOLENCE_TYPE_STATE_BASED' : 'VIOLENCE_TYPE_ONE_SIDED',
+        violenceType: index % 2 === 0 ? 'UCDP_VIOLENCE_TYPE_STATE_BASED' : 'UCDP_VIOLENCE_TYPE_ONE_SIDED',
       });
     }
 
