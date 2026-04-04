@@ -447,6 +447,11 @@ export async function assembleAnalystContext(
   const resolvedDomain = domainFocus ?? 'all';
   const keywords = userQuery ? extractKeywords(userQuery) : [];
 
+  // Only fetch energy exposure for domains that actually use it (geo + economic).
+  // For market/military the data would be fetched and immediately discarded.
+  const ENERGY_EXPOSURE_DOMAINS = new Set(['geo', 'economic', 'all']);
+  const needsEnergyExposure = ENERGY_EXPOSURE_DOMAINS.has(resolvedDomain);
+
   const [
     insightsResult,
     riskResult,
@@ -469,7 +474,7 @@ export async function assembleAnalystContext(
     getCachedJson(keys.commodities, true),
     getCachedJson(keys.macroSignals, true),
     getCachedJson(keys.predictions, true),
-    getCachedJson(keys.energyExposure, true),
+    needsEnergyExposure ? getCachedJson(keys.energyExposure, true) : Promise.resolve(null),
     countryKey ? getCachedJson(countryKey, true) : Promise.resolve(null),
     buildLiveHeadlines(resolvedDomain, keywords),
     keywords.length > 0 ? searchDigestByKeywords(keywords) : Promise.resolve(''),
@@ -481,9 +486,13 @@ export async function assembleAnalystContext(
   const getStr = (r: PromiseSettledResult<unknown>): string =>
     r.status === 'fulfilled' && typeof r.value === 'string' ? r.value : '';
 
-  const failCount = [insightsResult, riskResult, marketImplResult, forecastsResult,
-    stocksResult, commoditiesResult, macroResult, predResult, energyExposureResult]
-    .filter((r) => r.status === 'rejected' || !r.value).length;
+  // energyExposure only counts toward degraded when it was actually fetched.
+  const coreResults: PromiseSettledResult<unknown>[] = [
+    insightsResult, riskResult, marketImplResult, forecastsResult,
+    stocksResult, commoditiesResult, macroResult, predResult,
+  ];
+  if (needsEnergyExposure) coreResults.push(energyExposureResult);
+  const failCount = coreResults.filter((r) => r.status === 'rejected' || !r.value).length;
 
   const ctx: AnalystContext = {
     timestamp: new Date().toUTCString(),
