@@ -63,7 +63,7 @@ describe('resilience release gate', () => {
     assert.ok(redis.has('resilience:static:YE'));
   });
 
-  it('keeps Cronbach alpha above 0.6 for at least 15 G20 countries and preserves score sanity anchors', async () => {
+  it('keeps Cronbach alpha above 0.6 for at least 10 G20 countries and preserves score sanity anchors', async () => {
     installRedisFixtures();
 
     const g20Responses = await Promise.all(
