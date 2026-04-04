@@ -159,7 +159,10 @@ export async function runRedisPipeline(
       body: JSON.stringify(commands.map((command) => normalizePipelineCommand(command, raw))),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
-    if (!response.ok) return [];
+    if (!response.ok) {
+      console.warn(`[redis] runRedisPipeline HTTP ${response.status}`);
+      return [];
+    }
     return await response.json() as Array<{ result?: unknown }>;
   } catch (err) {
     console.warn('[redis] runRedisPipeline failed:', errMsg(err));
