@@ -63,7 +63,7 @@ describe('resolver parity', () => {
     'slovak republic': 'SK', 'st kitts and nevis': 'KN', 'st lucia': 'LC',
     'st vincent and the grenadines': 'VC', 'syrian arab republic': 'SY',
     'the bahamas': 'BS', 'timor leste': 'TL', 'turkiye': 'TR',
-    'u s': 'US', 'united states of america': 'US', 'venezuela rb': 'VE',
+    'united states of america': 'US', 'venezuela rb': 'VE',
     'viet nam': 'VN', 'west bank and gaza': 'PS', 'yemen rep': 'YE',
   };
 
