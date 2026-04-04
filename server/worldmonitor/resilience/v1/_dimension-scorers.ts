@@ -1,8 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import countryNames from '../../../../shared/country-names.json';
+import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
 
@@ -154,6 +151,7 @@ const RESILIENCE_DISPLACEMENT_PREFIX = 'displacement:summary:v1';
 const RESILIENCE_SOCIAL_VELOCITY_KEY = 'intelligence:social:reddit:v1';
 const RESILIENCE_NEWS_THREAT_SUMMARY_KEY = 'news:threat:summary:v1';
 const RESILIENCE_ENERGY_PRICES_KEY = 'economic:energy:v1:all';
+const RESILIENCE_ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
 
 const COUNTRY_NAME_ALIASES = new Map<string, Set<string>>();
 for (const [name, iso2] of Object.entries(countryNames as Record<string, string>)) {
@@ -164,16 +162,7 @@ for (const [name, iso2] of Object.entries(countryNames as Record<string, string>
   COUNTRY_NAME_ALIASES.set(code, current);
 }
 
-const ISO2_TO_ISO3: Record<string, string> = {};
-{
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const geojson = JSON.parse(readFileSync(join(__dirname, '../../../../public/data/countries.geojson'), 'utf8'));
-  for (const feature of geojson?.features ?? []) {
-    const iso2 = String(feature?.properties?.['ISO3166-1-Alpha-2'] ?? '').toUpperCase();
-    const iso3 = String(feature?.properties?.['ISO3166-1-Alpha-3'] ?? '').toUpperCase();
-    if (/^[A-Z]{2}$/.test(iso2) && /^[A-Z]{3}$/.test(iso3)) ISO2_TO_ISO3[iso2] = iso3;
-  }
-}
+const ISO2_TO_ISO3: Record<string, string> = iso2ToIso3Json;
 
 const RESILIENCE_DOMAIN_WEIGHTS: Record<ResilienceDomainId, number> = {
   economic: 0.22,
@@ -709,16 +698,28 @@ export async function scoreEnergy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [staticRecord, energyPricesRaw] = await Promise.all([
+  const [staticRecord, energyPricesRaw, energyMixRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
     reader(RESILIENCE_ENERGY_PRICES_KEY),
+    reader(`${RESILIENCE_ENERGY_MIX_KEY_PREFIX}${countryCode}`),
   ]);
-  const dependency = safeNum(staticRecord?.iea?.energyImportDependency?.value);
+
+  const mix = energyMixRaw != null && typeof energyMixRaw === 'object'
+    ? (energyMixRaw as Record<string, unknown>)
+    : null;
+
+  const dependency  = safeNum(staticRecord?.iea?.energyImportDependency?.value);
+  const gasShare    = mix && typeof mix.gasShare === 'number' ? mix.gasShare : null;
+  const coalShare   = mix && typeof mix.coalShare === 'number' ? mix.coalShare : null;
+  const renewShare  = mix && typeof mix.renewShare === 'number' ? mix.renewShare : null;
   const energyStress = getEnergyPriceStress(energyPricesRaw);
 
   return weightedBlend([
-    { score: dependency == null ? null : normalizeLowerBetter(dependency, 0, 100), weight: 0.7 },
-    { score: energyStress == null ? null : normalizeLowerBetter(energyStress, 0, 25), weight: 0.3 },
+    { score: dependency  == null ? null : normalizeLowerBetter(dependency, 0, 100),   weight: 0.35 },
+    { score: gasShare    == null ? null : normalizeLowerBetter(gasShare, 0, 100),     weight: 0.20 },
+    { score: coalShare   == null ? null : normalizeLowerBetter(coalShare, 0, 100),    weight: 0.15 },
+    { score: renewShare  == null ? null : normalizeHigherBetter(renewShare, 0, 100),  weight: 0.20 },
+    { score: energyStress == null ? null : normalizeLowerBetter(energyStress, 0, 25), weight: 0.10 },
   ]);
 }
 

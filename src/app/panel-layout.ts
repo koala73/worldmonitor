@@ -1,4 +1,5 @@
 import type { AppContext, AppModule } from '@/app/app-context';
+import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import type { ClusteredEvent } from '@/types';
@@ -50,6 +51,7 @@ import {
   GroceryBasketPanel,
   BigMacPanel,
   FuelPricesPanel,
+  FaoFoodPriceIndexPanel,
   WorldClockPanel,
   AirlineIntelPanel,
   AviationCommandBar,
@@ -991,6 +993,10 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.panels['fuel-prices'] = new FuelPricesPanel();
     }
 
+    if (this.shouldCreatePanel('fao-food-price-index') && !this.ctx.panels['fao-food-price-index']) {
+      this.ctx.panels['fao-food-price-index'] = new FaoFoodPriceIndexPanel();
+    }
+
     if (this.shouldCreatePanel('live-news') &&
         (getDefaultLiveChannels().length > 0 || loadChannelsFromStorage().length > 0)) {
       this.ctx.panels['live-news'] = new LiveNewsPanel();
@@ -1399,9 +1405,10 @@ export class PanelLayoutManager implements AppModule {
     }
 
     if (layers) {
-      this.ctx.mapLayers = layers;
-      saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-      this.ctx.map.setLayers(layers);
+      const normalized = normalizeExclusiveChoropleths(layers, this.ctx.mapLayers);
+      this.ctx.mapLayers = normalized;
+      saveToStorage(STORAGE_KEYS.mapLayers, normalized);
+      this.ctx.map.setLayers(normalized);
     }
 
     if (lat !== undefined && lon !== undefined) {

@@ -43,6 +43,16 @@ const SERVICE_OVERRIDES = {
     startCommand: 'node seed-resilience-static.mjs',
     cronSchedule: '0 */4 1-3 10 *',
   },
+  'seed-owid-energy-mix': {
+    watchPatterns: [
+      'scripts/seed-owid-energy-mix.mjs',
+      'scripts/_seed-utils.mjs',
+      'scripts/_country-resolver.mjs',
+      'scripts/package.json',
+    ],
+    startCommand: 'node seed-owid-energy-mix.mjs',
+    cronSchedule: '0 3 1 * *', // 03:00 UTC on the 1st of every month
+  },
 };
 
 function getToken() {

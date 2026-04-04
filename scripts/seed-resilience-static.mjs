@@ -12,7 +12,6 @@ import {
   withRetry,
 } from './_seed-utils.mjs';
 import {
-  COUNTRY_ALIAS_MAP,
   createCountryResolvers,
   isIso2,
   isIso3,

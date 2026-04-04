@@ -5758,6 +5758,179 @@ function startPizzintSeedLoop() {
 }
 
 
+// ─────────────────────────────────────────────────────────────
+// Dodo Product Prices Seed — fetches live prices from Dodo API,
+// builds tier view model, writes to Redis for /api/product-catalog.
+// Direct fetch first, PROXY_URL fallback if Dodo blocks datacenter IPs.
+// ─────────────────────────────────────────────────────────────
+const DODO_PRICE_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const DODO_PRICE_SEED_TTL = 43200; // 12h (2× interval)
+const DODO_PRICE_REDIS_KEY = 'product-catalog:v2';
+const DODO_LIVE_URL = 'https://live.dodopayments.com';
+const DODO_TEST_URL = 'https://test.dodopayments.com';
+const DODO_PRICE_API_KEY = process.env.DODO_API_KEY || '';
+const DODO_PRICE_ENV = process.env.DODO_PAYMENTS_ENVIRONMENT || 'test_mode';
+
+const DODO_PRODUCT_IDS = [
+  'pdt_0Nbtt71uObulf7fGXhQup', // Pro Monthly
+  'pdt_0NbttMIfjLWC10jHQWYgJ', // Pro Annual
+  'pdt_0NbttVmG1SERrxhygbbUq', // API Starter Monthly
+  'pdt_0Nbu2lawHYE3dv2THgSEV', // API Starter Annual
+];
+
+const DODO_TIER_CONFIG = {
+  free: { name: 'Free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app', highlighted: false },
+  pro: { name: 'Pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP data connectors', 'Priority data refresh'], highlighted: true },
+  api_starter: { name: 'API', description: 'Programmatic access to intelligence data', features: ['REST API access', 'Real-time data streams', '1,000 requests/day', 'Webhook notifications', 'Custom data exports'], highlighted: false },
+  enterprise: { name: 'Enterprise', description: 'Custom solutions for organizations', features: ['Everything in Pro + API', 'Unlimited API requests', 'Dedicated support', 'Custom integrations', 'SLA guarantee', 'On-premise option'], cta: 'Contact Sales', href: 'mailto:enterprise@worldmonitor.app', highlighted: false },
+};
+
+const DODO_PRODUCT_META = {
+  'pdt_0Nbtt71uObulf7fGXhQup': { tierGroup: 'pro', billingPeriod: 'monthly' },
+  'pdt_0NbttMIfjLWC10jHQWYgJ': { tierGroup: 'pro', billingPeriod: 'annual' },
+  'pdt_0NbttVmG1SERrxhygbbUq': { tierGroup: 'api_starter', billingPeriod: 'monthly' },
+  'pdt_0Nbu2lawHYE3dv2THgSEV': { tierGroup: 'api_starter', billingPeriod: 'annual' },
+};
+
+const DODO_FALLBACK_PRICES = {
+  'pdt_0Nbtt71uObulf7fGXhQup': 3999,
+  'pdt_0NbttMIfjLWC10jHQWYgJ': 39999,
+  'pdt_0NbttVmG1SERrxhygbbUq': 9999,
+  'pdt_0Nbu2lawHYE3dv2THgSEV': 99900,
+};
+
+let dodoPriceSeedInFlight = false;
+
+async function fetchDodoProductPrice(productId, baseUrl) {
+  const resp = await fetch(`${baseUrl}/products/${productId}`, {
+    headers: { Authorization: `Bearer ${DODO_PRICE_API_KEY}`, 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const product = await resp.json();
+  return product.price?.price ?? product.price?.fixed_price ?? null;
+}
+
+async function seedDodoPrices() {
+  if (dodoPriceSeedInFlight) return;
+  dodoPriceSeedInFlight = true;
+  const t0 = Date.now();
+  try {
+    if (!DODO_PRICE_API_KEY) {
+      console.warn('[DodoPrices] No DODO_API_KEY — skipping');
+      return;
+    }
+
+    const baseUrl = DODO_PRICE_ENV === 'live_mode' ? DODO_LIVE_URL : DODO_TEST_URL;
+    const prices = {};
+    let fetchedCount = 0;
+    let fallbackCount = 0;
+
+    for (const productId of DODO_PRODUCT_IDS) {
+      // Try direct first
+      try {
+        const priceCents = await fetchDodoProductPrice(productId, baseUrl);
+        if (priceCents != null) { prices[productId] = priceCents; fetchedCount++; continue; }
+      } catch (e) {
+        console.warn(`[DodoPrices] Direct fetch ${productId} failed: ${e?.message}`);
+      }
+
+      // Fallback via proxy (ytFetchViaProxy doesn't forward custom headers,
+      // so we build the proxied request manually with Authorization)
+      if (PROXY_URL) {
+        try {
+          const proxy = parseProxyUrl(PROXY_URL);
+          const target = new URL(`${baseUrl}/products/${productId}`);
+          const proxyResp = await new Promise((resolve, reject) => {
+            const connectOpts = { host: proxy.host, port: proxy.port, method: 'CONNECT', path: `${target.hostname}:443`, headers: {} };
+            if (proxy.auth) connectOpts.headers['Proxy-Authorization'] = 'Basic ' + Buffer.from(proxy.auth).toString('base64');
+            const connectReq = proxy.tls ? https.request(connectOpts) : http.request(connectOpts);
+            connectReq.on('connect', (_res, socket) => {
+              connectReq.setTimeout(0);
+              const req = https.request({
+                hostname: target.hostname, path: target.pathname, method: 'GET',
+                headers: { 'User-Agent': CHROME_UA, 'Authorization': `Bearer ${DODO_PRICE_API_KEY}`, 'Accept': 'application/json' },
+                socket, agent: false,
+              }, (res) => {
+                const chunks = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, body: Buffer.concat(chunks).toString() }));
+                res.on('error', reject);
+              });
+              req.on('error', reject);
+              req.end();
+            });
+            connectReq.on('error', reject);
+            connectReq.setTimeout(10000, () => { connectReq.destroy(); reject(new Error('Proxy timeout')); });
+            connectReq.end();
+          });
+          if (proxyResp?.ok) {
+            const product = JSON.parse(proxyResp.body);
+            const priceCents = product.price?.price ?? product.price?.fixed_price;
+            if (priceCents != null) { prices[productId] = priceCents; fetchedCount++; continue; }
+          }
+        } catch (e) {
+          console.warn(`[DodoPrices] Proxy fetch ${productId} failed: ${e?.message}`);
+        }
+      }
+
+      // Use fallback
+      if (DODO_FALLBACK_PRICES[productId] != null) {
+        prices[productId] = DODO_FALLBACK_PRICES[productId];
+        fallbackCount++;
+      }
+    }
+
+    // Build tier view model
+    const tiers = [];
+    const publicGroups = ['free', 'pro', 'api_starter', 'enterprise'];
+    for (const group of publicGroups) {
+      const config = DODO_TIER_CONFIG[group];
+      if (!config) continue;
+      if (group === 'free') { tiers.push({ ...config, price: 0, period: 'forever' }); continue; }
+      if (group === 'enterprise') { tiers.push({ ...config, price: null }); continue; }
+
+      const tier = { ...config };
+      const monthlyId = Object.entries(DODO_PRODUCT_META).find(([, v]) => v.tierGroup === group && v.billingPeriod === 'monthly')?.[0];
+      const annualId = Object.entries(DODO_PRODUCT_META).find(([, v]) => v.tierGroup === group && v.billingPeriod === 'annual')?.[0];
+      if (monthlyId && prices[monthlyId]) { tier.monthlyPrice = prices[monthlyId] / 100; tier.monthlyProductId = monthlyId; }
+      if (annualId && prices[annualId]) { tier.annualPrice = prices[annualId] / 100; tier.annualProductId = annualId; }
+      tiers.push(tier);
+    }
+
+    const priceSource = fallbackCount === 0 ? 'dodo' : fetchedCount > 0 ? 'partial' : 'fallback';
+    const now = Date.now();
+    const payload = { tiers, fetchedAt: now, cachedUntil: now + DODO_PRICE_SEED_TTL * 1000, priceSource };
+
+    // Only write to Redis when ALL prices came from Dodo (no fallback contamination).
+    // Partial/fallback results are not persisted — edge endpoint serves them directly with short cache.
+    if (priceSource === 'dodo') {
+      const ok1 = await upstashSet(DODO_PRICE_REDIS_KEY, payload, DODO_PRICE_SEED_TTL);
+      const ok2 = await upstashSet('seed-meta:product-catalog', { fetchedAt: now, recordCount: fetchedCount, priceSource }, 604800);
+      console.log(`[DodoPrices] Seeded ${fetchedCount}/${DODO_PRODUCT_IDS.length} from Dodo (redis=${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    } else {
+      // Don't overwrite good cached data with degraded prices. Just extend TTL if it exists.
+      try { await upstashExpire(DODO_PRICE_REDIS_KEY, DODO_PRICE_SEED_TTL); } catch {}
+      console.warn(`[DodoPrices] NOT writing to Redis — source=${priceSource} (${fetchedCount} live, ${fallbackCount} fallback) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    }
+  } catch (e) {
+    console.warn('[DodoPrices] Seed error:', e?.message || e);
+  } finally {
+    dodoPriceSeedInFlight = false;
+  }
+}
+
+function startDodoPriceSeedLoop() {
+  if (!UPSTASH_ENABLED) { console.log('[DodoPrices] Disabled (no Upstash Redis)'); return; }
+  if (!DODO_PRICE_API_KEY) { console.log('[DodoPrices] Disabled (no DODO_API_KEY)'); return; }
+  console.log(`[DodoPrices] Seed loop starting (interval ${DODO_PRICE_SEED_INTERVAL_MS / 1000 / 60}min)`);
+  seedDodoPrices().catch((e) => console.warn('[DodoPrices] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedDodoPrices().catch((e) => console.warn('[DodoPrices] Seed error:', e?.message || e));
+  }, DODO_PRICE_SEED_INTERVAL_MS).unref?.();
+}
+
+
 function gzipSyncBuffer(body) {
   try {
     return zlib.gzipSync(typeof body === 'string' ? Buffer.from(body) : body);
@@ -9414,7 +9587,8 @@ Market & Crypto:
 Economic & Energy:
   macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
   euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
+  faoFoodPriceIndex
 
 Tech & Intelligence:
   techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
@@ -9994,7 +10168,8 @@ Market & Crypto:
 Economic & Energy:
   macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
   euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
+  faoFoodPriceIndex
 
 Tech & Intelligence:
   techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
@@ -10251,6 +10426,7 @@ server.listen(PORT, () => {
   startSocialVelocitySeedLoop();
   startClimateNewsSeedLoop();
   startPizzintSeedLoop();
+  startDodoPriceSeedLoop();
 });
 
 wss.on('connection', (ws, req) => {

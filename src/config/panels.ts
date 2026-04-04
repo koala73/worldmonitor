@@ -74,6 +74,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'grocery-basket': { name: 'Grocery Index', enabled: false, priority: 2 },
   'bigmac': { name: 'Big Mac Index', enabled: false, priority: 2 },
   'fuel-prices': { name: 'Fuel Prices', enabled: false, priority: 2 },
+  'fao-food-price-index': { name: 'FAO Food Price Index', enabled: false, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
   'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
@@ -154,6 +155,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in full variant)
   miningSites: false,
@@ -216,6 +218,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in full variant)
   miningSites: false,
@@ -323,6 +326,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in tech variant)
   miningSites: false,
@@ -384,6 +388,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in tech variant)
   miningSites: false,
@@ -503,6 +508,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in finance variant)
   miningSites: false,
@@ -564,6 +570,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in finance variant)
   miningSites: false,
@@ -641,6 +648,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled)
   miningSites: false,
@@ -702,6 +710,7 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled)
   miningSites: false,
@@ -796,6 +805,7 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (enabled)
   miningSites: true,
@@ -857,6 +867,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (limited on mobile)
   miningSites: true,
