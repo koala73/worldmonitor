@@ -6,6 +6,7 @@ export type ResilienceChoroplethLevel = 'very_low' | 'low' | 'moderate' | 'high'
 export interface ResilienceChoroplethEntry {
   overallScore: number;
   level: ResilienceChoroplethLevel;
+  serverLevel: string;
   lowConfidence: boolean;
 }
 
@@ -45,6 +46,7 @@ export function buildResilienceChoroplethMap(items: ResilienceRankingItem[]): Ma
     scores.set(countryCode, {
       overallScore: normalizedScore,
       level: getResilienceChoroplethLevel(normalizedScore),
+      serverLevel: String(item.level || 'unknown'),
       lowConfidence: Boolean(item.lowConfidence),
     });
   }

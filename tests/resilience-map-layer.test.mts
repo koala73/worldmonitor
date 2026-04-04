@@ -56,11 +56,13 @@ describe('resilience choropleth thresholds', () => {
     assert.deepEqual(scores.get('NO'), {
       overallScore: 82,
       level: 'very_high',
+      serverLevel: 'high',
       lowConfidence: false,
     });
     assert.deepEqual(scores.get('US'), {
       overallScore: 61.2,
       level: 'high',
+      serverLevel: 'medium',
       lowConfidence: true,
     });
     assert.equal(scores.has('YE'), false);
