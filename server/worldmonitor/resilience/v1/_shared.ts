@@ -6,7 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
-import { cronbachAlpha, detectTrend } from '../../../_shared/resilience-stats';
+import { cronbachAlpha, detectTrend, round } from '../../../_shared/resilience-stats';
 import {
   RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DIMENSION_ORDER,
@@ -35,10 +35,6 @@ interface ResilienceHistoryPoint {
 
 interface ResilienceStaticIndex {
   countries?: string[];
-}
-
-function round(value: number, digits = 2): number {
-  return Number(value.toFixed(digits));
 }
 
 function mean(values: number[]): number | null {
@@ -140,9 +136,10 @@ async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[
 }
 
 async function appendHistory(countryCode: string, overallScore: number): Promise<void> {
+  const key = historyKey(countryCode);
   await runRedisPipeline([
-    ['ZADD', historyKey(countryCode), round(overallScore), todayIsoDate()],
-    ['ZREMRANGEBYRANK', historyKey(countryCode), 0, -31],
+    ['ZADD', key, round(overallScore), todayIsoDate()],
+    ['ZREMRANGEBYRANK', key, 0, -31],
   ]);
 }
 
@@ -191,7 +188,7 @@ export async function ensureResilienceScoreCached(countryCode: string): Promise<
         lowConfidence: computeLowConfidence(dimensions, cronbach),
       };
     },
-    300,
+    2000,
   ) ?? {
     countryCode: normalizedCountryCode,
     overallScore: 0,

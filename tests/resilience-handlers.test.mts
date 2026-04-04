@@ -146,7 +146,8 @@ describe('resilience handlers', () => {
     assert.equal(JSON.parse(cachedScore || '{}').countryCode, 'US');
 
     const history = sortedSets.get('resilience:history:US') ?? [];
-    assert.ok(history.some((entry) => entry.member === '2026-04-03'), 'expected today history member to be written');
+    const today = new Date().toISOString().slice(0, 10);
+    assert.ok(history.some((entry) => entry.member === today), 'expected today history member to be written');
 
     await getResilienceScore({ request: new Request('https://example.com') } as never, {
       countryCode: 'US',
