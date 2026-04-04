@@ -5808,7 +5808,7 @@ async function fetchDodoProductPrice(productId, baseUrl) {
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const product = await resp.json();
-  return product.price?.price ?? null;
+  return product.price?.price ?? product.price?.fixed_price ?? null;
 }
 
 async function seedDodoPrices() {
@@ -5842,7 +5842,7 @@ async function seedDodoPrices() {
           const proxyResp = await ytFetchViaProxy(`${baseUrl}/products/${productId}`, proxy);
           if (proxyResp?.ok) {
             const product = JSON.parse(proxyResp.body);
-            const priceCents = product.price?.price;
+            const priceCents = product.price?.price ?? product.price?.fixed_price;
             if (priceCents != null) { prices[productId] = priceCents; fetchedCount++; continue; }
           }
         } catch (e) {

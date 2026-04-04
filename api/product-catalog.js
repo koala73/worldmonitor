@@ -241,7 +241,25 @@ export default async function handler(req) {
     return json(cached, 200, cors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300');
   }
 
-  // Redis empty — seed hasn't run yet or cache expired. Return fallback.
+  // Redis empty (purged or seed hasn't run). Try Dodo directly as backup.
+  // May fail from Vercel IPs (401) — falls back to static prices.
+  if (DODO_API_KEY) {
+    const dodoPrices = await fetchPricesFromDodo();
+    const pricedPublicIds = Object.entries(CATALOG)
+      .filter(([, v]) => PUBLIC_TIER_GROUPS.includes(v.tierGroup) && v.tierGroup !== 'free' && v.tierGroup !== 'enterprise')
+      .map(([id]) => id);
+    const dodoPriceCount = pricedPublicIds.filter(id => dodoPrices[id]).length;
+    if (dodoPriceCount > 0) {
+      const priceSource = dodoPriceCount === pricedPublicIds.length ? 'dodo' : 'partial';
+      const tiers = buildTiers(dodoPrices);
+      const now = Date.now();
+      const result = { tiers, fetchedAt: now, cachedUntil: now + CACHE_TTL * 1000, priceSource };
+      await setCache(result);
+      return json(result, 200, cors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300');
+    }
+  }
+
+  // All sources failed. Return fallback with short cache.
   const tiers = buildTiers({});
   const now = Date.now();
   return json({ tiers, fetchedAt: now, priceSource: 'fallback' }, 200, cors, 'public, max-age=60, s-maxage=60');
