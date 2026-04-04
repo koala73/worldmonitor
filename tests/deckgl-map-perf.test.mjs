@@ -81,14 +81,15 @@ describe('getDynamicClusterRadius', () => {
 });
 
 describe('filterToViewport', () => {
-  // Build a proper 2D grid of points covering the globe
-  const POINTS_PER_AXIS = 18; // 18×18 = 324 points > minItems=200
+  // Build a 2D grid: 18 longitude steps × 18 latitude steps = 324 points, which
+  // exceeds the default minItems=200 threshold so filtering is actually applied.
+  const POINTS_PER_AXIS = 18;
   const points = [];
   for (let i = 0; i < POINTS_PER_AXIS; i++) {
     for (let j = 0; j < POINTS_PER_AXIS; j++) {
       points.push({
-        lon: -170 + i * 20,   // -170, -150, …, 170
-        lat:  -80 + j * 10,   //  -80,  -70, …,  90
+        lon: -170 + i * 20,   // -170, -150, …, 170 (18 values in 20° steps)
+        lat:  -80 + j * 10,   //  -80,  -70, …,  90 (18 values in 10° steps)
       });
     }
   }
@@ -128,7 +129,8 @@ describe('filterToViewport', () => {
   });
 
   it('filters out-of-bounds points correctly', () => {
-    // Points clearly outside Europe: e.g. lon=100 (Asia)
+    // Points clearly outside Europe: lon=100 (Asia). Array length 250 is chosen
+    // to exceed the default minItems=200 threshold so the filter is actually applied.
     const asiaPoints = Array.from({ length: 250 }, (_, i) => ({ lon: 100 + i * 0.1, lat: 35 }));
     const result = filterToViewport(asiaPoints, d => d.lon, d => d.lat, europeBounds);
     assert.equal(result.length, 0, 'Asian points should all be filtered out');

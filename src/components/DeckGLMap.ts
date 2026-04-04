@@ -1011,8 +1011,10 @@ export class DeckGLMap {
     if (items.length < minItems) return items;
     const bounds = this.maplibreMap?.getBounds();
     if (!bounds) return items;
-    const w = bounds.getWest(), e = bounds.getEast();
-    const s = bounds.getSouth(), n = bounds.getNorth();
+    const w = bounds.getWest();
+    const e = bounds.getEast();
+    const s = bounds.getSouth();
+    const n = bounds.getNorth();
     // 20 % expansion prevents pop-in when markers straddle the viewport edge.
     const dLon = (e - w) * 0.2;
     const dLat = (n - s) * 0.2;
