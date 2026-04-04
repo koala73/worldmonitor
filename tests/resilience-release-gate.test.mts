@@ -21,6 +21,7 @@ const SPARSE_CONFIDENCE_COUNTRIES = ['SS', 'ER'] as const;
 const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const originalVercelEnv = process.env.VERCEL_ENV;
 const fixtures = buildReleaseGateFixtures();
 
 afterEach(() => {
@@ -29,6 +30,8 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
   if (originalRedisToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
   else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+  if (originalVercelEnv == null) delete process.env.VERCEL_ENV;
+  else process.env.VERCEL_ENV = originalVercelEnv;
 });
 
 function fixtureReader(key: string): Promise<unknown | null> {
@@ -38,6 +41,7 @@ function fixtureReader(key: string): Promise<unknown | null> {
 function installRedisFixtures() {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+  delete process.env.VERCEL_ENV;
   const redisState = createRedisFetch(fixtures);
   globalThis.fetch = redisState.fetchImpl;
   return redisState;

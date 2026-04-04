@@ -394,7 +394,7 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
   fixtures['intelligence:gpsjam:v2'] = { hexes: gpsHexes };
   fixtures['unrest:events:v1'] = { events: unrestEvents };
   fixtures['conflict:ucdp-events:v1'] = { events: ucdpEvents };
-  fixtures[`displacement:summary:v1:${new Date().getUTCFullYear()}`] = { summary: { countries: displacementCountries } };
+  fixtures[`displacement:summary:v1:${new Date().getFullYear()}`] = { summary: { countries: displacementCountries } };
   fixtures['intelligence:social:reddit:v1'] = { posts: socialPosts };
   fixtures['news:threat:summary:v1'] = threatSummary;
 
