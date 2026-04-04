@@ -88,7 +88,10 @@ export async function initClerk(): Promise<void> {
     try {
       const { Clerk } = await import('@clerk/clerk-js');
       const clerk = new Clerk(PUBLISHABLE_KEY);
-      await clerk.load({ appearance: getAppearance() });
+      await clerk.load({
+        appearance: getAppearance(),
+        afterSignOutUrl: typeof window !== 'undefined' ? window.location.href : null,
+      });
       clerkInstance = clerk;
     } catch (e) {
       loadPromise = null; // allow retry on next call
@@ -199,7 +202,6 @@ export function subscribeClerk(callback: () => void): () => void {
 export function mountUserButton(el: HTMLDivElement): () => void {
   if (!clerkInstance) return () => {};
   clerkInstance.mountUserButton(el, {
-    afterSignOutUrl: window.location.href,
     appearance: getAppearance(),
   });
   return () => clerkInstance?.unmountUserButton(el);
