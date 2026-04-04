@@ -12,6 +12,7 @@ const DEFAULT_FETCH = (...args) => globalThis.fetch(...args);
 const REGULATORY_FEEDS = [
   { agency: 'SEC', url: 'https://www.sec.gov/news/pressreleases.rss', userAgent: SEC_USER_AGENT },
   { agency: 'CFTC', url: 'https://www.cftc.gov/RSS/RSSENF/rssenf.xml' },
+  { agency: 'CFTC', url: 'https://www.cftc.gov/RSS/RSSGP/rssgp.xml' },
   { agency: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
   { agency: 'FDIC', url: 'https://public.govdelivery.com/topics/USFDIC_26/feed.rss' },
   // FINRA still publishes this RSS endpoint over plain HTTP; HTTPS requests fail
