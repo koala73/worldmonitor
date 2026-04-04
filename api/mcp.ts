@@ -188,14 +188,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_climate_data',
     description: 'Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        layer: { type: 'string', description: '"anomalies" | "co2" | "air-quality" | "ocean-ice" | "news" | empty for all' },
-        region: { type: 'string', description: 'Region or zone name filter' },
-      },
-      required: [],
-    },
+    inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: ['climate:anomalies:v2', 'climate:co2-monitoring:v1', 'climate:air-quality:v1', 'climate:ocean-ice:v1', 'climate:news-intelligence:v1', 'weather:alerts:v1'],
     _seedMetaKey: 'seed-meta:climate:co2-monitoring',
     _maxStaleMin: 2880,
