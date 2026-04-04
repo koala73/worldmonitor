@@ -32,7 +32,7 @@ async function scoreTriple(
 }
 
 function assertOrdered(label: string, no: number, us: number, ye: number) {
-  assert.ok(no >= us, `${label}: expected NO (${no}) >= US (${us})`);
+  assert.ok(no > us, `${label}: expected NO (${no}) > US (${us})`);
   assert.ok(us > ye, `${label}: expected US (${us}) > YE (${ye})`);
 }
 

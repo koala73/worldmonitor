@@ -264,11 +264,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   },
   'conflict:ucdp-events:v1': {
     events: [
+      { country: 'United States', deathsBest: 8, violenceType: 'VIOLENCE_TYPE_NON_STATE' },
       { country: 'Yemen', deathsBest: 120, violenceType: 'VIOLENCE_TYPE_STATE_BASED' },
       { country: 'Yemen', deathsBest: 70, violenceType: 'VIOLENCE_TYPE_ONE_SIDED' },
     ],
   },
-  'displacement:summary:v1': {
+  [`displacement:summary:v1:${new Date().getFullYear()}`]: {
     summary: {
       countries: [
         { code: 'NO', totalDisplaced: 5_000, hostTotal: 2_000 },
