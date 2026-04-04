@@ -463,6 +463,43 @@ YEAR WO WOse NH NHse SH SHse
     assert.equal(countIndicators({ arctic_extent_anomaly_mkm2: -0.75 }), 1);
     assert.equal(countIndicators({ ice_trend_12m: [{ month: '2026-03', extent_mkm2: 13.95, anomaly_mkm2: -0.75 }] }), 1);
   });
+
+  it('preserves prior cache indicators when a source fails (partial upstream merge)', () => {
+    const prior = {
+      arctic_extent_mkm2: 13.5,
+      sea_level_mm_above_1993: 98.8,
+      sea_level_annual_rise_mm: 4.4,
+      ohc_0_700m_zj: 220.0,
+      measured_at: Date.UTC(2026, 2, 30),
+    };
+    const payload = buildOceanIcePayload(
+      [{ data: { arctic_extent_mkm2: 14.0 }, measuredAt: Date.UTC(2026, 2, 31) }],
+      prior,
+    );
+
+    assert.equal(payload.arctic_extent_mkm2, 14.0);
+    assert.equal(payload.sea_level_mm_above_1993, 98.8);
+    assert.equal(payload.ohc_0_700m_zj, 220.0);
+    assert.equal(payload.measured_at, Date.UTC(2026, 2, 31));
+  });
+
+  it('does not use prior cache when all sources succeed (no stale bleed)', () => {
+    const payload = buildOceanIcePayload(
+      [{ data: { arctic_extent_mkm2: 14.0 }, measuredAt: Date.UTC(2026, 2, 31) }],
+      undefined,
+    );
+
+    assert.equal(payload.arctic_extent_mkm2, 14.0);
+    assert.equal(payload.sea_level_mm_above_1993, undefined);
+  });
+
+  it('fallback sea level rate regex matches the current rate, not the historical one', () => {
+    const seaLevel = parseSeaLevelOverlay(`
+      <p>The rate has increased from 0.08 inches/year (0.20 centimeters/year) in 1993
+      to the current rate of 0.17 inches/year (0.44 centimeters/year).</p>
+    `);
+    assert.equal(seaLevel.seaLevelAnnualRiseMm, 4.4);
+  });
 });
 
 describe('open-meteo archive helper', () => {

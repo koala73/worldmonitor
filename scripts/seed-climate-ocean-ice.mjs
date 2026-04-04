@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, getRedisCredentials } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -193,7 +193,7 @@ function classifyArcticTrend(current, monthlyMedian, dailyRows) {
   if (sameDayHistory.length >= 2 && current.extent <= minSameDayExtent + 1e-9) {
     return 'record_low';
   }
-  if (!Number.isFinite(monthlyMedian)) return 'average';
+  if (!Number.isFinite(monthlyMedian)) return null;
   const anomaly = current.extent - monthlyMedian;
   if (anomaly <= -0.5) return 'below_average';
   if (anomaly >= 0.5) return 'above_average';
@@ -223,11 +223,13 @@ async function fetchSeaIceSection() {
   const currentMedian = dailyMedianByDoy.get(dayOfYear(latest.year, latest.month, latest.day));
   const trend12m = buildIceTrend12mFromClimatology(dailyRows, dailyMedianByDoy);
 
+  const arcticTrend = classifyArcticTrend(latest, currentMedian, dailyRows);
+
   return {
     data: {
       arctic_extent_mkm2: round(latest.extent, 2),
       ...(Number.isFinite(currentMedian) ? { arctic_extent_anomaly_mkm2: round(latest.extent - currentMedian, 2) } : {}),
-      arctic_trend: classifyArcticTrend(latest, currentMedian, dailyRows),
+      ...(arcticTrend != null ? { arctic_trend: arcticTrend } : {}),
       ...(trend12m.length
         ? {
             ice_trend_12m: trend12m.map((point) => ({
@@ -247,7 +249,7 @@ export function parseSeaLevelOverlay(html) {
   const riseMatch = normalized.match(/RISE SINCE 1993\s+([0-9]+(?:\.[0-9]+)?)\s+millimeters/i)
     ?? normalized.match(/since 1993[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*(?:mm|millimeters)/i);
   const rateMatch = normalized.match(/current yearly rate of\s+[0-9.]+\s+inches\/year\s+\(([0-9.]+)\s+centimeters\/year\)/i)
-    ?? normalized.match(/([0-9]+(?:\.[0-9]+)?)\s+centimeters\/year/i);
+    ?? normalized.match(/current.*?([0-9]+(?:\.[0-9]+)?)\s+centimeters\/year/i);
   return {
     seaLevelMmAbove1993: riseMatch ? round(Number(riseMatch[1]), 1) : NaN,
     seaLevelAnnualRiseMm: rateMatch ? round(Number(rateMatch[1]) * 10, 1) : NaN,
@@ -399,9 +401,13 @@ async function fetchSstSection() {
   };
 }
 
-export function buildOceanIcePayload(sections) {
+export function buildOceanIcePayload(sections, priorCache) {
   const payload = {};
   const measuredAts = [];
+
+  if (priorCache && typeof priorCache === 'object') {
+    Object.assign(payload, priorCache);
+  }
 
   for (const section of sections) {
     if (!section?.data) continue;
@@ -419,24 +425,48 @@ export function buildOceanIcePayload(sections) {
   return payload;
 }
 
+async function readPriorCache() {
+  try {
+    const { url, token } = getRedisCredentials();
+    const resp = await fetch(`${url}/get/${encodeURIComponent(CLIMATE_OCEAN_ICE_KEY)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.result ? JSON.parse(data.result) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchOceanIceData() {
-  const settled = await Promise.allSettled([
-    fetchSeaIceSection(),
-    fetchSeaLevelSection(),
-    fetchOhcSection(),
-    fetchSstSection(),
+  const [settled, prior] = await Promise.all([
+    Promise.allSettled([
+      fetchSeaIceSection(),
+      fetchSeaLevelSection(),
+      fetchOhcSection(),
+      fetchSstSection(),
+    ]),
+    readPriorCache(),
   ]);
 
   const sections = [];
+  let hadFailures = false;
   for (const result of settled) {
     if (result.status === 'fulfilled') {
       sections.push(result.value);
     } else {
+      hadFailures = true;
       console.warn(`[OceanIce] Source failed: ${result.reason?.message || result.reason}`);
     }
   }
 
-  return buildOceanIcePayload(sections);
+  if (hadFailures && prior) {
+    console.log('[OceanIce] Merging with prior cache to preserve last-known-good indicators');
+  }
+
+  return buildOceanIcePayload(sections, hadFailures ? prior : undefined);
 }
 
 export function countIndicators(data) {
