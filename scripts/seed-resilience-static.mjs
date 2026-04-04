@@ -11,6 +11,7 @@ import {
   verifySeedKey,
   withRetry,
 } from './_seed-utils.mjs';
+import { resolveProxyStringConnect } from './_proxy-utils.cjs';
 import {
   createCountryResolvers,
   isIso2,
@@ -84,19 +85,90 @@ function roundMetric(value, digits = 3) {
   return Math.round(numeric * factor) / factor;
 }
 
-async function fetchText(url, { accept = 'text/plain, text/html, application/json', timeoutMs = 30_000 } = {}) {
+async function fetchTextDirect(url, accept, timeoutMs) {
   const response = await fetch(url, {
-    headers: {
-      Accept: accept,
-      'User-Agent': CHROME_UA,
-    },
+    headers: { Accept: accept, 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return {
-    text: await response.text(),
-    contentType: response.headers.get('content-type') || '',
-  };
+  return { text: await response.text(), contentType: response.headers.get('content-type') || '' };
+}
+
+async function fetchTextViaProxy(url, proxyAuth, accept, timeoutMs) {
+  const { default: https } = await import('node:https');
+  const { default: tls } = await import('node:tls');
+  const { default: net } = await import('node:net');
+  const { promisify } = await import('node:util');
+  const { gunzip: gunzipCb } = await import('node:zlib');
+  const gunzip = promisify(gunzipCb);
+  const targetUrl = new URL(url);
+  const useTls = !proxyAuth.startsWith('http://');
+  let stripped = proxyAuth;
+  if (proxyAuth.startsWith('https://') || proxyAuth.startsWith('http://')) {
+    const u = new URL(proxyAuth);
+    stripped = (u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}@` : '') + `${u.hostname}:${u.port}`;
+  }
+  const atIdx = stripped.lastIndexOf('@');
+  const credentials = atIdx >= 0 ? stripped.slice(0, atIdx) : '';
+  const hostPort = atIdx >= 0 ? stripped.slice(atIdx + 1) : stripped;
+  const colonIdx = hostPort.lastIndexOf(':');
+  const proxyHost = hostPort.slice(0, colonIdx);
+  const proxyPort = parseInt(hostPort.slice(colonIdx + 1), 10);
+  const proxySock = await new Promise((resolve, reject) => {
+    const opts = { host: proxyHost, port: proxyPort };
+    if (useTls) { opts.servername = proxyHost; opts.ALPNProtocols = ['http/1.1']; }
+    const s = (useTls ? tls : net).connect(opts, () => resolve(s));
+    s.on('error', reject);
+  });
+  const authHdr = credentials ? `\r\nProxy-Authorization: Basic ${Buffer.from(credentials).toString('base64')}` : '';
+  proxySock.write(`CONNECT ${targetUrl.hostname}:443 HTTP/1.1\r\nHost: ${targetUrl.hostname}:443${authHdr}\r\n\r\n`);
+  await new Promise((resolve, reject) => {
+    let buf = '';
+    const onData = (chunk) => {
+      buf += chunk.toString('ascii');
+      if (!buf.includes('\r\n\r\n')) return;
+      proxySock.removeListener('data', onData);
+      const line = buf.split('\r\n')[0];
+      if (!line.startsWith('HTTP/1.1 200') && !line.startsWith('HTTP/1.0 200')) { proxySock.destroy(); return reject(new Error(`Proxy CONNECT: ${line}`)); }
+      proxySock.pause(); resolve();
+    };
+    proxySock.on('data', onData); proxySock.on('error', reject);
+  });
+  const tlsSock = tls.connect({ socket: proxySock, servername: targetUrl.hostname, ALPNProtocols: ['http/1.1'] });
+  await new Promise((resolve, reject) => { tlsSock.on('secureConnect', resolve); tlsSock.on('error', reject); });
+  proxySock.resume();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { tlsSock.destroy(); reject(new Error('proxy timeout')); }, timeoutMs);
+    const fail = (e) => { clearTimeout(timer); tlsSock.destroy(); reject(e); };
+    https.request({
+      host: targetUrl.hostname, path: targetUrl.pathname + targetUrl.search, method: 'GET',
+      headers: { Accept: accept, 'Accept-Encoding': 'gzip', 'User-Agent': CHROME_UA },
+      createConnection: () => tlsSock,
+    }, (resp) => {
+      clearTimeout(timer);
+      if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return fail(new Error(`HTTP ${resp.statusCode} via proxy`)); }
+      const chunks = [];
+      resp.on('data', (c) => chunks.push(c));
+      resp.on('end', () => {
+        const body = Buffer.concat(chunks);
+        ((resp.headers['content-encoding'] || '').includes('gzip') ? gunzip(body) : Promise.resolve(body))
+          .then((d) => resolve({ text: d.toString('utf8'), contentType: resp.headers['content-type'] || '' }))
+          .catch(fail);
+      });
+      resp.on('error', fail);
+    }).on('error', fail).end();
+  });
+}
+
+async function fetchText(url, { accept = 'text/plain, text/html, application/json', timeoutMs = 30_000 } = {}) {
+  try {
+    return await fetchTextDirect(url, accept, timeoutMs);
+  } catch (directErr) {
+    const proxyAuth = resolveProxyStringConnect();
+    if (!proxyAuth) throw directErr;
+    console.warn(`  [fetchText] direct failed (${directErr.message}) — retrying via proxy`);
+    return fetchTextViaProxy(url, proxyAuth, accept, timeoutMs);
+  }
 }
 
 async function fetchJson(url, { timeoutMs = 30_000, accept = 'application/json' } = {}) {
