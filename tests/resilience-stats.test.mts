@@ -25,6 +25,10 @@ test('cronbachAlpha returns 0 for a single-row matrix', () => {
   assert.equal(cronbachAlpha([[1, 2, 3]]), 0);
 });
 
+test('cronbachAlpha returns 0 for jagged rows', () => {
+  assert.equal(cronbachAlpha([[1, 2, 3], [4, 5]]), 0);
+});
+
 test('cronbachAlpha returns 0 when all rows are identical', () => {
   assert.equal(cronbachAlpha([
     [5, 5, 5],
@@ -80,6 +84,15 @@ test('nrcForecast returns the requested horizon with bounded confidence interval
     assert.ok(interval.lower >= 0 && interval.upper <= 100, `interval out of bounds: ${JSON.stringify(interval)}`);
     assert.equal(interval.level, 95);
   }
+  assert.equal(Number((forecast.probabilityUp + forecast.probabilityDown).toFixed(2)), 1);
+});
+
+test('nrcForecast uses full forecast path at exactly 3 values (boundary)', () => {
+  const forecast = nrcForecast([40, 50, 60], 3);
+
+  assert.equal(forecast.values.length, 3);
+  assert.ok(forecast.values[2]! > forecast.values[0]!, `expected rising trajectory`);
+  assert.ok(forecast.confidenceIntervals[2]!.upper > forecast.confidenceIntervals[0]!.lower, 'CIs should expand');
   assert.equal(Number((forecast.probabilityUp + forecast.probabilityDown).toFixed(2)), 1);
 });
 

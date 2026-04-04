@@ -84,6 +84,7 @@ export function minMaxNormalize(values: number[]): number[] {
 
 export function cronbachAlpha(items: number[][]): number {
   if (items.length < 2 || !items[0] || items[0].length < 2) return 0;
+  if (items.some((row) => row.length !== items[0]!.length)) return 0;
 
   const observationCount = items.length;
   const itemCount = items[0].length;
@@ -130,12 +131,12 @@ export function detectChangepoints(values: number[], threshold = CHANGEPOINT_DEF
   const changepoints: number[] = [];
   let positiveCusum = 0;
   let negativeCusum = 0;
-  const slack = stdDev * 0.5;
+  const CUSUM_SLACK = 0.5;
 
   for (let index = 1; index < values.length; index += 1) {
     const normalizedValue = ((values[index] ?? 0) - mean) / stdDev;
-    positiveCusum = Math.max(0, positiveCusum + normalizedValue - slack / stdDev);
-    negativeCusum = Math.max(0, negativeCusum - normalizedValue - slack / stdDev);
+    positiveCusum = Math.max(0, positiveCusum + normalizedValue - CUSUM_SLACK);
+    negativeCusum = Math.max(0, negativeCusum - normalizedValue - CUSUM_SLACK);
 
     if (positiveCusum > threshold || negativeCusum > threshold) {
       changepoints.push(index);
@@ -202,9 +203,10 @@ export function nrcForecast(
 
   const lastForecast = values[values.length - 1] ?? baseline;
   const lastActual = history[history.length - 1] ?? baseline;
-  const probabilityUp = lastForecast > lastActual
-    ? Math.min(0.95, 0.5 + (lastForecast - lastActual) * 0.05)
-    : Math.max(0.05, 0.5 - (lastActual - lastForecast) * 0.05);
+  const delta = lastForecast - lastActual;
+  const scale = Math.max(modelError, 1);
+  const z = delta / scale;
+  const probabilityUp = Math.min(0.95, Math.max(0.05, 0.5 + z * 0.15));
 
   return {
     values,
