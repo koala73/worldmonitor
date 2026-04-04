@@ -7,19 +7,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-
-// ---------- getDynamicClusterRadius logic (replicated from DeckGLMap.ts) ----------
-
-/**
- * Zoom-adaptive cluster radius — mirrors getDynamicClusterRadius() exported
- * from DeckGLMap.ts.
- */
-function getDynamicClusterRadius(baseRadius, zoom) {
-  if (zoom <= 2) return Math.round(baseRadius * 1.5);
-  if (zoom <= 4) return Math.round(baseRadius * 1.25);
-  if (zoom >= 10) return Math.round(baseRadius * 0.75);
-  return baseRadius;
-}
+import { getDynamicClusterRadius } from '../src/utils/cluster-radius.ts';
 
 // ---------- filterToViewport logic (replicated from DeckGLMap.ts) ----------
 
@@ -31,10 +19,21 @@ function filterToViewport(items, getLon, getLat, bounds, minItems = 200) {
   if (items.length < minItems) return items;
   if (!bounds) return items;
   const { w, e, s, n } = bounds;
-  const dLon = (e - w) * 0.2;
   const dLat = (n - s) * 0.2;
-  const minLon = w - dLon, maxLon = e + dLon;
   const minLat = s - dLat, maxLat = n + dLat;
+  if (w > e) {
+    // Antimeridian-crossing viewport: unwrap to get a positive width.
+    const dLon = (e + 360 - w) * 0.2;
+    const minLon = w - dLon;
+    const maxLon = e + dLon;
+    return items.filter(item => {
+      const lon = getLon(item);
+      const lat = getLat(item);
+      return lat >= minLat && lat <= maxLat && (lon >= minLon || lon <= maxLon);
+    });
+  }
+  const dLon = (e - w) * 0.2;
+  const minLon = w - dLon, maxLon = e + dLon;
   return items.filter(item => {
     const lon = getLon(item);
     const lat = getLat(item);
@@ -134,5 +133,38 @@ describe('filterToViewport', () => {
     const asiaPoints = Array.from({ length: 250 }, (_, i) => ({ lon: 100 + i * 0.1, lat: 35 }));
     const result = filterToViewport(asiaPoints, d => d.lon, d => d.lat, europeBounds);
     assert.equal(result.length, 0, 'Asian points should all be filtered out');
+  });
+
+  it('retains points near ±180° when viewport crosses the antimeridian', () => {
+    // Simulate a Pacific-centered viewport that straddles the antimeridian:
+    // west=160°E, east=160°W  (w=160, e=-160).
+    const antimeridianBounds = { w: 160, e: -160, s: -60, n: 60 };
+
+    // Build a dataset > 200 items mixing points inside and outside the
+    // antimeridian viewport.
+    const insidePoints = [
+      { lon: 170, lat: 0 },   // east of 160°E — inside
+      { lon: -170, lat: 0 },  // west of 160°W — inside
+      { lon: 175, lat: 20 },  // inside
+      { lon: -175, lat: -20 }, // inside
+    ];
+    const outsidePoints = Array.from({ length: 250 }, (_, i) => ({
+      lon: -50 + i * 0.4, // -50° to +50° — well inside the normal hemisphere, outside the antimeridian viewport
+      lat: 0,
+    }));
+    const allPoints = [...insidePoints, ...outsidePoints];
+
+    const result = filterToViewport(allPoints, d => d.lon, d => d.lat, antimeridianBounds);
+
+    // All four antimeridian-adjacent points must survive.
+    for (const p of insidePoints) {
+      assert.ok(
+        result.some(r => r.lon === p.lon && r.lat === p.lat),
+        `point lon=${p.lon} should be retained in antimeridian viewport`,
+      );
+    }
+    // Central-meridian points should be excluded.
+    const outsideRetained = result.filter(r => r.lon > -160 && r.lon < 160);
+    assert.equal(outsideRetained.length, 0, 'points far from ±180° should be filtered out');
   });
 });

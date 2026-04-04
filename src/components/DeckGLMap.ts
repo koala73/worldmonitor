@@ -58,6 +58,7 @@ import { H3HexagonLayer } from '@deck.gl/geo-layers';
 import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
+import { getDynamicClusterRadius } from '@/utils/cluster-radius';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
@@ -327,27 +328,16 @@ function ensureClosedRing(ring: [number, number][]): [number, number][] {
   return [...ring, first];
 }
 
-/**
- * Computes a zoom-adaptive supercluster radius in pixels.
- *
- * At low zoom levels the radius is expanded so that geographically distant
- * points on-screen are grouped into fewer, larger clusters — reducing the
- * number of draw calls and keeping the map readable.  At high zoom levels the
- * radius contracts to let clusters expand into individual markers sooner.
- *
- * @param baseRadius - Nominal pixel radius calibrated for mid-zoom (~6).
- * @param zoom       - Integer map zoom level returned by supercluster.
- * @returns Adjusted pixel radius clamped to a reasonable range.
- */
-export function getDynamicClusterRadius(baseRadius: number, zoom: number): number {
-  if (zoom <= 2) return Math.round(baseRadius * 1.5);
-  if (zoom <= 4) return Math.round(baseRadius * 1.25);
-  if (zoom >= 10) return Math.round(baseRadius * 0.75);
-  return baseRadius;
-}
+// Re-export so callers that import getDynamicClusterRadius from this module
+// continue to work after the function was extracted to @/utils/cluster-radius.
+export { getDynamicClusterRadius };
 
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
+  private static readonly PROTEST_BASE_RADIUS = 80;
+  private static readonly TECH_HQ_BASE_RADIUS = 70;
+  private static readonly TECH_EVENT_BASE_RADIUS = 65;
+  private static readonly DATACENTER_BASE_RADIUS = 90;
 
   private container: HTMLElement;
   private deckOverlay: MapboxOverlay | null = null;
@@ -484,6 +474,7 @@ export class DeckGLMap {
   private lastSCZoom = -1;
   private lastSCBoundsKey = '';
   private lastSCMask = '';
+  private lastSCEffectiveRadius = -1;
   private protestSuperclusterSource: SocialUnrestEvent[] = [];
   private newsPulseIntervalId: ReturnType<typeof setInterval> | null = null;
   private dayNightIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -1016,10 +1007,22 @@ export class DeckGLMap {
     const s = bounds.getSouth();
     const n = bounds.getNorth();
     // 20 % expansion prevents pop-in when markers straddle the viewport edge.
-    const dLon = (e - w) * 0.2;
     const dLat = (n - s) * 0.2;
-    const minLon = w - dLon, maxLon = e + dLon;
     const minLat = s - dLat, maxLat = n + dLat;
+    if (w > e) {
+      // Viewport crosses the antimeridian (e.g. w=170°, e=-170°).
+      // Compute the expansion based on the unwrapped width to keep dLon positive.
+      const dLon = (e + 360 - w) * 0.2;
+      const minLon = w - dLon; // may be < -180, which is fine for comparison
+      const maxLon = e + dLon; // may be > +180, which is fine for comparison
+      return items.filter(item => {
+        const lon = getLon(item);
+        const lat = getLat(item);
+        return lat >= minLat && lat <= maxLat && (lon >= minLon || lon <= maxLon);
+      });
+    }
+    const dLon = (e - w) * 0.2;
+    const minLon = w - dLon, maxLon = e + dLon;
     return items.filter(item => {
       const lon = getLon(item);
       const lat = getLat(item);
@@ -1076,7 +1079,7 @@ export class DeckGLMap {
       },
     }));
     this.protestSC = new Supercluster({
-      radius: 80,
+      radius: getDynamicClusterRadius(DeckGLMap.PROTEST_BASE_RADIUS, Math.floor(this.maplibreMap?.getZoom() ?? 2)),
       maxZoom: 16,
       map: (props: Record<string, unknown>) => ({
         index: Number(props.index ?? 0),
@@ -1116,7 +1119,7 @@ export class DeckGLMap {
       },
     }));
     this.techHQSC = new Supercluster({
-      radius: 70,
+      radius: getDynamicClusterRadius(DeckGLMap.TECH_HQ_BASE_RADIUS, Math.floor(this.maplibreMap?.getZoom() ?? 2)),
       maxZoom: 16,
       map: (props: Record<string, unknown>) => ({
         index: Number(props.index ?? 0),
@@ -1150,7 +1153,7 @@ export class DeckGLMap {
       },
     }));
     this.techEventSC = new Supercluster({
-      radius: 65,
+      radius: getDynamicClusterRadius(DeckGLMap.TECH_EVENT_BASE_RADIUS, Math.floor(this.maplibreMap?.getZoom() ?? 2)),
       maxZoom: 16,
       map: (props: Record<string, unknown>) => {
         const daysUntil = Number(props.daysUntil ?? Number.MAX_SAFE_INTEGER);
@@ -1191,7 +1194,7 @@ export class DeckGLMap {
       },
     }));
     this.datacenterSC = new Supercluster({
-      radius: 90,
+      radius: getDynamicClusterRadius(DeckGLMap.DATACENTER_BASE_RADIUS, Math.floor(this.maplibreMap?.getZoom() ?? 2)),
       maxZoom: 16,
       map: (props: Record<string, unknown>) => ({
         index: Number(props.index ?? 0),
@@ -1241,6 +1244,19 @@ export class DeckGLMap {
     this.lastSCZoom = zoom;
     this.lastSCBoundsKey = boundsKey;
     this.lastSCMask = layerMask;
+
+    // When the zoom crosses a clustering-tier boundary the effective radius
+    // changes, so the supercluster indexes must be rebuilt with the new value.
+    const effectiveRadius = getDynamicClusterRadius(DeckGLMap.PROTEST_BASE_RADIUS, zoom);
+    const radiusChanged = effectiveRadius !== this.lastSCEffectiveRadius;
+    if (radiusChanged) {
+      this.lastSCEffectiveRadius = effectiveRadius;
+      if (useProtests && this.protestSC) this.rebuildProtestSupercluster();
+      if (useTechEvents && this.techEventSC) this.rebuildTechEventSupercluster();
+      // Nullify the lazily-built SCs so they are rebuilt with the new radius below.
+      this.techHQSC = null;
+      this.datacenterSC = null;
+    }
 
     if (useTechHQ && !this.techHQSC) this.rebuildTechHQSupercluster();
     if (useDatacenterClusters && !this.datacenterSC) this.rebuildDatacenterSupercluster();
