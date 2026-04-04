@@ -52,6 +52,10 @@ describe('stripHtml', () => {
   it('removes tags and CDATA while preserving text', () => {
     assert.equal(stripHtml('<![CDATA[Hello <strong>world</strong>]]>'), 'Hello world');
   });
+
+  it('strips entity-escaped HTML tags (FINRA-style descriptions)', () => {
+    assert.equal(stripHtml('&lt;h2&gt;Summary&lt;/h2&gt;&lt;p&gt;FINRA amends Rule 4210.&lt;/p&gt;'), 'Summary FINRA amends Rule 4210.');
+  });
 });
 
 describe('parseRssItems', () => {

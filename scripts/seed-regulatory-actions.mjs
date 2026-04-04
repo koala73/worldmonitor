@@ -37,11 +37,9 @@ function decodeEntities(input) {
 }
 
 function stripHtml(input) {
-  return decodeEntities(
-    String(input || '')
-      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-      .replace(/<[^>]+>/g, ' ')
-  ).replace(/\s+/g, ' ').trim();
+  const unwrapped = String(input || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+  const decoded = decodeEntities(unwrapped);
+  return decoded.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function getTagValue(block, tagName) {
