@@ -186,16 +186,24 @@ function buildTiers(dodoPrices) {
     if (monthlyEntry) {
       const [monthlyId] = monthlyEntry;
       const monthlyPrice = dodoPrices[monthlyId];
-      const priceCents = monthlyPrice?.priceCents ?? FALLBACK_PRICES[monthlyId];
-      if (priceCents != null) tier.monthlyPrice = priceCents / 100;
+      if (monthlyPrice) {
+        tier.monthlyPrice = monthlyPrice.priceCents / 100;
+      } else if (FALLBACK_PRICES[monthlyId] != null) {
+        tier.monthlyPrice = FALLBACK_PRICES[monthlyId] / 100;
+        console.warn(`[product-catalog] FALLBACK price for ${monthlyId} ($${tier.monthlyPrice}) — Dodo fetch failed`);
+      }
       tier.monthlyProductId = monthlyId;
     }
 
     if (annualEntry) {
       const [annualId] = annualEntry;
       const annualPrice = dodoPrices[annualId];
-      const priceCents = annualPrice?.priceCents ?? FALLBACK_PRICES[annualId];
-      if (priceCents != null) tier.annualPrice = priceCents / 100;
+      if (annualPrice) {
+        tier.annualPrice = annualPrice.priceCents / 100;
+      } else if (FALLBACK_PRICES[annualId] != null) {
+        tier.annualPrice = FALLBACK_PRICES[annualId] / 100;
+        console.warn(`[product-catalog] FALLBACK price for ${annualId} ($${tier.annualPrice}) — Dodo fetch failed`);
+      }
       tier.annualProductId = annualId;
     }
 
@@ -239,9 +247,15 @@ export default async function handler(req) {
   }
 
   const dodoPrices = await fetchPricesFromDodo();
+  const dodoPriceCount = Object.keys(dodoPrices).length;
+  const expectedCount = Object.keys(CATALOG).length;
+  const priceSource = dodoPriceCount === expectedCount ? 'dodo' : dodoPriceCount > 0 ? 'partial' : 'fallback';
+  if (priceSource !== 'dodo') {
+    console.warn(`[product-catalog] priceSource=${priceSource}: got ${dodoPriceCount}/${expectedCount} prices from Dodo`);
+  }
   const tiers = buildTiers(dodoPrices);
   const now = Date.now();
-  const result = { tiers, fetchedAt: now, cachedUntil: now + CACHE_TTL * 1000 };
+  const result = { tiers, fetchedAt: now, cachedUntil: now + CACHE_TTL * 1000, priceSource };
 
   // Cache the result
   await setCache(result);
