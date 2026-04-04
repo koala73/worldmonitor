@@ -122,6 +122,15 @@ test('nrcForecast falls back to a flat 50/50 outlook for short history', () => {
   assert.equal(forecast.probabilityDown, 0.5);
 });
 
+test('nrcForecast short-history CI has minimum width at value=0', () => {
+  const forecast = nrcForecast([0], 1);
+  assert.deepEqual(forecast.values, [0]);
+  const ci = forecast.confidenceIntervals[0]!;
+  assert.ok(ci.upper >= 5, `expected CI upper >= 5 for value=0, got ${ci.upper}`);
+  assert.equal(ci.lower, 0);
+  assert.equal(ci.level, 95);
+});
+
 test('nrcForecast returns neutral empty result for non-positive horizon', () => {
   for (const h of [0, -1, -100]) {
     const forecast = nrcForecast([40, 50, 60], h);
