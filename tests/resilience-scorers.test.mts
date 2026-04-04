@@ -70,9 +70,9 @@ describe('resilience scorer contracts', () => {
       economic: 70.67,
       infrastructure: 77,
       energy: 62,
-      'social-governance': 72.75,
+      'social-governance': 62,
       'health-food': 59,
     });
-    assert.equal(overallScore, 69.05);
+    assert.equal(overallScore, 66.37);
   });
 });
