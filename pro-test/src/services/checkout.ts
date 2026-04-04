@@ -16,9 +16,16 @@ let clerk: InstanceType<typeof Clerk> | null = null;
 let pendingProductId: string | null = null;
 let pendingOptions: { referralCode?: string; discountCode?: string } | null = null;
 let checkoutInFlight = false;
+let clerkLoadPromise: Promise<InstanceType<typeof Clerk>> | null = null;
 
 export async function ensureClerk(): Promise<InstanceType<typeof Clerk>> {
   if (clerk) return clerk;
+  if (clerkLoadPromise) return clerkLoadPromise;
+  clerkLoadPromise = _loadClerk();
+  return clerkLoadPromise;
+}
+
+async function _loadClerk(): Promise<InstanceType<typeof Clerk>> {
   const { Clerk: C } = await import('@clerk/clerk-js');
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');
@@ -77,6 +84,8 @@ export function initOverlay(onSuccess?: () => void): void {
         }
       },
     });
+  }).catch((err) => {
+    console.error('[checkout] Failed to load Dodo overlay SDK:', err);
   });
 }
 
