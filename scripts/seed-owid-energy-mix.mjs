@@ -145,25 +145,27 @@ export function parseOwidCsv(csvText) {
 }
 
 export function buildExposureIndex(countries) {
-  const list = [...countries.values()].filter(
-    (c) => c.gasShare != null || c.coalShare != null,
-  );
+  const all = [...countries.values()];
 
-  const top20 = (arr, key) =>
-    arr
+  // Each bucket filters only on its own metric so countries with valid
+  // oil/import/renewables data but no gas/coal value are not excluded.
+  const top20 = (key) =>
+    all
       .filter((c) => c[key] != null)
       .sort((a, b) => b[key] - a[key])
       .slice(0, 20)
       .map((c) => ({ iso2: c.iso2, name: c.country, share: c[key] }));
 
+  const years = all.map((c) => c.year).filter(Boolean);
+
   return {
     updatedAt: new Date().toISOString(),
-    year: Math.max(...list.map((c) => c.year).filter(Boolean)),
-    gas: top20(list, 'gasShare'),
-    coal: top20(list, 'coalShare'),
-    oil: top20(list, 'oilShare'),
-    imported: top20(list, 'importShare'),
-    renewable: top20(list, 'renewShare'),
+    year: years.length > 0 ? Math.max(...years) : null,
+    gas:      top20('gasShare'),
+    coal:     top20('coalShare'),
+    oil:      top20('oilShare'),
+    imported: top20('importShare'),
+    renewable:top20('renewShare'),
   };
 }
 
