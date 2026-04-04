@@ -51,6 +51,7 @@ import {
   GroceryBasketPanel,
   BigMacPanel,
   FuelPricesPanel,
+  FaoFoodPriceIndexPanel,
   WorldClockPanel,
   AirlineIntelPanel,
   AviationCommandBar,
@@ -990,6 +991,10 @@ export class PanelLayoutManager implements AppModule {
 
     if (this.shouldCreatePanel('fuel-prices') && !this.ctx.panels['fuel-prices']) {
       this.ctx.panels['fuel-prices'] = new FuelPricesPanel();
+    }
+
+    if (this.shouldCreatePanel('fao-food-price-index') && !this.ctx.panels['fao-food-price-index']) {
+      this.ctx.panels['fao-food-price-index'] = new FaoFoodPriceIndexPanel();
     }
 
     if (this.shouldCreatePanel('live-news') &&

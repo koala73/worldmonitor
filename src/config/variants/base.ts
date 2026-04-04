@@ -47,6 +47,7 @@ export const REFRESH_INTERVALS = {
   gulfEconomies: 10 * 60 * 1000,
   groceryBasket: 6 * 60 * 60 * 1000,
   fuelPrices: 6 * 60 * 60 * 1000,
+  faoFoodPriceIndex: 24 * 60 * 60 * 1000, // monthly data; refresh daily is sufficient
   intelligence: 15 * 60 * 1000,
   correlationEngine: 5 * 60 * 1000,
   defensePatents: 24 * 60 * 60 * 1000, // 24h — data is weekly, daily poll is sufficient
