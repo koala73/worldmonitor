@@ -14,7 +14,7 @@ const SEED_DOMAINS = {
   'climate:anomalies':        { key: 'seed-meta:climate:anomalies',        intervalMin: 120 },
   'climate:zone-normals':     { key: 'seed-meta:climate:zone-normals',     intervalMin: 44640 },
   'climate:co2-monitoring':   { key: 'seed-meta:climate:co2-monitoring',   intervalMin: 1440 }, // daily cron; health.js maxStaleMin:4320 (3x) is intentionally higher — it's an alarm threshold, not the cron cadence
-  'climate:ocean-ice':        { key: 'seed-meta:climate:ocean-ice',        intervalMin: 1440 }, // daily cron; health.js maxStaleMin:1440 matches the seed TTL to avoid a silent expiry window
+  'climate:ocean-ice':        { key: 'seed-meta:climate:ocean-ice',        intervalMin: 1440 }, // daily cron; health.js maxStaleMin:2880 (2x) tolerates one missed run
   'climate:news-intelligence': { key: 'seed-meta:climate:news-intelligence', intervalMin: 30 },
   // Phase 2 — Parameterized endpoints
   'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },

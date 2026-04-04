@@ -244,8 +244,10 @@ async function fetchSeaIceSection() {
 
 export function parseSeaLevelOverlay(html) {
   const normalized = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  const riseMatch = normalized.match(/RISE SINCE 1993\s+([0-9]+(?:\.[0-9]+)?)\s+millimeters/i);
-  const rateMatch = normalized.match(/current yearly rate of\s+[0-9.]+\s+inches\/year\s+\(([0-9.]+)\s+centimeters\/year\)/i);
+  const riseMatch = normalized.match(/RISE SINCE 1993\s+([0-9]+(?:\.[0-9]+)?)\s+millimeters/i)
+    ?? normalized.match(/since 1993[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*(?:mm|millimeters)/i);
+  const rateMatch = normalized.match(/current yearly rate of\s+[0-9.]+\s+inches\/year\s+\(([0-9.]+)\s+centimeters\/year\)/i)
+    ?? normalized.match(/([0-9]+(?:\.[0-9]+)?)\s+centimeters\/year/i);
   return {
     seaLevelMmAbove1993: riseMatch ? round(Number(riseMatch[1]), 1) : NaN,
     seaLevelAnnualRiseMm: rateMatch ? round(Number(rateMatch[1]) * 10, 1) : NaN,

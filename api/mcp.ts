@@ -191,7 +191,7 @@ const TOOL_REGISTRY: ToolDef[] = [
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: ['climate:anomalies:v2', 'climate:co2-monitoring:v1', 'climate:ocean-ice:v1', 'weather:alerts:v1'],
     _seedMetaKey: 'seed-meta:climate:co2-monitoring',
-    _maxStaleMin: 1440,
+    _maxStaleMin: 2880,
     _freshnessChecks: [
       { key: 'seed-meta:climate:anomalies', maxStaleMin: 120 },
       { key: 'seed-meta:climate:co2-monitoring', maxStaleMin: 2880 },
