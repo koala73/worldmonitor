@@ -82,22 +82,22 @@ export function minMaxNormalize(values: number[]): number[] {
   return values.map((value) => (value - min) / range);
 }
 
-export function cronbachAlpha(items: number[][]): number {
-  if (items.length < 2 || !items[0] || items[0].length < 2) return 0;
-  if (items.some((row) => row.length !== items[0]!.length)) return 0;
+export function cronbachAlpha(observations: number[][]): number {
+  if (observations.length < 2 || !observations[0] || observations[0].length < 2) return 0;
+  if (observations.some((row) => row.length !== observations[0]!.length)) return 0;
 
-  const observationCount = items.length;
-  const itemCount = items[0].length;
+  const observationCount = observations.length;
+  const itemCount = observations[0].length;
   const itemVariances: number[] = [];
 
   for (let column = 0; column < itemCount; column += 1) {
-    const sample = items.map((row) => row[column] ?? 0);
+    const sample = observations.map((row) => row[column] ?? 0);
     const mean = sample.reduce((sum, value) => sum + value, 0) / observationCount;
     const variance = sample.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (observationCount - 1);
     itemVariances.push(variance);
   }
 
-  const totalScores = items.map((row) => row.reduce((sum, value) => sum + value, 0));
+  const totalScores = observations.map((row) => row.reduce((sum, value) => sum + value, 0));
   const totalMean = totalScores.reduce((sum, value) => sum + value, 0) / observationCount;
   const totalVariance = totalScores.reduce((sum, value) => sum + (value - totalMean) ** 2, 0) / (observationCount - 1);
 
@@ -192,11 +192,14 @@ export function nrcForecast(
     const lastValue = clampScore(history[history.length - 1] ?? 50);
     return {
       values: Array.from({ length: horizonDays }, () => lastValue),
-      confidenceIntervals: Array.from({ length: horizonDays }, () => ({
-        lower: round(clampScore(lastValue * 0.9)),
-        upper: round(clampScore(lastValue * 1.1)),
-        level: 95,
-      })),
+      confidenceIntervals: Array.from({ length: horizonDays }, () => {
+        const halfWidth = Math.max(5, lastValue * 0.1);
+        return {
+          lower: round(clampScore(lastValue - halfWidth)),
+          upper: round(clampScore(lastValue + halfWidth)),
+          level: 95,
+        };
+      }),
       probabilityUp: 0.5,
       probabilityDown: 0.5,
     };
@@ -234,6 +237,6 @@ export function nrcForecast(
     values,
     confidenceIntervals,
     probabilityUp: round(probabilityUp),
-    probabilityDown: round(1 - probabilityUp),
+    probabilityDown: round(1 - round(probabilityUp)),
   };
 }
