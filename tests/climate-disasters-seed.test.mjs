@@ -125,6 +125,16 @@ describe('seed-climate-disasters helpers', () => {
     assert.equal(gdacsEvent.country, 'Japan');
   });
 
+  it('fails hard on config errors even when other sources succeed', () => {
+    const configErr = new Error('RELIEFWEB_APPNAME is required');
+    configErr.isConfigError = true;
+
+    assert.throws(() => collectDisasterSourceResults([
+      { status: 'fulfilled', value: [{ id: 'nat-1', source: 'GDACS', type: 'flood', name: 'Floods', country: 'Japan', countryCode: 'JP', lat: 35.6, lng: 139.7, severity: 'high', startedAt: 1_700_000_000_000, status: 'alert', affectedPopulation: 0, sourceUrl: '' }] },
+      { status: 'rejected', reason: configErr },
+    ]), { message: /RELIEFWEB_APPNAME/ });
+  });
+
   it('keeps successful source payloads when another source fails', () => {
     const merged = collectDisasterSourceResults([
       { status: 'fulfilled', value: [{ id: 'relief-1', source: 'ReliefWeb', type: 'flood', name: 'Floods', country: 'Japan', countryCode: 'JP', lat: 35.6, lng: 139.7, severity: 'high', startedAt: 1_700_000_000_000, status: 'alert', affectedPopulation: 0, sourceUrl: 'https://reliefweb.int/' }] },

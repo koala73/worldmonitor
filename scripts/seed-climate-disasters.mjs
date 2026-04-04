@@ -207,7 +207,9 @@ function resolveCountryInfo({ code = '', iso3 = '', name = '', lat = NaN, lng = 
 function getReliefWebAppname() {
   const appname = String(process.env.RELIEFWEB_APPNAME || process.env.RELIEFWEB_APP_NAME || '').trim();
   if (!appname) {
-    throw new Error('RELIEFWEB_APPNAME is required; ReliefWeb now requires a pre-approved appname');
+    const err = new Error('RELIEFWEB_APPNAME is required; ReliefWeb now requires a pre-approved appname');
+    err.isConfigError = true;
+    throw err;
   }
   return appname;
 }
@@ -254,6 +256,7 @@ function mapReliefItem(item) {
     name: countryEntry.shortname || countryEntry.name,
     fallbackText: fields.name,
   });
+  if (!countryCode) return null;
   const coords = getCountryCenter(countryCode);
 
   const startedAt = parseTimestamp(fields?.date?.event || fields?.date?.created || fields?.date?.changed);
@@ -337,6 +340,7 @@ function mapNaturalEvent(event) {
     lng,
     fallbackText: `${event.title || ''} ${event.description || ''}`,
   });
+  if (!countryCode) return null;
   const startedAt = parseTimestamp(event.date);
 
   return {
@@ -419,8 +423,10 @@ function collectDisasterSourceResults(results) {
       combined.push(...asArray(result.value));
       continue;
     }
-    failures.push(result.reason);
-    const message = String(result.reason?.message || result.reason || 'unknown source failure');
+    const err = result.reason;
+    if (err?.isConfigError) throw err;
+    failures.push(err);
+    const message = String(err?.message || err || 'unknown source failure');
     console.warn(`[seed-climate-disasters] partial source failure: ${message}`);
   }
 
