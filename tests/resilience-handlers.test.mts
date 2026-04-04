@@ -122,8 +122,8 @@ describe('resilience handlers', () => {
 
     const { fetchImpl, redis, sortedSets } = createRedisFetch(RESILIENCE_FIXTURES);
     sortedSets.set('resilience:history:US', [
-      { member: '2026-04-01', score: 20 },
-      { member: '2026-04-02', score: 30 },
+      { member: '2026-04-01:20', score: 20260401 },
+      { member: '2026-04-02:30', score: 20260402 },
     ]);
     globalThis.fetch = fetchImpl;
 
@@ -147,7 +147,7 @@ describe('resilience handlers', () => {
 
     const history = sortedSets.get('resilience:history:US') ?? [];
     const today = new Date().toISOString().slice(0, 10);
-    assert.ok(history.some((entry) => entry.member === today), 'expected today history member to be written');
+    assert.ok(history.some((entry) => entry.member.startsWith(`${today}:`)), 'expected today history member to be written');
 
     await getResilienceScore({ request: new Request('https://example.com') } as never, {
       countryCode: 'US',
