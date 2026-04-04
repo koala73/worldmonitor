@@ -38,13 +38,25 @@ export async function getCountryIntelBrief(
 
   const isPremium = await isCallerPremium(ctx.request);
   const frameworkRaw = isPremium && typeof req.framework === 'string' ? req.framework.slice(0, 2000) : '';
+
+  // Fetch energy mix early so its data-year can be included in the cache key.
+  // This ensures cached briefs are invalidated when OWID publishes updated annual
+  // data — without it, energy mix changes are silently ignored in cached briefs.
+  let energyMixData: Record<string, unknown> | null = null;
+  try {
+    const raw = await getCachedJson(`energy:mix:v1:${req.countryCode.toUpperCase()}`, true);
+    if (raw && typeof raw === 'object') energyMixData = raw as Record<string, unknown>;
+  } catch { /* graceful omit */ }
+  const energyYear = typeof energyMixData?.year === 'number' ? String(energyMixData.year) : '';
+
   const [contextHashFull, frameworkHashFull] = await Promise.all([
     contextSnapshot ? sha256Hex(contextSnapshot) : Promise.resolve('base'),
     frameworkRaw    ? sha256Hex(frameworkRaw)    : Promise.resolve(''),
   ]);
   const contextHash = contextSnapshot ? contextHashFull.slice(0, 16) : 'base';
   const frameworkHash = frameworkRaw ? frameworkHashFull.slice(0, 8) : '';
-  const cacheKey = `ci-sebuf:v3:${req.countryCode}:${lang}:${contextHash}${frameworkHash ? `:${frameworkHash}` : ''}`;
+  const energyTag = energyYear ? `:e${energyYear}` : '';
+  const cacheKey = `ci-sebuf:v3:${req.countryCode}:${lang}:${contextHash}${frameworkHash ? `:${frameworkHash}` : ''}${energyTag}`;
   const countryName = TIER1_COUNTRIES[req.countryCode] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
 
@@ -83,19 +95,13 @@ Rules:
 
   const userPromptParts = [`Country: ${countryName} (${req.countryCode})`];
 
-  try {
-    const energyMixRaw = await getCachedJson(`energy:mix:v1:${req.countryCode.toUpperCase()}`, true);
-    if (energyMixRaw && typeof energyMixRaw === 'object') {
-      const m = energyMixRaw as Record<string, unknown>;
-      const yr = typeof m.year === 'number' ? m.year : '';
-      userPromptParts.push(
-        `Energy generation mix (${yr}): coal ${m.coalShare ?? '?'}%, ` +
-        `gas ${m.gasShare ?? '?'}%, renewables ${m.renewShare ?? '?'}%, ` +
-        `nuclear ${m.nuclearShare ?? '?'}%, net import dependency ${m.importShare ?? '?'}%.`,
-      );
-    }
-  } catch {
-    // graceful omit when key missing
+  if (energyMixData) {
+    const yr = energyYear || '';
+    userPromptParts.push(
+      `Energy generation mix (${yr}): coal ${energyMixData.coalShare ?? '?'}%, ` +
+      `gas ${energyMixData.gasShare ?? '?'}%, renewables ${energyMixData.renewShare ?? '?'}%, ` +
+      `nuclear ${energyMixData.nuclearShare ?? '?'}%, net import dependency ${energyMixData.importShare ?? '?'}%.`,
+    );
   }
 
   if (contextSnapshot) {

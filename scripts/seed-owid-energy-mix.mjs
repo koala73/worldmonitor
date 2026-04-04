@@ -16,6 +16,10 @@ loadEnvFile(import.meta.url);
 
 export const OWID_ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
 export const OWID_EXPOSURE_INDEX_KEY = 'energy:exposure:v1:index';
+/** Full list of ISO2 codes written in the last successful run — used by the
+ *  failure-preservation path to extend TTL on ALL per-country keys, not just
+ *  those that happen to appear in the top-20 exposure buckets. */
+export const OWID_COUNTRY_LIST_KEY = 'energy:mix:v1:_countries';
 export const OWID_META_KEY = 'seed-meta:economic:owid-energy-mix';
 export const OWID_TTL_SECONDS = 35 * 24 * 3600;
 const OWID_CSV_URL = 'https://owid-public.owid.io/data/energy/owid-energy-data.csv';
@@ -195,27 +199,16 @@ async function redisGet(key) {
 async function preservePreviousSnapshot(errorMsg) {
   console.error('[owid-energy-mix] Preserving previous snapshot:', errorMsg);
 
-  // Recover ISO2 list from the existing exposure index so we can extend TTL
-  // on all per-country keys — not just the index and meta keys.
-  const existingIndex = await redisGet(OWID_EXPOSURE_INDEX_KEY).catch(() => null);
-  const perCountryKeys = [];
-  if (existingIndex && typeof existingIndex === 'object') {
-    const iso2Set = new Set();
-    for (const fuel of ['gas', 'coal', 'oil', 'imported', 'renewable']) {
-      const entries = existingIndex[fuel];
-      if (Array.isArray(entries)) {
-        for (const e of entries) {
-          if (e?.iso2) iso2Set.add(e.iso2);
-        }
-      }
-    }
-    for (const iso2 of iso2Set) {
-      perCountryKeys.push(`${OWID_ENERGY_MIX_KEY_PREFIX}${iso2}`);
-    }
-  }
+  // Read the full country list written by the last successful run.
+  // This covers ALL seeded ISO2 codes, including countries that do not appear
+  // in any top-20 fuel bucket in the exposure index.
+  const countryList = await redisGet(OWID_COUNTRY_LIST_KEY).catch(() => null);
+  const perCountryKeys = Array.isArray(countryList)
+    ? countryList.map((iso2) => `${OWID_ENERGY_MIX_KEY_PREFIX}${iso2}`)
+    : [];
 
   await extendExistingTtl(
-    [...perCountryKeys, OWID_EXPOSURE_INDEX_KEY, OWID_META_KEY],
+    [...perCountryKeys, OWID_COUNTRY_LIST_KEY, OWID_EXPOSURE_INDEX_KEY, OWID_META_KEY],
     OWID_TTL_SECONDS,
   );
   const metaPayload = {
@@ -226,7 +219,7 @@ async function preservePreviousSnapshot(errorMsg) {
     error: errorMsg,
   };
   await redisPipeline([
-    ['SET', OWID_META_KEY, JSON.stringify(metaPayload), 'EX', 7 * 24 * 3600],
+    ['SET', OWID_META_KEY, JSON.stringify(metaPayload), 'EX', OWID_TTL_SECONDS],
   ]);
 }
 
@@ -297,12 +290,21 @@ export async function main() {
       'EX',
       OWID_TTL_SECONDS,
     ]);
+    // Full ISO2 list — used by failure-preservation path to extend TTL on
+    // ALL per-country keys, including countries outside the top-20 fuel buckets.
+    commands.push([
+      'SET',
+      OWID_COUNTRY_LIST_KEY,
+      JSON.stringify([...countries.keys()]),
+      'EX',
+      OWID_TTL_SECONDS,
+    ]);
     commands.push([
       'SET',
       OWID_META_KEY,
       JSON.stringify(metaPayload),
       'EX',
-      7 * 24 * 3600,
+      OWID_TTL_SECONDS, // must outlive the monthly cron interval (35 days)
     ]);
 
     const results = await redisPipeline(commands);
