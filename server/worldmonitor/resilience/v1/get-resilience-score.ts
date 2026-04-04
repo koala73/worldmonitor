@@ -4,12 +4,16 @@ import type {
   GetResilienceScoreRequest,
   GetResilienceScoreResponse,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
 export const getResilienceScore: ResilienceServiceHandler['getResilienceScore'] = async (
   _ctx: ServerContext,
   req: GetResilienceScoreRequest,
 ): Promise<GetResilienceScoreResponse> => {
   const countryCode = String(req.countryCode || '').toUpperCase();
+  if (!countryCode) {
+    throw new ValidationError([{ field: 'countryCode', description: 'countryCode is required' }]);
+  }
 
   return {
     countryCode,
