@@ -47,10 +47,14 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
 
   if (missing.length === 0) {
     await setCachedJson(RESILIENCE_RANKING_CACHE_KEY, response, RESILIENCE_RANKING_CACHE_TTL_SECONDS);
-    setCachedJson(RESILIENCE_RANKING_META_KEY, {
-      fetchedAt: Date.now(),
-      recordCount: response.items.length,
-    }, RESILIENCE_RANKING_META_TTL_SECONDS).catch(() => {});
+    try {
+      await setCachedJson(RESILIENCE_RANKING_META_KEY, {
+        fetchedAt: Date.now(),
+        recordCount: response.items.length,
+      }, RESILIENCE_RANKING_META_TTL_SECONDS);
+    } catch (error) {
+      console.warn('[resilience] ranking meta write failed:', error);
+    }
   }
 
   return response;

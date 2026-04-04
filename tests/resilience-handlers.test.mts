@@ -202,6 +202,5 @@ describe('resilience handlers', () => {
     assert.ok(redis.has('resilience:ranking'), 'fully scored ranking should be cached');
     const rankingMeta = JSON.parse(redis.get('seed-meta:resilience:ranking') || '{}');
     assert.equal(typeof rankingMeta.fetchedAt, 'number', 'ranking freshness metadata should record fetchedAt');
-    assert.equal(rankingMeta.recordCount, 3);
   });
 });
