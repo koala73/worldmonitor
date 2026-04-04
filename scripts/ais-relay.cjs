@@ -5763,8 +5763,8 @@ function startPizzintSeedLoop() {
 // builds tier view model, writes to Redis for /api/product-catalog.
 // Direct fetch first, PROXY_URL fallback if Dodo blocks datacenter IPs.
 // ─────────────────────────────────────────────────────────────
-const DODO_PRICE_SEED_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-const DODO_PRICE_SEED_TTL = 7200; // 2h (2× interval)
+const DODO_PRICE_SEED_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
+const DODO_PRICE_SEED_TTL = 86400; // 24h (2× interval)
 const DODO_PRICE_REDIS_KEY = 'product-catalog:v2';
 const DODO_LIVE_URL = 'https://live.dodopayments.com';
 const DODO_TEST_URL = 'https://test.dodopayments.com';
