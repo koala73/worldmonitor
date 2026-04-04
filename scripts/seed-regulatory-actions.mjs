@@ -283,13 +283,13 @@ function classifyAction(action) {
     return { ...action, tier: 'high', matchedKeywords: [...new Set(highMatches)] };
   }
 
-  if (isLowPriorityRoutineTitle(action.title)) {
-    return { ...action, tier: 'low', matchedKeywords: [] };
-  }
-
   const mediumMatches = findMatchedKeywords(classificationText, MEDIUM_KEYWORD_PATTERNS);
   if (mediumMatches.length > 0) {
     return { ...action, tier: 'medium', matchedKeywords: [...new Set(mediumMatches)] };
+  }
+
+  if (isLowPriorityRoutineTitle(action.title)) {
+    return { ...action, tier: 'low', matchedKeywords: [] };
   }
 
   return { ...action, tier: 'unknown', matchedKeywords: [] };
