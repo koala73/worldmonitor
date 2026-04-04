@@ -86,6 +86,42 @@ describe('resilience dimension scorers', () => {
     }
   });
 
+  it('scoreEnergy with full OWID data uses 5-metric blend and high coverage', async () => {
+    const no = await scoreEnergy('NO', fixtureReader);
+    assert.ok(no.coverage > 0.9, `NO coverage should be >0.9 with full OWID data, got ${no.coverage}`);
+    assert.ok(no.score > 50, `NO score should be >50 (high renewables, low dependency), got ${no.score}`);
+  });
+
+  it('scoreEnergy without OWID data degrades gracefully to 2-metric blend', async () => {
+    const noOwidReader = async (key: string) => {
+      if (key.startsWith('energy:mix:v1:')) return null;
+      return RESILIENCE_FIXTURES[key] ?? null;
+    };
+    const no = await scoreEnergy('NO', noOwidReader);
+    assert.ok(no.coverage > 0, `Coverage should be >0 even without OWID data, got ${no.coverage}`);
+    assert.ok(no.coverage < 0.6, `Coverage should be <0.6 without OWID data (only 2 of 5 metrics), got ${no.coverage}`);
+    assert.ok(no.score > 0, `Score should be non-zero with only iea data, got ${no.score}`);
+  });
+
+  it('scoreEnergy: high renewShare country scores better than high coalShare at equal dependency', async () => {
+    const renewableReader = async (key: string) => {
+      if (key === 'resilience:static:XX') return { iea: { energyImportDependency: { value: 50 } } };
+      if (key === 'energy:mix:v1:XX') return { gasShare: 5, coalShare: 0, renewShare: 90 };
+      if (key === 'economic:energy:v1:all') return null;
+      return null;
+    };
+    const fossilReader = async (key: string) => {
+      if (key === 'resilience:static:XX') return { iea: { energyImportDependency: { value: 50 } } };
+      if (key === 'energy:mix:v1:XX') return { gasShare: 5, coalShare: 80, renewShare: 5 };
+      if (key === 'economic:energy:v1:all') return null;
+      return null;
+    };
+    const renewable = await scoreEnergy('XX', renewableReader);
+    const fossil = await scoreEnergy('XX', fossilReader);
+    assert.ok(renewable.score > fossil.score,
+      `Renewable-heavy (${renewable.score}) should score better than coal-heavy (${fossil.score})`);
+  });
+
   it('memoizes repeated seed reads inside scoreAllDimensions', async () => {
     const hits = new Map<string, number>();
     const countingReader = async (key: string) => {

@@ -4,7 +4,7 @@ import type {
   GetCountryIntelBriefResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
 import { isCallerPremium } from '../../../_shared/premium-check';
@@ -82,6 +82,22 @@ Rules:
 - No speculation beyond what data supports.${lang === 'fr' ? '\n- IMPORTANT: You MUST respond ENTIRELY in French language.' : ''}`;
 
   const userPromptParts = [`Country: ${countryName} (${req.countryCode})`];
+
+  try {
+    const energyMixRaw = await getCachedJson(`energy:mix:v1:${req.countryCode.toUpperCase()}`, true);
+    if (energyMixRaw && typeof energyMixRaw === 'object') {
+      const m = energyMixRaw as Record<string, unknown>;
+      const yr = typeof m.year === 'number' ? m.year : '';
+      userPromptParts.push(
+        `Energy generation mix (${yr}): coal ${m.coalShare ?? '?'}%, ` +
+        `gas ${m.gasShare ?? '?'}%, renewables ${m.renewShare ?? '?'}%, ` +
+        `nuclear ${m.nuclearShare ?? '?'}%, net import dependency ${m.importShare ?? '?'}%.`,
+      );
+    }
+  } catch {
+    // graceful omit when key missing
+  }
+
   if (contextSnapshot) {
     userPromptParts.push(`Context snapshot:\n${contextSnapshot}`);
   }

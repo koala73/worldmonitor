@@ -27,6 +27,7 @@ export interface AnalystContext {
   countryBrief: string;
   liveHeadlines: string;
   relevantArticles: string;
+  energyExposure: string;
   activeSources: string[];
   degraded: boolean;
 }
@@ -199,6 +200,34 @@ function buildPredictionMarkets(data: unknown): string {
   }).filter((l): l is string => l !== null);
 
   return lines.length ? `Prediction Markets:\n${lines.join('\n')}` : '';
+}
+
+function buildEnergyExposure(data: unknown): string {
+  if (!data || typeof data !== 'object') return '';
+  const d = data as Record<string, unknown>;
+  const year = typeof d.year === 'number' ? d.year : '';
+  const lines: string[] = [`Energy Generation Mix — ${year || 'recent'} data:`];
+
+  const fuelLabels: Array<[string, string]> = [
+    ['gas',       'Gas-dependent (% electricity from gas)'],
+    ['coal',      'Coal-dependent'],
+    ['oil',       'Oil-dependent'],
+    ['imported',  'Net energy importers (% demand)'],
+    ['renewable', 'Renewables-insulated'],
+  ];
+
+  for (const [fuel, label] of fuelLabels) {
+    const entries = Array.isArray(d[fuel])
+      ? (d[fuel] as Array<Record<string, unknown>>).slice(0, 8)
+      : [];
+    if (!entries.length) continue;
+    const formatted = entries
+      .map((e) => `${safeStr(e.name)} ${typeof e.share === 'number' ? e.share.toFixed(0) : '?'}%`)
+      .join(', ');
+    lines.push(`${label}: ${formatted}`);
+  }
+  lines.push('(Gas figures are total gas mix; LNG vs. pipeline split not in this dataset.)');
+  return lines.join('\n');
 }
 
 function buildCountryBrief(data: unknown): string {
@@ -387,6 +416,7 @@ const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' 
   ['marketImplications', 'Signals'],
   ['forecasts', 'Forecasts'],
   ['marketData', 'Markets'],
+  ['energyExposure', 'EnergyMix'],
   ['macroSignals', 'Macro'],
   ['predictionMarkets', 'Prediction'],
   ['countryBrief', 'Country'],
@@ -407,6 +437,7 @@ export async function assembleAnalystContext(
     commodities: 'market:commodities-bootstrap:v1',
     macroSignals: 'economic:macro-signals:v1',
     predictions: 'prediction:markets-bootstrap:v1',
+    energyExposure: 'energy:exposure:v1:index',
   };
 
   const countryKey = geoContext && /^[A-Z]{2}$/.test(geoContext.toUpperCase())
@@ -425,6 +456,7 @@ export async function assembleAnalystContext(
     commoditiesResult,
     macroResult,
     predResult,
+    energyExposureResult,
     countryResult,
     headlinesResult,
     relevantArticlesResult,
@@ -437,6 +469,7 @@ export async function assembleAnalystContext(
     getCachedJson(keys.commodities, true),
     getCachedJson(keys.macroSignals, true),
     getCachedJson(keys.predictions, true),
+    getCachedJson(keys.energyExposure, true),
     countryKey ? getCachedJson(countryKey, true) : Promise.resolve(null),
     buildLiveHeadlines(resolvedDomain, keywords),
     keywords.length > 0 ? searchDigestByKeywords(keywords) : Promise.resolve(''),
@@ -449,7 +482,7 @@ export async function assembleAnalystContext(
     r.status === 'fulfilled' && typeof r.value === 'string' ? r.value : '';
 
   const failCount = [insightsResult, riskResult, marketImplResult, forecastsResult,
-    stocksResult, commoditiesResult, macroResult, predResult]
+    stocksResult, commoditiesResult, macroResult, predResult, energyExposureResult]
     .filter((r) => r.status === 'rejected' || !r.value).length;
 
   const ctx: AnalystContext = {
@@ -460,6 +493,7 @@ export async function assembleAnalystContext(
     forecasts: buildForecasts(get(forecastsResult)),
     marketData: buildMarketData(get(stocksResult), get(commoditiesResult)),
     macroSignals: buildMacroSignals(get(macroResult)),
+    energyExposure: buildEnergyExposure(get(energyExposureResult)),
     predictionMarkets: buildPredictionMarkets(get(predResult)),
     countryBrief: buildCountryBrief(get(countryResult)),
     liveHeadlines: getStr(headlinesResult),
