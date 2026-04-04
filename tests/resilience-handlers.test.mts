@@ -88,6 +88,14 @@ function createRedisFetch(fixtures: Record<string, unknown>) {
           };
         }
 
+        if (verb === 'ZREMRANGEBYSCORE') {
+          const minScore = Number(args[0] || 0);
+          const maxScore = Number(args[1] || 0);
+          const items = sortedSets.get(redisKey) ?? [];
+          sortedSets.set(redisKey, items.filter((item) => item.score < minScore || item.score > maxScore));
+          return { result: 1 };
+        }
+
         if (verb === 'ZREMRANGEBYRANK') {
           removeByRank(redisKey, Number(args[0] || 0), Number(args[1] || 0));
           return { result: 1 };

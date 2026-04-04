@@ -153,8 +153,10 @@ function dateToSortScore(isoDate: string): number {
 async function appendHistory(countryCode: string, overallScore: number): Promise<void> {
   const key = historyKey(countryCode);
   const today = todayIsoDate();
+  const todayScore = dateToSortScore(today);
   await runRedisPipeline([
-    ['ZADD', key, dateToSortScore(today), `${today}:${round(overallScore)}`],
+    ['ZREMRANGEBYSCORE', key, todayScore, todayScore],
+    ['ZADD', key, todayScore, `${today}:${round(overallScore)}`],
     ['ZREMRANGEBYRANK', key, 0, -31],
   ]);
 }
