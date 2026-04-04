@@ -248,7 +248,7 @@ export async function startCheckout(
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         productId,
-        returnUrl: 'https://worldmonitor.app',
+        returnUrl: window.location.origin,
         discountCode: options?.discountCode,
         referralCode: options?.referralCode,
       }),

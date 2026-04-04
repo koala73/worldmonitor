@@ -90,6 +90,8 @@ export default async function handler(req: Request): Promise<Response> {
       },
       body: JSON.stringify({
         userId: session.userId,
+        email: session.email,
+        name: session.name,
         productId: body.productId,
         returnUrl: body.returnUrl,
         discountCode: body.discountCode,
