@@ -90,6 +90,15 @@ const SERVICE_OVERRIDES = {
     startCommand: 'node seed-energy-intelligence.mjs',
     cronSchedule: '0 */6 * * *',
   },
+  'seed-jodi-oil': {
+    watchPatterns: [
+      'scripts/seed-jodi-oil.mjs',
+      'scripts/_seed-utils.mjs',
+      'scripts/package.json',
+    ],
+    startCommand: 'node seed-jodi-oil.mjs',
+    cronSchedule: '0 6 25 * *',
+  },
 };
 
 function getToken() {
