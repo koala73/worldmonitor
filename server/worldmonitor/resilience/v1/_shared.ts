@@ -191,7 +191,7 @@ export async function ensureResilienceScoreCached(countryCode: string): Promise<
         lowConfidence: computeLowConfidence(dimensions, cronbach),
       };
     },
-    2000,
+    300,
   ) ?? {
     countryCode: normalizedCountryCode,
     overallScore: 0,
