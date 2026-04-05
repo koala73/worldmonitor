@@ -706,7 +706,7 @@ export function parseEiaRefineryRow(row) {
   return { inputsMbblpd: +inputsMbblpd.toFixed(3), period };
 }
 
-async function fetchRefineryUtilization() {
+async function fetchRefineryInputs() {
   const apiKey = process.env.EIA_API_KEY;
   if (!apiKey) throw new Error('Missing EIA_API_KEY');
 
@@ -770,7 +770,7 @@ async function fetchAll() {
     fetchCrudeInventories(),
     fetchNatGasStorage(),
     fetchSprLevels(),
-    fetchRefineryUtilization(),
+    fetchRefineryInputs(),
   ]);
 
   const ep = energyPrices.status === 'fulfilled' ? energyPrices.value : null;
