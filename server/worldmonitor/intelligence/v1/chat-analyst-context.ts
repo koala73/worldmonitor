@@ -243,14 +243,14 @@ function extractCommodityQuote(commodities: unknown, symbol: string): Record<str
   return q ? (q as Record<string, unknown>) : null;
 }
 
-function buildSpotCommodityLine(commodities: unknown, symbol: string, label: string, unit: string): string {
+function buildSpotCommodityLine(commodities: unknown, symbol: string, label: string, unit: string, denominator = '/MWh'): string {
   const q = extractCommodityQuote(commodities, symbol);
   if (!q) return '';
   const price = safeNum(q.price);
   const change = safeNum(q.change ?? q.changePercent);
   if (!price) return '';
   const sign = change >= 0 ? '+' : '';
-  return `${label}: ${unit}${price.toFixed(2)}/MWh (${sign}${change.toFixed(2)}% today)`;
+  return `${label}: ${unit}${price.toFixed(2)}${denominator} (${sign}${change.toFixed(2)}% today)`;
 }
 
 function buildCountryBrief(data: unknown): string {
@@ -531,8 +531,8 @@ export async function assembleAnalystContext(
     marketData: buildMarketData(get(stocksResult), get(commoditiesResult)),
     macroSignals: buildMacroSignals(get(macroResult)),
     energyExposure: buildEnergyExposure(get(energyExposureResult)),
-    coalSpotPrice: needsSpotEnergy ? buildSpotCommodityLine(get(commoditiesResult), 'MTF=F', 'Newcastle coal', '$') : '',
-    gasSpotTtf:    needsSpotEnergy ? buildSpotCommodityLine(get(commoditiesResult), 'TTF=F', 'TTF gas', '€')    : '',
+    coalSpotPrice: needsSpotEnergy ? buildSpotCommodityLine(get(commoditiesResult), 'MTF=F', 'Newcastle coal', '$', '/t') : '',
+    gasSpotTtf:    needsSpotEnergy ? buildSpotCommodityLine(get(commoditiesResult), 'TTF=F', 'TTF gas', '€')            : '',
     predictionMarkets: buildPredictionMarkets(get(predResult)),
     countryBrief: buildCountryBrief(get(countryResult)),
     liveHeadlines: getStr(headlinesResult),
