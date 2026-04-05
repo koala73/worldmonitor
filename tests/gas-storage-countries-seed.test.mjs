@@ -53,6 +53,18 @@ describe('parseFillEntry', () => {
     assert.equal(result.date, '2026-03-15');
   });
 
+  it('falls through to fillLevel when full is empty string', () => {
+    const entry = { full: '', fillLevel: '55.0', gasDayStart: '2026-04-04' };
+    const result = parseFillEntry(entry);
+    assert.ok(Math.abs(result.fill - 55.0) < 0.001, `Expected fill≈55.0, got ${result.fill}`);
+  });
+
+  it('falls through to gasTwh when gasInStorage is empty string', () => {
+    const entry = { full: '50', gasInStorage: '', gasTwh: '400.0', gasDayStart: '2026-04-04' };
+    const result = parseFillEntry(entry);
+    assert.ok(Math.abs(result.gwh - 400.0) < 0.001, `Expected gwh≈400.0, got ${result.gwh}`);
+  });
+
   it('handles envelope with root-level gasDayStart (single-entry envelope)', () => {
     // Simulates the `latestData?.gasDayStart` branch
     const entry = { gasDayStart: '2026-04-04', full: '71.2', gasInStorage: '800' };

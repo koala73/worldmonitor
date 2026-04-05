@@ -67,7 +67,6 @@ const SERVICE_OVERRIDES = {
     watchPatterns: [
       'scripts/seed-gas-storage-countries.mjs',
       'scripts/_seed-utils.mjs',
-      'scripts/_country-resolver.mjs',
       'scripts/package.json',
     ],
     startCommand: 'node seed-gas-storage-countries.mjs',

@@ -73,10 +73,10 @@ async function redisGet(key) {
 
 /** Parse a single GIE entry into fill/gwh/date/change */
 export function parseFillEntry(entry) {
-  const fill = parseFloat(entry.full ?? entry.fillLevel ?? entry.pct ?? '0');
-  const gwh = parseFloat(entry.gasInStorage ?? entry.gasTwh ?? entry.volume ?? '0');
+  const fill = parseFloat(entry.full || entry.fillLevel || entry.pct || '0');
+  const gwh = parseFloat(entry.gasInStorage || entry.gasTwh || entry.volume || '0');
   const date = entry.gasDayStart ?? entry.date ?? '';
-  const change = parseFloat(entry.trend ?? entry.change ?? '0');
+  const change = parseFloat(entry.trend || entry.change || '0');
   return { fill, gwh, date, change };
 }
 
@@ -166,12 +166,13 @@ async function preservePreviousSnapshot(errorMsg) {
     : [];
 
   await extendExistingTtl(
-    [...perCountryKeys, GAS_STORAGE_COUNTRIES_KEY, GAS_STORAGE_META_KEY],
+    [...perCountryKeys, GAS_STORAGE_COUNTRIES_KEY],
     GAS_STORAGE_TTL_SECONDS,
   );
 
   // Preserve old fetchedAt so health staleness detection stays accurate.
   // A fresh fetchedAt on a failed run would make health report OK indefinitely.
+  // (GAS_STORAGE_META_KEY is not in extendExistingTtl above — the SET below handles its TTL.)
   const existingMeta = await redisGet(GAS_STORAGE_META_KEY).catch(() => null);
   const metaPayload = {
     fetchedAt: existingMeta?.fetchedAt ?? 0,
