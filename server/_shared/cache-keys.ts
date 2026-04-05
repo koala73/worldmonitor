@@ -139,8 +139,9 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
   economicStress:   'economic:stress-index:v1',
   faoFoodPriceIndex: 'economic:fao-ffpi:v1',
-  electricityPrices: 'energy:electricity:v1:index',
-  jodiOil:           'energy:jodi-oil:v1:_countries',
+  electricityPrices:   'energy:electricity:v1:index',
+  jodiOil:             'energy:jodi-oil:v1:_countries',
+  chokepointBaselines: 'energy:chokepoint-baselines:v1',
 };
 
 
@@ -186,6 +187,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   diseaseOutbreaks: 'slow',
   economicStress: 'slow',
   faoFoodPriceIndex: 'slow',
-  electricityPrices: 'slow',
-  jodiOil: 'slow',
+  electricityPrices:   'slow',
+  jodiOil:             'slow',
+  chokepointBaselines: 'slow',
 };

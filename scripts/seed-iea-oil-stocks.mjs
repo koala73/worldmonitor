@@ -15,7 +15,7 @@ export const COUNTRY_MAP = {
   'Greece': 'GR', 'Hungary': 'HU', 'Ireland': 'IE', 'Italy': 'IT',
   'Latvia': 'LV', 'Lithuania': 'LT', 'Luxembourg': 'LU', 'Netherlands': 'NL',
   'Poland': 'PL', 'Portugal': 'PT', 'Slovak Republic': 'SK', 'Spain': 'ES',
-  'Sweden': 'SE', 'Switzerland': 'CH', 'Turkiye': 'TR', 'United Kingdom': 'GB',
+  'Sweden': 'SE', 'Switzerland': 'CH', 'Türkiye': 'TR', 'United Kingdom': 'GB',
   'Canada': 'CA', 'Mexico': 'MX', 'United States': 'US', 'Norway': 'NO',
 };
 
@@ -29,7 +29,7 @@ export function parseRecord(record, seededAt) {
   if (!iso2) return null;
 
   const ym = String(record.yearMonth);
-  const dataMonth = `${ym.slice(0, 4)}-${ym.slice(4).padStart(2, '0')}`;
+  const dataMonth = `${ym.slice(0, 4)}-${ym.slice(4)}`;
   const ts = seededAt || new Date().toISOString();
 
   if (record.total === 'Net Exporter') {
@@ -124,38 +124,39 @@ async function fetchIeaOilStocks() {
   const firstRecord = records.find(r => !r.countryName?.startsWith('Total'));
   const ym = String(firstRecord?.yearMonth || '');
   const dataMonth = ym.length >= 6
-    ? `${ym.slice(0, 4)}-${ym.slice(4).padStart(2, '0')}`
+    ? `${ym.slice(0, 4)}-${ym.slice(4)}`
     : `${year}-${String(month).padStart(2, '0')}`;
 
-  return { index: buildIndex(members, dataMonth, seededAt), members };
+  return { members, dataMonth, seededAt };
 }
 
-async function writeCountryKeys(members) {
+async function writeCountryKeys(data) {
   const { url, token } = getRedisCredentials();
-  for (const member of members) {
-    const key = `energy:iea-oil-stocks:v1:${member.iso2}`;
-    const payload = JSON.stringify(member);
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(['SET', key, payload, 'EX', TTL_SECONDS]),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!resp.ok) throw new Error(`Redis SET ${key} failed HTTP ${resp.status}`);
-    console.log(`  Written: ${key} (${member.daysOfCover ?? 'null'} days)`);
-  }
+  const commands = data.members.map(m => [
+    'SET', `energy:iea-oil-stocks:v1:${m.iso2}`, JSON.stringify(m), 'EX', TTL_SECONDS,
+  ]);
+  const resp = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`IEA country key pipeline failed HTTP ${resp.status}`);
+  const results = await resp.json();
+  const failures = results.filter(r => r?.error || r?.result === 'ERR');
+  if (failures.length > 0) throw new Error(`IEA country keys: ${failures.length}/${commands.length} writes failed`);
+  console.log(`  Written: ${data.members.length} per-country keys`);
 }
 
 const isMain = process.argv[1]?.endsWith('seed-iea-oil-stocks.mjs');
 if (isMain) {
   runSeed('energy', 'iea-oil-stocks', CANONICAL_KEY, fetchIeaOilStocks, {
-    publishTransform: (data) => data.index,
     validateFn: (data) => Array.isArray(data?.members) && data.members.length > 0,
-    afterPublish: (data) => writeCountryKeys(data.members),
     ttlSeconds: TTL_SECONDS,
-    metaTtlSeconds: TTL_SECONDS,
     sourceVersion: 'iea-oil-stocks-v1',
     recordCount: (data) => data?.members?.length || 0,
+    publishTransform: (data) => buildIndex(data.members, data.dataMonth, data.seededAt),
+    afterPublish: writeCountryKeys,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
