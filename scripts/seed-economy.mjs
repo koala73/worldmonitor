@@ -855,11 +855,13 @@ function validate(data) {
   return data?.prices?.length > 0;
 }
 
-runSeed('economic', 'energy-prices', KEYS.energyPrices, fetchAll, {
-  validateFn: validate,
-  ttlSeconds: ENERGY_TTL,
-  sourceVersion: 'eia-fred-macro',
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('seed-economy.mjs')) {
+  runSeed('economic', 'energy-prices', KEYS.energyPrices, fetchAll, {
+    validateFn: validate,
+    ttlSeconds: ENERGY_TTL,
+    sourceVersion: 'eia-fred-macro',
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}
