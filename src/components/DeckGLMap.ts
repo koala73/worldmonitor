@@ -622,7 +622,7 @@ export class DeckGLMap {
   private applyRadarLayer(): void {
     if (!this.maplibreMap || !this.radarActive || !this.radarTileUrl) return;
     if (!this.maplibreMap.isStyleLoaded()) {
-      this.maplibreMap.once('styledata', () => this.applyRadarLayer());
+      this.maplibreMap.once('style.load', () => this.applyRadarLayer());
       return;
     }
     try {
@@ -644,7 +644,7 @@ export class DeckGLMap {
         source: 'weather-radar',
         paint: { 'raster-opacity': 0.65 },
       }, beforeId);
-    } catch { /* style torn down between check and apply */ }
+    } catch (err) { console.warn('[DeckGLMap] radar layer apply failed:', (err as Error)?.message); }
   }
 
   private removeRadarLayer(): void {
