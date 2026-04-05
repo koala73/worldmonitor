@@ -33,6 +33,32 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface ListClimateDisastersRequest {
+  pageSize: number;
+  cursor: string;
+}
+
+export interface ListClimateDisastersResponse {
+  disasters: ClimateDisaster[];
+  pagination?: PaginationResponse;
+}
+
+export interface ClimateDisaster {
+  id: string;
+  type: string;
+  name: string;
+  country: string;
+  countryCode: string;
+  lat: number;
+  lng: number;
+  severity: string;
+  startedAt: number;
+  status: string;
+  affectedPopulation: number;
+  source: string;
+  sourceUrl: string;
+}
+
 export interface GetCo2MonitoringRequest {
 }
 
@@ -57,6 +83,31 @@ export interface Co2DataPoint {
   month: string;
   ppm: number;
   anomaly: number;
+}
+
+export interface GetOceanIceDataRequest {
+}
+
+export interface GetOceanIceDataResponse {
+  data?: OceanIceData;
+}
+
+export interface OceanIceData {
+  arcticExtentMkm2: number;
+  arcticExtentAnomalyMkm2: number;
+  arcticTrend: string;
+  seaLevelMmAbove1993: number;
+  seaLevelAnnualRiseMm: number;
+  ohc0700mZj: number;
+  sstAnomalyC: number;
+  measuredAt: number;
+  iceTrend12m: IceTrendPoint[];
+}
+
+export interface IceTrendPoint {
+  month: string;
+  extentMkm2: number;
+  anomalyMkm2: number;
 }
 
 export interface ListAirQualityDataRequest {
@@ -176,6 +227,32 @@ export class ClimateServiceClient {
     return await resp.json() as ListClimateAnomaliesResponse;
   }
 
+  async listClimateDisasters(req: ListClimateDisastersRequest, options?: ClimateServiceCallOptions): Promise<ListClimateDisastersResponse> {
+    let path = "/api/climate/v1/list-climate-disasters";
+    const params = new URLSearchParams();
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListClimateDisastersResponse;
+  }
+
   async getCo2Monitoring(req: GetCo2MonitoringRequest, options?: ClimateServiceCallOptions): Promise<GetCo2MonitoringResponse> {
     let path = "/api/climate/v1/get-co2-monitoring";
     const url = this.baseURL + path;
@@ -197,6 +274,29 @@ export class ClimateServiceClient {
     }
 
     return await resp.json() as GetCo2MonitoringResponse;
+  }
+
+  async getOceanIceData(req: GetOceanIceDataRequest, options?: ClimateServiceCallOptions): Promise<GetOceanIceDataResponse> {
+    let path = "/api/climate/v1/get-ocean-ice-data";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetOceanIceDataResponse;
   }
 
   async listAirQualityData(req: ListAirQualityDataRequest, options?: ClimateServiceCallOptions): Promise<ListAirQualityDataResponse> {

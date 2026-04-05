@@ -262,6 +262,8 @@ Sentry.init({
     /^Can't find variable: _G$/, // browser extension/userscript injecting _G global
     /onAppPageCallback is not defined/, // Android Chrome WebView injection (Huawei/Samsung browsers)
     /\.at is not a function/, // Instagram/older Android in-app browsers missing Array.at()
+    /Response cannot have a body with the given status/, // Safari: Response constructor with 204/304 + body
+    /ClerkJS: Network error/, // Clerk SDK transient network failures on user devices
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';

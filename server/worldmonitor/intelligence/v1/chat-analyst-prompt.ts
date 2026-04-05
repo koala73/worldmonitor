@@ -9,10 +9,10 @@ const DOMAIN_EMPHASIS: Record<string, string> = {
 
 /** Context fields included per domain. 'all' includes everything. */
 const DOMAIN_SECTIONS: Record<string, Set<string>> = {
-  market:   new Set(['marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines']),
-  geo:      new Set(['worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'liveHeadlines']),
-  military: new Set(['worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines']),
-  economic: new Set(['marketData', 'macroSignals', 'marketImplications', 'riskScores', 'liveHeadlines']),
+  market:   new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines']),
+  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'energyIntelligence', 'productSupply', 'gasFlows']),
+  military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines']),
+  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'electricityPrices', 'energyIntelligence', 'sprLevel', 'refineryUtil', 'productSupply', 'gasFlows', 'oilStocksCover']),
 };
 
 export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: string): string {
@@ -28,6 +28,8 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
 
   const contextSections: string[] = [];
 
+  if (ctx.relevantArticles && include('relevantArticles'))
+    contextSections.push(`## Matched News Articles\n${ctx.relevantArticles}`);
   if (ctx.worldBrief && include('worldBrief'))
     contextSections.push(`## Current Situation\n${ctx.worldBrief}`);
   if (ctx.riskScores && include('riskScores'))
@@ -40,6 +42,31 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
     contextSections.push(`## ${ctx.marketData}`);
   if (ctx.macroSignals && include('macroSignals'))
     contextSections.push(`## ${ctx.macroSignals}`);
+  if (ctx.energyExposure && include('energyExposure'))
+    contextSections.push(`## Energy Exposure\n${ctx.energyExposure}`);
+  if ((ctx.gasSpotTtf || ctx.coalSpotPrice) && (include('gasSpotTtf') || include('coalSpotPrice'))) {
+    const parts: string[] = [];
+    if (ctx.gasSpotTtf && include('gasSpotTtf')) parts.push(ctx.gasSpotTtf);
+    if (ctx.coalSpotPrice && include('coalSpotPrice')) parts.push(ctx.coalSpotPrice);
+    if (parts.length) contextSections.push(`## Energy Spot Prices\n${parts.join(' | ')}`);
+  }
+  if (ctx.gasStorage && include('gasStorage'))
+    contextSections.push(`## Gas Storage\n${ctx.gasStorage}`);
+  if (ctx.electricityPrices && include('electricityPrices'))
+    contextSections.push(`## Electricity Prices\n${ctx.electricityPrices}`);
+  if (ctx.sprLevel && include('sprLevel'))
+    contextSections.push(`## US Strategic Petroleum Reserve\n${ctx.sprLevel}`);
+  if (ctx.refineryUtil && include('refineryUtil'))
+    contextSections.push(`## Refinery Utilization\n${ctx.refineryUtil}`);
+  if (ctx.energyIntelligence && include('energyIntelligence'))
+    contextSections.push(`## Energy Intelligence\n${ctx.energyIntelligence}`);
+  {
+    const energyDataParts: string[] = [];
+    if (ctx.productSupply && include('productSupply')) energyDataParts.push(ctx.productSupply);
+    if (ctx.gasFlows && include('gasFlows')) energyDataParts.push(ctx.gasFlows);
+    if (ctx.oilStocksCover && include('oilStocksCover')) energyDataParts.push(ctx.oilStocksCover);
+    if (energyDataParts.length) contextSections.push(`## Country Energy Data\n${energyDataParts.join('\n')}`);
+  }
   if (ctx.predictionMarkets && include('predictionMarkets'))
     contextSections.push(`## ${ctx.predictionMarkets}`);
   if (ctx.countryBrief && include('countryBrief'))
@@ -49,7 +76,7 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
 
   const liveContext = contextSections.length > 0
     ? contextSections.join('\n\n')
-    : '(No live data available — base your response on general knowledge and note this limitation.)';
+    : '(No live context available. Acknowledge this limitation explicitly. Do not present inference or training knowledge as current intelligence.)';
 
   return `You are a senior intelligence analyst providing live situational awareness as of ${ctx.timestamp}.
 Respond in structured prose. Lead with the key insight. Keep responses under 350 words unless more depth is explicitly requested.
@@ -58,6 +85,7 @@ Use SITUATION / ANALYSIS / WATCH format for geopolitical queries.
 For market queries use SIGNAL / THESIS / RISK.
 Never speculate beyond what the data supports. Acknowledge uncertainty explicitly.
 Do not cite data sources by name. Do not mention AI, models, or providers.
+${ctx.relevantArticles ? 'When "Matched News Articles" appear in context, treat them as the primary factual basis for your response. Cite them before forecast probabilities or risk scores.\n' : ''}\
 ${emphasis ? `\n${emphasis}\n` : ''}
 --- LIVE CONTEXT ---
 ${liveContext}

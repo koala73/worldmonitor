@@ -490,9 +490,13 @@ export class SearchManager implements AppModule {
         if (!(layerKey in this.ctx.mapLayers)) return;
         const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
         if (!variantAllowed.has(layerKey)) return;
-        this.ctx.mapLayers[layerKey] = !this.ctx.mapLayers[layerKey];
+        let newValue = !this.ctx.mapLayers[layerKey];
+        if (newValue && layerKey === 'resilienceScore' && !this.ctx.map?.isDeckGLActive?.()) {
+          newValue = false;
+        }
+        this.ctx.mapLayers[layerKey] = newValue;
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-        if (this.ctx.mapLayers[layerKey]) {
+        if (newValue) {
           this.ctx.map?.enableLayer(layerKey);
         } else {
           this.ctx.map?.setLayers(this.ctx.mapLayers);

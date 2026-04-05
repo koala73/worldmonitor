@@ -22096,6 +22096,22 @@ body.map-width-resizing {
   margin-top: 1px;
 }
 
+/* FAO Food Price Index panel */
+.fao-food-price-index-panel { padding: 4px 0; }
+.fao-headline { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 12px 8px; }
+.fao-headline-primary { display: flex; align-items: baseline; gap: 6px; }
+.fao-index-value { font-size: 1.6rem; font-weight: 700; color: #f5a623; line-height: 1; }
+.fao-index-label { font-size: 0.65rem; opacity: 0.55; }
+.fao-headline-changes { display: flex; gap: 8px; }
+.fao-change { font-size: 0.75rem; font-weight: 600; }
+.fao-up   { color: #f87171; }
+.fao-down { color: #4ade80; }
+.fao-as-of { font-size: 0.65rem; opacity: 0.4; margin-left: auto; }
+.fao-legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 12px 2px; }
+.fao-legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.65rem; opacity: 0.7; }
+.fao-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.fao-base-note { font-size: 0.6rem; opacity: 0.35; padding: 2px 12px 6px; text-align: right; }
+
 
 /* ── Risk Score Badge on News Cards ──────────────────────────── */
 .risk-score-badge {

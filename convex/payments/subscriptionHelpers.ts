@@ -125,8 +125,9 @@ export async function upsertEntitlements(
 
 /**
  * Resolves a Dodo product ID to a plan key via the productPlans table.
- * Throws if the product ID is not mapped — the webhook will be retried
- * and the operator should add the missing product mapping.
+ * Falls back to LEGACY_PRODUCT_ALIASES for old test-mode product IDs
+ * that may still appear on existing subscriber webhooks.
+ * Throws if the product ID is not mapped anywhere.
  */
 async function resolvePlanKey(
   ctx: MutationCtx,
@@ -136,13 +137,23 @@ async function resolvePlanKey(
     .query("productPlans")
     .withIndex("by_dodoProductId", (q) => q.eq("dodoProductId", dodoProductId))
     .unique();
-  if (!mapping) {
-    throw new Error(
-      `[subscriptionHelpers] No productPlans mapping for dodoProductId="${dodoProductId}". ` +
-        `Add this product to the seed data and run seedProductPlans.`,
+  if (mapping) return mapping.planKey;
+
+  // Fallback: check legacy aliases for old/rotated product IDs
+  const { LEGACY_PRODUCT_ALIASES } = await import("../config/productCatalog");
+  const aliasedPlan = LEGACY_PRODUCT_ALIASES[dodoProductId];
+  if (aliasedPlan) {
+    console.warn(
+      `[subscriptionHelpers] Resolved "${dodoProductId}" via legacy alias → "${aliasedPlan}". ` +
+        `Consider updating the subscription to the current product ID.`,
     );
+    return aliasedPlan;
   }
-  return mapping.planKey;
+
+  throw new Error(
+    `[subscriptionHelpers] No productPlans mapping for dodoProductId="${dodoProductId}". ` +
+      `Add this product to the catalog and run seedProductPlans.`,
+  );
 }
 
 /**

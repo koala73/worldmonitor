@@ -15649,9 +15649,10 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
 async function processNextDeepForecastTask(options = {}) {
   const workerId = options.workerId || `worker-${process.pid}-${Date.now()}`;
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedDeepForecastTasks(10);
+  console.log(`  [DeepForecast] Queue check: ${queuedRunIds.length} task(s) in ${FORECAST_DEEP_TASK_QUEUE_KEY}`);
   for (const runId of queuedRunIds) {
     const task = await claimDeepForecastTask(runId, workerId);
-    if (!task) continue;
+    if (!task) { console.log(`  [DeepForecast] ${runId}: already claimed or completed`); continue; }
     try {
       const result = await processDeepForecastTask(task);
       await completeDeepForecastTask(runId);
@@ -16942,6 +16943,7 @@ function sanitizeKeyActorRoles(rawRoles, allowedRoles) {
 async function processNextSimulationTask(options = {}) {
   const workerId = options.workerId || `sim-worker-${process.pid}-${Date.now()}`;
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedSimulationTasks(10);
+  console.log(`  [Simulation] Queue check: ${queuedRunIds.length} task(s) in ${SIMULATION_TASK_QUEUE_KEY}`);
 
   for (const runId of queuedRunIds) {
     if (!validateRunId(runId)) {
@@ -16949,7 +16951,7 @@ async function processNextSimulationTask(options = {}) {
       continue;
     }
     const task = await claimSimulationTask(runId, workerId);
-    if (!task) continue;
+    if (!task) { console.log(`  [Simulation] ${runId}: already claimed or completed`); continue; }
 
     try {
       const { url, token } = getRedisCredentials();

@@ -152,6 +152,64 @@ function matchesSensitivity(ruleSensitivity, severity) {
   return severity === 'critical';
 }
 
+// ── Fuzzy deduplication ──────────────────────────────────────────────────────
+
+const STOP_WORDS = new Set([
+  'the','a','an','in','on','at','to','for','of','is','are','was','were',
+  'has','have','had','be','been','by','from','with','as','it','its',
+  'says','say','said','according','reports','report','officials','official',
+  'us','new','will','can','could','would','may','also','who','that','this',
+  'after','about','over','more','up','out','into','than','some','other',
+]);
+
+function stripSourceSuffix(title) {
+  return title
+    .replace(/\s*[-–—]\s*[\w\s.]+\.(?:com|org|net|co\.uk)\s*$/i, '')
+    .replace(/\s*[-–—]\s*(?:Reuters|AP News|BBC|CNN|Al Jazeera|France 24|DW News|PBS NewsHour|CBS News|NBC|ABC|Associated Press|The Guardian|NOS Nieuws|Tagesschau|CNBC|The National)\s*$/i, '');
+}
+
+function extractTitleWords(title) {
+  return new Set(
+    stripSourceSuffix(title)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, '')
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !STOP_WORDS.has(w)),
+  );
+}
+
+function jaccardSimilarity(setA, setB) {
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let intersection = 0;
+  for (const w of setA) if (setB.has(w)) intersection++;
+  return intersection / (setA.size + setB.size - intersection);
+}
+
+function deduplicateStories(stories) {
+  const clusters = [];
+  for (const story of stories) {
+    const words = extractTitleWords(story.title);
+    let merged = false;
+    for (const cluster of clusters) {
+      if (jaccardSimilarity(words, cluster.words) > 0.55) {
+        cluster.items.push(story);
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) clusters.push({ words, items: [story] });
+  }
+  return clusters.map(({ items }) => {
+    items.sort((a, b) => b.currentScore - a.currentScore || b.mentionCount - a.mentionCount);
+    const best = { ...items[0] };
+    if (items.length > 1) {
+      best.mentionCount = items.reduce((sum, s) => sum + s.mentionCount, 0);
+    }
+    best.mergedHashes = items.map(s => s.hash);
+    return best;
+  });
+}
+
 // ── Digest content ────────────────────────────────────────────────────────────
 
 async function buildDigest(rule, windowStartMs) {
@@ -193,13 +251,25 @@ async function buildDigest(rule, windowStartMs) {
   if (stories.length === 0) return null;
 
   stories.sort((a, b) => b.currentScore - a.currentScore);
-  const top = stories.slice(0, DIGEST_MAX_ITEMS);
+  const deduped = deduplicateStories(stories);
+  const top = deduped.slice(0, DIGEST_MAX_ITEMS);
 
-  const sourceResults = await upstashPipeline(
-    top.map((s) => ['SMEMBERS', `story:sources:v1:${s.hash}`]),
-  );
+  const allSourceCmds = [];
+  const cmdIndex = [];
   for (let i = 0; i < top.length; i++) {
-    top[i].sources = sourceResults[i]?.result ?? [];
+    const hashes = top[i].mergedHashes ?? [top[i].hash];
+    for (const h of hashes) {
+      allSourceCmds.push(['SMEMBERS', `story:sources:v1:${h}`]);
+      cmdIndex.push(i);
+    }
+  }
+  const sourceResults = await upstashPipeline(allSourceCmds);
+  for (let i = 0; i < top.length; i++) top[i].sources = [];
+  for (let j = 0; j < sourceResults.length; j++) {
+    const arr = sourceResults[j]?.result ?? [];
+    for (const src of arr) {
+      if (!top[cmdIndex[j]].sources.includes(src)) top[cmdIndex[j]].sources.push(src);
+    }
   }
 
   return top;
@@ -226,7 +296,7 @@ function formatDigest(stories, nowMs) {
       const src = item.sources.length > 0
         ? ` [${item.sources.slice(0, 3).join(', ')}${item.sources.length > 3 ? ` +${item.sources.length - 3}` : ''}]`
         : '';
-      lines.push(`  \u2022 ${item.title}${src}`);
+      lines.push(`  \u2022 ${stripSourceSuffix(item.title)}${src}`);
     }
     if (items.length > 10) lines.push(`  ... and ${items.length - 10} more`);
     lines.push('');
@@ -270,9 +340,10 @@ function formatDigestHtml(stories, nowMs) {
     const srcText = s.sources.length > 0
       ? s.sources.slice(0, 3).join(', ') + (s.sources.length > 3 ? ` +${s.sources.length - 3}` : '')
       : '';
+    const cleanTitle = stripSourceSuffix(s.title);
     const titleEl = s.link
-      ? `<a href="${escapeHtml(s.link)}" style="color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(s.title)}</a>`
-      : `<span style="color: #e0e0e0; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(s.title)}</span>`;
+      ? `<a href="${escapeHtml(s.link)}" style="color: #e0e0e0; text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(cleanTitle)}</a>`
+      : `<span style="color: #e0e0e0; font-size: 14px; font-weight: 600; line-height: 1.4;">${escapeHtml(cleanTitle)}</span>`;
     const meta = [
       phaseCap ? `<span style="font-size: 10px; color: ${phaseColor}; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">${phaseCap}</span>` : '',
       srcText ? `<span style="font-size: 11px; color: #555;">${escapeHtml(srcText)}</span>` : '',

@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/climate/v1/ocean_ice_data.proto";
+
+message GetOceanIceDataRequest {}
+
+message GetOceanIceDataResponse {
+  OceanIceData data = 1;
+}

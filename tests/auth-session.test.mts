@@ -229,6 +229,44 @@ describe('validateBearerToken (with JWKS)', () => {
     assert.equal(result.userId, 'user_noaud');
   });
 
+  it('extracts email and name from JWT for checkout prefill', async () => {
+    const token = await new SignJWT({
+      sub: 'user_prefill',
+      plan: 'pro',
+      email: 'elie@worldmonitor.app',
+      given_name: 'Elie',
+      family_name: 'Habib',
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(`http://127.0.0.1:${jwksPort}`)
+      .setAudience('convex')
+      .setSubject('user_prefill')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey);
+
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.email, 'elie@worldmonitor.app');
+    assert.equal(result.name, 'Elie Habib');
+  });
+
+  it('handles missing email/name gracefully (no prefill)', async () => {
+    const token = await new SignJWT({ sub: 'user_noprofile', plan: 'pro' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(`http://127.0.0.1:${jwksPort}`)
+      .setAudience('convex')
+      .setSubject('user_noprofile')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey);
+
+    const result = await validateBearerToken(token);
+    assert.equal(result.valid, true);
+    assert.equal(result.email, undefined);
+    assert.equal(result.name, undefined);
+  });
+
   it('rejects a token with wrong issuer', async () => {
     const token = await new SignJWT({ sub: 'user_wrongiss', plan: 'pro' })
       .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })

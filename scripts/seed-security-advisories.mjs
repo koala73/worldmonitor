@@ -71,9 +71,10 @@ const BY_COUNTRY_NAME = Object.fromEntries(
 function extractCountry(title, feed) {
   if (feed.targetCountry) return feed.targetCountry;
   if (feed.sourceCountry === 'EU' || feed.sourceCountry === 'INT') return undefined;
-  const lower = title.toLowerCase();
+  const normalized = title.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+    .replace(/['.(),/-]/g, ' ').replace(/\s+/g, ' ');
   for (const [name, code] of SORTED_COUNTRY_ENTRIES) {
-    if (lower.includes(name)) return code;
+    if (normalized.includes(name)) return code;
   }
   return undefined;
 }

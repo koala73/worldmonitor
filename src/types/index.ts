@@ -656,6 +656,8 @@ export interface MapLayers {
 
   // CII choropleth layer
   ciiChoropleth: boolean;
+  // Resilience choropleth layer
+  resilienceScore: boolean;
   // Overlay layers
   dayNight: boolean;
   // Commodity variant layers
@@ -663,7 +665,6 @@ export interface MapLayers {
   processingPlants: boolean;
   commodityPorts: boolean;
   webcams: boolean;
-  weatherRadar: boolean;
   // Health layers
   diseaseOutbreaks: boolean;
 }

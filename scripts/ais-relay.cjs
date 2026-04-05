@@ -4169,15 +4169,24 @@ async function seedWeatherAlerts() {
   weatherSeedInFlight = true;
   const t0 = Date.now();
   try {
-    const resp = await fetch('https://api.weather.gov/alerts/active', {
-      headers: { Accept: 'application/geo+json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) {
-      console.warn(`[Weather] Seed failed: HTTP ${resp.status}`);
-      return;
+    const weatherUrl = 'https://api.weather.gov/alerts/active';
+    let data;
+    try {
+      const resp = await fetch(weatherUrl, {
+        headers: { Accept: 'application/geo+json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      data = await resp.json();
+    } catch (directErr) {
+      if (!PROXY_URL) { console.warn(`[Weather] Seed failed: ${directErr.message}`); return; }
+      console.warn(`[Weather] Direct failed (${directErr.message}) — retrying via proxy`);
+      const { proxyFetch } = require('./_proxy-utils.cjs');
+      const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+      const result = await proxyFetch(weatherUrl, proxy, { accept: 'application/geo+json', headers: { 'User-Agent': CHROME_UA }, timeoutMs: 15_000 });
+      if (!result.ok) { console.warn(`[Weather] Proxy also failed: HTTP ${result.status}`); return; }
+      data = JSON.parse(result.buffer.toString('utf8'));
     }
-    const data = await resp.json();
     const features = data.features || [];
     const alerts = features
       .filter((f) => f?.properties?.severity !== 'Unknown')
@@ -4266,24 +4275,38 @@ async function seedUsaSpending() {
   try {
     const periodStart = getDateDaysAgo(7);
     const periodEnd = new Date().toISOString().split('T')[0];
-    const resp = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20_000),
-      body: JSON.stringify({
-        filters: {
-          time_period: [{ start_date: periodStart, end_date: periodEnd }],
-          award_type_codes: ['A', 'B', 'C', 'D'],
-        },
-        fields: ['Award ID', 'Recipient Name', 'Award Amount', 'Awarding Agency', 'Description', 'Start Date', 'Award Type'],
-        limit: 15, order: 'desc', sort: 'Award Amount',
-      }),
+    const spendingUrl = 'https://api.usaspending.gov/api/v2/search/spending_by_award/';
+    const spendingBody = JSON.stringify({
+      filters: {
+        time_period: [{ start_date: periodStart, end_date: periodEnd }],
+        award_type_codes: ['A', 'B', 'C', 'D'],
+      },
+      fields: ['Award ID', 'Recipient Name', 'Award Amount', 'Awarding Agency', 'Description', 'Start Date', 'Award Type'],
+      limit: 15, order: 'desc', sort: 'Award Amount',
     });
-    if (!resp.ok) {
-      console.warn(`[Spending] Seed failed: HTTP ${resp.status}`);
-      return;
+    let data;
+    try {
+      const resp = await fetch(spendingUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(20_000),
+        body: spendingBody,
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      data = await resp.json();
+    } catch (directErr) {
+      if (!PROXY_URL) { console.warn(`[Spending] Seed failed: ${directErr.message}`); return; }
+      console.warn(`[Spending] Direct failed (${directErr.message}) — retrying via proxy`);
+      const { proxyFetch } = require('./_proxy-utils.cjs');
+      const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+      const result = await proxyFetch(spendingUrl, proxy, {
+        method: 'POST', body: spendingBody,
+        headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+        accept: 'application/json', timeoutMs: 20_000,
+      });
+      if (!result.ok) { console.warn(`[Spending] Proxy also failed: HTTP ${result.status}`); return; }
+      data = JSON.parse(result.buffer.toString('utf8'));
     }
-    const data = await resp.json();
     const results = data.results || [];
     const awards = results.map((r) => ({
       id: String(r['Award ID'] || ''),
@@ -4377,12 +4400,25 @@ async function seedGscpi() {
   gscpiSeedInFlight = true;
   if (gscpiRetryTimer) { clearTimeout(gscpiRetryTimer); gscpiRetryTimer = null; }
   try {
-    const resp = await fetch(GSCPI_CSV_URL, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain' },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
+    let text;
+    try {
+      const resp = await fetch(GSCPI_CSV_URL, {
+        headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain' },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      text = await resp.text();
+    } catch (directErr) {
+      if (!PROXY_URL) throw directErr;
+      console.warn(`[GSCPI] Direct failed (${directErr.message}) — retrying via proxy`);
+      const { proxyFetch } = require('./_proxy-utils.cjs');
+      const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+      const result = await proxyFetch(GSCPI_CSV_URL, proxy, {
+        accept: 'text/csv,text/plain', headers: { 'User-Agent': CHROME_UA }, timeoutMs: 20_000,
+      });
+      if (!result.ok) throw new Error(`Proxy HTTP ${result.status}`);
+      text = result.buffer.toString('utf8');
+    }
     const observations = parseGscpiCsv(text);
     if (observations.length === 0) {
       console.warn('[GSCPI] No data parsed — extending TTL, retrying in 20min');
@@ -5179,6 +5215,9 @@ const USNI_REGION_COORDS = {
   Singapore: { lat: 1.35, lon: 103.82 }, 'Souda Bay': { lat: 35.49, lon: 24.08 },
   Naples: { lat: 40.84, lon: 14.25 },
   'Tasman Sea': { lat: -40.0, lon: 160.0 }, 'Eastern Atlantic': { lat: 40.0, lon: -15.0 },
+  'Laem Chabang, Thailand': { lat: 13.08, lon: 100.88 }, 'Laem Chabang': { lat: 13.08, lon: 100.88 },
+  'Split, Croatia': { lat: 43.51, lon: 16.44 }, Split: { lat: 43.51, lon: 16.44 },
+  Pacific: { lat: 20.0, lon: -150.0 },
 };
 
 function usniStripHtml(html) {
@@ -5392,7 +5431,7 @@ const SHIPPING_CARRIERS = [
   { symbol: 'ZIM',  name: 'ZIM Integrated Shipping', carrierType: 'carrier' },
   { symbol: 'MATX', name: 'Matson Inc',              carrierType: 'carrier' },
   { symbol: 'SBLK', name: 'Star Bulk Carriers',      carrierType: 'carrier' },
-  { symbol: 'GOGL.OL', name: 'Golden Ocean Group',       carrierType: 'carrier' },
+  { symbol: 'EGLE', name: 'Eagle Bulk Shipping',       carrierType: 'carrier' },
 ];
 
 let shippingStressInFlight = false;
@@ -5755,6 +5794,160 @@ function startPizzintSeedLoop() {
   setInterval(() => {
     seedPizzint().catch((e) => console.warn('[PizzINT] Seed error:', e?.message || e));
   }, PIZZINT_SEED_INTERVAL_MS).unref?.();
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// Dodo Product Prices Seed — fetches live prices from Dodo API,
+// builds tier view model, writes to Redis for /api/product-catalog.
+// Direct fetch first, PROXY_URL fallback if Dodo blocks datacenter IPs.
+// ─────────────────────────────────────────────────────────────
+const DODO_PRICE_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const DODO_PRICE_SEED_TTL = 43200; // 12h (2× interval)
+const DODO_PRICE_REDIS_KEY = 'product-catalog:v2';
+const DODO_LIVE_URL = 'https://live.dodopayments.com';
+const DODO_TEST_URL = 'https://test.dodopayments.com';
+const DODO_PRICE_API_KEY = process.env.DODO_API_KEY || '';
+const DODO_PRICE_ENV = process.env.DODO_PAYMENTS_ENVIRONMENT || 'test_mode';
+
+const DODO_PRODUCT_IDS = [
+  'pdt_0Nbtt71uObulf7fGXhQup', // Pro Monthly
+  'pdt_0NbttMIfjLWC10jHQWYgJ', // Pro Annual
+  'pdt_0NbttVmG1SERrxhygbbUq', // API Starter Monthly
+  'pdt_0Nbu2lawHYE3dv2THgSEV', // API Starter Annual
+];
+
+const DODO_TIER_CONFIG = {
+  free: { name: 'Free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app', highlighted: false },
+  pro: { name: 'Pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP data connectors', 'Priority data refresh'], highlighted: true },
+  api_starter: { name: 'API', description: 'Programmatic access to intelligence data', features: ['REST API access', 'Real-time data streams', '1,000 requests/day', 'Webhook notifications', 'Custom data exports'], highlighted: false },
+  enterprise: { name: 'Enterprise', description: 'Custom solutions for organizations', features: ['Everything in Pro + API', 'Unlimited API requests', 'Dedicated support', 'Custom integrations', 'SLA guarantee', 'On-premise option'], cta: 'Contact Sales', href: 'mailto:enterprise@worldmonitor.app', highlighted: false },
+};
+
+const DODO_PRODUCT_META = {
+  'pdt_0Nbtt71uObulf7fGXhQup': { tierGroup: 'pro', billingPeriod: 'monthly' },
+  'pdt_0NbttMIfjLWC10jHQWYgJ': { tierGroup: 'pro', billingPeriod: 'annual' },
+  'pdt_0NbttVmG1SERrxhygbbUq': { tierGroup: 'api_starter', billingPeriod: 'monthly' },
+  'pdt_0Nbu2lawHYE3dv2THgSEV': { tierGroup: 'api_starter', billingPeriod: 'annual' },
+};
+
+const DODO_FALLBACK_PRICES = {
+  'pdt_0Nbtt71uObulf7fGXhQup': 3999,
+  'pdt_0NbttMIfjLWC10jHQWYgJ': 39999,
+  'pdt_0NbttVmG1SERrxhygbbUq': 9999,
+  'pdt_0Nbu2lawHYE3dv2THgSEV': 99900,
+};
+
+let dodoPriceSeedInFlight = false;
+
+async function fetchDodoProductPrice(productId, baseUrl) {
+  const resp = await fetch(`${baseUrl}/products/${productId}`, {
+    headers: { Authorization: `Bearer ${DODO_PRICE_API_KEY}`, 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const product = await resp.json();
+  return product.price?.price ?? product.price?.fixed_price ?? null;
+}
+
+async function seedDodoPrices() {
+  if (dodoPriceSeedInFlight) return;
+  dodoPriceSeedInFlight = true;
+  const t0 = Date.now();
+  try {
+    if (!DODO_PRICE_API_KEY) {
+      console.warn('[DodoPrices] No DODO_API_KEY — skipping');
+      return;
+    }
+
+    const baseUrl = DODO_PRICE_ENV === 'live_mode' ? DODO_LIVE_URL : DODO_TEST_URL;
+    const prices = {};
+    let fetchedCount = 0;
+    let fallbackCount = 0;
+
+    for (const productId of DODO_PRODUCT_IDS) {
+      // Try direct first
+      try {
+        const priceCents = await fetchDodoProductPrice(productId, baseUrl);
+        if (priceCents != null) { prices[productId] = priceCents; fetchedCount++; continue; }
+      } catch (e) {
+        console.warn(`[DodoPrices] Direct fetch ${productId} failed: ${e?.message}`);
+      }
+
+      if (PROXY_URL) {
+        try {
+          const { proxyFetch } = require('./_proxy-utils.cjs');
+          const proxy = parseProxyUrl(PROXY_URL);
+          const fetchUrl = `${baseUrl}/products/${productId}`;
+          const result = await proxyFetch(fetchUrl, proxy, {
+            headers: { 'User-Agent': CHROME_UA, Authorization: `Bearer ${DODO_PRICE_API_KEY}` },
+            accept: 'application/json',
+            timeoutMs: 10_000,
+          });
+          if (result?.ok) {
+            const product = JSON.parse(result.buffer.toString('utf8'));
+            const priceCents = product.price?.price ?? product.price?.fixed_price;
+            if (priceCents != null) { prices[productId] = priceCents; fetchedCount++; continue; }
+          }
+        } catch (e) {
+          console.warn(`[DodoPrices] Proxy fetch ${productId} failed: ${e?.message}`);
+        }
+      }
+
+      // Use fallback
+      if (DODO_FALLBACK_PRICES[productId] != null) {
+        prices[productId] = DODO_FALLBACK_PRICES[productId];
+        fallbackCount++;
+      }
+    }
+
+    // Build tier view model
+    const tiers = [];
+    const publicGroups = ['free', 'pro', 'api_starter', 'enterprise'];
+    for (const group of publicGroups) {
+      const config = DODO_TIER_CONFIG[group];
+      if (!config) continue;
+      if (group === 'free') { tiers.push({ ...config, price: 0, period: 'forever' }); continue; }
+      if (group === 'enterprise') { tiers.push({ ...config, price: null }); continue; }
+
+      const tier = { ...config };
+      const monthlyId = Object.entries(DODO_PRODUCT_META).find(([, v]) => v.tierGroup === group && v.billingPeriod === 'monthly')?.[0];
+      const annualId = Object.entries(DODO_PRODUCT_META).find(([, v]) => v.tierGroup === group && v.billingPeriod === 'annual')?.[0];
+      if (monthlyId && prices[monthlyId]) { tier.monthlyPrice = prices[monthlyId] / 100; tier.monthlyProductId = monthlyId; }
+      if (annualId && prices[annualId]) { tier.annualPrice = prices[annualId] / 100; tier.annualProductId = annualId; }
+      tiers.push(tier);
+    }
+
+    const priceSource = fallbackCount === 0 ? 'dodo' : fetchedCount > 0 ? 'partial' : 'fallback';
+    const now = Date.now();
+    const payload = { tiers, fetchedAt: now, cachedUntil: now + DODO_PRICE_SEED_TTL * 1000, priceSource };
+
+    // Only write to Redis when ALL prices came from Dodo (no fallback contamination).
+    // Partial/fallback results are not persisted — edge endpoint serves them directly with short cache.
+    if (priceSource === 'dodo') {
+      const ok1 = await upstashSet(DODO_PRICE_REDIS_KEY, payload, DODO_PRICE_SEED_TTL);
+      const ok2 = await upstashSet('seed-meta:product-catalog', { fetchedAt: now, recordCount: fetchedCount, priceSource }, 604800);
+      console.log(`[DodoPrices] Seeded ${fetchedCount}/${DODO_PRODUCT_IDS.length} from Dodo (redis=${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    } else {
+      // Don't overwrite good cached data with degraded prices. Just extend TTL if it exists.
+      try { await upstashExpire(DODO_PRICE_REDIS_KEY, DODO_PRICE_SEED_TTL); } catch {}
+      console.warn(`[DodoPrices] NOT writing to Redis — source=${priceSource} (${fetchedCount} live, ${fallbackCount} fallback) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    }
+  } catch (e) {
+    console.warn('[DodoPrices] Seed error:', e?.message || e);
+  } finally {
+    dodoPriceSeedInFlight = false;
+  }
+}
+
+function startDodoPriceSeedLoop() {
+  if (!UPSTASH_ENABLED) { console.log('[DodoPrices] Disabled (no Upstash Redis)'); return; }
+  if (!DODO_PRICE_API_KEY) { console.log('[DodoPrices] Disabled (no DODO_API_KEY)'); return; }
+  console.log(`[DodoPrices] Seed loop starting (interval ${DODO_PRICE_SEED_INTERVAL_MS / 1000 / 60}min)`);
+  seedDodoPrices().catch((e) => console.warn('[DodoPrices] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedDodoPrices().catch((e) => console.warn('[DodoPrices] Seed error:', e?.message || e));
+  }, DODO_PRICE_SEED_INTERVAL_MS).unref?.();
 }
 
 
@@ -7053,41 +7246,12 @@ async function getOpenSkyToken() {
 
 function _openskyProxyConnect(targetHost, targetPort, timeoutMs = 10000) {
   if (!OPENSKY_PROXY_ENABLED) return Promise.resolve(null);
-  const atIdx = OPENSKY_PROXY_AUTH.lastIndexOf('@');
-  if (atIdx === -1) return Promise.resolve(null);
-  const userPass = OPENSKY_PROXY_AUTH.substring(0, atIdx);
-  const hostPort = OPENSKY_PROXY_AUTH.substring(atIdx + 1);
-  const colonIdx = hostPort.lastIndexOf(':');
-  const proxyHost = hostPort.substring(0, colonIdx);
-  const proxyPort = parseInt(hostPort.substring(colonIdx + 1), 10);
-
-  return new Promise((resolve, reject) => {
-    const connectReq = http.request({
-      host: proxyHost,
-      port: proxyPort,
-      method: 'CONNECT',
-      path: `${targetHost}:${targetPort}`,
-      headers: {
-        'Host': `${targetHost}:${targetPort}`,
-        'Proxy-Authorization': 'Basic ' + Buffer.from(userPass).toString('base64'),
-      },
-      timeout: timeoutMs,
-    });
-    connectReq.on('connect', (res, socket) => {
-      if (res.statusCode !== 200) {
-        socket.destroy();
-        return reject(new Error(`CONNECT ${res.statusCode}`));
-      }
-      const tls = require('tls');
-      const tlsSocket = tls.connect({ socket, servername: targetHost }, () => {
-        resolve(tlsSocket);
-      });
-      tlsSocket.on('error', reject);
-    });
-    connectReq.on('error', reject);
-    connectReq.on('timeout', () => { connectReq.destroy(); reject(new Error('CONNECT timeout')); });
-    connectReq.end();
-  });
+  const { proxyConnectTunnel, parseProxyConfig } = require('./_proxy-utils.cjs');
+  const proxyConfig = parseProxyConfig(OPENSKY_PROXY_AUTH);
+  if (!proxyConfig) return Promise.resolve(null);
+  // proxyConfig.tls defaults to true from parseProxyConfig (Decodo requires TLS)
+  return proxyConnectTunnel(targetHost, proxyConfig, { timeoutMs, targetPort })
+    .then(({ socket }) => socket);
 }
 
 function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
@@ -8074,46 +8238,10 @@ function handleAviationStackRequest(req, res) {
 const YOUTUBE_PROXY_URL = process.env.YOUTUBE_PROXY_URL || '';
 
 function ytFetchViaProxy(targetUrl, proxy) {
-  return new Promise((resolve, reject) => {
-    const target = new URL(targetUrl);
-    const connectOpts = {
-      host: proxy.host, port: proxy.port, method: 'CONNECT',
-      path: `${target.hostname}:443`, headers: {},
-    };
-    if (proxy.auth) {
-      connectOpts.headers['Proxy-Authorization'] = 'Basic ' + Buffer.from(proxy.auth).toString('base64');
-    }
-    // Use TLS to connect to proxy if required (e.g. Decodo port 10001); plain HTTP otherwise
-    const connectReq = proxy.tls ? https.request(connectOpts) : http.request(connectOpts);
-    connectReq.on('connect', (_res, socket) => {
-      connectReq.setTimeout(0);
-      const req = https.request({
-        hostname: target.hostname,
-        path: target.pathname + target.search,
-        method: 'GET',
-        headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
-        socket, agent: false,
-      }, (res) => {
-        let stream = res;
-        const enc = (res.headers['content-encoding'] || '').trim().toLowerCase();
-        if (enc === 'gzip') stream = res.pipe(zlib.createGunzip());
-        else if (enc === 'deflate') stream = res.pipe(zlib.createInflate());
-        const chunks = [];
-        stream.on('data', (c) => chunks.push(c));
-        stream.on('end', () => resolve({
-          ok: res.statusCode >= 200 && res.statusCode < 300,
-          status: res.statusCode,
-          body: Buffer.concat(chunks).toString(),
-        }));
-        stream.on('error', reject);
-      });
-      req.on('error', reject);
-      req.end();
-    });
-    connectReq.on('error', reject);
-    connectReq.setTimeout(12000, () => { connectReq.destroy(); reject(new Error('Proxy timeout')); });
-    connectReq.end();
-  });
+  const { proxyFetch } = require('./_proxy-utils.cjs');
+  return proxyFetch(targetUrl, proxy, { headers: { 'User-Agent': CHROME_UA } })
+    .then(r => ({ ok: r.ok, status: r.status, body: r.buffer.toString('utf8') }))
+    .catch(() => ({ ok: false, status: 0, body: '' }));
 }
 
 function ytFetchDirect(targetUrl) {
@@ -9414,7 +9542,8 @@ Market & Crypto:
 Economic & Energy:
   macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
   euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
+  faoFoodPriceIndex
 
 Tech & Intelligence:
   techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
@@ -9994,7 +10123,8 @@ Market & Crypto:
 Economic & Energy:
   macroSignals, bisPolicy, bisExchange, bisCredit, nationalDebt, bigmac, fuelPrices,
   euGasStorage, natGasStorage, crudeInventories, ecbFxRates, euFsi, groceryBasket,
-  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards
+  eurostatCountryData, progressData, renewableEnergy, spending, correlationCards,
+  faoFoodPriceIndex
 
 Tech & Intelligence:
   techReadiness, techEvents, riskScores, crossSourceSignals, securityAdvisories,
@@ -10251,6 +10381,7 @@ server.listen(PORT, () => {
   startSocialVelocitySeedLoop();
   startClimateNewsSeedLoop();
   startPizzintSeedLoop();
+  startDodoPriceSeedLoop();
 });
 
 wss.on('connection', (ws, req) => {

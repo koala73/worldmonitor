@@ -48,7 +48,7 @@ describe('Bootstrap cache key registry', () => {
       keys.push(m[1]);
     }
     for (const key of keys) {
-      assert.match(key, /^[a-z0-9_-]+(?::[a-z0-9_-]+)+:v\d+$/, `Cache key "${key}" does not match expected pattern`);
+      assert.match(key, /^[a-z0-9_-]+(?::[a-z0-9_-]+)+:v\d+(?::[a-z0-9_-]+)*$/, `Cache key "${key}" does not match expected pattern`);
     }
   });
 
@@ -253,7 +253,7 @@ describe('Bootstrap key hydration coverage', () => {
     const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
     // Keys with planned but not-yet-wired consumers
-    const PENDING_CONSUMERS = new Set(['chokepointTransits', 'correlationCards', 'euGasStorage', 'climateNews']);
+    const PENDING_CONSUMERS = new Set(['chokepointTransits', 'correlationCards', 'euGasStorage', 'chokepointBaselines']);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
       assert.ok(
