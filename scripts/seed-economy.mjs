@@ -14,6 +14,8 @@ const KEYS = {
   macroSignals: 'economic:macro-signals:v1',
   crudeInventories: 'economic:crude-inventories:v1',
   natGasStorage: 'economic:nat-gas-storage:v1',
+  spr: 'economic:spr:v1',
+  refineryUtil: 'economic:refinery-util:v1',
 };
 
 const FRED_KEY_PREFIX = 'economic:fred:v1';
@@ -27,6 +29,10 @@ const CRUDE_INVENTORIES_TTL = 1_814_400; // 21 days — EIA publishes weekly; 3x
 const CRUDE_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 const NAT_GAS_TTL = 1_814_400; // 21 days — EIA publishes weekly; 3x cadence per gold standard
 const NAT_GAS_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
+const SPR_TTL = 1_814_400;        // 21 days (3× weekly)
+const REFINERY_TTL = 1_814_400;   // 21 days (3× weekly)
+const SPR_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
+const REFINERY_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 
 const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30', 'T10Y3M', 'STLFSI4'];
 
@@ -616,18 +622,151 @@ async function fetchNatGasStorage() {
   return { weeks, latestPeriod };
 }
 
+// ─── EIA Strategic Petroleum Reserve (WCSSTUS1) ───
+
+/**
+ * @param {{ value: unknown, period: unknown } | null | undefined} row
+ * @returns {{ barrels: number, period: string } | null}
+ */
+export function parseEiaSprRow(row) {
+  if (!row) return null;
+  const barrels = row.value != null ? parseFloat(String(row.value)) : null;
+  if (barrels == null || !Number.isFinite(barrels)) return null;
+  const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
+  return { barrels: +barrels.toFixed(3), period };
+}
+
+async function fetchSprLevels() {
+  const apiKey = process.env.EIA_API_KEY;
+  if (!apiKey) throw new Error('Missing EIA_API_KEY');
+
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    'facets[series][]': 'WCSSTUS1',
+    frequency: 'weekly',
+    'data[]': 'value',
+    'sort[0][column]': 'period',
+    'sort[0][direction]': 'desc',
+    length: '9', // fetch 9 so we can compute 4-week change
+  });
+  const resp = await fetch(`https://api.eia.gov/v2/petroleum/stoc/wstk/data/?${params}`, {
+    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) throw new Error(`EIA WCSSTUS1: HTTP ${resp.status}`);
+  const data = await resp.json();
+  const rows = data.response?.data;
+  if (!rows || rows.length === 0) throw new Error('EIA WCSSTUS1: no data rows');
+
+  // rows are sorted newest-first
+  const weeks = [];
+  for (let i = 0; i < Math.min(rows.length, 9); i++) {
+    const parsed = parseEiaSprRow(rows[i]);
+    if (!parsed) continue;
+    weeks.push(parsed);
+    if (weeks.length === 8) break; // only return 8 weeks to client
+  }
+
+  if (weeks.length < SPR_MIN_WEEKS) throw new Error(`EIA WCSSTUS1: only ${weeks.length} valid rows (need >= ${SPR_MIN_WEEKS})`);
+
+  const latest = weeks[0];
+  const prev = weeks[1] ?? null;
+  const prev4 = weeks[4] ?? null;
+
+  const changeWoW = prev ? +(latest.barrels - prev.barrels).toFixed(3) : null;
+  const changeWoW4 = prev4 ? +(latest.barrels - prev4.barrels).toFixed(3) : null;
+
+  const latestPeriod = latest.period;
+  console.log(`  SPR levels: ${weeks.length} weeks, latest=${latestPeriod}, barrels=${latest.barrels}M`);
+
+  return {
+    latestPeriod,
+    barrels: latest.barrels,
+    changeWoW,
+    changeWoW4,
+    weeks: weeks.map((w) => ({ period: w.period, barrels: w.barrels })),
+    seededAt: new Date().toISOString(),
+  };
+}
+
+// ─── EIA Refinery Utilization (WCRFPUS2) ───
+
+/**
+ * @param {{ value: unknown, period: unknown } | null | undefined} row
+ * @returns {{ utilizationPct: number, period: string } | null}
+ */
+export function parseEiaRefineryRow(row) {
+  if (!row) return null;
+  const utilizationPct = row.value != null ? parseFloat(String(row.value)) : null;
+  if (utilizationPct == null || !Number.isFinite(utilizationPct)) return null;
+  const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
+  return { utilizationPct: +utilizationPct.toFixed(3), period };
+}
+
+async function fetchRefineryUtilization() {
+  const apiKey = process.env.EIA_API_KEY;
+  if (!apiKey) throw new Error('Missing EIA_API_KEY');
+
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    'facets[series][]': 'WCRFPUS2',
+    frequency: 'weekly',
+    'data[]': 'value',
+    'sort[0][column]': 'period',
+    'sort[0][direction]': 'desc',
+    length: '9', // fetch 9 so the oldest of 8 has a prior week for WoW change
+  });
+  const resp = await fetch(`https://api.eia.gov/v2/petroleum/pnp/wiup/data/?${params}`, {
+    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) throw new Error(`EIA WCRFPUS2: HTTP ${resp.status}`);
+  const data = await resp.json();
+  const rows = data.response?.data;
+  if (!rows || rows.length === 0) throw new Error('EIA WCRFPUS2: no data rows');
+
+  // rows are sorted newest-first
+  const weeks = [];
+  for (let i = 0; i < Math.min(rows.length, 9); i++) {
+    const parsed = parseEiaRefineryRow(rows[i]);
+    if (!parsed) continue;
+    weeks.push(parsed);
+    if (weeks.length === 8) break; // only return 8 weeks to client
+  }
+
+  if (weeks.length < REFINERY_MIN_WEEKS) throw new Error(`EIA WCRFPUS2: only ${weeks.length} valid rows (need >= ${REFINERY_MIN_WEEKS})`);
+
+  const latest = weeks[0];
+  const prev = weeks[1] ?? null;
+
+  const changeWoW = prev ? +(latest.utilizationPct - prev.utilizationPct).toFixed(3) : null;
+
+  const latestPeriod = latest.period;
+  console.log(`  Refinery utilization: ${weeks.length} weeks, latest=${latestPeriod}, util=${latest.utilizationPct}%`);
+
+  return {
+    latestPeriod,
+    utilizationPct: latest.utilizationPct,
+    changeWoW,
+    weeks: weeks.map((w) => ({ period: w.period, utilizationPct: w.utilizationPct })),
+    seededAt: new Date().toISOString(),
+  };
+}
+
 // ─── Main: seed all economic data ───
 // NOTE: runSeed() calls process.exit(0) after writing the primary key.
 // All secondary keys MUST be written inside fetchAll() before returning.
 
 async function fetchAll() {
-  const [energyPrices, energyCapacity, fredResults, macroSignals, crudeInventories, natGasStorage] = await Promise.allSettled([
+  const [energyPrices, energyCapacity, fredResults, macroSignals, crudeInventories, natGasStorage, sprLevels, refineryUtil] = await Promise.allSettled([
     fetchEnergyPrices(),
     fetchEnergyCapacity(),
     fetchFredSeries(),
     fetchMacroSignals(_curlProxyAuth),
     fetchCrudeInventories(),
     fetchNatGasStorage(),
+    fetchSprLevels(),
+    fetchRefineryUtilization(),
   ]);
 
   const ep = energyPrices.status === 'fulfilled' ? energyPrices.value : null;
@@ -636,6 +775,8 @@ async function fetchAll() {
   const ms = macroSignals.status === 'fulfilled' ? macroSignals.value : null;
   const ci = crudeInventories.status === 'fulfilled' ? crudeInventories.value : null;
   const ng = natGasStorage.status === 'fulfilled' ? natGasStorage.value : null;
+  const spr = sprLevels.status === 'fulfilled' ? sprLevels.value : null;
+  const ru = refineryUtil.status === 'fulfilled' ? refineryUtil.value : null;
 
   if (energyPrices.status === 'rejected') console.warn(`  EnergyPrices failed: ${energyPrices.reason?.message || energyPrices.reason}`);
   if (energyCapacity.status === 'rejected') console.warn(`  EnergyCapacity failed: ${energyCapacity.reason?.message || energyCapacity.reason}`);
@@ -643,6 +784,8 @@ async function fetchAll() {
   if (macroSignals.status === 'rejected') console.warn(`  MacroSignals failed: ${macroSignals.reason?.message || macroSignals.reason}`);
   if (crudeInventories.status === 'rejected') console.warn(`  CrudeInventories failed: ${crudeInventories.reason?.message || crudeInventories.reason}`);
   if (natGasStorage.status === 'rejected') console.warn(`  NatGasStorage failed: ${natGasStorage.reason?.message || natGasStorage.reason}`);
+  if (sprLevels.status === 'rejected') console.warn(`  SPRLevels failed: ${sprLevels.reason?.message || sprLevels.reason}`);
+  if (refineryUtil.status === 'rejected') console.warn(`  RefineryUtil failed: ${refineryUtil.reason?.message || refineryUtil.reason}`);
 
   const frHasData = fr && Object.keys(fr).length > 0;
   if (!ep && !frHasData && !ms) throw new Error('All economic fetches failed');
@@ -670,6 +813,20 @@ async function fetchAll() {
     await writeExtraKeyWithMeta(KEYS.natGasStorage, ng, NAT_GAS_TTL, ng.weeks.length);
   } else if (ng) {
     console.warn(`  NatGasStorage: skipped write — ${ng.weeks?.length ?? 0} weeks or schema invalid`);
+  }
+
+  const isValidSprWeek = (w) => typeof w.period === 'string' && typeof w.barrels === 'number' && Number.isFinite(w.barrels);
+  if (spr?.weeks?.length >= SPR_MIN_WEEKS && spr.weeks.every(isValidSprWeek)) {
+    await writeExtraKeyWithMeta(KEYS.spr, spr, SPR_TTL, spr.weeks.length);
+  } else if (spr) {
+    console.warn(`  SPRLevels: skipped write — ${spr.weeks?.length ?? 0} weeks or schema invalid`);
+  }
+
+  const isValidRuWeek = (w) => typeof w.period === 'string' && typeof w.utilizationPct === 'number' && Number.isFinite(w.utilizationPct);
+  if (ru?.weeks?.length >= REFINERY_MIN_WEEKS && ru.weeks.every(isValidRuWeek)) {
+    await writeExtraKeyWithMeta(KEYS.refineryUtil, ru, REFINERY_TTL, ru.weeks.length);
+  } else if (ru) {
+    console.warn(`  RefineryUtil: skipped write — ${ru.weeks?.length ?? 0} weeks or schema invalid`);
   }
 
   // Compute stress index — GSCPI is seeded by ais-relay (NY Fed), not FRED; read from Redis
