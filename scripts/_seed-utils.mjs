@@ -685,11 +685,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId });
     }
 
-<<<<<<< HEAD
-    const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion, opts.metaTtlSeconds);
-=======
     const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion, ttlSeconds);
->>>>>>> 3b7a813f3 (fix(energy): 3 follow-up review fixes)
 
     const durationMs = Date.now() - startMs;
     logSeedResult(domain, recordCount, durationMs, { payloadBytes });
