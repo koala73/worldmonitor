@@ -4298,7 +4298,7 @@ async function seedUsaSpending() {
       if (!PROXY_URL) { console.warn(`[Spending] Seed failed: ${directErr.message}`); return; }
       console.warn(`[Spending] Direct failed (${directErr.message}) — retrying via proxy`);
       const { proxyFetch } = require('./_proxy-utils.cjs');
-      const proxy = parseProxyUrl(PROXY_URL);
+      const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
       const result = await proxyFetch(spendingUrl, proxy, {
         method: 'POST', body: spendingBody,
         headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
@@ -4412,7 +4412,7 @@ async function seedGscpi() {
       if (!PROXY_URL) throw directErr;
       console.warn(`[GSCPI] Direct failed (${directErr.message}) — retrying via proxy`);
       const { proxyFetch } = require('./_proxy-utils.cjs');
-      const proxy = parseProxyUrl(PROXY_URL);
+      const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
       const result = await proxyFetch(GSCPI_CSV_URL, proxy, {
         accept: 'text/csv,text/plain', headers: { 'User-Agent': CHROME_UA }, timeoutMs: 20_000,
       });
