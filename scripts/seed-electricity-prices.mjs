@@ -179,7 +179,7 @@ async function fetchAllEntsoE(token, today, yesterday) {
 async function fetchEiaRegion(region, apiKey, today) {
   const dateStr = isoDate(today);
   const params = new URLSearchParams({
-    'data[]': 'D',
+    'data[]': 'value',
     'facets[respondent][]': region.region,
     start: isoDate(new Date(Date.now() - 2 * 24 * 3600 * 1000)),
     end: dateStr,
