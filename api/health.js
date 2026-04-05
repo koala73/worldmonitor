@@ -139,6 +139,7 @@ const STANDALONE_KEYS = {
   energyExposure:           'energy:exposure:v1:index',
   regulatoryActions:        'regulatory:actions:v1',
   energyIntelligence:       'energy:intelligence:feed:v1',
+  ieaOilStocks:             'energy:iea-oil-stocks:v1:index',
 };
 
 const SEED_META = {
@@ -261,6 +262,7 @@ const SEED_META = {
   gasStorageCountries:  { key: 'seed-meta:energy:gas-storage-countries', maxStaleMin: 2880 }, // daily cron at 10:30 UTC; 2880min = 48h = 2x interval
   energyIntelligence:   { key: 'seed-meta:energy:intelligence',          maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
   jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40 }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
+  ieaOilStocks:         { key: 'seed-meta:energy:iea-oil-stocks',        maxStaleMin: 60 * 24 * 40 }, // monthly cron on 15th; 40d threshold = TTL_SECONDS
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
