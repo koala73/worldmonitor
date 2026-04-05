@@ -563,7 +563,7 @@ export class DeckGLMap {
     if (this.state.layers.dayNight) {
       this.startDayNightTimer();
     }
-    if (this.state.layers.weatherRadar) {
+    if (this.state.layers.weather) {
       this.startWeatherRadar();
     }
     // Kick off lazy APT load if cyberThreats is already on at init (e.g. from URL/localStorage)
@@ -4305,7 +4305,7 @@ export class DeckGLMap {
         const layer = (input as HTMLInputElement).closest('.layer-toggle')?.getAttribute('data-layer') as keyof MapLayers;
         if (layer) {
           const enabled = (input as HTMLInputElement).checked;
-          const prevRadar = this.state.layers.weatherRadar;
+          const prevRadar = this.state.layers.weather;
           const prevCyber = this.state.layers.cyberThreats;
           if (enabled && (layer === 'resilienceScore' || layer === 'ciiChoropleth')) {
             const conflictingLayer = layer === 'resilienceScore' ? 'ciiChoropleth' : 'resilienceScore';
@@ -4319,8 +4319,8 @@ export class DeckGLMap {
           }
           this.state.layers[layer] = enabled;
           if (layer === 'flights') this.manageAircraftTimer(enabled);
-          if (this.state.layers.weatherRadar && !prevRadar) this.startWeatherRadar();
-          else if (!this.state.layers.weatherRadar && prevRadar) this.stopWeatherRadar();
+          if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
+          else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
           if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
           this.render();
           this.updateLegend();
@@ -4786,12 +4786,12 @@ export class DeckGLMap {
   }
 
   public setLayers(layers: MapLayers): void {
-    const prevRadar = this.state.layers.weatherRadar;
+    const prevRadar = this.state.layers.weather;
     const prevCyber = this.state.layers.cyberThreats;
     this.state.layers = normalizeExclusiveChoropleths(layers, this.state.layers);
     this.manageAircraftTimer(this.state.layers.flights);
-    if (this.state.layers.weatherRadar && !prevRadar) this.startWeatherRadar();
-    else if (!this.state.layers.weatherRadar && prevRadar) this.stopWeatherRadar();
+    if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
+    else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
     if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
     this.render(); // Debounced
     this.updateLegend();
@@ -5519,7 +5519,7 @@ export class DeckGLMap {
       this.state.layers[layer] = true;
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = true;
-      if (layer === 'weatherRadar') this.startWeatherRadar();
+      if (layer === 'weather') this.startWeatherRadar();
       if (layer === 'cyberThreats' && !this.aptGroupsLoaded) this.loadAptGroups();
       if (layer === 'flights') this.manageAircraftTimer(true);
       this.render();
@@ -5531,7 +5531,7 @@ export class DeckGLMap {
 
   // Toggle layer on/off programmatically
   public toggleLayer(layer: keyof MapLayers): void {
-    const prevRadar = this.state.layers.weatherRadar;
+    const prevRadar = this.state.layers.weather;
     const prevCyber = this.state.layers.cyberThreats;
     const nextEnabled = !this.state.layers[layer];
     if (nextEnabled && layer === 'resilienceScore' && this.state.layers.ciiChoropleth) {
@@ -5550,8 +5550,8 @@ export class DeckGLMap {
     this.state.layers[layer] = !this.state.layers[layer];
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];
-    if (this.state.layers.weatherRadar && !prevRadar) this.startWeatherRadar();
-    else if (!this.state.layers.weatherRadar && prevRadar) this.stopWeatherRadar();
+    if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
+    else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
     if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
     if (layer === 'flights') this.manageAircraftTimer(this.state.layers.flights);
     this.render();
