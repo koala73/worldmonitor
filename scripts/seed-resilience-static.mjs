@@ -777,6 +777,51 @@ async function fetchAllDatasetMaps() {
   return { datasetMaps, failedDatasets };
 }
 
+// Exported for testing. When a dataset fetch fails, reads the prior Redis snapshot and
+// injects the existing per-country values for that field back into datasetMaps so the
+// new publish does not overwrite good data with null.
+// Throws if the Redis recovery reads themselves fail — the caller must then call
+// preservePreviousSnapshotOnFailure and abort, rather than publishing corrupt data.
+export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readIndex, readPipeline }) {
+  if (failedDatasets.length === 0) return;
+
+  let existingIndex;
+  try {
+    existingIndex = await readIndex();
+  } catch (err) {
+    throw new Error(`Dataset(s) (${failedDatasets.join(', ')}) failed and Redis index read also failed: ${err.message}`);
+  }
+
+  const existingCountries = existingIndex?.countries ?? [];
+  if (existingCountries.length === 0) {
+    console.warn(`  [fallback] dataset(s) failed (${failedDatasets.join(', ')}) — no prior snapshot to recover from`);
+    return;
+  }
+
+  let pipelineResults;
+  try {
+    pipelineResults = await readPipeline(existingCountries.map((iso2) => ['GET', countryRedisKey(iso2)]));
+  } catch (err) {
+    throw new Error(`Dataset(s) (${failedDatasets.join(', ')}) failed and Redis pipeline read also failed: ${err.message}`);
+  }
+
+  for (let i = 0; i < existingCountries.length; i++) {
+    const iso2 = existingCountries[i];
+    let existing = null;
+    try { existing = JSON.parse(pipelineResults[i]?.result ?? 'null'); } catch { /* skip */ }
+    if (!existing) continue;
+    for (const key of failedDatasets) {
+      if (existing[key] != null && datasetMaps[key] instanceof Map && !datasetMaps[key].has(iso2)) {
+        datasetMaps[key].set(iso2, existing[key]);
+      }
+    }
+  }
+
+  for (const key of failedDatasets) {
+    console.warn(`  [fallback] dataset '${key}' failed — preserved ${datasetMaps[key].size} existing Redis records from prior snapshot`);
+  }
+}
+
 export async function seedResilienceStatic() {
   const seedYear = nowSeedYear();
   const existingMeta = await readJsonKey(RESILIENCE_STATIC_META_KEY).catch(() => null);
@@ -791,32 +836,20 @@ export async function seedResilienceStatic() {
 
   const { datasetMaps, failedDatasets } = await fetchAllDatasetMaps();
 
-  // When a dataset fetch fails, preserve existing per-country Redis data for that field
-  // instead of overwriting every country with null.
-  if (failedDatasets.length > 0) {
-    const existingIndex = await readJsonKey(RESILIENCE_STATIC_INDEX_KEY).catch(() => null);
-    const existingCountries = existingIndex?.countries ?? [];
-    if (existingCountries.length > 0) {
-      const getCommands = existingCountries.map((iso2) => ['GET', countryRedisKey(iso2)]);
-      const pipelineResults = await redisPipeline(getCommands).catch(() => []);
-      for (let i = 0; i < existingCountries.length; i++) {
-        const iso2 = existingCountries[i];
-        let existing = null;
-        try { existing = JSON.parse(pipelineResults[i]?.result ?? 'null'); } catch { /* skip */ }
-        if (!existing) continue;
-        for (const key of failedDatasets) {
-          if (existing[key] != null && datasetMaps[key] instanceof Map && !datasetMaps[key].has(iso2)) {
-            datasetMaps[key].set(iso2, existing[key]);
-          }
-        }
-      }
-      for (const key of failedDatasets) {
-        const recovered = datasetMaps[key].size;
-        console.warn(`  [fallback] dataset '${key}' failed — preserved ${recovered} existing Redis records from prior snapshot`);
-      }
-    } else {
-      console.warn(`  [fallback] dataset(s) failed (${failedDatasets.join(', ')}) and no prior index to recover from`);
-    }
+  try {
+    await recoverFailedDatasets(datasetMaps, failedDatasets, {
+      readIndex: () => readJsonKey(RESILIENCE_STATIC_INDEX_KEY),
+      readPipeline: redisPipeline,
+    });
+  } catch (recoveryErr) {
+    const failure = await preservePreviousSnapshotOnFailure(
+      failedDatasets,
+      seedYear,
+      recoveryErr.message,
+    );
+    const error = new Error(recoveryErr.message);
+    error.failure = failure;
+    throw error;
   }
 
   const seededAt = new Date().toISOString();

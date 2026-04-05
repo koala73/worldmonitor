@@ -14,6 +14,7 @@ import {
   finalizeCountryPayloads,
   parseEurostatEnergyDataset,
   parseRsfRanking,
+  recoverFailedDatasets,
   resolveIso2,
   shouldSkipSeedYear,
 } from '../scripts/seed-resilience-static.mjs';
@@ -175,6 +176,73 @@ describe('resilience static seed payload assembly', () => {
     assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150 }, 2026), true);
     assert.equal(shouldSkipSeedYear({ status: 'error', seedYear: 2026, recordCount: 150 }, 2026), false);
     assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2025, recordCount: 150 }, 2026), false);
+  });
+});
+
+describe('recoverFailedDatasets', () => {
+  const existingFao = { source: 'hdx-ipc', year: 2025, phase3plus: 4_500_000, phase4: 1_200_000, phase5: 300_000 };
+  const existingSo = { source: 'hdx-ipc', year: 2025, phase3plus: 3_000_000, phase4: null, phase5: null };
+
+  function makeDatasetMaps(faoOverride = new Map()) {
+    return {
+      wgi: new Map([['YE', { source: 'worldbank-wgi' }]]),
+      infrastructure: new Map(), gpi: new Map(), rsf: new Map(),
+      who: new Map(), fao: faoOverride, aquastat: new Map(), iea: new Map(),
+    };
+  }
+
+  it('injects prior fao values when FSIN fails and a prior snapshot exists', async () => {
+    const maps = makeDatasetMaps();
+    await recoverFailedDatasets(maps, ['fao'], {
+      readIndex: async () => ({ countries: ['YE', 'SO'] }),
+      readPipeline: async () => [
+        { result: JSON.stringify({ fao: existingFao, wgi: { source: 'worldbank-wgi' } }) },
+        { result: JSON.stringify({ fao: existingSo, wgi: null }) },
+      ],
+    });
+    assert.deepEqual(maps.fao.get('YE'), existingFao, 'YE fao should be recovered');
+    assert.deepEqual(maps.fao.get('SO'), existingSo, 'SO fao should be recovered');
+  });
+
+  it('does not overwrite a partial fao success with prior data', async () => {
+    const freshFao = { source: 'hdx-ipc', year: 2026, phase3plus: 5_000_000, phase4: null, phase5: null };
+    const maps = makeDatasetMaps(new Map([['YE', freshFao]]));
+    await recoverFailedDatasets(maps, ['fao'], {
+      readIndex: async () => ({ countries: ['YE'] }),
+      readPipeline: async () => [{ result: JSON.stringify({ fao: existingFao }) }],
+    });
+    assert.deepEqual(maps.fao.get('YE'), freshFao, 'fresh partial data should not be replaced');
+  });
+
+  it('warns but does not throw when no prior snapshot exists (first-run tolerance)', async () => {
+    const maps = makeDatasetMaps();
+    await assert.doesNotReject(() => recoverFailedDatasets(maps, ['fao'], {
+      readIndex: async () => null,
+      readPipeline: async () => [],
+    }));
+    assert.equal(maps.fao.size, 0, 'fao stays empty — no prior data to recover');
+  });
+
+  it('throws when Redis index read fails, so caller blocks publish', async () => {
+    const maps = makeDatasetMaps();
+    await assert.rejects(
+      () => recoverFailedDatasets(maps, ['fao'], {
+        readIndex: async () => { throw new Error('ECONNRESET'); },
+        readPipeline: async () => [],
+      }),
+      /Redis index read also failed.*ECONNRESET/,
+    );
+  });
+
+  it('throws when Redis pipeline read fails, so caller blocks publish', async () => {
+    const maps = makeDatasetMaps();
+    await assert.rejects(
+      () => recoverFailedDatasets(maps, ['fao'], {
+        readIndex: async () => ({ countries: ['YE'] }),
+        readPipeline: async () => { throw new Error('timeout'); },
+      }),
+      /Redis pipeline read also failed.*timeout/,
+    );
   });
 });
 
