@@ -15,7 +15,7 @@ export const COUNTRY_MAP = {
   'Greece': 'GR', 'Hungary': 'HU', 'Ireland': 'IE', 'Italy': 'IT',
   'Latvia': 'LV', 'Lithuania': 'LT', 'Luxembourg': 'LU', 'Netherlands': 'NL',
   'Poland': 'PL', 'Portugal': 'PT', 'Slovak Republic': 'SK', 'Spain': 'ES',
-  'Sweden': 'SE', 'Switzerland': 'CH', 'Türkiye': 'TR', 'United Kingdom': 'GB',
+  'Sweden': 'SE', 'Switzerland': 'CH', 'Turkiye': 'TR', 'United Kingdom': 'GB',
   'Canada': 'CA', 'Mexico': 'MX', 'United States': 'US', 'Norway': 'NO',
 };
 
@@ -25,9 +25,7 @@ const parseIntOrNull = (v) => {
 };
 
 export function parseRecord(record, seededAt) {
-  // IEA API oscillates between 'Türkiye' (with umlaut) and 'Turkiye'; normalize to map key.
-  const countryName = record.countryName === 'Turkiye' ? 'Türkiye' : record.countryName;
-  const iso2 = COUNTRY_MAP[countryName];
+  const iso2 = COUNTRY_MAP[record.countryName];
   if (!iso2) return null;
 
   const ym = String(record.yearMonth);
