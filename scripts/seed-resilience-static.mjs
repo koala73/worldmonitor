@@ -524,21 +524,11 @@ function parseDelimitedText(text, delimiter) {
   });
 }
 
-async function fetchGpiDataset() {
-  const currentYear = new Date().getUTCFullYear();
-  let csvText;
-  let resolvedYear = currentYear;
+export function gpiUrlForYear(yr) {
+  return `https://www.visionofhumanity.org/wp-content/uploads/${yr}/06/GPI_${yr}_${yr}.csv`;
+}
 
-  const urlForYear = (yr) =>
-    `https://www.visionofhumanity.org/wp-content/uploads/${yr}/06/GPI_${yr}_${yr}.csv`;
-
-  try {
-    ({ text: csvText } = await withRetry(() => fetchText(urlForYear(currentYear), { accept: 'text/csv' }), 1, 750));
-  } catch {
-    resolvedYear = currentYear - 1;
-    ({ text: csvText } = await withRetry(() => fetchText(urlForYear(resolvedYear), { accept: 'text/csv' }), 2, 750));
-  }
-
+export function parseGpiRows(csvText, resolvedYear) {
   const rows = parseDelimitedText(csvText, ',');
   const parsed = new Map();
   for (const row of rows) {
@@ -560,10 +550,22 @@ async function fetchGpiDataset() {
   return parsed;
 }
 
-async function fetchFsinDataset() {
-  const hdxUrl =
-    'https://data.humdata.org/dataset/7a7e7428-b8d7-4d2e-91d3-19100500e016/resource/2e4f7475-105b-4fae-81f7-7c32076096b6/download/ipc_global_national_wide_latest.csv';
-  const { text: csvText } = await withRetry(() => fetchText(hdxUrl, { accept: 'text/csv' }), 2, 750);
+async function fetchGpiDataset() {
+  const currentYear = new Date().getUTCFullYear();
+  let csvText;
+  let resolvedYear = currentYear;
+
+  try {
+    ({ text: csvText } = await withRetry(() => fetchText(gpiUrlForYear(currentYear), { accept: 'text/csv' }), 1, 750));
+  } catch {
+    resolvedYear = currentYear - 1;
+    ({ text: csvText } = await withRetry(() => fetchText(gpiUrlForYear(resolvedYear), { accept: 'text/csv' }), 2, 750));
+  }
+
+  return parseGpiRows(csvText, resolvedYear);
+}
+
+export function parseFsinRows(csvText) {
   const rows = parseDelimitedText(csvText, ',');
   const parsed = new Map();
   for (const row of rows) {
@@ -573,28 +575,35 @@ async function fetchFsinDataset() {
     const phase3plus = safeNum(row['Phase 3+ #'] ?? row['Phase 3+ number current']);
     const phase4 = safeNum(row['Phase 4 #'] ?? row['Phase 4 number current']);
     const phase5 = safeNum(row['Phase 5 #'] ?? row['Phase 5 number current']);
-    if (phase3plus == null && phase4 == null && phase5 == null) continue;
+    // Skip rows where no crisis-phase data is present (null or zero — IPC only lists active crises).
+    if (!phase3plus && !phase4 && !phase5) continue;
     const yearCandidates = Object.keys(row)
       .filter((k) => /period|date|year/i.test(k))
       .map((k) => safeNum(String(row[k]).slice(0, 4)))
       .filter((v) => v != null && v > 2000);
     const year = yearCandidates.length ? Math.max(...yearCandidates) : null;
+    const highestPhase = phase5 ? 5 : phase4 ? 4 : 3;
     parsed.set(iso2, {
       source: 'hdx-ipc',
       year,
-      phase3plus: phase3plus != null ? roundMetric(phase3plus, 0) : null,
-      phase4: phase4 != null ? roundMetric(phase4, 0) : null,
-      phase5: phase5 != null ? roundMetric(phase5, 0) : null,
+      // Output matches the shape that scoreFoodWater() reads from staticRecord.fao.
+      // phase3plus == total people in Phase 3 or above (IPC definition of "in crisis").
+      peopleInCrisis: phase3plus != null ? roundMetric(phase3plus, 0) : null,
+      phase: `IPC Phase ${highestPhase}`,
     });
   }
   if (parsed.size === 0) throw new Error('HDX IPC CSV returned no usable rows');
   return parsed;
 }
 
-async function fetchAquastatDataset() {
-  const aquastatUrl =
-    'https://api.data.apps.fao.org/api/v2/bigquery?sql_url=https://data.apps.fao.org/catalog/dataset/945666e6-7803-4621-b8ef-cfd885a84596/resource/4a000a1b-24f0-4328-aab6-b9b525892090/download/query_en.sql&area=World&variable=4550,4192,4190&year=2021&type=country';
-  const { text: csvText } = await withRetry(() => fetchText(aquastatUrl, { accept: 'text/csv' }), 2, 750);
+async function fetchFsinDataset() {
+  const hdxUrl =
+    'https://data.humdata.org/dataset/7a7e7428-b8d7-4d2e-91d3-19100500e016/resource/2e4f7475-105b-4fae-81f7-7c32076096b6/download/ipc_global_national_wide_latest.csv';
+  const { text: csvText } = await withRetry(() => fetchText(hdxUrl, { accept: 'text/csv' }), 2, 750);
+  return parseFsinRows(csvText);
+}
+
+export function parseAquastatRows(csvText) {
   const rows = parseDelimitedText(csvText, ',');
 
   const VARIABLE_MAP = {
@@ -624,6 +633,13 @@ async function fetchAquastatDataset() {
   }
   if (byCountry.size === 0) throw new Error('AQUASTAT CSV returned no usable rows');
   return byCountry;
+}
+
+async function fetchAquastatDataset() {
+  const aquastatUrl =
+    'https://api.data.apps.fao.org/api/v2/bigquery?sql_url=https://data.apps.fao.org/catalog/dataset/945666e6-7803-4621-b8ef-cfd885a84596/resource/4a000a1b-24f0-4328-aab6-b9b525892090/download/query_en.sql&area=World&variable=4550,4192,4190&year=2021&type=country';
+  const { text: csvText } = await withRetry(() => fetchText(aquastatUrl, { accept: 'text/csv' }), 2, 750);
+  return parseAquastatRows(csvText);
 }
 
 export function finalizeCountryPayloads(datasetMaps, seedYear = nowSeedYear(), seededAt = new Date().toISOString()) {
