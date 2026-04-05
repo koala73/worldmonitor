@@ -4305,6 +4305,8 @@ export class DeckGLMap {
         const layer = (input as HTMLInputElement).closest('.layer-toggle')?.getAttribute('data-layer') as keyof MapLayers;
         if (layer) {
           const enabled = (input as HTMLInputElement).checked;
+          const prevRadar = this.state.layers.weatherRadar;
+          const prevCyber = this.state.layers.cyberThreats;
           if (enabled && (layer === 'resilienceScore' || layer === 'ciiChoropleth')) {
             const conflictingLayer = layer === 'resilienceScore' ? 'ciiChoropleth' : 'resilienceScore';
             if (this.state.layers[conflictingLayer]) {
@@ -4317,6 +4319,9 @@ export class DeckGLMap {
           }
           this.state.layers[layer] = enabled;
           if (layer === 'flights') this.manageAircraftTimer(enabled);
+          if (this.state.layers.weatherRadar && !prevRadar) this.startWeatherRadar();
+          else if (!this.state.layers.weatherRadar && prevRadar) this.stopWeatherRadar();
+          if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
           this.render();
           this.updateLegend();
           this.onLayerChange?.(layer, enabled, 'user');
@@ -5514,6 +5519,9 @@ export class DeckGLMap {
       this.state.layers[layer] = true;
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = true;
+      if (layer === 'weatherRadar') this.startWeatherRadar();
+      if (layer === 'cyberThreats' && !this.aptGroupsLoaded) this.loadAptGroups();
+      if (layer === 'flights') this.manageAircraftTimer(true);
       this.render();
       this.updateLegend();
       this.onLayerChange?.(layer, true, 'programmatic');
@@ -5523,6 +5531,8 @@ export class DeckGLMap {
 
   // Toggle layer on/off programmatically
   public toggleLayer(layer: keyof MapLayers): void {
+    const prevRadar = this.state.layers.weatherRadar;
+    const prevCyber = this.state.layers.cyberThreats;
     const nextEnabled = !this.state.layers[layer];
     if (nextEnabled && layer === 'resilienceScore' && this.state.layers.ciiChoropleth) {
       this.state.layers.ciiChoropleth = false;
@@ -5537,8 +5547,6 @@ export class DeckGLMap {
       this.setLayerReady('resilienceScore', false);
       this.onLayerChange?.('resilienceScore', false, 'programmatic');
     }
-    const prevRadar = this.state.layers.weatherRadar;
-    const prevCyber = this.state.layers.cyberThreats;
     this.state.layers[layer] = !this.state.layers[layer];
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];
