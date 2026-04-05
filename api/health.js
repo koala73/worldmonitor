@@ -137,6 +137,7 @@ const STANDALONE_KEYS = {
   resilienceRanking:        'resilience:ranking',
   productCatalog:           'product-catalog:v2',
   energyExposure:           'energy:exposure:v1:index',
+  energyMixAll:             'energy:mix:v1:_all',
   regulatoryActions:        'regulatory:actions:v1',
   energyIntelligence:       'energy:intelligence:feed:v1',
   ieaOilStocks:             'energy:iea-oil-stocks:v1:index',
