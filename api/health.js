@@ -134,6 +134,7 @@ const STANDALONE_KEYS = {
   climateNews:              'climate:news-intelligence:v1',
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
+  resilienceRanking:        'resilience:ranking',
   productCatalog:           'product-catalog:v2',
   energyExposure:           'energy:exposure:v1:index',
   regulatoryActions:        'regulatory:actions:v1',
@@ -253,6 +254,7 @@ const SEED_META = {
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
   resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
+  resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 720 }, // on-demand RPC cache (6h TTL); 12h threshold catches stale rankings without paging on cold start
   energyExposure:       { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // monthly cron on 1st; 50400min = 35d = TTL matches cron cadence + 5d buffer
   regulatoryActions:    { key: 'seed-meta:regulatory:actions',          maxStaleMin: 360 }, // 2h cron; 360min = 3x interval
   electricityPrices:    { key: 'seed-meta:energy:electricity-prices',   maxStaleMin: 2880 }, // daily cron (14:00 UTC); 2880min = 48h = 2x interval
@@ -275,6 +277,7 @@ const ON_DEMAND_KEYS = new Set([
   'simulationPackageLatest', // written by writeSimulationPackage after deep forecast runs; only present after first successful deep run
   'simulationOutcomeLatest', // written by writeSimulationOutcome after simulation runs; only present after first successful simulation
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
+  'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
 ]);
 
 // Keys where 0 records is a valid healthy state (e.g. no airports closed,

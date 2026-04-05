@@ -6,7 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
-import { cronbachAlpha, detectTrend } from '../../../_shared/resilience-stats';
+import { cronbachAlpha, detectTrend, round } from '../../../_shared/resilience-stats';
 import {
   RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DIMENSION_ORDER,
@@ -35,10 +35,6 @@ interface ResilienceHistoryPoint {
 
 interface ResilienceStaticIndex {
   countries?: string[];
-}
-
-function round(value: number, digits = 2): number {
-  return Number(value.toFixed(digits));
 }
 
 function mean(values: number[]): number | null {
@@ -132,7 +128,7 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
 function computeLowConfidence(dimensions: ResilienceDimension[], cronbach: number): boolean {
   const averageCoverage = mean(dimensions.map((dimension) => dimension.coverage)) ?? 0;
   if (averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD) return true;
-  return cronbach > 0 && cronbach < LOW_CONFIDENCE_ALPHA_THRESHOLD;
+  return cronbach < LOW_CONFIDENCE_ALPHA_THRESHOLD;
 }
 
 async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[]> {
@@ -195,7 +191,7 @@ export async function ensureResilienceScoreCached(countryCode: string): Promise<
         lowConfidence: computeLowConfidence(dimensions, cronbach),
       };
     },
-    300,
+    2000,
   ) ?? {
     countryCode: normalizedCountryCode,
     overallScore: 0,
