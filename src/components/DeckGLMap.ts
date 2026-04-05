@@ -616,29 +616,35 @@ export class DeckGLMap {
         this.radarTileUrl = `${data.host}${latest.path}/256/{z}/{x}/{y}/6/1_1.png`;
         this.applyRadarLayer();
       })
-      .catch(() => {});
+      .catch((err) => console.warn('[DeckGLMap] weather radar fetch failed:', err?.message || err));
   }
 
   private applyRadarLayer(): void {
     if (!this.maplibreMap || !this.radarActive || !this.radarTileUrl) return;
-    const existing = this.maplibreMap.getSource('weather-radar') as (maplibregl.RasterTileSource & { setTiles: (tiles: string[]) => void }) | undefined;
-    if (existing) {
-      existing.setTiles([this.radarTileUrl]);
+    if (!this.maplibreMap.isStyleLoaded()) {
+      this.maplibreMap.once('styledata', () => this.applyRadarLayer());
       return;
     }
-    this.maplibreMap.addSource('weather-radar', {
-      type: 'raster',
-      tiles: [this.radarTileUrl],
-      tileSize: 256,
-      attribution: '© RainViewer',
-    });
-    const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;
-    this.maplibreMap.addLayer({
-      id: 'weather-radar-layer',
-      type: 'raster',
-      source: 'weather-radar',
-      paint: { 'raster-opacity': 0.65 },
-    }, beforeId);
+    try {
+      const existing = this.maplibreMap.getSource('weather-radar') as (maplibregl.RasterTileSource & { setTiles: (tiles: string[]) => void }) | undefined;
+      if (existing) {
+        existing.setTiles([this.radarTileUrl]);
+        return;
+      }
+      this.maplibreMap.addSource('weather-radar', {
+        type: 'raster',
+        tiles: [this.radarTileUrl],
+        tileSize: 256,
+        attribution: '© RainViewer',
+      });
+      const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;
+      this.maplibreMap.addLayer({
+        id: 'weather-radar-layer',
+        type: 'raster',
+        source: 'weather-radar',
+        paint: { 'raster-opacity': 0.65 },
+      }, beforeId);
+    } catch { /* style torn down between check and apply */ }
   }
 
   private removeRadarLayer(): void {
