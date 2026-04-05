@@ -430,7 +430,10 @@ function calcConflictScore(data: CountryData, countryCode: string): number {
   let hapiFallback = 0;
   if (events.length === 0 && data.hapiSummary) {
     const h = data.hapiSummary;
-    hapiFallback = Math.min(60, h.eventsPoliticalViolence * 3 * multiplier);
+    // Use log scale to preserve meaningful distance between moderate and extreme conflict
+    // (fixes bias where countries with vastly different HAPI scores landed at the same cap)
+    const raw = h.eventsPoliticalViolence * multiplier;
+    hapiFallback = raw > 0 ? Math.min(60, 10 * Math.log2(raw + 1)) : 0;
   }
 
   return Math.min(100, Math.max(eventScore + fatalityScore + civilianBoost, hapiFallback));
@@ -528,9 +531,16 @@ export function calculateCII(): CountryScore[] {
       : focalUrgency === 'elevated' ? 4
       : 0;
 
-    const displacementBoost = data.displacementOutflow >= 1_000_000 ? 8
-      : data.displacementOutflow >= 100_000 ? 4
-      : 0;
+    const displacementBoost = (() => {
+      const d = data.displacementOutflow;
+      if (d >= 10_000_000) return 12;
+      if (d >= 5_000_000) return 10;
+      if (d >= 1_000_000) return 8;
+      if (d >= 500_000) return 6;
+      if (d >= 100_000) return 4;
+      if (d >= 10_000) return 2;
+      return 0;
+    })();
     const climateBoost = data.climateStress;
 
     const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost;
@@ -582,9 +592,16 @@ export function getCountryScore(code: string): number | null {
   const focalBoost = focalUrgency === 'critical' ? 8
     : focalUrgency === 'elevated' ? 4
     : 0;
-  const displacementBoost = data.displacementOutflow >= 1_000_000 ? 8
-    : data.displacementOutflow >= 100_000 ? 4
-    : 0;
+  const displacementBoost = (() => {
+    const d = data.displacementOutflow;
+    if (d >= 10_000_000) return 12;
+    if (d >= 5_000_000) return 10;
+    if (d >= 1_000_000) return 8;
+    if (d >= 500_000) return 6;
+    if (d >= 100_000) return 4;
+    if (d >= 10_000) return 2;
+    return 0;
+  })();
   const climateBoost = data.climateStress;
   const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost;
 
