@@ -237,7 +237,7 @@ async function preservePreviousSnapshot(errorMsg) {
     : [];
 
   await extendExistingTtl(
-    [...perCountryKeys, OWID_COUNTRY_LIST_KEY, OWID_EXPOSURE_INDEX_KEY, OWID_META_KEY],
+    [...perCountryKeys, OWID_COUNTRY_LIST_KEY, OWID_EXPOSURE_INDEX_KEY, OWID_ALL_KEY, OWID_META_KEY],
     OWID_TTL_SECONDS,
   );
   const metaPayload = {
