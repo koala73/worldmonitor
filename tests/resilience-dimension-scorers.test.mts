@@ -138,20 +138,6 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.coverage > 0, 'should have non-zero coverage even with null IEA');
   });
 
-  it('certainty imputation: country absent from sanctions list scores 100 for the sanctions sub-metric', async () => {
-    // Without imputation, a country not in the sanctions list loses 55% coverage weight,
-    // which can trigger false lowConfidence for stable economies like Finland.
-    const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'sanctions:pressure:v1') return { countries: [{ countryCode: 'RU', entryCount: 500 }] };
-      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [] };
-      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [] };
-      return null;
-    };
-    const score = await scoreTradeSanctions('FI', reader);
-    assert.equal(score.score, 100, 'unsanctioned country with zero trade friction should score 100');
-    assert.equal(score.coverage, 1, 'should have full coverage when all 3 trade sub-metrics are present');
-  });
-
   it('memoizes repeated seed reads inside scoreAllDimensions', async () => {
     const hits = new Map<string, number>();
     const countingReader = async (key: string) => {

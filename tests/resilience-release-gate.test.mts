@@ -110,20 +110,28 @@ describe('resilience release gate', () => {
     }
   });
 
-  it('Lebanon scores lower than South Africa and US is not low-confidence', async () => {
+  it('Lebanon (fragile) scores lower than South Africa (stressed)', async () => {
     installRedisFixtures();
 
-    const [lb, za, us] = await Promise.all([
+    const [lb, za] = await Promise.all([
       getResilienceScore({ request: new Request('https://example.com?countryCode=LB') } as never, { countryCode: 'LB' }),
       getResilienceScore({ request: new Request('https://example.com?countryCode=ZA') } as never, { countryCode: 'ZA' }),
-      getResilienceScore({ request: new Request('https://example.com?countryCode=US') } as never, { countryCode: 'US' }),
     ]);
 
     assert.ok(
       lb.overallScore < za.overallScore,
       `Lebanon (fragile, ${lb.overallScore}) should score lower than South Africa (stressed, ${za.overallScore})`,
     );
-    assert.equal(us.lowConfidence, false, `US should not be flagged as low-confidence — certainty imputation must recognise stable-country data absences`);
+  });
+
+  it('US is not low-confidence with full 8/8 dataset coverage', async () => {
+    installRedisFixtures();
+
+    const us = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=US') } as never,
+      { countryCode: 'US' },
+    );
+    assert.equal(us.lowConfidence, false, `US has full 8/8 dataset coverage in fixtures and should not be flagged low-confidence`);
   });
 
   it('produces complete ranking and choropleth entries for the full G20 + EU27 release set', async () => {
