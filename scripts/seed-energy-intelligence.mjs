@@ -10,9 +10,11 @@ const MAX_ITEMS = 30;
 const RSS_MAX_BYTES = 500_000;
 const AGE_LIMIT_MS = 30 * 24 * 3600 * 1000; // 30 days
 
+// Note: IEA removed public RSS feeds (https://www.iea.org/rss/*.xml returns 404).
+// OPEC RSS is Cloudflare-protected — kept as best-effort (works from Railway IPs).
+// OilPrice.com provides reliable energy intelligence coverage as primary source.
 const FEEDS = [
-  { url: 'https://www.iea.org/rss/news.xml',     source: 'IEA',  label: 'iea-news'    },
-  { url: 'https://www.iea.org/rss/reports.xml',  source: 'IEA',  label: 'iea-reports' },
+  { url: 'https://oilprice.com/rss/main',        source: 'OilPrice', label: 'oilprice-main'  },
   { url: 'https://www.opec.org/opec_web/en/press_room/rss.htm', source: 'OPEC', label: 'opec-press' },
 ];
 
