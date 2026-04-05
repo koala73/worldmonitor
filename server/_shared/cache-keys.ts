@@ -134,6 +134,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   diseaseOutbreaks: 'health:disease-outbreaks:v1',
   economicStress:   'economic:stress-index:v1',
   faoFoodPriceIndex: 'economic:fao-ffpi:v1',
+  electricityPrices: 'energy:electricity:v1:index',
 };
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
