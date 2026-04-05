@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, getRedisCredentials } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -130,23 +130,13 @@ async function fetchIeaOilStocks() {
   return { members, dataMonth, seededAt };
 }
 
-async function writeCountryKeys(data) {
-  const { url, token } = getRedisCredentials();
-  const commands = data.members.map(m => [
-    'SET', `energy:iea-oil-stocks:v1:${m.iso2}`, JSON.stringify(m), 'EX', TTL_SECONDS,
-  ]);
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(commands),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`IEA country key pipeline failed HTTP ${resp.status}`);
-  const results = await resp.json();
-  const failures = results.filter(r => r?.error || r?.result === 'ERR');
-  if (failures.length > 0) throw new Error(`IEA country keys: ${failures.length}/${commands.length} writes failed`);
-  console.log(`  Written: ${data.members.length} per-country keys`);
-}
+// Declared up front so runSeed can extend their TTL on fetch failure or
+// validation skip — keeps country keys alive as long as the index lives.
+const COUNTRY_EXTRA_KEYS = Object.values(COUNTRY_MAP).map(iso2 => ({
+  key: `energy:iea-oil-stocks:v1:${iso2}`,
+  ttl: TTL_SECONDS,
+  transform: (data) => data.members?.find(m => m.iso2 === iso2) ?? null,
+}));
 
 const isMain = process.argv[1]?.endsWith('seed-iea-oil-stocks.mjs');
 if (isMain) {
@@ -156,7 +146,7 @@ if (isMain) {
     sourceVersion: 'iea-oil-stocks-v1',
     recordCount: (data) => data?.members?.length || 0,
     publishTransform: (data) => buildIndex(data.members, data.dataMonth, data.seededAt),
-    afterPublish: writeCountryKeys,
+    extraKeys: COUNTRY_EXTRA_KEYS,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
