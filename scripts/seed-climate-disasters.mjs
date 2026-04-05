@@ -124,6 +124,8 @@ function mapNaturalType(event) {
   if (event.category === 'floods') return 'flood';
   if (event.category === 'wildfires') return 'wildfire';
   if (event.category === 'severeStorms') return 'cyclone';
+  if (event.category === 'volcanoes') return 'volcano';
+  if (event.category === 'drought') return 'drought';
   return '';
 }
 
@@ -337,7 +339,7 @@ function mapNaturalEvent(event) {
   if (!type) return null;
 
   const source = mapNaturalSource(event);
-  if (source !== 'GDACS' && source !== 'NASA FIRMS') return null;
+  if (!source) return null;
   const severity = mapNaturalSeverity(event, source);
   const status = mapNaturalStatus(event, severity);
   const lat = Number(event.lat);
