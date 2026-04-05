@@ -128,10 +128,13 @@ import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { fetchWebcamImage } from '@/services/webcams';
+import { CONFLICT_SCENES } from '@/config/conflicts';
+export type { ConflictSceneConfig } from '@/config/conflicts';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 type MapInteractionMode = 'flat' | '3d';
+
 
 export interface CountryClickPayload {
   lat: number;
@@ -179,6 +182,7 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
 
 const MAP_INTERACTION_MODE: MapInteractionMode =
   import.meta.env.VITE_MAP_INTERACTION_MODE === 'flat' ? 'flat' : '3d';
+
 
 const HAPPY_DARK_STYLE = '/map-styles/happy-dark.json';
 const HAPPY_LIGHT_STYLE = '/map-styles/happy-light.json';
@@ -402,12 +406,18 @@ export class DeckGLMap {
   private webcamData: Array<WebcamEntry | WebcamCluster> = [];
   private countriesGeoJsonData: FeatureCollection<Geometry> | null = null;
   private conflictZoneGeoJson: GeoJSON.FeatureCollection | null = null;
+  private resilienceScoresMap: ReturnType<typeof buildResilienceChoroplethMap> = new Map();
+  private resilienceScoresVersion = 0;
+
+  // Conflict KML overlay
+  private conflictOverlayGeoJson: GeoJSON.FeatureCollection | null = null;
+  private conflictKmlFetchVersion = 0;
+  private activeConflictLabel: string | null = null;
+  private conflictLegendEntries: Array<{ label: string; color: [number, number, number, number]; type: 'line' | 'polygon' }> = [];
 
   // CII choropleth data
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
   private ciiScoresVersion = 0;
-  private resilienceScoresMap: ReturnType<typeof buildResilienceChoroplethMap> = new Map();
-  private resilienceScoresVersion = 0;
 
   // Country highlight state
   private countryGeoJsonLoaded = false;
@@ -1748,6 +1758,12 @@ export class DeckGLMap {
     // News geo-locations (always shown if data exists)
     if (this.newsLocations.length > 0) {
       layers.push(...this.createNewsLocationsLayer());
+    }
+
+    // Conflict KML overlay — rendered on top so markers are always visible
+    if (this.conflictOverlayGeoJson) {
+      const overlayLayer = this.createConflictOverlayLayer();
+      if (overlayLayer) layers.push(overlayLayer);
     }
 
     const result = layers.filter(Boolean) as LayersList;
@@ -3560,6 +3576,233 @@ export class DeckGLMap {
     } catch { /* viewport fetch failed silently */ }
   }
 
+  // --- Conflict KML overlay ---
+
+  /**
+   * Parses a KML string into a GeoJSON FeatureCollection using the built-in DOMParser.
+   * Handles Point, LineString, and Polygon Placemarks.
+   * KML style colors are resolved via StyleMap indirection and stored as `_fillColor`,
+   * `_lineColor`, `_iconColor`, and `_lineWidth` properties on each feature.
+   */
+  private parseKmlToGeoJson(kmlText: string): GeoJSON.FeatureCollection {
+    const doc = new DOMParser().parseFromString(kmlText, 'text/xml');
+    const features: GeoJSON.Feature[] = [];
+
+    // Parse a KML color string (AABBGGRR hex) into an RGBA tuple.
+    const parseKmlColor = (el: Element | null): [number, number, number, number] | undefined => {
+      const hex = el?.textContent?.trim();
+      if (!hex || hex.length !== 8) return undefined;
+      return [
+        parseInt(hex.slice(6, 8), 16),
+        parseInt(hex.slice(4, 6), 16),
+        parseInt(hex.slice(2, 4), 16),
+        parseInt(hex.slice(0, 2), 16),
+      ];
+    };
+
+    // Index all named <Style> elements by "#id"
+    const rawStyles = new Map<string, Element>();
+    for (const s of Array.from(doc.querySelectorAll('Style'))) {
+      const id = s.getAttribute('id');
+      if (id) rawStyles.set('#' + id, s);
+    }
+
+    // Index <StyleMap> elements: map "#id" → the normal variant's styleUrl
+    const styleMaps = new Map<string, string>();
+    for (const sm of Array.from(doc.querySelectorAll('StyleMap'))) {
+      const id = sm.getAttribute('id');
+      if (!id) continue;
+      const normalPair = Array.from(sm.querySelectorAll('Pair')).find(
+        p => p.querySelector('key')?.textContent?.trim() === 'normal',
+      );
+      const normalUrl = normalPair?.querySelector('styleUrl')?.textContent?.trim();
+      if (normalUrl) styleMaps.set('#' + id, normalUrl);
+    }
+
+    // Resolve a styleUrl (following StyleMap indirection) to a <Style> element.
+    const resolveStyle = (url: string): Element | null =>
+      rawStyles.get(styleMaps.get(url) ?? url) ?? null;
+
+    // Extract style properties for a placemark — inline <Style> wins over <styleUrl>.
+    const getPlacemarkStyle = (placemark: Element) => {
+      const inlineStyle = placemark.querySelector('Style');
+      const styleEl = inlineStyle ?? resolveStyle(
+        placemark.querySelector('styleUrl')?.textContent?.trim() ?? '',
+      );
+      return {
+        fillColor: parseKmlColor(styleEl?.querySelector('PolyStyle > color') ?? null),
+        lineColor: parseKmlColor(styleEl?.querySelector('LineStyle > color') ?? null),
+        iconColor: parseKmlColor(styleEl?.querySelector('IconStyle > color') ?? null),
+        lineWidth: parseFloat(styleEl?.querySelector('LineStyle > width')?.textContent ?? 'NaN') || undefined,
+      };
+    };
+
+    for (const placemark of Array.from(doc.querySelectorAll('Placemark'))) {
+      const name = placemark.querySelector('name')?.textContent?.trim() ?? '';
+      const desc = placemark.querySelector('description')?.textContent?.trim() ?? '';
+      const style = getPlacemarkStyle(placemark);
+      const folder = placemark.closest('Folder')?.querySelector(':scope > name')?.textContent?.trim() ?? '';
+
+      const props: Record<string, unknown> = {
+        name,
+        description: desc,
+        _fillColor: style.fillColor,
+        _lineColor: style.lineColor,
+        _iconColor: style.iconColor,
+        _lineWidth: style.lineWidth,
+        _folder: folder,
+      };
+
+      // Parse all LineString elements (handles plain + MultiGeometry)
+      for (const lineEl of Array.from(placemark.querySelectorAll('LineString'))) {
+        const lineText = lineEl.querySelector('coordinates')?.textContent?.trim();
+        if (!lineText) continue;
+        const coords = lineText.split(/\s+/).reduce<[number, number][]>((acc, c) => {
+          const [lo = NaN, la = NaN] = c.split(',').map(Number);
+          if (Number.isFinite(lo) && Number.isFinite(la)) acc.push([lo, la]);
+          return acc;
+        }, []);
+        if (coords.length >= 2) {
+          features.push({ type: 'Feature', properties: props, geometry: { type: 'LineString', coordinates: coords } });
+        }
+      }
+
+      // Parse all Polygon elements (handles plain + MultiGeometry)
+      for (const polyEl of Array.from(placemark.querySelectorAll('Polygon'))) {
+        const ringText = polyEl.querySelector('outerBoundaryIs LinearRing coordinates')?.textContent?.trim();
+        if (!ringText) continue;
+        const ring = ringText.split(/\s+/).reduce<[number, number][]>((acc, c) => {
+          const [lo = NaN, la = NaN] = c.split(',').map(Number);
+          if (Number.isFinite(lo) && Number.isFinite(la)) acc.push([lo, la]);
+          return acc;
+        }, []);
+        if (ring.length >= 3) {
+          features.push({ type: 'Feature', properties: props, geometry: { type: 'Polygon', coordinates: [ring] } });
+        }
+      }
+
+      // Parse Point elements last (they are filtered out in rendering but kept for tooltip data)
+      for (const pointEl of Array.from(placemark.querySelectorAll('Point'))) {
+        const pointText = pointEl.querySelector('coordinates')?.textContent?.trim();
+        if (!pointText) continue;
+        const [lon = NaN, lat = NaN] = pointText.split(',').map(Number);
+        if (Number.isFinite(lon) && Number.isFinite(lat)) {
+          features.push({ type: 'Feature', properties: props, geometry: { type: 'Point', coordinates: [lon, lat] } });
+        }
+      }
+    }
+
+    return { type: 'FeatureCollection', features };
+  }
+
+  /**
+   * Fetches a KML URL and converts it to GeoJSON for native rendering.
+   * Tries a direct fetch first; falls back to /api/gmaps-kml proxy on network failure.
+   */
+  private async loadConflictKml(kmlUrl: string, folderTranslations: Record<string, string>): Promise<void> {
+    const version = ++this.conflictKmlFetchVersion;
+    this.conflictOverlayGeoJson = null;
+    this.render();
+
+    let text: string | null = null;
+    try {
+      const res = await fetch(kmlUrl);
+      if (res.ok) text = await res.text();
+    } catch {
+      // Direct fetch blocked (CORS) — try dev proxy
+      try {
+        const proxied = `/api/gmaps-kml?url=${encodeURIComponent(kmlUrl)}`;
+        const res = await fetch(proxied);
+        if (res.ok) text = await res.text();
+      } catch { /* silently fail */ }
+    }
+
+    if (version !== this.conflictKmlFetchVersion || !text) return;
+    this.conflictOverlayGeoJson = this.parseKmlToGeoJson(text);
+    this.conflictLegendEntries = this.deriveConflictLegendEntries(this.conflictOverlayGeoJson, folderTranslations);
+    this.updateLegend();
+    this.render();
+  }
+
+  /**
+   * Derives legend entries from the parsed GeoJSON.
+   * Only includes folders listed in folderTranslations.
+   * Deduplicates by unique color so each distinct color gets one swatch.
+   */
+  private deriveConflictLegendEntries(
+    geojson: GeoJSON.FeatureCollection,
+    folderTranslations: Record<string, string>,
+  ): Array<{ label: string; color: [number, number, number, number]; type: 'line' | 'polygon' }> {
+    const seen = new Map<string, { label: string; color: [number, number, number, number]; type: 'line' | 'polygon' }>();
+
+    for (const f of geojson.features) {
+      const p = f.properties as Record<string, unknown> | null;
+      const gtype = f.geometry.type;
+      if (gtype === 'Point' || gtype === 'MultiPoint') continue;
+
+      const folder = (p?._folder as string | undefined) ?? '';
+      const translatedLabel = folderTranslations[folder];
+      if (!translatedLabel) continue; // skip folders not in the allow-list
+
+      const isLine = gtype === 'LineString' || gtype === 'MultiLineString';
+      const type: 'line' | 'polygon' = isLine ? 'line' : 'polygon';
+      const color = (isLine
+        ? (p?._lineColor ?? p?._fillColor)
+        : p?._fillColor) as [number, number, number, number] | undefined;
+      if (!color) continue;
+
+      const key = `${translatedLabel}|${type}|${color.join(',')}`;
+      if (!seen.has(key)) seen.set(key, { label: translatedLabel, color, type });
+    }
+
+    return Array.from(seen.values());
+  }
+
+  /** Renders the active conflict KML overlay as a native GeoJsonLayer using KML-sourced colors. */
+  private createConflictOverlayLayer(): GeoJsonLayer | null {
+    if (!this.conflictOverlayGeoJson) return null;
+
+    // Skip Point features — they are labelled Google Maps pins, not meaningful conflict geometry.
+    const data: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: this.conflictOverlayGeoJson.features.filter(
+        f => f.geometry.type !== 'Point' && f.geometry.type !== 'MultiPoint',
+      ),
+    };
+
+    return new GeoJsonLayer({
+      id: 'conflict-overlay-layer',
+      data,
+      pickable: true,
+      filled: true,
+      stroked: true,
+      extruded: false,
+      getPointRadius: 8,
+      pointRadiusUnits: 'pixels' as const,
+      pointRadiusMinPixels: 5,
+      pointRadiusMaxPixels: 14,
+      getLineWidth: (f: GeoJSON.Feature) => {
+        const p = f.properties as Record<string, unknown> | null;
+        return (p?._lineWidth as number | undefined) ?? 2;
+      },
+      lineWidthUnits: 'pixels' as const,
+      lineWidthMinPixels: 1,
+      getFillColor: (f: GeoJSON.Feature) => {
+        const p = f.properties as Record<string, unknown> | null;
+        // Points use icon color; polygons use fill color
+        const color = (f.geometry.type === 'Point'
+          ? (p?._iconColor ?? p?._fillColor)
+          : p?._fillColor) as [number, number, number, number] | undefined;
+        return color ?? [0, 0, 0, 0];
+      },
+      getLineColor: (f: GeoJSON.Feature) => {
+        const p = f.properties as Record<string, unknown> | null;
+        const color = (p?._lineColor ?? p?._fillColor) as [number, number, number, number] | undefined;
+        return color ?? [0, 0, 0, 0];
+      },
+    });
+  }
+
   private getTooltip(info: PickingInfo): { html: string } | null {
     if (!info.object) return null;
 
@@ -3819,6 +4062,16 @@ export class DeckGLMap {
           ? `${obj.count} webcams`
           : (obj.title || obj.name || 'Webcam');
         return { html: `<div class="deckgl-tooltip"><strong>${text(label)}</strong></div>` };
+      }
+      case 'conflict-overlay-layer': {
+        const name = (obj.properties?.name ?? obj.name ?? '') as string;
+        const desc = (obj.properties?.description ?? '') as string;
+        if (!name && !desc) return null;
+        const cleanDesc = desc.replace(/<[^>]+>/g, '').slice(0, 80);
+        const descSnippet = cleanDesc
+          ? `<br/><span style="opacity:.7">${text(cleanDesc)}${cleanDesc.length === 80 ? '…' : ''}</span>`
+          : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(name)}</strong>${descSnippet}</div>` };
       }
       default:
         return null;
@@ -4223,6 +4476,7 @@ export class DeckGLMap {
     viewSelect.addEventListener('change', () => {
       this.setView(viewSelect.value as DeckMapView);
     });
+
   }
 
   private createTimeSlider(): void {
@@ -4626,8 +4880,14 @@ export class DeckGLMap {
       </div>
     `;
     legend.appendChild(ciiLegend);
-
     this.container.appendChild(legend);
+
+    // Conflict KML legend — separate panel so it doesn't disturb the main legend bar
+    const conflictLegend = document.createElement('div');
+    conflictLegend.className = 'conflict-kml-legend';
+    conflictLegend.id = 'conflictKmlLegend';
+    conflictLegend.style.display = 'none';
+    this.container.appendChild(conflictLegend);
     this.updateLegend();
   }
 
@@ -4637,10 +4897,38 @@ export class DeckGLMap {
       if (!layerKey || !(layerKey in this.state.layers)) return;
       item.style.display = this.state.layers[layerKey as keyof MapLayers] ? '' : 'none';
     });
-    const ciiLegend = this.container.querySelector<HTMLElement>('#ciiChoroplethLegend');
-    if (ciiLegend) {
-      ciiLegend.style.display = this.state.layers.ciiChoropleth ? 'block' : 'none';
+
+    const conflictLegend = this.container.querySelector<HTMLElement>('#conflictKmlLegend');
+    if (!conflictLegend) return;
+    if (!this.activeConflictLabel || this.conflictLegendEntries.length === 0) {
+      conflictLegend.style.display = 'none';
+      return;
     }
+
+    const toRgba = ([r, g, b, a]: [number, number, number, number]) =>
+      `rgba(${r},${g},${b},${(a / 255).toFixed(2)})`;
+
+    type LegendEntry = { color: [number, number, number, number]; type: 'line' | 'polygon' };
+    const groups = this.conflictLegendEntries.reduce<Map<string, LegendEntry[]>>(
+      (acc, entry) => acc.set(entry.label, [...(acc.get(entry.label) ?? []), entry]),
+      new Map(),
+    );
+
+    const rows = Array.from(groups.entries()).map(([label, entries]) => {
+      const swatches = entries.map(({ color, type }) => {
+        const c = toRgba(color);
+        return type === 'line'
+          ? `<svg width="18" height="4" viewBox="0 0 18 4"><line x1="0" y1="2" x2="18" y2="2" stroke="${c}" stroke-width="2.5"/></svg>`
+          : `<svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" fill="${c}" stroke="${c}" stroke-width="1"/></svg>`;
+      }).join('');
+      return `<div class="conflict-legend-row"><span class="conflict-legend-swatches">${swatches}</span><span>${escapeHtml(label)}</span></div>`;
+    }).join('');
+
+    conflictLegend.style.display = 'block';
+    conflictLegend.innerHTML = `
+      <div class="conflict-kml-legend-title">⚔ ${escapeHtml(this.activeConflictLabel)}</div>
+      <div class="conflict-legend-items">${rows}</div>
+    `;
   }
 
   // Public API methods (matching MapComponent interface)
@@ -4765,6 +5053,29 @@ export class DeckGLMap {
       return { lat: center.lat, lon: center.lng };
     }
     return null;
+  }
+
+  /** Activate a conflict scene by id (flies camera + loads KML overlay). Pass null to clear. */
+  public activateConflictScene(id: string | null): void {
+    if (!id) {
+      this.conflictOverlayGeoJson = null;
+      this.activeConflictLabel = null;
+      this.conflictLegendEntries = [];
+      this.updateLegend();
+      this.render();
+      return;
+    }
+    const scene = CONFLICT_SCENES.find(c => c.id === id);
+    if (!scene) return;
+    this.activeConflictLabel = scene.label;
+    this.maplibreMap?.flyTo({ center: [scene.lon, scene.lat], zoom: scene.zoom, duration: 1200 });
+    if (scene.kmlUrl) {
+      this.loadConflictKml(scene.kmlUrl, scene.folderTranslations ?? {}).catch(() => { /* failure handled inside */ });
+    } else {
+      this.conflictOverlayGeoJson = null;
+      this.updateLegend();
+      this.render();
+    }
   }
 
   public getBbox(): string | null {
@@ -6065,6 +6376,10 @@ export class DeckGLMap {
     this.stopPulseAnimation();
     this.stopDayNightTimer();
     this.stopWeatherRadar();
+    this.conflictOverlayGeoJson = null;
+    this.activeConflictLabel = null;
+    this.conflictLegendEntries = [];
+    this.conflictKmlFetchVersion++; // cancels any in-flight KML fetch
     if (this.aircraftFetchTimer) {
       clearInterval(this.aircraftFetchTimer);
       this.aircraftFetchTimer = null;
