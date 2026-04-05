@@ -82,11 +82,19 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
   try {
     const finalKey = raw ? key : prefixKey(key);
     // Atomic SET with EX — single call avoids race between SET and EXPIRE (C-3 fix)
-    await fetch(`${url}/set/${encodeURIComponent(finalKey)}/${encodeURIComponent(JSON.stringify(value))}/EX/${ttlSeconds}`, {
+    const resp = await fetch(`${url}/`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(['SET', finalKey, JSON.stringify(value), 'EX', String(ttlSeconds)]),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
+    const data = await resp.json().catch(() => null) as { result?: string; error?: string } | null;
+    if (!resp.ok || data?.error) {
+      console.warn(`[redis] setCachedJson failed:`, data?.error ?? `HTTP ${resp.status}`);
+    }
   } catch (err) {
     console.warn('[redis] setCachedJson failed:', errMsg(err));
   }
