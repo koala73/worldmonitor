@@ -121,6 +121,22 @@ describe('parseRecord', () => {
     assert.equal(result.daysOfCover, 90);
   });
 
+  it('accepts "Turkiye" (no umlaut) as an alias for Türkiye', () => {
+    const record = {
+      countryName: 'Turkiye',
+      total: '95',
+      industry: '95',
+      publicData: '0',
+      abroadIndustry: '0',
+      abroadPublic: '0',
+      yearMonth: 202511,
+    };
+    const result = parseRecord(record, FIXED_TS);
+    assert.ok(result !== null, 'Turkiye should not be dropped');
+    assert.equal(result.iso2, 'TR');
+    assert.equal(result.daysOfCover, 95);
+  });
+
   it('returns null for unknown country name', () => {
     const record = {
       countryName: 'Atlantis',

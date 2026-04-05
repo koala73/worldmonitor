@@ -201,7 +201,10 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
     recordCount: count,
     sourceVersion: source || '',
   };
-  await redisSet(url, token, metaKey, meta, ttlSeconds || 86400 * 7);
+  // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
+  // their meta key before the health check maxStaleMin threshold is reached.
+  const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
+  await redisSet(url, token, metaKey, meta, metaTtl);
   return meta;
 }
 
@@ -682,7 +685,11 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId });
     }
 
+<<<<<<< HEAD
     const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion, opts.metaTtlSeconds);
+=======
+    const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion, ttlSeconds);
+>>>>>>> 3b7a813f3 (fix(energy): 3 follow-up review fixes)
 
     const durationMs = Date.now() - startMs;
     logSeedResult(domain, recordCount, durationMs, { payloadBytes });

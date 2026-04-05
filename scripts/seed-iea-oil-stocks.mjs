@@ -25,7 +25,9 @@ const parseIntOrNull = (v) => {
 };
 
 export function parseRecord(record, seededAt) {
-  const iso2 = COUNTRY_MAP[record.countryName];
+  // IEA API oscillates between 'Türkiye' (with umlaut) and 'Turkiye'; normalize to map key.
+  const countryName = record.countryName === 'Turkiye' ? 'Türkiye' : record.countryName;
+  const iso2 = COUNTRY_MAP[countryName];
   if (!iso2) return null;
 
   const ym = String(record.yearMonth);
