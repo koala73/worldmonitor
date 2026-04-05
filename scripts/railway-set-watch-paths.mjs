@@ -31,6 +31,19 @@ const USES_SHARED_CONFIG = new Set([
 ]);
 
 const SERVICE_OVERRIDES = {
+  'seed-resilience-scores': {
+    watchPatterns: [
+      'scripts/seed-resilience-scores.mts',
+      'scripts/_seed-utils.mjs',
+      'scripts/package.json',
+      'server/worldmonitor/resilience/v1/_shared.ts',
+      'server/worldmonitor/resilience/v1/_dimension-scorers.ts',
+      'server/_shared/redis.ts',
+      'shared/**',
+    ],
+    startCommand: 'npx tsx seed-resilience-scores.mts',
+    cronSchedule: '0 */5 * * *', // every 5h — slightly inside the 6h score cache TTL
+  },
   'seed-resilience-static': {
     watchPatterns: [
       'scripts/seed-resilience-static.mjs',

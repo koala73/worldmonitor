@@ -11,10 +11,12 @@ import {
   RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DOMAIN_ORDER,
+  createMemoizedSeedReader,
   getResilienceDomainWeight,
   scoreAllDimensions,
   type ResilienceDimensionId,
   type ResilienceDomainId,
+  type ResilienceSeedReader,
 } from './_dimension-scorers';
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
@@ -23,7 +25,6 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:';
 export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
-export const RESILIENCE_WARM_LIMIT = 24;
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
 const LOW_CONFIDENCE_ALPHA_THRESHOLD = 0.55;
@@ -146,7 +147,7 @@ async function appendHistory(countryCode: string, overallScore: number): Promise
   ]);
 }
 
-export async function ensureResilienceScoreCached(countryCode: string): Promise<GetResilienceScoreResponse> {
+export async function ensureResilienceScoreCached(countryCode: string, reader?: ResilienceSeedReader): Promise<GetResilienceScoreResponse> {
   const normalizedCountryCode = normalizeCountryCode(countryCode);
   if (!normalizedCountryCode) {
     return {
@@ -165,7 +166,7 @@ export async function ensureResilienceScoreCached(countryCode: string): Promise<
     scoreCacheKey(normalizedCountryCode),
     RESILIENCE_SCORE_CACHE_TTL_SECONDS,
     async () => {
-      const scoreMap = await scoreAllDimensions(normalizedCountryCode);
+      const scoreMap = await scoreAllDimensions(normalizedCountryCode, reader);
       const dimensions = buildDimensionList(scoreMap);
       const domains = buildDomainList(dimensions);
       const overallScore = round(
@@ -264,5 +265,8 @@ export function sortRankingItems(items: ResilienceRankingItem[]): ResilienceRank
 
 export async function warmMissingResilienceScores(countryCodes: string[]): Promise<void> {
   const uniqueCodes = [...new Set(countryCodes.map((countryCode) => normalizeCountryCode(countryCode)).filter(Boolean))];
-  await Promise.allSettled(uniqueCodes.slice(0, RESILIENCE_WARM_LIMIT).map((countryCode) => ensureResilienceScoreCached(countryCode)));
+  // Share one memoized reader across all countries so global Redis keys (conflict events,
+  // sanctions, unrest, etc.) are fetched only once instead of once per country.
+  const sharedReader = createMemoizedSeedReader();
+  await Promise.allSettled(uniqueCodes.map((countryCode) => ensureResilienceScoreCached(countryCode, sharedReader)));
 }

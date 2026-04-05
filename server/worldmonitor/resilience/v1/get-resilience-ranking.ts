@@ -19,6 +19,15 @@ import {
 const RESILIENCE_RANKING_META_KEY = 'seed-meta:resilience:ranking';
 const RESILIENCE_RANKING_META_TTL_SECONDS = 7 * 24 * 60 * 60;
 
+// How many missing countries to score synchronously per ranking request.
+// The shared memoized reader means global Redis keys are fetched once total
+// (not once per country), so the actual Upstash burst is:
+//   17 shared reads + N×3 per-country reads + N pipeline writes
+// Wall time does NOT scale with N because all countries run via Promise.allSettled
+// in parallel; it is bounded by ~2-3 sequential RTTs within one country (~60-150 ms).
+// 200 covers the full static index (~130-180 countries) in a single cold-cache pass.
+const SYNC_WARM_LIMIT = 200;
+
 export const getResilienceRanking: ResilienceServiceHandler['getResilienceRanking'] = async (
   _ctx: ServerContext,
   _req: GetResilienceRankingRequest,
@@ -33,7 +42,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
   if (missing.length > 0) {
     try {
-      await warmMissingResilienceScores(missing);
+      await warmMissingResilienceScores(missing.slice(0, SYNC_WARM_LIMIT));
       cachedScores = await getCachedResilienceScores(countryCodes);
     } catch (err) {
       console.warn('[resilience] ranking warmup failed:', err);
