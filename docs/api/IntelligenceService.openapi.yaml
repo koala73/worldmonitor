@@ -678,6 +678,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-energy-profile:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryEnergyProfile
+            description: GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+            operationId: GetCountryEnergyProfile
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryEnergyProfileResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1968,3 +2000,130 @@ components:
                     format: int64
                     description: 'Unix epoch milliseconds when posted.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: SocialVelocityPost represents a trending Reddit post with velocity scoring.
+        GetCountryEnergyProfileRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+        GetCountryEnergyProfileResponse:
+            type: object
+            properties:
+                mixAvailable:
+                    type: boolean
+                    description: Phase 1 — OWID structural mix (~200 countries)
+                mixYear:
+                    type: integer
+                    format: int32
+                coalShare:
+                    type: number
+                    format: double
+                gasShare:
+                    type: number
+                    format: double
+                oilShare:
+                    type: number
+                    format: double
+                nuclearShare:
+                    type: number
+                    format: double
+                renewShare:
+                    type: number
+                    format: double
+                windShare:
+                    type: number
+                    format: double
+                solarShare:
+                    type: number
+                    format: double
+                hydroShare:
+                    type: number
+                    format: double
+                importShare:
+                    type: number
+                    format: double
+                gasStorageAvailable:
+                    type: boolean
+                    description: Phase 2 — EU gas storage
+                gasStorageFillPct:
+                    type: number
+                    format: double
+                gasStorageChange1d:
+                    type: number
+                    format: double
+                gasStorageTrend:
+                    type: string
+                gasStorageDate:
+                    type: string
+                electricityAvailable:
+                    type: boolean
+                    description: |-
+                        Phase 2 — EU electricity (ENTSO-E countries: DE FR ES IT NL BE PL PT GB NO SE)
+                         US electricity is stored by EIA balancing area, not ISO2 — not available here
+                electricityPriceMwh:
+                    type: number
+                    format: double
+                electricitySource:
+                    type: string
+                electricityDate:
+                    type: string
+                jodiOilAvailable:
+                    type: boolean
+                    description: Phase 2.5 — JODI Oil (~90+ countries)
+                jodiOilDataMonth:
+                    type: string
+                gasolineDemandKbd:
+                    type: number
+                    format: double
+                gasolineImportsKbd:
+                    type: number
+                    format: double
+                dieselDemandKbd:
+                    type: number
+                    format: double
+                dieselImportsKbd:
+                    type: number
+                    format: double
+                jetDemandKbd:
+                    type: number
+                    format: double
+                jetImportsKbd:
+                    type: number
+                    format: double
+                lpgDemandKbd:
+                    type: number
+                    format: double
+                crudeImportsKbd:
+                    type: number
+                    format: double
+                lpgImportsKbd:
+                    type: number
+                    format: double
+                jodiGasAvailable:
+                    type: boolean
+                    description: Phase 2.5 — JODI Gas
+                jodiGasDataMonth:
+                    type: string
+                gasTotalDemandTj:
+                    type: number
+                    format: double
+                gasLngImportsTj:
+                    type: number
+                    format: double
+                gasPipeImportsTj:
+                    type: number
+                    format: double
+                gasLngShare:
+                    type: number
+                    format: double
+                ieaStocksAvailable:
+                    type: boolean
+                    description: Phase 2.5 — IEA oil stocks (~31 IEA members)
+                ieaStocksDataMonth:
+                    type: string
+                ieaDaysOfCover:
+                    type: integer
+                    format: int32
+                ieaNetExporter:
+                    type: boolean
+                ieaBelowObligation:
+                    type: boolean
