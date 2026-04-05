@@ -1,0 +1,89 @@
+name: Deploy Convex
+
+on:
+  workflow_run:
+    workflows: ["Deploy Gate"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: convex-prod-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.repository == 'koala73/worldmonitor' &&
+      secrets.CONVEX_DEPLOY_KEY != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+    steps:
+      - name: Check whether Convex-related files changed
+        id: changes
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          repo = os.environ["REPO"]
+          sha = os.environ["SHA"]
+          output_path = os.environ["GITHUB_OUTPUT"]
+
+          result = subprocess.run(
+              ["gh", "api", f"repos/{repo}/commits/{sha}"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          payload = json.loads(result.stdout)
+          changed_files = [entry["filename"] for entry in payload.get("files", [])]
+
+          watched_paths = ("convex/", "package.json", "package-lock.json")
+          should_deploy = any(
+              path.startswith("convex/") or path in watched_paths[1:]
+              for path in changed_files
+          )
+
+          print("Changed files:")
+          for path in changed_files:
+              print(f" - {path}")
+          print(f"should_deploy={str(should_deploy).lower()}")
+
+          with open(output_path, "a", encoding="utf-8") as handle:
+              handle.write(f"should_deploy={str(should_deploy).lower()}\n")
+          PY
+
+      - name: Checkout merged commit
+        if: steps.changes.outputs.should_deploy == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.should_deploy == 'true'
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.changes.outputs.should_deploy == 'true'
+        run: npm ci
+
+      - name: Deploy Convex production
+        if: steps.changes.outputs.should_deploy == 'true'
+        run: npx convex deploy --cmd "npm run build" --yes
+
+      - name: Skip deployment
+        if: steps.changes.outputs.should_deploy != 'true'
+        run: echo "No Convex-related files changed in $SHA; skipping deploy."
