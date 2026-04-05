@@ -56,6 +56,7 @@ export const GAS_STORAGE_KEY_PREFIX = 'energy:gas-storage:v1:';
 export const GAS_STORAGE_COUNTRIES_KEY = 'energy:gas-storage:v1:_countries';
 export const SPR_KEY = 'economic:spr:v1';
 export const REFINERY_INPUTS_KEY = 'economic:refinery-inputs:v1';
+export const ENERGY_INTELLIGENCE_KEY = 'energy:intelligence:v1:feed';
 
 /**
  * Static cache keys for the bootstrap endpoint.
