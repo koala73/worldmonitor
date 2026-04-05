@@ -33,15 +33,38 @@ const SECONDARY_PRODUCTS = {
   LPG: 'lpg',
 };
 
+function splitCsvLine(line) {
+  const fields = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { field += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { field += ch; }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      fields.push(field.trim());
+      field = '';
+    } else {
+      field += ch;
+    }
+  }
+  fields.push(field.trim());
+  return fields;
+}
+
 export function parseCsv(text) {
   const lines = text.split('\n');
   if (!lines.length) return [];
-  const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const header = splitCsvLine(lines[0]);
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
-    const parts = line.split(',').map(p => p.trim().replace(/^"|"$/g, ''));
+    const parts = splitCsvLine(line);
     const row = {};
     for (let j = 0; j < header.length; j++) {
       row[header[j]] = parts[j] ?? '';
@@ -74,7 +97,13 @@ export function extractCountryData(allRows, iso2) {
   for (const month of sortedMonths) {
     const monthRows = byMonth.get(month);
     const hasValidCode = monthRows.some(r => r.ASSESSMENT_CODE === '1' || r.ASSESSMENT_CODE === '2');
-    if (hasValidCode) {
+    if (!hasValidCode) continue;
+    // Require at least one valid secondary-product row so a failed secondary
+    // download (crude-only month) never becomes the chosen dataMonth.
+    const hasSecondaryData = monthRows.some(
+      r => (r.ASSESSMENT_CODE === '1' || r.ASSESSMENT_CODE === '2') && r.ENERGY_PRODUCT in SECONDARY_PRODUCTS,
+    );
+    if (hasSecondaryData) {
       dataMonth = month;
       break;
     }

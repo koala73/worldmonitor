@@ -80,6 +80,20 @@ describe('parseCsv', () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0].REF_AREA, 'DE');
   });
+
+  it('handles quoted field containing a comma without splitting it', () => {
+    const csv = 'REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE\n"DE,extra",2025-11,GASDIES,TOTDEMO,KBD,100,1';
+    const rows = parseCsv(csv);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].REF_AREA, 'DE,extra');
+    assert.equal(rows[0].OBS_VALUE, '100');
+  });
+
+  it('handles escaped double-quote inside quoted field', () => {
+    const csv = 'REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE\n"DE""X",2025-11,GASDIES,TOTDEMO,KBD,100,1';
+    const rows = parseCsv(csv);
+    assert.equal(rows[0].REF_AREA, 'DE"X');
+  });
 });
 
 describe('parseObsValue', () => {
@@ -243,6 +257,28 @@ describe('extractCountryData schema', () => {
     const result = extractCountryData(rows, 'DE');
     assert.ok(result !== null);
     assert.equal(result.diesel.demandKbd, 850);
+  });
+
+  it('skips crude-only months and falls back to prior-year month with secondary data', () => {
+    const rows = [
+      // Current-year month: crude only (simulates failed secondary/currentYear.csv)
+      makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'CRUDEOIL', FLOW_BREAKDOWN: 'INDPROD', OBS_VALUE: '500', ASSESSMENT_CODE: '1' }),
+      // Prior-year month: has both crude and secondary product data
+      makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2024-11', ENERGY_PRODUCT: 'CRUDEOIL', FLOW_BREAKDOWN: 'INDPROD', OBS_VALUE: '490', ASSESSMENT_CODE: '1' }),
+      makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2024-11', ENERGY_PRODUCT: 'GASDIES', FLOW_BREAKDOWN: 'TOTDEMO', OBS_VALUE: '820', ASSESSMENT_CODE: '1' }),
+    ];
+    const result = extractCountryData(rows, 'DE');
+    assert.ok(result !== null, 'Should find a valid month');
+    assert.equal(result.dataMonth, '2024-11', 'Should use prior-year month with secondary data');
+    assert.equal(result.diesel.demandKbd, 820, 'Should have non-null secondary product data');
+  });
+
+  it('returns null when no month has secondary product data', () => {
+    const rows = [
+      makeRow({ REF_AREA: 'DE', TIME_PERIOD: '2025-11', ENERGY_PRODUCT: 'CRUDEOIL', FLOW_BREAKDOWN: 'INDPROD', OBS_VALUE: '500', ASSESSMENT_CODE: '1' }),
+    ];
+    const result = extractCountryData(rows, 'DE');
+    assert.equal(result, null, 'Should return null when only crude rows are present');
   });
 });
 
