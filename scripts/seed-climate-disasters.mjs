@@ -5,7 +5,6 @@ import { extractCountryCode } from './shared/geo-extract.mjs';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
 
 loadEnvFile(import.meta.url);
 
@@ -28,8 +27,7 @@ const RELIEFWEB_TYPE_TO_CANONICAL = {
 
 const COUNTRY_BBOXES = loadSharedConfig('country-bboxes.json');
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
-const ISO3_TO_ISO2 = require('../shared/iso3-to-iso2.json');
+const ISO3_TO_ISO2 = loadSharedConfig('iso3-to-iso2.json');
 const COUNTRY_NAMES_RAW = loadSharedConfig('country-names.json');
 
 function titleCase(str) {
