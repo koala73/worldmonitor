@@ -364,12 +364,22 @@ function mapNaturalEvent(event) {
 }
 
 async function fetchNaturalClimateDisasters() {
-  const data = await verifySeedKey(NATURAL_EVENTS_KEY).catch(() => null);
+  let data;
+  try {
+    data = await verifySeedKey(NATURAL_EVENTS_KEY);
+  } catch (err) {
+    console.warn(`  [NaturalEvents] Redis read failed: ${err?.message || err}`);
+    return [];
+  }
+  if (!data) {
+    console.warn('  [NaturalEvents] natural:events:v1 key is empty or missing in Redis');
+    return [];
+  }
   const events = asArray(data?.events);
-  return events
-    .filter(isClimateNaturalEvent)
-    .map(mapNaturalEvent)
-    .filter(Boolean);
+  console.log(`  [NaturalEvents] ${events.length} raw events from natural:events:v1`);
+  const climate = events.filter(isClimateNaturalEvent);
+  console.log(`  [NaturalEvents] ${climate.length} matched climate filter`);
+  return climate.map(mapNaturalEvent).filter(Boolean);
 }
 
 function dedupeAndSort(entries) {
