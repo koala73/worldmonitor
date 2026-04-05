@@ -486,6 +486,7 @@ const TELEGRAM_MAX_TEXT_CHARS = Math.max(200, Number(process.env.TELEGRAM_MAX_TE
 
 const telegramState = {
   client: null,
+  api: null,
   channels: [],
   cursorByHandle: Object.create(null),
   items: [],
@@ -493,6 +494,12 @@ const telegramState = {
   lastError: null,
   startedAt: Date.now(),
 };
+
+const TELEGRAM_RESOLVE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const TELEGRAM_CHANNEL_CACHE_TTL_MS = 60_000;
+const TELEGRAM_USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/;
+const telegramResolveCache = new Map();
+const telegramChannelCache = new Map();
 
 const orefState = {
   lastAlerts: [],
@@ -563,6 +570,136 @@ function normalizeTelegramMessage(msg, channel) {
   };
 }
 
+function sanitizeTelegramUsername(raw) {
+  const value = String(raw || '')
+    .trim()
+    .replace(/^https?:\/\/t\.me\//i, '')
+    .replace(/^@+/, '')
+    .replace(/\/+$/, '')
+    .replace(/[?#].*$/, '')
+    .trim();
+
+  if (!TELEGRAM_USERNAME_RE.test(value)) {
+    throw new Error('Invalid Telegram username');
+  }
+
+  return value.toLowerCase();
+}
+
+function getCachedTelegramValue(cache, key) {
+  const cached = cache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedTelegramValue(cache, key, value, ttlMs) {
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
+function getTelegramErrorStatus(error) {
+  const message = String(error?.message || error || '');
+  if (/invalid telegram username/i.test(message)) return 400;
+  if (/FLOOD_WAIT/i.test(message)) return 429;
+  if (/USERNAME_NOT_OCCUPIED|No user has|No channel has|Cannot find any entity/i.test(message)) return 404;
+  if (/not active|not installed|invalidated/i.test(message)) return 503;
+  return 502;
+}
+
+function buildTelegramChannelPreview(entity, fallbackUsername, memberCount = null) {
+  const username = sanitizeTelegramUsername(entity?.username || fallbackUsername);
+  const title = String(entity?.title || entity?.firstName || username);
+  return {
+    username,
+    title,
+    memberCount: Number.isFinite(memberCount) ? memberCount : null,
+    url: `https://t.me/${username}`,
+  };
+}
+
+async function resolveTelegramChannel(username) {
+  const normalized = sanitizeTelegramUsername(username);
+  const cached = getCachedTelegramValue(telegramResolveCache, normalized);
+  if (cached) return cached;
+
+  const ok = await initTelegramClientIfNeeded();
+  if (!ok || !telegramState.client) {
+    throw new Error(telegramState.lastError || 'Telegram relay not active');
+  }
+
+  const entity = await withTimeout(
+    telegramState.client.getEntity(normalized),
+    TELEGRAM_CHANNEL_TIMEOUT_MS,
+    `getEntity(${normalized})`,
+  );
+
+  let memberCount = null;
+  if (telegramState.api?.channels?.GetFullChannel) {
+    try {
+      const full = await withTimeout(
+        telegramState.client.invoke(new telegramState.api.channels.GetFullChannel({ channel: entity })),
+        TELEGRAM_CHANNEL_TIMEOUT_MS,
+        `getFullChannel(${normalized})`,
+      );
+      if (full?.fullChat instanceof telegramState.api.ChannelFull) {
+        memberCount = full.fullChat.participantsCount ?? null;
+      }
+    } catch (error) {
+      console.warn('[Relay] Telegram resolve participants count failed:', error?.message || error);
+    }
+  }
+
+  const value = {
+    preview: buildTelegramChannelPreview(entity, normalized, memberCount),
+    entity,
+  };
+  setCachedTelegramValue(telegramResolveCache, normalized, value, TELEGRAM_RESOLVE_CACHE_TTL_MS);
+  return value;
+}
+
+async function fetchTelegramChannelFeed(username, limit = 20) {
+  const normalized = sanitizeTelegramUsername(username);
+  const safeLimit = Math.max(1, Math.min(50, Number(limit) || 20));
+  const cacheKey = `${normalized}:${safeLimit}`;
+  const cached = getCachedTelegramValue(telegramChannelCache, cacheKey);
+  if (cached) return cached;
+
+  const ok = await initTelegramClientIfNeeded();
+  if (!ok || !telegramState.client) {
+    throw new Error(telegramState.lastError || 'Telegram relay not active');
+  }
+
+  const { preview, entity } = await resolveTelegramChannel(normalized);
+  const msgs = await withTimeout(
+    telegramState.client.getMessages(entity, { limit: safeLimit }),
+    TELEGRAM_CHANNEL_TIMEOUT_MS,
+    `getMessages(${normalized})`,
+  );
+
+  const items = [];
+  const channel = { handle: preview.username, label: preview.title, topic: 'osint', region: 'watchlist' };
+  for (const msg of msgs || []) {
+    if (!msg || !msg.id || !msg.message) continue;
+    items.push(normalizeTelegramMessage(msg, channel));
+  }
+
+  items.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+
+  const value = {
+    source: 'telegram',
+    earlySignal: true,
+    enabled: TELEGRAM_ENABLED,
+    count: items.length,
+    updatedAt: new Date().toISOString(),
+    items,
+  };
+  setCachedTelegramValue(telegramChannelCache, cacheKey, value, TELEGRAM_CHANNEL_CACHE_TTL_MS);
+  return value;
+}
+
 let telegramPermanentlyDisabled = false;
 
 async function initTelegramClientIfNeeded() {
@@ -577,7 +714,7 @@ async function initTelegramClientIfNeeded() {
   if (!apiId || !apiHash || !sessionStr) return false;
 
   try {
-    const { TelegramClient } = await import('telegram');
+    const { TelegramClient, Api } = await import('telegram');
     const { StringSession } = await import('telegram/sessions/index.js');
 
     const client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
@@ -586,6 +723,7 @@ async function initTelegramClientIfNeeded() {
 
     await client.connect();
     telegramState.client = client;
+    telegramState.api = Api;
     telegramState.lastError = null;
     console.log('[Relay] Telegram client connected');
     return true;
@@ -679,6 +817,7 @@ async function pollTelegramOnce() {
         console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
         try { telegramState.client?.disconnect(); } catch {}
         telegramState.client = null;
+        telegramState.api = null;
         break;
       }
       if (/FLOOD_WAIT/.test(em)) {
@@ -8718,7 +8857,36 @@ const server = http.createServer(async (req, res) => {
 
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(diag, null, 2));
-  } else if (pathname === '/telegram' || pathname.startsWith('/telegram/')) {
+  } else if (pathname === '/telegram/resolve') {
+    try {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const username = url.searchParams.get('username') || '';
+      const { preview } = await resolveTelegramChannel(username);
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=3600',
+        'CDN-Cache-Control': 'public, max-age=86400',
+      }, JSON.stringify(preview));
+    } catch (e) {
+      res.writeHead(getTelegramErrorStatus(e), { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e?.message || 'Internal error' }));
+    }
+  } else if (pathname === '/telegram/channel') {
+    try {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const username = url.searchParams.get('username') || '';
+      const limit = Math.max(1, Math.min(50, Number(url.searchParams.get('limit') || 20)));
+      const payload = await fetchTelegramChannelFeed(username, limit);
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=30',
+        'CDN-Cache-Control': 'public, max-age=60',
+      }, JSON.stringify(payload));
+    } catch (e) {
+      res.writeHead(getTelegramErrorStatus(e), { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e?.message || 'Internal error' }));
+    }
+  } else if (pathname === '/telegram' || pathname === '/telegram/feed') {
     // Telegram Early Signals feed (public channels)
     try {
       const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -10447,6 +10615,7 @@ async function gracefulShutdown(signal) {
       ]);
     } catch {}
     telegramState.client = null;
+    telegramState.api = null;
   }
   if (upstreamSocket) {
     try { upstreamSocket.close(); } catch {}
