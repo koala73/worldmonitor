@@ -207,11 +207,7 @@ function resolveCountryInfo({ code = '', iso3 = '', name = '', lat = NaN, lng = 
 // before enabling this seed, or ReliefWeb fetches will fail closed.
 function getReliefWebAppname() {
   const appname = String(process.env.RELIEFWEB_APPNAME || process.env.RELIEFWEB_APP_NAME || '').trim();
-  if (!appname) {
-    const err = new Error('RELIEFWEB_APPNAME is required; ReliefWeb now requires a pre-approved appname');
-    err.isConfigError = true;
-    throw err;
-  }
+  if (!appname) return null;
   return appname;
 }
 
@@ -283,6 +279,10 @@ function mapReliefItem(item) {
 
 async function fetchReliefWeb() {
   const appname = getReliefWebAppname();
+  if (!appname) {
+    console.warn('  [ReliefWeb] RELIEFWEB_APPNAME not set, skipping ReliefWeb fetch');
+    return [];
+  }
   const requestBodies = buildReliefWebRequestBodies();
 
   let lastError = null;

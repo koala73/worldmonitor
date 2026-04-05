@@ -31,14 +31,11 @@ describe('seed-climate-disasters helpers', () => {
     assert.deepEqual(typeFilter.value, ['FL', 'TC', 'DR', 'HT', 'WF']);
   });
 
-  it('requires an approved ReliefWeb appname to be configured', () => {
+  it('returns null when RELIEFWEB_APPNAME is not configured', () => {
     delete process.env.RELIEFWEB_APPNAME;
     delete process.env.RELIEFWEB_APP_NAME;
 
-    assert.throws(
-      () => getReliefWebAppname(),
-      /RELIEFWEB_APPNAME is required/,
-    );
+    assert.equal(getReliefWebAppname(), null);
   });
 
   it('only reuses GDACS or NASA FIRMS items from natural:events:v1', () => {
