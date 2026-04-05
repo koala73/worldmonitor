@@ -8,7 +8,11 @@ loadEnvFile(import.meta.url);
 const once = process.argv.includes('--once');
 const runId = process.argv.find((arg) => arg.startsWith('--run-id='))?.split('=')[1] || '';
 
-const result = await runDeepForecastWorker({ once, runId });
-if (once && result?.status && result.status !== 'idle') {
-  console.log(`  [DeepForecast] ${result.status}`);
+try {
+  console.log(`[DeepForecast] Starting (once=${once}, pid=${process.pid})`);
+  const result = await runDeepForecastWorker({ once, runId });
+  console.log(`[DeepForecast] Exiting: ${result?.status || 'unknown'}`);
+} catch (err) {
+  console.error(`[DeepForecast] FATAL: ${err.message}`);
+  process.exit(1);
 }

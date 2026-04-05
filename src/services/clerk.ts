@@ -115,6 +115,12 @@ export async function signOut(): Promise<void> {
   await clerkInstance?.signOut();
 }
 
+/** Clear the cached Clerk token (call when Convex signals a 401 via forceRefreshToken). */
+export function clearClerkTokenCache(): void {
+  _cachedToken = null;
+  _cachedTokenAt = 0;
+}
+
 /**
  * Get a bearer token for premium API requests.
  * Uses the 'convex' JWT template which includes the `plan` claim.
@@ -135,8 +141,15 @@ export async function getClerkToken(): Promise<string | null> {
   if (_tokenInflight) return _tokenInflight;
 
   _tokenInflight = (async () => {
+    if (!clerkInstance && PUBLISHABLE_KEY) {
+      try { await initClerk(); } catch { /* Clerk load failed, proceed with null */ }
+    }
     const session = clerkInstance?.session;
-    if (!session) return null;
+    if (!session) {
+      console.warn(`[clerk] getClerkToken: no session (clerkInstance=${!!clerkInstance}, user=${!!clerkInstance?.user})`);
+      _tokenInflight = null;
+      return null;
+    }
     try {
       // Try the 'convex' template first (includes plan claim for faster server-side checks).
       // Fall back to the standard session token if the template isn't configured in Clerk.

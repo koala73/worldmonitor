@@ -23,6 +23,7 @@ import type {
   CountryFactsData,
 } from './CountryBriefPanel';
 import type { MapContainer } from './MapContainer';
+import { ResilienceWidget } from './ResilienceWidget';
 
 type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 type TrendDirection = 'up' | 'down' | 'flat';
@@ -75,6 +76,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private timelineBody: HTMLElement | null = null;
   private scoreCard: HTMLElement | null = null;
   private factsBody: HTMLElement | null = null;
+  private resilienceWidget: ResilienceWidget | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -154,7 +156,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public showGeoError(onRetry: () => void): void {
     this.currentCode = '__error__';
     this.currentName = null;
-    this.content.replaceChildren();
+    this.resetPanelContent();
 
     const wrapper = this.el('div', 'cdp-geo-error');
     wrapper.append(
@@ -189,6 +191,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   public hide(): void {
+    this.destroyResilienceWidget();
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
       this.panel.classList.remove('maximized');
@@ -605,8 +608,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private renderLoading(): void {
-    this.scoreCard = null;
-    this.content.replaceChildren();
+    this.resetPanelContent();
     const loading = this.el('div', 'cdp-loading');
     loading.append(
       this.el('div', 'cdp-loading-title', t('countryBrief.identifying')),
@@ -617,7 +619,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private renderSkeleton(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void {
-    this.content.replaceChildren();
+    this.resetPanelContent();
 
     const shell = this.el('div', 'cdp-shell');
     const header = this.el('header', 'cdp-header');
@@ -692,6 +694,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       scoreCard.append(this.makeEmpty(t('countryBrief.ciiUnavailable')));
     }
 
+    this.resilienceWidget = new ResilienceWidget(code);
+    const summaryGrid = this.el('div', 'cdp-summary-grid');
+    summaryGrid.append(scoreCard, this.resilienceWidget.getElement());
+
     const bodyGrid = this.el('div', 'cdp-grid');
     const [signalsCard, signalBody] = this.sectionCard(t('countryBrief.activeSignals'));
     const [timelineCard, timelineBody] = this.sectionCard(t('countryBrief.timeline'));
@@ -727,8 +733,19 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
     bodyGrid.append(briefCard, factsExpanded, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
-    shell.append(header, scoreCard, bodyGrid);
+    shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
+  }
+
+  private destroyResilienceWidget(): void {
+    this.resilienceWidget?.destroy();
+    this.resilienceWidget = null;
+  }
+
+  private resetPanelContent(): void {
+    this.destroyResilienceWidget();
+    this.scoreCard = null;
+    this.content.replaceChildren();
   }
 
   private renderInitialSignals(signals: CountryBriefSignals): void {

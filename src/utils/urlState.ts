@@ -37,6 +37,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
   'gpsJamming',
   'satellites',
   'ciiChoropleth',
+  'resilienceScore',
 ];
 
 const TIME_RANGES: TimeRange[] = ['1h', '6h', '24h', '48h', '7d', 'all'];

@@ -4587,6 +4587,9 @@ function summarizeImpactPathScore(path = null) {
     pathId: path.pathId || '',
     type: path.type || '',
     candidateStateId: path.candidateStateId || '',
+    stateKind: path.candidate?.stateKind || '',
+    routeFacilityKey: path.candidate?.routeFacilityKey || '',
+    topBucketId: path.candidate?.marketContext?.topBucketId || path.candidate?.topBucketId || '',
     directVariableKey: path.direct?.variableKey || '',
     secondVariableKey: path.second?.variableKey || '',
     thirdVariableKey: path.third?.variableKey || '',
@@ -4600,6 +4603,21 @@ function summarizeImpactPathScore(path = null) {
     summary.mergedAcceptanceScore = Number(path.mergedAcceptanceScore || path.acceptanceScore || 0);
     if (path.simulationSignal !== undefined) {
       summary.simulationSignal = path.simulationSignal;
+    }
+    if (path.simulationAdjustmentDetail !== undefined) {
+      const d = path.simulationAdjustmentDetail;
+      summary.simDetail = {
+        bucketChannelMatch:    Boolean(d.bucketChannelMatch),
+        actorOverlapCount:     Number(d.actorOverlapCount),
+        roleOverlapCount:      Number(d.roleOverlapCount ?? d.actorOverlapCount),
+        keyActorsOverlapCount: Number(d.keyActorsOverlapCount ?? 0),
+        candidateActorCount:   Number(d.candidateActorCount),
+        actorSource:           d.actorSource,
+        resolvedChannel:       d.resolvedChannel || '',
+        channelSource:         d.channelSource,
+        invalidatorHit:        Boolean(d.invalidatorHit),
+        stabilizerHit:         Boolean(d.stabilizerHit),
+      };
     }
   }
   return summary;
@@ -11414,7 +11432,7 @@ function negatesDisruption(stabilizer, candidatePacket) {
  */
 function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePacket) {
   let adjustment = 0;
-  const details = { bucketChannelMatch: false, actorOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none', candidateActorCount: 0, actorSource: 'none', simPathConfidence: 1.0 };
+  const details = { bucketChannelMatch: false, actorOverlapCount: 0, roleOverlapCount: 0, keyActorsOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none', candidateActorCount: 0, actorSource: 'none', simPathConfidence: 1.0 };
 
   const { topPaths = [], invalidators = [], stabilizers = [] } = simTheaterResult || {};
   const pathBucket = expandedPath?.direct?.targetBucket
@@ -11471,13 +11489,27 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
     adjustment += +parseFloat((0.08 * simConf).toFixed(3));
     details.bucketChannelMatch = true;
     details.simPathConfidence = simConf;
-    const simActors = new Set((Array.isArray(bucketChannelMatch.keyActors) ? bucketChannelMatch.keyActors : []).map(normalizeActorName));
-    const overlap = candidateActors.filter((a) => simActors.has(a));
-    details.actorOverlapCount = overlap.length;
-    // Overlap bonus fires only when both sides have named geo-political actors.
-    // Macro-financial theaters with role-based stateSummary.actors (e.g. "Commodity traders",
-    // "Central banks") will have actorOverlapCount=0 — this is expected, not a bug.
-    if (overlap.length >= 2) {
+    // Role overlap: candidate stateSummary.actors vs sim keyActorRoles (role-category vocabulary).
+    // Drives +0.04 bonus when actorSource=stateSummary. keyActorRoles absent → overlap=0 (graceful).
+    if (actorSrc === 'stateSummary') {
+      const simRoles = new Set((Array.isArray(bucketChannelMatch.keyActorRoles) ? bucketChannelMatch.keyActorRoles : []).map(normalizeActorName).filter(Boolean));
+      details.roleOverlapCount = candidateActors.filter((a) => simRoles.has(a)).length;
+    }
+
+    // Entity overlap: candidate actors vs sim keyActors.
+    // Drives +0.04 bonus when actorSource=affectedAssets (backwards compat). Telemetry when actorSource=stateSummary.
+    const simEntities = new Set((Array.isArray(bucketChannelMatch.keyActors) ? bucketChannelMatch.keyActors : []).map(normalizeActorName).filter(Boolean));
+    details.keyActorsOverlapCount = candidateActors.filter((a) => simEntities.has(a)).length;
+
+    // Bonus decision: role overlap for stateSummary path; entity overlap for affectedAssets fallback.
+    // Explicit third branch for actorSource='none' (no actors) so future values don't fall through silently.
+    const bonusOverlap = actorSrc === 'stateSummary'
+      ? details.roleOverlapCount
+      : actorSrc === 'affectedAssets'
+        ? details.keyActorsOverlapCount
+        : 0;
+    details.actorOverlapCount = bonusOverlap; // backwards-compat alias
+    if (bonusOverlap >= 2) {
       adjustment += +parseFloat((0.04 * simConf).toFixed(3));
     }
   }
@@ -11568,6 +11600,7 @@ function applySimulationMerge(evaluation, simulationOutcome, candidatePackets, s
       demoted: wasAccepted && mergedAcceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
       simPathConfidence: details.simPathConfidence,
     };
+    path.simulationAdjustmentDetail = details;
 
     if (wasAccepted && mergedAcceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD) {
       path.demotedBySimulation = true;
@@ -12800,6 +12833,11 @@ function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null
     topChannel: c.marketContext?.topChannel || '',
     rankingScore: c.rankingScore,
     criticalSignalTypes: c.criticalSignalTypes || [],
+    actorRoles: [...new Set(
+      (Array.isArray(c?.stateSummary?.actors) ? c.stateSummary.actors : [])
+        .map((s) => String(s || '').trim())
+        .filter(Boolean),
+    )].slice(0, 12),
   }));
 
   const simulationRequirement = Object.fromEntries(
@@ -14075,7 +14113,7 @@ function validateCaseNarratives(items, predictions) {
 }
 
 function sanitizeForPrompt(text) {
-  return (text || '').replace(/[\n\r]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
+  return (text || '').replace(/[\n\r\u2028\u2029]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
 }
 
 // Sanitizes LLM-returned text before writing to Redis as a prompt section.
@@ -15611,9 +15649,10 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
 async function processNextDeepForecastTask(options = {}) {
   const workerId = options.workerId || `worker-${process.pid}-${Date.now()}`;
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedDeepForecastTasks(10);
+  console.log(`  [DeepForecast] Queue check: ${queuedRunIds.length} task(s) in ${FORECAST_DEEP_TASK_QUEUE_KEY}`);
   for (const runId of queuedRunIds) {
     const task = await claimDeepForecastTask(runId, workerId);
-    if (!task) continue;
+    if (!task) { console.log(`  [DeepForecast] ${runId}: already claimed or completed`); continue; }
     try {
       const result = await processDeepForecastTask(task);
       await completeDeepForecastTask(runId);
@@ -16159,6 +16198,11 @@ function buildSimulationRound2SystemPrompt(theater, pkg, round1) {
   const evalTargets = (r2EvalTargets?.requiredPaths || [])
     .map((p) => `- ${sanitizeForPrompt(p.pathType)}: ${sanitizeForPrompt(p.question)}`).join('\n') || '- General market and security dynamics';
 
+  const actorRoles = Array.isArray(theater.actorRoles) ? theater.actorRoles : [];
+  const rolesSection = actorRoles.length > 0
+    ? `\nCANDIDATE ACTOR ROLES (copy these EXACT strings into keyActorRoles; return [] if none apply):\n${actorRoles.map((r) => `- "${sanitizeForPrompt(r)}"`).join('\n')}`
+    : '';
+
   return `You are a geopolitical simulation engine. This is ROUND 2 of a 2-round theater simulation.
 
 THEATER: ${sanitizeForPrompt(theater.theaterLabel || theater.theaterId)} | Region: ${sanitizeForPrompt(theater.theaterRegion || theater.dominantRegion || '')}
@@ -16169,12 +16213,13 @@ ${pathSummaries}
 VALID ACTOR IDs: ${entityIds || '(see round 1)'}
 
 EVALUATION TARGETS:
-${evalTargets}
+${evalTargets}${rolesSection}
 
 INSTRUCTIONS:
 For each of the 3 paths from Round 1 (escalation, containment, market_cascade), generate the EVOLVED outcome after 72 hours.
 
-- keyActors: 2-4 actor IDs that drive this path
+- keyActors: 2-4 actor IDs that drive this path (entity names)
+- keyActorRoles: 0-4 strings copied verbatim from CANDIDATE ACTOR ROLES above (return [] if list is absent or none apply)
 - roundByRoundEvolution: 2 entries (round 1 summary, round 2 evolution)
 - timingMarkers: 2-4 key events with timing (T+Nh format)
 - stabilizers: 2-4 factors that could prevent the worst outcome
@@ -16189,6 +16234,7 @@ Return ONLY a JSON object with no markdown fences:
       "label": "<short label>",
       "summary": "<≤200 char evolved summary>",
       "keyActors": ["<entityId>"],
+      "keyActorRoles": ["<exact string from CANDIDATE ACTOR ROLES, or empty array>"],
       "roundByRoundEvolution": [
         { "round": 1, "summary": "<≤160 char>" },
         { "round": 2, "summary": "<≤160 char>" }
@@ -16196,8 +16242,8 @@ Return ONLY a JSON object with no markdown fences:
       "confidence": 0.35,
       "timingMarkers": [{ "event": "<≤80 char>", "timing": "T+Nh" }]
     },
-    { "pathId": "containment", "label": "...", "summary": "...", "keyActors": [], "roundByRoundEvolution": [], "confidence": 0.50, "timingMarkers": [] },
-    { "pathId": "market_cascade", "label": "...", "summary": "...", "keyActors": [], "roundByRoundEvolution": [], "confidence": 0.15, "timingMarkers": [] }
+    { "pathId": "containment", "label": "...", "summary": "...", "keyActors": [], "keyActorRoles": [], "roundByRoundEvolution": [], "confidence": 0.50, "timingMarkers": [] },
+    { "pathId": "market_cascade", "label": "...", "summary": "...", "keyActors": [], "keyActorRoles": [], "roundByRoundEvolution": [], "confidence": 0.15, "timingMarkers": [] }
   ],
   "stabilizers": ["<≤100 char>"],
   "invalidators": ["<≤100 char>"],
@@ -16206,6 +16252,11 @@ Return ONLY a JSON object with no markdown fences:
 }`;
 }
 
+/**
+ * @param {string} text - raw LLM response text (JSON or JSON-with-prefix)
+ * @param {1 | 2} round - simulation round number
+ * @returns {{ paths: object[] | null, stabilizers?: string[], invalidators?: string[], globalObservations?: string, confidenceNotes?: string, dominantReactions?: string[], note?: string }}
+ */
 function tryParseSimulationRoundPayload(text, round) {
   try {
     const parsed = JSON.parse(text);
@@ -16215,7 +16266,12 @@ function tryParseSimulationRoundPayload(text, round) {
     if (paths.length === 0) return { paths: null };
     if (round === 2) {
       return {
-        paths,
+        paths: paths.map((p) => ({
+          ...p,
+          keyActorRoles: Array.isArray(p.keyActorRoles)
+            ? p.keyActorRoles.map((s) => sanitizeForPrompt(String(s || '')).trim()).filter(Boolean).slice(0, 10)
+            : [],
+        })),
         stabilizers: Array.isArray(parsed.stabilizers) ? parsed.stabilizers.map(String).slice(0, 6) : [],
         invalidators: Array.isArray(parsed.invalidators) ? parsed.invalidators.map(String).slice(0, 6) : [],
         globalObservations: String(parsed.globalObservations || '').slice(0, 300),
@@ -16792,6 +16848,7 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
         summary: p.summary,
         confidence: p.confidence,
         keyActors: (p.keyActors || []).slice(0, 4),
+        keyActorRoles: (p.keyActorRoles || []).slice(0, 8),
       })),
     dominantReactions: (tr.dominantReactions || []).slice(0, 3),
     stabilizers: (tr.stabilizers || []).slice(0, 3),
@@ -16866,9 +16923,27 @@ async function listQueuedSimulationTasks(limit = 10) {
   return Array.isArray(response?.result) ? response.result : [];
 }
 
+/**
+ * Sanitize and allowlist-filter LLM-returned keyActorRoles strings.
+ * Filters against theater.actorRoles (exact match after normalizeActorName).
+ * When allowedRoles is empty (old package, no actorRoles field), returns [] — no vocab = no valid roles.
+ * This prevents hallucinated keyActorRoles from old packages triggering the +0.04 overlap bonus.
+ * @param {string[] | undefined} rawRoles
+ * @param {string[]} allowedRoles
+ * @returns {string[]}
+ */
+function sanitizeKeyActorRoles(rawRoles, allowedRoles) {
+  if (!allowedRoles.length) return [];
+  const sanitized = (Array.isArray(rawRoles) ? rawRoles : [])
+    .map((s) => sanitizeForPrompt(String(s)).slice(0, 80));
+  const allowedNorm = new Set(allowedRoles.map(normalizeActorName));
+  return sanitized.filter((s) => allowedNorm.has(normalizeActorName(s))).slice(0, 8);
+}
+
 async function processNextSimulationTask(options = {}) {
   const workerId = options.workerId || `sim-worker-${process.pid}-${Date.now()}`;
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedSimulationTasks(10);
+  console.log(`  [Simulation] Queue check: ${queuedRunIds.length} task(s) in ${SIMULATION_TASK_QUEUE_KEY}`);
 
   for (const runId of queuedRunIds) {
     if (!validateRunId(runId)) {
@@ -16876,7 +16951,7 @@ async function processNextSimulationTask(options = {}) {
       continue;
     }
     const task = await claimSimulationTask(runId, workerId);
-    if (!task) continue;
+    if (!task) { console.log(`  [Simulation] ${runId}: already claimed or completed`); continue; }
 
     try {
       const { url, token } = getRedisCredentials();
@@ -16929,6 +17004,7 @@ async function processNextSimulationTask(options = {}) {
 
         const r2Paths = result.round2?.paths || [];
         const r1Paths = result.round1?.paths || [];
+        const allowedRoles = Array.isArray(theater.actorRoles) ? theater.actorRoles : [];
         const mergedPaths = (r2Paths.length ? r2Paths : r1Paths).map((p) => {
           const r1Path = r1Paths.find((r) => r.pathId === p.pathId);
           return {
@@ -16936,6 +17012,7 @@ async function processNextSimulationTask(options = {}) {
             label: sanitizeForPrompt(p.label || p.pathId).slice(0, 80),
             summary: sanitizeForPrompt(p.summary || '').slice(0, 200),
             keyActors: Array.isArray(p.keyActors) ? p.keyActors.map((s) => sanitizeForPrompt(String(s)).slice(0, 80)).slice(0, 6) : [],
+            keyActorRoles: sanitizeKeyActorRoles(p.keyActorRoles, allowedRoles),
             roundByRoundEvolution: Array.isArray(p.roundByRoundEvolution)
               ? p.roundByRoundEvolution.map((r) => ({ round: r.round, summary: sanitizeForPrompt(r.summary || '').slice(0, 160) }))
               : [{ round: 1, summary: sanitizeForPrompt((r1Path?.summary || p.summary || '')).slice(0, 160) }],
@@ -17167,6 +17244,7 @@ export {
   writeSimulationOutcome,
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,
+  tryParseSimulationRoundPayload,
   extractSimulationRoundPayload,
   runTheaterSimulation,
   enqueueSimulationTask,

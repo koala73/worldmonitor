@@ -527,6 +527,27 @@ export interface EconomicStressComponent {
   missing: boolean;
 }
 
+export interface GetFaoFoodPriceIndexRequest {
+}
+
+export interface GetFaoFoodPriceIndexResponse {
+  points: FaoFoodPricePoint[];
+  fetchedAt: string;
+  currentFfpi: number;
+  momPct: number;
+  yoyPct: number;
+}
+
+export interface FaoFoodPricePoint {
+  date: string;
+  ffpi: number;
+  meat: number;
+  dairy: number;
+  cereals: number;
+  oils: number;
+  sugar: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1123,6 +1144,29 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetEconomicStressResponse;
+  }
+
+  async getFaoFoodPriceIndex(req: GetFaoFoodPriceIndexRequest, options?: EconomicServiceCallOptions): Promise<GetFaoFoodPriceIndexResponse> {
+    let path = "/api/economic/v1/get-fao-food-price-index";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetFaoFoodPriceIndexResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

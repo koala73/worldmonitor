@@ -87,6 +87,7 @@ describe('Legacy api/*.js endpoint allowlist', () => {
     'opensky.js',
     'oref-alerts.js',
     'polymarket.js',
+    'product-catalog.js',
     'register-interest.js',
     'reverse-geocode.js',
     'mcp-proxy.js',
@@ -189,6 +190,134 @@ describe('oauth/authorize.js consent page safety', () => {
     assert.ok(
       src.includes('Access-Control-Allow-Headers'),
       'authorize.js: OPTIONS response must include Access-Control-Allow-Headers.',
+    );
+  });
+});
+
+describe('api/slack/oauth/start.ts safety', () => {
+  const startPath = join(root, 'api', 'slack', 'oauth', 'start.ts');
+
+  it('uses crypto.getRandomValues for CSRF state (not Math.random)', () => {
+    const src = readFileSync(startPath, 'utf-8');
+    assert.ok(
+      src.includes('crypto.getRandomValues'),
+      'start.ts: CSRF state must use crypto.getRandomValues — Math.random is predictable and exploitable',
+    );
+    assert.ok(
+      !src.includes('Math.random'),
+      'start.ts: must not use Math.random for state generation',
+    );
+  });
+
+  it('stores state in Upstash with EX TTL via pipeline (atomic)', () => {
+    const src = readFileSync(startPath, 'utf-8');
+    assert.ok(
+      src.includes("'EX'") || src.includes('"EX"'),
+      "start.ts: Upstash state entry must include 'EX' TTL to auto-expire unused tokens",
+    );
+    assert.ok(
+      src.includes('/pipeline'),
+      'start.ts: must use Upstash pipeline endpoint for atomic state storage',
+    );
+  });
+
+  it('uses AbortSignal.timeout on Upstash pipeline fetch', () => {
+    const src = readFileSync(startPath, 'utf-8');
+    assert.ok(
+      src.includes('AbortSignal.timeout'),
+      'start.ts: Upstash pipeline fetch must have AbortSignal.timeout to prevent hanging edge isolates',
+    );
+  });
+
+  it('validates bearer token before generating state', () => {
+    const src = readFileSync(startPath, 'utf-8');
+    // validateBearerToken must appear before getRandomValues
+    const validateIdx = src.indexOf('validateBearerToken');
+    const randomIdx = src.indexOf('getRandomValues');
+    assert.ok(validateIdx !== -1, 'start.ts: must call validateBearerToken');
+    assert.ok(randomIdx !== -1, 'start.ts: must call getRandomValues');
+    assert.ok(
+      validateIdx < randomIdx,
+      'start.ts: validateBearerToken must come before getRandomValues — generate state only for authenticated users',
+    );
+  });
+});
+
+describe('api/slack/oauth/callback.ts safety', () => {
+  const callbackPath = join(root, 'api', 'slack', 'oauth', 'callback.ts');
+
+  it("uses '*' as postMessage targetOrigin (works on all WM subdomains and previews)", () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    assert.ok(
+      src.includes("APP_ORIGIN = '*'"),
+      "callback.ts: postMessage targetOrigin must be '*' so it works on tech/finance/happy subdomains and " +
+      'preview deployments — a hardcoded origin would silently drop messages on all other origins. ' +
+      "Security comes from the e.origin check in the listener, not from targetOrigin.",
+    );
+  });
+
+  it('HTML-escapes the error param before embedding in response body (no XSS)', () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    assert.ok(
+      src.includes('escapeHtml(error)'),
+      'callback.ts: error param from Slack redirect must be HTML-escaped before embedding in response body — raw interpolation is a reflected XSS vector',
+    );
+  });
+
+  it('consumes CSRF state from Upstash after validation (prevents replay)', () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    const getIdx = src.indexOf('upstashGet');
+    const delIdx = src.indexOf('upstashDel');
+    assert.ok(getIdx !== -1, 'callback.ts: must call upstashGet to validate state');
+    assert.ok(delIdx !== -1, 'callback.ts: must call upstashDel to consume state after validation');
+    assert.ok(
+      getIdx < delIdx,
+      'callback.ts: must validate state (upstashGet) before consuming it (upstashDel)',
+    );
+  });
+
+  it('uses AbortSignal.timeout on all Upstash fetches', () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    // Both upstashGet and upstashDel must have timeouts — count occurrences
+    const timeoutCount = (src.match(/AbortSignal\.timeout/g) ?? []).length;
+    assert.ok(
+      timeoutCount >= 2,
+      `callback.ts: all Upstash fetches must have AbortSignal.timeout — found ${timeoutCount}, expected at least 2 (upstashGet + upstashDel)`,
+    );
+  });
+
+  it('does not redirect main window to Slack (dead-end fallback removed)', () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    assert.ok(
+      !src.includes('window.location.href'),
+      'callback.ts: must not redirect main window to Slack — without window.opener the user lands on a dead-end page. Show an allow-popups error instead.',
+    );
+  });
+});
+
+describe('vercel.json CSP: Slack OAuth callback has unsafe-inline override', () => {
+  const vercelJson = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf-8'));
+
+  it('vercel.json has a CSP override for /api/slack/oauth/callback allowing unsafe-inline scripts', () => {
+    const rule = vercelJson.headers?.find((r) => r.source === '/api/slack/oauth/callback');
+    assert.ok(rule, 'vercel.json: missing header rule for /api/slack/oauth/callback — the callback page serves inline JS (postMessage + window.close) which is blocked by the global CSP');
+    const csp = rule.headers?.find((h) => h.key === 'Content-Security-Policy');
+    assert.ok(csp, 'vercel.json: /api/slack/oauth/callback rule must include a Content-Security-Policy header');
+    assert.ok(
+      csp.value.includes("'unsafe-inline'"),
+      "vercel.json: /api/slack/oauth/callback CSP must include 'unsafe-inline' in script-src — the callback page uses an inline <script> to call postMessage and window.close()",
+    );
+  });
+
+  it('/api/slack/oauth/callback CSP override appears after the global CSP rule (must override it)', () => {
+    const headers = vercelJson.headers ?? [];
+    const globalIdx = headers.findIndex((r) => r.source === '/((?!docs).*)');
+    const callbackIdx = headers.findIndex((r) => r.source === '/api/slack/oauth/callback');
+    assert.ok(globalIdx !== -1, 'vercel.json: global CSP rule not found');
+    assert.ok(callbackIdx !== -1, 'vercel.json: callback CSP override not found');
+    assert.ok(
+      callbackIdx > globalIdx,
+      'vercel.json: /api/slack/oauth/callback CSP override must appear AFTER the global rule — Vercel applies rules in order and the last match wins',
     );
   });
 });

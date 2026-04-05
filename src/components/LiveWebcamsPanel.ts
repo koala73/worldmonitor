@@ -368,7 +368,22 @@ export class LiveWebcamsPanel extends Panel {
       return;
     }
     const freshIframe = this.createIframe(tracker.feed);
-    oldIframe.replaceWith(freshIframe);
+    try {
+      oldIframe.replaceWith(freshIframe);
+    } catch {
+      // DOM was restructured between parentNode check and replaceWith (race with scroll/channel switch).
+      // Fall back to appending the fresh iframe to the container.
+      this.clearIframeTimeout(oldIframe);
+      this.iframeTrackers.delete(oldIframe);
+      oldIframe.src = 'about:blank';
+      tracker.container.querySelector('.webcam-embed-fallback')?.remove();
+      tracker.container.appendChild(freshIframe);
+      const idx = this.iframes.indexOf(oldIframe);
+      if (idx >= 0) this.iframes[idx] = freshIframe;
+      else this.iframes.push(freshIframe);
+      this.trackIframe(freshIframe, tracker.feed, tracker.container);
+      return;
+    }
     oldIframe.src = 'about:blank';
 
     const idx = this.iframes.indexOf(oldIframe);

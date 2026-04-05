@@ -12,6 +12,8 @@ import {
   Landmark, Fuel
 } from 'lucide-react';
 import { t } from './i18n';
+import { initOverlay } from './services/checkout';
+import { PricingSection } from './components/PricingSection';
 import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
 import wiredLogo from './assets/wired-logo.svg';
 
@@ -177,7 +179,7 @@ const Navbar = () => (
         <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
         <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
       </div>
-      <a href="#waitlist" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+      <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
         {t('nav.reserveAccess')}
       </a>
     </div>
@@ -353,7 +355,7 @@ const TwoPathSplit = () => (
             </li>
           ))}
         </ul>
-        <a href="#waitlist" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
+        <a href="#pricing" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
           {t('twoPath.proCta')}
         </a>
       </div>
@@ -1149,6 +1151,25 @@ const EnterprisePage = () => (
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
 
+  // Initialize Dodo checkout overlay with success handler
+  useEffect(() => {
+    initOverlay(() => {
+      // Show success banner
+      const banner = document.createElement('div');
+      Object.assign(banner.style, {
+        position: 'fixed', top: '0', left: '0', right: '0', zIndex: '99999',
+        padding: '14px 20px', background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+        color: '#fff', fontWeight: '600', fontSize: '14px', textAlign: 'center',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.3)', transition: 'opacity 0.4s ease, transform 0.4s ease',
+        transform: 'translateY(-100%)', opacity: '0',
+      });
+      banner.textContent = 'Payment received! Unlocking your premium features...';
+      document.body.appendChild(banner);
+      requestAnimationFrame(() => { banner.style.transform = 'translateY(0)'; banner.style.opacity = '1'; });
+      setTimeout(() => { window.location.href = 'https://worldmonitor.app'; }, 3000);
+    });
+  }, []);
+
   useEffect(() => {
     const onHash = () => {
       const hash = window.location.hash;
@@ -1190,7 +1211,13 @@ export default function App() {
         <ProShowcase />
         <ApiSection />
         <EnterpriseShowcase />
-        <PricingTable />
+        {/* TODO: isProUser gate should be removed when we are ready to get new users signing up */}
+        {(localStorage.getItem('wm-widget-key') || localStorage.getItem('wm-pro-key')) && (
+          <>
+            <PricingSection refCode={getRefCode()} />
+            <PricingTable />
+          </>
+        )}
         <FAQ />
       </main>
       <Footer />

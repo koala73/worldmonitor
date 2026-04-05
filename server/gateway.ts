@@ -16,6 +16,8 @@ import { validateApiKey } from '../api/_api-key.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
 import { drainResponseHeaders } from './_shared/response-headers';
+import { checkEntitlement, getRequiredTier } from './_shared/entitlement-check';
+import { resolveSessionUserId } from './_shared/auth-session';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
 export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
@@ -107,6 +109,11 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/get-country-intel-brief': 'static',
   '/api/intelligence/v1/get-gdelt-topic-timeline': 'medium',
   '/api/climate/v1/list-climate-anomalies': 'static',
+  '/api/climate/v1/list-climate-disasters': 'static',
+  '/api/climate/v1/get-co2-monitoring': 'static',
+  '/api/climate/v1/get-ocean-ice-data': 'static',
+  '/api/climate/v1/list-air-quality-data': 'fast',
+  '/api/climate/v1/list-climate-news': 'slow',
   '/api/sanctions/v1/list-sanctions-pressure': 'static',
   '/api/sanctions/v1/lookup-sanction-entity': 'no-store',
   '/api/radiation/v1/list-radiation-observations': 'slow',
@@ -133,6 +140,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/list-grocery-basket-prices': 'static',
   '/api/economic/v1/list-bigmac-prices': 'static',
   '/api/economic/v1/list-fuel-prices': 'static',
+  '/api/economic/v1/get-fao-food-price-index': 'static',
   '/api/economic/v1/get-crude-inventories': 'static',
   '/api/economic/v1/get-nat-gas-storage': 'static',
   '/api/economic/v1/get-eu-yield-curve': 'daily',
@@ -201,7 +209,11 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-economic-stress': 'slow',
   '/api/supply-chain/v1/get-shipping-stress': 'medium',
   '/api/health/v1/list-disease-outbreaks': 'slow',
+  '/api/health/v1/list-air-quality-alerts': 'fast',
   '/api/intelligence/v1/get-social-velocity': 'fast',
+  '/api/intelligence/v1/get-country-energy-profile': 'slow',
+  '/api/resilience/v1/get-resilience-score': 'slow',
+  '/api/resilience/v1/get-resilience-ranking': 'slow',
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
@@ -242,12 +254,36 @@ export function createDomainGateway(
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    // API key validation
+    // Tier gate check first — JWT resolution is expensive (JWKS + RS256) and only needed
+    // for tier-gated endpoints. Non-tier-gated endpoints never use sessionUserId.
+    const isTierGated = getRequiredTier(pathname) !== null;
+    const needsLegacyProBearerGate = PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
+
+    // Session resolution — extract userId from bearer token (Clerk JWT) if present.
+    // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
+    let sessionUserId: string | null = null;
+    if (isTierGated) {
+      sessionUserId = await resolveSessionUserId(request);
+      if (sessionUserId) {
+        request = new Request(request.url, {
+          method: request.method,
+          headers: (() => {
+            const h = new Headers(request.headers);
+            h.set('x-user-id', sessionUserId);
+            return h;
+          })(),
+          body: request.body,
+        });
+      }
+    }
+
+    // API key validation — tier-gated endpoints require EITHER an API key OR a valid bearer token.
+    // Authenticated users (sessionUserId present) bypass the API key requirement.
     const keyCheck = validateApiKey(request, {
-      forceKey: PREMIUM_RPC_PATHS.has(pathname),
+      forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
     });
     if (keyCheck.required && !keyCheck.valid) {
-      if (PREMIUM_RPC_PATHS.has(pathname)) {
+      if (needsLegacyProBearerGate) {
         const authHeader = request.headers.get('Authorization');
         if (authHeader?.startsWith('Bearer ')) {
           const { validateBearerToken } = await import('./auth-session');
@@ -277,6 +313,30 @@ export function createDomainGateway(
           headers: { 'Content-Type': 'application/json', ...corsHeaders },
         });
       }
+    }
+
+    // Bearer role check — authenticated users who bypassed the API key gate still
+    // need a pro role for PREMIUM_RPC_PATHS (entitlement check below handles tier-gated).
+    if (sessionUserId && !keyCheck.valid && needsLegacyProBearerGate) {
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        const { validateBearerToken } = await import('./auth-session');
+        const session = await validateBearerToken(authHeader.slice(7));
+        if (!session.valid || session.role !== 'pro') {
+          return new Response(JSON.stringify({ error: 'Pro subscription required' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        }
+      }
+    }
+
+    // Entitlement check — blocks tier-gated endpoints for users below required tier.
+    // Valid API-key holders bypass entitlement checks (they have full access by virtue
+    // of possessing a key). Only bearer-token users go through the tier gate.
+    if (!(keyCheck.valid && request.headers.get('X-WorldMonitor-Key'))) {
+      const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
+      if (entitlementResponse) return entitlementResponse;
     }
 
     // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback
