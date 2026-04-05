@@ -15,7 +15,7 @@ const KEYS = {
   crudeInventories: 'economic:crude-inventories:v1',
   natGasStorage: 'economic:nat-gas-storage:v1',
   spr: 'economic:spr:v1',
-  refineryUtil: 'economic:refinery-util:v1',
+  refineryInputs: 'economic:refinery-inputs:v1',
 };
 
 const FRED_KEY_PREFIX = 'economic:fred:v1';
@@ -29,8 +29,8 @@ const CRUDE_INVENTORIES_TTL = 1_814_400; // 21 days — EIA publishes weekly; 3x
 const CRUDE_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 const NAT_GAS_TTL = 1_814_400; // 21 days — EIA publishes weekly; 3x cadence per gold standard
 const NAT_GAS_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
-const SPR_TTL = 1_814_400;        // 21 days (3× weekly)
-const REFINERY_TTL = 1_814_400;   // 21 days (3× weekly)
+export const SPR_TTL = 1_814_400;             // 21 days (3× weekly)
+export const REFINERY_INPUTS_TTL = 1_814_400; // 21 days (3× weekly)
 const SPR_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 const REFINERY_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota-hit empty responses
 
@@ -762,7 +762,7 @@ async function fetchRefineryUtilization() {
 // All secondary keys MUST be written inside fetchAll() before returning.
 
 async function fetchAll() {
-  const [energyPrices, energyCapacity, fredResults, macroSignals, crudeInventories, natGasStorage, sprLevels, refineryUtil] = await Promise.allSettled([
+  const [energyPrices, energyCapacity, fredResults, macroSignals, crudeInventories, natGasStorage, sprLevels, refineryInputs] = await Promise.allSettled([
     fetchEnergyPrices(),
     fetchEnergyCapacity(),
     fetchFredSeries(),
@@ -780,7 +780,7 @@ async function fetchAll() {
   const ci = crudeInventories.status === 'fulfilled' ? crudeInventories.value : null;
   const ng = natGasStorage.status === 'fulfilled' ? natGasStorage.value : null;
   const spr = sprLevels.status === 'fulfilled' ? sprLevels.value : null;
-  const ru = refineryUtil.status === 'fulfilled' ? refineryUtil.value : null;
+  const ru = refineryInputs.status === 'fulfilled' ? refineryInputs.value : null;
 
   if (energyPrices.status === 'rejected') console.warn(`  EnergyPrices failed: ${energyPrices.reason?.message || energyPrices.reason}`);
   if (energyCapacity.status === 'rejected') console.warn(`  EnergyCapacity failed: ${energyCapacity.reason?.message || energyCapacity.reason}`);
@@ -789,7 +789,7 @@ async function fetchAll() {
   if (crudeInventories.status === 'rejected') console.warn(`  CrudeInventories failed: ${crudeInventories.reason?.message || crudeInventories.reason}`);
   if (natGasStorage.status === 'rejected') console.warn(`  NatGasStorage failed: ${natGasStorage.reason?.message || natGasStorage.reason}`);
   if (sprLevels.status === 'rejected') console.warn(`  SPRLevels failed: ${sprLevels.reason?.message || sprLevels.reason}`);
-  if (refineryUtil.status === 'rejected') console.warn(`  RefineryUtil failed: ${refineryUtil.reason?.message || refineryUtil.reason}`);
+  if (refineryInputs.status === 'rejected') console.warn(`  RefineryInputs failed: ${refineryInputs.reason?.message || refineryInputs.reason}`);
 
   const frHasData = fr && Object.keys(fr).length > 0;
   if (!ep && !frHasData && !ms) throw new Error('All economic fetches failed');
@@ -828,9 +828,9 @@ async function fetchAll() {
 
   const isValidRuWeek = (w) => typeof w.period === 'string' && typeof w.inputsMbblpd === 'number' && Number.isFinite(w.inputsMbblpd);
   if (ru?.weeks?.length >= REFINERY_MIN_WEEKS && ru.weeks.every(isValidRuWeek)) {
-    await writeExtraKeyWithMeta(KEYS.refineryUtil, ru, REFINERY_TTL, ru.weeks.length);
+    await writeExtraKeyWithMeta(KEYS.refineryInputs, ru, REFINERY_INPUTS_TTL, ru.weeks.length);
   } else if (ru) {
-    console.warn(`  RefineryUtil: skipped write — ${ru.weeks?.length ?? 0} weeks or schema invalid`);
+    console.warn(`  RefineryInputs: skipped write — ${ru.weeks?.length ?? 0} weeks or schema invalid`);
   }
 
   // Compute stress index — GSCPI is seeded by ais-relay (NY Fed), not FRED; read from Redis
