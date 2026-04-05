@@ -2056,7 +2056,9 @@ components:
                     type: string
                 electricityAvailable:
                     type: boolean
-                    description: Phase 2 — EU/US electricity
+                    description: |-
+                        Phase 2 — EU electricity (ENTSO-E countries: DE FR ES IT NL BE PL PT GB NO SE)
+                         US electricity is stored by EIA balancing area, not ISO2 — not available here
                 electricityPriceMwh:
                     type: number
                     format: double
