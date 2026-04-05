@@ -1080,7 +1080,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   dealsInstitutional: {
     labelKey: 'header.panelCatDeals',
-    panelKeys: ['ipo', 'derivatives', 'institutional', 'ai-regulation'],
+    panelKeys: ['ipo', 'derivatives', 'institutional', 'regulation'],
   },
   gulfMena: {
     labelKey: 'header.panelCatGulfMena',
