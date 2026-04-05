@@ -141,6 +141,8 @@ const STANDALONE_KEYS = {
   energyIntelligence:       'energy:intelligence:feed:v1',
   ieaOilStocks:             'energy:iea-oil-stocks:v1:index',
   jodiGas:                  'energy:jodi-gas:v1:_countries',
+  jodiOil:                  'energy:jodi-oil:v1:_countries',
+  chokepointBaselines:      'energy:chokepoint-baselines:v1',
 };
 
 const SEED_META = {
