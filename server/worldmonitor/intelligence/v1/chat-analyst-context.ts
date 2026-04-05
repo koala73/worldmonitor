@@ -28,6 +28,8 @@ export interface AnalystContext {
   liveHeadlines: string;
   relevantArticles: string;
   energyExposure: string;
+  coalSpotPrice: string;
+  gasSpotTtf: string;
   activeSources: string[];
   degraded: boolean;
 }
@@ -230,6 +232,27 @@ function buildEnergyExposure(data: unknown): string {
   return lines.join('\n');
 }
 
+function extractCommodityQuote(commodities: unknown, symbol: string): Record<string, unknown> | null {
+  if (!commodities || typeof commodities !== 'object') return null;
+  const d = commodities as Record<string, unknown>;
+  const quotes = Array.isArray(d.quotes) ? d.quotes : [];
+  const q = quotes.find((q: unknown) => {
+    const quote = q as Record<string, unknown>;
+    return safeStr(quote.symbol) === symbol;
+  });
+  return q ? (q as Record<string, unknown>) : null;
+}
+
+function buildSpotCommodityLine(commodities: unknown, symbol: string, label: string, unit: string): string {
+  const q = extractCommodityQuote(commodities, symbol);
+  if (!q) return '';
+  const price = safeNum(q.price);
+  const change = safeNum(q.change ?? q.changePercent);
+  if (!price) return '';
+  const sign = change >= 0 ? '+' : '';
+  return `${label}: ${unit}${price.toFixed(2)}/MWh (${sign}${change.toFixed(2)}% today)`;
+}
+
 function buildCountryBrief(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
   const d = data as Record<string, unknown>;
@@ -417,6 +440,8 @@ const SOURCE_LABELS: Array<[keyof Omit<AnalystContext, 'timestamp' | 'degraded' 
   ['forecasts', 'Forecasts'],
   ['marketData', 'Markets'],
   ['energyExposure', 'EnergyMix'],
+  ['coalSpotPrice', 'CoalSpot'],
+  ['gasSpotTtf',    'GasTTF'],
   ['macroSignals', 'Macro'],
   ['predictionMarkets', 'Prediction'],
   ['countryBrief', 'Country'],
@@ -451,6 +476,9 @@ export async function assembleAnalystContext(
   // For market/military the data would be fetched and immediately discarded.
   const ENERGY_EXPOSURE_DOMAINS = new Set(['geo', 'economic', 'all']);
   const needsEnergyExposure = ENERGY_EXPOSURE_DOMAINS.has(resolvedDomain);
+
+  const SPOT_ENERGY_DOMAINS = new Set(['economic', 'geo', 'all']);
+  const needsSpotEnergy = SPOT_ENERGY_DOMAINS.has(resolvedDomain);
 
   const [
     insightsResult,
@@ -503,6 +531,8 @@ export async function assembleAnalystContext(
     marketData: buildMarketData(get(stocksResult), get(commoditiesResult)),
     macroSignals: buildMacroSignals(get(macroResult)),
     energyExposure: buildEnergyExposure(get(energyExposureResult)),
+    coalSpotPrice: needsSpotEnergy ? buildSpotCommodityLine(get(commoditiesResult), 'MTF=F', 'Newcastle coal', '$') : '',
+    gasSpotTtf:    needsSpotEnergy ? buildSpotCommodityLine(get(commoditiesResult), 'TTF=F', 'TTF gas', '€')    : '',
     predictionMarkets: buildPredictionMarkets(get(predResult)),
     countryBrief: buildCountryBrief(get(countryResult)),
     liveHeadlines: getStr(headlinesResult),
