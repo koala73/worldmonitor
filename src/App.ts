@@ -711,6 +711,11 @@ export class App {
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
+      onTimeRangeChanged: () => {
+        if (this.state.panels['sanctions-pressure']) {
+          void this.dataLoader.loadSanctionsPressure();
+        }
+      },
     });
 
     this.eventHandlers = new EventHandlerManager(this.state, {
