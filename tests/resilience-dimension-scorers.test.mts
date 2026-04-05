@@ -138,6 +138,40 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.coverage > 0, 'should have non-zero coverage even with null IEA');
   });
 
+  it('scoreTradeSanctions: country absent from top-12 sanctions payload gets null sanctions sub-metric (not 100)', async () => {
+    // The canonical payload is buildCountryPressure(entries).slice(0, 12) — only the 12 most
+    // sanctioned countries. A country absent from that list (e.g. Iran during a quiet period,
+    // or a minor actor) is NOT confirmed unsanctioned; it just didn't rank. Coverage for the
+    // 0.55-weight sub-metric must remain null so weightedBlend reflects partial coverage.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'sanctions:pressure:v1') return { countries: [{ countryCode: 'RU', entryCount: 500 }] };
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return null;
+      if (key === 'trade:barriers:v1:tariff-gap:50') return null;
+      return null;
+    };
+    const score = await scoreTradeSanctions('FI', reader);
+    assert.ok(score.coverage < 1, `FI absent from top-12 payload should have coverage < 1 (sanctions sub-metric null), got ${score.coverage}`);
+    assert.notEqual(score.score, 100, 'absent-from-payload country must not receive an imputed sanctions score of 100');
+  });
+
+  it('scoreFoodWater: country absent from FAO/IPC DB yields null for the crisis sub-metric (not imputed 87)', async () => {
+    // FAO/IPC only tracks countries IN food crisis. A missing fao entry can be an ingest gap
+    // or source failure — it is not confirmed food-secure. peopleInCrisis == null must stay
+    // null so lowConfidence fires correctly when data is genuinely absent.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        wgi: { indicators: { 'VA.EST': { value: 1.2, year: 2025 } } },
+        fao: null,
+        aquastat: null,
+      };
+      return null;
+    };
+    const score = await scoreFoodWater('XX', reader);
+    // With fao=null and aquastat=null the only possible score is null (no coverage).
+    // Before the revert, wgi!=null would have imputed 87 here.
+    assert.ok(score.coverage < 0.16, `coverage should be near-zero with fao=null and aquastat=null, got ${score.coverage}`);
+  });
+
   it('memoizes repeated seed reads inside scoreAllDimensions', async () => {
     const hits = new Map<string, number>();
     const countingReader = async (key: string) => {
