@@ -234,6 +234,9 @@ async function main() {
         [CANONICAL_KEY, META_KEY, ...countries.map(c => `${COUNTRY_KEY_PREFIX}${c.iso2}`)],
         JODI_TTL,
       );
+      await redisPipeline([
+        ['SET', META_KEY, JSON.stringify({ fetchedAt: Date.now(), recordCount: 0 }), 'EX', JODI_TTL],
+      ]).catch(() => {});
       return;
     }
 
@@ -259,6 +262,9 @@ async function main() {
   } catch (err) {
     console.error(`  SEED FAILED: ${err.message}`);
     await extendExistingTtl([CANONICAL_KEY, META_KEY], JODI_TTL).catch(() => {});
+    await redisPipeline([
+      ['SET', META_KEY, JSON.stringify({ fetchedAt: Date.now(), recordCount: 0 }), 'EX', JODI_TTL],
+    ]).catch(() => {});
     throw err;
   } finally {
     await releaseLock(LOCK_DOMAIN, runId);
