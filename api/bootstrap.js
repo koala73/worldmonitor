@@ -87,6 +87,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   pizzint:           'intelligence:pizzint:seed:v1',
   diseaseOutbreaks:  'health:disease-outbreaks:v1',
   economicStress:    'economic:stress-index:v1',
+  electricityPrices: 'energy:electricity:v1:index',
 };
 
 const SLOW_KEYS = new Set([
@@ -118,6 +119,7 @@ const SLOW_KEYS = new Set([
   'diseaseOutbreaks',
   'economicStress',
   'pizzint',
+  'electricityPrices',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',

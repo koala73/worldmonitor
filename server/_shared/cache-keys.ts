@@ -178,4 +178,5 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   diseaseOutbreaks: 'slow',
   economicStress: 'slow',
   faoFoodPriceIndex: 'slow',
+  electricityPrices: 'slow',
 };

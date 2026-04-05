@@ -36,6 +36,16 @@ describe('parseEntsoEPrice', () => {
     const xml = '<price.amount>abc</price.amount><price.amount>50.00</price.amount>';
     assert.equal(parseEntsoEPrice(xml), 50);
   });
+
+  it('handles negative prices (common in EU wholesale markets)', () => {
+    const xml = '<price.amount>-10.00</price.amount><price.amount>20.00</price.amount>';
+    assert.equal(parseEntsoEPrice(xml), 5);
+  });
+
+  it('handles all-negative prices', () => {
+    const xml = '<price.amount>-5.00</price.amount><price.amount>-15.00</price.amount>';
+    assert.equal(parseEntsoEPrice(xml), -10);
+  });
 });
 
 // ── buildElectricityIndex ─────────────────────────────────────────────────────

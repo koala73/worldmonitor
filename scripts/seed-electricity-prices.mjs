@@ -62,7 +62,7 @@ function isoDate(date) {
 
 export function parseEntsoEPrice(xml) {
   const amounts = [];
-  const re = /<price\.amount>([\d.]+)<\/price\.amount>/g;
+  const re = /<price\.amount>(-?[\d.]+)<\/price\.amount>/g;
   let m;
   while ((m = re.exec(xml)) !== null) {
     const v = parseFloat(m[1]);
@@ -285,12 +285,20 @@ export async function main() {
       console.log(`[electricity] EIA-930: ${eiaResults.length} regions`);
     }
 
-    // Check coverage threshold
+    // Check EU coverage threshold — preserve EU snapshot but still write US data
     if (entsoToken && entsoResults.length < MIN_ENTSO_REGIONS) {
+      const euKeys = ENTSO_E_REGIONS.map((r) => r.region);
       await preservePreviousSnapshot(
         `Only ${entsoResults.length} ENTSO-E regions returned valid prices (min: ${MIN_ENTSO_REGIONS})`,
-        ENTSO_E_REGIONS.map((r) => r.region),
+        euKeys,
       );
+      if (eiaResults.length > 0) {
+        const usCommands = eiaResults.map((entry) => [
+          'SET', `${ELECTRICITY_KEY_PREFIX}${entry.region}`, JSON.stringify(entry), 'EX', ELECTRICITY_TTL_SECONDS,
+        ]);
+        await redisPipeline(usCommands);
+        console.log(`[electricity] EU below threshold but wrote ${eiaResults.length} US regions`);
+      }
       return;
     }
 
