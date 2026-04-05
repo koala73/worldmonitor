@@ -14,9 +14,9 @@ const FEEDS = [
   { sourceName: 'The Guardian Environment', url: 'https://www.theguardian.com/environment/climate-crisis/rss' },
   { sourceName: 'ReliefWeb Disasters', url: 'https://reliefweb.int/updates/rss.xml?content=reports&country=0&theme=4590' },
   { sourceName: 'NASA Earth Observatory', url: 'https://earthobservatory.nasa.gov/feeds/earth-observatory.rss' },
-  { sourceName: 'NOAA Climate News', url: 'https://www.noaa.gov/taxonomy/term/28/rss' },
+  { sourceName: 'UNEP', url: 'https://www.unep.org/rss.xml' },
   { sourceName: 'Phys.org Earth Science', url: 'https://phys.org/rss-feed/earth-news/earth-sciences/' },
-  { sourceName: 'Copernicus/ECMWF', url: 'https://atmosphere.copernicus.eu/rss' },
+  { sourceName: 'Copernicus Climate', url: 'https://climate.copernicus.eu/rss.xml' },
   { sourceName: 'Inside Climate News', url: 'https://insideclimatenews.org/feed/' },
   { sourceName: 'Climate Central', url: 'https://www.climatecentral.org/rss' },
 ];
