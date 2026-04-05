@@ -112,16 +112,16 @@ describe('computeSprWoW', () => {
 
 describe('parseEiaRefineryRow', () => {
   it('parses a numeric string value', () => {
-    const result = parseEiaRefineryRow({ value: '89.3', period: '2026-03-28' });
+    const result = parseEiaRefineryRow({ value: '15973', period: '2026-03-28' });
     assert.ok(result !== null);
-    assert.equal(result.utilizationPct, 89.3);
+    assert.equal(result.inputsMbblpd, 15973);
     assert.equal(result.period, '2026-03-28');
   });
 
   it('parses a numeric value', () => {
-    const result = parseEiaRefineryRow({ value: 89.3, period: '2026-03-21' });
+    const result = parseEiaRefineryRow({ value: 15973, period: '2026-03-21' });
     assert.ok(result !== null);
-    assert.equal(result.utilizationPct, 89.3);
+    assert.equal(result.inputsMbblpd, 15973);
   });
 
   it('returns null for null value', () => {
@@ -145,14 +145,14 @@ describe('parseEiaRefineryRow', () => {
   });
 
   it('sets period to empty string for invalid date format', () => {
-    const result = parseEiaRefineryRow({ value: '89.3', period: '20260328' });
+    const result = parseEiaRefineryRow({ value: '15973', period: '20260328' });
     assert.ok(result !== null);
     assert.equal(result.period, '');
   });
 
-  it('rounds utilizationPct to 3 decimal places', () => {
-    const result = parseEiaRefineryRow({ value: '89.12345', period: '2026-03-28' });
+  it('rounds inputsMbblpd to 3 decimal places', () => {
+    const result = parseEiaRefineryRow({ value: '15973.12345', period: '2026-03-28' });
     assert.ok(result !== null);
-    assert.equal(result.utilizationPct, 89.123);
+    assert.equal(result.inputsMbblpd, 15973.123);
   });
 });

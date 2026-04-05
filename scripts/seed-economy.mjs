@@ -689,18 +689,21 @@ async function fetchSprLevels() {
   };
 }
 
-// ─── EIA Refinery Utilization (WCRFPUS2) ───
+// ─── EIA Refinery Crude Inputs (WCRRIUS2) ───
+// Note: EIA v2 API does not expose refinery utilization rate (%) as a direct weekly series.
+// WCRRIUS2 = U.S. Refiner Net Input of Crude Oil (Thousand Barrels per Day, MBBL/D).
+// This is the closest available weekly proxy for refinery activity.
 
 /**
  * @param {{ value: unknown, period: unknown } | null | undefined} row
- * @returns {{ utilizationPct: number, period: string } | null}
+ * @returns {{ inputsMbblpd: number, period: string } | null}
  */
 export function parseEiaRefineryRow(row) {
   if (!row) return null;
-  const utilizationPct = row.value != null ? parseFloat(String(row.value)) : null;
-  if (utilizationPct == null || !Number.isFinite(utilizationPct)) return null;
+  const inputsMbblpd = row.value != null ? parseFloat(String(row.value)) : null;
+  if (inputsMbblpd == null || !Number.isFinite(inputsMbblpd)) return null;
   const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
-  return { utilizationPct: +utilizationPct.toFixed(3), period };
+  return { inputsMbblpd: +inputsMbblpd.toFixed(3), period };
 }
 
 async function fetchRefineryUtilization() {
@@ -709,7 +712,8 @@ async function fetchRefineryUtilization() {
 
   const params = new URLSearchParams({
     api_key: apiKey,
-    'facets[series][]': 'WCRFPUS2',
+    'facets[series][]': 'WCRRIUS2',
+    'facets[duoarea][]': 'NUS',
     frequency: 'weekly',
     'data[]': 'value',
     'sort[0][column]': 'period',
@@ -720,10 +724,10 @@ async function fetchRefineryUtilization() {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(10_000),
   });
-  if (!resp.ok) throw new Error(`EIA WCRFPUS2: HTTP ${resp.status}`);
+  if (!resp.ok) throw new Error(`EIA WCRRIUS2: HTTP ${resp.status}`);
   const data = await resp.json();
   const rows = data.response?.data;
-  if (!rows || rows.length === 0) throw new Error('EIA WCRFPUS2: no data rows');
+  if (!rows || rows.length === 0) throw new Error('EIA WCRRIUS2: no data rows');
 
   // rows are sorted newest-first
   const weeks = [];
@@ -734,21 +738,21 @@ async function fetchRefineryUtilization() {
     if (weeks.length === 8) break; // only return 8 weeks to client
   }
 
-  if (weeks.length < REFINERY_MIN_WEEKS) throw new Error(`EIA WCRFPUS2: only ${weeks.length} valid rows (need >= ${REFINERY_MIN_WEEKS})`);
+  if (weeks.length < REFINERY_MIN_WEEKS) throw new Error(`EIA WCRRIUS2: only ${weeks.length} valid rows (need >= ${REFINERY_MIN_WEEKS})`);
 
   const latest = weeks[0];
   const prev = weeks[1] ?? null;
 
-  const changeWoW = prev ? +(latest.utilizationPct - prev.utilizationPct).toFixed(3) : null;
+  const changeWoW = prev ? +(latest.inputsMbblpd - prev.inputsMbblpd).toFixed(3) : null;
 
   const latestPeriod = latest.period;
-  console.log(`  Refinery utilization: ${weeks.length} weeks, latest=${latestPeriod}, util=${latest.utilizationPct}%`);
+  console.log(`  Refinery inputs: ${weeks.length} weeks, latest=${latestPeriod}, inputs=${latest.inputsMbblpd} MBBL/D`);
 
   return {
     latestPeriod,
-    utilizationPct: latest.utilizationPct,
+    inputsMbblpd: latest.inputsMbblpd,
     changeWoW,
-    weeks: weeks.map((w) => ({ period: w.period, utilizationPct: w.utilizationPct })),
+    weeks: weeks.map((w) => ({ period: w.period, inputsMbblpd: w.inputsMbblpd })),
     seededAt: new Date().toISOString(),
   };
 }
@@ -822,7 +826,7 @@ async function fetchAll() {
     console.warn(`  SPRLevels: skipped write — ${spr.weeks?.length ?? 0} weeks or schema invalid`);
   }
 
-  const isValidRuWeek = (w) => typeof w.period === 'string' && typeof w.utilizationPct === 'number' && Number.isFinite(w.utilizationPct);
+  const isValidRuWeek = (w) => typeof w.period === 'string' && typeof w.inputsMbblpd === 'number' && Number.isFinite(w.inputsMbblpd);
   if (ru?.weeks?.length >= REFINERY_MIN_WEEKS && ru.weeks.every(isValidRuWeek)) {
     await writeExtraKeyWithMeta(KEYS.refineryUtil, ru, REFINERY_TTL, ru.weeks.length);
   } else if (ru) {
