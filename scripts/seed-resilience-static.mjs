@@ -559,18 +559,17 @@ async function fetchFsinDataset() {
   const rows = parseDelimitedText(csvText, ',');
   const parsed = new Map();
   for (const row of rows) {
-    const iso3 = String(row['Country (ISO3)'] || '').trim().toUpperCase();
-    const iso2 = resolveIso2({ iso3 });
+    const rawIso3 = String(row['Country (ISO3)'] || row['Country'] || '').trim().toUpperCase();
+    const iso2 = resolveIso2({ iso3: rawIso3, name: rawIso3 });
     if (!iso2) continue;
-    const phase3plus = safeNum(row['Phase 3+ #']);
-    const phase4 = safeNum(row['Phase 4 #']);
-    const phase5 = safeNum(row['Phase 5 #']);
+    const phase3plus = safeNum(row['Phase 3+ #'] ?? row['Phase 3+ number current']);
+    const phase4 = safeNum(row['Phase 4 #'] ?? row['Phase 4 number current']);
+    const phase5 = safeNum(row['Phase 5 #'] ?? row['Phase 5 number current']);
     if (phase3plus == null && phase4 == null && phase5 == null) continue;
     const yearCandidates = Object.keys(row)
       .filter((k) => /period|date|year/i.test(k))
       .map((k) => safeNum(String(row[k]).slice(0, 4)))
       .filter((v) => v != null && v > 2000);
-    const year = yearCandidates.length ? Math.max(...yearCandidates) : null;
     parsed.set(iso2, {
       source: 'hdx-ipc',
       year,
