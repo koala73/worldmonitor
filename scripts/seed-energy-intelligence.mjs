@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { resolveProxyStringConnect } from './_proxy-utils.cjs';
 
 loadEnvFile(import.meta.url);
 
@@ -11,7 +12,7 @@ const RSS_MAX_BYTES = 500_000;
 const AGE_LIMIT_MS = 30 * 24 * 3600 * 1000; // 30 days
 
 // Note: IEA removed public RSS feeds (https://www.iea.org/rss/*.xml returns 404).
-// OPEC RSS is Cloudflare-protected — kept as best-effort (works from Railway IPs).
+// OPEC RSS is Cloudflare-protected — direct fetch from Railway gets 403; proxy fallback required.
 // OilPrice.com provides reliable energy intelligence coverage as primary source.
 const FEEDS = [
   { url: 'https://oilprice.com/rss/main',        source: 'OilPrice', label: 'oilprice-main'  },
@@ -132,20 +133,33 @@ export function deduplicateByUrl(items) {
   return Array.from(byUrl.values());
 }
 
+async function fetchFeedDirect(feed) {
+  const resp = await fetch(feed.url, {
+    headers: {
+      Accept: 'application/rss+xml, application/xml, text/xml, */*',
+      'User-Agent': CHROME_UA,
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return await resp.text();
+}
+
 async function fetchFeed(feed) {
   try {
-    const resp = await fetch(feed.url, {
-      headers: {
-        Accept: 'application/rss+xml, application/xml, text/xml, */*',
-        'User-Agent': CHROME_UA,
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) {
-      console.warn(`[EnergyIntel] ${feed.label} HTTP ${resp.status}`);
-      return [];
+    let xml;
+    try {
+      xml = await fetchFeedDirect(feed);
+    } catch (directErr) {
+      const proxyAuth = resolveProxyStringConnect();
+      if (!proxyAuth) throw directErr;
+      console.warn(`[EnergyIntel] ${feed.label} direct failed (${directErr.message}), retrying via proxy`);
+      const { buffer } = await httpsProxyFetchRaw(feed.url, proxyAuth, {
+        accept: 'application/rss+xml, application/xml, text/xml, */*',
+        timeoutMs: 15_000,
+      });
+      xml = buffer.toString('utf8');
     }
-    const xml = await resp.text();
     const items = parseRssItems(xml, feed.source);
     console.log(`[EnergyIntel] ${feed.label}: ${items.length} raw items`);
     return items;
