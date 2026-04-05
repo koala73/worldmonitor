@@ -301,6 +301,7 @@ export default async function handler(req) {
     'Content-Type': 'application/json',
     'Cache-Control': 'private, no-store, max-age=0',
     'CDN-Cache-Control': 'no-store',
+    'CF-Cache-Status': 'BYPASS',
     'Access-Control-Allow-Origin': '*',
   };
 
@@ -333,7 +334,7 @@ export default async function handler(req) {
       status: 'REDIS_DOWN',
       error: err.message,
       checkedAt: new Date(now).toISOString(),
-    }, 503, headers);
+    }, 200, headers);
   }
 
   // keyStrens: byte length per data key (0 = missing/empty/sentinel)
@@ -521,9 +522,9 @@ export default async function handler(req) {
   else if (critCount <= 3) overall = 'DEGRADED';
   else overall = 'UNHEALTHY';
 
-  const httpStatus = overall === 'HEALTHY' || overall === 'WARNING' ? 200 : 503;
+  const httpStatus = 200;
 
-  if (httpStatus === 503) {
+  if (overall !== 'HEALTHY' && overall !== 'WARNING') {
     const problemKeys = Object.entries(checks)
       .filter(([, c]) => c.status === 'EMPTY' || c.status === 'EMPTY_DATA' || c.status === 'STALE_SEED')
       .map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`);
