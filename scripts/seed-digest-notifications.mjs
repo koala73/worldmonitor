@@ -204,8 +204,8 @@ function deduplicateStories(stories) {
     const best = { ...items[0] };
     if (items.length > 1) {
       best.mentionCount = items.reduce((sum, s) => sum + s.mentionCount, 0);
-      best.sources = [...new Set(items.flatMap(s => s.sources || []))];
     }
+    best.mergedHashes = items.map(s => s.hash);
     return best;
   });
 }
@@ -254,11 +254,22 @@ async function buildDigest(rule, windowStartMs) {
   const deduped = deduplicateStories(stories);
   const top = deduped.slice(0, DIGEST_MAX_ITEMS);
 
-  const sourceResults = await upstashPipeline(
-    top.map((s) => ['SMEMBERS', `story:sources:v1:${s.hash}`]),
-  );
+  const allSourceCmds = [];
+  const cmdIndex = [];
   for (let i = 0; i < top.length; i++) {
-    top[i].sources = sourceResults[i]?.result ?? [];
+    const hashes = top[i].mergedHashes ?? [top[i].hash];
+    for (const h of hashes) {
+      allSourceCmds.push(['SMEMBERS', `story:sources:v1:${h}`]);
+      cmdIndex.push(i);
+    }
+  }
+  const sourceResults = await upstashPipeline(allSourceCmds);
+  for (let i = 0; i < top.length; i++) top[i].sources = [];
+  for (let j = 0; j < sourceResults.length; j++) {
+    const arr = sourceResults[j]?.result ?? [];
+    for (const src of arr) {
+      if (!top[cmdIndex[j]].sources.includes(src)) top[cmdIndex[j]].sources.push(src);
+    }
   }
 
   return top;

@@ -84,8 +84,8 @@ describe('stripSourceSuffix', () => {
 });
 
 describe('deduplicateStories', () => {
-  function story(title, score = 10, mentions = 1) {
-    return { title, currentScore: score, mentionCount: mentions, sources: [], severity: 'critical' };
+  function story(title, score = 10, mentions = 1, hash = undefined) {
+    return { title, currentScore: score, mentionCount: mentions, sources: [], severity: 'critical', hash: hash ?? title.slice(0, 8) };
   }
 
   it('merges near-duplicate Reuters headlines about downed jet', () => {
@@ -133,10 +133,22 @@ describe('deduplicateStories', () => {
     assert.ok(result.length >= 2, `Expected at least 2 clusters, got ${result.length}`);
   });
 
+  it('carries mergedHashes from all clustered stories for source lookup', () => {
+    const stories = [
+      story('US fighter jet shot down - reuters.com', 90, 1, 'hash_a'),
+      story('US fighter jet shot down - Reuters', 80, 1, 'hash_b'),
+      story('US fighter jet shot down - AP News', 70, 1, 'hash_c'),
+    ];
+    const result = mod.deduplicateStories(stories);
+    assert.equal(result.length, 1);
+    assert.deepEqual(result[0].mergedHashes, ['hash_a', 'hash_b', 'hash_c']);
+  });
+
   it('preserves single stories without modification', () => {
     const stories = [story('Only one story here', 50, 3)];
     const result = mod.deduplicateStories(stories);
     assert.equal(result.length, 1);
     assert.equal(result[0].mentionCount, 3);
+    assert.deepEqual(result[0].mergedHashes, [stories[0].hash]);
   });
 });
