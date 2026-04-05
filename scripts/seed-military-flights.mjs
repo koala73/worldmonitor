@@ -494,7 +494,7 @@ async function proxyFetchJson(url, { headers = {}, timeout = 15000, method = 'GE
   const { proxyFetch, parseProxyConfig } = createRequire(import.meta.url)('./_proxy-utils.cjs');
   const proxyConfig = parseProxyConfig(OPENSKY_PROXY_AUTH);
   if (!proxyConfig) throw new Error('No proxy config');
-  proxyConfig.tls = false;
+  // proxyConfig.tls defaults to true from parseProxyConfig (Decodo requires TLS)
   const result = await proxyFetch(url, proxyConfig, {
     headers: { 'User-Agent': CHROME_UA, ...headers },
     method,

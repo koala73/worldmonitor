@@ -4275,24 +4275,38 @@ async function seedUsaSpending() {
   try {
     const periodStart = getDateDaysAgo(7);
     const periodEnd = new Date().toISOString().split('T')[0];
-    const resp = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20_000),
-      body: JSON.stringify({
-        filters: {
-          time_period: [{ start_date: periodStart, end_date: periodEnd }],
-          award_type_codes: ['A', 'B', 'C', 'D'],
-        },
-        fields: ['Award ID', 'Recipient Name', 'Award Amount', 'Awarding Agency', 'Description', 'Start Date', 'Award Type'],
-        limit: 15, order: 'desc', sort: 'Award Amount',
-      }),
+    const spendingUrl = 'https://api.usaspending.gov/api/v2/search/spending_by_award/';
+    const spendingBody = JSON.stringify({
+      filters: {
+        time_period: [{ start_date: periodStart, end_date: periodEnd }],
+        award_type_codes: ['A', 'B', 'C', 'D'],
+      },
+      fields: ['Award ID', 'Recipient Name', 'Award Amount', 'Awarding Agency', 'Description', 'Start Date', 'Award Type'],
+      limit: 15, order: 'desc', sort: 'Award Amount',
     });
-    if (!resp.ok) {
-      console.warn(`[Spending] Seed failed: HTTP ${resp.status}`);
-      return;
+    let data;
+    try {
+      const resp = await fetch(spendingUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(20_000),
+        body: spendingBody,
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      data = await resp.json();
+    } catch (directErr) {
+      if (!PROXY_URL) { console.warn(`[Spending] Seed failed: ${directErr.message}`); return; }
+      console.warn(`[Spending] Direct failed (${directErr.message}) — retrying via proxy`);
+      const { proxyFetch } = require('./_proxy-utils.cjs');
+      const proxy = parseProxyUrl(PROXY_URL);
+      const result = await proxyFetch(spendingUrl, proxy, {
+        method: 'POST', body: spendingBody,
+        headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+        accept: 'application/json', timeoutMs: 20_000,
+      });
+      if (!result.ok) { console.warn(`[Spending] Proxy also failed: HTTP ${result.status}`); return; }
+      data = JSON.parse(result.buffer.toString('utf8'));
     }
-    const data = await resp.json();
     const results = data.results || [];
     const awards = results.map((r) => ({
       id: String(r['Award ID'] || ''),
@@ -4386,12 +4400,25 @@ async function seedGscpi() {
   gscpiSeedInFlight = true;
   if (gscpiRetryTimer) { clearTimeout(gscpiRetryTimer); gscpiRetryTimer = null; }
   try {
-    const resp = await fetch(GSCPI_CSV_URL, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain' },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
+    let text;
+    try {
+      const resp = await fetch(GSCPI_CSV_URL, {
+        headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain' },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      text = await resp.text();
+    } catch (directErr) {
+      if (!PROXY_URL) throw directErr;
+      console.warn(`[GSCPI] Direct failed (${directErr.message}) — retrying via proxy`);
+      const { proxyFetch } = require('./_proxy-utils.cjs');
+      const proxy = parseProxyUrl(PROXY_URL);
+      const result = await proxyFetch(GSCPI_CSV_URL, proxy, {
+        accept: 'text/csv,text/plain', headers: { 'User-Agent': CHROME_UA }, timeoutMs: 20_000,
+      });
+      if (!result.ok) throw new Error(`Proxy HTTP ${result.status}`);
+      text = result.buffer.toString('utf8');
+    }
     const observations = parseGscpiCsv(text);
     if (observations.length === 0) {
       console.warn('[GSCPI] No data parsed — extending TTL, retrying in 20min');
@@ -7219,7 +7246,7 @@ function _openskyProxyConnect(targetHost, targetPort, timeoutMs = 10000) {
   const { proxyConnectTunnel, parseProxyConfig } = require('./_proxy-utils.cjs');
   const proxyConfig = parseProxyConfig(OPENSKY_PROXY_AUTH);
   if (!proxyConfig) return Promise.resolve(null);
-  proxyConfig.tls = false;
+  // proxyConfig.tls defaults to true from parseProxyConfig (Decodo requires TLS)
   return proxyConnectTunnel(targetHost, proxyConfig, { timeoutMs, targetPort })
     .then(({ socket }) => socket);
 }
