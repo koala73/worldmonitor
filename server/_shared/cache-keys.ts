@@ -50,6 +50,8 @@ export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 
 export const ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
 export const ENERGY_EXPOSURE_INDEX_KEY = 'energy:exposure:v1:index';
+export const ELECTRICITY_KEY_PREFIX = 'energy:electricity:v1:';
+export const ELECTRICITY_INDEX_KEY = 'energy:electricity:v1:index';
 
 /**
  * Static cache keys for the bootstrap endpoint.
