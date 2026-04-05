@@ -50,7 +50,12 @@ async function _createCheckoutSession(
 
     const allowedOrigins = new Set([
       "https://worldmonitor.app",
+      "https://www.worldmonitor.app",
       "https://app.worldmonitor.app",
+      "https://tech.worldmonitor.app",
+      "https://finance.worldmonitor.app",
+      "https://commodity.worldmonitor.app",
+      "https://happy.worldmonitor.app",
       new URL(siteUrl).origin,
     ]);
     if (!allowedOrigins.has(parsedReturnUrl.origin)) {
