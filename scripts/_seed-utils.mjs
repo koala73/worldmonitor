@@ -5,13 +5,6 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import * as net from 'node:net';
-import * as tls from 'node:tls';
-import * as https from 'node:https';
-import { promisify } from 'node:util';
-import { gunzip as _gunzip } from 'node:zlib';
-
-const gunzip = promisify(_gunzip);
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
@@ -308,13 +301,6 @@ export function sleep(ms) {
 }
 
 // ─── Proxy helpers for sources that block Railway container IPs ───
-// TODO: consolidate all fetch+proxy logic into a single proxyFetch(url, options) helper.
-// Current state: _seed-utils has fredFetchJson (fixed: direct-first, proxy fallback) and
-// curlFetch (curl-only, relay container). seed-disease-outbreaks.mjs and seed-fear-greed.mjs
-// each define their own local curlFetch that silently fails with ENOENT in seeder containers
-// (curl not in node:22-alpine). Each of those scripts should use a shared fetchWithProxyFallback
-// that tries native fetch first and falls back to httpsProxyFetchJson — same pattern as
-// fredFetchJson after this fix. Tracked: consolidate into one exported function.
 const { resolveProxyString, resolveProxyStringConnect } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
 export function resolveProxy() {
@@ -354,81 +340,12 @@ async function httpsProxyFetchJson(url, proxyAuth) {
 }
 
 export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeoutMs = 20_000 } = {}) {
-  const targetUrl = new URL(url);
-  const explicitHttp = proxyAuth.startsWith('http://') && !proxyAuth.startsWith('https://');
-  const useTls = !explicitHttp;
-  let proxyAuthStr = proxyAuth;
-  if (proxyAuth.startsWith('https://') || proxyAuth.startsWith('http://')) {
-    const u = new URL(proxyAuth);
-    proxyAuthStr = (u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}@` : '') + `${u.hostname}:${u.port}`;
-  }
-  const atIdx = proxyAuthStr.lastIndexOf('@');
-  const credentials = atIdx >= 0 ? proxyAuthStr.slice(0, atIdx) : '';
-  const hostPort = atIdx >= 0 ? proxyAuthStr.slice(atIdx + 1) : proxyAuthStr;
-  const colonIdx = hostPort.lastIndexOf(':');
-  const proxyHost = hostPort.slice(0, colonIdx);
-  const proxyPort = parseInt(hostPort.slice(colonIdx + 1), 10);
-  const proxySock = await new Promise((resolve, reject) => {
-    if (useTls) {
-      const s = tls.connect({ host: proxyHost, port: proxyPort, servername: proxyHost, ALPNProtocols: ['http/1.1'] }, () => resolve(s));
-      s.on('error', reject);
-    } else {
-      const s = net.connect({ host: proxyHost, port: proxyPort }, () => resolve(s));
-      s.on('error', reject);
-    }
-  });
-  const authHeader = credentials ? `\r\nProxy-Authorization: Basic ${Buffer.from(credentials).toString('base64')}` : '';
-  proxySock.write(`CONNECT ${targetUrl.hostname}:443 HTTP/1.1\r\nHost: ${targetUrl.hostname}:443${authHeader}\r\n\r\n`);
-  await new Promise((resolve, reject) => {
-    let buf = '';
-    const onData = (chunk) => {
-      buf += chunk.toString('ascii');
-      if (!buf.includes('\r\n\r\n')) return;
-      proxySock.removeListener('data', onData);
-      const statusLine = buf.split('\r\n')[0];
-      if (!statusLine.startsWith('HTTP/1.1 200') && !statusLine.startsWith('HTTP/1.0 200')) {
-        proxySock.destroy();
-        return reject(Object.assign(new Error(`Proxy CONNECT: ${statusLine}`), { status: parseInt(statusLine.split(' ')[1]) || 0 }));
-      }
-      proxySock.pause();
-      resolve();
-    };
-    proxySock.on('data', onData);
-    proxySock.on('error', reject);
-  });
-  const tlsSock = tls.connect({ socket: proxySock, servername: targetUrl.hostname, ALPNProtocols: ['http/1.1'] });
-  await new Promise((resolve, reject) => {
-    tlsSock.on('secureConnect', resolve);
-    tlsSock.on('error', reject);
-  });
-  proxySock.resume();
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { tlsSock.destroy(); reject(new Error('proxy fetch timeout')); }, timeoutMs);
-    const fail = (e) => { clearTimeout(timer); tlsSock.destroy(); reject(e); };
-    https.request({
-      host: targetUrl.hostname,
-      path: targetUrl.pathname + targetUrl.search,
-      method: 'GET',
-      headers: { Accept: accept, 'Accept-Encoding': 'gzip', 'User-Agent': CHROME_UA },
-      createConnection: () => tlsSock,
-    }, (resp) => {
-      clearTimeout(timer);
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        resp.resume();
-        return fail(Object.assign(new Error(`HTTP ${resp.statusCode}`), { status: resp.statusCode }));
-      }
-      const chunks = [];
-      resp.on('data', c => chunks.push(c));
-      resp.on('end', () => {
-        const body = Buffer.concat(chunks);
-        const isGzip = (resp.headers['content-encoding'] || '').includes('gzip');
-        (isGzip ? gunzip(body) : Promise.resolve(body))
-          .then(data => resolve({ buffer: data, contentType: resp.headers['content-type'] || '' }))
-          .catch(fail);
-      });
-      resp.on('error', fail);
-    }).on('error', fail).end();
-  });
+  const { proxyFetch, parseProxyConfig } = createRequire(import.meta.url)('./_proxy-utils.cjs');
+  const proxyConfig = parseProxyConfig(proxyAuth);
+  if (!proxyConfig) throw new Error('Invalid proxy auth string');
+  const result = await proxyFetch(url, proxyConfig, { accept, timeoutMs, headers: { 'User-Agent': CHROME_UA } });
+  if (!result.ok) throw Object.assign(new Error(`HTTP ${result.status}`), { status: result.status });
+  return { buffer: result.buffer, contentType: result.contentType };
 }
 
 // Fetch JSON from a FRED URL, routing through proxy when available.

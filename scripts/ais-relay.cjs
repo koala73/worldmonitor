@@ -4169,15 +4169,24 @@ async function seedWeatherAlerts() {
   weatherSeedInFlight = true;
   const t0 = Date.now();
   try {
-    const resp = await fetch('https://api.weather.gov/alerts/active', {
-      headers: { Accept: 'application/geo+json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) {
-      console.warn(`[Weather] Seed failed: HTTP ${resp.status}`);
-      return;
+    const weatherUrl = 'https://api.weather.gov/alerts/active';
+    let data;
+    try {
+      const resp = await fetch(weatherUrl, {
+        headers: { Accept: 'application/geo+json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      data = await resp.json();
+    } catch (directErr) {
+      if (!PROXY_URL) { console.warn(`[Weather] Seed failed: ${directErr.message}`); return; }
+      console.warn(`[Weather] Direct failed (${directErr.message}) — retrying via proxy`);
+      const { proxyFetch } = require('./_proxy-utils.cjs');
+      const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+      const result = await proxyFetch(weatherUrl, proxy, { accept: 'application/geo+json', headers: { 'User-Agent': CHROME_UA }, timeoutMs: 15_000 });
+      if (!result.ok) { console.warn(`[Weather] Proxy also failed: HTTP ${result.status}`); return; }
+      data = JSON.parse(result.buffer.toString('utf8'));
     }
-    const data = await resp.json();
     const features = data.features || [];
     const alerts = features
       .filter((f) => f?.properties?.severity !== 'Unknown')
@@ -5835,37 +5844,18 @@ async function seedDodoPrices() {
         console.warn(`[DodoPrices] Direct fetch ${productId} failed: ${e?.message}`);
       }
 
-      // Fallback via proxy (ytFetchViaProxy doesn't forward custom headers,
-      // so we build the proxied request manually with Authorization)
       if (PROXY_URL) {
         try {
-          const proxy = { ...parseProxyUrl(PROXY_URL), tls: true }; // Decodo gate.*.com:10001 requires TLS
-          const target = new URL(`${baseUrl}/products/${productId}`);
-          const proxyResp = await new Promise((resolve, reject) => {
-            const connectOpts = { host: proxy.host, port: proxy.port, method: 'CONNECT', path: `${target.hostname}:443`, headers: {} };
-            if (proxy.auth) connectOpts.headers['Proxy-Authorization'] = 'Basic ' + Buffer.from(proxy.auth).toString('base64');
-            const connectReq = proxy.tls ? https.request(connectOpts) : http.request(connectOpts);
-            connectReq.on('connect', (_res, socket) => {
-              connectReq.setTimeout(0);
-              const req = https.request({
-                hostname: target.hostname, path: target.pathname, method: 'GET',
-                headers: { 'User-Agent': CHROME_UA, 'Authorization': `Bearer ${DODO_PRICE_API_KEY}`, 'Accept': 'application/json' },
-                socket, agent: false,
-              }, (res) => {
-                const chunks = [];
-                res.on('data', (c) => chunks.push(c));
-                res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, body: Buffer.concat(chunks).toString() }));
-                res.on('error', reject);
-              });
-              req.on('error', reject);
-              req.end();
-            });
-            connectReq.on('error', reject);
-            connectReq.setTimeout(10000, () => { connectReq.destroy(); reject(new Error('Proxy timeout')); });
-            connectReq.end();
+          const { proxyFetch } = require('./_proxy-utils.cjs');
+          const proxy = parseProxyUrl(PROXY_URL);
+          const fetchUrl = `${baseUrl}/products/${productId}`;
+          const result = await proxyFetch(fetchUrl, proxy, {
+            headers: { 'User-Agent': CHROME_UA, Authorization: `Bearer ${DODO_PRICE_API_KEY}` },
+            accept: 'application/json',
+            timeoutMs: 10_000,
           });
-          if (proxyResp?.ok) {
-            const product = JSON.parse(proxyResp.body);
+          if (result?.ok) {
+            const product = JSON.parse(result.buffer.toString('utf8'));
             const priceCents = product.price?.price ?? product.price?.fixed_price;
             if (priceCents != null) { prices[productId] = priceCents; fetchedCount++; continue; }
           }
@@ -7226,41 +7216,12 @@ async function getOpenSkyToken() {
 
 function _openskyProxyConnect(targetHost, targetPort, timeoutMs = 10000) {
   if (!OPENSKY_PROXY_ENABLED) return Promise.resolve(null);
-  const atIdx = OPENSKY_PROXY_AUTH.lastIndexOf('@');
-  if (atIdx === -1) return Promise.resolve(null);
-  const userPass = OPENSKY_PROXY_AUTH.substring(0, atIdx);
-  const hostPort = OPENSKY_PROXY_AUTH.substring(atIdx + 1);
-  const colonIdx = hostPort.lastIndexOf(':');
-  const proxyHost = hostPort.substring(0, colonIdx);
-  const proxyPort = parseInt(hostPort.substring(colonIdx + 1), 10);
-
-  return new Promise((resolve, reject) => {
-    const connectReq = http.request({
-      host: proxyHost,
-      port: proxyPort,
-      method: 'CONNECT',
-      path: `${targetHost}:${targetPort}`,
-      headers: {
-        'Host': `${targetHost}:${targetPort}`,
-        'Proxy-Authorization': 'Basic ' + Buffer.from(userPass).toString('base64'),
-      },
-      timeout: timeoutMs,
-    });
-    connectReq.on('connect', (res, socket) => {
-      if (res.statusCode !== 200) {
-        socket.destroy();
-        return reject(new Error(`CONNECT ${res.statusCode}`));
-      }
-      const tls = require('tls');
-      const tlsSocket = tls.connect({ socket, servername: targetHost }, () => {
-        resolve(tlsSocket);
-      });
-      tlsSocket.on('error', reject);
-    });
-    connectReq.on('error', reject);
-    connectReq.on('timeout', () => { connectReq.destroy(); reject(new Error('CONNECT timeout')); });
-    connectReq.end();
-  });
+  const { proxyConnectTunnel, parseProxyConfig } = require('./_proxy-utils.cjs');
+  const proxyConfig = parseProxyConfig(OPENSKY_PROXY_AUTH);
+  if (!proxyConfig) return Promise.resolve(null);
+  proxyConfig.tls = false;
+  return proxyConnectTunnel(targetHost, proxyConfig, { timeoutMs })
+    .then(({ socket }) => socket);
 }
 
 function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
@@ -8247,46 +8208,10 @@ function handleAviationStackRequest(req, res) {
 const YOUTUBE_PROXY_URL = process.env.YOUTUBE_PROXY_URL || '';
 
 function ytFetchViaProxy(targetUrl, proxy) {
-  return new Promise((resolve, reject) => {
-    const target = new URL(targetUrl);
-    const connectOpts = {
-      host: proxy.host, port: proxy.port, method: 'CONNECT',
-      path: `${target.hostname}:443`, headers: {},
-    };
-    if (proxy.auth) {
-      connectOpts.headers['Proxy-Authorization'] = 'Basic ' + Buffer.from(proxy.auth).toString('base64');
-    }
-    // Use TLS to connect to proxy if required (e.g. Decodo port 10001); plain HTTP otherwise
-    const connectReq = proxy.tls ? https.request(connectOpts) : http.request(connectOpts);
-    connectReq.on('connect', (_res, socket) => {
-      connectReq.setTimeout(0);
-      const req = https.request({
-        hostname: target.hostname,
-        path: target.pathname + target.search,
-        method: 'GET',
-        headers: { 'User-Agent': CHROME_UA, 'Accept-Encoding': 'gzip, deflate' },
-        socket, agent: false,
-      }, (res) => {
-        let stream = res;
-        const enc = (res.headers['content-encoding'] || '').trim().toLowerCase();
-        if (enc === 'gzip') stream = res.pipe(zlib.createGunzip());
-        else if (enc === 'deflate') stream = res.pipe(zlib.createInflate());
-        const chunks = [];
-        stream.on('data', (c) => chunks.push(c));
-        stream.on('end', () => resolve({
-          ok: res.statusCode >= 200 && res.statusCode < 300,
-          status: res.statusCode,
-          body: Buffer.concat(chunks).toString(),
-        }));
-        stream.on('error', reject);
-      });
-      req.on('error', reject);
-      req.end();
-    });
-    connectReq.on('error', reject);
-    connectReq.setTimeout(12000, () => { connectReq.destroy(); reject(new Error('Proxy timeout')); });
-    connectReq.end();
-  });
+  const { proxyFetch } = require('./_proxy-utils.cjs');
+  return proxyFetch(targetUrl, proxy, { headers: { 'User-Agent': CHROME_UA } })
+    .then(r => ({ ok: r.ok, status: r.status, body: r.buffer.toString('utf8') }))
+    .catch(() => ({ ok: false, status: 0, body: '' }));
 }
 
 function ytFetchDirect(targetUrl) {
