@@ -5545,6 +5545,7 @@ export class DeckGLMap {
     if (this.state.layers.weatherRadar && !prevRadar) this.startWeatherRadar();
     else if (!this.state.layers.weatherRadar && prevRadar) this.stopWeatherRadar();
     if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
+    if (layer === 'flights') this.manageAircraftTimer(this.state.layers.flights);
     this.render();
     this.updateLegend();
     this.onLayerChange?.(layer, this.state.layers[layer], 'programmatic');
