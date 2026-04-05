@@ -29,7 +29,7 @@ function parseProxyConfig(raw) {
     if (colonIdx !== -1) {
       const host = hostPort.slice(0, colonIdx);
       const port = parseInt(hostPort.slice(colonIdx + 1), 10);
-      if (host && port && auth) return { host, port, auth };
+      if (host && port && auth) return { host, port, auth, tls: true };
     }
   }
 
@@ -40,7 +40,7 @@ function parseProxyConfig(raw) {
     const port = parseInt(parts[1], 10);
     const user = parts[2];
     const pass = parts.slice(3).join(':');
-    if (host && port && user) return { host, port, auth: `${user}:${pass}` };
+    if (host && port && user) return { host, port, auth: `${user}:${pass}`, tls: true };
   }
 
   return null;
