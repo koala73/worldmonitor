@@ -27,10 +27,10 @@ loadEnvFile(import.meta.url);
 const LOCK_DOMAIN = 'resilience:scores';
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
 
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:';
-const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking';
-const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
-const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking';
+export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 6 * 60 * 60;
+export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
 async function redisGetJson(url, token, key) {
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
@@ -58,17 +58,28 @@ async function redisPipeline(url, token, commands) {
 }
 
 /** Mirrors server/worldmonitor/resilience/v1/_shared.ts buildRankingItem */
-function buildRankingItem(countryCode, score) {
+export function buildRankingItem(countryCode, score) {
   if (!score) return { countryCode, overallScore: -1, level: 'unknown', lowConfidence: true };
   return { countryCode, overallScore: score.overallScore, level: score.level, lowConfidence: score.lowConfidence };
 }
 
 /** Mirrors server/worldmonitor/resilience/v1/_shared.ts sortRankingItems */
-function sortRankingItems(items) {
+export function sortRankingItems(items) {
   return [...items].sort((a, b) => {
     if (a.overallScore !== b.overallScore) return b.overallScore - a.overallScore;
     return a.countryCode.localeCompare(b.countryCode);
   });
+}
+
+/**
+ * Pure: builds and sorts ranking items from a country list + cached score map.
+ * Returns { items, scored } where scored = count of items with overallScore >= 0.
+ * The caller skips the Redis write when scored < countryCodes.length.
+ */
+export function buildRankingPayload(countryCodes, scoreMap) {
+  const items = sortRankingItems(countryCodes.map((c) => buildRankingItem(c, scoreMap.get(c))));
+  const scored = items.filter((item) => item.overallScore >= 0).length;
+  return { items, scored };
 }
 
 async function seedResilienceScores() {
@@ -96,8 +107,7 @@ async function seedResilienceScores() {
     try { scoreMap.set(countryCodes[i], JSON.parse(raw)); } catch { /* skip malformed */ }
   }
 
-  const items = sortRankingItems(countryCodes.map((c) => buildRankingItem(c, scoreMap.get(c))));
-  const scored = items.filter((item) => item.overallScore >= 0).length;
+  const { items, scored } = buildRankingPayload(countryCodes, scoreMap);
   console.log(`[resilience-scores] ${scored}/${countryCodes.length} countries have cached scores`);
 
   // Only write the ranking cache when every country has a real score.
@@ -139,8 +149,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`FATAL: ${message}`);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('seed-resilience-scores.mjs')) {
+  main().catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`FATAL: ${message}`);
+    process.exit(1);
+  });
+}
