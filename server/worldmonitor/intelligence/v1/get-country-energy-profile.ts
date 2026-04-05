@@ -177,7 +177,7 @@ export async function getCountryEnergyProfile(
     gasTotalDemandTj: n(jodiGas?.totalDemandTj),
     gasLngImportsTj: n(jodiGas?.lngImportsTj),
     gasPipeImportsTj: n(jodiGas?.pipeImportsTj),
-    gasLngShare: n(jodiGas?.lngShareOfImports),
+    gasLngShare: n(jodiGas?.lngShareOfImports != null ? jodiGas.lngShareOfImports * 100 : null),
 
     ieaStocksAvailable: ieaStocks != null,
     ieaStocksDataMonth: s(ieaStocks?.dataMonth),

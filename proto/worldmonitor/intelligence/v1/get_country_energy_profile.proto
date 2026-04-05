@@ -51,7 +51,7 @@ message GetCountryEnergyProfileResponse {
   double gas_total_demand_tj    = 33;
   double gas_lng_imports_tj     = 34;
   double gas_pipe_imports_tj    = 35;
-  double gas_lng_share          = 36;
+  double gas_lng_share          = 36;   // LNG as % of total imports (0–100), not 0–1 fraction
 
   // Phase 2.5 — IEA oil stocks (~31 IEA members)
   bool   iea_stocks_available   = 37;
