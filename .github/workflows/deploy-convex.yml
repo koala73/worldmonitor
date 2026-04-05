@@ -1,0 +1,125 @@
+name: Deploy Convex
+
+on:
+  workflow_run:
+    workflows: ["Deploy Gate"]
+    types: [completed]
+
+permissions:
+  contents: read
+  statuses: read
+
+concurrency:
+  group: convex-prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.repository == 'koala73/worldmonitor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Check gate status and whether Convex-related files changed
+        id: changes
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import subprocess
+
+          repo = os.environ["REPO"]
+          sha = os.environ["SHA"]
+          output_path = os.environ["GITHUB_OUTPUT"]
+
+          result = subprocess.run(
+              ["gh", "api", f"repos/{repo}/commits/{sha}"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          payload = json.loads(result.stdout)
+          gate_state = "missing"
+          for _ in range(12):
+              status_result = subprocess.run(
+                  ["gh", "api", f"repos/{repo}/commits/{sha}/status"],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              status_payload = json.loads(status_result.stdout)
+              gate_statuses = [
+                  entry
+                  for entry in status_payload.get("statuses", [])
+                  if entry.get("context") == "gate"
+              ]
+              if gate_statuses:
+                  gate_state = sorted(
+                      gate_statuses,
+                      key=lambda entry: entry.get("created_at") or "",
+                  )[-1]["state"]
+                  break
+              time.sleep(5)
+
+          files = payload.get("files", [])
+          watched_paths = ("convex/", "package.json", "package-lock.json")
+          file_list_truncated = len(files) >= 300
+
+          if file_list_truncated:
+              changed_files = []
+              should_deploy = gate_state == "success"
+          else:
+              changed_files = [entry["filename"] for entry in files]
+              should_deploy = gate_state == "success" and any(
+                  path.startswith("convex/") or path in watched_paths[1:]
+                  for path in changed_files
+              )
+
+          print(f"gate_state={gate_state}")
+          print("Changed files:")
+          for path in changed_files:
+              print(f" - {path}")
+          if file_list_truncated:
+              print("GitHub truncated the commit file list at 300 entries; deploying to avoid a false skip.")
+          print(f"should_deploy={str(should_deploy).lower()}")
+
+          with open(output_path, "a", encoding="utf-8") as handle:
+              handle.write(f"gate_state={gate_state}\n")
+              handle.write(f"should_deploy={str(should_deploy).lower()}\n")
+          PY
+
+      - name: Checkout merged commit
+        if: steps.changes.outputs.should_deploy == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.should_deploy == 'true'
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.changes.outputs.should_deploy == 'true'
+        run: npm ci
+
+      - name: Deploy Convex production
+        if: steps.changes.outputs.should_deploy == 'true'
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: npx convex deploy --cmd "npm run build" --yes
+
+      - name: Skip deployment
+        if: steps.changes.outputs.should_deploy != 'true'
+        run: >-
+          echo "Skipping deploy for $SHA because gate_state=${{ steps.changes.outputs.gate_state }}
+          or no Convex-related files changed."
