@@ -16,6 +16,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       indicators: {
         'EG.ELC.ACCS.ZS': { value: 100, year: 2025 },
         'IS.ROD.PAVE.ZS': { value: 90, year: 2025 },
+        'EG.USE.ELEC.KH.PC': { value: 23000, year: 2025 },
       },
     },
     gpi: { score: 1.5, rank: 12, year: 2025 },
@@ -46,6 +47,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       indicators: {
         'EG.ELC.ACCS.ZS': { value: 100, year: 2025 },
         'IS.ROD.PAVE.ZS': { value: 74, year: 2025 },
+        'EG.USE.ELEC.KH.PC': { value: 12000, year: 2025 },
       },
     },
     gpi: { score: 2.4, rank: 132, year: 2025 },
@@ -76,6 +78,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       indicators: {
         'EG.ELC.ACCS.ZS': { value: 60, year: 2025 },
         'IS.ROD.PAVE.ZS': { value: 20, year: 2025 },
+        'EG.USE.ELEC.KH.PC': { value: 300, year: 2025 },
       },
     },
     gpi: { score: 3.8, rank: 160, year: 2025 },
@@ -291,6 +294,53 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     NO: { critical: 0, high: 0, medium: 0, low: 1 },
     US: { critical: 0, high: 2, medium: 4, low: 2 },
     YE: { critical: 4, high: 6, medium: 5, low: 1 },
+  },
+  // Lebanon: used to test that null IEA (Eurostat EU-only) + crisis-level electricity
+  // consumption produces an energy score < 50, not artificially high (~89 pre-fix).
+  'resilience:static:LB': {
+    wgi: {
+      indicators: {
+        'VA.EST': { value: -0.9, year: 2025 },
+        'PV.EST': { value: -1.8, year: 2025 },
+        'GE.EST': { value: -1.2, year: 2025 },
+        'RQ.EST': { value: -1.0, year: 2025 },
+        'RL.EST': { value: -1.1, year: 2025 },
+        'CC.EST': { value: -1.3, year: 2025 },
+      },
+    },
+    infrastructure: {
+      indicators: {
+        'EG.ELC.ACCS.ZS': { value: 99, year: 2025 },
+        'IS.ROD.PAVE.ZS': { value: 85, year: 2025 },
+        'EG.USE.ELEC.KH.PC': { value: 1200, year: 2024 },
+      },
+    },
+    gpi: { score: 2.9, rank: 108, year: 2025 },
+    rsf: { score: 48, rank: 130, year: 2025 },
+    who: {
+      indicators: {
+        hospitalBeds: { value: 2.8, year: 2024 },
+        uhcIndex: { value: 68, year: 2024 },
+        measlesCoverage: { value: 72, year: 2024 },
+      },
+    },
+    fao: { peopleInCrisis: 1_500_000, phase: 'IPC Phase 3', year: 2025 },
+    aquastat: { indicator: 'Water stress', value: 72, year: 2024 },
+    iea: null, // Eurostat is EU-only — Lebanon absent → energy import dependency unknown
+  },
+  'energy:mix:v1:LB': {
+    iso2: 'LB',
+    country: 'Lebanon',
+    year: 2023,
+    coalShare: 2,
+    gasShare: 15,
+    oilShare: 58,
+    nuclearShare: 0,
+    renewShare: 25,
+    windShare: 1,
+    solarShare: 24,
+    hydroShare: 0,
+    seededAt: '2026-04-04T00:00:00.000Z',
   },
   'resilience:static:index:v1': {
     countries: ['NO', 'US', 'YE'],

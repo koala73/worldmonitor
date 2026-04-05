@@ -37,7 +37,7 @@ const LOCK_TTL_MS = 2 * 60 * 60 * 1000;
 const TOTAL_DATASET_SLOTS = 8;
 const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea'];
 const WGI_INDICATORS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'];
-const INFRASTRUCTURE_INDICATORS = ['EG.ELC.ACCS.ZS', 'IS.ROD.PAVE.ZS'];
+const INFRASTRUCTURE_INDICATORS = ['EG.ELC.ACCS.ZS', 'IS.ROD.PAVE.ZS', 'EG.USE.ELEC.KH.PC'];
 const WHO_INDICATORS = {
   hospitalBeds: 'WHS6_102',
   uhcIndex: 'UHC_INDEX_REPORTED',

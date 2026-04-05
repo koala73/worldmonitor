@@ -19,6 +19,7 @@ export const RELEASE_GATE_COUNTRIES = [
     'CH',
     'ER',
     'HT',
+    'LB',
     'NG',
     'NO',
     'SO',
@@ -100,6 +101,7 @@ const PROFILE_BY_COUNTRY: Record<string, CountryProfile> = {
   SA: 'stressed',
   TR: 'stressed',
   ZA: 'stressed',
+  LB: 'fragile',
   RU: 'fragile',
   YE: 'fragile',
   SO: 'fragile',
@@ -186,6 +188,9 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
       indicators: {
         'EG.ELC.ACCS.ZS': { value: round(clamp(30 + quality * 0.78, 35, 100)), year: 2025 },
         'IS.ROD.PAVE.ZS': { value: round(clamp(10 + quality * 0.88, 8, 100)), year: 2025 },
+        // Exponential scale: fragile (~600 kWh) → stressed (~2200) → strong (~8000) → elite (~9500)
+        // Reflects that energy consumption per capita collapses in conflict/crisis states.
+        'EG.USE.ELEC.KH.PC': { value: Math.round(300 * 10 ** (quality / 60)), year: 2025 },
       },
     },
     gpi: { score: round(clamp(4.1 - quality * 0.03, 1.2, 4.2), 2), rank: Math.round(190 - quality * 1.5), year: 2025 },

@@ -86,21 +86,22 @@ describe('resilience dimension scorers', () => {
     }
   });
 
-  it('scoreEnergy with full OWID data uses 5-metric blend and high coverage', async () => {
+  it('scoreEnergy with full data uses 7-metric blend and high coverage', async () => {
     const no = await scoreEnergy('NO', fixtureReader);
-    assert.ok(no.coverage >= 0.9, `NO coverage should be >=0.9 with full OWID data, got ${no.coverage}`);
+    assert.ok(no.coverage >= 0.85, `NO coverage should be >=0.85 with full data, got ${no.coverage}`);
     assert.ok(no.score > 50, `NO score should be >50 (high renewables, low dependency), got ${no.score}`);
   });
 
-  it('scoreEnergy without OWID data degrades gracefully to 2-metric blend', async () => {
+  it('scoreEnergy without OWID mix data degrades gracefully to 4-metric blend', async () => {
     const noOwidReader = async (key: string) => {
       if (key.startsWith('energy:mix:v1:')) return null;
       return RESILIENCE_FIXTURES[key] ?? null;
     };
     const no = await scoreEnergy('NO', noOwidReader);
     assert.ok(no.coverage > 0, `Coverage should be >0 even without OWID data, got ${no.coverage}`);
-    assert.ok(no.coverage < 0.6, `Coverage should be <0.6 without OWID data (only 2 of 5 metrics), got ${no.coverage}`);
-    assert.ok(no.score > 0, `Score should be non-zero with only iea data, got ${no.score}`);
+    // dep (0.25) + energyStress (0.10) + electricityConsumption (0.30) = 0.65 of 1.00 total
+    assert.ok(no.coverage < 0.75, `Coverage should be <0.75 without mix data (3 of 7 metrics), got ${no.coverage}`);
+    assert.ok(no.score > 0, `Score should be non-zero with only iea + electricity data, got ${no.score}`);
   });
 
   it('scoreEnergy: high renewShare country scores better than high coalShare at equal dependency', async () => {
@@ -120,6 +121,35 @@ describe('resilience dimension scorers', () => {
     const fossil = await scoreEnergy('XX', fossilReader);
     assert.ok(renewable.score > fossil.score,
       `Renewable-heavy (${renewable.score}) should score better than coal-heavy (${fossil.score})`);
+  });
+
+  it('Lebanon-like profile: null IEA (Eurostat EU-only gap) + crisis-level electricity → energy < 50', async () => {
+    // Pre-fix, Lebanon scored ~89 on energy because: Eurostat is EU-only → dependency=null
+    // (missing 0.25 weight), and OWID showed low fossil use during crisis → appeared "clean".
+    // Fix: EG.USE.ELEC.KH.PC captures grid collapse (1200 kWh/cap vs USA 12000).
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:LB') return RESILIENCE_FIXTURES['resilience:static:LB'];
+      if (key === 'energy:mix:v1:LB') return RESILIENCE_FIXTURES['energy:mix:v1:LB'];
+      if (key === 'economic:energy:v1:all') return RESILIENCE_FIXTURES['economic:energy:v1:all'];
+      return null;
+    };
+    const score = await scoreEnergy('LB', reader);
+    assert.ok(score.score < 50, `Lebanon energy should be < 50 with crisis-level consumption (null IEA), got ${score.score}`);
+    assert.ok(score.coverage > 0, 'should have non-zero coverage even with null IEA');
+  });
+
+  it('certainty imputation: country absent from sanctions list scores 100 for the sanctions sub-metric', async () => {
+    // Without imputation, a country not in the sanctions list loses 55% coverage weight,
+    // which can trigger false lowConfidence for stable economies like Finland.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'sanctions:pressure:v1') return { countries: [{ countryCode: 'RU', entryCount: 500 }] };
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [] };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [] };
+      return null;
+    };
+    const score = await scoreTradeSanctions('FI', reader);
+    assert.equal(score.score, 100, 'unsanctioned country with zero trade friction should score 100');
+    assert.equal(score.coverage, 1, 'should have full coverage when all 3 trade sub-metrics are present');
   });
 
   it('memoizes repeated seed reads inside scoreAllDimensions', async () => {

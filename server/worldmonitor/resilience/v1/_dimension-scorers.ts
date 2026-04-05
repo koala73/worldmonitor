@@ -624,8 +624,16 @@ export async function scoreTradeSanctions(
   const restrictionCount = countTradeRestrictions(restrictionsRaw, countryCode);
   const barrierCount = countTradeBarriers(barriersRaw, countryCode);
 
+  // Certainty imputation: when the global sanctions list loaded but the country is absent,
+  // absence IS the data — the country has zero sanctions pressure (score 100).
+  // Without imputation, absent countries lose 55% of their coverage weight, causing
+  // stable economies (FI, NO in real data) to be misclassified as low-confidence.
+  const sanctionScore = sanctionsPressure != null
+    ? normalizeLowerBetter(sanctionsPressure, 0, 500)
+    : sanctionsRaw != null ? 100 : null;
+
   return weightedBlend([
-    { score: sanctionsPressure == null ? null : normalizeLowerBetter(sanctionsPressure, 0, 500), weight: 0.55 },
+    { score: sanctionScore, weight: 0.55 },
     { score: restrictionsRaw != null ? normalizeLowerBetter(restrictionCount, 0, 30) : null, weight: 0.25 },
     { score: barriersRaw != null ? normalizeLowerBetter(barrierCount, 0, 40) : null, weight: 0.2 },
   ]);
@@ -709,11 +717,16 @@ export async function scoreEnergy(
     ? (energyMixRaw as Record<string, unknown>)
     : null;
 
-  const dependency  = safeNum(staticRecord?.iea?.energyImportDependency?.value);
-  const gasShare    = mix && typeof mix.gasShare === 'number' ? mix.gasShare : null;
-  const coalShare   = mix && typeof mix.coalShare === 'number' ? mix.coalShare : null;
-  const renewShare  = mix && typeof mix.renewShare === 'number' ? mix.renewShare : null;
-  const energyStress = getEnergyPriceStress(energyPricesRaw);
+  const dependency             = safeNum(staticRecord?.iea?.energyImportDependency?.value);
+  const gasShare               = mix && typeof mix.gasShare === 'number' ? mix.gasShare : null;
+  const coalShare              = mix && typeof mix.coalShare === 'number' ? mix.coalShare : null;
+  const renewShare             = mix && typeof mix.renewShare === 'number' ? mix.renewShare : null;
+  const energyStress           = getEnergyPriceStress(energyPricesRaw);
+  // EG.USE.ELEC.KH.PC: per-capita electricity consumption (kWh/year).
+  // Very low consumption signals grid collapse (blackouts, crisis), not efficiency.
+  // Countries absent from Eurostat (non-EU) have no IEA import-dependency figure, so
+  // this metric becomes the primary indicator of actual energy infrastructure health.
+  const electricityConsumption = getStaticIndicatorValue(staticRecord, 'infrastructure', 'EG.USE.ELEC.KH.PC');
 
   const storageFillPct = storageRaw != null && typeof storageRaw === 'object'
     ? (() => {
@@ -726,12 +739,13 @@ export async function scoreEnergy(
     : null;
 
   return weightedBlend([
-    { score: dependency    == null ? null : normalizeLowerBetter(dependency, 0, 100),        weight: 0.30 },
-    { score: gasShare      == null ? null : normalizeLowerBetter(gasShare, 0, 100),          weight: 0.20 },
-    { score: coalShare     == null ? null : normalizeLowerBetter(coalShare, 0, 100),         weight: 0.15 },
-    { score: renewShare    == null ? null : normalizeHigherBetter(renewShare, 0, 100),       weight: 0.15 },
-    { score: storageStress == null ? null : normalizeLowerBetter(storageStress * 100, 0, 100), weight: 0.10 },
-    { score: energyStress  == null ? null : normalizeLowerBetter(energyStress, 0, 25),       weight: 0.10 },
+    { score: dependency             == null ? null : normalizeLowerBetter(dependency, 0, 100),              weight: 0.25 },
+    { score: gasShare               == null ? null : normalizeLowerBetter(gasShare, 0, 100),                weight: 0.12 },
+    { score: coalShare              == null ? null : normalizeLowerBetter(coalShare, 0, 100),               weight: 0.08 },
+    { score: renewShare             == null ? null : normalizeHigherBetter(renewShare, 0, 100),             weight: 0.05 },
+    { score: storageStress          == null ? null : normalizeLowerBetter(storageStress * 100, 0, 100),     weight: 0.10 },
+    { score: energyStress           == null ? null : normalizeLowerBetter(energyStress, 0, 25),             weight: 0.10 },
+    { score: electricityConsumption == null ? null : normalizeHigherBetter(electricityConsumption, 200, 8000), weight: 0.30 },
   ]);
 }
 
@@ -840,11 +854,18 @@ export async function scoreFoodWater(
   const phase = safeNum(String(staticRecord?.fao?.phase || '').match(/\d+/)?.[0]);
   const aquastatScore = scoreAquastatValue(staticRecord);
 
+  // Certainty imputation: FSIN/IPC databases only track countries IN food crisis.
+  // A country tracked by WGI (has governance data) but absent from FSIN is NOT in
+  // food crisis — this is a positive signal, not a data gap. Without imputation,
+  // stable countries like the USA lose 45% coverage weight on this dimension and
+  // get flagged as low-confidence despite excellent food security.
+  const foodCrisisScore = peopleInCrisis != null
+    ? normalizeLowerBetter(Math.log10(Math.max(1, peopleInCrisis)), 0, 7)
+    : staticRecord?.wgi != null ? 87 : null;
+
   return weightedBlend([
     {
-      score: peopleInCrisis == null
-        ? null
-        : normalizeLowerBetter(Math.log10(Math.max(1, peopleInCrisis)), 0, 7),
+      score: foodCrisisScore,
       weight: 0.45,
     },
     { score: phase == null ? null : normalizeLowerBetter(phase, 1, 5), weight: 0.15 },

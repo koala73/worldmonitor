@@ -76,6 +76,12 @@ function buildDimensionList(
   }));
 }
 
+function coverageWeightedMean(dimensions: ResilienceDimension[]): number {
+  const totalCoverage = dimensions.reduce((sum, d) => sum + d.coverage, 0);
+  if (!totalCoverage) return 0;
+  return dimensions.reduce((sum, d) => sum + d.score * d.coverage, 0) / totalCoverage;
+}
+
 function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] {
   const grouped = new Map<ResilienceDomainId, ResilienceDimension[]>();
   for (const domainId of RESILIENCE_DOMAIN_ORDER) grouped.set(domainId, []);
@@ -87,10 +93,13 @@ function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] 
 
   return RESILIENCE_DOMAIN_ORDER.map((domainId) => {
     const domainDimensions = grouped.get(domainId) ?? [];
-    const domainAverage = mean(domainDimensions.map((dimension) => dimension.score)) ?? 0;
+    // Coverage-weighted mean: dimensions with low coverage (sparse data) contribute
+    // proportionally less. Without this, a 0-coverage dimension (score=0) drags the
+    // domain average down for countries that simply lack data in one sub-area.
+    const domainScore = coverageWeightedMean(domainDimensions);
     return {
       id: domainId,
-      score: round(domainAverage),
+      score: round(domainScore),
       weight: getResilienceDomainWeight(domainId),
       dimensions: domainDimensions,
     };
