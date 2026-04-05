@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { ClimateServiceClient } from '@/generated/client/worldmonitor/climate/v1/service_client';
@@ -28,15 +28,17 @@ function truncateSummary(text: string, maxLen = 120): string {
 function renderNewsCard(item: ClimateNewsItem): string {
   const timeAgo = item.publishedAt ? formatTimeAgo(item.publishedAt) : '';
   const summary = truncateSummary(item.summary);
+  const safeUrl = sanitizeUrl(item.url);
 
-  return `<a class="climate-news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">
-    <div class="climate-news-card__header">
+  const inner = `<div class="climate-news-card__header">
       <span class="climate-news-card__source">${escapeHtml(item.sourceName)}</span>
       <span class="climate-news-card__time">${escapeHtml(timeAgo)}</span>
     </div>
     <div class="climate-news-card__title">${escapeHtml(item.title)}</div>
-    ${summary ? `<div class="climate-news-card__summary">${escapeHtml(summary)}</div>` : ''}
-  </a>`;
+    ${summary ? `<div class="climate-news-card__summary">${escapeHtml(summary)}</div>` : ''}`;
+
+  if (!safeUrl) return `<div class="climate-news-card">${inner}</div>`;
+  return `<a class="climate-news-card" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${inner}</a>`;
 }
 
 export class ClimateNewsPanel extends Panel {
