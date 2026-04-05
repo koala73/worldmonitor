@@ -654,7 +654,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await extendExistingTtl(keys, ttlSeconds || 600);
       // Always write seed-meta even when data is empty so health checks can
       // distinguish "seeder ran but nothing to publish" from "seeder stopped".
-      await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, opts.metaTtlSeconds);
+      await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
       console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed, existing cache TTL extended`);
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
