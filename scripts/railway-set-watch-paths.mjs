@@ -72,6 +72,15 @@ const SERVICE_OVERRIDES = {
     startCommand: 'node seed-regulatory-actions.mjs',
     cronSchedule: '0 */2 * * *',
   },
+  'seed-gas-storage-countries': {
+    watchPatterns: [
+      'scripts/seed-gas-storage-countries.mjs',
+      'scripts/_seed-utils.mjs',
+      'scripts/package.json',
+    ],
+    startCommand: 'node seed-gas-storage-countries.mjs',
+    cronSchedule: '30 10 * * *',
+  },
 };
 
 function getToken() {

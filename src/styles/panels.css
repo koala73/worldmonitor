@@ -2766,3 +2766,60 @@ a.hub-top-story {
   opacity: 1;
   text-decoration: underline;
 }
+
+/* Climate News Panel */
+.climate-news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.climate-news-card {
+  display: block;
+  padding: 8px 10px;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.15s;
+}
+.climate-news-card:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.climate-news-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+
+.climate-news-card__source {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-green, #22c55e);
+  opacity: 0.8;
+}
+
+.climate-news-card__time {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.climate-news-card__title {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.climate-news-card__summary {
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--text-muted);
+  opacity: 0.7;
+}

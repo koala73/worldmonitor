@@ -375,7 +375,8 @@
     "gulfOil": "Gulf Oil",
     "airlineIntel": "✈️ Airline Intelligence",
     "consumerPrices": "Consumer Prices",
-    "fearGreed": "Fear & Greed"
+    "fearGreed": "Fear & Greed",
+    "climateNews": "Climate News"
   },
   "commands": {
     "prefixes": {
@@ -2058,6 +2059,10 @@
     "map": {
       "showMap": "Show Map",
       "hideMap": "Hide Map"
+    },
+    "climateNews": {
+      "infoTooltip": "<strong>Climate News</strong> Latest environment and climate intelligence from Carbon Brief, UNEP, NASA, The Guardian, and other authoritative sources. Updated every 30 minutes.",
+      "loadError": "Climate news temporarily unavailable"
     }
   },
   "popups": {

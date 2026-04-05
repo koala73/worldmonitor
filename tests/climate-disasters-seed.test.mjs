@@ -31,33 +31,20 @@ describe('seed-climate-disasters helpers', () => {
     assert.deepEqual(typeFilter.value, ['FL', 'TC', 'DR', 'HT', 'WF']);
   });
 
-  it('requires an approved ReliefWeb appname to be configured', () => {
+  it('returns null when RELIEFWEB_APPNAME is not configured', () => {
     delete process.env.RELIEFWEB_APPNAME;
     delete process.env.RELIEFWEB_APP_NAME;
 
-    assert.throws(
-      () => getReliefWebAppname(),
-      /RELIEFWEB_APPNAME is required/,
-    );
+    assert.equal(getReliefWebAppname(), null);
   });
 
-  it('only reuses GDACS or NASA FIRMS items from natural:events:v1', () => {
-    assert.equal(
-      isClimateNaturalEvent({ category: 'floods', sourceName: 'GDACS', id: 'gdacs-FL-123' }),
-      true,
-    );
-    assert.equal(
-      isClimateNaturalEvent({ category: 'wildfires', sourceName: 'NASA FIRMS', id: 'EONET_1' }),
-      true,
-    );
-    assert.equal(
-      isClimateNaturalEvent({ category: 'severeStorms', sourceName: 'NHC', stormName: 'Alfred', id: 'nhc-AL01-1' }),
-      false,
-    );
-    assert.equal(
-      isClimateNaturalEvent({ category: 'wildfires', sourceName: 'Volcanic Ash Advisory', id: 'EONET_2' }),
-      false,
-    );
+  it('accepts climate events from known sources and rejects unrecognized ones', () => {
+    assert.equal(isClimateNaturalEvent({ category: 'floods', sourceName: 'GDACS', id: 'gdacs-FL-123' }), true);
+    assert.equal(isClimateNaturalEvent({ category: 'wildfires', sourceName: 'NASA FIRMS', id: 'EONET_1' }), true);
+    assert.equal(isClimateNaturalEvent({ category: 'wildfires', sourceName: 'Volcanic Ash Advisory', id: 'EONET_2' }), true);
+    assert.equal(isClimateNaturalEvent({ category: 'volcanoes', sourceName: '', id: 'EONET_3' }), true);
+    assert.equal(isClimateNaturalEvent({ category: 'severeStorms', sourceName: 'NHC', stormName: 'Alfred', id: 'nhc-AL01-1' }), false);
+    assert.equal(isClimateNaturalEvent({ category: 'floods', sourceName: '', id: '' }), false);
   });
 
   it('preserves supported natural-event provenance and rejects unsupported rows', () => {
@@ -92,19 +79,55 @@ describe('seed-climate-disasters helpers', () => {
     assert.equal(gdacsEvent.source, 'GDACS');
     assert.equal(gdacsEvent.severity, 'red');
 
+    // NHC severe storms are filtered by isClimateNaturalEvent (GDACS-only),
+    // not by mapNaturalEvent. mapNaturalEvent accepts any known source.
     assert.equal(
-      mapNaturalEvent({
-        id: 'nhc-AL01-1',
-        category: 'severeStorms',
-        title: 'Tropical Storm Alfred',
-        sourceName: 'NHC',
-        sourceUrl: 'https://www.nhc.noaa.gov/',
-        date: 1_700_000_000_000,
-        lat: 20,
-        lon: -70,
-      }),
-      null,
+      isClimateNaturalEvent({ category: 'severeStorms', sourceName: 'NHC', stormName: 'Alfred', id: 'nhc-AL01-1' }),
+      false,
     );
+  });
+
+  it('maps EONET-sourced volcano and drought events through the full pipeline', () => {
+    const volcanoEvent = mapNaturalEvent({
+      id: 'EONET_5001',
+      category: 'volcanoes',
+      title: 'Etna eruption',
+      sourceName: 'SIVolcano',
+      sourceUrl: 'https://volcano.si.edu/',
+      date: 1_700_000_000_000,
+      lat: 37.75,
+      lon: 14.99,
+    });
+    assert.ok(volcanoEvent, 'EONET volcano should not be dropped');
+    assert.equal(volcanoEvent.type, 'volcano');
+    assert.equal(volcanoEvent.source, 'EONET');
+
+    const droughtEvent = mapNaturalEvent({
+      id: 'EONET_5002',
+      category: 'drought',
+      title: 'East Africa drought',
+      sourceName: 'FEWS NET',
+      sourceUrl: 'https://fews.net/',
+      date: 1_700_000_000_000,
+      lat: 1.0,
+      lon: 38.0,
+    });
+    assert.ok(droughtEvent, 'EONET drought should not be dropped');
+    assert.equal(droughtEvent.type, 'drought');
+
+    const eonetFlood = mapNaturalEvent({
+      id: 'EONET_5003',
+      category: 'floods',
+      title: 'Flooding in Bangladesh',
+      sourceName: '',
+      sourceUrl: 'https://eonet.gsfc.nasa.gov/',
+      date: 1_700_000_000_000,
+      lat: 23.8,
+      lon: 90.4,
+    });
+    assert.ok(eonetFlood, 'EONET flood should not be dropped');
+    assert.equal(eonetFlood.type, 'flood');
+    assert.equal(eonetFlood.source, 'EONET');
   });
 
   it('derives country codes from coordinates when natural-event text lacks a country', () => {

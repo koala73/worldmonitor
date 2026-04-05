@@ -52,6 +52,7 @@ import {
   BigMacPanel,
   FuelPricesPanel,
   FaoFoodPriceIndexPanel,
+  ClimateNewsPanel,
   WorldClockPanel,
   AirlineIntelPanel,
   AviationCommandBar,
@@ -1000,6 +1001,10 @@ export class PanelLayoutManager implements AppModule {
 
     if (this.shouldCreatePanel('fao-food-price-index') && !this.ctx.panels['fao-food-price-index']) {
       this.ctx.panels['fao-food-price-index'] = new FaoFoodPriceIndexPanel();
+    }
+
+    if (this.shouldCreatePanel('climate-news') && !this.ctx.panels['climate-news']) {
+      this.ctx.panels['climate-news'] = new ClimateNewsPanel();
     }
 
     if (this.shouldCreatePanel('live-news') &&

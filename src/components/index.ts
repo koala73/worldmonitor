@@ -80,6 +80,7 @@ export * from './EarningsCalendarPanel';
 export * from './EconomicCalendarPanel';
 export * from './CotPositioningPanel';
 export { HormuzPanel } from './HormuzPanel';
+export * from './ClimateNewsPanel';
 export * from './DiseaseOutbreaksPanel';
 export * from './SocialVelocityPanel';
 export * from './ResilienceWidget';
