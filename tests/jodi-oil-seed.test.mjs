@@ -6,6 +6,7 @@ import {
   extractCountryData,
   buildAllCountries,
   validateCoverage,
+  mergeSourceRows,
   CANONICAL_KEY,
   COUNTRY_KEY_PREFIX,
   JODI_TTL,
@@ -264,6 +265,44 @@ describe('buildAllCountries', () => {
     ];
     const countries = buildAllCountries(rows);
     assert.equal(countries.length, 0);
+  });
+});
+
+describe('mergeSourceRows', () => {
+  it('throws when both secondary files are empty', () => {
+    assert.throws(
+      () => mergeSourceRows('primary-data', 'primary-data', '', ''),
+      /Both secondary JODI CSV files failed/,
+    );
+  });
+
+  it('throws when both secondary files are empty even with valid primary CSV', () => {
+    const primaryCsv = makeCsv([makeRow({ ENERGY_PRODUCT: 'CRUDEOIL' })]);
+    assert.throws(
+      () => mergeSourceRows(primaryCsv, primaryCsv, '', ''),
+      /Both secondary JODI CSV files failed/,
+    );
+  });
+
+  it('proceeds when current-year secondary succeeds but prior-year fails', () => {
+    const primaryCsv = makeCsv([makeRow({ ENERGY_PRODUCT: 'CRUDEOIL' })]);
+    const secondaryCsv = makeCsv([makeRow({ ENERGY_PRODUCT: 'GASDIES' })]);
+    const rows = mergeSourceRows(primaryCsv, '', secondaryCsv, '');
+    assert.ok(rows.length > 0);
+  });
+
+  it('proceeds when only prior-year secondary is available', () => {
+    const primaryCsv = makeCsv([makeRow({ ENERGY_PRODUCT: 'CRUDEOIL' })]);
+    const secondaryPriorCsv = makeCsv([makeRow({ ENERGY_PRODUCT: 'GASDIES' })]);
+    const rows = mergeSourceRows(primaryCsv, '', '', secondaryPriorCsv);
+    assert.ok(rows.length > 0);
+  });
+
+  it('filters out non-KBD rows from merged result', () => {
+    const secondaryCsv = makeCsv([makeRow({ UNIT_MEASURE: 'KB' }), makeRow({ UNIT_MEASURE: 'KBD' })]);
+    const rows = mergeSourceRows('', '', secondaryCsv, '');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].UNIT_MEASURE, 'KBD');
   });
 });
 

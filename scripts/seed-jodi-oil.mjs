@@ -9,6 +9,7 @@ import {
   extendExistingTtl,
   logSeedResult,
   withRetry,
+  readSeedSnapshot,
 } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -163,26 +164,36 @@ async function fetchCsv(url) {
   return resp.text();
 }
 
-async function fetchAllRows() {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const priorYear = currentYear - 1;
-
-  const [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior] = await Promise.all([
-    withRetry(() => fetchCsv(`${JODI_BASE}primary/${currentYear}.csv`), 2, 2000).catch(() => ''),
-    withRetry(() => fetchCsv(`${JODI_BASE}primary/${priorYear}.csv`), 2, 2000).catch(() => ''),
-    withRetry(() => fetchCsv(`${JODI_BASE}secondary/${currentYear}.csv`), 2, 2000).catch(() => ''),
-    withRetry(() => fetchCsv(`${JODI_BASE}secondary/${priorYear}.csv`), 2, 2000).catch(() => ''),
-  ]);
-
+export function mergeSourceRows(primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior) {
+  if (!secondaryCurrent && !secondaryPrior) {
+    throw new Error('Both secondary JODI CSV files failed to download; product-level data unavailable');
+  }
   const allRows = [
     ...(primaryCurrent ? parseCsv(primaryCurrent) : []),
     ...(primaryPrior ? parseCsv(primaryPrior) : []),
     ...(secondaryCurrent ? parseCsv(secondaryCurrent) : []),
     ...(secondaryPrior ? parseCsv(secondaryPrior) : []),
   ];
-
   return allRows.filter(r => r.UNIT_MEASURE === 'KBD');
+}
+
+async function fetchAllRows() {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const priorYear = currentYear - 1;
+
+  const [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior] = await Promise.all([
+    withRetry(() => fetchCsv(`${JODI_BASE}primary/${currentYear}.csv`), 2, 2000)
+      .catch(e => { console.warn(`  primary/${currentYear}.csv failed: ${e.message}`); return ''; }),
+    withRetry(() => fetchCsv(`${JODI_BASE}primary/${priorYear}.csv`), 2, 2000)
+      .catch(e => { console.warn(`  primary/${priorYear}.csv failed: ${e.message}`); return ''; }),
+    withRetry(() => fetchCsv(`${JODI_BASE}secondary/${currentYear}.csv`), 2, 2000)
+      .catch(e => { console.warn(`  secondary/${currentYear}.csv failed: ${e.message}`); return ''; }),
+    withRetry(() => fetchCsv(`${JODI_BASE}secondary/${priorYear}.csv`), 2, 2000)
+      .catch(e => { console.warn(`  secondary/${priorYear}.csv failed: ${e.message}`); return ''; }),
+  ]);
+
+  return mergeSourceRows(primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior);
 }
 
 async function redisPipeline(commands) {
@@ -230,13 +241,11 @@ async function main() {
 
     if (!validateCoverage(countries)) {
       console.error(`  COVERAGE GATE FAILED: only ${countries.length} countries, need >=${MIN_VALID_COUNTRIES}`);
-      await extendExistingTtl(
-        [CANONICAL_KEY, META_KEY, ...countries.map(c => `${COUNTRY_KEY_PREFIX}${c.iso2}`)],
-        JODI_TTL,
-      );
-      await redisPipeline([
-        ['SET', META_KEY, JSON.stringify({ fetchedAt: Date.now(), recordCount: 0 }), 'EX', JODI_TTL],
-      ]).catch(() => {});
+      const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
+      const prevCountryKeys = Array.isArray(prevIso2List)
+        ? prevIso2List.map(iso2 => `${COUNTRY_KEY_PREFIX}${iso2}`)
+        : countries.map(c => `${COUNTRY_KEY_PREFIX}${c.iso2}`);
+      await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], JODI_TTL);
       return;
     }
 
@@ -256,15 +265,16 @@ async function main() {
       throw new Error(`Redis pipeline: ${failures.length}/${commands.length} commands failed`);
     }
 
-    logSeedResult('energy', 'jodi-oil', Date.now() - startedAt, { countries: countries.length });
+    logSeedResult('energy', countries.length, Date.now() - startedAt, { source: 'jodi-oil' });
     console.log(`  Seeded ${countries.length} countries`);
     console.log(`\n=== Done (${Date.now() - startedAt}ms) ===`);
   } catch (err) {
     console.error(`  SEED FAILED: ${err.message}`);
-    await extendExistingTtl([CANONICAL_KEY, META_KEY], JODI_TTL).catch(() => {});
-    await redisPipeline([
-      ['SET', META_KEY, JSON.stringify({ fetchedAt: Date.now(), recordCount: 0 }), 'EX', JODI_TTL],
-    ]).catch(() => {});
+    const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
+    const prevCountryKeys = Array.isArray(prevIso2List)
+      ? prevIso2List.map(iso2 => `${COUNTRY_KEY_PREFIX}${iso2}`)
+      : [];
+    await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], JODI_TTL).catch(() => {});
     throw err;
   } finally {
     await releaseLock(LOCK_DOMAIN, runId);

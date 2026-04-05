@@ -88,6 +88,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   diseaseOutbreaks:  'health:disease-outbreaks:v1',
   economicStress:    'economic:stress-index:v1',
   electricityPrices: 'energy:electricity:v1:index',
+  jodiOil:           'energy:jodi-oil:v1:_countries',
 };
 
 const SLOW_KEYS = new Set([
