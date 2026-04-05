@@ -5,6 +5,7 @@ import { extractCountryCode } from './shared/geo-extract.mjs';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 
 loadEnvFile(import.meta.url);
 
@@ -27,18 +28,20 @@ const RELIEFWEB_TYPE_TO_CANONICAL = {
 
 const COUNTRY_BBOXES = loadSharedConfig('country-bboxes.json');
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const COUNTRY_GEOJSON = JSON.parse(readFileSync(join(__dirname, '..', 'public', 'data', 'countries.geojson'), 'utf8'));
+const require = createRequire(import.meta.url);
+const ISO3_TO_ISO2 = require('../shared/iso3-to-iso2.json');
+const COUNTRY_NAMES_RAW = loadSharedConfig('country-names.json');
+
+function titleCase(str) {
+  return str.replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 const COUNTRY_NAME_BY_CODE = {};
-const ISO3_TO_ISO2 = {};
-
-for (const feature of COUNTRY_GEOJSON?.features || []) {
-  const properties = feature?.properties || {};
-  const iso2 = String(properties['ISO3166-1-Alpha-2'] || '').trim().toUpperCase();
-  const iso3 = String(properties['ISO3166-1-Alpha-3'] || '').trim().toUpperCase();
-  const name = String(properties.name || '').trim();
-  if (/^[A-Z]{2}$/.test(iso2) && name) COUNTRY_NAME_BY_CODE[iso2] = name;
-  if (/^[A-Z]{2}$/.test(iso2) && /^[A-Z]{3}$/.test(iso3)) ISO3_TO_ISO2[iso3] = iso2;
+for (const [name, iso2] of Object.entries(COUNTRY_NAMES_RAW)) {
+  const code = String(iso2 || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(code) && name && !COUNTRY_NAME_BY_CODE[code]) {
+    COUNTRY_NAME_BY_CODE[code] = titleCase(name);
+  }
 }
 
 const COUNTRY_CODES_BY_BBOX_AREA = Object.entries(COUNTRY_BBOXES)
