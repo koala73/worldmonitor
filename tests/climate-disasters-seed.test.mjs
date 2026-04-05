@@ -41,23 +41,13 @@ describe('seed-climate-disasters helpers', () => {
     );
   });
 
-  it('only reuses GDACS or NASA FIRMS items from natural:events:v1', () => {
-    assert.equal(
-      isClimateNaturalEvent({ category: 'floods', sourceName: 'GDACS', id: 'gdacs-FL-123' }),
-      true,
-    );
-    assert.equal(
-      isClimateNaturalEvent({ category: 'wildfires', sourceName: 'NASA FIRMS', id: 'EONET_1' }),
-      true,
-    );
-    assert.equal(
-      isClimateNaturalEvent({ category: 'severeStorms', sourceName: 'NHC', stormName: 'Alfred', id: 'nhc-AL01-1' }),
-      false,
-    );
-    assert.equal(
-      isClimateNaturalEvent({ category: 'wildfires', sourceName: 'Volcanic Ash Advisory', id: 'EONET_2' }),
-      false,
-    );
+  it('accepts climate events from known sources and rejects unrecognized ones', () => {
+    assert.equal(isClimateNaturalEvent({ category: 'floods', sourceName: 'GDACS', id: 'gdacs-FL-123' }), true);
+    assert.equal(isClimateNaturalEvent({ category: 'wildfires', sourceName: 'NASA FIRMS', id: 'EONET_1' }), true);
+    assert.equal(isClimateNaturalEvent({ category: 'wildfires', sourceName: 'Volcanic Ash Advisory', id: 'EONET_2' }), true);
+    assert.equal(isClimateNaturalEvent({ category: 'volcanoes', sourceName: '', id: 'EONET_3' }), true);
+    assert.equal(isClimateNaturalEvent({ category: 'severeStorms', sourceName: 'NHC', stormName: 'Alfred', id: 'nhc-AL01-1' }), false);
+    assert.equal(isClimateNaturalEvent({ category: 'floods', sourceName: '', id: '' }), false);
   });
 
   it('preserves supported natural-event provenance and rejects unsupported rows', () => {
