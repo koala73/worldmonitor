@@ -15649,7 +15649,7 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
 async function processNextDeepForecastTask(options = {}) {
   const workerId = options.workerId || `worker-${process.pid}-${Date.now()}`;
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedDeepForecastTasks(10);
-  console.log(`  [DeepForecast] Queue check: ${queuedRunIds.length} task(s)`);
+  console.log(`  [DeepForecast] Queue check: ${queuedRunIds.length} task(s) in ${FORECAST_DEEP_TASK_QUEUE_KEY}`);
   for (const runId of queuedRunIds) {
     const task = await claimDeepForecastTask(runId, workerId);
     if (!task) { console.log(`  [DeepForecast] ${runId}: already claimed or completed`); continue; }
