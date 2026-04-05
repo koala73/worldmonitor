@@ -88,7 +88,7 @@ function resolveProxyStringConnect() {
   return cfg.tls ? `https://${base}` : base;
 }
 
-function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000 } = {}) {
+function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, targetPort = 443 } = {}) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       proxySock.destroy();
@@ -103,7 +103,7 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000 } 
         ? `\r\nProxy-Authorization: Basic ${Buffer.from(proxyConfig.auth).toString('base64')}`
         : '';
       proxySock.write(
-        `CONNECT ${targetHostname}:443 HTTP/1.1\r\nHost: ${targetHostname}:443${authHeader}\r\n\r\n`
+        `CONNECT ${targetHostname}:${targetPort} HTTP/1.1\r\nHost: ${targetHostname}:${targetPort}${authHeader}\r\n\r\n`
       );
 
       let buf = '';
@@ -182,7 +182,6 @@ function proxyFetch(url, proxyConfig, {
         headers: reqHeaders,
         createConnection: () => tlsSocket,
       }, (resp) => {
-        clearTimeout(timer);
         let stream = resp;
         const enc = (resp.headers['content-encoding'] || '').trim().toLowerCase();
         if (enc === 'gzip') stream = resp.pipe(zlib.createGunzip());
@@ -191,6 +190,7 @@ function proxyFetch(url, proxyConfig, {
         const chunks = [];
         stream.on('data', (c) => chunks.push(c));
         stream.on('end', () => {
+          clearTimeout(timer);
           destroy();
           resolve({
             ok: resp.statusCode >= 200 && resp.statusCode < 300,

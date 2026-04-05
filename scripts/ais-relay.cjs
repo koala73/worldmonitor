@@ -7220,7 +7220,7 @@ function _openskyProxyConnect(targetHost, targetPort, timeoutMs = 10000) {
   const proxyConfig = parseProxyConfig(OPENSKY_PROXY_AUTH);
   if (!proxyConfig) return Promise.resolve(null);
   proxyConfig.tls = false;
-  return proxyConnectTunnel(targetHost, proxyConfig, { timeoutMs })
+  return proxyConnectTunnel(targetHost, proxyConfig, { timeoutMs, targetPort })
     .then(({ socket }) => socket);
 }
 
