@@ -27,7 +27,8 @@ message GetCountryEnergyProfileResponse {
   string gas_storage_trend      = 15;
   string gas_storage_date       = 16;
 
-  // Phase 2 — EU/US electricity
+  // Phase 2 — EU electricity (ENTSO-E countries: DE FR ES IT NL BE PL PT GB NO SE)
+  // US electricity is stored by EIA balancing area, not ISO2 — not available here
   bool   electricity_available  = 17;
   double electricity_price_mwh  = 18;
   string electricity_source     = 19;
@@ -44,6 +45,7 @@ message GetCountryEnergyProfileResponse {
   double jet_imports_kbd        = 28;
   double lpg_demand_kbd         = 29;
   double crude_imports_kbd      = 30;
+  double lpg_imports_kbd        = 42;
 
   // Phase 2.5 — JODI Gas
   bool   jodi_gas_available     = 31;

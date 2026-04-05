@@ -2093,6 +2093,9 @@ components:
                 crudeImportsKbd:
                     type: number
                     format: double
+                lpgImportsKbd:
+                    type: number
+                    format: double
                 jodiGasAvailable:
                     type: boolean
                     description: Phase 2.5 — JODI Gas

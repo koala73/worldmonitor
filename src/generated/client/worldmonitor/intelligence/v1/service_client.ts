@@ -518,6 +518,7 @@ export interface GetCountryEnergyProfileResponse {
   jetImportsKbd: number;
   lpgDemandKbd: number;
   crudeImportsKbd: number;
+  lpgImportsKbd: number;
   jodiGasAvailable: boolean;
   jodiGasDataMonth: string;
   gasTotalDemandTj: number;

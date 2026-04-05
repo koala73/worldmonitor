@@ -91,6 +91,7 @@ const EMPTY: GetCountryEnergyProfileResponse = {
   jetDemandKbd: 0,
   jetImportsKbd: 0,
   lpgDemandKbd: 0,
+  lpgImportsKbd: 0,
   crudeImportsKbd: 0,
   jodiGasAvailable: false,
   jodiGasDataMonth: '',
@@ -158,8 +159,8 @@ export async function getCountryEnergyProfile(
 
     electricityAvailable: electricity != null && electricity.priceMwhEur != null,
     electricityPriceMwh: n(electricity?.priceMwhEur),
-    electricitySource: s(electricity?.source),
-    electricityDate: s(electricity?.date),
+    electricitySource: electricity?.priceMwhEur != null ? s(electricity?.source) : '',
+    electricityDate: electricity?.priceMwhEur != null ? s(electricity?.date) : '',
 
     jodiOilAvailable: jodiOil != null,
     jodiOilDataMonth: s(jodiOil?.dataMonth),
@@ -170,6 +171,7 @@ export async function getCountryEnergyProfile(
     jetDemandKbd: n(jodiOil?.jet?.demandKbd),
     jetImportsKbd: n(jodiOil?.jet?.importsKbd),
     lpgDemandKbd: n(jodiOil?.lpg?.demandKbd),
+    lpgImportsKbd: n(jodiOil?.lpg?.importsKbd),
     crudeImportsKbd: n(jodiOil?.crude?.importsKbd),
 
     jodiGasAvailable: jodiGas != null,
