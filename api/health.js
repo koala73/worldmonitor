@@ -140,6 +140,7 @@ const STANDALONE_KEYS = {
   regulatoryActions:        'regulatory:actions:v1',
   energyIntelligence:       'energy:intelligence:feed:v1',
   ieaOilStocks:             'energy:iea-oil-stocks:v1:index',
+  jodiGas:                  'energy:jodi-gas:v1:_countries',
 };
 
 const SEED_META = {
@@ -263,6 +264,7 @@ const SEED_META = {
   energyIntelligence:   { key: 'seed-meta:energy:intelligence',          maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
   jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40 }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
   ieaOilStocks:         { key: 'seed-meta:energy:iea-oil-stocks',        maxStaleMin: 60 * 24 * 40 }, // monthly cron on 15th; 40d threshold = TTL_SECONDS
+  jodiGas:              { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40 }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
   chokepointBaselines:  { key: 'seed-meta:energy:chokepoint-baselines', maxStaleMin: 60 * 24 * 400 }, // 400 days
 };
 
