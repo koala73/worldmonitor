@@ -86,7 +86,6 @@ const BOOTSTRAP_KEYS = {
   vpdTrackerHistorical: 'health:vpd-tracker:historical:v1',
   electricityPrices:    'energy:electricity:v1:index',
   gasStorageCountries: 'energy:gas-storage:v1:_countries',
-  energyIntelligence:   'energy:intelligence:v1:feed',
 };
 
 const STANDALONE_KEYS = {
@@ -138,6 +137,7 @@ const STANDALONE_KEYS = {
   productCatalog:           'product-catalog:v2',
   energyExposure:           'energy:exposure:v1:index',
   regulatoryActions:        'regulatory:actions:v1',
+  energyIntelligence:       'energy:intelligence:feed:v1',
 };
 
 const SEED_META = {

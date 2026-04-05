@@ -4,7 +4,7 @@ import { loadEnvFile, CHROME_UA, runSeed, extendExistingTtl } from './_seed-util
 
 loadEnvFile(import.meta.url);
 
-export const CANONICAL_KEY = 'energy:intelligence:v1:feed';
+export const CANONICAL_KEY = 'energy:intelligence:feed:v1';
 export const INTELLIGENCE_TTL_SECONDS = 86400; // 24h = 4× 6h interval (gold standard: TTL ≥ 3× interval)
 const MAX_ITEMS = 30;
 const RSS_MAX_BYTES = 500_000;
@@ -32,12 +32,19 @@ export function stableHash(str) {
 
 function decodeHtmlEntities(text) {
   return text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ');
+    .replace(/&apos;|&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&hellip;/g, '…')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&lsquo;|&rsquo;/g, "'")
+    .replace(/&ldquo;|&rdquo;/g, '"');
 }
 
 function extractTag(block, tagName) {
@@ -175,7 +182,7 @@ async function fetchEnergyIntelligence() {
   return { items: limited, fetchedAt: now, count: limited.length };
 }
 
-function validate(data) {
+export function validate(data) {
   return Array.isArray(data?.items) && data.items.length >= 3;
 }
 

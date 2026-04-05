@@ -56,7 +56,7 @@ export const GAS_STORAGE_KEY_PREFIX = 'energy:gas-storage:v1:';
 export const GAS_STORAGE_COUNTRIES_KEY = 'energy:gas-storage:v1:_countries';
 export const SPR_KEY = 'economic:spr:v1';
 export const REFINERY_INPUTS_KEY = 'economic:refinery-inputs:v1';
-export const ENERGY_INTELLIGENCE_KEY = 'energy:intelligence:v1:feed';
+export const ENERGY_INTELLIGENCE_KEY = 'energy:intelligence:feed:v1';
 
 /**
  * Static cache keys for the bootstrap endpoint.
@@ -141,6 +141,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   faoFoodPriceIndex: 'economic:fao-ffpi:v1',
   electricityPrices: 'energy:electricity:v1:index',
 };
+
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   bisPolicy: 'slow', bisExchange: 'slow', bisCredit: 'slow',
