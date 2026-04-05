@@ -570,6 +570,7 @@ async function fetchFsinDataset() {
       .filter((k) => /period|date|year/i.test(k))
       .map((k) => safeNum(String(row[k]).slice(0, 4)))
       .filter((v) => v != null && v > 2000);
+    const year = yearCandidates.length ? Math.max(...yearCandidates) : null;
     parsed.set(iso2, {
       source: 'hdx-ipc',
       year,
