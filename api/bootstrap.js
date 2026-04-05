@@ -121,6 +121,7 @@ const SLOW_KEYS = new Set([
   'economicStress',
   'pizzint',
   'electricityPrices',
+  'jodiOil',
 ]);
 const FAST_KEYS = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints', 'chokepointTransits',
