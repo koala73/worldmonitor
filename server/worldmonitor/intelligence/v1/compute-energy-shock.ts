@@ -191,14 +191,11 @@ export async function computeEnergyShockScenario(
     effectiveCoverDays = daysOfCover;
   }
 
-  const dataAvailable = jodiOil != null;
-  const hasComtradeData = comtradeHasData;
+  const dataAvailable = jodiOil != null && comtradeHasData;
 
   // Deterministic assessment string
   let assessment: string;
   if (!dataAvailable) {
-    assessment = `Insufficient import data for ${code} to model ${chokepointId} exposure.`;
-  } else if (!hasComtradeData) {
     assessment = `Insufficient import data for ${code} to model ${chokepointId} exposure.`;
   } else if (gulfCrudeShare < 0.1) {
     assessment = `${code} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${chokepointId} disruption has limited direct impact.`;

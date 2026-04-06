@@ -700,7 +700,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.energyBody.append(section);
     }
 
-    this.energyBody.append(this.renderShockScenarioWidget());
+    if (data.jodiOilAvailable) {
+      this.energyBody.append(this.renderShockScenarioWidget());
+    }
   }
 
   private renderShockScenarioWidget(): HTMLElement {
