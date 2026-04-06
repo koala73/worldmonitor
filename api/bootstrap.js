@@ -20,6 +20,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   bisPolicy:        'economic:bis:policy:v1',
   bisExchange:      'economic:bis:eer:v1',
   bisCredit:        'economic:bis:credit:v1',
+  imfMacro:         'economic:imf:macro:v1',
   shippingRates:    'supply_chain:shipping:v2',
   chokepoints:      'supply_chain:chokepoints:v4',
   chokepointTransits: 'supply_chain:chokepoint_transits:v1',
@@ -93,7 +94,7 @@ const BOOTSTRAP_CACHE_KEYS = {
 };
 
 const SLOW_KEYS = new Set([
-  'bisPolicy', 'bisExchange', 'bisCredit', 'minerals', 'giving',
+  'bisPolicy', 'bisExchange', 'bisCredit', 'imfMacro', 'minerals', 'giving',
   'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',
