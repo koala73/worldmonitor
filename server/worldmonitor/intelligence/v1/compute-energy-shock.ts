@@ -6,6 +6,13 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import {
+  clamp,
+  CHOKEPOINT_EXPOSURE,
+  computeGulfShare,
+  computeEffectiveCoverDays,
+  buildAssessment,
+} from './_shock-compute';
 
 const SHOCK_CACHE_TTL = 3600;
 
@@ -17,17 +24,6 @@ const ISO2_TO_COMTRADE: Record<string, string> = {
   IR: '364',
   IN: '356',
   TW: '158',
-};
-
-// Gulf partner codes (SA, AE, IQ, KW, IR) used for crude share calculation
-const GULF_PARTNER_CODES = new Set(['682', '784', '368', '414', '364']);
-
-// Chokepoint → Gulf crude exposure multiplier
-const CHOKEPOINT_EXPOSURE: Record<string, number> = {
-  hormuz: 1.0,
-  babelm: 0.85,
-  suez: 0.5,
-  malacca: 0.7,
 };
 
 const VALID_CHOKEPOINTS = new Set(['hormuz', 'malacca', 'suez', 'babelm']);
@@ -71,10 +67,6 @@ function n(v: number | null | undefined): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
-function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
-}
-
 async function getGulfCrudeShare(countryCode: string): Promise<{ share: number; hasData: boolean }> {
   const numericCode = ISO2_TO_COMTRADE[countryCode];
   if (!numericCode) return { share: 0, hasData: false };
@@ -90,20 +82,7 @@ async function getGulfCrudeShare(countryCode: string): Promise<{ share: number; 
 
   if (flows.length === 0) return { share: 0, hasData: false };
 
-  let totalImports = 0;
-  let gulfImports = 0;
-
-  for (const flow of flows) {
-    const val = typeof flow.tradeValueUsd === 'number' ? flow.tradeValueUsd : 0;
-    if (val <= 0) continue;
-    totalImports += val;
-    if (GULF_PARTNER_CODES.has(String(flow.partnerCode))) {
-      gulfImports += val;
-    }
-  }
-
-  if (totalImports === 0) return { share: 0, hasData: true };
-  return { share: gulfImports / totalImports, hasData: true };
+  return computeGulfShare(flows);
 }
 
 export async function computeEnergyShockScenario(
@@ -150,7 +129,6 @@ export async function computeEnergyShockScenario(
     ? gulfShareResult.value
     : { share: 0, hasData: false };
 
-  // Apply chokepoint-specific exposure multiplier to Gulf share
   const exposureMult = CHOKEPOINT_EXPOSURE[chokepointId] ?? 1.0;
   const gulfCrudeShare = rawGulfShare * exposureMult;
 
@@ -179,34 +157,22 @@ export async function computeEnergyShockScenario(
       };
     });
 
-  // Effective cover days
   const daysOfCover = n(ieaStocks?.daysOfCover);
   const netExporter = ieaStocks?.netExporter === true;
-  let effectiveCoverDays: number;
-  if (netExporter) {
-    effectiveCoverDays = -1;
-  } else if (daysOfCover > 0 && crudeLossKbd > 0 && crudeImportsKbd > 0) {
-    effectiveCoverDays = Math.round(daysOfCover / (crudeLossKbd / crudeImportsKbd));
-  } else {
-    effectiveCoverDays = daysOfCover;
-  }
+  const effectiveCoverDays = computeEffectiveCoverDays(daysOfCover, netExporter, crudeLossKbd, crudeImportsKbd);
 
   const dataAvailable = jodiOil != null && comtradeHasData;
 
-  // Deterministic assessment string
-  let assessment: string;
-  if (!dataAvailable) {
-    assessment = `Insufficient import data for ${code} to model ${chokepointId} exposure.`;
-  } else if (gulfCrudeShare < 0.1) {
-    assessment = `${code} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${chokepointId} disruption has limited direct impact.`;
-  } else if (effectiveCoverDays > 90) {
-    assessment = `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days.`;
-  } else {
-    const dieselDeficit = products.find((p) => p.product === 'Diesel')?.deficitPct ?? 0;
-    const jetDeficit = products.find((p) => p.product === 'Jet fuel')?.deficitPct ?? 0;
-    const worstDeficit = Math.max(dieselDeficit, jetDeficit);
-    assessment = `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${daysOfCover} days.`;
-  }
+  const assessment = buildAssessment(
+    code,
+    chokepointId,
+    dataAvailable,
+    gulfCrudeShare,
+    effectiveCoverDays,
+    daysOfCover,
+    disruptionPct,
+    products,
+  );
 
   const response: ComputeEnergyShockScenarioResponse = {
     countryCode: code,

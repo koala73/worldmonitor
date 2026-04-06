@@ -1,51 +1,26 @@
 /**
  * Unit tests for computeEnergyShockScenario handler logic.
  *
- * Tests the pure computation functions in isolation (no Redis dependency).
+ * Tests the pure computation functions imported from _shock-compute.ts (no Redis dependency).
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-// ---------------------------------------------------------------------------
-// Unit tests on chokepoint + assessment logic (extracted inline)
-// ---------------------------------------------------------------------------
-
-const VALID_CHOKEPOINTS = ['hormuz', 'malacca', 'suez', 'babelm'];
-const INVALID_CHOKEPOINTS = ['panama', 'taiwan', '', 'xyz'];
-
-const GULF_PARTNER_CODES = new Set(['682', '784', '368', '414', '364']);
-
-function computeGulfShare(flows: Array<{ partnerCode: string; tradeValueUsd: number }>): number {
-  let total = 0;
-  let gulf = 0;
-  for (const f of flows) {
-    if (f.tradeValueUsd <= 0) continue;
-    total += f.tradeValueUsd;
-    if (GULF_PARTNER_CODES.has(f.partnerCode)) gulf += f.tradeValueUsd;
-  }
-  return total === 0 ? 0 : gulf / total;
-}
-
-function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
-}
-
-function computeEffectiveCoverDays(
-  daysOfCover: number,
-  netExporter: boolean,
-  crudeLossKbd: number,
-  crudeImportsKbd: number,
-): number {
-  if (netExporter) return -1;
-  if (daysOfCover > 0 && crudeLossKbd > 0 && crudeImportsKbd > 0) {
-    return Math.round(daysOfCover / (crudeLossKbd / crudeImportsKbd));
-  }
-  return daysOfCover;
-}
+import {
+  clamp,
+  computeGulfShare,
+  computeEffectiveCoverDays,
+  buildAssessment,
+  GULF_PARTNER_CODES,
+  CHOKEPOINT_EXPOSURE,
+} from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+const VALID_CHOKEPOINTS = ['hormuz', 'malacca', 'suez', 'babelm'];
+const INVALID_CHOKEPOINTS = ['panama', 'taiwan', '', 'xyz'];
 
 describe('energy shock scenario computation', () => {
   describe('chokepoint validation', () => {
@@ -58,6 +33,12 @@ describe('energy shock scenario computation', () => {
     it('rejects invalid chokepoint IDs', () => {
       for (const id of INVALID_CHOKEPOINTS) {
         assert.ok(!VALID_CHOKEPOINTS.includes(id), `Expected ${id} to be invalid`);
+      }
+    });
+
+    it('CHOKEPOINT_EXPOSURE contains all valid chokepoints', () => {
+      for (const id of VALID_CHOKEPOINTS) {
+        assert.ok(id in CHOKEPOINT_EXPOSURE, `Expected CHOKEPOINT_EXPOSURE to have key ${id}`);
       }
     });
   });
@@ -81,12 +62,23 @@ describe('energy shock scenario computation', () => {
   });
 
   describe('gulf crude share calculation', () => {
-    it('returns 0 when no flows provided', () => {
-      assert.equal(computeGulfShare([]), 0);
+    it('returns hasData=false when no flows provided', () => {
+      const result = computeGulfShare([]);
+      assert.equal(result.share, 0);
+      assert.equal(result.hasData, false);
     });
 
-    it('returns 0 when country has no Comtrade data (no numeric code mapping)', () => {
-      // Countries without a Comtrade numeric code mapping should return 0 share
+    it('returns hasData=false when all flows have zero/negative tradeValueUsd', () => {
+      const flows = [
+        { partnerCode: '682', tradeValueUsd: 0 },
+        { partnerCode: '784', tradeValueUsd: -100 },
+      ];
+      const result = computeGulfShare(flows);
+      assert.equal(result.share, 0);
+      assert.equal(result.hasData, false);
+    });
+
+    it('returns hasData=false when country has no Comtrade data (no numeric code mapping)', () => {
       const ISO2_TO_COMTRADE: Record<string, string> = {
         US: '842', CN: '156', RU: '643', IR: '364', IN: '356', TW: '158',
       };
@@ -96,20 +88,33 @@ describe('energy shock scenario computation', () => {
       }
     });
 
-    it('returns 1.0 when all imports are from Gulf partners', () => {
+    it('GULF_PARTNER_CODES contains expected Gulf country codes', () => {
+      assert.ok(GULF_PARTNER_CODES.has('682'), 'SA should be in Gulf set');
+      assert.ok(GULF_PARTNER_CODES.has('784'), 'AE should be in Gulf set');
+      assert.ok(GULF_PARTNER_CODES.has('368'), 'IQ should be in Gulf set');
+      assert.ok(GULF_PARTNER_CODES.has('414'), 'KW should be in Gulf set');
+      assert.ok(GULF_PARTNER_CODES.has('364'), 'IR should be in Gulf set');
+      assert.ok(!GULF_PARTNER_CODES.has('643'), 'RU should NOT be in Gulf set');
+    });
+
+    it('returns share=1.0 and hasData=true when all imports are from Gulf partners', () => {
       const flows = [
         { partnerCode: '682', tradeValueUsd: 1000 }, // SA
         { partnerCode: '784', tradeValueUsd: 500 },  // AE
       ];
-      assert.equal(computeGulfShare(flows), 1.0);
+      const result = computeGulfShare(flows);
+      assert.equal(result.share, 1.0);
+      assert.equal(result.hasData, true);
     });
 
-    it('returns 0 when no imports are from Gulf partners', () => {
+    it('returns share=0 and hasData=true when no imports are from Gulf partners', () => {
       const flows = [
         { partnerCode: '124', tradeValueUsd: 1000 }, // Canada
         { partnerCode: '643', tradeValueUsd: 500 },  // Russia (not in Gulf set)
       ];
-      assert.equal(computeGulfShare(flows), 0);
+      const result = computeGulfShare(flows);
+      assert.equal(result.share, 0);
+      assert.equal(result.hasData, true);
     });
 
     it('computes fractional Gulf share correctly', () => {
@@ -117,7 +122,9 @@ describe('energy shock scenario computation', () => {
         { partnerCode: '682', tradeValueUsd: 300 }, // SA (Gulf)
         { partnerCode: '124', tradeValueUsd: 700 }, // Canada (non-Gulf)
       ];
-      assert.equal(computeGulfShare(flows), 0.3);
+      const result = computeGulfShare(flows);
+      assert.equal(result.share, 0.3);
+      assert.equal(result.hasData, true);
     });
 
     it('ignores flows with zero or negative tradeValueUsd', () => {
@@ -126,7 +133,18 @@ describe('energy shock scenario computation', () => {
         { partnerCode: '784', tradeValueUsd: -100 }, // Gulf but negative
         { partnerCode: '124', tradeValueUsd: 500 },  // Non-Gulf positive
       ];
-      assert.equal(computeGulfShare(flows), 0);
+      const result = computeGulfShare(flows);
+      assert.equal(result.share, 0);
+      assert.equal(result.hasData, true);
+    });
+
+    it('accepts numeric partnerCode values', () => {
+      const flows = [
+        { partnerCode: 682, tradeValueUsd: 1000 }, // SA as number
+      ];
+      const result = computeGulfShare(flows);
+      assert.equal(result.share, 1.0);
+      assert.equal(result.hasData, true);
     });
   });
 
@@ -159,42 +177,34 @@ describe('energy shock scenario computation', () => {
   });
 
   describe('assessment string branches', () => {
+    it('uses insufficient data message when dataAvailable is false', () => {
+      const assessment = buildAssessment('XZ', 'suez', false, 0, 0, 0, 50, []);
+      assert.ok(assessment.includes('Insufficient import data'));
+      assert.ok(assessment.includes('XZ'));
+      assert.ok(assessment.includes('suez'));
+    });
+
     it('uses low-dependence branch when gulfCrudeShare < 0.1', () => {
-      const code = 'DE';
-      const chokepointId = 'hormuz';
-      const gulfCrudeShare = 0.05;
-      const assessment = `${code} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${chokepointId} disruption has limited direct impact.`;
+      const assessment = buildAssessment('DE', 'hormuz', true, 0.05, 180, 90, 50, []);
       assert.ok(assessment.includes('low Gulf crude dependence'));
       assert.ok(assessment.includes('5%'));
     });
 
     it('uses IEA cover branch when effectiveCoverDays > 90', () => {
-      const code = 'US';
-      const chokepointId = 'hormuz';
-      const disruptionPct = 50;
-      const daysOfCover = 90;
-      const effectiveCoverDays = 180;
-      const assessment = `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days.`;
+      const assessment = buildAssessment('US', 'hormuz', true, 0.4, 180, 90, 50, []);
       assert.ok(assessment.includes('bridge'));
       assert.ok(assessment.includes('180 days'));
     });
 
-    it('uses deficit branch otherwise', () => {
-      const code = 'IN';
-      const chokepointId = 'malacca';
-      const disruptionPct = 75;
-      const daysOfCover = 30;
-      const worstDeficit = 25.0;
-      const assessment = `${code} faces ${worstDeficit.toFixed(1)}% diesel/jet deficit under ${disruptionPct}% ${chokepointId} disruption; IEA cover: ${daysOfCover} days.`;
+    it('uses deficit branch when dataAvailable, gulfShare >= 0.1, effectiveCoverDays <= 90', () => {
+      const products = [
+        { product: 'Diesel', deficitPct: 25.0 },
+        { product: 'Jet fuel', deficitPct: 20.0 },
+      ];
+      const assessment = buildAssessment('IN', 'malacca', true, 0.5, 60, 30, 75, products);
       assert.ok(assessment.includes('faces'));
       assert.ok(assessment.includes('diesel/jet deficit'));
-    });
-
-    it('uses insufficient data message when dataAvailable is false', () => {
-      const code = 'XZ';
-      const chokepointId = 'suez';
-      const assessment = `Insufficient import data for ${code} to model ${chokepointId} exposure.`;
-      assert.ok(assessment.includes('Insufficient import data'));
+      assert.ok(assessment.includes('25.0%'));
     });
   });
 });
