@@ -625,17 +625,20 @@ export async function scoreCurrencyExternal(
       ? Math.abs(volSource[0]!) * Math.sqrt(12)
       : null;
 
-  // Country not in BIS EER (curated ~40 economies). Try IMF CPI inflation as a currency
-  // stability proxy (covers ~185 countries). Only fall back to curated_list_absent imputation
-  // when both BIS and IMF macro seeds are unavailable.
+  // Country not in BIS EER (curated ~40 economies), or BIS seed is down entirely.
+  // Try IMF CPI inflation as a currency stability proxy (covers ~185 countries) in both cases.
+  // Only fall back to imputation when both BIS and IMF macro seeds are unavailable.
   if (countryRates.length === 0) {
-    if (bisExchangeRaw == null) return { score: 50, coverage: 0 };
     const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
     if (imfMacroRaw != null && imfEntry?.inflationPct != null) {
       // Cap at 100% — hyperinflation is extreme instability regardless of magnitude.
-      return { score: normalizeLowerBetter(Math.min(imfEntry.inflationPct, 100), 0, 100), coverage: 0.45 };
+      // coverage=0.45 when BIS is loaded (country absent from curated list);
+      // coverage=0.35 when BIS itself is down (proxy-only, primary source unavailable).
+      const coverage = bisExchangeRaw != null ? 0.45 : 0.35;
+      return { score: normalizeLowerBetter(Math.min(imfEntry.inflationPct, 100), 0, 100), coverage };
     }
-    return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage };
+    if (bisExchangeRaw == null) return { score: 50, coverage: 0 }; // both sources null
+    return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage }; // BIS loaded, country absent, no IMF
   }
 
   return weightedBlend([

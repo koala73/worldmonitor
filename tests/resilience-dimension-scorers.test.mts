@@ -209,11 +209,24 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.coverage, 0.45, 'hyperinflation still gets IMF proxy coverage=0.45');
   });
 
-  it('scoreCurrencyExternal: seed outage (null BIS source) gives coverage=0, no imputation', async () => {
+  it('scoreCurrencyExternal: BIS outage + IMF inflation present → uses proxy with coverage=0.35', async () => {
+    // BIS seed is completely down (null), but IMF macro is available.
+    // The inflation proxy should still be applied — BIS outage must not block the IMF path.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:imf:macro:v1') return { countries: { MZ: { inflationPct: 6, currentAccountPct: -2, year: 2024 } } };
+      return null; // economic:bis:eer:v1 null = BIS seed outage
+    };
+    const score = await scoreCurrencyExternal('MZ', reader);
+    // normalizeLowerBetter(6, 0, 100) = 94
+    assert.equal(score.score, 94, 'BIS outage must not block IMF inflation proxy');
+    assert.equal(score.coverage, 0.35, 'BIS outage reduces proxy coverage to 0.35 (primary source unavailable)');
+  });
+
+  it('scoreCurrencyExternal: both BIS and IMF null → coverage=0, no imputation', async () => {
     const reader = async (_key: string): Promise<unknown | null> => null;
     const score = await scoreCurrencyExternal('MZ', reader);
-    assert.equal(score.score, 50, 'fallback centre score');
-    assert.equal(score.coverage, 0, 'null BIS source must not impute — coverage must be 0');
+    assert.equal(score.score, 50, 'both sources null → fallback centre score');
+    assert.equal(score.coverage, 0, 'both sources null → coverage=0');
   });
 
   it('scoreMacroFiscal: IMF current account loaded, surplus country scores higher than deficit', async () => {
