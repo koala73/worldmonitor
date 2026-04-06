@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 
-import { loadEnvFile, CHROME_UA, runSeed, getRedisCredentials } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -237,6 +237,17 @@ const ANALYSIS_EXTRA_KEY = {
   transform: (data) => buildOilStocksAnalysis(data.members, data.dataMonth, data.seededAt),
 };
 
+// Seed-meta for the analysis key, also handled via extraKeys so it stays alive
+// on fetch failure or validation skip (health.js oilStocksAnalysis check).
+const ANALYSIS_META_EXTRA_KEY = {
+  key: 'seed-meta:energy:oil-stocks-analysis',
+  ttl: Math.max(86400 * 50, TTL_SECONDS),
+  transform: (data) => {
+    const analysis = buildOilStocksAnalysis(data.members, data.dataMonth, data.seededAt);
+    return { fetchedAt: Date.now(), recordCount: analysis.ieaMembers.length };
+  },
+};
+
 const isMain = process.argv[1]?.endsWith('seed-iea-oil-stocks.mjs');
 if (isMain) {
   runSeed('energy', 'iea-oil-stocks', CANONICAL_KEY, fetchIeaOilStocks, {
@@ -245,26 +256,7 @@ if (isMain) {
     sourceVersion: 'iea-oil-stocks-v1',
     recordCount: (data) => data?.members?.length || 0,
     publishTransform: (data) => buildIndex(data.members, data.dataMonth, data.seededAt),
-    extraKeys: [...COUNTRY_EXTRA_KEYS, ANALYSIS_EXTRA_KEY],
-    afterPublish: async (data) => {
-      // Data is written by ANALYSIS_EXTRA_KEY in extraKeys above.
-      // Write only the seed-meta here with a TTL that exceeds the health
-      // maxStaleMin threshold (50 days > 42 days) so health never reports
-      // stale/missing while the data key is still alive (40-day TTL).
-      const analysis = buildOilStocksAnalysis(data.members, data.dataMonth, data.seededAt);
-      const { url, token } = getRedisCredentials();
-      const metaTtl = Math.max(86400 * 50, TTL_SECONDS);
-      const metaKey = 'seed-meta:energy:oil-stocks-analysis';
-      const meta = JSON.stringify({ fetchedAt: Date.now(), recordCount: analysis.ieaMembers.length });
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(['SET', metaKey, meta, 'EX', metaTtl]),
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!resp.ok) console.warn(`  seed-meta ${metaKey}: write failed`);
-      else console.log(`  Analysis seed-meta written (${analysis.ieaMembers.length} members, TTL ${metaTtl}s)`);
-    },
+    extraKeys: [...COUNTRY_EXTRA_KEYS, ANALYSIS_EXTRA_KEY, ANALYSIS_META_EXTRA_KEY],
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
