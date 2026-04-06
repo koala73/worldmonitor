@@ -91,7 +91,10 @@ async function fetchTextDirect(url, accept, timeoutMs) {
     headers: { Accept: accept, 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    const err = Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+    throw err;
+  }
   return { text: await response.text(), contentType: response.headers.get('content-type') || '' };
 }
 
@@ -550,20 +553,28 @@ export function parseGpiRows(csvText, resolvedYear) {
   return parsed;
 }
 
+export async function resolveGpiCsv(
+  currentYear,
+  {
+    directFetch = (url) => fetchTextDirect(url, 'text/csv', 30_000),
+    retryFetch = (url) => withRetry(() => fetchText(url, { accept: 'text/csv' }), 2, 750),
+  } = {},
+) {
+  try {
+    const { text } = await directFetch(gpiUrlForYear(currentYear));
+    return { resolvedYear: currentYear, csvText: text };
+  } catch (err) {
+    if (err.status !== 404) throw err;
+    const resolvedYear = currentYear - 1;
+    console.info(`  [gpi] ${currentYear} report not yet available — using ${resolvedYear}`);
+    const { text } = await retryFetch(gpiUrlForYear(resolvedYear));
+    return { resolvedYear, csvText: text };
+  }
+}
+
 async function fetchGpiDataset() {
   const currentYear = new Date().getUTCFullYear();
-  let csvText;
-  let resolvedYear = currentYear;
-
-  try {
-    ({ text: csvText } = await fetchTextDirect(gpiUrlForYear(currentYear), 'text/csv', 30_000));
-  } catch (err) {
-    if (!err.message.includes('HTTP 404')) throw err;
-    resolvedYear = currentYear - 1;
-    console.info(`  [gpi] ${currentYear} report not yet available — using ${resolvedYear}`);
-    ({ text: csvText } = await withRetry(() => fetchText(gpiUrlForYear(resolvedYear), { accept: 'text/csv' }), 2, 750));
-  }
-
+  const { resolvedYear, csvText } = await resolveGpiCsv(currentYear);
   return parseGpiRows(csvText, resolvedYear);
 }
 

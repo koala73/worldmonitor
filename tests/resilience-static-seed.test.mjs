@@ -13,6 +13,7 @@ import {
   createCountryResolvers,
   finalizeCountryPayloads,
   gpiUrlForYear,
+  resolveGpiCsv,
   buildAquastatWbMap,
   parseEurostatEnergyDataset,
   parseFsinRows,
@@ -104,6 +105,34 @@ describe('resilience static seed CSV parsers', () => {
       const url = gpiUrlForYear(2025);
       assert.match(url, /visionofhumanity\.org/);
       assert.match(url, /\/2025\/06\/GPI_2025_2025\.csv/);
+    });
+
+    it('resolveGpiCsv falls back to prior year on 404, without proxying the 404 URL', async () => {
+      const notFound = Object.assign(new Error('HTTP 404'), { status: 404 });
+      const fallbackCsv = makeGpiCsv();
+      const proxiedUrls = [];
+      const directFetch = async (url) => {
+        if (url.includes('2026')) throw notFound;
+        return { text: fallbackCsv };
+      };
+      const retryFetch = async (url) => {
+        proxiedUrls.push(url);
+        return { text: fallbackCsv };
+      };
+      const { resolvedYear, csvText } = await resolveGpiCsv(2026, { directFetch, retryFetch });
+      assert.equal(resolvedYear, 2025, '404 on current year must resolve to prior year');
+      assert.equal(csvText, fallbackCsv);
+      assert.ok(proxiedUrls.every(url => !url.includes('2026')), '2026 URL must never be sent to proxy/retry — only 2025 fallback may use it');
+    });
+
+    it('resolveGpiCsv propagates non-404 errors without falling back', async () => {
+      const serverError = Object.assign(new Error('HTTP 503'), { status: 503 });
+      const directFetch = async () => { throw serverError; };
+      await assert.rejects(
+        () => resolveGpiCsv(2026, { directFetch }),
+        (err) => err.status === 503,
+        'non-404 HTTP errors must propagate as dataset failures, not swallowed as missing year',
+      );
     });
   });
 
