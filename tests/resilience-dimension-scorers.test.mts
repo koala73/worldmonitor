@@ -141,32 +141,53 @@ describe('resilience dimension scorers', () => {
   it('scoreTradeSanctions: country absent from sanctions payload gets crisis_monitoring_absent imputation (score 80, not 100)', async () => {
     // Not in the OFAC sanctions payload = stable country not targeted. crisis_monitoring_absent
     // imputation (score=80, certaintyCoverage=0.6). Must NOT be 100 (that was the old P1 bug).
+    // WTO sources are loaded (empty) so zero restrictions = real data (score 100), not imputed.
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'sanctions:pressure:v1') return { countries: [{ countryCode: 'RU', entryCount: 500 }] };
-      if (key === 'trade:restrictions:v1:tariff-overview:50') return null;
-      if (key === 'trade:barriers:v1:tariff-gap:50') return null;
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [] };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [] };
       return null;
     };
     const score = await scoreTradeSanctions('FI', reader);
-    assert.ok(score.coverage < 1, `imputed coverage < 1 (not full-certainty data), got ${score.coverage}`);
+    assert.ok(score.coverage < 1, `imputed coverage < 1 (sanctions partial certainty), got ${score.coverage}`);
     assert.notEqual(score.score, 100, 'absent-from-payload must not get imputed score of 100');
-    // Sanctions imputed at 80, WTO at 60: blended score should be in that range.
-    assert.ok(score.score > 60 && score.score < 90,
-      `expected blended imputation score 60–90, got ${score.score}`);
+    assert.ok(score.score > 60 && score.score < 95,
+      `expected blended score 60–95 (imputed sanctions + perfect WTO), got ${score.score}`);
+  });
+
+  it('scoreTradeSanctions: seed outage (null source) does not impute as country-absent', async () => {
+    // All sources null = seed outage. Must NOT trigger country-absent imputation.
+    const reader = async (_key: string): Promise<unknown | null> => null;
+    const score = await scoreTradeSanctions('FI', reader);
+    assert.equal(score.coverage, 0, `seed outage must give coverage=0, got ${score.coverage}`);
+    assert.equal(score.score, 0, `seed outage must give score=0, got ${score.score}`);
   });
 
   it('scoreCurrencyExternal: country not in BIS EER list gets curated_list_absent imputation (score 50)', async () => {
-    const reader = async (_key: string) => null; // No BIS data at all
+    // BIS source is loaded (has data for another country) but MZ is not in it.
+    // This is genuine curated_list_absent — impute with certaintyCoverage=0.3.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
+      return null;
+    };
     const score = await scoreCurrencyExternal('MZ', reader); // Mozambique not in BIS
     assert.equal(score.score, 50, 'curated_list_absent must impute score=50');
     assert.equal(score.coverage, 0.3, 'curated_list_absent certaintyCoverage=0.3');
   });
 
+  it('scoreCurrencyExternal: seed outage (null BIS source) gives coverage=0, no imputation', async () => {
+    const reader = async (_key: string): Promise<unknown | null> => null;
+    const score = await scoreCurrencyExternal('MZ', reader);
+    assert.equal(score.score, 50, 'fallback centre score');
+    assert.equal(score.coverage, 0, 'null source must not impute — coverage must be 0');
+  });
+
   it('scoreMacroFiscal: BIS credit absent gets curated_list_absent imputation, debt data still scores', async () => {
+    // BIS source is loaded (has data for another country) but HR is not in it.
+    // Genuine curated_list_absent — impute with certaintyCoverage=0.3.
     const reader = async (key: string): Promise<unknown | null> => {
-      // getLatestDebtEntry expects { entries: [...] } shape
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
-      if (key === 'economic:bis:credit:v1') return null; // Croatia not in BIS credit list
+      if (key === 'economic:bis:credit:v1') return { entries: [{ countryCode: 'US', creditGdpRatio: 200 }] }; // HR absent from loaded source
       return null;
     };
     const score = await scoreMacroFiscal('HR', reader);
@@ -176,6 +197,19 @@ describe('resilience dimension scorers', () => {
       `coverage should be ~0.79 (debt real + credit imputed), got ${score.coverage}`);
     assert.ok(score.score > 0, 'should produce non-zero score with debt real + credit imputed');
     assert.ok(score.coverage < 1.0, 'coverage must be <1 since BIS credit is imputed not observed');
+  });
+
+  it('scoreMacroFiscal: BIS credit seed outage does not impute — real debt still scores', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
+      if (key === 'economic:bis:credit:v1') return null; // seed outage
+      return null;
+    };
+    const score = await scoreMacroFiscal('HR', reader);
+    // Only debt data available (weight 0.7); credit source null → no imputation → coverage = 0.7
+    assert.ok(score.coverage > 0.65 && score.coverage < 0.75,
+      `coverage should be ~0.7 (debt only, credit source missing), got ${score.coverage}`);
+    assert.ok(score.score > 0, 'debt data alone should produce a non-zero score');
   });
 
   it('scoreFoodWater: country absent from FAO/IPC DB gets crisis_monitoring_absent imputation (not WGI proxy)', async () => {
@@ -206,6 +240,32 @@ describe('resilience dimension scorers', () => {
     // WGI must NOT influence the imputed food score — only absence type matters.
     assert.equal(withWgi.score, withoutWgi.score, 'score must not change based on WGI presence (imputation is absence-type, not proxy)');
     assert.equal(withWgi.coverage, withoutWgi.coverage, 'coverage must not change based on WGI presence');
+  });
+
+  it('scoreBorderSecurity: displacement source loaded but country absent → crisis_monitoring_absent imputation', async () => {
+    // Country not in UNHCR displacement registry = not a significant displacement case (positive signal).
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'conflict:ucdp-events:v1') return { events: [] };
+      if (key.startsWith('displacement:summary:v1:')) return { summary: { countries: [{ code: 'SY', totalDisplaced: 1e6, hostTotal: 5e5 }] } };
+      return null;
+    };
+    const score = await scoreBorderSecurity('FI', reader);
+    // ucdp loaded (no events, score=100, cc=1.0, weight=0.65) +
+    // displacement loaded, FI absent → impute (cc=0.6, weight=0.35)
+    // coverage = (1.0×0.65 + 0.6×0.35) / 1.0 = 0.86
+    assert.ok(score.coverage > 0.8, `expected coverage >0.8 with source loaded, got ${score.coverage}`);
+  });
+
+  it('scoreBorderSecurity: displacement seed outage does not impute', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'conflict:ucdp-events:v1') return { events: [] };
+      return null; // displacement source null = seed outage
+    };
+    const score = await scoreBorderSecurity('FI', reader);
+    // ucdp loaded (score=100, cc=1.0, weight=0.65) + displacement null (no imputation, cc=0)
+    // coverage = (1.0×0.65 + 0×0.35) / 1.0 = 0.65
+    assert.ok(score.coverage > 0.6 && score.coverage < 0.7,
+      `seed outage must not inflate coverage beyond ucdp weight, got ${score.coverage}`);
   });
 
   it('memoizes repeated seed reads inside scoreAllDimensions', async () => {

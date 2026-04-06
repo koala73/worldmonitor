@@ -610,9 +610,13 @@ export async function scoreMacroFiscal(
   return weightedBlend([
     { score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(safeNum(entry.debtToGdp) ?? 200, 0, 200)), weight: 0.5 },
     { score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(Math.max(0, safeNum(entry.annualGrowth) ?? 0), 0, 20)), weight: 0.2 },
-    bisCredit == null
-      ? { score: IMPUTE.bisCredit.score, weight: 0.3, certaintyCoverage: IMPUTE.bisCredit.certaintyCoverage }
-      : { score: extractMetric(bisCredit, (entry) => normalizeLowerBetter(safeNum(entry.creditGdpRatio) ?? 250, 50, 250)), weight: 0.3 },
+    // Only impute if the BIS source was loaded (country absent from curated list).
+    // If the source itself is null (seed outage), treat as missing data, not absence.
+    bisCreditRaw == null
+      ? { score: null, weight: 0.3 }
+      : bisCredit == null
+        ? { score: IMPUTE.bisCredit.score, weight: 0.3, certaintyCoverage: IMPUTE.bisCredit.certaintyCoverage }
+        : { score: extractMetric(bisCredit, (entry) => normalizeLowerBetter(safeNum(entry.creditGdpRatio) ?? 250, 50, 250)), weight: 0.3 },
   ]);
 }
 
@@ -633,8 +637,10 @@ export async function scoreCurrencyExternal(
       ? Math.abs(volSource[0]!) * Math.sqrt(12)
       : null;
 
-  // If country is not in BIS EER list at all (curated ~40 economies), impute conservatively.
+  // If country is not in BIS EER list (curated ~40 economies), impute conservatively —
+  // but only when the source was loaded. A null source means a seed outage, not country absence.
   if (countryRates.length === 0) {
+    if (bisExchangeRaw == null) return { score: 50, coverage: 0 };
     return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage };
   }
 
@@ -665,16 +671,19 @@ export async function scoreTradeSanctions(
   const barrierCount = countTradeBarriers(barriersRaw, countryCode);
 
   return weightedBlend([
-    // Not in OFAC top-N → crisis_monitoring_absent: stable country, not a sanctions target.
-    sanctionsPressure == null
-      ? { score: IMPUTE.ofacSanctions.score, weight: 0.55, certaintyCoverage: IMPUTE.ofacSanctions.certaintyCoverage }
-      : { score: normalizeLowerBetter(sanctionsPressure, 0, 500), weight: 0.55 },
-    // WTO data absent → curated_list_absent: country not tracked in top-50 trade data.
+    // Not in OFAC top-N → crisis_monitoring_absent (stable country, not a sanctions target),
+    // but only when the source was loaded. Null source = seed outage, not country absence.
+    sanctionsRaw == null
+      ? { score: null, weight: 0.55 }
+      : sanctionsPressure == null
+        ? { score: IMPUTE.ofacSanctions.score, weight: 0.55, certaintyCoverage: IMPUTE.ofacSanctions.certaintyCoverage }
+        : { score: normalizeLowerBetter(sanctionsPressure, 0, 500), weight: 0.55 },
+    // WTO null source = seed outage; loaded source with zero restrictions = real data (score 100).
     restrictionsRaw == null
-      ? { score: IMPUTE.wtoData.score, weight: 0.25, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage }
+      ? { score: null, weight: 0.25 }
       : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.25 },
     barriersRaw == null
-      ? { score: IMPUTE.wtoData.score, weight: 0.2, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage }
+      ? { score: null, weight: 0.2 }
       : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.2 },
   ]);
 }
@@ -840,11 +849,14 @@ export async function scoreBorderSecurity(
 
   return weightedBlend([
     { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 30) : null, weight: 0.65 },
-    // Not in UNHCR displacement registry → crisis_monitoring_absent: country is not a
-    // significant refugee source or host. Absence = positive signal.
-    displacementMetric == null
-      ? { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage }
-      : { score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7), weight: 0.35 },
+    // Not in UNHCR displacement registry → crisis_monitoring_absent (country is not a
+    // significant refugee source or host). Only impute if source was loaded; null source
+    // means seed outage, not country absence.
+    displacementRaw == null
+      ? { score: null, weight: 0.35 }
+      : displacementMetric == null
+        ? { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage }
+        : { score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7), weight: 0.35 },
   ]);
 }
 

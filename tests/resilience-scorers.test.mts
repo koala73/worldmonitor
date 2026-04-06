@@ -41,15 +41,21 @@ describe('resilience scorer contracts', () => {
     }
   });
 
-  it('returns in-bounds score and coverage when backing resilience seeds are missing', async () => {
+  it('returns coverage=0 when all backing seeds are missing (source outage must not impute)', async () => {
     installRedis({});
 
+    // Imputation only applies when the source is loaded but the country is absent.
+    // A null source (seed outage) must NOT be reclassified as a "stable country" signal.
+    // Exception: scoreFoodWater reads per-country static data; fao=null in a loaded static
+    // record is a legitimate "not in active crisis" signal, so coverage may be > 0.
     for (const [dimensionId, scorer] of Object.entries(RESILIENCE_DIMENSION_SCORERS)) {
       const result = await scorer('US');
-      // Imputed scorers (macroFiscal, currencyExternal, tradeSanctions, borderSecurity, foodWater)
-      // return partial certaintyCoverage > 0 even without real data — absence is a typed signal.
-      assert.ok(result.coverage >= 0 && result.coverage <= 1, `${dimensionId} coverage out of bounds when seeds absent: ${result.coverage}`);
       assert.ok(result.score >= 0 && result.score <= 100, `${dimensionId} fallback score out of bounds: ${result.score}`);
+      if (dimensionId !== 'foodWater') {
+        assert.equal(result.coverage, 0, `${dimensionId} must have coverage=0 when all seeds missing (source outage ≠ country absence)`);
+      } else {
+        assert.ok(result.coverage >= 0 && result.coverage <= 1, `${dimensionId} coverage out of bounds when seeds absent: ${result.coverage}`);
+      }
     }
   });
 
