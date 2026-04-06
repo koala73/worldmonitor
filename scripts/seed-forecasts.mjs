@@ -693,15 +693,19 @@ async function readInputKeys() {
     'conflict:ema-windows:v1',
     ...fredKeys,
   ];
-  const pipeline = keys.map(k => ['GET', k]);
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(pipeline),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`Redis pipeline failed: ${resp.status}`);
-  const results = await resp.json();
+  const BATCH_SIZE = 10;
+  const results = [];
+  for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+    const batch = keys.slice(i, i + BATCH_SIZE).map(k => ['GET', k]);
+    const resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(batch),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) throw new Error(`Redis pipeline batch ${i / BATCH_SIZE + 1} failed: ${resp.status}`);
+    results.push(...await resp.json());
+  }
 
   const parse = (i) => {
     try { return results[i]?.result ? JSON.parse(results[i].result) : null; } catch { return null; }
