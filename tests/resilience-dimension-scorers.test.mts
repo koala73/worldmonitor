@@ -138,11 +138,9 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.coverage > 0, 'should have non-zero coverage even with null IEA');
   });
 
-  it('scoreTradeSanctions: country absent from top-12 sanctions payload gets null sanctions sub-metric (not 100)', async () => {
-    // The canonical payload is buildCountryPressure(entries).slice(0, 12) — only the 12 most
-    // sanctioned countries. A country absent from that list (e.g. Iran during a quiet period,
-    // or a minor actor) is NOT confirmed unsanctioned; it just didn't rank. Coverage for the
-    // 0.55-weight sub-metric must remain null so weightedBlend reflects partial coverage.
+  it('scoreTradeSanctions: country absent from sanctions payload gets crisis_monitoring_absent imputation (score 80, not 100)', async () => {
+    // Not in the OFAC sanctions payload = stable country not targeted. crisis_monitoring_absent
+    // imputation (score=80, certaintyCoverage=0.6). Must NOT be 100 (that was the old P1 bug).
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'sanctions:pressure:v1') return { countries: [{ countryCode: 'RU', entryCount: 500 }] };
       if (key === 'trade:restrictions:v1:tariff-overview:50') return null;
@@ -150,15 +148,41 @@ describe('resilience dimension scorers', () => {
       return null;
     };
     const score = await scoreTradeSanctions('FI', reader);
-    assert.ok(score.coverage < 1, `FI absent from top-12 payload should have coverage < 1 (sanctions sub-metric null), got ${score.coverage}`);
-    assert.notEqual(score.score, 100, 'absent-from-payload country must not receive an imputed sanctions score of 100');
+    assert.ok(score.coverage < 1, `imputed coverage < 1 (not full-certainty data), got ${score.coverage}`);
+    assert.notEqual(score.score, 100, 'absent-from-payload must not get imputed score of 100');
+    // Sanctions imputed at 80, WTO at 60: blended score should be in that range.
+    assert.ok(score.score > 60 && score.score < 90,
+      `expected blended imputation score 60–90, got ${score.score}`);
   });
 
-  it('scoreFoodWater: country absent from FAO/IPC DB yields null for the crisis sub-metric (not imputed 87)', async () => {
-    // FAO/IPC only tracks countries IN food crisis. A missing fao entry can be an ingest gap
-    // or source failure — it is not confirmed food-secure. peopleInCrisis == null must stay
-    // null so lowConfidence fires correctly when data is genuinely absent.
+  it('scoreCurrencyExternal: country not in BIS EER list gets curated_list_absent imputation (score 50)', async () => {
+    const reader = async (_key: string) => null; // No BIS data at all
+    const score = await scoreCurrencyExternal('MZ', reader); // Mozambique not in BIS
+    assert.equal(score.score, 50, 'curated_list_absent must impute score=50');
+    assert.equal(score.coverage, 0.3, 'curated_list_absent certaintyCoverage=0.3');
+  });
+
+  it('scoreMacroFiscal: BIS credit absent gets curated_list_absent imputation, debt data still scores', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
+      // getLatestDebtEntry expects { entries: [...] } shape
+      if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
+      if (key === 'economic:bis:credit:v1') return null; // Croatia not in BIS credit list
+      return null;
+    };
+    const score = await scoreMacroFiscal('HR', reader);
+    // debt (0.5+0.2=0.7 weight, real) + BIS credit (0.3 weight, imputed certaintyCoverage=0.3)
+    // coverage = (1.0×0.7 + 0.3×0.3) / 1.0 = 0.79
+    assert.ok(score.coverage > 0.7 && score.coverage < 0.9,
+      `coverage should be ~0.79 (debt real + credit imputed), got ${score.coverage}`);
+    assert.ok(score.score > 0, 'should produce non-zero score with debt real + credit imputed');
+    assert.ok(score.coverage < 1.0, 'coverage must be <1 since BIS credit is imputed not observed');
+  });
+
+  it('scoreFoodWater: country absent from FAO/IPC DB gets crisis_monitoring_absent imputation (not WGI proxy)', async () => {
+    // IPC/HDX only covers countries IN active food crisis. A country absent from the database
+    // is not monitored because it is stable — that is a positive signal (crisis_monitoring_absent),
+    // not an unknown gap. The imputed score must come from the absence type, NOT from WGI data.
+    const readerWithWgi = async (key: string): Promise<unknown | null> => {
       if (key === 'resilience:static:XX') return {
         wgi: { indicators: { 'VA.EST': { value: 1.2, year: 2025 } } },
         fao: null,
@@ -166,10 +190,22 @@ describe('resilience dimension scorers', () => {
       };
       return null;
     };
-    const score = await scoreFoodWater('XX', reader);
-    // With fao=null and aquastat=null the only possible score is null (no coverage).
-    // Before the revert, wgi!=null would have imputed 87 here.
-    assert.ok(score.coverage < 0.16, `coverage should be near-zero with fao=null and aquastat=null, got ${score.coverage}`);
+    const readerWithoutWgi = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return { fao: null, aquastat: null };
+      return null;
+    };
+    const withWgi = await scoreFoodWater('XX', readerWithWgi);
+    const withoutWgi = await scoreFoodWater('XX', readerWithoutWgi);
+
+    // IPC food imputation: score=88, certaintyCoverage=0.7 on 0.6-weight IPC block.
+    // Aquastat absent: 0 coverage. Expected coverage = 0.7 × 0.6 = 0.42.
+    assert.equal(withWgi.score, 88, 'imputed score must be 88 (crisis_monitoring_absent for IPC food)');
+    assert.ok(withWgi.coverage > 0.3 && withWgi.coverage < 0.6,
+      `coverage should be ~0.42 (IPC imputation only), got ${withWgi.coverage}`);
+
+    // WGI must NOT influence the imputed food score — only absence type matters.
+    assert.equal(withWgi.score, withoutWgi.score, 'score must not change based on WGI presence (imputation is absence-type, not proxy)');
+    assert.equal(withWgi.coverage, withoutWgi.coverage, 'coverage must not change based on WGI presence');
   });
 
   it('memoizes repeated seed reads inside scoreAllDimensions', async () => {

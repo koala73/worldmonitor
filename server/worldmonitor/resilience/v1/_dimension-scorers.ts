@@ -35,7 +35,32 @@ export type ResilienceSeedReader = (key: string) => Promise<unknown | null>;
 interface WeightedMetric {
   score: number | null;
   weight: number;
+  // When a sub-metric is imputed (absence is a typed signal, not a gap), certaintyCoverage
+  // expresses how confident we are in the imputation: 1.0 = real data, 0 = fully absent.
+  // Omit for real data (auto: 1.0 if score != null, 0 if null).
+  certaintyCoverage?: number;
 }
+
+// Absence of a data source is a typed signal, not an unknown gap.
+// Each value is { score, certaintyCoverage } applied when the source is absent.
+const IMPUTATION = {
+  // Country not in IPC/UNHCR/UCDP because it's stable, not because data is missing.
+  // Absence = strong positive signal.
+  crisis_monitoring_absent: { score: 85, certaintyCoverage: 0.7 },
+  // Country not in BIS/WTO curated list. Data exists but country wasn't selected.
+  // Absence = neutral-to-negative (unknown, penalized conservatively).
+  curated_list_absent: { score: 50, certaintyCoverage: 0.3 },
+} as const;
+
+// Per-metric overrides where the generic imputation table values differ.
+const IMPUTE = {
+  ipcFood:      { score: 88, certaintyCoverage: 0.7 },  // crisis_monitoring_absent, food-specific
+  ofacSanctions:{ score: 80, certaintyCoverage: 0.6 },  // crisis_monitoring_absent, sanctions-specific
+  wtoData:      { score: 60, certaintyCoverage: 0.4 },  // curated_list_absent, trade-specific
+  bisEer:       IMPUTATION.curated_list_absent,
+  bisCredit:    IMPUTATION.curated_list_absent,
+  unhcrDisplacement: { score: 85, certaintyCoverage: 0.6 }, // crisis_monitoring_absent, displacement-specific
+} as const;
 
 interface StaticIndicatorValue {
   value?: number;
@@ -264,9 +289,17 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   }
 
   const weightedScore = available.reduce((sum, metric) => sum + (metric.score || 0) * metric.weight, 0) / availableWeight;
+
+  // Coverage: weighted average of certainty per metric.
+  // Real data → 1.0; imputed (certaintyCoverage set) → partial; absent (null, no imputation) → 0.
+  const weightedCertainty = metrics.reduce((sum, metric) => {
+    const certainty = metric.certaintyCoverage ?? (metric.score != null ? 1 : 0);
+    return sum + metric.weight * certainty;
+  }, 0) / totalWeight;
+
   return {
     score: roundScore(weightedScore),
-    coverage: roundCoverage(availableWeight / totalWeight),
+    coverage: roundCoverage(weightedCertainty),
   };
 }
 
@@ -577,7 +610,9 @@ export async function scoreMacroFiscal(
   return weightedBlend([
     { score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(safeNum(entry.debtToGdp) ?? 200, 0, 200)), weight: 0.5 },
     { score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(Math.max(0, safeNum(entry.annualGrowth) ?? 0), 0, 20)), weight: 0.2 },
-    { score: extractMetric(bisCredit, (entry) => normalizeLowerBetter(safeNum(entry.creditGdpRatio) ?? 250, 50, 250)), weight: 0.3 },
+    bisCredit == null
+      ? { score: IMPUTE.bisCredit.score, weight: 0.3, certaintyCoverage: IMPUTE.bisCredit.certaintyCoverage }
+      : { score: extractMetric(bisCredit, (entry) => normalizeLowerBetter(safeNum(entry.creditGdpRatio) ?? 250, 50, 250)), weight: 0.3 },
   ]);
 }
 
@@ -597,6 +632,11 @@ export async function scoreCurrencyExternal(
     : volSource.length === 1
       ? Math.abs(volSource[0]!) * Math.sqrt(12)
       : null;
+
+  // If country is not in BIS EER list at all (curated ~40 economies), impute conservatively.
+  if (countryRates.length === 0) {
+    return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage };
+  }
 
   return weightedBlend([
     { score: vol == null ? null : normalizeLowerBetter(vol, 0, 50), weight: 0.7 },
@@ -625,9 +665,17 @@ export async function scoreTradeSanctions(
   const barrierCount = countTradeBarriers(barriersRaw, countryCode);
 
   return weightedBlend([
-    { score: sanctionsPressure == null ? null : normalizeLowerBetter(sanctionsPressure, 0, 500), weight: 0.55 },
-    { score: restrictionsRaw != null ? normalizeLowerBetter(restrictionCount, 0, 30) : null, weight: 0.25 },
-    { score: barriersRaw != null ? normalizeLowerBetter(barrierCount, 0, 40) : null, weight: 0.2 },
+    // Not in OFAC top-N → crisis_monitoring_absent: stable country, not a sanctions target.
+    sanctionsPressure == null
+      ? { score: IMPUTE.ofacSanctions.score, weight: 0.55, certaintyCoverage: IMPUTE.ofacSanctions.certaintyCoverage }
+      : { score: normalizeLowerBetter(sanctionsPressure, 0, 500), weight: 0.55 },
+    // WTO data absent → curated_list_absent: country not tracked in top-50 trade data.
+    restrictionsRaw == null
+      ? { score: IMPUTE.wtoData.score, weight: 0.25, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage }
+      : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.25 },
+    barriersRaw == null
+      ? { score: IMPUTE.wtoData.score, weight: 0.2, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage }
+      : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.2 },
   ]);
 }
 
@@ -792,12 +840,11 @@ export async function scoreBorderSecurity(
 
   return weightedBlend([
     { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 30) : null, weight: 0.65 },
-    {
-      score: displacementMetric == null
-        ? null
-        : normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7),
-      weight: 0.35,
-    },
+    // Not in UNHCR displacement registry → crisis_monitoring_absent: country is not a
+    // significant refugee source or host. Absence = positive signal.
+    displacementMetric == null
+      ? { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage }
+      : { score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7), weight: 0.35 },
   ]);
 }
 
@@ -842,9 +889,20 @@ export async function scoreFoodWater(
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
   const staticRecord = await readStaticCountry(countryCode, reader);
-  const peopleInCrisis = safeNum(staticRecord?.fao?.peopleInCrisis);
-  const phase = safeNum(String(staticRecord?.fao?.phase || '').match(/\d+/)?.[0]);
+  const fao = staticRecord?.fao ?? null;
   const aquastatScore = scoreAquastatValue(staticRecord);
+
+  // IPC/HDX only tracks countries IN active food crisis. Absence means the country is not
+  // a monitored crisis case → crisis_monitoring_absent → positive signal.
+  if (fao == null) {
+    return weightedBlend([
+      { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage },
+      { score: aquastatScore, weight: 0.4 },
+    ]);
+  }
+
+  const peopleInCrisis = safeNum(fao.peopleInCrisis);
+  const phase = safeNum(String(fao.phase || '').match(/\d+/)?.[0]);
 
   return weightedBlend([
     {

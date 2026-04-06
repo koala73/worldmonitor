@@ -26,7 +26,7 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
-const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
+const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.60;
 const LOW_CONFIDENCE_ALPHA_THRESHOLD = 0.55;
 
 interface ResilienceHistoryPoint {
