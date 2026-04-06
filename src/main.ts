@@ -118,6 +118,7 @@ Sentry.init({
     /Attempting to change value of a readonly property/,
     /reading 'nodeType'/,
     /The node to be removed is not a child of this node/,
+    /The object can not be found here/, // Safari variant of above (Clerk SDK removeChild on detached DOM)
     /feature named .\w+. was not found/,
     /a2z\.onStatusUpdate/,
     /Attempting to run\(\), but is already running/,
