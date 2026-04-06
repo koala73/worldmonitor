@@ -723,7 +723,8 @@
         "moderate": "Mírný",
         "permissive": "Povolný",
         "undefined": "Nedefinováno"
-      }
+      },
+      "infoTooltip": "<strong>Regulace</strong> Regulační opatření, změny politik a aktualizace vynucování od globálních regulátorů: finanční, technologické, energetické a obchodní úřady. Zdroj: oficiální vládní a regulační publikace."
     },
     "economic": {
       "indicators": "Ukazatele",
@@ -1306,7 +1307,8 @@
       "onMap": "{{count}} na mapě",
       "techmemeEvents": "Události Techmeme ↗",
       "today": "DNES",
-      "soon": "BRZY"
+      "soon": "BRZY",
+      "infoTooltip": "<strong>Technologické události</strong> Nadcházející a nedávné technologické události: konference, uvedení produktů, regulační slyšení a hovory o výsledcích. Agregováno z oficiálních kalendářů a průmyslových zdrojů."
     },
     "techReadiness": {
       "internetUsers": "Uživatelé internetu",
@@ -1632,7 +1634,8 @@
         "comm": "Komunikace",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Stav služeb</strong> Provozní stav v reálném čase hlavních cloudových platforem, finanční infrastruktury a kritických internetových služeb. Zdroj: oficiální stavové stránky (AWS, Azure, GCP, Cloudflare, burzy). Incidenty mohou indikovat širší výpadky."
     },
     "verification": {
       "title": "Kontrolní seznam pro ověření informací",
@@ -1758,6 +1761,57 @@
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Letecké zpravodajství</strong> Provozní data leteckých společností v reálném čase: pozastavení tras, uzavření vzdušného prostoru, upozornění dopravců a nouzová přesměrování. Zdroj: NOTAM leteckých úřadů a bulletiny dopravců."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM Analytik</strong> AI analytik s živým kontextem napříč geopolitickou, tržní, vojenskou a ekonomickou doménou. Poháněn systémem Claude s daty v reálném čase z aktivních kanálů WorldMonitor."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>CFTC COT Pozice</strong> Zpráva o závazcích obchodníků: čisté pozice komerčních subjektů, velkých spekulantů a malých obchodníků v komoditních a finančních futures. Publikováno týdně (pátek). Zdroj: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Živé počítadla</strong> Extrapolovaná počítadla v reálném čase pro globální metriky: vojenské výdaje, přírodní katastrofy, zátěž nemocemi a další. Čísla jsou statistické odhady založené na ročních datových sazbách."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Epidemická ohniska</strong> Aktivní upozornění na ohniska od WHO, ProMED a ministerstev zdravotnictví. Sleduje potvrzená ohniska, zasažené regiony, počty případů a úrovně hrozby. Aktualizováno při publikaci nových zpráv."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Kalendář výsledků</strong> Nadcházející a nedávné výsledkové zprávy velkých veřejných společností. Zobrazuje odhady EPS vs. skutečnost, tržby a klasifikaci překonání/nesplnění. Zdroj: poskytovatelé finančních dat."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Ekonomický kalendář</strong> Plánované makroekonomické publikace: CPI, NFP, GDP, PMI a rozhodnutí centrálních bank. Zobrazuje prognózu vs. skutečnost vs. předchozí. Události s vysokým dopadem jsou zvýrazněny. Zdroj: poskytovatelé ekonomických dat."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Ukazatel finančního stresu</strong> Index finančního stresu Federální rezervní banky Kansas City (KCFSI): měří stres na finančních trzích USA pomocí 11 ukazatelů včetně výnosových spreadů, volatility a křížových korelací. Kladné hodnoty indikují nadprůměrný stres. Zdroj: Federální rezervní banka Kansas City."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Sledování obchodu v Hormuzu</strong> Sledování AIS plavidel v reálném čase přes Hormuzský průliv, nejkritičtější ropný úzký profil na světě. Monitoruje počty tankerů, narušení a týdenní změny toků. Přibližně 20 % světových dodávek ropy tudy denně prochází."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Živé kamery</strong> Živé přenosy z geopoliticky významných míst po celém světě: konfliktní zóny, hlavní města, hraniční přechody a strategické úzké profily. Streamy z YouTube a veřejných sítí."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Makro ukazatele</strong> Klíčové makroekonomické ukazatele pro USA a eurozónu: CPI, nezaměstnanost, GDP a sazby centrálních bank. Hodnoty s rozdílem oproti předchozímu období. Zdroj: FRED (Ekonomická data Federálního rezervního systému)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Monitory klíčových slov</strong> Přidejte libovolný výraz pro sledování zmínek ve zprávách v reálném čase ze všech zdrojů WorldMonitor. Výsledky se aktualizují při příjmu odpovídajících článků."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Obnovitelná energie</strong> Globální zásobník projektů obnovitelné energie: solární, větrná, vodní a přírůstky úložné kapacity. Sleduje oznámené, ve výstavbě a uvedené do provozu projekty podle regionu a typu technologie."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Sociální rychlost</strong> Trendy a virální obsah s geopolitickým významem. Měří rychlost na sociálních médiích: jak rychle se příběh šíří vůči základní linii. Pomáhá odhalit vznikající narativy dříve, než se dostanou do mainstreamových médií."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Úspěchy v ochraně přírody</strong> Pozitivní zprávy o ochraně přírody: obnova populací druhů, milníky v obnově biotopů a snahy o de-extinkci. Zdroj: IUCN, WWF a publikace výzkumu v oblasti ochrany."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Světové hodiny</strong> Místní čas v reálném čase a stav tržních seancí pro hlavní globální finanční centra. Zobrazuje stav otevřeno/zavřeno pro NYSE, LSE, TSE, SGX a další burzy."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Výnosová křivka &amp; Sazby</strong> Výnosová křivka US Treasury (2Y, 5Y, 10Y, 30Y) a klíčové úrokové spready včetně indikátoru inverze 10Y-2Y. Zobrazuje také sazby eurozóny (EURIBOR, ESTR). Invertovaná křivka historicky předchází recesím. Zdroj: FRED."
     }
   },
   "popups": {

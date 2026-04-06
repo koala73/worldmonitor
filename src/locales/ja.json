@@ -733,7 +733,8 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "infoTooltip": "<strong>規制</strong> グローバル規制当局からの規制措置、政策変更、執行更新：金融、テクノロジー、エネルギー、貿易当局。ソース：政府および規制機関の公式出版物。"
     },
     "economic": {
       "indicators": "指標",
@@ -1326,7 +1327,8 @@
       "onMap": "{{count}} on map",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "TODAY",
-      "soon": "SOON"
+      "soon": "SOON",
+      "infoTooltip": "<strong>テックイベント</strong> 今後および最近のテクノロジーイベント：カンファレンス、製品ローンチ、規制公聴会、決算コール。公式イベントカレンダーおよび業界ソースから集約。"
     },
     "techReadiness": {
       "internetUsers": "インターネットユーザー",
@@ -1652,7 +1654,8 @@
         "comm": "Comms",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>サービスステータス</strong> 主要クラウドプラットフォーム、金融インフラ、重要インターネットサービスのリアルタイム稼働状況。ソース：公式ステータスページ（AWS、Azure、GCP、Cloudflare、取引所）。インシデントはより広範な障害イベントを示す可能性あり。"
     },
     "verification": {
       "title": "Information Verification Checklist",
@@ -1758,6 +1761,57 @@
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>航空インテリジェンス</strong> リアルタイムの航空会社運航データ：路線停止、空域閉鎖、運航会社の勧告、緊急迂回。航空当局のNOTAMおよび運航会社の速報がソース。"
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM アナリスト</strong> 地政学、市場、軍事、経済分野のライブコンテキストを持つAIアナリスト。WorldMonitorのアクティブフィードからリアルタイムデータを注入したClaudeで稼働。"
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>CFTC COT ポジショニング</strong> トレーダーのコミットメント報告：商品先物・金融先物における商業筋、大口投機筋、小口トレーダーのネットポジション。毎週金曜日に公開。ソース：CFTC。"
+    },
+    "counters": {
+      "infoTooltip": "<strong>ライブカウンター</strong> グローバル指標のリアルタイム推定カウンター：軍事費、自然災害、疾病負担など。数値は年間データレートに基づく統計的推定値。"
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>感染症アウトブレイク</strong> WHO、ProMED、各国保健省からのアクティブな発生警報。確認済みの発生、影響地域、症例数、脅威レベルを追跡。新しい報告の発表時に更新。"
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>決算カレンダー</strong> 主要上場企業の今後および最近の決算発表。EPS予想 vs 実績、収益、予想超過/未達の分類を表示。ソース：金融データプロバイダー。"
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>経済カレンダー</strong> 予定されたマクロ経済発表：CPI、NFP、GDP、PMIおよび中央銀行の決定。予想 vs 実績 vs 前回を表示。高インパクトイベントはハイライト表示。ソース：経済データプロバイダー。"
+    },
+    "fsi": {
+      "infoTooltip": "<strong>金融ストレス指標</strong> カンザスシティ連銀金融ストレス指数（KCFSI）：利回りスプレッド、ボラティリティ、クロス相関を含む11の指標を用いて米国金融市場のストレスを測定。正の値は平均以上のストレスを示す。ソース：カンザスシティ連邦準備銀行。"
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> 世界最重要の石油チョークポイントであるホルムズ海峡を通過するAIS船舶のライブ追跡。タンカー数、混乱イベント、週次フロー変化を監視。世界の石油供給量の約20%が毎日ここを通過。"
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>ライブウェブカメラ</strong> 世界中の地政学的に重要な場所からのライブ映像：紛争地域、首都、国境検問所、戦略的チョークポイント。YouTubeおよび公共ネットワークからのストリーム。"
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>マクロ指標</strong> 米国とユーロ圏の主要マクロ経済指標：CPI、失業率、GDP、中央銀行金利。前期との差分を含む値表示。ソース：FRED（連邦準備制度経済データ）。"
+    },
+    "monitors": {
+      "infoTooltip": "<strong>キーワードモニター</strong> 任意の用語を追加してWorldMonitorの全ソースからリアルタイムのニュース言及を追跡。マッチする記事が取り込まれると結果がリアルタイムで更新。"
+    },
+    "renewable": {
+      "infoTooltip": "<strong>再生可能エネルギー</strong> グローバルな再生可能エネルギープロジェクトパイプライン：太陽光、風力、水力、蓄電容量の追加。地域と技術タイプ別に発表済み、建設中、運転開始済みプロジェクトを追跡。"
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>ソーシャルベロシティ</strong> 地政学的重要性を持つトレンドトピックとバイラルコンテンツ。ソーシャルメディアの速度を測定：ベースラインに対してストーリーがどれだけ速く拡散するか。主流メディアに届く前に新興ナラティブの浮上を支援。"
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>保全の成果</strong> ポジティブな保全ニュース：種の個体数回復、生息地復元のマイルストーン、脱絶滅の取り組み。ソース：IUCN、WWFおよび保全研究出版物。"
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>世界時計</strong> 主要グローバル金融センターのリアルタイム現地時間とマーケットセッションステータス。NYSE、LSE、TSE、SGXなどの取引所のオープン/クローズ状況を表示。"
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>イールドカーブ &amp; 金利</strong> 米国債イールドカーブ（2Y、5Y、10Y、30Y）と10Y-2Y逆転指標を含む主要金利スプレッド。ユーロ圏金利（EURIBOR、ESTR）も表示。逆転したカーブは歴史的に景気後退に先行。ソース：FRED。"
     }
   },
   "popups": {

@@ -733,7 +733,8 @@
         "moderate": "Moderat",
         "permissive": "Permisiv",
         "undefined": "Nedefinit"
-      }
+      },
+      "infoTooltip": "<strong>Reglementare</strong> Acțiuni de reglementare, modificări de politici și actualizări de aplicare de la reglementatorii globali: autorități financiare, tehnologice, energetice și comerciale. Sursă: publicații oficiale guvernamentale și de reglementare."
     },
     "economic": {
       "indicators": "Indicatori",
@@ -1326,7 +1327,8 @@
       "onMap": "{{count}} pe hartă",
       "techmemeEvents": "Evenimente Techmeme ↗",
       "today": "AZI",
-      "soon": "CURÂND"
+      "soon": "CURÂND",
+      "infoTooltip": "<strong>Evenimente tech</strong> Evenimente tehnologice viitoare și recente: conferințe, lansări de produse, audieri de reglementare și apeluri de rezultate. Agregate din calendare oficiale de evenimente și surse din industrie."
     },
     "techReadiness": {
       "internetUsers": "Utilizatori de Internet",
@@ -1652,7 +1654,8 @@
         "comm": "Comunicații",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Starea serviciilor</strong> Starea operațională în timp real a platformelor cloud majore, infrastructurii financiare și serviciilor de internet critice. Sursă: pagini oficiale de stare (AWS, Azure, GCP, Cloudflare, burse). Incidentele pot indica evenimente de perturbare mai ample."
     },
     "verification": {
       "title": "Lista de verificare pentru verificarea informațiilor",
@@ -1758,6 +1761,57 @@
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Informații aeronautice</strong> Date operaționale ale companiilor aeriene în timp real: suspendări de rute, închideri ale spațiului aerian, avize ale transportatorilor și devieri de urgență. Sursă: NOTAM ale autorităților aeronautice și buletine ale transportatorilor."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>Analist WM</strong> Analist AI cu context în timp real în domeniile geopolitic, piețe, militar și economic. Alimentat de Claude cu date în timp real injectate din fluxurile active WorldMonitor."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>Poziționare CFTC COT</strong> Raportul angajamentelor traderilor: poziționarea netă a comercialilor, speculanților mari și traderilor mici în contractele futures pe mărfuri și financiare. Publicat săptămânal (vineri). Sursă: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Contoare în direct</strong> Contoare extrapolate în timp real pentru indicatori globali: cheltuieli militare, dezastre naturale, povara bolilor și altele. Cifrele sunt estimări statistice bazate pe ratele anuale ale datelor."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Focare de boli</strong> Alerte active de focare de la WHO, ProMED și ministere ale sănătății. Urmărește focare confirmate, regiuni afectate, număr de cazuri și niveluri de amenințare. Actualizat la publicarea rapoartelor noi."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Calendar de rezultate</strong> Publicări viitoare și recente ale rezultatelor companiilor mari listate. Afișează estimările EPS vs. reale, venituri și clasificare depășire/ratare. Sursă: furnizori de date financiare."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Calendar economic</strong> Publicări macroeconomice programate: CPI, NFP, GDP, PMI și decizii ale băncilor centrale. Afișează prognoză vs. real vs. anterior. Evenimentele cu impact ridicat sunt evidențiate. Sursă: furnizori de date economice."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Indicator de stres financiar</strong> Indicele de stres financiar al Fed Kansas City (KCFSI): măsoară stresul pe piețele financiare din SUA folosind 11 indicatori, inclusiv spread-uri de randament, volatilitate și corelații încrucișate. Valorile pozitive indică stres peste medie. Sursă: Federal Reserve Bank of Kansas City."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Tracker comercial Hormuz</strong> Urmărire AIS a navelor în timp real prin Strâmtoarea Hormuz, cel mai critic punct de blocaj petrolier din lume. Monitorizează numărul de tancuri petroliere, evenimente de perturbare și schimbări săptămânale ale fluxurilor. Aproximativ 20% din aprovizionarea globală cu petrol tranzitează zilnic aici."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Camere web în direct</strong> Fluxuri în direct din locații semnificative geopolitic din întreaga lume: zone de conflict, capitale, puncte de trecere a frontierei și puncte strategice de blocaj. Fluxuri de la YouTube și rețele publice."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Indicatori macro</strong> Indicatori macroeconomici cheie pentru SUA și zona euro: CPI, șomaj, GDP și ratele băncilor centrale. Valori afișate cu delta față de perioada anterioară. Sursă: FRED (Federal Reserve Economic Data)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Monitoare de cuvinte cheie</strong> Adăugați orice termen pentru a urmări mențiunile în știri în timp real din toate sursele WorldMonitor. Rezultatele se actualizează în timp real pe măsură ce articolele corespunzătoare sunt ingerate."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Energie regenerabilă</strong> Pipeline global de proiecte de energie regenerabilă: adăugiri de capacitate solară, eoliană, hidro și de stocare. Urmărește proiectele anunțate, în construcție și comisionate pe regiune și tip de tehnologie."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Velocitate socială</strong> Subiecte în tendințe și conținut viral cu semnificație geopolitică. Măsoară viteza în social media: cât de rapid se răspândește o știre față de linia de bază. Ajută la identificarea narativelor emergente înainte de a ajunge în mass-media."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Realizări în conservare</strong> Știri pozitive despre conservare: recuperarea populațiilor de specii, repere în restaurarea habitatelor și eforturi de de-extincție. Sursă: IUCN, WWF și publicații de cercetare în conservare."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Ceas mondial</strong> Ore locale în timp real și starea sesiunilor de piață pentru principalele centre financiare globale. Afișează starea deschis/închis pentru NYSE, LSE, TSE, SGX și alte burse."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Curba randamentelor &amp; Rate</strong> Curba randamentelor US Treasury (2Y, 5Y, 10Y, 30Y) și spread-uri cheie ale ratelor, inclusiv indicatorul de inversiune 10Y-2Y. Afișează și ratele zonei euro (EURIBOR, ESTR). O curbă inversată precede istoric recesiunile. Sursă: FRED."
     }
   },
   "popups": {

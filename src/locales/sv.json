@@ -873,7 +873,8 @@
       "onMap": "{{count}} on map",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "TODAY",
-      "soon": "SOON"
+      "soon": "SOON",
+      "infoTooltip": "<strong>Teknikevenemang</strong> Kommande och senaste teknikevenemang: konferenser, produktlanseringar, regulatoriska utfrågningar och resultatsamtal. Samlade från officiella evenemangskalendrar och branschkällor."
     },
     "techReadiness": {
       "internetUsers": "Internetanvändare",
@@ -1267,7 +1268,8 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "infoTooltip": "<strong>Reglering</strong> Regleringsåtgärder, policyändringar och tillsynsuppdateringar från globala tillsynsmyndigheter: finans-, teknik-, energi- och handelsmyndigheter. Källa: officiella statliga och regulatoriska publikationer."
     },
     "etfFlows": {
       "unavailable": "ETF-data tillfälligt otillgänglig",
@@ -1335,7 +1337,8 @@
         "comm": "Comms",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Tjänstestatus</strong> Driftstatus i realtid för stora molnplattformar, finansiell infrastruktur och kritiska internettjänster. Källa: officiella statussidor (AWS, Azure, GCP, Cloudflare, börser). Incidenter kan indikera bredare störningshändelser."
     },
     "verification": {
       "title": "Information Verification Checklist",
@@ -1554,6 +1557,57 @@
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Flygintelligens</strong> Flygbolags driftdata i realtid: linjenedläggningar, luftrumsstängningar, transportörsmeddelanden och nödomdirigeringar. Källa: NOTAM från luftfartsmyndigheter och transportörsbulletiner."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM Analytiker</strong> AI-analytiker med livekontext inom geopolitiska, marknads-, militära och ekonomiska domäner. Drivs av Claude med realtidsdata injicerade från aktiva WorldMonitor-flöden."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>CFTC COT Positionering</strong> Commitments of Traders-rapport: nettopositionering av kommersiella aktörer, stora spekulanter och små handlare i råvaru- och finansiella terminer. Publiceras veckovis (fredag). Källa: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Liveräknare</strong> Extrapolerade realtidsräknare för globala mätvärden: militärutgifter, naturkatastrofer, sjukdomsbörda med mera. Siffrorna är statistiska uppskattningar baserade på årliga datahastigheter."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Sjukdomsutbrott</strong> Aktiva utbrottsvarningar från WHO, ProMED och hälsoministerier. Spårar bekräftade utbrott, drabbade regioner, fallantal och hotnivåer. Uppdateras vid publicering av nya rapporter."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Resultatkalender</strong> Kommande och senaste resultatpubliceringar för stora börsnoterade företag. Visar EPS-estimat vs. faktiska, intäkter och klassificering överträffad/missad. Källa: finansiella dataleverantörer."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Ekonomisk kalender</strong> Schemalagda makroekonomiska publiceringar: CPI, NFP, GDP, PMI och centralbanksbeslut. Visar prognos vs. faktisk vs. föregående. Händelser med hög påverkan markerade. Källa: ekonomiska dataleverantörer."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Finansiell stressindikator</strong> Kansas City Feds Financial Stress Index (KCFSI): mäter stress på amerikanska finansmarknader med 11 indikatorer inklusive avkastningsspreadar, volatilitet och korskorrelationer. Positiva värden indikerar stress över genomsnittet. Källa: Federal Reserve Bank of Kansas City."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Hormuz handelsspårare</strong> Live AIS-fartygsspårning genom Hormuzsundet, världens mest kritiska oljeflaskhals. Övervakar tankerantal, störningshändelser och veckovisa flödesförändringar. Cirka 20% av den globala oljeförsörjningen passerar här dagligen."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Livewebbkameror</strong> Livesändningar från geopolitiskt betydelsefulla platser världen över: konfliktzoner, huvudstäder, gränsövergångar och strategiska flaskhalsar. Strömmar från YouTube och offentliga nätverk."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Makroindikatorer</strong> Viktiga makroekonomiska indikatorer för USA och euroområdet: CPI, arbetslöshet, GDP och centralbanksräntor. Värden visade med delta mot föregående period. Källa: FRED (Federal Reserve Economic Data)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Nyckelordsmonitorer</strong> Lägg till valfri term för att spåra omnämnanden i nyheter i realtid från alla WorldMonitor-källor. Resultaten uppdateras i realtid allt eftersom matchande artiklar importeras."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Förnybar energi</strong> Global pipeline för förnybar energiprojekt: sol-, vind-, vatten- och lagringskapacitetstillägg. Spårar annonserade, under uppförande och idrifttagna projekt per region och tekniktyp."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Social hastighet</strong> Trendande ämnen och viralt innehåll med geopolitisk betydelse. Mäter hastigheten i sociala medier: hur snabbt en story sprids i förhållande till baslinjen. Hjälper till att lyfta fram framväxande narrativ innan de når etablerade medier."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Bevarandesegrar</strong> Positiva naturvårdsnyheter: återhämtning av artpopulationer, milstolpar i habitatåterställning och de-extinktionsinsatser. Källa: IUCN, WWF och publikationer inom naturvårdsforskning."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Världsklocka</strong> Lokaltider i realtid och marknadssessionstatus för stora globala finanscentra. Visar öppet/stängt-status för NYSE, LSE, TSE, SGX och andra börser."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Avkastningskurva &amp; Räntor</strong> US Treasury avkastningskurva (2Y, 5Y, 10Y, 30Y) och nyckelräntespreadar inklusive 10Y-2Y-inversionsindikatorn. Visar även euroområdets räntor (EURIBOR, ESTR). En inverterad kurva föregår historiskt recessioner. Källa: FRED."
     }
   },
   "popups": {
