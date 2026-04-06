@@ -169,13 +169,8 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       { countryCode: 'YE', realChange: -18.0, realEer: 145, date: '2025-11' },
     ],
   },
-  'sanctions:pressure:v1': {
-    countries: [
-      { countryCode: 'NO', countryName: 'Norway', entryCount: 0, newEntryCount: 0, vesselCount: 0, aircraftCount: 0 },
-      { countryCode: 'US', countryName: 'United States', entryCount: 40, newEntryCount: 4, vesselCount: 2, aircraftCount: 1 },
-      { countryCode: 'YE', countryName: 'Yemen', entryCount: 160, newEntryCount: 8, vesselCount: 10, aircraftCount: 6 },
-    ],
-  },
+  // Full ISO2→entryCount map from sanctions:country-counts:v1 (all countries, no top-N truncation).
+  'sanctions:country-counts:v1': { NO: 2, US: 45, YE: 180, LB: 30 },
   'trade:restrictions:v1:tariff-overview:50': {
     restrictions: [
       { reportingCountry: 'United States', status: 'IN_FORCE' },

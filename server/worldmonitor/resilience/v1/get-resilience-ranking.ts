@@ -7,6 +7,7 @@ import type {
 
 import { getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import {
+  GREY_OUT_COVERAGE_THRESHOLD,
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_CACHE_TTL_SECONDS,
   buildRankingItem,
@@ -36,7 +37,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   if (cached?.items?.length) return cached;
 
   const countryCodes = await listScorableCountries();
-  if (countryCodes.length === 0) return { items: [] };
+  if (countryCodes.length === 0) return { items: [], greyedOut: [] };
 
   let cachedScores = await getCachedResilienceScores(countryCodes);
   const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
@@ -49,10 +50,10 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     }
   }
 
+  const allItems = countryCodes.map((countryCode) => buildRankingItem(countryCode, cachedScores.get(countryCode)));
   const response: GetResilienceRankingResponse = {
-    items: sortRankingItems(
-      countryCodes.map((countryCode) => buildRankingItem(countryCode, cachedScores.get(countryCode))),
-    ),
+    items: sortRankingItems(allItems.filter((item) => item.overallCoverage >= GREY_OUT_COVERAGE_THRESHOLD)),
+    greyedOut: allItems.filter((item) => item.overallCoverage < GREY_OUT_COVERAGE_THRESHOLD),
   };
 
   const stillMissing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));

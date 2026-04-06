@@ -8,4 +8,5 @@ message GetResilienceRankingRequest {}
 
 message GetResilienceRankingResponse {
   repeated ResilienceRankingItem items = 1;
+  repeated ResilienceRankingItem greyed_out = 2;
 }

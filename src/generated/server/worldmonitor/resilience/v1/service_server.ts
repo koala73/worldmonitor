@@ -35,6 +35,7 @@ export interface GetResilienceRankingRequest {
 
 export interface GetResilienceRankingResponse {
   items: ResilienceRankingItem[];
+  greyedOut: ResilienceRankingItem[];
 }
 
 export interface ResilienceRankingItem {
@@ -42,6 +43,7 @@ export interface ResilienceRankingItem {
   overallScore: number;
   level: string;
   lowConfidence: boolean;
+  overallCoverage: number;
 }
 
 export interface FieldViolation {

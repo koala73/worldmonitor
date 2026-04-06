@@ -55,11 +55,12 @@ describe('resilience ranking contracts', () => {
 
   it('warms missing scores synchronously and returns complete ranking on first call', async () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
+    const domainWithCoverage = [{ name: 'political', dimensions: [{ name: 'd1', coverage: 0.9 }] }];
     redis.set('resilience:score:NO', JSON.stringify({
       countryCode: 'NO',
       overallScore: 82,
       level: 'high',
-      domains: [],
+      domains: domainWithCoverage,
       cronbachAlpha: 0.82,
       trend: 'stable',
       change30d: 1.2,
@@ -69,7 +70,7 @@ describe('resilience ranking contracts', () => {
       countryCode: 'US',
       overallScore: 61,
       level: 'medium',
-      domains: [],
+      domains: domainWithCoverage,
       cronbachAlpha: 0.67,
       trend: 'rising',
       change30d: 4.3,
@@ -78,9 +79,10 @@ describe('resilience ranking contracts', () => {
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.equal(response.items.length, 3);
+    const totalItems = response.items.length + (response.greyedOut?.length ?? 0);
+    assert.equal(totalItems, 3, `expected 3 total items across ranked + greyedOut, got ${totalItems}`);
     assert.ok(redis.has('resilience:score:YE'), 'missing country should be warmed during first call');
-    assert.ok(response.items.every((item) => item.overallScore >= 0), 'all scores should be computed on first call');
+    assert.ok(response.items.every((item) => item.overallScore >= 0), 'ranked items should all have computed scores');
     assert.ok(redis.has('resilience:ranking'), 'fully scored ranking should be cached');
   });
 });

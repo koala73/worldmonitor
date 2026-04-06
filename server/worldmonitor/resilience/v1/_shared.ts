@@ -244,6 +244,14 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
   return scores;
 }
 
+export const GREY_OUT_COVERAGE_THRESHOLD = 0.40;
+
+function computeOverallCoverage(response: GetResilienceScoreResponse): number {
+  const coverages = response.domains.flatMap((domain) => domain.dimensions.map((dimension) => dimension.coverage));
+  if (coverages.length === 0) return 0;
+  return coverages.reduce((sum, coverage) => sum + coverage, 0) / coverages.length;
+}
+
 export function buildRankingItem(
   countryCode: string,
   response?: GetResilienceScoreResponse | null,
@@ -254,6 +262,7 @@ export function buildRankingItem(
       overallScore: -1,
       level: 'unknown',
       lowConfidence: true,
+      overallCoverage: 0,
     };
   }
 
@@ -262,6 +271,7 @@ export function buildRankingItem(
     overallScore: response.overallScore,
     level: response.level,
     lowConfidence: response.lowConfidence,
+    overallCoverage: computeOverallCoverage(response),
   };
 }
 

@@ -138,21 +138,31 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.coverage > 0, 'should have non-zero coverage even with null IEA');
   });
 
-  it('scoreTradeSanctions: country absent from sanctions payload gets crisis_monitoring_absent imputation (score 80, not 100)', async () => {
-    // Not in the OFAC sanctions payload = stable country not targeted. crisis_monitoring_absent
-    // imputation (score=80, certaintyCoverage=0.6). Must NOT be 100 (that was the old P1 bug).
-    // WTO sources are loaded (empty) so zero restrictions = real data (score 100), not imputed.
+  it('scoreTradeSanctions: country with 0 OFAC designations scores 100 (full-count key, not imputed)', async () => {
+    // country-counts:v1 covers ALL countries. A country absent from the map has 0 designations
+    // which is a real data point (score=100), not an imputed absence.
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'sanctions:pressure:v1') return { countries: [{ countryCode: 'RU', entryCount: 500 }] };
+      if (key === 'sanctions:country-counts:v1') return { RU: 500, IR: 350 }; // FI absent = 0
       if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [] };
       if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [] };
       return null;
     };
     const score = await scoreTradeSanctions('FI', reader);
-    assert.ok(score.coverage < 1, `imputed coverage < 1 (sanctions partial certainty), got ${score.coverage}`);
-    assert.notEqual(score.score, 100, 'absent-from-payload must not get imputed score of 100');
-    assert.ok(score.score > 60 && score.score < 95,
-      `expected blended score 60–95 (imputed sanctions + perfect WTO), got ${score.score}`);
+    assert.equal(score.score, 100, 'FI with 0 designations must score 100 (not sanctioned)');
+    assert.equal(score.coverage, 1, 'all sources loaded → full coverage');
+  });
+
+  it('scoreTradeSanctions: heavily sanctioned country scores low', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'sanctions:country-counts:v1') return { RU: 500 };
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [] };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [] };
+      return null;
+    };
+    const score = await scoreTradeSanctions('RU', reader);
+    // Sanctions metric alone = 0 (score floored); WTO sources are empty (no restrictions = 100).
+    // Blended: (0×0.55 + 100×0.25 + 100×0.2) / 1.0 = 45. Still clearly below an unsanctioned country.
+    assert.ok(score.score < 55, `RU with 500 designations should score below midpoint, got ${score.score}`);
   });
 
   it('scoreTradeSanctions: seed outage (null source) does not impute as country-absent', async () => {

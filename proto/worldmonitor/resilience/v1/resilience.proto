@@ -20,4 +20,5 @@ message ResilienceRankingItem {
   double overall_score = 2;
   string level = 3;
   bool low_confidence = 4;
+  double overall_coverage = 5;
 }

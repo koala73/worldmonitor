@@ -55,7 +55,6 @@ const IMPUTATION = {
 // Per-metric overrides where the generic imputation table values differ.
 const IMPUTE = {
   ipcFood:      { score: 88, certaintyCoverage: 0.7 },  // crisis_monitoring_absent, food-specific
-  ofacSanctions:{ score: 80, certaintyCoverage: 0.6 },  // crisis_monitoring_absent, sanctions-specific
   wtoData:      { score: 60, certaintyCoverage: 0.4 },  // curated_list_absent, trade-specific
   bisEer:       IMPUTATION.curated_list_absent,
   bisCredit:    IMPUTATION.curated_list_absent,
@@ -95,15 +94,6 @@ interface NationalDebtEntry {
   iso3?: string;
   debtToGdp?: number;
   annualGrowth?: number;
-}
-
-interface CountrySanctionsPressure {
-  countryCode?: string;
-  countryName?: string;
-  entryCount?: number;
-  newEntryCount?: number;
-  vesselCount?: number;
-  aircraftCount?: number;
 }
 
 interface TradeRestriction {
@@ -164,7 +154,7 @@ const RESILIENCE_TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const RESILIENCE_BIS_CREDIT_KEY = 'economic:bis:credit:v1';
 const RESILIENCE_BIS_EXCHANGE_KEY = 'economic:bis:eer:v1';
 const RESILIENCE_NATIONAL_DEBT_KEY = 'economic:national-debt:v1';
-const RESILIENCE_SANCTIONS_KEY = 'sanctions:pressure:v1';
+const RESILIENCE_SANCTIONS_KEY = 'sanctions:country-counts:v1';
 const RESILIENCE_TRADE_RESTRICTIONS_KEY = 'trade:restrictions:v1:tariff-overview:50';
 const RESILIENCE_TRADE_BARRIERS_KEY = 'trade:barriers:v1:tariff-gap:50';
 const RESILIENCE_CYBER_KEY = 'cyber:threats:v2';
@@ -264,6 +254,15 @@ function normalizeHigherBetter(value: number, worst: number, best: number): numb
   if (best <= worst) return 50;
   const ratio = (value - worst) / (best - worst);
   return roundScore(ratio * 100);
+}
+
+// Piecewise scale: 0=100, 1-10=90-75, 11-50=75-50, 51-200=50-25, 201+=25→0
+function normalizeSanctionCount(count: number): number {
+  if (count === 0) return 100;
+  if (count <= 10) return roundScore(90 - (count - 1) * (15 / 9));
+  if (count <= 50) return roundScore(75 - (count - 10) * (25 / 40));
+  if (count <= 200) return roundScore(50 - (count - 50) * (25 / 150));
+  return roundScore(Math.max(0, 25 - (count - 200) * 0.1));
 }
 
 function mean(values: number[]): number | null {
@@ -435,14 +434,6 @@ function countTradeBarriers(raw: unknown, countryCode: string): number {
     ? ((raw as { barriers?: TradeBarrier[] }).barriers ?? [])
     : [];
   return barriers.reduce((count, item) => count + (matchesCountryIdentifier(item.notifyingCountry, countryCode) ? 1 : 0), 0);
-}
-
-function getSanctionsCountry(raw: unknown, countryCode: string): CountrySanctionsPressure | null {
-  const countries: CountrySanctionsPressure[] = Array.isArray((raw as { countries?: unknown[] } | null)?.countries)
-    ? ((raw as { countries?: CountrySanctionsPressure[] }).countries ?? [])
-    : [];
-  return countries.find((entry) =>
-    matchesCountryIdentifier(entry.countryCode, countryCode) || matchesCountryIdentifier(entry.countryName, countryCode)) ?? null;
 }
 
 function summarizeOutages(raw: unknown, countryCode: string): { total: number; major: number; partial: number } {
@@ -660,24 +651,17 @@ export async function scoreTradeSanctions(
     reader(RESILIENCE_TRADE_BARRIERS_KEY),
   ]);
 
-  const sanctions = getSanctionsCountry(sanctionsRaw, countryCode);
-  const sanctionsPressure = sanctions
-    ? (safeNum(sanctions.entryCount) ?? 0)
-      + (safeNum(sanctions.newEntryCount) ?? 0) * 5
-      + (safeNum(sanctions.vesselCount) ?? 0) * 2
-      + (safeNum(sanctions.aircraftCount) ?? 0) * 2
-    : null;
+  // sanctions:country-counts:v1 is a plain ISO2→entryCount map covering ALL countries.
+  const sanctionsCounts = sanctionsRaw as Record<string, number> | null;
+  const sanctionCount = sanctionsCounts != null ? (sanctionsCounts[countryCode] ?? 0) : null;
   const restrictionCount = countTradeRestrictions(restrictionsRaw, countryCode);
   const barrierCount = countTradeBarriers(barriersRaw, countryCode);
 
   return weightedBlend([
-    // Not in OFAC top-N → crisis_monitoring_absent (stable country, not a sanctions target),
-    // but only when the source was loaded. Null source = seed outage, not country absence.
+    // Full country-counts key covers all countries; absent means the seeder failed, not crisis-free.
     sanctionsRaw == null
       ? { score: null, weight: 0.55 }
-      : sanctionsPressure == null
-        ? { score: IMPUTE.ofacSanctions.score, weight: 0.55, certaintyCoverage: IMPUTE.ofacSanctions.certaintyCoverage }
-        : { score: normalizeLowerBetter(sanctionsPressure, 0, 500), weight: 0.55 },
+      : { score: normalizeSanctionCount(sanctionCount ?? 0), weight: 0.55 },
     // WTO null source = seed outage; loaded source with zero restrictions = real data (score 100).
     restrictionsRaw == null
       ? { score: null, weight: 0.25 }

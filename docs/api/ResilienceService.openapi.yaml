@@ -156,6 +156,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/ResilienceRankingItem'
+                greyedOut:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResilienceRankingItem'
         ResilienceRankingItem:
             type: object
             properties:
@@ -168,3 +172,6 @@ components:
                     type: string
                 lowConfidence:
                     type: boolean
+                overallCoverage:
+                    type: number
+                    format: double
