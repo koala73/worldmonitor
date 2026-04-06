@@ -13,7 +13,7 @@ import {
   createCountryResolvers,
   finalizeCountryPayloads,
   gpiUrlForYear,
-  parseAquastatRows,
+  buildAquastatWbMap,
   parseEurostatEnergyDataset,
   parseFsinRows,
   parseGpiRows,
@@ -154,43 +154,31 @@ describe('resilience static seed CSV parsers', () => {
     });
   });
 
-  describe('parseAquastatRows', () => {
-    it('parses VariableCode schema and maps variable codes to metric keys', () => {
-      const csv = csvRows(
-        'Country,VariableCode,Value,Year',
-        ['Norway,4550,5.2,2021', 'Norway,4190,81234.5,2021', 'Yemen,4550,99.1,2021'],
-      );
-      const result = parseAquastatRows(csv);
+  describe('buildAquastatWbMap', () => {
+    it('produces the { source, value, indicator, year } shape scoreAquastatValue() reads', () => {
+      const input = new Map([
+        ['NO', { value: 5.2, year: 2022 }],
+        ['YE', { value: 99.1, year: 2021 }],
+      ]);
+      const result = buildAquastatWbMap(input);
       const no = result.get('NO');
       assert.ok(no != null);
-      assert.equal(no.source, 'fao-aquastat');
-      assert.deepEqual(no.waterStress, { value: 5.2, year: 2021 });
-      assert.ok(no.renewablePerCapita?.value > 0);
-      assert.ok(result.get('YE')?.waterStress?.value > 0);
+      assert.equal(no.source, 'worldbank-aquastat');
+      assert.equal(no.value, 5.2);
+      assert.equal(no.indicator, 'water stress');
+      assert.equal(no.year, 2022);
+      assert.equal(result.get('YE')?.value, 99.1);
     });
 
-    it('parses legacy Variable_Id column name', () => {
-      const csv = csvRows(
-        'Country,Variable_Id,Value,Year',
-        ['Norway,4550,5.2,2021'],
-      );
-      const result = parseAquastatRows(csv);
-      assert.ok(result.get('NO')?.waterStress != null, 'should parse Variable_Id as fallback column');
+    it('throws when input map is empty', () => {
+      assert.throws(() => buildAquastatWbMap(new Map()), /no usable rows/);
     });
 
-    it('keeps latest year when multiple rows exist for the same country+variable', () => {
-      const csv = csvRows(
-        'Country,VariableCode,Value,Year',
-        ['Norway,4550,12.0,2019', 'Norway,4550,5.2,2021'],
-      );
-      const result = parseAquastatRows(csv);
-      assert.equal(result.get('NO')?.waterStress?.value, 5.2, 'should prefer the 2021 row over 2019');
-      assert.equal(result.get('NO')?.waterStress?.year, 2021);
-    });
-
-    it('throws when no usable rows parsed', () => {
-      const csv = csvRows('Country,VariableCode,Value,Year', ['Unknown Country,4550,5.0,2021']);
-      assert.throws(() => parseAquastatRows(csv), /no usable rows/);
+    it('output indicator keyword matches scoreAquastatValue stress branch', () => {
+      // scoreAquastatValue() checks indicator.includes('stress') -> normalizeLowerBetter(0,100)
+      // If this keyword changes the scorer breaks silently. Pin it here.
+      const result = buildAquastatWbMap(new Map([['DE', { value: 10, year: 2022 }]]));
+      assert.ok(result.get('DE')?.indicator?.includes('stress'), 'indicator must include "stress" to route correctly in scoreAquastatValue()');
     });
   });
 });
@@ -333,6 +321,8 @@ describe('recoverFailedDatasets', () => {
   // These are the fields scoreFoodWater() reads from staticRecord.fao.
   const existingFao = { source: 'hdx-ipc', year: 2025, peopleInCrisis: 4_500_000, phase: 'IPC Phase 5' };
   const existingSo  = { source: 'hdx-ipc', year: 2025, peopleInCrisis: 3_000_000, phase: 'IPC Phase 3' };
+  // Fixture uses the WB shape that scoreAquastatValue() reads: { value, indicator, year }.
+  const existingAquastat = { source: 'worldbank-aquastat', value: 75.3, indicator: 'water stress', year: 2022 };
 
   function makeDatasetMaps(faoOverride = new Map()) {
     return {
@@ -398,6 +388,20 @@ describe('recoverFailedDatasets', () => {
       }),
       /Redis pipeline read also failed.*timeout/,
     );
+  });
+
+  it('recovers aquastat with WB shape { value, indicator, year } that scoreAquastatValue() reads', async () => {
+    const maps = makeDatasetMaps();
+    await recoverFailedDatasets(maps, ['aquastat'], {
+      readIndex: async () => ({ countries: ['DE'] }),
+      readPipeline: async () => [
+        { result: JSON.stringify({ aquastat: existingAquastat }) },
+      ],
+    });
+    const de = maps.aquastat.get('DE');
+    assert.deepEqual(de, existingAquastat, 'DE aquastat should be recovered');
+    assert.ok(typeof de.value === 'number', 'recovered aquastat must have numeric value for scoreAquastatValue()');
+    assert.ok(typeof de.indicator === 'string', 'recovered aquastat must have indicator string for scoreAquastatValue()');
   });
 });
 

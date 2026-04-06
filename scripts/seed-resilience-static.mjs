@@ -603,43 +603,28 @@ async function fetchFsinDataset() {
   return parseFsinRows(csvText);
 }
 
-export function parseAquastatRows(csvText) {
-  const rows = parseDelimitedText(csvText, ',');
+// WB indicator ER.H2O.FWST.ZS = "Level of water stress: freshwater withdrawal as a proportion
+// of available freshwater resources". Matches scoreAquastatValue()'s 'stress' keyword branch.
+const WB_WATER_STRESS_INDICATOR = 'ER.H2O.FWST.ZS';
 
-  const VARIABLE_MAP = {
-    '4550': 'waterStress',
-    '4192': 'dependencyRatio',
-    '4190': 'renewablePerCapita',
-  };
-
+export function buildAquastatWbMap(waterStressLatest) {
   const byCountry = new Map();
-  for (const row of rows) {
-    const countryName = String(row.Country || '').trim();
-    const iso2 = resolveIso2({ name: countryName });
-    if (!iso2) continue;
-    const varCode = String(row.VariableCode || row.Variable_Id || '').trim();
-    const metricKey = VARIABLE_MAP[varCode];
-    if (!metricKey) continue;
-    const value = safeNum(row.Value);
-    const year = safeNum(row.Year);
-    if (value == null) continue;
-
-    const existing = byCountry.get(iso2) || { source: 'fao-aquastat' };
-    const prev = existing[metricKey];
-    if (!prev || (year != null && (prev.year == null || year > prev.year))) {
-      existing[metricKey] = { value: roundMetric(value), year };
-    }
-    byCountry.set(iso2, existing);
+  for (const [iso2, entry] of waterStressLatest.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank-aquastat',
+      value: entry.value,
+      indicator: 'water stress',
+      year: entry.year,
+    });
   }
-  if (byCountry.size === 0) throw new Error('AQUASTAT CSV returned no usable rows');
+  if (byCountry.size === 0) throw new Error('World Bank water stress returned no usable rows');
   return byCountry;
 }
 
 async function fetchAquastatDataset() {
-  const aquastatUrl =
-    'https://api.data.apps.fao.org/api/v2/bigquery?sql_url=https://data.apps.fao.org/catalog/dataset/945666e6-7803-4621-b8ef-cfd885a84596/resource/4a000a1b-24f0-4328-aab6-b9b525892090/download/query_en.sql&area=World&variable=4550,4192,4190&year=2021&type=country';
-  const { text: csvText } = await withRetry(() => fetchText(aquastatUrl, { accept: 'text/csv' }), 2, 750);
-  return parseAquastatRows(csvText);
+  const rows = await fetchWorldBankIndicatorRows(WB_WATER_STRESS_INDICATOR, { mrv: '15' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildAquastatWbMap(latest);
 }
 
 export function finalizeCountryPayloads(datasetMaps, seedYear = nowSeedYear(), seededAt = new Date().toISOString()) {
