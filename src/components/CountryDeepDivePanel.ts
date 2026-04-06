@@ -485,6 +485,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   public updateEnergyProfile(data: CountryEnergyProfileData): void {
     if (!this.energyBody) return;
     this.renderEnergyProfile(data);
+    this.resilienceWidget?.setEnergyMix(data);
   }
 
   private renderEnergyProfile(data: CountryEnergyProfileData): void {
