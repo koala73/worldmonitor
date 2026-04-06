@@ -13,26 +13,24 @@ import {
   buildAssessment,
   GULF_PARTNER_CODES,
   CHOKEPOINT_EXPOSURE,
+  VALID_CHOKEPOINTS,
 } from '../server/worldmonitor/intelligence/v1/_shock-compute.js';
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-const VALID_CHOKEPOINTS = ['hormuz', 'malacca', 'suez', 'babelm'];
-const INVALID_CHOKEPOINTS = ['panama', 'taiwan', '', 'xyz'];
-
 describe('energy shock scenario computation', () => {
   describe('chokepoint validation', () => {
     it('accepts all valid chokepoint IDs', () => {
-      for (const id of VALID_CHOKEPOINTS) {
-        assert.ok(VALID_CHOKEPOINTS.includes(id), `Expected ${id} to be valid`);
+      for (const id of ['hormuz', 'malacca', 'suez', 'babelm']) {
+        assert.ok(VALID_CHOKEPOINTS.has(id), `Expected ${id} to be valid`);
       }
     });
 
     it('rejects invalid chokepoint IDs', () => {
-      for (const id of INVALID_CHOKEPOINTS) {
-        assert.ok(!VALID_CHOKEPOINTS.includes(id), `Expected ${id} to be invalid`);
+      for (const id of ['panama', 'taiwan', '', 'xyz']) {
+        assert.ok(!VALID_CHOKEPOINTS.has(id), `Expected ${id} to be invalid`);
       }
     });
 
@@ -205,6 +203,13 @@ describe('energy shock scenario computation', () => {
       assert.ok(assessment.includes('faces'));
       assert.ok(assessment.includes('diesel/jet deficit'));
       assert.ok(assessment.includes('25.0%'));
+    });
+
+    it('uses net-exporter branch when effectiveCoverDays is -1', () => {
+      const assessment = buildAssessment('SA', 'hormuz', true, 0.8, -1, 0, 50, []);
+      assert.ok(assessment.includes('net oil exporter'));
+      assert.ok(assessment.includes('SA'));
+      assert.ok(assessment.includes('hormuz'));
     });
   });
 });

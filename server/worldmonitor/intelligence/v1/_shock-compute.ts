@@ -1,5 +1,7 @@
 export const GULF_PARTNER_CODES = new Set(['682', '784', '368', '414', '364']);
 
+export const VALID_CHOKEPOINTS = new Set(['hormuz', 'malacca', 'suez', 'babelm']);
+
 export const CHOKEPOINT_EXPOSURE: Record<string, number> = {
   hormuz: 1.0,
   babelm: 1.0,
@@ -59,6 +61,9 @@ export function buildAssessment(
   }
   if (gulfCrudeShare < 0.1) {
     return `${code} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${chokepointId} disruption has limited direct impact.`;
+  }
+  if (effectiveCoverDays === -1) {
+    return `${code} is a net oil exporter; ${chokepointId} disruption affects export revenue, not domestic supply.`;
   }
   if (effectiveCoverDays > 90) {
     return `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days.`;

@@ -9,6 +9,7 @@ import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 import {
   clamp,
   CHOKEPOINT_EXPOSURE,
+  VALID_CHOKEPOINTS,
   computeGulfShare,
   computeEffectiveCoverDays,
   buildAssessment,
@@ -25,8 +26,6 @@ const ISO2_TO_COMTRADE: Record<string, string> = {
   IN: '356',
   TW: '158',
 };
-
-const VALID_CHOKEPOINTS = new Set(['hormuz', 'malacca', 'suez', 'babelm']);
 
 interface JodiProduct {
   demandKbd?: number | null;
