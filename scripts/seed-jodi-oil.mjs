@@ -20,7 +20,7 @@ export const JODI_TTL = 3_024_000; // 35 days
 const META_KEY = 'seed-meta:energy:jodi-oil';
 const LOCK_DOMAIN = 'energy:jodi-oil';
 const LOCK_TTL_MS = 10 * 60 * 1000;
-const MIN_VALID_COUNTRIES = 60;
+const MIN_VALID_COUNTRIES = 40;
 const ANOMALY_DEMAND_KBD = 10_000;
 
 const JODI_BASE = 'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/';

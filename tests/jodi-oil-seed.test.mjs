@@ -343,13 +343,13 @@ describe('mergeSourceRows', () => {
 });
 
 describe('validateCoverage', () => {
-  it('returns true when 60+ countries provided', () => {
-    const countries = Array.from({ length: 60 }, (_, i) => ({ iso2: `C${i}` }));
+  it('returns true when 40+ countries provided', () => {
+    const countries = Array.from({ length: 40 }, (_, i) => ({ iso2: `C${i}` }));
     assert.equal(validateCoverage(countries), true);
   });
 
-  it('returns false when fewer than 60 countries', () => {
-    const countries = Array.from({ length: 59 }, (_, i) => ({ iso2: `C${i}` }));
+  it('returns false when fewer than 40 countries', () => {
+    const countries = Array.from({ length: 39 }, (_, i) => ({ iso2: `C${i}` }));
     assert.equal(validateCoverage(countries), false);
   });
 
