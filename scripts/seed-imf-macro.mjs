@@ -31,8 +31,15 @@ function isAggregate(code) {
   return AGGREGATE_CODES.has(code) || code.endsWith('Q');
 }
 
+// Request the three most-recent years at call time so the monthly cron always picks up the
+// latest WEO vintage without requiring a code edit (e.g. 2025,2024,2023 once 2025 publishes).
+function weoYears() {
+  const y = new Date().getFullYear();
+  return [`${y}`, `${y - 1}`, `${y - 2}`];
+}
+
 async function fetchImfIndicator(indicator) {
-  const url = `${IMF_BASE}/${indicator}?periods=2024,2023,2022`;
+  const url = `${IMF_BASE}/${indicator}?periods=${weoYears().join(',')}`;
   const resp = await fetch(url, {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     signal: AbortSignal.timeout(30_000),
@@ -42,9 +49,9 @@ async function fetchImfIndicator(indicator) {
   return data?.values?.[indicator] ?? {};
 }
 
-// Pick the most recent year with a finite value. Prefers 2024, falls back to 2023, then 2022.
+// Pick the most recent year with a finite value, searching newest-first.
 function latestValue(byYear) {
-  for (const year of ['2024', '2023', '2022']) {
+  for (const year of weoYears()) {
     const v = Number(byYear?.[year]);
     if (Number.isFinite(v)) return { value: v, year: Number(year) };
   }
@@ -88,7 +95,7 @@ if (process.argv[1]?.endsWith('seed-imf-macro.mjs')) {
   runSeed('economic', 'imf-macro', CANONICAL_KEY, fetchImfMacro, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: 'imf-weo-2024',
+    sourceVersion: `imf-weo-${new Date().getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';

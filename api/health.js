@@ -177,7 +177,7 @@ const SEED_META = {
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 20 },
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
-  imfMacro:         { key: 'seed-meta:economic:imf-macro',        maxStaleMin: 50400 }, // monthly seed; 50400min = 35 days = 1× interval (no grace needed — monthly cadence)
+  imfMacro:         { key: 'seed-meta:economic:imf-macro',        maxStaleMin: 100800 }, // monthly seed; 100800min = 70 days = 2× interval (absorbs one missed run)
   shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 420 },
   chokepoints:      { key: 'seed-meta:supply_chain:chokepoints',  maxStaleMin: 60 },
   // minerals + giving: on-demand cachedFetchJson only, no seed-meta writer — freshness checked via TTL
