@@ -60,7 +60,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   if (stillMissing.length === 0) {
     await runRedisPipeline([
       ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(response), 'EX', RESILIENCE_RANKING_CACHE_TTL_SECONDS],
-      ['SET', RESILIENCE_RANKING_META_KEY, JSON.stringify({ fetchedAt: Date.now(), count: response.items.length }), 'EX', RESILIENCE_RANKING_META_TTL_SECONDS],
+      ['SET', RESILIENCE_RANKING_META_KEY, JSON.stringify({ fetchedAt: Date.now(), count: response.items.length + response.greyedOut.length }), 'EX', RESILIENCE_RANKING_META_TTL_SECONDS],
     ]);
   }
 
