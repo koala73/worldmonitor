@@ -135,6 +135,7 @@ export class MapContainer {
   private cachedHappinessScores: HappinessData | null = null;
   private cachedCIIScores: CIIScore[] | null = null;
   private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
+  private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
   private cachedHotspotActivity: NewsItem[] | null = null;
@@ -304,7 +305,7 @@ export class MapContainer {
     if (this.cachedKindnessData) this.setKindnessData(this.cachedKindnessData);
     if (this.cachedHappinessScores) this.setHappinessScores(this.cachedHappinessScores);
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
-    if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking);
+    if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -671,10 +672,11 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
   }
 
-  public setResilienceRanking(items: ResilienceRankingItem[]): void {
+  public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {
     this.cachedResilienceRanking = items;
+    this.cachedResilienceGreyedOut = greyedOut;
     if (this.useDeckGL) {
-      this.deckGLMap?.setResilienceRanking(items);
+      this.deckGLMap?.setResilienceRanking(items, greyedOut);
     }
   }
 

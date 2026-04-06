@@ -134,7 +134,7 @@ const STANDALONE_KEYS = {
   climateNews:              'climate:news-intelligence:v1',
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
-  resilienceRanking:        'resilience:ranking',
+  resilienceRanking:        'resilience:ranking:v2',
   productCatalog:           'product-catalog:v2',
   energyExposure:           'energy:exposure:v1:index',
   energyMixAll:             'energy:mix:v1:_all',

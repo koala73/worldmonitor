@@ -3775,6 +3775,9 @@ export class DeckGLMap {
         if (!resilienceEntry) {
           return { html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/><span style="opacity:.7">No resilience data</span></div>` };
         }
+        if (resilienceEntry.level === 'insufficient_data') {
+          return { html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/><span style="opacity:.7">Insufficient data</span></div>` };
+        }
         const [red, green, blue] = RESILIENCE_CHOROPLETH_COLORS[resilienceEntry.level];
         const levelColor = `rgb(${red}, ${green}, ${blue})`;
         return {
@@ -5282,8 +5285,8 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setResilienceRanking(items: ResilienceRankingItem[]): void {
-    this.resilienceScoresMap = buildResilienceChoroplethMap(items);
+  public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {
+    this.resilienceScoresMap = buildResilienceChoroplethMap(items, greyedOut);
     this.resilienceScoresVersion++;
     this.render();
   }

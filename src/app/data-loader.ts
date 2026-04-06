@@ -3149,8 +3149,8 @@ export class DataLoaderManager implements AppModule {
 
     try {
       const result = await getResilienceRanking();
-      this.ctx.map?.setResilienceRanking(result.items);
-      const displayable = buildResilienceChoroplethMap(result.items);
+      this.ctx.map?.setResilienceRanking(result.items, result.greyedOut ?? []);
+      const displayable = buildResilienceChoroplethMap(result.items, result.greyedOut ?? []);
       this.ctx.map?.setLayerReady('resilienceScore', displayable.size > 0);
     } catch (error) {
       console.error('[App] Resilience ranking fetch failed:', error);
