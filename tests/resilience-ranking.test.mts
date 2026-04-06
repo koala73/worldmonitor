@@ -54,6 +54,25 @@ describe('resilience ranking contracts', () => {
     assert.equal(redis.has('resilience:score:YE'), false, 'cache hit must not trigger score warmup');
   });
 
+  it('returns all-greyed-out cached payload without rewarming (items=[], greyedOut non-empty)', async () => {
+    // Regression for: `cached?.items?.length` was falsy when items=[] even though
+    // greyedOut had entries, causing unnecessary rewarming on every request.
+    const { redis } = installRedis(RESILIENCE_FIXTURES);
+    const cached = {
+      items: [],
+      greyedOut: [
+        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15 },
+        { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12 },
+      ],
+    };
+    redis.set('resilience:ranking:v2', JSON.stringify(cached));
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.deepEqual(response, cached);
+    assert.equal(redis.has('resilience:score:SS'), false, 'all-greyed-out cache hit must not trigger score warmup');
+  });
+
   it('warms missing scores synchronously and returns complete ranking on first call', async () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
     const domainWithCoverage = [{ name: 'political', dimensions: [{ name: 'd1', coverage: 0.9 }] }];
