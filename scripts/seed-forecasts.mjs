@@ -696,15 +696,19 @@ async function readInputKeys() {
   const BATCH_SIZE = 10;
   const results = [];
   for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+    const batchNum = i / BATCH_SIZE + 1;
     const batch = keys.slice(i, i + BATCH_SIZE).map(k => ['GET', k]);
-    const resp = await fetch(`${url}/pipeline`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(batch),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!resp.ok) throw new Error(`Redis pipeline batch ${i / BATCH_SIZE + 1} failed: ${resp.status}`);
-    results.push(...await resp.json());
+    const batchResults = await withRetry(async () => {
+      const resp = await fetch(`${url}/pipeline`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(batch),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!resp.ok) throw new Error(`Redis pipeline batch ${batchNum} failed: ${resp.status}`);
+      return resp.json();
+    }, 2, 1000);
+    results.push(...batchResults);
   }
 
   const parse = (i) => {
