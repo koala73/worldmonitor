@@ -796,3 +796,567 @@ Returns: name, description, sector, HQ, executives, recent news
 | `wildfire/v1/` | Active fires | NASA FIRMS | `listFireDetections` |
 
 ---
+
+---
+
+## 7. Convex Backend — `convex/`
+
+Convex is the serverless database + real-time backend. All tables are defined in `schema.ts`.
+
+### Database Tables
+
+#### `userPreferences`
+```
+userId      string  — Clerk user ID
+variant     string  — site variant ('full', 'finance', etc.)
+data        any     — full serialized panel layout + map state
+schemaVersion number
+updatedAt   number  (ms epoch)
+syncVersion number  — optimistic concurrency
+
+Index: by_user_variant [userId, variant]
+```
+
+#### `notificationChannels`
+Union type — one row per channel per user:
+```
+Telegram:  { userId, channelType: 'telegram', chatId, verified, linkedAt }
+Slack:     { userId, channelType: 'slack', webhookEnvelope, verified, slackChannelName, slackTeamName }
+Email:     { userId, channelType: 'email', email, verified }
+Discord:   { userId, channelType: 'discord', webhookEnvelope, verified, discordGuildId, discordChannelId }
+
+Index: by_user, by_user_channel
+```
+
+#### `alertRules`
+```
+userId          string
+variant         string
+enabled         boolean
+eventTypes      string[]  — event category filters
+sensitivity     'low' | 'medium' | 'high' | 'critical'
+channels        channelType[]
+quietHoursEnabled  boolean?
+quietHoursStart    number?  (0-23 hour)
+quietHoursEnd      number?
+quietHoursTimezone string?  (IANA timezone)
+quietHoursOverride 'none' | 'urgent_only' | 'all'
+digestMode         'realtime' | 'daily' | 'twice_daily'?
+digestHour         number?  (0-23, for daily digest send time)
+digestTimezone     string?
+
+Indexes: by_user, by_user_variant, by_enabled
+```
+
+#### `subscriptions`
+```
+userId              string
+dodoSubscriptionId  string  (Dodo Payments ID)
+dodoProductId       string
+planKey             string  ('pro', 'enterprise', etc.)
+status              'active' | 'on_hold' | 'cancelled' | 'expired'
+currentPeriodStart  number (ms epoch)
+currentPeriodEnd    number (ms epoch)
+cancelledAt         number?
+rawPayload          any     (full Dodo webhook payload)
+updatedAt           number
+
+Indexes: by_userId, by_dodoSubscriptionId
+```
+
+#### `entitlements`
+```
+userId      string
+planKey     string
+features:
+  tier            number   (1=free, 2=pro, 3=enterprise)
+  maxDashboards   number
+  apiAccess       boolean
+  apiRateLimit    number   (req/min)
+  prioritySupport boolean
+  exportFormats   string[] (['csv','json','pdf'])
+validUntil  number (ms epoch)
+updatedAt   number
+
+Index: by_userId
+```
+
+#### `telegramPairingTokens`
+```
+userId    string
+token     string  — one-time pairing token
+expiresAt number  (10 minute TTL)
+used      boolean
+
+Indexes: by_token, by_user
+```
+
+---
+
+### Convex Functions
+
+#### `userPreferences.ts`
+```
+savePreferences(userId, variant, data)
+  → Upserts by [userId, variant] index
+  → Increments syncVersion for conflict detection
+
+loadPreferences(userId, variant)
+  → Returns latest data or null
+```
+
+#### `alertRules.ts`
+```
+upsertAlertRule(userId, variant, ruleData)
+createAlertRule(userId, variant, rule)
+updateAlertRule(ruleId, updates)
+deleteAlertRule(ruleId)
+listAlertRules(userId)  — returns all rules for user
+getAlertRule(ruleId)
+```
+
+#### `notificationChannels.ts`
+```
+linkTelegramChannel(userId, chatId)  — sets verified=false, triggers bot confirmation
+linkSlackChannel(userId, webhookUrl)
+linkEmailChannel(userId, email)
+linkDiscordChannel(userId, webhookUrl)
+verifyChannel(channelId)             — marks verified=true after confirmation
+unlinkChannel(channelId)
+listChannels(userId)
+```
+
+#### `payments/webhookHandlers.ts`
+Handles Dodo Payments webhook events:
+```
+subscription_activated  → create/update subscriptions table, set status='active'
+subscription_cancelled  → set status='cancelled', record cancelledAt
+subscription_expired    → set status='expired'
+payment_succeeded       → insert paymentEvents row
+payment_failed          → insert paymentEvents row with status='failed'
+dispute_opened          → update paymentEvents status='dispute_opened'
+dispute_won/lost/closed → update status accordingly
+```
+All webhook payloads are verified via `DODO_WEBHOOK_SECRET` HMAC signature.
+
+#### `convex/http.ts` — HTTP Actions
+```
+POST /api/internal-entitlements
+  → Internal sync endpoint; updates entitlements table from subscription status
+
+POST /api/webhook/dodo
+  → Verifies HMAC signature
+  → Dispatches to appropriate webhookHandler based on event type
+  → Idempotent: checks webhookEvents table before processing
+```
+
+---
+
+## 8. Scripts & Build Tools — `scripts/`
+
+### Data Processing Scripts
+
+#### `ais-relay.cjs` — AIS WebSocket Relay
+**Deploy on Railway.** Full WebSocket server that proxies AIS stream data to browsers.
+
+```
+Architecture:
+  WebSocket → aisstream.io (wss://stream.aisstream.io/v0/stream)
+  HTTP snapshot endpoint → /ais/snapshot (JSON)
+  HTTP density endpoint  → /ais/density   (H3 hexagon grid)
+
+Key config (env vars):
+  AISSTREAM_API_KEY       — required
+  PORT                    — default 3004
+  AIS_MAX_VESSELS         — default 20,000
+  AIS_MAX_VESSEL_HISTORY  — default 20,000
+  AIS_UPSTREAM_QUEUE_HIGH_WATER — default 4,000 messages
+  RELAY_SHARED_SECRET     — auth between app and relay
+  RELAY_RATE_LIMIT_MAX    — default 1,200 req/min per IP
+
+Memory management:
+  MEMORY_CLEANUP_THRESHOLD_GB — default 2.0GB; triggers vessel eviction
+  Evicts oldest vessels when memory threshold exceeded
+  LRU eviction by last_seen timestamp
+
+Message pipeline:
+  aisstream.io WS message
+  → parse PositionReport / VoyageData / StaticData
+  → update vesselMap (MMSI → VesselState)
+  → accumulate history (last N positions per MMSI)
+  → snapshot endpoint serves JSON snapshot on HTTP GET
+```
+
+#### `_ema-threat-engine.mjs` — Threat Velocity Engine
+Pure-function EMA algorithm for conflict data:
+```
+ALPHA = 0.3  (smoothing factor)
+
+updateWindow(region, count, prior):
+  window = [...priorWindow, count].slice(-24)  // keep last 24 data points
+  ema = ALPHA × count + (1-ALPHA) × prevEma
+  {mean, stddev} = computeWindowStats(window)
+
+computeZScore(window, current):
+  if window.length < MIN_WINDOW (6): return 0
+  z = (current - mean) / stddev
+  capped at ±5
+
+computeEmaWindows(priorWindows, acledEvents, ucdpEvents):
+  Group events by country, last 24h
+  Update EMA window per region
+  Returns Map<region, WindowState>
+```
+
+#### `_clustering.mjs` — News Event Clustering
+```
+SIMILARITY_THRESHOLD = 0.5
+
+tokenize(text):
+  Lowercase → strip non-alphanumeric → split → remove stopwords
+
+jaccardSimilarity(setA, setB):
+  |intersection| / |union|
+
+Keyword categories:
+  MILITARY_KEYWORDS: war, airstrike, missile, troops, etc.
+  VIOLENCE_KEYWORDS: killed, casualties, execution, etc.
+  UNREST_KEYWORDS:   protest, riot, revolt, coup, etc.
+  FLASHPOINT_KEYWORDS: iran, russia, china, taiwan, ukraine, etc.
+  CRISIS_KEYWORDS:   emergency, sanctions, escalation, etc.
+  DEMOTE_KEYWORDS:   CEO, earnings, startup (reduces military score)
+
+scoreMilitaryRelevance(text):
+  military_hits × 3 + violence_hits × 2 + flashpoint_hits × 1 - demote_hits × 2
+  Returns 0–100 normalized score
+```
+
+#### `build-military-bases-final.mjs` — Military Base Builder
+Combines 3 data sources into a single Redis key (`military:bases:active`):
+```
+1. fetch-mirta-bases.mjs   → MIRTA (Military Installation Recognition and Tracking App)
+2. fetch-osm-bases.mjs     → OpenStreetMap military=* landuse areas
+3. fetch-pizzint-bases.mjs → Pizzint open-source intelligence
+
+Merge logic:
+  Deduplicate by proximity (< 1km → merge, keep highest-confidence record)
+  Geocode any missing lat/lon via Nominatim
+  Classify: air base, naval base, army base, missile site, radar
+  Security level: inferred from name + tags
+
+Output schema:
+  { id, name, lat, lon, country, type, classification, source, lastVerified }
+```
+
+#### `_prediction-scoring.mjs` — Forecast Scoring
+```
+Brier score: (forecast_probability - outcome)²
+  0 = perfect, 1 = worst
+
+Resolution check:
+  Resolved markets → compute Brier score
+  Unresolved → skip
+
+Calibration curve:
+  Group forecasts by probability decile
+  Compare predicted vs actual frequency
+```
+
+#### `evaluate-forecast-run.mjs`
+Evaluates a batch of prediction market forecasts:
+```
+1. Load forecast run JSON
+2. For each resolved forecast: computeBrierScore()
+3. Aggregate: mean Brier, median, by-category breakdown
+4. Output calibration report
+```
+
+#### `generate-oref-locations.mjs`
+Generates Israeli Home Front Command (Oref) alert zone locations:
+```
+Fetches zone list from Oref API
+Geocodes each zone name → lat/lon
+Outputs: { zoneId, name, lat, lon, district }
+Stored in: src/config/oref-locations.json
+```
+
+---
+
+## 9. Tauri Desktop Sidecar — `src-tauri/sidecar/`
+
+### `local-api-server.mjs` — Local API Gateway
+
+This Node.js process runs as a Tauri sidecar alongside the desktop app. It handles all API requests locally instead of going to Vercel.
+
+**Port:** configurable via `LOCAL_API_PORT` (default `46123`)
+
+**Key Logic:**
+
+#### 1. IPv4 Force-Patch
+```js
+// Monkey-patches globalThis.fetch for ALL dynamically loaded handlers
+// Reason: Node.js Happy Eyeballs tries IPv6 first → government APIs
+//         (EIA, NASA FIRMS, FRED) have broken AAAA records → ETIMEDOUT
+globalThis.fetch = async function ipv4Fetch(input, init) {
+  // Resolves hostname, forces { family: 4 } on all HTTP/HTTPS requests
+  // Normalizes request body (URLSearchParams, ArrayBuffer, etc.)
+}
+```
+
+#### 2. Concurrent Request Limiter
+```js
+MAX_CONCURRENT_UPSTREAM = 6
+acquireUpstreamSlot()   → queues if 6 already active
+releaseUpstreamSlot()   → drains queue FIFO
+```
+
+#### 3. Yahoo Finance Rate Gate
+```js
+// Shared across ALL loaded handler bundles
+MIN_INTER_REQUEST_MS = 600ms
+sidecarYahooGate()  → sequential queue; ensures 600ms between Yahoo requests
+```
+
+#### 4. SSRF Protection
+```js
+Blocked IPv4 ranges:
+  127.0.0.0/8    (loopback)
+  10.0.0.0/8     (private)
+  172.16.0.0/12  (private)
+  192.168.0.0/16 (private)
+  169.254.0.0/16 (link-local)
+  0.0.0.0/8      (current network)
+  224.0.0.0+     (multicast/reserved)
+
+Blocked IPv6: ::1, fe80::, fc00::, fd00::
+
+Additional checks:
+  Protocol must be http: or https:
+  No embedded credentials in URL (user:pass@host blocked)
+```
+
+#### 5. Handler Dynamic Loading
+```js
+// Loads api/*.js handler modules at runtime
+// Each handler exports: default function handler(req: Request): Promise<Response>
+// Modules are cached after first load
+// Request routing: /api/{path} → api/{path}.js handler
+```
+
+#### 6. Brotli/Gzip Compression
+Responses are compressed (Brotli preferred, Gzip fallback) before returning to the Tauri WebView.
+
+**Exposed Environment Variables to Handlers:**
+`GROQ_API_KEY`, `OPENROUTER_API_KEY`, `EXA_API_KEYS`, `BRAVE_API_KEYS`, `SERPAPI_API_KEYS`, `FRED_API_KEY`, `EIA_API_KEY`, `CLOUDFLARE_API_TOKEN`, `ACLED_ACCESS_TOKEN`, `URLHAUS_AUTH_KEY`, `OTX_API_KEY`, `ABUSEIPDB_API_KEY`, `WINGBITS_API_KEY`, `WS_RELAY_URL`, `OPENSKY_CLIENT_ID/SECRET`, `AISSTREAM_API_KEY`, `FINNHUB_API_KEY`, `NASA_FIRMS_API_KEY`, `OLLAMA_API_URL/MODEL`, `UCDP_ACCESS_TOKEN`, `AVIATIONSTACK_API`, `ICAO_API_KEY`
+
+---
+
+## 10. Docker & Deployment — `docker/`
+
+### `Dockerfile` — Multi-stage Build
+```
+Stage 1 (builder): node:22-alpine
+  ARG VITE_VARIANT=full
+  ARG VITE_WS_API_URL=https://api.worldmonitor.app
+  RUN npm ci --include=dev
+  RUN npm run build  (TypeScript compile + Vite bundle)
+
+Stage 2 (runtime): nginx:alpine + supervisord
+  Copies: dist/ → /usr/share/nginx/html
+  Copies: src-tauri/sidecar/local-api-server.mjs → /app/
+  ENV API_UPSTREAM (substituted into nginx config at startup)
+  Runs: supervisord → manages nginx + node api server
+  
+Startup: docker/entrypoint.sh
+  Reads Docker secrets from /run/secrets/ if present
+  Exports LOCAL_API_PORT=46123
+  Sets LOCAL_API_MODE=docker
+  Launches supervisord
+```
+
+### `docker-compose.yml` — Full Stack
+```
+Services:
+  worldmonitor:     port ${WM_PORT:-3000}:8080 — main app
+  ais-relay:        internal port 3004 — ship tracking relay
+  redis:            docker.io/redis:7-alpine (maxmemory 256mb, allkeys-lru)
+  redis-rest:       port 127.0.0.1:8079:80 — Upstash REST proxy (srh)
+
+Networking:
+  worldmonitor → redis-rest (UPSTASH_REDIS_REST_URL=http://redis-rest:80)
+  worldmonitor → ais-relay  (WS_RELAY_URL=http://ais-relay:3004)
+```
+
+### `nginx.conf`
+- Serves static `dist/` on port 8080
+- `/api/*` → proxy to Node.js sidecar on `LOCAL_API_PORT`
+- Gzip + Brotli compression
+- `Cache-Control: immutable` for hashed assets (`/assets/`)
+- Security headers: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`
+
+---
+
+## 11. Custom Algorithms & Logic
+
+### Correlation Engine — `src/services/correlation-engine/`
+
+Detects multi-domain signal convergence (e.g. military + economic + news all pointing at same region).
+
+```
+CorrelationEngine.run(ctx: AppContext):
+
+For each DomainAdapter (military, economic, escalation, disaster):
+  1. collectSignals(ctx)      → extract typed signals from ctx
+  2. clusterSignals(signals)  → group by proximity/topic
+  3. scoreClusters(clusters)  → composite score per cluster
+  4. filter(score ≥ threshold)
+  5. applyTrends(clusters)    → RISING/FALLING/STABLE vs previous cycle
+  6. toCard(cluster)          → ConvergenceCard with evidence list
+
+LLM Assessment (async, non-blocking):
+  Threshold: score ≥ 60
+  Cache TTL: 30 minutes
+  Max concurrent: 3
+  Calls IntelligenceService.chatAnalystContext() → Groq narrative
+
+Output: dispatches 'wm:correlation-updated' CustomEvent
+```
+
+**Domain Adapters:**
+- `militaryAdapter` — flight clusters near naval vessels near conflict zones
+- `economicAdapter` — market moves correlated with geopolitical events
+- `escalationAdapter` — rapid event-count increase + military movement
+- `disasterAdapter` — natural events triggering supply chain or conflict impact
+
+---
+
+### Threat Classification — `src/services/analysis-core.ts`
+
+```
+aggregateThreats(items[]):
+  THREAT_PRIORITY: critical=5, high=4, medium=3, low=2, info=1
+  Select highest threat level from items
+  Most common category (mode) across items
+  Weighted confidence: weight = (6 - min(tier, 5))
+  → { level, category, confidence, source: 'keyword' }
+```
+
+### News Deduplication — `src/utils/analysis-constants.ts`
+
+```
+jaccardSimilarity(tokensA, tokensB):
+  intersection.size / union.size
+
+SIMILARITY_THRESHOLD = 0.5
+If similarity ≥ 0.5: articles are duplicates → keep highest-tier source
+```
+
+### EMA Threat Velocity — `scripts/_ema-threat-engine.mjs`
+
+Applied to ACLED + UCDP conflict events:
+```
+Per-country rolling 24-point window
+α = 0.3 (EMA smoothing)
+Z-score: (current - mean) / stddev, min 6 points to be meaningful
+Z > 2.0: "Elevated" — notable surge
+Z > 3.0: "Critical" — statistically extreme spike
+```
+
+### Temporal Anomaly Detection — `infrastructure/v1/`
+
+```
+recordBaselineSnapshot():
+  Every 6 hours: store current metric values as baseline
+
+calculateDeviation(current, baseline):
+  Per-metric % deviation from rolling average
+  Flag as anomaly if |deviation| > threshold
+
+listTemporalAnomalies():
+  Returns metrics currently deviating > threshold from baseline
+  Includes: direction (up/down), magnitude, affected region/ASN
+```
+
+### AI Classification Queue — `src/services/ai-classify-queue.ts`
+
+```
+Rate limits by variant:
+  full: 80 classifications/minute
+  tech: 60/minute
+  finance: 40/minute
+
+Dedup: same normalized title → skip for 30 minutes
+Per-feed cap: 2–3 items max per feed per cycle
+
+canQueueAiClassification(title):
+  1. Prune expired window entries
+  2. Prune expired dedup entries
+  3. Check rate cap
+  4. Check dedup
+  → true = classify, false = skip
+```
+
+---
+
+## 12. Complete Data Source Map
+
+### Required API Keys
+
+| Env Var | Service | Free Tier | Used By |
+|---------|---------|-----------|---------|
+| `GROQ_API_KEY` | Groq LLM | 14,400 req/day | AI Analyst, article summarization, event classification |
+| `OPENROUTER_API_KEY` | OpenRouter | 50 req/day | LLM fallback |
+| `FINNHUB_API_KEY` | Finnhub | 60 req/min | Stock quotes, earnings, sector ETFs |
+| `FRED_API_KEY` | FRED (Fed Reserve) | Generous | 80+ economic time series |
+| `EIA_API_KEY` | U.S. Energy Info Admin | Free | Crude oil, natural gas inventories, energy prices |
+| `NASA_FIRMS_API_KEY` | NASA FIRMS | Free | Satellite fire detections (VIIRS/MODIS) |
+| `AISSTREAM_API_KEY` | AIS Stream | Free tier | Real-time vessel tracking |
+| `UCDP_ACCESS_TOKEN` | Uppsala Conflict | Free | Armed conflict events |
+| `ACLED_ACCESS_TOKEN` | ACLED | Free (academic) | Political violence, protests |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare Radar | Free | DDoS data, internet outages, traffic anomalies |
+| `WINGBITS_API_KEY` | Wingbits | Paid | Military aircraft tracking |
+| `WAQI_API_KEY` | World Air Quality | Free | Air quality indices |
+| `OTX_API_KEY` | AlienVault OTX | Free | Threat intelligence IOCs |
+| `ABUSEIPDB_API_KEY` | AbuseIPDB | Free | IP reputation |
+| `URLHAUS_AUTH_KEY` | URLhaus | Free | Malicious URL feed |
+| `AVIATIONSTACK_API` | AviationStack | Free tier | Flight data |
+| `BLS_API_KEY` | Bureau of Labor Stats | Free | US employment data |
+| `BRAVE_API_KEYS` | Brave Search | Paid | Web search for company enrichment |
+| `EXA_API_KEYS` | Exa Search | Paid | Semantic search |
+| `SERPAPI_API_KEYS` | SerpAPI | Paid | Google search scraping |
+| `DODO_API_KEY` | Dodo Payments | N/A | Billing/subscriptions |
+| `UPSTASH_REDIS_REST_URL` + `TOKEN` | Upstash Redis | Free tier | Cross-user cache, rate limiting |
+
+### No-Key (Free/Public) Sources
+
+| Source | Data | Endpoint |
+|--------|------|----------|
+| Yahoo Finance | Stock, ETF, commodity prices | Public (rate-gated) |
+| CoinGecko | Crypto market data | Public API |
+| Open-Meteo | Weather data, alerts | Public API |
+| NOAA GML | CO2 monitoring | Public API |
+| USGS | Earthquake data | public API |
+| GDELT | Global event database | Public GCS |
+| FAO | Food price indices | Public REST |
+| World Bank | Development indicators | Public API |
+| ECB | Forex, yield curves | SDMX REST |
+| BIS | Policy rates, credit | Public API |
+| Eurostat | EU statistics | Public REST |
+| NASA EONET | Natural events | Public API |
+| GDACS | Disaster alerts | Public XML |
+| ReliefWeb | Humanitarian data | Public API |
+| Feodo Tracker | C2 botnet IPs | Public JSON |
+| C2IntelFeeds | Community C2 list | GitHub raw |
+| IHO NAVAREA | Maritime warnings | Public XML |
+| Hacker News | Tech news | Algolia API |
+| arXiv | Research papers | Public API |
+| Polymarket | Prediction markets | Public API |
+| Manifold Markets | Prediction markets | Public API |
+| Safecast | Radiation data | Public API |
+| CISA KEV | Vulnerability catalog | Public JSON |
+| NVD | CVE database | Public API |
+| GiveWell | Charity effectiveness | Public API |
+
+---
+
+*Documentation generated from full codebase analysis. Branch: `document`. Repository: `chad3456/worldmonitor`.*
