@@ -41,11 +41,12 @@ describe('resilience ranking contracts', () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
     const cached = {
       items: [
-        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false },
-        { countryCode: 'US', overallScore: 61, level: 'medium', lowConfidence: false },
+        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95 },
+        { countryCode: 'US', overallScore: 61, level: 'medium', lowConfidence: false, overallCoverage: 0.88 },
       ],
+      greyedOut: [],
     };
-    redis.set('resilience:ranking', JSON.stringify(cached));
+    redis.set('resilience:ranking:v2', JSON.stringify(cached));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -83,6 +84,6 @@ describe('resilience ranking contracts', () => {
     assert.equal(totalItems, 3, `expected 3 total items across ranked + greyedOut, got ${totalItems}`);
     assert.ok(redis.has('resilience:score:YE'), 'missing country should be warmed during first call');
     assert.ok(response.items.every((item) => item.overallScore >= 0), 'ranked items should all have computed scores');
-    assert.ok(redis.has('resilience:ranking'), 'fully scored ranking should be cached');
+    assert.ok(redis.has('resilience:ranking:v2'), 'fully scored ranking should be cached');
   });
 });

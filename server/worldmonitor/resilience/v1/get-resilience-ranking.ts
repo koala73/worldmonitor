@@ -34,7 +34,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   _req: GetResilienceRankingRequest,
 ): Promise<GetResilienceRankingResponse> => {
   const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as GetResilienceRankingResponse | null;
-  if (cached?.items?.length) return cached;
+  if (cached != null && (cached.items.length > 0 || (cached.greyedOut?.length ?? 0) > 0)) return cached;
 
   const countryCodes = await listScorableCountries();
   if (countryCodes.length === 0) return { items: [], greyedOut: [] };
