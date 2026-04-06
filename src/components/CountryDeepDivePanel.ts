@@ -21,6 +21,7 @@ import type {
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveEconomicIndicator,
   CountryFactsData,
+  CountryEnergyProfileData,
 } from './CountryBriefPanel';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
@@ -77,6 +78,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private scoreCard: HTMLElement | null = null;
   private factsBody: HTMLElement | null = null;
   private resilienceWidget: ResilienceWidget | null = null;
+  private energyBody: HTMLElement | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -480,6 +482,222 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.factsBody.append(grid);
   }
 
+  public updateEnergyProfile(data: CountryEnergyProfileData): void {
+    if (!this.energyBody) return;
+    this.renderEnergyProfile(data);
+  }
+
+  private renderEnergyProfile(data: CountryEnergyProfileData): void {
+    if (!this.energyBody) return;
+    this.energyBody.replaceChildren();
+
+    const hasAny = data.mixAvailable || data.jodiOilAvailable || data.ieaStocksAvailable
+      || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable;
+
+    if (!hasAny) {
+      this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'));
+      return;
+    }
+
+    if (data.mixAvailable) {
+      const segments: Array<{ label: string; color: string; value: number }> = [
+        { label: 'Coal', color: '#6b6b6b', value: data.coalShare },
+        { label: 'Oil', color: '#8B4513', value: data.oilShare },
+        { label: 'Gas', color: '#D2691E', value: data.gasShare },
+        { label: 'Nuclear', color: '#6A0DAD', value: data.nuclearShare },
+        { label: 'Hydro', color: '#1E90FF', value: data.hydroShare },
+        { label: 'Wind', color: '#87CEEB', value: data.windShare },
+        { label: 'Solar', color: '#FFD700', value: data.solarShare },
+        { label: 'Other renew', color: '#32CD32', value: Math.max(0, data.renewShare - data.windShare - data.solarShare - data.hydroShare) },
+      ];
+
+      const total = segments.reduce((s, seg) => s + seg.value, 0);
+      const norm = total > 0 ? total : 1;
+
+      const bar = this.el('div', '');
+      bar.style.cssText = 'display:flex;width:100%;height:12px;border-radius:4px;overflow:hidden;margin-bottom:8px';
+      for (const seg of segments) {
+        const pct = (seg.value / norm) * 100;
+        if (pct <= 0.5) continue;
+        const span = this.el('span', '');
+        span.style.cssText = `width:${pct}%;background:${seg.color}`;
+        bar.append(span);
+      }
+      this.energyBody.append(bar);
+
+      const legend = this.el('div', '');
+      for (const seg of segments) {
+        const pct = (seg.value / norm) * 100;
+        if (pct <= 0.5) continue;
+        const row = this.el('div', '');
+        row.style.cssText = 'font-size:11px;color:#aaa;display:flex;gap:4px;align-items:center';
+        const dot = this.el('span', '');
+        dot.textContent = '\u25CF';
+        dot.style.color = seg.color;
+        const label = this.el('span', '', `${seg.label}  ${Math.round(pct)}%`);
+        row.append(dot, label);
+        legend.append(row);
+      }
+      this.energyBody.append(legend);
+
+      const src = this.el('div', 'cdp-economic-source', `Data: ${data.mixYear} (OWID)`);
+      this.energyBody.append(src);
+    }
+
+    if (data.mixAvailable) {
+      const importPct = data.importShare;
+      const color = importPct > 60 ? '#ef4444'
+        : importPct >= 30 ? '#f59e0b'
+        : importPct > 0 ? '#22c55e'
+        : '#6b7280';
+      const labelText = importPct <= 0 ? 'Net exporter' : `${Math.round(importPct)}%`;
+      const row = this.el('div', '');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:6px';
+      const label = this.el('span', 'cdp-economic-source', 'Import dependency:');
+      const badge = this.el('span', '');
+      badge.style.cssText = `background:${color};color:#fff;padding:1px 6px;border-radius:3px;font-size:11px`;
+      badge.textContent = labelText;
+      row.append(label, badge);
+      this.energyBody.append(row);
+    }
+
+    if (data.jodiOilAvailable) {
+      const section = this.el('div', '');
+      section.style.cssText = 'margin-top:10px';
+      section.append(this.el('div', 'cdp-subtitle', `Oil Product Supply (${data.jodiOilDataMonth})`));
+
+      const table = this.el('table', '');
+      table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse';
+
+      const thead = this.el('thead', '');
+      const hr = this.el('tr', '');
+      for (const h of ['Product', 'Demand', 'Imports']) {
+        const th = this.el('th', '');
+        th.textContent = h;
+        th.style.cssText = 'text-align:left;color:#aaa;padding:2px 4px';
+        hr.append(th);
+      }
+      thead.append(hr);
+      table.append(thead);
+
+      const tbody = this.el('tbody', '');
+      const rows: Array<{ label: string; demand: number; imports: number }> = [
+        { label: 'Gasoline', demand: data.gasolineDemandKbd, imports: data.gasolineImportsKbd },
+        { label: 'Diesel', demand: data.dieselDemandKbd, imports: data.dieselImportsKbd },
+        { label: 'Jet fuel', demand: data.jetDemandKbd, imports: data.jetImportsKbd },
+        { label: 'LPG', demand: data.lpgDemandKbd, imports: data.lpgImportsKbd },
+      ];
+      for (const r of rows) {
+        const tr = this.el('tr', '');
+        const fmtKbd = (v: number) => v > 0 ? `${v} kbd` : '\u2014';
+        for (const val of [r.label, fmtKbd(r.demand), fmtKbd(r.imports)]) {
+          const td = this.el('td', '');
+          td.textContent = val;
+          td.style.cssText = 'padding:2px 4px';
+          tr.append(td);
+        }
+        tbody.append(tr);
+      }
+      if (data.crudeImportsKbd > 0) {
+        const tr = this.el('tr', '');
+        for (const val of ['Crude', '\u2014', `${data.crudeImportsKbd} kbd`]) {
+          const td = this.el('td', '');
+          td.textContent = val;
+          td.style.cssText = 'padding:2px 4px';
+          tr.append(td);
+        }
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      section.append(table);
+      section.append(this.el('div', 'cdp-economic-source', 'Source: JODI'));
+      this.energyBody.append(section);
+    }
+
+    if (data.jodiGasAvailable) {
+      const totalBcm = Math.round(data.gasTotalDemandTj / 36000);
+      const lngShare = data.gasLngShare;
+      const pipeShare = Math.max(0, 100 - lngShare);
+      const lngColor = lngShare > 80 ? '#ef4444' : lngShare >= 40 ? '#f59e0b' : '#22c55e';
+
+      const section = this.el('div', '');
+      section.style.cssText = 'margin-top:10px';
+      const row = this.el('div', '');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px';
+
+      const gasLabel = this.el('span', '', `Gas demand: ${totalBcm} BCM/yr`);
+      const lngBadge = this.el('span', '');
+      lngBadge.style.cssText = `background:${lngColor};color:#fff;padding:1px 5px;border-radius:3px;font-size:11px`;
+      lngBadge.textContent = `LNG ${lngShare.toFixed(0)}%`;
+      const pipeBadge = this.el('span', '');
+      pipeBadge.style.cssText = 'background:#6b7280;color:#fff;padding:1px 5px;border-radius:3px;font-size:11px';
+      pipeBadge.textContent = `Pipeline ${pipeShare.toFixed(0)}%`;
+
+      row.append(gasLabel, lngBadge, pipeBadge);
+      section.append(row);
+      this.energyBody.append(section);
+    }
+
+    if (data.ieaStocksAvailable) {
+      const section = this.el('div', '');
+      section.style.cssText = 'margin-top:10px';
+
+      if (data.ieaNetExporter) {
+        const msg = this.el('div', '');
+        msg.style.cssText = 'color:#22c55e;font-size:12px';
+        msg.textContent = 'IEA oil stocks: Net Exporter';
+        section.append(msg);
+      } else {
+        const coverLabel = this.el('div', '');
+        coverLabel.style.cssText = 'font-size:12px;margin-bottom:4px;display:flex;align-items:center;gap:6px';
+        const txt = this.el('span', '', `IEA Oil Stocks: ${data.ieaDaysOfCover} days of cover`);
+        coverLabel.append(txt);
+
+        if (data.ieaBelowObligation) {
+          const warn = this.el('span', '');
+          warn.style.cssText = 'background:#ef4444;color:#fff;padding:1px 5px;border-radius:3px;font-size:11px';
+          warn.textContent = 'Below 90-day obligation';
+          coverLabel.append(warn);
+        }
+        section.append(coverLabel);
+
+        const barOuter = this.el('div', '');
+        barOuter.style.cssText = 'position:relative;width:100%;height:8px;border-radius:4px;background:#374151;overflow:visible';
+        const fillPct = Math.min(data.ieaDaysOfCover / 180 * 100, 100);
+        const fill = this.el('div', '');
+        fill.style.cssText = `width:${fillPct}%;height:100%;background:#3b82f6;border-radius:4px`;
+        const marker = this.el('div', '');
+        marker.style.cssText = 'position:absolute;top:-2px;left:50%;width:2px;height:12px;background:#f59e0b;transform:translateX(-50%)';
+        barOuter.append(fill, marker);
+        section.append(barOuter);
+      }
+      this.energyBody.append(section);
+    }
+
+    const hasLiveSignals = data.gasStorageAvailable || data.electricityAvailable;
+    if (hasLiveSignals) {
+      const section = this.el('div', '');
+      section.style.cssText = 'margin-top:10px';
+      section.append(this.el('div', 'cdp-subtitle', 'Live Signals'));
+
+      if (data.gasStorageAvailable) {
+        const row = this.el('div', '');
+        row.style.cssText = 'font-size:12px;margin-bottom:4px';
+        const deltaSign = data.gasStorageChange1d >= 0 ? '+' : '';
+        row.textContent = `EU Gas Storage: ${data.gasStorageFillPct.toFixed(1)}% (${deltaSign}${data.gasStorageChange1d.toFixed(1)}% today, ${data.gasStorageTrend}) as of ${data.gasStorageDate}`;
+        section.append(row);
+      }
+
+      if (data.electricityAvailable) {
+        const row = this.el('div', '');
+        row.style.cssText = 'font-size:12px';
+        row.textContent = `Electricity: \u20AC${data.electricityPriceMwh.toFixed(1)}/MWh as of ${data.electricityDate}`;
+        section.append(row);
+      }
+      this.energyBody.append(section);
+    }
+  }
+
   private factItem(label: string, value: string): HTMLElement {
     const wrapper = this.el('div', 'cdp-fact-item');
     wrapper.append(this.el('div', 'cdp-fact-label', label));
@@ -714,6 +932,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const factsExpanded = this.el('div', 'cdp-expanded-only');
     factsExpanded.append(factsCard);
 
+    const [energyCard, energyBody] = this.sectionCard('Energy Profile');
+    this.energyBody = energyBody;
+    energyBody.append(this.makeLoading('Loading energy data\u2026'));
+
     this.signalsBody = signalBody;
     this.timelineBody = timelineBody;
     this.timelineBody.classList.add('cdp-timeline-mount');
@@ -732,7 +954,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -745,6 +967,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private resetPanelContent(): void {
     this.destroyResilienceWidget();
     this.scoreCard = null;
+    this.energyBody = null;
     this.content.replaceChildren();
   }
 

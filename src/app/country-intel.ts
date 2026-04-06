@@ -283,6 +283,72 @@ export class CountryIntelManager implements AppModule {
         });
       });
 
+    intelClient.getCountryEnergyProfile({ countryCode: code })
+      .then((profile) => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateEnergyProfile?.({
+          mixAvailable: profile.mixAvailable,
+          mixYear: profile.mixYear,
+          coalShare: profile.coalShare,
+          gasShare: profile.gasShare,
+          oilShare: profile.oilShare,
+          nuclearShare: profile.nuclearShare,
+          renewShare: profile.renewShare,
+          windShare: profile.windShare,
+          solarShare: profile.solarShare,
+          hydroShare: profile.hydroShare,
+          importShare: profile.importShare,
+          gasStorageAvailable: profile.gasStorageAvailable,
+          gasStorageFillPct: profile.gasStorageFillPct,
+          gasStorageChange1d: profile.gasStorageChange1d,
+          gasStorageTrend: profile.gasStorageTrend,
+          gasStorageDate: profile.gasStorageDate,
+          electricityAvailable: profile.electricityAvailable,
+          electricityPriceMwh: profile.electricityPriceMwh,
+          electricitySource: profile.electricitySource,
+          electricityDate: profile.electricityDate,
+          jodiOilAvailable: profile.jodiOilAvailable,
+          jodiOilDataMonth: profile.jodiOilDataMonth,
+          gasolineDemandKbd: profile.gasolineDemandKbd,
+          gasolineImportsKbd: profile.gasolineImportsKbd,
+          dieselDemandKbd: profile.dieselDemandKbd,
+          dieselImportsKbd: profile.dieselImportsKbd,
+          jetDemandKbd: profile.jetDemandKbd,
+          jetImportsKbd: profile.jetImportsKbd,
+          lpgDemandKbd: profile.lpgDemandKbd,
+          lpgImportsKbd: profile.lpgImportsKbd,
+          crudeImportsKbd: profile.crudeImportsKbd,
+          jodiGasAvailable: profile.jodiGasAvailable,
+          jodiGasDataMonth: profile.jodiGasDataMonth,
+          gasTotalDemandTj: profile.gasTotalDemandTj,
+          gasLngImportsTj: profile.gasLngImportsTj,
+          gasPipeImportsTj: profile.gasPipeImportsTj,
+          gasLngShare: profile.gasLngShare,
+          ieaStocksAvailable: profile.ieaStocksAvailable,
+          ieaStocksDataMonth: profile.ieaStocksDataMonth,
+          ieaDaysOfCover: profile.ieaDaysOfCover,
+          ieaNetExporter: profile.ieaNetExporter,
+          ieaBelowObligation: profile.ieaBelowObligation,
+        });
+      })
+      .catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateEnergyProfile?.({
+          mixAvailable: false, mixYear: 0, coalShare: 0, gasShare: 0, oilShare: 0,
+          nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0,
+          importShare: 0, gasStorageAvailable: false, gasStorageFillPct: 0,
+          gasStorageChange1d: 0, gasStorageTrend: '', gasStorageDate: '', electricityAvailable: false,
+          electricityPriceMwh: 0, electricitySource: '', electricityDate: '',
+          jodiOilAvailable: false, jodiOilDataMonth: '', gasolineDemandKbd: 0,
+          gasolineImportsKbd: 0, dieselDemandKbd: 0, dieselImportsKbd: 0,
+          jetDemandKbd: 0, jetImportsKbd: 0, lpgDemandKbd: 0, lpgImportsKbd: 0,
+          crudeImportsKbd: 0, jodiGasAvailable: false, jodiGasDataMonth: '',
+          gasTotalDemandTj: 0, gasLngImportsTj: 0, gasPipeImportsTj: 0,
+          gasLngShare: 0, ieaStocksAvailable: false, ieaStocksDataMonth: '',
+          ieaDaysOfCover: 0, ieaNetExporter: false, ieaBelowObligation: false,
+        });
+      });
+
     this.mountCountryTimeline(code, country);
 
     try {

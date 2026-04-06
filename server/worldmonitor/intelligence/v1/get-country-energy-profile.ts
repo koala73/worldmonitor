@@ -59,6 +59,7 @@ interface IeaStocks {
   daysOfCover?: number | null;
   netExporter?: boolean | null;
   belowObligation?: boolean | null;
+  anomaly?: boolean | null;
 }
 
 const EMPTY: GetCountryEnergyProfileResponse = {
@@ -181,7 +182,7 @@ export async function getCountryEnergyProfile(
     gasPipeImportsTj: n(jodiGas?.pipeImportsTj),
     gasLngShare: n(jodiGas?.lngShareOfImports != null ? jodiGas.lngShareOfImports * 100 : null),
 
-    ieaStocksAvailable: ieaStocks != null,
+    ieaStocksAvailable: ieaStocks != null && (ieaStocks.netExporter === true || (ieaStocks.daysOfCover != null && ieaStocks.anomaly !== true)),
     ieaStocksDataMonth: s(ieaStocks?.dataMonth),
     ieaDaysOfCover: n(ieaStocks?.daysOfCover),
     ieaNetExporter: ieaStocks?.netExporter === true,
