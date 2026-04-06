@@ -149,7 +149,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   // IMF WEO indicators: CPI inflation (PCPIPCH) and current account balance % GDP (BCA_NGDPD).
   // Covers ~185 sovereign states — replaces BIS credit (~40 economies) in scoreMacroFiscal,
   // and provides tier-2 currency stability proxy for non-BIS countries in scoreCurrencyExternal.
-  'economic:imf:macro:v1': {
+  'economic:imf:macro:v2': {
     countries: {
       // govRevenuePct = General Government Revenue % GDP (IMF GGR_NGDP).
       // Replaces debtToGdp as primary fiscal metric in scoreMacroFiscal — raw debt/GDP

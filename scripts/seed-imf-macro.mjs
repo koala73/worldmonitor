@@ -5,7 +5,7 @@ import { loadEnvFile, CHROME_UA, runSeed, loadSharedConfig } from './_seed-utils
 loadEnvFile(import.meta.url);
 
 const IMF_BASE = 'https://www.imf.org/external/datamapper/api/v1';
-const CANONICAL_KEY = 'economic:imf:macro:v1';
+const CANONICAL_KEY = 'economic:imf:macro:v2';
 const CACHE_TTL = 35 * 24 * 3600; // 35 days — monthly IMF WEO release
 
 // Invert iso2→iso3 map to convert IMF's ISO3 codes to our ISO2 keys.

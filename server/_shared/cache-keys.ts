@@ -74,7 +74,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   bisPolicy:        'economic:bis:policy:v1',
   bisExchange:      'economic:bis:eer:v1',
   bisCredit:        'economic:bis:credit:v1',
-  imfMacro:         'economic:imf:macro:v1',
+  imfMacro:         'economic:imf:macro:v2',
   shippingRates:    'supply_chain:shipping:v2',
   chokepoints:      'supply_chain:chokepoints:v4',
   chokepointTransits: 'supply_chain:chokepoint_transits:v1',

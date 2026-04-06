@@ -188,7 +188,7 @@ describe('resilience dimension scorers', () => {
     // BIS loaded, IMF macro has inflation → use inflation proxy instead of curated_list_absent.
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
-      if (key === 'economic:imf:macro:v1') return { countries: { MZ: { inflationPct: 8, currentAccountPct: -5, year: 2024 } } };
+      if (key === 'economic:imf:macro:v2') return { countries: { MZ: { inflationPct: 8, currentAccountPct: -5, year: 2024 } } };
       return null;
     };
     const score = await scoreCurrencyExternal('MZ', reader);
@@ -200,12 +200,12 @@ describe('resilience dimension scorers', () => {
   it('scoreCurrencyExternal: non-BIS country with hyperinflation is capped at score 0', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
-      if (key === 'economic:imf:macro:v1') return { countries: { ZW: { inflationPct: 250, currentAccountPct: -8, year: 2024 } } };
+      if (key === 'economic:imf:macro:v2') return { countries: { ZW: { inflationPct: 250, currentAccountPct: -8, year: 2024 } } };
       return null;
     };
     const score = await scoreCurrencyExternal('ZW', reader);
-    // min(250, 100) = 100 → normalizeLowerBetter(100, 0, 100) = 0
-    assert.equal(score.score, 0, 'hyperinflation ≥100% is capped → score 0');
+    // min(250, 50) = 50 → normalizeLowerBetter(50, 0, 50) = 0
+    assert.equal(score.score, 0, 'hyperinflation ≥50% is capped → score 0');
     assert.equal(score.coverage, 0.45, 'hyperinflation still gets IMF proxy coverage=0.45');
   });
 
@@ -213,7 +213,7 @@ describe('resilience dimension scorers', () => {
     // BIS seed is completely down (null), but IMF macro is available.
     // The inflation proxy should still be applied — BIS outage must not block the IMF path.
     const reader = async (key: string): Promise<unknown | null> => {
-      if (key === 'economic:imf:macro:v1') return { countries: { MZ: { inflationPct: 6, currentAccountPct: -2, year: 2024 } } };
+      if (key === 'economic:imf:macro:v2') return { countries: { MZ: { inflationPct: 6, currentAccountPct: -2, year: 2024 } } };
       return null; // economic:bis:eer:v1 null = BIS seed outage
     };
     const score = await scoreCurrencyExternal('MZ', reader);
@@ -232,7 +232,7 @@ describe('resilience dimension scorers', () => {
   it('scoreMacroFiscal: IMF current account loaded, surplus country scores higher than deficit', async () => {
     const makeReader = (caPct: number) => async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
-      if (key === 'economic:imf:macro:v1') return { countries: { HR: { inflationPct: 3.0, currentAccountPct: caPct, govRevenuePct: 40, year: 2024 } } };
+      if (key === 'economic:imf:macro:v2') return { countries: { HR: { inflationPct: 3.0, currentAccountPct: caPct, govRevenuePct: 40, year: 2024 } } };
       return null;
     };
     const surplus = await scoreMacroFiscal('HR', makeReader(10));
