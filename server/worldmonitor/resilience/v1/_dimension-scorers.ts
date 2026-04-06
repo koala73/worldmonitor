@@ -906,9 +906,13 @@ export async function scoreFoodWater(
 
   // IPC/HDX only tracks countries IN active food crisis. Absence means the country is not
   // a monitored crisis case → crisis_monitoring_absent → positive signal.
+  // But only impute if the static bundle was loaded (seeder wrote fao: null explicitly).
+  // A missing resilience:static:{ISO2} key means the seeder never ran — not crisis-free.
   if (fao == null) {
     return weightedBlend([
-      { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage },
+      staticRecord == null
+        ? { score: null, weight: 0.6 }
+        : { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage },
       { score: aquastatScore, weight: 0.4 },
     ]);
   }

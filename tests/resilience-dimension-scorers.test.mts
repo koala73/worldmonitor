@@ -242,6 +242,15 @@ describe('resilience dimension scorers', () => {
     assert.equal(withWgi.coverage, withoutWgi.coverage, 'coverage must not change based on WGI presence');
   });
 
+  it('scoreFoodWater: missing static bundle (seed outage) does not impute as crisis-free', async () => {
+    // resilience:static:XX key missing entirely = seeder never ran, not "country not in crisis".
+    // Must NOT trigger crisis_monitoring_absent imputation.
+    const reader = async (_key: string): Promise<unknown | null> => null;
+    const score = await scoreFoodWater('XX', reader);
+    assert.equal(score.coverage, 0, `missing static bundle must give coverage=0, got ${score.coverage}`);
+    assert.equal(score.score, 0, `missing static bundle must give score=0, got ${score.score}`);
+  });
+
   it('scoreBorderSecurity: displacement source loaded but country absent → crisis_monitoring_absent imputation', async () => {
     // Country not in UNHCR displacement registry = not a significant displacement case (positive signal).
     const reader = async (key: string): Promise<unknown | null> => {

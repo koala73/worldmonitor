@@ -51,11 +51,7 @@ describe('resilience scorer contracts', () => {
     for (const [dimensionId, scorer] of Object.entries(RESILIENCE_DIMENSION_SCORERS)) {
       const result = await scorer('US');
       assert.ok(result.score >= 0 && result.score <= 100, `${dimensionId} fallback score out of bounds: ${result.score}`);
-      if (dimensionId !== 'foodWater') {
-        assert.equal(result.coverage, 0, `${dimensionId} must have coverage=0 when all seeds missing (source outage ≠ country absence)`);
-      } else {
-        assert.ok(result.coverage >= 0 && result.coverage <= 1, `${dimensionId} coverage out of bounds when seeds absent: ${result.coverage}`);
-      }
+      assert.equal(result.coverage, 0, `${dimensionId} must have coverage=0 when all seeds missing (source outage ≠ country absence)`);
     }
   });
 
