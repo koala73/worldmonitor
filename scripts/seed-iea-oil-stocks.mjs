@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+// @ts-check
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 export const CANONICAL_KEY = 'energy:iea-oil-stocks:v1:index';
+export const ANALYSIS_KEY = 'energy:oil-stocks-analysis:v1';
 export const IEA_90_DAY_OBLIGATION = 90;
 const TTL_SECONDS = 40 * 24 * 3600;
 
@@ -94,6 +96,95 @@ export function buildIndex(members, dataMonth, updatedAt) {
   };
 }
 
+const REGION_EUROPE = new Set(['AT','BE','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','NL','PL','PT','SK','ES','SE','CH','TR','GB','NO']);
+const REGION_ASIA_PACIFIC = new Set(['AU','JP','KR','NZ']);
+const REGION_NORTH_AMERICA = new Set(['CA','MX','US']);
+
+/**
+ * @typedef {{
+ *   iso2: string,
+ *   daysOfCover: number | null,
+ *   netExporter: boolean,
+ *   belowObligation: boolean,
+ *   anomaly?: boolean
+ * }} IeaMemberInput
+ */
+
+/**
+ * @param {IeaMemberInput[]} members
+ * @param {string} dataMonth
+ * @param {string} updatedAt
+ */
+export function buildOilStocksAnalysis(members, dataMonth, updatedAt) {
+  const eligible = members.filter(m => !m.anomaly);
+
+  const ranked = eligible
+    .slice()
+    .sort((a, b) => {
+      if (a.netExporter && b.netExporter) return 0;
+      if (a.netExporter) return 1;
+      if (b.netExporter) return -1;
+      const da = a.daysOfCover ?? -Infinity;
+      const db = b.daysOfCover ?? -Infinity;
+      return db - da;
+    });
+
+  let rank = 1;
+  const ieaMembers = ranked.map(m => {
+    /** @type {number | null} */
+    const vsObligation = m.netExporter ? null : (m.daysOfCover !== null ? m.daysOfCover - IEA_90_DAY_OBLIGATION : null);
+    const obligationMet = m.netExporter || (m.daysOfCover !== null && m.daysOfCover >= IEA_90_DAY_OBLIGATION);
+    const entry = {
+      iso2: m.iso2,
+      daysOfCover: m.daysOfCover,
+      netExporter: m.netExporter,
+      belowObligation: m.belowObligation,
+      obligationMet,
+      rank,
+      vsObligation,
+    };
+    rank++;
+    return entry;
+  });
+
+  const belowObligation = ieaMembers.filter(m => m.belowObligation).map(m => m.iso2);
+
+  /**
+   * @param {Set<string>} regionSet
+   */
+  function regionStats(regionSet) {
+    const regionMembers = eligible.filter(m => regionSet.has(m.iso2) && !m.netExporter && m.daysOfCover !== null);
+    const days = regionMembers.map(m => /** @type {number} */ (m.daysOfCover));
+    const avgDays = days.length > 0 ? Math.round(days.reduce((s, d) => s + d, 0) / days.length) : null;
+    const minDays = days.length > 0 ? Math.min(...days) : null;
+    const countBelowObligation = regionMembers.filter(m => m.belowObligation).length;
+    return { avgDays, minDays, countBelowObligation };
+  }
+
+  const euStats = regionStats(REGION_EUROPE);
+  const apStats = regionStats(REGION_ASIA_PACIFIC);
+
+  const naMembers = eligible.filter(m => REGION_NORTH_AMERICA.has(m.iso2));
+  const naNetExporters = naMembers.filter(m => m.netExporter).length;
+  const naImporters = naMembers.filter(m => !m.netExporter && m.daysOfCover !== null);
+  const naAvgDays = naImporters.length > 0
+    ? Math.round(naImporters.reduce((s, m) => s + /** @type {number} */ (m.daysOfCover), 0) / naImporters.length)
+    : null;
+
+  return {
+    updatedAt,
+    dataMonth,
+    ieaMembers,
+    belowObligation,
+    regionalSummary: {
+      europe: { avgDays: euStats.avgDays, minDays: euStats.minDays, countBelowObligation: euStats.countBelowObligation },
+      asiaPacific: { avgDays: apStats.avgDays, minDays: apStats.minDays, countBelowObligation: apStats.countBelowObligation },
+      northAmerica: { netExporters: naNetExporters, ...(naAvgDays !== null ? { avgDays: naAvgDays } : {}) },
+    },
+    shockScenario: null,
+  };
+}
+
 async function fetchIeaOilStocks() {
   const latestResp = await fetch('https://api.iea.org/netimports/latest', {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
@@ -147,6 +238,17 @@ if (isMain) {
     recordCount: (data) => data?.members?.length || 0,
     publishTransform: (data) => buildIndex(data.members, data.dataMonth, data.seededAt),
     extraKeys: COUNTRY_EXTRA_KEYS,
+    afterPublish: async (data) => {
+      const analysis = buildOilStocksAnalysis(data.members, data.dataMonth, data.seededAt);
+      await writeExtraKeyWithMeta(
+        ANALYSIS_KEY,
+        analysis,
+        TTL_SECONDS,
+        analysis.ieaMembers.length,
+        'seed-meta:energy:oil-stocks-analysis',
+      );
+      console.log(`  Analysis key ${ANALYSIS_KEY}: written (${analysis.ieaMembers.length} members)`);
+    },
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

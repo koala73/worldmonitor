@@ -61,6 +61,7 @@ import {
   fetchCrudeInventoriesRpc,
   fetchNatGasStorageRpc,
   getEuGasStorageData,
+  getOilStocksAnalysisData,
   getEcbFxRatesData,
   fetchBisData,
   fetchBlsData,
@@ -2589,11 +2590,12 @@ export class DataLoaderManager implements AppModule {
   async loadOilAnalytics(): Promise<void> {
     const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
     try {
-      const [data, crudeResp, natGasResp, euGasResp] = await Promise.allSettled([
+      const [data, crudeResp, natGasResp, euGasResp, oilStocksResp] = await Promise.allSettled([
         fetchOilAnalytics(),
         fetchCrudeInventoriesRpc(),
         fetchNatGasStorageRpc(),
         getEuGasStorageData(),
+        getOilStocksAnalysisData(),
       ]);
       if (data.status === 'fulfilled') {
         energyPanel?.updateAnalytics(data.value);
@@ -2620,6 +2622,9 @@ export class DataLoaderManager implements AppModule {
       }
       if (euGasResp.status === 'fulfilled' && !euGasResp.value.unavailable) {
         energyPanel?.updateEuGasStorage(euGasResp.value);
+      }
+      if (oilStocksResp.status === 'fulfilled' && !oilStocksResp.value.unavailable) {
+        energyPanel?.setOilStocksAnalysis(oilStocksResp.value);
       }
     } catch (e) {
       console.error('[App] Oil analytics failed:', e);

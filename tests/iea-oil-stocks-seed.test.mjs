@@ -5,7 +5,9 @@ import {
   IEA_90_DAY_OBLIGATION,
   parseRecord,
   buildIndex,
+  buildOilStocksAnalysis,
   CANONICAL_KEY,
+  ANALYSIS_KEY,
 } from '../scripts/seed-iea-oil-stocks.mjs';
 
 const FIXED_TS = '2026-04-05T08:00:00.000Z';
@@ -187,5 +189,154 @@ describe('buildIndex', () => {
     const index = buildIndex(members, '2025-11', FIXED_TS);
     const keys = Object.keys(index.members[0]);
     assert.deepEqual(keys.sort(), ['belowObligation', 'daysOfCover', 'iso2', 'netExporter'].sort());
+  });
+});
+
+describe('ANALYSIS_KEY', () => {
+  it('is energy:oil-stocks-analysis:v1', () => {
+    assert.equal(ANALYSIS_KEY, 'energy:oil-stocks-analysis:v1');
+  });
+});
+
+describe('buildOilStocksAnalysis', () => {
+  const baseMember = (iso2, daysOfCover, netExporter = false, anomaly = false) => ({
+    iso2,
+    daysOfCover: anomaly ? null : daysOfCover,
+    netExporter,
+    belowObligation: !netExporter && !anomaly && daysOfCover !== null && daysOfCover < IEA_90_DAY_OBLIGATION,
+    anomaly: anomaly || undefined,
+    seededAt: FIXED_TS,
+    dataMonth: '2025-11',
+  });
+
+  it('returns correct shape', () => {
+    const members = [baseMember('DE', 130), baseMember('FR', 100)];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    assert.equal(result.updatedAt, FIXED_TS);
+    assert.equal(result.dataMonth, '2025-11');
+    assert.ok(Array.isArray(result.ieaMembers));
+    assert.ok(Array.isArray(result.belowObligation));
+    assert.ok(result.regionalSummary);
+    assert.equal(result.shockScenario, null);
+  });
+
+  it('sorts ieaMembers by daysOfCover descending, netExporters last', () => {
+    const members = [
+      baseMember('JP', 47),
+      baseMember('DE', 130),
+      baseMember('NO', null, true),
+      baseMember('US', null, true),
+      baseMember('FR', 100),
+    ];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    const isos = result.ieaMembers.map(m => m.iso2);
+    assert.equal(isos[0], 'DE');
+    assert.equal(isos[1], 'FR');
+    assert.equal(isos[2], 'JP');
+    // net exporters last (order between them is not guaranteed)
+    assert.ok(isos.indexOf('NO') > isos.indexOf('JP'));
+    assert.ok(isos.indexOf('US') > isos.indexOf('JP'));
+  });
+
+  it('assigns rank 1-indexed in order', () => {
+    const members = [baseMember('DE', 130), baseMember('FR', 100), baseMember('GR', 75)];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    assert.equal(result.ieaMembers[0].rank, 1);
+    assert.equal(result.ieaMembers[1].rank, 2);
+    assert.equal(result.ieaMembers[2].rank, 3);
+  });
+
+  it('vsObligation is daysOfCover - 90 for normal members', () => {
+    const members = [baseMember('DE', 130), baseMember('GR', 75)];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    const de = result.ieaMembers.find(m => m.iso2 === 'DE');
+    const gr = result.ieaMembers.find(m => m.iso2 === 'GR');
+    assert.equal(de.vsObligation, 40);
+    assert.equal(gr.vsObligation, -15);
+  });
+
+  it('vsObligation is null for netExporters', () => {
+    const members = [baseMember('NO', null, true)];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    assert.equal(result.ieaMembers[0].vsObligation, null);
+  });
+
+  it('belowObligation array contains correct ISO2s', () => {
+    const members = [
+      baseMember('DE', 130),
+      baseMember('GR', 75),
+      baseMember('JP', 47),
+      baseMember('FR', 90),
+    ];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    assert.ok(result.belowObligation.includes('GR'));
+    assert.ok(result.belowObligation.includes('JP'));
+    assert.ok(!result.belowObligation.includes('DE'));
+    assert.ok(!result.belowObligation.includes('FR'));
+  });
+
+  it('excludes records with anomaly: true from ranking', () => {
+    const members = [
+      baseMember('DE', 130),
+      baseMember('EE', null, false, true),
+    ];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    const isos = result.ieaMembers.map(m => m.iso2);
+    assert.ok(!isos.includes('EE'), 'anomaly member should be excluded');
+    assert.equal(isos.length, 1);
+  });
+
+  it('regional summary europe avgDays and minDays computed correctly', () => {
+    const members = [
+      baseMember('DE', 130),
+      baseMember('FR', 100),
+      baseMember('GR', 70),
+    ];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    const eu = result.regionalSummary.europe;
+    assert.equal(eu.avgDays, Math.round((130 + 100 + 70) / 3));
+    assert.equal(eu.minDays, 70);
+    assert.equal(eu.countBelowObligation, 1);
+  });
+
+  it('regional summary asiaPacific avgDays and minDays computed correctly', () => {
+    const members = [
+      baseMember('JP', 171),
+      baseMember('AU', 47),
+      baseMember('KR', 110),
+    ];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    const ap = result.regionalSummary.asiaPacific;
+    assert.equal(ap.avgDays, Math.round((171 + 47 + 110) / 3));
+    assert.equal(ap.minDays, 47);
+    assert.equal(ap.countBelowObligation, 1);
+  });
+
+  it('northAmerica netExporters counted correctly', () => {
+    const members = [
+      baseMember('CA', null, true),
+      baseMember('MX', null, true),
+      baseMember('US', null, true),
+    ];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    assert.equal(result.regionalSummary.northAmerica.netExporters, 3);
+  });
+
+  it('obligationMet true for netExporter regardless of daysOfCover', () => {
+    const members = [baseMember('NO', null, true)];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    assert.equal(result.ieaMembers[0].obligationMet, true);
+  });
+
+  it('obligationMet false when daysOfCover < 90', () => {
+    const members = [baseMember('GR', 75)];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    assert.equal(result.ieaMembers[0].obligationMet, false);
+  });
+
+  it('obligationMet true when daysOfCover >= 90', () => {
+    const members = [baseMember('FR', 90)];
+    const result = buildOilStocksAnalysis(members, '2025-11', FIXED_TS);
+    assert.equal(result.ieaMembers[0].obligationMet, true);
   });
 });
