@@ -837,7 +837,7 @@ export class DeckGLMap {
         if (error.message.includes('satellite-imagery-layer')) {
           this.satelliteImageryLayerFailed = true;
           console.warn('[DeckGLMap] Satellite imagery layer failed (likely Intel GPU driver incompatibility) — rebuilding layer stack without it');
-          this.debouncedRebuildLayers();
+          try { this.deckOverlay?.setProps({ layers: this.buildLayers() }); } catch { /* map mid-teardown */ }
         }
       },
     });
