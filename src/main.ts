@@ -264,6 +264,7 @@ Sentry.init({
     /\.at is not a function/, // Instagram/older Android in-app browsers missing Array.at()
     /Response cannot have a body with the given status/, // Safari: Response constructor with 204/304 + body
     /ClerkJS: Network error/, // Clerk SDK transient network failures on user devices
+    /doesn't provide an export named/, // stale cached chunk after deploy references removed export
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
