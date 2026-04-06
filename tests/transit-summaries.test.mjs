@@ -79,9 +79,8 @@ describe('seedTransitSummaries (relay)', () => {
     assert.match(relaySrc, /\{\s*summaries,\s*fetchedAt:\s*now\s*\}/);
   });
 
-  it('is triggered after PortWatch seed completes', () => {
-    const portWatchBlock = relaySrc.match(/\[PortWatch\] Seeded[\s\S]{0,200}seedTransitSummaries/);
-    assert.ok(portWatchBlock, 'seedTransitSummaries should be called after PortWatch seed');
+  it('PortWatch data is hydrated from Redis on cold start', () => {
+    assert.match(relaySrc, /latestPortwatchData[\s\S]{0,100}upstashGet.*PORTWATCH_REDIS_KEY/);
   });
 
   it('is triggered after CorridorRisk seed completes', () => {

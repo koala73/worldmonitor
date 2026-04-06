@@ -73,7 +73,7 @@ interface PreBuiltTransitSummary {
   todayCargo: number;
   todayOther: number;
   wowChangePct: number;
-  history: { date: string; tanker: number; cargo: number; other: number; total: number }[];
+  history: import('./_portwatch-upstream').TransitDayCount[];
   riskLevel: string;
   incidentCount7d: number;
   disruptionPct: number;
