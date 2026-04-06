@@ -8,6 +8,7 @@ import {
   parseCsvRows,
   buildCountryRecords,
   validateGasCountries,
+  buildLngVulnerabilityIndex,
 } from '../scripts/seed-jodi-gas.mjs';
 
 describe('CANONICAL_KEY', () => {
@@ -244,5 +245,124 @@ describe('validateGasCountries', () => {
 
   it('MIN_COUNTRIES is 50', () => {
     assert.equal(MIN_COUNTRIES, 50);
+  });
+});
+
+describe('buildLngVulnerabilityIndex', () => {
+  function makeMembers(overrides = []) {
+    return overrides.map(o => ({
+      iso2: 'XX',
+      lngShareOfImports: null,
+      lngImportsTj: null,
+      pipeImportsTj: null,
+      dataMonth: '2025-10',
+      ...o,
+    }));
+  }
+
+  it('returns object with top20LngDependent and top20PipelineDependent', () => {
+    const result = buildLngVulnerabilityIndex([], '2025-10', '2026-04-06T00:00:00.000Z');
+    assert.ok('top20LngDependent' in result);
+    assert.ok('top20PipelineDependent' in result);
+  });
+
+  it('includes updatedAt and dataMonth', () => {
+    const updatedAt = '2026-04-06T00:00:00.000Z';
+    const result = buildLngVulnerabilityIndex([], '2025-10', updatedAt);
+    assert.equal(result.updatedAt, updatedAt);
+    assert.equal(result.dataMonth, '2025-10');
+  });
+
+  it('top20LngDependent is sorted by lngShareOfImports descending', () => {
+    const members = makeMembers([
+      { iso2: 'JP', lngShareOfImports: 0.5, lngImportsTj: 100, pipeImportsTj: 100 },
+      { iso2: 'KR', lngShareOfImports: 0.9, lngImportsTj: 200, pipeImportsTj: 50 },
+      { iso2: 'DE', lngShareOfImports: 0.2, lngImportsTj: 50,  pipeImportsTj: 200 },
+    ]);
+    const result = buildLngVulnerabilityIndex(members, '2025-10', '2026-04-06T00:00:00.000Z');
+    const shares = result.top20LngDependent.map(e => e.lngShareOfImports);
+    assert.deepEqual(shares, [0.9, 0.5, 0.2]);
+  });
+
+  it('top20PipelineDependent is sorted by lngShareOfImports ascending', () => {
+    const members = makeMembers([
+      { iso2: 'JP', lngShareOfImports: 0.5, lngImportsTj: 100, pipeImportsTj: 100 },
+      { iso2: 'BY', lngShareOfImports: 0.0, lngImportsTj: 0,   pipeImportsTj: 300 },
+      { iso2: 'DE', lngShareOfImports: 0.2, lngImportsTj: 50,  pipeImportsTj: 200 },
+    ]);
+    const result = buildLngVulnerabilityIndex(members, '2025-10', '2026-04-06T00:00:00.000Z');
+    const shares = result.top20PipelineDependent.map(e => e.lngShareOfImports);
+    assert.deepEqual(shares, [0.0, 0.2, 0.5]);
+  });
+
+  it('excludes entries with zero or null lngImportsTj from top20LngDependent', () => {
+    const members = makeMembers([
+      { iso2: 'JP', lngShareOfImports: 0.9, lngImportsTj: 0,    pipeImportsTj: 100 },
+      { iso2: 'KR', lngShareOfImports: 0.8, lngImportsTj: null, pipeImportsTj: 100 },
+      { iso2: 'AU', lngShareOfImports: 0.7, lngImportsTj: 500,  pipeImportsTj: 100 },
+    ]);
+    const result = buildLngVulnerabilityIndex(members, '2025-10', '2026-04-06T00:00:00.000Z');
+    assert.equal(result.top20LngDependent.length, 1);
+    assert.equal(result.top20LngDependent[0].iso2, 'AU');
+  });
+
+  it('excludes entries with zero or null pipeImportsTj from top20PipelineDependent', () => {
+    const members = makeMembers([
+      { iso2: 'BY', lngShareOfImports: 0.0, lngImportsTj: 0,   pipeImportsTj: 0    },
+      { iso2: 'RU', lngShareOfImports: 0.1, lngImportsTj: 50,  pipeImportsTj: null },
+      { iso2: 'UA', lngShareOfImports: 0.2, lngImportsTj: 100, pipeImportsTj: 300  },
+    ]);
+    const result = buildLngVulnerabilityIndex(members, '2025-10', '2026-04-06T00:00:00.000Z');
+    assert.equal(result.top20PipelineDependent.length, 1);
+    assert.equal(result.top20PipelineDependent[0].iso2, 'UA');
+  });
+
+  it('excludes entries with null lngShareOfImports from both lists', () => {
+    const members = makeMembers([
+      { iso2: 'XX', lngShareOfImports: null, lngImportsTj: 500, pipeImportsTj: 300 },
+    ]);
+    const result = buildLngVulnerabilityIndex(members, '2025-10', '2026-04-06T00:00:00.000Z');
+    assert.equal(result.top20LngDependent.length, 0);
+    assert.equal(result.top20PipelineDependent.length, 0);
+  });
+
+  it('caps each list at 20 entries', () => {
+    const members = makeMembers(
+      Array.from({ length: 30 }, (_, i) => ({
+        iso2: `C${i}`,
+        lngShareOfImports: (30 - i) / 30,
+        lngImportsTj: 1000 + i,
+        pipeImportsTj: 500 + i,
+      })),
+    );
+    const result = buildLngVulnerabilityIndex(members, '2025-10', '2026-04-06T00:00:00.000Z');
+    assert.equal(result.top20LngDependent.length, 20);
+    assert.equal(result.top20PipelineDependent.length, 20);
+  });
+
+  it('top20LngDependent entries have iso2, lngShareOfImports, lngImportsTj fields', () => {
+    const members = makeMembers([
+      { iso2: 'JP', lngShareOfImports: 1.0, lngImportsTj: 4200000, pipeImportsTj: 0 },
+    ]);
+    const result = buildLngVulnerabilityIndex(members, '2025-10', '2026-04-06T00:00:00.000Z');
+    assert.equal(result.top20LngDependent.length, 1);
+    const entry = result.top20LngDependent[0];
+    assert.equal(entry.iso2, 'JP');
+    assert.equal(entry.lngShareOfImports, 1.0);
+    assert.equal(entry.lngImportsTj, 4200000);
+    assert.ok(!('pipeImportsTj' in entry));
+  });
+
+  it('top20PipelineDependent entries have iso2, lngShareOfImports, pipeImportsTj fields', () => {
+    const members = makeMembers([
+      { iso2: 'BY', lngShareOfImports: 0.0, lngImportsTj: 0, pipeImportsTj: 380000 },
+    ]);
+    const result = buildLngVulnerabilityIndex(members, '2025-10', '2026-04-06T00:00:00.000Z');
+    assert.equal(result.top20PipelineDependent.length, 1);
+    const entry = result.top20PipelineDependent[0];
+    assert.equal(entry.iso2, 'BY');
+    assert.equal(entry.lngShareOfImports, 0.0);
+    assert.equal(entry.pipeImportsTj, 380000);
+    assert.ok(!('lngImportsTj' in entry));
   });
 });

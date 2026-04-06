@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 
 import { inflateRaw } from 'node:zlib';
 import { promisify } from 'node:util';
@@ -10,6 +11,7 @@ const inflateRawAsync = promisify(inflateRaw);
 
 export const CANONICAL_KEY = 'energy:jodi-gas:v1:_countries';
 export const KEY_PREFIX = 'energy:jodi-gas:v1:';
+export const LNG_VULNERABILITY_KEY = 'energy:lng-vulnerability:v1';
 export const GAS_TTL = 3_024_000;
 
 const ZIP_URL = 'https://www.jodidata.org/jodi-publisher/gas/17/GAS_world_NewFormat.zip';
@@ -201,6 +203,45 @@ async function fetchJodiGas() {
   return records;
 }
 
+/**
+ * @typedef {{ iso2: string, lngShareOfImports: number|null, lngImportsTj: number|null, pipeImportsTj: number|null, dataMonth: string }} GasRecord
+ */
+
+/**
+ * Build the LNG vulnerability index from country records.
+ * @param {GasRecord[]} members
+ * @param {string} dataMonth
+ * @param {string} updatedAt
+ */
+export function buildLngVulnerabilityIndex(members, dataMonth, updatedAt) {
+  const withLng = members.filter(
+    r => r.lngShareOfImports !== null && typeof r.lngShareOfImports === 'number' && (r.lngImportsTj ?? 0) > 0,
+  );
+  const withPipe = members.filter(
+    r => r.lngShareOfImports !== null && typeof r.lngShareOfImports === 'number' && (r.pipeImportsTj ?? 0) > 0,
+  );
+
+  const top20LngDependent = withLng
+    .sort((a, b) => /** @type {number} */ (b.lngShareOfImports) - /** @type {number} */ (a.lngShareOfImports))
+    .slice(0, 20)
+    .map(r => ({
+      iso2: r.iso2,
+      lngShareOfImports: /** @type {number} */ (r.lngShareOfImports),
+      lngImportsTj: /** @type {number} */ (r.lngImportsTj),
+    }));
+
+  const top20PipelineDependent = withPipe
+    .sort((a, b) => /** @type {number} */ (a.lngShareOfImports) - /** @type {number} */ (b.lngShareOfImports))
+    .slice(0, 20)
+    .map(r => ({
+      iso2: r.iso2,
+      lngShareOfImports: /** @type {number} */ (r.lngShareOfImports),
+      pipeImportsTj: /** @type {number} */ (r.pipeImportsTj),
+    }));
+
+  return { updatedAt, dataMonth, top20LngDependent, top20PipelineDependent };
+}
+
 const isMain = process.argv[1]?.endsWith('seed-jodi-gas.mjs');
 
 if (isMain) {
@@ -214,6 +255,11 @@ if (isMain) {
       for (const record of records) {
         await writeExtraKey(`${KEY_PREFIX}${record.iso2}`, record, GAS_TTL);
       }
+      const updatedAt = new Date().toISOString();
+      const dataMonths = records.map(r => r.dataMonth).filter(Boolean).sort();
+      const dataMonth = dataMonths[dataMonths.length - 1] ?? '';
+      const index = buildLngVulnerabilityIndex(records, dataMonth, updatedAt);
+      await writeExtraKey(LNG_VULNERABILITY_KEY, index, GAS_TTL);
     },
   });
 }
