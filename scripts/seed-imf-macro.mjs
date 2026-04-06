@@ -1,23 +1,16 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, loadSharedConfig } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const IMF_BASE = 'https://www.imf.org/external/datamapper/api/v1';
 const CANONICAL_KEY = 'economic:imf:macro:v1';
 const CACHE_TTL = 35 * 24 * 3600; // 35 days — monthly IMF WEO release
 
-// Invert iso2→iso3 map to convert IMF's ISO3 codes to our ISO2 keys
-const ISO2_TO_ISO3 = JSON.parse(
-  readFileSync(join(__dirname, '..', 'shared', 'iso2-to-iso3.json'), 'utf8'),
-);
+// Invert iso2→iso3 map to convert IMF's ISO3 codes to our ISO2 keys.
+// loadSharedConfig tries ../shared/ (local dev) then ./shared/ (Railway rootDirectory=scripts).
+const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
 const ISO3_TO_ISO2 = Object.fromEntries(Object.entries(ISO2_TO_ISO3).map(([k, v]) => [v, k]));
 
 // IMF WEO regional aggregate and non-sovereign codes
