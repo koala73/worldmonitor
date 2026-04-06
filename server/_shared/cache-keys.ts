@@ -74,6 +74,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   bisPolicy:        'economic:bis:policy:v1',
   bisExchange:      'economic:bis:eer:v1',
   bisCredit:        'economic:bis:credit:v1',
+  imfMacro:         'economic:imf:macro:v1',
   shippingRates:    'supply_chain:shipping:v2',
   chokepoints:      'supply_chain:chokepoints:v4',
   chokepointTransits: 'supply_chain:chokepoint_transits:v1',
@@ -146,7 +147,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
 
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
-  bisPolicy: 'slow', bisExchange: 'slow', bisCredit: 'slow',
+  bisPolicy: 'slow', bisExchange: 'slow', bisCredit: 'slow', imfMacro: 'slow',
   minerals: 'slow', giving: 'slow', sectors: 'slow',
   progressData: 'slow', renewableEnergy: 'slow',
   etfFlows: 'slow', shippingRates: 'fast', wildfires: 'slow',
