@@ -53,9 +53,9 @@ function latestValue(byYear) {
 
 async function fetchImfMacro() {
   const [inflationData, currentAccountData, govRevenueData] = await Promise.all([
-    fetchImfIndicator('PCPIPCH'),   // CPI inflation, annual % change
-    fetchImfIndicator('BCA_NGDPD'), // Current account balance, % of GDP
-    fetchImfIndicator('GGR_NGDP'),  // General government revenue, % of GDP
+    fetchImfIndicator('PCPIPCH'),        // CPI inflation, annual % change
+    fetchImfIndicator('BCA_NGDPD'),      // Current account balance, % of GDP
+    fetchImfIndicator('GGR_G01_GDP_PT'), // General government revenue, % of GDP (Fiscal Monitor)
   ]);
 
   const countries = {};
