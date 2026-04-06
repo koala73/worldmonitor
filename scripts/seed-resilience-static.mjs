@@ -556,9 +556,11 @@ async function fetchGpiDataset() {
   let resolvedYear = currentYear;
 
   try {
-    ({ text: csvText } = await withRetry(() => fetchText(gpiUrlForYear(currentYear), { accept: 'text/csv' }), 1, 750));
-  } catch {
+    ({ text: csvText } = await fetchTextDirect(gpiUrlForYear(currentYear), 'text/csv', 30_000));
+  } catch (err) {
+    if (!err.message.includes('HTTP 404')) throw err;
     resolvedYear = currentYear - 1;
+    console.info(`  [gpi] ${currentYear} report not yet available — using ${resolvedYear}`);
     ({ text: csvText } = await withRetry(() => fetchText(gpiUrlForYear(resolvedYear), { accept: 'text/csv' }), 2, 750));
   }
 
