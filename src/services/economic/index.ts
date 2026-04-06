@@ -40,6 +40,9 @@ import {
   type GetOilStocksAnalysisResponse,
   type OilStocksAnalysisMember,
   type OilStocksRegionalSummary,
+  type OilStocksRegionalSummaryEurope,
+  type OilStocksRegionalSummaryAsiaPacific,
+  type OilStocksRegionalSummaryNorthAmerica,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
@@ -98,12 +101,6 @@ const emptyOilStocksAnalysisFallback: GetOilStocksAnalysisResponse = {
   dataMonth: '',
   ieaMembers: [],
   belowObligation: [],
-  regionalSummary: {
-    europe: { avgDays: null, minDays: null, countBelowObligation: 0 },
-    asiaPacific: { avgDays: null, minDays: null, countBelowObligation: 0 },
-    northAmerica: { netExporters: 0 },
-  },
-  shockScenario: null,
   unavailable: true,
 };
 const oilStocksAnalysisBreaker = createCircuitBreaker<GetOilStocksAnalysisResponse>({ name: 'IEA Oil Stocks Analysis', cacheTtlMs: 4 * 60 * 60 * 1000, persistCache: true });
@@ -858,7 +855,7 @@ export async function getEurostatCountryData(): Promise<GetEurostatCountryDataRe
 // IEA Oil Stocks Analysis (Days of Cover)
 // ========================================================================
 
-export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary };
+export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica };
 
 export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisResponse> {
   try {

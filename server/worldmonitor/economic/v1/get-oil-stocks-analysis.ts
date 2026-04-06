@@ -19,12 +19,6 @@ function buildFallbackResult(): GetOilStocksAnalysisResponse {
     dataMonth: '',
     ieaMembers: [],
     belowObligation: [],
-    regionalSummary: {
-      europe: { avgDays: null, minDays: null, countBelowObligation: 0 },
-      asiaPacific: { avgDays: null, minDays: null, countBelowObligation: 0 },
-      northAmerica: { netExporters: 0 },
-    },
-    shockScenario: null,
     unavailable: true,
   };
 }

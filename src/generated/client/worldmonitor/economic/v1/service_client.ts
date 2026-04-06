@@ -551,47 +551,46 @@ export interface FaoFoodPricePoint {
 export interface GetOilStocksAnalysisRequest {
 }
 
+export interface GetOilStocksAnalysisResponse {
+  updatedAt: string;
+  dataMonth: string;
+  ieaMembers: OilStocksAnalysisMember[];
+  belowObligation: string[];
+  regionalSummary?: OilStocksRegionalSummary;
+  unavailable: boolean;
+}
+
 export interface OilStocksAnalysisMember {
   iso2: string;
-  daysOfCover: number | null;
+  daysOfCover?: number;
   netExporter: boolean;
   belowObligation: boolean;
   obligationMet: boolean;
   rank: number;
-  vsObligation: number | null;
+  vsObligation?: number;
+}
+
+export interface OilStocksRegionalSummary {
+  europe?: OilStocksRegionalSummaryEurope;
+  asiaPacific?: OilStocksRegionalSummaryAsiaPacific;
+  northAmerica?: OilStocksRegionalSummaryNorthAmerica;
 }
 
 export interface OilStocksRegionalSummaryEurope {
-  avgDays: number | null;
-  minDays: number | null;
+  avgDays?: number;
+  minDays?: number;
   countBelowObligation: number;
 }
 
 export interface OilStocksRegionalSummaryAsiaPacific {
-  avgDays: number | null;
-  minDays: number | null;
+  avgDays?: number;
+  minDays?: number;
   countBelowObligation: number;
 }
 
 export interface OilStocksRegionalSummaryNorthAmerica {
   netExporters: number;
   avgDays?: number;
-}
-
-export interface OilStocksRegionalSummary {
-  europe: OilStocksRegionalSummaryEurope;
-  asiaPacific: OilStocksRegionalSummaryAsiaPacific;
-  northAmerica: OilStocksRegionalSummaryNorthAmerica;
-}
-
-export interface GetOilStocksAnalysisResponse {
-  updatedAt: string;
-  dataMonth: string;
-  ieaMembers: OilStocksAnalysisMember[];
-  belowObligation: string[];
-  regionalSummary: OilStocksRegionalSummary;
-  shockScenario: null;
-  unavailable: boolean;
 }
 
 export interface FieldViolation {

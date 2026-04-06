@@ -65,7 +65,7 @@ export class EnergyComplexPanel extends Panel {
     const rows = d.ieaMembers.map(m => {
       const daysDisplay = m.netExporter
         ? `<span class="energy-net-exporter-badge">Net Exporter</span>`
-        : m.daysOfCover !== null
+        : m.daysOfCover != null
           ? escapeHtml(String(m.daysOfCover)) + ' d'
           : '—';
       const warningBadge = m.belowObligation
@@ -76,18 +76,20 @@ export class EnergyComplexPanel extends Panel {
           <td class="oil-stocks-rank">${escapeHtml(String(m.rank))}</td>
           <td class="oil-stocks-iso">${escapeHtml(m.iso2)}</td>
           <td class="oil-stocks-days">${daysDisplay}${warningBadge}</td>
-          <td class="oil-stocks-vs">${m.vsObligation !== null ? (m.vsObligation > 0 ? '+' : '') + escapeHtml(String(m.vsObligation)) : '—'}</td>
+          <td class="oil-stocks-vs">${m.vsObligation != null ? (m.vsObligation > 0 ? '+' : '') + escapeHtml(String(m.vsObligation)) : '—'}</td>
         </tr>`;
     }).join('');
 
     const reg = d.regionalSummary;
-    const euRow = reg.europe.avgDays !== null
-      ? `<div class="oil-stocks-region-row"><span class="oil-stocks-region-name">Europe</span><span>avg ${escapeHtml(String(reg.europe.avgDays))}d / min ${escapeHtml(String(reg.europe.minDays))}d</span>${reg.europe.countBelowObligation > 0 ? `<span class="energy-below-obligation-badge">${escapeHtml(String(reg.europe.countBelowObligation))} below 90d</span>` : ''}</div>`
+    const euRow = reg?.europe?.avgDays != null
+      ? `<div class="oil-stocks-region-row"><span class="oil-stocks-region-name">Europe</span><span>avg ${escapeHtml(String(reg.europe.avgDays))}d / min ${escapeHtml(String(reg.europe?.minDays ?? '—'))}d</span>${(reg.europe.countBelowObligation ?? 0) > 0 ? `<span class="energy-below-obligation-badge">${escapeHtml(String(reg.europe.countBelowObligation))} below 90d</span>` : ''}</div>`
       : '';
-    const apRow = reg.asiaPacific.avgDays !== null
-      ? `<div class="oil-stocks-region-row"><span class="oil-stocks-region-name">Asia-Pacific</span><span>avg ${escapeHtml(String(reg.asiaPacific.avgDays))}d / min ${escapeHtml(String(reg.asiaPacific.minDays))}d</span>${reg.asiaPacific.countBelowObligation > 0 ? `<span class="energy-below-obligation-badge">${escapeHtml(String(reg.asiaPacific.countBelowObligation))} below 90d</span>` : ''}</div>`
+    const apRow = reg?.asiaPacific?.avgDays != null
+      ? `<div class="oil-stocks-region-row"><span class="oil-stocks-region-name">Asia-Pacific</span><span>avg ${escapeHtml(String(reg.asiaPacific.avgDays))}d / min ${escapeHtml(String(reg.asiaPacific?.minDays ?? '—'))}d</span>${(reg.asiaPacific.countBelowObligation ?? 0) > 0 ? `<span class="energy-below-obligation-badge">${escapeHtml(String(reg.asiaPacific.countBelowObligation))} below 90d</span>` : ''}</div>`
       : '';
-    const naRow = `<div class="oil-stocks-region-row"><span class="oil-stocks-region-name">North America</span><span>${escapeHtml(String(reg.northAmerica.netExporters))} net exporter(s)${reg.northAmerica.avgDays != null ? `, avg ${escapeHtml(String(reg.northAmerica.avgDays))}d` : ''}</span></div>`;
+    const naRow = reg?.northAmerica
+      ? `<div class="oil-stocks-region-row"><span class="oil-stocks-region-name">North America</span><span>${escapeHtml(String(reg.northAmerica.netExporters ?? 0))} net exporter(s)${reg.northAmerica.avgDays != null ? `, avg ${escapeHtml(String(reg.northAmerica.avgDays))}d` : ''}</span></div>`
+      : '';
 
     return `
       <div class="energy-tape-section" style="margin-top:8px">
