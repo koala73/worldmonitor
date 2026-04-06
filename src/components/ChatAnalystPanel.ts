@@ -76,6 +76,7 @@ export class ChatAnalystPanel extends Panel {
       title: 'WM Analyst',
       premium: 'locked',
       defaultRowSpan: 2,
+      infoTooltip: 'AI analyst with live context across geopolitical, market, military, and economic domains. Powered by Claude with real-time data injected from active WorldMonitor feeds.',
     });
     this.buildUI();
   }

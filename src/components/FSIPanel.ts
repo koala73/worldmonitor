@@ -56,7 +56,7 @@ export class FSIPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'fsi', title: 'Financial Stress Indicator', showCount: false });
+    super({ id: 'fsi', title: 'Financial Stress Indicator', showCount: false, infoTooltip: 'Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive = above-average stress. Source: Federal Reserve Bank of Kansas City.' });
   }
 
   public async fetchData(): Promise<boolean> {

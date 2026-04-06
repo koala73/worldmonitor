@@ -69,7 +69,7 @@ export class CotPositioningPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'cot-positioning', title: 'CFTC COT Positioning', showCount: false });
+    super({ id: 'cot-positioning', title: 'CFTC COT Positioning', showCount: false, infoTooltip: 'CFTC Commitments of Traders report: net positioning of commercials, large speculators, and small traders across commodity and financial futures. Published weekly (Friday). Source: CFTC.' });
   }
 
   public async fetchData(): Promise<boolean> {

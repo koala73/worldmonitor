@@ -124,7 +124,7 @@ export class LiveWebcamsPanel extends Panel {
   private boundEmbedMessageHandler: (e: MessageEvent) => void;
 
   constructor() {
-    super({ id: 'live-webcams', title: t('panels.liveWebcams'), className: 'panel-wide', closable: true, collapsible: true });
+    super({ id: 'live-webcams', title: t('panels.liveWebcams'), className: 'panel-wide', closable: true, collapsible: true, infoTooltip: 'Live webcam feeds from geopolitically significant locations worldwide — conflict zones, capital cities, border crossings, and strategic chokepoints. Streams sourced from YouTube and public CCTV networks.' });
     this.insertLiveCountBadge(WEBCAM_FEEDS.length);
 
     const prefs = loadWebcamPrefs(this.forceSingleView);

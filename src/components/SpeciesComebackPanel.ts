@@ -39,7 +39,7 @@ const FALLBACK_IMAGE_SVG = 'data:image/svg+xml,' + encodeURIComponent(
 
 export class SpeciesComebackPanel extends Panel {
   constructor() {
-    super({ id: 'species', title: 'Conservation Wins', trackActivity: false });
+    super({ id: 'species', title: 'Conservation Wins', trackActivity: false, infoTooltip: 'Positive conservation news: species population recoveries, habitat restoration milestones, and de-extinction efforts. Sourced from IUCN, WWF, and conservation research publications.' });
   }
 
   /**

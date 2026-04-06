@@ -14,7 +14,7 @@ import { replaceChildren } from '@/utils/dom-utils';
 
 export class RenewableEnergyPanel extends Panel {
   constructor() {
-    super({ id: 'renewable', title: 'Renewable Energy', trackActivity: false });
+    super({ id: 'renewable', title: 'Renewable Energy', trackActivity: false, infoTooltip: 'Global renewable energy project pipeline: solar, wind, hydro, and storage capacity additions. Tracks announced, under-construction, and commissioned projects by region and technology type.' });
   }
 
   /**

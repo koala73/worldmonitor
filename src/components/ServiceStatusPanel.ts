@@ -27,7 +27,7 @@ export class ServiceStatusPanel extends Panel {
   private error: string | null = null;
   private filter: CategoryFilter = 'all';
   constructor() {
-    super({ id: 'service-status', title: t('panels.serviceStatus'), showCount: false });
+    super({ id: 'service-status', title: t('panels.serviceStatus'), showCount: false, infoTooltip: 'Live operational status of major cloud platforms, financial infrastructure, and critical internet services. Sourced from official status pages (AWS, Azure, GCP, Cloudflare, exchanges). Incidents may indicate broader disruption events.' });
   }
 
   private lastServicesJson = '';

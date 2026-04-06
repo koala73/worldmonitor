@@ -30,7 +30,7 @@ export class DiseaseOutbreaksPanel extends Panel {
   private _filter: string = '';
 
   constructor() {
-    super({ id: 'disease-outbreaks', title: 'Disease Outbreaks', showCount: false });
+    super({ id: 'disease-outbreaks', title: 'Disease Outbreaks', showCount: false, infoTooltip: 'Active disease outbreak alerts from WHO, ProMED, and health ministries. Tracks confirmed outbreaks, affected regions, case counts, and threat levels. Updated as new reports are published.' });
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-filter]');
       if (btn) {

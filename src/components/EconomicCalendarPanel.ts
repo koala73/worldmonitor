@@ -89,7 +89,7 @@ export class EconomicCalendarPanel extends Panel {
   private _region: RegionFilter = 'all';
 
   constructor() {
-    super({ id: 'economic-calendar', title: 'Economic Calendar', showCount: false });
+    super({ id: 'economic-calendar', title: 'Economic Calendar', showCount: false, infoTooltip: 'Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, central bank decisions, and more. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers.' });
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-region]');
       if (!btn) return;

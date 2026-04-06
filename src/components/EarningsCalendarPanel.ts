@@ -125,7 +125,7 @@ export class EarningsCalendarPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'earnings-calendar', title: 'Earnings Calendar', showCount: false });
+    super({ id: 'earnings-calendar', title: 'Earnings Calendar', showCount: false, infoTooltip: 'Upcoming and recent earnings releases for major public companies. Shows EPS estimates vs actuals, revenue, and beat/miss classification. Source: financial data providers.' });
   }
 
   public async fetchData(): Promise<boolean> {

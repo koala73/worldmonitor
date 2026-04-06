@@ -124,7 +124,7 @@ export class MacroTilesPanel extends Panel {
   private _estrObs: { date: string; value: number }[] = [];
 
   constructor() {
-    super({ id: 'macro-tiles', title: 'Macro Indicators', showCount: false });
+    super({ id: 'macro-tiles', title: 'Macro Indicators', showCount: false, infoTooltip: 'Key macroeconomic indicators for the US and Euro Area: CPI, unemployment, GDP, and central bank rates. Values shown with prior period delta. Source: FRED (Federal Reserve Economic Data).' });
 
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');

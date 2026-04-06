@@ -234,7 +234,7 @@ export class YieldCurvePanel extends Panel {
   private _rateRows: RateRow[] = [];
 
   constructor() {
-    super({ id: 'yield-curve', title: 'Yield Curve & Rates', showCount: false });
+    super({ id: 'yield-curve', title: 'Yield Curve & Rates', showCount: false, infoTooltip: 'US Treasury yield curve (2Y, 5Y, 10Y, 30Y) and key rate spreads including 10Y-2Y inversion indicator. Also shows Euro area rates (EURIBOR, ESTR). An inverted curve historically precedes recessions. Source: FRED.' });
 
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');

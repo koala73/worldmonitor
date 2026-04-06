@@ -14,7 +14,7 @@ export class RegulationPanel extends Panel {
   private viewMode: 'timeline' | 'deadlines' | 'regulations' | 'countries' = 'timeline';
 
   constructor(id: string) {
-    super({ id, title: t('panels.regulation') });
+    super({ id, title: t('panels.regulation'), infoTooltip: 'Regulatory actions, policy changes, and enforcement updates from global regulators — financial, tech, energy, and trade authorities. Sourced from official government and regulatory body publications.' });
     this.render();
   }
 
