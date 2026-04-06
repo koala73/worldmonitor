@@ -545,3 +545,254 @@ Creates a Dodo Payments checkout session.
 Returns `{ checkoutUrl }` for redirect.
 
 ---
+
+---
+
+## 6. Server RPC Services — `server/worldmonitor/`
+
+Each domain lives at `server/worldmonitor/{domain}/v1/`. A `handler.ts` composes individual RPC method files. All handlers share `server/_shared/` utilities for caching, rate limiting, relay, and LLM calls.
+
+### Shared Utilities — `server/_shared/`
+
+| File | Purpose |
+|------|---------|
+| `cache.ts` | Redis read/write helpers; `getOrSet(key, ttl, fn)` pattern |
+| `rate-limit.ts` | Upstash sliding window; reads `cf-connecting-ip` for real client IP |
+| `relay.ts` | Mirrors `api/_relay.js`; proxies via Railway for blocked IPs |
+| `llm.ts` | `callLlmReasoningStream()` — Groq primary, OpenRouter fallback; handles SSE streaming |
+| `llm-sanitize.js` | Strips control chars, trims to token budget before LLM calls |
+| `premium-check.ts` | `isCallerPremium(req)` — validates Clerk JWT + Convex entitlement |
+| `upstash-json.ts` | Redis pipeline batching |
+
+---
+
+### Aviation Service — `aviation/v1/`
+
+**RPC Methods:**
+| Method | External API | Logic |
+|--------|-------------|-------|
+| `listAirportDelays` | FAA ASWS XML | Parses FAA XML; maps delay programs (GDP, GS, AFP) to structured alerts |
+| `getAirportOpsSummary` | FAA + AviationStack | Combines delay type, affected routes, avg delay minutes |
+| `listAirportFlights` | OpenSky (relay) | Flights within 50nm bounding box; filtered by departure/arrival airport |
+| `getCarrierOps` | AviationStack | `AVIATIONSTACK_API`; airline on-time performance by carrier code |
+| `getFlightStatus` | AviationStack + FR24 | Real-time flight position + gate info |
+| `trackAircraft` | Wingbits + OpenSky | Live hex → position; falls back chain: Wingbits → OpenSky relay → FR24 |
+| `searchFlightPrices` | Google Flights scrape | Returns cheapest available fares |
+| `listAviationNews` | RSS feeds (Aviation Week, FlightGlobal) | Via relay; parsed + categorized |
+| `getYoutubeLiveStreamInfo` | YouTube Data API | Airport webcam live stream URLs |
+| `searchGoogleFlights` | Google ITA matrix scrape | Price calendar for date flexibility |
+| `searchGoogleDates` | Google Flights | Flexible date search results |
+
+**Cache TTL:** 120s public tier, 60s for callsign/hex queries, 10s negative cache.
+
+---
+
+### Economic Service — `economic/v1/`
+
+**RPC Methods:**
+| Method | External API | Env Var | Logic |
+|--------|-------------|---------|-------|
+| `getFredSeries` | FRED API | `FRED_API_KEY` | Any FRED series by ID; frequency, units, observation range |
+| `getFredSeriesBatch` | FRED API | `FRED_API_KEY` | Up to 10 series in parallel |
+| `listWorldBankIndicators` | World Bank Open Data | — | Development indicators by country + year |
+| `getEnergyPrices` | EIA API | `EIA_API_KEY` | Crude, natural gas, electricity prices |
+| `getMacroSignals` | FRED + BLS + ECB | Multiple | Composite macro signal: rate, inflation, employment, yield curve |
+| `getBisPolicyRates` | BIS API | — | Central bank policy rates for 60+ countries |
+| `getBisExchangeRates` | BIS API | — | Broad/narrow effective exchange rates |
+| `getBisCredit` | BIS API | — | Private sector credit-to-GDP; early warning indicator |
+| `getEconomicCalendar` | TradingEconomics scrape | — | Upcoming economic releases by country |
+| `getCrudeInventories` | EIA API | `EIA_API_KEY` | Weekly petroleum status report |
+| `getNatGasStorage` | EIA API | `EIA_API_KEY` | Weekly natural gas in storage |
+| `getEcbFxRates` | ECB SDMX | — | Daily EUR cross rates |
+| `getEurostatCountryData` | Eurostat REST | — | GDP, unemployment, trade balance by EU country |
+| `getEuGasStorage` | AGSI+ API (GIE) | — | European gas storage levels by country |
+| `getEuYieldCurve` | ECB SDMX | — | Sovereign yield curves (2Y, 5Y, 10Y, 30Y) |
+| `getEuFsi` | ECB Composite Indicator | — | EU Financial Stress Index |
+| `getEconomicStress` | FRED composite | `FRED_API_KEY` | Composite stress index (volatility + credit spreads + money market) |
+| `getFaoFoodPriceIndex` | FAO REST | — | Monthly FFPI and sub-indices (cereals, oils, dairy, meat, sugar) |
+| `listGroceryBasketPrices` | UAE retail scrapers | — | Price of ~50 grocery items across UAE retailers |
+| `listBigMacPrices` | Economist Big Mac Index | — | PPP-adjusted burger prices by country |
+| `listFuelPrices` | GlobalPetrolPrices | — | Petrol/diesel prices for 170+ countries |
+| `getNationalDebt` | IMF WEO | — | Debt-to-GDP by country |
+| `getBlsSeries` | BLS Public Data API | `BLS_API_KEY` | Any BLS series (CPI, PPI, Employment Situation) |
+
+---
+
+### Market Service — `market/v1/`
+
+**RPC Methods:**
+| Method | External APIs | Logic |
+|--------|--------------|-------|
+| `listMarketQuotes` | Yahoo Finance → Finnhub | Batch stock quote fetch; 600ms Yahoo gate enforced in sidecar |
+| `listCryptoQuotes` | CoinGecko `/coins/markets` | Top N coins by market cap; includes 24h change, volume |
+| `listCommodityQuotes` | Yahoo Finance futures | WTI, Brent, Gold, Silver, Copper, Natural Gas, Wheat, Corn futures |
+| `getSectorSummary` | Finnhub sector metrics | `FINNHUB_API_KEY`; sector ETF performance + relative strength |
+| `listStablecoinMarkets` | CoinGecko | Stablecoin peg deviation monitoring (USDT, USDC, DAI, FRAX) |
+| `listEtfFlows` | Yahoo Finance | BTC spot ETF net flows (IBIT, FBTC, GBTC, ARKB) estimated from NAV delta |
+| `getCountryStockIndex` | Yahoo Finance | National stock index by ISO country code (^GSPC, ^FTSE, ^N225, etc.) |
+| `listGulfQuotes` | Yahoo Finance | GCC indices (Tadawul, DFM, ADX, QSE), AED/USD, oil benchmarks |
+| `analyzeStock` | LLM + news search | `GROQ_API_KEY`; fundamental + technical narrative for a ticker |
+| `backtestStock` | Yahoo Finance historical | Simple backtest: entry/exit strategy applied to OHLCV history |
+| `getFearGreedIndex` | CNN scrape | 0–100 score with label (Extreme Fear → Extreme Greed) |
+| `listEarningsCalendar` | Finnhub | `FINNHUB_API_KEY`; earnings dates + EPS estimates for given week |
+| `getCotPositioning` | CFTC COT report | Commitment of Traders; net long/short positioning by category |
+
+---
+
+### Climate Service — `climate/v1/`
+
+**RPC Methods:**
+| Method | Source | Logic |
+|--------|--------|-------|
+| `listFireDetections` | NASA FIRMS | `NASA_FIRMS_API_KEY`; VIIRS + MODIS detections; 24h window; global |
+| `listWeatherAlerts` | Open-Meteo Alerts API | Active severe weather warnings by lat/lon bounding box |
+| `getAirQuality` | WAQI API | `WAQI_API_KEY`; AQI + PM2.5 + PM10 for city/station |
+| `getCO2Monitoring` | NOAA GML | Mauna Loa daily CO2 ppm; trend + annual delta |
+| `getOceanIce` | NSIDC / NOAA | Arctic + Antarctic sea ice extent vs historical baseline |
+
+---
+
+### Conflict Service — `conflict/v1/`
+
+**RPC Methods:**
+| Method | Source | Env Var | Logic |
+|--------|--------|---------|-------|
+| `listUcdpEvents` | UCDP GED | `UCDP_ACCESS_TOKEN` | Georeferenced conflict events; filtered by date + fatality threshold |
+| `listAcledEvents` | ACLED API | `ACLED_ACCESS_TOKEN` | 7 event types (battles, explosions, protests, riots, etc.) |
+| `listIranEvents` | ACLED filtered | `ACLED_ACCESS_TOKEN` | Iran actors + proxy groups; theater-specific filtering |
+| `getHumanitarianSummary` | OCHA/ReliefWeb | — | Active humanitarian crises by region |
+
+---
+
+### Cyber Service — `cyber/v1/`
+
+**`listCyberThreats`** — aggregates 5 threat intel feeds:
+
+```
+1. Feodo Tracker JSON  →  C2 botnet IPs (abuse.ch)
+2. URLhaus API         →  Malicious URLs (abuse.ch)   [URLHAUS_AUTH_KEY]
+3. C2IntelFeeds CSV    →  GitHub raw; community C2 list
+4. AlienVault OTX      →  Threat pulse IOCs            [OTX_API_KEY]
+5. AbuseIPDB           →  Top reported IPs             [ABUSEIPDB_API_KEY]
+
+Post-processing:
+  - GeoIP lookup for each IP (lat/lon, country, ASN)
+  - Threat type classification: C2, malware, phishing, scanner, botnet
+  - Score: composite 0–100 based on report count + age + feed weight
+  - Deduplicated by IP/URL key
+```
+
+---
+
+### Infrastructure Service — `infrastructure/v1/`
+
+**RPC Methods:**
+| Method | Source | Logic |
+|--------|--------|-------|
+| `listInternetOutages` | Cloudflare Radar | `CLOUDFLARE_API_TOKEN`; ASN-level outage detection |
+| `listServiceStatuses` | Atom Finance + status pages | Scrapes AWS, GCP, Azure, GitHub, Cloudflare status pages |
+| `listDDoSAttacks` | Cloudflare Radar | DDoS event timeline with target country + attack vector |
+| `listTrafficAnomalies` | Cloudflare Radar | BGP anomalies, traffic volume deviations |
+| `getIpGeo` | MaxMind / ip-api | IP → lat/lon, country, ASN |
+| `reverseGeocode` | Nominatim | lat/lon → address components |
+| `getCableHealth` | TeleGeography (scrape) | Submarine cable disruption reports |
+| `listTemporalAnomalies` | Internal baseline engine | Compares current data vs rolling baseline (see Section 11) |
+
+---
+
+### Military Service — `military/v1/`
+
+**RPC Methods:**
+| Method | Source | Env Var | Logic |
+|--------|--------|---------|-------|
+| `listMilitaryFlights` | Wingbits API | `WINGBITS_API_KEY` | Active military aircraft; filtered by hex code prefix (military registrations) |
+| `getAircraftDetailsBatch` | Wingbits + ADS-B Exchange | `WINGBITS_API_KEY` | Registration, type, operator, origin country for up to 20 hex codes |
+| `getWingbitsStatus` | Wingbits health | `WINGBITS_API_KEY` | Feed health; coverage stats; last seen timestamps |
+| `getWingbitsLiveFlight` | Wingbits | `WINGBITS_API_KEY` | Full track history for a single military flight |
+
+---
+
+### Research Service — `research/v1/`
+
+**RPC Methods:**
+| Method | Source | Logic |
+|--------|--------|-------|
+| `listTechEvents` | Techmeme ICS + dev.events RSS | Parses iCal + RSS; deduplicates; geo-tags conference locations |
+| `listHackernewsItems` | HN Algolia API | Top 30 stories; includes points, comment count, domain |
+| `listArxivPapers` | arXiv API | Search by category (cs.AI, cs.CR, etc.); recent submissions |
+| `listTrendingRepos` | GitHub trending scrape | Language-filtered; stars/forks; description |
+
+---
+
+### Sanctions Service — `sanctions/v1/`
+
+**`lookupEntity`** — searches 3 consolidated lists:
+```
+1. UN Consolidated List    (XML feed)
+2. OFAC SDN List           (CSV)
+3. EU Consolidated List    (XML)
+
+Matching: fuzzy name matching (Levenshtein distance ≤ 2)
+Returns: entity type, listing date, grounds, aliases, associated countries
+```
+
+**`listSanctionsPressure`** — per-country sanctions exposure score:
+```
+Score = (# active sanctioned entities with country ties) × weight
+Weight: UN=3, OFAC=2, EU=1
+Normalized 0–100
+```
+
+---
+
+### Intelligence Service — `intelligence/v1/`
+
+**`chatAnalystContext`** — assembles LLM context from Redis:
+```
+Sources pulled:
+  - Daily brief (news insights)
+  - Risk scores (per country)
+  - Theater posture (regional military)
+  - GDELT intel
+  - Cross-source signals
+  - Market implications
+
+Returns structured context string (≤8000 tokens) for the AI Analyst
+```
+
+**`getCompanyEnrichment`** — company data via search fallback chain:
+```
+1. SerpAPI (SERPAPI_API_KEYS) → Google Knowledge Graph
+2. Brave Search (BRAVE_API_KEYS) → web results
+3. Exa Search (EXA_API_KEYS) → semantic search
+Returns: name, description, sector, HQ, executives, recent news
+```
+
+---
+
+### Remaining Services (summary)
+
+| Service | Domain | Key Sources | Key Methods |
+|---------|--------|-------------|-------------|
+| `maritime/v1/` | Ship tracking | IHO NAVAREA, AIS relay | `listNavigationalWarnings`, `listVesselPositions` |
+| `natural/v1/` | Natural disasters | NASA EONET, GDACS | `listNaturalEvents` |
+| `news/v1/` | News + summaries | RSS relay, Groq | `summarizeArticle`, `listInsights` |
+| `positive-events/v1/` | Good news | Curated RSS feeds | `listPositiveEvents` |
+| `prediction/v1/` | Prediction markets | Polymarket, Manifold | `listPredictions` |
+| `radiation/v1/` | Radiation monitoring | Safecast, RadiationWatch.org | `listRadiationObservations` |
+| `resilience/v1/` | Societal resilience | Multi-source composite | `getResilienceScores` |
+| `seismology/v1/` | Earthquakes | USGS, EMSC | `listEarthquakes` |
+| `supply-chain/v1/` | Supply chain | Xeneta, manual | `getChokepointStatus`, `getShippingRates`, `listMinerals` |
+| `thermal/v1/` | Thermal anomalies | NASA FIRMS + custom | `listThermalEvents` |
+| `trade/v1/` | Trade flows | UN COMTRADE, customs | `listTradeFlows`, `getCustomsRevenue` |
+| `unrest/v1/` | Civil unrest | ACLED | `listUnrestEvents` |
+| `webcam/v1/` | Live webcams | Windy.com, Webcams.travel | `listWebcams`, `getWebcamImage` |
+| `imagery/v1/` | Satellite imagery | NASA EOSDIS | `searchImagery` |
+| `health/v1/` | Disease + health | WHO, CDC, ECDC | `listDiseaseOutbreaks` |
+| `giving/v1/` | Charity giving | GiveWell, charity ratings | `listCharities`, `getImpactMetrics` |
+| `consumer-prices/v1/` | Consumer prices | UAE retail, FAO | `getConsumerPrices` |
+| `displacement/v1/` | Refugees/IDPs | UNHCR, IDMC | `getDisplacementSummary` |
+| `forecast/v1/` | Forecasts | Prediction markets, internal | `listForecasts` |
+| `wildfire/v1/` | Active fires | NASA FIRMS | `listFireDetections` |
+
+---
