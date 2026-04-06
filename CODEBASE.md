@@ -361,3 +361,187 @@ verifyTurnstile(token, ip)
 SSRF protection for the RSS proxy. Contains an allowlist of permitted RSS feed domains. Any URL not matching this list is rejected with 403.
 
 ---
+
+---
+
+## 5. API Endpoints — `api/`
+
+### `/api/bootstrap` — `bootstrap.js`
+**Route:** `GET /api/bootstrap` or `POST /api/bootstrap`
+
+**What it does:** Aggregates ~90 Redis cache keys into a single response. This is the first request the frontend makes — it hydrates all panels simultaneously.
+
+**Logic:**
+```
+1. Validate CORS + API key
+2. Split keys into FAST_KEYS and SLOW_KEYS
+3. redisPipeline(fastKeys) — first batch, returned immediately
+4. redisPipeline(slowKeys) — second batch (streamed or parallel)
+5. Merge both maps → return as JSON dict
+```
+
+**~90 Redis keys served:**
+`earthquakes`, `outages`, `serviceStatuses`, `ddosAttacks`, `trafficAnomalies`, `marketQuotes`, `commodityQuotes`, `sectors`, `etfFlows`, `macroSignals`, `bisPolicy`, `bisExchange`, `bisCredit`, `shippingRates`, `chokepoints`, `minerals`, `giving`, `climateAnomalies`, `climateDisasters`, `co2Monitoring`, `oceanIce`, `radiationWatch`, `thermalEscalation`, `crossSourceSignals`, `wildfires`, `cyberThreats`, `predictions`, `cryptoQuotes`, `cryptoSectors`, `defiTokens`, `aiTokens`, `otherTokens`, `unrestEvents`, `iranEvents`, `ucdpEvents`, `weatherAlerts`, `techEvents`, `gdeltIntel`, `correlationCards`, `forecasts`, `securityAdvisories`, `sanctionsPressure`, `consumerPrices*`, `groceryBasket`, `bigmac`, `fuelPrices`, `fearGreedIndex`, `crudeInventories`, `natGasStorage`, `diseaseOutbreaks`, `pizzint`, `theaterPosture`, `riskScores`, and 40+ more.
+
+---
+
+### `/api/aviation/` — Flight & Airport Data
+
+| File | Route | Data Source | Logic |
+|------|-------|-------------|-------|
+| `[icao].js` | `GET /api/aviation/:icao` | OpenSky Network (relay) | Aircraft in bounding box around airport; falls back to relay if direct fails |
+| `[callsign].js` | `GET /api/aviation/:callsign` | FlightRadar24 (relay) | Single aircraft live track |
+| `[region].js` | `GET /api/aviation/region/:region` | OpenSky + AviationStack | Regional aircraft density |
+| `delays.js` | `GET /api/aviation/delays` | FAA ASWS XML + AviationStack | Parses FAA XML status feed; normalizes delay types (Ground Stop, GDP, etc.) |
+
+---
+
+### `/api/economic/` — Macroeconomic Data
+
+| File | Data Source | Env Var | What It Returns |
+|------|-------------|---------|-----------------|
+| `fred-series.js` | FRED API | `FRED_API_KEY` | Time series for any FRED series ID (GDP, CPI, Fed Funds Rate, etc.) |
+| `bls-series.js` | BLS API | `BLS_API_KEY` | Employment, unemployment, wage series |
+| `fao-food-prices.js` | FAO REST | — | FAO Food Price Index (FFPI) monthly |
+| `eu-yield-curve.js` | ECB SDMX | — | EU sovereign yield curves by country |
+| `eurostat.js` | Eurostat REST | — | European statistics by country/indicator |
+| `bis-policy.js` | BIS API | — | Central bank policy rates (60+ countries) |
+| `bis-exchange.js` | BIS API | — | Effective exchange rates (nominal/real) |
+| `bis-credit.js` | BIS API | — | Credit-to-GDP ratios |
+| `crude-inventory.js` | EIA API | `EIA_API_KEY` | US crude oil + petroleum product inventories |
+| `nat-gas-storage.js` | EIA API | `EIA_API_KEY` | US natural gas storage (weekly) |
+| `ecb-fx.js` | ECB data portal | — | EUR/XXX daily exchange rates |
+
+---
+
+### `/api/market/` — Financial Markets
+
+| File | Data Source | Logic |
+|------|-------------|-------|
+| `stock-quote.js` | Yahoo Finance → Finnhub fallback | Yahoo primary (free); Finnhub (`FINNHUB_API_KEY`) fallback; 600ms inter-request gate for Yahoo |
+| `crypto-quote.js` | CoinGecko → CoinPaprika fallback | CoinGecko `/coins/markets`; falls back if rate-limited |
+| `commodity-quote.js` | Yahoo Finance futures | Commodity symbols like `CL=F` (WTI), `GC=F` (Gold) |
+| `earnings-calendar.js` | Finnhub | `FINNHUB_API_KEY`; upcoming earnings by date range |
+| `fear-greed.js` | CNN Fear & Greed scrape | Scrapes `production.assets.markets.net.cnn.com`; returns `{ score, label }` |
+
+---
+
+### `/api/climate/` — Climate & Environmental
+
+| File | Data Source | Env Var | Logic |
+|------|-------------|---------|-------|
+| `weather.js` | Open-Meteo alerts API | — | Fetches active weather alerts by bounding box |
+| `satellites.js` | NASA FIRMS | `NASA_FIRMS_API_KEY` | Active fire detections from VIIRS/MODIS; last 24h; world extent |
+| `co2-monitoring.js` | NOAA GML | — | Mauna Loa CO2 daily average; trends |
+
+---
+
+### `/api/conflict/` — Conflict & Violence
+
+| File | Data Source | Env Var | Logic |
+|------|-------------|---------|-------|
+| `ucdp-events.js` | UCDP REST API | `UCDP_ACCESS_TOKEN` | Georeferenced events; last 30 days; includes fatalities |
+| `acled-events.js` | ACLED API | `ACLED_ACCESS_TOKEN` | Political violence + protests; last 30 days; geo-filtered |
+| `iran-events.js` | ACLED filtered | `ACLED_ACCESS_TOKEN` | Iran-specific events including IRGC, proxy activity |
+
+---
+
+### `/api/cyber/` — Cyber Threat Intelligence
+
+| File | Data Source | Env Var | Logic |
+|------|-------------|---------|-------|
+| `feodo-tracker.js` | abuse.ch JSON | — | Botnet C2 IP list; enriched with GeoIP |
+| `urlhaus.js` | URLhaus API | `URLHAUS_AUTH_KEY` | Recent malicious URLs; filtered by online status |
+| `otx.js` | AlienVault OTX | `OTX_API_KEY` | Recent threat pulse indicators (IPs, domains, hashes) |
+| `abuseipdb.js` | AbuseIPDB API | `ABUSEIPDB_API_KEY` | Top 1000 reported IPs; includes ISP + country |
+
+---
+
+### `/api/military/` — Military & Defense
+
+| File | Data Source | Env Var | Logic |
+|------|-------------|---------|-------|
+| `wingbits.js` | Wingbits API | `WINGBITS_API_KEY` | Military aircraft positions (ADSB); filtered by military hex codes |
+| `bases.js` | MIRTA + OSM + Pizzint composite | — | Pre-built military base list; served from Redis |
+| `vessels.js` | AIS relay | `AISSTREAM_API_KEY` | Military vessel AIS positions from relay snapshot |
+
+---
+
+### `/api/intelligence/` — AI-Powered Intelligence
+
+| File | What It Does |
+|------|-------------|
+| `gdelt.js` | Queries GDELT GKG for top event themes + tone by country |
+| `pizzint.js` | Scrapes Pizzint intelligence feed; parses operational military intel |
+| `company-enrichment.js` | Company data lookup: SerpAPI → Brave Search → Exa Search fallback chain; `SERPAPI_API_KEYS`, `BRAVE_API_KEYS`, `EXA_API_KEYS` |
+| `securities-advisories.js` | CISA KEV + NVD CVE feed; last 30 days; severity-filtered |
+
+---
+
+### `/api/chat-analyst.ts` — AI Analyst (Pro)
+**Route:** `POST /api/chat-analyst`  
+**Auth:** Premium users only (`isCallerPremium()`)  
+**Runtime:** Vercel Edge (`iad1`, `lhr1`, `fra1`, `sfo1`)
+
+**Request body:**
+```json
+{ "history": [{role, content}], "query": "...", "domainFocus": "geo|market|military|economic", "geoContext": "US" }
+```
+
+**Response:** `text/event-stream` SSE:
+```
+data: {"meta":{"sources":["Brief","Risk"],"degraded":false}}
+data: {"action":{"type":"suggest-widget","label":"...","prefill":"..."}}
+data: {"delta":"...token..."}
+data: {"done":true}
+```
+
+**Logic chain:**
+```
+1. Validate: max 500 char query, 20 history messages, 800 chars/message
+2. assembleAnalystContext() — pulls Brief, Risk Scores, Theater Posture from Redis
+3. buildAnalystSystemPrompt() — constructs system prompt with context
+4. buildActionEvents() — checks if query is a visual/widget query → suggest-widget action
+5. callLlmReasoningStream() — streams from Groq (primary) or OpenRouter (fallback)
+6. SSE stream: meta → optional action → delta tokens → done
+```
+
+---
+
+### `/api/notification-channels.ts` — Alert Routing
+
+**What it does:** Manages per-user notification channel (Telegram, Slack, Discord, Email) CRUD.
+
+- `GET` — list user's channels (from Convex)
+- `POST` — register new channel; validates webhook URL format
+- `DELETE` — unlink channel
+
+---
+
+### `/api/notify.ts` — Alert Dispatch
+
+Dispatches alert payloads to all configured channels for a user.
+
+**Logic:**
+1. Look up user's `alertRules` from Convex
+2. Check quiet hours (timezone-aware)
+3. Check `digestMode`: if `daily`/`twice_daily`, queue for digest; if `realtime`, dispatch immediately
+4. Route to Telegram bot API / Slack webhook / Discord webhook / Email
+
+---
+
+### `/api/mcp-proxy.js` — Model Context Protocol Proxy
+
+Routes MCP tool calls from the frontend to local/remote MCP servers.  
+Allows the AI Analyst to use tools (search, data lookup) without CORS issues.
+
+---
+
+### `/api/create-checkout.ts` — Billing
+
+**Route:** `POST /api/create-checkout`  
+Creates a Dodo Payments checkout session.  
+**Env:** `DODO_API_KEY`, `DODO_BUSINESS_ID`  
+Returns `{ checkoutUrl }` for redirect.
+
+---
