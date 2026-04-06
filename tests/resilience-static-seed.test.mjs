@@ -329,8 +329,10 @@ describe('resilience static seed payload assembly', () => {
 });
 
 describe('recoverFailedDatasets', () => {
-  const existingFao = { source: 'hdx-ipc', year: 2025, phase3plus: 4_500_000, phase4: 1_200_000, phase5: 300_000 };
-  const existingSo = { source: 'hdx-ipc', year: 2025, phase3plus: 3_000_000, phase4: null, phase5: null };
+  // Fixtures use the post-fix schema: peopleInCrisis + phase.
+  // These are the fields scoreFoodWater() reads from staticRecord.fao.
+  const existingFao = { source: 'hdx-ipc', year: 2025, peopleInCrisis: 4_500_000, phase: 'IPC Phase 5' };
+  const existingSo  = { source: 'hdx-ipc', year: 2025, peopleInCrisis: 3_000_000, phase: 'IPC Phase 3' };
 
   function makeDatasetMaps(faoOverride = new Map()) {
     return {
@@ -351,10 +353,14 @@ describe('recoverFailedDatasets', () => {
     });
     assert.deepEqual(maps.fao.get('YE'), existingFao, 'YE fao should be recovered');
     assert.deepEqual(maps.fao.get('SO'), existingSo, 'SO fao should be recovered');
+    // Verify recovered shape has the fields scoreFoodWater() reads.
+    // If this fails, a FSIN failover would silently produce null for the crisis sub-metric.
+    assert.ok(typeof maps.fao.get('YE').peopleInCrisis === 'number', 'recovered fao must have peopleInCrisis for scoreFoodWater()');
+    assert.ok(typeof maps.fao.get('YE').phase === 'string', 'recovered fao must have phase string for scoreFoodWater()');
   });
 
   it('does not overwrite a partial fao success with prior data', async () => {
-    const freshFao = { source: 'hdx-ipc', year: 2026, phase3plus: 5_000_000, phase4: null, phase5: null };
+    const freshFao = { source: 'hdx-ipc', year: 2026, peopleInCrisis: 5_000_000, phase: 'IPC Phase 3' };
     const maps = makeDatasetMaps(new Map([['YE', freshFao]]));
     await recoverFailedDatasets(maps, ['fao'], {
       readIndex: async () => ({ countries: ['YE'] }),
