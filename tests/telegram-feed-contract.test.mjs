@@ -96,6 +96,27 @@ describe('api/telegram-feed contract normalization', () => {
     assert.equal(data.count, 1);
     assert.equal(data.items[0].ts, '1970-01-01T00:00:00.000Z');
   });
+
+  it('treats an exact 1e12 timestamp value as milliseconds, not seconds', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      enabled: true,
+      items: [{
+        id: 'boundary',
+        channel: 'osint',
+        timestampMs: 1_000_000_000_000,
+        url: 'https://t.me/osint/2',
+        text: 'Boundary timestamp',
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(makeRequest());
+    const data = await res.json();
+    assert.equal(data.items[0].ts, new Date(1_000_000_000_000).toISOString());
+  });
 });
 
 describe('server listTelegramFeed relay normalization', () => {

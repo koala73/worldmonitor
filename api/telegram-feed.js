@@ -59,7 +59,7 @@ const EPOCH_ISO = new Date(0).toISOString();
  * @param {unknown} value
  * @returns {string}
  */
-function toString(value) {
+function toText(value) {
   return value == null ? '' : String(value);
 }
 
@@ -68,7 +68,7 @@ function toString(value) {
  * @returns {string}
  */
 function toHttpUrl(value) {
-  const raw = toString(value).trim();
+  const raw = toText(value).trim();
   if (!raw) return '';
   try {
     const parsed = new URL(raw);
@@ -85,13 +85,13 @@ function toHttpUrl(value) {
 function toIsoTimestamp(value) {
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || value <= 0) return EPOCH_ISO;
-    return new Date(value > 1e12 ? value : value * 1000).toISOString();
+    return new Date(value >= 1e12 ? value : value * 1000).toISOString();
   }
-  const raw = toString(value).trim();
+  const raw = toText(value).trim();
   if (!raw) return EPOCH_ISO;
   const numeric = Number(raw);
   if (Number.isFinite(numeric) && numeric > 0) {
-    return new Date(numeric > 1e12 ? numeric : numeric * 1000).toISOString();
+    return new Date(numeric >= 1e12 ? numeric : numeric * 1000).toISOString();
   }
   const parsed = Date.parse(raw);
   return Number.isFinite(parsed) && parsed > 0 ? new Date(parsed).toISOString() : EPOCH_ISO;
@@ -102,7 +102,7 @@ function toIsoTimestamp(value) {
  * @param {(value: unknown) => string} mapper
  * @returns {string[]}
  */
-function toStringArray(values, mapper = toString) {
+function toTextArray(values, mapper = toText) {
   if (!Array.isArray(values)) return [];
   return values.map(mapper).filter(Boolean);
 }
@@ -112,11 +112,11 @@ function toStringArray(values, mapper = toString) {
  * @returns {TelegramFeedItem}
  */
 function normalizeTelegramMessage(message) {
-  const channel = toString(message.channel ?? message.channelName ?? message.channelTitle).trim();
-  const channelTitle = toString(message.channelTitle ?? message.channelName ?? message.channel).trim();
+  const channel = toText(message.channel ?? message.channelName ?? message.channelTitle).trim();
+  const channelTitle = toText(message.channelTitle ?? message.channelName ?? message.channel).trim();
   const ts = toIsoTimestamp(message.timestampMs ?? message.timestamp ?? message.ts);
-  const text = toString(message.text).trim();
-  const id = toString(message.id).trim() || `${channel || 'telegram'}:${ts}:${text.slice(0, 32)}`;
+  const text = toText(message.text).trim();
+  const id = toText(message.id).trim() || `${channel || 'telegram'}:${ts}:${text.slice(0, 32)}`;
 
   return {
     id,
@@ -126,10 +126,10 @@ function normalizeTelegramMessage(message) {
     url: toHttpUrl(message.sourceUrl ?? message.url),
     ts,
     text,
-    topic: toString(message.topic).trim(),
-    tags: toStringArray(message.tags),
+    topic: toText(message.topic).trim(),
+    tags: toTextArray(message.tags),
     earlySignal: Boolean(message.earlySignal),
-    mediaUrls: toStringArray(message.mediaUrls, toHttpUrl),
+    mediaUrls: toTextArray(message.mediaUrls, toHttpUrl),
   };
 }
 
@@ -144,7 +144,7 @@ function normalizeTelegramFeed(parsed) {
       : [];
   const items = rawMessages.map(normalizeTelegramMessage);
   return {
-    source: toString(parsed.source).trim() || 'telegram',
+    source: toText(parsed.source).trim() || 'telegram',
     earlySignal: Boolean(parsed.earlySignal),
     enabled: parsed.enabled !== false,
     count: items.length,
