@@ -21,7 +21,7 @@ export class TechEventsPanel extends Panel {
   private error: string | null = null;
 
   constructor(id: string, private getLatestNews?: () => NewsItem[]) {
-    super({ id, title: t('panels.events'), showCount: true, infoTooltip: 'Upcoming and recent technology events: conferences, product launches, regulatory hearings, and earnings calls. Aggregated from official event calendars and industry sources.' });
+    super({ id, title: t('panels.events'), showCount: true, infoTooltip: t('components.techEvents.infoTooltip') });
     this.element.classList.add('panel-tall');
     void this.fetchEvents();
   }

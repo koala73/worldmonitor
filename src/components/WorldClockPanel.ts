@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { getLocale } from '@/services/i18n';
+import { t, getLocale } from '@/services/i18n';
 
 interface CityEntry {
   id: string;
@@ -143,7 +143,7 @@ export class WorldClockPanel extends Panel {
   private dragStartY = 0;
 
   constructor() {
-    super({ id: 'world-clock', title: 'World Clock', trackActivity: false, infoTooltip: 'Live local times and market session status for major global financial centers. Shows open/closed status for NYSE, LSE, TSE, SGX, and other exchanges. Useful for coordinating across time zones during market-moving events.' });
+    super({ id: 'world-clock', title: 'World Clock', trackActivity: false, infoTooltip: t('components.worldClock.infoTooltip') });
     this.homeCityId = detectHomeCity();
     this.selectedCities = loadSelectedCities();
 

@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { fetchHormuzTracker } from '@/services/hormuz-tracker';
 import type { HormuzTrackerData, HormuzChart, HormuzSeries } from '@/services/hormuz-tracker';
@@ -62,7 +63,7 @@ export class HormuzPanel extends Panel {
   private tooltipBound = false;
 
   constructor() {
-    super({ id: 'hormuz-tracker', title: 'Hormuz Trade Tracker', showCount: false, infoTooltip: 'Live AIS vessel tracking through the Strait of Hormuz, the world\'s most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. ~20% of global oil supply transits here daily.' });
+    super({ id: 'hormuz-tracker', title: 'Hormuz Trade Tracker', showCount: false, infoTooltip: t('components.hormuzTracker.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
