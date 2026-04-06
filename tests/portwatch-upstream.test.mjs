@@ -110,8 +110,10 @@ describe('PortWatch standalone seeder (seed-portwatch.mjs)', () => {
     assert.doesNotMatch(relaySrc, /function startPortWatchSeedLoop/);
   });
 
-  it('relay still holds PORTWATCH_REDIS_KEY for seedTransitSummaries hydration', () => {
+  it('relay reads PORTWATCH_REDIS_KEY fresh every seedTransitSummaries cycle (no stale in-memory guard)', () => {
     assert.match(relaySrc, /supply_chain:portwatch:v1/);
+    assert.doesNotMatch(relaySrc, /let latestPortwatchData/);
+    assert.doesNotMatch(relaySrc, /if\s*\(\s*!latestPortwatchData\s*\)/);
   });
 });
 
