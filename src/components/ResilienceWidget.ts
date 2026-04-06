@@ -265,7 +265,7 @@ export class ResilienceWidget {
       h(
         'div',
         { className: 'resilience-widget__domains' },
-        ...data.domains.map((domain) => this.renderDomainRow(domain)),
+        ...data.domains.map((domain) => this.renderDomainRow(domain, preview)),
       ),
       h(
         'div',
@@ -283,13 +283,13 @@ export class ResilienceWidget {
     );
   }
 
-  private renderDomainRow(domain: ResilienceDomain): HTMLElement {
+  private renderDomainRow(domain: ResilienceDomain, preview = false): HTMLElement {
     const score = clampScore(domain.score);
     const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[getResilienceVisualLevel(score)];
 
     const attrs: Record<string, string> = { className: 'resilience-widget__domain-row' };
 
-    if (domain.id === 'energy' && this.energyMixData?.mixAvailable) {
+    if (!preview && domain.id === 'energy' && this.energyMixData?.mixAvailable) {
       const d = this.energyMixData;
       const parts = [
         `Import dep: ${d.importShare.toFixed(1)}%`,
