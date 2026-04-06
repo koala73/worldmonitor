@@ -182,6 +182,17 @@ describe('energy shock scenario computation', () => {
       assert.ok(assessment.includes('suez'));
     });
 
+    it('uses net-exporter branch when effectiveCoverDays === -1', () => {
+      const assessment = buildAssessment('SA', 'hormuz', true, 0.8, -1, 0, 50, []);
+      assert.ok(assessment.includes('net oil exporter'));
+    });
+
+    it('net-exporter branch takes priority over low-Gulf-share branch', () => {
+      const assessment = buildAssessment('NO', 'hormuz', true, 0.05, -1, 0, 50, []);
+      assert.ok(assessment.includes('net oil exporter'));
+      assert.ok(!assessment.includes('low Gulf crude dependence'));
+    });
+
     it('uses low-dependence branch when gulfCrudeShare < 0.1', () => {
       const assessment = buildAssessment('DE', 'hormuz', true, 0.05, 180, 90, 50, []);
       assert.ok(assessment.includes('low Gulf crude dependence'));
@@ -205,11 +216,5 @@ describe('energy shock scenario computation', () => {
       assert.ok(assessment.includes('25.0%'));
     });
 
-    it('uses net-exporter branch when effectiveCoverDays is -1', () => {
-      const assessment = buildAssessment('SA', 'hormuz', true, 0.8, -1, 0, 50, []);
-      assert.ok(assessment.includes('net oil exporter'));
-      assert.ok(assessment.includes('SA'));
-      assert.ok(assessment.includes('hormuz'));
-    });
   });
 });

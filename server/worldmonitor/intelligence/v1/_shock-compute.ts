@@ -59,11 +59,11 @@ export function buildAssessment(
   if (!dataAvailable) {
     return `Insufficient import data for ${code} to model ${chokepointId} exposure.`;
   }
-  if (gulfCrudeShare < 0.1) {
-    return `${code} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${chokepointId} disruption has limited direct impact.`;
-  }
   if (effectiveCoverDays === -1) {
     return `${code} is a net oil exporter; ${chokepointId} disruption affects export revenue, not domestic supply.`;
+  }
+  if (gulfCrudeShare < 0.1) {
+    return `${code} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${chokepointId} disruption has limited direct impact.`;
   }
   if (effectiveCoverDays > 90) {
     return `With ${daysOfCover} days IEA cover, ${code} can bridge a ${disruptionPct}% ${chokepointId} disruption for ~${effectiveCoverDays} days.`;
