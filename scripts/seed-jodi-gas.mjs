@@ -251,15 +251,23 @@ if (isMain) {
     validateFn: validateGasCountries,
     publishTransform: (records) => records.map(r => r.iso2),
     recordCount: (records) => (Array.isArray(records) ? records.length : 0),
+    extraKeys: [
+      {
+        key: LNG_VULNERABILITY_KEY,
+        ttl: GAS_TTL,
+        transform: (records) => {
+          const updatedAt = new Date().toISOString();
+          const dataMonths = records.map(r => r.dataMonth).filter(Boolean).sort();
+          const dataMonth = dataMonths[dataMonths.length - 1] ?? '';
+          return buildLngVulnerabilityIndex(records, dataMonth, updatedAt);
+        },
+      },
+    ],
     afterPublish: async (records) => {
       for (const record of records) {
         await writeExtraKey(`${KEY_PREFIX}${record.iso2}`, record, GAS_TTL);
       }
-      const updatedAt = new Date().toISOString();
-      const dataMonths = records.map(r => r.dataMonth).filter(Boolean).sort();
-      const dataMonth = dataMonths[dataMonths.length - 1] ?? '';
-      const index = buildLngVulnerabilityIndex(records, dataMonth, updatedAt);
-      await writeExtraKey(LNG_VULNERABILITY_KEY, index, GAS_TTL);
+      // LNG vulnerability index is now written via extraKeys (gets TTL-preserved on failure)
     },
   });
 }
