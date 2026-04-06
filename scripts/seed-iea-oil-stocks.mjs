@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, getRedisCredentials } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -229,6 +229,14 @@ const COUNTRY_EXTRA_KEYS = Object.values(COUNTRY_MAP).map(iso2 => ({
   transform: (data) => data.members?.find(m => m.iso2 === iso2) ?? null,
 }));
 
+// Analysis key included in extraKeys so runSeed extends its TTL on fetch
+// failure or validation skip — preventing expiry while the index is healthy.
+const ANALYSIS_EXTRA_KEY = {
+  key: ANALYSIS_KEY,
+  ttl: TTL_SECONDS,
+  transform: (data) => buildOilStocksAnalysis(data.members, data.dataMonth, data.seededAt),
+};
+
 const isMain = process.argv[1]?.endsWith('seed-iea-oil-stocks.mjs');
 if (isMain) {
   runSeed('energy', 'iea-oil-stocks', CANONICAL_KEY, fetchIeaOilStocks, {
@@ -237,17 +245,25 @@ if (isMain) {
     sourceVersion: 'iea-oil-stocks-v1',
     recordCount: (data) => data?.members?.length || 0,
     publishTransform: (data) => buildIndex(data.members, data.dataMonth, data.seededAt),
-    extraKeys: COUNTRY_EXTRA_KEYS,
+    extraKeys: [...COUNTRY_EXTRA_KEYS, ANALYSIS_EXTRA_KEY],
     afterPublish: async (data) => {
+      // Data is written by ANALYSIS_EXTRA_KEY in extraKeys above.
+      // Write only the seed-meta here with a TTL that exceeds the health
+      // maxStaleMin threshold (50 days > 42 days) so health never reports
+      // stale/missing while the data key is still alive (40-day TTL).
       const analysis = buildOilStocksAnalysis(data.members, data.dataMonth, data.seededAt);
-      await writeExtraKeyWithMeta(
-        ANALYSIS_KEY,
-        analysis,
-        TTL_SECONDS,
-        analysis.ieaMembers.length,
-        'seed-meta:energy:oil-stocks-analysis',
-      );
-      console.log(`  Analysis key ${ANALYSIS_KEY}: written (${analysis.ieaMembers.length} members)`);
+      const { url, token } = getRedisCredentials();
+      const metaTtl = Math.max(86400 * 50, TTL_SECONDS);
+      const metaKey = 'seed-meta:energy:oil-stocks-analysis';
+      const meta = JSON.stringify({ fetchedAt: Date.now(), recordCount: analysis.ieaMembers.length });
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(['SET', metaKey, meta, 'EX', metaTtl]),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!resp.ok) console.warn(`  seed-meta ${metaKey}: write failed`);
+      else console.log(`  Analysis seed-meta written (${analysis.ieaMembers.length} members, TTL ${metaTtl}s)`);
     },
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
