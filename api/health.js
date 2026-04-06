@@ -94,6 +94,7 @@ const STANDALONE_KEYS = {
   bisPolicy:             'economic:bis:policy:v1',
   bisExchange:           'economic:bis:eer:v1',
   bisCredit:             'economic:bis:credit:v1',
+  imfMacro:             'economic:imf:macro:v1',
   climateZoneNormals:    'climate:zone-normals:v1',
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
@@ -176,6 +177,7 @@ const SEED_META = {
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 20 },
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
+  imfMacro:         { key: 'seed-meta:economic:imf-macro',        maxStaleMin: 50400 }, // monthly seed; 50400min = 35 days = 1× interval (no grace needed — monthly cadence)
   shippingRates:    { key: 'seed-meta:supply_chain:shipping',     maxStaleMin: 420 },
   chokepoints:      { key: 'seed-meta:supply_chain:chokepoints',  maxStaleMin: 60 },
   // minerals + giving: on-demand cachedFetchJson only, no seed-meta writer — freshness checked via TTL
@@ -280,7 +282,7 @@ const SEED_META = {
 const ON_DEMAND_KEYS = new Set([
   'riskScoresLive',
   'usniFleetStale', 'positiveEventsLive',
-  'bisPolicy', 'bisExchange', 'bisCredit',
+  'bisPolicy', 'bisExchange', 'bisCredit', 'imfMacro',
   'macroSignals', 'shippingRates', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'temporalAnomalies', 'displacement',
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1

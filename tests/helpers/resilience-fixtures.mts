@@ -146,12 +146,15 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       { iso3: 'YEM', debtToGdp: 180, annualGrowth: 12 },
     ],
   },
-  'economic:bis:credit:v1': {
-    entries: [
-      { countryCode: 'NO', creditGdpRatio: 85 },
-      { countryCode: 'US', creditGdpRatio: 150 },
-      { countryCode: 'YE', creditGdpRatio: 220 },
-    ],
+  // IMF WEO indicators: CPI inflation (PCPIPCH) and current account balance % GDP (BCA_NGDPD).
+  // Covers ~185 sovereign states — replaces BIS credit (~40 economies) in scoreMacroFiscal,
+  // and provides tier-2 currency stability proxy for non-BIS countries in scoreCurrencyExternal.
+  'economic:imf:macro:v1': {
+    countries: {
+      NO: { inflationPct: 3.2, currentAccountPct: 20.0, year: 2024 },
+      US: { inflationPct: 3.5, currentAccountPct: -3.3, year: 2024 },
+      YE: { inflationPct: 22.0, currentAccountPct: -6.0, year: 2024 },
+    },
   },
   'economic:bis:eer:v1': {
     rates: [

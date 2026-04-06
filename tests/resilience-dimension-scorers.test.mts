@@ -173,52 +173,70 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.score, 0, `seed outage must give score=0, got ${score.score}`);
   });
 
-  it('scoreCurrencyExternal: country not in BIS EER list gets curated_list_absent imputation (score 50)', async () => {
-    // BIS source is loaded (has data for another country) but MZ is not in it.
-    // This is genuine curated_list_absent — impute with certaintyCoverage=0.3.
+  it('scoreCurrencyExternal: non-BIS country with no IMF data falls back to curated_list_absent (score 50)', async () => {
+    // BIS loaded, IMF macro also null — no inflation proxy available → curated_list_absent imputation.
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
-      return null;
+      return null; // economic:imf:macro:v1 also null
     };
     const score = await scoreCurrencyExternal('MZ', reader); // Mozambique not in BIS
-    assert.equal(score.score, 50, 'curated_list_absent must impute score=50');
+    assert.equal(score.score, 50, 'curated_list_absent must impute score=50 when IMF also missing');
     assert.equal(score.coverage, 0.3, 'curated_list_absent certaintyCoverage=0.3');
+  });
+
+  it('scoreCurrencyExternal: non-BIS country with IMF inflation uses inflation proxy (coverage 0.45)', async () => {
+    // BIS loaded, IMF macro has inflation → use inflation proxy instead of curated_list_absent.
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
+      if (key === 'economic:imf:macro:v1') return { countries: { MZ: { inflationPct: 8, currentAccountPct: -5, year: 2024 } } };
+      return null;
+    };
+    const score = await scoreCurrencyExternal('MZ', reader);
+    // normalizeLowerBetter(8, 0, 100) = (100-8)/100*100 = 92
+    assert.equal(score.score, 92, 'low-inflation country gets high currency score via IMF proxy');
+    assert.equal(score.coverage, 0.45, 'IMF inflation proxy coverage=0.45 (better than pure imputation)');
+  });
+
+  it('scoreCurrencyExternal: non-BIS country with hyperinflation is capped at score 0', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
+      if (key === 'economic:imf:macro:v1') return { countries: { ZW: { inflationPct: 250, currentAccountPct: -8, year: 2024 } } };
+      return null;
+    };
+    const score = await scoreCurrencyExternal('ZW', reader);
+    // min(250, 100) = 100 → normalizeLowerBetter(100, 0, 100) = 0
+    assert.equal(score.score, 0, 'hyperinflation ≥100% is capped → score 0');
+    assert.equal(score.coverage, 0.45, 'hyperinflation still gets IMF proxy coverage=0.45');
   });
 
   it('scoreCurrencyExternal: seed outage (null BIS source) gives coverage=0, no imputation', async () => {
     const reader = async (_key: string): Promise<unknown | null> => null;
     const score = await scoreCurrencyExternal('MZ', reader);
     assert.equal(score.score, 50, 'fallback centre score');
-    assert.equal(score.coverage, 0, 'null source must not impute — coverage must be 0');
+    assert.equal(score.coverage, 0, 'null BIS source must not impute — coverage must be 0');
   });
 
-  it('scoreMacroFiscal: BIS credit absent gets curated_list_absent imputation, debt data still scores', async () => {
-    // BIS source is loaded (has data for another country) but HR is not in it.
-    // Genuine curated_list_absent — impute with certaintyCoverage=0.3.
-    const reader = async (key: string): Promise<unknown | null> => {
+  it('scoreMacroFiscal: IMF current account loaded, surplus country scores higher than deficit', async () => {
+    const makeReader = (caPct: number) => async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
-      if (key === 'economic:bis:credit:v1') return { entries: [{ countryCode: 'US', creditGdpRatio: 200 }] }; // HR absent from loaded source
+      if (key === 'economic:imf:macro:v1') return { countries: { HR: { inflationPct: 3.0, currentAccountPct: caPct, year: 2024 } } };
       return null;
     };
-    const score = await scoreMacroFiscal('HR', reader);
-    // debt (0.5+0.2=0.7 weight, real) + BIS credit (0.3 weight, imputed certaintyCoverage=0.3)
-    // coverage = (1.0×0.7 + 0.3×0.3) / 1.0 = 0.79
-    assert.ok(score.coverage > 0.7 && score.coverage < 0.9,
-      `coverage should be ~0.79 (debt real + credit imputed), got ${score.coverage}`);
-    assert.ok(score.score > 0, 'should produce non-zero score with debt real + credit imputed');
-    assert.ok(score.coverage < 1.0, 'coverage must be <1 since BIS credit is imputed not observed');
+    const surplus = await scoreMacroFiscal('HR', makeReader(10));
+    const deficit = await scoreMacroFiscal('HR', makeReader(-15));
+    assert.ok(surplus.score > deficit.score, `surplus (${surplus.score}) must score higher than deficit (${deficit.score})`);
+    assert.equal(surplus.coverage, 1, 'all real data → coverage=1');
   });
 
-  it('scoreMacroFiscal: BIS credit seed outage does not impute — real debt still scores', async () => {
+  it('scoreMacroFiscal: IMF macro seed outage does not impute — debt data still scores', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };
-      if (key === 'economic:bis:credit:v1') return null; // seed outage
-      return null;
+      return null; // economic:imf:macro:v1 null = seed outage
     };
     const score = await scoreMacroFiscal('HR', reader);
-    // Only debt data available (weight 0.7); credit source null → no imputation → coverage = 0.7
+    // Only debt (weight 0.7 real); IMF null → no imputation → coverage = 0.7
     assert.ok(score.coverage > 0.65 && score.coverage < 0.75,
-      `coverage should be ~0.7 (debt only, credit source missing), got ${score.coverage}`);
+      `coverage should be ~0.7 (debt only, IMF outage), got ${score.coverage}`);
     assert.ok(score.score > 0, 'debt data alone should produce a non-zero score');
   });
 

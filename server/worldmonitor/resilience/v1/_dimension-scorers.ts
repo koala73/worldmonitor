@@ -77,10 +77,10 @@ interface ResilienceStaticCountryRecord {
   iea?: { energyImportDependency?: { value?: number; year?: number | null; source?: string } | null } | null;
 }
 
-interface BisCreditEntry {
-  countryCode?: string;
-  creditGdpRatio?: number;
-  previousRatio?: number;
+interface ImfMacroEntry {
+  inflationPct?: number | null;
+  currentAccountPct?: number | null;
+  year?: number | null;
 }
 
 interface BisExchangeRate {
@@ -151,9 +151,9 @@ interface SocialVelocityPost {
 const RESILIENCE_STATIC_PREFIX = 'resilience:static:';
 const RESILIENCE_SHIPPING_STRESS_KEY = 'supply_chain:shipping_stress:v1';
 const RESILIENCE_TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
-const RESILIENCE_BIS_CREDIT_KEY = 'economic:bis:credit:v1';
 const RESILIENCE_BIS_EXCHANGE_KEY = 'economic:bis:eer:v1';
 const RESILIENCE_NATIONAL_DEBT_KEY = 'economic:national-debt:v1';
+const RESILIENCE_IMF_MACRO_KEY = 'economic:imf:macro:v1';
 const RESILIENCE_SANCTIONS_KEY = 'sanctions:country-counts:v1';
 const RESILIENCE_TRADE_RESTRICTIONS_KEY = 'trade:restrictions:v1:tariff-overview:50';
 const RESILIENCE_TRADE_BARRIERS_KEY = 'trade:barriers:v1:tariff-gap:50';
@@ -384,15 +384,10 @@ function getStaticWgiValues(record: ResilienceStaticCountryRecord | null): numbe
     .filter((value): value is number => value != null);
 }
 
-function getLatestBisCreditEntry(raw: unknown, countryCode: string): BisCreditEntry | null {
-  const entries: BisCreditEntry[] = Array.isArray((raw as { entries?: unknown[] } | null)?.entries)
-    ? ((raw as { entries?: BisCreditEntry[] }).entries ?? [])
-    : [];
-  const filtered = entries
-    .filter((entry) => matchesCountryIdentifier(entry.countryCode, countryCode))
-    .sort((a, b) => dateToSortableNumber((a as { date?: unknown }).date) - dateToSortableNumber((b as { date?: unknown }).date));
-  if (!filtered.length) return null;
-  return filtered[filtered.length - 1]!;
+function getImfMacroEntry(raw: unknown, countryCode: string): ImfMacroEntry | null {
+  const countries = (raw as { countries?: Record<string, ImfMacroEntry> } | null)?.countries;
+  if (!countries || typeof countries !== 'object') return null;
+  return (countries[countryCode] as ImfMacroEntry | undefined) ?? null;
 }
 
 function getCountryBisExchangeRates(raw: unknown, countryCode: string): BisExchangeRate[] {
@@ -591,23 +586,22 @@ export async function scoreMacroFiscal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [debtRaw, bisCreditRaw] = await Promise.all([
+  const [debtRaw, imfMacroRaw] = await Promise.all([
     reader(RESILIENCE_NATIONAL_DEBT_KEY),
-    reader(RESILIENCE_BIS_CREDIT_KEY),
+    reader(RESILIENCE_IMF_MACRO_KEY),
   ]);
   const debtEntry = getLatestDebtEntry(debtRaw, countryCode);
-  const bisCredit = getLatestBisCreditEntry(bisCreditRaw, countryCode);
+  const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
 
   return weightedBlend([
     { score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(safeNum(entry.debtToGdp) ?? 200, 0, 200)), weight: 0.5 },
     { score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(Math.max(0, safeNum(entry.annualGrowth) ?? 0), 0, 20)), weight: 0.2 },
-    // Only impute if the BIS source was loaded (country absent from curated list).
-    // If the source itself is null (seed outage), treat as missing data, not absence.
-    bisCreditRaw == null
+    // IMF current account balance: surplus = better external position.
+    // Null source (seed outage) = missing data — do NOT impute.
+    // IMF covers ~185 sovereign states; country absent = micronation/territory → score null.
+    imfMacroRaw == null
       ? { score: null, weight: 0.3 }
-      : bisCredit == null
-        ? { score: IMPUTE.bisCredit.score, weight: 0.3, certaintyCoverage: IMPUTE.bisCredit.certaintyCoverage }
-        : { score: extractMetric(bisCredit, (entry) => normalizeLowerBetter(safeNum(entry.creditGdpRatio) ?? 250, 50, 250)), weight: 0.3 },
+      : { score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20), weight: 0.3 },
   ]);
 }
 
@@ -615,7 +609,10 @@ export async function scoreCurrencyExternal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const bisExchangeRaw = await reader(RESILIENCE_BIS_EXCHANGE_KEY);
+  const [bisExchangeRaw, imfMacroRaw] = await Promise.all([
+    reader(RESILIENCE_BIS_EXCHANGE_KEY),
+    reader(RESILIENCE_IMF_MACRO_KEY),
+  ]);
   const countryRates = getCountryBisExchangeRates(bisExchangeRaw, countryCode);
   const latest = countryRates[countryRates.length - 1] ?? null;
   const volSource = countryRates
@@ -628,10 +625,16 @@ export async function scoreCurrencyExternal(
       ? Math.abs(volSource[0]!) * Math.sqrt(12)
       : null;
 
-  // If country is not in BIS EER list (curated ~40 economies), impute conservatively —
-  // but only when the source was loaded. A null source means a seed outage, not country absence.
+  // Country not in BIS EER (curated ~40 economies). Try IMF CPI inflation as a currency
+  // stability proxy (covers ~185 countries). Only fall back to curated_list_absent imputation
+  // when both BIS and IMF macro seeds are unavailable.
   if (countryRates.length === 0) {
     if (bisExchangeRaw == null) return { score: 50, coverage: 0 };
+    const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
+    if (imfMacroRaw != null && imfEntry?.inflationPct != null) {
+      // Cap at 100% — hyperinflation is extreme instability regardless of magnitude.
+      return { score: normalizeLowerBetter(Math.min(imfEntry.inflationPct, 100), 0, 100), coverage: 0.45 };
+    }
     return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage };
   }
 
