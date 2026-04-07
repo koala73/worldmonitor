@@ -266,6 +266,7 @@ Sentry.init({
     /Response cannot have a body with the given status/, // Safari: Response constructor with 204/304 + body
     /ClerkJS: Network error/, // Clerk SDK transient network failures on user devices
     /doesn't provide an export named/, // stale cached chunk after deploy references removed export
+    /Possible side-effect in debug-evaluate/, // Chrome DevTools internal EvalError
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
