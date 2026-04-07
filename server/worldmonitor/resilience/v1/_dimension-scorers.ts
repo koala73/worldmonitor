@@ -528,14 +528,14 @@ function summarizeSocialVelocity(raw: unknown, countryCode: string): number {
 
 function getThreatSummaryScore(raw: unknown, countryCode: string): number | null {
   if (!raw || typeof raw !== 'object') return null;
-  const counts = (raw as Record<string, Record<string, number>>)[countryCode.toUpperCase()];
+  const byCountry = (raw as Record<string, unknown>).byCountry ?? raw;
+  const counts = (byCountry as Record<string, Record<string, number>>)?.[countryCode.toUpperCase()];
   if (!counts) return null;
-  return (
-    (safeNum(counts.critical) ?? 0) * 4
+  const score = (safeNum(counts.critical) ?? 0) * 4
     + (safeNum(counts.high) ?? 0) * 2
     + (safeNum(counts.medium) ?? 0)
-    + (safeNum(counts.low) ?? 0) * 0.5
-  );
+    + (safeNum(counts.low) ?? 0) * 0.5;
+  return score > 0 ? score : null;
 }
 
 function getTransitDisruptionScore(raw: unknown): number | null {
@@ -702,9 +702,9 @@ export async function scoreCyberDigital(
   const gpsPenalty = gps.high * 3 + gps.medium;
 
   return weightedBlend([
-    { score: cyberRaw != null ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45 },
-    { score: outagesRaw != null ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35 },
-    { score: gpsRaw != null ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2 },
+    { score: cyberRaw != null && cyber.weightedCount > 0 ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45 },
+    { score: outagesRaw != null && outagePenalty > 0 ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35 },
+    { score: gpsRaw != null && gpsPenalty > 0 ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2 },
   ]);
 }
 

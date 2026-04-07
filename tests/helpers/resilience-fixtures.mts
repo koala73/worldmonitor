@@ -292,9 +292,12 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     ],
   },
   'news:threat:summary:v1': {
-    NO: { critical: 0, high: 0, medium: 0, low: 1 },
-    US: { critical: 0, high: 2, medium: 4, low: 2 },
-    YE: { critical: 4, high: 6, medium: 5, low: 1 },
+    byCountry: {
+      NO: { critical: 0, high: 0, medium: 0, low: 1 },
+      US: { critical: 0, high: 2, medium: 4, low: 2 },
+      YE: { critical: 4, high: 6, medium: 5, low: 1 },
+    },
+    generatedAt: '2026-04-06T00:00:00.000Z',
   },
   // Lebanon: used to test that null IEA (Eurostat EU-only) + crisis-level electricity
   // consumption produces an energy score < 50, not artificially high (~89 pre-fix).

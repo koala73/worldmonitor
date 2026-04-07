@@ -319,6 +319,74 @@ describe('resilience dimension scorers', () => {
       `seed outage must not inflate coverage beyond ucdp weight, got ${score.coverage}`);
   });
 
+  it('scoreCyberDigital: country with zero threats in loaded feed gets null, not 100', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'cyber:threats:v2') return { threats: [{ country: 'United States', severity: 'CRITICALITY_LEVEL_HIGH' }] };
+      if (key === 'infra:outages:v1') return { outages: [] };
+      if (key === 'intelligence:gpsjam:v2') return { hexes: [] };
+      return null;
+    };
+    const score = await scoreCyberDigital('FI', reader);
+    assert.equal(score.score, 0, 'zero events in all three loaded feeds must yield score=0 (not 100)');
+    assert.equal(score.coverage, 0, 'zero events in all three loaded feeds must yield coverage=0');
+  });
+
+  it('scoreCyberDigital: country with real threats scores normally', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'cyber:threats:v2') return { threats: [
+        { country: 'Finland', severity: 'CRITICALITY_LEVEL_HIGH' },
+        { country: 'Finland', severity: 'CRITICALITY_LEVEL_MEDIUM' },
+      ] };
+      if (key === 'infra:outages:v1') return { outages: [{ countryCode: 'FI', severity: 'OUTAGE_SEVERITY_PARTIAL' }] };
+      if (key === 'intelligence:gpsjam:v2') return { hexes: [] };
+      return null;
+    };
+    const score = await scoreCyberDigital('FI', reader);
+    assert.ok(score.score > 0, `country with real threats must have score > 0, got ${score.score}`);
+    assert.ok(score.score < 100, `country with real threats must have score < 100, got ${score.score}`);
+    assert.ok(score.coverage > 0, `coverage should be > 0 with real data, got ${score.coverage}`);
+  });
+
+  it('scoreInformationCognitive: correctly unwraps news:threat:summary:v1 { byCountry } envelope', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:US') return RESILIENCE_FIXTURES['resilience:static:US'];
+      if (key === 'intelligence:social:reddit:v1') return RESILIENCE_FIXTURES['intelligence:social:reddit:v1'];
+      if (key === 'news:threat:summary:v1') return {
+        byCountry: { US: { critical: 1, high: 3, medium: 2, low: 1 } },
+        generatedAt: '2026-04-06T00:00:00.000Z',
+      };
+      return null;
+    };
+    const score = await scoreInformationCognitive('US', reader);
+    assert.ok(score.score > 0, `should produce a score with wrapped payload, got ${score.score}`);
+    assert.ok(score.coverage > 0, `should have coverage with threat data present, got ${score.coverage}`);
+  });
+
+  it('scoreInformationCognitive: zero news threats in loaded feed gets null', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return { rsf: { score: 80, rank: 20, year: 2025 } };
+      if (key === 'intelligence:social:reddit:v1') return { posts: [] };
+      if (key === 'news:threat:summary:v1') return {
+        byCountry: { US: { critical: 1, high: 2, medium: 3, low: 1 } },
+        generatedAt: '2026-04-06T00:00:00.000Z',
+      };
+      return null;
+    };
+    const score = await scoreInformationCognitive('XX', reader);
+    assert.ok(score.score === 80, `RSF only (no threat, no velocity), got ${score.score}`);
+  });
+
+  it('scoreBorderSecurity: zero UCDP events still scores (UCDP is global registry)', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'conflict:ucdp-events:v1') return { events: [] };
+      if (key.startsWith('displacement:summary:v1:')) return { summary: { countries: [] } };
+      return null;
+    };
+    const score = await scoreBorderSecurity('FI', reader);
+    assert.ok(score.coverage > 0, `UCDP loaded with zero events must still contribute to coverage, got ${score.coverage}`);
+    assert.ok(score.score > 50, `zero UCDP events = peaceful country, should score high, got ${score.score}`);
+  });
+
   it('memoizes repeated seed reads inside scoreAllDimensions', async () => {
     const hits = new Map<string, number>();
     const countingReader = async (key: string) => {
