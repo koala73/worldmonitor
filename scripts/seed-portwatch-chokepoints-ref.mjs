@@ -59,7 +59,7 @@ export async function fetchAll() {
 }
 
 export function validateFn(data) {
-  return data != null && typeof data === 'object' && Object.keys(data).length >= 20;
+  return data != null && typeof data === 'object' && Object.keys(data).length >= 27;
 }
 
 const isMain = process.argv[1]?.endsWith('seed-portwatch-chokepoints-ref.mjs');
