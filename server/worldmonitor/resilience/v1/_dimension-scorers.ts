@@ -776,15 +776,15 @@ export async function scoreLogisticsSupply(
   const transitStress = getTransitDisruptionScore(transitSummariesRaw);
 
   const tradeToGdp = safeNum(staticRecord?.tradeToGdp?.tradeToGdpPct);
-  const tradeExposure = tradeToGdp != null ? Math.min(tradeToGdp / 50, 1.0) : 0.5;
+  const tradeExposure = staticRecord == null ? null : (tradeToGdp != null ? Math.min(tradeToGdp / 50, 1.0) : 0.5);
 
   const shippingScore = shippingStress == null ? null : normalizeLowerBetter(shippingStress, 0, 100);
   const transitScore = transitStress == null ? null : normalizeLowerBetter(transitStress, 0, 30);
 
   return weightedBlend([
     { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.5 },
-    { score: shippingScore == null ? null : shippingScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
-    { score: transitScore == null ? null : transitScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
+    { score: shippingScore == null || tradeExposure == null ? null : shippingScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
+    { score: transitScore == null || tradeExposure == null ? null : transitScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
   ]);
 }
 
@@ -845,9 +845,9 @@ export async function scoreEnergy(
     : null;
 
   const importDep = safeNum(staticRecord?.iea?.energyImportDependency?.value);
-  const energyExposure = importDep != null ? Math.min(importDep / 60, 1.0) : 0.5;
+  const energyExposure = staticRecord == null ? null : (importDep != null ? Math.min(importDep / 60, 1.0) : 0.5);
   const energyStressScore = energyStress == null ? null : normalizeLowerBetter(energyStress, 0, 25);
-  const exposedEnergyStress = energyStressScore == null
+  const exposedEnergyStress = energyStressScore == null || energyExposure == null
     ? null
     : energyStressScore * energyExposure + 100 * (1 - energyExposure);
 

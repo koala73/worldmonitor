@@ -557,4 +557,51 @@ describe('resilience dimension scorers', () => {
     assert.ok(missingDep.score >= highDep.score,
       `Missing dependency (score=${missingDep.score}) should score >= high dep (score=${highDep.score})`);
   });
+
+  it('scoreLogisticsSupply: static bundle outage (null) excludes exposure-weighted stress metrics', async () => {
+    const outageReader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return null;
+      if (key === 'supply_chain:shipping_stress:v1') return { stressScore: 80 };
+      if (key === 'supply_chain:transit-summaries:v1') return { summaries: { suez: { disruptionPct: 15, incidentCount7d: 8 } } };
+      return null;
+    };
+    const result = await scoreLogisticsSupply('XX', outageReader);
+    assert.equal(result.score, 0, 'All metrics null when static bundle is missing and no roads data');
+    assert.equal(result.coverage, 0, 'Coverage should be 0 when all sub-metrics are null');
+
+    const withStaticReader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        infrastructure: { indicators: { 'IS.ROD.PAVE.ZS': { value: 80, year: 2025 } } },
+      };
+      if (key === 'supply_chain:shipping_stress:v1') return { stressScore: 80 };
+      if (key === 'supply_chain:transit-summaries:v1') return { summaries: { suez: { disruptionPct: 15, incidentCount7d: 8 } } };
+      return null;
+    };
+    const withStatic = await scoreLogisticsSupply('XX', withStaticReader);
+    assert.ok(withStatic.score > 0, `Static bundle present should produce non-zero score (got ${withStatic.score})`);
+    assert.ok(withStatic.coverage > result.coverage, 'Coverage should be higher with static bundle present');
+  });
+
+  it('scoreEnergy: static bundle outage (null) excludes exposure-weighted energy price stress', async () => {
+    const outageReader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return null;
+      if (key === 'economic:energy:v1:all') return { prices: [{ change: 20 }, { change: -15 }, { change: 25 }] };
+      return null;
+    };
+    const result = await scoreEnergy('XX', outageReader);
+    assert.equal(result.score, 0, 'All metrics null when static bundle is missing');
+    assert.equal(result.coverage, 0, 'Coverage should be 0 when all sub-metrics are null');
+
+    const withStaticReader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        iea: { energyImportDependency: { value: 60, year: 2024, source: 'IEA' } },
+        infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 5000, year: 2025 } } },
+      };
+      if (key === 'economic:energy:v1:all') return { prices: [{ change: 20 }, { change: -15 }, { change: 25 }] };
+      return null;
+    };
+    const withStatic = await scoreEnergy('XX', withStaticReader);
+    assert.ok(withStatic.score > 0, `Static bundle present should produce non-zero score (got ${withStatic.score})`);
+    assert.ok(withStatic.coverage > result.coverage, 'Coverage should be higher with static bundle present');
+  });
 });
