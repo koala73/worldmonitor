@@ -61,7 +61,10 @@ describe('indicator registry', () => {
     }
     for (const [dimId, specs] of byDimension) {
       const totalWeight = specs.reduce((sum, s) => sum + s.weight, 0);
-      assert.ok(totalWeight > 0, `${dimId} weights sum to 0`);
+      assert.ok(
+        Math.abs(totalWeight - 1) < 0.01,
+        `${dimId} weights sum to ${totalWeight.toFixed(4)}, expected ~1.0`,
+      );
     }
   });
 });
