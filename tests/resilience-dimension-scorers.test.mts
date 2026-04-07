@@ -185,7 +185,7 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.coverage, 1, 'reporter-set country with loaded data → full coverage');
   });
 
-  it('scoreTradeSanctions: non-reporter country gets IMPUTE.wtoData (score=60, coverage=0.4)', async () => {
+  it('scoreTradeSanctions: non-reporter country gets IMPUTE.wtoData (blended score=82, coverage=0.73)', async () => {
     const reporterSet = ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'];
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'sanctions:country-counts:v1') return {};

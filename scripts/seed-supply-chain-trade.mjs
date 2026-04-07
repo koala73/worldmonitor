@@ -35,7 +35,11 @@ const WTO_CODE_TO_ISO2 = {
   '124': 'CA', '484': 'MX', '250': 'FR', '380': 'IT', '528': 'NL',
 };
 
-const REPORTER_ISO2 = MAJOR_REPORTERS.map(c => WTO_CODE_TO_ISO2[c]).filter(Boolean);
+const REPORTER_ISO2 = MAJOR_REPORTERS.map(c => {
+  const iso2 = WTO_CODE_TO_ISO2[c];
+  if (!iso2) throw new Error(`WTO code '${c}' has no ISO2 mapping — add it to WTO_CODE_TO_ISO2`);
+  return iso2;
+});
 
 // ─── Shipping Rates (FRED) ───
 
