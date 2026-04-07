@@ -456,6 +456,19 @@ export class App {
           delete panelSettings[legacyKey];
           migrated = true;
         }
+        // Also migrate saved panel order/bottom-set entries for renamed keys
+        for (const [legacyKey, nextKey] of keyRenames) {
+          for (const orderKey of [PANEL_ORDER_KEY, PANEL_ORDER_KEY + '-bottom-set', PANEL_ORDER_KEY + '-bottom']) {
+            try {
+              const raw = localStorage.getItem(orderKey);
+              if (!raw) continue;
+              const arr = JSON.parse(raw);
+              if (!Array.isArray(arr)) continue;
+              const idx = arr.indexOf(legacyKey);
+              if (idx !== -1) { arr[idx] = nextKey; localStorage.setItem(orderKey, JSON.stringify(arr)); migrated = true; }
+            } catch { /* corrupt storage, skip */ }
+          }
+        }
         if (migrated) saveToStorage(STORAGE_KEYS.panels, panelSettings);
         localStorage.setItem(PANEL_KEY_RENAMES_MIGRATION_KEY, 'done');
       }
