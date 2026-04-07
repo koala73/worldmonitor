@@ -70,8 +70,7 @@ export async function fetchAll() {
   ]);
 
   if (!portwatch || typeof portwatch !== 'object' || Object.keys(portwatch).length === 0) {
-    console.warn('[ChokepointFlows] PortWatch data unavailable — seeder running degraded, returning empty result');
-    return {};
+    throw new Error('PortWatch data unavailable (supply_chain:portwatch:v1 absent or empty) — retrying in 20 min');
   }
 
   const result = {};

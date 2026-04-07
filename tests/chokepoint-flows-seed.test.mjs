@@ -220,13 +220,16 @@ describe('disrupted flag', () => {
 // ── degraded mode ─────────────────────────────────────────────────────────────
 
 describe('degraded mode (portwatch absent)', () => {
-  it('seeder does NOT throw when portwatch data is absent — returns empty object', () => {
-    // Verify source code logs a warning and returns {} rather than throwing
-    assert.doesNotMatch(src, /throw new Error.*PortWatch data unavailable/);
-    assert.match(src, /console\.warn.*PortWatch data unavailable/);
+  it('seeder throws when portwatch data is absent — triggers 20-min relay retry', () => {
+    // PortWatch absent = upstream not ready, not a data-quality issue.
+    // Must throw so startChokepointFlowsSeedLoop() schedules the fast retry.
+    assert.match(src, /throw new Error.*PortWatch data unavailable/);
+    assert.doesNotMatch(src, /console\.warn.*PortWatch data unavailable/);
   });
 
-  it('seeder does NOT throw when no flow estimates computed — logs warning instead', () => {
+  it('seeder warns (does not throw) when no flow estimates computed from present portwatch data', () => {
+    // PortWatch present but insufficient history/baselines = data quality issue, not upstream outage.
+    // Warn and return sparse result; validateFn rejects it so runSeed extends TTL without overwriting.
     assert.doesNotMatch(src, /throw new Error.*No flow estimates computed/);
     assert.match(src, /console\.warn.*No flow estimates computed/);
   });
