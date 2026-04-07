@@ -1,13 +1,26 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, CHROME_UA, getRedisCredentials } from './_seed-utils.mjs';
-import { createCountryResolvers, resolveIso2 } from './_country-resolver.mjs';
+import {
+  loadEnvFile,
+  CHROME_UA,
+  getRedisCredentials,
+  acquireLockSafely,
+  releaseLock,
+  extendExistingTtl,
+  logSeedResult,
+  readSeedSnapshot,
+} from './_seed-utils.mjs';
+import { createCountryResolvers } from './_country-resolver.mjs';
 
 loadEnvFile(import.meta.url);
 
 export const CANONICAL_KEY = 'supply_chain:portwatch-ports:v1:_countries';
 const KEY_PREFIX = 'supply_chain:portwatch-ports:v1:';
+const META_KEY = 'seed-meta:supply_chain:portwatch-ports';
+const LOCK_DOMAIN = 'supply_chain:portwatch-ports';
+const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min — covers worst-case full run
 const TTL = 259_200; // 3 days — 6× the 12h cron interval
+const MIN_VALID_COUNTRIES = 50;
 
 const EP3_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Ports_Data/FeatureServer/0/query';
@@ -63,7 +76,7 @@ async function fetchActivityRows(iso3, since) {
   do {
     const params = new URLSearchParams({
       where: `ISO3='${iso3}' AND date > ${epochToTimestamp(since)}`,
-      outFields: 'portid,portname,ISO3,date,portcalls_tanker,import_cap_tanker,export_cap_tanker',
+      outFields: 'portid,portname,ISO3,date,portcalls_tanker,import_tanker,export_tanker',
       orderByFields: 'date ASC',
       resultRecordCount: String(PAGE_SIZE),
       resultOffset: String(offset),
@@ -93,8 +106,8 @@ function computeCountryPorts(rawRows, refMap) {
       date: Number(a.date),
       portname: String(a.portname || ''),
       portcalls_tanker: Number(a.portcalls_tanker ?? 0),
-      import_cap_tanker: Number(a.import_cap_tanker ?? 0),
-      export_cap_tanker: Number(a.export_cap_tanker ?? 0),
+      import_tanker: Number(a.import_tanker ?? 0),
+      export_tanker: Number(a.export_tanker ?? 0),
     });
   }
 
@@ -106,8 +119,8 @@ function computeCountryPorts(rawRows, refMap) {
 
     const tankerCalls30d = last30.reduce((s, r) => s + r.portcalls_tanker, 0);
     const tankerCalls30dPrev = prev30.reduce((s, r) => s + r.portcalls_tanker, 0);
-    const importTankerDwt30d = last30.reduce((s, r) => s + r.import_cap_tanker, 0);
-    const exportTankerDwt30d = last30.reduce((s, r) => s + r.export_cap_tanker, 0);
+    const importTankerDwt30d = last30.reduce((s, r) => s + r.import_tanker, 0);
+    const exportTankerDwt30d = last30.reduce((s, r) => s + r.export_tanker, 0);
 
     const avg30d = tankerCalls30d / 30;
     const avg7d = last7.reduce((s, r) => s + r.portcalls_tanker, 0) / Math.max(last7.length, 1);
@@ -164,12 +177,14 @@ async function processCountry(iso3, iso2, since) {
   return { iso2, ports, fetchedAt: new Date().toISOString() };
 }
 
+// fetchAll() — pure data collection, no Redis writes.
+// Returns { countries: string[], countryData: Map<iso2, payload>, fetchedAt: string }.
 export async function fetchAll() {
   const { iso3ToIso2 } = createCountryResolvers();
   const ISO3_LIST = [...iso3ToIso2.keys()];
   const since = Date.now() - HISTORY_DAYS * 86400000;
 
-  const countryResults = new Map();
+  const countryData = new Map();
   const errors = [];
 
   for (let i = 0; i < ISO3_LIST.length; i += CONCURRENCY) {
@@ -189,7 +204,7 @@ export async function fetchAll() {
       }
       if (!outcome.value) continue;
       const { iso2, ports, fetchedAt } = outcome.value;
-      countryResults.set(iso2, { iso2, ports, fetchedAt });
+      countryData.set(iso2, { iso2, ports, fetchedAt });
     }
   }
 
@@ -197,33 +212,80 @@ export async function fetchAll() {
     console.warn(`  [port-activity] ${errors.length} country errors: ${errors.slice(0, 5).join('; ')}${errors.length > 5 ? ' ...' : ''}`);
   }
 
-  if (countryResults.size === 0) throw new Error('No country port data returned from ArcGIS');
-
-  const commands = [];
-  for (const [iso2, payload] of countryResults) {
-    commands.push(['SET', `${KEY_PREFIX}${iso2}`, JSON.stringify(payload), 'EX', TTL]);
-  }
-  commands.push(['SET', CANONICAL_KEY, JSON.stringify([...countryResults.keys()]), 'EX', TTL]);
-  await redisPipeline(commands);
-
-  console.log(`  [port-activity] wrote ${countryResults.size} country keys + _countries index`);
-  return { countries: [...countryResults.keys()], fetchedAt: new Date().toISOString() };
+  if (countryData.size === 0) throw new Error('No country port data returned from ArcGIS');
+  return { countries: [...countryData.keys()], countryData, fetchedAt: new Date().toISOString() };
 }
 
 export function validateFn(data) {
-  return data && Array.isArray(data.countries) && data.countries.length >= 50;
+  return data && Array.isArray(data.countries) && data.countries.length >= MIN_VALID_COUNTRIES;
+}
+
+async function main() {
+  const startedAt = Date.now();
+  const runId = `portwatch-ports:${startedAt}`;
+
+  console.log('=== supply_chain:portwatch-ports Seed ===');
+  console.log(`  Run ID: ${runId}`);
+  console.log(`  Key prefix: ${KEY_PREFIX}`);
+
+  const lock = await acquireLockSafely(LOCK_DOMAIN, runId, LOCK_TTL_MS, { label: LOCK_DOMAIN });
+  if (lock.skipped) return;
+  if (!lock.locked) {
+    console.log('  SKIPPED: another seed run in progress');
+    return;
+  }
+
+  try {
+    console.log(`  Fetching port activity data (${HISTORY_DAYS}d history)...`);
+    const { countries, countryData } = await fetchAll();
+
+    console.log(`  Fetched ${countryData.size} countries`);
+
+    if (!validateFn({ countries })) {
+      console.error(`  COVERAGE GATE FAILED: only ${countryData.size} countries, need >=${MIN_VALID_COUNTRIES}`);
+      const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
+      const prevCountryKeys = Array.isArray(prevIso2List)
+        ? prevIso2List.map(iso2 => `${KEY_PREFIX}${iso2}`)
+        : [];
+      await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
+      return;
+    }
+
+    const metaPayload = { fetchedAt: Date.now(), recordCount: countryData.size };
+
+    const commands = [];
+    for (const [iso2, payload] of countryData) {
+      commands.push(['SET', `${KEY_PREFIX}${iso2}`, JSON.stringify(payload), 'EX', TTL]);
+    }
+    commands.push(['SET', CANONICAL_KEY, JSON.stringify(countries), 'EX', TTL]);
+    commands.push(['SET', META_KEY, JSON.stringify(metaPayload), 'EX', TTL]);
+
+    const results = await redisPipeline(commands);
+    const failures = results.filter(r => r?.error || r?.result === 'ERR');
+    if (failures.length > 0) {
+      throw new Error(`Redis pipeline: ${failures.length}/${commands.length} commands failed`);
+    }
+
+    logSeedResult('supply_chain', countryData.size, Date.now() - startedAt, { source: 'portwatch-ports' });
+    console.log(`  Seeded ${countryData.size} countries`);
+    console.log(`\n=== Done (${Date.now() - startedAt}ms) ===`);
+  } catch (err) {
+    console.error(`  SEED FAILED: ${err.message}`);
+    const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
+    const prevCountryKeys = Array.isArray(prevIso2List)
+      ? prevIso2List.map(iso2 => `${KEY_PREFIX}${iso2}`)
+      : [];
+    await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
+    throw err;
+  } finally {
+    await releaseLock(LOCK_DOMAIN, runId);
+  }
 }
 
 const isMain = process.argv[1]?.endsWith('seed-portwatch-port-activity.mjs');
 if (isMain) {
-  runSeed('supply_chain', 'portwatch-ports', CANONICAL_KEY, fetchAll, {
-    validateFn,
-    ttlSeconds: TTL,
-    sourceVersion: 'imf-portwatch-port-activity-arcgis-v1',
-    recordCount: (data) => data?.countries?.length ?? 0,
-  }).catch((err) => {
-    const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
-    console.error('FATAL:', (err.message || err) + cause);
+  main().catch(err => {
+    console.error(err);
     process.exit(1);
   });
 }

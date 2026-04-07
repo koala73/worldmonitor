@@ -61,7 +61,7 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /259[_\s]*200/);
   });
 
-  it('wraps runSeed in isMain guard', () => {
+  it('wraps main() in isMain guard', () => {
     assert.match(src, /isMain.*=.*process\.argv/s);
     assert.match(src, /if\s*\(isMain\)/);
   });
