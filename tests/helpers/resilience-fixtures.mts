@@ -31,6 +31,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     fao: { peopleInCrisis: 10, phase: 'IPC Phase 1', year: 2025 },
     aquastat: { indicator: 'Renewable water availability', value: 4000, year: 2024 },
     iea: { energyImportDependency: { value: 15, year: 2024, source: 'IEA' } },
+    tradeToGdp: { source: 'worldbank', tradeToGdpPct: 70, year: 2023 },
   },
   'resilience:static:US': {
     wgi: {
@@ -62,6 +63,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     fao: { peopleInCrisis: 5000, phase: 'IPC Phase 2', year: 2025 },
     aquastat: { indicator: 'Renewable water availability', value: 1500, year: 2024 },
     iea: { energyImportDependency: { value: 25, year: 2024, source: 'IEA' } },
+    tradeToGdp: { source: 'worldbank', tradeToGdpPct: 25, year: 2023 },
   },
   'resilience:static:YE': {
     wgi: {
@@ -93,6 +95,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     fao: { peopleInCrisis: 2_000_000, phase: 'IPC Phase 4', year: 2025 },
     aquastat: { indicator: 'Water stress', value: 85, year: 2024 },
     iea: { energyImportDependency: { value: 95, year: 2024, source: 'IEA' } },
+    tradeToGdp: { source: 'worldbank', tradeToGdpPct: 30, year: 2023 },
   },
   'energy:mix:v1:NO': {
     iso2: 'NO',
@@ -333,6 +336,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     fao: { peopleInCrisis: 1_500_000, phase: 'IPC Phase 3', year: 2025 },
     aquastat: { indicator: 'Water stress', value: 72, year: 2024 },
     iea: null, // Eurostat is EU-only — Lebanon absent → energy import dependency unknown
+    tradeToGdp: { source: 'worldbank', tradeToGdpPct: 95, year: 2023 },
   },
   'energy:mix:v1:LB': {
     iso2: 'LB',

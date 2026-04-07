@@ -34,8 +34,8 @@ export const RESILIENCE_STATIC_WINDOW_CRON = '0 */4 1-3 10 *';
 
 const LOCK_DOMAIN = 'resilience:static';
 const LOCK_TTL_MS = 2 * 60 * 60 * 1000;
-const TOTAL_DATASET_SLOTS = 8;
-const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea'];
+const TOTAL_DATASET_SLOTS = 9;
+const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea', 'tradeToGdp'];
 const WGI_INDICATORS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'];
 const INFRASTRUCTURE_INDICATORS = ['EG.ELC.ACCS.ZS', 'IS.ROD.PAVE.ZS', 'EG.USE.ELEC.KH.PC'];
 const WHO_INDICATORS = {
@@ -640,6 +640,27 @@ async function fetchAquastatDataset() {
   return buildAquastatWbMap(latest);
 }
 
+const WB_TRADE_TO_GDP_INDICATOR = 'NE.TRD.GNFS.ZS';
+
+export function buildTradeToGdpMap(latestByCountry) {
+  const byCountry = new Map();
+  for (const [iso2, entry] of latestByCountry.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank',
+      tradeToGdpPct: entry.value,
+      year: entry.year,
+    });
+  }
+  if (byCountry.size === 0) throw new Error('World Bank trade-to-GDP returned no usable rows');
+  return byCountry;
+}
+
+async function fetchTradeToGdpDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_TRADE_TO_GDP_INDICATOR, { mrv: '12' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildTradeToGdpMap(latest);
+}
+
 export function finalizeCountryPayloads(datasetMaps, seedYear = nowSeedYear(), seededAt = new Date().toISOString()) {
   const merged = new Map();
 
@@ -770,6 +791,7 @@ async function fetchAllDatasetMaps() {
     { key: 'fao', fetcher: fetchFsinDataset },
     { key: 'aquastat', fetcher: fetchAquastatDataset },
     { key: 'iea', fetcher: fetchEnergyDependencyDataset },
+    { key: 'tradeToGdp', fetcher: fetchTradeToGdpDataset },
   ];
 
   const results = await Promise.allSettled(adapters.map((adapter) => adapter.fetcher()));
