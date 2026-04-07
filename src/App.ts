@@ -433,7 +433,7 @@ export class App {
       );
 
       // One-time migration: preserve user preferences across panel key renames.
-      const PANEL_KEY_RENAMES_MIGRATION_KEY = 'worldmonitor-panel-key-renames-v2.6';
+      const PANEL_KEY_RENAMES_MIGRATION_KEY = 'worldmonitor-panel-key-renames-v2.6.8';
       if (!localStorage.getItem(PANEL_KEY_RENAMES_MIGRATION_KEY)) {
         const keyRenames: Array<[string, string]> = [
           ['live-youtube', 'live-webcams'],

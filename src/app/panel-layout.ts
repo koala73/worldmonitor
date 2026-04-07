@@ -774,7 +774,6 @@ export class PanelLayoutManager implements AppModule {
     this.createNewsPanel('dev', 'panels.dev');
     this.createNewsPanel('github', 'panels.github');
     this.createNewsPanel('ipo', 'panels.ipo');
-    this.createNewsPanel('fin-regulation', 'panels.fin-regulation');
     this.createNewsPanel('thinktanks', 'panels.thinktanks');
     this.createPanel('economic', () => new EconomicPanel());
     this.createPanel('consumer-prices', () => new ConsumerPricesPanel());
