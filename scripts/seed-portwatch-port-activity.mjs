@@ -59,6 +59,7 @@ async function fetchPortRef(iso3) {
       where: `ISO3='${iso3}'`,
       outFields: 'portid,lat,lon',
       returnGeometry: 'false',
+      orderByFields: 'portid ASC',
       resultRecordCount: String(PAGE_SIZE),
       resultOffset: String(offset),
       outSR: '4326',
@@ -84,7 +85,7 @@ async function fetchActivityRows(iso3, since) {
     const params = new URLSearchParams({
       where: `ISO3='${iso3}' AND date > ${epochToTimestamp(since)}`,
       outFields: 'portid,portname,ISO3,date,portcalls_tanker,import_tanker,export_tanker',
-      orderByFields: 'date ASC',
+      orderByFields: 'portid ASC,date ASC',
       resultRecordCount: String(PAGE_SIZE),
       resultOffset: String(offset),
       outSR: '4326',
