@@ -144,8 +144,11 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   jodiOil:             'energy:jodi-oil:v1:_countries',
   chokepointBaselines: 'energy:chokepoint-baselines:v1',
   portwatchChokepointsRef: 'portwatch:chokepoints:ref:v1',
+  portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
 };
 
+export const PORTWATCH_PORT_ACTIVITY_KEY_PREFIX = 'supply_chain:portwatch-ports:v1:';
+export const PORTWATCH_PORT_ACTIVITY_COUNTRIES_KEY = 'supply_chain:portwatch-ports:v1:_countries';
 
 export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   bisPolicy: 'slow', bisExchange: 'slow', bisCredit: 'slow', imfMacro: 'slow',
@@ -193,6 +196,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   jodiOil:             'slow',
   chokepointBaselines: 'slow',
   portwatchChokepointsRef: 'slow',
+  portwatchPortActivity: 'slow',
 };
 
 export const PORTWATCH_CHOKEPOINTS_REF_KEY = 'portwatch:chokepoints:ref:v1';
