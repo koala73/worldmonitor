@@ -335,7 +335,7 @@
     "security": "Cybersecurity",
     "policy": "AI Policy & Regulation",
     "regulation": "AI Regulation Dashboard",
-    "fin-regulation": "Financial Regulation",
+    "finRegulation": "Financial Regulation",
     "hardware": "Semiconductors & Hardware",
     "cloud": "Cloud & Infrastructure",
     "dev": "Developer Community",

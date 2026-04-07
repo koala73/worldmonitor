@@ -438,6 +438,7 @@ export class App {
         const keyRenames: Array<[string, string]> = [
           ['live-youtube', 'live-webcams'],
           ['pinned-webcams', 'windy-webcams'],
+          ['regulation', 'fin-regulation'],
         ];
         let migrated = false;
         for (const [legacyKey, nextKey] of keyRenames) {
