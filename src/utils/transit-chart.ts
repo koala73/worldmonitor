@@ -1,4 +1,4 @@
-import type { TransitDayCount } from '../../server/worldmonitor/supply-chain/v1/_portwatch-upstream';
+import type { TransitDayCount } from '../generated/client/worldmonitor/supply_chain/v1/service_client';
 import { getCSSColor } from '@/utils';
 
 type ZoomWindow = 30 | 90 | 180;
@@ -287,7 +287,7 @@ export class TransitChart {
     const stack = (this.tab === 'calls' ? VESSEL_KEYS : CAP_KEYS).map(k => d[k as keyof TransitDayCount] as number);
     const total = stack.reduce((a, b) => a + b, 0);
 
-    const maValues = compute7dMA(this.visibleData().map(r =>
+    const maValues = compute7dMA(data.map(r =>
       (this.tab === 'calls' ? VESSEL_KEYS : CAP_KEYS).reduce((s, k) => s + (r[k as keyof TransitDayCount] as number), 0),
     ));
     const ma = maValues[idx] ?? 0;
