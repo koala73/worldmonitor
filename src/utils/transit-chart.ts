@@ -32,6 +32,7 @@ export class TransitChart {
   private tooltip: HTMLDivElement | null = null;
   private controls: HTMLDivElement | null = null;
   private legend: HTMLDivElement | null = null;
+  private source: HTMLDivElement | null = null;
   private themeHandler: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private allData: TransitDayCount[] = [];
@@ -50,6 +51,7 @@ export class TransitChart {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       marginBottom: '6px', gap: '6px', flexWrap: 'wrap',
     });
+    this.controls.addEventListener('click', (e) => e.stopPropagation());
     container.appendChild(this.controls);
 
     this.canvas = document.createElement('canvas');
@@ -73,10 +75,10 @@ export class TransitChart {
     });
     container.appendChild(this.legend);
 
-    const source = document.createElement('div');
-    Object.assign(source.style, { fontSize: '10px', color: 'var(--text-dim, #888)', paddingTop: '4px' });
-    source.textContent = 'Source: IMF PortWatch · 180d history';
-    container.appendChild(source);
+    this.source = document.createElement('div');
+    Object.assign(this.source.style, { fontSize: '10px', color: 'var(--text-dim, #888)', paddingTop: '4px' });
+    this.source.textContent = 'Source: IMF PortWatch · 180d history';
+    container.appendChild(this.source);
 
     this.canvas.addEventListener('mousemove', this.onMouseMove);
     this.canvas.addEventListener('mouseleave', this.onMouseLeave);
@@ -103,6 +105,7 @@ export class TransitChart {
     if (this.tooltip) { this.tooltip.remove(); this.tooltip = null; }
     if (this.controls) { this.controls.remove(); this.controls = null; }
     if (this.legend) { this.legend.remove(); this.legend = null; }
+    if (this.source) { this.source.remove(); this.source = null; }
     this.allData = [];
   }
 
