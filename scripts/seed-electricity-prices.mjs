@@ -20,7 +20,7 @@ export const ELECTRICITY_TTL_SECONDS = 3 * 24 * 3600; // 3 days = 259200s
 
 const LOCK_DOMAIN = 'energy:electricity-prices';
 const LOCK_TTL_MS = 10 * 60 * 1000;
-const MIN_ENTSO_REGIONS = 3;
+const MIN_ENTSO_REGIONS = 7;
 
 const ENTSO_E_REGIONS = [
   { region: 'DE', eic: '10Y1001A1001A82H', name: 'Germany' },       // DE-LU bidding zone (post-split)
