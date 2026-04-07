@@ -425,12 +425,11 @@ async function buildGasFlows(iso2: string): Promise<string | undefined> {
     if (spine != null && typeof spine === 'object' && (spine.coverage as Record<string, unknown> | undefined)?.hasJodiGas) {
       const gas = spine.gas as Record<string, unknown> | undefined;
       if (!gas) return undefined;
-      const totalTj = typeof gas.totalDemandTj === 'number' ? gas.totalDemandTj as number : null;
       const pipeImports = typeof gas.pipeImportsTj === 'number' ? gas.pipeImportsTj as number : null;
       const lngImports = typeof gas.lngImportsTj === 'number' ? gas.lngImportsTj as number : null;
       const totalImports = (pipeImports ?? 0) + (lngImports ?? 0);
-      if (!totalImports && !totalTj) return undefined;
-      const totalPj = Math.round((totalImports || totalTj || 0) / 1000);
+      if (!totalImports) return undefined; // no imports to report; avoid mislabeling demand as imports
+      const totalPj = Math.round(totalImports / 1000);
       const lngShare = typeof gas.lngShareOfImports === 'number' ? Math.round((gas.lngShareOfImports as number) * 100) : null;
       const split = lngShare != null ? ` (LNG ${lngShare}%, pipeline ${100 - lngShare}%)` : '';
       return `Gas: total imports ${totalPj} PJ${split}`;

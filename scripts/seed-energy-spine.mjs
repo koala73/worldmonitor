@@ -329,7 +329,7 @@ export async function main() {
     commands.push([
       'SET',
       SPINE_META_KEY,
-      JSON.stringify({ fetchedAt: Date.now(), recordCount: spineEntries.size }),
+      JSON.stringify({ fetchedAt: Date.now(), recordCount: spineEntries.size, status: 'ok' }),
       'EX',
       SPINE_TTL_SECONDS,
     ]);
