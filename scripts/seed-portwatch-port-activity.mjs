@@ -51,21 +51,28 @@ async function fetchWithTimeout(url) {
 }
 
 async function fetchPortRef(iso3) {
-  const params = new URLSearchParams({
-    where: `ISO3='${iso3}'`,
-    outFields: 'portid,lat,lon',
-    resultRecordCount: String(PAGE_SIZE),
-    outSR: '4326',
-    f: 'json',
-  });
-  const body = await fetchWithTimeout(`${EP4_BASE}?${params}`);
+  let offset = 0;
   const refMap = new Map();
-  for (const f of body.features ?? []) {
-    const a = f.attributes;
-    if (a?.portid != null) {
-      refMap.set(String(a.portid), { lat: Number(a.lat ?? 0), lon: Number(a.lon ?? 0) });
+  let body;
+  do {
+    const params = new URLSearchParams({
+      where: `ISO3='${iso3}'`,
+      outFields: 'portid,lat,lon',
+      returnGeometry: 'false',
+      resultRecordCount: String(PAGE_SIZE),
+      resultOffset: String(offset),
+      outSR: '4326',
+      f: 'json',
+    });
+    body = await fetchWithTimeout(`${EP4_BASE}?${params}`);
+    for (const f of body.features ?? []) {
+      const a = f.attributes;
+      if (a?.portid != null) {
+        refMap.set(String(a.portid), { lat: Number(a.lat ?? 0), lon: Number(a.lon ?? 0) });
+      }
     }
-  }
+    offset += PAGE_SIZE;
+  } while (body.exceededTransferLimit);
   return refMap;
 }
 
@@ -122,8 +129,8 @@ function computeCountryPorts(rawRows, refMap) {
     const importTankerDwt30d = last30.reduce((s, r) => s + r.import_tanker, 0);
     const exportTankerDwt30d = last30.reduce((s, r) => s + r.export_tanker, 0);
 
-    const avg30d = tankerCalls30d / 30;
-    const avg7d = last7.reduce((s, r) => s + r.portcalls_tanker, 0) / Math.max(last7.length, 1);
+    const avg30d = last30.length > 0 ? tankerCalls30d / last30.length : 0;
+    const avg7d = last7.length > 0 ? last7.reduce((s, r) => s + r.portcalls_tanker, 0) / last7.length : 0;
     const anomalySignal = avg30d > 0 && avg7d < avg30d * 0.5;
 
     const trendDelta = tankerCalls30dPrev > 0
