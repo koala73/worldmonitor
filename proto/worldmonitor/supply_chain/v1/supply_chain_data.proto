@@ -18,6 +18,16 @@ message ShippingIndex {
   bool spike_alert = 8;
 }
 
+message FlowEstimate {
+  double current_mbd = 1;
+  double baseline_mbd = 2;
+  double flow_ratio = 3;
+  bool disrupted = 4;
+  string source = 5;
+  string hazard_alert_level = 6;
+  string hazard_alert_name = 7;
+}
+
 message ChokepointInfo {
   string id = 1;
   string name = 2;
@@ -33,6 +43,7 @@ message ChokepointInfo {
   repeated string directions = 12;
   repeated DirectionalDwt directional_dwt = 13 [deprecated = true];
   TransitSummary transit_summary = 14;
+  FlowEstimate flow_estimate = 15;
 }
 
 message DirectionalDwt {

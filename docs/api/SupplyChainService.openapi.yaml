@@ -237,6 +237,8 @@ components:
                         $ref: '#/components/schemas/DirectionalDwt'
                 transitSummary:
                     $ref: '#/components/schemas/TransitSummary'
+                flowEstimate:
+                    $ref: '#/components/schemas/FlowEstimate'
         DirectionalDwt:
             type: object
             properties:
@@ -326,6 +328,26 @@ components:
                 capTanker:
                     type: number
                     format: double
+        FlowEstimate:
+            type: object
+            properties:
+                currentMbd:
+                    type: number
+                    format: double
+                baselineMbd:
+                    type: number
+                    format: double
+                flowRatio:
+                    type: number
+                    format: double
+                disrupted:
+                    type: boolean
+                source:
+                    type: string
+                hazardAlertLevel:
+                    type: string
+                hazardAlertName:
+                    type: string
         GetCriticalMineralsRequest:
             type: object
         GetCriticalMineralsResponse:

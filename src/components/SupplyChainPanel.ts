@@ -204,6 +204,17 @@ export class SupplyChainPanel extends Panel {
               <span>${t('components.supplyChain.riskLevel')}: <span class="${riskClass}">${escapeHtml(ts.riskLevel)}</span></span>
               <span>${ts.incidentCount7d} ${t('components.supplyChain.incidents7d')}</span>
             </div>` : ''}
+            ${cp.flowEstimate ? (() => {
+              const fe = cp.flowEstimate;
+              const pct = Math.round(fe.flowRatio * 100);
+              const flowColor = fe.disrupted || pct < 85 ? '#ef4444' : pct < 95 ? '#f59e0b' : 'var(--text-dim,#888)';
+              const hazardBadge = fe.hazardAlertLevel && fe.hazardAlertName
+                ? ` <span style="background:#ea580c;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;margin-left:4px">&#9888; ${escapeHtml(fe.hazardAlertName.toUpperCase())}</span>`
+                : '';
+              return `<div class="sc-metric-row" style="color:${flowColor}">
+                <span>~${fe.currentMbd} mb/d <span style="opacity:0.7">(${pct}% of ${fe.baselineMbd} baseline)</span>${hazardBadge}</span>
+              </div>`;
+            })() : ''}
             ${cp.description ? `<div class="trade-description">${escapeHtml(cp.description)}</div>` : ''}
             <div class="trade-affected">${cp.affectedRoutes.slice(0, 3).map(r => escapeHtml(r)).join(', ')}</div>
             ${actionRow}

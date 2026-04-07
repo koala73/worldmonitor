@@ -25,6 +25,7 @@ const TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const PORTWATCH_FALLBACK_KEY = 'supply_chain:portwatch:v1';
 const CORRIDORRISK_FALLBACK_KEY = 'supply_chain:corridorrisk:v1';
 const TRANSIT_COUNTS_FALLBACK_KEY = 'supply_chain:chokepoint_transits:v1';
+const FLOWS_KEY = 'energy:chokepoint-flows:v1';
 const REDIS_CACHE_TTL = 300; // 5 min
 const THREAT_CONFIG_MAX_AGE_DAYS = 120;
 const NEARBY_CHOKEPOINT_RADIUS_KM = 300;
@@ -241,6 +242,7 @@ interface ChokepointFetchResult {
 
 interface CorridorRiskEntry { riskLevel: string; incidentCount7d: number; disruptionPct: number; riskSummary: string; riskReportAction: string }
 interface RelayTransitEntry { tanker: number; cargo: number; other: number; total: number }
+interface FlowEstimateEntry { currentMbd: number; baselineMbd: number; flowRatio: number; disrupted: boolean; source: string; hazardAlertLevel: string | null; hazardAlertName: string | null }
 interface RelayTransitPayload { transits: Record<string, RelayTransitEntry>; fetchedAt: number }
 
 function buildFallbackSummaries(
@@ -286,10 +288,11 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
   let navFailed = false;
   let vesselFailed = false;
 
-  const [navResult, vesselResult, transitSummariesData] = await Promise.all([
+  const [navResult, vesselResult, transitSummariesData, flowsData] = await Promise.all([
     listNavigationalWarnings(ctx, { area: '', pageSize: 0, cursor: '' }).catch((): ListNavigationalWarningsResponse => { navFailed = true; return { warnings: [], pagination: undefined }; }),
     getVesselSnapshot(ctx, { neLat: 90, neLon: 180, swLat: -90, swLon: -180 }).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
     getCachedJson(TRANSIT_SUMMARIES_KEY, true).catch(() => null) as Promise<TransitSummariesPayload | null>,
+    getCachedJson(FLOWS_KEY, true).catch(() => null) as Promise<Record<string, FlowEstimateEntry> | null>,
   ]);
 
   let summaries = transitSummariesData?.summaries ?? {};
@@ -371,6 +374,15 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         riskSummary: ts.riskSummary,
         riskReportAction: ts.riskReportAction,
       } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '' },
+      flowEstimate: flowsData?.[cp.id] ? {
+        currentMbd: flowsData[cp.id]!.currentMbd,
+        baselineMbd: flowsData[cp.id]!.baselineMbd,
+        flowRatio: flowsData[cp.id]!.flowRatio,
+        disrupted: flowsData[cp.id]!.disrupted,
+        source: flowsData[cp.id]!.source,
+        hazardAlertLevel: flowsData[cp.id]!.hazardAlertLevel ?? '',
+        hazardAlertName: flowsData[cp.id]!.hazardAlertName ?? '',
+      } : undefined,
     };
   });
 
