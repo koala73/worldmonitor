@@ -180,7 +180,7 @@ export class SupplyChainPanel extends Panel {
           ? `<div class="sc-routing-advisory">${escapeHtml(ts.riskReportAction)}</div>`
           : '';
         const chartPlaceholder = expanded && ts?.history?.length
-          ? `<div data-chart-cp="${escapeHtml(cp.name)}" style="margin-top:8px;min-height:120px"></div>`
+          ? `<div data-chart-cp="${escapeHtml(cp.name)}" style="margin-top:8px;min-height:200px"></div>`
           : '';
 
         return `<div class="trade-restriction-card${expanded ? ' expanded' : ''}" data-cp-id="${escapeHtml(cp.name)}" style="cursor:pointer">

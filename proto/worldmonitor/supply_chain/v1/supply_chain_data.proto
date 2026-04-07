@@ -47,6 +47,15 @@ message TransitDayCount {
   int32 cargo = 3;
   int32 other = 4;
   int32 total = 5;
+  int32 container = 6;
+  int32 dry_bulk = 7;
+  int32 general_cargo = 8;
+  int32 roro = 9;
+  double cap_container = 10;
+  double cap_dry_bulk = 11;
+  double cap_general_cargo = 12;
+  double cap_roro = 13;
+  double cap_tanker = 14;
 }
 
 message TransitSummary {

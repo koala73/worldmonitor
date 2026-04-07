@@ -299,6 +299,33 @@ components:
                 total:
                     type: integer
                     format: int32
+                container:
+                    type: integer
+                    format: int32
+                dryBulk:
+                    type: integer
+                    format: int32
+                generalCargo:
+                    type: integer
+                    format: int32
+                roro:
+                    type: integer
+                    format: int32
+                capContainer:
+                    type: number
+                    format: double
+                capDryBulk:
+                    type: number
+                    format: double
+                capGeneralCargo:
+                    type: number
+                    format: double
+                capRoro:
+                    type: number
+                    format: double
+                capTanker:
+                    type: number
+                    format: double
         GetCriticalMineralsRequest:
             type: object
         GetCriticalMineralsResponse:
