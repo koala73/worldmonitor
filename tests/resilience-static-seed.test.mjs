@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   RESILIENCE_STATIC_INDEX_KEY,
   RESILIENCE_STATIC_META_KEY,
+  RESILIENCE_STATIC_SOURCE_VERSION,
   buildFailureRefreshKeys,
   buildManifest,
   buildTradeToGdpMap,
@@ -353,7 +354,7 @@ describe('resilience static seed payload assembly', () => {
       failedDatasets: ['aquastat', 'gpi'],
       seedYear: 2026,
       seededAt: '2026-04-03T12:00:00.000Z',
-      sourceVersion: 'resilience-static-v1',
+      sourceVersion: RESILIENCE_STATIC_SOURCE_VERSION,
     });
 
     assert.deepEqual(buildFailureRefreshKeys(manifest), [
@@ -365,10 +366,13 @@ describe('resilience static seed payload assembly', () => {
     ]);
   });
 
-  it('skips reruns only after a successful snapshot for the same seed year', () => {
-    assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150 }, 2026), true);
-    assert.equal(shouldSkipSeedYear({ status: 'error', seedYear: 2026, recordCount: 150 }, 2026), false);
-    assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2025, recordCount: 150 }, 2026), false);
+  it('skips reruns only after a successful snapshot for the same seed year and source version', () => {
+    const v = RESILIENCE_STATIC_SOURCE_VERSION;
+    assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150, sourceVersion: v }, 2026), true);
+    assert.equal(shouldSkipSeedYear({ status: 'error', seedYear: 2026, recordCount: 150, sourceVersion: v }, 2026), false);
+    assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2025, recordCount: 150, sourceVersion: v }, 2026), false);
+    assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150, sourceVersion: 'resilience-static-v1' }, 2026), false);
+    assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150 }, 2026), false);
   });
 });
 
