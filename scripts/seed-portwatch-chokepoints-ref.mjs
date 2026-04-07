@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, CHROME_UA, resolveProxy, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, CHROME_UA, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -31,7 +31,7 @@ export async function fetchAll() {
   });
   let body;
   if (resp.status === 429) {
-    const proxyAuth = resolveProxy();
+    const proxyAuth = resolveProxyForConnect();
     if (!proxyAuth) throw new Error('ArcGIS HTTP 429 (rate limited) and no PROXY_URL configured');
     const { buffer } = await httpsProxyFetchRaw(`${ARCGIS_BASE}?${params}`, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT });
     body = JSON.parse(buffer.toString('utf8'));

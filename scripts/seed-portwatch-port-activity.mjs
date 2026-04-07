@@ -9,7 +9,7 @@ import {
   extendExistingTtl,
   logSeedResult,
   readSeedSnapshot,
-  resolveProxy,
+  resolveProxyForConnect,
   httpsProxyFetchRaw,
 } from './_seed-utils.mjs';
 import { createCountryResolvers } from './_country-resolver.mjs';
@@ -47,7 +47,7 @@ async function fetchWithTimeout(url) {
     signal: AbortSignal.timeout(FETCH_TIMEOUT),
   });
   if (resp.status === 429) {
-    const proxyAuth = resolveProxy();
+    const proxyAuth = resolveProxyForConnect();
     if (!proxyAuth) throw new Error(`ArcGIS HTTP 429 (rate limited) for ${url.slice(0, 80)}`);
     const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT });
     const proxied = JSON.parse(buffer.toString('utf8'));
