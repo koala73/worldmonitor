@@ -125,11 +125,16 @@ function buildOilFields(jodiOil, ieaStocks, hasIeaStocks) {
   return {
     crudeImportsKbd: jodiOil ? (jodiOil.crude?.importsKbd ?? 0) : 0,
     gasolineDemandKbd: jodiOil ? (jodiOil.gasoline?.demandKbd ?? 0) : 0,
+    gasolineImportsKbd: jodiOil ? (jodiOil.gasoline?.importsKbd ?? 0) : 0,
     dieselDemandKbd: jodiOil ? (jodiOil.diesel?.demandKbd ?? 0) : 0,
+    dieselImportsKbd: jodiOil ? (jodiOil.diesel?.importsKbd ?? 0) : 0,
     jetDemandKbd: jodiOil ? (jodiOil.jet?.demandKbd ?? 0) : 0,
+    jetImportsKbd: jodiOil ? (jodiOil.jet?.importsKbd ?? 0) : 0,
     lpgDemandKbd: jodiOil ? (jodiOil.lpg?.demandKbd ?? 0) : 0,
+    lpgImportsKbd: jodiOil ? (jodiOil.lpg?.importsKbd ?? 0) : 0,
     daysOfCover: hasIeaStocks ? (ieaStocks.daysOfCover ?? 0) : 0,
     netExporter: ieaStocks?.netExporter === true,
+    belowObligation: ieaStocks?.belowObligation === true,
   };
 }
 
@@ -151,14 +156,26 @@ function buildElectricityFields(electricity, hasElectricity) {
 }
 
 function buildMixFields(mix) {
-  if (!mix) return { coalShare: 0, gasShare: 0, oilShare: 0, nuclearShare: 0, renewShare: 0, importShare: 0 };
+  if (!mix) return { coalShare: 0, gasShare: 0, oilShare: 0, nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0, importShare: 0 };
   return {
     coalShare: mix.coalShare ?? 0,
     gasShare: mix.gasShare ?? 0,
     oilShare: mix.oilShare ?? 0,
     nuclearShare: mix.nuclearShare ?? 0,
     renewShare: mix.renewShare ?? 0,
+    windShare: mix.windShare ?? 0,
+    solarShare: mix.solarShare ?? 0,
+    hydroShare: mix.hydroShare ?? 0,
     importShare: mix.importShare ?? 0,
+  };
+}
+
+function buildGasStorageFields(gasStorage, hasGasStorage) {
+  if (!hasGasStorage) return { fillPct: 0, fillPctChange1d: 0, trend: '' };
+  return {
+    fillPct: gasStorage.fillPct ?? 0,
+    fillPctChange1d: gasStorage.fillPctChange1d ?? 0,
+    trend: gasStorage.trend ?? '',
   };
 }
 
@@ -201,6 +218,7 @@ export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, electr
     oil: buildOilFields(jodiOil, ieaStocks, hasIeaStocks),
     gas: buildGasFields(jodiGas),
     electricity: buildElectricityFields(electricity, hasElectricity),
+    gasStorage: buildGasStorageFields(gasStorage, hasGasStorage),
     mix: buildMixFields(hasMix ? mix : null),
     shockInputs: {
       comtradeReporterCode: comtradeCode,

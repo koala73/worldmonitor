@@ -85,11 +85,16 @@ interface EnergySpine {
   oil?: {
     crudeImportsKbd?: number;
     gasolineDemandKbd?: number;
+    gasolineImportsKbd?: number;
     dieselDemandKbd?: number;
+    dieselImportsKbd?: number;
     jetDemandKbd?: number;
+    jetImportsKbd?: number;
     lpgDemandKbd?: number;
+    lpgImportsKbd?: number;
     daysOfCover?: number;
     netExporter?: boolean;
+    belowObligation?: boolean;
   };
   gas?: {
     lngImportsTj?: number;
@@ -101,12 +106,20 @@ interface EnergySpine {
     priceMwh?: number;
     source?: string;
   };
+  gasStorage?: {
+    fillPct?: number;
+    fillPctChange1d?: number;
+    trend?: string;
+  };
   mix?: {
     coalShare?: number;
     gasShare?: number;
     oilShare?: number;
     nuclearShare?: number;
     renewShare?: number;
+    windShare?: number;
+    solarShare?: number;
+    hydroShare?: number;
     importShare?: number;
   };
 }
@@ -170,6 +183,7 @@ function buildResponseFromSpine(spine: EnergySpine): GetCountryEnergyProfileResp
   const oil = spine.oil ?? {};
   const gas = spine.gas ?? {};
   const elec = spine.electricity ?? {};
+  const gs = spine.gasStorage ?? {};
   const mix = spine.mix ?? {};
 
   return {
@@ -180,19 +194,15 @@ function buildResponseFromSpine(spine: EnergySpine): GetCountryEnergyProfileResp
     oilShare: n(mix.oilShare),
     nuclearShare: n(mix.nuclearShare),
     renewShare: n(mix.renewShare),
-    // windShare/solarShare/hydroShare not in spine (not needed by UI consumers of spine)
-    windShare: 0,
-    solarShare: 0,
-    hydroShare: 0,
+    windShare: n(mix.windShare),
+    solarShare: n(mix.solarShare),
+    hydroShare: n(mix.hydroShare),
     importShare: n(mix.importShare),
 
-    // Gas storage — spine does not carry gas storage fill% (gas storage is per-country
-    // and only available for EU; spine includes gasStorageDate as a source marker only).
-    // Fall through to gasStorageAvailable: false when reading from spine.
-    gasStorageAvailable: false,
-    gasStorageFillPct: 0,
-    gasStorageChange1d: 0,
-    gasStorageTrend: '',
+    gasStorageAvailable: cov.hasGasStorage === true,
+    gasStorageFillPct: n(gs.fillPct),
+    gasStorageChange1d: n(gs.fillPctChange1d),
+    gasStorageTrend: s(gs.trend),
     gasStorageDate: s(src.gasStorageDate),
 
     electricityAvailable: cov.hasElectricity === true,
@@ -203,13 +213,13 @@ function buildResponseFromSpine(spine: EnergySpine): GetCountryEnergyProfileResp
     jodiOilAvailable: cov.hasJodiOil === true,
     jodiOilDataMonth: s(src.jodiOilMonth),
     gasolineDemandKbd: n(oil.gasolineDemandKbd),
-    gasolineImportsKbd: 0, // not in spine oil shape (importsKbd omitted)
+    gasolineImportsKbd: n(oil.gasolineImportsKbd),
     dieselDemandKbd: n(oil.dieselDemandKbd),
-    dieselImportsKbd: 0,
+    dieselImportsKbd: n(oil.dieselImportsKbd),
     jetDemandKbd: n(oil.jetDemandKbd),
-    jetImportsKbd: 0,
+    jetImportsKbd: n(oil.jetImportsKbd),
     lpgDemandKbd: n(oil.lpgDemandKbd),
-    lpgImportsKbd: 0,
+    lpgImportsKbd: n(oil.lpgImportsKbd),
     crudeImportsKbd: n(oil.crudeImportsKbd),
 
     jodiGasAvailable: cov.hasJodiGas === true,
@@ -223,7 +233,7 @@ function buildResponseFromSpine(spine: EnergySpine): GetCountryEnergyProfileResp
     ieaStocksDataMonth: s(src.ieaStocksMonth),
     ieaDaysOfCover: n(oil.daysOfCover),
     ieaNetExporter: oil.netExporter === true,
-    ieaBelowObligation: false, // not in spine (not needed by shock model consumers)
+    ieaBelowObligation: oil.belowObligation === true,
   };
 }
 
