@@ -9,6 +9,8 @@ import {
   extendExistingTtl,
   logSeedResult,
   readSeedSnapshot,
+  resolveProxy,
+  httpsProxyFetchRaw,
 } from './_seed-utils.mjs';
 import { createCountryResolvers } from './_country-resolver.mjs';
 
@@ -44,6 +46,14 @@ async function fetchWithTimeout(url) {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     signal: AbortSignal.timeout(FETCH_TIMEOUT),
   });
+  if (resp.status === 429) {
+    const proxyAuth = resolveProxy();
+    if (!proxyAuth) throw new Error(`ArcGIS HTTP 429 (rate limited) for ${url.slice(0, 80)}`);
+    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT });
+    const proxied = JSON.parse(buffer.toString('utf8'));
+    if (proxied.error) throw new Error(`ArcGIS error (via proxy): ${proxied.error.message}`);
+    return proxied;
+  }
   if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
   const body = await resp.json();
   if (body.error) throw new Error(`ArcGIS error: ${body.error.message}`);
@@ -239,7 +249,7 @@ async function main() {
   const lock = await acquireLockSafely(LOCK_DOMAIN, runId, LOCK_TTL_MS, { label: LOCK_DOMAIN });
   if (lock.skipped) return;
   if (!lock.locked) {
-    console.log('  SKIPPED: another seed run in progress');
+    console.log(`  SKIPPED: another seed run in progress (lock: seed-lock:${LOCK_DOMAIN}, held up to ${LOCK_TTL_MS / 60000}min — will retry at next cron trigger)`);
     return;
   }
 
