@@ -143,6 +143,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   electricityPrices:   'energy:electricity:v1:index',
   jodiOil:             'energy:jodi-oil:v1:_countries',
   chokepointBaselines: 'energy:chokepoint-baselines:v1',
+  portwatchChokepointsRef: 'portwatch:chokepoints:ref:v1',
 };
 
 
@@ -191,4 +192,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   electricityPrices:   'slow',
   jodiOil:             'slow',
   chokepointBaselines: 'slow',
+  portwatchChokepointsRef: 'slow',
 };
+
+export const PORTWATCH_CHOKEPOINTS_REF_KEY = 'portwatch:chokepoints:ref:v1';
