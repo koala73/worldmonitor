@@ -2285,9 +2285,9 @@ components:
                 tankerCalls30d:
                     type: integer
                     format: int32
-                tankerCallsPrev:
-                    type: integer
-                    format: int32
+                trendDeltaPct:
+                    type: number
+                    format: double
                 importTankerDwt:
                     type: number
                     format: double

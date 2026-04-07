@@ -360,7 +360,7 @@ export class CountryIntelManager implements AppModule {
             lat: p.lat,
             lon: p.lon,
             tankerCalls30d: p.tankerCalls30d,
-            tankerCallsPrev: p.tankerCallsPrev,
+            trendDeltaPct: p.trendDeltaPct,
             importTankerDwt: p.importTankerDwt,
             exportTankerDwt: p.exportTankerDwt,
             anomalySignal: p.anomalySignal,

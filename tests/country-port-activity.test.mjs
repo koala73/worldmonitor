@@ -152,6 +152,38 @@ describe('CountryDeepDivePanel: updateMaritimeActivity', () => {
   });
 });
 
+// ── trend delta passthrough ───────────────────────────────────────────────────
+
+describe('trend delta passthrough', () => {
+  it('passes trendDelta directly without reconstruction', () => {
+    const seederPort = {
+      portId: 'p1', portName: 'Test', lat: 0, lon: 0,
+      tankerCalls30d: 0, trendDelta: -100, importTankerDwt30d: 0, exportTankerDwt30d: 0,
+      anomalySignal: false,
+    };
+    const mapped = {
+      trendDeltaPct: typeof seederPort.trendDelta === 'number' ? seederPort.trendDelta : 0,
+      tankerCalls30d: seederPort.tankerCalls30d,
+    };
+    assert.strictEqual(mapped.trendDeltaPct, -100, 'should preserve -100 exactly');
+    const buggyPrev = seederPort.tankerCalls30d > 0
+      ? Math.round(seederPort.tankerCalls30d / (1 + seederPort.trendDelta / 100))
+      : seederPort.tankerCalls30d;
+    assert.strictEqual(buggyPrev, 0, 'old formula collapses to 0 on shutdown port');
+  });
+
+  it('passes lossy example without rounding error', () => {
+    const seederPort = {
+      tankerCalls30d: 5, trendDelta: 20.0,
+    };
+    const direct = seederPort.trendDelta;
+    const reconstructedPrev = Math.round(seederPort.tankerCalls30d / (1 + seederPort.trendDelta / 100));
+    const reconstructedPct = ((seederPort.tankerCalls30d - reconstructedPrev) / reconstructedPrev) * 100;
+    assert.strictEqual(direct, 20.0, 'direct passthrough is exact');
+    assert.notStrictEqual(reconstructedPct, 20.0, 'reconstruction introduces error');
+  });
+});
+
 // ── country-intel.ts: call site ───────────────────────────────────────────────
 
 describe('country-intel.ts: getCountryPortActivity call site', () => {

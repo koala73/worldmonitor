@@ -12,7 +12,7 @@ message PortActivityEntry {
   double lat                = 3;
   double lon                = 4;
   int32  tanker_calls_30d   = 5;
-  int32  tanker_calls_prev  = 6;
+  double trend_delta_pct    = 6;  // pre-computed by seeder: (30d-prev30d)/prev30d * 100, 0 when no prev data
   double import_tanker_dwt  = 7;
   double export_tanker_dwt  = 8;
   bool   anomaly_signal     = 9;

@@ -132,7 +132,7 @@ export interface CountryPortActivityData {
     lat: number;
     lon: number;
     tankerCalls30d: number;
-    tankerCallsPrev: number;
+    trendDeltaPct: number;
     importTankerDwt: number;
     exportTankerDwt: number;
     anomalySignal: boolean;

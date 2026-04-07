@@ -55,10 +55,6 @@ export async function getCountryPortActivity(
 
   const ports: PortActivityEntry[] = top5.map((p) => {
     const calls30d = typeof p.tankerCalls30d === 'number' ? Math.round(p.tankerCalls30d) : 0;
-    const delta = typeof p.trendDelta === 'number' ? p.trendDelta : 0;
-    const callsPrev = delta !== 0 && calls30d > 0
-      ? Math.round(calls30d / (1 + delta / 100))
-      : calls30d;
 
     return {
       portId: p.portId ?? '',
@@ -66,7 +62,7 @@ export async function getCountryPortActivity(
       lat: typeof p.lat === 'number' ? p.lat : 0,
       lon: typeof p.lon === 'number' ? p.lon : 0,
       tankerCalls30d: calls30d,
-      tankerCallsPrev: callsPrev,
+      trendDeltaPct: typeof p.trendDelta === 'number' ? p.trendDelta : 0,
       importTankerDwt: typeof p.importTankerDwt30d === 'number' ? p.importTankerDwt30d : 0,
       exportTankerDwt: typeof p.exportTankerDwt30d === 'number' ? p.exportTankerDwt30d : 0,
       anomalySignal: p.anomalySignal === true,
