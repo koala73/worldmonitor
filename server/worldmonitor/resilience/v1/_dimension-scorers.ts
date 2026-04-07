@@ -528,7 +528,7 @@ function summarizeSocialVelocity(raw: unknown, countryCode: string): number {
 
 function getThreatSummaryScore(raw: unknown, countryCode: string): number | null {
   if (!raw || typeof raw !== 'object') return null;
-  const byCountry = (raw as Record<string, unknown>).byCountry ?? raw;
+  const byCountry = (raw as Record<string, unknown>).byCountry ?? raw; // backward-compat: old payload was a flat ISO2 map
   const counts = (byCountry as Record<string, Record<string, number>>)?.[countryCode.toUpperCase()];
   if (!counts) return null;
   const score = (safeNum(counts.critical) ?? 0) * 4
