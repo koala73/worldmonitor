@@ -49,14 +49,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     cadence: 'annual',
   },
 
-  // ── currencyExternal (2 sub-metrics, plus IMF inflation fallback) ─────────
+  // ── currencyExternal (3 sub-metrics, plus IMF inflation fallback for non-BIS) ─
   {
     id: 'fxVolatility',
     dimension: 'currencyExternal',
-    description: 'Annualized BIS real effective exchange rate volatility (std-dev of monthly changes * sqrt(12)). Fallback chain when BIS absent: (1) IMF inflation proxy at coverage 0.45 if available, (2) conservative imputation only when IMF inflation is also unavailable.',
+    description: 'Annualized BIS real effective exchange rate volatility (std-dev of monthly changes * sqrt(12)). Fallback chain when BIS absent: (1) IMF inflation + WB reserves proxy, (2) IMF inflation alone, (3) reserves alone, (4) conservative imputation.',
     direction: 'lowerBetter',
     goalposts: { worst: 50, best: 0 },
-    weight: 0.7,
+    weight: 0.6,
     sourceKey: 'economic:bis:eer:v1',
     scope: 'curated',
     cadence: 'monthly',
@@ -65,14 +65,25 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'fxDeviation',
     dimension: 'currencyExternal',
-    description: 'Absolute deviation of latest BIS real EER from 100 (equilibrium index). Fallback chain when BIS absent: (1) IMF inflation proxy at coverage 0.45 if available, (2) conservative imputation only when IMF inflation is also unavailable.',
+    description: 'Absolute deviation of latest BIS real EER from 100 (equilibrium index). Fallback chain when BIS absent: (1) IMF inflation + WB reserves proxy, (2) IMF inflation alone, (3) reserves alone, (4) conservative imputation.',
     direction: 'lowerBetter',
     goalposts: { worst: 35, best: 0 },
-    weight: 0.3,
+    weight: 0.25,
     sourceKey: 'economic:bis:eer:v1',
     scope: 'curated',
     cadence: 'monthly',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
+  },
+  {
+    id: 'fxReservesAdequacy',
+    dimension: 'currencyExternal',
+    description: 'Total reserves in months of imports (World Bank FI.RES.TOTL.MO). Supplementary metric for BIS countries (weight 0.15), primary metric alongside IMF inflation for non-BIS countries (~160 countries).',
+    direction: 'higherBetter',
+    goalposts: { worst: 1, best: 12 },
+    weight: 0.15,
+    sourceKey: 'resilience:static:*',
+    scope: 'global',
+    cadence: 'annual',
   },
 
   // ── tradeSanctions (3 sub-metrics) ────────────────────────────────────────

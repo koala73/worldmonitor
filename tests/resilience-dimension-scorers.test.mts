@@ -271,6 +271,34 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.coverage, 0, 'both sources null → coverage=0');
   });
 
+  it('scoreCurrencyExternal: FX reserves contribute to score alongside BIS data', async () => {
+    const withReserves = await scoreCurrencyExternal('NO', fixtureReader);
+    const readerNoReserves = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:NO') {
+        const base = RESILIENCE_FIXTURES['resilience:static:NO'] as Record<string, unknown>;
+        return { ...base, fxReservesMonths: null };
+      }
+      return fixtureReader(key);
+    };
+    const withoutReserves = await scoreCurrencyExternal('NO', readerNoReserves);
+    assert.ok(withReserves.score !== withoutReserves.score, 'reserves data must change the BIS-country score');
+    assert.ok(withReserves.coverage > 0, 'coverage must be positive with BIS + reserves');
+  });
+
+  it('scoreCurrencyExternal: non-BIS country with good reserves scores higher than with bad reserves', async () => {
+    const makeReader = (months: number) => async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:bis:eer:v1') return { rates: [{ countryCode: 'US', realChange: 1.2, realEer: 101, date: '2025-09' }] };
+      if (key === 'economic:imf:macro:v2') return { countries: { MZ: { inflationPct: 15, currentAccountPct: -5, year: 2024 } } };
+      if (key === 'resilience:static:MZ') return { fxReservesMonths: { source: 'worldbank', months, year: 2023 } };
+      return null;
+    };
+    const goodRes = await scoreCurrencyExternal('MZ', makeReader(12));
+    const badRes = await scoreCurrencyExternal('MZ', makeReader(1.5));
+    assert.ok(goodRes.score > badRes.score, `good reserves (${goodRes.score}) must score higher than bad (${badRes.score})`);
+    assert.equal(goodRes.coverage, badRes.coverage, 'coverage should be the same when both have inflation+reserves');
+    assert.equal(goodRes.coverage, 0.55, 'non-BIS with inflation+reserves gets coverage=0.55');
+  });
+
   it('scoreMacroFiscal: IMF current account loaded, surplus country scores higher than deficit', async () => {
     const makeReader = (caPct: number) => async (key: string): Promise<unknown | null> => {
       if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 1.5 }] };

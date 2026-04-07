@@ -34,8 +34,8 @@ export const RESILIENCE_STATIC_WINDOW_CRON = '0 */4 1-3 10 *';
 
 const LOCK_DOMAIN = 'resilience:static';
 const LOCK_TTL_MS = 2 * 60 * 60 * 1000;
-const TOTAL_DATASET_SLOTS = 9;
-const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea', 'tradeToGdp'];
+const TOTAL_DATASET_SLOTS = 10;
+const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea', 'tradeToGdp', 'fxReservesMonths'];
 const WGI_INDICATORS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'];
 const INFRASTRUCTURE_INDICATORS = ['EG.ELC.ACCS.ZS', 'IS.ROD.PAVE.ZS', 'EG.USE.ELEC.KH.PC', 'IT.NET.BBND.P2'];
 const WHO_INDICATORS = {
@@ -680,6 +680,27 @@ async function fetchTradeToGdpDataset() {
   return buildTradeToGdpMap(latest);
 }
 
+const WB_FX_RESERVES_MONTHS_INDICATOR = 'FI.RES.TOTL.MO';
+
+export function buildFxReservesMonthsMap(latestByCountry) {
+  const byCountry = new Map();
+  for (const [iso2, entry] of latestByCountry.entries()) {
+    byCountry.set(iso2, {
+      source: 'worldbank',
+      months: entry.value,
+      year: entry.year,
+    });
+  }
+  if (byCountry.size === 0) throw new Error('World Bank FX reserves months returned no usable rows');
+  return byCountry;
+}
+
+async function fetchFxReservesMonthsDataset() {
+  const rows = await fetchWorldBankIndicatorRows(WB_FX_RESERVES_MONTHS_INDICATOR, { mrv: '12' });
+  const latest = selectLatestWorldBankByCountry(rows);
+  return buildFxReservesMonthsMap(latest);
+}
+
 export function finalizeCountryPayloads(datasetMaps, seedYear = nowSeedYear(), seededAt = new Date().toISOString()) {
   const merged = new Map();
 
@@ -811,6 +832,7 @@ async function fetchAllDatasetMaps() {
     { key: 'aquastat', fetcher: fetchAquastatDataset },
     { key: 'iea', fetcher: fetchEnergyDependencyDataset },
     { key: 'tradeToGdp', fetcher: fetchTradeToGdpDataset },
+    { key: 'fxReservesMonths', fetcher: fetchFxReservesMonthsDataset },
   ];
 
   const results = await Promise.allSettled(adapters.map((adapter) => adapter.fetcher()));

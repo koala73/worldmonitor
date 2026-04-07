@@ -82,6 +82,7 @@ interface ResilienceStaticCountryRecord {
   aquastat?: { value?: number; indicator?: string | null; year?: number | null } | null;
   iea?: { energyImportDependency?: { value?: number; year?: number | null; source?: string } | null } | null;
   tradeToGdp?: { tradeToGdpPct?: number; year?: number | null; source?: string } | null;
+  fxReservesMonths?: { months?: number; year?: number | null; source?: string } | null;
 }
 
 interface ImfMacroEntry {
@@ -659,13 +660,22 @@ export async function scoreMacroFiscal(
   ]);
 }
 
+function getFxReservesMonths(staticRecord: ResilienceStaticCountryRecord | null): number | null {
+  return safeNum(staticRecord?.fxReservesMonths?.months);
+}
+
+function scoreFxReserves(months: number): number {
+  return normalizeHigherBetter(Math.min(months, 12), 1, 12);
+}
+
 export async function scoreCurrencyExternal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [bisExchangeRaw, imfMacroRaw] = await Promise.all([
+  const [bisExchangeRaw, imfMacroRaw, staticRecord] = await Promise.all([
     reader(RESILIENCE_BIS_EXCHANGE_KEY),
     reader(RESILIENCE_IMF_MACRO_KEY),
+    readStaticCountry(countryCode, reader),
   ]);
   const countryRates = getCountryBisExchangeRates(bisExchangeRaw, countryCode);
   const latest = countryRates[countryRates.length - 1] ?? null;
@@ -679,27 +689,40 @@ export async function scoreCurrencyExternal(
       ? Math.abs(volSource[0]!) * Math.sqrt(12)
       : null;
 
+  const reservesMonths = getFxReservesMonths(staticRecord);
+  const reservesScore = reservesMonths != null ? scoreFxReserves(reservesMonths) : null;
+
   // Country not in BIS EER (curated ~40 economies), or BIS seed is down entirely.
-  // Try IMF CPI inflation as a currency stability proxy (covers ~185 countries) in both cases.
-  // Only fall back to imputation when both BIS and IMF macro seeds are unavailable.
+  // Use IMF CPI inflation + WB FX reserves as currency stability proxies.
+  // Inflation covers ~185 countries, reserves ~160 countries via World Bank FI.RES.TOTL.MO.
   if (countryRates.length === 0) {
     const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
-    if (imfMacroRaw != null && imfEntry?.inflationPct != null) {
-      // Cap at 50% — anything above 50% annual inflation is already catastrophic instability;
-      // a tighter cap better differentiates fragile states (Haiti ~39% → score 22) from
-      // moderately elevated inflation. Anchor: 0%→100, 50%+→0.
-      // coverage=0.45 when BIS is loaded (country absent from curated list);
-      // coverage=0.35 when BIS itself is down (proxy-only, primary source unavailable).
-      const coverage = bisExchangeRaw != null ? 0.45 : 0.35;
-      return { score: normalizeLowerBetter(Math.min(imfEntry.inflationPct, 50), 0, 50), coverage, observedWeight: 1, imputedWeight: 0 };
+    const hasInflation = imfMacroRaw != null && imfEntry?.inflationPct != null;
+    const hasReserves = reservesScore != null;
+
+    if (hasInflation && hasReserves) {
+      const inflScore = normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50);
+      const blended = inflScore * 0.6 + reservesScore * 0.4;
+      const coverage = bisExchangeRaw != null ? 0.55 : 0.45;
+      return { score: roundScore(blended), coverage, observedWeight: 1, imputedWeight: 0 };
     }
-    if (bisExchangeRaw == null) return { score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0 }; // both sources null
-    return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage, observedWeight: 0, imputedWeight: 1 }; // BIS loaded, country absent, no IMF
+    if (hasInflation) {
+      const coverage = bisExchangeRaw != null ? 0.45 : 0.35;
+      return { score: normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50), coverage, observedWeight: 1, imputedWeight: 0 };
+    }
+    if (hasReserves) {
+      const coverage = bisExchangeRaw != null ? 0.4 : 0.3;
+      return { score: reservesScore, coverage, observedWeight: 1, imputedWeight: 0 };
+    }
+    if (bisExchangeRaw == null) return { score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0 };
+    return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage, observedWeight: 0, imputedWeight: 1 };
   }
 
+  // BIS EER data present: volatility + deviation are primary, reserves supplementary.
   return weightedBlend([
-    { score: vol == null ? null : normalizeLowerBetter(vol, 0, 50), weight: 0.7 },
-    { score: latest == null ? null : normalizeLowerBetter(Math.abs((safeNum(latest.realEer) ?? 100) - 100), 0, 35), weight: 0.3 },
+    { score: vol == null ? null : normalizeLowerBetter(vol, 0, 50), weight: 0.6 },
+    { score: latest == null ? null : normalizeLowerBetter(Math.abs((safeNum(latest.realEer) ?? 100) - 100), 0, 35), weight: 0.25 },
+    { score: reservesScore, weight: 0.15 },
   ]);
 }
 
