@@ -81,6 +81,7 @@ interface ResilienceStaticCountryRecord {
   fao?: { peopleInCrisis?: number; phase?: string | null; year?: number | null } | null;
   aquastat?: { value?: number; indicator?: string | null; year?: number | null } | null;
   iea?: { energyImportDependency?: { value?: number; year?: number | null; source?: string } | null } | null;
+  tradeToGdp?: { tradeToGdpPct?: number; year?: number | null; source?: string } | null;
 }
 
 interface ImfMacroEntry {
@@ -774,10 +775,16 @@ export async function scoreLogisticsSupply(
   const shippingStress = getShippingStressScore(shippingStressRaw);
   const transitStress = getTransitDisruptionScore(transitSummariesRaw);
 
+  const tradeToGdp = safeNum(staticRecord?.tradeToGdp?.tradeToGdpPct);
+  const tradeExposure = tradeToGdp != null ? Math.min(tradeToGdp / 50, 1.0) : 0.5;
+
+  const shippingScore = shippingStress == null ? null : normalizeLowerBetter(shippingStress, 0, 100);
+  const transitScore = transitStress == null ? null : normalizeLowerBetter(transitStress, 0, 30);
+
   return weightedBlend([
     { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.5 },
-    { score: shippingStress == null ? null : normalizeLowerBetter(shippingStress, 0, 100), weight: 0.25 },
-    { score: transitStress == null ? null : normalizeLowerBetter(transitStress, 0, 30), weight: 0.25 },
+    { score: shippingScore == null ? null : shippingScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
+    { score: transitScore == null ? null : transitScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
   ]);
 }
 
@@ -837,13 +844,20 @@ export async function scoreEnergy(
     ? Math.min(1, Math.max(0, (80 - storageFillPct) / 80))
     : null;
 
+  const importDep = safeNum(staticRecord?.iea?.energyImportDependency?.value);
+  const energyExposure = importDep != null ? Math.min(importDep / 60, 1.0) : 0.5;
+  const energyStressScore = energyStress == null ? null : normalizeLowerBetter(energyStress, 0, 25);
+  const exposedEnergyStress = energyStressScore == null
+    ? null
+    : energyStressScore * energyExposure + 100 * (1 - energyExposure);
+
   return weightedBlend([
     { score: dependency             == null ? null : normalizeLowerBetter(dependency, 0, 100),              weight: 0.25 },
     { score: gasShare               == null ? null : normalizeLowerBetter(gasShare, 0, 100),                weight: 0.12 },
     { score: coalShare              == null ? null : normalizeLowerBetter(coalShare, 0, 100),               weight: 0.08 },
     { score: renewShare             == null ? null : normalizeHigherBetter(renewShare, 0, 100),             weight: 0.05 },
     { score: storageStress          == null ? null : normalizeLowerBetter(storageStress * 100, 0, 100),     weight: 0.10 },
-    { score: energyStress           == null ? null : normalizeLowerBetter(energyStress, 0, 25),             weight: 0.10 },
+    { score: exposedEnergyStress,                                                                           weight: 0.10 },
     { score: electricityConsumption == null ? null : normalizeHigherBetter(electricityConsumption, 200, 8000), weight: 0.30 },
   ]);
 }

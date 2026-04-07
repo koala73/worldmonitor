@@ -484,4 +484,77 @@ describe('resilience dimension scorers', () => {
       );
     }
   });
+
+  it('scoreLogisticsSupply: high trade/GDP country feels more shipping stress than autarky', async () => {
+    const makeReader = (tradeToGdpPct: number) => async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        infrastructure: { indicators: { 'IS.ROD.PAVE.ZS': { value: 80, year: 2025 } } },
+        tradeToGdp: { tradeToGdpPct, year: 2023, source: 'worldbank' },
+      };
+      if (key === 'supply_chain:shipping_stress:v1') return { stressScore: 70 };
+      if (key === 'supply_chain:transit-summaries:v1') return { summaries: { suez: { disruptionPct: 10, incidentCount7d: 5 } } };
+      return null;
+    };
+    const openEconomy = await scoreLogisticsSupply('XX', makeReader(100));
+    const autarky = await scoreLogisticsSupply('XX', makeReader(10));
+    assert.ok(openEconomy.score < autarky.score,
+      `Open economy (trade/GDP=100%, score=${openEconomy.score}) should score lower than autarky (trade/GDP=10%, score=${autarky.score}) under shipping stress`);
+  });
+
+  it('scoreLogisticsSupply: missing tradeToGdp defaults to 0.5 exposure factor', async () => {
+    const withTrade25 = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        infrastructure: { indicators: { 'IS.ROD.PAVE.ZS': { value: 80, year: 2025 } } },
+        tradeToGdp: { tradeToGdpPct: 25, year: 2023, source: 'worldbank' },
+      };
+      if (key === 'supply_chain:shipping_stress:v1') return { stressScore: 70 };
+      if (key === 'supply_chain:transit-summaries:v1') return { summaries: { suez: { disruptionPct: 10, incidentCount7d: 5 } } };
+      return null;
+    };
+    const withoutTrade = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        infrastructure: { indicators: { 'IS.ROD.PAVE.ZS': { value: 80, year: 2025 } } },
+      };
+      if (key === 'supply_chain:shipping_stress:v1') return { stressScore: 70 };
+      if (key === 'supply_chain:transit-summaries:v1') return { summaries: { suez: { disruptionPct: 10, incidentCount7d: 5 } } };
+      return null;
+    };
+    const known = await scoreLogisticsSupply('XX', withTrade25);
+    const unknown = await scoreLogisticsSupply('XX', withoutTrade);
+    assert.equal(known.score, unknown.score,
+      `trade/GDP=25% gives exposure=0.5 which equals the default 0.5, so scores should match`);
+  });
+
+  it('scoreEnergy: high import dependency country feels more energy price stress', async () => {
+    const makeReader = (importDep: number) => async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        iea: { energyImportDependency: { value: importDep, year: 2024, source: 'IEA' } },
+        infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 5000, year: 2025 } } },
+      };
+      if (key === 'economic:energy:v1:all') return { prices: [{ change: 15 }, { change: -12 }, { change: 18 }] };
+      return null;
+    };
+    const highDep = await scoreEnergy('XX', makeReader(90));
+    const lowDep = await scoreEnergy('XX', makeReader(10));
+    assert.ok(highDep.score < lowDep.score,
+      `High import dependency (90%, score=${highDep.score}) should score lower than low dependency (10%, score=${lowDep.score}) under energy price stress`);
+  });
+
+  it('scoreEnergy: missing import dependency defaults to 0.5 exposure factor (between high and low)', async () => {
+    const makeReader = (iea: unknown) => async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        iea,
+        infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 5000, year: 2025 } } },
+      };
+      if (key === 'economic:energy:v1:all') return { prices: [{ change: 15 }, { change: -12 }, { change: 18 }] };
+      return null;
+    };
+    const highDep = await scoreEnergy('XX', makeReader({ energyImportDependency: { value: 90, year: 2024, source: 'IEA' } }));
+    const missingDep = await scoreEnergy('XX', makeReader(null));
+    const lowDep = await scoreEnergy('XX', makeReader({ energyImportDependency: { value: 5, year: 2024, source: 'IEA' } }));
+    assert.ok(missingDep.score <= lowDep.score,
+      `Missing dependency (score=${missingDep.score}) should score <= low dep (score=${lowDep.score}) since default exposure=0.5 is moderate`);
+    assert.ok(missingDep.score >= highDep.score,
+      `Missing dependency (score=${missingDep.score}) should score >= high dep (score=${highDep.score})`);
+  });
 });
