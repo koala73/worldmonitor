@@ -16,14 +16,14 @@ export async function fetchAll() {
   const sinceEpoch = Date.now() - DAYS_BACK * 86_400_000;
 
   const params = new URLSearchParams({
-    where: `todate > ${sinceEpoch}`,
+    where: `todate > ${sinceEpoch} OR todate IS NULL`,
     outFields: [
       'eventid', 'eventtype', 'eventname', 'alertlevel', 'country',
       'fromdate', 'todate', 'severitytext', 'lat', 'long',
       'affectedports', 'n_affectedports',
     ].join(','),
     orderByFields: 'fromdate DESC',
-    resultRecordCount: '500',
+    resultRecordCount: '2000', // ArcGIS service max; no pagination — global disruptions rarely exceed a few hundred
     outSR: '4326',
     f: 'json',
   });
@@ -45,7 +45,7 @@ export async function fetchAll() {
         eventId: Number(a.eventid),
         eventType: String(a.eventtype || ''),
         eventName: String(a.eventname || ''),
-        alertLevel: String(a.alertlevel || ''),
+        alertLevel: String(a.alertlevel || '').toUpperCase(),
         country: String(a.country || ''),
         fromDate: a.fromdate ? new Date(a.fromdate).toISOString().slice(0, 10) : '',
         toDate: a.todate ? new Date(a.todate).toISOString().slice(0, 10) : null,

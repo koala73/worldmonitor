@@ -29,9 +29,9 @@ describe('seed-portwatch-disruptions.mjs exports', () => {
     assert.match(src, /portwatch_disruptions_database.*FeatureServer/);
   });
 
-  it('fetches 30 days of recent + active events', () => {
+  it('fetches 30 days of recent + active events (including NULL todate)', () => {
     assert.match(src, /DAYS_BACK\s*=\s*30/);
-    assert.match(src, /todate > /);
+    assert.match(src, /todate > .* OR todate IS NULL/);
   });
 
   it('has TTL of 7200 (2 hours)', () => {
