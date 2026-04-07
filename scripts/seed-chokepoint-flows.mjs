@@ -65,9 +65,11 @@ export async function fetchAll() {
     const prev90 = history.slice(-97, -7); // days [-97..-7], up to 90 days
     if (last7.length < 3 || prev90.length < 20) continue;
 
-    // Prefer DWT (capTanker) when available
-    const capSum = last7.reduce((s, d) => s + (d.capTanker ?? 0), 0);
-    const useDwt = capSum > 0;
+    // Prefer DWT (capTanker) when the baseline window has DWT data.
+    // Decision is based on the 90-day baseline, NOT the recent window — zero
+    // recent capTanker is the disruption signal, not a reason to abandon DWT.
+    const capBaselineSum = prev90.reduce((s, d) => s + (d.capTanker ?? 0), 0);
+    const useDwt = capBaselineSum > 0;
 
     const current7d = useDwt
       ? avg(last7.map(d => d.capTanker ?? 0))

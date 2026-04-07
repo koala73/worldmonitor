@@ -42,6 +42,11 @@ function isDisrupted(history, baseline90d, useDwt) {
   return last3.length === 3 && last3.every(d => baseline90d > 0 && (d[key] / baseline90d) < 0.85);
 }
 
+// useDwt is determined by baseline window (prev90), not recent window
+function resolveUseDwt(prev90) {
+  return prev90.reduce((s, d) => s + (d.capTanker ?? 0), 0) > 0;
+}
+
 // ── seeder source assertions ──────────────────────────────────────────────────
 
 describe('seed-chokepoint-flows.mjs exports', () => {
@@ -77,6 +82,11 @@ describe('seed-chokepoint-flows.mjs exports', () => {
   it('prefers DWT (capTanker) when available', () => {
     assert.match(src, /capTanker/);
     assert.match(src, /useDwt/);
+  });
+
+  it('determines useDwt from 90-day baseline window, not recent 7 days', () => {
+    assert.match(src, /capBaselineSum/);
+    assert.doesNotMatch(src, /const capSum = last7/);
   });
 
   it('caps flow ratio at 1.5', () => {
@@ -130,6 +140,30 @@ describe('flow ratio computation', () => {
     const prev90 = history.slice(-97, -7);
     const ratio = computeFlowRatio(last7, prev90, false);
     assert.ok(ratio <= 1.5, `ratio should be capped at 1.5, got ${ratio}`);
+  });
+
+  it('stays on DWT path when recent capTanker collapses to zero (disruption)', () => {
+    // Baseline has DWT data; recent week has zero capTanker (severe disruption)
+    // Seeder must NOT fall back to tanker counts — zero DWT IS the signal
+    const history = [
+      ...makeDays(7, 5, 0, 0),       // last 7 days: tanker=5, capTanker=0 (disrupted)
+      ...makeDays(90, 60, 50000, 7),  // baseline 90 days: tanker=60, capTanker=50000 (normal)
+    ].sort((a, b) => a.date.localeCompare(b.date));
+    const last7 = history.slice(-7);
+    const prev90 = history.slice(-97, -7);
+
+    const useDwt = resolveUseDwt(prev90); // baseline has DWT → useDwt = true
+    assert.equal(useDwt, true, 'useDwt should be true (DWT present in baseline)');
+
+    const ratioDwt = computeFlowRatio(last7, prev90, true);    // capTanker: 0/50000 ≈ 0
+    const ratioCount = computeFlowRatio(last7, prev90, false);  // tanker: 5/60 ≈ 0.083
+
+    // DWT correctly signals near-total disruption
+    assert.ok(ratioDwt < 0.05, `DWT ratio should be ~0 (total disruption), got ${ratioDwt}`);
+    // Count-based estimate would be misleadingly higher
+    assert.ok(ratioCount > 0.05, `Count ratio should be higher (5/60), got ${ratioCount}`);
+    // DWT gives more accurate (lower) disruption signal
+    assert.ok(ratioDwt < ratioCount, 'DWT ratio should be lower than count ratio during DWT-collapse disruption');
   });
 
   it('DWT variant uses capTanker instead of tanker', () => {
