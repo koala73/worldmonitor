@@ -23,6 +23,7 @@ import "worldmonitor/intelligence/v1/list_market_implications.proto";
 import "worldmonitor/intelligence/v1/get_social_velocity.proto";
 import "worldmonitor/intelligence/v1/get_country_energy_profile.proto";
 import "worldmonitor/intelligence/v1/compute_energy_shock.proto";
+import "worldmonitor/intelligence/v1/get_country_port_activity.proto";
 
 // IntelligenceService provides APIs for technical and strategic intelligence.
 service IntelligenceService {
@@ -164,5 +165,10 @@ service IntelligenceService {
   // ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
   rpc ComputeEnergyShockScenario(ComputeEnergyShockScenarioRequest) returns (ComputeEnergyShockScenarioResponse) {
     option (sebuf.http.config) = {path: "/compute-energy-shock", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+  rpc GetCountryPortActivity(GetCountryPortActivityRequest) returns (CountryPortActivityResponse) {
+    option (sebuf.http.config) = {path: "/get-country-port-activity", method: HTTP_METHOD_GET};
   }
 }

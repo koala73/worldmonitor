@@ -557,6 +557,28 @@ export interface ProductImpact {
   deficitPct: number;
 }
 
+export interface GetCountryPortActivityRequest {
+  countryCode: string;
+}
+
+export interface CountryPortActivityResponse {
+  ports: PortActivityEntry[];
+  fetchedAt: string;
+  available: boolean;
+}
+
+export interface PortActivityEntry {
+  portId: string;
+  portName: string;
+  lat: number;
+  lon: number;
+  tankerCalls30d: number;
+  tankerCallsPrev: number;
+  importTankerDwt: number;
+  exportTankerDwt: number;
+  anomalySignal: boolean;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -637,6 +659,7 @@ export interface IntelligenceServiceHandler {
   getSocialVelocity(ctx: ServerContext, req: GetSocialVelocityRequest): Promise<GetSocialVelocityResponse>;
   getCountryEnergyProfile(ctx: ServerContext, req: GetCountryEnergyProfileRequest): Promise<GetCountryEnergyProfileResponse>;
   computeEnergyShockScenario(ctx: ServerContext, req: ComputeEnergyShockScenarioRequest): Promise<ComputeEnergyShockScenarioResponse>;
+  getCountryPortActivity(ctx: ServerContext, req: GetCountryPortActivityRequest): Promise<CountryPortActivityResponse>;
 }
 
 export function createIntelligenceServiceRoutes(
@@ -1590,6 +1613,53 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.computeEnergyShockScenario(ctx, body);
           return new Response(JSON.stringify(result as ComputeEnergyShockScenarioResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-country-port-activity",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCountryPortActivityRequest = {
+            countryCode: params.get("country_code") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryPortActivity", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCountryPortActivity(ctx, body);
+          return new Response(JSON.stringify(result as CountryPortActivityResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

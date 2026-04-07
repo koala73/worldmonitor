@@ -22,6 +22,7 @@ import type {
   CountryDeepDiveEconomicIndicator,
   CountryFactsData,
   CountryEnergyProfileData,
+  CountryPortActivityData,
 } from './CountryBriefPanel';
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
@@ -81,6 +82,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private factsBody: HTMLElement | null = null;
   private resilienceWidget: ResilienceWidget | null = null;
   private energyBody: HTMLElement | null = null;
+  private maritimeBody: HTMLElement | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -835,6 +837,72 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return container;
   }
 
+  public updateMaritimeActivity(data: CountryPortActivityData): void {
+    if (!this.maritimeBody) return;
+
+    if (!data.available || data.ports.length === 0) {
+      this.maritimeBody.parentElement?.remove();
+      this.maritimeBody = null;
+      return;
+    }
+
+    this.maritimeBody.replaceChildren();
+
+    const table = this.el('table', 'cdp-maritime-table');
+    const thead = this.el('thead');
+    const headerRow = this.el('tr');
+    for (const col of ['Port', 'Tanker Calls (30d)', 'Trend', 'Import DWT', 'Export DWT']) {
+      const th = this.el('th', '', col);
+      headerRow.append(th);
+    }
+    thead.append(headerRow);
+    table.append(thead);
+
+    const tbody = this.el('tbody');
+    for (const port of data.ports) {
+      const tr = this.el('tr');
+
+      const nameCell = this.el('td', 'cdp-maritime-port');
+      nameCell.textContent = port.portName;
+      if (port.anomalySignal) {
+        const badge = this.el('span', 'cdp-maritime-anomaly', '\u26A0');
+        badge.title = 'Traffic anomaly detected';
+        nameCell.append(badge);
+      }
+      tr.append(nameCell);
+
+      const callsCell = this.el('td', '', String(port.tankerCalls30d));
+      tr.append(callsCell);
+
+      const trendCell = this.el('td', 'cdp-maritime-trend');
+      if (port.tankerCallsPrev > 0) {
+        const pct = ((port.tankerCalls30d - port.tankerCallsPrev) / port.tankerCallsPrev) * 100;
+        const sign = pct >= 0 ? '+' : '';
+        trendCell.textContent = `${sign}${pct.toFixed(1)}%`;
+        trendCell.classList.add(pct >= 0 ? 'cdp-trend-up' : 'cdp-trend-down');
+      } else {
+        trendCell.textContent = 'n/a';
+      }
+      tr.append(trendCell);
+
+      const fmtDwt = (v: number): string =>
+        v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `${(v / 1_000).toFixed(0)}K` : String(Math.round(v));
+
+      tr.append(this.el('td', '', fmtDwt(port.importTankerDwt)));
+      tr.append(this.el('td', '', fmtDwt(port.exportTankerDwt)));
+
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    this.maritimeBody.append(table);
+
+    if (data.fetchedAt) {
+      const dateStr = data.fetchedAt.split('T')[0] ?? data.fetchedAt;
+      const footer = this.el('div', 'cdp-section-source', `Source: IMF PortWatch \u00B7 as of ${dateStr}`);
+      this.maritimeBody.append(footer);
+    }
+  }
+
   private factItem(label: string, value: string): HTMLElement {
     const wrapper = this.el('div', 'cdp-fact-item');
     wrapper.append(this.el('div', 'cdp-fact-label', label));
@@ -1073,6 +1141,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.energyBody = energyBody;
     energyBody.append(this.makeLoading('Loading energy data\u2026'));
 
+    const [maritimeCard, maritimeBody] = this.sectionCard('Maritime Activity');
+    this.maritimeBody = maritimeBody;
+    maritimeBody.append(this.makeLoading('Loading port activity\u2026'));
+
     this.signalsBody = signalBody;
     this.timelineBody = timelineBody;
     this.timelineBody.classList.add('cdp-timeline-mount');
@@ -1091,7 +1163,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, factsExpanded, energyCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
+    bodyGrid.append(briefCard, factsExpanded, energyCard, maritimeCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -1105,6 +1177,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.destroyResilienceWidget();
     this.scoreCard = null;
     this.energyBody = null;
+    this.maritimeBody = null;
     this.content.replaceChildren();
   }
 

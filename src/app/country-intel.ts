@@ -349,6 +349,30 @@ export class CountryIntelManager implements AppModule {
         });
       });
 
+    intelClient.getCountryPortActivity({ countryCode: code })
+      .then((activity) => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateMaritimeActivity?.({
+          available: activity.available,
+          ports: (activity.ports ?? []).map((p) => ({
+            portId: p.portId,
+            portName: p.portName,
+            lat: p.lat,
+            lon: p.lon,
+            tankerCalls30d: p.tankerCalls30d,
+            tankerCallsPrev: p.tankerCallsPrev,
+            importTankerDwt: p.importTankerDwt,
+            exportTankerDwt: p.exportTankerDwt,
+            anomalySignal: p.anomalySignal,
+          })),
+          fetchedAt: activity.fetchedAt,
+        });
+      })
+      .catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateMaritimeActivity?.({ available: false, ports: [], fetchedAt: '' });
+      });
+
     this.mountCountryTimeline(code, country);
 
     try {

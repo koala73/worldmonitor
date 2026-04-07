@@ -557,6 +557,28 @@ export interface ProductImpact {
   deficitPct: number;
 }
 
+export interface GetCountryPortActivityRequest {
+  countryCode: string;
+}
+
+export interface CountryPortActivityResponse {
+  ports: PortActivityEntry[];
+  fetchedAt: string;
+  available: boolean;
+}
+
+export interface PortActivityEntry {
+  portId: string;
+  portName: string;
+  lat: number;
+  lon: number;
+  tankerCalls30d: number;
+  tankerCallsPrev: number;
+  importTankerDwt: number;
+  exportTankerDwt: number;
+  anomalySignal: boolean;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -1149,6 +1171,31 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as ComputeEnergyShockScenarioResponse;
+  }
+
+  async getCountryPortActivity(req: GetCountryPortActivityRequest, options?: IntelligenceServiceCallOptions): Promise<CountryPortActivityResponse> {
+    let path = "/api/intelligence/v1/get-country-port-activity";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as CountryPortActivityResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

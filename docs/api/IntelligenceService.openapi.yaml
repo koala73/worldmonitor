@@ -753,6 +753,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-port-activity:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryPortActivity
+            description: GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+            operationId: GetCountryPortActivity
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CountryPortActivityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -2221,3 +2253,46 @@ components:
                 deficitPct:
                     type: number
                     format: double
+        GetCountryPortActivityRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+        CountryPortActivityResponse:
+            type: object
+            properties:
+                ports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PortActivityEntry'
+                fetchedAt:
+                    type: string
+                available:
+                    type: boolean
+        PortActivityEntry:
+            type: object
+            properties:
+                portId:
+                    type: string
+                portName:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                tankerCalls30d:
+                    type: integer
+                    format: int32
+                tankerCallsPrev:
+                    type: integer
+                    format: int32
+                importTankerDwt:
+                    type: number
+                    format: double
+                exportTankerDwt:
+                    type: number
+                    format: double
+                anomalySignal:
+                    type: boolean

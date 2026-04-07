@@ -124,6 +124,22 @@ export interface CountryEnergyProfileData {
   ieaBelowObligation: boolean;
 }
 
+export interface CountryPortActivityData {
+  available: boolean;
+  ports: {
+    portId: string;
+    portName: string;
+    lat: number;
+    lon: number;
+    tankerCalls30d: number;
+    tankerCallsPrev: number;
+    importTankerDwt: number;
+    exportTankerDwt: number;
+    anomalySignal: boolean;
+  }[];
+  fetchedAt: string;
+}
+
 export interface CountryBriefPanel {
   show(country: string, code: string, score: CountryScore | null, signals: CountryBriefSignals): void;
   hide(): void;
@@ -148,6 +164,7 @@ export interface CountryBriefPanel {
   updateEconomicIndicators?(indicators: CountryDeepDiveEconomicIndicator[]): void;
   updateCountryFacts?(data: CountryFactsData): void;
   updateEnergyProfile?(data: CountryEnergyProfileData): void;
+  updateMaritimeActivity?(data: CountryPortActivityData): void;
   maximize?(): void;
   minimize?(): void;
   getIsMaximized?(): boolean;
