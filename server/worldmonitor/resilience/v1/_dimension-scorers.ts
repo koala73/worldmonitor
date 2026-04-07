@@ -432,6 +432,12 @@ function countTradeBarriers(raw: unknown, countryCode: string): number {
   return barriers.reduce((count, item) => count + (matchesCountryIdentifier(item.notifyingCountry, countryCode) ? 1 : 0), 0);
 }
 
+function isInWtoReporterSet(raw: unknown, countryCode: string): boolean {
+  const reporters = (raw as { _reporterCountries?: string[] } | null)?._reporterCountries;
+  if (!Array.isArray(reporters) || reporters.length === 0) return true;
+  return reporters.includes(countryCode);
+}
+
 function summarizeOutages(raw: unknown, countryCode: string): { total: number; major: number; partial: number } {
   const outages: InternetOutage[] = Array.isArray((raw as { outages?: unknown[] } | null)?.outages)
     ? ((raw as { outages?: InternetOutage[] }).outages ?? [])
@@ -671,18 +677,23 @@ export async function scoreTradeSanctions(
   const restrictionCount = countTradeRestrictions(restrictionsRaw, countryCode);
   const barrierCount = countTradeBarriers(barriersRaw, countryCode);
 
+  const inRestrictionsReporterSet = isInWtoReporterSet(restrictionsRaw, countryCode);
+  const inBarriersReporterSet = isInWtoReporterSet(barriersRaw, countryCode);
+
   return weightedBlend([
-    // Full country-counts key covers all countries; absent means the seeder failed, not crisis-free.
     sanctionsRaw == null
       ? { score: null, weight: 0.55 }
       : { score: normalizeSanctionCount(sanctionCount ?? 0), weight: 0.55 },
-    // WTO null source = seed outage; loaded source with zero restrictions = real data (score 100).
     restrictionsRaw == null
       ? { score: null, weight: 0.25 }
-      : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.25 },
+      : !inRestrictionsReporterSet
+        ? { score: IMPUTE.wtoData.score, weight: 0.25, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage }
+        : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.25 },
     barriersRaw == null
       ? { score: null, weight: 0.2 }
-      : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.2 },
+      : !inBarriersReporterSet
+        ? { score: IMPUTE.wtoData.score, weight: 0.2, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage }
+        : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.2 },
   ]);
 }
 

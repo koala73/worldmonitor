@@ -188,6 +188,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       { affectedCountry: 'Yemen', status: 'PLANNED' },
       { affectedCountry: 'Yemen', status: 'PLANNED' },
     ],
+    _reporterCountries: ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
   },
   'trade:barriers:v1:tariff-gap:50': {
     barriers: [
@@ -201,6 +202,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       { notifyingCountry: 'Yemen' },
       { notifyingCountry: 'Yemen' },
     ],
+    _reporterCountries: ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'],
   },
   'cyber:threats:v2': {
     threats: [

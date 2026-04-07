@@ -166,11 +166,52 @@ describe('resilience dimension scorers', () => {
   });
 
   it('scoreTradeSanctions: seed outage (null source) does not impute as country-absent', async () => {
-    // All sources null = seed outage. Must NOT trigger country-absent imputation.
     const reader = async (_key: string): Promise<unknown | null> => null;
     const score = await scoreTradeSanctions('FI', reader);
     assert.equal(score.coverage, 0, `seed outage must give coverage=0, got ${score.coverage}`);
     assert.equal(score.score, 0, `seed outage must give score=0, got ${score.score}`);
+  });
+
+  it('scoreTradeSanctions: reporter-set country with zero restrictions scores 100 (real data)', async () => {
+    const reporterSet = ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'];
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'sanctions:country-counts:v1') return {};
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      return null;
+    };
+    const score = await scoreTradeSanctions('US', reader);
+    assert.equal(score.score, 100, 'reporter with 0 restrictions must score 100 (genuine zero)');
+    assert.equal(score.coverage, 1, 'reporter-set country with loaded data → full coverage');
+  });
+
+  it('scoreTradeSanctions: non-reporter country gets IMPUTE.wtoData (score=60, coverage=0.4)', async () => {
+    const reporterSet = ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'];
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'sanctions:country-counts:v1') return {};
+      if (key === 'trade:restrictions:v1:tariff-overview:50') return { restrictions: [], _reporterCountries: reporterSet };
+      if (key === 'trade:barriers:v1:tariff-gap:50') return { barriers: [], _reporterCountries: reporterSet };
+      return null;
+    };
+    const score = await scoreTradeSanctions('BF', reader);
+    // BF (Burkina Faso) not in reporter set: sanctions=100 (0 designations, weight 0.55),
+    // restrictions=60 (imputed, weight 0.25, cc=0.4), barriers=60 (imputed, weight 0.20, cc=0.4).
+    // Blended score: (100*0.55 + 60*0.25 + 60*0.20) / 1.0 = 82
+    assert.equal(score.score, 82, 'non-reporter blended with sanctions=100 and imputed WTO=60');
+    // Coverage: (1.0*0.55 + 0.4*0.25 + 0.4*0.20) / 1.0 = 0.73
+    assert.equal(score.coverage, 0.73, 'non-reporter coverage reflects imputed WTO metrics');
+  });
+
+  it('scoreTradeSanctions: WTO seed outage returns null for both trade metrics', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'sanctions:country-counts:v1') return { US: 10 };
+      return null;
+    };
+    const score = await scoreTradeSanctions('US', reader);
+    // Only sanctions loaded (weight 0.55). WTO restrictions + barriers null = seed outage.
+    assert.ok(score.score > 0, 'sanctions data alone produces non-zero score');
+    assert.ok(score.coverage > 0.5 && score.coverage < 0.6,
+      `coverage should be ~0.55 (only sanctions loaded), got ${score.coverage}`);
   });
 
   it('scoreCurrencyExternal: non-BIS country with no IMF data falls back to curated_list_absent (score 50)', async () => {
