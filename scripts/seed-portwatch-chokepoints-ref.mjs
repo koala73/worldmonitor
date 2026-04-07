@@ -33,6 +33,7 @@ export async function fetchAll() {
   if (resp.status === 429) {
     const proxyAuth = resolveProxyForConnect();
     if (!proxyAuth) throw new Error('ArcGIS HTTP 429 (rate limited) and no PROXY_URL configured');
+    console.warn('  [portwatch] 429 rate-limited on chokepoints-ref — retrying via proxy');
     const { buffer } = await httpsProxyFetchRaw(`${ARCGIS_BASE}?${params}`, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT });
     body = JSON.parse(buffer.toString('utf8'));
   } else {

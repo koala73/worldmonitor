@@ -49,6 +49,7 @@ async function fetchWithTimeout(url) {
   if (resp.status === 429) {
     const proxyAuth = resolveProxyForConnect();
     if (!proxyAuth) throw new Error(`ArcGIS HTTP 429 (rate limited) for ${url.slice(0, 80)}`);
+    console.warn(`  [portwatch] 429 rate-limited — retrying via proxy: ${url.slice(0, 80)}`);
     const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT });
     const proxied = JSON.parse(buffer.toString('utf8'));
     if (proxied.error) throw new Error(`ArcGIS error (via proxy): ${proxied.error.message}`);
