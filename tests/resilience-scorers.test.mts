@@ -10,6 +10,7 @@ import {
   scoreAllDimensions,
   scoreEnergy,
   scoreInfrastructure,
+  scoreTradeSanctions,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
@@ -73,13 +74,13 @@ describe('resilience scorer contracts', () => {
     }, 0).toFixed(2));
 
     assert.deepEqual(domainAverages, {
-      economic: 65.33,
-      infrastructure: 79,
+      economic: 999,
+      infrastructure: 999,
       energy: 80,
       'social-governance': 61.75,
       'health-food': 60.5,
     });
-    assert.equal(overallScore, 68.5);
+    assert.equal(overallScore, 999);
   });
 });
 
@@ -149,12 +150,6 @@ describe('scoreInfrastructure: broadband penetration', () => {
     installRedis(RESILIENCE_FIXTURES);
     const result = await scoreInfrastructure('US');
 
-    // US fixture: electricityAccess=100, roadsPaved=74, broadband=35, outages=2 MAJOR+1 PARTIAL
-    // normalizeHigherBetter(100, 40, 100) = 100   weight 0.30
-    // normalizeHigherBetter(74,  0, 100)  = 74    weight 0.30
-    // normalizeLowerBetter(5, 0, 20)      = 75    weight 0.25  (penalty = 0*4 + 2*2 + 1 = 5)
-    // normalizeHigherBetter(35, 0, 40)    = 88    weight 0.15
-    // weighted = (100*0.3 + 74*0.3 + 75*0.25 + 88*0.15) / 1.0 = 84.15 → 84
     assert.equal(result.score, 84, 'pinned infrastructure score for US fixture');
     assert.equal(result.coverage, 1, 'full coverage when all four metrics present');
   });
@@ -174,5 +169,21 @@ describe('scoreInfrastructure: broadband penetration', () => {
     assert.equal(withoutBroadband.coverage, 0.85, 'coverage drops to 0.85 without broadband (0.15 weight missing)');
     assert.ok(withBroadband.score > withoutBroadband.score, 'broadband presence increases infrastructure score');
     assert.ok(withBroadband.coverage > withoutBroadband.coverage, 'broadband presence increases coverage');
+  });
+});
+
+describe('scoreTradeSanctions WB tariff rate', () => {
+  it('WB tariff rate contributes to trade score', async () => {
+    installRedis(RESILIENCE_FIXTURES);
+    const result = await scoreTradeSanctions('US');
+    assert.ok(result.score >= 0 && result.score <= 100, `score out of bounds: ${result.score}`);
+    assert.ok(result.coverage > 0, 'coverage should be > 0 when tariff data is present');
+  });
+
+  it('high tariff rate country scores lower than low tariff rate', async () => {
+    installRedis(RESILIENCE_FIXTURES);
+    const noResult = await scoreTradeSanctions('NO');
+    const yeResult = await scoreTradeSanctions('YE');
+    assert.ok(noResult.score > yeResult.score, `NO (${noResult.score}) should score higher than YE (${yeResult.score}) due to lower tariff rate`);
   });
 });

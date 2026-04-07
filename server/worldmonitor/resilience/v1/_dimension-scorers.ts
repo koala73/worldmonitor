@@ -83,6 +83,7 @@ interface ResilienceStaticCountryRecord {
   iea?: { energyImportDependency?: { value?: number; year?: number | null; source?: string } | null } | null;
   tradeToGdp?: { tradeToGdpPct?: number; year?: number | null; source?: string } | null;
   fxReservesMonths?: { months?: number; year?: number | null; source?: string } | null;
+  appliedTariffRate?: { value?: number; year?: number | null; source?: string } | null;
 }
 
 interface ImfMacroEntry {
@@ -730,10 +731,11 @@ export async function scoreTradeSanctions(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [sanctionsRaw, restrictionsRaw, barriersRaw] = await Promise.all([
+  const [sanctionsRaw, restrictionsRaw, barriersRaw, staticRecord] = await Promise.all([
     reader(RESILIENCE_SANCTIONS_KEY),
     reader(RESILIENCE_TRADE_RESTRICTIONS_KEY),
     reader(RESILIENCE_TRADE_BARRIERS_KEY),
+    readStaticCountry(countryCode, reader),
   ]);
 
   // sanctions:country-counts:v1 is a plain ISO2→entryCount map covering ALL countries.
@@ -745,20 +747,25 @@ export async function scoreTradeSanctions(
   const inRestrictionsReporterSet = isInWtoReporterSet(restrictionsRaw, countryCode);
   const inBarriersReporterSet = isInWtoReporterSet(barriersRaw, countryCode);
 
+  // WB TM.TAX.MRCH.WM.AR.ZS: Tariff rate, applied, weighted mean, all products (%).
+  // 0% = perfect free trade (score 100), 20%+ = heavily restricted (score 0).
+  const tariffRate = safeNum(staticRecord?.appliedTariffRate?.value);
+
   return weightedBlend([
     sanctionsRaw == null
-      ? { score: null, weight: 0.55 }
-      : { score: normalizeSanctionCount(sanctionCount ?? 0), weight: 0.55 },
+      ? { score: null, weight: 0.45 }
+      : { score: normalizeSanctionCount(sanctionCount ?? 0), weight: 0.45 },
     restrictionsRaw == null
-      ? { score: null, weight: 0.25 }
+      ? { score: null, weight: 0.15 }
       : !inRestrictionsReporterSet
-        ? { score: IMPUTE.wtoData.score, weight: 0.25, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true }
-        : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.25 },
+        ? { score: IMPUTE.wtoData.score, weight: 0.15, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true }
+        : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.15 },
     barriersRaw == null
-      ? { score: null, weight: 0.2 }
+      ? { score: null, weight: 0.15 }
       : !inBarriersReporterSet
-        ? { score: IMPUTE.wtoData.score, weight: 0.2, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true }
-        : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.2 },
+        ? { score: IMPUTE.wtoData.score, weight: 0.15, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true }
+        : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.15 },
+    { score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20), weight: 0.25 },
   ]);
 }
 
