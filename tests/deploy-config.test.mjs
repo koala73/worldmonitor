@@ -105,7 +105,7 @@ describe('security header guardrails', () => {
       'screen-wake-lock=()',
       'serial=()',
       'usb=()',
-      'xr-spatial-tracking=()',
+      'xr-spatial-tracking=("https://challenges.cloudflare.com")',
     ];
     for (const directive of expectedDisabled) {
       assert.ok(policy.includes(directive), `Permissions-Policy missing: ${directive}`);
@@ -127,11 +127,11 @@ describe('security header guardrails', () => {
       policy.includes('geolocation=(self)'),
       'Permissions-Policy should delegate geolocation to self'
     );
-    // picture-in-picture delegates to self + YouTube
+    // picture-in-picture delegates to self + YouTube + Turnstile
     assert.match(
       policy,
-      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com"\)/,
-      'Permissions-Policy should delegate picture-in-picture to YouTube origins'
+      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com" "https:\/\/challenges\.cloudflare\.com"\)/,
+      'Permissions-Policy should delegate picture-in-picture to YouTube + Turnstile origins'
     );
   });
 
