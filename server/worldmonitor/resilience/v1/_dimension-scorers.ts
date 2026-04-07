@@ -844,8 +844,7 @@ export async function scoreEnergy(
     ? Math.min(1, Math.max(0, (80 - storageFillPct) / 80))
     : null;
 
-  const importDep = safeNum(staticRecord?.iea?.energyImportDependency?.value);
-  const energyExposure = staticRecord == null ? null : (importDep != null ? Math.min(importDep / 60, 1.0) : 0.5);
+  const energyExposure = staticRecord == null ? null : (dependency != null ? Math.min(Math.max(dependency / 60, 0), 1.0) : 0.5);
   const energyStressScore = energyStress == null ? null : normalizeLowerBetter(energyStress, 0, 25);
   const exposedEnergyStress = energyStressScore == null || energyExposure == null
     ? null
