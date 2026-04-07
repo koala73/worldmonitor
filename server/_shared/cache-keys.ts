@@ -55,6 +55,7 @@ export const GAS_STORAGE_COUNTRIES_KEY = 'energy:gas-storage:v1:_countries';
 export const ELECTRICITY_KEY_PREFIX = 'energy:electricity:v1:';
 export const ELECTRICITY_INDEX_KEY = 'energy:electricity:v1:index';
 export const ENERGY_INTELLIGENCE_KEY = 'energy:intelligence:v1:feed';
+export const CHOKEPOINT_FLOWS_KEY = 'energy:chokepoint-flows:v1';
 export const SPR_KEY = 'economic:spr:v1';
 export const REFINERY_UTIL_KEY = 'economic:refinery-util:v1';
 

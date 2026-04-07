@@ -148,6 +148,7 @@ const STANDALONE_KEYS = {
   jodiOil:                  'energy:jodi-oil:v1:_countries',
   chokepointBaselines:      'energy:chokepoint-baselines:v1',
   portwatchChokepointsRef:  'portwatch:chokepoints:ref:v1',
+  chokepointFlows:          'energy:chokepoint-flows:v1',
 };
 
 const SEED_META = {
@@ -279,6 +280,7 @@ const SEED_META = {
   lngVulnerability:     { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40 }, // written by jodi-gas seeder afterPublish; shares seed-meta key
   chokepointBaselines:  { key: 'seed-meta:energy:chokepoint-baselines', maxStaleMin: 60 * 24 * 400 }, // 400 days
   portwatchChokepointsRef: { key: 'seed-meta:portwatch:chokepoints-ref', maxStaleMin: 60 * 24 * 2 }, // daily cron; 2d = 2× interval
+  chokepointFlows:      { key: 'seed-meta:energy:chokepoint-flows',     maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
 };
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).

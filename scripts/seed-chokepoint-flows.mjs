@@ -70,7 +70,8 @@ export async function fetchAll() {
   ]);
 
   if (!portwatch || typeof portwatch !== 'object' || Object.keys(portwatch).length === 0) {
-    throw new Error('PortWatch data unavailable — run seed-portwatch.mjs first');
+    console.warn('[ChokepointFlows] PortWatch data unavailable — seeder running degraded, returning empty result');
+    return {};
   }
 
   const result = {};
@@ -134,7 +135,7 @@ export async function fetchAll() {
   }
 
   if (Object.keys(result).length === 0) {
-    throw new Error('No flow estimates computed — check PortWatch and baselines data');
+    console.warn('[ChokepointFlows] No flow estimates computed — PortWatch and baselines data may be insufficient');
   }
 
   return result;

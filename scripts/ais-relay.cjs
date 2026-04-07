@@ -5533,6 +5533,72 @@ function startClimateNewsSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Chokepoint Flow Calibration — delegated to standalone seed script
+// Reads portwatch DWT data → computes live mb/d flow ratios per chokepoint.
+// Runs every 6h (matching portwatch seed cadence).
+// ─────────────────────────────────────────────────────────────
+
+const CHOKEPOINT_FLOWS_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+const CHOKEPOINT_FLOWS_SEED_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
+const CHOKEPOINT_FLOWS_SEED_RETRY_MS = 20 * 60 * 1000; // retry in 20 min on failure
+const CHOKEPOINT_FLOWS_SEED_SCRIPT = path.join(__dirname, 'seed-chokepoint-flows.mjs');
+
+let chokepointFlowsSeedInFlight = false;
+let chokepointFlowsRetryTimer = null;
+
+function runChokepointFlowsSeedScript() {
+  return new Promise((resolve, reject) => {
+    execFile(process.execPath, [CHOKEPOINT_FLOWS_SEED_SCRIPT], {
+      env: process.env,
+      timeout: CHOKEPOINT_FLOWS_SEED_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    }, (err, stdout, stderr) => {
+      relayLogScriptOutput('[ChokepointFlows]', stdout);
+      if (stderr) {
+        const trimmedErr = String(stderr).trim();
+        if (trimmedErr) {
+          for (const line of trimmedErr.split('\n')) console.warn(`[ChokepointFlows] ${line}`);
+        }
+      }
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+
+async function seedChokepointFlows() {
+  if (chokepointFlowsSeedInFlight) {
+    console.log('[ChokepointFlows] Skipped (in-flight)');
+    return;
+  }
+  chokepointFlowsSeedInFlight = true;
+  if (chokepointFlowsRetryTimer) { clearTimeout(chokepointFlowsRetryTimer); chokepointFlowsRetryTimer = null; }
+  const t0 = Date.now();
+  try {
+    await runChokepointFlowsSeedScript();
+    console.log(`[ChokepointFlows] Completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    const message = e?.killed ? 'timeout' : (e?.message || e);
+    console.warn('[ChokepointFlows] Seed error:', message);
+    chokepointFlowsRetryTimer = setTimeout(() => { seedChokepointFlows().catch(() => {}); }, CHOKEPOINT_FLOWS_SEED_RETRY_MS);
+  } finally {
+    chokepointFlowsSeedInFlight = false;
+  }
+}
+
+function startChokepointFlowsSeedLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[ChokepointFlows] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[ChokepointFlows] Seed loop starting (interval ${CHOKEPOINT_FLOWS_SEED_INTERVAL_MS / 1000 / 60}min)`);
+  seedChokepointFlows().catch((e) => console.warn('[ChokepointFlows] Initial seed error:', e?.message || e));
+  setInterval(() => {
+    seedChokepointFlows().catch((e) => console.warn('[ChokepointFlows] Seed error:', e?.message || e));
+  }, CHOKEPOINT_FLOWS_SEED_INTERVAL_MS).unref?.();
+}
+
+// ─────────────────────────────────────────────────────────────
 // PizzINT Seed — Pentagon Pizza Index + GDELT tensions → Redis
 // Fetches from pizzint.watch on Railway (datacenter IPs blocked
 // from Vercel Edge). Vercel handler reads from seed key only.
@@ -10237,6 +10303,7 @@ server.listen(PORT, () => {
   startShippingStressSeedLoop();
   startSocialVelocitySeedLoop();
   startClimateNewsSeedLoop();
+  startChokepointFlowsSeedLoop();
   startPizzintSeedLoop();
   startDodoPriceSeedLoop();
 });

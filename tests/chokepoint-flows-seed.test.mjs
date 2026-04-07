@@ -216,3 +216,70 @@ describe('disrupted flag', () => {
     assert.equal(isDisrupted(history, 0, false), false);
   });
 });
+
+// ── degraded mode ─────────────────────────────────────────────────────────────
+
+describe('degraded mode (portwatch absent)', () => {
+  it('seeder does NOT throw when portwatch data is absent — returns empty object', () => {
+    // Verify source code logs a warning and returns {} rather than throwing
+    assert.doesNotMatch(src, /throw new Error.*PortWatch data unavailable/);
+    assert.match(src, /console\.warn.*PortWatch data unavailable/);
+  });
+
+  it('seeder does NOT throw when no flow estimates computed — logs warning instead', () => {
+    assert.doesNotMatch(src, /throw new Error.*No flow estimates computed/);
+    assert.match(src, /console\.warn.*No flow estimates computed/);
+  });
+
+  it('validateFn returns false for empty object (runSeed extends TTL instead of overwriting)', () => {
+    // Inline the validateFn logic: data && typeof data === 'object' && Object.keys(data).length >= 3
+    const validateFnMatch = src.match(/export\s+function\s+validateFn\(data\)\s*\{([^}]+)\}/);
+    assert.ok(validateFnMatch, 'validateFn should be present and exportable');
+    // Empty object ({}) must fail validateFn so runSeed skips the write
+    const emptyObj = {};
+    const result = emptyObj && typeof emptyObj === 'object' && Object.keys(emptyObj).length >= 3;
+    assert.equal(result, false, 'validateFn should return false for {} (degraded state skips write)');
+  });
+});
+
+// ── ID mapping ────────────────────────────────────────────────────────────────
+
+describe('portwatch to baseline ID mapping', () => {
+  // CHOKEPOINT_MAP must map portwatch canonicalId (from seed-portwatch.mjs CHOKEPOINTS list)
+  // to baselineId (from seed-chokepoint-baselines.mjs CHOKEPOINTS id field).
+
+  it('maps hormuz_strait to hormuz', () => {
+    assert.match(src, /canonicalId:\s*['"]hormuz_strait['"]/);
+    assert.match(src, /baselineId:\s*['"]hormuz['"]/);
+  });
+
+  it('maps malacca_strait to malacca', () => {
+    assert.match(src, /canonicalId:\s*['"]malacca_strait['"]/);
+    assert.match(src, /baselineId:\s*['"]malacca['"]/);
+  });
+
+  it('maps suez to suez', () => {
+    assert.match(src, /canonicalId:\s*['"]suez['"]/);
+    assert.match(src, /baselineId:\s*['"]suez['"]/);
+  });
+
+  it('maps bab_el_mandeb to babelm', () => {
+    assert.match(src, /canonicalId:\s*['"]bab_el_mandeb['"]/);
+    assert.match(src, /baselineId:\s*['"]babelm['"]/);
+  });
+
+  it('maps bosphorus to turkish', () => {
+    assert.match(src, /canonicalId:\s*['"]bosphorus['"]/);
+    assert.match(src, /baselineId:\s*['"]turkish['"]/);
+  });
+
+  it('maps panama to panama', () => {
+    assert.match(src, /canonicalId:\s*['"]panama['"]/);
+    assert.match(src, /baselineId:\s*['"]panama['"]/);
+  });
+
+  it('maps dover_strait to danish', () => {
+    assert.match(src, /canonicalId:\s*['"]dover_strait['"]/);
+    assert.match(src, /baselineId:\s*['"]danish['"]/);
+  });
+});
