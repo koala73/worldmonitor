@@ -234,6 +234,24 @@ export const RESILIENCE_DOMAIN_ORDER: ResilienceDomainId[] = [
   'health-food',
 ];
 
+export type ResilienceDimensionType = 'baseline' | 'stress' | 'mixed';
+
+export const RESILIENCE_DIMENSION_TYPES: Record<ResilienceDimensionId, ResilienceDimensionType> = {
+  macroFiscal: 'baseline',
+  currencyExternal: 'stress',
+  tradeSanctions: 'stress',
+  cyberDigital: 'stress',
+  logisticsSupply: 'mixed',
+  infrastructure: 'baseline',
+  energy: 'mixed',
+  governanceInstitutional: 'baseline',
+  socialCohesion: 'baseline',
+  borderSecurity: 'stress',
+  informationCognitive: 'stress',
+  healthPublicService: 'baseline',
+  foodWater: 'mixed',
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

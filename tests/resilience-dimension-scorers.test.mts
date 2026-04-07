@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   RESILIENCE_DIMENSION_ORDER,
+  RESILIENCE_DIMENSION_TYPES,
   scoreAllDimensions,
   scoreBorderSecurity,
   scoreCurrencyExternal,
@@ -472,5 +473,15 @@ describe('resilience dimension scorers', () => {
     const result = await scoreFoodWater('XX', reader);
     assert.ok(result.imputedWeight > 0, `crisis_monitoring_absent imputation must produce imputedWeight > 0, got ${result.imputedWeight}`);
     assert.equal(result.observedWeight, 0, 'no real data available, observedWeight should be 0');
+  });
+
+  it('every dimension has a type tag (baseline/stress/mixed)', () => {
+    for (const dimId of RESILIENCE_DIMENSION_ORDER) {
+      assert.ok(RESILIENCE_DIMENSION_TYPES[dimId], `${dimId} missing type tag`);
+      assert.ok(
+        ['baseline', 'stress', 'mixed'].includes(RESILIENCE_DIMENSION_TYPES[dimId]),
+        `${dimId} has invalid type`,
+      );
+    }
   });
 });
