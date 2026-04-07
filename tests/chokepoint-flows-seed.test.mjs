@@ -42,9 +42,10 @@ function isDisrupted(history, baseline90d, useDwt) {
   return last3.length === 3 && last3.every(d => baseline90d > 0 && (d[key] / baseline90d) < 0.85);
 }
 
-// useDwt is determined by baseline window (prev90), not recent window
+// useDwt requires majority DWT coverage in the baseline window
 function resolveUseDwt(prev90) {
-  return prev90.reduce((s, d) => s + (d.capTanker ?? 0), 0) > 0;
+  const dwtDays = prev90.filter(d => (d.capTanker ?? 0) > 0).length;
+  return dwtDays >= Math.ceil(prev90.length / 2);
 }
 
 // ── seeder source assertions ──────────────────────────────────────────────────
@@ -85,8 +86,13 @@ describe('seed-chokepoint-flows.mjs exports', () => {
   });
 
   it('determines useDwt from 90-day baseline window, not recent 7 days', () => {
-    assert.match(src, /capBaselineSum/);
+    assert.match(src, /dwtBaselineDays/);
     assert.doesNotMatch(src, /const capSum = last7/);
+    assert.doesNotMatch(src, /capBaselineSum > 0/);
+  });
+
+  it('requires majority DWT coverage in baseline (Math.ceil length / 2)', () => {
+    assert.match(src, /Math\.ceil\(prev90\.length\s*\/\s*2\)/);
   });
 
   it('caps flow ratio at 1.5', () => {
@@ -164,6 +170,20 @@ describe('flow ratio computation', () => {
     assert.ok(ratioCount > 0.05, `Count ratio should be higher (5/60), got ${ratioCount}`);
     // DWT gives more accurate (lower) disruption signal
     assert.ok(ratioDwt < ratioCount, 'DWT ratio should be lower than count ratio during DWT-collapse disruption');
+  });
+
+  it('does NOT activate DWT mode on sparse baseline (< 50% days with DWT)', () => {
+    // Only 3 of 30 baseline days have DWT data — should fall back to counts
+    const sparseBaseline = [
+      ...makeDays(3, 60, 50000, 7),   // 3 days with DWT
+      ...makeDays(27, 60, 0, 10),     // 27 days without DWT
+    ].sort((a, b) => a.date.localeCompare(b.date));
+    assert.equal(resolveUseDwt(sparseBaseline), false, 'should not use DWT with <50% baseline coverage');
+  });
+
+  it('activates DWT mode when majority of baseline has DWT data', () => {
+    const denseBaseline = makeDays(90, 60, 50000, 7); // all 90 days have DWT
+    assert.equal(resolveUseDwt(denseBaseline), true, 'should use DWT with full baseline coverage');
   });
 
   it('DWT variant uses capTanker instead of tanker', () => {

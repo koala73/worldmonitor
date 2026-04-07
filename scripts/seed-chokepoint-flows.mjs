@@ -65,11 +65,13 @@ export async function fetchAll() {
     const prev90 = history.slice(-97, -7); // days [-97..-7], up to 90 days
     if (last7.length < 3 || prev90.length < 20) continue;
 
-    // Prefer DWT (capTanker) when the baseline window has DWT data.
+    // Prefer DWT (capTanker) when the baseline window has majority DWT coverage.
     // Decision is based on the 90-day baseline, NOT the recent window — zero
     // recent capTanker is the disruption signal, not a reason to abandon DWT.
-    const capBaselineSum = prev90.reduce((s, d) => s + (d.capTanker ?? 0), 0);
-    const useDwt = capBaselineSum > 0;
+    // Majority guard: partial DWT roll-out (1-2 days non-zero) should not
+    // activate DWT mode and pull down the baseline average via zero-filled gaps.
+    const dwtBaselineDays = prev90.filter(d => (d.capTanker ?? 0) > 0).length;
+    const useDwt = dwtBaselineDays >= Math.ceil(prev90.length / 2);
 
     const current7d = useDwt
       ? avg(last7.map(d => d.capTanker ?? 0))
