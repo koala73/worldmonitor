@@ -67,6 +67,43 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
   });
 });
 
+describe('ArcGIS 429 proxy fallback', () => {
+  it('imports resolveProxyForConnect and httpsProxyFetchRaw', () => {
+    assert.match(src, /resolveProxyForConnect/);
+    assert.match(src, /httpsProxyFetchRaw/);
+  });
+
+  it('fetchWithTimeout checks resp.status === 429', () => {
+    assert.match(src, /resp\.status\s*===\s*429/);
+  });
+
+  it('calls resolveProxyForConnect() on 429', () => {
+    assert.match(src, /resolveProxyForConnect\(\)/);
+  });
+
+  it('calls httpsProxyFetchRaw with proxy auth on 429', () => {
+    assert.match(src, /httpsProxyFetchRaw\(url,\s*proxyAuth/);
+  });
+
+  it('throws if 429 and no proxy configured', () => {
+    assert.match(src, /429.*rate limited/);
+  });
+});
+
+describe('SKIPPED log message', () => {
+  it('includes lock domain in SKIPPED message', () => {
+    assert.match(src, /SKIPPED.*seed-lock.*LOCK_DOMAIN/s);
+  });
+
+  it('includes TTL duration in SKIPPED message', () => {
+    assert.match(src, /LOCK_TTL_MS\s*\/\s*60000/);
+  });
+
+  it('mentions next cron trigger in SKIPPED message', () => {
+    assert.match(src, /next cron trigger/);
+  });
+});
+
 // ── unit tests ────────────────────────────────────────────────────────────────
 
 function computeAnomalySignal(rows, cutoff30, cutoff7) {
