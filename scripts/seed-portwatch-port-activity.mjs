@@ -243,7 +243,16 @@ async function main() {
     return;
   }
 
+  // Hoist so the catch block can extend TTLs even when the error occurs before these are resolved.
+  let prevCountryKeys = [];
+  let prevCount = 0;
+
   try {
+    // Read previous snapshot first — needed for both degradation guard and error TTL extension.
+    const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
+    prevCountryKeys = Array.isArray(prevIso2List) ? prevIso2List.map(iso2 => `${KEY_PREFIX}${iso2}`) : [];
+    prevCount = Array.isArray(prevIso2List) ? prevIso2List.length : 0;
+
     console.log(`  Fetching port activity data (${HISTORY_DAYS}d history)...`);
     const { countries, countryData } = await fetchAll();
 
@@ -251,10 +260,15 @@ async function main() {
 
     if (!validateFn({ countries })) {
       console.error(`  COVERAGE GATE FAILED: only ${countryData.size} countries, need >=${MIN_VALID_COUNTRIES}`);
-      const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
-      const prevCountryKeys = Array.isArray(prevIso2List)
-        ? prevIso2List.map(iso2 => `${KEY_PREFIX}${iso2}`)
-        : [];
+      await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
+      return;
+    }
+
+    // Degradation guard: refuse to replace a healthy snapshot that is significantly smaller.
+    // Transient ArcGIS outages cause per-country fetches to fail via Promise.allSettled() without
+    // throwing — publishin a 50-country result over a 120-country snapshot silently drops 70 countries.
+    if (prevCount > 0 && countryData.size < prevCount * 0.8) {
+      console.error(`  DEGRADATION GUARD: ${countryData.size} countries vs ${prevCount} previous — refusing to overwrite (need ≥${Math.ceil(prevCount * 0.8)})`);
       await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
       return;
     }
@@ -279,10 +293,6 @@ async function main() {
     console.log(`\n=== Done (${Date.now() - startedAt}ms) ===`);
   } catch (err) {
     console.error(`  SEED FAILED: ${err.message}`);
-    const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
-    const prevCountryKeys = Array.isArray(prevIso2List)
-      ? prevIso2List.map(iso2 => `${KEY_PREFIX}${iso2}`)
-      : [];
     await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
     throw err;
   } finally {
