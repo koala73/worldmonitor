@@ -20,6 +20,7 @@ export async function fetchAll() {
       'share_country_maritime_import', 'share_country_maritime_export',
       'industry_top1', 'industry_top2', 'industry_top3',
     ].join(','),
+    returnGeometry: 'false',
     outSR: '4326',
     f: 'json',
   });
