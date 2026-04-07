@@ -48,7 +48,7 @@ describe('resilience handlers', () => {
     assert.equal(typeof response.lowConfidence, 'boolean');
     assert.ok(response.imputationShare >= 0 && response.imputationShare <= 1, `imputationShare out of bounds: ${response.imputationShare}`);
 
-    const cachedScore = redis.get('resilience:score:US');
+    const cachedScore = redis.get('resilience:score:v2:US');
     assert.ok(cachedScore, 'expected score cache to be written');
     assert.equal(JSON.parse(cachedScore || '{}').countryCode, 'US');
 

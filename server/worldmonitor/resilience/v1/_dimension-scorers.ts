@@ -41,6 +41,10 @@ interface WeightedMetric {
   // expresses how confident we are in the imputation: 1.0 = real data, 0 = fully absent.
   // Omit for real data (auto: 1.0 if score != null, 0 if null).
   certaintyCoverage?: number;
+  // True only for synthetic absence-based scores (IMPUTATION/IMPUTE constants).
+  // Proxy data with certaintyCoverage < 1 (e.g. IMF inflation fallback) is still
+  // observed real data and should NOT set this flag.
+  imputed?: boolean;
 }
 
 // Absence of a data source is a typed signal, not an unknown gap.
@@ -300,15 +304,14 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   }, 0) / totalWeight;
 
   // Track provenance: observed (real data) vs imputed weight.
-  // Metrics with certaintyCoverage undefined or >= 1.0 and non-null score → observed.
-  // Metrics with certaintyCoverage set and < 1.0 and non-null score → imputed.
+  // Metrics with imputed=true → imputed (synthetic absence-based scores).
+  // All other non-null metrics → observed (including proxy data with certaintyCoverage < 1).
   // Metrics with null score → neither (excluded from both).
   let observedWeight = 0;
   let imputedWeight = 0;
   for (const metric of metrics) {
     if (metric.score == null) continue;
-    const cc = metric.certaintyCoverage;
-    if (cc != null && cc < 1) {
+    if (metric.imputed === true) {
       imputedWeight += metric.weight;
     } else {
       observedWeight += metric.weight;
@@ -669,7 +672,7 @@ export async function scoreCurrencyExternal(
       // coverage=0.45 when BIS is loaded (country absent from curated list);
       // coverage=0.35 when BIS itself is down (proxy-only, primary source unavailable).
       const coverage = bisExchangeRaw != null ? 0.45 : 0.35;
-      return { score: normalizeLowerBetter(Math.min(imfEntry.inflationPct, 50), 0, 50), coverage, observedWeight: 0, imputedWeight: 1 };
+      return { score: normalizeLowerBetter(Math.min(imfEntry.inflationPct, 50), 0, 50), coverage, observedWeight: 1, imputedWeight: 0 };
     }
     if (bisExchangeRaw == null) return { score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0 }; // both sources null
     return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage, observedWeight: 0, imputedWeight: 1 }; // BIS loaded, country absent, no IMF
@@ -707,12 +710,12 @@ export async function scoreTradeSanctions(
     restrictionsRaw == null
       ? { score: null, weight: 0.25 }
       : !inRestrictionsReporterSet
-        ? { score: IMPUTE.wtoData.score, weight: 0.25, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage }
+        ? { score: IMPUTE.wtoData.score, weight: 0.25, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true }
         : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.25 },
     barriersRaw == null
       ? { score: null, weight: 0.2 }
       : !inBarriersReporterSet
-        ? { score: IMPUTE.wtoData.score, weight: 0.2, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage }
+        ? { score: IMPUTE.wtoData.score, weight: 0.2, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true }
         : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.2 },
   ]);
 }
@@ -887,7 +890,7 @@ export async function scoreBorderSecurity(
     displacementRaw == null
       ? { score: null, weight: 0.35 }
       : displacementMetric == null
-        ? { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage }
+        ? { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage, imputed: true }
         : { score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7), weight: 0.35 },
   ]);
 }
@@ -944,7 +947,7 @@ export async function scoreFoodWater(
     return weightedBlend([
       staticRecord == null
         ? { score: null, weight: 0.6 }
-        : { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage },
+        : { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage, imputed: true },
       { score: aquastatScore, weight: 0.4 },
     ]);
   }
