@@ -6,7 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
-import { cronbachAlpha, detectTrend, round } from '../../../_shared/resilience-stats';
+import { detectTrend, round } from '../../../_shared/resilience-stats';
 import {
   RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DIMENSION_ORDER,
@@ -26,8 +26,8 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v2';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
-const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.60;
-const LOW_CONFIDENCE_ALPHA_THRESHOLD = 0.55;
+const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
+const LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD = 0.40;
 
 interface ResilienceHistoryPoint {
   date: string;
@@ -67,12 +67,14 @@ function classifyResilienceLevel(score: number): string {
 }
 
 function buildDimensionList(
-  scores: Record<ResilienceDimensionId, { score: number; coverage: number }>,
+  scores: Record<ResilienceDimensionId, { score: number; coverage: number; observedWeight: number; imputedWeight: number }>,
 ): ResilienceDimension[] {
   return RESILIENCE_DIMENSION_ORDER.map((dimensionId) => ({
     id: dimensionId,
     score: round(scores[dimensionId].score),
     coverage: round(scores[dimensionId].coverage),
+    observedWeight: round(scores[dimensionId].observedWeight, 4),
+    imputedWeight: round(scores[dimensionId].imputedWeight, 4),
   }));
 }
 
@@ -106,18 +108,6 @@ function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] 
   });
 }
 
-function buildCronbachMatrix(domains: ResilienceDomain[]): number[][] {
-  const populated = domains.filter((domain) => domain.dimensions.length >= 2);
-  if (populated.length < 2) return [];
-
-  const width = Math.max(...populated.map((domain) => domain.dimensions.length));
-  return populated.map((domain) => {
-    const values = domain.dimensions.map((dimension) => dimension.score);
-    const fill = mean(values) ?? domain.score;
-    return Array.from({ length: width }, (_, index) => values[index] ?? fill);
-  });
-}
-
 function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   if (!Array.isArray(raw)) return [];
   const history: ResilienceHistoryPoint[] = [];
@@ -135,10 +125,9 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   return history.sort((left, right) => left.date.localeCompare(right.date));
 }
 
-function computeLowConfidence(dimensions: ResilienceDimension[], cronbach: number): boolean {
+function computeLowConfidence(dimensions: ResilienceDimension[], imputationShare: number): boolean {
   const averageCoverage = mean(dimensions.map((dimension) => dimension.coverage)) ?? 0;
-  if (averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD) return true;
-  return cronbach < LOW_CONFIDENCE_ALPHA_THRESHOLD;
+  return averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD || imputationShare > LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD;
 }
 
 async function readHistory(countryCode: string): Promise<ResilienceHistoryPoint[]> {
@@ -164,10 +153,10 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       overallScore: 0,
       level: 'unknown',
       domains: [],
-      cronbachAlpha: 0,
       trend: 'stable',
       change30d: 0,
       lowConfidence: true,
+      imputationShare: 0,
     };
   }
 
@@ -182,7 +171,12 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
         domains.reduce((sum, domain) => sum + domain.score * domain.weight, 0),
       );
 
-      const cronbach = round(cronbachAlpha(buildCronbachMatrix(domains)), 3);
+      const totalImputed = dimensions.reduce((sum, d) => sum + (d.imputedWeight ?? 0), 0);
+      const totalObserved = dimensions.reduce((sum, d) => sum + (d.observedWeight ?? 0), 0);
+      const imputationShare = (totalImputed + totalObserved) > 0
+        ? round(totalImputed / (totalImputed + totalObserved), 4)
+        : 0;
+
       const history = (await readHistory(normalizedCountryCode))
         .filter((point) => point.date !== todayIsoDate());
       const scoreSeries = [...history.map((point) => point.score), overallScore];
@@ -195,10 +189,10 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
         overallScore,
         level: classifyResilienceLevel(overallScore),
         domains,
-        cronbachAlpha: cronbach,
         trend: detectTrend(scoreSeries),
         change30d: oldestScore == null ? 0 : round(overallScore - oldestScore),
-        lowConfidence: computeLowConfidence(dimensions, cronbach),
+        lowConfidence: computeLowConfidence(dimensions, imputationShare),
+        imputationShare,
       };
     },
     300,
@@ -207,10 +201,10 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
     overallScore: 0,
     level: 'unknown',
     domains: [],
-    cronbachAlpha: 0,
     trend: 'stable',
     change30d: 0,
     lowConfidence: true,
+    imputationShare: 0,
   };
 }
 

@@ -111,9 +111,6 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/ResilienceDomain'
-                cronbachAlpha:
-                    type: number
-                    format: double
                 trend:
                     type: string
                 change30d:
@@ -121,6 +118,9 @@ components:
                     format: double
                 lowConfidence:
                     type: boolean
+                imputationShare:
+                    type: number
+                    format: double
         ResilienceDomain:
             type: object
             properties:
@@ -145,6 +145,12 @@ components:
                     type: number
                     format: double
                 coverage:
+                    type: number
+                    format: double
+                observedWeight:
+                    type: number
+                    format: double
+                imputedWeight:
                     type: number
                     format: double
         GetResilienceRankingRequest:

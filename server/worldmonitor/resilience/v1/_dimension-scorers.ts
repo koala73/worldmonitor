@@ -28,6 +28,8 @@ export type ResilienceDomainId =
 export interface ResilienceDimensionScore {
   score: number;
   coverage: number;
+  observedWeight: number;
+  imputedWeight: number;
 }
 
 export type ResilienceSeedReader = (key: string) => Promise<unknown | null>;
@@ -285,7 +287,7 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const availableWeight = available.reduce((sum, metric) => sum + metric.weight, 0);
 
   if (!availableWeight || !totalWeight) {
-    return { score: 0, coverage: 0 };
+    return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0 };
   }
 
   const weightedScore = available.reduce((sum, metric) => sum + (metric.score || 0) * metric.weight, 0) / availableWeight;
@@ -297,9 +299,27 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
     return sum + metric.weight * certainty;
   }, 0) / totalWeight;
 
+  // Track provenance: observed (real data) vs imputed weight.
+  // Metrics with certaintyCoverage undefined or >= 1.0 and non-null score → observed.
+  // Metrics with certaintyCoverage set and < 1.0 and non-null score → imputed.
+  // Metrics with null score → neither (excluded from both).
+  let observedWeight = 0;
+  let imputedWeight = 0;
+  for (const metric of metrics) {
+    if (metric.score == null) continue;
+    const cc = metric.certaintyCoverage;
+    if (cc != null && cc < 1) {
+      imputedWeight += metric.weight;
+    } else {
+      observedWeight += metric.weight;
+    }
+  }
+
   return {
     score: roundScore(weightedScore),
     coverage: roundCoverage(weightedCertainty),
+    observedWeight: Number(observedWeight.toFixed(4)),
+    imputedWeight: Number(imputedWeight.toFixed(4)),
   };
 }
 
@@ -649,10 +669,10 @@ export async function scoreCurrencyExternal(
       // coverage=0.45 when BIS is loaded (country absent from curated list);
       // coverage=0.35 when BIS itself is down (proxy-only, primary source unavailable).
       const coverage = bisExchangeRaw != null ? 0.45 : 0.35;
-      return { score: normalizeLowerBetter(Math.min(imfEntry.inflationPct, 50), 0, 50), coverage };
+      return { score: normalizeLowerBetter(Math.min(imfEntry.inflationPct, 50), 0, 50), coverage, observedWeight: 0, imputedWeight: 1 };
     }
-    if (bisExchangeRaw == null) return { score: 50, coverage: 0 }; // both sources null
-    return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage }; // BIS loaded, country absent, no IMF
+    if (bisExchangeRaw == null) return { score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0 }; // both sources null
+    return { score: IMPUTE.bisEer.score, coverage: IMPUTE.bisEer.certaintyCoverage, observedWeight: 0, imputedWeight: 1 }; // BIS loaded, country absent, no IMF
   }
 
   return weightedBlend([

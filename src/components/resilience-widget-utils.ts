@@ -40,7 +40,11 @@ export function getResilienceDomainLabel(domainId: string): string {
 
 export function formatResilienceConfidence(data: ResilienceScoreResponse): string {
   if (data.lowConfidence) return 'Low confidence — sparse data';
-  return `Confidence ${data.cronbachAlpha.toFixed(2)} ✓`;
+  const coverages = data.domains.flatMap((d) => d.dimensions.map((dim) => dim.coverage));
+  const avgCoverage = coverages.length > 0
+    ? Math.round((coverages.reduce((s, c) => s + c, 0) / coverages.length) * 100)
+    : 0;
+  return `Coverage ${avgCoverage}% ✓`;
 }
 
 export function formatResilienceChange30d(change30d: number): string {

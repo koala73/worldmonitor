@@ -11,10 +11,10 @@ export interface GetResilienceScoreResponse {
   overallScore: number;
   level: string;
   domains: ResilienceDomain[];
-  cronbachAlpha: number;
   trend: string;
   change30d: number;
   lowConfidence: boolean;
+  imputationShare: number;
 }
 
 export interface ResilienceDomain {
@@ -28,6 +28,8 @@ export interface ResilienceDimension {
   id: string;
   score: number;
   coverage: number;
+  observedWeight: number;
+  imputedWeight: number;
 }
 
 export interface GetResilienceRankingRequest {

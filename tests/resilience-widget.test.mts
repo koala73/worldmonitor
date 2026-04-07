@@ -14,11 +14,15 @@ const baseResponse: ResilienceScoreResponse = {
   countryCode: 'US',
   overallScore: 73,
   level: 'high',
-  domains: [],
-  cronbachAlpha: 0.74,
+  domains: [
+    { id: 'economic', score: 80, weight: 0.22, dimensions: [
+      { id: 'macroFiscal', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 },
+    ] },
+  ],
   trend: 'rising',
   change30d: 2.4,
   lowConfidence: false,
+  imputationShare: 0,
 };
 
 test('getResilienceVisualLevel maps the score thresholds from the widget spec', () => {
@@ -47,9 +51,9 @@ test('getResilienceDomainLabel keeps the deep-dive shorthand labels stable', () 
 });
 
 test('formatResilienceConfidence shows sparse-data copy when low confidence is set', () => {
-  assert.equal(formatResilienceConfidence(baseResponse), 'Confidence 0.74 ✓');
+  assert.equal(formatResilienceConfidence(baseResponse), 'Coverage 90% ✓');
   assert.equal(
-    formatResilienceConfidence({ ...baseResponse, lowConfidence: true, cronbachAlpha: 0.21 }),
+    formatResilienceConfidence({ ...baseResponse, lowConfidence: true }),
     'Low confidence — sparse data',
   );
 });

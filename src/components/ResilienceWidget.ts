@@ -27,10 +27,10 @@ const LOCKED_PREVIEW: ResilienceScoreResponse = {
     { id: 'social-governance', score: 71, weight: 0.25, dimensions: [] },
     { id: 'health-food', score: 54, weight: 0.18, dimensions: [] },
   ],
-  cronbachAlpha: 0.74,
   trend: 'rising',
   change30d: 2.4,
   lowConfidence: false,
+  imputationShare: 0,
 };
 
 function normalizeCountryCode(countryCode: string | null | undefined): string | null {
@@ -274,7 +274,7 @@ export class ResilienceWidget {
           'span',
           {
             className: `resilience-widget__confidence${data.lowConfidence ? ' resilience-widget__confidence--low' : ''}`,
-            title: preview ? 'Preview only' : 'Cronbach alpha and coverage-based confidence signal.',
+            title: preview ? 'Preview only' : 'Coverage and imputation-based confidence signal.',
           },
           formatResilienceConfidence(data),
         ),

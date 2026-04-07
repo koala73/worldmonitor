@@ -21,7 +21,7 @@ import {
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
 
 async function scoreTriple(
-  scorer: (countryCode: string, reader?: (key: string) => Promise<unknown | null>) => Promise<{ score: number; coverage: number }>,
+  scorer: (countryCode: string, reader?: (key: string) => Promise<unknown | null>) => Promise<{ score: number; coverage: number; observedWeight: number; imputedWeight: number }>,
 ) {
   const [no, us, ye] = await Promise.all([
     scorer('NO', fixtureReader),
@@ -440,5 +440,37 @@ describe('resilience dimension scorers', () => {
     for (const [key, count] of hits.entries()) {
       assert.equal(count, 1, `expected ${key} to be read once, got ${count}`);
     }
+  });
+
+  it('weightedBlend returns observedWeight and imputedWeight', async () => {
+    const result = await scoreMacroFiscal('US', fixtureReader);
+    assert.ok(typeof result.observedWeight === 'number', 'observedWeight must be a number');
+    assert.ok(typeof result.imputedWeight === 'number', 'imputedWeight must be a number');
+    assert.ok(result.observedWeight >= 0, 'observedWeight must be >= 0');
+    assert.ok(result.imputedWeight >= 0, 'imputedWeight must be >= 0');
+  });
+
+  it('imputationShare = 0 when all data is real (US has full IMF + debt data)', async () => {
+    const dimensions = await scoreAllDimensions('US', fixtureReader);
+    const totalImputed = Object.values(dimensions).reduce((s, d) => s + d.imputedWeight, 0);
+    const totalObserved = Object.values(dimensions).reduce((s, d) => s + d.observedWeight, 0);
+    const imputationShare = (totalImputed + totalObserved) > 0
+      ? totalImputed / (totalImputed + totalObserved)
+      : 0;
+    assert.ok(imputationShare < 0.15, `US imputationShare should be low with rich data, got ${imputationShare.toFixed(4)}`);
+  });
+
+  it('imputationShare > 0 when crisis_monitoring_absent imputation is active', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:static:XX') return {
+        wgi: { indicators: { VA: { value: 1.5, year: 2025 } } },
+        fao: null,
+        aquastat: null,
+      };
+      return null;
+    };
+    const result = await scoreFoodWater('XX', reader);
+    assert.ok(result.imputedWeight > 0, `crisis_monitoring_absent imputation must produce imputedWeight > 0, got ${result.imputedWeight}`);
+    assert.equal(result.observedWeight, 0, 'no real data available, observedWeight should be 0');
   });
 });

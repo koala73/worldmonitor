@@ -67,7 +67,7 @@ describe('resilience release gate', () => {
     assert.ok(redis.has('resilience:static:YE'));
   });
 
-  it('keeps Cronbach alpha above 0.6 for at least 10 G20 countries and preserves score sanity anchors', async () => {
+  it('keeps imputationShare below 0.5 for G20 countries and preserves score sanity anchors', async () => {
     installRedisFixtures();
 
     const g20Responses = await Promise.all(
@@ -76,8 +76,8 @@ describe('resilience release gate', () => {
       ),
     );
 
-    const alphaPassing = g20Responses.filter((response) => response.cronbachAlpha > 0.6);
-    assert.ok(alphaPassing.length >= 10, `expected at least 10 G20 countries with alpha > 0.6, got ${alphaPassing.length}`);
+    const coveragePassing = g20Responses.filter((response) => response.imputationShare < 0.5);
+    assert.ok(coveragePassing.length >= 10, `expected at least 10 G20 countries with imputationShare < 0.5, got ${coveragePassing.length}`);
 
     const highAnchors = await Promise.all(
       HIGH_SANITY_COUNTRIES.map((countryCode) =>

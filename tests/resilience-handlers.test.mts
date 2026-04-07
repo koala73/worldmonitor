@@ -43,10 +43,10 @@ describe('resilience handlers', () => {
     assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 13);
     assert.ok(response.overallScore > 0 && response.overallScore <= 100);
     assert.equal(response.level, response.overallScore >= 70 ? 'high' : response.overallScore >= 40 ? 'medium' : 'low');
-    assert.ok(response.cronbachAlpha >= 0);
     assert.equal(response.trend, 'rising');
     assert.ok(response.change30d > 0);
     assert.equal(typeof response.lowConfidence, 'boolean');
+    assert.ok(response.imputationShare >= 0 && response.imputationShare <= 1, `imputationShare out of bounds: ${response.imputationShare}`);
 
     const cachedScore = redis.get('resilience:score:US');
     assert.ok(cachedScore, 'expected score cache to be written');

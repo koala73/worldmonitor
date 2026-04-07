@@ -14,8 +14,9 @@ message GetResilienceScoreResponse {
   double overall_score = 2;
   string level = 3;
   repeated ResilienceDomain domains = 4;
-  double cronbach_alpha = 5;
+  reserved 5;
   string trend = 6;
   double change_30d = 7;
   bool low_confidence = 8;
+  double imputation_share = 9;
 }

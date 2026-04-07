@@ -6,6 +6,8 @@ message ResilienceDimension {
   string id = 1;
   double score = 2;
   double coverage = 3;
+  double observed_weight = 4;
+  double imputed_weight = 5;
 }
 
 message ResilienceDomain {

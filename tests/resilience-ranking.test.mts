@@ -81,20 +81,20 @@ describe('resilience ranking contracts', () => {
       overallScore: 82,
       level: 'high',
       domains: domainWithCoverage,
-      cronbachAlpha: 0.82,
       trend: 'stable',
       change30d: 1.2,
       lowConfidence: false,
+      imputationShare: 0.05,
     }));
     redis.set('resilience:score:US', JSON.stringify({
       countryCode: 'US',
       overallScore: 61,
       level: 'medium',
       domains: domainWithCoverage,
-      cronbachAlpha: 0.67,
       trend: 'rising',
       change30d: 4.3,
       lowConfidence: false,
+      imputationShare: 0.1,
     }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
