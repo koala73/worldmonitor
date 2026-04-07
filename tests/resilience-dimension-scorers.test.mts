@@ -150,7 +150,8 @@ describe('resilience dimension scorers', () => {
     };
     const score = await scoreTradeSanctions('FI', reader);
     assert.equal(score.score, 100, 'FI with 0 designations must score 100 (not sanctioned)');
-    assert.equal(score.coverage, 1, 'all sources loaded → full coverage');
+    // WB tariff rate absent (no static record) reduces coverage from 1.0 to 0.75
+    assert.equal(score.coverage, 0.75, 'coverage reflects missing WB tariff rate');
   });
 
   it('scoreTradeSanctions: heavily sanctioned country scores low', async () => {
@@ -162,7 +163,7 @@ describe('resilience dimension scorers', () => {
     };
     const score = await scoreTradeSanctions('RU', reader);
     // Sanctions metric alone = 0 (score floored); WTO sources are empty (no restrictions = 100).
-    // Blended: (0×0.55 + 100×0.25 + 100×0.2) / 1.0 = 45. Still clearly below an unsanctioned country.
+    // Available: 0.45+0.15+0.15 = 0.75. Score: (0*0.45 + 100*0.15 + 100*0.15)/0.75 = 40.
     assert.ok(score.score < 55, `RU with 500 designations should score below midpoint, got ${score.score}`);
   });
 
@@ -183,10 +184,11 @@ describe('resilience dimension scorers', () => {
     };
     const score = await scoreTradeSanctions('US', reader);
     assert.equal(score.score, 100, 'reporter with 0 restrictions must score 100 (genuine zero)');
-    assert.equal(score.coverage, 1, 'reporter-set country with loaded data → full coverage');
+    // WB tariff rate absent (no static record) reduces coverage from 1.0 to 0.75
+    assert.equal(score.coverage, 0.75, 'coverage reflects missing WB tariff rate');
   });
 
-  it('scoreTradeSanctions: non-reporter country gets IMPUTE.wtoData (blended score=82, coverage=0.73)', async () => {
+  it('scoreTradeSanctions: non-reporter country gets IMPUTE.wtoData (blended score=84, coverage=0.57)', async () => {
     const reporterSet = ['US', 'CN', 'DE', 'JP', 'GB', 'IN', 'BR', 'RU', 'KR', 'AU', 'CA', 'MX', 'FR', 'IT', 'NL'];
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'sanctions:country-counts:v1') return {};
@@ -195,12 +197,13 @@ describe('resilience dimension scorers', () => {
       return null;
     };
     const score = await scoreTradeSanctions('BF', reader);
-    // BF (Burkina Faso) not in reporter set: sanctions=100 (0 designations, weight 0.55),
-    // restrictions=60 (imputed, weight 0.25, cc=0.4), barriers=60 (imputed, weight 0.20, cc=0.4).
-    // Blended score: (100*0.55 + 60*0.25 + 60*0.20) / 1.0 = 82
-    assert.equal(score.score, 82, 'non-reporter blended with sanctions=100 and imputed WTO=60');
-    // Coverage: (1.0*0.55 + 0.4*0.25 + 0.4*0.20) / 1.0 = 0.73
-    assert.equal(score.coverage, 0.73, 'non-reporter coverage reflects imputed WTO metrics');
+    // BF (Burkina Faso) not in reporter set: sanctions=100 (0 designations, weight 0.45),
+    // restrictions=60 (imputed, weight 0.15, cc=0.4), barriers=60 (imputed, weight 0.15, cc=0.4),
+    // WB tariff=null (weight 0.25). Available weight = 0.75.
+    // Blended score: (100*0.45 + 60*0.15 + 60*0.15) / 0.75 = 84
+    assert.equal(score.score, 84, 'non-reporter blended with sanctions=100 and imputed WTO=60');
+    // Coverage: (1.0*0.45 + 0.4*0.15 + 0.4*0.15 + 0*0.25) / 1.0 = 0.57
+    assert.equal(score.coverage, 0.57, 'non-reporter coverage reflects imputed WTO metrics and absent tariff');
   });
 
   it('scoreTradeSanctions: WTO seed outage returns null for both trade metrics', async () => {
@@ -209,10 +212,10 @@ describe('resilience dimension scorers', () => {
       return null;
     };
     const score = await scoreTradeSanctions('US', reader);
-    // Only sanctions loaded (weight 0.55). WTO restrictions + barriers null = seed outage.
+    // Only sanctions loaded (weight 0.45). WTO restrictions + barriers + WB tariff null.
     assert.ok(score.score > 0, 'sanctions data alone produces non-zero score');
-    assert.ok(score.coverage > 0.5 && score.coverage < 0.6,
-      `coverage should be ~0.55 (only sanctions loaded), got ${score.coverage}`);
+    assert.ok(score.coverage > 0.4 && score.coverage < 0.5,
+      `coverage should be ~0.45 (only sanctions loaded), got ${score.coverage}`);
   });
 
   it('scoreCurrencyExternal: non-BIS country with no IMF data falls back to curated_list_absent (score 50)', async () => {
