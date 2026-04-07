@@ -435,12 +435,17 @@ export class App {
       // One-time migration: preserve user preferences across panel key renames.
       const PANEL_KEY_RENAMES_MIGRATION_KEY = 'worldmonitor-panel-key-renames-v2.6.8';
       if (!localStorage.getItem(PANEL_KEY_RENAMES_MIGRATION_KEY)) {
+        let migrated = false;
         const keyRenames: Array<[string, string]> = [
           ['live-youtube', 'live-webcams'],
           ['pinned-webcams', 'windy-webcams'],
-          ['regulation', 'fin-regulation'],
+          ...(SITE_VARIANT === 'finance' ? [['regulation', 'fin-regulation'] as [string, string]] : []),
         ];
-        let migrated = false;
+        // In non-finance variants, 'regulation' was dead config (no feeds). Just prune it.
+        if (SITE_VARIANT !== 'finance' && panelSettings['regulation']) {
+          delete panelSettings['regulation'];
+          migrated = true;
+        }
         for (const [legacyKey, nextKey] of keyRenames) {
           if (!panelSettings[legacyKey] || panelSettings[nextKey]) continue;
           panelSettings[nextKey] = {
