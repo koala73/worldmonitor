@@ -9,6 +9,7 @@ import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
+import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
 
 const INTEL_CACHE_TTL = 21600;
 
@@ -42,10 +43,20 @@ export async function getCountryIntelBrief(
   // Fetch energy mix early so its data-year can be included in the cache key.
   // This ensures cached briefs are invalidated when OWID publishes updated annual
   // data — without it, energy mix changes are silently ignored in cached briefs.
+  // Prefer reading from spine (single key); fall back to direct mix key on miss.
   let energyMixData: Record<string, unknown> | null = null;
   try {
-    const raw = await getCachedJson(`energy:mix:v1:${req.countryCode.toUpperCase()}`, true);
-    if (raw && typeof raw === 'object') energyMixData = raw as Record<string, unknown>;
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${req.countryCode.toUpperCase()}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object' && spine.mix != null) {
+      const src = spine.sources as Record<string, unknown> | undefined;
+      energyMixData = {
+        ...(spine.mix as Record<string, unknown>),
+        year: src?.mixYear ?? null,
+      };
+    } else {
+      const raw = await getCachedJson(`energy:mix:v1:${req.countryCode.toUpperCase()}`, true);
+      if (raw && typeof raw === 'object') energyMixData = raw as Record<string, unknown>;
+    }
   } catch { /* graceful omit */ }
   const energyYear = typeof energyMixData?.year === 'number' ? String(energyMixData.year) : '';
 

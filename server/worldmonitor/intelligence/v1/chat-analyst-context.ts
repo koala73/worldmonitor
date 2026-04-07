@@ -9,6 +9,7 @@ import {
   ENERGY_INTELLIGENCE_KEY,
   SPR_KEY,
   REFINERY_UTIL_KEY,
+  ENERGY_SPINE_KEY_PREFIX,
 } from '../../../_shared/cache-keys';
 
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
@@ -374,6 +375,25 @@ async function buildRefineryUtil(): Promise<string | undefined> {
 
 async function buildProductSupply(iso2: string): Promise<string | undefined> {
   try {
+    // Try spine first — single key read
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object' && (spine.coverage as Record<string, unknown> | undefined)?.hasJodiOil) {
+      const oil = spine.oil as Record<string, unknown> | undefined;
+      const src = spine.sources as Record<string, unknown> | undefined;
+      const month = safeStr(src?.jodiOilMonth);
+      if (!oil) return undefined;
+      const fmt = (v: unknown) => typeof v === 'number' && Number.isFinite(v as number) ? Math.round(v as number) : null;
+      const parts: string[] = [];
+      for (const [key, label] of [['dieselDemandKbd', 'diesel'], ['jetDemandKbd', 'jet fuel'], ['gasolineDemandKbd', 'gasoline']] as [string, string][]) {
+        const demand = fmt(oil[key]);
+        if (demand == null) continue;
+        parts.push(`${label} ${demand} kbd demand`);
+      }
+      if (parts.length === 0) return undefined;
+      return `Oil product supply${month ? ` (${month})` : ''}: ${parts.join('; ')}`;
+    }
+
+    // Fallback to direct key
     const data = await getCachedJson(`energy:jodi-oil:v1:${iso2}`, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
@@ -400,6 +420,23 @@ async function buildProductSupply(iso2: string): Promise<string | undefined> {
 
 async function buildGasFlows(iso2: string): Promise<string | undefined> {
   try {
+    // Try spine first
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object' && (spine.coverage as Record<string, unknown> | undefined)?.hasJodiGas) {
+      const gas = spine.gas as Record<string, unknown> | undefined;
+      if (!gas) return undefined;
+      const totalTj = typeof gas.totalDemandTj === 'number' ? gas.totalDemandTj as number : null;
+      const pipeImports = typeof gas.pipeImportsTj === 'number' ? gas.pipeImportsTj as number : null;
+      const lngImports = typeof gas.lngImportsTj === 'number' ? gas.lngImportsTj as number : null;
+      const totalImports = (pipeImports ?? 0) + (lngImports ?? 0);
+      if (!totalImports && !totalTj) return undefined;
+      const totalPj = Math.round((totalImports || totalTj || 0) / 1000);
+      const lngShare = typeof gas.lngShareOfImports === 'number' ? Math.round((gas.lngShareOfImports as number) * 100) : null;
+      const split = lngShare != null ? ` (LNG ${lngShare}%, pipeline ${100 - lngShare}%)` : '';
+      return `Gas: total imports ${totalPj} PJ${split}`;
+    }
+
+    // Fallback to direct key
     const data = await getCachedJson(`energy:jodi-gas:v1:${iso2}`, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;
@@ -416,6 +453,21 @@ async function buildGasFlows(iso2: string): Promise<string | undefined> {
 
 async function buildOilStocksCover(iso2: string): Promise<string | undefined> {
   try {
+    // Try spine first
+    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${iso2}`, true) as Record<string, unknown> | null;
+    if (spine != null && typeof spine === 'object') {
+      const cov = spine.coverage as Record<string, unknown> | undefined;
+      const oil = spine.oil as Record<string, unknown> | undefined;
+      if (oil?.netExporter === true) return 'IEA oil stocks: net exporter';
+      if (cov?.hasIeaStocks && typeof oil?.daysOfCover === 'number') {
+        const days = oil.daysOfCover as number;
+        return `IEA oil stocks: ${days} days of cover`;
+      }
+      // Spine present but no IEA stocks coverage — return undefined (don't fall through)
+      if (spine.coverage != null) return undefined;
+    }
+
+    // Fallback to direct key
     const data = await getCachedJson(`energy:iea-oil-stocks:v1:${iso2}`, true);
     if (!data || typeof data !== 'object') return undefined;
     const d = data as Record<string, unknown>;

@@ -10282,6 +10282,8 @@ server.listen(PORT, () => {
   startMarketDataSeedLoop();
   startAviationSeedLoop();
   startNotamSeedLoop();
+  // Energy spine seed — standalone Railway cron (0 6 * * *) — seed-energy-spine.mjs
+  // Assembles per-country canonical energy keys from 6 domain sources daily.
   // Cyber seed disabled — standalone cron seed-cyber-threats.mjs handles this
   // (avoids burning 12 extra AbuseIPDB calls/day from duplicate relay loop)
   startCiiWarmPingLoop();

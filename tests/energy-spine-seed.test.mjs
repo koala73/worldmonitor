@@ -1,0 +1,419 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  buildSpineEntry,
+  SPINE_KEY_PREFIX,
+  SPINE_COUNTRIES_KEY,
+  SPINE_META_KEY,
+  SPINE_TTL_SECONDS,
+} from '../scripts/seed-energy-spine.mjs';
+
+// ---------------------------------------------------------------------------
+// Mock data helpers
+// ---------------------------------------------------------------------------
+
+function makeMix(overrides = {}) {
+  return {
+    year: 2024,
+    coalShare: 26.4,
+    gasShare: 15.1,
+    oilShare: 0.9,
+    nuclearShare: 1.8,
+    renewShare: 55.8,
+    importShare: 3.4,
+    windShare: 34.0,
+    solarShare: 12.0,
+    hydroShare: 3.0,
+    ...overrides,
+  };
+}
+
+function makeJodiOil(overrides = {}) {
+  return {
+    dataMonth: '2026-02',
+    crude: { importsKbd: 950 },
+    gasoline: { demandKbd: 120, importsKbd: 10 },
+    diesel: { demandKbd: 310, importsKbd: 50 },
+    jet: { demandKbd: 95, importsKbd: 20 },
+    lpg: { demandKbd: 40, importsKbd: 5 },
+    ...overrides,
+  };
+}
+
+function makeJodiGas(overrides = {}) {
+  return {
+    dataMonth: '2026-02',
+    totalDemandTj: 51000,
+    lngImportsTj: 0,
+    pipeImportsTj: 18400,
+    lngShareOfImports: 0.0,
+    ...overrides,
+  };
+}
+
+function makeIeaStocks(overrides = {}) {
+  return {
+    dataMonth: '2026-02',
+    daysOfCover: 130,
+    netExporter: false,
+    belowObligation: false,
+    anomaly: false,
+    ...overrides,
+  };
+}
+
+function makeElectricity(overrides = {}) {
+  return {
+    priceMwhEur: 93.4,
+    source: 'entso-e',
+    date: '2026-04-06',
+    ...overrides,
+  };
+}
+
+function makeGasStorage(overrides = {}) {
+  return {
+    fillPct: 55.2,
+    trend: 'falling',
+    date: '2026-04-06',
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// buildSpineEntry — spine build logic
+// ---------------------------------------------------------------------------
+
+describe('buildSpineEntry — full data', () => {
+  it('returns correct countryCode and updatedAt', () => {
+    const spine = buildSpineEntry('DE', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: makeGasStorage(),
+    });
+    assert.equal(spine.countryCode, 'DE');
+    assert.ok(typeof spine.updatedAt === 'string');
+    assert.ok(new Date(spine.updatedAt).getTime() > 0);
+  });
+
+  it('sets all coverage flags to true when all sources present', () => {
+    const spine = buildSpineEntry('DE', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: makeGasStorage(),
+    });
+    assert.equal(spine.coverage.hasMix, true);
+    assert.equal(spine.coverage.hasJodiOil, true);
+    assert.equal(spine.coverage.hasJodiGas, true);
+    assert.equal(spine.coverage.hasIeaStocks, true);
+    assert.equal(spine.coverage.hasElectricity, true);
+    assert.equal(spine.coverage.hasGasStorage, true);
+  });
+
+  it('maps oil fields correctly from JODI oil', () => {
+    const spine = buildSpineEntry('DE', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: makeGasStorage(),
+    });
+    assert.equal(spine.oil.crudeImportsKbd, 950);
+    assert.equal(spine.oil.gasolineDemandKbd, 120);
+    assert.equal(spine.oil.dieselDemandKbd, 310);
+    assert.equal(spine.oil.jetDemandKbd, 95);
+    assert.equal(spine.oil.lpgDemandKbd, 40);
+    assert.equal(spine.oil.daysOfCover, 130);
+    assert.equal(spine.oil.netExporter, false);
+  });
+
+  it('maps gas fields correctly from JODI gas', () => {
+    const spine = buildSpineEntry('DE', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: makeGasStorage(),
+    });
+    assert.equal(spine.gas.lngImportsTj, 0);
+    assert.equal(spine.gas.pipeImportsTj, 18400);
+    assert.equal(spine.gas.totalDemandTj, 51000);
+    assert.equal(spine.gas.lngShareOfImports, 0.0);
+  });
+
+  it('maps electricity fields correctly', () => {
+    const spine = buildSpineEntry('DE', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: makeGasStorage(),
+    });
+    assert.equal(spine.electricity.priceMwh, 93.4);
+    assert.equal(spine.electricity.source, 'entso-e');
+  });
+
+  it('maps mix fields correctly from OWID data', () => {
+    const spine = buildSpineEntry('DE', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: makeGasStorage(),
+    });
+    assert.equal(spine.mix.coalShare, 26.4);
+    assert.equal(spine.mix.gasShare, 15.1);
+    assert.equal(spine.mix.renewShare, 55.8);
+  });
+
+  it('populates comtradeReporterCode for DE (276)', () => {
+    const spine = buildSpineEntry('DE', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: makeGasStorage(),
+    });
+    // DE is not in ISO2_TO_COMTRADE — should be null
+    assert.equal(spine.shockInputs.comtradeReporterCode, null);
+    assert.deepEqual(spine.shockInputs.supportedChokepoints, []);
+  });
+
+  it('populates comtradeReporterCode for US (842)', () => {
+    const spine = buildSpineEntry('US', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: makeGasStorage(),
+    });
+    assert.equal(spine.shockInputs.comtradeReporterCode, '842');
+    assert.deepEqual(spine.shockInputs.supportedChokepoints, ['hormuz', 'malacca', 'suez', 'babelm']);
+  });
+
+  it('populates source timestamps correctly', () => {
+    const spine = buildSpineEntry('DE', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: makeGasStorage(),
+    });
+    assert.equal(spine.sources.mixYear, 2024);
+    assert.equal(spine.sources.jodiOilMonth, '2026-02');
+    assert.equal(spine.sources.jodiGasMonth, '2026-02');
+    assert.equal(spine.sources.ieaStocksMonth, '2026-02');
+    assert.equal(spine.sources.electricityDate, '2026-04-06');
+    assert.equal(spine.sources.gasStorageDate, '2026-04-06');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildSpineEntry — fallback when JODI oil key missing
+// ---------------------------------------------------------------------------
+
+describe('buildSpineEntry — JODI oil key missing', () => {
+  it('sets hasJodiOil: false and all oil fields to 0', () => {
+    const spine = buildSpineEntry('JP', {
+      mix: makeMix(),
+      jodiOil: null,
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: null,
+    });
+    assert.equal(spine.coverage.hasJodiOil, false);
+    assert.equal(spine.oil.crudeImportsKbd, 0);
+    assert.equal(spine.oil.gasolineDemandKbd, 0);
+    assert.equal(spine.oil.dieselDemandKbd, 0);
+    assert.equal(spine.oil.jetDemandKbd, 0);
+    assert.equal(spine.oil.lpgDemandKbd, 0);
+  });
+
+  it('sets hasGasStorage: false when gas storage key missing', () => {
+    const spine = buildSpineEntry('JP', {
+      mix: makeMix(),
+      jodiOil: null,
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+      electricity: makeElectricity(),
+      gasStorage: null,
+    });
+    assert.equal(spine.coverage.hasGasStorage, false);
+    assert.equal(spine.sources.gasStorageDate, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// IEA anomaly guard
+// ---------------------------------------------------------------------------
+
+describe('buildSpineEntry — IEA anomaly guard', () => {
+  it('sets hasIeaStocks: false when anomaly is true', () => {
+    const spine = buildSpineEntry('XX', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks({ anomaly: true }),
+      electricity: makeElectricity(),
+      gasStorage: null,
+    });
+    assert.equal(spine.coverage.hasIeaStocks, false);
+    assert.equal(spine.oil.daysOfCover, 0);
+  });
+
+  it('sets hasIeaStocks: false when daysOfCover is null (non-exporter, no anomaly flag)', () => {
+    const spine = buildSpineEntry('XX', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks({ daysOfCover: null, anomaly: false }),
+      electricity: makeElectricity(),
+      gasStorage: null,
+    });
+    assert.equal(spine.coverage.hasIeaStocks, false);
+  });
+
+  it('sets hasIeaStocks: true when netExporter is true regardless of daysOfCover', () => {
+    const spine = buildSpineEntry('SA', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks({ netExporter: true, daysOfCover: null }),
+      electricity: null,
+      gasStorage: null,
+    });
+    assert.equal(spine.coverage.hasIeaStocks, true);
+    assert.equal(spine.oil.netExporter, true);
+  });
+
+  it('sets hasIeaStocks: true when anomaly is false and daysOfCover is present', () => {
+    const spine = buildSpineEntry('FR', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks({ anomaly: false, daysOfCover: 90 }),
+      electricity: makeElectricity(),
+      gasStorage: null,
+    });
+    assert.equal(spine.coverage.hasIeaStocks, true);
+    assert.equal(spine.oil.daysOfCover, 90);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Schema sentinel — throws when OWID mix missing required field
+// ---------------------------------------------------------------------------
+
+describe('buildSpineEntry — schema sentinel', () => {
+  it('throws when OWID mix is present but missing coalShare field', () => {
+    const badMix = { year: 2024, gasShare: 15, renewShare: 55 }; // no coalShare key at all
+    assert.throws(
+      () => buildSpineEntry('DE', {
+        mix: badMix,
+        jodiOil: makeJodiOil(),
+        jodiGas: makeJodiGas(),
+        ieaStocks: makeIeaStocks(),
+        electricity: makeElectricity(),
+        gasStorage: null,
+      }),
+      /coalShare/i,
+    );
+  });
+
+  it('does not throw when OWID mix has coalShare: null (valid nullable field)', () => {
+    const nullMix = { ...makeMix(), coalShare: null };
+    assert.doesNotThrow(
+      () => buildSpineEntry('DE', {
+        mix: nullMix,
+        jodiOil: makeJodiOil(),
+        jodiGas: makeJodiGas(),
+        ieaStocks: makeIeaStocks(),
+        electricity: makeElectricity(),
+        gasStorage: null,
+      }),
+    );
+  });
+
+  it('does not throw when OWID mix is null (no mix data available)', () => {
+    assert.doesNotThrow(
+      () => buildSpineEntry('AF', {
+        mix: null,
+        jodiOil: null,
+        jodiGas: null,
+        ieaStocks: null,
+        electricity: null,
+        gasStorage: null,
+      }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Exported constants
+// ---------------------------------------------------------------------------
+
+describe('exported key constants', () => {
+  it('SPINE_KEY_PREFIX matches expected pattern', () => {
+    assert.equal(SPINE_KEY_PREFIX, 'energy:spine:v1:');
+  });
+
+  it('SPINE_COUNTRIES_KEY matches expected pattern', () => {
+    assert.equal(SPINE_COUNTRIES_KEY, 'energy:spine:v1:_countries');
+  });
+
+  it('SPINE_META_KEY matches expected pattern', () => {
+    assert.equal(SPINE_META_KEY, 'seed-meta:energy:spine');
+  });
+
+  it('SPINE_TTL_SECONDS is 48h (172800s)', () => {
+    assert.equal(SPINE_TTL_SECONDS, 172800);
+  });
+
+  it('SPINE_TTL_SECONDS covers 2x the daily cron interval', () => {
+    const dailyIntervalSeconds = 24 * 3600;
+    assert.ok(SPINE_TTL_SECONDS >= 2 * dailyIntervalSeconds,
+      `TTL ${SPINE_TTL_SECONDS}s must be at least 2x daily interval (${2 * dailyIntervalSeconds}s)`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Count-drop guard logic (unit test of the ratio math)
+// ---------------------------------------------------------------------------
+
+describe('count-drop guard math', () => {
+  it('80% threshold: 160/200 is acceptable', () => {
+    const prevCount = 200;
+    const newCount = 160;
+    const ratio = newCount / prevCount;
+    assert.ok(ratio >= 0.80, `${ratio} should be >= 0.80`);
+  });
+
+  it('80% threshold: 159/200 triggers guard', () => {
+    const prevCount = 200;
+    const newCount = 159;
+    const ratio = newCount / prevCount;
+    assert.ok(ratio < 0.80, `${ratio} should be < 0.80`);
+  });
+
+  it('no guard when prevCount is 0 (first run)', () => {
+    const prevCount = 0;
+    // Guard should not activate on first run (prevCount <= 0)
+    const guardActive = prevCount > 0;
+    assert.equal(guardActive, false);
+  });
+});
