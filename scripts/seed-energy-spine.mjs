@@ -148,13 +148,6 @@ function buildGasFields(jodiGas) {
   };
 }
 
-function buildElectricityFields(electricity, hasElectricity) {
-  return {
-    priceMwh: hasElectricity ? (electricity.priceMwhEur ?? 0) : 0,
-    source: hasElectricity ? (electricity.source ?? 'entso-e') : '',
-  };
-}
-
 function buildMixFields(mix) {
   if (!mix) return { coalShare: 0, gasShare: 0, oilShare: 0, nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0, importShare: 0 };
   return {
@@ -170,23 +163,12 @@ function buildMixFields(mix) {
   };
 }
 
-function buildGasStorageFields(gasStorage, hasGasStorage) {
-  if (!hasGasStorage) return { fillPct: 0, fillPctChange1d: 0, trend: '' };
-  return {
-    fillPct: gasStorage.fillPct ?? 0,
-    fillPctChange1d: gasStorage.fillPctChange1d ?? 0,
-    trend: gasStorage.trend ?? '',
-  };
-}
-
-function buildSourceTimestamps(mix, jodiOil, jodiGas, ieaStocks, electricity, hasElectricity, gasStorage) {
+function buildSourceTimestamps(mix, jodiOil, jodiGas, ieaStocks) {
   return {
     mixYear: mix ? (mix.year ?? null) : null,
     jodiOilMonth: jodiOil ? (jodiOil.dataMonth ?? null) : null,
     jodiGasMonth: jodiGas ? (jodiGas.dataMonth ?? null) : null,
     ieaStocksMonth: ieaStocks ? (ieaStocks.dataMonth ?? null) : null,
-    electricityDate: hasElectricity ? (electricity.date ?? null) : null,
-    gasStorageDate: gasStorage ? (gasStorage.date ?? null) : null,
   };
 }
 
@@ -195,7 +177,11 @@ function buildSourceTimestamps(mix, jodiOil, jodiGas, ieaStocks, electricity, ha
  * All domain values are validated for required fields before writing.
  * Throws on schema sentinel violation (e.g., OWID mix missing coalShare).
  */
-export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, electricity, gasStorage }) {
+// electricity and gasStorage are intentionally excluded from the spine.
+// Both update sub-daily (gas storage ~10:30 UTC, electricity ~14:00 UTC) while
+// the spine seeds once at 06:00 UTC. Including them would serve stale prices for
+// up to 8h. Handlers read those two keys directly alongside the spine read.
+export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks }) {
   // Schema sentinel: OWID mix must have coalShare field if data is present
   if (mix != null && !('coalShare' in mix)) {
     throw new Error(`OWID mix schema changed for ${iso2} — missing coalShare field`);
@@ -205,20 +191,16 @@ export function buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, electr
   const hasJodiOil = jodiOil != null;
   const hasJodiGas = jodiGas != null;
   const hasIeaStocks = checkIeaAvailability(ieaStocks);
-  const hasElectricity = electricity != null && electricity.priceMwhEur != null;
-  const hasGasStorage = gasStorage != null;
 
   const comtradeCode = ISO2_TO_COMTRADE[iso2] ?? null;
 
   return {
     countryCode: iso2,
     updatedAt: new Date().toISOString(),
-    sources: buildSourceTimestamps(mix, jodiOil, jodiGas, ieaStocks, electricity, hasElectricity, gasStorage),
-    coverage: { hasMix, hasJodiOil, hasJodiGas, hasIeaStocks, hasElectricity, hasGasStorage },
+    sources: buildSourceTimestamps(mix, jodiOil, jodiGas, ieaStocks),
+    coverage: { hasMix, hasJodiOil, hasJodiGas, hasIeaStocks },
     oil: buildOilFields(jodiOil, ieaStocks, hasIeaStocks),
     gas: buildGasFields(jodiGas),
-    electricity: buildElectricityFields(electricity, hasElectricity),
-    gasStorage: buildGasStorageFields(gasStorage, hasGasStorage),
     mix: buildMixFields(hasMix ? mix : null),
     shockInputs: {
       comtradeReporterCode: comtradeCode,
@@ -280,9 +262,10 @@ export async function main() {
     }
 
     // Step 3: Batch-read all 6 domain keys per country via pipeline
-    // Order: mix, jodiOil, jodiGas, ieaStocks, electricity, gasStorage
+    // Order: mix, jodiOil, jodiGas, ieaStocks (electricity + gasStorage excluded — they
+    // update sub-daily and are always read directly by handlers, not from the spine)
     console.log('[energy-spine] Reading domain keys in batches...');
-    const BATCH_SIZE = 50; // 6 keys * 50 countries = 300 commands per pipeline call
+    const BATCH_SIZE = 75; // 4 keys * 75 countries = 300 commands per pipeline call
     const spineEntries = new Map();
 
     for (let i = 0; i < countries.length; i += BATCH_SIZE) {
@@ -294,8 +277,6 @@ export async function main() {
           `energy:jodi-oil:v1:${iso2}`,
           `energy:jodi-gas:v1:${iso2}`,
           `energy:iea-oil-stocks:v1:${iso2}`,
-          `energy:electricity:v1:${iso2}`,
-          `energy:gas-storage:v1:${iso2}`,
         );
       }
 
@@ -303,16 +284,14 @@ export async function main() {
 
       for (let j = 0; j < batch.length; j++) {
         const iso2 = batch[j];
-        const base = j * 6;
+        const base = j * 4;
         const mix = values[base];
         const jodiOil = values[base + 1];
         const jodiGas = values[base + 2];
         const ieaStocks = values[base + 3];
-        const electricity = values[base + 4];
-        const gasStorage = values[base + 5];
 
         try {
-          const spine = buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks, electricity, gasStorage });
+          const spine = buildSpineEntry(iso2, { mix, jodiOil, jodiGas, ieaStocks });
           spineEntries.set(iso2, spine);
         } catch (err) {
           // Schema sentinel or unexpected error — propagate to abort entire run

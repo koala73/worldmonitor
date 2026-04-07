@@ -71,16 +71,12 @@ interface EnergySpine {
     jodiOilMonth?: string | null;
     jodiGasMonth?: string | null;
     ieaStocksMonth?: string | null;
-    electricityDate?: string | null;
-    gasStorageDate?: string | null;
   };
   coverage?: {
     hasMix?: boolean;
     hasJodiOil?: boolean;
     hasJodiGas?: boolean;
     hasIeaStocks?: boolean;
-    hasElectricity?: boolean;
-    hasGasStorage?: boolean;
   };
   oil?: {
     crudeImportsKbd?: number;
@@ -101,15 +97,6 @@ interface EnergySpine {
     pipeImportsTj?: number;
     totalDemandTj?: number;
     lngShareOfImports?: number;
-  };
-  electricity?: {
-    priceMwh?: number;
-    source?: string;
-  };
-  gasStorage?: {
-    fillPct?: number;
-    fillPctChange1d?: number;
-    trend?: string;
   };
   mix?: {
     coalShare?: number;
@@ -177,14 +164,18 @@ function s(v: string | null | undefined): string {
   return typeof v === 'string' ? v : '';
 }
 
-function buildResponseFromSpine(spine: EnergySpine): GetCountryEnergyProfileResponse {
+function buildResponseFromSpine(
+  spine: EnergySpine,
+  gasStorage: GasStorage | null,
+  electricity: ElectricityEntry | null,
+): GetCountryEnergyProfileResponse {
   const cov = spine.coverage ?? {};
   const src = spine.sources ?? {};
   const oil = spine.oil ?? {};
   const gas = spine.gas ?? {};
-  const elec = spine.electricity ?? {};
-  const gs = spine.gasStorage ?? {};
   const mix = spine.mix ?? {};
+
+  const electricityAvailable = electricity != null && electricity.priceMwhEur != null;
 
   return {
     mixAvailable: cov.hasMix === true,
@@ -199,16 +190,16 @@ function buildResponseFromSpine(spine: EnergySpine): GetCountryEnergyProfileResp
     hydroShare: n(mix.hydroShare),
     importShare: n(mix.importShare),
 
-    gasStorageAvailable: cov.hasGasStorage === true,
-    gasStorageFillPct: n(gs.fillPct),
-    gasStorageChange1d: n(gs.fillPctChange1d),
-    gasStorageTrend: s(gs.trend),
-    gasStorageDate: s(src.gasStorageDate),
+    gasStorageAvailable: gasStorage != null,
+    gasStorageFillPct: n(gasStorage?.fillPct),
+    gasStorageChange1d: n(gasStorage?.fillPctChange1d),
+    gasStorageTrend: s(gasStorage?.trend),
+    gasStorageDate: s(gasStorage?.date),
 
-    electricityAvailable: cov.hasElectricity === true,
-    electricityPriceMwh: n(elec.priceMwh),
-    electricitySource: cov.hasElectricity ? s(elec.source) : '',
-    electricityDate: cov.hasElectricity ? s(src.electricityDate) : '',
+    electricityAvailable,
+    electricityPriceMwh: n(electricity?.priceMwhEur),
+    electricitySource: electricityAvailable ? s(electricity?.source) : '',
+    electricityDate: electricityAvailable ? s(electricity?.date) : '',
 
     jodiOilAvailable: cov.hasJodiOil === true,
     jodiOilDataMonth: s(src.jodiOilMonth),
@@ -244,33 +235,38 @@ export async function getCountryEnergyProfile(
   const code = req.countryCode?.trim().toUpperCase() ?? '';
   if (!code || code.length !== 2) return EMPTY;
 
-  // Try spine first — single key read, no Promise.allSettled on 6 keys
-  try {
-    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${code}`, true) as EnergySpine | null;
-    if (spine != null && typeof spine === 'object' && spine.coverage != null) {
-      return buildResponseFromSpine(spine);
-    }
-  } catch {
-    // Spine read failed — fall through to direct join
+  // Always read gas-storage and electricity directly — both update sub-daily
+  // (gas storage ~10:30 UTC, electricity ~14:00 UTC) while the spine seeds once
+  // at 06:00 UTC. Serving them from the spine would return stale data for up to 8h.
+  const [spineResult, gasStorageResult, electricityResult] = await Promise.allSettled([
+    getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${code}`, true),
+    getCachedJson(`energy:gas-storage:v1:${code}`, true),
+    getCachedJson(`energy:electricity:v1:${code}`, true),
+  ]);
+
+  const spine = spineResult.status === 'fulfilled' ? (spineResult.value as EnergySpine | null) : null;
+  const gasStorage = gasStorageResult.status === 'fulfilled' ? (gasStorageResult.value as GasStorage | null) : null;
+  const electricity = electricityResult.status === 'fulfilled' ? (electricityResult.value as ElectricityEntry | null) : null;
+
+  if (spine != null && typeof spine === 'object' && spine.coverage != null) {
+    return buildResponseFromSpine(spine, gasStorage, electricity);
   }
 
-  // Fallback: 6-key direct join (cold cache or countries not yet in spine)
-  const [mixResult, gasStorageResult, electricityResult, jodiOilResult, jodiGasResult, ieaStocksResult] =
+  // Fallback: 4-key direct join (cold cache or countries not yet in spine)
+  const [mixResult, jodiOilResult, jodiGasResult, ieaStocksResult] =
     await Promise.allSettled([
       getCachedJson(`energy:mix:v1:${code}`, true),
-      getCachedJson(`energy:gas-storage:v1:${code}`, true),
-      getCachedJson(`energy:electricity:v1:${code}`, true),
       getCachedJson(`energy:jodi-oil:v1:${code}`, true),
       getCachedJson(`energy:jodi-gas:v1:${code}`, true),
       getCachedJson(`energy:iea-oil-stocks:v1:${code}`, true),
     ]);
 
   const mix = mixResult.status === 'fulfilled' ? (mixResult.value as OwidMix | null) : null;
-  const gasStorage = gasStorageResult.status === 'fulfilled' ? (gasStorageResult.value as GasStorage | null) : null;
-  const electricity = electricityResult.status === 'fulfilled' ? (electricityResult.value as ElectricityEntry | null) : null;
   const jodiOil = jodiOilResult.status === 'fulfilled' ? (jodiOilResult.value as JodiOil | null) : null;
   const jodiGas = jodiGasResult.status === 'fulfilled' ? (jodiGasResult.value as JodiGas | null) : null;
   const ieaStocks = ieaStocksResult.status === 'fulfilled' ? (ieaStocksResult.value as IeaStocks | null) : null;
+
+  const electricityAvailable = electricity != null && electricity.priceMwhEur != null;
 
   return {
     mixAvailable: mix != null,
@@ -291,10 +287,10 @@ export async function getCountryEnergyProfile(
     gasStorageTrend: s(gasStorage?.trend),
     gasStorageDate: s(gasStorage?.date),
 
-    electricityAvailable: electricity != null && electricity.priceMwhEur != null,
+    electricityAvailable,
     electricityPriceMwh: n(electricity?.priceMwhEur),
-    electricitySource: electricity?.priceMwhEur != null ? s(electricity?.source) : '',
-    electricityDate: electricity?.priceMwhEur != null ? s(electricity?.date) : '',
+    electricitySource: electricityAvailable ? s(electricity?.source) : '',
+    electricityDate: electricityAvailable ? s(electricity?.date) : '',
 
     jodiOilAvailable: jodiOil != null,
     jodiOilDataMonth: s(jodiOil?.dataMonth),

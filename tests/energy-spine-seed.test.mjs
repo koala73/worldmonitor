@@ -63,23 +63,8 @@ function makeIeaStocks(overrides = {}) {
   };
 }
 
-function makeElectricity(overrides = {}) {
-  return {
-    priceMwhEur: 93.4,
-    source: 'entso-e',
-    date: '2026-04-06',
-    ...overrides,
-  };
-}
-
-function makeGasStorage(overrides = {}) {
-  return {
-    fillPct: 55.2,
-    trend: 'falling',
-    date: '2026-04-06',
-    ...overrides,
-  };
-}
+// electricity and gasStorage are intentionally excluded from the spine
+// (they update sub-daily; the spine seeds once daily at 06:00 UTC).
 
 // ---------------------------------------------------------------------------
 // buildSpineEntry — spine build logic
@@ -92,8 +77,6 @@ describe('buildSpineEntry — full data', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: makeGasStorage(),
     });
     assert.equal(spine.countryCode, 'DE');
     assert.ok(typeof spine.updatedAt === 'string');
@@ -106,15 +89,24 @@ describe('buildSpineEntry — full data', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: makeGasStorage(),
     });
     assert.equal(spine.coverage.hasMix, true);
     assert.equal(spine.coverage.hasJodiOil, true);
     assert.equal(spine.coverage.hasJodiGas, true);
     assert.equal(spine.coverage.hasIeaStocks, true);
-    assert.equal(spine.coverage.hasElectricity, true);
-    assert.equal(spine.coverage.hasGasStorage, true);
+  });
+
+  it('does not include electricity or gasStorage in the spine', () => {
+    const spine = buildSpineEntry('DE', {
+      mix: makeMix(),
+      jodiOil: makeJodiOil(),
+      jodiGas: makeJodiGas(),
+      ieaStocks: makeIeaStocks(),
+    });
+    assert.equal(spine.electricity, undefined);
+    assert.equal(spine.gasStorage, undefined);
+    assert.equal(spine.coverage.hasElectricity, undefined);
+    assert.equal(spine.coverage.hasGasStorage, undefined);
   });
 
   it('maps oil fields correctly from JODI oil', () => {
@@ -123,8 +115,6 @@ describe('buildSpineEntry — full data', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: makeGasStorage(),
     });
     assert.equal(spine.oil.crudeImportsKbd, 950);
     assert.equal(spine.oil.gasolineDemandKbd, 120);
@@ -141,26 +131,11 @@ describe('buildSpineEntry — full data', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: makeGasStorage(),
     });
     assert.equal(spine.gas.lngImportsTj, 0);
     assert.equal(spine.gas.pipeImportsTj, 18400);
     assert.equal(spine.gas.totalDemandTj, 51000);
     assert.equal(spine.gas.lngShareOfImports, 0.0);
-  });
-
-  it('maps electricity fields correctly', () => {
-    const spine = buildSpineEntry('DE', {
-      mix: makeMix(),
-      jodiOil: makeJodiOil(),
-      jodiGas: makeJodiGas(),
-      ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: makeGasStorage(),
-    });
-    assert.equal(spine.electricity.priceMwh, 93.4);
-    assert.equal(spine.electricity.source, 'entso-e');
   });
 
   it('maps mix fields correctly from OWID data', () => {
@@ -169,8 +144,6 @@ describe('buildSpineEntry — full data', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: makeGasStorage(),
     });
     assert.equal(spine.mix.coalShare, 26.4);
     assert.equal(spine.mix.gasShare, 15.1);
@@ -183,8 +156,6 @@ describe('buildSpineEntry — full data', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: makeGasStorage(),
     });
     // DE is not in ISO2_TO_COMTRADE — should be null
     assert.equal(spine.shockInputs.comtradeReporterCode, null);
@@ -197,8 +168,6 @@ describe('buildSpineEntry — full data', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: makeGasStorage(),
     });
     assert.equal(spine.shockInputs.comtradeReporterCode, '842');
     assert.deepEqual(spine.shockInputs.supportedChokepoints, ['hormuz', 'malacca', 'suez', 'babelm']);
@@ -210,15 +179,11 @@ describe('buildSpineEntry — full data', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: makeGasStorage(),
     });
     assert.equal(spine.sources.mixYear, 2024);
     assert.equal(spine.sources.jodiOilMonth, '2026-02');
     assert.equal(spine.sources.jodiGasMonth, '2026-02');
     assert.equal(spine.sources.ieaStocksMonth, '2026-02');
-    assert.equal(spine.sources.electricityDate, '2026-04-06');
-    assert.equal(spine.sources.gasStorageDate, '2026-04-06');
   });
 });
 
@@ -233,8 +198,6 @@ describe('buildSpineEntry — JODI oil key missing', () => {
       jodiOil: null,
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: null,
     });
     assert.equal(spine.coverage.hasJodiOil, false);
     assert.equal(spine.oil.crudeImportsKbd, 0);
@@ -242,19 +205,6 @@ describe('buildSpineEntry — JODI oil key missing', () => {
     assert.equal(spine.oil.dieselDemandKbd, 0);
     assert.equal(spine.oil.jetDemandKbd, 0);
     assert.equal(spine.oil.lpgDemandKbd, 0);
-  });
-
-  it('sets hasGasStorage: false when gas storage key missing', () => {
-    const spine = buildSpineEntry('JP', {
-      mix: makeMix(),
-      jodiOil: null,
-      jodiGas: makeJodiGas(),
-      ieaStocks: makeIeaStocks(),
-      electricity: makeElectricity(),
-      gasStorage: null,
-    });
-    assert.equal(spine.coverage.hasGasStorage, false);
-    assert.equal(spine.sources.gasStorageDate, null);
   });
 });
 
@@ -269,8 +219,6 @@ describe('buildSpineEntry — IEA anomaly guard', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks({ anomaly: true }),
-      electricity: makeElectricity(),
-      gasStorage: null,
     });
     assert.equal(spine.coverage.hasIeaStocks, false);
     assert.equal(spine.oil.daysOfCover, 0);
@@ -282,8 +230,6 @@ describe('buildSpineEntry — IEA anomaly guard', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks({ daysOfCover: null, anomaly: false }),
-      electricity: makeElectricity(),
-      gasStorage: null,
     });
     assert.equal(spine.coverage.hasIeaStocks, false);
   });
@@ -294,8 +240,6 @@ describe('buildSpineEntry — IEA anomaly guard', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks({ netExporter: true, daysOfCover: null }),
-      electricity: null,
-      gasStorage: null,
     });
     assert.equal(spine.coverage.hasIeaStocks, true);
     assert.equal(spine.oil.netExporter, true);
@@ -307,8 +251,6 @@ describe('buildSpineEntry — IEA anomaly guard', () => {
       jodiOil: makeJodiOil(),
       jodiGas: makeJodiGas(),
       ieaStocks: makeIeaStocks({ anomaly: false, daysOfCover: 90 }),
-      electricity: makeElectricity(),
-      gasStorage: null,
     });
     assert.equal(spine.coverage.hasIeaStocks, true);
     assert.equal(spine.oil.daysOfCover, 90);
@@ -328,8 +270,6 @@ describe('buildSpineEntry — schema sentinel', () => {
         jodiOil: makeJodiOil(),
         jodiGas: makeJodiGas(),
         ieaStocks: makeIeaStocks(),
-        electricity: makeElectricity(),
-        gasStorage: null,
       }),
       /coalShare/i,
     );
@@ -343,8 +283,6 @@ describe('buildSpineEntry — schema sentinel', () => {
         jodiOil: makeJodiOil(),
         jodiGas: makeJodiGas(),
         ieaStocks: makeIeaStocks(),
-        electricity: makeElectricity(),
-        gasStorage: null,
       }),
     );
   });
@@ -356,8 +294,6 @@ describe('buildSpineEntry — schema sentinel', () => {
         jodiOil: null,
         jodiGas: null,
         ieaStocks: null,
-        electricity: null,
-        gasStorage: null,
       }),
     );
   });
