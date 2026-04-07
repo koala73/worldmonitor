@@ -191,6 +191,7 @@ function buildStaticRecord(descriptor: CountryDescriptor) {
         // Exponential scale: fragile (~600 kWh) → stressed (~2200) → strong (~8000) → elite (~9500)
         // Reflects that energy consumption per capita collapses in conflict/crisis states.
         'EG.USE.ELEC.KH.PC': { value: Math.round(300 * 10 ** (quality / 60)), year: 2025 },
+        'IT.NET.BBND.P2': { value: round(clamp(quality * 0.5, 0.1, 46), 1), year: 2025 },
       },
     },
     gpi: { score: round(clamp(4.1 - quality * 0.03, 1.2, 4.2), 2), rank: Math.round(190 - quality * 1.5), year: 2025 },
@@ -236,7 +237,7 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
       failedDatasets: [],
       seedYear: 2025,
       seededAt: '2026-04-04T00:00:00.000Z',
-      sourceVersion: 'resilience-static-v2',
+      sourceVersion: 'resilience-static-v3',
     },
     'supply_chain:shipping_stress:v1': { stressScore: 18 },
     'supply_chain:transit-summaries:v1': {

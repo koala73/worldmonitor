@@ -9,6 +9,7 @@ import {
   getResilienceDomainWeight,
   scoreAllDimensions,
   scoreEnergy,
+  scoreInfrastructure,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
@@ -73,7 +74,7 @@ describe('resilience scorer contracts', () => {
 
     assert.deepEqual(domainAverages, {
       economic: 68.67,
-      infrastructure: 79.33,
+      infrastructure: 79,
       energy: 80,
       'social-governance': 61.75,
       'health-food': 60.5,
@@ -140,5 +141,22 @@ describe('scoreEnergy storageBuffer metric', () => {
 
     assert.ok(resultNull.score >= 0 && resultNull.score <= 100, `score out of bounds: ${resultNull.score}`);
     assert.equal(resultNull.score, resultMissing.score, 'null fillPct should behave identically to missing key');
+  });
+});
+
+describe('scoreInfrastructure: broadband penetration', () => {
+  it('broadband penetration contributes to score', async () => {
+    installRedis(RESILIENCE_FIXTURES);
+    const withBroadband = await scoreInfrastructure('US');
+
+    const noBroadbandFixtures = structuredClone(RESILIENCE_FIXTURES);
+    const usStatic = noBroadbandFixtures['resilience:static:US'] as Record<string, unknown>;
+    const infra = usStatic.infrastructure as { indicators: Record<string, unknown> };
+    delete infra.indicators['IT.NET.BBND.P2'];
+    installRedis(noBroadbandFixtures);
+    const withoutBroadband = await scoreInfrastructure('US');
+
+    assert.notEqual(withBroadband.score, withoutBroadband.score, 'broadband should change the infrastructure score');
+    assert.ok(withBroadband.coverage > withoutBroadband.coverage, 'coverage should increase when broadband data is present');
   });
 });
