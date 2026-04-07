@@ -53,7 +53,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'fxVolatility',
     dimension: 'currencyExternal',
-    description: 'Annualized BIS real effective exchange rate volatility (std-dev of monthly changes * sqrt(12))',
+    description: 'Annualized BIS real effective exchange rate volatility (std-dev of monthly changes * sqrt(12)). Fallback chain when BIS absent: (1) IMF inflation proxy at coverage 0.45 if available, (2) conservative imputation only when IMF inflation is also unavailable.',
     direction: 'lowerBetter',
     goalposts: { worst: 50, best: 0 },
     weight: 0.7,
@@ -65,7 +65,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'fxDeviation',
     dimension: 'currencyExternal',
-    description: 'Absolute deviation of latest BIS real EER from 100 (equilibrium index)',
+    description: 'Absolute deviation of latest BIS real EER from 100 (equilibrium index). Fallback chain when BIS absent: (1) IMF inflation proxy at coverage 0.45 if available, (2) conservative imputation only when IMF inflation is also unavailable.',
     direction: 'lowerBetter',
     goalposts: { worst: 35, best: 0 },
     weight: 0.3,
@@ -379,14 +379,13 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'displacementTotal',
     dimension: 'socialCohesion',
-    description: 'UNHCR total displaced persons (log10 scale)',
+    description: 'UNHCR total displaced persons (log10 scale); absent = null (excluded from blend, no imputation)',
     direction: 'lowerBetter',
     goalposts: { worst: 7, best: 0 },
     weight: 0.25,
     sourceKey: 'displacement:summary:v1:{year}',
     scope: 'global',
     cadence: 'annual',
-    imputation: { type: 'absenceSignal', score: 85, certainty: 0.6 },
   },
   {
     id: 'unrestEvents',
@@ -523,7 +522,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'aquastatWaterStress',
     dimension: 'foodWater',
-    description: 'FAO AQUASTAT water stress/availability indicator (context-dependent normalization)',
+    description: 'FAO AQUASTAT water indicator; direction depends on type: stress/withdrawal/dependency is lowerBetter (0-100), availability/renewable/access is higherBetter (0-100 or 0-5000 m3/capita). Scorer branches on indicator label keywords.',
     direction: 'lowerBetter',
     goalposts: { worst: 100, best: 0 },
     weight: 0.4,
