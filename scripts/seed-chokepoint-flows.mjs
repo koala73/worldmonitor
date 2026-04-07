@@ -7,18 +7,43 @@ loadEnvFile(import.meta.url);
 export const CANONICAL_KEY = 'energy:chokepoint-flows:v1';
 const PORTWATCH_KEY = 'supply_chain:portwatch:v1';
 const BASELINES_KEY = 'energy:chokepoint-baselines:v1';
+const DISRUPTIONS_KEY = 'portwatch:disruptions:active:v1';
 const TTL = 259_200; // 3d — upstream seeder runs every 6h
+const HAZARD_RADIUS_KM = 500;
 
-// 7 chokepoints that have EIA baseline mb/d figures
+// 7 chokepoints with EIA baseline mb/d figures + coordinates for hazard matching
 const CHOKEPOINT_MAP = [
-  { canonicalId: 'hormuz_strait',  baselineId: 'hormuz'  },
-  { canonicalId: 'malacca_strait', baselineId: 'malacca' },
-  { canonicalId: 'suez',           baselineId: 'suez'    },
-  { canonicalId: 'bab_el_mandeb',  baselineId: 'babelm'  },
-  { canonicalId: 'bosphorus',      baselineId: 'turkish' },
-  { canonicalId: 'dover_strait',   baselineId: 'danish'  },
-  { canonicalId: 'panama',         baselineId: 'panama'  },
+  { canonicalId: 'hormuz_strait',  baselineId: 'hormuz',  lat: 26.56, lon: 56.25 },
+  { canonicalId: 'malacca_strait', baselineId: 'malacca', lat: 2.5,   lon: 101.5 },
+  { canonicalId: 'suez',           baselineId: 'suez',    lat: 30.45, lon: 32.35 },
+  { canonicalId: 'bab_el_mandeb',  baselineId: 'babelm',  lat: 12.58, lon: 43.33 },
+  { canonicalId: 'bosphorus',      baselineId: 'turkish', lat: 41.12, lon: 29.05 },
+  { canonicalId: 'dover_strait',   baselineId: 'danish',  lat: 51.05, lon: 1.45  },
+  { canonicalId: 'panama',         baselineId: 'panama',  lat: 9.08,  lon: -79.68 },
 ];
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function findNearestHazard(events, cpLat, cpLon) {
+  if (!Array.isArray(events)) return null;
+  let best = null;
+  let bestDist = HAZARD_RADIUS_KM;
+  for (const ev of events) {
+    if (ev.alertLevel !== 'RED' && ev.alertLevel !== 'ORANGE') continue;
+    if (!ev.active) continue;
+    if (!Number.isFinite(ev.lat) || !Number.isFinite(ev.lon)) continue;
+    const dist = haversineKm(cpLat, cpLon, ev.lat, ev.lon);
+    if (dist < bestDist) { bestDist = dist; best = ev; }
+  }
+  return best;
+}
 
 async function redisGet(url, token, key) {
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
@@ -38,9 +63,10 @@ function avg(arr) {
 export async function fetchAll() {
   const { url, token } = getRedisCredentials();
 
-  const [portwatch, baselines] = await Promise.all([
+  const [portwatch, baselines, disruptions] = await Promise.all([
     redisGet(url, token, PORTWATCH_KEY),
     redisGet(url, token, BASELINES_KEY),
+    redisGet(url, token, DISRUPTIONS_KEY).catch(() => null), // optional — absent until PR 4 deploys
   ]);
 
   if (!portwatch || typeof portwatch !== 'object' || Object.keys(portwatch).length === 0) {
@@ -94,14 +120,16 @@ export async function fetchAll() {
       return baseline90d > 0 && (dayVal / baseline90d) < 0.85;
     });
 
+    const hazard = findNearestHazard(disruptions?.events, cp.lat, cp.lon);
+
     result[cp.canonicalId] = {
       currentMbd,
       baselineMbd: baseline.mbd,
       flowRatio: Math.round(flowRatio * 1000) / 1000,
       disrupted,
       source: useDwt ? 'portwatch-dwt' : 'portwatch-counts',
-      hazardAlertLevel: null,
-      hazardAlertName: null,
+      hazardAlertLevel: hazard?.alertLevel ?? null,
+      hazardAlertName: hazard?.eventName ?? null,
     };
   }
 
