@@ -137,22 +137,22 @@ describe('buildEntry unit tests', () => {
 // ── validateFn unit tests ─────────────────────────────────────────────────────
 
 function validateFn(data) {
-  return data != null && typeof data === 'object' && Object.keys(data).length >= 27;
+  return data != null && typeof data === 'object' && Object.keys(data).length === 28;
 }
 
 describe('validateFn', () => {
-  it('returns true when data has all 28 chokepoints', () => {
+  it('returns true only when data has exactly 28 chokepoints', () => {
     const data = Object.fromEntries(Array.from({ length: 28 }, (_, i) => [`cp${i}`, {}]));
     assert.equal(validateFn(data), true);
   });
 
-  it('returns true with 27 chokepoints (allows 1 row miss)', () => {
+  it('returns false with 27 chokepoints (partial ArcGIS response)', () => {
     const data = Object.fromEntries(Array.from({ length: 27 }, (_, i) => [`cp${i}`, {}]));
-    assert.equal(validateFn(data), true);
+    assert.equal(validateFn(data), false);
   });
 
-  it('returns false when data has fewer than 27 keys (partial response)', () => {
-    const data = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`cp${i}`, {}]));
+  it('returns false with 29 chokepoints (unexpected extra rows)', () => {
+    const data = Object.fromEntries(Array.from({ length: 29 }, (_, i) => [`cp${i}`, {}]));
     assert.equal(validateFn(data), false);
   });
 
