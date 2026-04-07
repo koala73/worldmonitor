@@ -39,9 +39,9 @@ const EIA_REGIONS = [
   { region: 'CISO',  name: 'California' },
   { region: 'MISO',  name: 'Midwest' },
   { region: 'PJM',   name: 'Mid-Atlantic' },
-  { region: 'NYISO', name: 'New York' },
+  { region: 'NYIS',  name: 'New York' },
   { region: 'ERCO',  name: 'Texas (ERCOT)' },
-  { region: 'SPP',   name: 'Southwest' },
+  { region: 'SWPP',  name: 'Southwest' },
 ];
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
