@@ -35,7 +35,7 @@ const ENTSO_E_REGIONS = [
   { region: 'SE', eic: '10Y1001A1001A46L', name: 'Sweden (Stockholm)' }, // SE3 bidding zone
 ];
 
-const EIA_REGIONS = [
+export const EIA_REGIONS = [
   { region: 'CISO',  respondent: 'CISO',  name: 'California' },
   { region: 'MISO',  respondent: 'MISO',  name: 'Midwest' },
   { region: 'PJM',   respondent: 'PJM',   name: 'Mid-Atlantic' },
