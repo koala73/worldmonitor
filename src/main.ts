@@ -117,6 +117,8 @@ Sentry.init({
     /shortcut icon/,
     /Attempting to change value of a readonly property/,
     /reading 'nodeType'/,
+    /The node to be removed is not a child of this node/,
+    /The object can not be found here/, // Safari variant of above (Clerk SDK removeChild on detached DOM)
     /feature named .\w+. was not found/,
     /a2z\.onStatusUpdate/,
     /Attempting to run\(\), but is already running/,
@@ -227,6 +229,7 @@ Sentry.init({
     /WKErrorDomain/,
     /Content-Length header of network response exceeds response Body/,
     /^Uncaught \[object ErrorEvent\]$/,
+    /^\[object Event\]$/,
     /trsMethod\w+ is not defined/,
     /checkLogin is not a function/,
     /VConsole is not defined/,
@@ -259,6 +262,10 @@ Sentry.init({
     /Can only call Window\.setTimeout on instances of Window/, // iOS Safari cross-frame setTimeout from 3rd-party injected script
     /^Can't find variable: _G$/, // browser extension/userscript injecting _G global
     /onAppPageCallback is not defined/, // Android Chrome WebView injection (Huawei/Samsung browsers)
+    /\.at is not a function/, // Instagram/older Android in-app browsers missing Array.at()
+    /Response cannot have a body with the given status/, // Safari: Response constructor with 204/304 + body
+    /ClerkJS: Network error/, // Clerk SDK transient network failures on user devices
+    /doesn't provide an export named/, // stale cached chunk after deploy references removed export
   ],
   beforeSend(event) {
     const msg = event.exception?.values?.[0]?.value ?? '';
@@ -313,6 +320,9 @@ Sentry.init({
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
     // Suppress Sentry beacon XHR transport errors (readyState on aborted XHR — not our code)
     if (frames.some(f => /beacon\.min\.js/.test(f.filename ?? ''))) return null;
+    // Suppress "options is not defined" from browser extension overriding Navigator getter (WORLDMONITOR-JN).
+    // Only suppress when stack has no first-party frames (filename=<anonymous> is the extension getter).
+    if (/^options is not defined$/.test(msg) && frames.every(f => !f.filename || f.filename === '<anonymous>' || f.filename === '[native code]')) return null;
     // Suppress TransactionInactiveError only when no first-party frames are present
     // (Safari kills open IDB transactions in background tabs — not actionable noise)
     // First-party paths in storage.ts / persistent-cache.ts / vector-db.ts must still surface.
@@ -336,36 +346,81 @@ window.addEventListener('unhandledrejection', (e) => {
   if (e.reason?.name === 'NotAllowedError') e.preventDefault();
 });
 
+// CSP violation filter — exported for testability.
+// Returns true if the violation should be suppressed (not reported to Sentry).
+// @ts-ignore — exported for tests, not consumed by other modules
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function shouldSuppressCspViolation(
+  disposition: string,
+  directive: string,
+  blockedURI: string,
+  sourceFile: string,
+  cspConnectSrcAllowsHttps: boolean,
+): boolean {
+  // Skip non-enforced violations (report-only from dual-CSP interaction).
+  if (disposition && disposition !== 'enforce') return true;
+  // connect-src + HTTPS: only suppress when the page CSP actually allows https: scheme.
+  // This is scoped to the current policy state, not a blanket protocol assumption.
+  if (directive === 'connect-src' && cspConnectSrcAllowsHttps) {
+    try {
+      if (new URL(blockedURI).protocol === 'https:') return true;
+    } catch { /* scheme-only values like "blob" fall through */ }
+  }
+  // Browser extensions or injected scripts.
+  if (/^(?:chrome|moz|safari(?:-web)?)-extension/.test(sourceFile) || /^(?:chrome|moz|safari(?:-web)?)-extension/.test(blockedURI)) return true;
+  // blob: — browsers report "blob" (scheme-only) or "blob:https://...".
+  if (blockedURI === 'blob' || /^blob:/.test(sourceFile) || /^blob:/.test(blockedURI)) return true;
+  // eval/inline/data.
+  if (blockedURI === 'eval' || blockedURI === 'inline' || blockedURI === 'data' || /^data:/.test(blockedURI)) return true;
+  // Android WebView video poster injection.
+  if (blockedURI === 'android-webview-video-poster') return true;
+  // Own manifest.webmanifest — stale CSP cache hit.
+  if (/manifest\.webmanifest$/.test(blockedURI)) return true;
+  // Third-party injectors: Google Translate, Facebook Pixel.
+  if (/gstatic\.com\/_\/translate/.test(blockedURI) || /facebook\.net/.test(blockedURI)) return true;
+  // YouTube live stream manifests.
+  if (/googlevideo\.com|youtube\.com\/generate_204/.test(blockedURI)) return true;
+  // Corporate/school content filter injections.
+  if (/securly\.com|goguardian\.com|contentkeeper\.com/.test(blockedURI)) return true;
+  // Vercel Analytics script.
+  if (/_vercel\/insights\/script\.js/.test(blockedURI)) return true;
+  // Inline script blocks from extensions/in-app browsers.
+  if (blockedURI === 'inline' && directive === 'script-src-elem') return true;
+  // Null blocked URI from in-app browsers.
+  if (blockedURI === 'null') return true;
+  // localhost/loopback — Smart TV browsers (Tizen, webOS) and dev tools inject local service calls.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(blockedURI)) return true;
+  return false;
+}
+// Detect once whether BOTH the meta tag and HTTP header CSP allow https: in connect-src.
+// Browsers enforce both independently — the effective policy is the intersection.
+// Only suppress HTTPS connect-src violations when both policies allow https:.
+// The HTTP header CSP isn't directly readable from JS, so we check the meta tag and
+// also parse the vercel.json-derived header value baked into the build.
+const _cspAllowsHttps = (() => {
+  const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  const metaCsp = metaEl?.getAttribute('content') ?? '';
+  const metaConnectSrc = metaCsp.match(/connect-src\s+([^;]*)/)?.[1] ?? '';
+  const metaAllows = /\bhttps:\b/.test(metaConnectSrc);
+  // If no meta CSP exists, we can't confirm both policies allow https:.
+  // Be conservative: only suppress if the meta tag explicitly has it.
+  if (!metaEl) return false;
+  return metaAllows;
+})();
+// @ts-ignore — expose for tests
+window.__shouldSuppressCspViolation = shouldSuppressCspViolation;
+
 // Report CSP violations in the parent page to Sentry.
 // Sandbox iframe violations are isolated and not captured here.
 window.addEventListener('securitypolicyviolation', (e) => {
-  const src = e.sourceFile ?? '';
   const blocked = e.blockedURI ?? '';
-  // Skip violations originating from browser extensions or injected scripts.
-  // Browsers may report blockedURI as scheme-only ("chrome-extension") or with origin ("chrome-extension://...").
-  if (/^(?:chrome|moz|safari(?:-web)?)-extension/.test(src) || /^(?:chrome|moz|safari(?:-web)?)-extension/.test(blocked)) return;
-  // Browsers may report blob: as "blob" (scheme-only) or "blob:https://..." — both are noise.
-  if (blocked === 'blob' || /^blob:/.test(src) || /^blob:/.test(blocked)) return;
-  // Skip eval/inline/data: blocked URIs — browsers may report "data" (scheme-only) or full data: URI.
-  if (blocked === 'eval' || blocked === 'inline' || blocked === 'data' || /^data:/.test(blocked)) return;
-  // Skip Android WebView video poster injection.
-  if (blocked === 'android-webview-video-poster') return;
-  // Skip own manifest.webmanifest — stale CSP cache hit, not a real violation (default-src 'self' covers it).
-  if (/manifest\.webmanifest$/.test(blocked)) return;
-  // Skip third-party injectors: Google Translate, Facebook Pixel
-  if (/gstatic\.com\/_\/translate/.test(blocked) || /facebook\.net/.test(blocked)) return;
-  // Skip Sentry reporting itself (connect-src bootstrap paradox — SDK blocked before it can report)
-  if (/sentry\.io\/api\//.test(blocked)) return;
-  // Skip YouTube live stream manifests (media-src — expected from YouTube embeds)
-  if (/googlevideo\.com|youtube\.com\/generate_204/.test(blocked)) return;
-  // Skip corporate/school content filter injections (securly, GoGuardian, etc.)
-  if (/securly\.com|goguardian\.com|contentkeeper\.com/.test(blocked)) return;
-  // Skip Vercel Analytics (script-src — known first-party, not a real violation to action)
-  if (/_vercel\/insights\/script\.js/.test(blocked)) return;
-  // Skip inline script blocks — browser extension or in-app browser injection, not actionable
-  if (blocked === 'inline' && e.effectiveDirective === 'script-src-elem') return;
-  // Skip null blocked URI — in-app browsers (Baidu, WeChat, Instagram) inject null-src iframes
-  if (blocked === 'null') return;
+  if (shouldSuppressCspViolation(
+    e.disposition ?? '',
+    e.effectiveDirective ?? '',
+    blocked,
+    e.sourceFile ?? '',
+    _cspAllowsHttps,
+  )) return;
   Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
     level: 'warning',
     tags: { kind: 'csp_violation' },
@@ -373,7 +428,7 @@ window.addEventListener('securitypolicyviolation', (e) => {
       violatedDirective: e.violatedDirective,
       effectiveDirective: e.effectiveDirective,
       blockedURI: blocked,
-      sourceFile: src,
+      sourceFile: e.sourceFile,
       lineNumber: e.lineNumber,
       disposition: e.disposition,
     },

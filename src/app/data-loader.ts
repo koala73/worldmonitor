@@ -61,6 +61,7 @@ import {
   fetchCrudeInventoriesRpc,
   fetchNatGasStorageRpc,
   getEuGasStorageData,
+  getOilStocksAnalysisData,
   getEcbFxRatesData,
   fetchBisData,
   fetchBlsData,
@@ -115,9 +116,11 @@ import { fetchThermalEscalations } from '@/services/thermal-escalation';
 import { fetchCrossSourceSignals } from '@/services/cross-source-signals';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
+import { getResilienceRanking } from '@/services/resilience';
+import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
-import { getSecretState, isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
+import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
@@ -199,6 +202,13 @@ const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
   THREAT_LEVEL_CRITICAL: 'critical',
 };
 
+const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
+  STORY_PHASE_BREAKING:   'breaking',
+  STORY_PHASE_DEVELOPING: 'developing',
+  STORY_PHASE_SUSTAINED:  'sustained',
+  STORY_PHASE_FADING:     'fading',
+};
+
 function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
   const level = PROTO_TO_CLIENT_LEVEL[p.threat?.level ?? 'THREAT_LEVEL_UNSPECIFIED'];
   return {
@@ -207,6 +217,14 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     link: p.link,
     pubDate: new Date(p.publishedAt),
     isAlert: p.isAlert,
+    importanceScore: p.importanceScore || undefined,
+    corroborationCount: p.corroborationCount || undefined,
+    storyMeta: p.storyMeta && p.storyMeta.phase !== 'STORY_PHASE_UNSPECIFIED' ? {
+      firstSeen:    p.storyMeta.firstSeen,
+      mentionCount: p.storyMeta.mentionCount,
+      sourceCount:  p.storyMeta.sourceCount,
+      phase: PROTO_TO_CLIENT_PHASE[p.storyMeta.phase] ?? 'breaking',
+    } : undefined,
     threat: p.threat ? {
       level,
       category: p.threat.category as import('@/services/threat-classifier').EventCategory,
@@ -215,6 +233,8 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     } : undefined,
     ...(p.locationName && { locationName: p.locationName }),
     ...(p.location && { lat: p.location.latitude, lon: p.location.longitude }),
+    ...(p.importanceScore ? { importanceScore: p.importanceScore } : {}),
+    ...(p.corroborationCount ? { corroborationCount: p.corroborationCount } : {}),
   };
 }
 
@@ -541,6 +561,14 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && (shouldLoad('sanctions-pressure') || this.ctx.mapLayers.sanctions)) {
       tasks.push({ name: 'sanctions', task: runGuarded('sanctions', () => this.loadSanctionsPressure()) });
     }
+    if (this.ctx.mapLayers.resilienceScore) {
+      if (hasPremiumAccess()) {
+        tasks.push({ name: 'resilienceRanking', task: runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
+      } else {
+        this.ctx.map?.setResilienceRanking([]);
+        this.ctx.map?.setLayerReady('resilienceScore', false);
+      }
+    }
     if (SITE_VARIANT !== 'happy' && (shouldLoad('radiation-watch') || this.ctx.mapLayers.radiationWatch)) {
       tasks.push({ name: 'radiation', task: runGuarded('radiation', () => this.loadRadiationWatch()) });
     }
@@ -669,6 +697,9 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'diseaseOutbreaks':
           await this.loadDiseaseOutbreaks();
+          break;
+        case 'resilienceScore':
+          await this.loadResilienceRanking();
           break;
       }
     } finally {
@@ -1794,7 +1825,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadIntelligenceSignals(): Promise<void> {
     resetHotspotActivity();
-    const _desktopLocked = isDesktopRuntime() && !getSecretState('WORLDMONITOR_API_KEY').present;
+    const _desktopLocked = isDesktopRuntime() && !hasPremiumAccess();
     const tasks: Promise<void>[] = [];
 
     tasks.push((async () => {
@@ -2559,11 +2590,12 @@ export class DataLoaderManager implements AppModule {
   async loadOilAnalytics(): Promise<void> {
     const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
     try {
-      const [data, crudeResp, natGasResp, euGasResp] = await Promise.allSettled([
+      const [data, crudeResp, natGasResp, euGasResp, oilStocksResp] = await Promise.allSettled([
         fetchOilAnalytics(),
         fetchCrudeInventoriesRpc(),
         fetchNatGasStorageRpc(),
         getEuGasStorageData(),
+        getOilStocksAnalysisData(),
       ]);
       if (data.status === 'fulfilled') {
         energyPanel?.updateAnalytics(data.value);
@@ -2590,6 +2622,9 @@ export class DataLoaderManager implements AppModule {
       }
       if (euGasResp.status === 'fulfilled' && !euGasResp.value.unavailable) {
         energyPanel?.updateEuGasStorage(euGasResp.value);
+      }
+      if (oilStocksResp.status === 'fulfilled' && !oilStocksResp.value.unavailable) {
+        energyPanel?.setOilStocksAnalysis(oilStocksResp.value);
       }
     } catch (e) {
       console.error('[App] Oil analytics failed:', e);
@@ -3110,6 +3145,25 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  async loadResilienceRanking(): Promise<void> {
+    if (!hasPremiumAccess() || !this.ctx.map?.isDeckGLActive?.()) {
+      this.ctx.map?.setResilienceRanking([]);
+      this.ctx.map?.setLayerReady('resilienceScore', false);
+      return;
+    }
+
+    try {
+      const result = await getResilienceRanking();
+      this.ctx.map?.setResilienceRanking(result.items, result.greyedOut ?? []);
+      const displayable = buildResilienceChoroplethMap(result.items, result.greyedOut ?? []);
+      this.ctx.map?.setLayerReady('resilienceScore', displayable.size > 0);
+    } catch (error) {
+      console.error('[App] Resilience ranking fetch failed:', error);
+      this.ctx.map?.setResilienceRanking([]);
+      this.ctx.map?.setLayerReady('resilienceScore', false);
+    }
+  }
+
   async loadRadiationWatch(): Promise<void> {
     try {
       const result = await fetchRadiationWatch();
@@ -3131,7 +3185,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadTelegramIntel(): Promise<void> {
-    if (isDesktopRuntime() && !getSecretState('WORLDMONITOR_API_KEY').present) return;
+    if (isDesktopRuntime() && !hasPremiumAccess()) return;
     try {
       const result = await fetchTelegramFeed();
       this.callPanel('telegram-intel', 'setData', result);

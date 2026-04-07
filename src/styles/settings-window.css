@@ -1374,6 +1374,26 @@ tr.diag-err td { color: var(--settings-red); }
   border-color: #611f69;
 }
 
+/* Discord OAuth button */
+.us-notif-discord-oauth {
+  display: inline-flex;
+  align-items: center;
+  background: #5865f2;
+  border: 1px solid #5865f2;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.us-notif-discord-oauth:hover {
+  background: #4752c4;
+  border-color: #4752c4;
+}
+
 /* Manage in Slack link */
 .us-notif-manage-link {
   font-size: 10px;

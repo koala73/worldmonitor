@@ -183,12 +183,13 @@ const allLayersEnabled: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: true,
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: true,
+  diseaseOutbreaks: true,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -239,12 +240,13 @@ const allLayersDisabled: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: true,
+  diseaseOutbreaks: true,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{

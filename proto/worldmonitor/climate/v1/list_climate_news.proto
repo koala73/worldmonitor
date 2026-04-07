@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/climate/v1/climate_news_item.proto";
+
+message ListClimateNewsRequest {}
+
+message ListClimateNewsResponse {
+  repeated ClimateNewsItem items = 1;
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

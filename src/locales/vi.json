@@ -733,7 +733,8 @@
         "moderate": "Trung bình",
         "permissive": "Thoáng",
         "undefined": "Chưa xác định"
-      }
+      },
+      "infoTooltip": "<strong>Quy định</strong> Các hành động quản lý, thay đổi chính sách và cập nhật thực thi từ các cơ quan quản lý toàn cầu: tài chính, công nghệ, năng lượng và thương mại. Nguồn: ấn phẩm chính thức của chính phủ và cơ quan quản lý."
     },
     "economic": {
       "indicators": "Chỉ số",
@@ -1326,7 +1327,8 @@
       "onMap": "{{count}} trên bản đồ",
       "techmemeEvents": "Sự kiện Techmeme ↗",
       "today": "HÔM NAY",
-      "soon": "SẮP TỚI"
+      "soon": "SẮP TỚI",
+      "infoTooltip": "<strong>Sự kiện công nghệ</strong> Các sự kiện công nghệ sắp tới và gần đây: hội nghị, ra mắt sản phẩm, phiên điều trần quản lý và cuộc gọi thu nhập. Tổng hợp từ lịch sự kiện chính thức và nguồn ngành."
     },
     "techReadiness": {
       "internetUsers": "Người dùng Internet",
@@ -1652,7 +1654,8 @@
         "comm": "Liên lạc",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Trạng thái dịch vụ</strong> Trạng thái hoạt động trực tiếp của các nền tảng đám mây lớn, hạ tầng tài chính và dịch vụ internet quan trọng. Nguồn: trang trạng thái chính thức (AWS, Azure, GCP, Cloudflare, sàn giao dịch). Sự cố có thể chỉ ra các sự kiện gián đoạn rộng hơn."
     },
     "verification": {
       "title": "Danh sách Kiểm tra Xác minh Thông tin",
@@ -1758,6 +1761,57 @@
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Tình báo hàng không</strong> Dữ liệu vận hành hãng hàng không thời gian thực: đình chỉ tuyến bay, đóng cửa không phận, cảnh báo hãng vận chuyển và chuyển hướng khẩn cấp. Nguồn: NOTAM từ cơ quan hàng không và bản tin của hãng vận chuyển."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>Nhà phân tích WM</strong> Nhà phân tích AI với bối cảnh trực tiếp trên các lĩnh vực địa chính trị, thị trường, quân sự và kinh tế. Được hỗ trợ bởi Claude với dữ liệu thời gian thực từ các nguồn cấp WorldMonitor đang hoạt động."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>Vị thế CFTC COT</strong> Báo cáo cam kết của các nhà giao dịch: vị thế ròng của các nhà giao dịch thương mại, nhà đầu cơ lớn và nhà giao dịch nhỏ trong hợp đồng tương lai hàng hóa và tài chính. Công bố hàng tuần (thứ Sáu). Nguồn: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Bộ đếm trực tiếp</strong> Bộ đếm ngoại suy thời gian thực cho các chỉ số toàn cầu: chi tiêu quân sự, thiên tai, gánh nặng bệnh tật và nhiều hơn nữa. Các con số là ước tính thống kê dựa trên tỷ lệ dữ liệu hàng năm."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Dịch bệnh bùng phát</strong> Cảnh báo dịch bệnh đang hoạt động từ WHO, ProMED và các bộ y tế. Theo dõi các đợt bùng phát đã xác nhận, vùng bị ảnh hưởng, số ca và mức độ đe dọa. Cập nhật khi có báo cáo mới."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Lịch thu nhập</strong> Các công bố thu nhập sắp tới và gần đây của các công ty đại chúng lớn. Hiển thị ước tính EPS so với thực tế, doanh thu và phân loại vượt/thiếu kỳ vọng. Nguồn: nhà cung cấp dữ liệu tài chính."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Lịch kinh tế</strong> Các công bố kinh tế vĩ mô theo lịch: CPI, NFP, GDP, PMI và quyết định ngân hàng trung ương. Hiển thị dự báo so với thực tế so với trước đó. Sự kiện tác động cao được đánh dấu. Nguồn: nhà cung cấp dữ liệu kinh tế."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Chỉ báo căng thẳng tài chính</strong> Chỉ số căng thẳng tài chính của Fed Kansas City (KCFSI): đo lường căng thẳng trên thị trường tài chính Hoa Kỳ bằng 11 chỉ báo bao gồm chênh lệch lợi suất, biến động và tương quan chéo. Giá trị dương cho thấy căng thẳng trên mức trung bình. Nguồn: Federal Reserve Bank of Kansas City."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Bộ theo dõi thương mại Hormuz</strong> Theo dõi tàu AIS trực tiếp qua eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Webcam trực tiếp</strong> Luồng phát trực tiếp từ các địa điểm có ý nghĩa địa chính trị trên toàn thế giới: vùng xung đột, thủ đô, cửa khẩu biên giới và các điểm nghẽn chiến lược. Luồng từ YouTube và mạng công cộng."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Chỉ số vĩ mô</strong> Các chỉ số kinh tế vĩ mô chính cho Hoa Kỳ và khu vực đồng Euro: CPI, thất nghiệp, GDP và lãi suất ngân hàng trung ương. Giá trị hiển thị với delta so với kỳ trước. Nguồn: FRED (Federal Reserve Economic Data)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Giám sát từ khóa</strong> Thêm bất kỳ thuật ngữ nào để theo dõi đề cập tin tức thời gian thực từ tất cả nguồn WorldMonitor. Kết quả cập nhật theo thời gian thực khi các bài viết phù hợp được thu thập."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Năng lượng tái tạo</strong> Đường ống dự án năng lượng tái tạo toàn cầu: bổ sung công suất điện mặt trời, gió, thủy điện và lưu trữ. Theo dõi các dự án đã công bố, đang xây dựng và đã vận hành theo vùng và loại công nghệ."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Tốc độ xã hội</strong> Chủ đề xu hướng và nội dung lan truyền có ý nghĩa địa chính trị. Đo tốc độ mạng xã hội: một câu chuyện lan truyền nhanh đến mức nào so với đường cơ sở. Giúp phát hiện các tường thuật mới nổi trước khi chúng đến truyền thông chính thống."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Thành tựu bảo tồn</strong> Tin tức tích cực về bảo tồn: phục hồi quần thể loài, cột mốc phục hồi môi trường sống và nỗ lực phục hồi loài tuyệt chủng. Nguồn: IUCN, WWF và các ấn phẩm nghiên cứu bảo tồn."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Đồng hồ thế giới</strong> Giờ địa phương thời gian thực và trạng thái phiên thị trường cho các trung tâm tài chính toàn cầu chính. Hiển thị trạng thái mở/đóng cho NYSE, LSE, TSE, SGX và các sàn giao dịch khác."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Đường cong lợi suất &amp; Lãi suất</strong> Đường cong lợi suất US Treasury (2Y, 5Y, 10Y, 30Y) và chênh lệch lãi suất chính bao gồm chỉ báo đảo ngược 10Y-2Y. Cũng hiển thị lãi suất khu vực đồng Euro (EURIBOR, ESTR). Đường cong đảo ngược theo lịch sử thường đi trước suy thoái. Nguồn: FRED."
     }
   },
   "popups": {

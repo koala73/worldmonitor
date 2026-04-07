@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import type { OilAnalytics, CrudeInventoryWeek, NatGasStorageWeek, GetEuGasStorageResponse } from '@/services/economic';
+import type { OilAnalytics, CrudeInventoryWeek, NatGasStorageWeek, GetEuGasStorageResponse, GetOilStocksAnalysisResponse } from '@/services/economic';
 import { formatOilValue, getTrendColor, getTrendIndicator } from '@/services/economic';
 import type { MarketData } from '@/types';
 import { t } from '@/services/i18n';
@@ -17,6 +17,7 @@ export class EnergyComplexPanel extends Panel {
   private crudeWeeks: CrudeInventoryWeek[] = [];
   private natGasWeeks: NatGasStorageWeek[] = [];
   private euGas: GetEuGasStorageResponse | null = null;
+  private oilStocksAnalysis: GetOilStocksAnalysisResponse | null = null;
 
   constructor() {
     super({
@@ -52,6 +53,58 @@ export class EnergyComplexPanel extends Panel {
     this.render();
   }
 
+  public setOilStocksAnalysis(data: GetOilStocksAnalysisResponse): void {
+    this.oilStocksAnalysis = data.unavailable ? null : data;
+    this.render();
+  }
+
+  private renderOilStocksSection(): string {
+    const d = this.oilStocksAnalysis;
+    if (!d || d.ieaMembers.length === 0) return '';
+
+    const rows = d.ieaMembers.map(m => {
+      const daysDisplay = m.netExporter
+        ? `<span class="energy-net-exporter-badge">Net Exporter</span>`
+        : m.daysOfCover != null
+          ? escapeHtml(String(m.daysOfCover)) + ' d'
+          : '—';
+      const warningBadge = m.belowObligation
+        ? `<span class="energy-below-obligation-badge">Below 90d</span>`
+        : '';
+      return `
+        <tr class="oil-stocks-row">
+          <td class="oil-stocks-rank">${escapeHtml(String(m.rank))}</td>
+          <td class="oil-stocks-iso">${escapeHtml(m.iso2)}</td>
+          <td class="oil-stocks-days">${daysDisplay}${warningBadge}</td>
+          <td class="oil-stocks-vs">${m.vsObligation != null ? (m.vsObligation > 0 ? '+' : '') + escapeHtml(String(m.vsObligation)) : '—'}</td>
+        </tr>`;
+    }).join('');
+
+    const reg = d.regionalSummary;
+    const euRow = reg?.europe?.avgDays != null
+      ? `<div class="oil-stocks-region-row"><span class="oil-stocks-region-name">Europe</span><span>avg ${escapeHtml(String(reg.europe.avgDays))}d / min ${escapeHtml(String(reg.europe?.minDays ?? '—'))}d</span>${(reg.europe.countBelowObligation ?? 0) > 0 ? `<span class="energy-below-obligation-badge">${escapeHtml(String(reg.europe.countBelowObligation))} below 90d</span>` : ''}</div>`
+      : '';
+    const apRow = reg?.asiaPacific?.avgDays != null
+      ? `<div class="oil-stocks-region-row"><span class="oil-stocks-region-name">Asia-Pacific</span><span>avg ${escapeHtml(String(reg.asiaPacific.avgDays))}d / min ${escapeHtml(String(reg.asiaPacific?.minDays ?? '—'))}d</span>${(reg.asiaPacific.countBelowObligation ?? 0) > 0 ? `<span class="energy-below-obligation-badge">${escapeHtml(String(reg.asiaPacific.countBelowObligation))} below 90d</span>` : ''}</div>`
+      : '';
+    const naRow = reg?.northAmerica
+      ? `<div class="oil-stocks-region-row"><span class="oil-stocks-region-name">North America</span><span>${escapeHtml(String(reg.northAmerica.netExporters ?? 0))} net exporter(s)${reg.northAmerica.avgDays != null ? `, avg ${escapeHtml(String(reg.northAmerica.avgDays))}d` : ''}</span></div>`
+      : '';
+
+    return `
+      <div class="energy-tape-section" style="margin-top:8px">
+        <div class="energy-section-title">IEA Oil Stocks — Days of Cover</div>
+        <table class="oil-stocks-table">
+          <thead><tr><th>#</th><th>Ctry</th><th>Days</th><th>vs 90d</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="oil-stocks-regional" style="margin-top:6px">
+          ${euRow}${apRow}${naRow}
+        </div>
+        <div class="indicator-date" style="margin-top:4px">Data: ${escapeHtml(d.dataMonth)} (IEA)</div>
+      </div>`;
+  }
+
   private render(): void {
     // Suppress EIA price cards when live tape already covers the same commodity
     // to avoid showing two different prices for the same product (EIA is weekly/stale).
@@ -66,7 +119,7 @@ export class EnergyComplexPanel extends Panel {
       this.analytics?.usInventory,
     ].filter(Boolean);
 
-    if (metrics.length === 0 && this.tape.length === 0 && this.crudeWeeks.length === 0 && this.natGasWeeks.length === 0 && !this.euGas) {
+    if (metrics.length === 0 && this.tape.length === 0 && this.crudeWeeks.length === 0 && this.natGasWeeks.length === 0 && !this.euGas && !this.oilStocksAnalysis) {
       this.setContent(`<div class="economic-empty">${t('components.energyComplex.noData')}</div>`);
       return;
     }
@@ -75,6 +128,7 @@ export class EnergyComplexPanel extends Panel {
     if (hasAnalytics(this.analytics)) footerParts.push('EIA');
     if (this.tape.length > 0) footerParts.push(t('components.energyComplex.liveTapeSource'));
     if (this.euGas) footerParts.push('GIE AGSI+');
+    if (this.oilStocksAnalysis) footerParts.push('IEA');
 
     const latestWeek = this.crudeWeeks[0] ?? null;
     const wowChange = latestWeek?.weeklyChangeMb ?? null;
@@ -174,6 +228,7 @@ export class EnergyComplexPanel extends Panel {
             </div>
           </div>
         ` : ''}
+        ${this.renderOilStocksSection()}
       </div>
       <div class="economic-footer">
         <span class="economic-source">${escapeHtml(footerParts.join(' • '))}</span>

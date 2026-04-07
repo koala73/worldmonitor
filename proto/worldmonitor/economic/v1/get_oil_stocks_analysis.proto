@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+// OilStocksAnalysisMember holds days-of-cover data and obligation status for one IEA member country.
+message OilStocksAnalysisMember {
+  // ISO 3166-1 alpha-2 country code.
+  string iso2 = 1;
+  // Days of supply cover (absent when country is a net exporter or data anomaly).
+  optional int32 days_of_cover = 2;
+  // True when the country is classified as a net exporter by IEA.
+  bool net_exporter = 3;
+  // True when days_of_cover < 90 (IEA 90-day obligation threshold).
+  bool below_obligation = 4;
+  // True when the 90-day obligation is met (net exporters always true).
+  bool obligation_met = 5;
+  // Rank within the IEA member ranking (1-indexed, net exporters ranked last).
+  int32 rank = 6;
+  // days_of_cover - 90; absent for net exporters.
+  optional int32 vs_obligation = 7;
+}
+
+// OilStocksRegionalSummaryEurope aggregates days-of-cover for European IEA members.
+message OilStocksRegionalSummaryEurope {
+  // Mean days of cover across non-net-exporter European members.
+  optional int32 avg_days = 1;
+  // Minimum days of cover across non-net-exporter European members.
+  optional int32 min_days = 2;
+  // Count of European members below the 90-day obligation.
+  int32 count_below_obligation = 3;
+}
+
+// OilStocksRegionalSummaryAsiaPacific aggregates days-of-cover for Asia-Pacific IEA members.
+message OilStocksRegionalSummaryAsiaPacific {
+  // Mean days of cover across Asia-Pacific members (AU, JP, KR, NZ).
+  optional int32 avg_days = 1;
+  // Minimum days of cover across Asia-Pacific members.
+  optional int32 min_days = 2;
+  // Count of Asia-Pacific members below the 90-day obligation.
+  int32 count_below_obligation = 3;
+}
+
+// OilStocksRegionalSummaryNorthAmerica aggregates data for North American IEA members.
+message OilStocksRegionalSummaryNorthAmerica {
+  // Count of net exporters in North America (CA, MX, US).
+  int32 net_exporters = 1;
+  // Average days of cover for non-exporter North American members (if any).
+  optional int32 avg_days = 2;
+}
+
+// OilStocksRegionalSummary holds regional aggregates for the three IEA regions.
+message OilStocksRegionalSummary {
+  OilStocksRegionalSummaryEurope europe = 1;
+  OilStocksRegionalSummaryAsiaPacific asia_pacific = 2;
+  OilStocksRegionalSummaryNorthAmerica north_america = 3;
+}
+
+// GetOilStocksAnalysisRequest is empty — returns the latest global analysis snapshot.
+message GetOilStocksAnalysisRequest {}
+
+// GetOilStocksAnalysisResponse contains the IEA oil stocks days-of-cover analysis.
+message GetOilStocksAnalysisResponse {
+  // UTC ISO-8601 timestamp when this analysis was written.
+  string updated_at = 1;
+  // Data month in YYYY-MM format (source: IEA monthly release).
+  string data_month = 2;
+  // All IEA member countries, sorted by days_of_cover descending (net exporters last).
+  repeated OilStocksAnalysisMember iea_members = 3;
+  // ISO2 codes of countries currently below the 90-day obligation.
+  repeated string below_obligation = 4;
+  // Regional aggregates for Europe, Asia-Pacific, and North America.
+  OilStocksRegionalSummary regional_summary = 5;
+  // True when upstream seed data is unavailable (fallback result).
+  bool unavailable = 6;
+}

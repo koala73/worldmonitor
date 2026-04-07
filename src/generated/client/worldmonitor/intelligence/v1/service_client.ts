@@ -483,6 +483,80 @@ export interface SocialVelocityPost {
   createdAt: number;
 }
 
+export interface GetCountryEnergyProfileRequest {
+  countryCode: string;
+}
+
+export interface GetCountryEnergyProfileResponse {
+  mixAvailable: boolean;
+  mixYear: number;
+  coalShare: number;
+  gasShare: number;
+  oilShare: number;
+  nuclearShare: number;
+  renewShare: number;
+  windShare: number;
+  solarShare: number;
+  hydroShare: number;
+  importShare: number;
+  gasStorageAvailable: boolean;
+  gasStorageFillPct: number;
+  gasStorageChange1d: number;
+  gasStorageTrend: string;
+  gasStorageDate: string;
+  electricityAvailable: boolean;
+  electricityPriceMwh: number;
+  electricitySource: string;
+  electricityDate: string;
+  jodiOilAvailable: boolean;
+  jodiOilDataMonth: string;
+  gasolineDemandKbd: number;
+  gasolineImportsKbd: number;
+  dieselDemandKbd: number;
+  dieselImportsKbd: number;
+  jetDemandKbd: number;
+  jetImportsKbd: number;
+  lpgDemandKbd: number;
+  crudeImportsKbd: number;
+  lpgImportsKbd: number;
+  jodiGasAvailable: boolean;
+  jodiGasDataMonth: string;
+  gasTotalDemandTj: number;
+  gasLngImportsTj: number;
+  gasPipeImportsTj: number;
+  gasLngShare: number;
+  ieaStocksAvailable: boolean;
+  ieaStocksDataMonth: string;
+  ieaDaysOfCover: number;
+  ieaNetExporter: boolean;
+  ieaBelowObligation: boolean;
+}
+
+export interface ComputeEnergyShockScenarioRequest {
+  countryCode: string;
+  chokepointId: string;
+  disruptionPct: number;
+}
+
+export interface ComputeEnergyShockScenarioResponse {
+  countryCode: string;
+  chokepointId: string;
+  disruptionPct: number;
+  gulfCrudeShare: number;
+  crudeLossKbd: number;
+  products: ProductImpact[];
+  effectiveCoverDays: number;
+  assessment: string;
+  dataAvailable: boolean;
+}
+
+export interface ProductImpact {
+  product: string;
+  outputLossKbd: number;
+  demandKbd: number;
+  deficitPct: number;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -1023,6 +1097,58 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as GetSocialVelocityResponse;
+  }
+
+  async getCountryEnergyProfile(req: GetCountryEnergyProfileRequest, options?: IntelligenceServiceCallOptions): Promise<GetCountryEnergyProfileResponse> {
+    let path = "/api/intelligence/v1/get-country-energy-profile";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryEnergyProfileResponse;
+  }
+
+  async computeEnergyShockScenario(req: ComputeEnergyShockScenarioRequest, options?: IntelligenceServiceCallOptions): Promise<ComputeEnergyShockScenarioResponse> {
+    let path = "/api/intelligence/v1/compute-energy-shock";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.chokepointId != null && req.chokepointId !== "") params.set("chokepoint_id", String(req.chokepointId));
+    if (req.disruptionPct != null && req.disruptionPct !== 0) params.set("disruption_pct", String(req.disruptionPct));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ComputeEnergyShockScenarioResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

@@ -873,7 +873,8 @@
       "onMap": "{{count}} on map",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "TODAY",
-      "soon": "SOON"
+      "soon": "SOON",
+      "infoTooltip": "<strong>Eventos tech</strong> Eventos tecnológicos próximos e recentes: conferências, lançamentos de produtos, audiências regulatórias e chamadas de resultados. Agregados de calendários oficiais e fontes da indústria."
     },
     "techReadiness": {
       "internetUsers": "Usuários da Internet",
@@ -1267,7 +1268,8 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "infoTooltip": "<strong>Regulamentação</strong> Ações regulatórias, mudanças de políticas e atualizações de aplicação de reguladores globais: autoridades financeiras, tecnológicas, energéticas e comerciais. Fonte: publicações oficiais governamentais e regulatórias."
     },
     "etfFlows": {
       "unavailable": "Dados ETF temporariamente indisponíveis",
@@ -1335,7 +1337,8 @@
         "comm": "Comms",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>Estado do serviço</strong> Estado operacional em tempo real de grandes plataformas cloud, infraestrutura financeira e serviços de internet críticos. Fonte: páginas de estado oficiais (AWS, Azure, GCP, Cloudflare, bolsas). Incidentes podem indicar eventos de perturbação mais amplos."
     },
     "verification": {
       "title": "Information Verification Checklist",
@@ -1554,6 +1557,57 @@
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Inteligência aeronáutica</strong> Dados operacionais de companhias aéreas em tempo real: suspensões de rotas, encerramentos de espaço aéreo, avisos de transportadoras e desvios de emergência. Fonte: NOTAM de autoridades de aviação e boletins de transportadoras."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>Analista WM</strong> Analista de IA com contexto em tempo real nos domínios geopolítico, de mercado, militar e económico. Alimentado pelo Claude com dados em tempo real injetados dos feeds ativos do WorldMonitor."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>Posicionamento CFTC COT</strong> Relatório de Compromissos dos Traders: posicionamento líquido de comerciais, grandes especuladores e pequenos traders em futuros de commodities e financeiros. Publicado semanalmente (sexta-feira). Fonte: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Contadores em direto</strong> Contadores extrapolados em tempo real para métricas globais: despesas militares, desastres naturais, carga de doenças e mais. Os números são estimativas estatísticas baseadas em taxas de dados anuais."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Surtos de doenças</strong> Alertas ativos de surtos da WHO, ProMED e ministérios da saúde. Rastreia surtos confirmados, regiões afetadas, contagens de casos e níveis de ameaça. Atualizado quando novos relatórios são publicados."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Calendário de resultados</strong> Publicações de resultados próximas e recentes de grandes empresas cotadas. Mostra estimativas de EPS vs. reais, receitas e classificação de superação/falha. Fonte: provedores de dados financeiros."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Calendário económico</strong> Publicações macroeconómicas programadas: CPI, NFP, GDP, PMI e decisões de bancos centrais. Mostra previsão vs. real vs. anterior. Eventos de alto impacto destacados. Fonte: provedores de dados económicos."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Indicador de stress financeiro</strong> Índice de Stress Financeiro do Fed de Kansas City (KCFSI): mede o stress nos mercados financeiros dos EUA usando 11 indicadores incluindo spreads de rendimento, volatilidade e correlações cruzadas. Valores positivos indicam stress acima da média. Fonte: Federal Reserve Bank of Kansas City."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Rastreador comercial de Ormuz</strong> Rastreamento AIS de navios em tempo real através do Estreito de Ormuz, o ponto de estrangulamento petrolífero mais crítico do mundo. Monitoriza contagens de petroleiros, eventos de perturbação e alterações semanais de fluxo. Aproximadamente 20% do fornecimento global de petróleo transita aqui diariamente."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Webcams em direto</strong> Feeds em direto de locais geopoliticamente significativos em todo o mundo: zonas de conflito, capitais, postos fronteiriços e pontos de estrangulamento estratégicos. Streams do YouTube e redes públicas."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Indicadores macro</strong> Indicadores macroeconómicos-chave para os EUA e zona euro: CPI, desemprego, GDP e taxas de bancos centrais. Valores mostrados com delta do período anterior. Fonte: FRED (Federal Reserve Economic Data)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Monitores de palavras-chave</strong> Adicione qualquer termo para rastrear menções em notícias em tempo real em todas as fontes do WorldMonitor. Os resultados atualizam-se em tempo real à medida que artigos correspondentes são ingeridos."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Energia renovável</strong> Pipeline global de projetos de energia renovável: adições de capacidade solar, eólica, hídrica e de armazenamento. Rastreia projetos anunciados, em construção e comissionados por região e tipo de tecnologia."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Velocidade social</strong> Tópicos em tendência e conteúdo viral com significado geopolítico. Mede a velocidade nas redes sociais: quão rapidamente uma história se espalha em relação à linha de base. Ajuda a identificar narrativas emergentes antes de chegarem aos media tradicionais."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Conquistas da conservação</strong> Notícias positivas de conservação: recuperação de populações de espécies, marcos de restauração de habitats e esforços de des-extinção. Fonte: IUCN, WWF e publicações de investigação em conservação."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>Relógio mundial</strong> Horas locais em tempo real e estado das sessões de mercado para os principais centros financeiros globais. Mostra estado aberto/fechado para NYSE, LSE, TSE, SGX e outras bolsas."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Curva de rendimentos &amp; Taxas</strong> Curva de rendimentos do Tesouro dos EUA (2Y, 5Y, 10Y, 30Y) e spreads de taxas-chave incluindo o indicador de inversão 10Y-2Y. Também mostra taxas da zona euro (EURIBOR, ESTR). Uma curva invertida historicamente precede recessões. Fonte: FRED."
     }
   },
   "popups": {

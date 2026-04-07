@@ -90,7 +90,7 @@ export class AirlineIntelPanel extends Panel {
     private tabBar!: HTMLElement;
 
     constructor() {
-        super({ id: 'airline-intel', title: t('panels.airlineIntel'), trackActivity: true });
+        super({ id: 'airline-intel', title: t('panels.airlineIntel'), trackActivity: true, infoTooltip: t('components.airlineIntel.infoTooltip') });
 
         const wl = aviationWatchlist.get();
         this.airports = wl.airports.slice(0, 8);

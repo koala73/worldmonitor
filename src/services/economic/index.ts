@@ -37,6 +37,12 @@ import {
   type EuGasStorageHistoryEntry,
   type GetEurostatCountryDataResponse,
   type EurostatCountryEntry,
+  type GetOilStocksAnalysisResponse,
+  type OilStocksAnalysisMember,
+  type OilStocksRegionalSummary,
+  type OilStocksRegionalSummaryEurope,
+  type OilStocksRegionalSummaryAsiaPacific,
+  type OilStocksRegionalSummaryNorthAmerica,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
@@ -90,6 +96,14 @@ const emptyCapacityFallback: GetEnergyCapacityResponse = { series: [] };
 const emptyBisPolicyFallback: GetBisPolicyRatesResponse = { rates: [] };
 const emptyBisEerFallback: GetBisExchangeRatesResponse = { rates: [] };
 const emptyBisCreditFallback: GetBisCreditResponse = { entries: [] };
+const emptyOilStocksAnalysisFallback: GetOilStocksAnalysisResponse = {
+  updatedAt: '',
+  dataMonth: '',
+  ieaMembers: [],
+  belowObligation: [],
+  unavailable: true,
+};
+const oilStocksAnalysisBreaker = createCircuitBreaker<GetOilStocksAnalysisResponse>({ name: 'IEA Oil Stocks Analysis', cacheTtlMs: 4 * 60 * 60 * 1000, persistCache: true });
 
 // ========================================================================
 // FRED -- replaces src/services/fred.ts
@@ -834,5 +848,23 @@ export async function getEurostatCountryData(): Promise<GetEurostatCountryDataRe
     );
   } catch {
     return emptyEurostatFallback;
+  }
+}
+
+// ========================================================================
+// IEA Oil Stocks Analysis (Days of Cover)
+// ========================================================================
+
+export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica };
+
+export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisResponse> {
+  try {
+    return await oilStocksAnalysisBreaker.execute(
+      () => client.getOilStocksAnalysis({}, { signal: AbortSignal.timeout(12_000) }),
+      emptyOilStocksAnalysisFallback,
+      { shouldCache: (r) => !r.unavailable && r.ieaMembers.length > 0 },
+    );
+  } catch {
+    return emptyOilStocksAnalysisFallback;
   }
 }

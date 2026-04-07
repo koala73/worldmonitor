@@ -52,13 +52,16 @@ jobs:
             exit 0
           fi
 
-          if [ "$unit" != "success" ] || [ "$typecheck" != "success" ]; then
-            gh api "repos/$REPO/statuses/$SHA" --method POST \
-              --field state="failure" \
-              --field context="gate" \
-              --field description="Required checks did not pass (unit=$unit typecheck=$typecheck)"
-            exit 0
-          fi
+          # Treat "skipped" as passing (docs-only PRs skip code checks)
+          for v in "$unit" "$typecheck"; do
+            if [ "$v" != "success" ] && [ "$v" != "skipped" ]; then
+              gh api "repos/$REPO/statuses/$SHA" --method POST \
+                --field state="failure" \
+                --field context="gate" \
+                --field description="Required checks did not pass (unit=$unit typecheck=$typecheck)"
+              exit 0
+            fi
+          done
 
           gh api "repos/$REPO/statuses/$SHA" --method POST \
             --field state="success" \

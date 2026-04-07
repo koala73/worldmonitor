@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
@@ -76,6 +77,7 @@ export class ChatAnalystPanel extends Panel {
       title: 'WM Analyst',
       premium: 'locked',
       defaultRowSpan: 2,
+      infoTooltip: t('components.chatAnalyst.infoTooltip'),
     });
     this.buildUI();
   }

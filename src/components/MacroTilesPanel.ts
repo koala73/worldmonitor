@@ -1,5 +1,6 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { getEurostatCountryData } from '@/services/economic';
 import type { GetEurostatCountryDataResponse } from '@/services/economic';
@@ -124,7 +125,7 @@ export class MacroTilesPanel extends Panel {
   private _estrObs: { date: string; value: number }[] = [];
 
   constructor() {
-    super({ id: 'macro-tiles', title: 'Macro Indicators', showCount: false });
+    super({ id: 'macro-tiles', title: 'Macro Indicators', showCount: false, infoTooltip: t('components.macroTiles.infoTooltip') });
 
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');

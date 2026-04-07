@@ -1,6 +1,7 @@
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { EconomicServiceClient, GetEuFsiResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 
@@ -56,7 +57,7 @@ export class FSIPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'fsi', title: 'Financial Stress Indicator', showCount: false });
+    super({ id: 'fsi', title: 'Financial Stress Indicator', showCount: false, infoTooltip: t('components.fsi.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {

@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/browser';
 import { initClerk, getCurrentClerkUser, subscribeClerk } from './clerk';
 
 /** Minimal user profile exposed to UI components. */
@@ -19,7 +20,11 @@ let _currentSession: AuthSession = { user: null, isPending: true };
 
 function snapshotSession(): AuthSession {
   const cu = getCurrentClerkUser();
-  if (!cu) return { user: null, isPending: false };
+  if (!cu) {
+    Sentry.setUser(null);
+    return { user: null, isPending: false };
+  }
+  Sentry.setUser({ id: cu.id });
   return {
     user: {
       id: cu.id,

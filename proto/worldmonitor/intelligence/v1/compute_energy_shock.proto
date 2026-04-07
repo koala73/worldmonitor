@@ -1,0 +1,29 @@
+syntax = "proto3";
+package worldmonitor.intelligence.v1;
+import "sebuf/http/annotations.proto";
+option go_package = "github.com/koala73/worldmonitor/worldmonitor/intelligence/v1";
+
+message ComputeEnergyShockScenarioRequest {
+  string country_code   = 1 [(sebuf.http.query) = {name: "country_code"}];
+  string chokepoint_id  = 2 [(sebuf.http.query) = {name: "chokepoint_id"}];
+  int32  disruption_pct = 3 [(sebuf.http.query) = {name: "disruption_pct"}];
+}
+
+message ProductImpact {
+  string product         = 1;
+  double output_loss_kbd = 2;
+  double demand_kbd      = 3;
+  double deficit_pct     = 4;
+}
+
+message ComputeEnergyShockScenarioResponse {
+  string country_code         = 1;
+  string chokepoint_id        = 2;
+  int32  disruption_pct       = 3;
+  double gulf_crude_share     = 4;
+  double crude_loss_kbd       = 5;
+  repeated ProductImpact products = 6;
+  int32  effective_cover_days = 7;
+  string assessment           = 8;
+  bool   data_available       = 9;
+}

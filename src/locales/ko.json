@@ -733,7 +733,8 @@
         "moderate": "보통",
         "permissive": "허용적",
         "undefined": "미정"
-      }
+      },
+      "infoTooltip": "<strong>규제</strong> 글로벌 규제 기관의 규제 조치, 정책 변경, 집행 업데이트: 금융, 기술, 에너지, 무역 당국. 출처: 공식 정부 및 규제 기관 간행물."
     },
     "economic": {
       "indicators": "경제 지표",
@@ -1326,7 +1327,8 @@
       "onMap": "지도에 {{count}}건",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "오늘",
-      "soon": "곧"
+      "soon": "곧",
+      "infoTooltip": "<strong>테크 이벤트</strong> 예정 및 최근 기술 이벤트: 컨퍼런스, 제품 출시, 규제 청문회, 실적 콜. 공식 이벤트 캘린더 및 업계 소스에서 집계."
     },
     "techReadiness": {
       "internetUsers": "인터넷 사용자",
@@ -1652,7 +1654,8 @@
         "comm": "통신",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>서비스 상태</strong> 주요 클라우드 플랫폼, 금융 인프라, 핵심 인터넷 서비스의 실시간 운영 상태. 출처: 공식 상태 페이지(AWS, Azure, GCP, Cloudflare, 거래소). 인시던트는 더 광범위한 장애 이벤트를 나타낼 수 있음."
     },
     "verification": {
       "title": "정보 검증 체크리스트",
@@ -1758,6 +1761,57 @@
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>항공 인텔리전스</strong> 실시간 항공사 운영 데이터: 노선 중단, 영공 폐쇄, 항공사 권고, 긴급 회항. 항공 당국 NOTAM 및 항공사 공지가 출처."
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM 애널리스트</strong> 지정학, 시장, 군사, 경제 분야의 실시간 컨텍스트를 갖춘 AI 애널리스트. WorldMonitor 활성 피드에서 실시간 데이터가 주입된 Claude로 구동."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>CFTC COT 포지셔닝</strong> 트레이더 약정 보고서: 상품 및 금융 선물에서 상업적 거래자, 대형 투기꾼, 소규모 거래자의 순포지션. 매주 금요일 발표. 출처: CFTC."
+    },
+    "counters": {
+      "infoTooltip": "<strong>실시간 카운터</strong> 글로벌 지표의 실시간 추정 카운터: 군사비, 자연재해, 질병 부담 등. 수치는 연간 데이터 비율에 기반한 통계적 추정치."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>질병 발생</strong> WHO, ProMED 및 보건부의 활성 발생 경보. 확인된 발생, 영향 지역, 사례 수, 위협 수준을 추적. 새 보고서 발표 시 업데이트."
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>실적 캘린더</strong> 주요 상장 기업의 예정 및 최근 실적 발표. EPS 추정치 대 실적, 매출, 상회/하회 분류를 표시. 출처: 금융 데이터 제공업체."
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>경제 캘린더</strong> 예정된 거시경제 발표: CPI, NFP, GDP, PMI 및 중앙은행 결정. 전망 대 실제 대 이전을 표시. 고영향 이벤트 강조 표시. 출처: 경제 데이터 제공업체."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>금융 스트레스 지표</strong> 캔자스시티 연준 금융 스트레스 지수(KCFSI): 수익률 스프레드, 변동성, 교차 상관관계를 포함한 11개 지표를 사용하여 미국 금융 시장의 스트레스를 측정. 양수 값은 평균 이상의 스트레스를 나타냄. 출처: 캔자스시티 연방준비은행."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과."
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>실시간 웹캠</strong> 전 세계 지정학적으로 중요한 장소의 실시간 피드: 분쟁 지역, 수도, 국경 검문소, 전략적 병목지점. YouTube 및 공개 네트워크의 스트림."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>매크로 지표</strong> 미국 및 유로존의 주요 거시경제 지표: CPI, 실업률, GDP, 중앙은행 금리. 이전 기간 대비 델타와 함께 표시. 출처: FRED (연방준비제도 경제 데이터)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>키워드 모니터</strong> 모든 WorldMonitor 소스에서 실시간 뉴스 언급을 추적하기 위해 용어를 추가하세요. 일치하는 기사가 수집되면 결과가 실시간으로 업데이트."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>재생 에너지</strong> 글로벌 재생 에너지 프로젝트 파이프라인: 태양광, 풍력, 수력, 저장 용량 추가. 지역 및 기술 유형별 발표, 건설 중, 가동 개시 프로젝트 추적."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>소셜 벨로시티</strong> 지정학적 중요성을 가진 트렌딩 토픽과 바이럴 콘텐츠. 소셜 미디어 속도 측정: 기준선 대비 스토리가 얼마나 빠르게 확산되는지. 주류 뉴스에 도달하기 전에 새로운 내러티브를 부각하는 데 도움."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>보전 성과</strong> 긍정적 보전 뉴스: 종 개체수 회복, 서식지 복원 이정표, 탈멸종 노력. 출처: IUCN, WWF 및 보전 연구 간행물."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>세계 시계</strong> 주요 글로벌 금융 센터의 실시간 현지 시간 및 마켓 세션 상태. NYSE, LSE, TSE, SGX 등 거래소의 개장/폐장 상태 표시."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>수익률 곡선 &amp; 금리</strong> 미국 국채 수익률 곡선(2Y, 5Y, 10Y, 30Y) 및 10Y-2Y 역전 지표를 포함한 주요 금리 스프레드. 유로존 금리(EURIBOR, ESTR)도 표시. 역전된 곡선은 역사적으로 경기 침체에 선행. 출처: FRED."
     }
   },
   "popups": {

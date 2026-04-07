@@ -102,14 +102,11 @@ export function extractCountryCode(text) {
   // Normalize uppercase `US` (country abbreviation) to `united states` before lowercasing,
   // so it survives the stopword pass. Lowercase `us` (pronoun) has no equivalent expansion
   // and is stopped by UNIGRAM_STOPWORDS. `\b` avoids matching inside words like "plus".
-  const normalized = text.replace(/\bUS\b/g, 'United States');
-  const lower = normalized.toLowerCase();
+  const normalized = text.replace(/\bUS\b/g, 'United States')
+    .normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+    .replace(/['.(),/-]/g, ' ');
 
-  // Single left-to-right scan with local longest-match priority:
-  // at each position try bigram first (strips punctuation so "West Bank," works),
-  // then fall back to unigram. This preserves document order so the first
-  // country mentioned in the headline wins regardless of alias length.
-  const words = lower.split(/\s+/);
+  const words = normalized.split(/\s+/).filter(Boolean);
   for (let i = 0; i < words.length; i++) {
     if (i < words.length - 1) {
       const left = words[i].replace(/[^a-z]/g, '');

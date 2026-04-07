@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { fetchHormuzTracker } from '@/services/hormuz-tracker';
 import type { HormuzTrackerData, HormuzChart, HormuzSeries } from '@/services/hormuz-tracker';
@@ -62,7 +63,7 @@ export class HormuzPanel extends Panel {
   private tooltipBound = false;
 
   constructor() {
-    super({ id: 'hormuz-tracker', title: 'Hormuz Trade Tracker', showCount: false });
+    super({ id: 'hormuz-tracker', title: 'Hormuz Trade Tracker', showCount: false, infoTooltip: t('components.hormuzTracker.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {

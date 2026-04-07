@@ -734,7 +734,8 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "infoTooltip": "<strong>监管</strong> 全球监管机构的监管行动、政策变更和执法更新：金融、科技、能源和贸易部门。来源：政府和监管机构官方出版物。"
     },
     "economic": {
       "indicators": "指标",
@@ -1327,7 +1328,8 @@
       "onMap": "{{count}} on map",
       "techmemeEvents": "Techmeme Events ↗",
       "today": "TODAY",
-      "soon": "SOON"
+      "soon": "SOON",
+      "infoTooltip": "<strong>科技活动</strong> 即将举行和近期的科技活动：会议、产品发布、监管听证会和财报电话会议。从官方活动日历和行业来源汇总。"
     },
     "techReadiness": {
       "internetUsers": "互联网用户",
@@ -1653,7 +1655,8 @@
         "comm": "Comms",
         "ai": "AI",
         "saas": "SaaS"
-      }
+      },
+      "infoTooltip": "<strong>服务状态</strong> 主要云平台、金融基础设施和关键互联网服务的实时运营状态。来源：官方状态页面（AWS、Azure、GCP、Cloudflare、交易所）。事故可能表明更大范围的中断事件。"
     },
     "verification": {
       "title": "Information Verification Checklist",
@@ -1759,6 +1762,57 @@
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>航空情报</strong> 实时航空公司运营数据：航线暂停、空域关闭、承运商公告和紧急改航。来源：航空当局NOTAM和承运商通报。"
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM 分析师</strong> 具有地缘政治、市场、军事和经济领域实时上下文的AI分析师。由Claude驱动，注入WorldMonitor活跃数据源的实时数据。"
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>CFTC COT 持仓</strong> 交易者承诺报告：商品和金融期货中商业机构、大型投机者和小型交易者的净持仓。每周五发布。来源：CFTC。"
+    },
+    "counters": {
+      "infoTooltip": "<strong>实时计数器</strong> 全球指标的实时推算计数器：军费开支、自然灾害、疾病负担等。数字为基于年度数据率的统计估算值。"
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>疾病暴发</strong> 来自WHO、ProMED和卫生部门的活跃暴发警报。追踪已确认的暴发、受影响地区、病例数和威胁级别。新报告发布时更新。"
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>财报日历</strong> 大型上市公司即将和近期的财报发布。显示EPS预期与实际对比、营收及超预期/不及预期分类。来源：金融数据提供商。"
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>经济日历</strong> 预定的宏观经济数据发布：CPI、NFP、GDP、PMI和央行决议。显示预测值、实际值和前值。高影响事件突出显示。来源：经济数据提供商。"
+    },
+    "fsi": {
+      "infoTooltip": "<strong>金融压力指标</strong> 堪萨斯城联储金融压力指数（KCFSI）：使用11个指标衡量美国金融市场压力，包括收益率利差、波动率和交叉相关性。正值表示高于平均水平的压力。来源：堪萨斯城联邦储备银行。"
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>霍尔木兹贸易追踪器</strong> 通过全球最关键的石油咽喉要道霍尔木兹海峡的AIS船舶实时追踪。监控油轮数量、中断事件和每周流量变化。全球约20%的石油供应每天经此通过。"
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>实时摄像头</strong> 来自全球地缘政治重要地点的直播：冲突区、首都、边境口岸和战略咽喉要道。流媒体来自YouTube和公共网络。"
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>宏观指标</strong> 美国和欧元区关键宏观经济指标：CPI、失业率、GDP和央行利率。显示值含与前期的差值。来源：FRED（联邦储备经济数据）。"
+    },
+    "monitors": {
+      "infoTooltip": "<strong>关键词监控</strong> 添加任何词汇，实时追踪WorldMonitor所有来源中的新闻提及。匹配文章被收录时结果实时更新。"
+    },
+    "renewable": {
+      "infoTooltip": "<strong>可再生能源</strong> 全球可再生能源项目管道：太阳能、风能、水电和储能容量新增。按地区和技术类型追踪已宣布、在建和已投运项目。"
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>社交传播速度</strong> 具有地缘政治意义的热门话题和病毒式内容。衡量社交媒体速度：一个故事相对于基线的传播速度。帮助在新兴叙事到达主流媒体之前发现它们。"
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>保育成就</strong> 正面的保育新闻：物种种群恢复、栖息地修复里程碑和反灭绝努力。来源：IUCN、WWF和保育研究出版物。"
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>世界时钟</strong> 主要全球金融中心的实时当地时间和市场交易时段状态。显示NYSE、LSE、TSE、SGX等交易所的开盘/收盘状态。"
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>收益率曲线 &amp; 利率</strong> 美国国债收益率曲线（2Y、5Y、10Y、30Y）和关键利率利差，包括10Y-2Y倒挂指标。还显示欧元区利率（EURIBOR、ESTR）。倒挂曲线在历史上通常先于经济衰退出现。来源：FRED。"
     }
   },
   "popups": {
