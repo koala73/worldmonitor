@@ -67,6 +67,7 @@ export function shouldSkipSeedYear(meta, seedYear = nowSeedYear()) {
     && meta.status === 'ok'
     && meta.sourceVersion === RESILIENCE_STATIC_SOURCE_VERSION
     && Number(meta.seedYear) === seedYear
+    && !(meta.failedDatasets?.length > 0)
     && Number.isFinite(Number(meta.recordCount))
     && Number(meta.recordCount) > 0,
   );

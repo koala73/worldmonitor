@@ -422,10 +422,17 @@ describe('resilience static seed payload assembly', () => {
   it('skips reruns only after a successful snapshot for the same seed year and source version', () => {
     const v = RESILIENCE_STATIC_SOURCE_VERSION;
     assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150, sourceVersion: v }, 2026), true);
+    assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150, sourceVersion: v, failedDatasets: [] }, 2026), true);
     assert.equal(shouldSkipSeedYear({ status: 'error', seedYear: 2026, recordCount: 150, sourceVersion: v }, 2026), false);
     assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2025, recordCount: 150, sourceVersion: v }, 2026), false);
     assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150, sourceVersion: 'resilience-static-v1' }, 2026), false);
     assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150 }, 2026), false);
+  });
+
+  it('shouldSkipSeedYear returns false when failedDatasets is non-empty (partial success must retry)', () => {
+    const v = RESILIENCE_STATIC_SOURCE_VERSION;
+    assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150, sourceVersion: v, failedDatasets: ['fxReservesMonths'] }, 2026), false);
+    assert.equal(shouldSkipSeedYear({ status: 'ok', seedYear: 2026, recordCount: 150, sourceVersion: v, failedDatasets: ['aquastat', 'fao'] }, 2026), false);
   });
 });
 
