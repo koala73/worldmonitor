@@ -245,6 +245,14 @@ describe('ambiguous runtime errors', () => {
 // ─── Existing filters still work ─────────────────────────────────────────
 
 describe('existing beforeSend filters', () => {
+  it('suppresses OrbitControls touch crash even with first-party main chunk frames', () => {
+    const event = makeEvent('Cannot read properties of undefined (reading \'x\')', 'TypeError', [
+      { filename: '/assets/main-Dpr0EWW-.js', lineno: 6717, function: 'fme._handleTouchStartDollyPan' },
+      { filename: '/assets/main-Dpr0EWW-.js', lineno: 6717, function: 'fme._handleTouchStartDolly' },
+    ]);
+    assert.equal(beforeSend(event), null, 'OrbitControls pinch-zoom crash in main chunk should be suppressed');
+  });
+
   it('suppresses maplibre TypeError when all frames are maplibre', () => {
     const event = makeEvent('Cannot read properties of null', 'TypeError', [
       { filename: '/assets/maplibre-AbC123.js', lineno: 100, function: 'paint' },
