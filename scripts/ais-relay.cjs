@@ -5599,73 +5599,6 @@ function startChokepointFlowsSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Ember Monthly Electricity Seed — monthly generation CSV → Redis
-// Downloads Ember Climate's long-format CSV (CC BY 4.0) and writes
-// energy:ember:v1:<ISO2> and energy:ember:v1:_all to Redis.
-// Runs once per day (24h interval). Large CSV (~30MB) — 8 min timeout.
-// ─────────────────────────────────────────────────────────────
-
-const EMBER_ELECTRICITY_SEED_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
-const EMBER_ELECTRICITY_SEED_TIMEOUT_MS = 8 * 60 * 1000; // 8 min (large CSV download)
-const EMBER_ELECTRICITY_SEED_RETRY_MS = 20 * 60 * 1000;
-const EMBER_ELECTRICITY_SEED_SCRIPT = path.join(__dirname, 'seed-ember-electricity.mjs');
-
-let emberElectricitySeedInFlight = false;
-let emberElectricityRetryTimer = null;
-
-function runEmberElectricitySeedScript() {
-  return new Promise((resolve, reject) => {
-    execFile(process.execPath, [EMBER_ELECTRICITY_SEED_SCRIPT], {
-      env: process.env,
-      timeout: EMBER_ELECTRICITY_SEED_TIMEOUT_MS,
-      maxBuffer: 2 * 1024 * 1024,
-    }, (err, stdout, stderr) => {
-      relayLogScriptOutput('[EmberElectricity]', stdout);
-      if (stderr) {
-        const trimmedErr = String(stderr).trim();
-        if (trimmedErr) {
-          for (const line of trimmedErr.split('\n')) console.warn(`[EmberElectricity] ${line}`);
-        }
-      }
-      if (err) return reject(err);
-      resolve();
-    });
-  });
-}
-
-async function seedEmberElectricity() {
-  if (emberElectricitySeedInFlight) {
-    console.log('[EmberElectricity] Skipped (in-flight)');
-    return;
-  }
-  emberElectricitySeedInFlight = true;
-  if (emberElectricityRetryTimer) { clearTimeout(emberElectricityRetryTimer); emberElectricityRetryTimer = null; }
-  const t0 = Date.now();
-  try {
-    await runEmberElectricitySeedScript();
-    console.log(`[EmberElectricity] Completed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  } catch (e) {
-    const message = e?.killed ? 'timeout' : (e?.message || e);
-    console.warn('[EmberElectricity] Seed error:', message);
-    emberElectricityRetryTimer = setTimeout(() => { seedEmberElectricity().catch(() => {}); }, EMBER_ELECTRICITY_SEED_RETRY_MS);
-  } finally {
-    emberElectricitySeedInFlight = false;
-  }
-}
-
-function startEmberElectricitySeedLoop() {
-  if (!UPSTASH_ENABLED) {
-    console.log('[EmberElectricity] Disabled (no Upstash Redis)');
-    return;
-  }
-  console.log(`[EmberElectricity] Seed loop starting (interval ${EMBER_ELECTRICITY_SEED_INTERVAL_MS / 1000 / 60}min)`);
-  seedEmberElectricity().catch((e) => console.warn('[EmberElectricity] Initial seed error:', e?.message || e));
-  setInterval(() => {
-    seedEmberElectricity().catch((e) => console.warn('[EmberElectricity] Seed error:', e?.message || e));
-  }, EMBER_ELECTRICITY_SEED_INTERVAL_MS).unref?.();
-}
-
-// ─────────────────────────────────────────────────────────────
 // PizzINT Seed — Pentagon Pizza Index + GDELT tensions → Redis
 // Fetches from pizzint.watch on Railway (datacenter IPs blocked
 // from Vercel Edge). Vercel handler reads from seed key only.
@@ -10373,7 +10306,6 @@ server.listen(PORT, () => {
   startSocialVelocitySeedLoop();
   startClimateNewsSeedLoop();
   startChokepointFlowsSeedLoop();
-  startEmberElectricitySeedLoop();
   startPizzintSeedLoop();
   startDodoPriceSeedLoop();
 });

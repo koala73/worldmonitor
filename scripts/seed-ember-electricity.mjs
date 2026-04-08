@@ -230,7 +230,7 @@ async function preservePreviousSnapshot(errorMsg, stashedAllMap = null, newCount
   const existingMeta = await redisGet(EMBER_META_KEY).catch(() => null);
 
   if (stashedAllMap && typeof stashedAllMap === 'object' && !dataWritten) {
-    const restoreCmds = [['MULTI']];
+    const restoreCmds = [];
     for (const [iso2, val] of Object.entries(stashedAllMap)) {
       restoreCmds.push([
         'SET', `${EMBER_KEY_PREFIX}${iso2}`, JSON.stringify(val), 'EX', EMBER_TTL_SECONDS,
@@ -245,7 +245,6 @@ async function preservePreviousSnapshot(errorMsg, stashedAllMap = null, newCount
         }
       }
     }
-    restoreCmds.push(['EXEC']);
     await redisPipeline(restoreCmds).catch((e) =>
       console.error('[EmberElectricity] Snapshot restore failed:', e),
     );
@@ -332,13 +331,11 @@ export async function main() {
       sourceVersion: 'ember-monthly-v1',
     };
 
-    // Stash old _all for rollback on partial failure
+    // Stash old _all for restore on failure
     oldAllMap = await redisGet(EMBER_ALL_KEY).catch(() => null);
 
-    // Phase A: atomic data write via MULTI/EXEC
-    // Upstash REST receives full HTTP body before processing;
-    // MULTI/EXEC makes Redis-side execution all-or-nothing.
-    const dataCommands = [['MULTI']];
+    // Phase A: write all per-country keys + _all in a single pipeline
+    const dataCommands = [];
     for (const [iso2, payload] of countries) {
       dataCommands.push([
         'SET',
@@ -356,27 +353,19 @@ export async function main() {
       EMBER_TTL_SECONDS,
     ]);
 
+    // DEL obsolete per-country keys no longer in the new dataset
     const oldIso2Set = oldAllMap && typeof oldAllMap === 'object' ? new Set(Object.keys(oldAllMap)) : new Set();
     for (const iso2 of oldIso2Set) {
       if (!newCountryKeys.has(iso2)) {
         dataCommands.push(['DEL', `${EMBER_KEY_PREFIX}${iso2}`]);
       }
     }
-    dataCommands.push(['EXEC']);
 
-    const txResults = await redisPipeline(dataCommands);
-    const execResult = txResults[txResults.length - 1];
-    if (!execResult?.result || !Array.isArray(execResult.result)) {
-      throw new Error('Redis MULTI/EXEC transaction aborted or returned unexpected result');
-    }
-    const execFailures = execResult.result.filter((r) => {
-      if (typeof r === 'string') return r === 'ERR';
-      if (r && typeof r === 'object') return !!r.error;
-      return false;
-    });
-    if (execFailures.length > 0) {
+    const dataResults = await redisPipeline(dataCommands);
+    const dataFailures = dataResults.filter((r) => r?.error || r?.result === 'ERR');
+    if (dataFailures.length > 0) {
       throw new Error(
-        `Redis MULTI/EXEC: ${execFailures.length} commands failed within transaction`,
+        `Redis pipeline: ${dataFailures.length}/${dataCommands.length} data commands failed`,
       );
     }
     dataWritten = true;
