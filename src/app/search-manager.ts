@@ -526,6 +526,15 @@ export class SearchManager implements AppModule {
           this.ctx.unifiedSettings?.open();
         } else if (action === 'refresh') {
           window.location.reload();
+        } else if (action === 'resilience') {
+          const layerKey = 'resilienceScore' as keyof MapLayers;
+          this.ctx.mapLayers[layerKey] = !this.ctx.mapLayers[layerKey];
+          saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+          if (this.ctx.mapLayers[layerKey]) {
+            this.ctx.map?.enableLayer(layerKey);
+          } else {
+            this.ctx.map?.setLayers(this.ctx.mapLayers);
+          }
         }
         break;
 
