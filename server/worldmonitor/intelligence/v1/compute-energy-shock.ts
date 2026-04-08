@@ -157,9 +157,9 @@ export async function computeEnergyShockScenario(
   const portWatchKey = CP_TO_PORTWATCH[chokepointId];
   const cpEntry = portWatchKey ? (chokepointFlowsRaw2?.[portWatchKey] ?? null) : null;
 
-  const degraded = !chokepointFlowsRaw2 || cpEntry == null || typeof cpEntry.flowRatio !== 'number';
+  const degraded = !chokepointFlowsRaw2 || cpEntry == null || !Number.isFinite(cpEntry.flowRatio as number);
 
-  const liveFlowRatio: number | null = (!degraded && cpEntry != null && typeof cpEntry.flowRatio === 'number')
+  const liveFlowRatio: number | null = (!degraded && cpEntry != null && Number.isFinite(cpEntry.flowRatio as number))
     ? cpEntry.flowRatio
     : null;
 
@@ -170,11 +170,14 @@ export async function computeEnergyShockScenario(
   const ieaStocksCoverage = ieaStocks != null && ieaStocks.anomaly !== true;
   const portwatchCoverage = liveFlowRatio !== null;
 
-  const coverageLevel = deriveCoverageLevel(jodiOilCoverage, comtradeCoverage);
+  const coverageLevel = deriveCoverageLevel(jodiOilCoverage, comtradeCoverage, ieaStocksCoverage, degraded);
 
   const limitations: string[] = [];
-  if (coverageLevel === 'partial') {
+  if (!comtradeCoverage && jodiOilCoverage) {
     limitations.push('Gulf crude share proxied at 40% (no Comtrade data)');
+  }
+  if (!ieaStocksCoverage) {
+    limitations.push('IEA strategic stock data unavailable');
   }
   limitations.push('refinery yield: 80% crude-to-product heuristic');
   if (degraded) {
@@ -250,7 +253,7 @@ export async function computeEnergyShockScenario(
     limitations,
     degraded,
     chokepointConfidence,
-    liveFlowRatio: liveFlowRatio !== null ? Math.round(liveFlowRatio * 1000) / 1000 : 0,
+    liveFlowRatio: liveFlowRatio !== null ? Math.round(liveFlowRatio * 1000) / 1000 : undefined,
   };
 
   const cacheTtl = degraded ? 300 : SHOCK_CACHE_TTL; // 5 min when degraded, 1h otherwise

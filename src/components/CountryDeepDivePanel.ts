@@ -816,7 +816,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const thead = this.el('thead', '');
       const hr = this.el('tr', '');
       const headers = ['Product', 'Demand', 'Loss', 'Deficit'];
-      if (result.portwatchCoverage) headers.push('Flow');
+      if (result.portwatchCoverage && result.liveFlowRatio != null) headers.push('Flow');
       for (const h of headers) {
         const th = this.el('th', '');
         th.textContent = h;
@@ -836,7 +836,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           `${p.outputLossKbd} kbd`,
           `${p.deficitPct.toFixed(1)}%`,
         ];
-        if (result.portwatchCoverage) {
+        if (result.portwatchCoverage && result.liveFlowRatio != null) {
           cells.push(`${Math.round(result.liveFlowRatio * 100)}%`);
         }
         cells.forEach((val, i) => {

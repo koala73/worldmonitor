@@ -556,7 +556,7 @@ export interface ComputeEnergyShockScenarioResponse {
   limitations: string[];
   degraded: boolean;
   chokepointConfidence: string;
-  liveFlowRatio: number;
+  liveFlowRatio?: number;
 }
 
 export interface ProductImpact {

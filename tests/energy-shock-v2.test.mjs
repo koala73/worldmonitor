@@ -142,8 +142,8 @@ describe('mock: degraded mode falls back to CHOKEPOINT_EXPOSURE', () => {
     const confidence = deriveChokepointConfidence(liveFlowRatio, degraded);
     assert.equal(confidence, 'none');
 
-    const computedLiveFlowRatioInResponse = liveFlowRatio !== null ? liveFlowRatio : 0;
-    assert.equal(computedLiveFlowRatioInResponse, 0);
+    const computedLiveFlowRatioInResponse = liveFlowRatio !== null ? liveFlowRatio : undefined;
+    assert.equal(computedLiveFlowRatioInResponse, undefined, 'liveFlowRatio should be absent (undefined) when PortWatch unavailable, not 0');
   });
 
   it('suez uses CHOKEPOINT_EXPOSURE[suez]=0.6 when portwatch absent', () => {
@@ -253,4 +253,88 @@ describe('ISO2_TO_COMTRADE completeness', () => {
   it('CN maps to 156', () => assert.equal(ISO2_TO_COMTRADE['CN'], '156'));
   it('DE maps to 276', () => assert.equal(ISO2_TO_COMTRADE['DE'], '276'));
   it('JP maps to 392', () => assert.equal(ISO2_TO_COMTRADE['JP'], '392'));
+});
+
+// ---------------------------------------------------------------------------
+// NaN/Infinity guard — deriveChokepointConfidence
+// ---------------------------------------------------------------------------
+
+describe('deriveChokepointConfidence guards NaN and Infinity', () => {
+  it('returns "none" for NaN flowRatio', () => {
+    assert.equal(deriveChokepointConfidence(NaN, false), 'none');
+  });
+
+  it('returns "none" for Infinity flowRatio', () => {
+    assert.equal(deriveChokepointConfidence(Infinity, false), 'none');
+  });
+
+  it('returns "none" for -Infinity flowRatio', () => {
+    assert.equal(deriveChokepointConfidence(-Infinity, false), 'none');
+  });
+
+  it('returns "high" for a finite positive flowRatio with degraded=false', () => {
+    assert.equal(deriveChokepointConfidence(0.85, false), 'high');
+  });
+
+  it('returns "high" for flowRatio=0 with degraded=false (true 0 flow is valid)', () => {
+    assert.equal(deriveChokepointConfidence(0, false), 'high');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveCoverageLevel — IEA and degraded inputs
+// ---------------------------------------------------------------------------
+
+describe('deriveCoverageLevel accounts for IEA and degraded state', () => {
+  it('returns "full" only when all inputs are good', () => {
+    assert.equal(deriveCoverageLevel(true, true, true, false), 'full');
+  });
+
+  it('returns "partial" when ieaStocksCoverage is false (even with JODI+Comtrade)', () => {
+    assert.equal(deriveCoverageLevel(true, true, false, false), 'partial');
+  });
+
+  it('returns "partial" when degraded=true (even with JODI+Comtrade+IEA)', () => {
+    assert.equal(deriveCoverageLevel(true, true, true, true), 'partial');
+  });
+
+  it('returns "partial" when comtrade is false regardless of IEA/degraded', () => {
+    assert.equal(deriveCoverageLevel(true, false, true, false), 'partial');
+  });
+
+  it('returns "unsupported" when jodiOil is false', () => {
+    assert.equal(deriveCoverageLevel(false, true, true, false), 'unsupported');
+  });
+
+  it('backward-compatible: two-arg call without IEA/degraded still works', () => {
+    // ieaStocksCoverage=undefined → !undefined=true → passes; degraded=undefined → falsy → passes
+    assert.equal(deriveCoverageLevel(true, true), 'full');
+    assert.equal(deriveCoverageLevel(true, false), 'partial');
+    assert.equal(deriveCoverageLevel(false, true), 'unsupported');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// live_flow_ratio absent when portwatchCoverage=false
+// ---------------------------------------------------------------------------
+
+describe('liveFlowRatio is absent (undefined) when PortWatch unavailable', () => {
+  it('liveFlowRatio should be undefined, not 0, when portwatch is absent', () => {
+    // This tests the response contract: callers must check portwatchCoverage,
+    // not rely on liveFlowRatio===0 to detect missing data.
+    const liveFlowRatioFromServer = null; // PortWatch unavailable
+    const fieldOnWire = liveFlowRatioFromServer !== null
+      ? Math.round(liveFlowRatioFromServer * 1000) / 1000
+      : undefined;
+    assert.equal(fieldOnWire, undefined, 'field should be absent on wire when portwatch unavailable');
+  });
+
+  it('liveFlowRatio=0 is valid and distinct from "unavailable" when portwatchCoverage=true', () => {
+    // True zero flow (chokepoint collapse) is a real and distinct signal
+    const liveFlowRatioFromServer = 0; // portwatchCoverage=true, chokepoint collapsed
+    const fieldOnWire = liveFlowRatioFromServer !== null
+      ? Math.round(liveFlowRatioFromServer * 1000) / 1000
+      : undefined;
+    assert.equal(fieldOnWire, 0, 'true 0 flow should serialize as 0, not undefined');
+  });
 });

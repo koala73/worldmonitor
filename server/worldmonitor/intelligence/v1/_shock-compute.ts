@@ -46,9 +46,15 @@ export function computeEffectiveCoverDays(
   return daysOfCover;
 }
 
-export function deriveCoverageLevel(jodiOil: boolean, comtrade: boolean): 'full' | 'partial' | 'unsupported' {
+export function deriveCoverageLevel(
+  jodiOil: boolean,
+  comtrade: boolean,
+  ieaStocksCoverage?: boolean,
+  degraded?: boolean,
+): 'full' | 'partial' | 'unsupported' {
   if (!jodiOil) return 'unsupported';
   if (!comtrade) return 'partial';
+  if (ieaStocksCoverage === false || degraded) return 'partial';
   return 'full';
 }
 
@@ -56,7 +62,7 @@ export function deriveChokepointConfidence(
   liveFlowRatio: number | null,
   degraded: boolean,
 ): 'high' | 'low' | 'none' {
-  if (degraded || liveFlowRatio === null) return 'none';
+  if (degraded || liveFlowRatio === null || !Number.isFinite(liveFlowRatio)) return 'none';
   return 'high';
 }
 

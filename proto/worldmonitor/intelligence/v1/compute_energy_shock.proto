@@ -38,6 +38,6 @@ message ComputeEnergyShockScenarioResponse {
   repeated string limitations  = 16;  // model assumption strings
   bool   degraded              = 17;  // true when PortWatch absent/stale
   string chokepoint_confidence = 18;  // "high" | "low" | "none"
-  double live_flow_ratio       = 19;  // from energy:chokepoint-flows:v1, 0-1.5
+  optional double live_flow_ratio = 19;  // from energy:chokepoint-flows:v1, 0-1.5; absent when portwatch_coverage=false
   // field 20 reserved for gas_impact (PR4)
 }
