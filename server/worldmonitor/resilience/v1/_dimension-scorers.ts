@@ -805,7 +805,7 @@ export async function scoreInfrastructure(
   return weightedBlend([
     { score: electricityAccess == null ? null : normalizeHigherBetter(electricityAccess, 40, 100), weight: 0.3 },
     { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.3 },
-    { score: outagePenalty > 0 ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.25 },
+    { score: outagesRaw != null && outagePenalty > 0 ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.25 },
     { score: broadband == null ? null : normalizeHigherBetter(broadband, 0, 40), weight: 0.15 },
   ]);
 }
