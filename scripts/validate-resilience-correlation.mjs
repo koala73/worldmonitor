@@ -2,7 +2,8 @@
 
 import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
 
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v4:';
+// Source of truth: server/worldmonitor/resilience/v1/_shared.ts → RESILIENCE_SCORE_CACHE_PREFIX
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v5:';
 
 const REFERENCE_INDICES = {
   ndgain: {
