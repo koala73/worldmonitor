@@ -259,26 +259,40 @@ export async function fetchInfrastructureDataset() {
 }
 
 async function fetchWhoIndicatorRows(indicatorCode) {
-  const rows = [];
-  const params = new URLSearchParams({
-    '$select': 'SpatialDim,TimeDim,NumericValue,Value',
-    '$filter': "SpatialDimType eq 'COUNTRY'",
-    '$top': '10000',
-  });
-  let nextUrl = `${WHO_BASE}/${encodeURIComponent(indicatorCode)}?${params}`;
-  let pageCount = 0;
+  const allRows = [];
+  const PAGE_SIZE = 1000;
   const MAX_WHO_PAGES = 50;
+  let skip = 0;
+  let pageCount = 0;
 
-  while (nextUrl && pageCount < MAX_WHO_PAGES) {
+  while (pageCount < MAX_WHO_PAGES) {
     pageCount += 1;
-    const payload = await withRetry(() => fetchJson(nextUrl), 2, 750);
+    const params = new URLSearchParams({
+      '$select': 'SpatialDim,TimeDim,NumericValue,Value',
+      '$filter': "SpatialDimType eq 'COUNTRY'",
+      '$top': String(PAGE_SIZE),
+      '$skip': String(skip),
+    });
+    const url = `${WHO_BASE}/${encodeURIComponent(indicatorCode)}?${params}`;
+    const payload = await withRetry(() => fetchJson(url), 2, 750);
     if (!Array.isArray(payload?.value)) throw new Error(`Unexpected WHO response shape for ${indicatorCode}`);
-    rows.push(...payload.value);
-    nextUrl = payload['@odata.nextLink'] || payload['odata.nextLink'] || null;
-  }
-  if (nextUrl) throw new Error(`WHO ${indicatorCode}: pagination exceeded ${MAX_WHO_PAGES} pages`);
+    const rows = payload.value;
+    allRows.push(...rows);
 
-  return rows;
+    const odataNext = payload['@odata.nextLink'] || payload['odata.nextLink'] || null;
+    if (odataNext) {
+      skip = allRows.length;
+      continue;
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+    skip += PAGE_SIZE;
+  }
+
+  if (pageCount >= MAX_WHO_PAGES) throw new Error(`WHO ${indicatorCode}: pagination exceeded ${MAX_WHO_PAGES} pages`);
+  console.log(`  [who] ${indicatorCode}: ${allRows.length} rows (${pageCount} pages)`);
+
+  return allRows;
 }
 
 function selectLatestWhoByCountry(rows) {
