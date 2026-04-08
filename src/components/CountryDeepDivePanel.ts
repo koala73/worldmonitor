@@ -702,7 +702,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.energyBody.append(section);
     }
 
-    if (data.jodiOilAvailable) {
+    if (data.jodiOilAvailable || data.jodiGasAvailable) {
       this.energyBody.append(this.renderShockScenarioWidget());
     }
   }
@@ -807,7 +807,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private renderShockResult(result: ComputeEnergyShockScenarioResponse): HTMLElement {
     const container = this.el('div', '');
 
-    if (!result.dataAvailable) {
+    if (!result.dataAvailable && !(result as any).gasImpact?.dataAvailable) {
       container.append(this.el('div', 'cdp-economic-source', result.assessment));
       return container;
     }

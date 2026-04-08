@@ -127,8 +127,10 @@ export function computeGasDisruption(
   totalDemandTj: number,
   chokepointId: string,
   disruptionPct: number,
+  liveFlowRatio?: number | null,
 ): { lngDisruptionTj: number; deficitPct: number } {
-  const exposure = CHOKEPOINT_LNG_EXPOSURE[chokepointId] ?? 0;
+  const baseExposure = CHOKEPOINT_LNG_EXPOSURE[chokepointId] ?? 0;
+  const exposure = liveFlowRatio != null ? baseExposure * liveFlowRatio : baseExposure;
   const lngDisruptionTj = lngImportsTj * exposure * (disruptionPct / 100);
   const deficitPct = totalDemandTj > 0
     ? clamp((lngDisruptionTj / totalDemandTj) * 100, 0, 100)
@@ -150,6 +152,7 @@ export function buildGasAssessment(
   code: string,
   chokepointId: string,
   dataAvailable: boolean,
+  lngImportsTj: number,
   lngShareOfImports: number,
   deficitPct: number,
   bufferDays: number,
@@ -158,6 +161,9 @@ export function buildGasAssessment(
 ): string {
   if (!dataAvailable) {
     return `Insufficient gas import data for ${code} to model ${chokepointId} LNG exposure.`;
+  }
+  if (lngImportsTj === 0) {
+    return `${code} imports gas via pipeline only (no LNG); ${chokepointId} disruption has no direct LNG impact.`;
   }
   if (lngShareOfImports < 0.1) {
     return `${code} has low LNG dependence (${Math.round(lngShareOfImports * 100)}% of gas imports via LNG); ${chokepointId} disruption has limited gas impact.`;

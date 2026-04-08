@@ -287,7 +287,7 @@ export async function computeEnergyShockScenario(
     const totalDemandTj = n(jodiGas.totalDemandTj);
 
     const { lngDisruptionTj, deficitPct: gasDeficitPct } = computeGasDisruption(
-      lngImportsTj, totalDemandTj, chokepointId, disruptionPct,
+      lngImportsTj, totalDemandTj, chokepointId, disruptionPct, liveFlowRatio,
     );
 
     let storage: GasStorageBuffer | undefined;
@@ -307,7 +307,7 @@ export async function computeEnergyShockScenario(
       };
     }
 
-    const gasDataAvailable = lngImportsTj > 0;
+    const gasDataAvailable = jodiGas != null;
 
     gasImpact = {
       lngShareOfImports: Math.round(lngShareOfImports * 1000) / 1000,
@@ -317,7 +317,7 @@ export async function computeEnergyShockScenario(
       deficitPct: gasDeficitPct,
       dataAvailable: gasDataAvailable,
       assessment: buildGasAssessment(
-        code, chokepointId, gasDataAvailable, lngShareOfImports,
+        code, chokepointId, gasDataAvailable, lngImportsTj, lngShareOfImports,
         gasDeficitPct, bufferDays, disruptionPct, storage != null,
       ),
       storage,
@@ -354,6 +354,17 @@ export async function computeEnergyShockScenario(
   if (!needsOil && gasImpact) {
     response.assessment = gasImpact.assessment;
     response.dataAvailable = gasImpact.dataAvailable;
+    response.coverageLevel = gasImpact.dataAvailable ? 'full' : 'unsupported';
+    response.limitations = response.limitations.filter(l =>
+      !l.includes('refinery yield') &&
+      !l.includes('Gulf crude share') &&
+      !l.includes('IEA strategic stock')
+    );
+  }
+
+  if (needsOil && needsGas && gasImpact?.dataAvailable && !jodiOilCoverage) {
+    response.coverageLevel = 'partial';
+    response.dataAvailable = true;
   }
 
   const cacheTtl = degraded ? 300 : SHOCK_CACHE_TTL;

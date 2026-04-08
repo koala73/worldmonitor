@@ -660,22 +660,22 @@ describe('computeGasBufferDays', () => {
 
 describe('buildGasAssessment', () => {
   it('returns insufficient data message when not available', () => {
-    const msg = buildGasAssessment('JP', 'hormuz', false, 0, 0, 0, 50, false);
+    const msg = buildGasAssessment('JP', 'hormuz', false, 0, 0, 0, 0, 50, false);
     assert.ok(msg.includes('Insufficient gas import data'));
   });
 
   it('returns low dependence for lngShare < 10%', () => {
-    const msg = buildGasAssessment('US', 'hormuz', true, 0.05, 1.0, 0, 50, false);
+    const msg = buildGasAssessment('US', 'hormuz', true, 100, 0.05, 1.0, 0, 50, false);
     assert.ok(msg.includes('low LNG dependence'));
   });
 
   it('returns buffer message for EU with >90 days', () => {
-    const msg = buildGasAssessment('DE', 'hormuz', true, 0.3, 5.0, 200, 50, true);
+    const msg = buildGasAssessment('DE', 'hormuz', true, 500, 0.3, 5.0, 200, 50, true);
     assert.ok(msg.includes('200 days of gas storage buffer'));
   });
 
   it('returns deficit message for high exposure', () => {
-    const msg = buildGasAssessment('JP', 'malacca', true, 0.9, 25.0, 0, 50, false);
+    const msg = buildGasAssessment('JP', 'malacca', true, 1000, 0.9, 25.0, 0, 50, false);
     assert.ok(msg.includes('25.0% gas supply deficit'));
   });
 });
@@ -707,6 +707,24 @@ describe('exposureMult composes baseExposure with liveFlowRatio', () => {
 });
 
 // ---------------------------------------------------------------------------
+// gasDataAvailable distinguishes zero-LNG from missing data
+// ---------------------------------------------------------------------------
+
+describe('gasDataAvailable distinguishes zero-LNG from missing data', () => {
+  it('pipeline-only country (lngImportsTj=0) has dataAvailable=true', () => {
+    const jodiGas = { lngImportsTj: 0, totalDemandTj: 5000, lngShareOfImports: 0 };
+    const gasDataAvailable = jodiGas != null;
+    assert.equal(gasDataAvailable, true, 'JODI gas exists, so data is available');
+  });
+
+  it('missing JODI gas (null) has dataAvailable=false', () => {
+    const jodiGas = null;
+    const gasDataAvailable = jodiGas != null;
+    assert.equal(gasDataAvailable, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildAssessment skips low-dependence dismissal when proxied
 // ---------------------------------------------------------------------------
 
@@ -722,6 +740,22 @@ describe('buildAssessment skips low-dependence dismissal when proxied', () => {
     const products = [{ product: 'Diesel', deficitPct: 5.0 }];
     const msg = buildAssessment('XX', 'suez', true, 0.06, 60, 30, 50, products, 'full', false, true, true);
     assert.ok(msg.includes('low Gulf crude dependence'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGasAssessment pipeline-only branch
+// ---------------------------------------------------------------------------
+
+describe('buildGasAssessment pipeline-only branch', () => {
+  it('returns pipeline-only message for zero lngImportsTj', () => {
+    const msg = buildGasAssessment('DE', 'hormuz', true, 0, 0, 0, 0, 50, false);
+    assert.ok(msg.includes('pipeline only'));
+  });
+
+  it('returns insufficient data when dataAvailable=false', () => {
+    const msg = buildGasAssessment('XX', 'hormuz', false, 0, 0, 0, 0, 50, false);
+    assert.ok(msg.includes('Insufficient'));
   });
 });
 
@@ -756,5 +790,58 @@ describe('grid-tightness limitation from Ember fossilShare', () => {
       limitations.push('high fossil grid dependency: limited electricity substitution capacity');
     }
     assert.equal(limitations.length, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeGasDisruption uses liveFlowRatio when available
+// ---------------------------------------------------------------------------
+
+describe('computeGasDisruption uses liveFlowRatio when available', () => {
+  it('scales static exposure by liveFlowRatio', () => {
+    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz', 100, 0.5);
+    assert.equal(lngDisruptionTj, 150);
+  });
+
+  it('uses static exposure when liveFlowRatio is null (degraded)', () => {
+    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz', 100, null);
+    assert.equal(lngDisruptionTj, 300);
+  });
+
+  it('uses static exposure when liveFlowRatio is undefined', () => {
+    const { lngDisruptionTj } = computeGasDisruption(1000, 5000, 'hormuz', 100);
+    assert.equal(lngDisruptionTj, 300);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// gas-only mode coverage override
+// ---------------------------------------------------------------------------
+
+describe('gas-only mode coverage override', () => {
+  it('gas-only with valid gas data should not show unsupported', () => {
+    const needsOil = false;
+    const gasImpact = { dataAvailable: true };
+    let coverageLevel = 'unsupported';
+    if (!needsOil && gasImpact?.dataAvailable) {
+      coverageLevel = 'full';
+    }
+    assert.equal(coverageLevel, 'full');
+  });
+
+  it('gas-only limitations exclude oil-specific strings', () => {
+    const limitations = [
+      'refinery yield: 80% crude-to-product heuristic',
+      'Gulf crude share proxied at 40% (no Comtrade data)',
+      'IEA strategic stock data unavailable',
+      'LNG chokepoint exposure estimates based on global trade route shares',
+    ];
+    const filtered = limitations.filter(l =>
+      !l.includes('refinery yield') &&
+      !l.includes('Gulf crude share') &&
+      !l.includes('IEA strategic stock')
+    );
+    assert.equal(filtered.length, 1);
+    assert.ok(filtered[0].includes('LNG'));
   });
 });
