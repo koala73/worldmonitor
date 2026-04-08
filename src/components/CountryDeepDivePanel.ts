@@ -816,7 +816,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const thead = this.el('thead', '');
       const hr = this.el('tr', '');
       const headers = ['Product', 'Demand', 'Loss', 'Deficit'];
-      if (result.liveFlowRatio != null) headers.push('Flow');
+      if (result.portwatchCoverage) headers.push('Flow');
       for (const h of headers) {
         const th = this.el('th', '');
         th.textContent = h;
@@ -836,7 +836,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           `${p.outputLossKbd} kbd`,
           `${p.deficitPct.toFixed(1)}%`,
         ];
-        if (result.liveFlowRatio != null) {
+        if (result.portwatchCoverage) {
           cells.push(`${Math.round(result.liveFlowRatio * 100)}%`);
         }
         cells.forEach((val, i) => {
@@ -851,7 +851,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       container.append(table);
     }
 
-    if (result.effectiveCoverDays > 0) {
+    if (result.ieaStocksCoverage && result.effectiveCoverDays > 0) {
       const coverRow = this.el('div', 'cdp-economic-source');
       coverRow.style.cssText += ';margin-bottom:4px';
       coverRow.textContent = `IEA cover: ~${result.effectiveCoverDays} days under this scenario`;

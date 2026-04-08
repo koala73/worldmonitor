@@ -209,7 +209,8 @@ export async function computeEnergyShockScenario(
       };
     });
 
-  const daysOfCover = n(ieaStocks?.daysOfCover);
+  const rawDaysOfCover = n(ieaStocks?.daysOfCover);
+  const daysOfCover = ieaStocksCoverage ? rawDaysOfCover : 0;
   const netExporter = ieaStocks?.netExporter === true;
   const effectiveCoverDays = computeEffectiveCoverDays(daysOfCover, netExporter, crudeLossKbd, crudeImportsKbd);
 
@@ -252,6 +253,7 @@ export async function computeEnergyShockScenario(
     liveFlowRatio: liveFlowRatio !== null ? Math.round(liveFlowRatio * 1000) / 1000 : 0,
   };
 
-  await setCachedJson(cacheKey, response, SHOCK_CACHE_TTL);
+  const cacheTtl = degraded ? 300 : SHOCK_CACHE_TTL; // 5 min when degraded, 1h otherwise
+  await setCachedJson(cacheKey, response, cacheTtl);
   return response;
 }
