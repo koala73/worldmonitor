@@ -80,6 +80,10 @@ export async function deductSituation(
     ctx: ServerContext,
     req: DeductSituationRequest,
 ): Promise<DeductSituationResponse> {
+    // Temporarily disabled — panel disabled in panels.ts
+    void ctx; void req;
+    return { analysis: '', model: '', provider: 'disabled' };
+
     const MAX_QUERY_LEN = 500;
     const MAX_GEO_LEN = 2000;
     const MAX_FRAMEWORK_LEN = 2000;
@@ -133,8 +137,8 @@ export async function deductSituation(
     }
 
     return {
-        analysis: cached.analysis,
-        model: cached.model,
-        provider: cached.provider,
+        analysis: cached!.analysis,
+        model: cached!.model,
+        provider: cached!.provider,
     };
 }
