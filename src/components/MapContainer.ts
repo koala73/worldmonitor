@@ -668,6 +668,7 @@ export class MapContainer {
   }
 
   public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    if (this.useGlobe) { this.globeMap?.setChokepointData(data); return; }
     if (this.useDeckGL) { this.deckGLMap?.setChokepointData(data); return; }
     this.svgMap?.setChokepointData(data);
   }

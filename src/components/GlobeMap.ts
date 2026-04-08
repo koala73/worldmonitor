@@ -35,6 +35,7 @@ import type { MapLayers, Hotspot, MilitaryFlight, MilitaryVessel, MilitaryVessel
 import type { Earthquake } from '@/services/earthquakes';
 import type { AirportDelayAlert } from '@/services/aviation';
 import { MapPopup } from './MapPopup';
+import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { MapContainerState, MapView, TimeRange } from './MapContainer';
 import type { CountryClickPayload } from './DeckGLMap';
 import type { WeatherAlert } from '@/services/weather';
@@ -2998,6 +2999,10 @@ export class GlobeMap {
   }
   public setPositiveEvents(_events: any[]): void {}
   public setKindnessData(_points: any[]): void {}
+  public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    this.popup?.setChokepointData(data);
+  }
+
   public setHappinessScores(_data: any): void {}
   public setSpeciesRecoveryZones(_zones: any[]): void {}
   public setRenewableInstallations(_installations: any[]): void {}
