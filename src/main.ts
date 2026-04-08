@@ -280,7 +280,7 @@ Sentry.init({
     // OrbitControls is bundled into the main chunk, so hasFirstParty is true.
     // Match by function name pattern (_handleTouch*Dolly*) or suppress when no first-party frames.
     if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
-      if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls|onTouchStart/.test(f.function ?? ''))) return null;
+      if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
     }
     // Suppress deck.gl/maplibre null-access crashes with no usable stack trace (requestAnimationFrame wrapping)
     if (/null is not an object \(evaluating '\w{1,3}\.(id|type|style)'\)/.test(msg) && frames.length === 0) return null;
