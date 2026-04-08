@@ -1,5 +1,5 @@
 // ── Story persistence tracking keys (E3) ─────────────────────────────────────
-// Hash: firstSeen, lastSeen, mentionCount, sourceCount, currentScore, peakScore, title, link, severity
+// Hash: firstSeen, lastSeen, mentionCount, sourceCount, currentScore, peakScore, title, link, severity, lang
 export const STORY_TRACK_KEY_PREFIX = 'story:track:v1:';
 // Set: unique feed names that have mentioned this story
 export const STORY_SOURCES_KEY_PREFIX = 'story:sources:v1:';
@@ -14,10 +14,10 @@ export const STORY_TRACKING_TTL_S = 172800;
  * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
  * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
  *
- *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang
  *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
  *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
- *   digest:accumulator:v1:${variant} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
+ *   digest:accumulator:v1:${variant}:${lang} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
  *
  * TTL for all: 172800s (48h), refreshed each digest cycle.
  * Shadow scoring key (written by notification-relay.cjs):
@@ -26,7 +26,7 @@ export const STORY_TRACKING_TTL_S = 172800;
 export const STORY_TRACK_KEY = (titleHash: string) => `story:track:v1:${titleHash}`;
 export const STORY_SOURCES_KEY = (titleHash: string) => `story:sources:v1:${titleHash}`;
 export const STORY_PEAK_KEY = (titleHash: string) => `story:peak:v1:${titleHash}`;
-export const DIGEST_ACCUMULATOR_KEY = (variant: string) => `digest:accumulator:v1:${variant}`;
+export const DIGEST_ACCUMULATOR_KEY = (variant: string, lang = 'en') => `digest:accumulator:v1:${variant}:${lang}`;
 export const DIGEST_LAST_SENT_KEY = (userId: string, variant: string) => `digest:last-sent:v1:${userId}:${variant}`;
 export const SHADOW_SCORE_LOG_KEY = 'shadow:score-log:v1';
 export const STORY_TTL = 604800;           // 7 days — enough for sustained multi-day stories
