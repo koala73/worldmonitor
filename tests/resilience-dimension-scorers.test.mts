@@ -389,6 +389,13 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.coverage > 0, `coverage should be > 0 with real data, got ${score.coverage}`);
   });
 
+  it('scoreCyberDigital: feed outage (null source) returns null score and zero coverage', async () => {
+    const reader = async (_key: string): Promise<unknown | null> => null;
+    const score = await scoreCyberDigital('US', reader);
+    assert.equal(score.score, 0, 'all feeds null (seed outage) must yield score=0');
+    assert.equal(score.coverage, 0, 'all feeds null (seed outage) must yield coverage=0');
+  });
+
   it('scoreInformationCognitive: correctly unwraps news:threat:summary:v1 { byCountry } envelope', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'resilience:static:US') return RESILIENCE_FIXTURES['resilience:static:US'];
