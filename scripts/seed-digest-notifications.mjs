@@ -239,7 +239,6 @@ async function buildDigest(rule, windowStartMs) {
     const phase = derivePhase(track);
     if (phase === 'fading') continue;
     if (!matchesSensitivity(rule.sensitivity ?? 'high', track.severity)) continue;
-    if (track.lang && track.lang !== lang) continue;
 
     stories.push({
       hash: hashes[i],
