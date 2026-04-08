@@ -74,13 +74,13 @@ describe('resilience scorer contracts', () => {
     }, 0).toFixed(2));
 
     assert.deepEqual(domainAverages, {
-      economic: 999,
-      infrastructure: 999,
+      economic: 66.33,
+      infrastructure: 79,
       energy: 80,
       'social-governance': 61.75,
       'health-food': 60.5,
     });
-    assert.equal(overallScore, 999);
+    assert.equal(overallScore, 68.72);
   });
 });
 
