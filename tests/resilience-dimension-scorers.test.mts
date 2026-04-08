@@ -389,7 +389,7 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.coverage > 0, `coverage should be > 0 with real data, got ${score.coverage}`);
   });
 
-  it('scoreCyberDigital: feed outage (null source) returns null score and zero coverage', async () => {
+  it('scoreCyberDigital: feed outage (null source) returns score=0 and zero coverage', async () => {
     const reader = async (_key: string): Promise<unknown | null> => null;
     const score = await scoreCyberDigital('US', reader);
     assert.equal(score.score, 0, 'all feeds null (seed outage) must yield score=0');
