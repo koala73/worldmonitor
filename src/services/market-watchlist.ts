@@ -1,8 +1,12 @@
 /**
- * User-customizable market watchlist (additive).
+ * User-customizable market watchlist.
  *
- * Stores a list of extra tickers the user wants to track beyond the defaults.
- * Optional friendly label is supported (used as the displayed name).
+ * Two layers:
+ *  1. Catalog selection — user picks symbols from the built-in catalog (full replacement).
+ *  2. Custom entries — freeform tickers typed manually (appended on top).
+ *
+ * When a catalog selection exists the defaults are replaced entirely.
+ * Custom entries are always additive on top of whichever base list is active.
  */
 
 export interface MarketWatchlistEntry {
@@ -14,6 +18,7 @@ export interface MarketWatchlistEntry {
 }
 
 const STORAGE_KEY = 'wm-market-watchlist-v1';
+const CATALOG_KEY = 'wm-market-catalog-selection-v1';
 export const MARKET_WATCHLIST_EVENT = 'wm-market-watchlist-changed';
 
 function safeParseJson<T>(raw: string | null): T | null {
@@ -134,4 +139,30 @@ export function parseMarketWatchlistInput(text: string): MarketWatchlistEntry[] 
   }
 
   return entries;
+}
+
+// ---- Catalog selection (visual picker) ----
+
+export function getCatalogSelection(): string[] | null {
+  try {
+    const raw = localStorage.getItem(CATALOG_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed as string[];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function setCatalogSelection(symbols: string[]): void {
+  try {
+    localStorage.setItem(CATALOG_KEY, JSON.stringify(symbols));
+  } catch { /* ignore */ }
+  window.dispatchEvent(new CustomEvent(MARKET_WATCHLIST_EVENT, { detail: { catalogChanged: true } }));
+}
+
+export function clearCatalogSelection(): void {
+  try { localStorage.removeItem(CATALOG_KEY); } catch { /* ignore */ }
+  window.dispatchEvent(new CustomEvent(MARKET_WATCHLIST_EVENT, { detail: { catalogChanged: true } }));
 }
