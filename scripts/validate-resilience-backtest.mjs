@@ -23,7 +23,8 @@ import { getRedisCredentials, loadEnvFile } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v2:';
+// Source of truth: server/worldmonitor/resilience/v1/_shared.ts
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v5:';
 
 const BASELINE_DIMENSIONS = new Set([
   'macroFiscal',
@@ -127,25 +128,19 @@ async function redisPipeline(url, token, commands) {
   return resp.json();
 }
 
+// Production formula (server/worldmonitor/resilience/v1/_shared.ts):
+// baseline dimensions + mixed dimensions, all at full weight via coverageWeightedMean
 function computeBaselineScore(scoreResponse) {
   const dimensions = scoreResponse?.domains?.flatMap((d) => d.dimensions) ?? [];
   if (dimensions.length === 0) return null;
 
-  let weightedSum = 0;
-  let totalCoverage = 0;
+  const baselineDims = dimensions.filter((d) => {
+    return BASELINE_DIMENSIONS.has(d.id) || MIXED_DIMENSIONS.has(d.id);
+  });
 
-  for (const dim of dimensions) {
-    const isBaseline = BASELINE_DIMENSIONS.has(dim.id);
-    const isMixed = MIXED_DIMENSIONS.has(dim.id);
-    if (!isBaseline && !isMixed) continue;
-
-    const factor = isMixed ? 0.5 : 1.0;
-    const effectiveCoverage = dim.coverage * factor;
-    weightedSum += dim.score * effectiveCoverage;
-    totalCoverage += effectiveCoverage;
-  }
-
-  return totalCoverage > 0 ? weightedSum / totalCoverage : null;
+  const totalCov = baselineDims.reduce((s, d) => s + d.coverage, 0);
+  if (totalCov === 0) return null;
+  return baselineDims.reduce((s, d) => s + d.score * d.coverage, 0) / totalCov;
 }
 
 function pearsonCorrelation(xs, ys) {
@@ -222,13 +217,17 @@ async function runBacktest() {
     const baselines = pairs.map((p) => p.baseline);
     const recoveries = pairs.map((p) => p.recovery);
     const r = pearsonCorrelation(baselines, recoveries);
-    const direction = r > 0 ? 'POSITIVE' : 'NEGATIVE';
-    const interpretation = r > 0 ? 'faster' : 'slower';
+    const direction = r > 0 ? 'POSITIVE' : r === 0 ? 'NEUTRAL' : 'NEGATIVE';
+    const interpretation = r > 0
+      ? 'Countries with higher baseline recovered faster'
+      : r === 0
+        ? 'No clear relationship between baseline and recovery'
+        : 'Countries with higher baseline recovered slower';
 
     console.log(`  Scored: ${pairs.length}/${countryCodes.length}`);
     console.log(`  Correlation (baseline vs recovery): r = ${r.toFixed(3)}`);
     console.log(`  Direction: ${direction} (expect positive)`);
-    console.log(`  Interpretation: Countries with higher baseline recovered ${interpretation}`);
+    console.log(`  Interpretation: ${interpretation}`);
 
     if (pairs.length < MIN_SAMPLE_FOR_GATE) {
       console.log(`  Note: sample too small (${pairs.length} < ${MIN_SAMPLE_FOR_GATE}) for gate check`);
