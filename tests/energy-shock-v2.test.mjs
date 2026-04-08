@@ -137,7 +137,8 @@ describe('mock: degraded mode falls back to CHOKEPOINT_EXPOSURE', () => {
     const degraded = true;
     const liveFlowRatio = null;
 
-    const exposureMult = liveFlowRatio !== null ? liveFlowRatio : (CHOKEPOINT_EXPOSURE[chokepointId] ?? 1.0);
+    const baseExposure = CHOKEPOINT_EXPOSURE[chokepointId] ?? 1.0;
+    const exposureMult = liveFlowRatio !== null ? baseExposure * liveFlowRatio : baseExposure;
     assert.equal(exposureMult, 1.0);
 
     const confidence = deriveChokepointConfidence(liveFlowRatio, degraded);
@@ -202,12 +203,12 @@ describe('mock: full coverage with live PortWatch data', () => {
     assert.equal(confidence, 'high');
   });
 
-  it('live flow ratio replaces CHOKEPOINT_EXPOSURE multiplier', () => {
+  it('live flow ratio composes with CHOKEPOINT_EXPOSURE multiplier', () => {
     const chokepointId = 'suez';
     const liveFlowRatio = 0.85;
-    const exposureMult = liveFlowRatio !== null ? liveFlowRatio : (CHOKEPOINT_EXPOSURE[chokepointId] ?? 1.0);
-    assert.equal(exposureMult, 0.85);
-    assert.notEqual(exposureMult, CHOKEPOINT_EXPOSURE[chokepointId]);
+    const baseExposure = CHOKEPOINT_EXPOSURE[chokepointId]; // 0.6
+    const exposureMult = liveFlowRatio !== null ? baseExposure * liveFlowRatio : baseExposure;
+    assert.equal(Math.round(exposureMult * 1000) / 1000, 0.51);
   });
 
   it('full coverage returns "full" level with both jodiOil and comtrade true', () => {
@@ -540,6 +541,51 @@ describe('cache key includes degraded state', () => {
     assert.notEqual(keyDegraded, keyLive, 'cache keys must differ by degraded state');
     assert.ok(keyDegraded.endsWith(':d'));
     assert.ok(keyLive.endsWith(':l'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// exposureMult composes baseExposure with liveFlowRatio
+// ---------------------------------------------------------------------------
+
+describe('exposureMult composes baseExposure with liveFlowRatio', () => {
+  it('suez with flowRatio 0.85 yields 0.6 * 0.85 = 0.51', () => {
+    const baseExposure = CHOKEPOINT_EXPOSURE['suez']; // 0.6
+    const liveFlowRatio = 0.85;
+    const exposureMult = baseExposure * liveFlowRatio;
+    assert.equal(Math.round(exposureMult * 1000) / 1000, 0.51);
+  });
+
+  it('hormuz with flowRatio 1.0 yields 1.0 * 1.0 = 1.0', () => {
+    const baseExposure = CHOKEPOINT_EXPOSURE['hormuz'];
+    const liveFlowRatio = 1.0;
+    assert.equal(baseExposure * liveFlowRatio, 1.0);
+  });
+
+  it('malacca degraded uses baseExposure only (0.7)', () => {
+    const baseExposure = CHOKEPOINT_EXPOSURE['malacca'];
+    const liveFlowRatio = null;
+    const exposureMult = liveFlowRatio !== null ? baseExposure * liveFlowRatio : baseExposure;
+    assert.equal(exposureMult, 0.7);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildAssessment skips low-dependence dismissal when proxied
+// ---------------------------------------------------------------------------
+
+describe('buildAssessment skips low-dependence dismissal when proxied', () => {
+  it('does NOT dismiss low gulfCrudeShare when comtradeCoverage is false (proxied)', () => {
+    const products = [{ product: 'Diesel', deficitPct: 5.0 }];
+    const msg = buildAssessment('XX', 'suez', true, 0.06, 60, 30, 50, products, 'partial', false, true, false);
+    assert.ok(!msg.includes('low Gulf crude dependence'), 'should not dismiss when proxied');
+    assert.ok(msg.includes('deficit') || msg.includes('disruption'), 'should show deficit info instead');
+  });
+
+  it('DOES dismiss low gulfCrudeShare when comtradeCoverage is true (measured)', () => {
+    const products = [{ product: 'Diesel', deficitPct: 5.0 }];
+    const msg = buildAssessment('XX', 'suez', true, 0.06, 60, 30, 50, products, 'full', false, true, true);
+    assert.ok(msg.includes('low Gulf crude dependence'));
   });
 });
 

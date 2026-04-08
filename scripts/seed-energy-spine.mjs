@@ -113,7 +113,8 @@ async function assembleCountryList() {
     : [];
 
   const union = new Set([...jodiList, ...owidList, ...emberList]);
-  return [...union].filter(iso2 => typeof iso2 === 'string' && iso2.length === 2);
+  const countries = [...union].filter(iso2 => typeof iso2 === 'string' && iso2.length === 2);
+  return { countries, jodiCount: jodiList.length, owidCount: owidList.length };
 }
 
 // ── Spine assembly for a single country ──────────────────────────────────────
@@ -244,12 +245,24 @@ export async function main() {
   try {
     // Step 1: Collect country list (union of JODI oil + OWID mix countries)
     console.log('[energy-spine] Assembling country list...');
-    const countries = await assembleCountryList();
+    const { countries, jodiCount, owidCount } = await assembleCountryList();
     if (countries.length === 0) {
       console.error('[energy-spine] No countries found in source keys — aborting');
       await writeMeta(0, 'empty');
       return;
     }
+
+    if (jodiCount === 0 && owidCount === 0) {
+      console.error('[energy-spine] Both JODI oil and OWID mix returned zero countries — aborting to preserve snapshot');
+      const prevCountries = await redisGet(SPINE_COUNTRIES_KEY).catch(() => null);
+      if (Array.isArray(prevCountries) && prevCountries.length > 0) {
+        const prevKeys = prevCountries.map(iso2 => `${SPINE_KEY_PREFIX}${iso2}`);
+        await extendExistingTtl([...prevKeys, SPINE_COUNTRIES_KEY, SPINE_META_KEY], SPINE_TTL_SECONDS);
+      }
+      await writeMeta(0, 'core_sources_empty');
+      return;
+    }
+
     console.log(`[energy-spine] ${countries.length} countries to process`);
 
     // Step 2: Count-drop guard — check against previous _countries count

@@ -166,7 +166,8 @@ export async function computeEnergyShockScenario(
 
   const emberData = emberResult.status === 'fulfilled' ? (emberResult.value as { fossilShare?: number } | null) : null;
 
-  const exposureMult = liveFlowRatio !== null ? liveFlowRatio : (CHOKEPOINT_EXPOSURE[chokepointId] ?? 1.0);
+  const baseExposure = CHOKEPOINT_EXPOSURE[chokepointId] ?? 1.0;
+  const exposureMult = liveFlowRatio !== null ? baseExposure * liveFlowRatio : baseExposure;
 
   const jodiOilCoverage = jodiOil != null;
   const comtradeCoverage = comtradeHasData;

@@ -86,7 +86,7 @@ export function buildAssessment(
   if (effectiveCoverDays === -1) {
     return `${code} is a net oil exporter; ${chokepointId} disruption affects export revenue, not domestic supply.`;
   }
-  if (gulfCrudeShare < 0.1) {
+  if (gulfCrudeShare < 0.1 && comtradeCoverage !== false) {
     return `${code} has low Gulf crude dependence (${Math.round(gulfCrudeShare * 100)}%); ${chokepointId} disruption has limited direct impact.`;
   }
   const degradedNote = degraded ? ' (live flow data unavailable, using historical baseline)' : '';

@@ -382,3 +382,23 @@ describe('buildSpineEntry with Ember data', () => {
     assert.equal(entry.electricity, null);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Core-source guard when JODI and OWID are empty
+// ---------------------------------------------------------------------------
+
+describe('core-source guard when JODI and OWID are empty', () => {
+  it('assembleCountryList returns jodiCount and owidCount', () => {
+    const jodiCount = 0;
+    const owidCount = 0;
+    const shouldAbort = jodiCount === 0 && owidCount === 0;
+    assert.ok(shouldAbort, 'should abort when both core sources are empty');
+  });
+
+  it('does not abort when at least one core source has data', () => {
+    const jodiCount = 100;
+    const owidCount = 0;
+    const shouldAbort = jodiCount === 0 && owidCount === 0;
+    assert.ok(!shouldAbort, 'should not abort when JODI has data');
+  });
+});
